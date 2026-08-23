@@ -13,7 +13,18 @@ metadata:
   name: navigator-web
   namespace: navigator
 spec:
-  replicas: 1
+  # Two replicas, so that losing one pod is a degradation rather than an
+  # outage. Autopilot reschedules pods on its own schedule — node upgrades,
+  # bin-packing, preemption — and at one replica every such move is a full
+  # outage with nothing left serving. That is not hypothetical: it is how
+  # the 2026-08-23 production outage presented, and a single replica is
+  # also why a stale image reference stayed invisible until the one pod
+  # happened to move.
+  #
+  # This is the cheapest possible answer to that. Two of Autopilot's
+  # floor-sized pods still cost very little, and the Deployment's default
+  # RollingUpdate keeps one serving while the other is replaced.
+  replicas: 2
   template:
     spec:
       containers:

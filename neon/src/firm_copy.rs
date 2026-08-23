@@ -303,7 +303,8 @@ pub fn navigator() -> PageContent {
         ),
         meta_description: "Neon Law Navigator is the legal project platform the law firms we \
                            serve work on — vibe coding for lawyers, where every pass at a \
-                           document is a change you can read."
+                           document is a change you can read. Free software under AGPL-3.0-only, \
+                           published under a right the firm cannot take back."
             .to_string(),
         title: "Neon Law Navigator".to_string(),
         hero_mark: Some(webapp::components::PracticeMark::Helm),
@@ -315,6 +316,7 @@ pub fn navigator() -> PageContent {
             navigator_vibe_band(),
             navigator_downloads_band(),
             navigator_working_surface_band(),
+            navigator_licence_band(),
             Band::Cta {
                 heading: "Co-Counsel a Pro Bono Case with us and the Neon Law Foundation"
                     .to_string(),
@@ -520,6 +522,77 @@ fn navigator_working_surface_band() -> Band {
                 href: Some("/contact".to_string()),
                 href_label: Some("Ask us for a walkthrough".to_string()),
             },
+        ],
+    }
+}
+
+/// The licence, in the order a reader needs it: nobody needs permission, the
+/// grant cannot be withdrawn, and only then the narrow thing on offer.
+///
+/// **The order is the design.** A page that opens on "commercial licences
+/// available" reads as though a fork needs to buy one. That is false, and it is
+/// the false impression most damaging to the people this software exists to
+/// reach — a legal aid office, a solo practitioner, a firm in another state.
+/// So permission comes first, plainly, and the offer comes last.
+///
+/// **The durability sentence is the one doing real work.** "We publish it under
+/// the AGPL" is a statement about today: a licence already granted cannot be
+/// revoked, but no holder owes anyone the next copy, which is the mechanism
+/// behind every relicensing a community has been angry about. The Foundation's
+/// perpetual, irrevocable right to go on publishing is what lets this band say
+/// the grant is not ours to take back rather than merely promising we will not.
+/// A reader who has watched another project rug-pull is owed the enforceable
+/// version, not the reassuring one.
+///
+/// **The disclosure is required rather than decorative.** Selling a software
+/// licence is a law-related service under RPC 5.7, and the reader most likely
+/// to assume otherwise is a lawyer buying it from a law firm.
+///
+/// Like [`navigator_working_surface_band`], this asserts no capability that has
+/// not shipped. What is on offer is relief from a licence obligation — a
+/// permission the copyright holder is able to give today — and the band says
+/// only that. No price appears here: the scope of a deployment is not knowable
+/// in advance, so it is quoted through `/contact` like every other engagement.
+fn navigator_licence_band() -> Band {
+    Band::Statement {
+        heading: "The licence, and the one thing we sell around it".to_string(),
+        lead: "Nobody needs our permission to run Navigator.".to_string(),
+        body: vec![
+            vec![Run::plain(
+                "Navigator is free software under the GNU Affero General Public License, \
+                 version 3, over the whole tree — the code, the tooling, and the drafted legal \
+                 prose. Run it, fork it, change it, run it for your own clients, charge them for \
+                 it. There is no permission to ask for and nobody to ask.",
+            )],
+            vec![
+                Run::plain("The Neon Law Foundation holds a "),
+                Run::strong("perpetual, irrevocable right to publish Navigator under that licence"),
+                Run::plain(
+                    " — one that binds our successors and survives any change of control of the \
+                     firm — so the open-source grant is not ours to take back. A copyright \
+                     holder can normally stop publishing whenever it likes. Here a separate \
+                     organization is entitled to go on doing it, and can enforce that.",
+                ),
+            ],
+            vec![Run::plain(
+                "What we can do, because we hold the copyright, is relieve an operator of \
+                 section 13. That clause obliges a firm that modifies Navigator and runs it for \
+                 clients to offer those clients the corresponding source of its own version. A \
+                 firm that would rather keep its modifications to itself can be licensed out of \
+                 that obligation, and only the copyright holder is able to grant it.",
+            )],
+            vec![Run::plain(
+                "Licensing software is a law-related service rather than legal representation. \
+                 Taking a licence from us does not make us your counsel, and the protections of \
+                 the attorney-client relationship — privilege and confidentiality among them — \
+                 do not attach to it. An attorney-client relationship with the firm begins only \
+                 with a signed retainer.",
+            )],
+            vec![
+                Run::plain("Every licence is scoped and quoted in conversation. "),
+                Run::link("Ask us what yours would involve", "/contact"),
+                Run::plain("."),
+            ],
         ],
     }
 }
@@ -775,6 +848,42 @@ mod firm_copy_tests {
         }
     }
 
+    /// Every destination the page routes a reader to.
+    ///
+    /// [`band_text`] reads run and card *text* and never an `href`, which is
+    /// correct for the copy guards — a URL is not a regulated claim — but it
+    /// leaves "does this band actually route anywhere" unassertable. A band can
+    /// say "ask us" and link nowhere, and every guard in this module reports
+    /// green. So routing is read separately from copy rather than by widening
+    /// what the copy guards see.
+    fn band_hrefs(bands: &[Band]) -> Vec<String> {
+        fn from_paragraphs(body: &[Paragraph]) -> Vec<String> {
+            body.iter()
+                .flat_map(|p| p.iter().filter_map(|r| r.href.clone()))
+                .collect()
+        }
+        bands
+            .iter()
+            .flat_map(|band| match band {
+                Band::Statement { body, .. } => from_paragraphs(body),
+                Band::Cards { items, .. } => items
+                    .iter()
+                    .flat_map(|c| {
+                        from_paragraphs(&c.body)
+                            .into_iter()
+                            .chain(c.href.clone())
+                            .collect::<Vec<_>>()
+                    })
+                    .collect(),
+                Band::Steps { items, .. } => items
+                    .iter()
+                    .flat_map(|s| from_paragraphs(&s.body))
+                    .collect(),
+                Band::Downloads { .. } | Band::Cta { .. } => Vec::new(),
+            })
+            .collect()
+    }
+
     fn page_text(bands: &[Band]) -> String {
         bands.iter().map(band_text).collect::<Vec<_>>().join(" ")
     }
@@ -795,6 +904,24 @@ mod firm_copy_tests {
                 _ => None,
             })
             .expect("the Legal Services page renders its fee schedule as a card band")
+    }
+
+    /// The `/navigator` licence band, resolved from the page.
+    ///
+    /// Scoping matters more here than it looks. The first version of the routing
+    /// assertion below read every href on the page and passed with this band's
+    /// link deleted — the working-surface card three bands up also points at
+    /// `/contact`, so "the page routes to /contact" was true either way. An
+    /// assertion about a band has to read that band.
+    fn navigator_licence_band(content: &webapp::foundation_marketing::PageContent) -> &Band {
+        content
+            .bands
+            .iter()
+            .find(|band| {
+                matches!(band, Band::Statement { lead, .. }
+                    if lead.contains("Nobody needs our permission"))
+            })
+            .expect("the Navigator page states the licence before it offers an exception to it")
     }
 
     /// The platform page offers one concrete pro bono co-counsel invitation.
@@ -845,9 +972,25 @@ mod firm_copy_tests {
             !text.to_lowercase().contains("ciso"),
             "no CISO offer reaches the page: {text}"
         );
-        assert!(
-            !text.contains("law-related service"),
-            "the retired consulting characterization must not remain: {text}"
+        // `law-related service` is the RPC 5.7 term of art, and the licence
+        // offer is required to use it — so the ban moves off the phrase and onto
+        // the *subject* the retired copy attached it to. Banning the phrase
+        // outright would mean this page could never make the one disclosure the
+        // rule asks for, which is not what removing a consulting offer was for.
+        for retired in ["technology function", "consulting"] {
+            assert!(
+                !text.to_lowercase().contains(retired),
+                "the retired consulting offer must not return to this page \
+                 (`{retired}`): {text}"
+            );
+        }
+        assert_eq!(
+            text.matches("law-related service").count(),
+            text.matches("Licensing software is a law-related service")
+                .count(),
+            "every `law-related service` on this page must be the licence \
+             disclosure; any other use is the consulting characterization \
+             coming back: {text}"
         );
         assert!(
             !text.contains("Bring a case") && !text.contains("See it in practice"),
@@ -991,6 +1134,126 @@ mod firm_copy_tests {
             text.to_lowercase().contains("attorney"),
             "the page states the attorney review the work rests on: {text}"
         );
+    }
+
+    /// The licence band leads with permission, not with the sale.
+    ///
+    /// This is the assertion the band was drafted around, and the one worth
+    /// having a test for: the order of the argument is load-bearing. A reader
+    /// who meets "commercial licence" before "you need no permission" concludes
+    /// a fork has to buy one — which is false, and false in the direction that
+    /// turns away a legal aid office or a solo practitioner. So the free-software
+    /// statement has to come first in the prose, and the assertion is positional
+    /// rather than a check that both phrases appear somewhere.
+    ///
+    /// The durability claim is checked because it is the difference between a
+    /// promise and an enforceable right. "We publish under the AGPL" says
+    /// nothing about tomorrow; only a right held by somebody else does, and if
+    /// that sentence were softened the page would still read fine while meaning
+    /// much less.
+    #[test]
+    fn the_navigator_page_offers_the_licence_before_the_exception() {
+        let content = super::navigator();
+        let text = page_text(&content.bands);
+        let lowered = text.to_lowercase();
+
+        let permission = lowered
+            .find("no permission to ask for")
+            .expect("the page says plainly that nobody needs permission to run Navigator");
+        let exception = lowered
+            .find("section 13")
+            .expect("the page names the obligation an operator can be relieved of");
+        assert!(
+            permission < exception,
+            "permission has to be stated before the exception is offered, or a \
+             reader concludes a fork needs to buy one: {text}"
+        );
+
+        // The grant's durability, which is what makes the first claim keep
+        // being true rather than being true today.
+        for required in [
+            "perpetual, irrevocable right to publish",
+            "not ours to take back",
+            "change of control",
+        ] {
+            assert!(
+                lowered.contains(required),
+                "the page must state `{required}` — a grant nobody else can \
+                 enforce is a promise, not a right: {text}"
+            );
+        }
+
+        // Who is actually being addressed. The buyer is an operator that would
+        // rather not hand its own portal users its source, and naming that is
+        // what keeps the offer from reading as a toll on forking.
+        assert!(
+            lowered.contains("keep its modifications to itself"),
+            "the page must name the operator the exception is for: {text}"
+        );
+    }
+
+    /// The licence band discloses that a software licence is not legal work, and
+    /// carries no price.
+    ///
+    /// Two rules meeting on one band. **RPC 5.7**: selling a licence is a
+    /// law-related service, and the reader most likely to assume the
+    /// attorney-client protections travel with it is a lawyer buying from a law
+    /// firm — so the disclaimer has to be on the page rather than only in the
+    /// agreement. It mirrors [`super::fractional_cto_disclosure_band`], which
+    /// makes the same disclosure for the same reason.
+    ///
+    /// **No price.** A deployment's scope is not knowable in advance, so a
+    /// figure here would be a floor dressed as a fee — the same reason
+    /// litigation and fractional GC carry none. The band quotes through
+    /// `/contact` instead, and this test is what keeps a number from drifting in
+    /// later.
+    #[test]
+    fn the_navigator_licence_offer_discloses_its_nature_and_publishes_no_price() {
+        let content = super::navigator();
+        let text = page_text(&content.bands);
+        let lowered = text.to_lowercase();
+
+        assert!(
+            lowered.contains("law-related service rather than legal representation"),
+            "the licence offer must say it is not legal representation: {text}"
+        );
+        assert!(
+            lowered.contains("does not make us your counsel"),
+            "the licence offer must say plainly that buying it does not engage \
+             the firm as counsel: {text}"
+        );
+        assert!(
+            lowered.contains("signed retainer"),
+            "the page must say where an attorney-client relationship does begin: {text}"
+        );
+
+        let routes = band_hrefs(std::slice::from_ref(navigator_licence_band(&content)));
+        assert!(
+            routes.iter().any(|href| href == "/contact"),
+            "the licence *band* must route to `/contact`, where a licence is \
+             scoped and quoted like every other engagement; it routes to \
+             {routes:?}"
+        );
+
+        // No figure, in any of the shapes one arrives in.
+        assert!(
+            !text.contains('$'),
+            "the licence offer publishes no price: {text}"
+        );
+        for shape in [
+            "per month",
+            "per year",
+            "per seat",
+            "starting at",
+            "usd",
+            "annually",
+        ] {
+            assert!(
+                !lowered.contains(shape),
+                "`{shape}` reads as a price on a page that quotes per \
+                 engagement: {text}"
+            );
+        }
     }
 
     /// The two quoted practices publish no figure.

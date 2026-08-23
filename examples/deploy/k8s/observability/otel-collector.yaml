@@ -133,6 +133,20 @@ data:
           - from_domain
           - to_domain
           - got_domain
+          # --- sanitized tool-call payload fields (portal/src/audit_fields.rs) ---
+          # A digest of a proposed tool call and how many top-level arguments it
+          # carried, in place of the payload the agent-authorization records used
+          # to log whole. The digest proves two records describe the same call
+          # and detects a substituted payload; neither field is readable.
+          # Listed for the same reason as the domain keys above — absent them the
+          # redaction processor deletes the field, trading a leak for a blank.
+          # NOTE: this does not on its own make the exported record a usable
+          # trail. `tool`, `decision`, `task_id`, and `event` are still absent
+          # from this list, so the exported form of those records remains
+          # `person_id` and `step`. The retained stdout and Cloud Logging copy is
+          # the trail; widening this list to cover it is a separate decision.
+          - arguments_sha256
+          - argument_count
           # --- opaque UUID ids (attorney call: raw ids loggable) ---
           - person_id
           - project_id

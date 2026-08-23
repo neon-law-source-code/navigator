@@ -45,7 +45,7 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::agent_router::{AgentRouter, RoutedCall, RouterError, Step, Turn};
-use crate::audit_fields::person_id_field;
+use crate::audit_fields::{argument_count, argument_digest, person_id_field};
 use crate::canonical_host::CanonicalHost;
 use mcp::protocol::{codes, Request as RpcRequest, Response as RpcResponse};
 use mcp::{tools, McpState, Principal};
@@ -803,7 +803,8 @@ async fn dispatch_single(
                 ),
                 person_id = %person_id_field(approver.as_ref()),
                 tool = %skill,
-                arguments = %pending_call.arguments,
+                arguments_sha256 = %argument_digest(&pending_call.arguments),
+                argument_count = argument_count(&pending_call.arguments),
                 task_id = %task_id,
                 routed_via_llm = false,
                 "a2a: named skill needs confirmation → pausing (input-required)"
@@ -1018,7 +1019,8 @@ async fn drive_loop(
                         principal_kind = %principal_kind(principal_email),
                         person_id = %person_id_field(proposer.as_ref()),
                         tool = %tool_name,
-                        arguments = %pending_call.arguments,
+                        arguments_sha256 = %argument_digest(&pending_call.arguments),
+                        argument_count = argument_count(&pending_call.arguments),
                         task_id = %task_id,
                         step = step_n,
                         "a2a: side-effecting call → pausing for confirmation (input-required)"
@@ -1658,7 +1660,8 @@ fn audit_authorization(
         // the approver above: whether it authenticated, never its address.
         proposer_kind = %principal_kind(&pending.principal_email),
         tool = %pending.pending_call.tool_name,
-        arguments = %pending.pending_call.arguments,
+        arguments_sha256 = %argument_digest(&pending.pending_call.arguments),
+        argument_count = argument_count(&pending.pending_call.arguments),
         task_id = %task_id,
         context_id = %pending.context_id,
         "a2a: agent action authorization decision"
@@ -3586,6 +3589,185 @@ mod tests {
         assert!(
             line.contains(&format!("\"person_id\":\"{}\"", other.id)),
             "the person who tried to approve must be named: {line}"
+        );
+        assert!(
+            !line.contains('@'),
+            "no email address may reach the audit stream: {line}"
+        );
+    }
+
+    /// The `fields` object of a captured JSON line, as a sorted key list.
+    /// `tracing_subscriber`'s JSON layer nests every event field under
+    /// `fields`, so this is the record's field set as a reader of the stream
+    /// sees it.
+    fn field_names(line: &str) -> Vec<String> {
+        let parsed: Value = serde_json::from_str(line).expect("a captured line is JSON");
+        let mut names: Vec<String> = parsed["fields"]
+            .as_object()
+            .expect("the JSON layer nests event fields under `fields`")
+            .keys()
+            .cloned()
+            .collect();
+        names.sort();
+        names
+    }
+
+    /// The `decision = "proposed"` record emitted when a lawyer names a
+    /// confirmation-gated skill directly.
+    ///
+    /// Asserted as an *exact* set rather than a presence check, because the
+    /// defect being closed was a field that should not have been there. A
+    /// presence check cannot fail on an extra field; an exact set can, so
+    /// re-adding `arguments` — or any other unreviewed field — turns this red
+    /// instead of passing quietly the way the `direct_skill_side_effect_*`
+    /// tests did while a whole tool-call payload rode this line.
+    #[tokio::test]
+    async fn the_proposed_record_carries_a_digest_and_a_count_and_no_payload() {
+        let (engines, person_id) = welcome_fixture().await;
+        let (_, rpc) = routes(state_with(engines));
+
+        let buf = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        {
+            let _guard = capture_into(&buf);
+            let (_, body) = post_rpc_as(
+                rpc,
+                direct_skill(50, "send_welcome_email", &json!({ "person_id": person_id })),
+                "lawyer@neonlaw.com",
+            )
+            .await;
+            assert_eq!(
+                body["result"]["status"]["state"], "input-required",
+                "the pause is what emits the record under test; got: {body}"
+            );
+        }
+        let logged = String::from_utf8(buf.lock().unwrap().clone()).expect("utf-8 log");
+        let line = audit_line(&logged, "agent_action_authorization");
+
+        assert_eq!(
+            field_names(&line),
+            vec![
+                "argument_count",
+                "arguments_sha256",
+                "decision",
+                "event",
+                "message",
+                "person_id",
+                "principal_kind",
+                "routed_via_llm",
+                "task_id",
+                "tool",
+            ],
+            "the proposed record's field set is the contract; got: {line}"
+        );
+
+        let parsed: Value = serde_json::from_str(&line).expect("JSON line");
+        let fields = &parsed["fields"];
+        assert_eq!(
+            fields["arguments_sha256"],
+            Value::from(argument_digest(&json!({ "person_id": person_id }))),
+            "the digest must be of the payload actually proposed: {line}"
+        );
+        assert_eq!(
+            fields["argument_count"], 1,
+            "one top-level argument was proposed: {line}"
+        );
+        // The load-bearing assertion, and the reason this test exists: the
+        // *value* the payload carried must not be reconstructible from the
+        // record. The argument names a different person from the approving
+        // lawyer, so its id appearing here could only have come from the
+        // payload.
+        assert!(
+            !line.contains(&person_id.to_string()),
+            "no tool-call argument value may reach the audit stream: {line}"
+        );
+        assert!(
+            !line.contains('@'),
+            "no email address may reach the audit stream: {line}"
+        );
+    }
+
+    /// The same contract for the record `audit_authorization` emits — the one
+    /// serving all four terminal decisions (`denied_identity`,
+    /// `denied_unauthorized`, `authorized`, `declined`). Exercised through
+    /// `authorized`, the decision whose evidentiary weight is highest: it is
+    /// the record that says a licensed human agreed to a client-facing act.
+    #[tokio::test]
+    async fn the_authorized_record_carries_a_digest_and_a_count_and_no_payload() {
+        let (engines, person_id) = welcome_fixture().await;
+        let (_, rpc) = routes(state_with(engines));
+
+        let (_, body) = post_rpc_as(
+            rpc.clone(),
+            direct_skill(51, "send_welcome_email", &json!({ "person_id": person_id })),
+            "lawyer@neonlaw.com",
+        )
+        .await;
+        let task_id = body["result"]["id"].as_str().expect("task id").to_string();
+        let context_id = body["result"]["contextId"]
+            .as_str()
+            .expect("context id")
+            .to_string();
+
+        let buf = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        {
+            let _guard = capture_into(&buf);
+            let (_, approved) = post_rpc_as(
+                rpc,
+                confirm_reply(52, &task_id, &context_id, "yes"),
+                "lawyer@neonlaw.com",
+            )
+            .await;
+            assert_eq!(
+                approved["result"]["status"]["state"], "completed",
+                "the approval is what emits the record under test; got: {approved}"
+            );
+        }
+        let logged = String::from_utf8(buf.lock().unwrap().clone()).expect("utf-8 log");
+        let line = audit_line(&logged, "agent_action_authorization");
+
+        assert_eq!(
+            field_names(&line),
+            vec![
+                "approver_role",
+                "argument_count",
+                "arguments_sha256",
+                "context_id",
+                "decision",
+                "event",
+                "message",
+                "person_id",
+                "principal_kind",
+                "proposer_kind",
+                "task_id",
+                "tool",
+            ],
+            "the authorization record's field set is the contract; got: {line}"
+        );
+
+        let parsed: Value = serde_json::from_str(&line).expect("JSON line");
+        assert_eq!(
+            parsed["fields"]["decision"], "authorized",
+            "this test asserts the approval record specifically: {line}"
+        );
+        // The trail must still tie the proposal to its authorization. Both
+        // halves of that: the id it was paused under, and a digest saying the
+        // approved call is the *same* call that was proposed.
+        assert_eq!(
+            parsed["fields"]["task_id"], task_id,
+            "the approval must be tied to the proposal it resolves: {line}"
+        );
+        assert_eq!(
+            parsed["fields"]["arguments_sha256"],
+            Value::from(argument_digest(&json!({ "person_id": person_id }))),
+            "the digest must match the payload that was proposed: {line}"
+        );
+        assert_eq!(
+            parsed["fields"]["tool"], "send_welcome_email",
+            "the trail must say which tool was authorized: {line}"
+        );
+        assert!(
+            !line.contains(&person_id.to_string()),
+            "no tool-call argument value may reach the audit stream: {line}"
         );
         assert!(
             !line.contains('@'),

@@ -29,9 +29,9 @@ agency's own PDF — only the catalog card, field map, and workflow beside it.
 You keep the copyright in what you write. There is no contributor agreement to sign, no copyright assignment, and no bot
 standing between an author and a merge.
 
-Work by the Neon Law Foundation's personnel and contractors assigns to the Foundation under the employment or contractor
-agreement each of them already holds. That is an arrangement between the Foundation and its own people; it changes
-nothing about the terms above.
+Work by Shook Law PLLC's personnel and contractors assigns to that firm under the employment or contractor agreement
+each of them already holds. That is an arrangement between the firm and its own people; it changes nothing about the
+terms above.
 
 ## What a contribution to a legal-practice repository is not
 

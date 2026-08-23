@@ -913,3 +913,74 @@ fn no_document_reads_section_13_as_a_duty_to_this_project_or_the_public() {
          documents this guard read; found: {citing:?}"
     );
 }
+
+/// Work by the firm's own people assigns to the firm that engaged them.
+///
+/// `CONTRIBUTING.md` states two separate things and a reader has to be able to
+/// tell them apart. The paragraphs above it are about *outside* contributions,
+/// which arrive inbound = outbound with the author keeping their copyright. This
+/// sentence is about the people the practice engages, whose employment and
+/// contractor agreements assign their work — and those agreements are with
+/// Shook Law PLLC, the firm that engages them and carries the bar licence.
+///
+/// Naming the wrong assignee here is not a cosmetic error. An assignment of
+/// copyright is only effective by a written instrument signed by the owner
+/// (17 U.S.C. § 204(a)), so the entity named is the entity the instrument names
+/// or the sentence describes a conveyance that never happened. This file is also
+/// the first thing a fork's counsel reads to work out who could license them
+/// anything, which makes it the worst place in the tree to name an assignee the
+/// signed agreements do not.
+///
+/// Three assertions, because the sentence fails in three ways: it can vanish,
+/// it can lose the firm, or it can name the wrong organization outright. The
+/// last is the mistake that was actually made, and the first is what would let a
+/// silent deletion pass as a fix.
+#[test]
+fn the_internal_assignment_names_the_firm_that_engaged_the_author() {
+    /// Where the sentence describes the conveyance.
+    const ANCHOR: &str = "assigns to";
+
+    // Prose wraps at the Markdown line width, so the entity routinely lands on
+    // the line after the verb. Collapse whitespace and read a window instead of
+    // matching a phrase against a wrapped line.
+    let flat = read("CONTRIBUTING.md")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    let claims: Vec<usize> = flat.match_indices(ANCHOR).map(|(i, _)| i).collect();
+
+    assert!(
+        !claims.is_empty(),
+        "CONTRIBUTING.md must keep saying that work by the practice's own \
+         personnel and contractors assigns to the firm that engaged them; a \
+         fork's counsel reads this file to work out who can license them \
+         anything, and silence reads as no assignment at all"
+    );
+
+    let mut offenders = Vec::new();
+    for at in claims {
+        let claim = window(&flat, at, ANCHOR.len());
+        if !claim.contains(REGISTRANT) {
+            offenders.push(format!(
+                "names no assignee, or the wrong one — `{REGISTRANT}` is the \
+                 party the agreements name: …{claim}…"
+            ));
+        }
+        if claim.contains(&format!("{ANCHOR} the Neon Law Foundation"))
+            || claim.contains(&format!("{ANCHOR} the Foundation"))
+        {
+            offenders.push(format!(
+                "assigns to the Foundation, which holds no such agreement — \
+                 the employment and contractor agreements are `{REGISTRANT}`'s: \
+                 …{claim}…"
+            ));
+        }
+    }
+
+    assert!(
+        offenders.is_empty(),
+        "the practice engages its personnel and contractors through \
+         `{REGISTRANT}`, so that is the assignee:\n  {}",
+        offenders.join("\n  ")
+    );
+}

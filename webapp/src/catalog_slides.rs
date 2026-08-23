@@ -71,7 +71,7 @@ pub struct CatalogSlidesView {
     pub content: LightTableContent,
 }
 
-/// Resolve the Foundation chrome and this material's light table.
+/// Resolve the shared chrome and this material's light table.
 #[server]
 pub async fn catalog_slides_view() -> Result<CatalogSlidesView, ServerFnError> {
     let content =

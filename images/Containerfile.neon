@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-# The `neon-server` image: neonlaw.org, the Neon Law Foundation (#864, #974).
+# The `neon-server` image: neonlaw.com, the firm's whole site (#864, #974).
 #
 # The binary is the site: no runtime flag selects the face, so an image
 # cannot be pointed at the wrong legal entity by configuration. These three
@@ -219,8 +219,6 @@ ENV NAVIGATOR_RELEASE_TAG=$RELEASE_TAG \
 ENV NAVIGATOR_PUBLIC_DIR=/app/public \
     NAVIGATOR_BLOG_DIR=/app/content/blog \
     NAVIGATOR_WORKSHOPS_DIR=/app/content/workshops \
-    NAVIGATOR_MARKETING_DIR=/app/content/marketing \
-    NAVIGATOR_FOUNDATION_DIR=/app/content/foundation \
     APP_ENV=production \
     PORT=3001
 

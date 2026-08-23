@@ -232,7 +232,7 @@ async fn list_entities_includes_seeded_org_names() {
         .expect("run navigator db list entities");
     assert!(out.status.success());
     let stdout = String::from_utf8_lossy(&out.stdout);
-    for needle in ["Shook Law PLLC", "Neon Law Foundation"] {
+    for needle in ["Shook Law PLLC", "shook.family"] {
         assert!(
             stdout.contains(needle),
             "expected `{needle}` in `list entities` output:\n{stdout}",

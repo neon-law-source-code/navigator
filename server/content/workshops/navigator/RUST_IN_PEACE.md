@@ -92,7 +92,7 @@ Our firm offers Fractional CTO, Litigation, Fractional GC, and one-time services
 
 ---
 
-Neon Law Navigator is Affero licensed software designed to enable all lawyers to be vibe-coding storytellers.
+Neon Law Navigator is source-available software designed to enable all lawyers to be vibe-coding storytellers.
 
 ### Agenda
 

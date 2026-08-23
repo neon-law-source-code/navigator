@@ -62,7 +62,7 @@ pub struct CatalogMaterialView {
     pub content: MaterialContent,
 }
 
-/// Resolve the Foundation chrome and this material's content.
+/// Resolve the shared chrome and this material's content.
 #[server]
 pub async fn catalog_material_view() -> Result<CatalogMaterialView, ServerFnError> {
     let content =

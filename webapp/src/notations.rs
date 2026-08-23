@@ -46,7 +46,7 @@ pub struct NotationsView {
     pub content: NotationsContent,
 }
 
-/// Resolve the page: the injected README body plus the Foundation chrome.
+/// Resolve the page: the injected README body plus the site's shared chrome.
 #[server]
 pub async fn notations_view() -> Result<NotationsView, ServerFnError> {
     let content = consume_context::<InjectedNotations>().0;
@@ -187,20 +187,11 @@ mod tests {
     fn view(readme_html: &str) -> NotationsView {
         NotationsView {
             chrome: PublicChrome {
-                // The shared header, which is the firm's: a Foundation page
-                // wears the same wordmark, mark, and home link as every other
-                // page. A fixture naming the retired Foundation header would
-                // describe chrome no route produces.
+                // The site's one shared header. A fixture naming a retired
+                // header would describe chrome no route produces.
                 brand_name: "Neon Law".to_string(),
                 home_href: "/".to_string(),
                 logo_href: "/public/logo-firm.svg".to_string(),
-                // The shared header's real destinations, so the Foundation
-                // link the assertions below look for is the one the live
-                // chrome supplies — a nav entry now, not the brand href.
-                destinations: vec![crate::public_chrome::ChromeNavLink {
-                    label: "Foundation".to_string(),
-                    href: "/foundation".to_string(),
-                }],
                 firm_name: "Neon Law".to_string(),
                 ..PublicChrome::default()
             },
@@ -222,7 +213,7 @@ mod tests {
         // `document::Stylesheet` is a head element the fullstack head collector
         // emits, not body markup, so `product-hero.css` cannot be asserted here.
         // The real route carries it — see
-        // `server/tests/routes.rs::notations_serve_the_tree_readme_under_foundation_brand`.
+        // `server/tests/routes.rs::notations_serve_the_tree_readme_under_the_shared_brand`.
     }
 
     #[test]
@@ -261,14 +252,13 @@ mod tests {
         );
     }
 
-    /// The page wears the site's one shared chrome.
+    /// The page wears the site's one shared chrome, and no retired header.
     ///
-    /// The mark opens the site root, not `/foundation` — the nonprofit's own
-    /// header is retired — and the nonprofit is reached from a destination in
-    /// that header's row instead. Both halves are asserted: a brand href of
-    /// `/foundation` would mean the retired header came back, and a missing
-    /// `/foundation` anywhere would mean the page lost its way to the
-    /// organization it belongs to.
+    /// The mark opens the site root. It used to be asserted against
+    /// `/foundation` on the theory that a brand href there meant a second
+    /// header had come back; the second header and everything it linked are
+    /// retired, so the assertion is now that no route to it survives anywhere on
+    /// the page.
     #[test]
     fn the_page_wears_the_shared_chrome() {
         let out = render("<p>Body.</p>");
@@ -279,8 +269,8 @@ mod tests {
             "the mark opens the site root: {out}"
         );
         assert!(
-            out.contains(r#"href="/foundation""#),
-            "and the header row links the nonprofit: {out}"
+            !out.contains(r#"href="/foundation""#),
+            "no retired destination may survive in the chrome: {out}"
         );
     }
 }

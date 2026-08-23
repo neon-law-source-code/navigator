@@ -153,7 +153,7 @@ mod tests {
             };
             let content = ContactContent {
                 head_title: "Neon Law | Contact".to_string(),
-                meta_description: "Reach the firm or the Foundation.".to_string(),
+                meta_description: "Reach the firm.".to_string(),
                 page_title: "Contact".to_string(),
                 firm_heading: "Neon Law".to_string(),
                 firm_intro: "Email the firm with a short description.".to_string(),

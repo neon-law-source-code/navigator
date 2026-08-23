@@ -69,8 +69,8 @@ The full alphabetical reference is [`glossary`](glossary.md); notation vocabular
   coordinates, SOPS-encrypted key material, and how a rotation actually revokes something.
   [`editing-workflows`](editing-workflows.md) — editing notation templates.
   [`notation-authoring`](notation-authoring.md) — authoring notation templates. [`frontmatter`](frontmatter.md) — the
-  attorney-facing guide to every frontmatter key, per document kind (notation template, blog post, board minutes,
-  workshop, GitHub notation). [`lsp/README`](lsp/README.md) — editor integrations for notation diagnostics.
+  attorney-facing guide to every frontmatter key, per document kind (notation template, blog post, workshop, GitHub
+  notation). [`lsp/README`](lsp/README.md) — editor integrations for notation diagnostics.
   [`templates/README`](../templates/README.md) — how the notation tree is shelved, including the `github/` engineering
   intake notations that gather what an issue or pull request needs. [`pdf/README`](../pdf/README.md) — rendering a
   template to a PDF with `navigator template render`, the output formats, the letterhead, and the font stack.
@@ -90,10 +90,8 @@ The full alphabetical reference is [`glossary`](glossary.md); notation vocabular
   containing one staging and three production deployments, plus the three per-brand images. [`gitops`](gitops.md) —
   branch, PR, release, and deploy. [`gke-prod`](gke-prod.md) — GKE production architecture.
   [`oss-install`](oss-install.md) — installing Neon Law Navigator on your own cloud. [`dns`](dns.md) — DNS for a public
-  deploy: reachability, apex redirect, and Google Workspace and SendGrid mail. [`marketing-sites`](marketing-sites.md) —
-  the two brand marketing sites, published as static files to `neon-law-marketing` and deployed keyless from their own
-  repositories. [`multi-cloud`](multi-cloud.md) — AWS, Azure, and self-hosted sketches.
-  [`observability`](observability.md) — logs, traces, metrics, and the no-content rule.
+  deploy: reachability, apex redirect, and Google Workspace and SendGrid mail. [`multi-cloud`](multi-cloud.md) — AWS,
+  Azure, and self-hosted sketches. [`observability`](observability.md) — logs, traces, metrics, and the no-content rule.
   [`durable-workflows`](durable-workflows.md) — Restate durable execution and operations. [`cronjobs`](cronjobs.md) —
   scheduled jobs. [`deploy/gke-ship-example`](deploy/gke-ship-example.md) — deploy walkthrough example.
   [`licensing`](licensing.md) — who owns the Software, and why the repository is private.

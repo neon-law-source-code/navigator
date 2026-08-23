@@ -30,11 +30,11 @@ licensing, independent stewardship, and a culture that treats the ecosystem as b
 going to build the tools your practice depends on, who controls the foundation underneath them is a real question, and
 we would rather answer it once.
 
-Navigator now sits the same way, and we would rather say so plainly. The firm holds the copyright and operates the
-software; the Neon Law Foundation publishes it, under a right to keep publishing that the firm cannot take back. It is
-free software under the GNU Affero General Public License v3, templates included. We depend on a commons, so we put our
-own work back into it — and the Affero clause means a firm that improves Navigator while running it for clients owes
-that source to the clients using it.
+Navigator now sits the same way, and we would rather say so plainly. The firm holds the copyright, operates the
+software, and publishes it. It is source-available under the Business Source License 1.1, templates included: read it,
+build it, fork it, and use it outside production with no permission to ask for. Running it to deliver legal services to
+other people needs a commercial licence from us, and every version we publish converts to the GNU Affero General Public
+License v3 four years later.
 
 Navigator ships as a command-line tool, an editor plugin, and a web service. That is deliberate. You should be able to
 try the whole system locally without a cloud subscription. You should be able to draft legal documents in an editor,

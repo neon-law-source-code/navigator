@@ -26,7 +26,7 @@ tool (`aida_spawn_legal_council`), not the name of the council itself.
 
 **Default to Scorpio + Capricorn.** Capricorn (managing partner) speaks first; Scorpio (ethics counsel) sharpens. The
 full twelve is the exception — open it only when the user asks, or the copy touches an unusual practice area or the
-firm's/Foundation's mission.
+firm's mission.
 
 ## What this bench is for (its two unique rules)
 

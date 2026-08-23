@@ -20,12 +20,12 @@ Pick the path that fits the time and craft you have:
 
 ---
 
-Neon Law Navigator is copyright the Neon Law Foundation, which produces it and publishes it as free software under the
-AGPL-3.0; Neon Law operates it. This workshop is about contributing to the **product**: issues, templates, government
-PDF forms, tests, and the shared corpus every installation uses. Contributions are inbound = outbound — you keep your
-copyright and license your work on the same terms the project ships under. The mission — putting the rights already
-written into law within reach of the people they belong to — only moves if that corpus keeps getting better. There are
-five ways to contribute; pick the one that fits the time you have.
+Neon Law Navigator is copyright Shook Law PLLC, which produces it, operates it, and publishes it as source-available
+software under BUSL-1.1. This workshop is about contributing to the **product**: issues, templates, government PDF
+forms, tests, and the shared corpus every installation uses. Anything that lands in the repository assigns to the firm,
+and it reaches every reader on the same terms the project ships under. The mission — putting the rights already written
+into law within reach of the people they belong to — only moves if that corpus keeps getting better. There are five ways
+to contribute; pick the one that fits the time you have.
 
 Outside pull requests are closed for now, so the ways below run through issues, conversation, and use rather than the
 merge queue. Anyone may write to <contact@neonlaw.org>.
@@ -174,7 +174,7 @@ You do not need a GitHub account or a single line of code to make Neon Law Navig
 Navigator](/workshops/use-the-navigator) workshop closes by asking you to send the markdown of the template you built
 and the one kaizen improvement you found — that is this contribution. Every template a lawyer shares raises the floor of
 competence for the next lawyer who joins. Send the craft, never a client's file: sharing a template or a checklist
-grants the Foundation a license to use it, and anything that lands in the repository is the source intellectual property
+grants Shook Law PLLC a license to use it, and anything that lands in the repository is the source intellectual property
 of Shook Law PLLC.
 
 ### Join a presentation
@@ -213,7 +213,6 @@ today.
 
 ---
 
-Neon Law Navigator is licensed so that no one has to ask permission to run it, and built in the open so that every fix
-and every template compounds for the next clinic and the next small firm. That is the access-to-justice fight, and
-contributing — in any of these five ways — is how you join it. Read the [Foundation mission](/foundation/mission) for
-why it matters.
+Neon Law Navigator is published so that anyone can read it, learn from it, and build on it, and every fix and every
+template compounds for the next clinic and the next small firm. That is the access-to-justice fight, and contributing —
+in any of these five ways — is how you join it.

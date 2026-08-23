@@ -39,7 +39,7 @@ pub struct CertificateSentView {
     pub content: CertificateSentContent,
 }
 
-/// Resolve the Foundation chrome and which workshop was completed.
+/// Resolve the shared chrome and which workshop was completed.
 #[server]
 pub async fn certificate_sent_view() -> Result<CertificateSentView, ServerFnError> {
     let content = dioxus_fullstack_core::FullstackContext::extract::<

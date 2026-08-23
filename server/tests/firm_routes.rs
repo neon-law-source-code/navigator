@@ -2454,8 +2454,10 @@ async fn a_mounted_brand_bundle_rebrands_the_firm_home() {
 /// stops passing them would pass whether or not the row still renders.
 /// `405-9999` is the sharpest half: that suffix reached no other surface, so its
 /// absence is specific to this row rather than to the page happening not to say
-/// it. The Nevada office is asserted in the same test so the removal cannot be
-/// satisfied by dropping the address the firm does publish.
+/// it. It is a retired box now — the nonprofit that held it is gone from the
+/// seed — which makes the marker no weaker for this purpose and is why the
+/// assertion stays. The Nevada office is asserted in the same test so the
+/// removal cannot be satisfied by dropping the address the firm does publish.
 #[tokio::test]
 async fn the_firm_footer_publishes_no_registered_address_row() {
     let app = site_app().await;

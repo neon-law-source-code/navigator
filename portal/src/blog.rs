@@ -302,7 +302,7 @@ mod tests {
         // later-inserted image can't quietly displace it as the lead.
         let first_img = post.body_html.find("<img").unwrap_or_else(|| {
             panic!(
-                "the Rust post should render the Ferris/NLF artwork, got: {}",
+                "the Rust post should render the Ferris artwork, got: {}",
                 post.body_html
             )
         });
@@ -314,7 +314,7 @@ mod tests {
         let lead_img = &post.body_html[first_img..next_img];
         assert!(
             lead_img.contains(ferris_src),
-            "the Ferris/NLF artwork must be the FIRST image, got: {}",
+            "the Ferris artwork must be the FIRST image, got: {}",
             post.body_html
         );
         let prose_at = post
@@ -323,7 +323,7 @@ mod tests {
             .expect("post renders its opening line");
         assert!(
             first_img < prose_at,
-            "the Ferris/NLF artwork must lead, ahead of the body prose, got: {}",
+            "the Ferris artwork must lead, ahead of the body prose, got: {}",
             post.body_html
         );
     }

@@ -1,9 +1,9 @@
 //! Cucumber runner for `features/deploy_the_navigator_walkthrough.feature`.
 //!
 //! Grounds the *renderable* claims of the "Operating Neon Law Navigator"
-//! workshop (`web/content/workshops/navigator/DEPLOY.md`) in the running
+//! workshop (`server/content/workshops/navigator/DEPLOY.md`) in the running
 //! web app: it is registered on the Catalog surface, renders under
-//! the Foundation brand, opens with an Agenda, splits into stepped
+//! the site brand, opens with an Agenda, splits into stepped
 //! content, and shows the reader the real
 //! `cargo run -p cli -- ops gcp setup` command. The pipeline-grounding half
 //! — that the services, buckets, and command the prose names match what
@@ -78,8 +78,8 @@ async fn load_workshops(world: &mut DeployWorld) {
     )
     .await;
     state.workshops = WorkshopIndex::new(materials.clone());
-    // The firm's host: the Navigator classes mount there, not on the
-    // Foundation's, public like the talks beside them.
+    // The firm's host: the Navigator classes mount there, public like the
+    // talks beside them.
     world.app = Some(features::neon_router(state, Path::new(DEFAULT_PUBLIC_DIR)));
     world.materials = materials;
 }
@@ -151,7 +151,7 @@ async fn title_is(world: &mut DeployWorld, title: String) {
 async fn no_banner(world: &mut DeployWorld, phrase: String) {
     assert!(
         !world.last_body.contains(&phrase),
-        "the Foundation brand must not render the firm {phrase:?} banner",
+        "the workshop page must not render the {phrase:?} banner",
     );
 }
 

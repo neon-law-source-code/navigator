@@ -2,11 +2,9 @@
 # Every postal identity Neon Law seeds, applied on every boot in every
 # environment. These are real addresses we answer mail at, not fixtures.
 #
-# One brand seeds them all now. The firm and the Foundation were separate
-# deployments with separate seed directories; they are one binary, so the Firm's
-# box and the Foundation's sit in one file. They remain separate *entities* —
-# `lookup_fields` keys on the entity, so neither can overwrite the other — and
-# that entity boundary is the one that actually matters for client mail.
+# `lookup_fields` keys on the entity, so one entity's box can never overwrite
+# another's — and that entity boundary is the one that actually matters for
+# client mail.
 #
 # An entity carries as many rows as it keeps addresses —
 # `find_or_create_for_entity` keys on entity, street, and ZIP together, so a
@@ -30,20 +28,6 @@ records:
         jurisdiction:
           name: Nevada
     street: 5150 Mae Anne Ave Ste 405-9002
-    city: Reno
-    state: NV
-    country: USA
-    zip: "89523"
-    is_verified: true
-    mailroom:
-      name: Ridgeview Mail Center
-  - entity:
-      name: Neon Law Foundation
-      entity_type:
-        name: 501(c)(3) Non-Profit
-        jurisdiction:
-          name: Nevada
-    street: 5150 Mae Anne Ave Ste 405-9999
     city: Reno
     state: NV
     country: USA

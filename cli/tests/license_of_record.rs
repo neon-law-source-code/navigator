@@ -1068,12 +1068,14 @@ fn only_the_copyright_holder_may_sell_a_production_licence() {
 /// written down somewhere a reader can find, so that "who owns this" has an
 /// answer with reasoning attached rather than an assertion repeated.
 ///
-/// The single exemption is deliberate and self-cancelling. A workshop deck is a
-/// script somebody reads aloud, so its wording belongs to its author and not to
-/// a sweep — but an exemption that merely skips a file exempts it forever. This
-/// one asserts that the deck *still carries* the stale claim, so whoever fixes
-/// the deck gets a failing test telling them to delete the exemption. It cannot
-/// outlive what it is for.
+/// **There is no exemption any more, and that is the point.** This guard used to
+/// skip one workshop deck, because a deck is a script somebody reads aloud and
+/// its wording belongs to its author. The skip was written to cancel itself: it
+/// asserted the deck *still carried* the stale claim, so fixing the deck would
+/// fail the test and force the exemption's deletion. The deck was fixed; the
+/// exemption is deleted; every Markdown document in the tree is now swept the
+/// same way. An exemption kept past its reason is how a file stops being checked
+/// at all.
 #[test]
 fn the_chain_of_title_is_recorded_and_nothing_contradicts_it() {
     /// Where the chain is written down.
@@ -1094,12 +1096,6 @@ fn the_chain_of_title_is_recorded_and_nothing_contradicts_it() {
         "neon law foundation, which produces it; the firm operates it",
         "neon law foundation produces the software and holds the copyright",
     ];
-
-    /// The one file whose wording is its author's to change.
-    ///
-    /// A deck is read aloud from a stage. Reflowing it is fine; rewriting a
-    /// claim in it is a conversation with whoever wrote it.
-    const DECK: &str = "server/content/workshops/navigator/CONTRIBUTE.md";
 
     // ---- The chain is recorded, with reasoning rather than an assertion. ----
     let record = read(RECORD);
@@ -1128,7 +1124,6 @@ fn the_chain_of_title_is_recorded_and_nothing_contradicts_it() {
 
     // ---- Nothing in the tree says otherwise. ----
     let mut offenders = Vec::new();
-    let mut deck_seen = false;
 
     for path in markdown_documents() {
         let rel = path
@@ -1142,10 +1137,6 @@ fn the_chain_of_title_is_recorded_and_nothing_contradicts_it() {
             .filter(|claim| flat.contains(claim))
             .collect();
 
-        if rel == DECK {
-            deck_seen = !stale.is_empty();
-            continue;
-        }
         for claim in stale {
             offenders.push(format!("{rel}: says `{claim}`"));
         }
@@ -1155,12 +1146,6 @@ fn the_chain_of_title_is_recorded_and_nothing_contradicts_it() {
         offenders.is_empty(),
         "the copyright belongs to {OWNER}; these documents say otherwise, and          agreeing with each other is exactly how the wrong answer survived          before:\n  {}",
         offenders.join("\n  ")
-    );
-
-    // ---- The exemption cannot outlive its reason. ----
-    assert!(
-        deck_seen,
-        "{DECK} no longer carries the stale ownership claim, so the exemption          above is dead — delete it and let the deck be swept like everything          else. An exemption kept past its reason is how a file stops being          checked at all"
     );
 }
 

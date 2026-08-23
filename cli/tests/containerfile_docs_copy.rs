@@ -164,11 +164,16 @@ fn every_containerfile_that_copies_views_also_copies_docs() {
     );
 }
 
-/// The Foundation image publishes the transparency records from disk, so it
-/// must stage the bundled content tree and point the binary at it. This is the
-/// image the deployed `navigator-web` tag is built from until #796 flips.
+/// The site image publishes its content from disk, so it must stage the bundled
+/// content tree and point the binary at it.
+///
+/// Only the roots the binary actually reads are asserted. `NAVIGATOR_MARKETING_DIR`
+/// and `NAVIGATOR_FOUNDATION_DIR` used to sit beside these and are gone: both
+/// named directories that went with the Foundation surface, and nothing in the
+/// workspace ever read either variable — so they were dead config pointing at
+/// paths absent from the image.
 #[test]
-fn the_foundation_image_maps_bundled_content_to_its_runtime_dir() {
+fn the_site_image_maps_bundled_content_to_its_runtime_dir() {
     let path = images_dir().join("Containerfile.neon");
     let body = fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
 
@@ -177,11 +182,26 @@ fn the_foundation_image_maps_bundled_content_to_its_runtime_dir() {
         "{} must copy the bundled site content into the runtime image",
         path.display()
     );
-    assert!(
-        body.contains("NAVIGATOR_FOUNDATION_DIR=/app/content/foundation"),
-        "{} must point the Foundation binary at its bundled content",
-        path.display()
-    );
+    for root in [
+        "NAVIGATOR_BLOG_DIR=/app/content/blog",
+        "NAVIGATOR_WORKSHOPS_DIR=/app/content/workshops",
+    ] {
+        assert!(
+            body.contains(root),
+            "{} must point the binary at its bundled content ({root})",
+            path.display()
+        );
+    }
+    // A content root naming a directory the tree no longer carries is worse
+    // than none: the image sets it, nothing reads it, and a reader takes it as
+    // evidence the content ships.
+    for retired in ["NAVIGATOR_FOUNDATION_DIR", "NAVIGATOR_MARKETING_DIR"] {
+        assert!(
+            !body.contains(retired),
+            "{} still sets {retired}, which names a directory this tree deleted",
+            path.display()
+        );
+    }
 }
 
 /// The workspace root (this test crate is `cli`).

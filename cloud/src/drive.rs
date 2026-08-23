@@ -25,7 +25,6 @@ const FOLDER_MIME_TYPE: &str = "application/vnd.google-apps.folder";
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DriveWorkspace {
     NeonLaw,
-    NeonLawFoundation,
 }
 
 impl DriveWorkspace {
@@ -36,7 +35,6 @@ impl DriveWorkspace {
     const fn env_prefix(self) -> &'static str {
         match self {
             Self::NeonLaw => "NAVIGATOR_DRIVE_NEON_LAW",
-            Self::NeonLawFoundation => "NAVIGATOR_DRIVE_NEON_LAW_FOUNDATION",
         }
     }
 }
@@ -877,13 +875,21 @@ mod tests {
         }
     }
 
+    /// A missing coordinate names itself, prefix included.
+    ///
+    /// The error text is the whole assertion: an operator reading it has to
+    /// learn *which* variable to set, and a message naming only the field would
+    /// send them looking through every workspace prefix.
     #[test]
     fn configuration_requires_each_workspace_coordinate() {
-        let error = DriveWorkspaceConfig::from_lookup(DriveWorkspace::NeonLawFoundation, |_| None)
-            .unwrap_err();
-        assert!(error
-            .to_string()
-            .contains("NAVIGATOR_DRIVE_NEON_LAW_FOUNDATION_PROJECTS_DRIVE_ID"));
+        let error =
+            DriveWorkspaceConfig::from_lookup(DriveWorkspace::NeonLaw, |_| None).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("NAVIGATOR_DRIVE_NEON_LAW_PROJECTS_DRIVE_ID"),
+            "{error}"
+        );
     }
 
     #[test]

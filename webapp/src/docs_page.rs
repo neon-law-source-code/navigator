@@ -8,10 +8,10 @@
 //!
 //! **Firm-branded on every host.** `portal`'s `docs_router` mounts these routes
 //! once, in the composition every brand binary shares, so the page renders on
-//! the firm's host, the Foundation's, and a white-label tenant's. The
+//! the firm's host and a white-label tenant's. The
 //! documentation is the Firm's own operating material, so it wears the firm
-//! chrome throughout rather than the Foundation's — the nonprofit's wordmark and
-//! `/foundation` home link have no business on the firm's host or a tenant's.
+//! chrome throughout: a retired second brand's wordmark and home link have no
+//! business on the firm's host or a tenant's.
 //!
 //! Per-request content: the doc is selected by the `{slug}` path parameter, so
 //! the portal route's pre-layer resolves it from the compiled-in `DocsIndex`
@@ -84,7 +84,7 @@ pub fn DocsPageEntry() -> Element {
 pub fn docs_body(view: &DocsPageView) -> Element {
     let chrome = &view.chrome;
     // The layout prefixed the brand ("{site_name} | {title}") on every
-    // page, so a shared link previews the Foundation ahead of the doc name.
+    // page, so a shared link previews the site name ahead of the doc name.
     let head_title = format!("{} | {}", chrome.brand_name, view.content.title);
     let header = rsx! {
         SiteHeader {
@@ -188,7 +188,7 @@ mod tests {
         assert!(out.contains("site-header"), "header chrome: {out}");
         assert!(out.contains("site-footer__legal"), "unified footer chrome");
         // The firm's wordmark and mark, because one mount serves the firm's
-        // host, the Foundation's, and every tenant's, and these are the Firm's
+        // host and every tenant's, and these are the Firm's
         // own docs. Both brands share `home_href = "/"`, so the wordmark and the
         // logo are the discriminators — a home-link assertion would pass either
         // way.

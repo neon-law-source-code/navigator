@@ -2830,20 +2830,20 @@ mod tests {
     fn a_context_from_another_deployment_refuses_the_ship() {
         // The failure this guard exists for. Deployment configs get seeded
         // by cloning each other, so a copied `NAVIGATOR_GKE_CONTEXT` is a
-        // one-line edit away from rolling the firm's release onto the
-        // Foundation's cluster — across a real-matter boundary, silently,
+        // one-line edit away from rolling one deployment's release onto
+        // another's cluster — across a real-matter boundary, silently,
         // because both are valid clusters and both contexts exist.
         let cfg = ShipConfig {
             project_id: "neon-law".into(),
             cluster: "neon-law-stg".into(),
-            context: "gke_neon-law-org_us-west4_neon-production".into(),
+            context: "gke_another-deployment_us-west4_neon-production".into(),
             ..sample_config()
         };
         let check = check_context(&cfg.context, &cfg.project_id, &cfg.location, &cfg.cluster);
         assert_eq!(
             check,
             ContextCheck::Mismatch {
-                context_project: "neon-law-org".into(),
+                context_project: "another-deployment".into(),
                 context_location: "us-west4".into(),
                 context_cluster: "neon-production".into(),
             }
@@ -2851,7 +2851,7 @@ mod tests {
 
         let message = context_mismatch_error(&cfg, &check);
         // Names BOTH sides, so the operator can see which one is wrong…
-        assert!(message.contains("names cluster neon-production in neon-law-org/us-west4"));
+        assert!(message.contains("names cluster neon-production in another-deployment/us-west4"));
         assert!(message.contains("resolved cluster neon-law-stg in neon-law/us-west4"));
         // …and carries the exact command that fixes it.
         assert!(message.contains(

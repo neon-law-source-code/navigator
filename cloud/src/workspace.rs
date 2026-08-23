@@ -72,7 +72,6 @@ pub const DEFAULT_GIT_HOST: &str = "github.com";
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WorkspaceCustomer {
     NeonLaw,
-    NeonLawFoundation,
 }
 
 /// The Google Workspace that owns the selected Shared Drive.
@@ -81,12 +80,11 @@ pub enum GoogleWorkspace {
     NeonLaw,
 }
 
-/// The three persistent Navigator deployments that own Project workspaces.
+/// The persistent Navigator deployments that own Project workspaces.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeploymentWorkspace {
     NeonLawProduction,
     NeonLawStaging,
-    NeonLawFoundation,
 }
 
 /// The maximum length of a Project code.
@@ -244,7 +242,6 @@ impl DeploymentWorkspace {
         match project_id.as_str() {
             "neon-law" => Ok(Self::NeonLawProduction),
             "neon-law-stg" => Ok(Self::NeonLawStaging),
-            "neon-law-org" => Ok(Self::NeonLawFoundation),
             _ => Err(WorkspaceConfigError::UnknownDeployment { project_id }),
         }
     }
@@ -270,13 +267,6 @@ impl DeploymentWorkspace {
                 shared_drive_id_key: "NAVIGATOR_DRIVE_NEON_LAW_PROJECTS_DRIVE_ID",
                 projects_root_folder_id_key:
                     "NAVIGATOR_DRIVE_NEON_LAW_STAGING_PROJECTS_ROOT_FOLDER_ID",
-            },
-            Self::NeonLawFoundation => DeploymentFacts {
-                customer: WorkspaceCustomer::NeonLawFoundation,
-                google_workspace: GoogleWorkspace::NeonLaw,
-                expected_projects_root_name: "NLF Projects",
-                shared_drive_id_key: "NAVIGATOR_DRIVE_NEON_LAW_PROJECTS_DRIVE_ID",
-                projects_root_folder_id_key: "NAVIGATOR_DRIVE_NEON_LAW_NLF_PROJECTS_ROOT_FOLDER_ID",
             },
         }
     }
@@ -430,13 +420,6 @@ mod tests {
                 "Staging Projects",
                 WorkspaceCustomer::NeonLaw,
             ),
-            (
-                "neon-law-org",
-                "drive-neon",
-                "root-nlf",
-                "NLF Projects",
-                WorkspaceCustomer::NeonLawFoundation,
-            ),
         ];
 
         for (project_id, shared_drive_id, root_folder_id, root_name, customer) in cases {
@@ -457,7 +440,6 @@ mod tests {
             let root_key = match project_id {
                 "neon-law" => "NAVIGATOR_DRIVE_NEON_LAW_PRODUCTION_PROJECTS_ROOT_FOLDER_ID",
                 "neon-law-stg" => "NAVIGATOR_DRIVE_NEON_LAW_STAGING_PROJECTS_ROOT_FOLDER_ID",
-                "neon-law-org" => "NAVIGATOR_DRIVE_NEON_LAW_NLF_PROJECTS_ROOT_FOLDER_ID",
                 _ => unreachable!(),
             };
             let drive = workspace

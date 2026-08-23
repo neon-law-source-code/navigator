@@ -1224,13 +1224,18 @@ mod tests {
 
     /// The firm publishes its own box. Within the Ridgeview Mail Center the box
     /// number is the whole address, so serving another entity's suite under the
-    /// firm's name misdelivers rather than bounces — `405-9002` is the firm's,
-    /// while `405-9999` is the nonprofit's and the retired partnership's
-    /// `405-9777` belongs to neither.
+    /// firm's name misdelivers rather than bounces — `405-9002` is the firm's.
+    ///
+    /// Three wrong answers, and they fail differently. `405-9005` is a *live*
+    /// box belonging to another entity of ours, so publishing it would send a
+    /// client's mail somewhere it is actually collected. `405-9999` was the
+    /// retired nonprofit's and `405-9777` the retired partnership's: nothing
+    /// holds either now, so they would bounce — but a suffix nobody collects is
+    /// still the wrong thing to print on a law firm's contact page.
     #[test]
     fn the_firm_publishes_only_its_own_suite_address() {
         assert!(FIRM_BRAND.postal_address.contains("405-9002"));
-        for wrong in ["405-9999", "405-9777"] {
+        for wrong in ["405-9005", "405-9999", "405-9777"] {
             assert!(
                 !FIRM_BRAND.postal_address.contains(wrong),
                 "another entity's box is not the firm's published address"

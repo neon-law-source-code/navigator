@@ -65,8 +65,8 @@ Navigator: it lives in the deployment's `config.toml` as `NAVIGATOR_GATEWAY_IP`,
 <prefix>-gateway-ip --global --format='value(address)'` prints the current value.
 
 The host cutover has happened. `www.neonlaw.com` and `workflows.neonlaw.com` both resolve to that address and are served
-by this deployment's Ingress, with both `ManagedCertificate` resources Active. See
-[`marketing-sites`](marketing-sites.md).
+by this deployment's Ingress, with both `ManagedCertificate` resources Active. The static marketing site that held
+`www.neonlaw.com` before the cutover is retired, along with the tooling that published it.
 
 Each deployment serves its own host, and the host says what the deployment is. `www.neonlaw.com` is production: the firm
 at the root, over real matters. Staging serves `staging.neonlaw.com` over sample data, so a visitor never has to guess
@@ -140,14 +140,13 @@ GCS and Google Drive are separate lanes:
 - The deployment's Workspace Drive root contains the firm's internal per-matter working folders. Folder permissions
   reconcile from firm-side Project participation.
 
-Each row has a distinct Drive root. Staging and NLF attach to the Neon Law-controlled Workspace under roots of their
-own; the firm production root is separate as well. The selected Drive root never crosses deployments.
+Each row has a distinct Drive root. Staging attaches to the Neon Law-controlled Workspace under a root of its own, and
+the firm production root is separate as well. The selected Drive root never crosses deployments.
 
-That NLF attachment is a **known gap**, not the target shape. `cloud::drive`'s `DriveWorkspace` carries a
-`NeonLawFoundation` variant reading its own `NAVIGATOR_DRIVE_NEON_LAW_FOUNDATION_*` prefix, and nothing in the running
-code reaches it. `cloud::workspace`'s `GoogleWorkspace` enum has a single variant, `NeonLaw`, so the deployment resolves
-both its shared-drive and root-folder keys against the firm's `NAVIGATOR_DRIVE_NEON_LAW_*` prefix instead. Retiring that
-unreached variant is a code change, so this table describes what the code does today.
+`cloud::drive`'s `DriveWorkspace` and `cloud::workspace`'s `GoogleWorkspace` each carry a single variant, `NeonLaw`, so
+a deployment resolves both its shared-drive and root-folder keys against the firm's `NAVIGATOR_DRIVE_NEON_LAW_*` prefix.
+The unreached second variant that used to sit beside it — a nonprofit attachment nothing in the running code ever
+reached — is gone.
 
 The selected Workspace block in each deployment's config is:
 
@@ -157,7 +156,7 @@ The selected Workspace block in each deployment's config is:
 | the production deployment | shared Drive ID + production Projects root ID |
 
 Every deployment supplies `NAVIGATOR_DRIVE_NEON_LAW_PROJECTS_DRIVE_ID` and its selected root ID:
-`NAVIGATOR_DRIVE_NEON_LAW_STAGING_PROJECTS_ROOT_FOLDER_ID`, `NAVIGATOR_DRIVE_NEON_LAW_NLF_PROJECTS_ROOT_FOLDER_ID`, or
+`NAVIGATOR_DRIVE_NEON_LAW_STAGING_PROJECTS_ROOT_FOLDER_ID` or
 `NAVIGATOR_DRIVE_NEON_LAW_PRODUCTION_PROJECTS_ROOT_FOLDER_ID`. The common Neon Law Workspace credentials remain
 `NAVIGATOR_DRIVE_NEON_LAW_DELEGATED_USER` and `NAVIGATOR_DRIVE_NEON_LAW_SERVICE_ACCOUNT_JSON`. An optional
 `NAVIGATOR_PROJECTS_DRIVE_MOUNT` is machine-local only. Workspace Admin domain-wide delegation is global rather than

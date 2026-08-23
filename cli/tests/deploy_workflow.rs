@@ -520,7 +520,7 @@ fn no_job_can_write_repository_contents() {
 /// The browser gate builds every image it then audits.
 ///
 /// It used to clone the deployed pod on a second port and run a second brand
-/// binary beside it, because the firm and the Foundation were separate images.
+/// binary beside it, because the two faces used to be separate images.
 /// One binary serves both faces now, so that whole apparatus is gone — and what
 /// survives is the part that always mattered: the images the gate exercises are
 /// the ones a deployment rolls, not a route substitution.

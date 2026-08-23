@@ -23,17 +23,17 @@ pub mod template_shapes;
 pub mod webdriver;
 
 /// The router the `neon` binary serves: the Navigator application under the
-/// Foundation's public face.
+/// public face.
 ///
 /// The BDD runners drive the application, not the face, but they need the
 /// site composed to have a router at all. Composed through `neon`'s own entry
 /// points so a scenario cannot pass against a surface no binary serves.
 ///
-/// One router, not two. The firm's pages and the Foundation's used to be
-/// separate crates behind separate host routers, and a scenario had to pick
-/// the right one or walk a `404`; they are one binary now, so every scenario
-/// composes this. Both Catalog catalogs — the anonymous talks and the gated
-/// Navigator classes — mount here along with everything else.
+/// One router, not two. The site's pages used to be separate crates behind
+/// separate host routers, and a scenario had to pick the right one or walk a
+/// `404`; they are one binary now, so every scenario composes this. Both
+/// Catalog catalogs — the anonymous talks and the gated Navigator classes —
+/// mount here along with everything else.
 ///
 /// # Panics
 ///

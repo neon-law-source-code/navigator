@@ -669,7 +669,7 @@ mod tests {
     #[test]
     fn only_public_get_and_head_routes_are_counted() {
         assert!(should_count_route(&Method::GET, "/team"));
-        assert!(should_count_route(&Method::HEAD, "/foundation"));
+        assert!(should_count_route(&Method::HEAD, "/notations"));
         assert!(!should_count_route(&Method::POST, "/contact"));
         assert!(!should_count_route(&Method::GET, "/admin"));
         assert!(!should_count_route(&Method::GET, "/lawyer"));

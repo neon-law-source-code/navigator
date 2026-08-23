@@ -6,12 +6,11 @@ description: Stand up and operate your own Neon Law Navigator instance on Google
 
 # Operating Neon Law Navigator
 
-Our firm runs Neon Law Navigator on Google Cloud. The Foundation gives the recipe away. This workshop is for **admin**
-users of the application: the people who own billing, secrets, OIDC, runtime configuration, and release verification. It
-stands up your **own** instance — the same Rust stack our attorneys use, on your own Google Cloud project, for your own
-community. One command does most of the work: `navigator ops gcp setup`, a provisioner written in Rust that talks to
-Google's REST APIs directly and ships with a dry-run so you can read the whole plan before a single packet leaves your
-laptop.
+Our firm runs Neon Law Navigator on Google Cloud, and gives the recipe away. This workshop is for **admin** users of the
+application: the people who own billing, secrets, OIDC, runtime configuration, and release verification. It stands up
+your **own** instance — the same Rust stack our attorneys use, on your own Google Cloud project, for your own community.
+One command does most of the work: `navigator ops gcp setup`, a provisioner written in Rust that talks to Google's REST
+APIs directly and ships with a dry-run so you can read the whole plan before a single packet leaves your laptop.
 
 Two things to hold up front. This provisions **billable** Google Cloud resources — a GKE Autopilot cluster and five
 storage buckets — so it is not free, and you should set a budget alert before you begin. And this is a deployment guide
@@ -242,42 +241,15 @@ delivery by making a bucket public. Walk the verification output for both named 
 `/assets/*` application route with the absence of anonymous document, export, or log routes. The important result is
 private object CRUD for the operator and workload identity, not a project-wide storage role.
 
-### The one project that is public on purpose
-
-`neon-law-marketing` is the exception, and it proves the rule. It holds the brand marketing site as static files — a
-React build, no server, no database, no cluster — and its buckets **are** anonymously readable, because a GCS backend
-bucket behind a load balancer is fetched anonymously and there is no service-account path for one.
-
-So it carries a project-scoped override of `constraints/iam.allowedPolicyMemberDomains`. The organization-wide
-constraint is untouched, and every runtime project still inherits it.
-
-| | Runtime projects | `neon-law-marketing` |
-| --- | --- | --- |
-| Buckets | private, `objectAdmin` to named identities | `allUsers` `objectViewer` |
-| Contents | client documents, exports, logs | published marketing HTML |
-| Serves | authenticated requests | static files only |
-| Provisioner | `ops gcp setup` | `ops gcp marketing setup` |
-
-```bash
-navigator ops gcp marketing setup --dry-run
-navigator ops gcp marketing setup
-```
-
----
-
-`TenantRole::Marketing` makes the separation a compile-and-test invariant rather than an operator's memory: each
-provisioner refuses the others' project before the first GCP call, and a dry-run test asserts a marketing run creates no
-cluster, network, or documents bucket. A client document cannot land in the project whose buckets are world-readable,
-because the command that creates documents buckets will not run there.
-
 ---
 
 The certificates are the part worth dwelling on. A classic Google-managed certificate is validated by a CA *calling the
 load balancer*, so DNS has to point there first — moving a live hostname takes it down for the length of issuance, and
-Cloud CDN and the HTTP-to-HTTPS redirect both sit in the validation path. `ops gcp marketing setup` uses Certificate
-Manager with a **DNS authorization** instead: Google returns a `CNAME`, the CA reads that record, and the certificate
-reaches `ACTIVE` while the hostname still serves its current site. Publish the `CNAME` first, wait for `ACTIVE`, then
-move the `A` record — the cutover carries no TLS gap.
+Cloud CDN and the HTTP-to-HTTPS redirect both sit in the validation path. Certificate Manager with a **DNS
+authorization** avoids that: Google returns a `CNAME`, the CA reads that record, and the certificate reaches `ACTIVE`
+while the hostname still serves its current site. Publish the `CNAME` first, wait for `ACTIVE`, then move the `A` record
+— a cutover done that way carries no TLS gap. The GKE ingress here owns its own certificates, so it is the classic path
+above rather than this one.
 
 ---
 
@@ -288,9 +260,9 @@ site rather than rehoming it: the load balancer and certificate chain are gone, 
 archive nothing routes to. That is the cost worth naming — a static site is cheap to publish and awkward to unpublish,
 because the hostname is the part two things want.
 
-`www.neonlaw.com` was the same collision, and it has since been settled the same way: the Foundation's Navigator
-deployment now holds that exact name and serves it, and the marketing site no longer routes there. `neonlaw.com`
-redirects to it and serves nothing itself.
+`www.neonlaw.com` was the same collision, and it has since been settled the same way: the firm's Navigator deployment
+now holds that exact name and serves it, and the marketing site no longer routes there. `neonlaw.com` redirects to it
+and serves nothing itself.
 
 ### The Navigator deployment matrix
 
@@ -343,9 +315,7 @@ these HTTP paths and every descendant:
 
 The brand-owned public routes are:
 
-- Neon Law: `/`, `/contact`, `/team`, `/team/{slug}`, `/blog`, `/blog/{slug}`, `/privacy`, `/terms`, `/robots.txt`,
-  `/sitemap.xml`, and `/llms.txt`;
-- Neon: `/`, `/foundation`, `/foundation/mission`, `/notations`, `/transparency/*`, `/workshops/*`,
+- Neon Law: `/`, `/contact`, `/team`, `/team/{slug}`, `/blog`, `/blog/{slug}`, `/notations`, `/workshops/*`,
   `/presentations/*`, `/privacy`, `/terms`, `/robots.txt`, `/sitemap.xml`, and `/llms.txt`.
 
 This precedence is fail-closed, not merge order. Each brand declares every route it mounts; startup returns an error if
@@ -1004,12 +974,11 @@ credential together: `NAVIGATOR_DRIVE_NEON_LAW_PROJECTS_DRIVE_ID`, `NAVIGATOR_DR
 `NAVIGATOR_DRIVE_NEON_LAW_SERVICE_ACCOUNT_JSON`.
 
 The typed workspace map selects one root by deployment: `neon-law-stg` uses
-`NAVIGATOR_DRIVE_NEON_LAW_STAGING_PROJECTS_ROOT_FOLDER_ID`, `neon-law-prod` uses
-`NAVIGATOR_DRIVE_NEON_LAW_PRODUCTION_PROJECTS_ROOT_FOLDER_ID`, and `neon-law-prod` uses
-`NAVIGATOR_DRIVE_NEON_LAW_NLF_PROJECTS_ROOT_FOLDER_ID`. Each root is distinct; an unknown deployment fails closed rather
-than borrowing another root. `NAVIGATOR_PROJECTS_DRIVE_MOUNT` is an optional machine-local override, never a deployed
-credential. The regional GCP command enables the Drive and Admin SDK APIs, but a Workspace administrator must still
-grant domain-wide delegation and create the selected Drive root.
+`NAVIGATOR_DRIVE_NEON_LAW_STAGING_PROJECTS_ROOT_FOLDER_ID` and `neon-law-prod` uses
+`NAVIGATOR_DRIVE_NEON_LAW_PRODUCTION_PROJECTS_ROOT_FOLDER_ID`. Each root is distinct; an unknown deployment fails closed
+rather than borrowing another root. `NAVIGATOR_PROJECTS_DRIVE_MOUNT` is an optional machine-local override, never a
+deployed credential. The regional GCP command enables the Drive and Admin SDK APIs, but a Workspace administrator must
+still grant domain-wide delegation and create the selected Drive root.
 
 For each deployment, setup creates the identity named by `NAVIGATOR_DRIVE_GCP_SERVICE_ACCOUNT_ID` with no runtime GCP
 roles. Complete the global Workspace attachment once:
@@ -1111,8 +1080,7 @@ reached the ledger.
 | GitHub revision cap | `NAVIGATOR_GITHUB_MAX_REVISE_ROUNDS` |
 | GitHub daily token cap | `NAVIGATOR_GITHUB_MAX_DAILY_TOKENS` |
 | DevX Slack worker (in `workflows-service`) | `SLACK_WEBHOOK_URL` |
-| Main content roots | `NAVIGATOR_PUBLIC_DIR`, `NAVIGATOR_BLOG_DIR`, `NAVIGATOR_WORKSHOPS_DIR` |
-| Other content roots | `NAVIGATOR_MARKETING_DIR`, `NAVIGATOR_FOUNDATION_DIR` |
+| Content roots | `NAVIGATOR_PUBLIC_DIR`, `NAVIGATOR_BLOG_DIR`, `NAVIGATOR_WORKSHOPS_DIR` |
 | CLI login file | `NAVIGATOR_CREDENTIALS_FILE`, `NAVIGATOR_CONFIG_DIR` |
 | CLI live inquiry | `NAVIGATOR_NOTATION_TEMPLATE`, `NAVIGATOR_SPEECH_BACKEND` |
 | Harness worktree/cache | `NAVIGATOR_WORKTREE_PATH`, `NAVIGATOR_CHROME_CACHE_DIR` |
@@ -2047,31 +2015,30 @@ alter that deployment mount.
 Most firms already run their own marketing site and have a team for it, so Neon Law Navigator does not need to be your
 public website — it can be just the client portal and workflow engine. **`portal_only: true`** in the bundle mounts only
 the application surface (`/app`, auth, `/api`, `/mcp`, the git transport, webhooks, the health probes, and the legal
-pages) and drops the public marketing + Foundation site; `/` redirects to `/app/projects`, and your own website links to
-your Neon Law Navigator portal. **`terms_url` / `privacy_url`** point the footer's Terms and Privacy links at the legal
-pages your own attorney publishes on your own site; bundle validation rejects a portal-only bundle with an empty
-`terms_url` — so you never ship NeonLaw's bundled, Nevada-governed terms under your name.
+pages) and drops the public marketing site; `/` redirects to `/app/projects`, and your own website links to your Neon
+Law Navigator portal. **`terms_url` / `privacy_url`** point the footer's Terms and Privacy links at the legal pages your
+own attorney publishes on your own site; bundle validation rejects a portal-only bundle with an empty `terms_url` — so
+you never ship NeonLaw's bundled, Nevada-governed terms under your name.
 
-### This is how we set up Neon Law Foundation
+### This is how we set up our production deployment
 
-Everything above is the recipe. This is the log of us following it for the Foundation's own deployment, `neon-law-prod`
-in the `neon-law-prod` project, serving `www.neonlaw.com`. It is written down because the first install into a cold
-cluster went differently from the happy path, and the difference is worth knowing before you hit it.
+Everything above is the recipe. This is the log of us following it for our own production deployment, serving
+`www.neonlaw.com`. It is written down because the first install into a cold cluster went differently from the happy
+path, and the difference is worth knowing before you hit it.
 
-The Foundation's deployment is the third row in our matrix and the one that holds real pro bono matters, so it went last
-— after the same release had proven itself on `neon-law-stg` and `neon-law-prod`. `navigator ops gcp setup` had already
-built the project's half of the world: the `neon-law-prod` GKE Autopilot cluster, the `navigator-secrets` KMS keyring,
-five storage buckets, and the reserved global address `neon-law-prod-gateway-ip`.
+It is the row that holds real matters, so it went last — after the same release had first proven itself on staging.
+`navigator ops gcp setup` had already built the project's half of the world: the `neon-law-prod` GKE Autopilot cluster,
+the `navigator-secrets` KMS keyring, five storage buckets, and the reserved global address `neon-law-prod-gateway-ip`.
 
 Then the first `ops ship` failed, and kept failing. Three things were in the way, in the order we hit them.
 
 **The object list was a superset.** `ops secrets apply --deployment <row> --deployments-dir . --dry-run` failed closed
-naming nine DocuSign objects. The Foundation's deployment executes no documents: it supplies no `DOCUSIGN_BASE_URL`,
-declines the integration, and runs `StubSignatureProvider`. But the shared `SecretProviderClass` referenced all nine
-anyway, plus the three engineering-webhook objects scoped to the automation home that this project must never hold. A
-CSI mount fails the whole volume on one object it cannot read, so the only way past was a placeholder credential — and a
-placeholder boots the _real_ provider, because `DocuSignSignatureProvider::from_env` returns `Some` for any non-empty
-value. A green deploy that fails on its first signature request, on the deployment holding real matters.
+naming nine DocuSign objects. That deployment executes no documents: it supplies no `DOCUSIGN_BASE_URL`, declines the
+integration, and runs `StubSignatureProvider`. But the shared `SecretProviderClass` referenced all nine anyway, plus the
+three engineering-webhook objects scoped to the automation home that this project must never hold. A CSI mount fails the
+whole volume on one object it cannot read, so the only way past was a placeholder credential — and a placeholder boots
+the _real_ provider, because `DocuSignSignatureProvider::from_env` returns `Some` for any non-empty value. A green
+deploy that fails on its first signature request, on the deployment holding real matters.
 
 That was a genuine defect rather than a configuration mistake, and the fix was to render the object list per deployment
 so the class references exactly what the deployment writes. It is described in
@@ -2201,8 +2168,7 @@ This workshop is the narrative; these docs are the source of truth and stay curr
 ---
 
 This is the access-to-justice fight made deployable: the cheaper and more repeatable it is to stand up a grounded legal
-harness, the more clinics and small firms can run one. Read the [Foundation mission](/foundation/mission) for why that
-matters — and when your instance is live, tell us at
+harness, the more clinics and small firms can run one. When your instance is live, tell us at
 [support@neonlaw.org](mailto:support@neonlaw.org?subject=Deployed+the+Neon+Law+Navigator) so we can point the next
 deployer at what you learned. Telling us what you learned is itself a contribution: the [Contributing to Neon Law
 Navigator](/workshops/contribute-to-the-navigator) workshop lays out every way to give back, and once your instance is

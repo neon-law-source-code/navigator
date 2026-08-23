@@ -6,7 +6,7 @@
 # LoadBalancer when not using NEGs".
 #
 # IAP is intentionally NOT attached here — this Service serves the
-# public site (/, /foundation, /app, /api, …) and must remain reachable
+# public site (/, /app, /api, …) and must remain reachable
 # without a sign-in wall. The IAP gate lives on the parallel
 # `navigator-web-mcp` Service under `../iap/navigator-web-mcp-service.yaml`,
 # which selects the same pods but is routed only for /mcp.

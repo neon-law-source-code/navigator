@@ -378,11 +378,9 @@ async fn the_fixture_does_not_claim_a_same_named_project() {
 /// sample-matter fixture, which supplies the local matter rows
 /// existed only on a developer's laptop.
 ///
-/// One boot carries them all now. The firm and the Foundation seeded from
-/// separate brand directories while they were separate deployments; they are
-/// one binary, so there is one layer. They stay separate *entities* — asserted
-/// by `each_entity_holds_only_its_own_box` below — which is the boundary that
-/// actually matters for client mail.
+/// One boot carries them all. Each box stays keyed to the entity that holds it
+/// — asserted by `each_entity_holds_only_its_own_box` below — which is the
+/// boundary that actually matters for client mail.
 #[tokio::test]
 async fn a_production_boot_carries_every_box_we_answer_mail_at() {
     let surreal = mem_surreal().await;
@@ -423,7 +421,6 @@ async fn a_production_boot_carries_every_box_we_answer_mail_at() {
             "5150 Mae Anne Ave Ste 405-9002".to_string(),
             "5150 Mae Anne Ave Ste 405-9005".to_string(),
             "5150 Mae Anne Ave Ste 405-9011".to_string(),
-            "5150 Mae Anne Ave Ste 405-9999".to_string(),
         ],
         "a boot carries every box we hold and nothing else"
     );
@@ -486,14 +483,13 @@ async fn the_retired_partnerships_boxes_do_not_seed() {
     }
 }
 
-/// One layer, still two entities: each box belongs to exactly one of them.
+/// One layer, several entities: each box belongs to exactly one of them.
 ///
-/// This is what the brand split was actually protecting, and it is the half
-/// that survives consolidation. The firm's box and the Foundation's share a
-/// street, a suite, and a ZIP at the same mail center, so within that facility
-/// the box number is the whole address — a row keyed to the wrong entity
-/// misdelivers one organization's mail to the other rather than bouncing, and
-/// "they all seeded" would look correct in any test that only counts rows.
+/// Every box we hold shares a street, a suite, and a ZIP at the same mail
+/// center, so within that facility the box number is the whole address — a row
+/// keyed to the wrong entity misdelivers one organization's mail to another
+/// rather than bouncing, and "they all seeded" would look correct in any test
+/// that only counts rows.
 #[tokio::test]
 async fn each_entity_holds_only_its_own_box() {
     let surreal = mem_surreal().await;
@@ -513,7 +509,7 @@ async fn each_entity_holds_only_its_own_box() {
             store::seed::FIRM_ENTITY_NAME,
             "5150 Mae Anne Ave Ste 405-9002",
         ),
-        ("Neon Law Foundation", "5150 Mae Anne Ave Ste 405-9999"),
+        ("shook.family", "5150 Mae Anne Ave Ste 405-9005"),
     ] {
         let entity = store::entities::find_by_name(&surreal, name)
             .await

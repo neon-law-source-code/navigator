@@ -22,11 +22,11 @@ use axum::Router;
 use portal::AppState;
 
 /// The router the `neon` binary serves: the Navigator application under the
-/// Foundation's public face.
+/// public face.
 ///
 /// Most tests in this suite exercise the *application* — `/app`, `/app/api`, the
 /// auth surfaces — and not the face in front of it. They need some brand
-/// composed to have a router at all, and the Foundation's is the one they
+/// composed to have a router at all, and the site's is the one they
 /// take.
 ///
 /// Composed through `neon`'s own entry points rather than restated here, so a
@@ -36,7 +36,7 @@ use portal::AppState;
 ///
 /// # Panics
 ///
-/// Panics when the Foundation's declared paths collide with a Navigator-owned
+/// Panics when the site's declared paths collide with a Navigator-owned
 /// prefix, which is a composition bug rather than a test condition.
 pub fn neon_router(state: AppState, public_dir: &Path) -> Router {
     let dioxus = neon::public_dioxus_routers(&state);
@@ -47,7 +47,7 @@ pub fn neon_router(state: AppState, public_dir: &Path) -> Router {
         neon::PUBLIC_PATHS,
         dioxus,
     )
-    .expect("the Foundation host must not claim Navigator-owned routes")
+    .expect("the public host must not claim Navigator-owned routes")
 }
 
 /// The router the `tenant` binary serves: the application with no public face

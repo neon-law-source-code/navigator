@@ -136,9 +136,9 @@ delivery, inbound parse, and a signed event callback in that row before marking 
 
 Each row needs its own Projects root folder within the selected Shared Drive. The Neon Law-controlled Workspace, Drive
 service account, delegated user, JSON key, and domain-wide-delegation grant serve the three roots; a Workspace Super
-Admin must authorize that service account's OAuth client ID. Staging and NLF use roots of their own in that Workspace,
-and firm production uses its separate production root. The Drive key blocks live in each deployment's
-`deployments/<name>/` tree; see [`environments.md`](environments.md#matter-storage-and-workspace-attachment).
+Admin must authorize that service account's OAuth client ID. Staging uses a root of its own in that Workspace, and firm
+production uses its separate production root. The Drive key blocks live in each deployment's `deployments/<name>/` tree;
+see [`environments.md`](environments.md#matter-storage-and-workspace-attachment).
 
 ## Restate: three journals
 

@@ -192,8 +192,12 @@ mod foundation_copy {
                                      scope they can actually commit to.",
                         )],
                     ],
-                    href: Some(portal::dioxus_app::FOUNDATION_LEGAL_AID_PATH.to_string()),
-                    href_label: Some("For legal aid centers".to_string()),
+                    // No deep link: the audience page this card used to open is
+                    // retired. The card's own prose is what the reader gets, and
+                    // a center that wants to talk to us reaches the Foundation
+                    // through the contact address in the footer.
+                    href: None,
+                    href_label: None,
                 },
                 Card {
                     title: "Free case management".to_string(),
@@ -481,82 +485,6 @@ mod foundation_copy {
                 ),
                 Run::plain(", and we will tell you plainly — including when the answer is none."),
             ]],
-        }
-    }
-
-    /// `/legal-aid` — the pitch to legal aid centers.
-    pub fn legal_aid() -> PageContent {
-        PageContent {
-            skin: webapp::foundation_marketing::PageSkin::Marketing,
-            head_title: format!(
-                "For legal aid centers — {}",
-                views::brand::FOUNDATION_BRAND.site_name
-            ),
-            meta_description:
-                "Send the Neon Law Foundation the matters you cannot staff. We match them to \
-                 volunteer attorneys, stand up free case management, and send you the record when \
-                 the matter closes."
-                    .to_string(),
-            title: "For legal aid centers".to_string(),
-            hero_mark: None,
-            tagline: "Send us the matters that would otherwise sit on a waitlist.".to_string(),
-            bands: vec![
-                Band::Statement {
-                    heading: "The problem we take on".to_string(),
-                    lead: "You do not have an intake problem. You have an hours problem."
-                        .to_string(),
-                    body: vec![vec![
-                        Run::plain(
-                            "The matters you turn away are not weak. They are unstaffed. We take \
-                             the ones you cannot carry and put them in front of attorneys who can, \
-                             ",
-                        ),
-                        Run::strong("working from your intake rather than starting a new one"),
-                        Run::plain(" — nobody has to re-tell their story to get help."),
-                    ]],
-                },
-                Band::Steps {
-                    anchor: "how-a-partnership-begins".to_string(),
-                    overline: "Getting started".to_string(),
-                    heading: "How a partnership begins".to_string(),
-                    description: None,
-                    items: vec![
-                        Step {
-                            title: "Tell us what you are turning away".to_string(),
-                            body: vec![vec![Run::plain(
-                                "Practice areas, jurisdictions, and volume. We would rather start \
-                                 with the category that hurts most than with a pilot designed to \
-                                 be easy.",
-                            )]],
-                        },
-                        Step {
-                            title: "We agree the scope and the handoff".to_string(),
-                            body: vec![vec![Run::plain(
-                                "What a referral contains, who at your center signs off, and what \
-                                 happens to a matter we cannot place. Written down before the \
-                                 first one moves.",
-                            )]],
-                        },
-                        Step {
-                            title: "You keep visibility to the close".to_string(),
-                            body: vec![vec![
-                                Run::plain("Status without chasing anyone, and "),
-                                Run::strong("a complete record when the matter resolves"),
-                                Run::plain(
-                                    " — including what we learned, which goes back into the \
-                                     trainings.",
-                                ),
-                            ]],
-                        },
-                    ],
-                },
-                cta(
-                    "Start with one category.",
-                    Some(
-                        "Tell us what you are turning away and we will tell you what we can take.",
-                    ),
-                ),
-            ],
         }
     }
 

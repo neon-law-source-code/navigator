@@ -77,7 +77,7 @@ two are otherwise indistinguishable from a response body. Admin cannot create, e
 ### *anonymous*
 
 No row in `persons` at all. Sees the host's own public pages and the login door, and nothing else. On the Foundation
-host that public surface is deliberately narrow: the marketing home at `/`, the three audience pages, and the legal and
+host that public surface is deliberately narrow: the marketing home at `/`, its two audience pages, and the legal and
 crawler documents. The Foundation gates everything else it publishes — the mission letter, Notations, the transparency
 disclosures — so an anonymous reader who follows one gets the login door. The site nav still names them, which is what
 keeps a gated page discoverable rather than invisible.

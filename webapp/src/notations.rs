@@ -51,7 +51,7 @@ pub struct NotationsView {
 pub async fn notations_view() -> Result<NotationsView, ServerFnError> {
     let content = consume_context::<InjectedNotations>().0;
     Ok(NotationsView {
-        chrome: crate::public_chrome::foundation_public_chrome_from_context().await,
+        chrome: crate::public_chrome::firm_public_chrome_from_context().await,
         content,
     })
 }
@@ -187,9 +187,20 @@ mod tests {
     fn view(readme_html: &str) -> NotationsView {
         NotationsView {
             chrome: PublicChrome {
-                brand_name: "Neon Law Foundation".to_string(),
-                home_href: "/foundation".to_string(),
-                logo_href: "/public/logo-foundation.svg".to_string(),
+                // The shared header, which is the firm's: a Foundation page
+                // wears the same wordmark, mark, and home link as every other
+                // page. A fixture naming the retired Foundation header would
+                // describe chrome no route produces.
+                brand_name: "Neon Law".to_string(),
+                home_href: "/".to_string(),
+                logo_href: "/public/logo-firm.svg".to_string(),
+                // The shared header's real destinations, so the Foundation
+                // link the assertions below look for is the one the live
+                // chrome supplies — a nav entry now, not the brand href.
+                destinations: vec![crate::public_chrome::ChromeNavLink {
+                    label: "Foundation".to_string(),
+                    href: "/foundation".to_string(),
+                }],
                 firm_name: "Neon Law".to_string(),
                 foundation_name: "Neon Law Foundation".to_string(),
                 ..PublicChrome::default()
@@ -251,14 +262,26 @@ mod tests {
         );
     }
 
+    /// The page wears the site's one shared chrome.
+    ///
+    /// The mark opens the site root, not `/foundation` — the nonprofit's own
+    /// header is retired — and the nonprofit is reached from a destination in
+    /// that header's row instead. Both halves are asserted: a brand href of
+    /// `/foundation` would mean the retired header came back, and a missing
+    /// `/foundation` anywhere would mean the page lost its way to the
+    /// organization it belongs to.
     #[test]
-    fn the_page_wears_the_foundation_chrome() {
+    fn the_page_wears_the_shared_chrome() {
         let out = render("<p>Body.</p>");
         assert!(out.contains("site-header"), "header chrome: {out}");
         assert!(out.contains("site-footer__legal"), "unified footer chrome");
         assert!(
+            out.contains(r#"class="site-header__brand" href="/""#),
+            "the mark opens the site root: {out}"
+        );
+        assert!(
             out.contains(r#"href="/foundation""#),
-            "Foundation home link: {out}"
+            "and the header row links the nonprofit: {out}"
         );
     }
 }

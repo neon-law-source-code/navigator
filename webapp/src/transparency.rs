@@ -100,7 +100,7 @@ pub async fn transparency_index_view() -> Result<TransparencyIndexView, ServerFn
         |axum::Extension(injected)| injected.0,
     );
     Ok(TransparencyIndexView {
-        chrome: crate::public_chrome::foundation_public_chrome_from_context().await,
+        chrome: crate::public_chrome::firm_public_chrome_from_context().await,
         content,
     })
 }
@@ -118,7 +118,7 @@ pub async fn transparency_doc_view() -> Result<TransparencyDocView, ServerFnErro
         |axum::Extension(injected)| injected.0,
     );
     Ok(TransparencyDocView {
-        chrome: crate::public_chrome::foundation_public_chrome_from_context().await,
+        chrome: crate::public_chrome::firm_public_chrome_from_context().await,
         content,
     })
 }
@@ -400,9 +400,17 @@ mod tests {
 
     fn chrome() -> PublicChrome {
         PublicChrome {
-            brand_name: "Neon Law Foundation".to_string(),
-            home_href: "/foundation".to_string(),
-            logo_href: "/public/logo-foundation.svg".to_string(),
+            // The shared header, which is the firm's — see `notations`.
+            brand_name: "Neon Law".to_string(),
+            home_href: "/".to_string(),
+            logo_href: "/public/logo-firm.svg".to_string(),
+            // The shared header's real destinations, so the Foundation
+            // link the assertions below look for is the one the live
+            // chrome supplies — a nav entry now, not the brand href.
+            destinations: vec![crate::public_chrome::ChromeNavLink {
+                label: "Foundation".to_string(),
+                href: "/foundation".to_string(),
+            }],
             firm_name: "Neon Law".to_string(),
             foundation_name: "Neon Law Foundation".to_string(),
             ..PublicChrome::default()
@@ -522,16 +530,22 @@ mod tests {
     }
 
     #[test]
-    fn every_page_wears_the_foundation_chrome() {
+    fn every_page_wears_the_shared_chrome() {
         for out in [
             index_html(TransparencyIndexContent::default()),
             doc_html(TransparencyDocContent::default()),
         ] {
             assert!(out.contains("site-header"), "header chrome: {out}");
             assert!(out.contains("site-footer__legal"), "unified footer chrome");
+            // The mark opens the site root — see `notations` for why both
+            // halves of this are the assertion.
+            assert!(
+                out.contains(r#"class="site-header__brand" href="/""#),
+                "the mark opens the site root: {out}"
+            );
             assert!(
                 out.contains(r#"href="/foundation""#),
-                "Foundation home link: {out}"
+                "and the header row links the nonprofit: {out}"
             );
         }
     }

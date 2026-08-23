@@ -904,12 +904,37 @@ a.nav-pagination__link:hover {
 /* The footer reuses the header's self-contained brand mark. Its SVG stays
    transparent, so the brand color is the mark alone rather than a tile. The
    wordmark sits beside it: the mark alone opened the footer on an unlabelled
-   glyph. */
+   glyph.
+
+   It is an anchor home now, because the header's mark is off screen by the time
+   a reader reaches the bottom of a long page, so this is the copy they click. */
 .site-footer__brand {
   display: flex;
   align-items: center;
   gap: 0.8rem;
   margin: 0;
+}
+
+/* Same fix as the button variants and the contact tiles above: `.nav-theme a`
+   is more specific than `.site-footer__brand`, so without re-asserting at
+   matching specificity the wordmark renders in the link color instead of the
+   footer's own text color — the mark is the site's identity and reads as one
+   object, not as a phrase in a sentence. The hover half is here for the
+   underline `.nav-theme a:hover` would otherwise draw under it. */
+.nav-theme a.site-footer__brand,
+.nav-theme a.site-footer__brand:hover {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Hover and keyboard focus brighten the tile behind the glyph, which says the
+   whole mark is clickable without restyling the wordmark as a link. The
+   browser's own focus ring still marks it for a keyboard reader; this only
+   matches the pointer treatment so the two states agree. */
+.site-footer__brand:hover .site-footer__logo,
+.site-footer__brand:focus-visible .site-footer__logo {
+  border-color: color-mix(in oklab, var(--nav-color-primary) 60%, transparent);
+  background: color-mix(in oklab, var(--nav-color-primary) 16%, transparent);
 }
 
 .site-footer__logo {
@@ -1171,11 +1196,6 @@ a.nav-pagination__link:hover {
 .site-footer__legal ul,
 .site-footer__legal address {
   margin: 0;
-}
-
-.site-footer__legal-address {
-  display: block;
-  font-style: normal;
 }
 
 /* With no contact band above it the legal strip is the footer's first child,

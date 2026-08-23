@@ -75,7 +75,6 @@ pub const PUBLIC_PATHS: &[&str] = &[
     "/foundation",
     "/foundation/mission",
     "/foundation/education",
-    "/foundation/legal-aid",
     "/foundation/attorneys",
     "/foundation/notations",
     "/foundation/transparency",
@@ -86,7 +85,6 @@ pub const PUBLIC_PATHS: &[&str] = &[
     // its own; each is kept alive so an existing backlink never dead-ends.
     "/mission",
     "/education",
-    "/legal-aid",
     "/attorneys",
     "/notations",
     "/transparency",
@@ -132,7 +130,6 @@ pub fn sitemap_paths(state: &AppState) -> std::collections::BTreeSet<String> {
         "/presentations",
         "/foundation",
         "/foundation/education",
-        "/foundation/legal-aid",
         "/foundation/attorneys",
     ]
     .iter()
@@ -281,11 +278,6 @@ fn indexed_pages(mark: &str) -> Vec<portal::LlmsTxtLink> {
             "Education and CLE",
             "/foundation/education",
             "The training curriculum, and what accreditation does and does not cover.",
-        ),
-        page(
-            "For legal aid centers",
-            "/foundation/legal-aid",
-            "How a partnership begins, for a center with more matters than capacity.",
         ),
         page(
             "For volunteer attorneys",

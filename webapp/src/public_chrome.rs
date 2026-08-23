@@ -81,6 +81,12 @@ pub struct PublicChrome {
     /// the Foundation's with the firm's wordmark would make the footer's
     /// identity read as two organizations at once.
     pub firm_logo_href: String,
+    /// Where the footer's mark links — the firm's own home on both faces, for
+    /// the same reason `firm_logo_href` and `firm_name` are the firm's: the
+    /// footer names one organization, and a mark reading "Neon Law" that opened
+    /// the Foundation's front page would contradict its own label. Distinct
+    /// from `home_href`, which is the header's and varies by face.
+    pub firm_home_href: String,
     pub foundation_name: String,
     /// The legal person the footer's copyright names, resolved from the firm
     /// brand on both faces.
@@ -102,13 +108,6 @@ pub struct PublicChrome {
     pub offices: Vec<ChromeOffice>,
     /// The firm's attorneys and the bar licenses each holds.
     pub attorneys: Vec<ChromeAttorney>,
-    /// The firm's own registered address — distinct from `offices`, the
-    /// walk-in locations. Renders at the very bottom of the footer beside
-    /// `foundation_postal_address`.
-    pub firm_postal_address: String,
-    /// The Foundation's own registered address, the other half of that
-    /// closing line.
-    pub foundation_postal_address: String,
     /// The public repository the platform is developed in, as both footers
     /// publish it: the `owner/name` a reader sees and the address it links to.
     /// Constants rather than brand fields, for the same reason the platform
@@ -180,6 +179,9 @@ pub fn PublicFooter(chrome: PublicChrome) -> Element {
             // identity as one who scrolled past the firm's, and the line
             // naming the legal person is below it.
             brand_name: chrome.firm_name.clone(),
+            // And that mark is the door home. The header's is off screen by the
+            // time a reader reaches the footer, so this is the one they click.
+            home_href: chrome.firm_home_href.clone(),
             contact_email: chrome.firm_email.clone(),
             phone: chrome.firm_phone.clone(),
             offices: chrome
@@ -216,8 +218,6 @@ pub fn PublicFooter(chrome: PublicChrome) -> Element {
                 })
                 .collect(),
             foundation: chrome.foundation_name.clone(),
-            firm_postal_address: chrome.firm_postal_address.clone(),
-            foundation_postal_address: chrome.foundation_postal_address.clone(),
             source_repo: chrome.source_repo.clone(),
             source_href: chrome.source_href.clone(),
             source_stars: chrome.source_stars,
@@ -242,25 +242,15 @@ pub fn firm_public_chrome(utility: Vec<ChromeNavLink>) -> PublicChrome {
     chrome_for(&views::brand::FIRM_BRAND, utility)
 }
 
-/// Resolve the Foundation's public chrome from the process brand — the
-/// 501(c)(3)'s own header identity, on the one shared footer.
-///
-/// Only the header differs: the wordmark, the logo, the home link
-/// (`/foundation`, not `/`), the social image, and the destination nav. The
-/// footer is identical to the firm's on every page of the site.
-#[cfg(feature = "server")]
-#[must_use]
-pub fn foundation_public_chrome(utility: Vec<ChromeNavLink>) -> PublicChrome {
-    chrome_for(&views::brand::FOUNDATION_BRAND, utility)
-}
-
 /// Build the public chrome for `brand`'s header, with the firm's footer data.
 ///
-/// `brand` supplies the header half (wordmark, logo, home link, social image,
-/// destinations). The footer half always reads the firm brand: the mark and
-/// wordmark it opens on, the legal entity, the attorneys and their bar
-/// licenses, and the offices are the same on every page of the site, whichever
-/// organization's header it wears.
+/// One brand reaches this now — the firm's — because the site publishes one
+/// header. The nonprofit used to supply its own header half (its wordmark, its
+/// logo, `/foundation` as the home link, and its own two destinations) while
+/// sharing this footer; that face is gone, and `/foundation` wears the firm's
+/// header with the nonprofit linked from it like any other destination. The
+/// parameter stays because a white-label bundle still mounts its own brand
+/// through it.
 #[cfg(feature = "server")]
 fn chrome_for(brand: &views::brand::SiteBrand, utility: Vec<ChromeNavLink>) -> PublicChrome {
     use views::brand::FIRM_BRAND;
@@ -295,6 +285,7 @@ fn chrome_for(brand: &views::brand::SiteBrand, utility: Vec<ChromeNavLink>) -> P
             .collect(),
         firm_name: FIRM_BRAND.site_name.to_string(),
         firm_logo_href: FIRM_BRAND.logo_href.to_string(),
+        firm_home_href: FIRM_BRAND.home_href.to_string(),
         // The corporation, not the wordmark: the firm's footer names the
         // nonprofit as a legal person, the same way the nonprofit's footer
         // names the partnership rather than "Neon Law".
@@ -335,8 +326,6 @@ fn chrome_for(brand: &views::brand::SiteBrand, utility: Vec<ChromeNavLink>) -> P
                     .collect(),
             })
             .collect(),
-        firm_postal_address: FIRM_BRAND.postal_address.to_string(),
-        foundation_postal_address: views::brand::FOUNDATION_BRAND.postal_address.to_string(),
         // The repository the platform is developed in. Both faces publish it:
         // the code is open source under either wordmark, and the Foundation is
         // the org that owns the repository.
@@ -382,28 +371,6 @@ pub async fn firm_public_chrome_from_context() -> PublicChrome {
     firm_public_chrome(utility)
 }
 
-/// Resolve the Foundation host's public chrome from the request context — the
-/// Foundation twin of [`firm_public_chrome_from_context`], and the single entry
-/// point each Foundation page's `#[server]` view function calls.
-///
-/// The portal pre-layer (`inject_foundation_chrome`) resolves the chrome on the
-/// request task, where the brand `task_local` is live, and injects it; this
-/// server-fn runs on a task that does not inherit it, so the extension is the
-/// authority and building it here is only the fallback.
-#[cfg(feature = "server")]
-pub async fn foundation_public_chrome_from_context() -> PublicChrome {
-    if let Ok(axum::Extension(chrome)) =
-        dioxus_fullstack_core::FullstackContext::extract::<axum::Extension<PublicChrome>, _>().await
-    {
-        return chrome;
-    }
-    let utility =
-        dioxus_fullstack_core::FullstackContext::extract::<axum::Extension<PublicUtility>, _>()
-            .await
-            .map_or_else(|_| Vec::new(), |axum::Extension(utility)| utility.0);
-    foundation_public_chrome(utility)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -421,6 +388,7 @@ mod tests {
             logo_href: "/public/logo-firm.svg".to_string(),
             firm_name: "Neon Law".to_string(),
             firm_logo_href: "/public/logo-firm.svg".to_string(),
+            firm_home_href: "/".to_string(),
             foundation_name: "Neon Law".to_string(),
             legal_entity: "Shook Law PLLC".to_string(),
             disclaimer: "This is an attorney advertisement.".to_string(),
@@ -447,14 +415,16 @@ mod tests {
         }
     }
 
-    /// The chrome `foundation_public_chrome` produces: the Foundation's own
-    /// header identity — its wordmark and its mark — over the firm's footer
-    /// data, which `chrome_for` resolves from the firm brand on both faces.
+    /// A chrome whose header half names the nonprofit, kept as a fixture even
+    /// though no route resolves one any more.
     ///
-    /// The header half differs on purpose. It is what makes
-    /// `foundation_chrome_renders_the_same_footer_as_the_firm` an assertion
-    /// rather than a tautology: a footer that read either header field would
-    /// come out different here.
+    /// It is what makes `foundation_chrome_renders_the_same_footer_as_the_firm`
+    /// an assertion rather than a tautology: the footer must read no header
+    /// field, and only a fixture whose header fields differ can prove it. The
+    /// live guarantee is now stronger than this — one resolver serves both faces
+    /// (`portal::dioxus_app`'s `one_public_chrome_serves_both_faces_and_links_the_nonprofit`)
+    /// — so this stands as a regression net under the mapping rather than a
+    /// description of a chrome the app produces.
     fn foundation_chrome() -> PublicChrome {
         PublicChrome {
             brand_name: "Neon Law Foundation".to_string(),
@@ -478,6 +448,43 @@ mod tests {
             "the firm footer carries the firm's mark: {out}"
         );
         assert!(!out.contains("site-footer--foundation"), "{out}");
+    }
+
+    /// The footer's mark is a link to the firm's home, on both faces.
+    ///
+    /// It used to be an inert `<div>`, which made the bottom-of-page logo the
+    /// one copy of the mark on a long page that did nothing when clicked — the
+    /// header's is off screen by the time a reader gets there, so the footer's
+    /// is the one they reach for. The destination is the firm's home even under
+    /// Foundation chrome, matching the firm wordmark and mark beside it.
+    #[test]
+    fn the_footer_mark_links_to_the_firms_home_on_both_faces() {
+        fn firm() -> Element {
+            rsx! { PublicFooter { chrome: firm_chrome() } }
+        }
+        fn foundation() -> Element {
+            rsx! { PublicFooter { chrome: foundation_chrome() } }
+        }
+        for face in [firm as fn() -> Element, foundation] {
+            let out = ssr(face);
+            let brand = out
+                .split(r#"class="site-footer__brand""#)
+                .nth(1)
+                .and_then(|rest| rest.split('>').next())
+                .expect("the footer renders a brand mark");
+            assert!(
+                brand.contains(r#"href="/""#),
+                "the footer mark opens the firm's home: {out}"
+            );
+            assert!(
+                brand.contains(r#"aria-label="Neon Law home""#),
+                "and is announced as that door: {out}"
+            );
+            assert!(
+                !out.contains(r#"<div class="site-footer__brand""#),
+                "the mark is a link, not an inert box: {out}"
+            );
+        }
     }
 
     /// The footer's identity is the firm's on both faces: the firm's mark, the

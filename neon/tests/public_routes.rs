@@ -50,7 +50,6 @@ async fn the_foundations_former_root_urls_redirect_beneath_foundation() {
     for (from, to) in [
         ("/mission", "/foundation/mission"),
         ("/education", "/foundation/education"),
-        ("/legal-aid", "/foundation/legal-aid"),
         ("/attorneys", "/foundation/attorneys"),
         ("/notations", "/foundation/notations"),
         ("/transparency", "/foundation/transparency"),

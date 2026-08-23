@@ -4,8 +4,12 @@
 //! Two consolidations left backlinks behind, and this module is where both
 //! land. The Foundation's pages served at the site root while it had a host of
 //! its own, so `/mission`, `/notations`, and `/transparency…`,
-//! and the three audience pages now `301` beneath `/foundation`. Workshops and
-//! presentations have only their canonical top-level homes.
+//! and its surviving audience pages now `301` beneath `/foundation`. Workshops
+//! and presentations have only their canonical top-level homes.
+//!
+//! `/legal-aid` is deliberately absent: the page it pointed at is retired, and a
+//! `301` into a `404` is worse for a backlink than the `404` itself — it costs
+//! the reader a round trip to reach the same dead end.
 //!
 //! Every entry here is a `301` or a redirect handler. The pages themselves are
 //! Dioxus routers in [`crate::pages`] and [`crate::firm_pages`]; a site's
@@ -52,7 +56,6 @@ pub fn retired_path_routes() -> Router<AppState> {
 fn foundation_root_redirects() -> Router<AppState> {
     moved("/mission", dioxus_app::FOUNDATION_MISSION_PATH)
         .merge(moved("/education", dioxus_app::FOUNDATION_EDUCATION_PATH))
-        .merge(moved("/legal-aid", dioxus_app::FOUNDATION_LEGAL_AID_PATH))
         .merge(moved("/attorneys", dioxus_app::FOUNDATION_ATTORNEYS_PATH))
         .merge(moved("/notations", dioxus_app::NOTATIONS_PATH))
         .merge(moved("/transparency", dioxus_app::TRANSPARENCY_PATH))

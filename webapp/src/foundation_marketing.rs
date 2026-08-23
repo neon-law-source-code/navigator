@@ -1,12 +1,12 @@
-//! The Foundation's public marketing surface: its home page (`/`) and the
-//! three audience pages beneath it (`/education`, `/legal-aid`, `/attorneys`).
+//! The Foundation's public marketing surface: its home page (`/`) and the two
+//! audience pages beneath it (`/education`, `/attorneys`).
 //!
-//! These four pages are what a stranger sees when they arrive at
+//! These three pages are what a stranger sees when they arrive at
 //! `/foundation`. They are the Foundation's own explanation of what it does —
 //! it pairs legal aid centers with volunteer attorneys and AI, teaches the
 //! CLEs, and gives every placed matter a case management workspace at no cost.
 //!
-//! **Why one module for four pages.** The home page and the audience pages are
+//! **Why one module for several pages.** The home page and the audience pages are
 //! the same handful of shapes in a different order: a hero, prose bands,
 //! card grids, a numbered walk, and a closing call to action. Modelling those
 //! shapes once ([`Band`]) and letting each page order them is what keeps a new
@@ -306,53 +306,30 @@ pub struct FoundationPageView {
     pub content: PageContent,
 }
 
-/// Resolve the Foundation chrome and the static home copy.
+/// Resolve the public chrome and the Foundation home page's static copy.
 #[server]
 pub async fn foundation_home_view() -> Result<FoundationHomeView, ServerFnError> {
     let content = consume_context::<InjectedFoundationHome>().0;
     Ok(FoundationHomeView {
-        chrome: crate::public_chrome::foundation_public_chrome_from_context().await,
-        content,
-    })
-}
-
-/// Resolve the Foundation chrome and one audience page's static copy.
-#[server]
-pub async fn foundation_page_view() -> Result<FoundationPageView, ServerFnError> {
-    let content = consume_context::<InjectedFoundationPage>().0;
-    Ok(FoundationPageView {
-        chrome: crate::public_chrome::foundation_public_chrome_from_context().await,
-        content,
-    })
-}
-
-/// Resolve the **firm's** chrome and one marketing page's static copy.
-///
-/// Same band layout, other brand. The band vocabulary in this module is a
-/// page-layout system rather than a Foundation-only one, so the firm's
-/// `/navigator` page reuses it wholesale and differs in exactly one thing: it
-/// resolves firm chrome, and so wears the firm's header and its regulated
-/// footer instead of the nonprofit's.
-#[server]
-pub async fn firm_marketing_page_view() -> Result<FoundationPageView, ServerFnError> {
-    let content = consume_context::<InjectedFoundationPage>().0;
-    Ok(FoundationPageView {
         chrome: crate::public_chrome::firm_public_chrome_from_context().await,
         content,
     })
 }
 
-/// A firm marketing page's route entry.
-#[component]
-pub fn FirmMarketingPageEntry() -> Element {
-    let resource = use_server_future(firm_marketing_page_view)?;
-    let view = match &*resource.read() {
-        Some(Ok(view)) => view.clone(),
-        _ => return rsx! {},
-    };
-    rsx! {
-        FoundationPage { chrome: view.chrome, content: view.content }
-    }
+/// Resolve the public chrome and one marketing page's static copy.
+///
+/// One function for both faces. The band vocabulary in this module is a
+/// page-layout system rather than a Foundation-only one, so the firm's
+/// `/navigator` and `/fractional-cto` pages use it wholesale — and now that the
+/// site publishes one header, they resolve the same chrome as the nonprofit's
+/// audience pages rather than a firm-branded twin of it.
+#[server]
+pub async fn marketing_page_view() -> Result<FoundationPageView, ServerFnError> {
+    let content = consume_context::<InjectedFoundationPage>().0;
+    Ok(FoundationPageView {
+        chrome: crate::public_chrome::firm_public_chrome_from_context().await,
+        content,
+    })
 }
 
 /// The home page's route entry.
@@ -368,10 +345,10 @@ pub fn FoundationHomeEntry() -> Element {
     }
 }
 
-/// An audience page's route entry.
+/// A marketing page's route entry, on either face.
 #[component]
-pub fn FoundationPageEntry() -> Element {
-    let resource = use_server_future(foundation_page_view)?;
+pub fn MarketingPageEntry() -> Element {
+    let resource = use_server_future(marketing_page_view)?;
     let view = match &*resource.read() {
         Some(Ok(view)) => view.clone(),
         _ => return rsx! {},

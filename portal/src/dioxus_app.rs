@@ -2498,7 +2498,7 @@ pub fn mission_router(path: &'static str, content: webapp::mission::MissionConte
                 // The letter draws no chrome, but its title carries the brand
                 // name, which must be resolved on the request task where the
                 // brand `task_local` is live.
-                .layer(from_fn(inject_foundation_chrome)),
+                .layer(from_fn(inject_public_utility)),
         )
         .with_state(FullstackState::new(cfg, webapp::mission::MissionEntry))
 }
@@ -2526,7 +2526,7 @@ pub fn foundation_home_router(
             path,
             get(render_handler)
                 .layer(from_fn(dioxus_document_head))
-                .layer(from_fn(inject_foundation_chrome)),
+                .layer(from_fn(inject_public_utility)),
         )
         .with_state(FullstackState::new(
             cfg,
@@ -2534,44 +2534,16 @@ pub fn foundation_home_router(
         ))
 }
 
-/// One Foundation audience page — `/education`, `/legal-aid`, or
-/// `/attorneys`.
+/// One marketing page built from the shared band vocabulary — the Foundation's
+/// audience pages (`/foundation/education`, `/foundation/attorneys`) and the
+/// firm's own (`/navigator`, `/fractional-cto`, `/fractional-gc`).
 ///
-/// One router serves all three: they differ only in the copy the caller
-/// resolves, which is what keeps a fourth audience a data change.
-pub fn foundation_marketing_page_router(
-    path: &str,
-    content: webapp::foundation_marketing::PageContent,
-) -> Router {
-    let injected = webapp::foundation_marketing::InjectedFoundationPage(content);
-    let cfg = ServeConfig::new().context_providers(std::sync::Arc::new(vec![Box::new(move || {
-        Box::new(injected.clone()) as Box<dyn std::any::Any>
-    })
-        as Box<dyn Fn() -> Box<dyn std::any::Any> + Send + Sync>]));
-
-    Router::<FullstackState>::new()
-        .route(
-            path,
-            get(render_handler)
-                .layer(from_fn(dioxus_document_head))
-                .layer(from_fn(inject_foundation_chrome)),
-        )
-        .with_state(FullstackState::new(
-            cfg,
-            webapp::foundation_marketing::FoundationPageEntry,
-        ))
-}
-
-/// A **firm** marketing page built from the shared band vocabulary.
-///
-/// Structurally identical to [`foundation_marketing_page_router`] and different
-/// in one layer: it runs behind `inject_public_utility` rather than
-/// `inject_foundation_chrome`, so the page resolves the firm's chrome and wears
-/// the firm's regulated footer — bar records, advertising disclaimer and all.
-/// That is the whole reason `/navigator` mounts here rather than on the
-/// nonprofit: the page carries a commercial offer, which is the firm's to make
-/// and not the 501(c)(3)'s to publish.
-pub fn firm_marketing_page_router(
+/// One router serves them all: they differ only in the copy the caller
+/// resolves, which is what keeps a further page a data change. It served only
+/// the nonprofit's pages while the two faces had separate headers and so
+/// separate chrome pre-layers; the site publishes one header now, so the firm's
+/// byte-identical twin of this router is gone and both faces mount here.
+pub fn marketing_page_router(
     path: &str,
     content: webapp::foundation_marketing::PageContent,
 ) -> Router {
@@ -2590,7 +2562,7 @@ pub fn firm_marketing_page_router(
         )
         .with_state(FullstackState::new(
             cfg,
-            webapp::foundation_marketing::FirmMarketingPageEntry,
+            webapp::foundation_marketing::MarketingPageEntry,
         ))
 }
 
@@ -2610,10 +2582,9 @@ pub const FIRM_FRACTIONAL_CTO_PATH: &str = "/fractional-cto";
 /// not a `/services/*` catalog.
 pub const FIRM_SERVICES_PATH: &str = "/services";
 
-/// The Foundation's audience pages, in header order.
+/// The Foundation's audience pages. The nonprofit's own header row is gone, so
+/// these are reached from its home page rather than from chrome.
 pub const FOUNDATION_EDUCATION_PATH: &str = "/foundation/education";
-/// The pitch to legal aid centers.
-pub const FOUNDATION_LEGAL_AID_PATH: &str = "/foundation/legal-aid";
 /// The pitch to volunteer attorneys.
 pub const FOUNDATION_ATTORNEYS_PATH: &str = "/foundation/attorneys";
 
@@ -2993,7 +2964,7 @@ pub fn notations_router() -> Router {
             NOTATIONS_PATH,
             get(render_handler)
                 .layer(from_fn(dioxus_document_head))
-                .layer(from_fn(inject_foundation_chrome)),
+                .layer(from_fn(inject_public_utility)),
         )
         .with_state(FullstackState::new(cfg, webapp::notations::NotationsEntry))
 }
@@ -3008,7 +2979,7 @@ pub fn transparency_index_router(transparency: crate::TransparencyIndex) -> Rout
             TRANSPARENCY_PATH,
             get(render_handler)
                 .layer(from_fn(dioxus_document_head))
-                .layer(from_fn(inject_foundation_chrome))
+                .layer(from_fn(inject_public_utility))
                 // Outermost: resolve the documents before any rendering work.
                 .layer(from_fn_with_state(transparency, inject_transparency_index)),
         )
@@ -3031,7 +3002,7 @@ pub fn transparency_doc_router(
             path,
             get(render_handler)
                 .layer(from_fn(dioxus_document_head))
-                .layer(from_fn(inject_foundation_chrome))
+                .layer(from_fn(inject_public_utility))
                 // Outermost: 404 / inject before any rendering work.
                 .layer(from_fn_with_state(
                     (transparency, category),
@@ -3121,14 +3092,14 @@ async fn inject_transparency_doc(
 /// door to the same index; it stays gated because it is part of the
 /// authenticated application, not because these documents are restricted.
 ///
-/// **Firm-branded on every host.** These routes live in the shared composition
+/// **One chrome on every host.** These routes live in the shared composition
 /// [`crate::bootstrap`] mounts, so one mount serves `neon` and a
-/// white-label `tenant` alike. The documentation is the Firm's own operating
-/// material — the same reason [`app_docs_router`] denies the `client` tier — so
-/// [`inject_public_utility`] resolves the firm chrome here rather than
-/// [`inject_foundation_chrome`]. Branding it Foundation-side published the
-/// nonprofit's wordmark, logo, and `/foundation` home link on the firm's own
-/// host and on every tenant's.
+/// white-label `tenant` alike, and [`inject_public_utility`] resolves the same
+/// public chrome here as everywhere else. This used to be a choice worth
+/// documenting — a Foundation-branded pre-layer existed, and using it here
+/// published the nonprofit's wordmark, logo, and `/foundation` home link on the
+/// firm's own host and on every tenant's. The site publishes one header now, so
+/// there is no second pre-layer to pick wrongly.
 pub fn docs_router(
     path: &'static str,
     slug: Option<&'static str>,
@@ -3285,24 +3256,6 @@ async fn inject_doc(
         }
         None => (StatusCode::NOT_FOUND, webapp::error_pages::not_found()).into_response(),
     }
-}
-
-/// Resolve the **Foundation** public chrome for a request, the way
-/// [`inject_public_utility`] resolves the firm's.
-///
-/// Same reason it happens here rather than in the server function: the brand
-/// `tokio::task_local` is live on the request task and a Dioxus server-fn runs
-/// on a task that does not inherit it, so building the chrome there would
-/// render the DEFAULT brand under a mounted white-label bundle.
-async fn inject_foundation_chrome(mut req: Request, next: Next) -> Response {
-    let utility = public_utility_links(req.extensions().get::<crate::session::SessionData>());
-    req.extensions_mut()
-        .insert(webapp::public_chrome::foundation_public_chrome(
-            utility.clone(),
-        ));
-    req.extensions_mut()
-        .insert(webapp::public_chrome::PublicUtility(utility));
-    next.run(req).await
 }
 
 /// The firm home page (`/`) — the Dioxus SSR port (#641 / #730 PR6). The static
@@ -3584,49 +3537,59 @@ mod tests {
         assert!(!fragment.contains("<script>"), "{fragment}");
     }
 
-    /// The Foundation chrome swaps the header; every footer field is
-    /// identical to the firm's.
+    /// One chrome serves the whole site — header included.
+    ///
+    /// There used to be two resolvers: the Foundation's swapped the header half
+    /// (its wordmark, its logo, `/foundation` as home, its own two
+    /// destinations) and shared the firm's footer. That second resolver is gone
+    /// along with the header it built, so this asserts the shape that replaced
+    /// it: one resolver, and the nonprofit reachable from the row it produces
+    /// rather than from a header of its own.
+    ///
+    /// Asserted against the brand constants rather than literals so a
+    /// white-label bundle renaming the firm cannot fail it.
     #[test]
-    fn the_foundation_chrome_swaps_the_header_and_shares_every_footer_field() {
-        let foundation = webapp::public_chrome::foundation_public_chrome(Vec::new());
-        let firm = webapp::public_chrome::firm_public_chrome(Vec::new());
+    fn one_public_chrome_serves_both_faces_and_links_the_nonprofit() {
+        let chrome = webapp::public_chrome::firm_public_chrome(Vec::new());
 
-        // The header is the Foundation's: its wordmark, its logo, and its own
-        // hub as home rather than the firm's site root.
-        assert_eq!(
-            foundation.brand_name,
-            views::brand::FOUNDATION_BRAND.site_name
-        );
-        assert_eq!(
-            foundation.home_href,
-            views::brand::FOUNDATION_BRAND.home_href
-        );
-        assert_eq!(
-            foundation.logo_href,
-            views::brand::FOUNDATION_BRAND.logo_href
-        );
+        assert_eq!(chrome.brand_name, views::brand::FIRM_BRAND.site_name);
+        assert_eq!(chrome.home_href, views::brand::FIRM_BRAND.home_href);
+        assert_eq!(chrome.logo_href, views::brand::FIRM_BRAND.logo_href);
         assert_ne!(
-            foundation.brand_name, firm.brand_name,
-            "the two brands must not render the same wordmark"
+            chrome.brand_name,
+            views::brand::FOUNDATION_BRAND.site_name,
+            "the nonprofit's wordmark is retired from the header, not adopted by it"
         );
 
-        // Every footer field carries over unchanged: the legal entity, the
-        // attorneys and their bar licenses, the offices, and the contact
-        // band. The chrome resolver differs only in what it names as the
-        // header brand.
-        assert_eq!(foundation.legal_entity, firm.legal_entity);
-        assert_eq!(foundation.attorneys.len(), firm.attorneys.len());
-        assert_eq!(foundation.offices.len(), firm.offices.len());
-        assert!(!firm.legal_entity.is_empty(), "the firm names its own");
-        assert!(!firm.offices.is_empty(), "the firm publishes its offices");
-        assert_eq!(foundation.firm_email, firm.firm_email);
-        assert_eq!(foundation.firm_phone, firm.firm_phone);
+        // The nonprofit is a destination in that row — the reader's only route
+        // back to `/foundation` from the top of a page now that it has no
+        // header of its own.
         assert!(
-            !firm.firm_email.is_empty(),
+            chrome
+                .destinations
+                .iter()
+                .any(|link| link.href == views::brand::FOUNDATION_BRAND.home_href),
+            "the shared header links the nonprofit: {:?}",
+            chrome
+                .destinations
+                .iter()
+                .map(|link| &link.href)
+                .collect::<Vec<_>>()
+        );
+
+        // And the footer still names both organizations and the firm's own
+        // regulated detail — the half that was already shared.
+        assert!(!chrome.legal_entity.is_empty(), "the firm names its own");
+        assert!(!chrome.offices.is_empty(), "the firm publishes its offices");
+        assert!(
+            !chrome.firm_email.is_empty(),
             "the band has something to show"
         );
-        assert_eq!(foundation.firm_name, firm.firm_name);
-        assert_eq!(foundation.foundation_name, firm.foundation_name);
+        assert_eq!(
+            chrome.foundation_name,
+            views::brand::FOUNDATION_BRAND.site_name,
+            "the footer still names the nonprofit as a legal person"
+        );
     }
 
     /// The public-page utility links reproduce the navbar's auth block:

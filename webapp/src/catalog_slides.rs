@@ -81,7 +81,7 @@ pub async fn catalog_slides_view() -> Result<CatalogSlidesView, ServerFnError> {
         .map(|axum::Extension(c)| c.0)
         .unwrap_or_default();
     Ok(CatalogSlidesView {
-        chrome: crate::public_chrome::foundation_public_chrome_from_context().await,
+        chrome: crate::public_chrome::firm_public_chrome_from_context().await,
         content,
     })
 }

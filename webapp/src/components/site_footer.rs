@@ -195,6 +195,15 @@ fn tel_href(phone: &str) -> String {
 ///   beside it. `crate::public_chrome::PublicFooter` feeds both from the firm
 ///   brand on every page of the site, so the bottom of a page names one
 ///   organization whichever header it wears.
+/// - `home_href`: where that mark links. A reader who has scrolled to the
+///   bottom of a long page clicks the logo to get back to the top of the site,
+///   and the header's mark is off screen by then — so the footer's has to be
+///   the same door rather than an inert picture. It is the *firm's* home on
+///   both faces, matching the mark and wordmark beside it: the footer names one
+///   organization, so it cannot send a reader to the other one's front page.
+///   Empty renders the mark unlinked, which is what a gallery driving the
+///   component with no destination should get rather than an `<a href="">`
+///   that reloads whatever page it is sitting on.
 /// - `nav`: the public routes the header does not carry, rendered as one list
 ///   the stylesheet lays out in two columns of five on a wide viewport and one
 ///   column of ten on a narrow one. Empty renders no row.
@@ -214,6 +223,7 @@ pub fn SiteFooterLegal(
     #[props(default)] offices: Vec<FooterOffice>,
     #[props(default)] attorneys: Vec<FooterAttorney>,
     #[props(default)] brand_name: String,
+    #[props(default)] home_href: String,
     #[props(default)] nav: Vec<FooterNavLink>,
     /// The nonprofit named in the copyright line beside `copyright_holder`
     /// (`"© {year} {copyright_holder} and {foundation}"`). Empty renders just
@@ -240,16 +250,6 @@ pub fn SiteFooterLegal(
     trademark: String,
     #[props(default)] trademark_registration: String,
     #[props(default)] trademark_record_url: String,
-    /// The firm's own registered address — distinct from `offices`, which are
-    /// the walk-in locations in the contact band above. Renders at the very
-    /// bottom of the strip, below both columns, beside the Foundation's own
-    /// registered address. Empty renders no line.
-    #[props(default)]
-    firm_postal_address: String,
-    /// The Foundation's own registered address, the other half of the closing
-    /// address line. Empty renders no line.
-    #[props(default)]
-    foundation_postal_address: String,
     /// The public repository the platform is developed in — how it is named
     /// (`owner/name`), where it lives, and how many people have starred it.
     /// Closes the strip: no box, no attribution prose, just the repository
@@ -277,6 +277,18 @@ pub fn SiteFooterLegal(
 ) -> Element {
     let has_contact = !contact_email.is_empty() || !phone.is_empty() || !offices.is_empty();
     let has_masthead = !logo_href.is_empty() || !brand_name.is_empty() || !nav.is_empty();
+    // The mark's contents, built once: the element around them is an anchor or
+    // a plain box depending on whether the deploy published a home to link to,
+    // and writing the image and wordmark out under each branch is how the two
+    // drift apart.
+    let mark = rsx! {
+        if !logo_href.is_empty() {
+            img { class: "site-footer__logo", src: "{logo_href}", alt: "" }
+        }
+        if !brand_name.is_empty() {
+            strong { class: "site-footer__wordmark", "{brand_name}" }
+        }
+    };
     rsx! {
         footer { class: "site-footer", role: "contentinfo",
             div { class: "site-footer__inner",
@@ -295,16 +307,20 @@ pub fn SiteFooterLegal(
                         // page it is. The image stays decorative (`alt=""`)
                         // because the text beside it is the label.
                         if !logo_href.is_empty() || !brand_name.is_empty() {
-                            div { class: "site-footer__brand",
-                                if !logo_href.is_empty() {
-                                    img {
-                                        class: "site-footer__logo",
-                                        src: "{logo_href}",
-                                        alt: ""
-                                    }
-                                }
-                                if !brand_name.is_empty() {
-                                    strong { class: "site-footer__wordmark", "{brand_name}" }
+                            // Linked when there is a home to link to, and the
+                            // anchor carries the accessible name for the same
+                            // reason the header's does: the image is decorative
+                            // and the wordmark beside it is the label, so a
+                            // screen reader announcing both would say the brand
+                            // twice.
+                            if home_href.is_empty() {
+                                div { class: "site-footer__brand", {mark} }
+                            } else {
+                                a {
+                                    class: "site-footer__brand",
+                                    href: "{home_href}",
+                                    "aria-label": "{brand_name} home",
+                                    {mark}
                                 }
                             }
                         }
@@ -480,27 +496,6 @@ pub fn SiteFooterLegal(
                             }
                         }
                         p { class: "site-footer__disclaimer", "{disclaimer}" }
-                    }
-                    // The two organizations' own registered addresses —
-                    // separate from the walk-in offices in the contact band
-                    // above, and from either disclaimer, since a registered
-                    // address is a fact about the entity rather than part of
-                    // a disclaimer. Sits above the platform line: a reader
-                    // meets both entities' addresses before a line about what
-                    // the site is built on.
-                    if !firm_postal_address.is_empty() || !foundation_postal_address.is_empty() {
-                        div { class: "site-footer__legal-addresses",
-                            if !firm_postal_address.is_empty() {
-                                address { class: "site-footer__legal-address",
-                                    "{copyright_holder} — {firm_postal_address}"
-                                }
-                            }
-                            if !foundation_postal_address.is_empty() {
-                                address { class: "site-footer__legal-address",
-                                    "{foundation} — {foundation_postal_address}"
-                                }
-                            }
-                        }
                     }
                     // The repository the platform is developed in and the
                     // release running here, closing the strip. No box, no
@@ -740,67 +735,6 @@ mod tests {
         assert!(
             !out.contains("GitHub stars"),
             "and prints no number in place of one it does not have: {out}"
-        );
-    }
-
-    /// Both organizations' registered addresses close the strip, below both
-    /// columns — distinct from the walk-in offices in the contact band, and
-    /// from either disclaimer.
-    #[test]
-    fn closes_the_strip_with_both_registered_addresses() {
-        fn app() -> Element {
-            rsx! {
-                SiteFooterLegal {
-                    copyright_holder: "Neon Law".to_string(),
-                    disclaimer: "This is an attorney advertisement.".to_string(),
-                    copyright_year: 2026,
-                    foundation: "Neon Law Foundation".to_string(),
-                    firm_postal_address: "5150 Mae Anne Ave Ste 405-9002, Reno, NV 89523".to_string(),
-                    foundation_postal_address: "5150 Mae Anne Ave Ste 405-9999, Reno, NV 89523"
-                        .to_string(),
-                }
-            }
-        }
-        let out = ssr(app);
-        assert!(
-            out.contains("Neon Law — 5150 Mae Anne Ave Ste 405-9002, Reno, NV 89523"),
-            "the firm's own registered address renders: {out}"
-        );
-        assert!(
-            out.contains("Neon Law Foundation — 5150 Mae Anne Ave Ste 405-9999, Reno, NV 89523"),
-            "the Foundation's own registered address renders: {out}"
-        );
-        assert_eq!(
-            out.matches("site-footer__legal-address\"").count(),
-            2,
-            "exactly the two addresses, no more: {out}"
-        );
-        let disclaimer = out.find("site-footer__disclaimer").expect("the disclaimer");
-        let addresses = out
-            .find("site-footer__legal-addresses")
-            .expect("the addresses row");
-        assert!(
-            disclaimer < addresses,
-            "the addresses close the strip, under the disclaimer: {out}"
-        );
-    }
-
-    /// Neither address is published unless at least one is set — no empty row.
-    #[test]
-    fn omits_the_addresses_row_when_unset() {
-        fn app() -> Element {
-            rsx! {
-                SiteFooterLegal {
-                    copyright_holder: "Neon Law".to_string(),
-                    disclaimer: "This is an attorney advertisement.".to_string(),
-                    copyright_year: 2026,
-                }
-            }
-        }
-        let out = ssr(app);
-        assert!(
-            !out.contains("site-footer__legal-addresses"),
-            "no addresses set, no row: {out}"
         );
     }
 

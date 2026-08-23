@@ -148,6 +148,18 @@ impl NavLink {
 /// offering than the schedule does, because a firm reading the lead is the
 /// reader those two are for.
 ///
+/// Foundation closes the row, and it is the one entry here that is not the
+/// firm's own work. It has to be: the nonprofit's face no longer carries a
+/// header of its own, so this row is the header on every page of the site, and
+/// without this entry the 501(c)(3) would be reachable from the top of a page
+/// only by the reader knowing to scroll past the whole thing. Last rather than
+/// first because a visitor at the top of a law firm's page is deciding whether
+/// to hire a lawyer; the nonprofit is what they look at after.
+///
+/// It is deliberately the one label this row and [`FIRM_FOOTER_NAV`] both
+/// carry — see the `the_footer_nav_carries_what_the_header_does_not` assertion,
+/// which exempts it by name.
+///
 /// Everything a reader looks for second — the Blog, Navigator, how to reach
 /// the firm — stays in [`FIRM_FOOTER_NAV`].
 const FIRM_NAV: &[NavLink] = &[
@@ -155,6 +167,7 @@ const FIRM_NAV: &[NavLink] = &[
     NavLink::leaf("Litigation", "/litigation"),
     NavLink::leaf("Fractional GC", "/fractional-gc"),
     NavLink::leaf("Legal Services", "/services"),
+    NavLink::leaf("Foundation", "/foundation"),
 ];
 
 /// The rest of the firm's public surface, rendered in the footer rather than the
@@ -212,33 +225,6 @@ const FIRM_FOOTER_NAV: &[NavLink] = &[
     NavLink::leaf("Privacy", "/privacy"),
     NavLink::leaf("Terms", "/terms"),
     NavLink::leaf("Workshops", "/workshops"),
-];
-
-/// The Foundation nav: the training catalog, and the legal aid audience.
-///
-/// Trimmed to two entries by deliberate choice. The home page's own bands
-/// ("What we do", "How it works") and the education/attorneys audience pages
-/// (ENG-139) still serve at their own paths and stay listed in the sitemap;
-/// they are simply no longer carried in the header row.
-///
-/// Presentations is deliberately absent. The talks are the firm's and publish
-/// from the firm's host, so they are linked from [`FIRM_FOOTER_NAV`]; a
-/// Foundation header entry would send a reader to a page this host answers
-/// `404` for.
-///
-/// Workshops is a deliberate exception to "every Foundation link stays under
-/// `/foundation`": [`crate::NavLink`]'s own `/workshops` route is the public,
-/// ungated index (the individual classes gate on sign-in, the catalog does
-/// not) — the same reasoning that put it in [`FIRM_FOOTER_NAV`] once the
-/// classes became public. Notations stays off this row because its index is
-/// gated, so a header entry would send a signed-out reader to a login door.
-///
-/// These are leaves rather than a dropdown because the public header
-/// (`webapp::components::SiteHeader`) renders a flat link row with no
-/// submenu: a dropdown would emit a dead `href="#"`.
-const FOUNDATION_NAV: &[NavLink] = &[
-    NavLink::leaf("Workshops", "/workshops"),
-    NavLink::leaf("Legal aid centers", "/foundation/legal-aid"),
 ];
 
 /// One bar license a named attorney holds: the jurisdiction, the number that
@@ -469,7 +455,13 @@ pub static DEFAULT_BRANDING: Branding = Branding {
         postal_address: "5150 Mae Anne Ave Ste 405-9999, Reno, NV 89523",
         logo_href: "/public/logo-neon.png",
         social_image: "/public/logo-neon.png",
-        nav: FOUNDATION_NAV,
+        // The firm's row, because the site publishes one header. The nonprofit
+        // used to carry its own two-entry row (the workshop catalog and a legal
+        // aid audience page); that page is retired and the header is unified, so
+        // a reader on `/foundation` sees the same destinations as everywhere
+        // else, with the nonprofit itself among them. `/workshops` is still one
+        // click away — it sits in `FIRM_FOOTER_NAV`.
+        nav: FIRM_NAV,
         is_law_firm: false,
         // The 501(c)(3) does not practice law and holds no copyright in the
         // firm's site: its own footer names its own corporation.
@@ -1437,6 +1429,10 @@ mod tests {
     /// Team used to close the row. The page was retired outright — routers,
     /// views, path constants, sitemap and llms.txt rows — so a header entry
     /// would now be a link to a `404`.
+    ///
+    /// Foundation closes it instead, and closes it deliberately: this row is the
+    /// header on both faces now, so the nonprofit needs a place in it, and the
+    /// place is after the firm's own work rather than before it.
     #[test]
     fn the_firm_nav_leads_with_the_lead_offering_then_the_practices() {
         let labels: Vec<&str> = FIRM_BRAND.nav.iter().map(|n| n.label).collect();
@@ -1446,13 +1442,19 @@ mod tests {
                 "Fractional CTO",
                 "Litigation",
                 "Fractional GC",
-                "Legal Services"
+                "Legal Services",
+                "Foundation"
             ]
         );
         assert_eq!(
             FIRM_BRAND.nav.first().map(|link| link.href),
             Some("/fractional-cto"),
             "the lead offering is the first thing in the header"
+        );
+        assert_eq!(
+            FIRM_BRAND.nav.last().map(|link| link.href),
+            Some("/foundation"),
+            "the nonprofit closes the row, after the firm's own work"
         );
         assert!(
             FIRM_BRAND.nav.iter().all(|link| !link.is_dropdown()),
@@ -1502,13 +1504,25 @@ mod tests {
         let mut sorted = footer.clone();
         sorted.sort_unstable();
         assert_eq!(footer, sorted, "the footer nav is alphabetized by label");
+        // Every label is linked once — from exactly one of the two rows — with
+        // Foundation the single deliberate exception. The nonprofit's own header
+        // is gone, so this row is the header on both faces: the cross-link has
+        // to be at the top of a Foundation page as well as the bottom, and a
+        // reader who scrolled to the footer looking for it should still find it
+        // in the site map there. Named rather than skipped by a general rule, so
+        // a second duplicate cannot creep in behind this one.
         let header: Vec<&str> = FIRM_BRAND.nav.iter().map(|n| n.label).collect();
-        for label in &footer {
+        for label in footer.iter().filter(|label| **label != "Foundation") {
             assert!(
                 !header.contains(label),
                 "{label} is linked once, from the footer"
             );
         }
+        assert!(
+            header.contains(&"Foundation"),
+            "the nonprofit is linked from the header too, now that it has no \
+             header of its own: {header:?}"
+        );
         assert!(
             !header.contains(&"Team"),
             "the team page is retired, so neither row may link it",
@@ -1539,71 +1553,69 @@ mod tests {
         }
     }
 
-    /// The Foundation's nav is trimmed to two entries: the training catalog
-    /// and the legal aid audience.
+    /// The nonprofit carries the firm's header row, because the site publishes
+    /// one header.
     ///
-    /// Workshops is the one deliberate exception to "every Foundation link
-    /// stays under its own prefix" — its index is the public, ungated
-    /// catalog (see [`FOUNDATION_NAV`]'s doc comment) — so this asserts the
-    /// prefix on every entry except that named one, rather than on all of
-    /// them.
+    /// It used to carry its own two entries — the workshop catalog and a legal
+    /// aid audience page. That page is retired and the header is unified, so
+    /// this asserts the two rows are now the same object rather than two lists
+    /// that could drift: a reader on `/foundation` meets the same destinations
+    /// as a reader anywhere else, with the nonprofit itself among them.
+    ///
+    /// `home_href` is deliberately still its own prefix. The header is shared;
+    /// the nonprofit's front door is not, and the footer's "Foundation"
+    /// cross-link and the header entry both have to land on it.
+    ///
+    /// This asserts the constants. Nothing in the request path reads
+    /// `FOUNDATION_BRAND.nav` any more — one resolver builds the chrome for
+    /// every page — so what this catches is a future divergent row being
+    /// declared here, not a page rendering one. The rendered proof is
+    /// `server::tests::firm_routes`'s
+    /// `the_foundation_front_door_wears_the_shared_header`.
     #[test]
-    fn every_foundation_nav_entry_but_workshops_stays_beneath_its_own_prefix() {
-        fn assert_prefixed(links: &[NavLink]) {
-            for link in links {
-                if link.label == "Workshops" {
-                    assert_eq!(link.href, "/workshops");
-                } else {
-                    assert!(
-                        link.href.starts_with("/foundation"),
-                        "{} leaves the Foundation's prefix: {}",
-                        link.label,
-                        link.href
-                    );
-                }
-                assert_prefixed(link.children);
-            }
-        }
-        let labels: Vec<&str> = FOUNDATION_BRAND.nav.iter().map(|n| n.label).collect();
-        assert_eq!(labels, ["Workshops", "Legal aid centers"]);
-        assert_prefixed(FOUNDATION_BRAND.nav);
+    fn the_foundation_carries_the_firms_header_row() {
+        assert_eq!(
+            FOUNDATION_BRAND
+                .nav
+                .iter()
+                .map(|n| n.label)
+                .collect::<Vec<_>>(),
+            FIRM_BRAND.nav.iter().map(|n| n.label).collect::<Vec<_>>(),
+            "one header serves both faces"
+        );
+        assert!(
+            FOUNDATION_BRAND
+                .nav
+                .iter()
+                .any(|link| link.href == "/foundation"),
+            "and it links the nonprofit, which is the reader's way back to it"
+        );
         assert_eq!(
             FOUNDATION_BRAND.home_href, "/foundation",
             "the Foundation's home is its own prefix, not the firm's root"
         );
     }
 
+    /// The retired legal aid audience page is linked from neither row.
+    ///
+    /// It was the Foundation header's second entry, and the header was the only
+    /// way that audience found it. The page is gone, so a link in either row
+    /// would now be a link to a `404` — the same failure the retired Team entry
+    /// is guarded against above.
     #[test]
-    fn foundation_nav_reaches_the_legal_aid_audience_page() {
-        // This page exists because the static marketing site that carried it
-        // is being retired (ENG-139). The header is how that audience finds
-        // the page written for it.
-        let hrefs: Vec<_> = FOUNDATION_BRAND.nav.iter().map(|n| n.href).collect();
-        assert!(
-            hrefs.contains(&"/foundation/legal-aid"),
-            "/foundation/legal-aid must stay linked"
-        );
-    }
-
-    #[test]
-    fn the_foundation_nav_advertises_the_public_workshop_catalog() {
-        // Notations sits behind the session boundary, so the header does not
-        // advertise it. Workshops is public, which is why it is in this row.
-        let hrefs: Vec<_> = FOUNDATION_BRAND.nav.iter().map(|n| n.href).collect();
-        assert!(!hrefs.contains(&"/foundation/notations"));
-        assert!(
-            hrefs.contains(&"/workshops"),
-            "the public workshop catalog is linked"
-        );
-        assert!(
-            FOUNDATION_BRAND.nav.iter().all(|n| !n.is_dropdown()),
-            "the public header renders no submenu; a dropdown emits a dead link"
-        );
+    fn neither_row_links_the_retired_legal_aid_page() {
+        for link in FIRM_BRAND.nav.iter().chain(super::firm_footer_nav()) {
+            assert!(
+                !link.href.contains("legal-aid"),
+                "{} links the retired legal aid page: {}",
+                link.label,
+                link.href
+            );
+            assert_ne!(link.label, "Legal aid centers");
+        }
     }
 
     /// The talks catalog is linked from the firm's footer, at its own name.
-    /// The talks are the firm's and publish at the site root, so a Foundation
-    /// header entry would advertise it under the wrong organization.
     #[test]
     fn presentations_is_a_firm_footer_leaf_at_the_catalogs_own_name() {
         let presentations = super::firm_footer_nav()
@@ -1612,22 +1624,31 @@ mod tests {
             .expect("Presentations leaf present");
         assert!(!presentations.is_dropdown());
         assert_eq!(presentations.href, "/presentations");
-        assert!(
-            FOUNDATION_BRAND
-                .nav
-                .iter()
-                .all(|link| link.label != "Presentations"),
-            "the Foundation header does not carry the firm's talks"
-        );
     }
 
+    /// The workshop catalog stays one click from every page.
+    ///
+    /// It was in the Foundation header as that row's deliberate exception to
+    /// the `/foundation` prefix rule. That row is gone, so the footer entry is
+    /// now the only thing keeping the public catalog off "reachable by typing
+    /// the URL" — which is why it is asserted here rather than left to the
+    /// alphabetical list above.
     #[test]
-    fn foundation_nav_has_no_learn_catch_all() {
-        // The "Learn" catch-all is gone, and the nav did not grow a second
-        // one in its place: one entry, named for what the site is.
+    fn the_public_workshop_catalog_is_linked_from_the_footer() {
+        let workshops = super::firm_footer_nav()
+            .iter()
+            .find(|n| n.label == "Workshops")
+            .expect("the public workshop catalog is linked");
+        assert_eq!(workshops.href, "/workshops");
+        // Notations sits behind the session boundary, so no row advertises it:
+        // an entry would send a signed-out reader at a login door.
         assert!(
-            !FOUNDATION_BRAND.nav.iter().any(|n| n.label == "Learn"),
-            "the retired Learn catch-all must not return"
+            FIRM_BRAND
+                .nav
+                .iter()
+                .chain(super::firm_footer_nav())
+                .all(|link| link.href != "/foundation/notations"),
+            "the gated notations index is advertised by neither row"
         );
     }
 

@@ -35,13 +35,47 @@ pub(crate) fn resolve(host: Option<&str>) -> Result<(String, String)> {
     let base = resolve_base(host, &creds)?;
     let cred: &HostCredential = creds
         .get(&base)
-        .ok_or_else(|| anyhow!("not logged in to {base} — run `navigator site login --host …`"))?;
+        .ok_or_else(|| anyhow!("not logged in to {base} — run `navigator login --host …`"))?;
     if cred.is_expired(now_secs()) {
         return Err(anyhow!(
-            "the stored token for {base} has expired — run `navigator site login --host {base}`"
+            "the stored token for {base} has expired — run `navigator login --host {base}`"
         ));
     }
     Ok((base, cred.token.clone()))
+}
+
+/// `navigator db seed <model> <file> [--overwrite]` — submit one standard
+/// seed YAML document to the logged-in deployment. The CLI deliberately reads
+/// no `SurrealDB` environment: authentication, authorization, lookup, and the
+/// typed write boundary all belong to the server.
+pub async fn seed(host: Option<&str>, model: &str, file: &Path, overwrite: bool) -> ExitCode {
+    run(async {
+        let yaml = std::fs::read_to_string(file)
+            .with_context(|| format!("read seed file {}", file.display()))?;
+        let (base, token) = resolve(host)?;
+        let response = reqwest::Client::new()
+            .post(format!("{base}/app/api/seed"))
+            .bearer_auth(token)
+            .json(&serde_json::json!({
+                "model": model,
+                "yaml": yaml,
+                "overwrite": overwrite,
+            }))
+            .send()
+            .await
+            .context("POST /app/api/seed")?;
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(anyhow!(
+                "seed {model} failed: {status}: {}",
+                first_line(&body)
+            ));
+        }
+        println!("{body}");
+        Ok(())
+    })
+    .await
 }
 
 /// An HTTP client that does **not** follow redirects, so a handler's `303`

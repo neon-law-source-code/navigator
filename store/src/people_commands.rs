@@ -290,6 +290,7 @@ pub async fn update_person(
                 .middle_name
                 .as_ref()
                 .map(|part| none_if_blank(part.as_deref())),
+            profile_image_url: None,
         },
     )
     .await

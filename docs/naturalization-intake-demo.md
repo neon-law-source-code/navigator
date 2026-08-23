@@ -61,7 +61,7 @@ session carries the seeded role.
 ## 4. Sign in
 
 ```bash
-cargo run --release -p cli --quiet -- site login --host http://localhost:3001
+cargo run --release -p cli --quiet -- login --host http://localhost:3001
 ```
 
 Sign in through local Rauthy as `lawyer@neonlaw.com` / `password`. The CLI stores its short-lived loopback token in

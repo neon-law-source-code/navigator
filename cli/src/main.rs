@@ -155,13 +155,25 @@ enum Command {
     // ─────────────── Local database ───────────────
     // Load and inspect a local store — the notation registry and the
     // firm's own reference data.
-    /// Seed, import, inspect, and introspect a local store directly.
+    /// Seed, inspect, and introspect Navigator data.
     Db {
         #[command(subcommand)]
         action: DbCmd,
     },
 
-    /// Drive a running deployment with the bearer token `site login` stores.
+    /// Authenticate to a live Navigator deployment and store its short-lived
+    /// bearer token. Commands that mutate deployment data use this login
+    /// rather than database credentials.
+    Login {
+        /// Host to authenticate to, e.g. `staging.neonlaw.com`.
+        #[arg(long)]
+        host: String,
+        /// Print the login URL without opening it.
+        #[arg(long)]
+        no_browser: bool,
+    },
+
+    /// Drive a running deployment with the bearer token `navigator login` stores.
     Site {
         #[command(subcommand)]
         action: SiteCmd,
@@ -366,16 +378,19 @@ enum DbCmd {
         /// Directory to walk.
         dir: PathBuf,
     },
-    /// Bulk-import a contacts file (JSON or YAML) of organizations and
-    /// the people who work at them — find-or-create `entities`,
-    /// `persons`, and the links between them. Idempotent; safe to
-    /// re-run. See `docs/bulk-contact-import.md`.
-    ImportContacts {
-        /// Path to the contacts file (`.json` or `.yaml`).
-        file: PathBuf,
-        /// Validate and report without writing to the database.
+    /// Reconcile a seed-shaped YAML document through the logged-in deployment.
+    /// Existing lookup matches are left unchanged unless `--overwrite` is set.
+    Seed {
+        /// Singular glossary term and Surreal table, such as `person` or
+        /// `entity`.
+        model_name: String,
+        /// YAML document using the standard `lookup_fields` / `records` shape.
+        seed_file: PathBuf,
+        /// Replace every field represented in each matching seed record.
         #[arg(long)]
-        dry_run: bool,
+        overwrite: bool,
+        #[command(flatten)]
+        host: HostOpt,
     },
     /// List rows from the store, after running the full canonical seed
     /// pass. The seed is idempotent so re-running list against an
@@ -1587,13 +1602,24 @@ fn main() -> ExitCode {
         },
         Command::Db { action } => match action {
             DbCmd::CatalogSeed { dir } => runtime().block_on(run_catalog_seed(&dir)),
-            DbCmd::ImportContacts { file, dry_run } => {
-                runtime().block_on(run_import_contacts(&file, dry_run))
-            }
+            DbCmd::Seed {
+                model_name,
+                seed_file,
+                overwrite,
+                host,
+            } => runtime().block_on(remote::seed(
+                host.host.as_deref(),
+                &model_name,
+                &seed_file,
+                overwrite,
+            )),
             DbCmd::List { subject } => runtime().block_on(run_list(subject)),
             DbCmd::Project { action } => runtime().block_on(run_db_project(action)),
             DbCmd::Erd { format } => runtime().block_on(run_erd(format)),
         },
+        Command::Login { host, no_browser } => {
+            runtime().block_on(login::run_login(&host, no_browser))
+        }
         Command::Site { action } => match action {
             SiteCmd::Login { host, no_browser } => {
                 runtime().block_on(login::run_login(&host, no_browser))
@@ -2714,88 +2740,5 @@ async fn run_catalog_seed(dir: &std::path::Path) -> ExitCode {
         ExitCode::from(1)
     } else {
         ExitCode::SUCCESS
-    }
-}
-
-/// `cli import-contacts` — bulk-import organizations and people from a
-/// JSON/YAML file. `::import::` (leading `::`) is the workspace crate,
-/// distinct from this binary's own `mod import` (template catalog seeder).
-async fn run_import_contacts(file: &std::path::Path, dry_run: bool) -> ExitCode {
-    let bytes = match std::fs::read_to_string(file) {
-        Ok(b) => b,
-        Err(e) => {
-            eprintln!("navigator: read `{}`: {e}", file.display());
-            return ExitCode::from(2);
-        }
-    };
-    let payload = match ::import::parse(&bytes) {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("navigator: parse `{}`: {e}", file.display());
-            return ExitCode::from(2);
-        }
-    };
-
-    // Dry run stops at structural validation — no database touched.
-    if dry_run {
-        let diagnostics = ::import::validate(&payload);
-        print_import_diagnostics(&diagnostics);
-        let errors = diagnostics
-            .iter()
-            .filter(|d| d.severity == ::import::Severity::Error)
-            .count();
-        println!(
-            "{}",
-            palette::dim(format!(
-                "Dry run: {} organization(s), {} person(s), {errors} error(s).",
-                payload.organizations.len(),
-                payload.people.len(),
-            ))
-        );
-        return if errors > 0 {
-            ExitCode::from(1)
-        } else {
-            ExitCode::SUCCESS
-        };
-    }
-
-    let surreal = match open_surreal().await {
-        Ok(d) => d,
-        Err(code) => return code,
-    };
-    let report = match ::import::apply(&surreal, &payload).await {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("navigator: import-contacts: {e}");
-            return ExitCode::from(2);
-        }
-    };
-
-    print_import_diagnostics(&report.diagnostics);
-    for row in report.organizations.iter().chain(&report.people) {
-        if let Some(detail) = &row.detail {
-            println!(
-                "  {} {} — {}",
-                palette::highlight(format!("{:?}", row.status)),
-                row.key,
-                detail,
-            );
-        }
-    }
-    println!("{}", palette::dim(report.summary()));
-    if report.has_errors() {
-        ExitCode::from(1)
-    } else {
-        ExitCode::SUCCESS
-    }
-}
-
-fn print_import_diagnostics(diagnostics: &[::import::Diagnostic]) {
-    for d in diagnostics {
-        let tag = match d.severity {
-            ::import::Severity::Error => palette::highlight("error"),
-            ::import::Severity::Warning => palette::dim("warn".to_string()),
-        };
-        println!("{tag} {}: {}", d.pointer, d.message);
     }
 }

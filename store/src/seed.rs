@@ -20,7 +20,7 @@ use anyhow::Context as _;
 
 use crate::jurisdictions::{self, NewJurisdiction};
 use crate::surreal::SurrealDb;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// Per-entity insert counts for one seed pass.
@@ -398,6 +398,8 @@ pub const SEEDED_TEMPLATES: &[SeededTemplate] = &[
 /// YAML in `store/seeds/` has the same outer shape.
 #[derive(Debug, Deserialize)]
 struct Records<T> {
+    #[serde(default)]
+    lookup_fields: Vec<String>,
     #[serde(default = "Vec::new")]
     records: Vec<T>,
 }
@@ -409,6 +411,202 @@ where
     let r: Records<T> =
         serde_yaml::from_str(yaml).map_err(|e| anyhow::anyhow!("parse {file}: {e}"))?;
     Ok(r.records)
+}
+
+/// The glossary-backed Surreal tables that may be reconciled from a seed
+/// document by an authenticated operator. This is deliberately a typed,
+/// closed registry rather than a table-name escape hatch: each model keeps
+/// its store invariants (mailbox claims, reference resolution, and firm-anchor
+/// protection) on the server.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SeedModel {
+    Person,
+    Entity,
+}
+
+impl SeedModel {
+    /// Resolve the singular glossary term and Surreal table name supplied by
+    /// `navigator db seed`.
+    pub fn parse(value: &str) -> anyhow::Result<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "person" => Ok(Self::Person),
+            "entity" => Ok(Self::Entity),
+            _ => anyhow::bail!(
+                "unsupported seed model `{value}`; supported glossary terms: person, entity"
+            ),
+        }
+    }
+
+    #[must_use]
+    pub const fn term(self) -> &'static str {
+        match self {
+            Self::Person => "person",
+            Self::Entity => "entity",
+        }
+    }
+}
+
+/// The result of reconciling one seed document through the operator API.
+#[derive(Debug, Default, Serialize)]
+pub struct ReconcileReport {
+    pub model: String,
+    pub created: usize,
+    pub updated: usize,
+    pub unchanged: usize,
+}
+
+/// Reconcile one seed-shaped YAML document.
+///
+/// The document must use the same `lookup_fields` / `records` envelope as
+/// `store/seeds`. By default an existing lookup match is left untouched; with
+/// `overwrite`, the fields represented by that model's seed record replace the
+/// existing values. The dispatch is typed so this authenticated path shares
+/// the same natural-key and write machinery as bootstrap seeding, without
+/// permitting a caller to name arbitrary SurrealQL tables or fields.
+pub async fn reconcile_yaml(
+    surreal: &SurrealDb,
+    model: SeedModel,
+    yaml: &str,
+    firm_anchor: &str,
+    overwrite: bool,
+) -> anyhow::Result<ReconcileReport> {
+    match model {
+        SeedModel::Person => reconcile_people(surreal, yaml, overwrite).await,
+        SeedModel::Entity => reconcile_entities(surreal, yaml, firm_anchor, overwrite).await,
+    }
+}
+
+fn parse_seed<T>(
+    yaml: &str,
+    model: SeedModel,
+    expected_lookup_fields: &[&str],
+) -> anyhow::Result<Vec<T>>
+where
+    T: for<'de> Deserialize<'de>,
+{
+    let parsed: Records<T> = serde_yaml::from_str(yaml)
+        .map_err(|error| anyhow::anyhow!("parse {} seed: {error}", model.term()))?;
+    let supplied: Vec<&str> = parsed.lookup_fields.iter().map(String::as_str).collect();
+    if supplied != expected_lookup_fields {
+        anyhow::bail!(
+            "{} seed must declare lookup_fields: {}",
+            model.term(),
+            expected_lookup_fields.join(", ")
+        );
+    }
+    Ok(parsed.records)
+}
+
+async fn reconcile_people(
+    surreal: &SurrealDb,
+    yaml: &str,
+    overwrite: bool,
+) -> anyhow::Result<ReconcileReport> {
+    let mut report = ReconcileReport {
+        model: SeedModel::Person.term().to_string(),
+        ..ReconcileReport::default()
+    };
+    for rec in parse_seed::<PersonRec>(yaml, SeedModel::Person, &["email"])? {
+        let existing = crate::persons::find_by_email_ci(surreal, &rec.email).await?;
+        match existing {
+            None => {
+                crate::persons::create(
+                    surreal,
+                    &crate::persons::NewPerson {
+                        profile_image_url: rec.profile_image_url,
+                        ..crate::persons::NewPerson::new(rec.name, rec.email)
+                    },
+                )
+                .await?;
+                report.created += 1;
+            }
+            Some(_) if !overwrite => report.unchanged += 1,
+            Some(existing) => {
+                let updated = crate::persons::edit(
+                    surreal,
+                    existing.id,
+                    &crate::persons::PersonEdit {
+                        name: Some(rec.name),
+                        profile_image_url: Some(rec.profile_image_url),
+                        ..crate::persons::PersonEdit::default()
+                    },
+                )
+                .await
+                .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+                if updated.is_some() {
+                    report.updated += 1;
+                }
+            }
+        }
+    }
+    Ok(report)
+}
+
+async fn reconcile_entities(
+    surreal: &SurrealDb,
+    yaml: &str,
+    firm_anchor: &str,
+    overwrite: bool,
+) -> anyhow::Result<ReconcileReport> {
+    let mut report = ReconcileReport {
+        model: SeedModel::Entity.term().to_string(),
+        ..ReconcileReport::default()
+    };
+    for rec in parse_seed::<EntityRec>(yaml, SeedModel::Entity, &["name", "entity_type_id"])? {
+        let entity_type = crate::entity_types::find_by_name(surreal, &rec.entity_type.name)
+            .await?
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "entity seed references unknown entity type {:?}",
+                    rec.entity_type.name
+                )
+            })?;
+        let jurisdiction_name = rec
+            .entity_type
+            .jurisdiction
+            .as_ref()
+            .map_or("Nevada", |jurisdiction| jurisdiction.name.as_str());
+        let jurisdiction = jurisdictions::find_by_name(surreal, jurisdiction_name)
+            .await?
+            .ok_or_else(|| {
+                anyhow::anyhow!("entity seed references unknown jurisdiction {jurisdiction_name:?}")
+            })?;
+        let existing =
+            crate::entities::find_by_name_and_type(surreal, &rec.name, entity_type.id).await?;
+        match existing {
+            None => {
+                crate::entity_commands::create_entity(
+                    surreal,
+                    firm_anchor,
+                    &crate::entity_commands::CreateEntityCommand {
+                        name: rec.name,
+                        entity_type_id: entity_type.id,
+                        jurisdiction_id: jurisdiction.id,
+                    },
+                )
+                .await
+                .map_err(|error| anyhow::anyhow!(error.user_message()))?;
+                report.created += 1;
+            }
+            Some(_) if !overwrite => report.unchanged += 1,
+            Some(existing) => {
+                crate::entity_commands::update_entity(
+                    surreal,
+                    existing.id,
+                    firm_anchor,
+                    &crate::entity_commands::UpdateEntityCommand {
+                        name: rec.name,
+                        entity_type_id: entity_type.id,
+                        jurisdiction_id: jurisdiction.id,
+                    },
+                )
+                .await
+                .map_err(|error| anyhow::anyhow!(error.user_message()))?;
+                report.updated += 1;
+            }
+        }
+    }
+    Ok(report)
 }
 
 /// Run the full canonical seed pass against `db`. Each entity table
@@ -2291,8 +2489,8 @@ async fn seed_person_project_roles(
 #[cfg(test)]
 mod tests {
     use super::{
-        normalized_body_bytes, seed_canonical, seeded_template_codes, split_template,
-        TemplateFrontmatter, SEEDED_TEMPLATES,
+        normalized_body_bytes, reconcile_yaml, seed_canonical, seeded_template_codes,
+        split_template, SeedModel, TemplateFrontmatter, SEEDED_TEMPLATES,
     };
     use crate::jurisdictions;
     use crate::persons::{self, Role};
@@ -2309,6 +2507,69 @@ mod tests {
                 .await
                 .expect("temp FsStorage"),
         )
+    }
+
+    #[tokio::test]
+    async fn operator_person_seed_creates_then_overwrites_only_when_requested() {
+        let surreal = mem_surreal().await;
+        let initial = r"
+lookup_fields:
+  - email
+records:
+  - email: operator@example.com
+    name: First Name
+";
+        let changed = r"
+lookup_fields:
+  - email
+records:
+  - email: operator@example.com
+    name: Updated Name
+";
+
+        let created = reconcile_yaml(&surreal, SeedModel::Person, initial, "Firm", false)
+            .await
+            .expect("create from seed");
+        assert_eq!(
+            (created.created, created.updated, created.unchanged),
+            (1, 0, 0)
+        );
+
+        let unchanged = reconcile_yaml(&surreal, SeedModel::Person, changed, "Firm", false)
+            .await
+            .expect("default leaves match alone");
+        assert_eq!(
+            (unchanged.created, unchanged.updated, unchanged.unchanged),
+            (0, 0, 1)
+        );
+        assert_eq!(
+            persons::find_by_email_ci(&surreal, "operator@example.com")
+                .await
+                .unwrap()
+                .unwrap()
+                .name,
+            "First Name"
+        );
+
+        let overwritten = reconcile_yaml(&surreal, SeedModel::Person, changed, "Firm", true)
+            .await
+            .expect("overwrite matching record");
+        assert_eq!(
+            (
+                overwritten.created,
+                overwritten.updated,
+                overwritten.unchanged
+            ),
+            (0, 1, 0)
+        );
+        assert_eq!(
+            persons::find_by_email_ci(&surreal, "operator@example.com")
+                .await
+                .unwrap()
+                .unwrap()
+                .name,
+            "Updated Name"
+        );
     }
 
     /// The firm's own Entity is the one seeded row that takes

@@ -60,6 +60,64 @@ A right held by a different organization is enforceable by that organization.
 sell it, run it for other people — none of that needs anyone's permission, though § 13 attaches an obligation to the
 last one. Calling the result "Neon Law" needs the Firm's permission, and the Firm does not give it.
 
+## Chain of title
+
+Who wrote Navigator, and how the copyright reached the organization that holds it. This section exists because the
+answer used to be asserted rather than recorded: a dozen places in this tree agreed that a different organization owned
+the work, and the guard test proved they agreed with each other. Agreement is not a chain.
+
+### The authors
+
+Two people have written Navigator.
+
+| Author | What they wrote |
+| --- | --- |
+| Nicholas Shook | The work before publication, and most of it since |
+| Jaskaran Singh | Contributions across the rule engine, the CLI, the store, the portal, telemetry, and the build |
+
+**The published Git history is not the authorship record**, and should not be read as one. This repository's root commit
+is a *publication* event that lands the whole tree at once, so a date of creation inferred from it is the day the work
+was published rather than any day it was written.
+
+### The instruments
+
+Two, doing different jobs. Neither is reproduced here and neither is quoted: what this section records is that they
+exist and between whom. Their dates are held with the executed originals rather than published, though a recordation
+under § 205 puts the assignment's date on the public record in its own right.
+
+| Instrument | Parties | Status |
+| --- | --- | --- |
+| Assignment of copyright, 17 U.S.C. § 204(a) | Nicholas Shook and Shook Law PLLC, to Shook Law PLLC | Executed |
+| Licence to publish under `AGPL-3.0-only` | Shook Law PLLC to the Neon Law Foundation | Executed |
+
+Both assignors join the first instrument, each conveying whatever interest it holds. That is deliberate and costs one
+signature block: whether the work was already the Firm's turns on an employment question nobody needs to answer, and it
+stops mattering once both have conveyed.
+
+Contributions arrive already assigned. Each author signed an employment or contractor agreement with Shook Law PLLC
+before their first commit, so no contribution in this tree needs a later transfer — see [Contributions](#contributions).
+
+### Registration and recordation
+
+Neither has happened yet, and this section is where the numbers will land.
+
+| Step | What it is for | Status |
+| --- | --- | --- |
+| Copyright Office registration | Statutory damages and fees under § 412 | Not yet filed |
+| Recordation under 17 U.S.C. § 205 | Constructive notice of the transfer to everyone | Not yet recorded |
+
+The instrument is not filed with the application. The Copyright Office does not interpret a transfer document, so the
+application states that the claimant obtained the work by written agreement and the instrument is recorded separately.
+
+### This is not necessarily the last link
+
+Moving Navigator's copyright to a separate entity that does not practise law is under consideration. If that happens
+this section gains a row rather than being rewritten, and the Foundation's right to publish survives it: that right
+binds the Firm's successors, which is what the clause is for.
+
+So read the holder named here as the holder of record today, and read this section — rather than any single sentence
+elsewhere — as the place the answer lives.
+
 ## The grant: AGPL-3.0-only
 
 Every line of code and every line of drafted legal prose is licensed under version 3 of the GNU Affero General Public

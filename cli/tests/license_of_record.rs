@@ -124,6 +124,17 @@ fn flat_lower(body: &str) -> String {
         .to_lowercase()
 }
 
+/// [`flat_lower`], with Markdown emphasis markers removed as well.
+///
+/// A phrase match against Markdown reads `**Neon Law Foundation**` and
+/// `Neon Law Foundation` as different strings, so a claim written in bold slips
+/// past a matcher built for plain prose — and the claims most worth catching are
+/// the emphasized ones, because emphasis is what a writer reaches for on the
+/// sentence they think matters.
+fn unemphasized(body: &str) -> String {
+    flat_lower(body).replace(['*', '_'], "")
+}
+
 /// The prose surrounding a match — 200 characters either side, snapped out to
 /// the nearest character boundary so a multi-byte dash in the copy cannot panic
 /// the slice.
@@ -934,6 +945,117 @@ fn only_the_copyright_holder_may_grant_a_commercial_exception() {
              which quotes per engagement"
         );
     }
+}
+
+/// The chain of title is recorded, and no document in the tree contradicts it.
+///
+/// This test exists because of how its predecessor failed. Ownership used to be
+/// checked by confirming that a hand-listed set of files agreed with a constant
+/// — and they did agree, for months, on an answer that was wrong. Nothing had
+/// conveyed the copyright to the organization a dozen files named. A guard that
+/// asks "do these files say the same thing" cannot see a claim that is uniformly
+/// false, which is the only kind of false claim a careful project actually
+/// produces.
+///
+/// So the mechanism inverts. Instead of collecting agreement, it looks for
+/// *contradiction*, across every document in the tree rather than a list this
+/// file happened to keep in step — and it requires the chain itself to be
+/// written down somewhere a reader can find, so that "who owns this" has an
+/// answer with reasoning attached rather than an assertion repeated.
+///
+/// The single exemption is deliberate and self-cancelling. A workshop deck is a
+/// script somebody reads aloud, so its wording belongs to its author and not to
+/// a sweep — but an exemption that merely skips a file exempts it forever. This
+/// one asserts that the deck *still carries* the stale claim, so whoever fixes
+/// the deck gets a failing test telling them to delete the exemption. It cannot
+/// outlive what it is for.
+#[test]
+fn the_chain_of_title_is_recorded_and_nothing_contradicts_it() {
+    /// Where the chain is written down.
+    const RECORD: &str = "docs/licensing.md";
+
+    /// Ways a document says the Foundation owns the copyright.
+    ///
+    /// Matched against prose with its whitespace collapsed, its case folded,
+    /// **and its emphasis markers stripped**. That last one is not a nicety: the
+    /// stale claim was written `copyright the **Neon Law Foundation**` in
+    /// several files, so a matcher that reads asterisks as characters misses the
+    /// exact formatting the tree actually used. A guard whose pattern is
+    /// defeated by bold text is a guard that would have passed through the
+    /// entire period this was wrong.
+    const CONTRADICTIONS: [&str; 4] = [
+        "copyright the neon law foundation",
+        "copyright neon law foundation",
+        "neon law foundation, which produces it; the firm operates it",
+        "neon law foundation produces the software and holds the copyright",
+    ];
+
+    /// The one file whose wording is its author's to change.
+    ///
+    /// A deck is read aloud from a stage. Reflowing it is fine; rewriting a
+    /// claim in it is a conversation with whoever wrote it.
+    const DECK: &str = "server/content/workshops/navigator/CONTRIBUTE.md";
+
+    // ---- The chain is recorded, with reasoning rather than an assertion. ----
+    let record = read(RECORD);
+    let flat_record = unemphasized(&record);
+
+    assert!(
+        flat_record.contains("## chain of title"),
+        "{RECORD} must carry a Chain of title section. `{OWNER} owns this`          repeated in a dozen files is what the previous version of this guard          confirmed, and it was wrong the whole time; a reader needs the route,          not the conclusion"
+    );
+    for required in [
+        "17 u.s.c. § 204(a)",
+        "licence to publish",
+        "not yet filed",
+        "not yet recorded",
+    ] {
+        assert!(
+            flat_record.contains(required),
+            "{RECORD}'s Chain of title must record `{required}` — an instrument              nobody can identify, or a registration step whose status is              unstated, is a gap that reads as a completed chain"
+        );
+    }
+    assert!(
+        record.contains(OWNER) && record.contains(PUBLISHER),
+        "{RECORD} must name `{OWNER}` as the holder and `{PUBLISHER}` as the          publisher; the chain's whole point is that they are different parties"
+    );
+
+    // ---- Nothing in the tree says otherwise. ----
+    let mut offenders = Vec::new();
+    let mut deck_seen = false;
+
+    for path in markdown_documents() {
+        let rel = path
+            .strip_prefix(repo_root())
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .replace("../", "");
+        let flat = unemphasized(&fs::read_to_string(&path).unwrap_or_default());
+        let stale: Vec<&str> = CONTRADICTIONS
+            .into_iter()
+            .filter(|claim| flat.contains(claim))
+            .collect();
+
+        if rel == DECK {
+            deck_seen = !stale.is_empty();
+            continue;
+        }
+        for claim in stale {
+            offenders.push(format!("{rel}: says `{claim}`"));
+        }
+    }
+
+    assert!(
+        offenders.is_empty(),
+        "the copyright belongs to {OWNER}; these documents say otherwise, and          agreeing with each other is exactly how the wrong answer survived          before:\n  {}",
+        offenders.join("\n  ")
+    );
+
+    // ---- The exemption cannot outlive its reason. ----
+    assert!(
+        deck_seen,
+        "{DECK} no longer carries the stale ownership claim, so the exemption          above is dead — delete it and let the deck be swept like everything          else. An exemption kept past its reason is how a file stops being          checked at all"
+    );
 }
 
 /// Public surfaces that name the NEON LAW registration attribute it to the Firm.

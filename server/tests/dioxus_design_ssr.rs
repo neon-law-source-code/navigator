@@ -168,14 +168,31 @@ async fn design_gallery_renders_dioxus_cards_and_toasts() {
 }
 
 #[tokio::test]
-async fn design_gallery_renders_the_searchable_person_picker() {
+async fn design_gallery_renders_the_filterable_person_picker() {
     let (status, html) = render_design().await;
     assert_eq!(status, StatusCode::OK, "{html}");
     assert!(html.contains("Person foreign key"), "{html}");
-    assert!(html.contains(r#"id="design_person_id-search""#), "{html}");
+    assert!(html.contains(r#"name="design_person_id_search""#), "{html}");
+    assert!(html.contains("Filter people"), "{html}");
     assert!(html.contains(r#"name="design_person_id""#), "{html}");
     assert!(
         html.contains("Ada Lovelace &#60;ada@example.com&#62;"),
+        "{html}"
+    );
+}
+
+#[tokio::test]
+async fn design_gallery_filters_person_picker_by_email() {
+    let (status, html) =
+        render_design_at("/design?design_person_id_search=linus%40example.com").await;
+    assert_eq!(status, StatusCode::OK, "{html}");
+    assert!(html.contains("1 person match"), "{html}");
+    assert!(
+        html.contains("Linus Torvalds &#60;linus@example.com&#62;"),
+        "{html}"
+    );
+    assert!(
+        !html.contains("Ada Lovelace &#60;ada@example.com&#62;"),
         "{html}"
     );
 }

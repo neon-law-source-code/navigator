@@ -69,6 +69,9 @@ pub struct DemoQuery {
     /// extraction and blanking the table.
     #[serde(default, deserialize_with = "deserialize_lenient_page")]
     pub page: Option<u32>,
+    /// A non-authoritative name/email filter for the person-picker example.
+    #[serde(default)]
+    pub design_person_id_search: Option<String>,
 }
 
 /// Deserialize `?page=` leniently: a missing, blank, or non-numeric value
@@ -153,6 +156,15 @@ pub async fn load_demo_table() -> Result<DemoView, ServerFnError> {
         page,
         total_pages,
     })
+}
+
+/// Read the person-picker's non-authoritative query filter from `/design`.
+#[server]
+pub async fn load_demo_person_search() -> Result<Option<String>, ServerFnError> {
+    let axum::extract::Query(query) =
+        dioxus_fullstack_core::FullstackContext::extract::<axum::extract::Query<DemoQuery>, _>()
+            .await?;
+    Ok(query.design_person_id_search)
 }
 
 /// Sort `rows` in place by a JSON:API `?sort=` value, applying each advertised
@@ -1125,6 +1137,11 @@ fn demo_attorneys() -> Vec<FooterAttorney> {
 /// message and the values.
 #[component]
 fn FormShowcase() -> Element {
+    let search = use_server_future(load_demo_person_search)?;
+    let person_search = match &*search.read() {
+        Some(Ok(value)) => value.clone(),
+        Some(Err(_)) | None => None,
+    };
     let fields = vec![
         Field::text("Full name", "name", "").required(),
         Field::email("Email", "email", "").help("We'll only use this to reply."),
@@ -1194,7 +1211,7 @@ fn FormShowcase() -> Element {
             p {
                 "A native person-id field: the person’s name and email make the choice clear, \
                  while the submitted value remains the foreign-key id. Type a name or email to \
-                 narrow the choices after hydration."
+                 narrow the choices; select Filter people to update the list."
             }
             FormCard {
                 title: "Person picker".to_string(),
@@ -1209,6 +1226,7 @@ fn FormShowcase() -> Element {
                         name: "design_person_id".to_string(),
                         blank_label: "— pick a person —".to_string(),
                         people,
+                        search: person_search,
                         help: Some("Search matches either a person’s name or email address.".to_string()),
                         required: true,
                     }

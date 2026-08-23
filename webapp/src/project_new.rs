@@ -54,6 +54,9 @@ pub struct ProjectNewQuery {
     pub description: Option<String>,
     #[serde(default)]
     pub client_dri_person_id: Option<String>,
+    /// A non-authoritative name/email filter for the client directory.
+    #[serde(default)]
+    pub client_dri_person_id_search: Option<String>,
     #[serde(default)]
     pub scope_of_services: Option<String>,
     /// The entity the inline create just made — preselected in the picker.
@@ -267,6 +270,7 @@ fn open_matter_form(view: &ProjectNewView) -> Element {
             view.clients.clone(),
             selected_client,
         )
+        .person_search(view.query.client_dri_person_id_search.clone())
         .required()
         .help(
             "The client this matter is for — its client-side Directly Responsible Individual. \
@@ -492,13 +496,13 @@ mod tests {
     }
 
     #[test]
-    fn the_client_picker_displays_email_and_allows_a_name_or_email_search() {
+    fn the_client_picker_displays_email_and_filters_by_name_or_email() {
         let html = render(&view(ProjectNewQuery::default()));
         assert!(
-            html.contains(r#"id="client_dri_person_id-search""#),
+            html.contains(r#"name="client_dri_person_id_search""#),
             "{html}"
         );
-        assert!(html.contains("Type a name or email"), "{html}");
+        assert!(html.contains("Filter people"), "{html}");
         assert!(
             html.contains("Libra Client &#60;libra@example.com&#62;"),
             "{html}"

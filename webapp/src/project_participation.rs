@@ -39,6 +39,9 @@ pub struct ParticipationQuery {
     /// it selected across the redirect.
     #[serde(default)]
     pub person_id: Option<String>,
+    /// A non-authoritative name/email filter for the person directory.
+    #[serde(default)]
+    pub person_id_search: Option<String>,
     /// The accountability choice a refused submit had made (`none`/`lawyer`/
     /// `client`), echoed back so the radio keeps it.
     #[serde(default)]
@@ -61,6 +64,7 @@ pub struct ParticipationView {
     pub role_id: Option<String>,
     pub people: Vec<PersonChoice>,
     pub person_id: Option<String>,
+    pub person_id_search: Option<String>,
     /// The accountability radio's value: `none`, `lawyer`, or `client`.
     pub dri: String,
     /// Everyone who currently carries each marker, named so an operator sees who
@@ -235,6 +239,7 @@ async fn load(
         role_id: role_id.map(|id| id.to_string()),
         people,
         person_id,
+        person_id_search: query.person_id_search,
         dri,
         lawyer_dris,
         client_dris,
@@ -348,6 +353,7 @@ fn participation_body(view: &ParticipationView) -> Element {
         view.people.clone(),
         view.person_id.clone(),
     )
+    .person_search(view.person_id_search.clone())
     .help("Their participation on this matter follows the system tier shown beside each name.")
     .required()];
     fields.push(dri_field(view));
@@ -460,6 +466,7 @@ mod tests {
             role_id: role_id.map(ToString::to_string),
             people: vec![person(), lawyer()],
             person_id: None,
+            person_id_search: None,
             dri: "none".to_string(),
             lawyer_dris: Vec::new(),
             client_dris: Vec::new(),

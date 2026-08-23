@@ -51,21 +51,39 @@ and for no other reason.  What is licensed under the AGPL beside each blank form
 is our own material: the catalog card, the field map, and the workflow that
 fills the form in.
 
-TRADEMARKS.  The licence grants rights in copyright, not in trademarks, and
-the marks are the one thing it withholds.  NEON LAW is a registered trademark,
-U.S. Reg. No. 6,325,650, owned by Shook Law PLLC; that mark, the Neon Law
-wordmark, and the Neon Law logos are the Firm's and are not licensed here.  That
-the Firm holds the copyright as well changes nothing about it: a copyright
-licence does not reach a mark, so no amount of permission in LICENSE lets you
-trade under this name.  You may run,
-fork, and redistribute this software freely, and you may say your work is built
-on Neon Law Navigator.  You may not present your deployment as Neon Law — a law
-firm's mark is how a client identifies who is accountable for their legal work,
-and a fork wearing it would misdirect exactly the person least able to check.
-Rename your deployment through the brand manifest (see `views::brand_bundle`)
-rather than by editing sources; that seam exists for this.  The Foundation uses
-the mark for its charitable, pro bono, and public-education work under separate
-written permission from the Firm.
+TRADEMARKS.  The licence grants rights in copyright, not in trademarks, and the
+marks are the one thing it withholds.  NEON LAW is a registered trademark, U.S.
+Reg. No. 6,325,650, owned by Shook Law PLLC; that mark, the Neon Law wordmark,
+and the Neon Law logos are the Firm's.  That the Firm holds the copyright as
+well changes nothing about it: a copyright licence does not reach a mark, so no
+amount of permission in LICENSE lets you trade under this name.
+
+Why this is the one reservation: a law firm's mark is how a client identifies
+who is accountable for their legal work, and a fork wearing it would misdirect
+exactly the person least able to check.  So you may run, fork, and redistribute
+this software freely, and you may say your work is built on Neon Law Navigator —
+but you may not present your deployment as Neon Law.  Rename it through the
+brand manifest (see `views::brand_bundle`) rather than by editing sources; that
+seam exists for this.  The Foundation uses the mark for its charitable, pro
+bono, and public-education work under separate written permission from the Firm.
+
+ADDITIONAL TERM UNDER SECTION 7(e).  The paragraphs above explain the
+reservation; this is its operative text.  As permitted by section 7(e) of the
+GNU Affero General Public License, version 3, this work is distributed subject
+to the following additional term.  It declines to grant rights under trademark
+law.  It narrows no permission the licence gives you, and it is not a "further
+restriction" within the meaning of section 7 — the licence never conveyed a
+trademark right, so nothing is taken back by saying so.  You may remove this
+term from any copy you convey, as section 7 allows.
+
+  This licence grants you no right or licence under the trade names,
+  trademarks, service marks, or logos of Shook Law PLLC — including NEON LAW
+  (U.S. Reg. No. 6,325,650), the Neon Law wordmark, and the Neon Law logos —
+  whether to name a modified version, to publicise a modified version, or to
+  present a deployment as the practice of Shook Law PLLC.  Nominative
+  reference remains available to you: you may state, accurately, that your
+  work is based on Neon Law Navigator.  Rename your deployment through the
+  brand manifest (see `views::brand_bundle`) rather than by editing sources.
 
 CONTRIBUTIONS.  Every contribution in this repository belongs to Shook Law
 PLLC, assigned by a written agreement its author signed before their first

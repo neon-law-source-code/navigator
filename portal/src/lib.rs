@@ -998,6 +998,11 @@ pub fn bootstrap(
     // questionnaire walker reads template bodies from blob storage, so a
     // non-bundled template's spec can still be parsed.
     mcp_state.storage = Some(state.storage.clone());
+    // The same mailer the JSON API routes hold — `LoggingEmail`-wrapped,
+    // so `aida_send_welcome_email` writes the `sent_emails` audit row the
+    // API door writes. Injecting it here is what lets the agent door go
+    // through the shared command instead of the Restate trigger (ENG-317).
+    mcp_state.email = Some(state.email.clone());
     let mcp = mcp::build_router(mcp_state.clone())
         .route_layer(axum::middleware::from_fn_with_state(
             state.google_oauth.clone(),

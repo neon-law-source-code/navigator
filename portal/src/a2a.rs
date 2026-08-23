@@ -1936,9 +1936,24 @@ mod tests {
         store::test_support::mem_surreal().await
     }
 
+    /// An `McpState` shaped like the one `web` builds: the mailer is
+    /// injected, because `aida_send_welcome_email` reaches it through the
+    /// shared command rather than the Restate trigger (ENG-317), and a
+    /// fixture without one would exercise the refusal path instead of the
+    /// send.
+    fn mcp_state(surreal: store::surreal::SurrealDb) -> McpState {
+        let mut st = McpState::new(surreal.clone(), Arc::new(InMemoryRuntime::new()));
+        st.email = Some(Arc::new(crate::email::LoggingEmail::new(
+            Arc::new(workflows::email::CapturingEmail::new()),
+            surreal,
+            "support@example.com",
+        )));
+        st
+    }
+
     fn state_with(surreal: store::surreal::SurrealDb) -> A2aState {
         A2aState {
-            mcp: McpState::new(surreal, Arc::new(InMemoryRuntime::new())),
+            mcp: mcp_state(surreal),
             canonical_host: CanonicalHost::new(Some("www.example.com".into())),
             router: Arc::new(crate::agent_router::NullRouter),
             pending: PendingConfirmations::new(),
@@ -1950,7 +1965,7 @@ mod tests {
         router: Arc<dyn crate::agent_router::AgentRouter>,
     ) -> A2aState {
         A2aState {
-            mcp: McpState::new(surreal, Arc::new(InMemoryRuntime::new())),
+            mcp: mcp_state(surreal),
             canonical_host: CanonicalHost::new(Some("www.example.com".into())),
             router,
             pending: PendingConfirmations::new(),

@@ -1,27 +1,35 @@
 //! `aida_send_welcome_email` MCP tool.
 //!
 //! Re-fires the firm's welcome email at an existing person — the same
-//! "Welcome to Neon Law" message the OAuth callback sends on a
-//! brand-new signup and the `/admin/person/{id}` "Send welcome"
-//! button sends on demand. All three share one template + render path
-//! ([`workflows::email::welcome`]); this tool is the MCP/A2A door onto
-//! it.
+//! "Welcome to Neon Law" message the `/admin/person/{id}` "Send welcome"
+//! button and `POST /app/api/people/{id}/welcome` send.
+//!
+//! All three go through **one command**,
+//! [`workflows::email::welcome::send_welcome`]. That matters more here
+//! than ordinary de-duplication would suggest: this is one of the three
+//! tools `requires_confirmation` classifies as a supervised act, so a
+//! behaviour that lands on the command — a suppression rule, a bounce
+//! record, an audit line — must reach the agent door too. Until ENG-317
+//! this tool called `trigger_welcome` and did its own person lookup, and
+//! the concrete cost was the audit row: the Restate worker runs a bare
+//! backend with no `LoggingEmail`, so an agent-initiated welcome left no
+//! `sent_emails` row while the other two doors wrote one.
 //!
 //! **Trust boundary (per the council's Scorpio note):** the tool takes
 //! a `person_id`, never a free-text email address. You can only welcome
 //! someone already seeded in `persons`, so AIDA can't be turned into a
-//! sender for arbitrary inboxes. Unknown id → `NotFound`.
+//! sender for arbitrary inboxes. Unknown id → `NotFound`. The name and
+//! email are read from the row inside the command, so the model can
+//! neither spoof who the greeting names nor where it lands.
 //!
-//! The name + email handed to [`trigger_welcome`] come from the DB row,
-//! not from the caller — the model can't spoof who the greeting names
-//! or where it lands. The send is idempotent on the broker side:
-//! [`trigger_welcome`] keys the Restate invocation off `person_id`, so
-//! a repeated call no-ops rather than double-sending.
+//! The send is synchronous, which is the other thing convergence
+//! bought: the tool now reports whether the mail actually went out
+//! rather than whether a workflow started.
 
 use serde::Deserialize;
 use serde_json::{json, Value};
 use uuid::Uuid;
-use workflows::email::welcome::{trigger_welcome, WELCOME_SUBJECT};
+use workflows::email::welcome::{send_welcome, welcome_subject};
 
 use super::ToolError;
 use crate::server::McpState;
@@ -38,7 +46,8 @@ pub fn descriptor() -> Value {
                         FIRST to resolve the person_id, then call this — do NOT create a \
                         new person. The email and name are read from that record, so you \
                         can only welcome someone already in the system, never an arbitrary \
-                        address. Idempotent: re-sending to the same person is safe.",
+                        address. Each call sends: calling it twice emails the person \
+                        twice, so do not retry on your own initiative.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -63,20 +72,29 @@ struct Args {
 pub async fn call(state: &McpState, arguments: &Value) -> Result<Value, ToolError> {
     let args: Args = super::decode_args(arguments)?;
 
-    let person = store::persons::find_by_id(&state.surreal, args.person_id)
-        .await?
-        .ok_or_else(|| ToolError::NotFound(format!("person_id={}", args.person_id)))?;
+    // No mailer means no `LoggingEmail`, and an unaudited send of a
+    // supervised act is worse than no send. Refuse rather than fall back
+    // to a path that leaves no `sent_emails` row.
+    let email = state.email.as_ref().ok_or_else(|| {
+        ToolError::Internal("no email service is configured for this deployment".into())
+    })?;
 
-    // Name + email come from the row, never the caller — the recipient
-    // is whoever the DB says it is.
-    trigger_welcome(
-        state.questionnaire_runtime.as_ref(),
-        person.id,
-        &person.name,
-        &person.email,
+    // The one command every door goes through. It reads the recipient
+    // from the `persons` row itself, so the name and email are never the
+    // caller's to choose, and it writes the audit row on the way out.
+    let person = send_welcome(
+        &state.surreal,
+        email.as_ref(),
+        &workflows::email::base_url_from_env(),
+        args.person_id,
     )
     .await
-    .map_err(|e| ToolError::Internal(format!("welcome trigger failed: {e}")))?;
+    .map_err(|e| match e {
+        store::people_commands::PeopleCommandError::NotFound => {
+            ToolError::NotFound(format!("person_id={}", args.person_id))
+        }
+        other => ToolError::Internal(other.user_message()),
+    })?;
 
     let summary = format!(
         "Sent the welcome email to {} <{}> (id={}).",
@@ -88,7 +106,7 @@ pub async fn call(state: &McpState, arguments: &Value) -> Result<Value, ToolErro
             "person_id": person.id,
             "name": person.name,
             "email": person.email,
-            "subject": WELCOME_SUBJECT,
+            "subject": welcome_subject(),
             "status": "sent",
         }
     }))
@@ -105,10 +123,24 @@ mod tests {
     use workflows::InMemoryRuntime;
 
     use store::test_support::mem_surreal;
-    async fn state() -> McpState {
+    use workflows::email::CapturingEmail;
+
+    /// State carrying a capturing mailer, standing in for the
+    /// `LoggingEmail`-wrapped service `web` injects. The audit row that
+    /// decorator writes is asserted in `portal`, where the decorator
+    /// lives; here the assertion is that the tool hands the command a
+    /// message tagged so that row is attributable.
+    async fn state_with_mailer() -> (McpState, Arc<CapturingEmail>) {
         let surreal = mem_surreal().await;
         let runtime: Arc<dyn workflows::StateMachineRuntime> = Arc::new(InMemoryRuntime::new());
-        McpState::new(surreal, runtime)
+        let mut st = McpState::new(surreal, runtime);
+        let mailer = Arc::new(CapturingEmail::new());
+        st.email = Some(mailer.clone());
+        (st, mailer)
+    }
+
+    async fn state() -> McpState {
+        state_with_mailer().await.0
     }
 
     async fn seed_person(surreal: &store::surreal::SurrealDb, name: &str, email: &str) -> Uuid {
@@ -128,10 +160,24 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn happy_path_drives_runtime_and_returns_sent_status() {
-        let state = state().await;
+    async fn happy_path_sends_through_the_command_and_returns_sent_status() {
+        let (state, mailer) = state_with_mailer().await;
         let pid = seed_person(&state.surreal, "Aries", "aries@example.com").await;
         let r = call(&state, &json!({ "person_id": pid })).await.unwrap();
+
+        // The message the shared command built — tagged with the template
+        // slug and the person id, which is what makes the `sent_emails`
+        // row the mailer's decorator writes attributable to this person.
+        let sent = mailer.captured();
+        assert_eq!(sent.len(), 1);
+        assert_eq!(sent[0].to, "aries@example.com");
+        assert_eq!(sent[0].template_slug.as_deref(), Some("welcome"));
+        assert_eq!(sent[0].person_id.as_deref(), Some(pid.to_string().as_str()));
+        assert!(
+            sent[0].html_body.is_some(),
+            "the HTML alternative must be set"
+        );
+
         assert_eq!(r["structuredContent"]["person_id"], pid.to_string());
         assert_eq!(r["structuredContent"]["name"], "Aries");
         assert_eq!(r["structuredContent"]["email"], "aries@example.com");
@@ -159,13 +205,26 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn unknown_person_returns_not_found() {
-        let state = state().await;
+    async fn unknown_person_returns_not_found_and_sends_nothing() {
+        let (state, mailer) = state_with_mailer().await;
         let missing = Uuid::now_v7();
         let err = call(&state, &json!({ "person_id": missing }))
             .await
             .unwrap_err();
         assert!(matches!(err, ToolError::NotFound(_)));
+        assert!(mailer.captured().is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_deployment_with_no_mailer_refuses_rather_than_sending_unaudited() {
+        let surreal = mem_surreal().await;
+        let runtime: Arc<dyn workflows::StateMachineRuntime> = Arc::new(InMemoryRuntime::new());
+        let state = McpState::new(surreal, runtime);
+        let pid = seed_person(&state.surreal, "Aries", "aries@example.com").await;
+        let err = call(&state, &json!({ "person_id": pid }))
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ToolError::Internal(_)));
     }
 
     #[tokio::test]
@@ -175,10 +234,20 @@ mod tests {
         assert!(matches!(err, ToolError::InvalidArguments(_)));
     }
 
-    // No in-memory idempotency test: re-send safety is a Restate-broker
-    // property (the invocation is keyed off `person_id`, so a repeat
-    // no-ops on the broker). `InMemoryRuntime` can't model that — once a
-    // person's ephemeral workflow reaches the terminal `END`, a second
-    // `start` has nothing to reset to. The property is exercised at the
-    // wire level in the `workflows` runtime_restate tests.
+    /// The guard ENG-317 exists to hold: this tool reaches the mailer
+    /// through the shared command, not through the Restate trigger. If a
+    /// future edit reintroduces `trigger_welcome` here, no message lands
+    /// in the injected service and this fails.
+    #[tokio::test]
+    async fn the_tool_sends_through_the_injected_mailer_not_the_workflow_trigger() {
+        let (state, mailer) = state_with_mailer().await;
+        let pid = seed_person(&state.surreal, "Libra", "libra@example.com").await;
+        call(&state, &json!({ "person_id": pid })).await.unwrap();
+        assert_eq!(
+            mailer.captured().len(),
+            1,
+            "the welcome must go through the injected EmailService — a send that \
+             leaves it empty went via the worker, which writes no sent_emails row"
+        );
+    }
 }

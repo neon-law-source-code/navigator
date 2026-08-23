@@ -157,8 +157,9 @@ fn the_latest_pointer_is_never_deleted() {
 /// only by a classic PAT holding `read:packages`; `GITHUB_TOKEN` is answered 403
 /// however the permissions block is written. The sweep failed every night it
 /// ever ran on exactly that call, and no permissions change could have fixed it.
-/// The per-package version and delete endpoints are a different lane: a
-/// repository holds `admin` on the packages its own workflows publish.
+/// The per-package version LISTING is a different lane, and the run's own token
+/// reaches it. Deleting needs more — see
+/// [`a_sweep_that_deletes_nothing_names_the_missing_admin_grant`].
 ///
 /// **It should.** A GHCR package is owned by the ORG, and the org owns packages
 /// other repositories push. A named list cannot widen on its own — no repository
@@ -295,6 +296,48 @@ fn the_sweep_holds_only_the_packages_grant() {
         !source().contains("google-github-actions/auth"),
         "the sweep reaches no cloud provider — GHCR is the only registry, and a surviving \
          credential exchange is reach it does not need"
+    );
+}
+
+/// TELL THE TWO 404s APART.
+///
+/// `DELETE .../versions/{id}` answers `404 Package not found` for two unrelated
+/// reasons: a version another run already removed — benign, and the reason one
+/// failed delete must not abandon the rest of the sweep — and a credential that
+/// may not delete anything at all. Publishing an image with `GITHUB_TOKEN`
+/// inherits the `write` role on the resulting package, and `write` can upload
+/// and download but not delete; only `admin` deletes. That role is granted per
+/// package under "Manage Actions access", it has no REST API, and so it is the
+/// one precondition of this sweep that lives outside the repository and cannot
+/// be asserted here.
+///
+/// Which is exactly how it went unnoticed: the sweep listed fine, decided fine,
+/// then emitted one indistinguishable warning per version and a summary that
+/// counted them — reading as the benign 404 the code comments predict. It ran
+/// that way for five consecutive nights, deleting nothing.
+///
+/// So the arithmetic carries the diagnosis. Some deletes failing is ordinary;
+/// EVERY delete failing is not a registry that raced, it is a role that was
+/// never granted, and the run must say so in the words that name the fix.
+#[test]
+fn a_sweep_that_deletes_nothing_names_the_missing_admin_grant() {
+    let script = sweep_script();
+
+    assert!(
+        script.contains(r#""${deleted}" -eq 0"#),
+        "the sweep must branch on having deleted NOTHING. `failed > 0` alone cannot tell a \
+         stale version from a credential that may not delete, and those need different hands"
+    );
+    assert!(
+        script.contains("Manage Actions access"),
+        "a total delete failure must name where the `admin` role is granted. The sweep cannot \
+         set it and no test can assert it, so the run that trips over it is the only place \
+         the remedy can be written"
+    );
+    assert!(
+        script.contains("cannot delete"),
+        "the error must say why `packages: write` was not enough — otherwise the next reader \
+         re-derives it from a 404 that also means something harmless"
     );
 }
 

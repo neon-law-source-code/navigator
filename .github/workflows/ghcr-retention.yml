@@ -39,10 +39,21 @@ name: ghcr retention
 # Naming them is also what lets the credential stay the run's own `GITHUB_TOKEN`.
 # `GET /orgs/{org}/packages` — the discovery call — is reachable only by a
 # classic PAT holding `read:packages`; an Actions token gets a 403 no permissions
-# block can grant. The per-package version and delete endpoints are a different
-# lane: a repository is granted `admin` on the packages its own workflows publish,
-# which is what `packages: write` here spends. So there is no PAT, nothing to
-# rotate, and no cloud provider: GHCR is the only registry.
+# block can grant. The per-package VERSION LISTING is a different lane, and the
+# run's own token reaches it. So there is no PAT, nothing to rotate, and no
+# cloud provider: GHCR is the only registry.
+#
+# DELETING needs one grant this file cannot make. Publishing an image with
+# `GITHUB_TOKEN` links the package to this repository and gives it the `write`
+# role, which uploads and downloads and CANNOT delete — only `admin` deletes.
+# `admin` is granted per package under Package settings → "Manage Actions
+# access", no REST API sets it, and `packages: write` below is the ceiling of
+# what a permissions block can even ask for. So that grant is a real
+# out-of-band precondition of this sweep: without it every delete answers
+# `404 Package not found`, which is also what a version another run already
+# removed answers — the ambiguity that let this sweep read as noise for five
+# consecutive nights while deleting nothing. The failure branch at the foot of
+# the script tells those two 404s apart, because nothing else can.
 #
 # Rehearse a change with the dispatch before a night runs it live —
 # `dry_run: true` lists every deletion it would make and deletes nothing.
@@ -244,7 +255,17 @@ jobs:
           # done its job, and the warnings above scroll away. Fail so the page
           # below fires.
           if [ "${failed}" -gt 0 ]; then
-              echo "::error::${failed} deletions failed"
+              if [ "${deleted}" -eq 0 ]; then
+                  # NOTHING was deleted, which is not the shape of a stale
+                  # version — those are one-offs, and a run that raced another
+                  # still prunes everything else. A uniform failure is the
+                  # missing `admin` role, so name that grant and where it
+                  # lives rather than leaving the next reader to re-derive it
+                  # from a 404 that also has an innocent meaning.
+                  echo "::error::all ${failed} deletions failed and nothing was deleted — this is the package role, not the registry. Grant ${OWNER}/${REPO_NAME} the admin role on each swept package under Package settings → Manage Actions access; publishing inherits write, which cannot delete."
+              else
+                  echo "::error::${failed} deletions failed"
+              fi
               exit 1
           fi
 

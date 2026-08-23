@@ -213,7 +213,7 @@ fn CertificateGate(action: String, csrf_token: String) -> Element {
             hidden: true,
             h2 { "You finished — claim your certificate" }
             p {
-                "Enter your name and email and the Neon Law Foundation will send a PDF certificate of completion."
+                "Enter your name and email and Neon Law will send a PDF certificate of completion."
             }
             form { class: "admin-form workshop-certificate__form", method: "post", action: "{action}",
                 input { r#type: "hidden", name: "csrf_token", value: "{csrf_token}" }
@@ -367,5 +367,22 @@ mod tests {
         // Styling-free class the nightly deploy gate selects on.
         let out = html();
         assert!(out.contains("admin-form"), "e2e form hook: {out}");
+    }
+
+    /// The certificate is the firm's artifact. `workflows::email::certificate`
+    /// renders it under the firm brand and asserts the same absence, so a gate
+    /// promising a certificate from the retired nonprofit would name a sender
+    /// the email it produces never claims.
+    #[test]
+    fn the_gate_names_no_retired_organization_as_the_sender() {
+        let out = html();
+        assert!(
+            !out.contains("Foundation"),
+            "the retired nonprofit cannot be the promised sender: {out}"
+        );
+        assert!(
+            out.contains("Neon Law will send a PDF certificate of completion"),
+            "the firm is the sender the gate names: {out}"
+        );
     }
 }

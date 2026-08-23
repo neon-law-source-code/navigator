@@ -6,13 +6,13 @@ that deployment's `deployments/<name>/secrets.enc.yaml` per [`deployment-secrets
 environment-variable convention is in [`third-party-integrations.md`](third-party-integrations.md). This page is the
 DocuSign specifics.
 
-The signature seam lives in
-[`portal/src/signature.rs`](https://github.com/neon-law-source-code/navigator/blob/main/portal/src/signature.rs) (the
+The signature seam lives under `portal/src/`:
+[`signature.rs`](https://github.com/neon-law-source-code/navigator/blob/main/portal/src/signature.rs) (the
 `SignatureProvider` trait + the DocuSign and stub impls), JWT-grant auth in
-[`portal/src/docusign_auth.rs`](https://github.com/neon-law-source-code/navigator/blob/main/portal/src/docusign_auth.rs),
-the embedded signing route in
-[`portal/src/esign_view.rs`](https://github.com/neon-law-source-code/navigator/blob/main/portal/src/esign_view.rs), and
-the completion [webhook
+[`docusign_auth.rs`](https://github.com/neon-law-source-code/navigator/blob/main/portal/src/docusign_auth.rs), the
+embedded signing route in
+[`esign_view.rs`](https://github.com/neon-law-source-code/navigator/blob/main/portal/src/esign_view.rs), and the
+completion [webhook
 source](https://github.com/neon-law-source-code/navigator/blob/main/portal/src/esignature_webhook.rs). An unconfigured
 vendor falls back to the in-process stub, so a fresh checkout boots and self-tests without a DocuSign account.
 

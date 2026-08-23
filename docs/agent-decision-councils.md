@@ -60,8 +60,8 @@ attorney review. Default to:
 - ♏ Scorpio, ethics and compliance counsel: the fiduciary duty, conflict, UPL, candor, or trust claim everything rests
   on.
 
-Use the full bench only on request, for an unusual practice area, or for firm mission copy. Start with
-Capricorn, then Scorpio, then Aries through Pisces:
+Use the full bench only on request, for an unusual practice area, or for firm mission copy. Start with Capricorn, then
+Scorpio, then Aries through Pisces:
 
 - ♈ Aries, trial attorney: lead with the harm.
 - ♉ Taurus, business attorney: make the language operative.

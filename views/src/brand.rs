@@ -1,14 +1,14 @@
-// Brand-name prose (NeonLaw, NeonLaw Foundation) trips
-// clippy::doc_markdown; the brand names are not code identifiers.
-// Same precedent as views/src/components.rs.
+// Brand-name prose (NeonLaw) trips clippy::doc_markdown; the brand
+// names are not code identifiers. Same precedent as
+// views/src/components.rs.
 #![allow(clippy::doc_markdown)]
 
 //! Site brand: the strings and links that identify the product to
 //! the visitor (name, copyright owner, nav targets).
 //!
-//! Two brands share one binary: [`FIRM_BRAND`] for the law firm,
-//! [`FOUNDATION_BRAND`] for the 501(c)(3). Each page picks its brand
-//! with `PageLayout::with_brand`; the layout never branches on the URL.
+//! One brand serves the binary: [`FIRM_BRAND`] for the law firm. Each
+//! page takes it through `PageLayout::with_brand`; the layout never
+//! branches on the URL.
 //!
 //! Branding defaults to Neon Law's complete in-repository identity. A web
 //! deployment can load a validated [`crate::brand_bundle::BrandManifest`]

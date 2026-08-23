@@ -716,8 +716,8 @@ subtlety that made a provider report `ACTIVE` and then fail every exchange.
 cannot creep back in unremarked. `publish-service` still requests `id-token: write` and no step consumes it — a leftover
 of the retired path, not a second one.
 
-**A fork changes one variable, not three.** `cli::devx::registry::DEFAULT_REGISTRY` is `ghcr.io/neon-law-source-code` and
-`NAVIGATOR_IMAGE_REGISTRY` overrides it. The Artifact Registry path needed a region, a hub project, and a repository
+**A fork changes one variable, not three.** `cli::devx::registry::DEFAULT_REGISTRY` is `ghcr.io/neon-law-source-code`
+and `NAVIGATOR_IMAGE_REGISTRY` overrides it. The Artifact Registry path needed a region, a hub project, and a repository
 name, any two of which could disagree and still render a syntactically valid reference to somewhere no image had ever
 been pushed.
 

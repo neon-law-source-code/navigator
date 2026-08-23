@@ -233,8 +233,8 @@ periodic jobs or durable workflow failures. The architecture details live in [`o
 ## Website publication
 
 Top-level files in `docs/` are already published at `/docs/:slug` by `portal::docs`. The site bakes the docs into the
-binary with `include_str!`, renders markdown under the firm brand, and rewrites top-level doc links to site
-routes. That gives every maintainer and LLM the same documentation surface.
+binary with `include_str!`, renders markdown under the firm brand, and rewrites top-level doc links to site routes. That
+gives every maintainer and LLM the same documentation surface.
 
 Good next steps for the website:
 

@@ -167,10 +167,10 @@ re-roll, a rehearsal, a rollback, or a deployment the workflow deliberately neve
 Deployments are the whole rollout: Navigator serves no Git and mounts no repository volume, so a ship waits on exactly
 the two service rollouts it started.
 
-The published images live on **GHCR**, at `ghcr.io/neon-law-source-code` — `cli::devx::registry::DEFAULT_REGISTRY`, which
-a fork overrides with `NAVIGATOR_IMAGE_REGISTRY`. `ops ship` renders that one value into the `YOUR_IMAGE_REGISTRY` token
-every `image:` line in the embedded manifests carries, so what a node pulls is whatever that variable says and nothing
-else can disagree with it.
+The published images live on **GHCR**, at `ghcr.io/neon-law-source-code` — `cli::devx::registry::DEFAULT_REGISTRY`,
+which a fork overrides with `NAVIGATOR_IMAGE_REGISTRY`. `ops ship` renders that one value into the `YOUR_IMAGE_REGISTRY`
+token every `image:` line in the embedded manifests carries, so what a node pulls is whatever that variable says and
+nothing else can disagree with it.
 
 **Confirm the node pull path against the live cluster rather than inferring it from this repository.** A GHCR package
 inherits its linked repository's visibility and `neon-law-source-code/navigator` is public, so an anonymous pull should

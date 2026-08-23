@@ -412,7 +412,7 @@ route advance a signed retainer to END (see External integrations above).
 ## Why this matters — access to justice
 
 The whole point of the notation system is to make routine legal work cheap, fast, and repeatable without removing the
-attorney. Each design choice traces back to that mission ([`mission.md`](../server/content/marketing/mission.md)):
+attorney. Each design choice traces back to that mission:
 
 - **One template, many matters.** A lawyer encodes a matter once; every future client walks the same validated
   questionnaire. The marginal cost of the next LLC, trust, or annual report trends toward zero, which is what lets the

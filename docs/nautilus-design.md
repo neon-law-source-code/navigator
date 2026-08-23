@@ -87,10 +87,9 @@ record, it is disclosed to the client first and passed through at actual cost wi
 ### Unauthorized practice of law
 
 A licensed attorney reviews and signs **every** outbound dispute letter via the `@approve` gate — the lawyer-reply
-approval bridge already live in production. No letter auto-sends. The attorney is load-bearing, per
-[`mission.md`](../server/content/marketing/mission.md): the fee buys an actual lawyer in the loop, not software
-pretending to be one. Every Nautilus Restate workflow PR reuses this `@approve` gate as its UPL control; none introduces
-an auto-send path.
+approval bridge already live in production. No letter auto-sends. The attorney is load-bearing: the fee buys an actual
+lawyer in the loop, not software pretending to be one. Every Nautilus Restate workflow PR reuses this `@approve` gate as
+its UPL control; none introduces an auto-send path.
 
 ### The engagement letter governs
 

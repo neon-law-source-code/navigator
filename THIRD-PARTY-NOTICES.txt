@@ -1,7 +1,7 @@
 THIRD-PARTY NOTICES
 ===================
 
-The Neon Law Navigator `navigator` binary is copyright Neon Law Foundation and is
+The Neon Law Navigator `navigator` binary is copyright Shook Law PLLC and is
 licensed under AGPL-3.0-only; see LICENSE. It incorporates the third-party
 open-source components listed below, each governed by its own licence, reproduced
 here in full.

@@ -2,10 +2,10 @@
 
 **Neon Law Navigator is open source, and it is currently closed to outside contributions.**
 
-The Neon Law Foundation produces this software; Shook Law PLLC, trading as Neon Law, operates it. Issues and pull
-requests from outside those two organizations are not being accepted right now. This is a capacity decision rather than
-a licensing one: the software runs a live legal practice, every change to it needs review by someone who can weigh the
-practice consequences, and there is not review capacity to offer an outside contributor today.
+Shook Law PLLC, trading as Neon Law, holds the copyright and operates this software; the Neon Law Foundation publishes
+it. Issues and pull requests from outside those two organizations are not being accepted right now. This is a capacity
+decision rather than a licensing one: the software runs a live legal practice, every change to it needs review by
+someone who can weigh the practice consequences, and there is not review capacity to offer an outside contributor today.
 
 **Write to [contact@neonlaw.org](mailto:contact@neonlaw.org).** Anyone is welcome to — a bug you hit, a security
 concern, a fork you are running, a question about the licences, or an interest in contributing when this reopens. The
@@ -21,22 +21,24 @@ users reach it over a network, and you owe those users your modified source. See
 
 The terms are stated here so they are knowable in advance, and so a fork's own authors know where they stand.
 
-Contributions are **inbound = outbound**: anything submitted for inclusion is licensed `AGPL-3.0-only` on the same terms
-the project ships under, `templates/` included — one grant over the tree means there is no second answer depending on
-which directory you touched. If a change adds a blank government form, note that the Foundation licenses nothing in the
-agency's own PDF — only the catalog card, field map, and workflow beside it.
+**A contribution assigns to Shook Law PLLC.** Every author in this repository signed a written agreement to that effect
+before their first commit — the employment or contractor agreement each of them already holds — so the work is the
+firm's on creation. Reopening to outside contributions means a contributor agreement on the same footing, and that is
+worth saying in advance rather than at a merge.
 
-You keep the copyright in what you write. There is no contributor agreement to sign, no copyright assignment, and no bot
-standing between an author and a merge.
+Assignment is the mechanism; the grant to you is the result, and it is unchanged. Everything an author writes reaches
+you under `AGPL-3.0-only` on the same terms as the rest of the tree, `templates/` included — one grant over the tree
+means there is no second answer depending on which directory you touched. What assignment buys is a single holder able
+to grant the whole work, which is what the Foundation's irrevocable right to publish it rests on: a grant assembled from
+many holders is one nobody can reliably renew.
 
-Work by Shook Law PLLC's personnel and contractors assigns to that firm under the employment or contractor agreement
-each of them already holds. That is an arrangement between the firm and its own people; it changes nothing about the
-terms above.
+If a change adds a blank government form, note that nobody here licenses anything in the agency's own PDF — only the
+catalog card, field map, and workflow beside it.
 
 ## What a contribution to a legal-practice repository is not
 
-Two boundaries hold regardless of the licence, and they are why the review bar is what it is. The Foundation produces
-the software, but Neon Law runs a live practice on it, and both facts land on every change.
+Two boundaries hold regardless of the licence, and they are why the review bar is what it is. This tree is published in
+full, and Neon Law runs a live practice on it; both facts land on every change.
 
 **Prototype freely. Publish only source.** Shipped material contains only firm-owned or synthetic identities; non-firm
 email addresses use reserved example domains and phone numbers do not ship. Never put client or matter data, party

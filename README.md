@@ -44,14 +44,19 @@ own voice, the government forms it cannot license, and the marks it reserves. Se
 [`docs/licensing.md`](docs/licensing.md) for why this software is published at all, and <CONTRIBUTING.md> for how
 contributions are licensed.
 
-Copyright (C) 2026 **Neon Law Foundation**.
+Copyright (C) 2026 **Shook Law PLLC**.
 
 ## Trademarks
 
-Copyright and trademark sit with different organizations here, and the distinction is the one a fork needs. The **Neon
-Law Foundation** produces this software and holds the copyright, publishing it under the licence above. **NEON LAW** is
-a registered trademark, U.S. Reg. No. 6,325,650, owned by **Shook Law PLLC**, the law firm that operates the software
-under the mark. The licence grants rights in copyright, not in trademarks.
+Copyright and trademark both sit with **Shook Law PLLC**, the law firm that operates this software, and holding one does
+not enlarge the other. **NEON LAW** is a registered trademark, U.S. Reg. No. 6,325,650, owned by **Shook Law PLLC**. The
+licence grants rights in copyright, not in trademarks, so no amount of permission in `LICENSE` reaches the name — that
+is the one thing a fork does not inherit.
+
+The **Neon Law Foundation** is the publisher: it holds a perpetual, irrevocable, non-exclusive, royalty-free right to
+publish Navigator under `AGPL-3.0-only`, binding the Firm's successors and surviving any change of the Firm's control. A
+copyright holder can normally stop publishing whenever it likes; here it cannot, because a separate organization holds
+the right to go on publishing and can enforce it.
 
 Run it, fork it, redistribute it, and say your work is built on Neon Law Navigator. Do not present your deployment as
 Neon Law: a law firm's mark is how a client identifies who is accountable for their legal work, so a fork trading as

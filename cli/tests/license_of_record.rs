@@ -1,7 +1,7 @@
-//! Pin the licence of record: two organizations, one outbound grant, and two
-//! files that divide the work between them.
+//! Pin the licence of record: one holder, one outbound grant that holder
+//! cannot withdraw, and two files that divide the work between them.
 //!
-//! Root `LICENSE` governs everything the Foundation can license — the Rust
+//! Root `LICENSE` governs everything the Firm can license — the Rust
 //! workspace, the `navigator` CLI, the build and deployment tooling, and the
 //! drafted legal prose under `templates/`. One grant covers the tree, so a
 //! reader never has to work out which instrument applies to the file in front of
@@ -14,14 +14,14 @@
 //! looking at by comparing the file against the canonical text. Prepend a
 //! paragraph and the comparison drops below the threshold, the repository page
 //! stops naming the licence, and a reader who wanted one glance to see AGPL
-//! instead gets an unlabelled file to read. So the Foundation's own words live
-//! in `NOTICE` beside it, which is where everyone else puts them.
+//! instead gets an unlabelled file to read. So our own words live in `NOTICE`
+//! beside it, which is where everyone else puts them.
 //!
-//! **`NOTICE` is where this work meets that text.** The copyright line, the SPDX
-//! tag, § 13 in the Foundation's own voice, the government forms it cannot
-//! license, the marks it reserves, and the terms a contribution arrives under.
-//! `LICENSE` is the instrument; `NOTICE` says how it applies here and narrows
-//! nothing.
+//! **`NOTICE` is where this work meets that text.** The copyright line, the
+//! Foundation's right to publish, the SPDX tag, § 13 in our own voice, the
+//! government forms nobody here can license, the marks the Firm reserves, and
+//! the terms a contribution arrives under. `LICENSE` is the instrument; `NOTICE`
+//! says how it applies here and narrows nothing.
 //!
 //! The Affero clause is the point rather than a detail. Section 13 obliges
 //! anyone who modifies this software and lets users interact with it remotely to
@@ -36,6 +36,14 @@
 //! retraction is therefore structural rather than a list of forbidden clauses —
 //! `LICENSE` must begin at the licence text's first line and end at its last, so
 //! there is nowhere in the file for a contradicting clause to sit.
+//!
+//! What a licence already granted cannot promise is a *further* copy. A holder
+//! is free to stop publishing, and nothing in `LICENSE` stops it — which is how
+//! a project gets relicensed out from under the people building on it. Here the
+//! Foundation holds a perpetual, irrevocable right to go on publishing under
+//! `AGPL-3.0-only`, and that right is the reason this repository's grant outlives
+//! whoever owns the Firm. It is a sentence in a file, so it is asserted below;
+//! losing it would leave the grant looking identical and revocable.
 //!
 //! The trademark reservation is guarded just as hard, and for a reason the
 //! copyright grant does not cover. Copyleft invites forks too, and a fork
@@ -64,25 +72,38 @@ const LICENSE_FILE: &str = "LICENSE";
 /// project keeps them in.
 const NOTICE_FILE: &str = "NOTICE";
 
-/// The copyright holder: the organization that *produces* this software and
-/// makes the outbound grant.
+/// The copyright holder: the organization that owns this work and makes the
+/// outbound grant.
 ///
 /// A rename edits this constant and root `NOTICE` together, and nothing else in
 /// this file. It is the legal person rather than the trade name on purpose: a
 /// copyright notice has to name someone who can hold a copyright, and "Neon Law"
 /// alone is a brand.
-const OWNER: &str = "Neon Law Foundation";
+const OWNER: &str = "Shook Law PLLC";
 
-/// The trademark registrant, which is a *different* organization from the
-/// copyright holder above.
+/// The trademark registrant, which is currently the *same* organization as the
+/// copyright holder above — and is kept a separate constant anyway.
 ///
-/// The Foundation *produces* the software; the Firm *operates* it and owns the
-/// mark, which the Foundation in turn uses under written permission.
-/// Collapsing the two would be the easy mistake, and it is the one that
-/// matters: a reader deciding whether they may ship a fork called "Neon Law"
-/// needs to know the permission they would be asking for does not come from
-/// whoever holds the copyright.
+/// **Asserting `REGISTRANT` no longer proves anything about `OWNER`, or the
+/// reverse.** The two strings are equal, so a test that reaches for either one
+/// passes on both, and the distinctness the trademark guard used to get for free
+/// is gone. What still makes the constants worth keeping apart is that they name
+/// two different facts about the same organization: the mark is registered, the
+/// copyright is held, and either could move without the other. The load the pair
+/// used to carry now sits on `PUBLISHER`, which really is somebody else.
 const REGISTRANT: &str = "Shook Law PLLC";
+
+/// The publisher: the organization holding the right to keep publishing this
+/// work under the grant, and *not* the copyright holder.
+///
+/// This is the one genuinely two-organization fact left in the file, and the
+/// only thing standing between the public grant and a change of control at the
+/// Firm. A licence already granted cannot be revoked, but no holder is obliged
+/// to offer another copy — so "we publish it under the AGPL" is a statement
+/// about today unless somebody else is entitled to go on doing it. Somebody
+/// else is, and it is asserted rather than trusted to review, because the
+/// repository would look exactly the same without it.
+const PUBLISHER: &str = "Neon Law Foundation";
 
 /// The workspace root (this test crate is `cli`).
 fn repo_root() -> PathBuf {
@@ -324,8 +345,8 @@ fn the_notice_puts_this_work_under_the_grant() {
     let notice = read(NOTICE_FILE);
     assert!(
         repo_root().join(NOTICE_FILE).exists(),
-        "{NOTICE_FILE} carries the copyright line and the Foundation's own \
-         statements about the grant, and must exist"
+        "{NOTICE_FILE} carries the copyright line and our own statements about \
+         the grant, and must exist"
     );
     assert!(
         notice.contains(&format!("Copyright (C) 2026 {OWNER}")),
@@ -446,16 +467,23 @@ fn the_repository_root_carries_exactly_one_licence_file() {
     );
 }
 
-/// Contributions are closed, contributions are inbound = outbound, and
-/// `CONTRIBUTING.md` states both without letting either read as the other.
+/// Contributions are closed, a contribution assigns to the Firm, and the grant
+/// out is unchanged — `CONTRIBUTING.md` states all three without letting any of
+/// them read as another.
 ///
-/// These are two independent facts and the file has to keep them apart. Closed
-/// is a *capacity* decision about pull requests, revocable at will. Inbound =
-/// outbound is the licensing position, and it is stated in advance so a fork's
-/// authors know the terms without having to ask. A reader who conflates them
-/// concludes that a closed door means the grant is closed too, which is the one
-/// thing this repository can never say — every copy already taken keeps its
-/// rights.
+/// These are independent facts and the file has to keep them apart. Closed is a
+/// *capacity* decision about pull requests, revocable at will. Assignment is the
+/// ownership position, stated in advance so a fork's authors know the terms
+/// without having to ask. And the grant out is `AGPL-3.0-only` either way, which
+/// is the sentence that stops the other two being misread: a reader who
+/// concludes that a closed door or a signed assignment means the grant is closed
+/// too has reached the one thing this repository can never say, because every
+/// copy already taken keeps its rights.
+///
+/// Assignment is also *why* the outbound grant is durable rather than in tension
+/// with it. One holder can grant the whole work; a grant assembled from many
+/// holders is one nobody can reliably renew, and a contributor who could not be
+/// found to re-sign would be a hole in the public grant, not in a private one.
 ///
 /// So the closed notice must arrive with a way to reach a human. A door with no
 /// address behind it is what makes an open-source project look abandoned rather
@@ -486,15 +514,102 @@ fn contributions_are_closed_but_the_licence_terms_are_stated_anyway() {
          licensed under; closed to pull requests is not closed to the grant"
     );
     assert!(
-        flat.contains("inbound = outbound"),
-        "CONTRIBUTING.md must keep stating the inbound = outbound position, so \
+        flat.contains("assigns to"),
+        "CONTRIBUTING.md must state that a contribution assigns to the Firm, so \
          the terms are knowable in advance and a fork's own authors know where \
-         they stand"
+         they stand; silence on ownership reads as no assignment at all"
     );
     assert!(
         contributing.contains(OWNER),
-        "CONTRIBUTING.md must name `{OWNER}`"
+        "CONTRIBUTING.md must name `{OWNER}` as the party a contribution assigns \
+         to"
     );
+    assert!(
+        !flat.contains("inbound = outbound"),
+        "CONTRIBUTING.md must not claim inbound = outbound: the term means the \
+         inbound licence equals the outbound one and nothing further is taken, \
+         and a written assignment takes more than that. The grant out is still \
+         `{LICENSE}` — say that instead of a term that now reads as a promise \
+         there is no agreement to sign"
+    );
+}
+
+/// The Foundation's right to keep publishing is stated where a reader relies on
+/// it.
+///
+/// This is the assertion the rest of the file cannot make for you. Every other
+/// check here confirms that the grant *is* `AGPL-3.0-only` today, and every one
+/// of them would stay green if the copyright holder decided tomorrow to publish
+/// nothing further. A licence already granted cannot be revoked — but no holder
+/// owes anyone the next copy, which is the whole mechanism behind every
+/// relicensing a community has been angry about.
+///
+/// What closes that gap is a second organization entitled to go on publishing.
+/// The Foundation holds a perpetual, irrevocable, royalty-free right to publish
+/// this work under the grant; it binds the Firm's successors and survives a
+/// change of the Firm's control. That promise lives in prose, in two files, and
+/// nothing about the repository would look different if it were quietly dropped
+/// — which is exactly the shape of claim that needs a test rather than a
+/// reviewer.
+///
+/// `assert_ne!` on the two organizations is the load-bearing line. The point is
+/// not that a particular charity is named; it is that the publisher is somebody
+/// other than the holder, because a right the holder grants itself is no
+/// constraint on the holder at all.
+#[test]
+fn the_publication_right_is_stated_and_held_by_someone_other_than_the_owner() {
+    /// Every word that has to describe the right, and what each one buys.
+    ///
+    /// Not decoration. Drop `perpetual` and it can expire; drop `irrevocable`
+    /// and the Firm can end it; drop `royalty-free` and the Foundation can be
+    /// priced out of exercising it. Any one of them missing leaves a right the
+    /// Firm can outlast.
+    const TERMS: [&str; 3] = ["perpetual", "irrevocable", "royalty-free"];
+
+    /// That an acquisition does not end it. Either spelling will do.
+    const SURVIVAL: [&str; 2] = ["successors", "change of"];
+
+    assert_ne!(
+        OWNER, PUBLISHER,
+        "the publication right has to sit with an organization other than the \
+         copyright holder; a holder cannot meaningfully bind itself, and a \
+         reader relying on the grant's durability is relying on a third party \
+         being able to enforce it"
+    );
+
+    for rel in [NOTICE_FILE, "README.md", "docs/licensing.md"] {
+        // Whitespace-flattened but not lowercased: the organization is matched
+        // by name, and only the window around it is folded for the terms.
+        let flat = read(rel).split_whitespace().collect::<Vec<_>>().join(" ");
+        let named: Vec<usize> = flat.match_indices(PUBLISHER).map(|(i, _)| i).collect();
+
+        assert!(
+            !named.is_empty(),
+            "{rel} must name `{PUBLISHER}` as the organization holding the right \
+             to publish this work"
+        );
+
+        // At least one mention has to carry the whole description. Checking the
+        // file rather than a window is what makes this guard hollow: each of
+        // these words appears elsewhere in prose about the right, so a
+        // file-wide `contains` stays green while the sentence that actually
+        // grants it loses a term.
+        let described = named.iter().any(|&at| {
+            let claim = window(&flat, at, PUBLISHER.len()).to_lowercase();
+            TERMS.iter().all(|term| claim.contains(term))
+                && SURVIVAL.iter().any(|clause| claim.contains(clause))
+        });
+
+        assert!(
+            described,
+            "{rel} names `{PUBLISHER}` but no mention of it describes the right \
+             in full. One sentence has to carry every one of {TERMS:?} and say \
+             the right survives a change of control ({SURVIVAL:?}): a right that \
+             expires, that the Firm can revoke, that can be priced out of use, or \
+             that dies with an acquisition protects nobody — acquisition is the \
+             thing it exists to protect against."
+        );
+    }
 }
 
 #[test]
@@ -520,9 +635,9 @@ fn readme_states_the_license_of_record() {
 ///
 /// The carve-out inside the tree is not a licensing choice at all: the blank
 /// government PDFs under `templates/forms/` are the issuing agency's work. An
-/// AGPL grant over a Nevada state form would claim a copyright the Foundation
-/// does not hold, and an over-claim in a law firm's own terms file is the kind of
-/// error that is quoted back.
+/// AGPL grant over a Nevada state form would claim a copyright nobody here
+/// holds, and an over-claim in a law firm's own terms file is the kind of error
+/// that is quoted back.
 #[test]
 fn the_single_grant_covers_the_templates_tree() {
     let flat = read(NOTICE_FILE)
@@ -539,8 +654,8 @@ fn the_single_grant_covers_the_templates_tree() {
     assert!(
         flat.contains("templates/forms/"),
         "{NOTICE_FILE} must carve out the government forms under \
-         `templates/forms/` — they are the issuing agency's work and the \
-         Foundation grants nothing in them"
+         `templates/forms/` — they are the issuing agency's work and nobody \
+         here grants anything in them"
     );
 
     // The tree the notice describes has to exist, or it is describing a layout
@@ -725,9 +840,12 @@ fn the_image_push_is_unconditional_and_scoped_to_the_publish_jobs() {
 /// surface may mention the mark without it, but a surface that cites the number
 /// is making an ownership claim and must make the right one.
 ///
-/// Note that this asserts `REGISTRANT` and not `OWNER`. The Foundation holds
-/// the copyright and the Firm holds the mark, so a notice that named the
-/// copyright holder here would be handing a fork permission nobody gave it.
+/// This asserts `REGISTRANT`, which now equals `OWNER` — so unlike before, it no
+/// longer also proves the copyright holder is somebody else. It cannot: they are
+/// the same organization. The check that survives is the narrow one it was always
+/// making, that a surface citing the number names the registrant, and the reader
+/// who needs to know a copyright licence does not reach a mark is served by
+/// `docs/licensing.md` rather than by a string comparison here.
 #[test]
 fn trademark_notices_name_the_firm_as_the_registrant() {
     /// The registration itself, used as the anchor for "this line claims
@@ -940,12 +1058,13 @@ fn no_document_reads_section_13_as_a_duty_to_this_project_or_the_public() {
 
 /// Work by the firm's own people assigns to the firm that engaged them.
 ///
-/// `CONTRIBUTING.md` states two separate things and a reader has to be able to
-/// tell them apart. The paragraphs above it are about *outside* contributions,
-/// which arrive inbound = outbound with the author keeping their copyright. This
-/// sentence is about the people the practice engages, whose employment and
-/// contractor agreements assign their work — and those agreements are with
-/// Shook Law PLLC, the firm that engages them and carries the bar licence.
+/// `CONTRIBUTING.md` states the assignment and the grant out, and a reader has
+/// to be able to tell them apart. Every author in this repository signed an
+/// employment or contractor agreement assigning their work before their first
+/// commit, and those agreements are with Shook Law PLLC, the firm that engages
+/// them and carries the bar licence. What reaches a reader is unchanged by any
+/// of that: the work is published under `AGPL-3.0-only` on the same terms as
+/// everything else here.
 ///
 /// Naming the wrong assignee here is not a cosmetic error. An assignment of
 /// copyright is only effective by a written instrument signed by the owner

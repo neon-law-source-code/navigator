@@ -7,11 +7,27 @@
 //! itself, and `cli/tests/no_address_in_telemetry.rs` recognizes them by name
 //! as the sanitized shape.
 //!
-//! Every field name here is one the collector's redaction processor already
-//! allows (`examples/deploy/k8s/observability/otel-collector.yaml`). A field
-//! absent from that `allowed_keys` list is silently deleted on the export
-//! path, so a sanitizer that produced a differently-named field would trade a
-//! leak for a blank.
+//! **Sanitizing a field and getting it past the collector are two different
+//! questions, and only some of these names answer the second.** The redaction
+//! processor is fail-closed
+//! (`examples/deploy/k8s/observability/otel-collector.yaml`): a field absent
+//! from its `allowed_keys` list is deleted on the export path. For the address
+//! sanitizers — [`person_id_field`] and [`domain_of`] — the field name was
+//! therefore chosen to be one that list already carries, because a
+//! differently-named field would have traded a leak for a blank.
+//!
+//! [`argument_digest`] and [`argument_count`] are deliberately *not* held to
+//! that, and the reason is worth stating so the omission is not read as an
+//! oversight. They serve the agent-authorization records in `a2a.rs`, and the
+//! whole of that record is already stripped on export: `allowed_keys` carries
+//! no `tool`, no `decision`, no `task_id`, and no `event`, so its exported form
+//! is `person_id` and `step` and is not an audit trail whatever these two
+//! fields do. Their value is in the retained stdout and Cloud Logging copy,
+//! which is where `a2a::audit_authorization` says the record of authority
+//! lives. Making the *exported* record usable would take `tool`, `decision`,
+//! and `task_id` as well — a decision about what the telemetry pipeline is
+//! for, which belongs with the log-lake work and its deferred value-level and
+//! log-body scrubs, not with a content fix.
 
 /// Render a person's id for an audit field, or `none`.
 ///

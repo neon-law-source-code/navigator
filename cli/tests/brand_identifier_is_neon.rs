@@ -77,10 +77,6 @@ const SKIPPED_PATH_FRAGMENTS: &[&str] = &[
 const SKIPPED_FILES: &[&str] = &[
     // This test, whose own table is written in the identifier it forbids.
     "brand_identifier_is_neon.rs",
-    // `license_of_record` names the licence files this workspace must not
-    // carry, and `FIAT_LICENSE.md` is one of them. A check that a file is
-    // absent cannot be written without naming the file.
-    "license_of_record.rs",
     // Generated from the dependency tree, so `fiat` in them belongs to somebody
     // else's crate and no edit here would remove it.
     "THIRD-PARTY-NOTICES.txt",

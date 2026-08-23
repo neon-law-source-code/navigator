@@ -123,6 +123,7 @@ pub fn document_with_base(base: &str) -> Value {
         "/app/api/people": {
           "get": {
             "summary": "List all people",
+            "x-mcp-tool": "aida_show_person",
             "responses": {
               "200": { "description": "Person list", "content": { "application/json": {
                 "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Person" } }
@@ -131,6 +132,7 @@ pub fn document_with_base(base: &str) -> Value {
           },
           "post": {
             "summary": "Create a person",
+            "x-mcp-tool": "aida_create_person",
             "description":
               "Creates one Person row. The `role` field defaults conservatively to `client`; \
                supported values are `owner`, `admin`, `lawyer`, `clerk`, and `client`, and non-empty invalid \
@@ -250,6 +252,7 @@ pub fn document_with_base(base: &str) -> Value {
         "/app/api/people/{id}/welcome": {
           "post": {
             "summary": "Send this person the welcome email",
+            "x-mcp-tool": "aida_send_welcome_email",
             "description":
               "Renders and dispatches the welcome email to the Person, journaling one \
                `sent_emails` row per attempt. Authorization: the caller's `persons.role` must be \
@@ -280,6 +283,7 @@ pub fn document_with_base(base: &str) -> Value {
         "/app/api/entities": {
           "get": {
             "summary": "List all entities",
+            "x-mcp-tool": "aida_list_entities",
             "responses": {
               "200": { "description": "Entity list", "content": { "application/json": {
                 "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Entity" } }
@@ -413,6 +417,7 @@ pub fn document_with_base(base: &str) -> Value {
         "/app/api/jurisdictions": {
           "get": {
             "summary": "List all jurisdictions",
+            "x-mcp-tool": "aida_list_jurisdictions",
             "responses": {
               "200": { "description": "Jurisdiction list", "content": { "application/json": {
                 "schema": { "type": "array",
@@ -435,6 +440,7 @@ pub fn document_with_base(base: &str) -> Value {
         "/app/api/projects": {
           "get": {
             "summary": "List the caller's matters",
+            "x-mcp-tool": "aida_list_projects",
             "description":
               "Every matter the caller may see, already scoped — the directory lens for \
                Owner/Admin, participation for lawyer/clerk, the client's own matters for a client. \
@@ -447,6 +453,7 @@ pub fn document_with_base(base: &str) -> Value {
           },
           "post": {
             "summary": "Open a matter",
+            "x-mcp-tool": "aida_create_project",
             "description":
               "Opens a new matter: it runs the conflict check, requires the opening attorney's \
                conflict attestation, designates both DRIs, and provisions the matter's repository, \
@@ -731,6 +738,7 @@ pub fn document_with_base(base: &str) -> Value {
           },
           "post": {
             "summary": "Add a person to a matter's participation ledger",
+            "x-mcp-tool": "aida_link_person_project",
             "description":
               "Adds a person to a matter as a participant. The matter and the person must \
                pre-exist, and a person appears on a matter at most once. The body names only the \
@@ -939,6 +947,7 @@ pub fn document_with_base(base: &str) -> Value {
           },
           "post": {
             "summary": "Open a notation on a matter",
+            "x-mcp-tool": "aida_create_notation",
             "description":
               "Opens a notation on an existing matter from a template. The template is read from the \
                matter's own git repo, auto-saved as an immutable version, and the notation opens \
@@ -1027,6 +1036,7 @@ pub fn document_with_base(base: &str) -> Value {
         "/app/api/notations/{id}/answers": {
           "post": {
             "summary": "Answer a notation's current questionnaire step",
+            "x-mcp-tool": "aida_answer_notation",
             "description":
               "Records an answer to the step the notation's questionnaire is currently asking, \
                attributed to the acting lawyer (the notation's bound Person stays the respondent). \
@@ -2098,6 +2108,7 @@ pub fn document_with_base(base: &str) -> Value {
         "/app/api/templates/validate": {
           "post": {
             "summary": "Lint a Template markdown file without saving it",
+            "x-mcp-tool": "aida_validate_notation",
             "description":
               "Runs the Neon Law Navigator rule engine over the supplied markdown and returns the \
                violations. Stateless: no row is inserted and no Template is registered; nothing \
@@ -2669,6 +2680,56 @@ pub fn documented_operations() -> Vec<(String, String)> {
     ops
 }
 
+/// MCP tools that legitimately carry no `x-mcp-tool` annotation, each
+/// with the reason it has no `/app/api` twin. An entry here is a
+/// decision; the absence of an entry is what
+/// `every_tool_names_an_api_operation` refuses.
+///
+/// Keep this list short. The orphan guard is the ratchet that keeps a new
+/// tool going through the same command layer the API route uses instead
+/// of reaching into `store::` on its own — an exemption opts a tool out
+/// of that pressure, so it needs a reason a reader can disagree with.
+pub const TOOLS_WITHOUT_AN_API_OPERATION: &[(&str, &str)] = &[
+    (
+        "aida_list_tools",
+        "Protocol, not capability: it enumerates the catalog itself. The \
+         OpenAPI document is the API surface's own equivalent, so an \
+         operation for it would be circular.",
+    ),
+    (
+        "aida_bulk_import",
+        "No route today. Bulk contact loading is agent-only; the API door \
+         exposes single-record `POST /app/api/people` and nothing that \
+         takes a batch.",
+    ),
+    (
+        "aida_spawn_legal_council",
+        "No route today. The council is an authoring aid that renders a \
+         review inline and writes nothing, so there is no command for an \
+         API operation to share.",
+    ),
+];
+
+/// Every `x-mcp-tool` value in [`document`], paired with the operation
+/// carrying it, as `(tool, METHOD, path)`.
+#[must_use]
+pub fn annotated_mcp_tools() -> Vec<(String, String, String)> {
+    let doc = document();
+    let mut out = Vec::new();
+    if let Some(paths) = doc["paths"].as_object() {
+        for (path, methods) in paths {
+            if let Some(methods) = methods.as_object() {
+                for (verb, op) in methods {
+                    if let Some(tool) = op.get("x-mcp-tool").and_then(|v| v.as_str()) {
+                        out.push((tool.to_string(), verb.to_uppercase(), path.clone()));
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -3004,6 +3065,97 @@ mod tests {
         assert!(
             d["paths"]["/mcp"].is_null(),
             "/mcp is JSON-RPC and out of scope for this OpenAPI doc"
+        );
+    }
+
+    /// Direction 1: every `x-mcp-tool` names a real tool. Catches a typo
+    /// or a reference left behind by a renamed tool.
+    #[test]
+    fn every_x_mcp_tool_names_a_real_tool() {
+        let catalog: Vec<String> = mcp::tools::list_tools()
+            .iter()
+            .filter_map(|t| t["name"].as_str().map(String::from))
+            .collect();
+        let annotated = super::annotated_mcp_tools();
+        assert!(!annotated.is_empty(), "the annotations went missing");
+        for (tool, verb, path) in &annotated {
+            assert!(
+                catalog.contains(tool),
+                "`{verb} {path}` names `{tool}`, which is not in mcp::tools::list_tools(); \
+                 got catalog {catalog:?}"
+            );
+        }
+    }
+
+    /// Direction 2, and the point of the pair: every tool in the catalog
+    /// is named by at least one operation, or is exempt with a reason.
+    ///
+    /// This is the ratchet. A new tool cannot merge without either naming
+    /// its API operation — which is the pressure that keeps it going
+    /// through the same command layer rather than reaching into `store::`
+    /// on its own — or being written down here as a deliberate exception.
+    #[test]
+    fn every_tool_names_an_api_operation() {
+        let annotated: Vec<String> = super::annotated_mcp_tools()
+            .into_iter()
+            .map(|(tool, _, _)| tool)
+            .collect();
+        let exempt: Vec<&str> = super::TOOLS_WITHOUT_AN_API_OPERATION
+            .iter()
+            .map(|(name, _)| *name)
+            .collect();
+
+        for descriptor in mcp::tools::list_tools() {
+            let name = descriptor["name"].as_str().unwrap();
+            assert!(
+                annotated.iter().any(|t| t == name) || exempt.contains(&name),
+                "`{name}` is in the MCP catalog but no OpenAPI operation carries \
+                 `x-mcp-tool: {name}`. Annotate the operation it shares a command with, \
+                 or add it to TOOLS_WITHOUT_AN_API_OPERATION with the reason it has none."
+            );
+        }
+    }
+
+    /// An exemption must be a decision, not an omission: it has to name a
+    /// real tool and carry a written reason.
+    #[test]
+    fn every_exemption_names_a_real_tool_and_gives_a_reason() {
+        let catalog: Vec<String> = mcp::tools::list_tools()
+            .iter()
+            .filter_map(|t| t["name"].as_str().map(String::from))
+            .collect();
+        let annotated: Vec<String> = super::annotated_mcp_tools()
+            .into_iter()
+            .map(|(tool, _, _)| tool)
+            .collect();
+
+        for (name, reason) in super::TOOLS_WITHOUT_AN_API_OPERATION {
+            assert!(
+                catalog.contains(&(*name).to_string()),
+                "`{name}` is exempted but is not a tool in the catalog"
+            );
+            assert!(
+                reason.len() > 30,
+                "`{name}`'s exemption reason is too thin to argue with: `{reason}`"
+            );
+            assert!(
+                !annotated.iter().any(|t| t == name),
+                "`{name}` is both exempted and annotated — drop the exemption"
+            );
+        }
+    }
+
+    /// The annotation is on the operation, so a tool inherits that route's
+    /// documented authorization failures. Spot-check the shape holds for a
+    /// mutating twin rather than trusting the placement.
+    #[test]
+    fn an_annotated_mutating_operation_still_documents_its_authz_failures() {
+        let doc = document();
+        let op = &doc["paths"]["/app/api/people/{id}/welcome"]["post"];
+        assert_eq!(op["x-mcp-tool"], "aida_send_welcome_email");
+        assert!(
+            op["responses"]["403"].is_object() || op["responses"]["401"].is_object(),
+            "expected a documented authz failure on the annotated operation: {op}"
         );
     }
 }

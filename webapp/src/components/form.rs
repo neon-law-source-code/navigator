@@ -68,6 +68,7 @@ pub enum FieldKind {
         blank_label: String,
         people: Vec<PersonChoice>,
         selected: Option<String>,
+        search: Option<String>,
         disabled: bool,
     },
     Checkbox {
@@ -215,6 +216,7 @@ impl Field {
                 blank_label: blank_label.into(),
                 people,
                 selected,
+                search: None,
                 disabled: false,
             },
         )
@@ -228,6 +230,17 @@ impl Field {
         value: impl Into<String>,
     ) -> Self {
         Self::input(label, name, value, "number")
+    }
+
+    /// Preserve the non-authoritative filter text for a person picker after a
+    /// GET round trip. The selected person id remains the only submitted
+    /// foreign-key value.
+    #[must_use]
+    pub fn person_search(mut self, search: Option<String>) -> Self {
+        if let FieldKind::PersonPicker { search: value, .. } = &mut self.kind {
+            *value = search;
+        }
+        self
     }
 
     /// The country picker a `country` question renders: a required `value`
@@ -609,6 +622,7 @@ impl Field {
                 blank_label,
                 people,
                 selected,
+                search,
                 disabled,
             } => rsx! {
                 PersonPicker {
@@ -617,6 +631,7 @@ impl Field {
                     blank_label: blank_label.clone(),
                     people: people.clone(),
                     selected: selected.clone(),
+                    search: search.clone(),
                     help: picker_help,
                     error: picker_error,
                     required,

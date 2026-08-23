@@ -1,9 +1,8 @@
 //! A searchable picker for a foreign-key reference to a [`Person`](PersonChoice).
 //!
 //! The control keeps the submitted value as the person's UUID. Its separate
-//! search input narrows the native `<select>` by name or email after hydration,
-//! while the complete select remains server-rendered for a no-JavaScript form
-//! submission.
+//! search input narrows the native `<select>` by name or email on a regular
+//! GET submission, while the selected value remains a native form field.
 
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -62,10 +61,10 @@ fn alphabetized(mut people: Vec<PersonChoice>) -> Vec<PersonChoice> {
     people
 }
 
-/// A searchable native person selector.
+/// A server-filterable native person selector.
 ///
-/// `name` is the foreign-key field the surrounding form posts. The filter has
-/// no name, so it is never mistaken for a person reference at the write door.
+/// `name` is the foreign-key field the surrounding form posts. The separate
+/// `{name}_search` query field never becomes the stored person reference.
 #[component]
 pub fn PersonPicker(
     label: String,
@@ -73,15 +72,16 @@ pub fn PersonPicker(
     blank_label: String,
     people: Vec<PersonChoice>,
     #[props(default)] selected: Option<String>,
+    #[props(default)] search: Option<String>,
     #[props(default)] help: Option<String>,
     #[props(default)] error: Option<String>,
     #[props(default)] required: bool,
     #[props(default)] disabled: bool,
     #[props(default)] control_id: Option<String>,
 ) -> Element {
-    let mut query = use_signal(String::new);
     let control_id = control_id.unwrap_or_else(|| name.clone());
     let search_id = format!("{control_id}-search");
+    let search_name = format!("{name}_search");
     let help_id = format!("{control_id}-help");
     let error_id = format!("{control_id}-error");
     let described_by = match (error.is_some(), help.is_some()) {
@@ -90,10 +90,11 @@ pub fn PersonPicker(
         (false, true) => Some(help_id.clone()),
         (false, false) => None,
     };
+    let search = search.unwrap_or_default();
     let filtered: Vec<PersonChoice> = alphabetized(people)
         .into_iter()
         .filter(|person| {
-            matches(person, &query()) || selected.as_deref() == Some(person.id.as_str())
+            matches(person, &search) || selected.as_deref() == Some(person.id.as_str())
         })
         .collect();
     let match_label = if filtered.len() == 1 {
@@ -121,10 +122,18 @@ pub fn PersonPicker(
                 class: "nav-input",
                 r#type: "search",
                 id: "{search_id}",
+                name: "{search_name}",
                 placeholder: "Type a name or email",
-                value: "{query}",
+                value: "{search}",
                 disabled,
-                oninput: move |event| query.set(event.value()),
+            }
+            button {
+                class: "nav-btn nav-btn--secondary",
+                r#type: "submit",
+                formmethod: "get",
+                formnovalidate: true,
+                disabled,
+                "Filter people"
             }
             p { class: "person-picker__matches", "aria-live": "polite",
                 "{filtered.len()} {match_label} match"
@@ -207,6 +216,12 @@ mod tests {
         );
         assert!(html.contains(r#"name="client_dri_person_id""#), "{html}");
         assert!(
+            html.contains(r#"name="client_dri_person_id_search""#),
+            "{html}"
+        );
+        assert!(html.contains("Filter people"), "{html}");
+        assert!(html.contains("formnovalidate"), "{html}");
+        assert!(
             html.contains("Ada Client &#60;ada@example.com&#62; — client"),
             "{html}"
         );
@@ -214,5 +229,24 @@ mod tests {
             html.contains("Zoe Client &#60;zoe@example.com&#62;"),
             "{html}"
         );
+    }
+
+    #[test]
+    fn search_round_trip_narrows_the_rendered_options() {
+        fn app() -> Element {
+            rsx! {
+                PersonPicker {
+                    label: "Client".to_string(),
+                    name: "client_dri_person_id".to_string(),
+                    blank_label: "Pick a client".to_string(),
+                    people: people(),
+                    search: Some("zoe".to_string()),
+                }
+            }
+        }
+        let html = dioxus_ssr::render_element(app());
+        assert!(html.contains("Zoe Client"), "{html}");
+        assert!(!html.contains("Ada Client"), "{html}");
+        assert!(html.contains("1 person match"), "{html}");
     }
 }

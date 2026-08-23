@@ -74,7 +74,7 @@ That is not an incidental fit. Nobody downloads a legal-services platform to run
 portal for clients, which is the exact act § 13 attaches to. So the clause lands on the way this software is actually
 used rather than on an edge case, and it makes the exchange symmetric: anyone may run a practice on Navigator, and a
 client of that practice can see the software their matter is being handled by. A firm that improves it while operating
-it for clients publishes those improvements, on the same terms it received.
+it for clients owes those clients the source of the version they are using, on the same terms it received.
 
 Two things it does **not** do:
 
@@ -89,7 +89,7 @@ Two things it does **not** do:
    work, and on keeping the copyright notices intact — which is `LICENSE` and `NOTICE`, travelling together.
 2. **Publish your changes when you convey the work.** § 5 covers conveying modified source; § 6 covers conveying a
    built binary, which must be accompanied by the corresponding source.
-3. **Publish your changes when you operate it for others.** § 13, above.
+3. **Offer your source to the users you operate it for.** § 13, above.
 4. **Rename it.** Not a copyright obligation at all — see [Trademarks](#trademarks). The brand manifest
    (`views::brand_bundle`) is the seam.
 
@@ -129,9 +129,10 @@ Three consequences follow, and they are the trade being made:
 - **No trade-secret protection.** Anything published cannot be un-published, so no mechanism in this tree is a secret.
 - **The confidentiality boundary is procedural.** A publication path exists, so the no-client-data rule is enforced by
   a load-bearing test on every pull request — see [`agent-workflows.md`](agent-workflows.md#no-client-data-in-the-repo).
-- **Forks are expected, and they come back.** Another firm running this software is the point, and under § 13 a firm
-  that improves it while operating it for clients publishes those improvements. The brand manifest
-  (`views::brand_bundle`) exists so a fork renames itself without patching sources.
+- **Forks are expected, and each one answers to its own users.** Another firm running this software is the point, and
+  § 13 attaches exactly there: a firm that improves Navigator while operating it for clients owes those clients the
+  source of the version they are using. It owes this project nothing — no fork has to send anything here, and none is
+  asked to. The brand manifest (`views::brand_bundle`) exists so a fork renames itself without patching sources.
 
 The trademark reservation below protects the thing that actually distinguishes the practice, which is why the software
 itself does not need protecting.

@@ -531,8 +531,8 @@ fn hex_lower(bytes: &[u8]) -> String {
 /// this guard is what keeps it fixed.
 #[test]
 fn the_filled_action_button_outranks_the_theme_link_rule() {
-    let css = std::fs::read_to_string(public_dir().join("css/foundation-marketing.css"))
-        .expect("read the Foundation marketing stylesheet");
+    let css = std::fs::read_to_string(public_dir().join("css/marketing-page.css"))
+        .expect("read the marketing-page stylesheet");
     assert!(
         css.contains(".nav-theme a.fm-action__link"),
         "the filled action button must be qualified so it beats `.nav-theme a`"

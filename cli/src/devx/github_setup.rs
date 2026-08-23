@@ -117,7 +117,7 @@ impl GovernedForge {
 }
 
 /// The one repository carrying more than [`COMMON_POLICY`].
-const NAVIGATOR_SLUG: &str = "neon-law-foundation/navigator";
+const NAVIGATOR_SLUG: &str = "neon-law-source-code/navigator";
 
 /// The organization Navigator itself lives in, and the one organization
 /// admissible on every run.
@@ -135,7 +135,7 @@ fn public_organization() -> &'static str {
 /// The Homebrew tap, the one administered repository outside the merge gate.
 ///
 /// See [`TAP_POLICY`] for why a publication surface cannot carry one.
-const TAP_SLUG: &str = "neon-law-foundation/homebrew-navigator";
+const TAP_SLUG: &str = "neon-law-source-code/homebrew-navigator";
 
 const REPOSITORY_ENV: &str = "GITHUB_REPOSITORY";
 const API_BASE_ENV: &str = "NAVIGATOR_GITHUB_API_BASE";
@@ -479,11 +479,11 @@ struct RepositoryPolicy {
     /// the product. Repository creation reads this — ENG-282 — and this command
     /// only carries it, which is why no [`Action`] writes it.
     default_visibility: Visibility,
-    /// Whether this repository publishes the Foundation's open-source
-    /// governance file set: `LICENSE` carrying the `AGPL-3.0-only` text exactly
-    /// as the FSF publishes it, `NOTICE` carrying the Foundation's own
-    /// statements, and a `CONTRIBUTING.md` stating that contributions are
-    /// closed.
+    /// Whether this repository publishes the Firm's source-available
+    /// governance file set: `LICENSE` carrying the `BUSL-1.1` text with its
+    /// parameters filled in and its terms otherwise unaltered, `NOTICE` carrying
+    /// the Firm's own statements, and a `CONTRIBUTING.md` stating that
+    /// contributions are closed.
     ///
     /// False for a client matter, and not as an omission: a repository holding
     /// one client's confidential material publishes nothing and grants nobody
@@ -1699,7 +1699,7 @@ mod tests {
             "the tap must resolve to its own policy, not the common gate"
         );
         assert_eq!(
-            policy_for("NEON-LAW-FOUNDATION/Homebrew-Navigator"),
+            policy_for("NEON-LAW-SOURCE-CODE/Homebrew-Navigator"),
             TAP_POLICY,
             "slugs are matched case-insensitively, as they are for Navigator itself"
         );
@@ -2174,14 +2174,14 @@ mod tests {
     #[test]
     fn policy_is_navigator_only_for_navigator() {
         assert_eq!(
-            policy_for("neon-law-foundation/navigator"),
+            policy_for("neon-law-source-code/navigator"),
             NAVIGATOR_POLICY
         );
         assert_eq!(
-            policy_for("NEON-LAW-FOUNDATION/Navigator"),
+            policy_for("NEON-LAW-SOURCE-CODE/Navigator"),
             NAVIGATOR_POLICY
         );
-        for slug in ["neon-law-foundation/other", "NEON-LAW-FOUNDATION/ux"] {
+        for slug in ["neon-law-source-code/other", "NEON-LAW-SOURCE-CODE/ux"] {
             assert_eq!(policy_for(slug), COMMON_POLICY, "{slug}");
         }
     }
@@ -2197,7 +2197,7 @@ mod tests {
     /// client matter.
     #[test]
     fn the_two_organizations_get_different_policies() {
-        let public = policy_for("neon-law-foundation/some-repository");
+        let public = policy_for("neon-law-source-code/some-repository");
         let client = policy_for("a-deployment-org/cruller-v-prine");
 
         assert_ne!(public, client);
@@ -2225,7 +2225,7 @@ mod tests {
     /// organization is a different organization.
     #[test]
     fn only_the_public_organization_defaults_to_public() {
-        for slug in [NAVIGATOR_SLUG, TAP_SLUG, "NEON-LAW-FOUNDATION/anything"] {
+        for slug in [NAVIGATOR_SLUG, TAP_SLUG, "NEON-LAW-SOURCE-CODE/anything"] {
             assert_eq!(
                 policy_for(slug).default_visibility,
                 Visibility::Public,
@@ -2235,7 +2235,7 @@ mod tests {
         for slug in [
             "ux/core",
             "a-deployment-org/cruller-v-prine",
-            "neon-law-foundation-evil/navigator",
+            "neon-law-source-code-evil/navigator",
         ] {
             assert_eq!(
                 policy_for(slug).default_visibility,
@@ -2327,9 +2327,9 @@ mod tests {
     #[test]
     fn origin_remote_off_the_governed_host_is_refused() {
         for remote in [
-            "https://elsewhere.example/neon-law-foundation/navigator.git",
-            "git@elsewhere.example:neon-law-foundation/navigator.git",
-            "https://forge.example.evil.test/neon-law-foundation/navigator.git",
+            "https://elsewhere.example/neon-law-source-code/navigator.git",
+            "git@elsewhere.example:neon-law-source-code/navigator.git",
+            "https://forge.example.evil.test/neon-law-source-code/navigator.git",
         ] {
             let error = slug_from_remote(remote, A_GOVERNED_HOST)
                 .unwrap_err()
@@ -2364,7 +2364,7 @@ mod tests {
         for slug in [
             NAVIGATOR_SLUG,
             TAP_SLUG,
-            "NEON-LAW-FOUNDATION/Navigator",
+            "NEON-LAW-SOURCE-CODE/Navigator",
             "a-deployment-org/cruller-v-prine",
             "A-DEPLOYMENT-ORG/cruller-v-prine",
         ] {
@@ -2374,7 +2374,7 @@ mod tests {
         for slug in [
             "ux/core",
             "some-other-org/navigator",
-            "neon-law-foundation-evil/navigator",
+            "neon-law-source-code-evil/navigator",
         ] {
             assert!(!forge.admits(slug), "{slug} must be refused");
             let error = forge.refuse("the repository named", slug).to_string();
@@ -2484,7 +2484,7 @@ mod tests {
         assert_eq!(validate_slug("ux/core").unwrap(), "ux/core");
         assert_eq!(validate_slug("/ux/core/").unwrap(), "ux/core");
         for value in [
-            "https://forge.example/neon-law-foundation/navigator",
+            "https://forge.example/neon-law-source-code/navigator",
             "neon-law",
             "a/b/c",
             "",

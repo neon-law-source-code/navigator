@@ -13,7 +13,7 @@
 //!
 //! ## Why GHCR and not Artifact Registry
 //!
-//! Navigator is public and AGPL-3.0-only, so there is nothing for a
+//! Navigator's source is public, so there is nothing for a
 //! private per-org registry to protect. GHCR publishes from the same workflow
 //! that builds the images, on the free tier a public repository gets, and it
 //! authenticates pushes with the run's own `GITHUB_TOKEN` — which retires an
@@ -36,7 +36,7 @@ use anyhow::{bail, Context, Result};
 /// The registry namespace every image hangs off when `NAVIGATOR_IMAGE_REGISTRY`
 /// is unset. A fork overrides the variable rather than editing this constant,
 /// keeping the white-label seam intact.
-pub const DEFAULT_REGISTRY: &str = "ghcr.io/neon-law-foundation";
+pub const DEFAULT_REGISTRY: &str = "ghcr.io/neon-law-source-code";
 
 /// Resolve the registry prefix from the environment.
 ///
@@ -317,7 +317,7 @@ mod tests {
         let reg = DEFAULT_REGISTRY;
         assert_eq!(
             image_ref(reg, "navigator-web", "26.6.23"),
-            "ghcr.io/neon-law-foundation/navigator-web:26.6.23"
+            "ghcr.io/neon-law-source-code/navigator-web:26.6.23"
         );
     }
 
@@ -330,12 +330,12 @@ mod tests {
     /// exist — two confusing 404s rather than one clear error.
     #[test]
     fn the_default_registry_is_a_host_and_a_namespace() {
-        assert_eq!(DEFAULT_REGISTRY, "ghcr.io/neon-law-foundation");
+        assert_eq!(DEFAULT_REGISTRY, "ghcr.io/neon-law-source-code");
         let (host, namespace) = DEFAULT_REGISTRY
             .split_once('/')
             .expect("the registry names a host and a namespace");
         assert_eq!(host, "ghcr.io");
-        assert_eq!(namespace, "neon-law-foundation");
+        assert_eq!(namespace, "neon-law-source-code");
     }
 
     /// A deployment that names no registry falls back to the default rather

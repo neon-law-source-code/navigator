@@ -9,10 +9,9 @@
 //! `<host>::public_routes()` + `<host>::public_dioxus_routers()`, the same pair
 //! each `main` hands to the run loop.
 //!
-//! The copy is per-deployment: the firm builds its pair from `neon/content/*.md`
-//! and the Foundation from `neon/content/*.md`, so the two can diverge without
-//! editing one another. They start from a common baseline and both carry the
-//! text-messaging (SMS) program disclosures.
+//! The copy is per-deployment: the site builds its pair from
+//! `neon/content/*.md`, so a white-label tenant can diverge without editing
+//! this one. Both carry the text-messaging (SMS) program disclosures.
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
@@ -42,10 +41,9 @@ fn compose(
 
 /// The site, composed exactly as the binary composes it.
 ///
-/// One helper where there were two. `firm_app` and `foundation_app` named the
-/// two hosts while they were separate deployments; they became the same
-/// expression when the crates merged, and keeping both would have implied a
-/// separation the router no longer has.
+/// One helper where there were two, from when the firm and a nonprofit were
+/// separate deployments. They became the same expression when the crates
+/// merged, and the second face is retired outright now.
 async fn app() -> Router {
     let state = state().await;
     let dioxus = neon::public_dioxus_routers(&state);
@@ -85,22 +83,6 @@ async fn the_firm_host_serves_both_legal_documents() {
         html.contains("<title>Neon Law | Terms of Service</title>"),
         "{html}"
     );
-    assert!(html.contains("No Legal Advice"), "{html}");
-}
-
-#[tokio::test]
-async fn the_foundation_host_serves_both_legal_documents() {
-    // The Foundation's Dioxus half used to be empty by construction. These two
-    // pages are the first entries in it, so a regression that drops them would
-    // otherwise be invisible until someone opened the page.
-    let app = app().await;
-
-    let (status, html) = get(&app, "/privacy").await;
-    assert_eq!(status, StatusCode::OK);
-    assert!(html.contains("Donor Privacy"), "{html}");
-
-    let (status, html) = get(&app, "/terms").await;
-    assert_eq!(status, StatusCode::OK);
     assert!(html.contains("No Legal Advice"), "{html}");
 }
 
@@ -168,12 +150,10 @@ async fn the_terms_and_the_footer_name_the_same_engagement_entity() {
 
 /// `/terms` names one firm however the reader reached it.
 ///
-/// The firm's pages and the Foundation's share this document, and they now
-/// share a binary too. A reader arriving from `/foundation` is being told who
-/// they would engage, and that answer cannot depend on the path they came in
-/// through — the Foundation does not practise law, so an engagement sentence
-/// that varied by entry point would be telling some readers they are hiring a
-/// 501(c)(3).
+/// Every public page shares this document. A reader is being told who they
+/// would engage, and that answer cannot depend on the path they came in
+/// through: an engagement sentence that varied by entry point would tell some
+/// readers they are hiring somebody other than the firm of record.
 #[tokio::test]
 async fn the_terms_name_one_firm_however_the_reader_arrived() {
     let app = app().await;
@@ -185,7 +165,7 @@ async fn the_terms_name_one_firm_however_the_reader_arrived() {
     );
     assert!(
         !collapsed.contains("engagement agreement with the Neon Law Foundation"),
-        "the nonprofit renders no legal services: {collapsed}"
+        "no other organization renders these legal services: {collapsed}"
     );
 }
 
@@ -306,29 +286,6 @@ async fn the_firm_terms_carry_the_sms_program_disclosures() {
     assert!(
         html.contains(r#"href="/privacy""#),
         "the SMS terms must link the privacy policy: {html}"
-    );
-}
-
-/// Both deployments run the messaging program, so the Foundation host carries
-/// the same disclosures. This is the per-deployment split working the other
-/// way: a regression that dropped `neon/content` back onto the firm's file, or
-/// stripped the SMS copy from only one side, is what this catches.
-#[tokio::test]
-async fn the_foundation_host_also_carries_the_sms_program() {
-    let app = app().await;
-
-    let (_, privacy) = get(&app, "/privacy").await;
-    let privacy = privacy.split_whitespace().collect::<Vec<_>>().join(" ");
-    assert!(
-        privacy.contains("Message frequency varies"),
-        "the Foundation privacy policy must disclose message frequency: {privacy}"
-    );
-
-    let (_, terms) = get(&app, "/terms").await;
-    let terms = terms.split_whitespace().collect::<Vec<_>>().join(" ");
-    assert!(
-        terms.contains("Carriers are not liable for any delayed or undelivered messages"),
-        "the Foundation terms must carry the carrier-liability disclaimer: {terms}"
     );
 }
 

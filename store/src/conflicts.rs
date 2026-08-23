@@ -47,7 +47,7 @@
 //! does not narrow this and is not asked to: Navigator's authorization
 //! lives above the database (#1145), and the containment is that only
 //! firm-side create paths call in here. See
-//! [`docs/access-model.md`](https://github.com/neon-law-foundation/navigator/blob/main/docs/access-model.md).
+//! [`docs/access-model.md`](https://github.com/neon-law-source-code/navigator/blob/main/docs/access-model.md).
 //!
 //! # What feeds the graph
 //!

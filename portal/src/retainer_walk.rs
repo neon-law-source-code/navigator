@@ -715,8 +715,7 @@ pub(crate) async fn send_intake(
          Your answers save as you go, so you can stop and pick up where you left off. \
          Nothing is sent for signature until an attorney has reviewed it."
     );
-    let html =
-        workflows::email::render_email_html(&body, &base_url, workflows::email::EmailBrand::Firm);
+    let html = workflows::email::render_email_html(&body, &base_url);
     let msg = crate::email::OutboundEmail::new(
         client.email.clone(),
         "Finish your Neon Law Navigator intake",

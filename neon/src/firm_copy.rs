@@ -5,9 +5,8 @@
 
 /// The firm's public page copy.
 ///
-/// The firm builds Navigator for its own practice and uses it while
-/// co-counseling cases with the Neon Law Foundation. The `/navigator` page
-/// makes one invitation: co-counsel a pro bono case together.
+/// The firm builds Navigator for its own practice. The `/navigator` page makes
+/// one invitation: co-counsel a pro bono case with us.
 ///
 /// [`legal_services`] is the priced one: the routine consumer work — a will, a
 /// trust, a name change, a formation — with the firm's actual fee printed
@@ -15,7 +14,7 @@
 /// deciding whether they can afford a lawyer gets an answer from the page
 /// rather than from a consultation, and a firm that publishes its fees cannot
 /// quietly charge one client more than another for the same work.
-use webapp::foundation_marketing::{Band, Card, Download, PackageInstall, PageContent, Run, Step};
+use webapp::marketing_page::{Band, Card, Download, PackageInstall, PageContent, Run, Step};
 
 /// One published flat fee: what the matter is, what it costs, and what that
 /// figure does and does not cover.
@@ -158,7 +157,7 @@ pub fn fractional_cto() -> PageContent {
         title: "Fractional CTO".to_string(),
         hero_mark: Some(webapp::components::PracticeMark::Technology),
         tagline: "We run the technology function for law firms.".to_string(),
-        skin: webapp::foundation_marketing::PageSkin::Practice,
+        skin: webapp::marketing_page::PageSkin::Practice,
         bands: vec![
             fractional_cto_intro_band(),
             fractional_cto_work_band(),
@@ -296,15 +295,15 @@ fn fractional_cto_disclosure_band() -> Band {
 /// co-counsel invitation.
 pub fn navigator() -> PageContent {
     PageContent {
-        skin: webapp::foundation_marketing::PageSkin::Marketing,
+        skin: webapp::marketing_page::PageSkin::Marketing,
         head_title: format!(
             "Neon Law Navigator — {}",
             views::brand::FIRM_BRAND.site_name
         ),
         meta_description: "Neon Law Navigator is the legal project platform the law firms we \
                            serve work on — vibe coding for lawyers, where every pass at a \
-                           document is a change you can read. Free software under AGPL-3.0-only, \
-                           published under a right the firm cannot take back."
+                           document is a change you can read. Source-available under BUSL-1.1, \
+                           free for everything but running it for your own clients."
             .to_string(),
         title: "Neon Law Navigator".to_string(),
         hero_mark: Some(webapp::components::PracticeMark::Helm),
@@ -318,8 +317,7 @@ pub fn navigator() -> PageContent {
             navigator_working_surface_band(),
             navigator_licence_band(),
             Band::Cta {
-                heading: "Co-Counsel a Pro Bono Case with us and the Neon Law Foundation"
-                    .to_string(),
+                heading: "Co-Counsel a Pro Bono Case with Us".to_string(),
                 body: Some(
                     "To see how vibe coding can help you tell more persuasive stories, we \
                      invite you to help make the world a better place and explore AI together."
@@ -387,8 +385,8 @@ fn navigator_vibe_band() -> Band {
                 Run::link("workshop", "/workshops"),
                 Run::plain(" or check out our "),
                 Run::link(
-                    "open-source software",
-                    "https://github.com/neon-law-foundation/navigator",
+                    "source code",
+                    "https://github.com/neon-law-source-code/navigator",
                 ),
                 Run::plain(" to learn more."),
             ],
@@ -398,10 +396,11 @@ fn navigator_vibe_band() -> Band {
 
 /// The CLI download boxes: Linux, macOS, Windows, and the Homebrew route.
 ///
-/// **The page can publish these because the repository is open source.** Under
-/// AGPL-3.0-only every release attaches its archives to a public GitHub Release,
-/// so this band links those bytes rather than proxying them — no login, no
-/// signed URL, no bucket. The role-gated `/app/team` page is unaffected and
+/// **The page can publish these because the source is public.** Every release
+/// attaches its archives to a public GitHub Release, so this band links those
+/// bytes rather than proxying them — no login, no signed URL, no bucket. That is
+/// unchanged by the licence: BUSL restricts production *use*, not distribution,
+/// so the archives stay downloadable by anyone. The role-gated `/app/team` page is unaffected and
 /// still serves the deployment's own private copies to firm tiers; this is a
 /// second, public door to the same software.
 ///
@@ -425,9 +424,9 @@ fn navigator_downloads_band() -> Band {
         overline: "Download".to_string(),
         heading: "Run Navigator yourself".to_string(),
         description: Some(
-            "Navigator is free software under the GNU Affero General Public License, version 3. \
-             The command-line tool is how you drive it: pick your platform, or install it with \
-             Homebrew."
+            "Navigator is source-available under the Business Source License 1.1 — free to read, \
+             build, and use outside production. The command-line tool is how you drive it: pick \
+             your platform, or install it with Homebrew."
                 .to_string(),
         ),
         version: version.clone(),
@@ -459,8 +458,8 @@ fn navigator_downloads_band() -> Band {
                 vec![
                     Run::plain("The formula lives in our own tap, "),
                     Run::link(
-                        "neon-law-foundation/homebrew-navigator",
-                        "https://github.com/neon-law-foundation/homebrew-navigator",
+                        "neon-law-source-code/homebrew-navigator",
+                        "https://github.com/neon-law-source-code/homebrew-navigator",
                     ),
                     Run::plain(", which is updated by every release."),
                 ],
@@ -530,57 +529,67 @@ fn navigator_working_surface_band() -> Band {
 /// grant cannot be withdrawn, and only then the narrow thing on offer.
 ///
 /// **The order is the design.** A page that opens on "commercial licences
-/// available" reads as though a fork needs to buy one. That is false, and it is
-/// the false impression most damaging to the people this software exists to
-/// reach — a legal aid office, a solo practitioner, a firm in another state.
-/// So permission comes first, plainly, and the offer comes last.
+/// available" reads as though everything needs paying for, and the reader most
+/// damaged by that impression is the one this software exists to reach — a legal
+/// aid office, a solo practitioner, a firm evaluating whether any of this is
+/// worth their afternoon. So what is free comes first, plainly, and the offer
+/// comes last.
 ///
-/// **The durability sentence is the one doing real work.** "We publish it under
-/// the AGPL" is a statement about today: a licence already granted cannot be
-/// revoked, but no holder owes anyone the next copy, which is the mechanism
-/// behind every relicensing a community has been angry about. The Foundation's
-/// perpetual, irrevocable right to go on publishing is what lets this band say
-/// the grant is not ours to take back rather than merely promising we will not.
-/// A reader who has watched another project rug-pull is owed the enforceable
-/// version, not the reassuring one.
+/// **The boundary sentence is the one doing real work, and it changed.** This
+/// band said "nobody needs our permission to run Navigator" while the tree was
+/// `AGPL-3.0-only`, and that was true. Under `BUSL-1.1` it is true of everything
+/// except production use, so the band has to draw the line rather than gesture at
+/// it: reading, building, forking, and evaluating are free; running it to deliver
+/// legal services to other people is what we sell. Leaving the old sentence up
+/// would be the most expensive kind of stale copy — a licensing promise, on a law
+/// firm's own site, that the licence in the repository does not make.
+///
+/// **The conversion is stated because it is the part a reader will not assume.**
+/// Every published version becomes `AGPL-3.0-only` four years on, and that is a
+/// term of the licence each copy already carries rather than a promise about our
+/// future intentions. A reader who has watched a project relicense and strand its
+/// users is owed the enforceable version, not the reassuring one.
 ///
 /// **The disclosure is required rather than decorative.** Selling a software
 /// licence is a law-related service under RPC 5.7, and the reader most likely
 /// to assume otherwise is a lawyer buying it from a law firm.
 ///
 /// Like [`navigator_working_surface_band`], this asserts no capability that has
-/// not shipped. What is on offer is relief from a licence obligation — a
-/// permission the copyright holder is able to give today — and the band says
-/// only that. No price appears here: the scope of a deployment is not knowable
+/// not shipped. No price appears here: the scope of a deployment is not knowable
 /// in advance, so it is quoted through `/contact` like every other engagement.
 fn navigator_licence_band() -> Band {
     Band::Statement {
         heading: "The licence, and the one thing we sell around it".to_string(),
-        lead: "Nobody needs our permission to run Navigator.".to_string(),
+        lead: "Read it, build it, fork it. Nobody needs our permission for any of that."
+            .to_string(),
         body: vec![
             vec![Run::plain(
-                "Navigator is free software under the GNU Affero General Public License, \
-                 version 3, over the whole tree — the code, the tooling, and the drafted legal \
-                 prose. Run it, fork it, change it, run it for your own clients, charge them for \
-                 it. There is no permission to ask for and nobody to ask.",
+                "Navigator is source-available under the Business Source License 1.1, over the \
+                 whole tree — the code, the tooling, and the drafted legal prose. Read it, build \
+                 it, run the tests, stand it up on your own machine, fork it, change it, teach \
+                 from it. There is no permission to ask for and nobody to ask.",
             )],
             vec![
-                Run::plain("The Neon Law Foundation holds a "),
-                Run::strong("perpetual, irrevocable right to publish Navigator under that licence"),
+                Run::plain("The one thing we sell is "),
+                Run::strong("running it for other people"),
                 Run::plain(
-                    " — one that binds our successors and survives any change of control of the \
-                     firm — so the open-source grant is not ours to take back. A copyright \
-                     holder can normally stop publishing whenever it likes. Here a separate \
-                     organization is entitled to go on doing it, and can enforce that.",
+                    " — operating a portal, a matter, or a filing pipeline that somebody relies \
+                     on. That is production use, and the licence does not grant it, so a firm \
+                     delivering legal services on Navigator takes a commercial licence from us \
+                     first. Everything short of that is already yours.",
                 ),
             ],
-            vec![Run::plain(
-                "What we can do, because we hold the copyright, is relieve an operator of \
-                 section 13. That clause obliges a firm that modifies Navigator and runs it for \
-                 clients to offer those clients the corresponding source of its own version. A \
-                 firm that would rather keep its modifications to itself can be licensed out of \
-                 that obligation, and only the copyright holder is able to grant it.",
-            )],
+            vec![
+                Run::plain("This does not last. "),
+                Run::strong("Every version becomes AGPL-3.0-only four years after we publish it"),
+                Run::plain(
+                    " — per version, on its own clock, written into the licence that copy \
+                     already carries rather than promised separately. When a version converts, \
+                     the restriction ends for it permanently and anyone may run it in \
+                     production. Copies we distributed under the AGPL before this licence stay \
+                     AGPL forever; a licence already granted cannot be withdrawn.",
+                ),
+            ],
             vec![Run::plain(
                 "Licensing software is a law-related service rather than legal representation. \
                  Taking a licence from us does not make us your counsel, and the protections of \
@@ -589,7 +598,10 @@ fn navigator_licence_band() -> Band {
                  with a signed retainer.",
             )],
             vec![
-                Run::plain("Every licence is scoped and quoted in conversation. "),
+                Run::plain(
+                    "Every licence is scoped and quoted in conversation, and legal aid and \
+                     nonprofit deployments should ask. ",
+                ),
                 Run::link("Ask us what yours would involve", "/contact"),
                 Run::plain("."),
             ],
@@ -625,7 +637,7 @@ pub fn legal_services() -> PageContent {
         title: "Legal Services".to_string(),
         hero_mark: None,
         tagline: "One scope, one fee, agreed before we start.".to_string(),
-        skin: webapp::foundation_marketing::PageSkin::Practice,
+        skin: webapp::marketing_page::PageSkin::Practice,
         bands: vec![
             legal_services_intro_band(),
             legal_services_fee_band(),
@@ -752,7 +764,7 @@ fn legal_services_steps_band() -> Band {
 /// in the application underneath.
 #[cfg(test)]
 mod firm_copy_tests {
-    use webapp::foundation_marketing::{Band, Paragraph};
+    use webapp::marketing_page::{Band, Paragraph};
 
     /// Every word of prose a band renders, flattened. Titles, leads, overlines,
     /// descriptions, chips, and card bodies all count: a reader does not
@@ -893,9 +905,7 @@ mod firm_copy_tests {
     /// Every guard below reads the rendered band, so adding a matter without
     /// scoping it — or shipping a placeholder in its price — fails here rather
     /// than passing against a list this file happened to keep in step.
-    fn fee_cards(
-        content: &webapp::foundation_marketing::PageContent,
-    ) -> &[webapp::foundation_marketing::Card] {
+    fn fee_cards(content: &webapp::marketing_page::PageContent) -> &[webapp::marketing_page::Card] {
         content
             .bands
             .iter()
@@ -913,7 +923,7 @@ mod firm_copy_tests {
     /// link deleted — the working-surface card three bands up also points at
     /// `/contact`, so "the page routes to /contact" was true either way. An
     /// assertion about a band has to read that band.
-    fn navigator_licence_band(content: &webapp::foundation_marketing::PageContent) -> &Band {
+    fn navigator_licence_band(content: &webapp::marketing_page::PageContent) -> &Band {
         content
             .bands
             .iter()
@@ -926,12 +936,12 @@ mod firm_copy_tests {
 
     /// The platform page offers one concrete pro bono co-counsel invitation.
     #[test]
-    fn the_navigator_page_invites_pro_bono_foundation_co_counsel() {
+    fn the_navigator_page_invites_pro_bono_co_counsel() {
         let content = super::navigator();
         let text = format!("{} {}", page_text(&content.bands), content.meta_description);
         assert!(
-            text.contains("Co-Counsel a Pro Bono Case with us and the Neon Law Foundation"),
-            "the only invitation is pro bono Foundation co-counsel: {text}"
+            text.contains("Co-Counsel a Pro Bono Case with Us"),
+            "the only invitation is pro bono co-counsel: {text}"
         );
         assert!(
             text.contains(
@@ -1140,56 +1150,66 @@ mod firm_copy_tests {
     ///
     /// This is the assertion the band was drafted around, and the one worth
     /// having a test for: the order of the argument is load-bearing. A reader
-    /// who meets "commercial licence" before "you need no permission" concludes
-    /// a fork has to buy one — which is false, and false in the direction that
-    /// turns away a legal aid office or a solo practitioner. So the free-software
-    /// statement has to come first in the prose, and the assertion is positional
-    /// rather than a check that both phrases appear somewhere.
+    /// who meets "commercial licence" before what is free concludes that
+    /// everything has to be paid for — which is wrong, and wrong in the
+    /// direction that turns away a legal aid office or a solo practitioner. So
+    /// the free half is stated first in the prose, and the assertion is
+    /// positional rather than a check that both phrases appear somewhere.
     ///
-    /// The durability claim is checked because it is the difference between a
-    /// promise and an enforceable right. "We publish under the AGPL" says
-    /// nothing about tomorrow; only a right held by somebody else does, and if
-    /// that sentence were softened the page would still read fine while meaning
-    /// much less.
+    /// **The boundary is checked because vagueness here is the expensive
+    /// failure.** BUSL defines no "production use", so a band that says a
+    /// licence is needed without saying for what leaves every reader guessing,
+    /// and a developer standing in front of a public source tree guesses
+    /// permissively. Naming the activity is what makes the offer legible.
+    ///
+    /// **The conversion is checked because it is what keeps the restriction
+    /// honest.** Four years, per version, written into the copy the reader
+    /// already holds. If that sentence were softened the page would still read
+    /// fine while meaning much less.
     #[test]
-    fn the_navigator_page_offers_the_licence_before_the_exception() {
+    fn the_navigator_page_states_what_is_free_before_what_is_sold() {
         let content = super::navigator();
         let text = page_text(&content.bands);
         let lowered = text.to_lowercase();
 
         let permission = lowered
             .find("no permission to ask for")
-            .expect("the page says plainly that nobody needs permission to run Navigator");
-        let exception = lowered
-            .find("section 13")
-            .expect("the page names the obligation an operator can be relieved of");
+            .expect("the page says plainly what needs no permission");
+        let sold = lowered
+            .find("commercial licence")
+            .expect("the page names what it sells");
         assert!(
-            permission < exception,
-            "permission has to be stated before the exception is offered, or a \
-             reader concludes a fork needs to buy one: {text}"
+            permission < sold,
+            "what is free has to be stated before what is sold, or a reader \
+             concludes a fork needs to buy one: {text}"
         );
 
-        // The grant's durability, which is what makes the first claim keep
-        // being true rather than being true today.
+        // The boundary itself. Production use is the whole of what is withheld,
+        // so the band has to name the activity rather than the term of art.
         for required in [
-            "perpetual, irrevocable right to publish",
-            "not ours to take back",
-            "change of control",
+            "production use",
+            "running it for other people",
+            "somebody relies",
         ] {
             assert!(
                 lowered.contains(required),
-                "the page must state `{required}` — a grant nobody else can \
-                 enforce is a promise, not a right: {text}"
+                "the page must state `{required}` — an unnamed boundary is one \
+                 every reader resolves in their own favour: {text}"
             );
         }
 
-        // Who is actually being addressed. The buyer is an operator that would
-        // rather not hand its own portal users its source, and naming that is
-        // what keeps the offer from reading as a toll on forking.
-        assert!(
-            lowered.contains("keep its modifications to itself"),
-            "the page must name the operator the exception is for: {text}"
-        );
+        // The conversion, which is what bounds the restriction.
+        for required in [
+            "becomes agpl-3.0-only four years",
+            "restriction ends for it permanently",
+            "cannot be withdrawn",
+        ] {
+            assert!(
+                lowered.contains(required),
+                "the page must state `{required}` — a restriction with no stated \
+                 end reads as permanent: {text}"
+            );
+        }
     }
 
     /// The licence band discloses that a software licence is not legal work, and

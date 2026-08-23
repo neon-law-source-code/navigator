@@ -67,17 +67,18 @@ fn cli_version() -> &'static str {
 /// pins the two together, so the printed terms cannot drift from the ones the
 /// repository publishes.
 ///
-/// The AGPL requires this rather than merely inviting it: § 4 conditions the
-/// permission to convey on handing every recipient a copy of this License along
-/// with the work. A bare executable someone was given is a copy, and § 13 may
-/// oblige its holder to pass the source on in turn — they cannot honour a
-/// licence they were never shown.
+/// BUSL requires this rather than merely inviting it: the licence conditions the
+/// permission to convey on displaying this License conspicuously on every copy.
+/// A bare executable someone was given is a copy, and its parameters are what
+/// tell that holder whether their own use needs a commercial licence — which
+/// they cannot work out from terms they were never shown.
 const LICENSE: &str = include_str!("../../LICENSE");
 
-/// The Foundation's own statements about the grant, compiled in beside it.
+/// The Firm's own statements about the grant, compiled in beside it.
 ///
-/// `LICENSE` is the Free Software Foundation's text unaltered, so it says
-/// nothing about this work in particular. `NOTICE` is what does: the copyright
+/// `LICENSE` is the licence text plus its parameters, so beyond naming the
+/// Licensor and the Licensed Work it says little about how the grant applies
+/// here. `NOTICE` is what does: the copyright
 /// line, the marks the grant does not reach, the government forms the
 /// Foundation cannot license, and the § 13 network obligation in its own voice.
 /// `--license` prints it first for that reason — the holder of a bare
@@ -2285,7 +2286,7 @@ fn detect_mutable_tags(path: &std::path::Path, contents: &str) -> Vec<(usize, St
 }
 
 /// Walk `dir` for *consumed* mutable tags — the diligence guard for
-/// [navigator#540](https://github.com/neon-law-foundation/navigator/issues/540).
+/// [navigator#540](https://github.com/neon-law-source-code/navigator/issues/540).
 /// Prints one line per offence and returns the count. Runs over YAML manifests,
 /// Containerfiles, and workflow files alike; the `.git`, `target`, and
 /// `.worktrees` trees are skipped, as in [`yaml_pass`].

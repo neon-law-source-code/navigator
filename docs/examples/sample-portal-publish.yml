@@ -97,12 +97,12 @@ jobs:
       # The one gate: source-only, no legal files, and the built portal is
       # mounted where Navigator will serve it. It runs before the publish and in
       # the same job.
-      - uses: neon-law-foundation/navigator/.github/actions/validate@26.8.22-hotfix.23
+      - uses: neon-law-source-code/navigator/.github/actions/validate@26.8.22-hotfix.23
         with:
           version: "26.8.22-hotfix.23"
           project_repository: true
 
-      - uses: neon-law-foundation/navigator/.github/actions/application-publish@26.8.22-hotfix.23
+      - uses: neon-law-source-code/navigator/.github/actions/application-publish@26.8.22-hotfix.23
         with:
           applications_bucket: ${{ secrets.NAVIGATOR_APPLICATIONS_BUCKET }}
           workload_identity_provider: ${{ secrets.NAVIGATOR_APP_PUBLISHER_WIF_PROVIDER }}

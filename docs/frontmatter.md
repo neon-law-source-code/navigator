@@ -55,8 +55,6 @@ kind and the keys it must carry:
   `templates/forms/` or `templates/neon_law/`; a `templates/` file with no `kind:` is just prose until it declares one.
 - **Blog post** — `kind: post`. Lives under `server/content/blog/`. Needs `title` and `description`, in a file named
   `YYYYMMDD_slug.md`.
-- **Board minutes** — `kind: minutes`. Live under `server/content/foundation/minutes/`. Need `title` and `description`,
-  in a file named `YYYY-qN.md`.
 - **Workshop page** — `kind: workshop`. Lives under `server/content/workshops/`. Needs `title` and `description`.
 - **GitHub notation** — `kind: github`. Lives at `templates/github/create_issue.md` or
   `templates/github/create_pull_request.md`, and nowhere else. Needs `title` and a `questionnaire:`, and its body
@@ -221,14 +219,7 @@ post never shows up and never errors — so the checker flags a bad name for you
 
 ```yaml
 title: Going All-In on Rust
-description: Why Neon Law Foundation chose one language for fast, safe, local-first access-to-justice software.
-```
-
-Board minutes (`server/content/foundation/minutes/`) are one file per quarter, named `YYYY-qN.md` (e.g. `2026-q1.md`):
-
-```yaml
-title: "Board Meeting Minutes — Q2 2023"
-description: "Minutes of the Neon Law Foundation board of directors for the Q2 2023 regular meeting."
+description: Why Neon Law chose one language for fast, safe, local-first access-to-justice software.
 ```
 
 ## Every frontmatter key at a glance

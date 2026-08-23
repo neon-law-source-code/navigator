@@ -18,11 +18,14 @@ routes.
 This walkthrough provisions a Navigator deployment on Google Cloud. It is written for the Firm's own operators and for
 anyone else standing Navigator up under the licence.
 
-Navigator is free software under `AGPL-3.0-only` ([`LICENSE`](../LICENSE)), so you may run this deployment for any
-purpose, including a law practice you charge clients for. One obligation comes with that and it lands on exactly this
-walkthrough: if you modify Navigator and let clients reach your deployment over a network, section 13 requires you to
-offer those users the corresponding source of your modified version. Deploying it unmodified carries no such duty. See
-[`licensing.md`](licensing.md).
+Navigator is source-available under `BUSL-1.1` ([`LICENSE`](../LICENSE)), and the licence bears directly on this
+walkthrough. Standing a deployment up to evaluate Navigator, develop against it, or demonstrate it is **non-production
+use** and needs no permission. Running it as a law practice you charge clients for is **production use**, which the
+licence does not grant: the Additional Use Grant is `None`, so that needs a commercial licence from the Firm first. Each
+version converts to `AGPL-3.0-only` four years after it is published, and from then on that version may be run in
+production by anyone — subject to § 13, which obliges an operator who modified it and lets clients reach it over a
+network to offer those users the corresponding source. See [`licensing.md`](licensing.md), and write to
+`contact@neonlaw.org` before deploying if you are unsure which side of the line you are on.
 
 Rename your deployment through the brand manifest rather than by editing sources: the NEON LAW marks are not licensed
 here, and that seam exists so a fork does not have to patch views to drop them.
@@ -116,8 +119,8 @@ appropriate; both web and workflow-worker mounts remain read-only.
 
 The `portal` workspace crate exposes the shared application core: the authenticated portal and Owner/Admin/Lawyer/Clerk
 surfaces, JSON API and documentation, MCP, A2A, and OIDC. Its `portal::router` entry point is the seam brand hosts use
-instead of copying these routes, keeping a Foundation, firm, or white-label deployment on the same application and
-documentation contract.
+instead of copying these routes, keeping the firm's deployment and any white-label deployment on the same application
+and documentation contract.
 
 The minimum to boot `web` against a real store:
 

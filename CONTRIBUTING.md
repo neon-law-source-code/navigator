@@ -1,21 +1,24 @@
 # Contributing
 
-**Neon Law Navigator is open source, and it is currently closed to outside contributions.**
+**Neon Law Navigator is source-available, and it is currently closed to outside contributions.**
 
-Shook Law PLLC, trading as Neon Law, holds the copyright and operates this software; the Neon Law Foundation publishes
-it. Issues and pull requests from outside those two organizations are not being accepted right now. This is a capacity
-decision rather than a licensing one: the software runs a live legal practice, every change to it needs review by
-someone who can weigh the practice consequences, and there is not review capacity to offer an outside contributor today.
+Shook Law PLLC, trading as Neon Law, holds the copyright and operates this software. Issues and pull requests from
+outside the firm are not being accepted right now. This is a capacity decision rather than a licensing one: the software
+runs a live legal practice, every change to it needs review by someone who can weigh the practice consequences, and
+there is not review capacity to offer an outside contributor today.
 
 **Write to [contact@neonlaw.org](mailto:contact@neonlaw.org).** Anyone is welcome to — a bug you hit, a security
 concern, a fork you are running, a question about the licences, or an interest in contributing when this reopens. The
 address is read by people, and a report that never becomes a pull request is still worth sending.
 
-The licence is a separate question, and it is open. Navigator is free software under the GNU Affero General Public
-License, version 3 — `AGPL-3.0-only` — over the whole tree, `templates/` included. You may run, fork, modify, and
-redistribute it, with no permission to ask for. Section 13 is the obligation to know before you deploy: modify it, let
-users reach it over a network, and you owe those users your modified source. See [`LICENSE`](LICENSE) for the grant,
-[`NOTICE`](NOTICE) for what the Foundation says about it, and [`docs/licensing.md`](docs/licensing.md).
+The licence is a separate question. Navigator is source-available under the Business Source License 1.1 — `BUSL-1.1` —
+over the whole tree, `templates/` included. You may read, build, fork, modify, redistribute, and make any non-production
+use of it with no permission to ask for. **Production use is the obligation to know before you deploy:** the Additional
+Use Grant is `None`, so running Navigator to deliver legal services to other people needs a commercial licence from the
+firm. Each version converts to `AGPL-3.0-only` four years after it is published, and § 13 attaches to that version in
+full when it does — it obliges an operator to offer those users, the people reaching its own instance, the corresponding
+source. See [`LICENSE`](LICENSE) for the grant, [`NOTICE`](NOTICE) for what the firm says about it, and
+[`docs/licensing.md`](docs/licensing.md).
 
 ## How contributions are licensed
 
@@ -26,11 +29,11 @@ before their first commit — the employment or contractor agreement each of the
 firm's on creation. Reopening to outside contributions means a contributor agreement on the same footing, and that is
 worth saying in advance rather than at a merge.
 
-Assignment is the mechanism; the grant to you is the result, and it is unchanged. Everything an author writes reaches
-you under `AGPL-3.0-only` on the same terms as the rest of the tree, `templates/` included — one grant over the tree
-means there is no second answer depending on which directory you touched. What assignment buys is a single holder able
-to grant the whole work, which is what the Foundation's irrevocable right to publish it rests on: a grant assembled from
-many holders is one nobody can reliably renew.
+Assignment is the mechanism; the grant to you is the result. Everything an author writes reaches you under `BUSL-1.1` on
+the same terms as the rest of the tree, `templates/` included — one grant over the tree means there is no second answer
+depending on which directory you touched. What assignment buys is a single holder able to grant the whole work, which is
+what lets one licence cover the tree and one party set its parameters: a grant assembled from many holders is one nobody
+can reliably renew, and nobody could relicense at all.
 
 If a change adds a blank government form, note that nobody here licenses anything in the agency's own PDF — only the
 catalog card, field map, and workflow beside it.

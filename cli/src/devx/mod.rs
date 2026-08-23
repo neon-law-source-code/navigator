@@ -542,7 +542,7 @@ pub enum GcpCmd {
         artifact_registry_repo: Option<String>,
         /// `owner/repo` slug the Workload Identity provider trusts for
         /// keyless CI pushes. Falls back to `NAVIGATOR_GITHUB_REPO` then
-        /// the workspace default (`neon-law-foundation/navigator`). A fork
+        /// the workspace default (`neon-law-source-code/navigator`). A fork
         /// MUST set this to its own slug, or its GitHub Actions workflow
         /// cannot impersonate the CI pusher service account.
         #[arg(long, env = "NAVIGATOR_GITHUB_REPO")]

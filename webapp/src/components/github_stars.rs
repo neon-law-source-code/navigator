@@ -84,8 +84,8 @@ mod tests {
         fn app() -> Element {
             rsx! {
                 GitHubStars {
-                    href: "https://github.com/neon-law-foundation/navigator".to_string(),
-                    repo: "neon-law-foundation/navigator".to_string(),
+                    href: "https://github.com/neon-law-source-code/navigator".to_string(),
+                    repo: "neon-law-source-code/navigator".to_string(),
                     stars: 1234u64,
                 }
             }
@@ -99,11 +99,11 @@ mod tests {
     fn links_the_repository_off_site_with_the_owasp_rel_pair() {
         let out = starred();
         assert!(
-            out.contains(r#"href="https://github.com/neon-law-foundation/navigator""#),
+            out.contains(r#"href="https://github.com/neon-law-source-code/navigator""#),
             "the repository is linked: {out}"
         );
         assert!(
-            out.contains("neon-law-foundation/navigator"),
+            out.contains("neon-law-source-code/navigator"),
             "and named, so a reader sees the repository rather than a bare URL: {out}"
         );
         assert!(
@@ -139,14 +139,14 @@ mod tests {
         fn app() -> Element {
             rsx! {
                 GitHubStars {
-                    href: "https://github.com/neon-law-foundation/navigator".to_string(),
-                    repo: "neon-law-foundation/navigator".to_string(),
+                    href: "https://github.com/neon-law-source-code/navigator".to_string(),
+                    repo: "neon-law-source-code/navigator".to_string(),
                 }
             }
         }
         let out = ssr(app);
         assert!(
-            out.contains("neon-law-foundation/navigator"),
+            out.contains("neon-law-source-code/navigator"),
             "the repository is still published: {out}"
         );
         assert!(

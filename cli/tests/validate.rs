@@ -289,10 +289,6 @@ fn every_classified_corpus_file_declares_a_kind() {
         ("templates", DocumentKind::NotationTemplate),
         ("templates/github", DocumentKind::Github),
         ("server/content/blog", DocumentKind::BlogPost),
-        (
-            "server/content/foundation/minutes",
-            DocumentKind::BoardMinutes,
-        ),
         ("server/content/workshops", DocumentKind::Workshop),
     ];
     let root = workspace_root();

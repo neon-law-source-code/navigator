@@ -11,7 +11,7 @@ body:
 
         **Nothing you attach here is merged, served, or vendored.** Your HTML/CSS/JS is reference material
         that shows intent; the shipped implementation is Rust. See
-        [`docs/design-mockups.md`](https://github.com/neon-law-foundation/navigator/blob/main/docs/design-mockups.md).
+        [`docs/design-mockups.md`](https://github.com/neon-law-source-code/navigator/blob/main/docs/design-mockups.md).
 
   - type: textarea
     id: mockup-image

@@ -65,11 +65,10 @@ const NAVIGATOR_MANIFEST: &[ManifestEntry] = &[
         category: "workshops",
         slug: "contribute-to-the-navigator",
         title: "Contributing to Neon Law Navigator",
-        description: "Neon Law Navigator is copyright Shook Law PLLC, which operates \
-                      it; the Neon Law Foundation publishes it. Five ways authorized lawyers \
-                      improve the \
-                      product — open an issue, share what you learned, join a workshop or a \
-                      presentation, or simply use it. No code required for most of them.",
+        description: "Neon Law Navigator is copyright Shook Law PLLC, which operates it. Five \
+                      ways authorized lawyers improve the product — open an issue, share what you \
+                      learned, join a workshop or a presentation, or simply use it. No code \
+                      required for most of them.",
         audience: "For the community",
         benefit: "You walk out knowing how authorized lawyers improve the product: open an issue, \
                   improve a template, add or map a fillable government PDF from the common \

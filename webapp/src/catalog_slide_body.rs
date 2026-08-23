@@ -66,7 +66,7 @@ pub fn CatalogSlideBody(title: String, body_html: String) -> Element {
                 a {
                     class: "workshop-navigator-slide__repo",
                     href: crate::source_repository::REPOSITORY_HREF,
-                    "github.com/neon-law-foundation/navigator"
+                    "github.com/neon-law-source-code/navigator"
                 }
             }
         };
@@ -163,11 +163,11 @@ mod tests {
         assert!(html.contains(r#"data-practice-mark="helm""#), "{html}");
         assert!(html.contains("NeonLawNavigator"), "{html}");
         assert!(
-            html.contains(r#"href="https://github.com/neon-law-foundation/navigator""#),
+            html.contains(r#"href="https://github.com/neon-law-source-code/navigator""#),
             "{html}"
         );
         assert!(
-            html.contains("github.com/neon-law-foundation/navigator"),
+            html.contains("github.com/neon-law-source-code/navigator"),
             "{html}"
         );
         assert!(!html.contains(NAVIGATOR_PRODUCT_MARKER), "{html}");

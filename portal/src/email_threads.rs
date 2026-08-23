@@ -538,11 +538,7 @@ async fn send_and_journal_with_attachments(
 ) -> Result<SendReceipt, ThreadError> {
     let reply_to = reply_address(token, &ctx.cfg.parse_host);
     let thread_refs = thread_message_ids(ctx.surreal, conversation_id).await?;
-    let html = workflows::email::render_email_html(
-        body,
-        &workflows::email::base_url_from_env(),
-        workflows::email::EmailBrand::Firm,
-    );
+    let html = workflows::email::render_email_html(body, &workflows::email::base_url_from_env());
     let outbound = attachments.iter().fold(
         OutboundEmail::new(to_addr, subject, body)
             .with_html(html)

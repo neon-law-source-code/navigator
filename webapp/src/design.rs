@@ -32,13 +32,12 @@ use serde::{Deserialize, Serialize};
 use crate::components::{
     wire_runs, AppLogo, AppNavbar, BackBreadcrumb, Card, CatalogHero, Choice, CodeBlock, Column,
     ConfirmDelete, DataTable, ExternalLink, Field, FooterAttorney, FooterBarLicense, FooterNavLink,
-    FooterOffice, FormCard, Freshness, GitHubStars, Icon, IconName, ImpersonationBanner,
-    ImpersonationView, LawyerPortalBreadcrumb, LegalBlueprintDisclaimer, NavigatorDestination,
-    NavigatorFooter, NavigatorFooterLink, NavigatorNavbar, NavigatorShell, Pagination,
-    PeopleListInputs, PersonChoice, PersonPicker, PricingCard, PricingSection, PublicShell,
-    RowActions, RunParagraph, SampleMattersBanner, SiteFooterFoundation, SiteFooterLegal,
-    SiteHeader, SiteNavLink, SocialMeta, SortState, TestimonialCard, TestimonialSection, Toast,
-    ToastTone, THEME_STYLESHEET_HREF,
+    FooterOffice, FormCard, GitHubStars, Icon, IconName, ImpersonationBanner, ImpersonationView,
+    LawyerPortalBreadcrumb, LegalBlueprintDisclaimer, NavigatorDestination, NavigatorFooter,
+    NavigatorFooterLink, NavigatorNavbar, NavigatorShell, Pagination, PeopleListInputs,
+    PersonChoice, PersonPicker, PricingCard, PricingSection, PublicShell, RowActions, RunParagraph,
+    SampleMattersBanner, SiteFooterLegal, SiteHeader, SiteNavLink, SocialMeta, SortState,
+    TestimonialCard, TestimonialSection, Toast, ToastTone, THEME_STYLESHEET_HREF,
 };
 // The vendor marks come from their own module rather than the theme root: they
 // are the one component whose colours are a third party's rather than the
@@ -408,7 +407,6 @@ pub fn DesignGallery() -> Element {
             CatalogHeroShowcase {}
             SiteHeaderShowcase {}
             SiteFooterShowcase {}
-            SiteFooterFoundationShowcase {}
             PublicShellShowcase {}
             FormShowcase {}
             PeopleListShowcase {}
@@ -944,7 +942,7 @@ fn CatalogHeroShowcase() -> Element {
             CatalogHero {
                 eyebrow: "For the hackers".to_string(),
                 title: "Rust in Peace".to_string(),
-                lede: "How the Foundation uses Rust to improve access to justice — \
+                lede: "How the firm uses Rust to improve access to justice — \
                        deterministic workflows from law, one attorney-gated step at a \
                        time."
                     .to_string(),
@@ -1004,16 +1002,14 @@ fn SiteFooterShowcase() -> Element {
                 offices: demo_offices(),
                 attorneys: demo_attorneys(),
                 // The routes the header no longer carries, at the full length
-                // the site publishes them: ten links, which the stylesheet
-                // lays out as two columns of five. A gallery driving three
+                // the site publishes them: eight links, which the stylesheet
+                // lays out as two columns of four. A gallery driving three
                 // would document a row that never renders and would not show
                 // the two-column layout at all.
                 nav: [
                     ("Blog", "/blog"),
                     ("Contact", "/contact"),
                     ("Docs", "/docs"),
-                    ("Firm", "/"),
-                    ("Foundation", "/foundation"),
                     ("Navigator", "/navigator"),
                     ("Presentations", "/presentations"),
                     ("Privacy", "/privacy"),
@@ -1026,7 +1022,6 @@ fn SiteFooterShowcase() -> Element {
                     href: href.to_string(),
                 })
                 .collect(),
-                foundation: "Acme Foundation".to_string(),
                 // The mark notice, driven with the firm's real registration
                 // rather than a synthetic one. The offices and attorneys above
                 // are fixtures because they stand in for regulated firm detail
@@ -1041,50 +1036,14 @@ fn SiteFooterShowcase() -> Element {
                 // shows the shape the deployed footer renders. The
                 // count-less variant is shown beside the standalone
                 // `GitHubStars` in "Navigation & links".
-                source_repo: "neon-law-foundation/navigator".to_string(),
-                source_href: "https://github.com/neon-law-foundation/navigator".to_string(),
+                source_repo: "neon-law-source-code/navigator".to_string(),
+                source_href: "https://github.com/neon-law-source-code/navigator".to_string(),
                 source_stars: 1234u64,
                 // The release stamp, driven with a literal so the gallery shows
                 // the line a deployed page renders. A local `cargo run` leaves
                 // it unset and the site publishes no version.
                 navigator_version: "26.8.20".to_string(),
                 navigator_href: "/navigator".to_string(),
-            }
-        }
-    }
-}
-
-/// The Foundation's own footer — a separate component, not a variant of the
-/// firm's. It identifies the corporation, says outright that the 501(c)(3)
-/// does not practise law, and carries none of the firm's regulated copy: no
-/// bar admissions, no bar numbers, no attorney-advertising disclaimer, and no
-/// registered mark it holds only under permission.
-#[component]
-fn SiteFooterFoundationShowcase() -> Element {
-    rsx! {
-        section {
-            h2 { "Site footer — Foundation" }
-            SiteFooterFoundation {
-                entity: "Acme Foundation".to_string(),
-                jurisdiction_note: "a Nevada nonprofit corporation and a 501(c)(3) tax-exempt \
-                                    organization"
-                    .to_string(),
-                disclaimer: "Nothing on this site is legal advice, and nothing here creates an \
-                             attorney-client relationship."
-                    .to_string(),
-                copyright_year: 2026,
-                contact_email: "support@example.com".to_string(),
-                office: "3 Broadway, Oakland, CA 94607".to_string(),
-                transparency_href: "/foundation/transparency".to_string(),
-                // The support and platform lines are part of the component the
-                // gallery is showing, so it drives them rather than leaving
-                // them empty. Omitting them rendered neither line — and the
-                // unguarded anchor beneath emitted an empty link with no
-                // accessible name, which the axe gate failed on.
-                supporter: "Acme Law LLP".to_string(),
-                supporter_href: "https://www.example.com".to_string(),
-                navigator_version: "26.8.10".to_string(),
-                navigator_href: "https://www.example.com/navigator".to_string(),
             }
         }
     }
@@ -1256,9 +1215,9 @@ fn PeopleListShowcase() -> Element {
     }
 }
 
-/// Navigation + link chrome: the breadcrumbs, an off-site link, and the
-/// content-freshness footer. Every one of these takes an `href` and emits a
-/// plain anchor — the injected-link contract, visible.
+/// Navigation + link chrome: the breadcrumbs and an off-site link. Every one of
+/// these takes an `href` and emits a plain anchor — the injected-link contract,
+/// visible.
 #[component]
 fn NavigationShowcase() -> Element {
     rsx! {
@@ -1277,7 +1236,7 @@ fn NavigationShowcase() -> Element {
                 "An off-site link opens in a new tab with the OWASP "
                 code { "rel" }
                 " pair and an arrow: "
-                ExternalLink { href: "https://www.neonlaw.com/foundation".to_string(), "Neon Law Foundation" }
+                ExternalLink { href: "https://www.neonlaw.com/navigator".to_string(), "Neon Law Navigator" }
                 "."
             }
             p {
@@ -1287,15 +1246,14 @@ fn NavigationShowcase() -> Element {
                  second is the ordinary one before the first refresh lands:"
             }
             GitHubStars {
-                href: "https://github.com/neon-law-foundation/navigator".to_string(),
-                repo: "neon-law-foundation/navigator".to_string(),
+                href: "https://github.com/neon-law-source-code/navigator".to_string(),
+                repo: "neon-law-source-code/navigator".to_string(),
                 stars: 1234u64,
             }
             GitHubStars {
-                href: "https://github.com/neon-law-foundation/navigator".to_string(),
-                repo: "neon-law-foundation/navigator".to_string(),
+                href: "https://github.com/neon-law-source-code/navigator".to_string(),
+                repo: "neon-law-source-code/navigator".to_string(),
             }
-            Freshness { last_edited: Some("May 22, 2026".to_string()) }
         }
     }
 }
@@ -1315,10 +1273,8 @@ fn PaletteSection() -> Element {
                  brands into shared code."
             }
             p {
-                "Neon Law uses copper as its primary. Neon Law Foundation uses teal. The two \
-                 brands are intentionally distinct. \
-                 Read the semantic token instead of carrying either brand's colour into a \
-                 shared component."
+                "Neon Law uses copper as its primary. Read the semantic token instead of \
+                 carrying a brand's colour into a shared component."
             }
             div { class: "design-swatches",
                 for token in SWATCH_TOKENS.iter() {
@@ -1457,7 +1413,6 @@ mod tests {
             "DataTable",
             "LegalBlueprintDisclaimer",
             "FormCard",
-            "Freshness",
             "GitHubStars",
             "Icon",
             "ExternalLink",
@@ -1468,7 +1423,6 @@ mod tests {
             "PublicShell",
             "RowActions",
             "SampleMattersBanner",
-            "SiteFooterFoundation",
             "SiteFooterLegal",
             "SiteHeader",
             "SocialMeta",

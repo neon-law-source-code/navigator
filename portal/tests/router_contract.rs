@@ -71,7 +71,7 @@ const CONTRACT: &[(&str, Access)] = &[
     // anonymous browser goes through the login door like every `/app` page.
     ("/app/forms", Access::ProtectedHuman),
     // The workspace documentation reads anonymously. The repository is
-    // AGPL-3.0-only, so these documents are the manual for software anyone can
+    // source-available, so these documents are the manual for software anyone can
     // clone — a login door in front of them guarded nothing and cost a reader
     // the one page that explains how to run it.
     ("/docs", Access::PortalPublic),
@@ -115,7 +115,6 @@ const CONTRACT: &[(&str, Access)] = &[
     ("/llms.txt", Access::HostPublic),
     ("/blog", Access::HostPublic),
     ("/contact", Access::HostPublic),
-    ("/foundation", Access::HostPublic),
     // The explicit anonymous allowlist.
     ("/health", Access::PublicIngress),
     ("/readyz", Access::PublicIngress),
@@ -251,7 +250,7 @@ async fn every_first_tranche_path_answers_its_declared_anonymous_contract() {
 /// `/github-stars` is not routed, and no host reserves a prefix for it.
 ///
 /// The endpoint proxied a star count from
-/// `api.github.com/repos/neon-law-foundation/navigator`. It was deleted while
+/// `api.github.com/repos/neon-law-source-code/navigator`. It was deleted while
 /// that repository was private and the upstream answered `404`; the repository
 /// is public again, so the lane could be made to work, and that is exactly why
 /// the absence is pinned rather than assumed. Re-adding the route puts an
@@ -470,11 +469,11 @@ async fn mount_rejects_every_portal_owned_prefix() {
 
 #[tokio::test]
 async fn mount_keeps_host_public_routes_and_protects_portal_routes() {
-    let host = Router::new().route("/foundation", get(|| async { StatusCode::IM_A_TEAPOT }));
-    let app = portal::mount(contract_state().await, host, &["/foundation"])
+    let host = Router::new().route("/host-page", get(|| async { StatusCode::IM_A_TEAPOT }));
+    let app = portal::mount(contract_state().await, host, &["/host-page"])
         .expect("host route is not reserved");
 
-    let host_response = anonymous_get(&app, "/foundation").await;
+    let host_response = anonymous_get(&app, "/host-page").await;
     assert_eq!(
         host_response.status(),
         StatusCode::IM_A_TEAPOT,
@@ -502,9 +501,9 @@ async fn mount_keeps_host_public_routes_and_protects_portal_routes() {
 #[tokio::test]
 async fn bootstrap_mounts_host_public_routes_behind_the_shared_boundary() {
     use axum::extract::State;
-    // A host-supplied public page that reads `AppState`, exactly as the firm
-    // and Foundation marketing handlers do — proving the seam shares the
-    // application state, not just stateless routes the way `mount` does.
+    // A host-supplied public page that reads `AppState`, exactly as the firm's
+    // marketing handlers do — proving the seam shares the application state,
+    // not just stateless routes the way `mount` does.
     async fn host_home(State(_state): State<portal::AppState>) -> &'static str {
         "host home"
     }

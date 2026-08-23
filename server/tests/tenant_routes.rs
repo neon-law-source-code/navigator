@@ -63,9 +63,11 @@ async fn the_bare_host_redirects_into_the_portal() {
 async fn no_first_party_brand_page_is_published() {
     let app = tenant_router().await;
 
-    // The firm's pages, the Foundation's, and the shared legal/crawler
+    // The firm's pages, its retired URLs, and the shared legal/crawler
     // documents all belong to a brand host. A tenant publishing any of them
-    // would be serving another company's site under its own domain.
+    // would be serving another company's site under its own domain — and a
+    // retired URL is the sharper case: a tenant answering `410 Gone` would be
+    // telling its own visitors that a page it never published was withdrawn.
     for path in [
         "/contact",
         "/team",

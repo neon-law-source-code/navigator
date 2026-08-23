@@ -39,7 +39,7 @@
 .env.*
 !.env.example
 
-# The deployment tree lives in the private `neon-law-foundation/navigator-deploy`
+# The deployment tree lives in the private `neon-law-source-code/navigator-deploy`
 # now, and these patterns are kept anyway — deliberately, not by oversight.
 # A `deployments/` directory appearing here would be someone working on the
 # tree in the wrong checkout, and the one unrecoverable mistake in that work is

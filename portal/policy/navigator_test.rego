@@ -242,23 +242,27 @@ test_anonymous_denied_on_clerk if {
 	not authz.allow with input as {"path": ["clerk"], "method": "GET", "session": null}
 }
 
-# ---------- the Foundation's gated reading surfaces ----------
-# The talks are the Foundation's public face and never reach the policy at
-# all. Everything else it publishes does, and reads for any authenticated
-# person — including a `client`, who is otherwise confined to their own
-# matters. These are pages, not legal work, so the grant is deliberately wide.
+# ---------- the retired Foundation reading surfaces ----------
+# The mission letter, Notations, and the transparency disclosures were the one
+# grant in this policy that admitted `client` to a page outside their own
+# matters. Those pages are retired, so the grant is gone and every tier — the
+# authenticated ones included — is denied. Kept as a guard: reintroducing a
+# blanket authenticated-reads rule would widen `client` again.
 
-test_client_reads_the_foundation_pages if {
-	authz.allow with input as {"path": ["mission"], "method": "GET", "session": client_session}
-	authz.allow with input as {"path": ["notations"], "method": "GET", "session": client_session}
-	authz.allow with input as {"path": ["transparency"], "method": "GET", "session": client_session}
-	authz.allow with input as {"path": ["transparency", "bylaws"], "method": "GET", "session": client_session}
+test_no_tier_reads_the_retired_foundation_pages if {
+	not authz.allow with input as {"path": ["mission"], "method": "GET", "session": client_session}
+	not authz.allow with input as {"path": ["notations"], "method": "GET", "session": client_session}
+	not authz.allow with input as {"path": ["transparency"], "method": "GET", "session": client_session}
+	not authz.allow with input as {"path": ["transparency", "bylaws"], "method": "GET", "session": client_session}
+	not authz.allow with input as {"path": ["foundation"], "method": "GET", "session": client_session}
+	not authz.allow with input as {"path": ["foundation", "mission"], "method": "GET", "session": client_session}
 }
 
-test_anonymous_denied_on_the_foundation_pages if {
+test_anonymous_denied_on_the_retired_foundation_pages if {
 	not authz.allow with input as {"path": ["mission"], "method": "GET", "session": null}
 	not authz.allow with input as {"path": ["notations"], "method": "GET", "session": null}
 	not authz.allow with input as {"path": ["transparency"], "method": "GET", "session": null}
+	not authz.allow with input as {"path": ["foundation"], "method": "GET", "session": null}
 }
 
 # Workshop reads are public and bypass this policy. Keep the client case here

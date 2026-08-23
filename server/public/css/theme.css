@@ -1520,12 +1520,6 @@ a.nav-pagination__link:hover {
   text-decoration: underline;
 }
 
-/* Content-freshness footer. */
-.nav-freshness {
-  color: var(--nav-color-text-muted);
-  margin-top: 1.5rem;
-}
-
 /* Form — a constrained create/edit card with labeled fields. */
 .nav-form-card {
   max-width: 32rem;

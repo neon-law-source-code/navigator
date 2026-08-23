@@ -396,7 +396,7 @@ fn validate_portal(root: &Path, errors: &mut Vec<Finding>) {
 }
 
 /// The pinned validate action a Project repository's gate must call.
-const VALIDATE_ACTION: &str = "neon-law-foundation/navigator/.github/actions/validate@";
+const VALIDATE_ACTION: &str = "neon-law-source-code/navigator/.github/actions/validate@";
 
 /// Just enough of a workflow to find one step and read its inputs.
 ///
@@ -717,7 +717,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: neon-law-foundation/navigator/.github/actions/validate@26.7.27
+      - uses: neon-law-source-code/navigator/.github/actions/validate@26.7.27
         with:
           version: "26.7.27"
           project_repository: true
@@ -803,7 +803,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Validate the Project repository
-        uses: neon-law-foundation/navigator/.github/actions/validate@26.7.27
+        uses: neon-law-source-code/navigator/.github/actions/validate@26.7.27
         with:
           version: "26.7.27"
           project_repository: true
@@ -826,7 +826,7 @@ jobs:
       - uses: pnpm/action-setup@v4
         with:
           version: "9.1.0"
-      - uses: neon-law-foundation/navigator/.github/actions/validate@26.7.27
+      - uses: neon-law-source-code/navigator/.github/actions/validate@26.7.27
         with:
           version: "26.7.27"
           project_repository: true
@@ -848,7 +848,7 @@ jobs:
       - uses: other/action@v1
         with:
           project_repository: true
-      - uses: neon-law-foundation/navigator/.github/actions/validate@26.7.27
+      - uses: neon-law-source-code/navigator/.github/actions/validate@26.7.27
         with:
           version: "26.7.27"
 "#;
@@ -868,7 +868,7 @@ jobs:
   ci:
     runs-on: ubuntu-latest
     steps:
-      - uses: neon-law-foundation/navigator/.github/actions/validate@26.7.27
+      - uses: neon-law-source-code/navigator/.github/actions/validate@26.7.27
         with:
           version: "26.7.26"
           project_repository: true
@@ -890,7 +890,7 @@ jobs:
   ci:
     runs-on: ubuntu-latest
     steps:
-      - uses: neon-law-foundation/navigator/.github/actions/validate@main
+      - uses: neon-law-source-code/navigator/.github/actions/validate@main
         with:
           version: "main"
           project_repository: true

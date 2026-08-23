@@ -15,7 +15,7 @@ async fn dry_run_prints_plan_without_writes() {
             "ops",
             "github",
             "setup",
-            "neon-law-foundation/navigator",
+            "neon-law-source-code/navigator",
             "--dry-run",
         ])
         .env("GITHUB_TOKEN", "test-token")
@@ -50,7 +50,7 @@ async fn mount_reads(server: &MockServer) {
         .mount(server)
         .await;
     Mock::given(method("GET"))
-        .and(path("/repos/neon-law-foundation/navigator"))
+        .and(path("/repos/neon-law-source-code/navigator"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "allow_squash_merge": true,
             "allow_merge_commit": false,
@@ -64,7 +64,7 @@ async fn mount_reads(server: &MockServer) {
         .await;
     Mock::given(method("GET"))
         .and(path(
-            "/repos/neon-law-foundation/navigator/contents/.github/CODEOWNERS",
+            "/repos/neon-law-source-code/navigator/contents/.github/CODEOWNERS",
         ))
         .respond_with(ResponseTemplate::new(200).set_body_string("* @owner\n"))
         .mount(server)
@@ -80,7 +80,7 @@ async fn mount_reads(server: &MockServer) {
     // actually defines that job.
     Mock::given(method("GET"))
         .and(path(
-            "/repos/neon-law-foundation/navigator/contents/.github/workflows/ci.yml",
+            "/repos/neon-law-source-code/navigator/contents/.github/workflows/ci.yml",
         ))
         .respond_with(ResponseTemplate::new(200).set_body_string(
             "jobs:\n  rust:\n    name: cargo test (workspace)\n  ci:\n    name: ci\n",
@@ -88,7 +88,7 @@ async fn mount_reads(server: &MockServer) {
         .mount(server)
         .await;
     Mock::given(method("GET"))
-        .and(path("/repos/neon-law-foundation/navigator/rulesets"))
+        .and(path("/repos/neon-law-source-code/navigator/rulesets"))
         .respond_with(
             ResponseTemplate::new(200)
                 .set_body_json(serde_json::json!([{"id":7,"name":"production"}])),
@@ -96,7 +96,7 @@ async fn mount_reads(server: &MockServer) {
         .mount(server)
         .await;
     Mock::given(method("GET"))
-        .and(path("/repos/neon-law-foundation/navigator/rulesets/7"))
+        .and(path("/repos/neon-law-source-code/navigator/rulesets/7"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "name": "production",
             "target": "branch",
@@ -108,7 +108,7 @@ async fn mount_reads(server: &MockServer) {
         .mount(server)
         .await;
     Mock::given(method("GET"))
-        .and(path("/repos/neon-law-foundation/navigator/labels"))
+        .and(path("/repos/neon-law-source-code/navigator/labels"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([])))
         .mount(server)
         .await;

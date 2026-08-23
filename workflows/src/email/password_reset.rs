@@ -13,10 +13,7 @@ use super::Template;
 /// clients. Mirrors the template's `subject:` frontmatter.
 #[must_use]
 pub fn password_reset_subject() -> String {
-    format!(
-        "Reset your {} password",
-        super::layout::EmailBrand::Firm.alt()
-    )
+    format!("Reset your {} password", super::layout::brand_name())
 }
 
 /// Raw template body (markdown with YAML frontmatter). Bundled via
@@ -38,15 +35,15 @@ pub const TEMPLATE: Template = Template {
 /// email never carries NeonLaw's name or domain.
 #[must_use]
 pub fn render_password_reset_body(name: &str, email: &str, reset_url: &str) -> String {
-    let brand = super::layout::EmailBrand::Firm.alt();
-    let support = super::layout::EmailBrand::Firm.support_email();
+    let brand = super::layout::brand_name();
+    let support = super::layout::support_email();
     let site_url = super::layout::base_url_from_env();
     let body = super::strip_frontmatter(PASSWORD_RESET_TEMPLATE);
     body.replace("{{client_name}}", name)
         .replace("{{client_email}}", email)
         .replace("{{reset_url}}", reset_url)
-        .replace("{{brand}}", &brand)
-        .replace("{{support_email}}", &support)
+        .replace("{{brand}}", brand)
+        .replace("{{support_email}}", support)
         .replace("{{site_url}}", &site_url)
 }
 
@@ -63,7 +60,6 @@ pub fn render_password_reset_html(
     super::layout::render_email_html(
         &render_password_reset_body(name, email, reset_url),
         base_url,
-        super::layout::EmailBrand::Firm,
     )
 }
 

@@ -26,7 +26,7 @@ pub const WELCOME_SUBJECT: &str = "Welcome to Neon Law";
 /// deployment greets its own clients by name.
 #[must_use]
 pub fn welcome_subject() -> String {
-    format!("Welcome to {}", super::layout::EmailBrand::Firm.alt())
+    format!("Welcome to {}", super::layout::brand_name())
 }
 
 /// Raw welcome template body (markdown with YAML frontmatter).
@@ -49,52 +49,24 @@ pub const TEMPLATE: Template = Template {
 /// or domain.
 #[must_use]
 pub fn render_welcome_body(name: &str, email: &str) -> String {
-    let brand = super::layout::EmailBrand::Firm.alt();
-    let support = super::layout::EmailBrand::Firm.support_email();
+    let brand = super::layout::brand_name();
+    let support = super::layout::support_email();
     let site_url = super::layout::base_url_from_env();
     let body = super::strip_frontmatter(WELCOME_TEMPLATE);
     body.replace("{{client_name}}", name)
         .replace("{{client_email}}", email)
-        .replace("{{brand}}", &brand)
-        .replace("{{support_email}}", &support)
+        .replace("{{brand}}", brand)
+        .replace("{{support_email}}", support)
         .replace("{{site_url}}", &site_url)
-        .replace("{{foundation_blurb}}", &foundation_blurb(&site_url))
 }
 
-/// The Foundation plug in the welcome email — the firm's 501(c)(3) arm for
-/// access-to-justice cases and AI teaching. Parameterized through the
-/// foundation brand configuration so it greets under the deployer's own
-/// foundation name. Omitted entirely on a white-label app-only deploy
-/// (`portal_only: true`), where the deployer typically has no foundation to plug.
-fn foundation_blurb(site_url: &str) -> String {
-    if portal_only() {
-        return String::new();
-    }
-    let foundation = super::layout::EmailBrand::Foundation.alt();
-    format!(
-        "- The {foundation} hosts access-to-justice programs and attorney AI training at \
-         <{site_url}/foundation>.\n"
-    )
-}
-
-/// True when the mounted manifest selects the white-label app-only surface.
-fn portal_only() -> bool {
-    views::brand::portal_only()
-}
-
-/// Render the welcome email's HTML alternative: the same substituted
-/// markdown body as [`render_welcome_body`], wrapped in the
-/// inline-styled email layout with the firm logo. The welcome is a
-/// firm email, so it carries [`EmailBrand::Firm`]. `base_url` is the
-/// public origin serving `/logo-neon.png` (see
-/// [`super::layout::base_url_from_env`]).
+/// Render the welcome email's HTML alternative: the same substituted markdown
+/// body as [`render_welcome_body`], wrapped in the inline-styled email layout
+/// with the firm logo. `base_url` is the public origin serving
+/// `/logo-neon.png` (see [`super::layout::base_url_from_env`]).
 #[must_use]
 pub fn render_welcome_html(name: &str, email: &str, base_url: &str) -> String {
-    super::layout::render_email_html(
-        &render_welcome_body(name, email),
-        base_url,
-        super::layout::EmailBrand::Firm,
-    )
+    super::layout::render_email_html(&render_welcome_body(name, email), base_url)
 }
 
 /// Run the ephemeral `onboarding__welcome` workflow against the
@@ -253,15 +225,21 @@ mod tests {
         );
     }
 
+    /// The welcome email names no retired surface.
+    ///
+    /// It used to close on a plug for the firm's 501(c)(3) arm, linking
+    /// `/foundation`. That surface is retired and the URL answers `410 Gone`,
+    /// so an email carrying the link would send every new account at a dead
+    /// page — and unlike a page, a sent email cannot be corrected.
     #[test]
-    fn welcome_includes_the_foundation_plug_by_default() {
-        // The default full-site deploy welcome email plugs Foundation programs
-        // and AI training, named through the foundation brand seam.
+    fn welcome_links_no_retired_surface() {
         let body = render_welcome_body("Aries", "aries@example.com");
-        assert!(
-            body.contains("access-to-justice programs") && body.contains("/foundation>"),
-            "default welcome email carries the Foundation plug: {body}"
-        );
+        for retired in ["/foundation", "Foundation", "access-to-justice programs"] {
+            assert!(
+                !body.contains(retired),
+                "the welcome email names the retired {retired}: {body}"
+            );
+        }
     }
 
     #[test]

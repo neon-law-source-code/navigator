@@ -319,8 +319,7 @@ fn no_deck_calls_the_forge_an_enterprise_or_the_cli_private() {
 
         assert!(
             !text.contains("private `navigator` CLI"),
-            "{deck} calls the `navigator` CLI private — it has been AGPL-3.0-only and public \
-             since #7",
+            "{deck} calls the `navigator` CLI private — its source has been public since #7",
         );
 
         if *deck == DEPLOY || *deck == RUST_IN_PEACE {

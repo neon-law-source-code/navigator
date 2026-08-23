@@ -3376,7 +3376,7 @@ records:
     /// Both halves are load-bearing, and neither is cosmetic.
     ///
     /// The organization is where these three repositories actually are — they
-    /// moved out of `neon-law-foundation` so the staging deployment houses the
+    /// moved out of `neon-law-source-code` so the staging deployment houses the
     /// fixtures it serves. A stale URL here does not fail loudly: GitHub
     /// redirects a transferred repository, so `dev sample-project` would keep
     /// cloning successfully from a path that no longer describes anything.

@@ -396,7 +396,7 @@ pub fn route(
 }
 
 /// A delivery is watched when it targets the canonical product code
-/// repository (`neon-law-foundation/navigator`) or any repository owned by the
+/// repository (`neon-law-source-code/navigator`) or any repository owned by the
 /// Project org (`github_org` = `neon-law-firm`), each of which backs a Project.
 /// The owner match is exact on the `owner/` segment so a look-alike owner
 /// (`neon-law-firm-evil/x`) cannot spoof it.
@@ -784,7 +784,7 @@ mod tests {
 
     const SECRET: &str = "test-webhook-secret";
     const CONFIG: RouterConfig = RouterConfig {
-        canonical_repository: "neon-law-foundation/navigator",
+        canonical_repository: "neon-law-source-code/navigator",
         github_org: "neon-law-firm",
         app_login: "navigator-devx[bot]",
     };
@@ -868,7 +868,7 @@ mod tests {
     #[test]
     fn routes_opened_triage_issues_to_triage() {
         let payload = json!({
-            "repository": { "full_name": "neon-law-foundation/navigator" },
+            "repository": { "full_name": "neon-law-source-code/navigator" },
             "issue": {
                 "number": 457,
                 "author_association": "OWNER",
@@ -887,7 +887,7 @@ mod tests {
         assert_eq!(route.service(), "DevxIssueTriage");
         assert_eq!(
             route.key(),
-            "triage-neon-law-foundation__navigator-457-delivery-1"
+            "triage-neon-law-source-code__navigator-457-delivery-1"
         );
         assert_eq!(route.handler(), "run");
     }
@@ -895,7 +895,7 @@ mod tests {
     #[test]
     fn routes_a_triage_issue_revision_to_a_new_delivery_key() {
         let payload = json!({
-            "repository": { "full_name": "neon-law-foundation/navigator" },
+            "repository": { "full_name": "neon-law-source-code/navigator" },
             "issue": {
                 "number": 457,
                 "author_association": "OWNER",
@@ -915,14 +915,14 @@ mod tests {
         assert_eq!(route.service(), "DevxIssueTriage");
         assert_eq!(
             route.key(),
-            "triage-neon-law-foundation__navigator-457-delivery-revision-1"
+            "triage-neon-law-source-code__navigator-457-delivery-revision-1"
         );
     }
 
     #[test]
     fn ignores_opened_issues_without_triage() {
         let payload = json!({
-            "repository": { "full_name": "neon-law-foundation/navigator" },
+            "repository": { "full_name": "neon-law-source-code/navigator" },
             "issue": { "number": 457, "author_association": "OWNER", "labels": [] },
             "sender": { "login": "owner" }
         });
@@ -940,7 +940,7 @@ mod tests {
     #[test]
     fn routes_trusted_triage_label_to_triage() {
         let payload = json!({
-            "repository": { "full_name": "neon-law-foundation/navigator" },
+            "repository": { "full_name": "neon-law-source-code/navigator" },
             "issue": { "number": 457, "labels": [] },
             "label": { "name": "triage" },
             "sender": { "login": "maintainer", "author_association": "MEMBER" }
@@ -956,7 +956,7 @@ mod tests {
         assert_eq!(route.service(), "DevxIssueTriage");
         assert_eq!(
             route.key(),
-            "triage-neon-law-foundation__navigator-457-delivery-2"
+            "triage-neon-law-source-code__navigator-457-delivery-2"
         );
     }
 
@@ -967,7 +967,7 @@ mod tests {
         // delivery is trusted on its own — the route must not depend on an
         // association field GitHub never sends.
         let payload = json!({
-            "repository": { "full_name": "neon-law-foundation/navigator" },
+            "repository": { "full_name": "neon-law-source-code/navigator" },
             "issue": { "number": 457, "labels": [] },
             "label": { "name": "triage" },
             "sender": { "login": "maintainer" }
@@ -983,7 +983,7 @@ mod tests {
         assert_eq!(route.service(), "DevxIssueTriage");
         assert_eq!(
             route.key(),
-            "triage-neon-law-foundation__navigator-457-delivery-3"
+            "triage-neon-law-source-code__navigator-457-delivery-3"
         );
     }
 
@@ -993,7 +993,7 @@ mod tests {
         // `sender` has no `author_association`; the implement route must still
         // fire on GitHub's write-access guarantee alone.
         let payload = json!({
-            "repository": { "full_name": "neon-law-foundation/navigator" },
+            "repository": { "full_name": "neon-law-source-code/navigator" },
             "issue": { "number": 457, "labels": [{ "name": "triaged" }] },
             "label": { "name": "triaged" },
             "sender": { "login": "maintainer" }
@@ -1009,14 +1009,14 @@ mod tests {
         assert_eq!(route.service(), "DevxImplementIssue");
         assert_eq!(
             route.key(),
-            "implement-neon-law-foundation__navigator-457-delivery-human-triaged"
+            "implement-neon-law-source-code__navigator-457-delivery-human-triaged"
         );
     }
 
     #[test]
     fn ignores_already_triaged_triage_label() {
         let payload = json!({
-            "repository": { "full_name": "neon-law-foundation/navigator" },
+            "repository": { "full_name": "neon-law-source-code/navigator" },
             "issue": { "number": 457, "labels": [{ "name": "triaged" }] },
             "label": { "name": "triage" },
             "sender": { "login": "maintainer", "author_association": "MEMBER" }
@@ -1035,7 +1035,7 @@ mod tests {
     #[test]
     fn routes_the_apps_triaged_label_to_implementation() {
         let payload = json!({
-            "repository": { "full_name": "neon-law-foundation/navigator" },
+            "repository": { "full_name": "neon-law-source-code/navigator" },
             "issue": { "number": 457, "labels": [{ "name": "triaged" }] },
             "label": { "name": "triaged" },
             "sender": { "login": "navigator-devx[bot]", "author_association": "NONE" }
@@ -1051,14 +1051,14 @@ mod tests {
         assert_eq!(route.service(), "DevxImplementIssue");
         assert_eq!(
             route.key(),
-            "implement-neon-law-foundation__navigator-457-delivery-5"
+            "implement-neon-law-source-code__navigator-457-delivery-5"
         );
     }
 
     #[test]
     fn routes_a_collaborators_triaged_label_to_implementation() {
         let payload = json!({
-            "repository": { "full_name": "neon-law-foundation/navigator" },
+            "repository": { "full_name": "neon-law-source-code/navigator" },
             "issue": { "number": 457, "labels": [{ "name": "triaged" }] },
             "label": { "name": "triaged" },
             "sender": { "login": "maintainer", "author_association": "COLLABORATOR" }
@@ -1077,7 +1077,7 @@ mod tests {
     #[test]
     fn ignores_the_apps_other_events() {
         let payload = json!({
-            "repository": { "full_name": "neon-law-foundation/navigator" },
+            "repository": { "full_name": "neon-law-source-code/navigator" },
             "issue": { "number": 457, "labels": [{ "name": "triage" }] },
             "sender": { "login": "navigator-devx[bot]" }
         });
@@ -1118,7 +1118,7 @@ mod tests {
                 GithubEvent::IssueComment,
                 "created",
                 json!({
-                    "repository": { "full_name": "neon-law-foundation/navigator" },
+                    "repository": { "full_name": "neon-law-source-code/navigator" },
                     "sender": { "login": "reviewer" },
                     "issue": { "number": 99, "pull_request": {} }
                 }),
@@ -1128,7 +1128,7 @@ mod tests {
                 GithubEvent::PullRequestReviewComment,
                 "created",
                 json!({
-                    "repository": { "full_name": "neon-law-foundation/navigator" },
+                    "repository": { "full_name": "neon-law-source-code/navigator" },
                     "sender": { "login": "reviewer" },
                     "pull_request": { "number": 99 }
                 }),
@@ -1138,7 +1138,7 @@ mod tests {
                 GithubEvent::PullRequestReview,
                 "submitted",
                 json!({
-                    "repository": { "full_name": "neon-law-foundation/navigator" },
+                    "repository": { "full_name": "neon-law-source-code/navigator" },
                     "sender": { "login": "reviewer" },
                     "review": { "state": "changes_requested" },
                     "pull_request": { "number": 99 }
@@ -1149,7 +1149,7 @@ mod tests {
                 GithubEvent::CheckRun,
                 "completed",
                 json!({
-                    "repository": { "full_name": "neon-law-foundation/navigator" },
+                    "repository": { "full_name": "neon-law-source-code/navigator" },
                     "sender": { "login": "github-actions[bot]" },
                     "check_run": {
                         "conclusion": "failure",
@@ -1158,7 +1158,7 @@ mod tests {
                             "number": 99,
                             "head": { "repo": {
                                 "name": "navigator",
-                                "url": "https://api.github.com/repos/neon-law-foundation/navigator"
+                                "url": "https://api.github.com/repos/neon-law-source-code/navigator"
                             } }
                         }]
                     }
@@ -1169,12 +1169,12 @@ mod tests {
                 GithubEvent::WorkflowRun,
                 "completed",
                 json!({
-                    "repository": { "full_name": "neon-law-foundation/navigator" },
+                    "repository": { "full_name": "neon-law-source-code/navigator" },
                     "sender": { "login": "github-actions[bot]" },
                     "workflow_run": {
                         "conclusion": "failure",
                         "head_branch": "feature/slack-proof",
-                        "head_repository": { "full_name": "neon-law-foundation/navigator" },
+                        "head_repository": { "full_name": "neon-law-source-code/navigator" },
                         "pull_requests": [{ "number": 99 }]
                     }
                 }),
@@ -1183,7 +1183,7 @@ mod tests {
         for (delivery, event, action, payload) in signals {
             let result = route(&CONFIG, delivery, event, action, &payload).expect("signal payload");
             assert_eq!(result.service(), "devx-pr");
-            assert_eq!(result.key(), "neon-law-foundation__navigator-99");
+            assert_eq!(result.key(), "neon-law-source-code__navigator-99");
         }
     }
 
@@ -1228,7 +1228,7 @@ mod tests {
             "issue": { "number": 12, "pull_request": {} }
         });
         let code = json!({
-            "repository": { "full_name": "neon-law-foundation/navigator" },
+            "repository": { "full_name": "neon-law-source-code/navigator" },
             "sender": { "login": "reviewer" },
             "issue": { "number": 12, "pull_request": {} }
         });
@@ -1253,7 +1253,7 @@ mod tests {
         .key()
         .to_string();
         assert_eq!(firm_key, "neon-law-firm__arthur-12");
-        assert_eq!(code_key, "neon-law-foundation__navigator-12");
+        assert_eq!(code_key, "neon-law-source-code__navigator-12");
         assert_ne!(firm_key, code_key);
     }
 
@@ -1262,12 +1262,12 @@ mod tests {
         // Editing or deleting an existing comment must not re-signal `devx-pr`
         // the way a freshly created comment does.
         let issue_comment_base = json!({
-            "repository": { "full_name": "neon-law-foundation/navigator" },
+            "repository": { "full_name": "neon-law-source-code/navigator" },
             "sender": { "login": "reviewer" },
             "issue": { "number": 99, "pull_request": {} }
         });
         let review_comment_base = json!({
-            "repository": { "full_name": "neon-law-foundation/navigator" },
+            "repository": { "full_name": "neon-law-source-code/navigator" },
             "sender": { "login": "reviewer" },
             "pull_request": { "number": 99 }
         });
@@ -1307,7 +1307,7 @@ mod tests {
         // A fork PR can carry a canonical-repository PR number, but the head
         // repository identifies the fork, so no `devx-pr` signal fires.
         let check_run = json!({
-            "repository": { "full_name": "neon-law-foundation/navigator" },
+            "repository": { "full_name": "neon-law-source-code/navigator" },
             "sender": { "login": "github-actions[bot]" },
             "check_run": {
                 "conclusion": "failure",
@@ -1335,7 +1335,7 @@ mod tests {
         );
 
         let workflow_run = json!({
-            "repository": { "full_name": "neon-law-foundation/navigator" },
+            "repository": { "full_name": "neon-law-source-code/navigator" },
             "sender": { "login": "github-actions[bot]" },
             "workflow_run": {
                 "conclusion": "failure",
@@ -1360,7 +1360,7 @@ mod tests {
 
     #[test]
     fn ignores_unknown_events() {
-        let payload = json!({ "repository": { "full_name": "neon-law-foundation/navigator" } });
+        let payload = json!({ "repository": { "full_name": "neon-law-source-code/navigator" } });
         let result = route(&CONFIG, "delivery-8", GithubEvent::Unknown, "", &payload)
             .expect("unknown events are no-ops");
         assert_eq!(result.ignore_reason(), Some(IgnoreReason::UnknownEvent));
@@ -1369,7 +1369,7 @@ mod tests {
     #[test]
     fn rejects_a_supported_event_without_its_required_routing_fields() {
         let payload = json!({
-            "repository": { "full_name": "neon-law-foundation/navigator" },
+            "repository": { "full_name": "neon-law-source-code/navigator" },
             "sender": { "login": "maintainer" },
             "issue": { "number": 457, "labels": [{ "name": "triage" }] }
         });
@@ -1408,7 +1408,7 @@ mod tests {
     async fn receiver_submits_the_same_restate_key_for_a_redelivery() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
-            .and(path("/DevxIssueTriage/triage-neon-law-foundation__navigator-457-11111111-1111-4111-8111-111111111111/run/send"))
+            .and(path("/DevxIssueTriage/triage-neon-law-source-code__navigator-457-11111111-1111-4111-8111-111111111111/run/send"))
             .and(body_partial_json(
                 json!({ "issue_number": 457, "delivery_id": "11111111-1111-4111-8111-111111111111" }),
             ))
@@ -1419,7 +1419,7 @@ mod tests {
         let application = app(state(server.uri()));
         let fixture = json!({
             "action": "opened",
-            "repository": { "full_name": "neon-law-foundation/navigator" },
+            "repository": { "full_name": "neon-law-source-code/navigator" },
             "issue": { "number": 457, "author_association": "OWNER", "labels": [{ "name": "triage" }] },
             "sender": { "login": "owner" }
         });
@@ -1469,7 +1469,7 @@ mod tests {
 
         let noop = json!({
             "action": "opened",
-            "repository": { "full_name": "neon-law-foundation/navigator" },
+            "repository": { "full_name": "neon-law-source-code/navigator" },
             "issue": { "number": 1, "author_association": "OWNER", "labels": [] },
             "sender": { "login": "owner" }
         });

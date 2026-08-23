@@ -10,9 +10,9 @@
 //! of the route table in tests.
 //!
 //! This crate owns the authenticated application and the anonymous
-//! protocol ingress. Each public face — the firm's and the Foundation's —
-//! lives in the brand crate that serves it (`neon`), which is what
-//! keeps a page's copy next to the binary that publishes it.
+//! protocol ingress. The public face lives in the brand crate that serves it
+//! (`neon`), which is what keeps a page's copy next to the binary that
+//! publishes it.
 
 #[cfg(test)]
 pub(crate) mod test_tracing {
@@ -110,7 +110,6 @@ pub mod estate;
 pub mod expunge;
 pub mod expunge_request_route;
 pub mod expunge_route;
-pub mod git_meta;
 pub mod google_oauth;
 pub mod gov_forms;
 pub mod hosting;
@@ -147,7 +146,6 @@ pub mod tenant;
 /// use it; see the module docs.
 pub mod test_support;
 pub mod transcript_intake;
-pub mod transparency;
 pub mod visitor_analytics;
 pub mod webhook_auth;
 pub mod welcome;
@@ -163,8 +161,7 @@ pub use auth::{AuthClaims, AuthConfig};
 pub use blog::{BlogIndex, BlogPost};
 pub use config::{AppConfig, ConfigError};
 pub use docs::{Doc, DocsIndex};
-pub use marketing::{MarketingDoc, MarketingIndex};
-pub use transparency::{DocCategory, TransparencyDoc, TransparencyIndex};
+pub use marketing::MarketingDoc;
 // The A2A confirmation gate looks the *approver* up in `persons`, so a
 // test that drives the gate must inject the same `Principal` the auth
 // middleware produces in prod. Re-export it so the BDD suite can build
@@ -281,21 +278,9 @@ pub const DEFAULT_PUBLIC_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../se
 pub const DEFAULT_WORKSHOPS_DIR: &str =
     concat!(env!("CARGO_MANIFEST_DIR"), "/../server/content/workshops");
 
-/// Root for the bundled marketing fragments (hero copy, service
-/// summaries, foundation mission). Override with
-/// `NAVIGATOR_MARKETING_DIR`.
-pub const DEFAULT_MARKETING_DIR: &str =
-    concat!(env!("CARGO_MANIFEST_DIR"), "/../server/content/marketing");
-
 /// Root for the bundled blog posts served at `/blog`. Override with
 /// `NAVIGATOR_BLOG_DIR`.
 pub const DEFAULT_BLOG_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../server/content/blog");
-
-/// Root for the bundled Foundation transparency documents served under
-/// `/transparency` (bylaws, conflict policy, quarterly board
-/// minutes). Override with `NAVIGATOR_FOUNDATION_DIR`.
-pub const DEFAULT_FOUNDATION_DIR: &str =
-    concat!(env!("CARGO_MANIFEST_DIR"), "/../server/content/foundation");
 
 /// Shared router state. `Clone`-cheap — every field is `Arc`-backed
 /// or wraps one.
@@ -311,14 +296,9 @@ pub struct AppState {
     /// Workspace docs published at `/docs/{slug}`, baked from the
     /// `docs/` tree at compile time. See [`docs`].
     pub docs: DocsIndex,
-    pub marketing: MarketingIndex,
     /// Firm blog posts served at `/blog`, loaded at boot from a
     /// directory of dated `.md` files. See [`blog`].
     pub blog: BlogIndex,
-    /// Foundation transparency documents (bylaws, conflict policy, quarterly
-    /// board minutes) served under `/transparency`, loaded at boot
-    /// from `server/content/foundation/`. See [`transparency`].
-    pub transparency: TransparencyIndex,
     pub auth: AuthConfig,
     /// Google OAuth access-token validator for `/mcp`. Pass-through
     /// when `GOOGLE_OAUTH_CLIENT_IDS` is unset (KIND / local dev).
@@ -329,7 +309,7 @@ pub struct AppState {
     pub rate_limit: rate_limit::RateLimit,
     pub canonical_host: CanonicalHost,
     /// White-label "portal-only" mode. When enabled, the public
-    /// marketing + Foundation surface is not mounted and `/` redirects to
+    /// marketing surface is not mounted and `/` redirects to
     /// `/app/projects`. Disabled by default. Sourced from
     /// the mounted brand manifest. See [`portal_only`].
     pub portal_only: PortalOnly,
@@ -465,12 +445,6 @@ impl FromRef<AppState> for WorkshopIndex {
     }
 }
 
-impl FromRef<AppState> for MarketingIndex {
-    fn from_ref(s: &AppState) -> Self {
-        s.marketing.clone()
-    }
-}
-
 impl FromRef<AppState> for DocsIndex {
     fn from_ref(s: &AppState) -> Self {
         s.docs.clone()
@@ -480,12 +454,6 @@ impl FromRef<AppState> for DocsIndex {
 impl FromRef<AppState> for BlogIndex {
     fn from_ref(s: &AppState) -> Self {
         s.blog.clone()
-    }
-}
-
-impl FromRef<AppState> for TransparencyIndex {
-    fn from_ref(s: &AppState) -> Self {
-        s.transparency.clone()
     }
 }
 
@@ -1733,13 +1701,13 @@ pub fn bootstrap(
             )),
         );
     }
-    // The host's own public Dioxus SSR pages (#730 PR6) — the firm host's ported
-    // marketing pages, none for the Foundation host. Unlike the built-in Dioxus
-    // routes, these are anonymous marketing pages, so they mount OUTSIDE
-    // `session_boundary` (which would `303` an anonymous reader to login) — the
-    // same anonymous treatment `host_public` gives the firm pages. They
-    // still ride the shared cookie/host/security-header layer stack applied
-    // below, and 404 on the Foundation host, which passes none.
+    // The host's own public Dioxus SSR pages (#730 PR6) — the firm host's
+    // ported marketing pages. Unlike the built-in Dioxus routes, these are
+    // anonymous marketing pages, so they mount OUTSIDE `session_boundary`
+    // (which would `303` an anonymous reader to login) — the same anonymous
+    // treatment `host_public` gives the firm pages. They still ride the shared
+    // cookie/host/security-header layer stack applied below, and 404 on a host
+    // that passes none.
     //
     // `inject_optional_session` resolves the session cookie into the
     // `SessionData` extension without gating the route (#807): these pages skip
@@ -1836,8 +1804,8 @@ async fn catalog_presentation_certificate_submit(
 /// Brand-mounted rather than composed into [`bootstrap`] like its workshop
 /// twin below, and deliberately so: only the host that publishes the talks
 /// publishes the certificate they lead to. Composing it into the shared
-/// application would put `/presentations/{slug}/certificate` on the
-/// Foundation's host too, which mounts no talk it could lead back to.
+/// application would put `/presentations/{slug}/certificate` on a host that
+/// mounts no talk it could lead back to.
 ///
 /// POST-only; a stray GET lands the reader back on the light table where the
 /// form lives.
@@ -2031,14 +1999,6 @@ fn mount_brand_assets(
         (
             "/public/brand/firm-logo.png",
             assets.firm_logo_raster.as_ref(),
-        ),
-        (
-            "/public/brand/foundation-logo.svg",
-            assets.foundation_logo.as_ref(),
-        ),
-        (
-            "/public/brand/foundation-logo.png",
-            assets.foundation_logo_raster.as_ref(),
         ),
     ] {
         if let Some(file) = file {
@@ -2361,13 +2321,12 @@ fn text_response(content_type: &'static str, body: String) -> impl IntoResponse 
 /// The `Disallow` list every host serves, whatever brand it wears.
 ///
 /// It names what sits behind the session boundary, so the policy names those
-/// paths rather than sending crawlers at a login redirect. Mostly that is the
-/// shared Navigator application rather than the brand's marketing; the one
-/// brand-surface entries are the Foundation pages that read only for a
-/// signed-in visitor. Every host mounts the same application, so every host
-/// disallows the same set. Each brand's anonymous surface — the Foundation's
-/// `/` and audience pages, the firm's marketing pages and the talks beneath
-/// `/presentations/` — is deliberately absent from this list.
+/// paths rather than sending crawlers at a login redirect. That is the shared
+/// Navigator application rather than any brand's marketing, and every host
+/// mounts the same application, so every host disallows the same set. A
+/// brand's anonymous surface — its marketing pages and the talks beneath
+/// `/presentations/` — is deliberately absent from this list, and so is a
+/// retired URL, which answers `410` rather than needing a crawler policy.
 ///
 /// `/workshops` left the list when the Navigator classes became public. The
 /// sitemap advertises them now, and a path a host both advertises and forbids
@@ -2377,9 +2336,6 @@ User-agent: *
 Disallow: /app
 Disallow: /admin
 Disallow: /lawyer
-Disallow: /notations
-Disallow: /transparency
-Disallow: /mission
 Disallow: /auth
 Disallow: /mcp
 Disallow: /docs
@@ -2387,9 +2343,9 @@ Disallow: /design
 Disallow: /templates
 ";
 
-/// `/robots.txt` — the host's crawler policy. Its own public marketing,
-/// blog, and Foundation pages are crawlable. The sitemap URL is absolute so
-/// crawlers discover the canonical host even in OSS forks.
+/// `/robots.txt` — the host's crawler policy. Its own public marketing and
+/// blog pages are crawlable. The sitemap URL is absolute so crawlers discover
+/// the canonical host even in forks.
 async fn robots_txt(
     State(canonical_host): State<CanonicalHost>,
     _headers: axum::http::HeaderMap,
@@ -2426,15 +2382,14 @@ fn percent_encode_sitemap_path(path: &str) -> String {
 /// The anonymous pages one brand invites a crawler to read.
 ///
 /// [`host_crawler_and_legal_routes`] is shared by every brand host, so the
-/// sitemap cannot be: a single hardcoded list advertises the firm's pages on the
-/// Foundation's host and the Foundation's talks on the firm's, and each of
-/// those entries is a `404` for the crawler that follows it. Each brand
-/// supplies its own set instead, and [`host_crawler_and_legal_routes`] carries
-/// it into the handler.
+/// sitemap cannot be: a single hardcoded list advertises one brand's pages on
+/// another brand's host, and each of those entries is a `404` for the crawler
+/// that follows it. Each brand supplies its own set instead, and
+/// [`host_crawler_and_legal_routes`] carries it into the handler.
 ///
 /// It takes [`AppState`] because a brand's crawlable surface includes its
-/// content-backed pages — the firm's posts, the Foundation's talks — which are
-/// whatever was loaded at boot rather than a constant.
+/// content-backed pages — the firm's posts and its talks — which are whatever
+/// was loaded at boot rather than a constant.
 ///
 /// Every path a brand returns must be anonymously readable on that brand's
 /// host. Its declared path table is the wider claim: it lists gated pages too,
@@ -2485,9 +2440,8 @@ fn render_sitemap_xml(base: &str, paths: &std::collections::BTreeSet<String>) ->
 }
 
 /// `/sitemap.xml` — absolute canonical URLs for the public GET surfaces the
-/// serving brand mounts. Content-backed pages (the firm's posts, the
-/// Foundation's talks) are read from `AppState`, so the sitemap follows the
-/// content loaded at boot.
+/// serving brand mounts. Content-backed pages (the firm's posts and talks) are
+/// read from `AppState`, so the sitemap follows the content loaded at boot.
 fn sitemap_xml(state: &AppState, brand_paths: SitemapPaths) -> Response {
     let base = resolve_crawler_base_url(&state.canonical_host);
     let body = render_sitemap_xml(&base, &sitemap_paths(state, brand_paths));
@@ -2628,21 +2582,21 @@ pub struct LlmsTxt {
     pub summary: String,
     /// The `## Pages` links: the brand's own anonymous pages.
     pub pages: Vec<LlmsTxtLink>,
-    /// Corpus sections below `## Pages`, such as the Foundation's talks.
+    /// Corpus sections below `## Pages`, such as the firm's talks.
     pub sections: Vec<LlmsTxtSection>,
 }
 
 /// The `/llms.txt` document one brand publishes.
 ///
 /// [`host_crawler_and_legal_routes`] is shared by every brand host, so this
-/// document cannot be: one hardcoded page list opened the firm's host with the
-/// Foundation's name and sent an LLM crawler to `/education` and `/attorneys`,
-/// neither of which the firm serves. Each brand supplies its own instead,
-/// exactly as it supplies its own [`SitemapPaths`].
+/// document cannot be: one hardcoded page list would open every host with one
+/// brand's name and send an LLM crawler at pages the others do not serve. Each
+/// brand supplies its own instead, exactly as it supplies its own
+/// [`SitemapPaths`].
 ///
 /// It takes [`AppState`] because a brand's crawlable corpus includes its
-/// content-backed documents — the Foundation's talks — which are whatever was
-/// loaded at boot rather than a constant.
+/// content-backed documents — its talks — which are whatever was loaded at boot
+/// rather than a constant.
 ///
 /// Every path a brand returns must be anonymously readable on that brand's
 /// host: advertising a login redirect or a 404 as a crawlable document is
@@ -2753,7 +2707,7 @@ struct CertificateForm {
 /// slide asks for their completion certificate. Validates the
 /// double-submit CSRF token, then dispatches the durable
 /// `workshop__certificate` workflow (which renders the PDF and emails it
-/// from the Foundation address). Completion is client-trusted
+/// from the firm's address). Completion is client-trusted
 /// (localStorage, no telemetry), so this endpoint can't verify the slides
 /// were actually viewed — it's an educational courtesy, not a credential.
 async fn catalog_certificate_submit(

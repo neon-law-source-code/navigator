@@ -83,39 +83,13 @@ pub const TEMPLATES_PATH: &str = "/templates";
 /// One template's detail page, or its `/download` raw markdown.
 pub const TEMPLATE_ENTRY_PATH: &str = "/templates/{*path}";
 
-/// The Foundation's home page: the marketing surface that explains what the
-/// Foundation does, for whom, and how to start.
-///
-/// One binary serves both faces now, so the Foundation sits under its own
-/// `/foundation` prefix and the firm holds the site root. That prefix is what
-/// makes the two surfaces separable on one host: every Foundation page is
-/// reachable by reading its path, and no firm page can shadow one.
-pub const MISSION_PATH: &str = "/foundation";
-
-/// The Foundation's mission letter. Behind the session boundary with the rest
-/// of the Foundation's non-marketing pages.
-pub const FOUNDATION_MISSION_PATH: &str = "/foundation/mission";
-
-/// The Foundation's Notations page.
-pub const NOTATIONS_PATH: &str = "/foundation/notations";
-
-/// The Foundation's public-disclosure hub.
-pub const TRANSPARENCY_PATH: &str = "/foundation/transparency";
-
-/// One governance document (bylaws, the conflict of interest policy).
-pub const TRANSPARENCY_DOC_PATH: &str = "/foundation/transparency/{slug}";
-
-/// One quarterly board-minutes page. Minutes live under their own prefix so a
-/// quarter key can never collide with a governance slug.
-pub const TRANSPARENCY_MINUTES_PATH: &str = "/foundation/transparency/minutes/{slug}";
-
 /// The workspace-documentation hub, which renders the `index` doc.
 pub const DOCS_PATH: &str = "/docs";
 
 /// The slug that [`DOCS_PATH`] renders — the hub has no path parameter.
 pub const DOCS_INDEX_SLUG: &str = "index";
 
-/// One workspace doc, served by the Dioxus SSR port. Foundation-branded.
+/// One workspace doc, served by the Dioxus SSR port.
 pub const DOC_PATH: &str = "/docs/{slug}";
 
 /// The environment variable naming the built client-bundle directory. Read by
@@ -215,11 +189,9 @@ async fn dioxus_document_head(req: Request, next: Next) -> Response {
         html
     };
 
-    // The widget rides public pages only. Both faces the one binary serves
-    // qualify — the firm at the root and the Foundation under `/foundation`
-    // share the public shell — while the authenticated `/app` and `/lawyer`
-    // surfaces render `NavigatorShell` and are left alone, so the pages that
-    // display a client's matter keep the strict same-origin policy.
+    // The widget rides public pages only, while the authenticated `/app` and
+    // `/lawyer` surfaces render `NavigatorShell` and are left alone, so the
+    // pages that display a client's matter keep the strict same-origin policy.
     let chat = CHATWOOT.as_ref().filter(|_| is_public_page(&html));
     let html = match chat {
         Some(widget) => close_with_script(&html, &widget.script_tags()),
@@ -530,9 +502,9 @@ async fn inject_csrf_token(mut req: Request, next: Next) -> Response {
 /// hrefs — `/app/projects`, `/auth/login` — are not localized). Pure, so the
 /// role→links mapping is unit-tested directly.
 ///
-/// Sign in is offered on every property, not just the law-firm brand: both
-/// hosts sign into the one Navigator portal, so a visitor who lands on the
-/// Foundation still needs a door in.
+/// Sign in is offered on every property, not just the firm's own host: every
+/// property signs into the one Navigator portal, so a visitor who lands on a
+/// white-label tenant still needs a door in.
 fn public_utility_links(
     session: Option<&crate::session::SessionData>,
 ) -> Vec<webapp::public_chrome::ChromeNavLink> {
@@ -1587,8 +1559,8 @@ pub fn legal_page_router(path: &'static str, content: webapp::legal_page::LegalC
 ///
 /// The mechanics — the Dioxus config, the title, the `<meta>` description — are
 /// shared, but the *copy* is not: each deployment owns its own privacy and
-/// terms text (`neon/content/*.md`) and passes it here, so
-/// a change to the firm's policy never edits the Foundation's and vice versa.
+/// terms text (`neon/content/*.md`) and passes it here, so a change to the
+/// firm's policy never edits a white-label tenant's and vice versa.
 /// `brand_name` names the deployment in the `<meta>` description; the `<title>`
 /// is assembled from the request-scoped brand by `webapp::legal_page`.
 #[must_use]
@@ -2479,75 +2451,13 @@ pub fn template_card(
     }
 }
 
-/// The mission letter (#956 Phase 4). The letter is fixed per process, so the
-/// caller resolves it once and it is injected at construction rather than per
-/// request. It renders bare — no site header or footer — so it needs no chrome
-/// pre-layer at all.
-pub fn mission_router(path: &'static str, content: webapp::mission::MissionContent) -> Router {
-    let injected = webapp::mission::InjectedMission(content);
-    let cfg = ServeConfig::new().context_providers(std::sync::Arc::new(vec![Box::new(move || {
-        Box::new(injected.clone()) as Box<dyn std::any::Any>
-    })
-        as Box<dyn Fn() -> Box<dyn std::any::Any> + Send + Sync>]));
-
-    Router::<FullstackState>::new()
-        .route(
-            path,
-            get(render_handler)
-                .layer(from_fn(dioxus_document_head))
-                // The letter draws no chrome, but its title carries the brand
-                // name, which must be resolved on the request task where the
-                // brand `task_local` is live.
-                .layer(from_fn(inject_public_utility)),
-        )
-        .with_state(FullstackState::new(cfg, webapp::mission::MissionEntry))
-}
-
-/// The Foundation's home page (`/`) — the marketing surface a stranger
-/// arriving at `/foundation` reads first.
-///
-/// Static like [`home_router`]: the caller resolves the copy at router-build
-/// time and injects it through `ServeConfig::context_providers`, and the page
-/// resolves no per-request data. The chrome pre-layer is the Foundation's, so
-/// the page draws the 501(c)(3)'s header and its own footer rather than the
-/// firm's regulated one.
-pub fn foundation_home_router(
-    path: &str,
-    content: webapp::foundation_marketing::HomeContent,
-) -> Router {
-    let injected = webapp::foundation_marketing::InjectedFoundationHome(content);
-    let cfg = ServeConfig::new().context_providers(std::sync::Arc::new(vec![Box::new(move || {
-        Box::new(injected.clone()) as Box<dyn std::any::Any>
-    })
-        as Box<dyn Fn() -> Box<dyn std::any::Any> + Send + Sync>]));
-
-    Router::<FullstackState>::new()
-        .route(
-            path,
-            get(render_handler)
-                .layer(from_fn(dioxus_document_head))
-                .layer(from_fn(inject_public_utility)),
-        )
-        .with_state(FullstackState::new(
-            cfg,
-            webapp::foundation_marketing::FoundationHomeEntry,
-        ))
-}
-
-/// One marketing page built from the shared band vocabulary — the Foundation's
-/// audience pages (`/foundation/education`, `/foundation/attorneys`) and the
-/// firm's own (`/navigator`, `/fractional-cto`, `/fractional-gc`).
+/// One marketing page built from the shared band vocabulary — `/navigator`,
+/// `/fractional-cto`, and `/fractional-gc`.
 ///
 /// One router serves them all: they differ only in the copy the caller
-/// resolves, which is what keeps a further page a data change. It served only
-/// the nonprofit's pages while the two faces had separate headers and so
-/// separate chrome pre-layers; the site publishes one header now, so the firm's
-/// byte-identical twin of this router is gone and both faces mount here.
-pub fn marketing_page_router(
-    path: &str,
-    content: webapp::foundation_marketing::PageContent,
-) -> Router {
-    let injected = webapp::foundation_marketing::InjectedFoundationPage(content);
+/// resolves, which is what keeps a further page a data change.
+pub fn marketing_page_router(path: &str, content: webapp::marketing_page::PageContent) -> Router {
+    let injected = webapp::marketing_page::InjectedMarketingPage(content);
     let cfg = ServeConfig::new().context_providers(std::sync::Arc::new(vec![Box::new(move || {
         Box::new(injected.clone()) as Box<dyn std::any::Any>
     })
@@ -2562,12 +2472,12 @@ pub fn marketing_page_router(
         )
         .with_state(FullstackState::new(
             cfg,
-            webapp::foundation_marketing::MarketingPageEntry,
+            webapp::marketing_page::MarketingPageEntry,
         ))
 }
 
-/// The firm's platform page: what Neon Law Navigator is, why the firm builds it,
-/// and the invitation to co-counsel a pro bono case alongside the Foundation.
+/// The firm's platform page: what Neon Law Navigator is, why the firm builds
+/// it, and the invitation to co-counsel a pro bono case.
 pub const FIRM_NAVIGATOR_PATH: &str = "/navigator";
 
 /// The firm's lead offering: it runs the technology function for a law firm —
@@ -2581,12 +2491,6 @@ pub const FIRM_FRACTIONAL_CTO_PATH: &str = "/fractional-cto";
 /// with the fee the firm charges for it printed on the page. A single page,
 /// not a `/services/*` catalog.
 pub const FIRM_SERVICES_PATH: &str = "/services";
-
-/// The Foundation's audience pages. The nonprofit's own header row is gone, so
-/// these are reached from its home page rather than from chrome.
-pub const FOUNDATION_EDUCATION_PATH: &str = "/foundation/education";
-/// The pitch to volunteer attorneys.
-pub const FOUNDATION_ATTORNEYS_PATH: &str = "/foundation/attorneys";
 
 /// One category index — [`WORKSHOP_INDEX_PATH`] or
 /// [`PRESENTATION_INDEX_PATH`].
@@ -2946,134 +2850,6 @@ pub fn catalog_material_routers(
     ]
 }
 
-/// The Foundation's Notations page (#956 Phase 4). Its body is `templates/README.md`,
-/// baked in at compile time, so the rendered HTML is resolved once here at
-/// construction and injected through `ServeConfig::context_providers` rather
-/// than per request — the same fixed-content seam the legal pages use.
-pub fn notations_router() -> Router {
-    let injected = webapp::notations::InjectedNotations(webapp::notations::NotationsContent {
-        readme_html: views::notations::readme_html(),
-    });
-    let cfg = ServeConfig::new().context_providers(std::sync::Arc::new(vec![Box::new(move || {
-        Box::new(injected.clone()) as Box<dyn std::any::Any>
-    })
-        as Box<dyn Fn() -> Box<dyn std::any::Any> + Send + Sync>]));
-
-    Router::<FullstackState>::new()
-        .route(
-            NOTATIONS_PATH,
-            get(render_handler)
-                .layer(from_fn(dioxus_document_head))
-                .layer(from_fn(inject_public_utility)),
-        )
-        .with_state(FullstackState::new(cfg, webapp::notations::NotationsEntry))
-}
-
-/// The Foundation's public-disclosure hub (#956 Phase 4). The documents load
-/// from `server/content/foundation/` into a `TransparencyIndex` that `webapp`
-/// cannot reach, so [`inject_transparency_index`] projects the two voluntary
-/// lanes — governance by priority, minutes newest-first — and injects them.
-pub fn transparency_index_router(transparency: crate::TransparencyIndex) -> Router {
-    Router::<FullstackState>::new()
-        .route(
-            TRANSPARENCY_PATH,
-            get(render_handler)
-                .layer(from_fn(dioxus_document_head))
-                .layer(from_fn(inject_public_utility))
-                // Outermost: resolve the documents before any rendering work.
-                .layer(from_fn_with_state(transparency, inject_transparency_index)),
-        )
-        .with_state(FullstackState::new(
-            ServeConfig::new(),
-            webapp::transparency::TransparencyIndexEntry,
-        ))
-}
-
-/// One transparency document (#956 Phase 4), for whichever of the two lanes
-/// `category` names. Its pre-layer owns the 404s, because axum cannot register
-/// a second `GET` handler where the render sits.
-pub fn transparency_doc_router(
-    path: &'static str,
-    category: crate::DocCategory,
-    transparency: crate::TransparencyIndex,
-) -> Router {
-    Router::<FullstackState>::new()
-        .route(
-            path,
-            get(render_handler)
-                .layer(from_fn(dioxus_document_head))
-                .layer(from_fn(inject_public_utility))
-                // Outermost: 404 / inject before any rendering work.
-                .layer(from_fn_with_state(
-                    (transparency, category),
-                    inject_transparency_doc,
-                )),
-        )
-        .with_state(FullstackState::new(
-            ServeConfig::new(),
-            webapp::transparency::TransparencyDocEntry,
-        ))
-}
-
-/// The hub pre-layer: project the loaded index onto the wasm-safe link lists the
-/// component renders, preserving each lane's order.
-async fn inject_transparency_index(
-    axum::extract::State(transparency): axum::extract::State<crate::TransparencyIndex>,
-    mut req: Request,
-    next: Next,
-) -> Response {
-    let to_link = |doc: &crate::TransparencyDoc| webapp::transparency::DocLink {
-        href: doc.path.clone(),
-        title: doc.title.clone(),
-        description: doc.description.clone(),
-    };
-    let content = webapp::transparency::TransparencyIndexContent {
-        governance: transparency.governance().into_iter().map(to_link).collect(),
-        minutes: transparency.minutes().into_iter().map(to_link).collect(),
-    };
-    req.extensions_mut()
-        .insert(webapp::transparency::InjectedTransparencyIndex(content));
-    next.run(req).await
-}
-
-/// The document pre-layer: resolve the slug, 404 when it is unknown **or**
-/// belongs to the other category, and inject the matched document.
-///
-/// The category check is what keeps the two document lanes apart: a minutes slug
-/// must not answer on the governance route, or every quarter would be reachable
-/// at two paths.
-async fn inject_transparency_doc(
-    axum::extract::State((transparency, category)): axum::extract::State<(
-        crate::TransparencyIndex,
-        crate::DocCategory,
-    )>,
-    mut req: Request,
-    next: Next,
-) -> Response {
-    // Through axum's `Path` extractor so the slug arrives percent-decoded,
-    // exactly as the handlers' `Path<String>` did.
-    let slug = match req.extract_parts::<axum::extract::Path<String>>().await {
-        Ok(axum::extract::Path(slug)) => slug,
-        Err(rejection) => return rejection.into_response(),
-    };
-
-    match transparency.get(&slug) {
-        Some(doc) if doc.category == category => {
-            req.extensions_mut()
-                .insert(webapp::transparency::InjectedTransparencyDoc(
-                    webapp::transparency::TransparencyDocContent {
-                        title: doc.title.clone(),
-                        description: doc.description.clone(),
-                        canonical_path: doc.path.clone(),
-                        body_html: doc.body_html.clone(),
-                    },
-                ));
-            next.run(req).await
-        }
-        None | Some(_) => (StatusCode::NOT_FOUND, webapp::error_pages::not_found()).into_response(),
-    }
-}
-
 /// The workspace-documentation routes (#956 Phase 4): `/docs` renders the
 /// `index` doc and `/docs/{slug}` renders one doc, both from the compiled-in
 /// [`DocsIndex`]. `slug` is `None` for the index route, which has no path
@@ -3086,20 +2862,16 @@ async fn inject_transparency_doc(
 ///
 /// **Anonymous.** These routes mount outside the session boundary, beside
 /// `/design`, and carry `inject_optional_session` so a signed-in reader still
-/// gets the authenticated nav. The repository is AGPL-3.0-only and the
-/// documentation is the manual for software anyone can clone, so a login door in
-/// front of it guarded nothing. [`app_docs_router`] is the second, role-scoped
-/// door to the same index; it stays gated because it is part of the
-/// authenticated application, not because these documents are restricted.
+/// gets the authenticated nav. The documentation is the manual for software
+/// anyone can clone, so a login door in front of it guarded nothing.
+/// [`app_docs_router`] is the second, role-scoped door to the same index; it
+/// stays gated because it is part of the authenticated application, not because
+/// these documents are restricted.
 ///
 /// **One chrome on every host.** These routes live in the shared composition
-/// [`crate::bootstrap`] mounts, so one mount serves `neon` and a
-/// white-label `tenant` alike, and [`inject_public_utility`] resolves the same
-/// public chrome here as everywhere else. This used to be a choice worth
-/// documenting — a Foundation-branded pre-layer existed, and using it here
-/// published the nonprofit's wordmark, logo, and `/foundation` home link on the
-/// firm's own host and on every tenant's. The site publishes one header now, so
-/// there is no second pre-layer to pick wrongly.
+/// [`crate::bootstrap`] mounts, so one mount serves `neon` and a white-label
+/// `tenant` alike, and [`inject_public_utility`] resolves the same public
+/// chrome here as everywhere else.
 pub fn docs_router(
     path: &'static str,
     slug: Option<&'static str>,
@@ -3130,7 +2902,7 @@ pub fn docs_router(
 /// anyone can read at `/docs`. It differs from [`docs_router`] in two ways,
 /// both deliberate:
 ///
-/// * **It wears the application chrome, not the Foundation's.** A signed-in
+/// * **It wears the application chrome, not the public one.** A signed-in
 ///   reader keeps the app navbar and their viewer role, so the docs sit inside
 ///   the product instead of bouncing them out to a marketing shell.
 /// * **It is gated.** `require_auth` then `require_policy`, in that order, so
@@ -3539,37 +3311,23 @@ mod tests {
 
     /// One chrome serves the whole site — header included.
     ///
-    /// There used to be two resolvers: the Foundation's swapped the header half
-    /// (its wordmark, its logo, `/foundation` as home, its own two
-    /// destinations) and shared the firm's footer. That second resolver is gone
-    /// along with the header it built, so this asserts the shape that replaced
-    /// it: one resolver, and the nonprofit reachable from the row it produces
-    /// rather than from a header of its own.
-    ///
     /// Asserted against the brand constants rather than literals so a
     /// white-label bundle renaming the firm cannot fail it.
     #[test]
-    fn one_public_chrome_serves_both_faces_and_links_the_nonprofit() {
+    fn one_public_chrome_serves_the_whole_site() {
         let chrome = webapp::public_chrome::firm_public_chrome(Vec::new());
 
         assert_eq!(chrome.brand_name, views::brand::FIRM_BRAND.site_name);
         assert_eq!(chrome.home_href, views::brand::FIRM_BRAND.home_href);
         assert_eq!(chrome.logo_href, views::brand::FIRM_BRAND.logo_href);
-        assert_ne!(
-            chrome.brand_name,
-            views::brand::FOUNDATION_BRAND.site_name,
-            "the nonprofit's wordmark is retired from the header, not adopted by it"
-        );
 
-        // The nonprofit is a destination in that row — the reader's only route
-        // back to `/foundation` from the top of a page now that it has no
-        // header of its own.
+        // No header destination reaches a retired surface.
         assert!(
             chrome
                 .destinations
                 .iter()
-                .any(|link| link.href == views::brand::FOUNDATION_BRAND.home_href),
-            "the shared header links the nonprofit: {:?}",
+                .all(|link| !link.href.starts_with("/foundation")),
+            "the header links no retired page: {:?}",
             chrome
                 .destinations
                 .iter()
@@ -3577,18 +3335,12 @@ mod tests {
                 .collect::<Vec<_>>()
         );
 
-        // And the footer still names both organizations and the firm's own
-        // regulated detail — the half that was already shared.
+        // And the footer names the firm's own regulated detail.
         assert!(!chrome.legal_entity.is_empty(), "the firm names its own");
         assert!(!chrome.offices.is_empty(), "the firm publishes its offices");
         assert!(
             !chrome.firm_email.is_empty(),
             "the band has something to show"
-        );
-        assert_eq!(
-            chrome.foundation_name,
-            views::brand::FOUNDATION_BRAND.site_name,
-            "the footer still names the nonprofit as a legal person"
         );
     }
 
@@ -3604,8 +3356,8 @@ mod tests {
             links.into_iter().map(|link| link.href).collect::<Vec<_>>()
         };
 
-        // Anonymous: Sign in, on every property — the Foundation signs into
-        // the same portal the firm does.
+        // Anonymous: Sign in, on every property — a white-label tenant signs
+        // into the same portal the firm does.
         assert_eq!(hrefs(public_utility_links(None)), ["/auth/login"]);
 
         // Every signed-in tier gets the same two links. The nav no longer

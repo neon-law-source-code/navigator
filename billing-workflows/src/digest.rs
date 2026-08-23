@@ -442,11 +442,7 @@ pub fn build_digest_email(report: &BillingDigestReport, recipient: &str) -> Outb
         }
     }
 
-    let html = workflows::email::render_email_html(
-        &out,
-        &workflows::email::base_url_from_env(),
-        workflows::email::EmailBrand::Firm,
-    );
+    let html = workflows::email::render_email_html(&out, &workflows::email::base_url_from_env());
     OutboundEmail::new(recipient.to_string(), subject, out).with_html(html)
 }
 

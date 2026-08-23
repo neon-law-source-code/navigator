@@ -1,15 +1,20 @@
-Feature: Public routing across one site's two faces
+Feature: Public routing across the one face the site serves
 
-  The `neon` binary serves the whole site. Neon Law — the firm — holds the
-  root, and the Neon Law Foundation sits beneath `/foundation`. They were two
-  binaries on two hosts; the prefix is what keeps them separable now that one
-  binary answers for both.
+  The `neon` binary serves the whole site, and the firm holds the root. The
+  Neon Law Foundation's surface is retired: it had the site root, then sat
+  beneath `/foundation`, and every URL from both generations now answers
+  `410 Gone`.
 
-  The site publishes ONE header, so `og:site_name` is "Neon Law" on both faces:
-  the nonprofit no longer wears a wordmark of its own, and is reached from the
-  shared header's own Foundation entry. That name is what these scenarios assert
-  — it used to differ per prefix and catch a page mounted under the wrong one,
-  and what it catches now is a page that lost the site's name altogether.
+  `410` rather than `301` or `404`. There is no firm page carrying a
+  nonprofit's mission letter, its CLE curriculum, or its governance
+  disclosures, so a redirect would be a promise the other end cannot keep — and
+  `410` is the one answer a search engine treats as a signal to drop the URL,
+  where a `404` invites it to keep asking and a reader to assume they mistyped.
+
+  The site publishes ONE header, so `og:site_name` is "Neon Law" throughout.
+  That name is what these scenarios assert: it used to differ per prefix and
+  catch a page mounted under the wrong one, and what it catches now is a page
+  that lost the site's name altogether.
 
   Background:
     Given the Neon Law Navigator public site is running
@@ -17,8 +22,8 @@ Feature: Public routing across one site's two faces
   # Every scenario here builds a whole app in its Background, and each build
   # takes a slice of the Dioxus pinned-worker pool, so this file stays a thin
   # representative sample on purpose. The exhaustive per-path tables — every
-  # gated page, every retired redirect — live in `server/tests/routes.rs`,
-  # which drives one router.
+  # gated page, every retired URL — live in `server/tests/routes.rs` and
+  # `neon/tests/public_routes.rs`, which drive one router.
   #
   # This harness loads no Catalog content, so the material catalogs are not
   # asserted here; `server/tests/firm_routes.rs` covers them against real
@@ -26,11 +31,6 @@ Feature: Public routing across one site's two faces
 
   Scenario: The firm's front door is the site root
     When a visitor opens /
-    Then the response status is 200
-    And the page is branded "Neon Law"
-
-  Scenario: The Foundation's front door is its own prefix, under the shared name
-    When a visitor opens /foundation
     Then the response status is 200
     And the page is branded "Neon Law"
 
@@ -48,39 +48,48 @@ Feature: Public routing across one site's two faces
       | /fractional-gc |
       | /services      |
 
-  Scenario Outline: Everything else the Foundation publishes needs a session
-    # The nav still names these, so a signed-out reader learns they exist and
-    # meets the login door rather than a 404.
+  Scenario Outline: The Foundation's prefixed URLs are gone
+    # The surface it held last. Its home was a page rather than a redirect
+    # while the nonprofit was published, so the home has to be withdrawn
+    # explicitly — a `/foundation` that still served would leave the retirement
+    # half-done at the one URL most likely to be linked.
     When a visitor opens <path>
-    Then the response status is 303
+    Then the response status is 410
+    And the response carries no redirect
 
     Examples:
       | path                     |
+      | /foundation              |
+      | /foundation/mission      |
       | /foundation/transparency |
 
-  Scenario Outline: The Foundation's former root URLs redirect beneath its prefix
-    # These were live pages on `neonlaw.org` for as long as the Foundation had
-    # a host of its own, so they are the most-linked retired URLs on the site.
-    # The firm holds the root now, so each has to be carried across rather than
-    # dropped on a firm page.
+  Scenario Outline: The Foundation's former root URLs are gone too
+    # These were live pages on the site root for as long as the Foundation was
+    # canonical there, so they are the most-linked retired URLs on the site.
+    # They used to `308` beneath the prefix; the prefix is retired as well, so
+    # carrying them across would land a reader on another `410`.
     When a visitor opens <path>
-    Then the response status is 308
-    And the response redirects to <destination>
+    Then the response status is 410
+    And the response carries no redirect
 
     Examples:
-      | path            | destination                |
-      | /mission        | "/foundation/mission"      |
-      | /notations      | "/foundation/notations"    |
-      | /transparency   | "/foundation/transparency" |
-      | /education      | "/foundation/education"    |
+      | path          |
+      | /mission      |
+      | /notations    |
+      | /transparency |
+      | /education    |
 
-  Scenario: The Foundation home is a page, not a redirect
-    # It `301`ed to `/` while the Foundation was canonical at the site root.
-    # Reinstating that would bounce the nonprofit's own home page onto the
-    # firm's — the single most damaging way this consolidation could regress.
-    When a visitor opens /foundation
-    Then the response status is 200
+  Scenario: A retired gated URL is gone rather than a login door
+    # `/foundation/transparency` answered `303` to the login door while the
+    # surface was published. Retirement outranks the session boundary: sending
+    # a reader to sign in for a page that no longer exists is the one outcome
+    # worse than either answer alone.
+    When a visitor opens /foundation/transparency
+    Then the response status is 410
 
   Scenario: An unknown route returns 404
+    # The distinction the retirement rests on: 410 is withdrawn, 404 never
+    # existed. A route that was never tabled must not borrow the retired
+    # answer.
     When a visitor opens /does-not-exist
     Then the response status is 404

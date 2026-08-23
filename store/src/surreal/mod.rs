@@ -29,7 +29,7 @@
 //!   because it is *named*; it is never a default, so nothing reaches
 //!   an in-process engine by failing to configure a real one.
 //!
-//! [#1143]: https://github.com/neon-law-foundation/navigator/issues/1143
+//! [#1143]: https://github.com/neon-law-source-code/navigator/issues/1143
 
 mod config;
 mod record;

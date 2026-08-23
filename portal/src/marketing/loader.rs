@@ -1,12 +1,8 @@
-//! Read a directory of `.md` marketing fragments into [`MarketingDoc`]s.
+//! Read one `.md` content file into a [`MarketingDoc`].
 //!
 //! Front-matter with `title`, `slug`, `description`; everything
 //! after the closing `---` is rendered through pulldown-cmark at
 //! load time so handlers can ship the HTML verbatim.
-
-use std::fs;
-use std::io;
-use std::path::Path;
 
 use pulldown_cmark::{html, Event, Options, Parser, Tag};
 // Shared with the workshop/presentation loader so a blog post and a slide
@@ -14,51 +10,6 @@ use pulldown_cmark::{html, Event, Options, Parser, Tag};
 use views::assets::rewrite_image_src;
 
 use super::MarketingDoc;
-use crate::content_loader::ContentLoadError;
-
-/// Load every `*.md` file in `dir`. Returns an empty list when `dir`
-/// doesn't exist so the binary's "no marketing copy yet" path is a
-/// no-op. Docs come back sorted by slug so the route table is
-/// deterministic in tests.
-pub fn load_dir(dir: &Path) -> Result<Vec<MarketingDoc>, ContentLoadError> {
-    let entries = match fs::read_dir(dir) {
-        Ok(e) => e,
-        Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(err) => {
-            return Err(ContentLoadError::Io {
-                path: dir.display().to_string(),
-                source: err,
-            });
-        }
-    };
-    let mut docs = Vec::new();
-    for entry in entries {
-        let entry = entry.map_err(|e| ContentLoadError::Io {
-            path: dir.display().to_string(),
-            source: e,
-        })?;
-        let path = entry.path();
-        if path.extension().and_then(|x| x.to_str()) != Some("md") {
-            continue;
-        }
-        let raw = fs::read_to_string(&path).map_err(|e| ContentLoadError::Io {
-            path: path.display().to_string(),
-            source: e,
-        })?;
-        let fallback_slug = path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("untitled")
-            .to_string();
-        docs.push(
-            parse(&raw, &fallback_slug).ok_or(ContentLoadError::MissingFrontmatter {
-                path: path.display().to_string(),
-            })?,
-        );
-    }
-    docs.sort_by(|a, b| a.slug.cmp(&b.slug));
-    Ok(docs)
-}
 
 /// Parse a single doc. `fallback_slug` is used when no `slug:`
 /// is set in front-matter (typical case — file stem matches).
@@ -196,9 +147,8 @@ fn render_markdown(src: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{load_dir, parse, rewrite_image_src};
+    use super::{parse, rewrite_image_src};
     use std::fs;
-    use tempfile::TempDir;
 
     const LF_DOC: &str = "---\ntitle: Mission\nslug: mission\ndescription: Why we exist\nweight: 2\n---\n# Heading\n\nA paragraph.\n";
 
@@ -281,8 +231,12 @@ mod tests {
                 }
             }
         }
+        // A floor, not a count. It dropped from nine when the nonprofit's
+        // mission letter and its three governance documents were retired with
+        // the rest of that surface; what it still catches is a walk that
+        // silently stopped finding files.
         assert!(
-            seen >= 9,
+            seen >= 6,
             "expected the tracked content fragments to be covered, saw {seen}"
         );
     }
@@ -424,76 +378,5 @@ mod tests {
         let raw = "---\ntitle: T\nslug: s\ndescription: D\n---\nbody";
         let doc = parse(raw, "x").expect("parses");
         assert!(doc.metadata.is_empty(), "got: {:?}", doc.metadata);
-    }
-
-    #[test]
-    fn load_dir_returns_empty_when_directory_missing() {
-        let docs = load_dir(std::path::Path::new("/no/such/dir/abcdef")).unwrap();
-        assert!(docs.is_empty());
-    }
-
-    #[test]
-    fn bundled_marketing_omits_the_superseded_foundation_fragment() {
-        let docs = load_dir(std::path::Path::new(crate::DEFAULT_MARKETING_DIR))
-            .expect("bundled marketing content loads");
-        assert!(
-            docs.iter().all(|doc| doc.slug != "foundation"),
-            "the retired Foundation fragment must not ship alongside the mission letter",
-        );
-    }
-
-    #[test]
-    fn bundled_marketing_carries_no_firm_service_pages() {
-        // The firm publishes no `/services/*` pages: the practice is
-        // litigation and flat-fee transactional work, quoted through
-        // `/contact`. The bundled marketing content is therefore exactly the
-        // mission letter — a per-service doc reappearing here would silently
-        // resurrect a retired surface.
-        let docs = load_dir(std::path::Path::new(crate::DEFAULT_MARKETING_DIR))
-            .expect("bundled marketing content loads");
-        let slugs: Vec<&str> = docs.iter().map(|d| d.slug.as_str()).collect();
-        assert_eq!(slugs, ["mission"], "bundled slugs: {slugs:?}");
-    }
-
-    #[test]
-    fn load_dir_reads_and_sorts_by_slug() {
-        let dir = TempDir::new().unwrap();
-        fs::write(
-            dir.path().join("home.md"),
-            "---\ntitle: \"Home\"\nslug: home\n---\nh",
-        )
-        .unwrap();
-        fs::write(
-            dir.path().join("foundation.md"),
-            "---\ntitle: \"Foundation\"\nslug: foundation\n---\nf",
-        )
-        .unwrap();
-        fs::write(dir.path().join("ignored.txt"), "not markdown").unwrap();
-        let docs = load_dir(dir.path()).unwrap();
-        assert_eq!(docs.len(), 2);
-        assert_eq!(docs[0].slug, "foundation");
-        assert_eq!(docs[1].slug, "home");
-    }
-
-    #[test]
-    fn bundled_mission_letter_loads_training_copy() {
-        // The mission letter lives with the other marketing fragments
-        // (`server/content/marketing/mission.md`), loaded from disk like any
-        // other doc — no special-case bake. It must surface the `mission` slug
-        // and the letter's training pillars so `/foundation` renders the
-        // approved public direction.
-        let dir = std::path::Path::new(crate::DEFAULT_MARKETING_DIR);
-        let mission = load_dir(dir)
-            .expect("marketing dir loads")
-            .into_iter()
-            .find(|d| d.slug == "mission")
-            .expect("mission doc present in bundled content");
-        assert!(
-            mission
-                .body_html
-                .contains("judgment, collaboration, and adversarial review"),
-            "mission must render its training pillars: {}",
-            mission.body_html
-        );
     }
 }

@@ -87,7 +87,7 @@ jobs:
   sweep:
     name: prune GHCR versions older than 30 days
     # A fork must never prune the upstream org's packages.
-    if: github.repository == 'neon-law-foundation/navigator'
+    if: github.repository == 'neon-law-source-code/navigator'
     runs-on: ubuntu-latest
     # Deleting a version is the whole grant. In particular NOT `contents:
     # write` — this job prunes a registry, and nothing in this repository's

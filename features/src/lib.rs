@@ -12,8 +12,7 @@ use axum::body::Body;
 use axum::http::{Request, Response, StatusCode};
 use http_body_util::BodyExt;
 use portal::{
-    policy, AppState, AuthConfig, CanonicalHost, MarketingIndex, OAuthConfig, SessionStore,
-    WorkshopIndex,
+    policy, AppState, AuthConfig, CanonicalHost, OAuthConfig, SessionStore, WorkshopIndex,
 };
 use workflows::{DispatchingRuntime, EmailService, InMemoryRuntime, StateMachineRuntime};
 
@@ -143,9 +142,7 @@ pub async fn app_state_with_email(
         forms_registry: Arc::new(forms::registry().expect("forms registry loads")),
         workshops: WorkshopIndex::empty(),
         docs: portal::DocsIndex::empty(),
-        marketing: MarketingIndex::empty(),
         blog: portal::BlogIndex::empty(),
-        transparency: portal::TransparencyIndex::empty(),
         auth: AuthConfig::new(true, None),
         google_oauth: portal::google_oauth::GoogleOauthConfig::passthrough(),
         rate_limit: portal::rate_limit::RateLimit::disabled(),

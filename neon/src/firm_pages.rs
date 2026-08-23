@@ -26,9 +26,8 @@ const PRESENTATION_INDEX_FOOTNOTE: &str = "More talks land here as we give them.
 /// Build the `presentations` index: every material the manifest files under
 /// that category, in manifest order.
 ///
-/// The talks catalog is the firm's now, so the card list is Foundation-free and
-/// the contact address is the firm's inbox — a reader on `neonlaw.com` who
-/// wants us at their meetup writes to the firm, not to the nonprofit.
+/// The contact address is the firm's inbox — a reader on `neonlaw.com` who
+/// wants us at their meetup writes to the firm.
 fn presentation_index_content(
     workshops: &WorkshopIndex,
 ) -> webapp::catalog_index::CatalogIndexContent {
@@ -88,10 +87,9 @@ fn catalog_index_content(
 }
 
 /// The firm host's public Dioxus SSR pages, as raw routers for
-/// [`portal::bootstrap`]'s `host_dioxus` argument. The `neon` binary passes
-/// these alongside the Foundation's, since one binary serves both faces.
-/// `bootstrap` wraps each in the anonymous-access session boundary and the
-/// shared layer stack, exactly as it does the built-in Dioxus routes.
+/// [`portal::bootstrap`]'s `host_dioxus` argument. `bootstrap` wraps each in
+/// the anonymous-access session boundary and the shared layer stack, exactly as
+/// it does the built-in Dioxus routes.
 ///
 /// Takes `state` because the content-backed pages (e.g. `/blog`) read request
 /// state (`BlogIndex`) the router injects into the render context; the
@@ -169,10 +167,8 @@ pub fn firm_public_dioxus_routers(state: &AppState) -> Vec<Router> {
         "/fractional-gc",
         resolve_transactional_content(contact_branding),
     ));
-    // The platform page. It sits on the firm's host rather than the
-    // Foundation's because it carries a commercial offer — the nonprofit may
-    // disclose who built its software, but it may not advertise that firm's
-    // consulting practice.
+    // The platform page. It carries a commercial offer, so it sits with the
+    // firm's own pages.
     // The lead offering. A marketing page like the platform page beside it, and
     // the first thing the header carries: the firm runs the technology function
     // for the law firms it serves, and the other three practices sit under it.

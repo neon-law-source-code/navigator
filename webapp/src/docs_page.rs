@@ -142,7 +142,6 @@ mod tests {
                 home_href: "/".to_string(),
                 logo_href: "/public/logo-firm.svg".to_string(),
                 firm_name: "Neon Law".to_string(),
-                foundation_name: "Neon Law Foundation".to_string(),
                 ..PublicChrome::default()
             },
             content: DocContent {

@@ -13,7 +13,7 @@ const MANIFEST: &str = "\
 [workspace.package]
 version = \"0.1.0\"
 edition = \"2021\"
-license = \"AGPL-3.0-only\"
+license = \"BUSL-1.1\"
 
 [workspace.dependencies]
 serde = { version = \"1\" }

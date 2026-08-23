@@ -1,7 +1,8 @@
 //! Where the public reads the `navigator` CLI from, and at which version.
 //!
-//! The repository is AGPL-3.0-only and every release attaches its archives to a
-//! **public GitHub Release**, so `/navigator` links those bytes directly.
+//! Every release attaches its archives to a **public GitHub Release**, so
+//! `/navigator` links those bytes directly. `BUSL-1.1` restricts production
+//! *use* rather than distribution, so the archives stay downloadable by anyone.
 //!
 //! # The version is the deployment's own release tag
 //!
@@ -35,21 +36,21 @@ use crate::components::PlatformMark;
 /// tag is the version — so a reader who mistrusts the page can check the link
 /// against the Releases page and see the same two strings.
 pub const RELEASE_DOWNLOAD_BASE: &str =
-    "https://github.com/neon-law-foundation/navigator/releases/download";
+    "https://github.com/neon-law-source-code/navigator/releases/download";
 
 /// The Releases index, for a reader who wants an older version or the notes.
-pub const RELEASES_HREF: &str = "https://github.com/neon-law-foundation/navigator/releases";
+pub const RELEASES_HREF: &str = "https://github.com/neon-law-source-code/navigator/releases";
 
-/// The tap-qualified formula. `neon-law-foundation/navigator` is a **separate
+/// The tap-qualified formula. `neon-law-source-code/navigator` is a **separate
 /// repository** (`homebrew-navigator`), which is why the formula is named with
 /// its tap rather than bare: `brew` resolves the tap on first install.
-pub const HOMEBREW_FORMULA: &str = "neon-law-foundation/navigator/navigator";
+pub const HOMEBREW_FORMULA: &str = "neon-law-source-code/navigator/navigator";
 
 /// The one command that installs the CLI on macOS.
-pub const HOMEBREW_INSTALL_COMMAND: &str = "brew install neon-law-foundation/navigator/navigator";
+pub const HOMEBREW_INSTALL_COMMAND: &str = "brew install neon-law-source-code/navigator/navigator";
 
 /// The command that moves an installed CLI to the current release.
-pub const HOMEBREW_UPGRADE_COMMAND: &str = "brew upgrade neon-law-foundation/navigator/navigator";
+pub const HOMEBREW_UPGRADE_COMMAND: &str = "brew upgrade neon-law-source-code/navigator/navigator";
 
 /// One platform a release publishes an archive for.
 pub struct PublicPlatform {
@@ -162,9 +163,9 @@ mod tests {
         assert_eq!(
             hrefs,
             vec![
-                "https://github.com/neon-law-foundation/navigator/releases/download/26.8.20/navigator-26.8.20-linux.tar.gz",
-                "https://github.com/neon-law-foundation/navigator/releases/download/26.8.20/navigator-26.8.20-macos.tar.gz",
-                "https://github.com/neon-law-foundation/navigator/releases/download/26.8.20/navigator-26.8.20-windows.zip",
+                "https://github.com/neon-law-source-code/navigator/releases/download/26.8.20/navigator-26.8.20-linux.tar.gz",
+                "https://github.com/neon-law-source-code/navigator/releases/download/26.8.20/navigator-26.8.20-macos.tar.gz",
+                "https://github.com/neon-law-source-code/navigator/releases/download/26.8.20/navigator-26.8.20-windows.zip",
             ]
         );
     }

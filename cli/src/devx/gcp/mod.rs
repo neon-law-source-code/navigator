@@ -106,7 +106,7 @@ pub const ARCHIVES_BUCKET_PREFIX: &str = "neon-law-archives-";
 /// Default Artifact Registry repository name that holds every image.
 pub const DEFAULT_ARTIFACT_REGISTRY_REPO: &str = "navigator";
 /// Default `owner/repo` the Workload Identity provider trusts.
-pub const DEFAULT_GITHUB_REPO: &str = "neon-law-foundation/navigator";
+pub const DEFAULT_GITHUB_REPO: &str = "neon-law-source-code/navigator";
 /// Default account id of the CI service account that pushes images.
 pub const DEFAULT_CI_PUSHER_ACCOUNT_ID: &str = "navigator-ci-pusher";
 
@@ -145,7 +145,7 @@ pub struct SetupConfig {
     /// image. Default: `navigator`.
     pub artifact_registry_repo: String,
     /// `owner/repo` slug the Workload Identity provider trusts for
-    /// keyless CI pushes. Default: `neon-law-foundation/navigator`.
+    /// keyless CI pushes. Default: `neon-law-source-code/navigator`.
     pub github_repo: String,
     /// Account id (local part of the SA email) of the CI pusher service
     /// account. Default: `navigator-ci-pusher`.

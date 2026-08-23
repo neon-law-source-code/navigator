@@ -71,7 +71,7 @@ mod tests {
     use github_webhooks::worker::{RepositoryResolver, ResolvedRepository};
 
     use store::test_support::mem_surreal;
-    const CODE_REPOSITORY: &str = "neon-law-foundation/navigator";
+    const CODE_REPOSITORY: &str = "neon-law-source-code/navigator";
     const PROJECT_OWNER: &str = "neon-law-firm";
 
     fn resolver(surreal: store::surreal::SurrealDb) -> ProjectRepositoryResolver {
@@ -136,7 +136,7 @@ mod tests {
 
         for repository in [
             "neon-law-firm/unknown",
-            "neon-law-foundation/arthur",
+            "neon-law-source-code/arthur",
             "neon-law-firm/",
             "neon-law-firm/arthur/extra",
             "not-a-repository",

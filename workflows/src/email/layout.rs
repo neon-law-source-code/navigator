@@ -61,65 +61,43 @@ fn font_base_url(base_url: &str, asset_base_url: Option<&str>) -> String {
         .to_string()
 }
 
-/// Which brand's logo heads the email. Neon Law (the firm) and the
-/// Neon Law Foundation (the 501(c)(3)) are distinct legal entities
-/// with distinct marks: a Foundation notification must wear the
-/// Foundation logo, and a firm email the firm's. Conflating them
-/// misattributes the sender.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EmailBrand {
-    /// Neon Law, the law firm. Signs with the wordmark "Neon Law".
-    Firm,
-    /// Neon Law Foundation, the 501(c)(3). Signs with the wordmark "Neon Law
-    /// Foundation" — both wear the same NL mark, so the wordmark is what
-    /// separates a nonprofit notice from the law firm's.
-    Foundation,
-}
-
-impl EmailBrand {
-    /// Path (relative to the email `base_url`) of the brand's PNG logo.
-    /// PNG, never SVG — email clients won't render an SVG `<img>` src.
-    ///
-    /// Served under `/public/` (the `ServeDir` static mount), **not** at
-    /// the site root: `/public` is the path that exists as a route, so an
-    /// email client fetching the logo unauthenticated gets the PNG (200).
-    /// A root `/logo-*.png` is unrouted — every email's logo silently
-    /// broke on it.
-    #[must_use]
-    pub fn logo_path(self) -> &'static str {
-        match self {
-            EmailBrand::Firm => views::brand::FIRM_BRAND.social_image,
-            EmailBrand::Foundation => views::brand::FOUNDATION_BRAND.social_image,
-        }
-    }
-
-    /// Accessible name / `alt` text for the logo image from the mounted
-    /// request-scoped brand bundle.
-    #[must_use]
-    pub fn alt(self) -> String {
-        match self {
-            EmailBrand::Firm => views::brand::FIRM_BRAND.site_name.to_string(),
-            EmailBrand::Foundation => views::brand::FOUNDATION_BRAND.site_name.to_string(),
-        }
-    }
-
-    /// Inbound support address for the brand's footer from the mounted bundle.
-    #[must_use]
-    pub fn support_email(self) -> String {
-        match self {
-            EmailBrand::Firm => views::brand::firm_email().to_string(),
-            EmailBrand::Foundation => views::brand::foundation_email().to_string(),
-        }
-    }
-}
-
-/// Render `content_markdown` into a self-contained, inline-styled HTML
-/// email document headed by `brand`'s logo. `base_url` is the public
-/// origin where the shared brand PNG (`/logo-neon.png`) is served (e.g.
-/// from [`base_url_from_env`]);
-/// a trailing slash is tolerated.
+/// The wordmark every email signs with, from the mounted brand bundle.
+///
+/// A rebranded fork greets under its own name without touching a template: the
+/// subject lines, the salutations, and the footer all read this.
 #[must_use]
-pub fn render_email_html(content_markdown: &str, base_url: &str, brand: EmailBrand) -> String {
+pub fn brand_name() -> &'static str {
+    views::brand::FIRM_BRAND.site_name
+}
+
+/// The inbound address every email's footer invites a reply to, from the
+/// mounted bundle.
+///
+/// Deliberately not the envelope `From`, which is
+/// [`crate::email::DEFAULT_FROM_EMAIL`]: what the site publishes and what the
+/// pipeline sends from are allowed to differ.
+#[must_use]
+pub fn support_email() -> &'static str {
+    views::brand::firm_email()
+}
+
+/// Render `content_markdown` into a self-contained, inline-styled HTML email
+/// document headed by the firm's logo. `base_url` is the public origin where
+/// the brand PNG (`/logo-neon.png`) is served (e.g. from
+/// [`base_url_from_env`]); a trailing slash is tolerated.
+///
+/// One brand, resolved from the mounted bundle. Every email this workspace
+/// sends is the firm's, so there is no per-message brand to pass and nothing to
+/// misattribute — a white-label deploy renames the sender by mounting its own
+/// manifest, not by picking a variant at the call site.
+///
+/// PNG, never SVG — email clients won't render an SVG `<img>` src. The logo is
+/// served under `/public/` (the `ServeDir` static mount) rather than at the
+/// site root: `/public` is the path that exists as a route, so an email client
+/// fetching it unauthenticated gets the PNG (200). A root `/logo-*.png` is
+/// unrouted, and every email's logo silently broke on it.
+#[must_use]
+pub fn render_email_html(content_markdown: &str, base_url: &str) -> String {
     let parser = Parser::new_ext(content_markdown, Options::empty());
     let mut content_html = String::new();
     html::push_html(&mut content_html, parser);
@@ -133,9 +111,9 @@ pub fn render_email_html(content_markdown: &str, base_url: &str, brand: EmailBra
         base,
         std::env::var(ASSET_BASE_URL_ENV).ok().as_deref(),
     ));
-    let logo = brand.logo_path();
-    let alt = brand.alt();
-    let support = brand.support_email();
+    let logo = views::brand::FIRM_BRAND.social_image;
+    let alt = brand_name();
+    let support = support_email();
     format!(
         r#"<!doctype html>
 <html lang="en">
@@ -180,11 +158,11 @@ pub fn render_email_html(content_markdown: &str, base_url: &str, brand: EmailBra
 
 #[cfg(test)]
 mod tests {
-    use super::{base_url_from_env, font_base_url, render_email_html, EmailBrand};
+    use super::{base_url_from_env, font_base_url, render_email_html};
 
     #[test]
     fn renders_markdown_body_into_html() {
-        let html = render_email_html("Hi **Aries**", "https://example.test", EmailBrand::Firm);
+        let html = render_email_html("Hi **Aries**", "https://example.test");
         assert!(
             html.contains("<strong>Aries</strong>"),
             "markdown is rendered"
@@ -194,7 +172,7 @@ mod tests {
 
     #[test]
     fn embeds_logo_png_at_base_url_and_trims_trailing_slash() {
-        let html = render_email_html("body", "https://example.test/", EmailBrand::Firm);
+        let html = render_email_html("body", "https://example.test/");
         // Served from the exempt `/public` mount, not a gated site root.
         assert!(html.contains(r#"src="https://example.test/public/logo-neon.png""#));
         assert!(html.contains(r#"alt="Neon Law""#));
@@ -204,28 +182,26 @@ mod tests {
         assert!(!html.contains("logo-neon.svg"));
     }
 
+    /// Every email signs with the firm's wordmark, and with no other.
+    ///
+    /// A second brand used to sign some of these — a nonprofit sharing the
+    /// firm's family name, which is exactly the case where a wrong wordmark
+    /// misattributes the sender. That brand is retired, so this asserts the one
+    /// that remains rather than the distinction between two.
     #[test]
-    fn foundation_brand_signs_with_the_foundations_own_wordmark() {
-        let html = render_email_html("body", "https://example.test", EmailBrand::Foundation);
-        // One NL mark in teal serves both organizations, so the raster no
-        // longer tells them apart — `both_brands_share_one_raster_social_image`
-        // in `views::brand` is where that is decided.
+    fn every_email_signs_with_the_firms_wordmark() {
+        let html = render_email_html("body", "https://example.test");
         assert!(html.contains(r#"src="https://example.test/public/logo-neon.png""#));
-        // The wordmark is therefore the whole distinction, and it carries the
-        // weight the shared image used to. They share a family name, so a
-        // Foundation notice signed "Neon Law" would read as coming from the law
-        // firm — the one thing a 501(c)(3) that does not practise law must
-        // never imply.
-        assert!(html.contains(r#"alt="Neon Law Foundation""#));
+        assert!(html.contains(r#"alt="Neon Law""#));
         assert!(
-            !html.contains(r#"alt="Neon Law""#),
-            "a Foundation email must not sign itself with the firm's wordmark: {html}"
+            !html.contains("Foundation"),
+            "no email signs under the retired nonprofit's wordmark: {html}"
         );
     }
 
     #[test]
     fn body_is_set_in_gorp_serif_with_serif_fallback() {
-        let html = render_email_html("body", "https://mail.test", EmailBrand::Firm);
+        let html = render_email_html("body", "https://mail.test");
         // @font-face falls back to the local site's static mount when the
         // deployment asset origin is not configured…
         assert!(
@@ -272,15 +248,10 @@ mod tests {
         // public site publishes (`views::brand`'s `firm_email`), not the envelope
         // `From` — that is `DEFAULT_FROM_EMAIL`, still `support@`, and the two are
         // deliberately allowed to differ.
-        let firm = render_email_html("body", "https://b.test", EmailBrand::Firm);
+        let firm = render_email_html("body", "https://b.test");
         assert!(
             firm.contains("mailto:contact@neonlaw.com"),
-            "firm footer should carry the firm's published address: {firm}"
-        );
-        let foundation = render_email_html("body", "https://b.test", EmailBrand::Foundation);
-        assert!(
-            foundation.contains("mailto:support@neonlaw.org"),
-            "foundation footer should carry the foundation support address",
+            "the footer should carry the firm's published address: {firm}"
         );
     }
 
@@ -293,7 +264,6 @@ mod tests {
         let html = render_email_html(
             "body",
             "https://evil.test/x'</style><script>alert(1)</script>",
-            EmailBrand::Firm,
         );
         // Inspect the raw `<style>` element in isolation: nothing between its
         // open tag and the first `</style>` may carry markup, or the injected
@@ -315,11 +285,7 @@ mod tests {
 
     #[test]
     fn autolinks_in_angle_brackets_become_anchors() {
-        let html = render_email_html(
-            "Visit <https://neonlaw.example> today",
-            "https://b.test",
-            EmailBrand::Firm,
-        );
+        let html = render_email_html("Visit <https://neonlaw.example> today", "https://b.test");
         assert!(html.contains(r#"href="https://neonlaw.example""#));
     }
 

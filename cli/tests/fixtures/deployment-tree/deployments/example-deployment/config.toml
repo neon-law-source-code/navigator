@@ -43,7 +43,7 @@ NAVIGATOR_ICEBERG_BUCKET = "example-archives-deployment"
 NAVIGATOR_TELEMETRY_BUCKET = "example-deployment-telemetry"
 
 # --- Images ----------------------------------------------------------------
-NAVIGATOR_IMAGE_REGISTRY = "ghcr.io/neon-law-foundation"
+NAVIGATOR_IMAGE_REGISTRY = "ghcr.io/neon-law-source-code"
 NAVIGATOR_WEB_IMAGE = "neon-server"
 
 # --- Public surface --------------------------------------------------------
@@ -65,7 +65,7 @@ GOOGLE_OAUTH_REQUIRED_HD = "example.com"
 # `store::deployment` scopes that requirement to one project, and
 # `NAVIGATOR_GITHUB_CANONICAL_REPOSITORY` is part of it.
 NAVIGATOR_FORGE_BACKEND = "github"
-NAVIGATOR_GITHUB_ORG = "neon-law-foundation"
+NAVIGATOR_GITHUB_ORG = "neon-law-source-code"
 NAVIGATOR_GIT_HOST = "github.com"
 NAVIGATOR_GITHUB_APP_ID = "100000"
 NAVIGATOR_GITHUB_INSTALLATION_ID = "200000"

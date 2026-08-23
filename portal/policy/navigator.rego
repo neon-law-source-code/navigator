@@ -81,7 +81,7 @@ allow if {
 #
 # Note what this does and does not change. `/docs` carries no rule in this
 # policy and is not behind the session boundary either: it is an anonymous
-# public surface, because the repository is AGPL-3.0-only and those documents
+# public surface, because the repository is source-available and those documents
 # are the manual for software anyone can clone. `/app/docs` is therefore not a
 # gate over the documents at all — it is a second door to the same index
 # wearing the application chrome, and what it restricts is that surface.
@@ -175,21 +175,6 @@ allow if {
 allow if {
     input.path == ["lawyer", "fonts", "gorp-serif.zip"]
     is_clerk(input.session)
-}
-
-# The Foundation's reading surfaces behind the session boundary. The talks
-# are the Foundation's public face and render at `/`; everything else it
-# publishes — the mission letter, Notations, the transparency disclosures,
-# is readable by any authenticated person.
-#
-# This is a *reading* grant and nothing more: no role is implied by it, and a
-# `client` reaches exactly these pages and no others. The stricter workshop
-# rules below still govern the class material itself.
-foundation_reading_surface := {"mission", "notations", "transparency"}
-
-allow if {
-    foundation_reading_surface[input.path[0]]
-    is_authenticated(input.session)
 }
 
 # Workshop reads are public and never reach this policy. Claiming a completion

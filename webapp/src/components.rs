@@ -36,8 +36,6 @@ pub mod copy_runs;
 pub mod data_table;
 pub mod disclaimer;
 pub mod form;
-pub mod foundation_footer;
-pub mod freshness;
 pub mod github_stars;
 pub mod icon;
 pub mod impersonation;
@@ -71,8 +69,6 @@ pub use disclaimer::LegalBlueprintDisclaimer;
 #[cfg(test)]
 pub(crate) use form::assert_forms_accessible;
 pub use form::{question_fields, Choice, Field, FieldKind, FormCard, Heading};
-pub use foundation_footer::SiteFooterFoundation;
-pub use freshness::Freshness;
 pub use github_stars::GitHubStars;
 pub use icon::{Icon, IconName, LIBRA_SCALES};
 pub use impersonation::{

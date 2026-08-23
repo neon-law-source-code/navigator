@@ -98,8 +98,8 @@ A tenant guard refuses either command aimed at the other's project before the fi
 buckets or GKE, and an environment never hosts the shared registry. An unrecorded project ID is always allowed, so a
 fork provisions its own projects unimpeded.
 
-After the organization split the Foundation's service accounts become foreign identities to the firm-owned registry, so
-every `setIamPolicy` against the hub repository — including a routine provisioner re-run — is evaluated against
+A service account from another organization is a foreign identity to the firm-owned registry, so every `setIamPolicy`
+against the hub repository — including a routine provisioner re-run — is evaluated against
 `constraints/iam.allowedPolicyMemberDomains`. A refusal surfaces as a named error identifying that constraint and the
 refused principal, not a bare 403. Clear the constraint on the registry's organization, or scope an exception on the hub
 project, then re-run.
@@ -233,8 +233,8 @@ periodic jobs or durable workflow failures. The architecture details live in [`o
 ## Website publication
 
 Top-level files in `docs/` are already published at `/docs/:slug` by `portal::docs`. The site bakes the docs into the
-binary with `include_str!`, renders markdown under the Foundation brand, and rewrites top-level doc links to site
-routes. That gives every maintainer and LLM the same documentation surface.
+binary with `include_str!`, renders markdown under the firm brand, and rewrites top-level doc links to site routes. That
+gives every maintainer and LLM the same documentation surface.
 
 Good next steps for the website:
 

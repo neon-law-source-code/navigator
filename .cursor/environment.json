@@ -1,0 +1,8 @@
+{
+  "name": "Neon Law Navigator",
+  "user": "ubuntu",
+  "install": "bash .cursor/install.sh",
+  "ports": [
+    { "name": "web", "port": 3001 }
+  ]
+}

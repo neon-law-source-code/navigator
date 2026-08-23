@@ -111,8 +111,8 @@ cargo run -p cli -- ops assets fonts upload \
 ```
 
 The command targets `NAVIGATOR_ASSETS_BUCKET` (or `--bucket`) and refuses a partial delivery. Navigator code is
-copyright the Neon Law Foundation; [GORP Serif](https://trashtype.com/fonts/gorp) is font software licensed separately
-from TrashType. Follow the [TrashType terms](https://trashtype.com/legal) and keep the local notice in
+copyright Shook Law PLLC; [GORP Serif](https://trashtype.com/fonts/gorp) is font software licensed separately from
+TrashType. Follow the [TrashType terms](https://trashtype.com/legal) and keep the local notice in
 `server/public/fonts/gorp-serif/LICENSE.txt` with the source files. Before the first upload, rerun `navigator ops gcp
 setup` so the public assets bucket receives the font-fetch CORS policy.
 

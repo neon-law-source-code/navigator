@@ -1,6 +1,6 @@
 Neon Law Navigator — NOTICE
 
-Copyright (C) 2026 Neon Law Foundation
+Copyright (C) 2026 Shook Law PLLC
 
 SPDX-License-Identifier: AGPL-3.0-only
 
@@ -16,11 +16,21 @@ PARTICULAR PURPOSE.  See LICENSE for more details.
 
 LICENSE holds that licence and nothing else — the Free Software Foundation's
 text, unaltered, so every tool that reads a licence file recognises which one
-this is.  It is the instrument.  What follows is the Neon Law Foundation's own
+this is.  It is the instrument.  What follows is the copyright holder's own
 account of how it applies to this work: nothing here narrows the grant, and
 nothing here is a second licence.
 
-ONE LICENCE, OVER EVERYTHING THE FOUNDATION CAN LICENSE.  The Rust workspace,
+WHO HOLDS THIS, AND WHY THE GRANT CANNOT BE WITHDRAWN.  Copyright in this work
+belongs to Shook Law PLLC, the law firm that operates it under the NEON LAW
+mark.  The Neon Law Foundation publishes it: the Foundation holds a perpetual,
+irrevocable, non-exclusive, royalty-free right to publish this work under
+AGPL-3.0-only, and that right binds the Firm's successors and survives any
+change of the Firm's control.  A copyright holder can normally stop publishing
+under a licence whenever it likes — every copy already given keeps its rights,
+but no further copy need be offered.  Here it cannot: a separate organization
+holds the right to go on publishing, and can enforce it.
+
+ONE LICENCE, OVER EVERYTHING THE FIRM CAN LICENSE.  The Rust workspace,
 the `navigator` CLI, the build and deployment tooling, and the drafted legal
 prose under `templates/` are all AGPL-3.0-only.  One grant covers the tree, so
 there is nothing to look up per directory: a reader of a notation body holds the
@@ -33,20 +43,21 @@ network, you must offer those users the corresponding source of your modified
 version.  Operating a legal-services portal for other people is exactly that
 case, so the obligation attaches to running it and not only to shipping it.
 
-GOVERNMENT FORMS ARE NOT THE FOUNDATION'S TO LICENSE.  The blank government
-PDFs under `templates/forms/` are works of the issuing state or federal agency.
-The Foundation claims no copyright in them and grants none; they are committed
-so the binary embeds the same bytes the repository carries, and for no other
-reason.  What the Foundation does license under the AGPL is its own material
-beside each blank form: the catalog card, the field map, and the workflow that
+GOVERNMENT FORMS ARE NOBODY'S HERE TO LICENSE.  The blank government PDFs
+under `templates/forms/` are works of the issuing state or federal agency.
+Neither the Firm nor the Foundation claims any copyright in them or grants any;
+they are committed so the binary embeds the same bytes the repository carries,
+and for no other reason.  What is licensed under the AGPL beside each blank form
+is our own material: the catalog card, the field map, and the workflow that
 fills the form in.
 
 TRADEMARKS.  The licence grants rights in copyright, not in trademarks, and
-here the two sit with different organizations.  Copyright in this work belongs
-to the Neon Law Foundation, which produces it.  NEON LAW is a registered
-trademark, U.S. Reg. No. 6,325,650, owned by Shook Law PLLC, the law firm that
-operates this software under the mark; that mark, the Neon Law wordmark, and
-the Neon Law logos are the Firm's and are not licensed here.  You may run,
+the marks are the one thing it withholds.  NEON LAW is a registered trademark,
+U.S. Reg. No. 6,325,650, owned by Shook Law PLLC; that mark, the Neon Law
+wordmark, and the Neon Law logos are the Firm's and are not licensed here.  That
+the Firm holds the copyright as well changes nothing about it: a copyright
+licence does not reach a mark, so no amount of permission in LICENSE lets you
+trade under this name.  You may run,
 fork, and redistribute this software freely, and you may say your work is built
 on Neon Law Navigator.  You may not present your deployment as Neon Law — a law
 firm's mark is how a client identifies who is accountable for their legal work,
@@ -56,11 +67,13 @@ rather than by editing sources; that seam exists for this.  The Foundation uses
 the mark for its charitable, pro bono, and public-education work under separate
 written permission from the Firm.
 
-CONTRIBUTIONS.  Unless you state otherwise, any contribution you intentionally
-submit for inclusion is licensed AGPL-3.0-only on the same terms, with no
-additional terms and no copyright assignment.  You keep the copyright in what
-you write.  Outside contributions are closed as a matter of capacity; write to
-contact@neonlaw.org instead.
+CONTRIBUTIONS.  Every contribution in this repository belongs to Shook Law
+PLLC, assigned by a written agreement its author signed before their first
+commit, and reaches you under AGPL-3.0-only on the same terms as everything else
+here.  One holder able to grant the whole work is what the Foundation's
+publication right rests on, so the assignment is the mechanism and the grant to
+you is the result.  Outside contributions are closed as a matter of capacity;
+write to contact@neonlaw.org instead.
 
 NO LEGAL ADVICE.  This licence is not legal advice and creates no
 attorney-client relationship.  A template here is a starting point drafted for

@@ -780,10 +780,11 @@ nonlawyer organization's substantive work lawful.
 
 Short for **Neon Law Navigator** — the umbrella over this monorepo: the CLI (`navigator`), the one website serving both
 faces (`neon` / `portal` / `webapp`), the rule engine (`rules`), the MCP server, and everything else under this Cargo
-workspace. The *code* is copyright the **Neon Law Foundation**, which produces it; the Firm operates it under the NEON
-LAW mark. This is a **public, open-source repository**: one grant, `AGPL-3.0-only`, covers the whole tree including the
-legal prose under `templates/`. Outside contributions are closed for now, though the inbound = outbound terms stand with
-no assignment ([`LICENSE`](../LICENSE), [`NOTICE`](../NOTICE), [`licensing.md`](licensing.md)).
+workspace. The *code* is copyright **Shook Law PLLC**, the Firm that operates it under the NEON LAW mark; the **Neon Law
+Foundation** publishes it under an irrevocable right to do so. This is a **public, open-source repository**: one grant,
+`AGPL-3.0-only`, covers the whole tree including the legal prose under `templates/`. Outside contributions are closed
+for now, and work in here assigns to the Firm ([`LICENSE`](../LICENSE), [`NOTICE`](../NOTICE),
+[`licensing.md`](licensing.md)).
 
 *Matter work product* produced from the templates belongs to the client and the matter; the *name and marks* — "Neon
 Law", "Neon Law Foundation", "NLF", "Navigator", "Neon Law Navigator", and the NLF logo — are reserved. **NEON LAW** is

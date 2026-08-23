@@ -1,13 +1,13 @@
 # Licensing
 
 Navigator is free software. Root [`LICENSE`](../LICENSE) is the licence of record, it is the only licence file in the
-tree, and it covers everything the Foundation is able to license:
+tree, and it covers everything the Firm is able to license:
 
 | What | Licence | Why |
 | --- | --- | --- |
 | Workspace, CLI, build and deploy tooling | `AGPL-3.0-only` | Copyleft with a network clause, which is how it is run |
 | Notation bodies under `templates/` | `AGPL-3.0-only` | Same grant; one tree, one answer |
-| Blank government PDFs in `templates/forms/` | None — not the Foundation's | A Nevada state form belongs to Nevada |
+| Blank government PDFs in `templates/forms/` | None — not ours to license | A Nevada state form belongs to Nevada |
 
 One grant and one file is the whole design. A reader never has to work out which instrument governs the file in front of
 them, and a fork never has to reconcile two sets of obligations across a directory boundary.
@@ -15,9 +15,9 @@ them, and a fork never has to reconcile two sets of obligations across a directo
 ## Two files, and which one is the instrument
 
 [`LICENSE`](../LICENSE) is the Free Software Foundation's text, unaltered: it opens on the licence's own first line,
-ends on its last, and carries nothing of ours in between. [`NOTICE`](../NOTICE) beside it carries everything the
-Foundation has to say — the copyright line, the SPDX tag, § 13 in its own voice, the government forms it cannot license,
-the marks it reserves, and the terms a contribution arrives under.
+ends on its last, and carries nothing of ours in between. [`NOTICE`](../NOTICE) beside it carries everything we have to
+say — the copyright line, the publication right the Foundation holds, the SPDX tag, § 13 in its own voice, the
+government forms nobody here can license, the marks the Firm reserves, and the terms a contribution arrives under.
 
 The split is what every other project does, and there is a mechanical reason for it. A licence file is read by machines
 as well as people: GitHub's repository page, `cargo deny`, SBOM generators, and a corporate review team's scanner all
@@ -33,22 +33,32 @@ at both ends by the FSF's own lines, so there is nowhere in it for an added clau
 
 ## Who holds what
 
-Two organizations, and the split is the thing a fork actually needs to get right.
+Three facts, two organizations, and the one a fork actually needs to get right is the second row.
 
 | Held | By | Which is why |
 | --- | --- | --- |
-| Copyright in this repository | **Neon Law Foundation**, a 501(c)(3) | The outbound grant is the Foundation's to make |
+| Copyright in this repository | **Shook Law PLLC**, the law firm | Only the holder can grant the whole work |
+| An irrevocable right to publish it under the AGPL | **Neon Law Foundation** | It outlives the Firm's owners |
 | **NEON LAW**, U.S. Reg. No. 6,325,650 | **Shook Law PLLC**, the law firm | The mark is not licensed here at all |
 
-Produce and operate are different verbs and this is the whole point. The Foundation *produces* Navigator — writes it and
-publishes it as public infrastructure — which is why the copyright and the grant are its to give. The Firm *operates*
-it, running a legal practice on it under the NEON LAW mark, which is why the mark is the Firm's: a mark on legal
-services is how a client identifies who is accountable for their legal work, and that accountability belongs to the
-entity holding the bar licence. The Foundation itself uses the mark under written permission from the Firm.
+**Why the Firm holds it.** The Firm writes this software, engages the people who write the rest of it, and operates a
+legal practice on it under the NEON LAW mark. A mark on legal services is how a client identifies who is accountable for
+their legal work, and that accountability belongs to the entity holding the bar licence — so the mark was always going
+to be the Firm's, and putting the copyright in the same hands is what lets one signature grant the whole work.
 
-The practical consequence: a fork inherits everything the copyright holder can give and nothing the registrant kept.
-Copy it, change it, sell it, run it for other people — none of that needs anyone's permission, though § 13 attaches an
-obligation to the last one. Calling the result "Neon Law" needs the Firm's permission, and the Firm does not give it.
+**Why the second row is load-bearing.** A copyright holder can normally stop publishing under a licence whenever it
+likes. Every copy already given keeps its rights — a licence granted cannot be revoked — but nothing obliges the holder
+to offer another, which is how a project gets relicensed out from under the people building on it. The right the **Neon
+Law Foundation** holds removes that possibility: it is perpetual, irrevocable, non-exclusive, and royalty-free; it binds
+the Firm's successors; and it survives any change of the Firm's control. So a buyer of the Firm inherits a work somebody
+else is entitled to keep publishing under `AGPL-3.0-only`, and can be made to.
+
+That is a stronger promise than putting the copyright in a charity would be. A foundation you control can relicense too.
+A right held by a different organization is enforceable by that organization.
+
+**The practical consequence** is unchanged, and it is the sentence to read if you read only one: copy it, change it,
+sell it, run it for other people — none of that needs anyone's permission, though § 13 attaches an obligation to the
+last one. Calling the result "Neon Law" needs the Firm's permission, and the Firm does not give it.
 
 ## The grant: AGPL-3.0-only
 
@@ -95,14 +105,14 @@ Two things it does **not** do:
 
 ## Government forms: nobody's to license
 
-The blank government PDFs under `templates/forms/` are works of the issuing state or federal agency. The Foundation
-claims no copyright in them and grants none; they are committed so the binary embeds the same bytes the repository
-carries, and for no other reason.
+The blank government PDFs under `templates/forms/` are works of the issuing state or federal agency. Nobody here claims
+a copyright in them or grants one; they are committed so the binary embeds the same bytes the repository carries, and
+for no other reason.
 
-This is not a technicality. Claiming a licence over a state's own form would be over-claiming a copyright the Foundation
-does not hold, and an over-claim in a terms file published beside a law practice is the kind of error that gets quoted
-back. What the Foundation does license beside each blank PDF is its own material: the catalog card, the field map, and
-the workflow that fills the form in.
+This is not a technicality. Claiming a licence over a state's own form would be over-claiming a copyright nobody here
+holds, and an over-claim in a terms file published beside a law practice is the kind of error that gets quoted back.
+What *is* licensed beside each blank PDF is our own material: the catalog card, the field map, and the workflow that
+fills the form in.
 
 ## Why the legal prose is under the software licence
 
@@ -145,8 +155,11 @@ fork called "Neon Law" reads the terms that shipped with the code, so the answer
 doc. It is also the reason `NOTICE` travels in every archive and image: the reservation is the one thing the grant does
 not hand a fork.
 
-Note that the registrant is not the copyright holder — see [Who holds what](#who-holds-what). The Foundation cannot
-sublicense a mark it does not own, so no amount of copyright permission reaches the name.
+The registrant and the copyright holder are the same organization — see [Who holds what](#who-holds-what) — and that
+changes nothing, which is the point worth stating rather than assuming. A copyright licence conveys rights in copyright.
+It does not reach a mark, so the Firm granting you everything it can grant under `AGPL-3.0-only` still leaves you
+without the name. The same answer used to follow from the two sitting in different hands; it now follows from what a
+copyright licence is, which is the sturdier reason.
 
 This is the one reservation this project genuinely needs. A client identifies who is accountable for their legal work by
 the name on the door, so a fork trading as Neon Law would misdirect the person least able to check. Anyone may run,
@@ -163,11 +176,16 @@ permission from the Firm.
 more: it revokes nothing, because a licence already given cannot be taken back, and every copy already cloned keeps its
 rights whatever the contribution policy says.
 
-The terms are stated anyway, so they are knowable in advance and a fork's own authors know where they stand.
-Contributions are **inbound = outbound**: anything intentionally submitted for inclusion is licensed `AGPL-3.0-only`,
-the same terms the project ships under, wherever in the tree it lands. No copyright assignment, no contributor
-agreement, no acceptance ledger, and no bot in the merge path. Contributors keep the copyright in what they write. See
-[`CONTRIBUTING.md`](../CONTRIBUTING.md).
+The terms are stated anyway, so they are knowable in advance and a fork's own authors know where they stand. **A
+contribution assigns to the Firm.** Every author in this repository signed a written agreement to that effect before
+their first commit, so the work is the Firm's on creation, and reopening to outside contributions means a contributor
+agreement on the same footing.
+
+Assignment is the mechanism and it changes nothing about what you receive: the work reaches you under `AGPL-3.0-only`,
+the same terms the project ships under, wherever in the tree it lands. What it buys is a single holder able to grant the
+whole work — which is what the Foundation's irrevocable right to publish rests on, because a grant assembled from many
+holders is one nobody can reliably renew, and what one contributor could not be found to re-sign would be a hole in the
+public grant rather than in a private one. See [`CONTRIBUTING.md`](../CONTRIBUTING.md).
 
 Two boundaries survive the opening, because this repository runs a live practice: **no client data ever enters the
 tree**, and **a change to `templates/` gets attorney review** before it merges, however mechanical the diff looks.

@@ -336,7 +336,7 @@ published image therefore does both of the things a registry makes possible:
 
 ### Where the images are published
 
-Every product image goes to `ghcr.io/neon-law-foundation`, from `publish-service` and `publish-triggers`. There is no
+Every product image goes to `ghcr.io/neon-law-source-code`, from `publish-service` and `publish-triggers`. There is no
 toggle and no second registry: the push is unconditional, and `cli/tests/license_of_record.rs` asserts that no condition
 guards it. A registry the release depends on must not be switchable by a repository variable, whose absence is a
 settings edit that touches no file, passes every gate, and yields a release that looks fine until someone checks the
@@ -347,7 +347,7 @@ authenticates with `GITHUB_TOKEN` and the `packages: write` scope. That scope is
 at the top of the workflow — every other job in the file checks out and builds release code, and none of them has any
 business writing packages.
 
-**A GHCR package inherits its linked repository's visibility.** `neon-law-foundation/navigator` is public, so these are
+**A GHCR package inherits its linked repository's visibility.** `neon-law-source-code/navigator` is public, so these are
 public packages — anyone can pull the same digests the deployments run, which is the point of publishing them.
 
 ## Releases

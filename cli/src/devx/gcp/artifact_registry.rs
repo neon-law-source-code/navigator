@@ -714,9 +714,9 @@ mod tests {
 
     #[test]
     fn principal_set_pins_the_repository() {
-        let p = wif_principal_set("123456789012", "neon-law-foundation/navigator");
+        let p = wif_principal_set("123456789012", "neon-law-source-code/navigator");
         assert!(p.starts_with("principalSet://iam.googleapis.com/projects/123456789012/"));
-        assert!(p.ends_with("/attribute.repository/neon-law-foundation/navigator"));
+        assert!(p.ends_with("/attribute.repository/neon-law-source-code/navigator"));
     }
 
     #[test]
@@ -1067,7 +1067,7 @@ mod tests {
             .and(query_param("workloadIdentityPoolProviderId", "github-oidc"))
             .and(body_partial_json(json!({
                 "oidc": { "issuerUri": "https://token.actions.githubusercontent.com" },
-                "attributeCondition": "assertion.repository == 'neon-law-foundation/navigator' \
+                "attributeCondition": "assertion.repository == 'neon-law-source-code/navigator' \
                      && (assertion.ref == 'refs/heads/main' \
                      || assertion.ref.startsWith('refs/tags/'))"
             })))
@@ -1076,7 +1076,7 @@ mod tests {
             .mount(&server)
             .await;
         let client = client_for(&server, &[GcpService::Iam]);
-        let out = ensure_wif_provider(&client, "p", "neon-law-foundation/navigator")
+        let out = ensure_wif_provider(&client, "p", "neon-law-source-code/navigator")
             .await
             .unwrap();
         assert_eq!(out, EnsureOutcome::Created);
@@ -1113,7 +1113,7 @@ mod tests {
             .mount(&server)
             .await;
         let client = client_for(&server, &[GcpService::Iam]);
-        let out = ensure_wif_provider(&client, "p", "neon-law-foundation/navigator")
+        let out = ensure_wif_provider(&client, "p", "neon-law-source-code/navigator")
             .await
             .unwrap();
         assert_eq!(out, EnsureOutcome::AlreadyExists);
@@ -1127,8 +1127,8 @@ mod tests {
         // A principal from a pool that no longer federates this repository —
         // the case the revoke exists for. It must differ from `current`, or the
         // test asserts nothing.
-        let stale = wif_principal_set("111111111111", "neon-law-foundation/navigator");
-        let current = wif_principal_set("522147057781", "neon-law-foundation/navigator");
+        let stale = wif_principal_set("111111111111", "neon-law-source-code/navigator");
+        let current = wif_principal_set("522147057781", "neon-law-source-code/navigator");
         assert_ne!(
             stale, current,
             "the stale principal must be a different one"
@@ -1170,9 +1170,9 @@ mod tests {
 
     #[test]
     fn wif_condition_refuses_a_fork_and_an_arbitrary_branch() {
-        let condition = wif_attribute_condition("neon-law-foundation/navigator");
+        let condition = wif_attribute_condition("neon-law-source-code/navigator");
         // Full owner/repo equality, so `attacker/navigator` cannot satisfy it.
-        assert!(condition.contains("assertion.repository == 'neon-law-foundation/navigator'"));
+        assert!(condition.contains("assertion.repository == 'neon-law-source-code/navigator'"));
         assert!(!condition.contains("repository_owner"));
         // Exactly `main` plus release tags; no other branch mints a token.
         assert!(condition.contains("assertion.ref == 'refs/heads/main'"));

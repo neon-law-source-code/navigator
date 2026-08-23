@@ -12,7 +12,7 @@ description: >-
 # Consuming repository, in full:
 #
 #     - uses: actions/checkout@<sha>  # v7
-#     - uses: neon-law-foundation/navigator/.github/actions/validate@26.7.27
+#     - uses: neon-law-source-code/navigator/.github/actions/validate@26.7.27
 #       with:
 #         version: "26.7.27"
 #
@@ -34,7 +34,7 @@ description: >-
 # that can be satisfied by being skipped is not a gate.
 #
 #     - run: pnpm --dir portal build
-#     - uses: neon-law-foundation/navigator/.github/actions/validate@26.8.11
+#     - uses: neon-law-source-code/navigator/.github/actions/validate@26.8.11
 #       with:
 #         version: "26.8.11"
 #         project_repository: true
@@ -134,7 +134,7 @@ runs:
                 ;;
         esac
 
-        repo="${ACTION_REPO:-neon-law-foundation/navigator}"
+        repo="${ACTION_REPO:-neon-law-source-code/navigator}"
         asset="navigator-${VERSION}-${platform}.tar.gz"
         tmp="$(mktemp -d)"
 

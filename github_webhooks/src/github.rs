@@ -1618,7 +1618,7 @@ mod tests {
 
     fn repository() -> RepositoryRef {
         RepositoryRef {
-            owner: "neon-law-foundation".to_string(),
+            owner: "neon-law-source-code".to_string(),
             name: "navigator".to_string(),
         }
     }
@@ -1657,7 +1657,7 @@ mod tests {
         let result = NullGitHubClient
             .create_comment(
                 &RepositoryRef {
-                    owner: "neon-law-foundation".to_string(),
+                    owner: "neon-law-source-code".to_string(),
                     name: "navigator".to_string(),
                 },
                 455,
@@ -1672,7 +1672,7 @@ mod tests {
     async fn reads_an_issue_with_its_source_content() {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
-            .and(path("/repos/neon-law-foundation/navigator/issues/455"))
+            .and(path("/repos/neon-law-source-code/navigator/issues/455"))
             .and(header("authorization", "Bearer ghs_test"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "number": 455,
@@ -1700,7 +1700,7 @@ mod tests {
             .and(header("authorization", "Bearer ghs_test"))
             .and(body_partial_json(serde_json::json!({
                 "variables": {
-                    "owner": "neon-law-foundation",
+                    "owner": "neon-law-source-code",
                     "name": "navigator",
                     "number": 455,
                     "cursor": null,
@@ -1725,7 +1725,7 @@ mod tests {
             .and(header("authorization", "Bearer ghs_test"))
             .and(body_partial_json(serde_json::json!({
                 "variables": {
-                    "owner": "neon-law-foundation",
+                    "owner": "neon-law-source-code",
                     "name": "navigator",
                     "number": 455,
                     "cursor": "page-two",
@@ -1760,7 +1760,7 @@ mod tests {
     async fn updates_an_issue_body() {
         let server = MockServer::start().await;
         Mock::given(method("PATCH"))
-            .and(path("/repos/neon-law-foundation/navigator/issues/455"))
+            .and(path("/repos/neon-law-source-code/navigator/issues/455"))
             .and(header("authorization", "Bearer ghs_test"))
             .and(body_partial_json(serde_json::json!({
                 "body": "Updated synthetic body."
@@ -1780,7 +1780,7 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path(
-                "/repos/neon-law-foundation/navigator/issues/455/comments",
+                "/repos/neon-law-source-code/navigator/issues/455/comments",
             ))
             .and(header("authorization", "Bearer ghs_test"))
             .and(body_partial_json(serde_json::json!({
@@ -1801,7 +1801,7 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path(
-                "/repos/neon-law-foundation/navigator/issues/455/labels",
+                "/repos/neon-law-source-code/navigator/issues/455/labels",
             ))
             .and(header("authorization", "Bearer ghs_test"))
             .and(body_partial_json(serde_json::json!({ "labels": ["devx"] })))
@@ -1810,7 +1810,7 @@ mod tests {
             .await;
         Mock::given(method("DELETE"))
             .and(path(
-                "/repos/neon-law-foundation/navigator/issues/455/labels/devx",
+                "/repos/neon-law-source-code/navigator/issues/455/labels/devx",
             ))
             .and(header("authorization", "Bearer ghs_test"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([])))
@@ -1837,7 +1837,7 @@ mod tests {
         assert_eq!(
             url.as_str(),
             format!(
-                "{}/repos/neon-law-foundation/navigator/issues/455/labels/needs%2Freview",
+                "{}/repos/neon-law-source-code/navigator/issues/455/labels/needs%2Freview",
                 server.uri()
             )
         );
@@ -1847,7 +1847,7 @@ mod tests {
     async fn creates_a_pull_request() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
-            .and(path("/repos/neon-law-foundation/navigator/pulls"))
+            .and(path("/repos/neon-law-source-code/navigator/pulls"))
             .and(header("authorization", "Bearer ghs_test"))
             .and(body_partial_json(serde_json::json!({
                 "title": "Synthetic pull request",
@@ -1887,7 +1887,7 @@ mod tests {
             .and(header("authorization", "Bearer ghs_test"))
             .and(body_partial_json(serde_json::json!({
                 "variables": {
-                    "owner": "neon-law-foundation",
+                    "owner": "neon-law-source-code",
                     "name": "navigator",
                     "number": 991,
                 }
@@ -1940,7 +1940,7 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("PUT"))
             .and(path(
-                "/repos/neon-law-foundation/navigator/pulls/991/update-branch",
+                "/repos/neon-law-source-code/navigator/pulls/991/update-branch",
             ))
             .and(header("authorization", "Bearer ghs_test"))
             .respond_with(ResponseTemplate::new(202).set_body_json(serde_json::json!({})))
@@ -2035,7 +2035,7 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path(
-                "/repos/neon-law-foundation/navigator/pulls/991/comments/123/replies",
+                "/repos/neon-law-source-code/navigator/pulls/991/comments/123/replies",
             ))
             .and(header("authorization", "Bearer ghs_test"))
             .and(body_partial_json(serde_json::json!({
@@ -2081,7 +2081,7 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path(
-                "/repos/neon-law-foundation/navigator/commits/devx%2Fissue-455/check-runs",
+                "/repos/neon-law-source-code/navigator/commits/devx%2Fissue-455/check-runs",
             ))
             .and(header("authorization", "Bearer ghs_test"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
@@ -2125,7 +2125,7 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path(
-                "/repos/neon-law-foundation/navigator/actions/runs/123/logs",
+                "/repos/neon-law-source-code/navigator/actions/runs/123/logs",
             ))
             .and(header("authorization", "Bearer ghs_test"))
             .respond_with(ResponseTemplate::new(200).set_body_bytes(bytes))
@@ -2151,7 +2151,7 @@ mod tests {
 
         assert_eq!(
             clone_url.as_str(),
-            "https://x-access-token:ghs_test@github.com/neon-law-foundation/navigator.git"
+            "https://x-access-token:ghs_test@github.com/neon-law-source-code/navigator.git"
         );
         assert!(!format!("{client:?}").contains("ghs_test"));
     }
@@ -2167,7 +2167,7 @@ mod tests {
                 "variables": {
                     "input": {
                         "branch": {
-                            "repositoryNameWithOwner": "neon-law-foundation/navigator",
+                            "repositoryNameWithOwner": "neon-law-source-code/navigator",
                             "branchName": "devx/issue-463",
                         },
                         "expectedHeadOid": expected_head,

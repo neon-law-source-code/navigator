@@ -29,7 +29,7 @@ for admin users standing up infrastructure. With that said: you can run the same
 > `source .devx/env` and
 > `cargo run -p neon` serves it on `localhost`. Boot it locally, inspect the canonical seed, and only
 > come back here when you want it on the public internet. The full local loop is in
-> [`AGENTS.md`](https://github.com/neon-law-foundation/navigator/blob/main/AGENTS.md#local-kind-development).
+> [`AGENTS.md`](https://github.com/neon-law-source-code/navigator/blob/main/AGENTS.md#local-kind-development).
 
 **Set the budget alert before you provision** — one command caps the surprise so the bill cannot run away while you
 learn:
@@ -396,7 +396,7 @@ unprovisioned project:
   `roles/storage.objectAdmin`; none of the buckets grants `allUsers`.
 
 The five-bucket list is the current checkpoint, not the target topology. Issue
-[#1103](https://github.com/neon-law-foundation/navigator/issues/1103) coordinates the migration to exactly one private
+[#1103](https://github.com/neon-law-source-code/navigator/issues/1103) coordinates the migration to exactly one private
 object-storage bucket per deployment and never one bucket per Project. Project growth adds rows and logical key space,
 with lanes such as `{project-code}/documents/` and `{project-code}/exports/` inside the deployment bucket; it does not
 create cloud buckets. Marketing bytes remain available through the same-origin `/assets/*` application route while the
@@ -1152,7 +1152,7 @@ allowed to mount the receiver or bind the GitHub services. It also requires posi
 `devx-guardrails/global` object serializes all reservations, defers work at the concurrency cap, and pauses new token
 reservations through the UTC-day reset. Other deployments do not bind that object or read these limits.
 
-The receiver watches two GitHub owners. The product code lives at `github.com/neon-law-foundation/navigator` and is
+The receiver watches two GitHub owners. The product code lives at `github.com/neon-law-source-code/navigator` and is
 always watched; the firm's private per-Project repos live under `github.com/neon-law-firm/<projects.code>`, where
 `neon-law-firm` is `NAVIGATOR_GITHUB_ORG`. A delivery is accepted when it comes from the canonical code repository or
 any repo owned by that org.
@@ -1394,7 +1394,7 @@ rows.
 | Deployment | Google browser callback | GitHub organization |
 | --- | --- | --- |
 | `neon-law-stg` | `https://www.neonlaw.com/auth/callback` | `neon-law` |
-| `neon-law-prod` | `https://www.neonlaw.com/auth/callback` | `neon-law-foundation` |
+| `neon-law-prod` | `https://www.neonlaw.com/auth/callback` | `neon-law-source-code` |
 | `neon-law-prod` | `https://www.neonlaw.com/auth/callback` | `neon-law` |
 
 The three GitHub organizations use GitHub Free, the engineering contact mailbox recorded in
@@ -1478,7 +1478,7 @@ applicable verification and domain-ownership work.
 The staging browser client exists with the exact name and callback in this section. Its consent configuration is
 External/Testing, and the authenticated operator is its initial test user. Its deployment config carries only that
 browser ID and secret. The Gemini ID remains absent until the data store assigns it; `ops ship` temporarily renders a
-browser-only allowlist, and [#1126](https://github.com/neon-law-foundation/navigator/issues/1126) removes that seam
+browser-only allowlist, and [#1126](https://github.com/neon-law-source-code/navigator/issues/1126) removes that seam
 after the authenticated staging AIDA smoke test.
 
 These clients are configured in **Google Auth Platform → Clients**. They are general OAuth clients, not IAP or Workforce
@@ -1541,7 +1541,7 @@ For each organization, a GitHub owner must:
 4. put that row's organization, App ID, and private key in `NAVIGATOR_GITHUB_ORG`, `NAVIGATOR_GITHUB_APP_ID`,
    `NAVIGATOR_GITHUB_APP_PRIVATE_KEY`, and optionally pin the discovered `NAVIGATOR_GITHUB_INSTALLATION_ID`.
 
-The Apps own no Project repositories: Navigator provisions none. What is left is the `neon-law-foundation/navigator`
+The Apps own no Project repositories: Navigator provisions none. What is left is the `neon-law-source-code/navigator`
 webhook and the DevX Restate services, which are the `neon-law-stg` singleton.
 
 #### Provider signups that require a human account owner
@@ -1785,7 +1785,7 @@ otherwise empty mount.
 
 ---
 
-GitHub Actions publishes `neon-server` and `navigator-workflows-service` to `ghcr.io/neon-law-foundation`. The images
+GitHub Actions publishes `neon-server` and `navigator-workflows-service` to `ghcr.io/neon-law-source-code`. The images
 are public, so no reader grant is needed on any deployment's node identity — that whole cross-project binding retired
 with Artifact Registry. `ops ship` refuses `latest`, verifies every selected image exists, renders the embedded
 manifests with no unresolved placeholders, diffs before applying, preflights the runtime Secret, waits for all rollouts,

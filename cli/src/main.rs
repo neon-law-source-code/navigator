@@ -2285,7 +2285,7 @@ fn detect_mutable_tags(path: &std::path::Path, contents: &str) -> Vec<(usize, St
 }
 
 /// Walk `dir` for *consumed* mutable tags — the diligence guard for
-/// [navigator#540](https://github.com/neon-law-foundation/navigator/issues/540).
+/// [navigator#540](https://github.com/neon-law-source-code/navigator/issues/540).
 /// Prints one line per offence and returns the count. Runs over YAML manifests,
 /// Containerfiles, and workflow files alike; the `.git`, `target`, and
 /// `.worktrees` trees are skipped, as in [`yaml_pass`].

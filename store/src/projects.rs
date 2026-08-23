@@ -2040,7 +2040,7 @@ mod surreal_read_tests {
     #[test]
     fn a_repository_url_may_name_any_forge_and_any_organization() {
         for url in [
-            "https://github.com/neon-law-foundation/navigator-sample-project",
+            "https://github.com/neon-law-source-code/navigator-sample-project",
             "https://gitlab.com/some-group/some-subgroup/a-project",
             "https://git.example.internal/an-org/a-project.git",
             // A self-hosted forge on a port, and a plain-http intranet remote.

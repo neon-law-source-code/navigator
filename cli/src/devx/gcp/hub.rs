@@ -48,7 +48,7 @@ pub struct HubSetupConfig {
     /// Repository name that holds every container image. Default: `navigator`.
     pub artifact_registry_repo: String,
     /// `owner/repo` slug the Workload Identity provider trusts for keyless CI
-    /// pushes. Default: `neon-law-foundation/navigator`.
+    /// pushes. Default: `neon-law-source-code/navigator`.
     pub github_repo: String,
     /// Account id (local part of the SA email) of the CI pusher service
     /// account. Default: `navigator-ci-pusher`.
@@ -337,7 +337,7 @@ mod tests {
             .and(query_param("workloadIdentityPoolProviderId", "github-oidc"))
             .and(body_partial_json(json!({
                 "oidc": { "issuerUri": artifact_registry::GITHUB_OIDC_ISSUER },
-                "attributeCondition": artifact_registry::wif_attribute_condition("neon-law-foundation/navigator")
+                "attributeCondition": artifact_registry::wif_attribute_condition("neon-law-source-code/navigator")
             })))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "done": true })))
             .expect(1)
@@ -350,7 +350,7 @@ mod tests {
             .and(body_partial_json(json!({
                 "policy": { "bindings": [{
                     "role": "roles/iam.workloadIdentityUser",
-                    "members": [wif_principal_set("464694154887", "neon-law-foundation/navigator")]
+                    "members": [wif_principal_set("464694154887", "neon-law-source-code/navigator")]
                 }] }
             })))
             .respond_with(ResponseTemplate::new(200))

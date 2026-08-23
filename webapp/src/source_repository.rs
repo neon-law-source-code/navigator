@@ -25,10 +25,10 @@
 
 /// The repository, as GitHub addresses it. Rendered as the link's text, so a
 /// reader sees the owner and name rather than a bare URL.
-pub const REPOSITORY_SLUG: &str = "neon-law-foundation/navigator";
+pub const REPOSITORY_SLUG: &str = "neon-law-source-code/navigator";
 
 /// The repository's public web address.
-pub const REPOSITORY_HREF: &str = "https://github.com/neon-law-foundation/navigator";
+pub const REPOSITORY_HREF: &str = "https://github.com/neon-law-source-code/navigator";
 
 #[cfg(feature = "server")]
 pub use live::{
@@ -220,7 +220,7 @@ mod live {
         /// The count comes out of the one field GitHub publishes it in.
         #[test]
         fn reads_the_star_count_from_the_repository_document() {
-            let body = r#"{"full_name":"neon-law-foundation/navigator","stargazers_count":1234}"#;
+            let body = r#"{"full_name":"neon-law-source-code/navigator","stargazers_count":1234}"#;
             assert_eq!(parse_star_count(body), Some(1234));
         }
 

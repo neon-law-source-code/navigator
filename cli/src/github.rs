@@ -330,7 +330,7 @@ mod tests {
                 "custom_text__observed_problem".to_string(),
                 "Something is wrong.".to_string(),
             )],
-            Some("neon-law-foundation/navigator"),
+            Some("neon-law-source-code/navigator"),
             None,
             &[],
             true,
@@ -363,7 +363,7 @@ mod tests {
         let code = super::run_open_issue(
             &root,
             &answers,
-            Some("neon-law-foundation/navigator"),
+            Some("neon-law-source-code/navigator"),
             None,
             &[],
             true,

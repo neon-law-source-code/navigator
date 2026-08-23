@@ -3,7 +3,7 @@
 //! # Schema, not history
 //!
 //! The schema is a *statement of the present*
-//! ([`navigator.surql`](https://github.com/neon-law-foundation/navigator/blob/main/store/src/schema/navigator.surql)):
+//! ([`navigator.surql`](https://github.com/neon-law-source-code/navigator/blob/main/store/src/schema/navigator.surql)):
 //! one idempotent file describing the tables and fields that should
 //! exist, applied whole by [`apply`] on every boot and by every test
 //! that opens an embedded engine. The current shape is what the file

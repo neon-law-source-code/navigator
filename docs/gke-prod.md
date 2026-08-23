@@ -52,7 +52,7 @@ Deployment decisions are summarized here and in [`cloud-operations.md`](cloud-op
 | Workflows | Restate Cloud | (out-of-cluster; bearer-token auth) |
 | Per-Project git repos | A constructed link into the deployment's GitHub organization | (no manifest) |
 | Secrets | Secret Manager + CSI | `examples/deploy/k8s/gke/secrets/` |
-| Image registry | GHCR (`ghcr.io/neon-law-foundation`) | `examples/deploy/k8s/gke/patches/web-image.yaml` |
+| Image registry | GHCR (`ghcr.io/neon-law-source-code`) | `examples/deploy/k8s/gke/patches/web-image.yaml` |
 | Delivery | `ship` renders + applies the embedded tree | [Manifest delivery](#manifest-delivery) |
 | Logs / metrics / traces | Cloud Logging + GMP + Cloud Trace | (auto, no manifest) |
 | Long-term log archive | Cloud Logging sink → GCS | (gcloud-provisioned; see below) |
@@ -167,13 +167,13 @@ re-roll, a rehearsal, a rollback, or a deployment the workflow deliberately neve
 Deployments are the whole rollout: Navigator serves no Git and mounts no repository volume, so a ship waits on exactly
 the two service rollouts it started.
 
-The published images live on **GHCR**, at `ghcr.io/neon-law-foundation` — `cli::devx::registry::DEFAULT_REGISTRY`, which
+The published images live on **GHCR**, at `ghcr.io/neon-law-source-code` — `cli::devx::registry::DEFAULT_REGISTRY`, which
 a fork overrides with `NAVIGATOR_IMAGE_REGISTRY`. `ops ship` renders that one value into the `YOUR_IMAGE_REGISTRY` token
 every `image:` line in the embedded manifests carries, so what a node pulls is whatever that variable says and nothing
 else can disagree with it.
 
 **Confirm the node pull path against the live cluster rather than inferring it from this repository.** A GHCR package
-inherits its linked repository's visibility and `neon-law-foundation/navigator` is public, so an anonymous pull should
+inherits its linked repository's visibility and `neon-law-source-code/navigator` is public, so an anonymous pull should
 need no imagePullSecret and no registry credential to rotate. The cluster serving production predates that move: it was
 provisioned when images sat in a private Artifact Registry in the images project, pulled cross-project via Workload
 Identity with `roles/artifactregistry.reader` on the node identity — a binding that `ops gcp setup` still writes when
@@ -238,7 +238,7 @@ repo:
 A missing or blank required var bails **by name** before anything is written — a half-substituted manifest never reaches
 the cluster. Before Gemini Enterprise registration, `ops ship` substitutes the browser ID for the absent Gemini token,
 which renders the same ID twice in a set-valued allowlist and leaves browser login functional. Issue
-[#1126](https://github.com/neon-law-foundation/navigator/issues/1126) removes that temporary fallback after the staging
+[#1126](https://github.com/neon-law-source-code/navigator/issues/1126) removes that temporary fallback after the staging
 data store exists. Firm-specific values that are *secrets or operator toggles* (SendGrid, DocuSign, the inbound-email
 host, DKIM enforcement) stay in the `navigator-web-secrets` K8s Secret and arrive via `envFrom`. The base's inline-env
 `$patch: replace` does not touch that Secret reference, so a full apply preserves them.

@@ -50,7 +50,7 @@ impl IssueOpener for RecordingOpener {
 
 fn payload() -> String {
     serde_json::json!({
-        "repo": "neon-law-foundation/navigator",
+        "repo": "neon-law-source-code/navigator",
         "title": "Seed the default Project",
         "body": "## Observed problem\n\nNo Project for engineering intake.\n",
         "labels": ["autobuild"],
@@ -75,7 +75,7 @@ async fn a_configured_opener_journals_the_opened_issue() {
     assert_eq!(value["number"], 636);
     assert_eq!(
         value["html_url"],
-        "https://github.com/neon-law-foundation/navigator/issues/636"
+        "https://github.com/neon-law-source-code/navigator/issues/636"
     );
 }
 

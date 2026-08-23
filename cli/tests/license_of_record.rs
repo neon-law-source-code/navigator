@@ -748,7 +748,7 @@ fn every_published_image_declares_the_licence_and_stages_its_text() {
 /// So no condition may guard the push, and this test is what stops one being
 /// reintroduced. The package visibility that once justified a gate is settled:
 /// a GHCR package inherits its linked repository's visibility and
-/// `neon-law-foundation/navigator` is public.
+/// `neon-law-source-code/navigator` is public.
 ///
 /// **Scoped to the publish jobs.** `packages: write` belongs on the two jobs
 /// that push an image. Granting it at the top of the workflow would hand the

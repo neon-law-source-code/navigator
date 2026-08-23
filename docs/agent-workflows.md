@@ -126,7 +126,7 @@ commit subject, so write it as the Conventional Commit you want in `main`'s hist
 
 ### GitHub CLI authentication
 
-Navigator is public at [`neon-law-foundation/navigator`](https://github.com/neon-law-foundation/navigator) on
+Navigator is public at [`neon-law-source-code/navigator`](https://github.com/neon-law-source-code/navigator) on
 github.com. `gh` defaults to that host, so no `--hostname` and no `GH_HOST` is needed, and a command that names a host
 should be reviewed rather than copied.
 

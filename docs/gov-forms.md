@@ -142,7 +142,7 @@ sub-forms, the unsafe field stays unmapped until a lawyer review path can handle
 ## The Field-Name = Question-Code Contract
 
 The fill map is not trusted, it is **checked**. Since the question consolidation
-([#233](https://github.com/neon-law-foundation/navigator/issues/233)), a notation's questionnaire states are named
+([#233](https://github.com/neon-law-source-code/navigator/issues/233)), a notation's questionnaire states are named
 `<type>__<role>` — `entity__company`, `person__registered_agent`, `people__managing_members`,
 `custom_single_choice__management_structure` — where `<type>` is one of the canonical seeded question codes in
 `store/seeds/Question.yaml`. A field map's answer sources are those same states (directly or by `__role` suffix, exactly

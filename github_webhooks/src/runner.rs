@@ -525,7 +525,7 @@ mod tests {
         RunnerTask {
             agent: AgentTask {
                 repository: RepositoryRef {
-                    owner: "neon-law-foundation".into(),
+                    owner: "neon-law-source-code".into(),
                     name: "navigator".into(),
                 },
                 worktree,
@@ -541,7 +541,7 @@ mod tests {
 
     #[test]
     fn runner_task_requires_an_immutable_commit_id() {
-        let payload = r#"{"agent":{"repository":{"owner":"neon-law-foundation","name":"navigator"},"worktree":"/worktree","prompt":"triage","model":"model","max_turns":1,"token_budget":1,"environment":{}},"commit":"main"}"#;
+        let payload = r#"{"agent":{"repository":{"owner":"neon-law-source-code","name":"navigator"},"worktree":"/worktree","prompt":"triage","model":"model","max_turns":1,"token_budget":1,"environment":{}},"commit":"main"}"#;
         assert!(matches!(
             RunnerTask::from_json(payload),
             Err(RunnerTaskError::Invalid)

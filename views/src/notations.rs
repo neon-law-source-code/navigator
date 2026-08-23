@@ -13,8 +13,8 @@ const README: &str = include_str!(concat!(
 ));
 
 const REPO_BLOB_BASE: &str =
-    "https://github.com/neon-law-foundation/navigator/blob/main/templates/";
-const REPO_ROOT_BLOB_BASE: &str = "https://github.com/neon-law-foundation/navigator/blob/main/";
+    "https://github.com/neon-law-source-code/navigator/blob/main/templates/";
+const REPO_ROOT_BLOB_BASE: &str = "https://github.com/neon-law-source-code/navigator/blob/main/";
 
 /// The rendered README body, with its links rewritten to site routes.
 ///
@@ -124,7 +124,7 @@ mod tests {
     fn root_readme_link_maps_to_the_repository_source() {
         assert_eq!(
             rewrite_link("../README.md#trademarks"),
-            "https://github.com/neon-law-foundation/navigator/blob/main/README.md#trademarks"
+            "https://github.com/neon-law-source-code/navigator/blob/main/README.md#trademarks"
         );
     }
 
@@ -144,7 +144,7 @@ mod tests {
     fn other_relative_links_point_at_the_github_source() {
         assert_eq!(
             rewrite_link("forms/united_states/nevada/state/nv__llc_formation.fields.toml"),
-            "https://github.com/neon-law-foundation/navigator/blob/main/templates/forms/united_states/nevada/state/nv__llc_formation.fields.toml"
+            "https://github.com/neon-law-source-code/navigator/blob/main/templates/forms/united_states/nevada/state/nv__llc_formation.fields.toml"
         );
     }
 }

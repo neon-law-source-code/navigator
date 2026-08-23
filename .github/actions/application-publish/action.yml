@@ -6,7 +6,7 @@ description: >-
 
 # The publish half of a Project repository's CI, downstream of the one gate.
 #
-# `neon-law-foundation/navigator/.github/actions/validate@YY.M.D` with
+# `neon-law-source-code/navigator/.github/actions/validate@YY.M.D` with
 # `project_repository: true` is the source-only, no-legal-files gate, and it
 # also proves the built portal is mounted at `/app/projects/<code>/portal/`.
 # This action runs AFTER that gate, in the same job, and moves the bytes: it
@@ -62,11 +62,11 @@ description: >-
 #       - run: pnpm --dir portal typecheck
 #       - run: pnpm --dir portal test
 #       - run: pnpm --dir portal build            # Vite base /app/projects/<code>/portal/
-#       - uses: neon-law-foundation/navigator/.github/actions/validate@YY.M.D
+#       - uses: neon-law-source-code/navigator/.github/actions/validate@YY.M.D
 #         with:
 #           version: "YY.M.D"
 #           project_repository: true              # the one gate: source-only, no legal files, mounted
-#       - uses: neon-law-foundation/navigator/.github/actions/application-publish@YY.M.D
+#       - uses: neon-law-source-code/navigator/.github/actions/application-publish@YY.M.D
 #         with:
 #           applications_bucket: ${{ secrets.NAVIGATOR_APPLICATIONS_BUCKET }}
 #           workload_identity_provider: ${{ secrets.NAVIGATOR_APP_PUBLISHER_WIF_PROVIDER }}

@@ -7,13 +7,13 @@ environment-variable convention is in [`third-party-integrations.md`](third-part
 DocuSign specifics.
 
 The signature seam lives in
-[`portal/src/signature.rs`](https://github.com/neon-law-foundation/navigator/blob/main/portal/src/signature.rs) (the
+[`portal/src/signature.rs`](https://github.com/neon-law-source-code/navigator/blob/main/portal/src/signature.rs) (the
 `SignatureProvider` trait + the DocuSign and stub impls), JWT-grant auth in
-[`portal/src/docusign_auth.rs`](https://github.com/neon-law-foundation/navigator/blob/main/portal/src/docusign_auth.rs),
+[`portal/src/docusign_auth.rs`](https://github.com/neon-law-source-code/navigator/blob/main/portal/src/docusign_auth.rs),
 the embedded signing route in
-[`portal/src/esign_view.rs`](https://github.com/neon-law-foundation/navigator/blob/main/portal/src/esign_view.rs), and
+[`portal/src/esign_view.rs`](https://github.com/neon-law-source-code/navigator/blob/main/portal/src/esign_view.rs), and
 the completion [webhook
-source](https://github.com/neon-law-foundation/navigator/blob/main/portal/src/esignature_webhook.rs). An unconfigured
+source](https://github.com/neon-law-source-code/navigator/blob/main/portal/src/esignature_webhook.rs). An unconfigured
 vendor falls back to the in-process stub, so a fresh checkout boots and self-tests without a DocuSign account.
 
 ## One attachment per deployment
@@ -64,7 +64,7 @@ user, RSA keypair, consent, and HMAC key. Treat the shared GUID as an identifier
 ## Which templates are signed (template-agnostic send path)
 
 The send path is keyed off the notation's **template code**, not the retainer. `drive_post_questionnaire_workflow`
-([`portal::retainer_walk`](https://github.com/neon-law-foundation/navigator/blob/main/portal/src/retainer_walk.rs))
+([`portal::retainer_walk`](https://github.com/neon-law-source-code/navigator/blob/main/portal/src/retainer_walk.rs))
 resolves the workflow spec via `workflows::bundled_spec_yaml(code)`, rendering to the generic per-notation storage keys
 (`notations/{id}/document.pdf`, `signed-document.pdf`, `certificate-of-completion.pdf`), and resolves the captive signer
 from the questionnaire answers when present and otherwise from the notation's bound Person row. Adding a signed template
@@ -121,7 +121,7 @@ the API Account ID, the Account Base URI, and your apps with their Integration K
 `DOCUSIGN_PRIVATE_KEY` (or register your existing public key so the key already in `.env` matches). 3. Add a **Redirect
 URI** to the app — needed only to land the one-time consent click. Use a dedicated, app-controlled path,
 `https://www.neonlaw.com/docusign/consent-callback`, kept **distinct from** the OIDC `/auth/callback`
-([`portal::oauth`](https://github.com/neon-law-foundation/navigator/blob/main/portal/src/oauth.rs)): JWT grant never
+([`portal::oauth`](https://github.com/neon-law-source-code/navigator/blob/main/portal/src/oauth.rs)): JWT grant never
 sends an auth code back, so this URI is ceremonial and must not collide with the Google-login callback. `web` serves it
 as a small "Consent recorded" confirmation page (exempt from the private-mode gate) so the operator lands on a
 confirmation rather than a 404. 4. From **My Account Information** copy the **API Account ID** → `DOCUSIGN_ACCOUNT_ID`
@@ -142,7 +142,7 @@ sandbox and click **Allow** (substitute the integration key + a registered redir
 ## Running the live test (Phase 0 grounding)
 
 The `#[ignore]` [sandbox
-test](https://github.com/neon-law-foundation/navigator/blob/main/server/tests/docusign_sandbox.rs) mints a JWT token,
+test](https://github.com/neon-law-source-code/navigator/blob/main/server/tests/docusign_sandbox.rs) mints a JWT token,
 creates a real sandbox envelope with an anchored signature tab, and requests an embedded recipient-view URL. It
 self-skips when the env is absent, so it is safe in the default suite.
 
@@ -170,7 +170,7 @@ second (`routingOrder` 2) as a non-captive recipient — it receives the usual e
 - **`embedded`** (the default; the standalone retainer walk) — the client is a **captive** recipient: the manifest sets
   `client_user_id` (derived from the notation), so DocuSign suppresses the signing email. Because no email goes out, a
   recipient-view URL is the only door. `GET /lawyer/notations/:id/sign`
-  ([`portal::esign_view`](https://github.com/neon-law-foundation/navigator/blob/main/portal/src/esign_view.rs)) mints
+  ([`portal::esign_view`](https://github.com/neon-law-source-code/navigator/blob/main/portal/src/esign_view.rs)) mints
   one via `SignatureProvider::create_recipient_view`, which POSTs `envelopes/{id}/views/recipient` and matches the
   recipient on the email, userName, and clientUserId triple. It **redirects the browser to it**. The ceremony runs on
   DocuSign's own site; Navigator does not frame it. The URL expires in minutes, so it is minted fresh per request. The
@@ -194,7 +194,7 @@ DocuSign Connect POSTs to `/webhook/esignature/:secret`. The handler verifies th
 archives the signed PDF + Certificate of Completion to object storage (best-effort).
 
 > **Production readiness gate.** The prod `DOCUSIGN_HMAC_KEY` is currently a generated placeholder (a boot invariant in
-  [`portal/src/config.rs`](https://github.com/neon-law-foundation/navigator/blob/main/portal/src/config.rs)). E-sign is
+  [`portal/src/config.rs`](https://github.com/neon-law-source-code/navigator/blob/main/portal/src/config.rs)). E-sign is
   safe to run, but **not client-ready** until DocuSign Connect on the production account is configured with an HMAC key
   and the matching value is set in the prod Secret.
 
@@ -218,5 +218,5 @@ Go-Live. Configuration does not copy; set up and prove each production attachmen
 ## Related
 
 - [`third-party-integrations.md`](third-party-integrations.md) — the per-deployment provider convention this follows.
-  [`.env`](https://github.com/neon-law-foundation/navigator/blob/main/.env.example) is the canonical per-variable
+  [`.env`](https://github.com/neon-law-source-code/navigator/blob/main/.env.example) is the canonical per-variable
   reference (JWT-grant preferred, static fallback).

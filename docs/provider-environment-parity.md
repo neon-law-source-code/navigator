@@ -61,7 +61,7 @@ For each row:
 
 The browser registration can precede the Gemini data store. During that interval `NAVIGATOR_OAUTH_CLIENT_ID_GEMINI` is
 absent and `ops ship` renders a browser-only allowlist. Issue
-[#1126](https://github.com/neon-law-foundation/navigator/issues/1126) tracks the remaining staging registration and
+[#1126](https://github.com/neon-law-source-code/navigator/issues/1126) tracks the remaining staging registration and
 removal of that temporary nullable seam.
 
 Google does not permit these general Google Sign-In/API OAuth clients to be created or modified programmatically. The
@@ -94,7 +94,7 @@ An organization owner must sign up for or create all three organizations in the 
 
 The three Apps provision private Project repositories. They do **not** turn the canonical engineering receiver into
 three copies. `neon-law-stg` alone receives the public Navigator repository webhook, watches
-`neon-law-foundation/navigator`, and binds the DevX Restate services. Keep `NAVIGATOR_GITHUB_CANONICAL_REPOSITORY`,
+`neon-law-source-code/navigator`, and binds the DevX Restate services. Keep `NAVIGATOR_GITHUB_CANONICAL_REPOSITORY`,
 `NAVIGATOR_GITHUB_APP_LOGIN`, `NAVIGATOR_GITHUB_WEBHOOK_SECRET`, and the DevX guardrails scoped to that singleton
 receiver.
 

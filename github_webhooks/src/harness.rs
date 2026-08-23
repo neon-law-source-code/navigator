@@ -565,7 +565,7 @@ mod tests {
     fn task() -> AgentTask {
         AgentTask {
             repository: RepositoryRef {
-                owner: "neon-law-foundation".into(),
+                owner: "neon-law-source-code".into(),
                 name: "navigator".into(),
             },
             worktree: PathBuf::from("/worktree"),

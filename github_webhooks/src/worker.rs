@@ -323,8 +323,8 @@ mod tests {
     #[test]
     fn triage_message_carries_only_the_issue_link() {
         assert_eq!(
-            triage_message("neon-law-foundation/navigator", 457),
-            "🏷️ DevX triage requested — https://github.com/neon-law-foundation/navigator/issues/457"
+            triage_message("neon-law-source-code/navigator", 457),
+            "🏷️ DevX triage requested — https://github.com/neon-law-source-code/navigator/issues/457"
         );
     }
 

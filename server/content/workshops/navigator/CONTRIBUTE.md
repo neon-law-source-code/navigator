@@ -99,16 +99,16 @@ GitOps keeps ordinary contributors out of settings drift. Branch protections and
 CLI, so an authorized operator reviews the planned change before applying it to one named repository:
 
 ```bash
-navigator ops github setup neon-law-foundation/navigator --dry-run
+navigator ops github setup neon-law-source-code/navigator --dry-run
 ```
 
 The repository name is optional — it falls back to `GITHUB_REPOSITORY` and then this checkout's `origin` — but the
 command still reconciles one repository at a time and cannot apply to every repository at once. The boundary is a
 `(host, organization)` pair: the host from `NAVIGATOR_GIT_HOST`, defaulting to `github.com`, and two admissible
-organizations — the public `neon-law-foundation` that holds Navigator itself, plus the deployment's own
+organizations — the public `neon-law-source-code` that holds Navigator itself, plus the deployment's own
 `NAVIGATOR_GITHUB_ORG` when one is configured. A repository outside that pair is refused before a token is read. It
 reconciles pull-request-only and squash-only policy, gated on one check named `ci`. Read
-[GitOps](https://github.com/neon-law-foundation/navigator/blob/main/docs/gitops.md) before changing the real setting;
+[GitOps](https://github.com/neon-law-source-code/navigator/blob/main/docs/gitops.md) before changing the real setting;
 contributors normally work through a PR and let the gate do its job.
 
 ### Work with the store

@@ -1,6 +1,6 @@
 //! Guard the hand-off from a release to the Homebrew tap.
 //!
-//! `brew install neon-law-foundation/navigator/navigator` is the macOS install
+//! `brew install neon-law-source-code/navigator/navigator` is the macOS install
 //! path — the released binary is unsigned, and Gatekeeper blocks an unsigned
 //! Mach-O downloaded through a browser but not one brew fetched with curl. The
 //! formula stays current because `deploy.yml` tells the tap that a release
@@ -26,7 +26,7 @@ const JOB: &str = "release-homebrew-tap";
 /// The tap the formula lives in. A separate repository because a tap is cloned
 /// and re-read on every `brew update`, and its formula changes once per
 /// release with no review to add.
-const TAP_REPO: &str = "neon-law-foundation/homebrew-navigator";
+const TAP_REPO: &str = "neon-law-source-code/homebrew-navigator";
 
 /// The one file a bump changes, and the one the release reads back to prove the
 /// bump landed.
@@ -247,7 +247,7 @@ fn the_slack_message_offers_the_homebrew_install() {
     let workflow = deploy_workflow();
 
     assert!(
-        workflow.contains("brew install neon-law-foundation/navigator/navigator"),
+        workflow.contains("brew install neon-law-source-code/navigator/navigator"),
         "the #navigator install message must name the tap install command"
     );
     assert!(

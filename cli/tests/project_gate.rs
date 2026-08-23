@@ -302,13 +302,13 @@ fn deployment_identifying_values() -> Vec<(String, String)> {
 #[test]
 fn the_action_is_deployment_agnostic() {
     // The action's own address is not a deployment coordinate. Navigator is
-    // published from `neon-law-foundation/navigator`, and a Project repository
+    // published from `neon-law-source-code/navigator`, and a Project repository
     // pins the action by that slug — which became the same string as
     // `NAVIGATOR_GITHUB_ORG` when the source moved into the organization that
     // holds the Project repositories. Reading a `uses:` line as configuration
     // would fail this test on a coincidence of names rather than on a leak, so
     // the action's self-reference is removed before the check.
-    let source = action_source().replace("neon-law-foundation/navigator", "<this-action>");
+    let source = action_source().replace("neon-law-source-code/navigator", "<this-action>");
     for (key, value) in deployment_identifying_values() {
         assert!(
             !source.contains(&value),

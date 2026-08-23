@@ -31,7 +31,7 @@ entirely. Symptoms, if someone tries anyway:
 | --- | --- |
 | no flag | `could not parse GitHub owner/repo from remote URL: https://github.com/…` |
 | `--repo <a github.com repo>` | `failed to look up repo ID …` — there is no github.com `gh` auth here |
-| `--repo neon-law-foundation/navigator` | `step 0 (get upload token): repo page returned 404` — not a github.com repo |
+| `--repo neon-law-source-code/navigator` | `step 0 (get upload token): repo page returned 404` — not a github.com repo |
 
 ## The recipe
 
@@ -40,7 +40,7 @@ entirely. Symptoms, if someone tries anyway:
 #    (web-preview §5); a still (§3) only for a genuinely static change.
 # 2. Look at it yourself: Read the PNG/GIF so it renders inline, and confirm it shows the change.
 # 3. Upload. Keep the token out of `ps` by passing it through a curl config file, not `-H` in argv.
-REPO_ID=$(gh api repos/neon-law-foundation/navigator --jq .id)
+REPO_ID=$(gh api repos/neon-law-source-code/navigator --jq .id)
 umask 077
 gh auth token | sed 's/.*/header = "Authorization: Bearer &"/' > /tmp/.curlcfg
 URL=$(curl -sS -K /tmp/.curlcfg -X POST \
@@ -70,7 +70,7 @@ Ask the host's own renderer instead. A working asset resolves to an `<img>` on `
 signed `X-Amz-Signature` and `response-content-type=image/…`:
 
 ```bash
-gh api /markdown -X POST -f mode=gfm -f context=neon-law-foundation/navigator \
+gh api /markdown -X POST -f mode=gfm -f context=neon-law-source-code/navigator \
   -f text="![probe]($URL)" | head -3
 ```
 
@@ -82,7 +82,7 @@ gh api /markdown -X POST -f mode=gfm -f context=neon-law-foundation/navigator \
 - **URL-encode `content_type`.** A bare `+` in `image/svg+xml` arrives as a space and is rejected.
 - **The uploads host is `uploads.github.com`** — the tenant subdomain, not `uploads.github.com`. It resolves to
   the same tenant address as the web host.
-- **Assets inherit repository visibility.** `neon-law-foundation/navigator` is `internal`, so the image renders for tenant members
+- **Assets inherit repository visibility.** `neon-law-source-code/navigator` is `internal`, so the image renders for tenant members
   and 302s for an anonymous fetch. That 302 is correct behaviour, not a failure.
 - The token needs **push access** to `repository_id`; a `404` from the upload endpoint means the token lacks it (or the
   parameter is missing), not that the URL is wrong.

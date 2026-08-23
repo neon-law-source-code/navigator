@@ -25,7 +25,7 @@ operator a deliberate rollout. This flow supports the actions in [`agent-workflo
 
 ### Codified merge gate
 
-Navigator is public at [`neon-law-foundation/navigator`](https://github.com/neon-law-foundation/navigator) on
+Navigator is public at [`neon-law-source-code/navigator`](https://github.com/neon-law-source-code/navigator) on
 github.com. Nothing here names a host, sets `GH_HOST`, or repoints `NAVIGATOR_GITHUB_API_BASE`: `gh` and every Action
 default to the right place.
 
@@ -37,7 +37,7 @@ still *reads* as present in the API while matching an App that never posts a che
 nothing:
 
 ```bash
-gh api repos/neon-law-foundation/navigator/commits/<sha>/check-runs \
+gh api repos/neon-law-source-code/navigator/commits/<sha>/check-runs \
     --jq '.check_runs[] | "\(.name) \(.app.id) \(.app.slug)"'
 ```
 
@@ -56,7 +56,7 @@ organization gets `COMMON_POLICY` and one in the deployment's own gets `CLIENT_P
 client-confidential defaults — private visibility, and none of the open-source governance files a published repository
 carries. That gate, in either organization, is the `production` branch protections, the CODEOWNERS assertion, and the
 merge policy — pull requests only, squash only, auto-merge, automatic head-branch deletion, and squash commits titled
-and described from the pull request. `neon-law-foundation/navigator` alone adds `NAVIGATOR_POLICY`'s three extras — the
+and described from the pull request. `neon-law-source-code/navigator` alone adds `NAVIGATOR_POLICY`'s three extras — the
 release-tag ruleset, the DevX labels, and the App-installation assertion — because it is the only repository that cuts a
 release or runs that automation.
 
@@ -68,7 +68,7 @@ ship together or neither means anything.
 
 #### The Homebrew tap carries no gate
 
-`neon-law-foundation/homebrew-navigator` receives `TAP_POLICY`: no `production` ruleset, no review ruleset, and neither
+`neon-law-source-code/homebrew-navigator` receives `TAP_POLICY`: no `production` ruleset, no review ruleset, and neither
 assertion. It still receives the merge settings, which govern its occasional human pull request.
 
 A tap is the published output of a release rather than a repository the Firm develops in. Its `main` holds one
@@ -97,7 +97,7 @@ nothing a human deliberately adds is taken away either.
 Run a dry run before applying drift, then rerun without it:
 
 ```bash
-navigator ops github setup neon-law-foundation/navigator --dry-run
+navigator ops github setup neon-law-source-code/navigator --dry-run
 navigator ops github setup neon-law/ui --dry-run
 ```
 
@@ -325,7 +325,7 @@ whenever the status rollup is failing — including when every failing check is 
 instead:
 
 ```bash
-gh api -X PUT repos/neon-law-foundation/navigator/pulls/<n>/merge -f merge_method=squash
+gh api -X PUT repos/neon-law-source-code/navigator/pulls/<n>/merge -f merge_method=squash
 ```
 
 Confirm the required check is genuinely green first, because this bypasses the CLI's guess and nothing else:
@@ -582,8 +582,8 @@ repository pays a multiplier for, so all three platforms cost the same as the Li
 
 ### The Homebrew tap
 
-`brew install neon-law-foundation/navigator/navigator` installs the CLI, and
-[`neon-law-foundation/homebrew-navigator`](https://github.com/neon-law-foundation/homebrew-navigator) is the tap it
+`brew install neon-law-source-code/navigator/navigator` installs the CLI, and
+[`neon-law-source-code/homebrew-navigator`](https://github.com/neon-law-source-code/homebrew-navigator) is the tap it
 resolves. On a Mac it is the **recommended** path, not a convenience: the released binary is unsigned and unnotarized,
 and Gatekeeper blocks an unsigned Mach-O downloaded through a browser outright. Homebrew fetches with `curl`, which sets
 no `com.apple.quarantine` attribute, so the same bytes run. Signing remains the right fix; the tap is what stands in
@@ -716,7 +716,7 @@ subtlety that made a provider report `ACTIVE` and then fail every exchange.
 cannot creep back in unremarked. `publish-service` still requests `id-token: write` and no step consumes it — a leftover
 of the retired path, not a second one.
 
-**A fork changes one variable, not three.** `cli::devx::registry::DEFAULT_REGISTRY` is `ghcr.io/neon-law-foundation` and
+**A fork changes one variable, not three.** `cli::devx::registry::DEFAULT_REGISTRY` is `ghcr.io/neon-law-source-code` and
 `NAVIGATOR_IMAGE_REGISTRY` overrides it. The Artifact Registry path needed a region, a hub project, and a repository
 name, any two of which could disagree and still render a syntactically valid reference to somewhere no image had ever
 been pushed.
@@ -785,7 +785,7 @@ a change there is a change the test makes you state.
 **Artifact Registry's `cleanupPolicies` are a separate, unused lane.** `navigator ops gcp hub setup` still PATCHes a
 count-based `KEEP`/`DELETE` pair onto a GAR repository (`cli::devx::gcp::artifact_registry`, `RETAINED_VERSIONS = 10`),
 and GHCR never reads it. Nothing publishes to that registry any more — `cli::devx::registry::DEFAULT_REGISTRY` is
-`ghcr.io/neon-law-foundation` — so that policy governs whatever the GAR repository still holds and nothing this
+`ghcr.io/neon-law-source-code` — so that policy governs whatever the GAR repository still holds and nothing this
 repository ships.
 
 ## Pin every consumed image, binary, and action

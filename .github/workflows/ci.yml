@@ -30,7 +30,7 @@ name: ci
 # diagnose. This workflow used to name `neon-law-medium`, a GitHub-hosted
 # larger runner on the *previous* organisation, back when the repository lived
 # on a tenant with no Marketplace and so no third-party fleets.
-# Neither that label nor `neon-law-large` exists in `neon-law-foundation`, and
+# Neither that label nor `neon-law-large` exists in `neon-law-source-code`, and
 # a `runs-on` label with no runner behind it does not fail — GitHub queues the
 # job forever, so the PR waits on a check that can never report.
 #
@@ -147,7 +147,7 @@ permissions:
 jobs:
   rust:
     name: cargo test (workspace)
-    # `neon-law-medium` does not exist in the `neon-law-foundation` org. That
+    # `neon-law-medium` does not exist in the `neon-law-source-code` org. That
     # label was a GitHub-hosted larger runner on the previous org, and a label
     # with no runner behind it does not fail the job — it queues it forever, so
     # the PR waits on a required check that can never report. The org's runners

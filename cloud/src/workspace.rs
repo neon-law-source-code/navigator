@@ -63,7 +63,7 @@ pub const NAVIGATOR_GIT_HOST: &str = "NAVIGATOR_GIT_HOST";
 /// The host [`NAVIGATOR_GIT_HOST`] resolves to when a deployment names none.
 ///
 /// Navigator's own public URL is not configuration: it is always
-/// `github.com/neon-law-foundation/navigator`. A fresh clone, a laptop, or a CI
+/// `github.com/neon-law-source-code/navigator`. A fresh clone, a laptop, or a CI
 /// job that sourced no deployment config therefore has a host without being
 /// told one.
 pub const DEFAULT_GIT_HOST: &str = "github.com";

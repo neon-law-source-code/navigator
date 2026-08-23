@@ -158,7 +158,7 @@ I'll die on this hill.
 
 ### Libraries: Some crates
 
-Read our [Cargo.toml](https://github.com/neon-law-foundation/navigator/blob/main/Cargo.toml).
+Read our [Cargo.toml](https://github.com/neon-law-source-code/navigator/blob/main/Cargo.toml).
 
 - **HTTP and views** — `axum`, `dioxus`, `tower` / `tower-http`
 - **Store & Durable execution** — `surrealdb`, `restate-sdk`
@@ -219,7 +219,7 @@ The more signed PDFs we acquire the better our business.
 
 ### DevX: Monorepo
 
-github.com/neon-law-foundation/navigator
+github.com/neon-law-source-code/navigator
 
 ---
 

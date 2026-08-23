@@ -297,7 +297,7 @@ mod tests {
             ("NAVIGATOR_GITHUB_WEBHOOK_SECRET", "whsec"),
             (
                 "NAVIGATOR_GITHUB_CANONICAL_REPOSITORY",
-                "neon-law-foundation/navigator",
+                "neon-law-source-code/navigator",
             ),
             ("NAVIGATOR_GITHUB_APP_LOGIN", "navigator-nightwatch[bot]"),
             ("RESTATE_INGRESS_URL", "https://ingress.restate.cloud:8080"),
@@ -344,7 +344,7 @@ mod tests {
             ("NAVIGATOR_GITHUB_WEBHOOK_SECRET", "whsec"),
             (
                 "NAVIGATOR_GITHUB_CANONICAL_REPOSITORY",
-                "neon-law-foundation/navigator",
+                "neon-law-source-code/navigator",
             ),
             ("NAVIGATOR_GITHUB_APP_LOGIN", "navigator-nightwatch[bot]"),
             ("RESTATE_INGRESS_URL", "https://ingress.restate.cloud:8080"),
@@ -499,7 +499,7 @@ mod tests {
             ("NAVIGATOR_GITHUB_WEBHOOK_SECRET", "whsec"),
             (
                 "NAVIGATOR_GITHUB_CANONICAL_REPOSITORY",
-                "neon-law-foundation/navigator",
+                "neon-law-source-code/navigator",
             ),
             ("NAVIGATOR_GITHUB_APP_LOGIN", "navigator-nightwatch[bot]"),
             ("RESTATE_INGRESS_URL", "https://ingress.restate.cloud:8080"),
@@ -562,7 +562,7 @@ mod tests {
             ("NAVIGATOR_GITHUB_WEBHOOK_SECRET", "whsec"),
             (
                 "NAVIGATOR_GITHUB_CANONICAL_REPOSITORY",
-                "neon-law-foundation/navigator",
+                "neon-law-source-code/navigator",
             ),
             ("NAVIGATOR_GITHUB_APP_LOGIN", "navigator-nightwatch[bot]"),
             ("RESTATE_INGRESS_URL", "https://ingress.restate.cloud:8080"),
@@ -638,7 +638,7 @@ mod tests {
             ("NAVIGATOR_GITHUB_WEBHOOK_SECRET", "whsec"),
             (
                 "NAVIGATOR_GITHUB_CANONICAL_REPOSITORY",
-                "neon-law-foundation/navigator",
+                "neon-law-source-code/navigator",
             ),
             ("NAVIGATOR_GITHUB_APP_LOGIN", "navigator-nightwatch[bot]"),
             ("RESTATE_INGRESS_URL", "https://ingress.restate.cloud:8080"),
@@ -694,7 +694,7 @@ mod tests {
             ("NAVIGATOR_GITHUB_WEBHOOK_SECRET", "whsec"),
             (
                 "NAVIGATOR_GITHUB_CANONICAL_REPOSITORY",
-                "neon-law-foundation/navigator",
+                "neon-law-source-code/navigator",
             ),
             ("NAVIGATOR_GITHUB_APP_LOGIN", "navigator-nightwatch[bot]"),
             ("RESTATE_INGRESS_URL", "https://ingress.restate.cloud:8080"),

@@ -714,7 +714,7 @@ pub struct ShipConfig {
     pub cluster: String,
     /// Public registry namespace the images live under — `ghcr.io/<owner>`,
     /// from `NAVIGATOR_IMAGE_REGISTRY` (default
-    /// `ghcr.io/neon-law-foundation`). A fork overrides that one variable
+    /// `ghcr.io/neon-law-source-code`). A fork overrides that one variable
     /// rather than a hard-coded value.
     pub registry: String,
     /// K8s namespace for the Deployments (`NAVIGATOR_K8S_NAMESPACE`,
@@ -2805,7 +2805,7 @@ mod tests {
             project_id: "my-org-prod".into(),
             location: "us-west4".into(),
             cluster: "navigator".into(),
-            registry: "ghcr.io/neon-law-foundation".into(),
+            registry: "ghcr.io/neon-law-source-code".into(),
             namespace: "navigator".into(),
             web_image_name: "neon-server".into(),
             public_host: "www.example.com".into(),
@@ -2903,7 +2903,7 @@ mod tests {
             "cluster:   navigator",
             "namespace: navigator",
             "context:   gke_my-org-prod_us-west4_navigator",
-            "images:    ghcr.io/neon-law-foundation",
+            "images:    ghcr.io/neon-law-source-code",
         ] {
             assert!(printed.contains(expected), "missing `{expected}`");
         }
@@ -3896,14 +3896,14 @@ mod tests {
     #[test]
     fn derived_names_target_the_published_registry() {
         let cfg = sample_config();
-        assert_eq!(cfg.registry(), "ghcr.io/neon-law-foundation");
+        assert_eq!(cfg.registry(), "ghcr.io/neon-law-source-code");
         assert_eq!(
             cfg.web_image("26.6.23"),
-            "ghcr.io/neon-law-foundation/neon-server:26.6.23"
+            "ghcr.io/neon-law-source-code/neon-server:26.6.23"
         );
         assert_eq!(
             cfg.workflows_image("26.6.23"),
-            "ghcr.io/neon-law-foundation/navigator-workflows-service:26.6.23"
+            "ghcr.io/neon-law-source-code/navigator-workflows-service:26.6.23"
         );
     }
 
@@ -3914,10 +3914,10 @@ mod tests {
         // exact image staging has been serving. The GAR shape needed a region,
         // a hub project, and a repository name to agree before that held; this
         // one cannot disagree with itself.
-        assert_eq!(images_registry(None), "ghcr.io/neon-law-foundation");
+        assert_eq!(images_registry(None), "ghcr.io/neon-law-source-code");
         assert_eq!(
-            images_registry(Some("ghcr.io/neon-law-foundation")),
-            "ghcr.io/neon-law-foundation"
+            images_registry(Some("ghcr.io/neon-law-source-code")),
+            "ghcr.io/neon-law-source-code"
         );
     }
 
@@ -4061,7 +4061,7 @@ mod tests {
         );
         for image in &images {
             assert!(
-                image.starts_with("ghcr.io/neon-law-foundation/"),
+                image.starts_with("ghcr.io/neon-law-source-code/"),
                 "`{image}` must pull from the published registry"
             );
         }
@@ -4996,7 +4996,7 @@ spec:
         );
         assert_eq!(
             gateway["image"].as_str(),
-            Some("ghcr.io/neon-law-foundation/navigator-gateway:26.7.19.20")
+            Some("ghcr.io/neon-law-source-code/navigator-gateway:26.7.19.20")
         );
         assert!(
             manifests.contains("navigator-private-basic-auth"),
@@ -5929,7 +5929,7 @@ spec:
         );
         for (deployment, image) in &writes {
             assert!(
-                image.starts_with("ghcr.io/neon-law-foundation/"),
+                image.starts_with("ghcr.io/neon-law-source-code/"),
                 "{deployment} pulls the published image: {image}"
             );
             assert!(

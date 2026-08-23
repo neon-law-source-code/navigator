@@ -819,7 +819,9 @@ async fn admin_person_welcome(
     }
     let base_url = workflows::email::base_url_from_env();
     let notice =
-        match crate::people_commands::send_welcome(&s.surreal, &s.email, &base_url, id).await {
+        match crate::people_commands::send_welcome(&s.surreal, s.email.as_ref(), &base_url, id)
+            .await
+        {
             Ok(_) => "welcome_sent",
             Err(_) => "welcome_failed",
         };

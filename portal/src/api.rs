@@ -499,7 +499,9 @@ async fn send_welcome(
     Path(id): Path<Uuid>,
 ) -> Response {
     let base_url = workflows::email::base_url_from_env();
-    match crate::people_commands::send_welcome(&state.surreal, &state.email, &base_url, id).await {
+    match crate::people_commands::send_welcome(&state.surreal, state.email.as_ref(), &base_url, id)
+        .await
+    {
         Ok(_) => (
             StatusCode::OK,
             Json(serde_json::json!({ "status": "sent" })),

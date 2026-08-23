@@ -35,6 +35,15 @@ pub struct McpState {
     /// tool set. The notation tools read template bodies from storage,
     /// so they refuse when it is absent.
     pub storage: Option<Arc<dyn cloud::StorageService>>,
+    /// The outbound mailer, same `Arc` the JSON API routes hold — the
+    /// `LoggingEmail`-wrapped service whose `send` writes the
+    /// `sent_emails` audit row. `aida_send_welcome_email` dispatches
+    /// through `workflows::email::welcome::send_welcome` with it, which
+    /// is how the agent door records what the API door records. `web`
+    /// always populates it; the `Option` is for test fixtures that
+    /// exercise only the tools that never send mail, and the tool
+    /// refuses rather than sending unaudited when it is absent.
+    pub email: Option<Arc<dyn workflows::EmailService>>,
 }
 
 impl McpState {
@@ -47,6 +56,7 @@ impl McpState {
             surreal,
             questionnaire_runtime,
             storage: None,
+            email: None,
         }
     }
 }

@@ -137,6 +137,61 @@ pub async fn trigger_welcome(
     Ok(())
 }
 
+/// Render and dispatch the welcome email for one Person, synchronously,
+/// through the injected [`EmailService`].
+///
+/// This is the **command** every door goes through — the JSON API route
+/// (`POST /app/api/people/{id}/welcome`), the `/admin/person/{id}` "Send
+/// welcome" button, and the `aida_send_welcome_email` MCP tool. It lives
+/// here rather than in `portal` because `mcp` cannot depend on `portal`
+/// (that crate depends on `mcp`), and a command only two of the three
+/// doors could reach is how the agent door drifted in the first place.
+///
+/// It is deliberately NOT [`trigger_welcome`]. The difference is the
+/// audit row: the service injected here is wrapped in `portal::email`'s
+/// `LoggingEmail` decorator, whose `send` writes one `sent_emails` row
+/// per attempt — tagged with the template slug and the `person_id` by
+/// the builder calls below. `store::sent_emails::record` has exactly one
+/// production caller in the tree, that decorator, and the
+/// `workflows-service` worker deliberately runs a *bare* backend without
+/// it (see `workflows_service::email_config`). So a send that goes
+/// through the Restate worker leaves no `sent_emails` row, and one that
+/// goes through this command does.
+///
+/// It also reports the truth: the send either happened or it did not, so
+/// `SendFailed` reaches the caller. [`trigger_welcome`] can only report
+/// that the workflow *started*.
+///
+/// Returns the recipient on success so an adapter can personalize its
+/// confirmation. The recipient is always read from the `persons` row, so
+/// no caller — human or model — chooses where the mail lands.
+pub async fn send_welcome(
+    surreal: &store::surreal::SurrealDb,
+    email: &dyn super::EmailService,
+    base_url: &str,
+    id: Uuid,
+) -> Result<store::persons::Person, store::people_commands::PeopleCommandError> {
+    use store::people_commands::PeopleCommandError;
+
+    let person = store::persons::find_by_id(surreal, id)
+        .await
+        .map_err(PeopleCommandError::Db)?
+        .ok_or(PeopleCommandError::NotFound)?;
+    let body = render_welcome_body(&person.name, &person.email);
+    let html = render_welcome_html(&person.name, &person.email, base_url);
+    let msg = super::OutboundEmail::new(person.email.clone(), welcome_subject(), body)
+        .with_template("welcome")
+        .with_html(html)
+        .with_person(id.to_string());
+    match email.send(msg).await {
+        Ok(_) => Ok(person),
+        Err(e) => {
+            tracing::warn!(error = %e, person_id = %id, "people: welcome email send failed");
+            Err(PeopleCommandError::SendFailed)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{

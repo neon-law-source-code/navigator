@@ -775,3 +775,141 @@ fn trademark_notices_name_the_firm_as_the_registrant() {
         offenders.join("\n  ")
     );
 }
+
+/// Every Markdown document in the tree, so a claim about the grant is guarded
+/// wherever someone writes it rather than only in the terms files.
+fn markdown_documents() -> Vec<PathBuf> {
+    fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
+        let Ok(entries) = fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if path.is_dir() {
+                if !is_skipped_dir(name.as_ref()) {
+                    walk(&path, out);
+                }
+            } else if name.ends_with(".md") {
+                out.push(path);
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(&repo_root(), &mut out);
+    out.sort();
+    out
+}
+
+/// No document reads § 13 as a duty owed to this project or to the public.
+///
+/// § 13 runs in exactly one direction: an operator who modified the software and
+/// lets users interact with it remotely must offer *those users* — the people
+/// using that operator's instance — the corresponding source. It obliges no
+/// publication to the world and nothing at all upstream. Nothing comes back
+/// here as a matter of licence.
+///
+/// Writing it the other way is the flattering mistake, because "forks come back"
+/// is the story a copyleft project likes to tell about itself. It is also the
+/// costly one. A firm's counsel reading a claim that deploying obliges them to
+/// publish is reading an obligation the licence does not impose, and a terms
+/// document published beside a law practice over-claiming what its own licence
+/// requires is the kind of error that gets quoted back. The direction of the
+/// duty is the substance of the clause, so it is asserted rather than trusted to
+/// review — this repository stated it backwards in three places at once while
+/// every other document had it right.
+///
+/// Three assertions, because a prose guard fails in three different ways. The
+/// misreadings must be absent; the walk must actually have found the documents
+/// (a guard that inspects nothing passes forever); and a document that raises
+/// § 13 must name who is owed, since the recipients are what makes the
+/// obligation the operator's rather than the public's.
+#[test]
+fn no_document_reads_section_13_as_a_duty_to_this_project_or_the_public() {
+    /// How a reader names the clause. Both spellings appear in the tree.
+    const CITATIONS: [&str; 2] = ["§ 13", "section 13"];
+
+    /// Phrasings that state the wrong obligation, each with what it gets wrong.
+    ///
+    /// Matched inside a window around a § 13 citation, so ordinary uses
+    /// elsewhere in a document are not the guard's business.
+    const MISREADINGS: [(&str, &str); 8] = [
+        ("come back", "§ 13 sends nothing back to this project"),
+        ("comes back", "§ 13 sends nothing back to this project"),
+        ("contribute back", "§ 13 obliges no contribution upstream"),
+        ("upstream", "§ 13 obliges nothing upstream"),
+        (
+            "publish those improvements",
+            "§ 13 obliges an offer of source to that operator's own users, not publication",
+        ),
+        (
+            "publishes those improvements",
+            "§ 13 obliges an offer of source to that operator's own users, not publication",
+        ),
+        (
+            "publish your changes",
+            "§ 13 obliges an offer of source to that operator's own users, not publication",
+        ),
+        (
+            "to the public",
+            "§ 13 runs to the operator's own remote users, not to the public",
+        ),
+    ];
+
+    /// What names the people actually owed the source.
+    const RECIPIENTS: [&str; 2] = ["those users", "your users"];
+
+    let mut citing = Vec::new();
+    let mut offenders = Vec::new();
+
+    for path in markdown_documents() {
+        let rel = path
+            .strip_prefix(repo_root())
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .replace("../", "");
+        let flat = flat_lower(&fs::read_to_string(&path).unwrap_or_default());
+
+        let mut cites = false;
+        for citation in CITATIONS {
+            for (at, hit) in flat.match_indices(citation) {
+                cites = true;
+                let claim = window(&flat, at, hit.len());
+                for (misreading, why) in MISREADINGS {
+                    if claim.contains(misreading) {
+                        offenders.push(format!(
+                            "{rel}: says \"{misreading}\" beside {citation} — {why}: \u{2026}{claim}\u{2026}"
+                        ));
+                    }
+                }
+            }
+        }
+
+        if cites {
+            citing.push(rel.clone());
+            if !RECIPIENTS.iter().any(|who| flat.contains(who)) {
+                offenders.push(format!(
+                    "{rel}: raises \u{a7} 13 without naming who is owed the source; say it \
+                     runs to those users, or the reader reads it as a duty to the public"
+                ));
+            }
+        }
+    }
+
+    assert!(
+        offenders.is_empty(),
+        "\u{a7} 13 obliges an operator to offer corresponding source to its own remote \
+         users \u{2014} nothing upstream and nothing to the public:\n  {}",
+        offenders.join("\n  ")
+    );
+
+    // The walk has to have read the document that explains the clause. A prose
+    // guard whose corpus quietly emptied \u{2014} a renamed file, a skipped directory
+    // \u{2014} reports success while inspecting nothing.
+    assert!(
+        citing.contains(&"docs/licensing.md".to_string()),
+        "docs/licensing.md is where \u{a7} 13 is explained, so it must be among the \
+         documents this guard read; found: {citing:?}"
+    );
+}

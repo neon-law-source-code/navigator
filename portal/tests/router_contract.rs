@@ -71,7 +71,7 @@ const CONTRACT: &[(&str, Access)] = &[
     // anonymous browser goes through the login door like every `/app` page.
     ("/app/forms", Access::ProtectedHuman),
     // The workspace documentation reads anonymously. The repository is
-    // AGPL-3.0-only, so these documents are the manual for software anyone can
+    // source-available, so these documents are the manual for software anyone can
     // clone — a login door in front of them guarded nothing and cost a reader
     // the one page that explains how to run it.
     ("/docs", Access::PortalPublic),

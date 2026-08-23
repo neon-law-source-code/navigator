@@ -1660,7 +1660,7 @@ async fn anonymous_access_to_the_shared_navigator_surface_lands_at_the_login_doo
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
 
     // `/docs` and `/docs/glossary` have left this list. The workspace
-    // documentation reads anonymously now — the repository is AGPL-3.0-only, so
+    // documentation reads anonymously now — the repository is source-available, so
     // a login door stood in front of the manual for software anyone can clone.
     // `/app/docs` is the surface that still answers the login door, and it is
     // listed below in its place.

@@ -81,7 +81,7 @@ allow if {
 #
 # Note what this does and does not change. `/docs` carries no rule in this
 # policy and is not behind the session boundary either: it is an anonymous
-# public surface, because the repository is AGPL-3.0-only and those documents
+# public surface, because the repository is source-available and those documents
 # are the manual for software anyone can clone. `/app/docs` is therefore not a
 # gate over the documents at all — it is a second door to the same index
 # wearing the application chrome, and what it restricts is that surface.

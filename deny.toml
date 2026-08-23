@@ -37,12 +37,15 @@ allow = [
 ]
 exceptions = []
 # The allowlist above is the policy for *third-party* dependencies, and it stays
-# permissive on purpose. The workspace's own crates are `AGPL-3.0-only` (root
+# permissive on purpose. The workspace's own crates are `BUSL-1.1` (root
 # `[workspace.package]`) and never belong in it: this list governs what the
 # workspace is willing to *consume*, which is a different question from how the
-# workspace is licensed out. A permissive inbound policy under a copyleft
+# workspace is licensed out. A permissive inbound policy under a source-available
 # outbound grant is the combination that works — every license above may be
-# distributed inside an AGPL work, whereas the reverse would not hold.
+# distributed inside this work, whereas the reverse would not hold. It has to
+# keep holding at the Change Date too: each version converts to AGPL-3.0-only
+# four years on, so an inbound license that could not be distributed inside an
+# AGPL work would break then rather than now.
 # `publish = false` keeps the crates off crates.io, and `private.ignore` exempts
 # them from this check.
 private = { ignore = true }

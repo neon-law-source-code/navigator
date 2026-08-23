@@ -479,11 +479,11 @@ struct RepositoryPolicy {
     /// the product. Repository creation reads this — ENG-282 — and this command
     /// only carries it, which is why no [`Action`] writes it.
     default_visibility: Visibility,
-    /// Whether this repository publishes the Foundation's open-source
-    /// governance file set: `LICENSE` carrying the `AGPL-3.0-only` text exactly
-    /// as the FSF publishes it, `NOTICE` carrying the Foundation's own
-    /// statements, and a `CONTRIBUTING.md` stating that contributions are
-    /// closed.
+    /// Whether this repository publishes the Firm's source-available
+    /// governance file set: `LICENSE` carrying the `BUSL-1.1` text with its
+    /// parameters filled in and its terms otherwise unaltered, `NOTICE` carrying
+    /// the Firm's own statements, and a `CONTRIBUTING.md` stating that
+    /// contributions are closed.
     ///
     /// False for a client matter, and not as an omission: a repository holding
     /// one client's confidential material publishes nothing and grants nobody

@@ -1108,7 +1108,7 @@ async fn the_navigator_page_publishes_the_cli_at_the_release_it_runs() {
 /// The workspace documentation reads for a visitor with no account.
 ///
 /// It sat behind the session boundary while the source was closed. The
-/// repository is AGPL-3.0-only now, so a login door stood in front of the one
+/// repository is source-available now, so a login door stood in front of the one
 /// document that explains how to run software anyone can clone. This asserts the
 /// hub, one document beneath it, and the `/docs/{slug}` redirect all answer a
 /// browser that has never signed in — a `303` to `/auth/login` is the failure.

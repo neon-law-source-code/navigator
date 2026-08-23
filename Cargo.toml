@@ -33,12 +33,13 @@ members = [
 version = "26.8.22-hotfix.23"
 edition = "2021"
 rust-version = "1.95"
-# Strong copyleft with a network clause: § 13 obliges anyone who modifies this
-# software and runs it for remote users to offer them the corresponding source,
-# which is the form a legal-services portal is actually deployed in. Version 3
-# exactly, never "or later", so the terms cannot move underneath us. One grant
-# covers the whole tree, `templates/` included — see LICENSE.
-license = "AGPL-3.0-only"
+# Source-available, not open source: BUSL grants copying, modification, and
+# non-production use, and every production use needs a commercial licence from
+# the Firm. The Additional Use Grant is `None`, so the base grant is the whole
+# permission. Each version converts to AGPL-3.0-only four years after it is
+# published. One grant covers the whole tree, `templates/` included — see
+# LICENSE.
+license = "BUSL-1.1"
 publish = false
 
 [workspace.dependencies]

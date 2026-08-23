@@ -227,14 +227,15 @@ ENV NAVIGATOR_PUBLIC_DIR=/app/public \
 EXPOSE 3001
 
 # An image someone pulled is a copy, and its holder has neither the repository
-# nor a release archive. AGPL § 4 conditions the permission to convey on handing
-# every recipient this License along with the work, so the text rides in the
-# runtime layer beside the binary — and under § 13 that holder may owe the source
-# onward in turn, which they cannot do from terms they were never shown. The
-# label is the registry-native form of the same statement: Artifact Registry and
-# GHCR read it for the package page, where a puller actually looks.
-LABEL org.opencontainers.image.licenses="AGPL-3.0-only" \
-      org.opencontainers.image.vendor="Neon Law Foundation"
+# nor a release archive. BUSL obliges you to display this License conspicuously
+# on every copy of the Licensed Work, so the text rides in the runtime layer
+# beside the binary — and its parameters are what tell that holder whether their
+# own use needs a commercial licence, which they cannot work out from terms they
+# were never shown. The label is the registry-native form of the same statement:
+# Artifact Registry and GHCR read it for the package page, where a puller
+# actually looks.
+LABEL org.opencontainers.image.licenses="BUSL-1.1" \
+      org.opencontainers.image.vendor="Shook Law PLLC"
 
 COPY LICENSE /app/LICENSE
 COPY NOTICE  /app/NOTICE

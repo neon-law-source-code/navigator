@@ -1,7 +1,8 @@
 //! Where the public reads the `navigator` CLI from, and at which version.
 //!
-//! The repository is AGPL-3.0-only and every release attaches its archives to a
-//! **public GitHub Release**, so `/navigator` links those bytes directly.
+//! Every release attaches its archives to a **public GitHub Release**, so
+//! `/navigator` links those bytes directly. `BUSL-1.1` restricts production
+//! *use* rather than distribution, so the archives stay downloadable by anyone.
 //!
 //! # The version is the deployment's own release tag
 //!

@@ -758,22 +758,24 @@ firm's, operated by Shook Law PLLC. There is no `/foundation` page, no Foundatio
 Foundation brand in [`views::brand`](../views/src/brand.rs), and no Foundation copy anywhere the site serves; every URL
 that surface held answers `410 Gone` from [`neon::retired_path_routes`](../neon/src/redirects.rs).
 
-The term survives here because the organization does, and because two of its relationships still bear on this
-repository. **It does not hold the copyright.** Copyright in Navigator belongs to Shook Law PLLC — see
-[`NOTICE`](../NOTICE) and [`licensing.md`](licensing.md#who-holds-what) — and the Foundation instead holds a perpetual,
-irrevocable right to *publish* the work under `AGPL-3.0-only`. It also uses the NEON LAW mark under written permission
-from the Firm rather than owning it.
+The term survives here because the organization does, and because its relationship to this repository is part of the
+licensing record. **It never held the copyright.** Copyright in Navigator belongs to Shook Law PLLC — see
+[`NOTICE`](../NOTICE) and [`licensing.md`](licensing.md#who-holds-what). What the Foundation held was a perpetual,
+irrevocable right to *publish* the work under `AGPL-3.0-only`, and it **released that right in writing** before the
+relicence to `BUSL-1.1`. Releasing it is what made `BUSL-1.1` the only grant in effect rather than one of two.
 
-Both of those are executed instruments rather than settings, so retiring the public surface did not touch either. What
-becomes of them is a legal question and not a code change; [`licensing.md`](licensing.md) is where the answer lands.
+That release is recorded rather than merely reflected in a deleted sentence: a tree that simply stopped mentioning the
+right would read the same whether it ended or was overlooked. See
+[`licensing.md`](licensing.md#chain-of-title).
 
 ## Neon Law Navigator
 
 Short for **Neon Law Navigator** — the umbrella over this monorepo: the CLI (`navigator`), the one website serving both
 faces (`neon` / `portal` / `webapp`), the rule engine (`rules`), the MCP server, and everything else under this Cargo
-workspace. The *code* is copyright **Shook Law PLLC**, the Firm that operates it under the NEON LAW mark; the **Neon Law
-Foundation** publishes it under an irrevocable right to do so. This is a **public, open-source repository**: one grant,
-`AGPL-3.0-only`, covers the whole tree including the legal prose under `templates/`. Outside contributions are closed
+workspace. The *code* is copyright **Shook Law PLLC**, the Firm that operates it under the NEON LAW mark and is the
+sole Licensor. This is a **public, source-available repository — not open source**: one grant, `BUSL-1.1`, covers the
+whole tree including the legal prose under `templates/`. Non-production use is free; production use needs a commercial
+licence, and each version converts to `AGPL-3.0-only` four years after it is published. Outside contributions are closed
 for now, and work in here assigns to the Firm ([`LICENSE`](../LICENSE), [`NOTICE`](../NOTICE),
 [`licensing.md`](licensing.md)).
 

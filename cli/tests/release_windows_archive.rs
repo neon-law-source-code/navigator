@@ -351,7 +351,7 @@ fn the_linux_archive_name_matches_what_the_validate_action_downloads() {
 /// Every CLI archive carries the licence and the notice.
 ///
 /// A recipient holds the archive and not the repository — that is the whole
-/// point of shipping a binary — so AGPL § 4's condition that a conveyor hand
+/// point of shipping a binary — so BUSL's condition that a conveyor display
 /// every recipient this License along with the work is met by the archive or not
 /// at all. § 13 can oblige that recipient to pass the corresponding source on in
 /// turn, and nobody honours an obligation from terms they were never shown.

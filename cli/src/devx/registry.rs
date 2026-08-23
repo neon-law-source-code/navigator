@@ -13,7 +13,7 @@
 //!
 //! ## Why GHCR and not Artifact Registry
 //!
-//! Navigator is public and AGPL-3.0-only, so there is nothing for a
+//! Navigator's source is public, so there is nothing for a
 //! private per-org registry to protect. GHCR publishes from the same workflow
 //! that builds the images, on the free tier a public repository gets, and it
 //! authenticates pushes with the run's own `GITHUB_TOKEN` — which retires an

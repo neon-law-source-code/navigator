@@ -263,7 +263,7 @@ pub fn render(notices: &Notices) -> String {
         "THIRD-PARTY NOTICES\n\
          ===================\n\n\
          The Neon Law Navigator `navigator` binary is copyright Shook Law PLLC and is\n\
-         licensed under AGPL-3.0-only; see LICENSE. It incorporates the third-party\n\
+         licensed under BUSL-1.1; see LICENSE. It incorporates the third-party\n\
          open-source components listed below, each governed by its own licence, reproduced\n\
          here in full.\n\n\
          Identical licence texts are listed once with every crate that carries them. This file\n\
@@ -660,6 +660,6 @@ source = "git+https://example.invalid/repo"
         assert!(out.contains("Shook Law PLLC"), "{out}");
         assert!(!out.contains("Neon Law Foundation"), "{out}");
         assert!(out.contains("LICENSE"));
-        assert!(out.contains("AGPL-3.0-only"));
+        assert!(out.contains("BUSL-1.1"));
     }
 }

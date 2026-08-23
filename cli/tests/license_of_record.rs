@@ -1,5 +1,5 @@
-//! Pin the licence of record: one holder, one outbound grant that holder
-//! cannot withdraw, and two files that divide the work between them.
+//! Pin the licence of record: one holder, one source-available grant with its
+//! four parameters filled in, and two files that divide the work between them.
 //!
 //! Root `LICENSE` governs everything the Firm can license — the Rust
 //! workspace, the `navigator` CLI, the build and deployment tooling, and the
@@ -7,50 +7,58 @@
 //! reader never has to work out which instrument applies to the file in front of
 //! them.
 //!
-//! **`LICENSE` is the Free Software Foundation's text and nothing else.** Not a
-//! stylistic choice: a licence file is read by machines as well as people, and
-//! every one of them — GitHub's own detection, `cargo deny`, an SBOM
-//! generator, a corporate review team's scanner — decides which licence it is
-//! looking at by comparing the file against the canonical text. Prepend a
-//! paragraph and the comparison drops below the threshold, the repository page
-//! stops naming the licence, and a reader who wanted one glance to see AGPL
-//! instead gets an unlabelled file to read. So our own words live in `NOTICE`
-//! beside it, which is where everyone else puts them.
+//! **`LICENSE` is the licence text and nothing else.** Not a stylistic choice: a
+//! licence file is read by machines as well as people, and every one of them —
+//! GitHub's own detection, `cargo deny`, an SBOM generator, a corporate review
+//! team's scanner — decides which licence it is looking at by comparing the file
+//! against the canonical text. Prepend a paragraph and the comparison drops
+//! below the threshold, the repository page stops naming the licence, and a
+//! reader who wanted one glance to see BUSL instead gets an unlabelled file to
+//! read. So our own words live in `NOTICE` beside it, which is where everyone
+//! else puts them.
 //!
-//! **`NOTICE` is where this work meets that text.** The copyright line, the
-//! Foundation's right to publish, the SPDX tag, § 13 in our own voice, the
-//! government forms nobody here can license, the marks the Firm reserves, and
-//! the terms a contribution arrives under. `LICENSE` is the instrument; `NOTICE`
-//! says how it applies here and narrows nothing.
+//! BUSL is a *template*, which makes this a narrower rule than it looks. Its
+//! four parameters — Licensor, Licensed Work, Additional Use Grant, Change Date,
+//! Change License — are filled in by the licensor and are part of the
+//! instrument, so the Firm's own name legitimately appears in `LICENSE` where
+//! under the FSF's text it never could. Everything *outside* that block is
+//! copied unaltered, which is what BUSL's fourth Covenant of Licensor requires.
 //!
-//! The Affero clause is the point rather than a detail. Section 13 obliges
-//! anyone who modifies this software and lets users interact with it remotely to
-//! offer those users the corresponding source, and a legal-services portal run
-//! for other people is exactly that deployment shape. A change that kept the
-//! SPDX tag but lost § 13 would keep the label and drop the obligation, so the
-//! section is asserted by name below.
+//! **`NOTICE` is where this work meets that text.** The copyright line, the SPDX
+//! tag, what the four parameters mean in this project's own voice, the
+//! production boundary, the government forms nobody here can license, the marks
+//! the Firm reserves, and the terms a contribution arrives under. `LICENSE` is
+//! the instrument; `NOTICE` says how it applies here and neither widens nor
+//! narrows it.
 //!
-//! An open-source licence is a promise to everyone who has cloned the
-//! repository, and it cannot be quietly taken back: every copy keeps the rights
-//! it was given, whatever a later commit says. The guard against an accidental
-//! retraction is therefore structural rather than a list of forbidden clauses —
-//! `LICENSE` must begin at the licence text's first line and end at its last, so
-//! there is nowhere in the file for a contradicting clause to sit.
+//! The parameters are the point rather than a detail, and two of them carry the
+//! whole commercial position. `Additional Use Grant: None` is what makes every
+//! production use need a commercial licence — BUSL's base grant already covers
+//! non-production use, so the Additional Use Grant is the slot for permitting
+//! limited production use, and `None` is the absence of that extra permission
+//! rather than a restriction added to the licence. `Change Date` is what stops
+//! the arrangement being permanent: each published version converts to
+//! `AGPL-3.0-only` four years on, per version, whatever happens to later ones.
+//! A change that kept the SPDX tag but lost either parameter would keep the
+//! label and move the deal, so both are asserted by value below.
 //!
-//! What a licence already granted cannot promise is a *further* copy. A holder
-//! is free to stop publishing, and nothing in `LICENSE` stops it — which is how
-//! a project gets relicensed out from under the people building on it. Here the
-//! Foundation holds a perpetual, irrevocable right to go on publishing under
-//! `AGPL-3.0-only`, and that right is the reason this repository's grant outlives
-//! whoever owns the Firm. It is a sentence in a file, so it is asserted below;
-//! losing it would leave the grant looking identical and revocable.
+//! This work was published under `AGPL-3.0-only` before this licence took
+//! effect, and every copy distributed then is still an `AGPL-3.0-only` copy,
+//! permanently. A licence already granted cannot be withdrawn, so the relicence
+//! governs versions published from here on and reaches nothing already given.
+//! The Neon Law Foundation's perpetual right to publish under `AGPL-3.0-only`
+//! was released in writing before the relicence, which is why no second
+//! organization appears in these files any more — and that release is asserted
+//! below, because a repository that merely stopped mentioning a live right would
+//! look exactly the same.
 //!
 //! The trademark reservation is guarded just as hard, and for a reason the
-//! copyright grant does not cover. Copyleft invites forks too, and a fork
-//! wearing the operating firm's name would misdirect the one person least able
-//! to check who is accountable for their legal work. The marks are the only
-//! thing this repository withholds, so a notice that goes missing or names the
-//! wrong registrant is the failure that matters most.
+//! copyright grant does not cover. The licence permits forks, and a fork wearing
+//! the operating firm's name would misdirect the one person least able to check
+//! who is accountable for their legal work. BUSL declines to grant trademark
+//! rights in its own terms; `NOTICE` says whose marks those are and where the
+//! rename seam is, so a notice that goes missing or names the wrong registrant
+//! is the failure that matters most.
 //!
 //! Structure only, never prose. The wording is expected to keep moving; only a
 //! change to the *structure* — the owner changing, a manifest drifting off the
@@ -61,15 +69,26 @@ use std::path::{Path, PathBuf};
 
 /// The SPDX expression every manifest in the workspace carries.
 ///
-/// `-only` and never `-or-later`: the terms this repository publishes under are
-/// the terms in its own licence file, and no future FSF revision moves them.
-const LICENSE: &str = "AGPL-3.0-only";
+/// Source-available rather than open source. BUSL grants copying, modification,
+/// and non-production use; production use needs a commercial licence, and each
+/// version converts to [`CHANGE_LICENSE`] on its own Change Date.
+const LICENSE: &str = "BUSL-1.1";
 
-/// The grant itself: the Free Software Foundation's text, unaltered.
+/// What each version converts to, four years after it is published.
+///
+/// Asserted separately from [`LICENSE`] because it is a different promise: the
+/// outbound grant today, and the grant every published version becomes whatever
+/// the Firm later decides. BUSL's Covenants of Licensor oblige this to be
+/// GPL-2.0-or-later or something compatible with a later version of it, which
+/// AGPL-3.0 satisfies through GPL-3.0 § 13.
+const CHANGE_LICENSE: &str = "AGPL-3.0-only";
+
+/// The grant itself: the Business Source License 1.1, parameters filled in and
+/// terms otherwise unaltered.
 const LICENSE_FILE: &str = "LICENSE";
 
-/// The Foundation's own statements about that grant, in the file every other
-/// project keeps them in.
+/// The Firm's own statements about that grant, in the file every other project
+/// keeps them in.
 const NOTICE_FILE: &str = "NOTICE";
 
 /// The copyright holder: the organization that owns this work and makes the
@@ -89,21 +108,8 @@ const OWNER: &str = "Shook Law PLLC";
 /// passes on both, and the distinctness the trademark guard used to get for free
 /// is gone. What still makes the constants worth keeping apart is that they name
 /// two different facts about the same organization: the mark is registered, the
-/// copyright is held, and either could move without the other. The load the pair
-/// used to carry now sits on `PUBLISHER`, which really is somebody else.
+/// copyright is held, and either could move without the other.
 const REGISTRANT: &str = "Shook Law PLLC";
-
-/// The publisher: the organization holding the right to keep publishing this
-/// work under the grant, and *not* the copyright holder.
-///
-/// This is the one genuinely two-organization fact left in the file, and the
-/// only thing standing between the public grant and a change of control at the
-/// Firm. A licence already granted cannot be revoked, but no holder is obliged
-/// to offer another copy — so "we publish it under the AGPL" is a statement
-/// about today unless somebody else is entitled to go on doing it. Somebody
-/// else is, and it is asserted rather than trusted to review, because the
-/// repository would look exactly the same without it.
-const PUBLISHER: &str = "Neon Law Foundation";
 
 /// The workspace root (this test crate is `cli`).
 fn repo_root() -> PathBuf {
@@ -268,7 +274,7 @@ fn editor_extension_manifest_declares_the_license_of_record() {
     );
 }
 
-/// `LICENSE` is the licence text and only the licence text.
+/// `LICENSE` is the licence text, its parameters, and nothing else.
 ///
 /// This is the guard the rest of the file leans on, and it does two jobs at
 /// once.
@@ -276,25 +282,28 @@ fn editor_extension_manifest_declares_the_license_of_record() {
 /// **It keeps the licence machine-readable.** Every tool that identifies a
 /// licence — GitHub's repository page, an SBOM generator, a corporate scanner —
 /// compares this file against the canonical text and needs a near-exact match.
-/// A paragraph of the Foundation's own prose in front of the grant is enough to
-/// drop below that bar, at which point the repository stops telling a reader
-/// which licence it publishes under. So the file starts at the text's first line
-/// and stops at its last, and everything the Foundation has to say about the
+/// A paragraph of the Firm's own prose in front of the grant is enough to drop
+/// below that bar, at which point the repository stops telling a reader which
+/// licence it publishes under. So the file opens on the licence's own title,
+/// closes on its last covenant, and everything the Firm has to say about the
 /// grant is in `NOTICE`.
 ///
-/// **It makes a retraction structurally impossible.** A file bounded at both
-/// ends by the FSF's own lines, carrying every section between them, has nowhere
-/// to hide a clause that narrows what the grant gives away — which is a stronger
-/// promise than any list of forbidden wording, and it needs no maintenance.
+/// **It pins the four parameters by value.** This is the half that has no
+/// analogue under a licence like the AGPL, whose text is invariant. BUSL is a
+/// template: the same unaltered terms produce a completely different deal
+/// depending on what the parameters say, so a file that is textually perfect and
+/// carries `Additional Use Grant: anyone, for anything` would pass a scanner and
+/// give the product away. The values are therefore asserted, not just the
+/// headings.
 ///
-/// The sections are checked by name rather than by length, because a truncated
-/// paste that stopped after the definitions would still look like a licence
-/// file. Each named section is one a reader relies on: § 4 obliges a conveyor to
-/// hand over this License, § 6 governs conveying a built binary, § 11 is the
-/// patent grant, and § 13 is the network clause that makes this the Affero
-/// licence rather than the ordinary GPL.
+/// The terms are checked by phrase rather than by length, because a truncated
+/// paste that stopped after the first grant would still look like a licence
+/// file. Each phrase is one a reader relies on: the base grant, the conversion
+/// on the Change Date, the requirement to buy a licence for non-complying use,
+/// the trademark carve-out, and the four Covenants of Licensor that bound what a
+/// licensor may put in the parameters at all.
 #[test]
-fn the_licence_file_is_the_grant_text_unaltered() {
+fn the_licence_file_is_the_grant_text_with_our_parameters() {
     assert!(
         repo_root().join(LICENSE_FILE).exists(),
         "{LICENSE_FILE} is the licence of record and must exist"
@@ -307,11 +316,11 @@ fn the_licence_file_is_the_grant_text_unaltered() {
         .unwrap_or_default()
         .trim();
     assert_eq!(
-        first, "GNU AFFERO GENERAL PUBLIC LICENSE",
-        "{LICENSE_FILE} must open on the licence text's own first line. Anything \
-         ahead of it — a copyright header, a scope note, a pointer to another \
-         file — is what stops licence detection from naming the grant, and the \
-         Foundation's own words belong in {NOTICE_FILE}."
+        first, "Business Source License 1.1",
+        "{LICENSE_FILE} must open on the licence's own title. Anything ahead of \
+         it — a copyright header, a scope note, a pointer to another file — is \
+         what stops licence detection from naming the grant, and the Firm's own \
+         words belong in {NOTICE_FILE}."
     );
 
     let last = license
@@ -320,27 +329,65 @@ fn the_licence_file_is_the_grant_text_unaltered() {
         .unwrap_or_default()
         .trim();
     assert_eq!(
-        last, "<https://www.gnu.org/licenses/>.",
-        "{LICENSE_FILE} must end on the licence text's own last line, so there is \
-         nowhere in the file for an added clause to sit"
+        last, "4. Not to modify this License in any other way.",
+        "{LICENSE_FILE} must end on the licence text's own last covenant, so \
+         there is nowhere in the file for an added clause to sit"
     );
 
+    // The invariant body. BUSL's fourth covenant is "not to modify this License
+    // in any other way", so every one of these is copied rather than drafted.
     for required in [
-        "Version 3, 19 November 2007",
-        "TERMS AND CONDITIONS",
-        "0. Definitions.",
-        "4. Conveying Verbatim Copies.",
-        "5. Conveying Modified Source Versions.",
-        "6. Conveying Non-Source Forms.",
-        "11. Patents.",
-        "13. Remote Network Interaction; Use with the GNU General Public License.",
-        "15. Disclaimer of Warranty.",
-        "END OF TERMS AND CONDITIONS",
+        "Terms",
+        "the right to copy, modify, create derivative",
+        "make non-production use of the Licensed Work",
+        "Effective on the Change Date",
+        "you must purchase a\ncommercial license from the Licensor",
+        "This License does not grant you any right in any trademark or logo of",
+        "Covenants of Licensor",
+        "To specify as the Change License the GPL Version 2.0 or any later version",
+        "To specify a Change Date.",
     ] {
         assert!(
             license.contains(required),
-            "{LICENSE_FILE} must carry the verbatim AGPL-3.0 text; `{required}` \
+            "{LICENSE_FILE} must carry the verbatim BUSL-1.1 text; `{required}` \
              is missing, so the grant it publishes is incomplete"
+        );
+    }
+
+    // The parameters block, by value. Each line is the deal rather than
+    // boilerplate, and the reason each one matters is in `NOTICE`.
+    for (required, why) in [
+        (
+            format!("Licensor:             {OWNER}"),
+            "the Licensor is who a production user buys a licence from, and who \
+             may set every other parameter",
+        ),
+        (
+            "Licensed Work:        Neon Law Navigator".to_string(),
+            "the Licensed Work names what is licensed; an unnamed work leaves \
+             the scope of the grant to argument",
+        ),
+        (
+            "Additional Use Grant: None".to_string(),
+            "`None` is what makes production use need a commercial licence. Any \
+             prose here grants production rights away, and BUSL's second \
+             covenant allows only a no-restriction grant or this literal word",
+        ),
+        (
+            "Change Date:          Four years from the date the Licensed Work is published"
+                .to_string(),
+            "the Change Date is when each version stops being restricted; \
+             removing it leaves the restriction permanent",
+        ),
+        (
+            format!("({CHANGE_LICENSE})"),
+            "the Change License is what each version converts into, and BUSL's \
+             first covenant bounds what it may be",
+        ),
+    ] {
+        assert!(
+            license.contains(&required),
+            "{LICENSE_FILE}: {why} (missing `{required}`)"
         );
     }
 }
@@ -371,45 +418,79 @@ fn the_notice_puts_this_work_under_the_grant() {
     );
 
     let flat = flat_lower(&notice);
-    for required in ["free software", "redistribute", "narrows the grant"] {
+    for required in [
+        // Said plainly, because the SPDX tag alone reads as open source to
+        // anyone who has only ever seen OSI licences in that field.
+        "source-available",
+        "not open source",
+        "redistribute",
+        "nothing here widens the grant",
+    ] {
         assert!(
             flat.contains(required),
             "{NOTICE_FILE} must state `{required}` — it is the file that says \
              this program is published under {LICENSE} and that nothing beside \
-             the grant takes anything back from it"
+             the grant adds to or takes from it"
         );
     }
 }
 
-/// The network clause is stated where a deployer will read it.
+/// The production boundary is stated where a deployer will read it.
 ///
-/// § 13 is the whole reason this workspace is on the Affero licence rather than
-/// a permissive one, and it is the obligation a reader is least likely to expect
-/// from the SPDX tag alone. Someone who runs a modified Navigator as a legal
-/// portal owes their users the corresponding source, and `NOTICE` has to say so
-/// in the Foundation's own voice — not only inside § 13's own legalese, which a
-/// deployer skims past on the way to deciding they may fork.
+/// This is the obligation a reader is least likely to expect from the SPDX tag
+/// alone, and under BUSL it is the whole licence rather than one clause of it:
+/// someone who runs Navigator to deliver legal services to other people needs a
+/// commercial licence first. BUSL never defines "production use", so a notice
+/// that repeats the term without drawing the line leaves every reader to guess —
+/// and the guess a developer makes standing in front of a source tree is the
+/// permissive one.
+///
+/// The § 13 history is asserted alongside it for the opposite reason. This work
+/// was Affero-licensed, that obligation is what a returning reader remembers,
+/// and the honest answer is that it is gone now and comes back at the Change
+/// Date. A notice silent on it reads as an oversight.
 #[test]
-fn the_notice_states_the_network_obligation_in_its_own_voice() {
+fn the_notice_draws_the_production_boundary_in_its_own_voice() {
     let flat = flat_lower(&read(NOTICE_FILE));
 
-    assert!(
-        flat.contains("section 13"),
-        "{NOTICE_FILE} must name section 13 in its own voice — the network \
-         obligation is the reason this grant is Affero, and a deployer reads a \
-         short notice rather than § 13's own text"
-    );
-    assert!(
-        flat.contains("corresponding source"),
-        "{NOTICE_FILE} must say that a modified network deployment owes users \
-         the corresponding source"
-    );
-    assert!(
-        flat.contains("remotely"),
-        "{NOTICE_FILE} must say the obligation attaches to letting users \
-         interact with the software remotely, which is the deployment shape a \
-         legal-services portal actually has"
-    );
+    for (required, why) in [
+        (
+            "production use",
+            "the notice must name the thing that needs buying, in the licence's \
+             own vocabulary",
+        ),
+        (
+            "commercial licence",
+            "it must say what a production user has to obtain, rather than only \
+             that production use is not granted",
+        ),
+        (
+            "non-production",
+            "it must say what *is* granted; a boundary stated from one side \
+             reads as a blanket prohibition",
+        ),
+        (
+            "evaluating it",
+            "the notice must give worked examples of the free side of the line. \
+             BUSL defines no boundary, so a reader who cannot place their own \
+             case has nothing to rely on but the phrase",
+        ),
+        (
+            "§ 13",
+            "the notice must account for the Affero obligation this work used to \
+             carry — it is what a returning reader looks for first",
+        ),
+        (
+            "change date",
+            "and say when it returns, because the conversion is the answer to \
+             \"is this permanent\"",
+        ),
+    ] {
+        assert!(
+            flat.contains(required),
+            "{NOTICE_FILE}: {why} (missing `{required}`)"
+        );
+    }
 }
 
 /// The marks are reserved, and `NOTICE` says so in the same breath as the grant.
@@ -545,82 +626,96 @@ fn contributions_are_closed_but_the_licence_terms_are_stated_anyway() {
     );
 }
 
-/// The Foundation's right to keep publishing is stated where a reader relies on
-/// it.
+/// The released publication right is recorded, and no second publisher is
+/// claimed.
 ///
-/// This is the assertion the rest of the file cannot make for you. Every other
-/// check here confirms that the grant *is* `AGPL-3.0-only` today, and every one
-/// of them would stay green if the copyright holder decided tomorrow to publish
-/// nothing further. A licence already granted cannot be revoked — but no holder
-/// owes anyone the next copy, which is the whole mechanism behind every
-/// relicensing a community has been angry about.
+/// This is the inverse of the assertion that used to sit here, and the inversion
+/// is the point. The Neon Law Foundation held a perpetual, irrevocable,
+/// royalty-free right to publish this work under `AGPL-3.0-only` that bound the
+/// Firm's successors — and while it was in force, a repository naming BUSL as
+/// its sole grant would have been describing terms that were not the only ones
+/// in effect. The right was released in writing before the relicence.
 ///
-/// What closes that gap is a second organization entitled to go on publishing.
-/// The Foundation holds a perpetual, irrevocable, royalty-free right to publish
-/// this work under the grant; it binds the Firm's successors and survives a
-/// change of the Firm's control. That promise lives in prose, in two files, and
-/// nothing about the repository would look different if it were quietly dropped
-/// — which is exactly the shape of claim that needs a test rather than a
-/// reviewer.
+/// A release is exactly the kind of fact a repository loses by saying nothing.
+/// Deleting the sentence that described the right leaves a tree that looks
+/// identical whether the right was released, forgotten, or simply
+/// unmentioned — so the release is asserted rather than trusted to review, the
+/// same way the right itself was.
 ///
-/// `assert_ne!` on the two organizations is the load-bearing line. The point is
-/// not that a particular charity is named; it is that the publisher is somebody
-/// other than the holder, because a right the holder grants itself is no
-/// constraint on the holder at all.
+/// The second half is the guard that matters going forward: no document may
+/// still describe a live right in somebody else's hands. That claim and the
+/// current licence cannot both be true, and the failure mode is a half-finished
+/// sweep leaving one file behind.
 #[test]
-fn the_publication_right_is_stated_and_held_by_someone_other_than_the_owner() {
-    /// Every word that has to describe the right, and what each one buys.
-    ///
-    /// Not decoration. Drop `perpetual` and it can expire; drop `irrevocable`
-    /// and the Firm can end it; drop `royalty-free` and the Foundation can be
-    /// priced out of exercising it. Any one of them missing leaves a right the
-    /// Firm can outlast.
-    const TERMS: [&str; 3] = ["perpetual", "irrevocable", "royalty-free"];
+fn the_released_publication_right_is_recorded_and_no_live_one_is_claimed() {
+    /// The organization that held the right, named so the record says whose it
+    /// was rather than that "a right" ended.
+    const FORMER_PUBLISHER: &str = "Neon Law Foundation";
 
-    /// That an acquisition does not end it. Either spelling will do.
-    const SURVIVAL: [&str; 2] = ["successors", "change of"];
+    /// The release has to be stated as *done*, not contemplated.
+    const RELEASED: [&str; 2] = ["released", "in writing"];
 
-    assert_ne!(
-        OWNER, PUBLISHER,
-        "the publication right has to sit with an organization other than the \
-         copyright holder; a holder cannot meaningfully bind itself, and a \
-         reader relying on the grant's durability is relying on a third party \
-         being able to enforce it"
-    );
-
-    for rel in [NOTICE_FILE, "README.md", "docs/licensing.md"] {
-        // Whitespace-flattened but not lowercased: the organization is matched
-        // by name, and only the window around it is folded for the terms.
+    for rel in [NOTICE_FILE, "docs/licensing.md"] {
         let flat = read(rel).split_whitespace().collect::<Vec<_>>().join(" ");
-        let named: Vec<usize> = flat.match_indices(PUBLISHER).map(|(i, _)| i).collect();
+        let named: Vec<usize> = flat
+            .match_indices(FORMER_PUBLISHER)
+            .map(|(i, _)| i)
+            .collect();
 
         assert!(
             !named.is_empty(),
-            "{rel} must name `{PUBLISHER}` as the organization holding the right \
-             to publish this work"
+            "{rel} must name `{FORMER_PUBLISHER}` and say its publication right \
+             was released — a tree that simply stops mentioning the right reads \
+             the same whether it ended or was overlooked"
         );
 
-        // At least one mention has to carry the whole description. Checking the
-        // file rather than a window is what makes this guard hollow: each of
-        // these words appears elsewhere in prose about the right, so a
-        // file-wide `contains` stays green while the sentence that actually
-        // grants it loses a term.
-        let described = named.iter().any(|&at| {
-            let claim = window(&flat, at, PUBLISHER.len()).to_lowercase();
-            TERMS.iter().all(|term| claim.contains(term))
-                && SURVIVAL.iter().any(|clause| claim.contains(clause))
+        let recorded = named.iter().any(|&at| {
+            let claim = window(&flat, at, FORMER_PUBLISHER.len()).to_lowercase();
+            RELEASED.iter().all(|term| claim.contains(term))
         });
-
         assert!(
-            described,
-            "{rel} names `{PUBLISHER}` but no mention of it describes the right \
-             in full. One sentence has to carry every one of {TERMS:?} and say \
-             the right survives a change of control ({SURVIVAL:?}): a right that \
-             expires, that the Firm can revoke, that can be priced out of use, or \
-             that dies with an acquisition protects nobody — acquisition is the \
-             thing it exists to protect against."
+            recorded,
+            "{rel} names `{FORMER_PUBLISHER}` but no mention of it records the \
+             release. One sentence has to carry {RELEASED:?}: while that right \
+             was in force, `{LICENSE}` was not the only grant in effect, so the \
+             release is what makes this file's own licence claim true."
         );
     }
+
+    // Nothing anywhere may still assert a live right. Checked across every
+    // document rather than the two above, because the sweep that misses one file
+    // is the whole failure mode.
+    let mut offenders = Vec::new();
+    for path in markdown_documents() {
+        let rel = path
+            .strip_prefix(repo_root())
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        let body = unemphasized(&read(&rel));
+        for at in body
+            .match_indices("perpetual")
+            .map(|(i, _)| i)
+            .collect::<Vec<_>>()
+        {
+            let claim = window(&body, at, "perpetual".len());
+            // A sentence describing the right in the present tense, without the
+            // word that marks it historical.
+            if claim.contains("right to publish")
+                && !claim.contains("released")
+                && !claim.contains("formerly")
+                && !claim.contains("held")
+            {
+                offenders.push(format!("{rel}: …{claim}…"));
+            }
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "the publication right was released; these documents still describe it \
+         as live, which contradicts `{LICENSE}` being the licence of record:\n  {}",
+        offenders.join("\n  ")
+    );
 }
 
 #[test]
@@ -692,13 +787,13 @@ fn the_single_grant_covers_the_templates_tree() {
 /// Every published image declares the licence and carries both terms files.
 ///
 /// A container image someone pulled is a copy, and its holder has neither the
-/// repository nor a release archive. AGPL § 4 conditions the permission to
-/// convey on handing every recipient this License along with the work, and § 13
-/// may oblige that holder to pass the source on in turn — which they cannot do
-/// from terms they were never shown. Three mechanisms, because they serve
-/// different readers: the OCI label is what a registry page shows before anyone
-/// pulls, and the two staged files are what a running container can actually be
-/// made to print.
+/// repository nor a release archive. BUSL obliges you to display this License
+/// conspicuously on every copy of the Licensed Work, and its parameters are what
+/// tell that holder whether their own use needs a commercial licence — which
+/// they cannot work out from terms they were never shown. Three mechanisms,
+/// because they serve different readers: the OCI label is what a registry page
+/// shows before anyone pulls, and the two staged files are what a running
+/// container can actually be made to print.
 ///
 /// `Containerfile.runner` is exempt. It is the CI runner image rather than a
 /// published artifact of the software, and it has no distroless runtime stage
@@ -839,49 +934,66 @@ fn the_image_push_is_unconditional_and_scoped_to_the_publish_jobs() {
          serves every tag it publishes"
     );
 }
-
-/// Who may grant a proprietary exception, and who may not.
+/// Only the copyright holder may sell a production licence, and no price is
+/// published.
 ///
-/// This is the part of the licensing story with a wrong answer that would look
-/// reasonable. The Foundation publishes Navigator, so "the Foundation licenses
-/// Navigator" reads as true — and if it were true of *commercial* licensing it
-/// would mean a charity selling proprietary exceptions to its controlling
-/// insider's software, which is a much harder thing to explain than it is to
-/// write down by accident.
+/// Under the AGPL this section described an *optional extra*: running, forking,
+/// and redistributing were already free, and a commercial licence bought relief
+/// from copyleft for someone who wanted it. Under BUSL the same section describes
+/// something a production user has no way around — the licence is the permission,
+/// not a convenience — so the sentence that used to matter most here ("this
+/// restricts nothing in the public grant") is now false and must not reappear.
 ///
-/// The rule underneath it is mechanical, not a policy preference. A proprietary
-/// exception is a permission carved out of the copyright, and only the holder of
-/// a right can give a permission under it. The Foundation holds a licence to
-/// publish, not title, so there is nothing for it to carve from. Its one
-/// sublicensing power is bounded on both sides — legal aid organizations, at
-/// cost — and the boundary is the assertion, because a programme that quietly
-/// widened would be invisible in a diff of prose.
+/// What survives unchanged is who may grant it. A production exception is carved
+/// out of the copyright, so the holder of the copyright is the only party with
+/// anything to carve; there is no second organization with a licence to
+/// sublicense from, and after the relicence there is no second organization at
+/// all.
 ///
 /// The no-price rule is asserted alongside it. The consumer flat fees are
 /// published in full and deliberately; a deployment's scope is not knowable in
 /// advance, so a figure here would be a floor dressed as a fee.
 #[test]
-fn only_the_copyright_holder_may_grant_a_commercial_exception() {
+fn only_the_copyright_holder_may_sell_a_production_licence() {
     /// The prose that has to be present, and what each part of it prevents.
     const REQUIRED: [(&str, &str); 4] = [
         (
-            "only the copyright holder can relieve",
-            "the section must say the exception is the holder's alone to grant",
+            "only the copyright holder",
+            "the section must say the licence is the holder's alone to grant",
         ),
         (
-            "legal aid organizations at cost",
-            "the Foundation's one sublicensing power must be bounded by who \
-             receives it and what it may charge",
+            "production use",
+            "it must name what triggers the need to buy, in the licence's own \
+             vocabulary rather than a paraphrase",
         ),
         (
-            "may not grant commercial exceptions",
-            "the section must say plainly what the Foundation cannot do; the \
-             reasonable-looking wrong answer is that it can",
+            "non-production use needs no licence",
+            "it must say what does *not* need buying. A section about paying, \
+             silent on the free side, reads as though reading the source were \
+             chargeable",
         ),
         (
             "no price is published",
             "a deployment is quoted per engagement, and the section must say so \
              rather than leaving room for a figure",
+        ),
+    ];
+
+    /// Claims that were true under the AGPL and are false under BUSL.
+    ///
+    /// This is the guard against a half-updated document: the old section's
+    /// reassurance survives a find-and-replace on the licence name, and it is
+    /// exactly the sentence a production user would rely on.
+    const STALE: [(&str, &str); 2] = [
+        (
+            "restriction on the public grant",
+            "under BUSL production use *is* restricted; this sentence told a \
+             reader the opposite and was true only while the grant was AGPL",
+        ),
+        (
+            "legal aid organizations at cost",
+            "that was the Foundation's sublicensing power, and the Foundation \
+             holds nothing to sublicense from any more",
         ),
     ];
 
@@ -902,22 +1014,15 @@ fn only_the_copyright_holder_may_grant_a_commercial_exception() {
             "{doc}: {why} (missing `{required}`)"
         );
     }
+    for (stale, why) in STALE {
+        assert!(!flat.contains(stale), "{doc}: {why} (remove `{stale}`)");
+    }
 
     assert!(
         body.contains(OWNER),
-        "{doc} must name `{OWNER}` as the party able to grant an exception — \
-         naming the power without naming the holder is what sends a reader to \
-         the wrong organization"
-    );
-
-    // The grant is not narrowed by any of it, and the section has to say so.
-    // Someone who reads only this heading should not come away believing a fork
-    // now needs permission it never needed.
-    assert!(
-        flat.contains("restriction on the public grant"),
-        "{doc} must state that commercial licensing restricts nothing in the \
-         public grant; a section about buying permission reads as a section \
-         about needing it"
+        "{doc} must name `{OWNER}` as the party able to grant a production \
+         licence — naming the power without naming the holder is what sends a \
+         reader to the wrong organization"
     );
 
     // No figure, in any of the shapes one arrives in — read over this section
@@ -1016,8 +1121,9 @@ fn the_chain_of_title_is_recorded_and_nothing_contradicts_it() {
         );
     }
     assert!(
-        record.contains(OWNER) && record.contains(PUBLISHER),
-        "{RECORD} must name `{OWNER}` as the holder and `{PUBLISHER}` as the          publisher; the chain's whole point is that they are different parties"
+        record.contains(OWNER),
+        "{RECORD} must name `{OWNER}` as the holder — the chain's whole point is \
+         that a reader can follow it to a party who can actually grant this work"
     );
 
     // ---- Nothing in the tree says otherwise. ----
@@ -1058,63 +1164,45 @@ fn the_chain_of_title_is_recorded_and_nothing_contradicts_it() {
     );
 }
 
-/// The trademark reservation is an operative § 7(e) term, and it stays out of
-/// `LICENSE`.
+/// The trademark reservation restates the licence's own carve-out and adds
+/// nothing.
 ///
-/// Section 7 of the AGPL enumerates additional terms a distributor may attach,
-/// and 7(e) is the one for declining to grant trademark rights. That matters
-/// because § 7 also says any *other* added term is a "further restriction",
-/// which a downstream recipient may simply remove — so a reservation attached
-/// without naming its authority is a reservation that reads as unenforceable
-/// and invites being ignored. Naming 7(e) is what makes it a term of the
-/// distribution rather than a wish beside it.
+/// BUSL already declines to grant trademark rights: "This License does not grant
+/// you any right in any trademark or logo of Licensor." So unlike the AGPL — whose
+/// text is silent on marks, and where the reservation had to be introduced as a
+/// § 7(e) additional term to exist at all — there is nothing to add here, and
+/// adding something would violate BUSL's fourth covenant against modifying the
+/// licence in any other way.
 ///
-/// **It has to take nothing away, and the text has to say so.** The AGPL never
-/// conveyed a trademark right in the first place, so declining to grant one
-/// removes no permission — but a reader deciding whether they may fork should
-/// not have to work that out. The disclaimer is asserted here because it is the
-/// sentence that distinguishes a permitted 7(e) term from a restriction, and it
-/// is also the first thing a rewrite would drop as redundant.
-///
-/// **Nominative reference has to survive.** A term that stopped someone saying
-/// truthfully what their work is based on would reach past trademark law into
-/// the licence, and it would break the one thing every fork legitimately needs
-/// to do: describe itself.
-///
-/// **`LICENSE` stays the FSF's text.** [`the_licence_file_is_the_grant_text_unaltered`]
-/// already bounds that file at both ends, and this asserts the complement — the
-/// term lives in `NOTICE`, so no scanner comparing `LICENSE` against the
-/// canonical text ever sees it and the repository keeps being read as
-/// `AGPL-3.0-only`. Trademark-declining 7(e) terms are ordinary and carry no
-/// SPDX exception identifier, so there is nothing for the tag to say either.
+/// That makes this guard's job the opposite of its predecessor's. It is no longer
+/// checking that an added term names its authority and disclaims being a further
+/// restriction; it is checking that `NOTICE` explains *whose* marks the licence's
+/// own clause is talking about, and that no § 7(e) machinery survives the
+/// relicence in either file. A § 7(e) term under BUSL cites a section that does
+/// not exist.
 #[test]
-fn the_trademark_reservation_is_a_section_7e_term_and_narrows_nothing() {
-    /// What the term has to establish, and what each part prevents.
-    const REQUIRED: [(&str, &str); 5] = [
+fn the_trademark_reservation_restates_the_licences_own_carve_out() {
+    /// What the reservation has to establish, and what each part prevents.
+    const REQUIRED: [(&str, &str); 4] = [
         (
-            "section 7(e)",
-            "the term must name its authority; an added term that does not is a \
-             \"further restriction\" a recipient may remove",
+            "rights in copyright, not in trademarks",
+            "the reservation must say what the licence does and does not reach; \
+             the licence's own clause names no mark and no owner",
         ),
         (
-            "no right or licence under the trade names",
-            "the operative sentence must decline the grant rather than describe \
-             declining it",
-        ),
-        (
-            "further restriction",
-            "the term must say it is not one, which is the sentence that \
-             distinguishes a permitted § 7(e) term from a prohibited addition",
-        ),
-        (
-            "narrows no permission",
-            "the term must say it takes nothing away; a reader deciding whether \
-             they may fork should not have to derive that from § 7's structure",
-        ),
-        (
-            "nominative reference remains available",
+            "nominative reference",
             "a fork has to be able to say truthfully what it is based on, or the \
-             term reaches past trademark law into the licence",
+             reservation reads as reaching past trademark law",
+        ),
+        (
+            "may not present your deployment as neon law",
+            "the operative sentence must name the thing that is actually \
+             forbidden, which is passing a deployment off as the practice",
+        ),
+        (
+            "views::brand_bundle",
+            "telling someone they may not use the marks without showing them the \
+             rename seam leaves patching sources as the obvious move",
         ),
     ];
 
@@ -1130,23 +1218,41 @@ fn the_trademark_reservation_is_a_section_7e_term_and_narrows_nothing() {
 
     assert!(
         notice.contains(REGISTRANT),
-        "the § 7(e) term must name `{REGISTRANT}`, whose marks it reserves — a \
+        "the reservation must name `{REGISTRANT}`, whose marks it describes — a \
          reservation that names no owner tells a reader nothing about whose \
          permission they would be asking for"
     );
+    assert!(
+        notice.contains("6,325,650"),
+        "{NOTICE_FILE} must cite the NEON LAW registration it reserves"
+    );
 
-    // The complement of `the_licence_file_is_the_grant_text_unaltered`: that test
-    // proves `LICENSE` begins and ends on the FSF's own lines, and this proves
-    // the term did not find its way in between. A § 7(e) term inside the licence
-    // file is what drops the scanner match and stops the repository being read
-    // as AGPL-3.0-only.
+    // § 7(e) was the AGPL's mechanism for adding a term the licence text did not
+    // contain. BUSL contains the carve-out itself and forbids modification, so a
+    // surviving § 7(e) term cites a section of a licence this work is no longer
+    // under.
+    for file in [LICENSE_FILE, NOTICE_FILE] {
+        let body = flat_lower(&read(file));
+        assert!(
+            !body.contains("section 7(e)") && !body.contains("§ 7(e)"),
+            "{file} still carries a § 7(e) additional term. {LICENSE} has no \
+             § 7, states the trademark carve-out itself, and its fourth covenant \
+             forbids modifying it — so the term now cites nothing and reads as an \
+             unauthorized addition."
+        );
+    }
+
+    // The complement of `the_licence_file_is_the_grant_text_with_our_parameters`:
+    // that test proves `LICENSE` opens and closes on the licence's own lines, and
+    // this proves our prose did not find its way in between. `OWNER` is
+    // deliberately absent from this list — BUSL's parameters block names the
+    // Licensor, so the Firm's name belongs in `LICENSE` and only there.
     let license = flat_lower(&read(LICENSE_FILE));
-    for stray in ["section 7(e)", "shook law pllc", "6,325,650"] {
+    for stray in ["6,325,650", "nominative reference", "views::brand_bundle"] {
         assert!(
             !license.contains(stray),
-            "{LICENSE_FILE} must stay the Free Software Foundation's text and \
-             nothing else; `{stray}` belongs in {NOTICE_FILE}, where no licence \
-             scanner reads it"
+            "{LICENSE_FILE} must stay the licence text plus its parameters; \
+             `{stray}` belongs in {NOTICE_FILE}, where no licence scanner reads it"
         );
     }
 }

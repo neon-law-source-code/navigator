@@ -51,7 +51,7 @@ pub struct NotationsView {
 pub async fn notations_view() -> Result<NotationsView, ServerFnError> {
     let content = consume_context::<InjectedNotations>().0;
     Ok(NotationsView {
-        chrome: crate::public_chrome::foundation_public_chrome_from_context().await,
+        chrome: crate::public_chrome::firm_public_chrome_from_context().await,
         content,
     })
 }
@@ -187,9 +187,13 @@ mod tests {
     fn view(readme_html: &str) -> NotationsView {
         NotationsView {
             chrome: PublicChrome {
-                brand_name: "Neon Law Foundation".to_string(),
-                home_href: "/foundation".to_string(),
-                logo_href: "/public/logo-foundation.svg".to_string(),
+                // The shared header, which is the firm's: a Foundation page
+                // wears the same wordmark, mark, and home link as every other
+                // page. A fixture naming the retired Foundation header would
+                // describe chrome no route produces.
+                brand_name: "Neon Law".to_string(),
+                home_href: "/".to_string(),
+                logo_href: "/public/logo-firm.svg".to_string(),
                 firm_name: "Neon Law".to_string(),
                 foundation_name: "Neon Law Foundation".to_string(),
                 ..PublicChrome::default()

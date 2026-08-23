@@ -177,7 +177,6 @@ const PARAMETERISED: &[(&str, &[&str])] = &[
 const RETIRED_REDIRECTS: &[&str] = &[
     "/mission",
     "/education",
-    "/legal-aid",
     "/attorneys",
     "/notations",
     "/transparency",
@@ -558,8 +557,10 @@ async fn each_brand_shell_passes_a_full_document_audit() {
         let Some(c) = session_in_scheme(scheme, &base_url()).await else {
             return;
         };
-        // The firm's shell at the root, then the Foundation's beneath its
-        // prefix. Different header, different footer, different disclaimer.
+        // The site root, then the Foundation's home beneath its prefix. One
+        // header and one footer serve both now, so this is no longer two shells
+        // — it is the same shell over two page bodies, and auditing both is
+        // what catches a body that breaks the document only under one of them.
         for path in ["/", "/foundation"] {
             assert_route_passes_axe(&c, path, DOCUMENT_AXE_SCOPE, scheme).await;
             assert_public_shell(&c).await;

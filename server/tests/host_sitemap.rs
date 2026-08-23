@@ -207,7 +207,6 @@ async fn the_sitemap_files_each_face_under_its_own_prefix() {
     for foundation_page in [
         "/foundation",
         "/foundation/education",
-        "/foundation/legal-aid",
         "/foundation/attorneys",
     ] {
         assert!(

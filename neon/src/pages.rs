@@ -2,7 +2,7 @@
 //! one renders.
 //!
 //! Two populations live here. The anonymous set — the marketing home and the
-//! three audience pages — is what the Foundation presents to
+//! two audience pages — is what the Foundation presents to
 //! the world. The gated set carries the application's own session and policy
 //! layers through [`portal::gated`], so a brand declares *that* a page is
 //! gated while the application still decides what gating means.
@@ -61,23 +61,19 @@ fn mission_content(marketing: &MarketingIndex) -> webapp::mission::MissionConten
 /// absorbs (ENG-139), and it is what a stranger arriving at `neonlaw.org`
 /// reads first. The talks catalog is no longer here: `/presentations` and
 /// every talk beneath it moved to the firm's host, so this surface is the
-/// marketing home and its three audience pages.
+/// marketing home and its two audience pages.
 #[must_use]
 pub fn foundation_public_dioxus_routers(_state: &AppState) -> Vec<Router> {
     vec![
         // The Foundation's front door: what it does, for whom, and how to
         // start. The brand mark links here from every page.
         dioxus_app::foundation_home_router(dioxus_app::MISSION_PATH, foundation_copy::home()),
-        // The three audience pages the retired static site published.
-        dioxus_app::foundation_marketing_page_router(
+        // The audience pages the retired static site published.
+        dioxus_app::marketing_page_router(
             dioxus_app::FOUNDATION_EDUCATION_PATH,
             foundation_copy::education(),
         ),
-        dioxus_app::foundation_marketing_page_router(
-            dioxus_app::FOUNDATION_LEGAL_AID_PATH,
-            foundation_copy::legal_aid(),
-        ),
-        dioxus_app::foundation_marketing_page_router(
+        dioxus_app::marketing_page_router(
             dioxus_app::FOUNDATION_ATTORNEYS_PATH,
             foundation_copy::attorneys(),
         ),

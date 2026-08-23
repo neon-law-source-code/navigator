@@ -52,7 +52,7 @@ pub struct MissionView {
 /// chrome the portal pre-layer resolved on the request task.
 #[server]
 pub async fn mission_view() -> Result<MissionView, ServerFnError> {
-    let chrome = crate::public_chrome::foundation_public_chrome_from_context().await;
+    let chrome = crate::public_chrome::firm_public_chrome_from_context().await;
     Ok(MissionView {
         content: consume_context::<InjectedMission>().0,
         brand_name: chrome.brand_name,
@@ -125,8 +125,8 @@ mod tests {
     fn render(content: MissionContent) -> String {
         dioxus_ssr::render_element(mission_body(&MissionView {
             content,
-            brand_name: "Neon Law Foundation".to_string(),
-            social_image: "https://example.test/logo-foundation.png".to_string(),
+            brand_name: "Neon Law".to_string(),
+            social_image: "https://example.test/logo-firm.png".to_string(),
         }))
     }
 

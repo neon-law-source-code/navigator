@@ -6,8 +6,8 @@
 //! one shared crawler table (`host_crawler_and_legal_routes`), and while the
 //! page list inside it was hardcoded that promise was broken on the firm's
 //! host — it opened with the Foundation's name and sent an LLM crawler to `/`,
-//! `/education`, `/legal-aid`, and `/attorneys` as the nonprofit's pages, three
-//! of which the firm does not serve at all.
+//! `/education` and `/attorneys` as the nonprofit's pages, which the firm does
+//! not serve at all.
 //!
 //! So the assertion here is the promise itself, made against the real
 //! composition rather than against a restated list: fetch each host's
@@ -168,7 +168,6 @@ async fn the_index_files_each_face_under_its_own_prefix() {
     for foundation_page in [
         "/foundation",
         "/foundation/education",
-        "/foundation/legal-aid",
         "/foundation/attorneys",
     ] {
         assert!(

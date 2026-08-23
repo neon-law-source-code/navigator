@@ -2636,9 +2636,9 @@ pub struct LlmsTxt {
 ///
 /// [`host_crawler_and_legal_routes`] is shared by every brand host, so this
 /// document cannot be: one hardcoded page list opened the firm's host with the
-/// Foundation's name and sent an LLM crawler to `/education`, `/legal-aid`,
-/// and `/attorneys`, none of which the firm serves. Each brand supplies its
-/// own instead, exactly as it supplies its own [`SitemapPaths`].
+/// Foundation's name and sent an LLM crawler to `/education` and `/attorneys`,
+/// neither of which the firm serves. Each brand supplies its own instead,
+/// exactly as it supplies its own [`SitemapPaths`].
 ///
 /// It takes [`AppState`] because a brand's crawlable corpus includes its
 /// content-backed documents — the Foundation's talks — which are whatever was

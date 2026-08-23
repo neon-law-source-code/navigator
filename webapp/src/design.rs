@@ -983,6 +983,10 @@ fn SiteFooterShowcase() -> Element {
                     .to_string(),
                 copyright_year: 2026,
                 brand_name: "Neon Law".to_string(),
+                // The shipped footer's mark is a link home, so the gallery
+                // shows it as one — an unlinked mark here would document a
+                // footer no page renders.
+                home_href: "/".to_string(),
                 contact_email: "support@example.com".to_string(),
                 phone: "+1 555 010 0100".to_string(),
                 offices: demo_offices(),

@@ -1961,7 +1961,9 @@ async fn the_mission_letter_moved_to_its_own_gated_path() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
-    assert!(body.contains("<title>Neon Law Foundation | Mission</title>"));
+    // One header means one name in the title: the page titles itself from
+    // the chrome's brand, and the nonprofit's own wordmark is retired.
+    assert!(body.contains("<title>Neon Law | Mission</title>"), "{body}");
     assert!(body.contains("class=\"mission-letter\""));
 }
 
@@ -2006,7 +2008,10 @@ async fn notations_serve_the_tree_readme_under_foundation_brand() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
-    assert!(body.contains("<title>Neon Law Foundation | Notations</title>"));
+    assert!(
+        body.contains("<title>Neon Law | Notations</title>"),
+        "{body}"
+    );
     assert!(body.contains(">Notations</h1>"));
     // The hero + story open the page above the tree README.
     assert!(body.contains("product-hero__title"));
@@ -2429,10 +2434,13 @@ async fn the_foundation_publishes_a_page_for_each_audience_it_serves() {
     // `/education` was retired once, when CLEs collapsed into the single
     // `/workshops` surface. It is back, and it is a different page: not the
     // class catalog, but the Foundation's explanation of what it teaches and
-    // to whom. It returns with `/legal-aid` and `/attorneys` because the
-    // static marketing site that carried all three is being retired
-    // (ENG-139), and that site was the Foundation's only public pitch to
-    // either constituency.
+    // to whom. It returns with `/attorneys` because the static marketing site
+    // that carried them is being retired (ENG-139), and that site was the
+    // Foundation's only public pitch to either constituency.
+    //
+    // A third audience page pitched to legal aid centers. It is retired
+    // outright — router, copy, path constant, sitemap and llms.txt rows, and the
+    // `/legal-aid` redirect — so this covers the two that remain.
     //
     // `/workshops` still exists on the firm's host. The two are not duplicates:
     // one is the delivery, this is the argument for it.
@@ -2442,7 +2450,6 @@ async fn the_foundation_publishes_a_page_for_each_audience_it_serves() {
     );
     for (path, marker) in [
         ("/foundation/education", "What we cover"),
-        ("/foundation/legal-aid", "How a partnership begins"),
         ("/foundation/attorneys", "What comes with the matter"),
     ] {
         let resp = app
@@ -2812,13 +2819,12 @@ async fn llms_txt_indexes_the_markdown_corpus_with_absolute_urls() {
     assert!(body.contains("`{{placeholders}}`"));
     assert!(body.contains("ground questionnaire states and placeholders"));
     assert!(body.contains("## Pages"));
-    // The Foundation's whole public surface: its home and the three audience
+    // The Foundation's whole public surface: its home and its two audience
     // pages. The workshops and presentations catalogs are public root-level
     // material and are advertised in their own sections below.
     for page in [
         "https://www.example.com/)",
         "https://www.example.com/foundation/education)",
-        "https://www.example.com/foundation/legal-aid)",
         "https://www.example.com/foundation/attorneys)",
     ] {
         assert!(

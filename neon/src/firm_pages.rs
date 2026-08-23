@@ -176,11 +176,11 @@ pub fn firm_public_dioxus_routers(state: &AppState) -> Vec<Router> {
     // The lead offering. A marketing page like the platform page beside it, and
     // the first thing the header carries: the firm runs the technology function
     // for the law firms it serves, and the other three practices sit under it.
-    routers.push(dioxus_app::firm_marketing_page_router(
+    routers.push(dioxus_app::marketing_page_router(
         dioxus_app::FIRM_FRACTIONAL_CTO_PATH,
         firm_copy::fractional_cto(),
     ));
-    routers.push(dioxus_app::firm_marketing_page_router(
+    routers.push(dioxus_app::marketing_page_router(
         dioxus_app::FIRM_NAVIGATOR_PATH,
         firm_copy::navigator(),
     ));
@@ -188,7 +188,7 @@ pub fn firm_public_dioxus_routers(state: &AppState) -> Vec<Router> {
     // page, not a `/services/*` catalog entry: one page describing the routine,
     // one-time work, quoted through `/contact` and publishing no price. It is
     // where the firm's government-form filing work lives.
-    routers.push(dioxus_app::firm_marketing_page_router(
+    routers.push(dioxus_app::marketing_page_router(
         dioxus_app::FIRM_SERVICES_PATH,
         firm_copy::legal_services(),
     ));

@@ -3,9 +3,13 @@ Feature: Public routing across one site's two faces
   The `neon` binary serves the whole site. Neon Law — the firm — holds the
   root, and the Neon Law Foundation sits beneath `/foundation`. They were two
   binaries on two hosts; the prefix is what keeps them separable now that one
-  binary answers for both. The per-brand marker we assert on is the
-  `og:site_name` the layout emits from each page's `SiteBrand`, which is how a
-  page that mounted under the wrong prefix is caught wearing the wrong name.
+  binary answers for both.
+
+  The site publishes ONE header, so `og:site_name` is "Neon Law" on both faces:
+  the nonprofit no longer wears a wordmark of its own, and is reached from the
+  shared header's own Foundation entry. That name is what these scenarios assert
+  — it used to differ per prefix and catch a page mounted under the wrong one,
+  and what it catches now is a page that lost the site's name altogether.
 
   Background:
     Given the Neon Law Navigator public site is running
@@ -25,10 +29,10 @@ Feature: Public routing across one site's two faces
     Then the response status is 200
     And the page is branded "Neon Law"
 
-  Scenario: The Foundation's front door is its own prefix
+  Scenario: The Foundation's front door is its own prefix, under the shared name
     When a visitor opens /foundation
     Then the response status is 200
-    And the page is branded "Neon Law Foundation"
+    And the page is branded "Neon Law"
 
   Scenario Outline: The firm's anonymous marketing surface serves at the root
     # These 404'd on the Foundation host while the two were separate. One

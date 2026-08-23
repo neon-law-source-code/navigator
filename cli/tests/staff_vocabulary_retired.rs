@@ -32,7 +32,6 @@ const ALLOWED: &[&str] = &[
     // legal aid center that cannot staff a matter sends it to the Foundation.
     "capacity to staff",
     "cannot staff",
-    "unstaffed",
     // The same copy's clinic-training offer, where staff means the center's
     // own personnel and not anyone holding a Navigator role.
     "clinic staff",

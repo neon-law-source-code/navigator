@@ -147,6 +147,42 @@ Three consequences follow, and they are the trade being made:
 The trademark reservation below protects the thing that actually distinguishes the practice, which is why the software
 itself does not need protecting.
 
+## Commercial licensing
+
+The AGPL is granted by the copyright holder, so only the copyright holder can relieve anyone of it. That holder is
+**Shook Law PLLC**, and this section says what follows from that — including the two things the Foundation cannot do.
+
+**What is on offer is relief from § 13, and nothing else.** A firm that modifies Navigator and operates it for clients
+owes those clients the corresponding source of its version. A firm that would rather keep its modifications to itself
+can be licensed out of that obligation. Nothing else about the grant is for sale, because nothing else needs to be:
+running, forking, modifying, and redistributing Navigator are already free to everyone, and no exception is required for
+any of them.
+
+**Only the Firm can grant it.** This is not a policy choice that could have gone another way. A proprietary exception is
+a permission carved out of the copyright, and a permission can only be given by whoever holds the right — so the
+Foundation, holding a licence to publish rather than the copyright itself, has nothing to carve from. Being
+non-exclusive, its right to publish does not narrow what the Firm may separately license; being a licence rather than
+title, it does not widen what the Foundation may.
+
+**The Foundation may sublicense to legal aid organizations at cost**, including relief from § 13. That is the one
+sublicensing power it has, it is bounded by who receives it and by what it may charge, and it exists because a legal aid
+office running a modified Navigator for its clients should not have to choose between the source obligation and its
+capacity to meet it. At cost means what it says: the programme recovers what it spends and is not a revenue line.
+
+**The Foundation may not grant commercial exceptions.** Keeping that with the Firm is what keeps the two relationships
+legible. A charity whose controlling insider's firm holds the exclusive right to monetize the charity's principal asset
+is a hard arrangement to explain and a harder one to price; a charity that publishes the work and serves legal aid with
+it is not making that argument at all.
+
+**No price is published here or anywhere on the website.** A deployment's scope is not knowable in advance, so a figure
+would be a floor dressed as a fee — the same reason litigation and fractional general counsel carry none while the
+consumer flat fees are published in full. Write to [contact@neonlaw.org](mailto:contact@neonlaw.org).
+
+One thing worth stating plainly, because the section invites the opposite reading: **none of this is a restriction on
+the public grant.** Every right `AGPL-3.0-only` gives you, you already have, and no copy already taken can be reached by
+anything in this section. A commercial licence is an *additional* permission somebody may want; the absence of one takes
+nothing away.
+
 ## Trademarks
 
 **NEON LAW** is a registered trademark, U.S. Reg. No. 6,325,650, owned by Shook Law PLLC. The licence grants rights in

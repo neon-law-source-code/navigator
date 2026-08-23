@@ -829,6 +829,113 @@ fn the_image_push_is_unconditional_and_scoped_to_the_publish_jobs() {
     );
 }
 
+/// Who may grant a proprietary exception, and who may not.
+///
+/// This is the part of the licensing story with a wrong answer that would look
+/// reasonable. The Foundation publishes Navigator, so "the Foundation licenses
+/// Navigator" reads as true — and if it were true of *commercial* licensing it
+/// would mean a charity selling proprietary exceptions to its controlling
+/// insider's software, which is a much harder thing to explain than it is to
+/// write down by accident.
+///
+/// The rule underneath it is mechanical, not a policy preference. A proprietary
+/// exception is a permission carved out of the copyright, and only the holder of
+/// a right can give a permission under it. The Foundation holds a licence to
+/// publish, not title, so there is nothing for it to carve from. Its one
+/// sublicensing power is bounded on both sides — legal aid organizations, at
+/// cost — and the boundary is the assertion, because a programme that quietly
+/// widened would be invisible in a diff of prose.
+///
+/// The no-price rule is asserted alongside it. The consumer flat fees are
+/// published in full and deliberately; a deployment's scope is not knowable in
+/// advance, so a figure here would be a floor dressed as a fee.
+#[test]
+fn only_the_copyright_holder_may_grant_a_commercial_exception() {
+    /// The prose that has to be present, and what each part of it prevents.
+    const REQUIRED: [(&str, &str); 4] = [
+        (
+            "only the copyright holder can relieve",
+            "the section must say the exception is the holder's alone to grant",
+        ),
+        (
+            "legal aid organizations at cost",
+            "the Foundation's one sublicensing power must be bounded by who \
+             receives it and what it may charge",
+        ),
+        (
+            "may not grant commercial exceptions",
+            "the section must say plainly what the Foundation cannot do; the \
+             reasonable-looking wrong answer is that it can",
+        ),
+        (
+            "no price is published",
+            "a deployment is quoted per engagement, and the section must say so \
+             rather than leaving room for a figure",
+        ),
+    ];
+
+    let doc = "docs/licensing.md";
+    let body = read(doc);
+    let flat = flat_lower(&body);
+
+    assert!(
+        flat.contains("## commercial licensing"),
+        "{doc} must carry a Commercial licensing section: a reader working out \
+         whether they need to buy anything should not have to infer it from the \
+         holder's identity"
+    );
+
+    for (required, why) in REQUIRED {
+        assert!(
+            flat.contains(required),
+            "{doc}: {why} (missing `{required}`)"
+        );
+    }
+
+    assert!(
+        body.contains(OWNER),
+        "{doc} must name `{OWNER}` as the party able to grant an exception — \
+         naming the power without naming the holder is what sends a reader to \
+         the wrong organization"
+    );
+
+    // The grant is not narrowed by any of it, and the section has to say so.
+    // Someone who reads only this heading should not come away believing a fork
+    // now needs permission it never needed.
+    assert!(
+        flat.contains("restriction on the public grant"),
+        "{doc} must state that commercial licensing restricts nothing in the \
+         public grant; a section about buying permission reads as a section \
+         about needing it"
+    );
+
+    // No figure, in any of the shapes one arrives in — read over this section
+    // rather than the whole document. A file-wide check is both too blunt and
+    // too weak here: `$CARGO_HOME` in the release notes is not a price, and a
+    // figure that landed in some other section would not be this guard's to
+    // catch.
+    let section = {
+        let heading = body
+            .find("## Commercial licensing")
+            .expect("the heading was asserted above");
+        let rest = &body[heading + "## Commercial licensing".len()..];
+        let end = rest.find("\n## ").map_or(rest.len(), |at| at);
+        rest[..end].to_lowercase()
+    };
+    assert!(
+        !section.contains('$'),
+        "the Commercial licensing section publishes no figure; a deployment is \
+         quoted per engagement"
+    );
+    for shape in ["per seat", "per year", "starting at", "annual fee", "usd"] {
+        assert!(
+            !section.contains(shape),
+            "`{shape}` reads as a price in the Commercial licensing section, \
+             which quotes per engagement"
+        );
+    }
+}
+
 /// Public surfaces that name the NEON LAW registration attribute it to the Firm.
 ///
 /// U.S. Reg. No. 6,325,650 belongs to the Firm, and the Firm licenses it to the

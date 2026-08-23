@@ -827,14 +827,19 @@ fn markdown_documents() -> Vec<PathBuf> {
 /// obligation the operator's rather than the public's.
 #[test]
 fn no_document_reads_section_13_as_a_duty_to_this_project_or_the_public() {
-    /// How a reader names the clause. Both spellings appear in the tree.
-    const CITATIONS: [&str; 2] = ["§ 13", "section 13"];
+    /// How a reader names the clause.
+    ///
+    /// The section number is the obvious anchor and the incomplete one: a
+    /// marketing page reaches for "the Affero clause" instead, which is how one
+    /// misstatement outlived the first version of this guard. Both spellings of
+    /// the number appear in the tree, and so does the name.
+    const CITATIONS: [&str; 3] = ["§ 13", "section 13", "affero clause"];
 
     /// Phrasings that state the wrong obligation, each with what it gets wrong.
     ///
     /// Matched inside a window around a § 13 citation, so ordinary uses
     /// elsewhere in a document are not the guard's business.
-    const MISREADINGS: [(&str, &str); 8] = [
+    const MISREADINGS: [(&str, &str); 10] = [
         ("come back", "§ 13 sends nothing back to this project"),
         ("comes back", "§ 13 sends nothing back to this project"),
         ("contribute back", "§ 13 obliges no contribution upstream"),
@@ -855,10 +860,29 @@ fn no_document_reads_section_13_as_a_duty_to_this_project_or_the_public() {
             "to the public",
             "§ 13 runs to the operator's own remote users, not to the public",
         ),
+        (
+            "puts theirs back",
+            "§ 13 puts nothing back into the commons; it owes source to that operator's own users",
+        ),
+        (
+            "put theirs back",
+            "§ 13 puts nothing back into the commons; it owes source to that operator's own users",
+        ),
     ];
 
     /// What names the people actually owed the source.
-    const RECIPIENTS: [&str; 2] = ["those users", "your users"];
+    ///
+    /// Several spellings, because the register changes with the surface: a terms
+    /// file says "those users" and a marketing page says the clients using it.
+    /// Naming them is the assertion — which of the words is used is not.
+    const RECIPIENTS: [&str; 6] = [
+        "those users",
+        "your users",
+        "those clients",
+        "clients using it",
+        "its own users",
+        "their own users",
+    ];
 
     let mut citing = Vec::new();
     let mut offenders = Vec::new();

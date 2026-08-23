@@ -216,7 +216,7 @@ proofs of concept sit here too.
 If your case does not obviously fall on one side, write to `contact@neonlaw.org` and ask before deploying rather than
 after. A question costs nothing; a production deployment discovered later is an awkward conversation for both parties.
 
-### Section 13 comes back at the Change Date
+### Section 13 returns at the Change Date
 
 Navigator was Affero-licensed before this licence took effect, and § 13 is what a returning reader looks for first, so
 it is worth being exact about where it went.
@@ -227,8 +227,9 @@ permit without a commercial licence. The obligation is not relaxed; the activity
 
 **When a version reaches its Change Date it becomes `AGPL-3.0-only`, and § 13 attaches to that version in full.** From
 then on, anyone who modifies that version and lets users interact with it remotely over a network must offer *those
-users* — the people using that operator's own instance — the corresponding source of what they are running. It obliges
-nothing upstream and nothing to the public: no fork owes this project anything, then or now.
+users* — the people using that operator's own instance — the corresponding source of what they are running. The duty
+runs in that one direction only. It reaches neither this project nor the world at large: no fork owes anything here,
+then or now.
 
 Two things § 13 will still not do when it arrives:
 

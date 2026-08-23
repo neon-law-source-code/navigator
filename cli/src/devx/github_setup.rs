@@ -1699,7 +1699,7 @@ mod tests {
             "the tap must resolve to its own policy, not the common gate"
         );
         assert_eq!(
-            policy_for("NEON-LAW-FOUNDATION/Homebrew-Navigator"),
+            policy_for("NEON-LAW-SOURCE-CODE/Homebrew-Navigator"),
             TAP_POLICY,
             "slugs are matched case-insensitively, as they are for Navigator itself"
         );
@@ -2178,10 +2178,10 @@ mod tests {
             NAVIGATOR_POLICY
         );
         assert_eq!(
-            policy_for("NEON-LAW-FOUNDATION/Navigator"),
+            policy_for("NEON-LAW-SOURCE-CODE/Navigator"),
             NAVIGATOR_POLICY
         );
-        for slug in ["neon-law-source-code/other", "NEON-LAW-FOUNDATION/ux"] {
+        for slug in ["neon-law-source-code/other", "NEON-LAW-SOURCE-CODE/ux"] {
             assert_eq!(policy_for(slug), COMMON_POLICY, "{slug}");
         }
     }
@@ -2225,7 +2225,7 @@ mod tests {
     /// organization is a different organization.
     #[test]
     fn only_the_public_organization_defaults_to_public() {
-        for slug in [NAVIGATOR_SLUG, TAP_SLUG, "NEON-LAW-FOUNDATION/anything"] {
+        for slug in [NAVIGATOR_SLUG, TAP_SLUG, "NEON-LAW-SOURCE-CODE/anything"] {
             assert_eq!(
                 policy_for(slug).default_visibility,
                 Visibility::Public,
@@ -2364,7 +2364,7 @@ mod tests {
         for slug in [
             NAVIGATOR_SLUG,
             TAP_SLUG,
-            "NEON-LAW-FOUNDATION/Navigator",
+            "NEON-LAW-SOURCE-CODE/Navigator",
             "a-deployment-org/cruller-v-prine",
             "A-DEPLOYMENT-ORG/cruller-v-prine",
         ] {

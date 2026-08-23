@@ -16,8 +16,8 @@ over the whole tree, `templates/` included. You may read, build, fork, modify, r
 use of it with no permission to ask for. **Production use is the obligation to know before you deploy:** the Additional
 Use Grant is `None`, so running Navigator to deliver legal services to other people needs a commercial licence from the
 firm. Each version converts to `AGPL-3.0-only` four years after it is published, and § 13 attaches to that version in
-full when it does — it obliges an operator to offer its own remote users the corresponding source. See
-[`LICENSE`](LICENSE) for the grant, [`NOTICE`](NOTICE) for what the firm says about it, and
+full when it does — it obliges an operator to offer those users, the people reaching its own instance, the corresponding
+source. See [`LICENSE`](LICENSE) for the grant, [`NOTICE`](NOTICE) for what the firm says about it, and
 [`docs/licensing.md`](docs/licensing.md).
 
 ## How contributions are licensed

@@ -16,10 +16,15 @@
 //! wrong tier. So the invariant is asserted rather than remembered.
 //!
 //! What survives is `staff` in its ordinary English sense — personnel, and the
-//! verb "to staff a matter" — which the Foundation's copy uses heavily and
-//! which never names the role. Each surviving phrase is allowed explicitly
-//! rather than by exempting whole files, so a file carrying allowed prose still
-//! fails if a role reference appears in it later.
+//! verb "to staff a matter" — which never names the role. Each surviving phrase
+//! is allowed explicitly rather than by exempting whole files, so a file
+//! carrying allowed prose still fails if a role reference appears in it later.
+//!
+//! The list shrinks as the prose does. Retiring the Foundation surface took its
+//! marketing copy with it, and four entries here described phrases only that
+//! copy used — so they were dropped rather than kept as an exemption matching
+//! nothing, which is what this file's own `every_allowed_phrase_still_occurs`
+//! test insists on.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -28,14 +33,6 @@ use std::path::{Path, PathBuf};
 /// cleared of every one of these before it is checked, so a line carrying both
 /// an allowed phrase and a stray role reference still fails.
 const ALLOWED: &[&str] = &[
-    // `neon/src/copy.rs` — Foundation copy, where "to staff" is the verb: a
-    // legal aid center that cannot staff a matter sends it to the Foundation.
-    "capacity to staff",
-    "cannot staff",
-    // The same copy's clinic-training offer, where staff means the center's
-    // own personnel and not anyone holding a Navigator role.
-    "clinic staff",
-    "legal aid staff",
     // `webapp/src/template_gallery.rs` — the gallery's reader is a nonprofit's
     // employee, who holds no role in this application at all.
     "nonprofit staffer",

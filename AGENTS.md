@@ -8,12 +8,12 @@ Business Source License 1.1 with its parameters filled in and its terms otherwis
 names it; [`NOTICE`](NOTICE) beside it carries the copyright line and the Firm's own statements, and is where any
 wording of ours belongs. **The parameter that matters operationally is `Additional Use Grant: None`** — non-production
 use is free, and running Navigator to deliver legal services to other people needs a commercial licence from the Firm.
-Each version converts to `AGPL-3.0-only` four years after it is published, and § 13 attaches to that version then. The
-Foundation's former right to publish under the AGPL was released in writing before the relicence, and copies distributed
-under the AGPL stay AGPL permanently. Outside contributions are **currently closed** — point anyone asking at
-`contact@neonlaw.org` — though the work in here assigns to the Firm. The marks are reserved. This monorepo holds one
-website — the firm at the root — and the delivery stack for legal services. See
-[`docs/licensing.md`](docs/licensing.md).
+Each version converts to `AGPL-3.0-only` four years after it is published, and § 13 then obliges an operator who
+modified that version to offer those users — its own remote users — the corresponding source. The Foundation's former
+right to publish under the AGPL was released in writing before the relicence, and copies distributed under the AGPL stay
+AGPL permanently. Outside contributions are **currently closed** — point anyone asking at `contact@neonlaw.org` — though
+the work in here assigns to the Firm. The marks are reserved. This monorepo holds one website — the firm at the root —
+and the delivery stack for legal services. See [`docs/licensing.md`](docs/licensing.md).
 
 **Everything you write here is published.** The no-client-data rule below is what stands between a live legal practice
 and a public tree, and it is now enforced by a test rather than by the absence of a publication path.

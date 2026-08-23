@@ -370,6 +370,31 @@ releases, and production handoff live in [`docs/gitops.md`](docs/gitops.md).
 - **Clean task-owned resources.** Tear down the worktree's isolated KIND tier and never prune Docker volumes without
   explicit user approval. See [`docs/agent-workflows.md`](docs/agent-workflows.md#resource-cleanup).
 
+## Cursor Cloud specific instructions
+
+A Cursor Cloud Agent boots from [`.cursor/environment.json`](.cursor/environment.json), whose `install` runs
+[`.cursor/install.sh`](.cursor/install.sh): it materializes the pinned toolchain, installs `cargo-nextest`, provisions
+the system packages the test build needs (`libssl-dev`/`pkg-config` for `fantoccini`'s `openssl-sys`, `lld` for linking
+the test binaries, and `kubectl` for the `cli::devx::ship` `kubectl kustomize` tests), and warms the build cache.
+
+The Cloud VM runs the zero-infrastructure loop above — build, `cargo fmt`, `cargo clippy`, the test gate, `navigator`,
+and editing. It does **not** run the KIND dependency tier: nested Docker + Kubernetes is a developer-machine flow, so
+`dev up` and `dev worktree-env up` are out of scope there. To exercise the running site in the Cloud VM, boot `neon`
+against a standalone SurrealDB server (`surreal start --user root --pass root memory`) with the `NAVIGATOR_SURREAL_*`,
+`fs` storage, `SESSION_SECRET`, and placeholder `RESTATE_BROKER_URL`/`NAVIGATOR_CLAMD_ADDR` the boot invariants require;
+the latter two are read lazily, so the pages render without those services.
+
+Run the full workspace suite with the same knobs CI uses (see [`.github/workflows/ci.yml`](.github/workflows/ci.yml)),
+because the Cloud disk cannot hold the ~40 test binaries at the default `debuginfo=2`:
+
+```bash
+export CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
+export RUSTFLAGS="-C link-arg=-fuse-ld=lld -C strip=symbols"
+cargo nextest run --workspace --test-threads 4 && cargo test -p features
+```
+
+Start SurrealDB and set `NAVIGATOR_SURREAL_*` (root/root) to include the server-mode lane; otherwise it self-skips.
+
 ## Where to start
 
 - [`docs/index.md`](docs/index.md) — documentation map.

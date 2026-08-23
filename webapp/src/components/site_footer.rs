@@ -159,6 +159,15 @@ fn address_lines(address: &str) -> Vec<&str> {
     lines
 }
 
+/// The footer's email tile opens a message that is already filed. A mail
+/// client shows the subject before the body, so naming what the sender wants —
+/// legal services — is what lets the firm route the message on sight rather
+/// than reading an untitled note to find out. `%20` rather than `+`: only the
+/// percent form decodes to a space in every client's `mailto:` handler.
+fn mailto_href(email: &str) -> String {
+    format!("mailto:{email}?subject=Legal%20services.")
+}
+
 /// `tel:` dials digits, not the human spacing a number is written with.
 fn tel_href(phone: &str) -> String {
     format!(
@@ -356,16 +365,19 @@ pub fn SiteFooterLegal(
                 if has_contact {
                     div { class: "site-footer__contact",
                         // The email and phone channels are tiles in the same
-                        // grid as the offices — same size, filled with the
-                        // brand color rather than bordered, so the two
-                        // actionable contact links read as a distinct kind of
-                        // tile from the plain address cards beside them.
+                        // grid as the offices, and wear the same card the
+                        // practice boxes on `/` do — one ground, one border,
+                        // and the same swell-and-lift under a pointer. What
+                        // marks them as the two actionable channels is that
+                        // motion, not a fill: a brand-filled pill read as a
+                        // pair of buttons shouting over the addresses beside
+                        // them, and the footer is not where the page shouts.
                         ul { class: "site-footer__offices",
                             if !contact_email.is_empty() {
                                 li { class: "site-footer__office site-footer__office--channel",
                                     a {
                                         class: "site-footer__channel-link",
-                                        href: "mailto:{contact_email}",
+                                        href: mailto_href(&contact_email),
                                         Icon { name: IconName::EnvelopeFill }
                                         span { "{contact_email}" }
                                     }
@@ -906,9 +918,11 @@ mod tests {
             out.contains(r#"class="site-footer__logo" src="/public/logo-firm.svg" alt="""#),
             "the supplied brand mark renders as decorative footer identity: {out}"
         );
+        // The subject rides the address, so the firm reads what the sender
+        // wants from the message list.
         assert!(
-            out.contains(r#"href="mailto:support@neonlaw.com""#),
-            "the CTA mails the firm's inbound address: {out}"
+            out.contains(r#"href="mailto:support@neonlaw.com?subject=Legal%20services.""#),
+            "the CTA mails the firm's inbound address under a named subject: {out}"
         );
         // `tel:` dials digits only — the human spacing would not dial.
         assert!(

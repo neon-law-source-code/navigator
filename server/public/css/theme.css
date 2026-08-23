@@ -70,13 +70,26 @@ textarea {
   color: #ffffff;
 }
 
-/* Same fix as the button variants above, for the footer's filled contact-
-   channel tiles: without this, the link color from `.nav-theme a` renders
-   over their own filled brand-color background — the icon and the address
-   both go invisible at teal-on-teal. */
-.nav-theme a.site-footer__channel-link,
-.nav-theme a.site-footer__channel-link:hover {
-  color: var(--nav-color-on-primary);
+/* The footer's contact-channel tiles are cards whose whole surface is the
+   anchor, so `.nav-theme a:hover` above would recolour and underline the tile
+   itself — the icon and the address read as a wall of link text. These match
+   that rule's specificity to keep the tile a tile; the card's own border and
+   swell are the affordance that says it is clickable. Same reasoning, and the
+   same shape of fix, as `.nav-theme a.home-practice:hover` in `home.css`. */
+.nav-theme a.site-footer__channel-link {
+  color: var(--nav-color-text);
+  text-decoration: none;
+}
+
+/* The one line of text a channel tile carries is its heading, so it takes the
+   brand colour under a pointer exactly as `.home-practice__heading` does —
+   still no underline, because the tile's border and lift are already saying it
+   is clickable. `--nav-color-primary-hover` is the token `--firm-brand-strong`
+   aliases. */
+.nav-theme a.site-footer__channel-link:hover,
+.nav-theme a.site-footer__channel-link:focus-visible {
+  color: var(--nav-color-primary-hover);
+  text-decoration: none;
 }
 
 /* Authenticated Navigator chrome. The route adapter supplies the visible
@@ -1065,13 +1078,94 @@ a.nav-pagination__link:hover {
 }
 
 /* The two actionable contact channels (email, phone) are tiles in the same
-   grid as the offices, sized identically by `.site-footer__office`, but
-   filled with the brand color rather than bordered — a visual cue that these
-   two are links to act on, not addresses to read. */
+   grid as the offices, sized and grounded identically by
+   `.site-footer__office`, and they answer a pointer the way the practice cards
+   on `/` do: the border takes the brand colour, the tile lifts, and a wash
+   swells across it. Motion rather than a fill is what marks them as the
+   actionable pair — a brand-filled pill read as two buttons shouting over the
+   addresses beside them.
+
+   `isolation` is what lets the wash sit under the tile's own text: a
+   negative-`z-index` pseudo-element paints behind its parent's background
+   unless the parent is a stacking context, which would hide the wash entirely.
+   The `overflow: hidden` it needs is already on `.site-footer__office`.
+
+   The values here are `home.css`'s deliberately — same 240ms border and lift,
+   same 720ms swell — because a reader who met that card on the way down the
+   page should meet the same one at the bottom of it. `--nav-color-primary` is
+   the token `--firm-brand` aliases, named directly because `brand-firm.css` is
+   hoisted by the marketing pages while this footer ships on every page. */
 .site-footer__office--channel {
   display: flex;
-  border-color: transparent;
-  background: var(--nav-color-primary);
+  isolation: isolate;
+  transition:
+    border-color 240ms ease,
+    transform 240ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* The tile hears about its own link's state: the anchor is the hit area, and
+   the tile around it is what the reader sees respond. */
+.site-footer__office--channel:has(> .site-footer__channel-link:hover),
+.site-footer__office--channel:has(> .site-footer__channel-link:focus-visible) {
+  border-color: var(--nav-color-primary);
+  transform: translateY(-2px);
+}
+
+/* The wave, as `.home-practice::after` draws it: a circle anchored off the
+   bottom-left corner, scaled from nothing to past the top-right, so the wash
+   crosses the tile on the diagonal rather than fading in flat. */
+.site-footer__office--channel::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset-inline-start: -25%;
+  inset-block-end: -55%;
+  inline-size: 150%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 30% 70%,
+    var(--nav-color-primary) 0%,
+    color-mix(in srgb, var(--nav-color-primary) 45%, transparent) 45%,
+    transparent 72%
+  );
+  opacity: 0;
+  transform: scale(0.2);
+  transform-origin: 0% 100%;
+  transition:
+    transform 720ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 320ms ease;
+}
+
+.site-footer__office--channel:has(> .site-footer__channel-link:hover)::after,
+.site-footer__office--channel:has(
+    > .site-footer__channel-link:focus-visible
+  )::after {
+  opacity: 0.22;
+  transform: scale(1.5);
+}
+
+/* The wave is decoration. Suppressed, the border still answers the pointer, so
+   the tile never stops responding — it just stops swelling and lifting. */
+@media (prefers-reduced-motion: reduce) {
+  .site-footer__office--channel,
+  .site-footer__office--channel::after {
+    transition-duration: 1ms;
+  }
+
+  .site-footer__office--channel:has(> .site-footer__channel-link:hover),
+  .site-footer__office--channel:has(
+      > .site-footer__channel-link:focus-visible
+    ) {
+    transform: none;
+  }
+
+  .site-footer__office--channel:has(> .site-footer__channel-link:hover)::after,
+  .site-footer__office--channel:has(
+      > .site-footer__channel-link:focus-visible
+    )::after {
+    transform: scale(1.5);
+  }
 }
 
 .site-footer__channel-link {
@@ -1080,16 +1174,11 @@ a.nav-pagination__link:hover {
   justify-content: center;
   gap: 0.6rem;
   width: 100%;
-  color: var(--nav-color-on-primary);
+  color: var(--nav-color-text);
   font-size: 1.05rem;
   font-weight: 600;
   text-align: center;
   text-decoration: none;
-}
-
-.site-footer__channel-link:hover,
-.site-footer__channel-link:focus-visible {
-  text-decoration: underline;
 }
 
 .site-footer__channel-link .nav-icon {

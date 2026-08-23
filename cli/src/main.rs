@@ -726,6 +726,15 @@ enum OpsCmd {
         /// `--restart-only`.
         #[arg(long)]
         tag: Option<String>,
+        /// Verify the web service account's self-signing IAM binding instead
+        /// of establishing it: when the binding is absent the roll stops and
+        /// prints the `gcloud` command that would grant it, rather than
+        /// running that command itself. The lane for an operator who holds
+        /// the release tag but not `iam.serviceAccounts.setIamPolicy` — the
+        /// binding is still asserted, since a web pod without it 500s every
+        /// document download; only the grant moves to someone permitted it.
+        #[arg(long)]
+        assert_signing_iam: bool,
     },
     /// Export `SurrealDB` into the firm-controlled object-storage archive, or
     /// prove one stored export can be restored into a disposable namespace.

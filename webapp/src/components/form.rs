@@ -12,6 +12,8 @@
 
 use dioxus::prelude::*;
 
+use super::{PersonChoice, PersonPicker};
+
 /// Escape a string for safe inclusion as `<textarea>` RCDATA content: `&`
 /// becomes `&amp;` and `<` becomes `&lt;`, so the value can never introduce an
 /// entity ambiguity or a `</textarea>` that closes the element early.
@@ -58,6 +60,13 @@ pub enum FieldKind {
     },
     Select {
         options: Vec<Choice>,
+        selected: Option<String>,
+        disabled: bool,
+    },
+    /// A searchable selector whose submitted value is a Person foreign key.
+    PersonPicker {
+        blank_label: String,
+        people: Vec<PersonChoice>,
         selected: Option<String>,
         disabled: bool,
     },
@@ -188,6 +197,29 @@ impl Field {
         )
     }
 
+    /// A searchable picker for a person foreign key. The form posts the
+    /// selected person's id under `name`; the displayed name and email remain
+    /// presentation context only.
+    #[must_use]
+    pub fn person_picker(
+        label: impl Into<String>,
+        name: impl Into<String>,
+        blank_label: impl Into<String>,
+        people: Vec<PersonChoice>,
+        selected: Option<String>,
+    ) -> Self {
+        Self::new(
+            label,
+            name,
+            FieldKind::PersonPicker {
+                blank_label: blank_label.into(),
+                people,
+                selected,
+                disabled: false,
+            },
+        )
+    }
+
     /// A `number` input.
     #[must_use]
     pub fn number(
@@ -294,7 +326,9 @@ impl Field {
     #[must_use]
     pub fn disabled(mut self) -> Self {
         match &mut self.kind {
-            FieldKind::Input { disabled, .. } | FieldKind::Select { disabled, .. } => {
+            FieldKind::Input { disabled, .. }
+            | FieldKind::Select { disabled, .. }
+            | FieldKind::PersonPicker { disabled, .. } => {
                 *disabled = true;
             }
             FieldKind::Textarea { .. } | FieldKind::Checkbox { .. } | FieldKind::Radio { .. } => {}
@@ -440,6 +474,8 @@ impl Field {
         };
         let help = self.help.clone();
         let error = self.error.clone();
+        let picker_help = help.clone();
+        let picker_error = error.clone();
         let name = self.name.clone();
         let label = self.label.clone();
         let required = self.required;
@@ -567,6 +603,25 @@ impl Field {
                         }
                     }
                     {help_block}
+                }
+            },
+            FieldKind::PersonPicker {
+                blank_label,
+                people,
+                selected,
+                disabled,
+            } => rsx! {
+                PersonPicker {
+                    label: label.clone(),
+                    name: name.clone(),
+                    blank_label: blank_label.clone(),
+                    people: people.clone(),
+                    selected: selected.clone(),
+                    help: picker_help,
+                    error: picker_error,
+                    required,
+                    disabled: *disabled,
+                    control_id: Some(control_id.clone()),
                 }
             },
         }

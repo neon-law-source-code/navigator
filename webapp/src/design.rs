@@ -35,10 +35,10 @@ use crate::components::{
     FooterOffice, FormCard, Freshness, GitHubStars, Icon, IconName, ImpersonationBanner,
     ImpersonationView, LawyerPortalBreadcrumb, LegalBlueprintDisclaimer, NavigatorDestination,
     NavigatorFooter, NavigatorFooterLink, NavigatorNavbar, NavigatorShell, Pagination,
-    PeopleListInputs, PricingCard, PricingSection, PublicShell, RowActions, RunParagraph,
-    SampleMattersBanner, SiteFooterFoundation, SiteFooterLegal, SiteHeader, SiteNavLink,
-    SocialMeta, SortState, TestimonialCard, TestimonialSection, Toast, ToastTone,
-    THEME_STYLESHEET_HREF,
+    PeopleListInputs, PersonChoice, PersonPicker, PricingCard, PricingSection, PublicShell,
+    RowActions, RunParagraph, SampleMattersBanner, SiteFooterFoundation, SiteFooterLegal,
+    SiteHeader, SiteNavLink, SocialMeta, SortState, TestimonialCard, TestimonialSection, Toast,
+    ToastTone, THEME_STYLESHEET_HREF,
 };
 // The vendor marks come from their own module rather than the theme root: they
 // are the one component whose colours are a third party's rather than the
@@ -1158,6 +1158,11 @@ fn FormShowcase() -> Element {
             .help("We'll only use this to reply.")
             .error("Enter a valid email address."),
     ];
+    let people = vec![
+        PersonChoice::new("demo-ada", "Ada Lovelace", "ada@example.com"),
+        PersonChoice::new("demo-linus", "Linus Torvalds", "linus@example.com"),
+        PersonChoice::new("demo-margaret", "Margaret Hamilton", "margaret@example.com"),
+    ];
     rsx! {
         section {
             h2 { "Form" }
@@ -1180,6 +1185,30 @@ fn FormShowcase() -> Element {
                 submit_label: "Send".to_string(),
                 heading: crate::components::Heading::H2,
                 fields: rejected,
+            }
+            h3 { "Person foreign key" }
+            p {
+                "A native person-id field: the person’s name and email make the choice clear, \
+                 while the submitted value remains the foreign-key id. Type a name or email to \
+                 narrow the choices after hydration."
+            }
+            FormCard {
+                title: "Person picker".to_string(),
+                action: "/design".to_string(),
+                method: "get".to_string(),
+                submit_label: "Choose person".to_string(),
+                heading: crate::components::Heading::H2,
+                fields: Vec::new(),
+                extra_fields: Some(rsx! {
+                    PersonPicker {
+                        label: "Client".to_string(),
+                        name: "design_person_id".to_string(),
+                        blank_label: "— pick a person —".to_string(),
+                        people,
+                        help: Some("Search matches either a person’s name or email address.".to_string()),
+                        required: true,
+                    }
+                }),
             }
         }
     }

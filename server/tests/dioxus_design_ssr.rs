@@ -168,6 +168,19 @@ async fn design_gallery_renders_dioxus_cards_and_toasts() {
 }
 
 #[tokio::test]
+async fn design_gallery_renders_the_searchable_person_picker() {
+    let (status, html) = render_design().await;
+    assert_eq!(status, StatusCode::OK, "{html}");
+    assert!(html.contains("Person foreign key"), "{html}");
+    assert!(html.contains(r#"id="design_person_id-search""#), "{html}");
+    assert!(html.contains(r#"name="design_person_id""#), "{html}");
+    assert!(
+        html.contains("Ada Lovelace &#60;ada@example.com&#62;"),
+        "{html}"
+    );
+}
+
+#[tokio::test]
 async fn demo_table_ssrs_its_rows_with_sort_and_pagination_anchors() {
     // The demo table's server function reads the query and SSRs the first page
     // of the synthetic rows — in the HTML before any JS runs.

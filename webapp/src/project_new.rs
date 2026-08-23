@@ -32,7 +32,7 @@
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::components::{Choice, Field, FormCard, Heading};
+use crate::components::{Choice, Field, FormCard, Heading, PersonChoice};
 use crate::people::ViewerRole;
 use crate::project_edit::{app_navbar, entity_options, DESCRIPTION_HELP, ENTITY_HELP};
 
@@ -97,7 +97,7 @@ pub struct ProjectNewView {
     pub entities: Vec<crate::project_edit::EntityOption>,
     /// Existing `client`-role persons: a matter's client-side DRI is a real,
     /// pre-existing client of record, never a firm attorney.
-    pub clients: Vec<IdChoice>,
+    pub clients: Vec<PersonChoice>,
     pub entity_types: Vec<IdChoice>,
     pub jurisdictions: Vec<IdChoice>,
     pub csrf_token: String,
@@ -167,10 +167,7 @@ pub async fn get_project_new_form() -> Result<ProjectNewView, ServerFnError> {
         .map_err(|e| ServerFnError::new(e.to_string()))?
         .into_iter()
         .filter(|p| p.role == store::persons::Role::Client)
-        .map(|p| IdChoice {
-            id: p.id.to_string(),
-            label: p.name,
-        })
+        .map(|p| PersonChoice::new(p.id.to_string(), p.name, p.email))
         .collect();
     // The entity-type reference table lives in SurrealDB (ENG-20);
     // `list` keeps the name ordering this picker always had.
@@ -263,10 +260,11 @@ fn open_matter_form(view: &ProjectNewView) -> Element {
             3,
         )
         .help(DESCRIPTION_HELP),
-        Field::select(
+        Field::person_picker(
             "Client",
             "client_dri_person_id",
-            id_options("— pick the client —", &view.clients),
+            "— pick the client —",
+            view.clients.clone(),
             selected_client,
         )
         .required()
@@ -434,6 +432,7 @@ pub fn LawyerProjectNew() -> Element {
 #[cfg(test)]
 mod tests {
     use super::{new_body, IdChoice, ProjectNewQuery, ProjectNewView};
+    use crate::components::PersonChoice;
     use crate::people::ViewerRole;
     use crate::project_edit::EntityOption;
 
@@ -450,10 +449,11 @@ mod tests {
                 id: ENTITY_ID.to_string(),
                 name: "Acme".to_string(),
             }],
-            clients: vec![IdChoice {
-                id: CLIENT_ID.to_string(),
-                label: "Libra Client".to_string(),
-            }],
+            clients: vec![PersonChoice::new(
+                CLIENT_ID,
+                "Libra Client",
+                "libra@example.com",
+            )],
             entity_types: vec![IdChoice {
                 id: TYPE_ID.to_string(),
                 label: "LLC".to_string(),
@@ -489,6 +489,20 @@ mod tests {
         // always opens `open`; navigator#770).
         assert!(html.contains(r#"name="attestation""#), "{html}");
         assert!(!html.contains(r#"name="status""#), "{html}");
+    }
+
+    #[test]
+    fn the_client_picker_displays_email_and_allows_a_name_or_email_search() {
+        let html = render(&view(ProjectNewQuery::default()));
+        assert!(
+            html.contains(r#"id="client_dri_person_id-search""#),
+            "{html}"
+        );
+        assert!(html.contains("Type a name or email"), "{html}");
+        assert!(
+            html.contains("Libra Client &#60;libra@example.com&#62;"),
+            "{html}"
+        );
     }
 
     /// The one field a lawyer cannot take back tells them what it is for.

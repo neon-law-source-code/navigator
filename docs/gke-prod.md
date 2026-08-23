@@ -90,9 +90,9 @@ nor the new one. Plan the cutover as a short outage rather than a swap:
    certificate available`) in that window means propagation, not misconfiguration — check the target proxy really
    carries the certificate before changing anything.
 
-The marketing sites in [`marketing-sites.md`](marketing-sites.md) cut over differently and with **no** TLS gap, because
-Certificate Manager authorizes those through a DNS record instead. That option is not available here: the GKE ingress
-owns its certificates. Do not copy that runbook onto a deployment host and expect a seamless switch.
+A Certificate Manager DNS authorization can cut a hostname over with **no** TLS gap, which is how the retired static
+marketing site used to move. That option is not available here: the GKE ingress owns its certificates, so plan for the
+window above rather than expecting a seamless switch.
 
 Verified on the production cutover of 2026-08-05: `www.neonlaw.com` moved off the marketing site, and the host was
 unreachable over HTTPS for roughly half an hour between the DNS change and the edge serving the certificate.

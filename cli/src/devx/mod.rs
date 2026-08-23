@@ -632,47 +632,11 @@ pub enum GcpCmd {
     /// resources, and it refuses a project ID recorded as an environment.
     #[command(subcommand)]
     Hub(GcpHubCmd),
-    /// Provision the static marketing sites — a public bucket and an HTTPS
-    /// load balancer per brand hostname, plus one keyless deploy identity per
-    /// site. The marketing project is not an environment: this command never
-    /// creates GKE, private document storage, or IAP resources, and
-    /// it refuses any project ID other than the recorded marketing project.
-    /// See `docs/marketing-sites.md`.
-    #[command(subcommand)]
-    Marketing(GcpMarketingCmd),
     /// Identity-Aware Proxy operations for the `navigator-web`
     /// backend. Run after the GKE Ingress has provisioned the LB.
     /// See `docs/gemini-enterprise-mcp.md`.
     #[command(subcommand)]
     Iap(IapCmd),
-}
-
-#[derive(Subcommand)]
-pub enum GcpMarketingCmd {
-    /// Create each site's public website bucket, its CDN-backed HTTPS load
-    /// balancer and managed certificate, its deployer service account scoped
-    /// to that one bucket, and the Workload Identity trust that lets the
-    /// site's own repository deploy without a stored key.
-    /// Safe to re-run: every step treats "already exists" as success.
-    ///
-    /// Prints the static IP each hostname's DNS `A` record must point at.
-    /// Managed certificates cannot finish issuing until those records
-    /// resolve, so DNS is deliberately the operator's next step and not
-    /// something this command performs.
-    Setup {
-        /// Google Cloud project that holds the marketing sites. For this
-        /// workspace, `neon-law-marketing`. Refused if it is the image hub or one
-        /// of the environment projects — see `docs/environments.md`.
-        #[arg(long, default_value = crate::devx::gcp::tenants::MARKETING_PROJECT_ID)]
-        project_id: String,
-        /// Bucket and load-balancer location. Falls back to
-        /// `NAVIGATOR_GCP_LOCATION` then the workspace default.
-        #[arg(long, env = "NAVIGATOR_GCP_LOCATION")]
-        region: Option<String>,
-        /// Print the exact plan without authenticating or contacting GCP.
-        #[arg(long)]
-        dry_run: bool,
-    },
 }
 
 #[derive(Subcommand)]
@@ -946,17 +910,6 @@ pub fn dispatch(command: crate::Command) -> Result<()> {
                 config.ci_pusher_account_id = v;
             }
             gcp_hub_setup(project_id, dry_run, config)
-        }
-        crate::Command::Ops(crate::OpsCmd::Gcp(GcpCmd::Marketing(GcpMarketingCmd::Setup {
-            project_id,
-            region,
-            dry_run,
-        }))) => {
-            let mut config = gcp::marketing::MarketingSetupConfig::default();
-            if let Some(v) = region {
-                config.region = v;
-            }
-            gcp_marketing_setup(project_id, dry_run, config)
         }
         crate::Command::Ops(crate::OpsCmd::Gcp(GcpCmd::Iap(IapCmd::Audience {
             project_id,
@@ -1569,85 +1522,6 @@ fn gcp_hub_setup(
             }
         } else {
             tracing::info!(project = %project_id, "hub setup complete");
-        }
-        Ok::<(), anyhow::Error>(())
-    })
-}
-
-fn gcp_marketing_setup(
-    project_id: String,
-    dry_run: bool,
-    config: gcp::marketing::MarketingSetupConfig,
-) -> Result<()> {
-    use std::sync::Arc;
-
-    use gcp::client::{GcpClient, StaticToken, TokenProvider};
-
-    // Refuse a non-marketing project before attempting ADC authentication or
-    // any cloud operation. `gcp::marketing::run` validates again for direct
-    // callers.
-    gcp::tenants::validate_target(gcp::tenants::TenantRole::Marketing, &project_id)?;
-    tracing_subscriber::fmt::try_init().ok();
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .context("build tokio runtime")?;
-    runtime.block_on(async move {
-        let token: Arc<dyn TokenProvider> = if dry_run {
-            Arc::new(StaticToken("dry-run".into()))
-        } else {
-            gcp::auth::adc_token_provider().await?
-        };
-        let mut client = GcpClient::new(token);
-        if dry_run {
-            client = client.with_dry_run();
-        }
-        let outcomes = gcp::marketing::run(&client, &project_id, &config).await?;
-        if dry_run {
-            eprintln!(
-                "--- dry run: {} call(s) would be made ---",
-                client.recorded_calls().len()
-            );
-            for call in client.recorded_calls() {
-                eprintln!("{} {}", call.method, call.url);
-                if let Some(body) = call.body {
-                    eprintln!("  {body}");
-                }
-            }
-        } else {
-            // Two DNS records per site, and their order is the whole point.
-            // The CNAME proves domain control and lets the certificate issue
-            // while the hostname still serves its current site; the A record is
-            // the cutover itself. Publishing the CNAME first is what makes the
-            // move carry no TLS gap, so print both and say which comes first.
-            println!("marketing setup complete in {project_id}\n");
-            for outcome in &outcomes {
-                println!("{} ({})", outcome.domain, outcome.slug);
-                println!("  bucket      {}", outcome.bucket);
-                println!("  deployer    {}", outcome.deployer);
-                println!("  provider    {}", outcome.wif_provider);
-                println!(
-                    "  cert        {}",
-                    outcome.certificate_state.as_deref().unwrap_or("unknown")
-                );
-                match &outcome.dns_authorization {
-                    Some(record) => println!(
-                        "  DNS 1st     {} {} {}",
-                        record.record_type, record.name, record.data
-                    ),
-                    None => println!("  DNS 1st     authorization record not yet readable"),
-                }
-                match &outcome.ip {
-                    Some(ip) => println!("  DNS 2nd     A {} -> {ip}", outcome.domain),
-                    None => println!("  DNS 2nd     address not yet readable"),
-                }
-                println!();
-            }
-            println!(
-                "Publish each CNAME first and wait for the certificate to reach ACTIVE.\n\
-                 Moving the A record before then takes the hostname down for the\n\
-                 length of issuance. See docs/marketing-sites.md for the cutover order."
-            );
         }
         Ok::<(), anyhow::Error>(())
     })

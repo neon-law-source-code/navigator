@@ -137,14 +137,14 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path(
-                "/v1/projects/neon-law-org/locations/us-west4/keyRings",
+                "/v1/projects/neon-law-stg/locations/us-west4/keyRings",
             ))
             .and(query_param("keyRingId", KEY_RING))
             .respond_with(ResponseTemplate::new(200).set_body_string("{}"))
             .mount(&server)
             .await;
 
-        let outcome = ensure_key_ring(&client(&server), "neon-law-org", "us-west4")
+        let outcome = ensure_key_ring(&client(&server), "neon-law-stg", "us-west4")
             .await
             .expect("the key ring is created");
         assert_eq!(outcome, EnsureOutcome::Created);
@@ -155,7 +155,7 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path(
-                "/v1/projects/neon-law-org/locations/us-west4/keyRings/navigator-secrets/cryptoKeys",
+                "/v1/projects/neon-law-stg/locations/us-west4/keyRings/navigator-secrets/cryptoKeys",
             ))
             .and(query_param("cryptoKeyId", CRYPTO_KEY))
             .and(body_json(json!({ "purpose": "ENCRYPT_DECRYPT" })))
@@ -163,7 +163,7 @@ mod tests {
             .mount(&server)
             .await;
 
-        let outcome = ensure_crypto_key(&client(&server), "neon-law-org", "us-west4")
+        let outcome = ensure_crypto_key(&client(&server), "neon-law-stg", "us-west4")
             .await
             .expect("the crypto key is created");
         assert_eq!(outcome, EnsureOutcome::Created);
@@ -201,12 +201,12 @@ mod tests {
             .mount(&server)
             .await;
 
-        let error = ensure_key_ring(&client(&server), "neon-law-org", "us-west4")
+        let error = ensure_key_ring(&client(&server), "neon-law-stg", "us-west4")
             .await
             .expect_err("403 is not converged away");
         let message = error.to_string();
         assert!(message.contains(KEY_RING), "{message}");
-        assert!(message.contains("neon-law-org"), "{message}");
+        assert!(message.contains("neon-law-stg"), "{message}");
     }
 
     /// The assertion this module exists for.

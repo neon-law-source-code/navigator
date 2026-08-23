@@ -224,9 +224,8 @@ Because GitHub redacts a secret's exact text and not the identifiers inside it, 
 
 Authentication is keyless: the job mints a short-lived OIDC token from GitHub's issuer
 `https://token.actions.githubusercontent.com` and federates it into the publisher, so no service-account key exists.
-That issuer is a property of the provider resource, not a workflow parameter — the same subtlety the [marketing
-sites](marketing-sites.md) document explains. Because the whole resource travels in the secret, the pool and provider id
-are the deployment's business and never a name a Project repository knows.
+That issuer is a property of the provider resource, not a workflow parameter. Because the whole resource travels in the
+secret, the pool and provider id are the deployment's business and never a name a Project repository knows.
 
 **On `neon-law-stg` that resource is the `github` pool's `github-oidc` provider, which is not what
 `cli/src/devx/gcp/app_publisher.rs` provisions** — it creates an `app-publisher` pool with a `ghe-oidc` provider, whose

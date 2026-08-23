@@ -396,7 +396,6 @@ pub fn skeleton(kind: Kind) -> Option<Skeleton> {
         | Kind::Memo
         | Kind::Event
         | Kind::Post
-        | Kind::Minutes
         | Kind::Workshop
         | Kind::Github
         | Kind::Transcript

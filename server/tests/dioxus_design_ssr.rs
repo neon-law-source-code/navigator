@@ -115,11 +115,14 @@ async fn gallery_explains_the_brand_specific_primary() {
     let (status, html) = render_design().await;
     assert_eq!(status, StatusCode::OK, "{html}");
     // The gallery reads anonymously now, so the copy no longer calls itself the
-    // signed-in reference; what it still owes the reader is which brand wears
-    // which primary.
+    // signed-in reference; what it still owes the reader is which primary the
+    // brand wears.
     assert!(!html.contains("signed-in design reference"), "{html}");
     assert!(html.contains("Neon Law uses copper"), "{html}");
-    assert!(html.contains("Neon Law Foundation uses teal"), "{html}");
+    assert!(
+        !html.contains("Neon Law Foundation"),
+        "the retired brand has no swatch to explain: {html}"
+    );
 }
 
 #[tokio::test]
@@ -303,9 +306,9 @@ async fn gallery_renders_pricing_testimonial_and_disclaimer_sections() {
 
 #[tokio::test]
 async fn gallery_renders_navigation_links_as_plain_anchors() {
-    // The injected-link contract, rendered: the breadcrumbs, the off-site link,
-    // and the freshness footer are plain anchors in the pre-hydration HTML, so
-    // they work on a page that ships no client bundle.
+    // The injected-link contract, rendered: the breadcrumbs and the off-site
+    // link are plain anchors in the pre-hydration HTML, so they work on a page
+    // that ships no client bundle.
     let (status, html) = render_design_at("/design").await;
     assert_eq!(status, StatusCode::OK, "{html}");
     // Breadcrumb: an accessible landmark with the back arrow.
@@ -320,9 +323,10 @@ async fn gallery_renders_navigation_links_as_plain_anchors() {
     // Off-site link: new tab + OWASP rel + the box-arrow-up-right glyph.
     assert!(html.contains(r#"target="_blank""#), "{html}");
     assert!(html.contains(r#"rel="noopener noreferrer""#), "{html}");
-    // Freshness footer.
-    assert!(html.contains("nav-freshness"), "renders freshness: {html}");
-    assert!(html.contains("Last edited in main"), "{html}");
+    // No last-edited stamp anywhere: the gallery renders components, and a
+    // git-derived edit date is not one of them any more.
+    assert!(!html.contains("nav-freshness"), "{html}");
+    assert!(!html.contains("Last edited in main"), "{html}");
     // No Bootstrap icon webfont.
     assert!(!html.contains("class=\"bi bi-"), "{html}");
 }

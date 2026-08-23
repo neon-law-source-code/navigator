@@ -204,11 +204,11 @@ This text is the only thing Gemini Enterprise's planner sees about the server. B
 what NOT to do. Markdown supported.
 
 ```markdown
-## Neon Law Navigator CRM (Neon Law / Neon Law Foundation)
+## Neon Law Navigator CRM
 
 The Neon Law Navigator CRM is the firm's customer-relationship system.
 It is the source of truth for **Person** records — clients,
-prospects, opposing counsel contacts, and Foundation correspondents.
+prospects, opposing counsel contacts, and workshop attendees.
 
 ### When to call
 
@@ -223,7 +223,7 @@ Ambiguous-but-yes examples:
 - "Let's get Maya Patel into our records, her email is
   maya@example.com" → call `aida_create_person`.
 - "I just met Diego Romero, diego@example.com, after the
-  Foundation workshop" → call `aida_create_person`.
+  Navigator workshop" → call `aida_create_person`.
 
 For read-back: "show me Maya's record" or "look up
 maya@example.com" → call `aida_show_person` with that email (or

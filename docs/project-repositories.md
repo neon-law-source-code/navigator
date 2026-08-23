@@ -119,17 +119,16 @@ exactly one spelling of the host — that constant's own declaration — and kee
 Project's URL.
 
 **Neither names a client matter's source.** That is `project.repository_url`, which is data. A deployment's organization
-and a Project's repository are independent: the Foundation's deployment can serve a matter whose source lives in a
-client's own GitLab group.
+and a Project's repository are independent: a deployment can serve a matter whose source lives in a client's own GitLab
+group.
 
 | Deployment | GCP project | Organization | Drive root |
 | --- | --- | --- | --- |
 | Production | `neon-law` | `neon-law` | `Projects` |
 | Staging | `neon-law-stg` | `neon-law` | `Staging Projects` |
-| Foundation | `neon-law-org` | `neon-law-foundation` | `NLF Projects` |
 
 The active deployment is identified by `NAVIGATOR_GCP_PROJECT_ID`. It is deliberately not `NAVIGATOR_ENVIRONMENT`, which
-is a two-valued dev/production switch and cannot name three deployments.
+is a two-valued dev/production switch and cannot name a deployment.
 
 **One string means two different things across those two vocabularies: the organization `neon-law` is staging, while the
 GCP project `neon-law` is production.** That inversion is accepted rather than accidental — the organizations are named
@@ -159,7 +158,7 @@ One composite action is the whole gate, consumed identically by every Project re
 ```yaml
 - uses: actions/checkout@<sha>  # v7
 - run: pnpm --dir portal build
-- uses: neon-law-foundation/navigator/.github/actions/validate@YY.M.D
+- uses: neon-law-source-code/navigator/.github/actions/validate@YY.M.D
   with:
     version: "YY.M.D"
     project_repository: true
@@ -195,7 +194,7 @@ a rolling pointer is allowed; consuming one is not.
 ## Publishing the built bundle
 
 The gate proves the bundle; a second composite action publishes it.
-`neon-law-foundation/navigator/.github/actions/application-publish@YY.M.D` runs after the gate, in the same job, and
+`neon-law-source-code/navigator/.github/actions/application-publish@YY.M.D` runs after the gate, in the same job, and
 uploads `portal/dist/` to `<code>/portal/` in the deployment's private `<deployment>-applications` bucket, which
 Navigator streams object-by-object. Objects land **flat** under that prefix; the action derives `<code>` from
 `github.event.repository.name`, exactly as the gate derives it from the checkout directory, so the object prefix cannot
@@ -260,11 +259,11 @@ jobs:
       - run: pnpm --dir portal typecheck
       - run: pnpm --dir portal test
       - run: pnpm --dir portal build            # Vite base /app/projects/<code>/portal/
-      - uses: neon-law-foundation/navigator/.github/actions/validate@YY.M.D
+      - uses: neon-law-source-code/navigator/.github/actions/validate@YY.M.D
         with:
           version: "YY.M.D"
           project_repository: true              # the one gate: source-only, no legal files, mounted
-      - uses: neon-law-foundation/navigator/.github/actions/application-publish@YY.M.D
+      - uses: neon-law-source-code/navigator/.github/actions/application-publish@YY.M.D
         with:
           applications_bucket: ${{ secrets.NAVIGATOR_APPLICATIONS_BUCKET }}
           workload_identity_provider: ${{ secrets.NAVIGATOR_APP_PUBLISHER_WIF_PROVIDER }}
@@ -353,8 +352,6 @@ nothing has to be translated between the coordinate and the path:
 
 ```text
 ~/neon-law/<project-code>
-~/neon-law/<project-code>
-~/neon-law-foundation/<project-code>
 ```
 
 These are **source** roots. Git never stores legal files, so they must not converge with the Drive mount
@@ -397,7 +394,7 @@ Project's notations need is either in that Project's own `templates/` or in this
 
 ## Source boundaries
 
-`neon-law-foundation/navigator` is Navigator's source repository. It is not a Project repository. Each Project's
+`neon-law-source-code/navigator` is Navigator's source repository. It is not a Project repository. Each Project's
 repository is its own deployment-specific source repository, and its portal pins a released shared component-library
 version.
 

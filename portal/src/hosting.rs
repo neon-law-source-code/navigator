@@ -182,36 +182,10 @@ pub async fn build_from_env(brand_seed: store::seed::BrandSeed) -> anyhow::Resul
     );
     let workshops = crate::WorkshopIndex::new(workshop_materials);
 
-    let marketing_dir = std::env::var("NAVIGATOR_MARKETING_DIR").map_or_else(
-        |_| PathBuf::from(crate::DEFAULT_MARKETING_DIR),
-        PathBuf::from,
-    );
-    let marketing_docs =
-        crate::marketing::loader::load_dir(&marketing_dir).context("loading marketing content")?;
-    tracing::info!(
-        count = marketing_docs.len(),
-        ?marketing_dir,
-        "loaded marketing fragments"
-    );
-    let marketing = crate::MarketingIndex::new(marketing_docs);
-
     let blog_dir = std::env::var("NAVIGATOR_BLOG_DIR")
         .map_or_else(|_| PathBuf::from(crate::DEFAULT_BLOG_DIR), PathBuf::from);
     let blog = crate::blog::load_dir(&blog_dir).context("loading blog posts")?;
     tracing::info!(count = blog.posts().len(), ?blog_dir, "loaded blog posts");
-
-    let foundation_dir = std::env::var("NAVIGATOR_FOUNDATION_DIR").map_or_else(
-        |_| PathBuf::from(crate::DEFAULT_FOUNDATION_DIR),
-        PathBuf::from,
-    );
-    let transparency =
-        crate::transparency::load_dir(&foundation_dir).context("loading foundation documents")?;
-    tracing::info!(
-        governance = transparency.governance().len(),
-        minutes = transparency.minutes().len(),
-        ?foundation_dir,
-        "loaded foundation transparency documents"
-    );
 
     let auth = crate::AuthConfig::from_env().await;
     tracing::info!(enforced = auth.is_enforced(), "auth configured");
@@ -370,9 +344,7 @@ pub async fn build_from_env(brand_seed: store::seed::BrandSeed) -> anyhow::Resul
         surreal,
         workshops,
         docs: crate::docs::loader::bundled(),
-        marketing,
         blog,
-        transparency,
         auth,
         google_oauth,
         rate_limit: crate::rate_limit::RateLimit::from_env(),

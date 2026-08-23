@@ -31,14 +31,9 @@ pub struct SiteBrand {
     pub site_name: &'static str,
     pub tagline: &'static str,
     /// Landing path the navbar brand (logo + wordmark) links back to.
-    /// The firm's home is the site root `/`; the Foundation's home is
-    /// its own hub at `/foundation`, so its header returns there rather
-    /// than to the firm's root.
     pub home_href: &'static str,
-    /// One-line postal address rendered in the footer. Differs per
-    /// entity (the firm and the Foundation share a street but hold
-    /// distinct private-mailbox suites). A mounted bundle lets an OSS
-    /// deployment supply its own registered address.
+    /// One-line postal address rendered in the footer. A mounted bundle lets a
+    /// downstream deployment supply its own registered address.
     pub postal_address: &'static str,
     /// Path to the header brand mark served under `/public/`.
     ///
@@ -47,8 +42,8 @@ pub struct SiteBrand {
     /// **secure static mode**, so it must be wholly self-contained: it cannot
     /// fetch an external `<image>`, stylesheet, or font, and it cannot inherit
     /// `currentColor` from the page. A raster here must be sized for the
-    /// header rather than for print, since every visitor downloads it. Both
-    /// built-in brands supply a self-contained vector whose colours are
+    /// header rather than for print, since every visitor downloads it. The
+    /// built-in brand supplies a self-contained vector whose colours are
     /// written into the file.
     pub logo_href: &'static str,
     /// Path to a **raster** (PNG) brand mark served under `/public/`,
@@ -58,16 +53,16 @@ pub struct SiteBrand {
     /// the full-resolution mark, where [`logo_href`] is header-sized.
     pub social_image: &'static str,
     pub nav: &'static [NavLink],
-    /// When true, the layout renders firm-only portal links. Foundation
-    /// pages (the 501(c)(3) doesn't practice law) leave this false. The
-    /// legal-advice disclaimer is no longer gated here — the unified footer
-    /// always shows the firm's via [`firm_disclaimer`].
+    /// When true, the layout renders firm-only portal links. A brand that does
+    /// not practise law leaves this false. The legal-advice disclaimer is not
+    /// gated here — the footer always shows the firm's via
+    /// [`firm_disclaimer`].
     pub is_law_firm: bool,
     /// The legal person the footer's copyright names — the entity that owns
     /// the site and renders the firm's legal services. A configurable identity
-    /// so a rename is a manifest edit, not a code change. Empty for the
-    /// Foundation and any non-firm brand, which falls back to noticing its own
-    /// wordmark. Sourced from `brand.firm_legal_entity` in the manifest;
+    /// so a rename is a manifest edit, not a code change. Empty for a non-firm
+    /// brand, which falls back to noticing its own wordmark. Sourced from
+    /// `brand.firm_legal_entity` in the manifest;
     /// defaults to today's value.
     ///
     /// Kept in step with `store::seed::FIRM_ENTITY_NAME`, the firm Entity row
@@ -148,17 +143,9 @@ impl NavLink {
 /// offering than the schedule does, because a firm reading the lead is the
 /// reader those two are for.
 ///
-/// Foundation closes the row, and it is the one entry here that is not the
-/// firm's own work. It has to be: the nonprofit's face no longer carries a
-/// header of its own, so this row is the header on every page of the site, and
-/// without this entry the 501(c)(3) would be reachable from the top of a page
-/// only by the reader knowing to scroll past the whole thing. Last rather than
-/// first because a visitor at the top of a law firm's page is deciding whether
-/// to hire a lawyer; the nonprofit is what they look at after.
-///
-/// It is deliberately the one label this row and [`FIRM_FOOTER_NAV`] both
-/// carry — see the `the_footer_nav_carries_what_the_header_does_not` assertion,
-/// which exempts it by name.
+/// Every entry is the firm's own work, and no label here repeats in
+/// [`FIRM_FOOTER_NAV`] — see the
+/// `the_footer_nav_carries_what_the_header_does_not` assertion.
 ///
 /// Everything a reader looks for second — the Blog, Navigator, how to reach
 /// the firm — stays in [`FIRM_FOOTER_NAV`].
@@ -167,7 +154,6 @@ const FIRM_NAV: &[NavLink] = &[
     NavLink::leaf("Litigation", "/litigation"),
     NavLink::leaf("Fractional GC", "/fractional-gc"),
     NavLink::leaf("Legal Services", "/services"),
-    NavLink::leaf("Foundation", "/foundation"),
 ];
 
 /// The rest of the firm's public surface, rendered in the footer rather than the
@@ -186,22 +172,15 @@ const FIRM_NAV: &[NavLink] = &[
 /// the footer names the running release and links the same page; this is the
 /// reader-facing route to it, not a version stamp.
 ///
-/// "Firm" and "Foundation" are the row's two cross-links, and they sit here as
-/// a pair because one binary serves both faces: from anywhere on the site, each
-/// organization's home is one click away. They are labelled by what the reader
-/// is choosing between — the law firm at `/` and the nonprofit at `/foundation`
-/// — rather than by either wordmark, so the two entries read as the two halves
-/// of one site and neither label drifts when a wordmark changes.
-///
 /// Presentations sits here rather than the header. The talks are the firm's,
 /// given at meetups and conferences and published here; a reader deciding
 /// whether to work with the firm is not looking for them first, and a reader
 /// who saw one at a conference knows to look at the bottom of the page.
 ///
 /// Docs joined the row when the workspace documentation became anonymous. It is
-/// a shared portal route rather than a firm page, so it resolves on both faces —
-/// and it belongs at the bottom for the plainest reason on this list: a reader
-/// who wants the manual for the software has already decided to run it.
+/// a shared portal route rather than a firm page, and it belongs at the bottom
+/// for the plainest reason on this list: a reader who wants the manual for the
+/// software has already decided to run it.
 ///
 /// Privacy and Terms sit in this row on the same footing as the Blog and
 /// Contact, not in a smaller strip beneath it. They are the two documents a
@@ -211,15 +190,17 @@ const FIRM_NAV: &[NavLink] = &[
 /// print about fine print. Their bodies already serve at `/privacy` and
 /// `/terms`; this is the link that reaches them.
 ///
-/// Ten entries, and the count is part of the design: the footer lays them out
-/// as two columns of five on a wide viewport and one list of ten on a narrow
-/// one, so an eleventh would leave a column uneven.
+/// Eight entries, and the count is part of the design: the footer lays them out
+/// as two columns of four on a wide viewport and one list of eight on a narrow
+/// one, so a ninth would leave a column uneven.
+///
+/// A "Firm" entry pointing at `/` is deliberately absent. It was one half of a
+/// cross-link pair with the nonprofit's home, and with that page retired the
+/// remaining half links the reader to where the header logo already goes.
 const FIRM_FOOTER_NAV: &[NavLink] = &[
     NavLink::leaf("Blog", "/blog"),
     NavLink::leaf("Contact", "/contact"),
     NavLink::leaf("Docs", "/docs"),
-    NavLink::leaf("Firm", "/"),
-    NavLink::leaf("Foundation", "/foundation"),
     NavLink::leaf("Navigator", "/navigator"),
     NavLink::leaf("Presentations", "/presentations"),
     NavLink::leaf("Privacy", "/privacy"),
@@ -292,7 +273,7 @@ pub struct FirmOffice {
 /// registered address the letterhead carries, even though both name the same
 /// Reno box today. Within the Ridgeview Mail Center the box number is the whole
 /// address, so a wrong suffix misdelivers to another entity of ours rather than
-/// bouncing — `405-9002` is the firm's, `405-9999` the Foundation's.
+/// bouncing — `405-9002` is the firm's.
 ///
 /// Each office is published under its state rather than its city, so the footer
 /// reads as the map of where the firm practises, and the list is ordered
@@ -328,9 +309,7 @@ const FIRM_OFFICES: &[FirmOffice] = &[
 #[derive(Debug, Clone, Copy)]
 pub struct Branding {
     pub firm: SiteBrand,
-    pub foundation: SiteBrand,
     pub firm_email: &'static str,
-    pub foundation_email: &'static str,
     /// The host the firm's support address is built on — the `HOST` in
     /// `support@{HOST}`. Set this and the firm's inbound address follows; set
     /// `firm_email` (manifest `brand.support_email`) to name an address that
@@ -374,27 +353,6 @@ pub struct Branding {
     pub base_url: &'static str,
     pub primary_domain: &'static str,
     pub firm_disclaimer: &'static str,
-    /// The Foundation's corporate name, as distinct from the wordmark it trades
-    /// under ([`SiteBrand::site_name`], "Neon Law"). The Foundation's own footer
-    /// identifies the corporation; the firm's footer names the partnership
-    /// through [`SiteBrand::legal_entity`] instead — which is the entity that
-    /// *renders legal services* and is deliberately empty here.
-    pub foundation_entity: &'static str,
-    /// The Foundation's footer disclaimer — the same two sentences as
-    /// [`SiteBrand::firm_disclaimer`] and deliberately **without** its opening
-    /// "Attorney advertisement."
-    ///
-    /// That opening is the one place the two lines diverge, and the divergence
-    /// is the point: the firm's footer is attorney advertising and says so,
-    /// while the Foundation does not render legal services
-    /// ([`SiteBrand::is_law_firm`] is `false` for it and its `legal_entity` is
-    /// deliberately empty). Labelling the Foundation's pages an attorney
-    /// advertisement would be a false statement about which entity the reader
-    /// is dealing with, so the label rides the firm brand rather than the
-    /// shared string. What both lines still carry is the substance — "not legal
-    /// advice" and "no attorney-client relationship absent a signed retainer"
-    /// — for whichever organization's page a reader is on.
-    pub foundation_disclaimer: &'static str,
     pub mission_description: &'static str,
     pub service_description: &'static str,
     pub portal_only: bool,
@@ -416,13 +374,9 @@ pub static DEFAULT_BRANDING: Branding = Branding {
         site_name: "Neon Law",
         home_href: "/",
         tagline: "Flat-fee consumer law, with every price on the page.",
-        // Shook Law PLLC's own box, the entity of record. `405-9999` at the
-        // same suite is the Foundation's.
+        // Shook Law PLLC's own box, the entity of record.
         postal_address: "5150 Mae Anne Ave Ste 405-9002, Reno, NV 89523",
-        // The NL mark, in teal, shared with the Foundation. One practice, one
-        // mark: the firm and the nonprofit are different legal persons wearing
-        // the same family identity, and the header wordmark beside it is what
-        // says which one you are reading.
+        // The NL mark, in teal.
         //
         // Drawn geometry, so it is a true vector with every colour written
         // into the file. That matters because `SiteHeader` renders it through
@@ -441,32 +395,6 @@ pub static DEFAULT_BRANDING: Branding = Branding {
         // as Neon Law, and a copyright notice has to name a legal person.
         legal_entity: "Shook Law PLLC",
     },
-    foundation: SiteBrand {
-        // The nonprofit's own wordmark, distinct from the firm's. They share a
-        // family name and a site, and they are different organizations — one
-        // practises law, one may not — so the header a reader is looking at has
-        // to say which one they are reading.
-        site_name: "Neon Law Foundation",
-        // The Foundation sits under `/foundation` now that one binary serves
-        // both faces, so its logo and home link go there rather than to the
-        // site root, which is the firm's.
-        home_href: "/foundation",
-        tagline: "Access to justice and attorney AI training.",
-        postal_address: "5150 Mae Anne Ave Ste 405-9999, Reno, NV 89523",
-        logo_href: "/public/logo-neon.png",
-        social_image: "/public/logo-neon.png",
-        // The firm's row, because the site publishes one header. The nonprofit
-        // used to carry its own two-entry row (the workshop catalog and a legal
-        // aid audience page); that page is retired and the header is unified, so
-        // a reader on `/foundation` sees the same destinations as everywhere
-        // else, with the nonprofit itself among them. `/workshops` is still one
-        // click away — it sits in `FIRM_FOOTER_NAV`.
-        nav: FIRM_NAV,
-        is_law_firm: false,
-        // The 501(c)(3) does not practice law and holds no copyright in the
-        // firm's site: its own footer names its own corporation.
-        legal_entity: "",
-    },
     // The address the public site publishes, on the host `support_domain` names
     // below. The local part is `contact@`, not `support@`, which is the second
     // dial `firm_support_email` documents — the firm invites new matters to a
@@ -476,11 +404,7 @@ pub static DEFAULT_BRANDING: Branding = Branding {
     // inbound threading address are `workflows::email::DEFAULT_FROM_EMAIL`, a
     // separate constant that stays `support@`: moving what the site advertises
     // must not re-point the mail pipeline.
-    //
-    // The Foundation is a separate entity on its own domain, so its address does
-    // not follow the firm's.
     firm_email: "contact@neonlaw.com",
-    foundation_email: "support@neonlaw.org",
     support_domain: "neonlaw.com",
     firm_phone: "+1 510 800 2080",
     firm_offices: FIRM_OFFICES,
@@ -501,9 +425,7 @@ pub static DEFAULT_BRANDING: Branding = Branding {
     base_url: "",
     primary_domain: "neonlaw.com",
     firm_disclaimer: "Attorney advertisement. Nothing here is legal advice without a signed retainer for an active project. Past results do not guarantee future outcomes.",
-    foundation_entity: "Neon Law Foundation",
-    foundation_disclaimer: "Nothing here is legal advice without a signed retainer for an active project. Past results do not guarantee future outcomes.",
-    mission_description: "How Neon Law and the Neon Law Foundation make routine legal services affordable without sacrificing correctness, and what a licensed attorney in the loop actually buys you.",
+    mission_description: "How Neon Law makes routine legal services affordable without sacrificing correctness, and what a licensed attorney in the loop actually buys you.",
     service_description: "Flat-fee legal services from Neon Law, with every price published.",
     portal_only: false,
 };
@@ -570,10 +492,6 @@ impl Branding {
     pub fn from_manifest(manifest: &BrandManifest) -> &'static Self {
         let brand = &manifest.brand;
         let firm_name = value(brand.firm.as_deref(), DEFAULT_BRANDING.firm.site_name);
-        let foundation_name = value(
-            brand.foundation.as_deref(),
-            DEFAULT_BRANDING.foundation.site_name,
-        );
         let firm_logo = manifest
             .assets
             .firm_logo
@@ -588,20 +506,6 @@ impl Branding {
             .map_or(DEFAULT_BRANDING.firm.social_image, |_| {
                 "/public/brand/firm-logo.png"
             });
-        let foundation_logo = manifest
-            .assets
-            .foundation_logo
-            .as_ref()
-            .map_or(DEFAULT_BRANDING.foundation.logo_href, |_| {
-                "/public/brand/foundation-logo.svg"
-            });
-        let foundation_raster = manifest
-            .assets
-            .foundation_logo_raster
-            .as_ref()
-            .map_or(DEFAULT_BRANDING.foundation.social_image, |_| {
-                "/public/brand/foundation-logo.png"
-            });
         let disclaimer = Box::leak(
             format!(
                 "Nothing on this site is legal advice. An attorney-client relationship begins only with a signed retainer between you and {firm_name}. Every legal matter is different, and past results do not guarantee a similar result."
@@ -610,19 +514,12 @@ impl Branding {
         );
         let mission_description = Box::leak(
             format!(
-                "How {firm_name} and the {foundation_name} make routine legal services affordable without sacrificing correctness, and what a licensed attorney in the loop actually buys you."
+                "How {firm_name} makes routine legal services affordable without sacrificing correctness, and what a licensed attorney in the loop actually buys you."
             )
             .into_boxed_str(),
         );
         let service_description =
             Box::leak(format!("Flat-fee legal services from {firm_name}.").into_boxed_str());
-        // The Foundation's corporate name defaults to its own manifest key, not
-        // to `foundation_name` — that is the wordmark it trades under, and a
-        // footer that identifies the corporation must not print a brand there.
-        let foundation_entity = value(
-            brand.foundation_legal_entity.as_deref(),
-            DEFAULT_BRANDING.foundation_entity,
-        );
         // A registration belongs to its registrant, and a bundle that renames
         // the firm is a different firm: it publishes no mark notice at all,
         // because U.S. Reg. No. 6,325,650 is not theirs to notice. There is
@@ -665,23 +562,9 @@ impl Branding {
                 ),
                 ..DEFAULT_BRANDING.firm
             },
-            foundation: SiteBrand {
-                site_name: foundation_name,
-                postal_address: value(
-                    brand.foundation_address.as_deref(),
-                    DEFAULT_BRANDING.foundation.postal_address,
-                ),
-                logo_href: foundation_logo,
-                social_image: foundation_raster,
-                ..DEFAULT_BRANDING.foundation
-            },
             firm_email: firm_support_email(
                 brand.support_email.as_deref(),
                 brand.support_domain.as_deref(),
-            ),
-            foundation_email: value(
-                brand.foundation_email.as_deref(),
-                DEFAULT_BRANDING.foundation_email,
             ),
             support_domain: value(
                 brand.support_domain.as_deref(),
@@ -748,8 +631,6 @@ impl Branding {
                 DEFAULT_BRANDING.primary_domain,
             ),
             firm_disclaimer: disclaimer,
-            foundation_entity,
-            foundation_disclaimer: DEFAULT_BRANDING.foundation_disclaimer,
             mission_description,
             service_description,
             portal_only: manifest.portal_only,
@@ -760,7 +641,6 @@ impl Branding {
 #[derive(Debug, Clone, Copy)]
 enum BrandKind {
     Firm,
-    Foundation,
 }
 
 /// Copy-compatible accessor preserving existing view APIs while resolving the
@@ -773,13 +653,11 @@ impl Deref for BrandAccessor {
     fn deref(&self) -> &'static Self::Target {
         match self.0 {
             BrandKind::Firm => &current().firm,
-            BrandKind::Foundation => &current().foundation,
         }
     }
 }
 
 pub static FIRM_BRAND: BrandAccessor = BrandAccessor(BrandKind::Firm);
-pub static FOUNDATION_BRAND: BrandAccessor = BrandAccessor(BrandKind::Foundation);
 
 /// Firm inbound email from request-scoped branding.
 #[must_use]
@@ -817,12 +695,6 @@ pub fn terms_url() -> &'static str {
 #[must_use]
 pub fn privacy_url() -> &'static str {
     current().privacy_url
-}
-
-/// Foundation inbound email from request-scoped branding.
-#[must_use]
-pub fn foundation_email() -> &'static str {
-    current().foundation_email
 }
 
 #[must_use]
@@ -898,27 +770,13 @@ pub fn firm_footer_nav() -> &'static [NavLink] {
     FIRM_FOOTER_NAV
 }
 
-/// The firm's legal-advice disclaimer, shown in the footer of every
-/// page. The unified footer is firm-anchored, so the disclaimer is
-/// always the firm's — it lives here as a single resolved string rather
-/// than a per-brand `SiteBrand` field (the Foundation never carried its
-/// own). Names the firm via [`FIRM_BRAND`]; resolved when the bundle loads.
+/// The firm's legal-advice disclaimer, shown in the footer of every page. The
+/// footer is firm-anchored, so it lives here as a single resolved string rather
+/// than a per-brand `SiteBrand` field. Names the firm via [`FIRM_BRAND`];
+/// resolved when the bundle loads.
 #[must_use]
 pub fn firm_disclaimer() -> &'static str {
     current().firm_disclaimer
-}
-
-/// The Foundation's corporate name from request-scoped branding — the entity,
-/// not the wordmark [`FOUNDATION_BRAND`] trades under.
-#[must_use]
-pub fn foundation_entity() -> &'static str {
-    current().foundation_entity
-}
-
-/// The Foundation's own footer disclaimer from request-scoped branding.
-#[must_use]
-pub fn foundation_disclaimer() -> &'static str {
-    current().foundation_disclaimer
 }
 
 #[must_use]
@@ -952,33 +810,22 @@ pub fn deployed_release() -> Option<&'static str> {
 
 #[cfg(test)]
 mod tests {
-    use super::{scope, Branding, NavLink, DEFAULT_BRANDING, FIRM_BRAND, FOUNDATION_BRAND};
+    use super::{scope, Branding, NavLink, DEFAULT_BRANDING, FIRM_BRAND};
     use crate::brand_bundle::BrandManifest;
 
     #[tokio::test]
     async fn mounted_manifest_is_request_scoped_and_complete() {
         let manifest: BrandManifest = serde_yaml::from_str(
-            "version: 1\nbrand:\n  firm: Acme Law\n  foundation: Acme Foundation\n  support_email: firm@acme.example\n  foundation_email: foundation@acme.example\n  firm_address: 1 Main St\n  foundation_address: 2 Main St\n  base_url: https://app.acme.example\n  primary_domain: acme.example\n  consultation_url: https://acme.example/book\n  terms_url: https://acme.example/terms\n  privacy_url: https://acme.example/privacy\nassets:\n  firm_logo: firm.svg\n  firm_logo_raster: firm.png\n  foundation_logo: foundation.svg\n  foundation_logo_raster: foundation.png\n",
+            "version: 1\nbrand:\n  firm: Acme Law\n  support_email: firm@acme.example\n  firm_address: 1 Main St\n  base_url: https://app.acme.example\n  primary_domain: acme.example\n  consultation_url: https://acme.example/book\n  terms_url: https://acme.example/terms\n  privacy_url: https://acme.example/privacy\nassets:\n  firm_logo: firm.svg\n  firm_logo_raster: firm.png\n",
         )
         .unwrap();
         let branding = Branding::from_manifest(&manifest);
         scope(branding, async {
             assert_eq!(FIRM_BRAND.site_name, "Acme Law");
-            assert_eq!(FOUNDATION_BRAND.site_name, "Acme Foundation");
             assert_eq!(FIRM_BRAND.postal_address, "1 Main St");
-            assert_eq!(FOUNDATION_BRAND.postal_address, "2 Main St");
             assert_eq!(FIRM_BRAND.logo_href, "/public/brand/firm-logo.svg");
             assert_eq!(FIRM_BRAND.social_image, "/public/brand/firm-logo.png");
-            assert_eq!(
-                FOUNDATION_BRAND.logo_href,
-                "/public/brand/foundation-logo.svg"
-            );
-            assert_eq!(
-                FOUNDATION_BRAND.social_image,
-                "/public/brand/foundation-logo.png"
-            );
             assert_eq!(super::firm_email(), "firm@acme.example");
-            assert_eq!(super::foundation_email(), "foundation@acme.example");
             assert_eq!(super::consultation_url(), "https://acme.example/book");
             assert_eq!(super::terms_url(), "https://acme.example/terms");
             assert_eq!(super::privacy_url(), "https://acme.example/privacy");
@@ -986,16 +833,13 @@ mod tests {
             assert_eq!(branding.primary_domain, "acme.example");
             assert!(super::firm_disclaimer().contains("Acme Law"));
             assert!(super::mission_description().contains("Acme Law"));
-            assert!(super::mission_description().contains("Acme Foundation"));
             assert_eq!(
                 super::service_description(),
                 "Flat-fee legal services from Acme Law."
             );
             // Unset in the manifest, but the manifest renamed the firm → the
-            // bundle's own wordmark, never this firm's corporate name. The
-            // Foundation renders none.
+            // bundle's own wordmark, never this firm's corporate name.
             assert_eq!(FIRM_BRAND.legal_entity, "Acme Law");
-            assert_eq!(FOUNDATION_BRAND.legal_entity, "");
         })
         .await;
         assert_eq!(FIRM_BRAND.site_name, DEFAULT_BRANDING.firm.site_name);
@@ -1125,7 +969,6 @@ mod tests {
         .await;
         // The compiled default is unchanged.
         assert_eq!(DEFAULT_BRANDING.firm.legal_entity, "Shook Law PLLC");
-        assert_eq!(DEFAULT_BRANDING.foundation.legal_entity, "");
     }
 
     /// The compiled default notices the live registration, spelled the way the
@@ -1224,47 +1067,33 @@ mod tests {
     /// The two disclaimers carry the same substance and differ by exactly one
     /// thing: the firm's opens by naming itself an attorney advertisement.
     ///
-    /// The difference is not a drafting slip and this test is what keeps it from
-    /// being "tidied" in either direction. Dropping the label from the firm's
-    /// line loses a notice a law firm's public pages are expected to carry;
-    /// copying it onto the Foundation's asserts that a body which renders no
-    /// legal services is advertising legal services, which is false about the
-    /// entity the reader is dealing with. Everything after the label stays
-    /// standardized site-wide.
+    /// Dropping the label loses a notice a law firm's public pages are expected
+    /// to carry, and it is only honest on a brand that is a law firm — so the
+    /// label rides `firm_disclaimer` and the flag is asserted beside it.
     #[test]
-    fn only_the_firm_disclaimer_names_itself_an_advertisement() {
+    fn the_firm_disclaimer_names_itself_an_advertisement() {
         const LABEL: &str = "Attorney advertisement.";
 
         let firm = super::firm_disclaimer();
-        let foundation = super::foundation_disclaimer();
 
         assert!(
             firm.starts_with(LABEL),
             "the firm's disclaimer opens with the label: {firm}"
         );
-        assert!(
-            !foundation.contains(LABEL),
-            "the Foundation renders no legal services and must not claim to be \
-             advertising them: {foundation}"
-        );
-        // Past the label, one standardized sentence pair for both faces.
-        assert_eq!(firm.trim_start_matches(LABEL).trim_start(), foundation);
-        // The label is only honest on the face that is a law firm.
+        // The label is only honest on a face that is a law firm.
         assert!(FIRM_BRAND.is_law_firm);
-        assert!(!FOUNDATION_BRAND.is_law_firm);
     }
 
-    /// Both faces state the past-results line, wherever a reader could infer
-    /// one. It moved off `/litigation` into this shared string, so the guard
-    /// that it is still said belongs here rather than on that page.
+    /// The disclaimer states the past-results line, wherever a reader could
+    /// infer one. It moved off `/litigation` into this shared string, so the
+    /// guard that it is still said belongs here rather than on that page.
     #[test]
-    fn both_disclaimers_carry_the_past_results_line() {
-        for disclaimer in [super::firm_disclaimer(), super::foundation_disclaimer()] {
-            assert!(
-                disclaimer.contains("Past results do not guarantee future outcomes"),
-                "the past-results line: {disclaimer}"
-            );
-        }
+    fn the_disclaimer_carries_the_past_results_line() {
+        let disclaimer = super::firm_disclaimer();
+        assert!(
+            disclaimer.contains("Past results do not guarantee future outcomes"),
+            "the past-results line: {disclaimer}"
+        );
     }
 
     /// Every request-scoped accessor reads the field it is named for.
@@ -1283,15 +1112,6 @@ mod tests {
         assert_eq!(super::support_domain(), DEFAULT_BRANDING.support_domain);
         assert_eq!(super::portal_only(), DEFAULT_BRANDING.portal_only);
         assert_eq!(super::firm_phone(), DEFAULT_BRANDING.firm_phone);
-        assert_eq!(super::foundation_email(), DEFAULT_BRANDING.foundation_email);
-        assert_eq!(
-            super::foundation_entity(),
-            DEFAULT_BRANDING.foundation_entity
-        );
-        assert_eq!(
-            super::foundation_disclaimer(),
-            DEFAULT_BRANDING.foundation_disclaimer
-        );
         assert_eq!(super::terms_url(), DEFAULT_BRANDING.terms_url);
         assert_eq!(super::privacy_url(), DEFAULT_BRANDING.privacy_url);
     }
@@ -1328,7 +1148,7 @@ mod tests {
     #[tokio::test]
     async fn a_bundle_that_keeps_the_firm_name_keeps_the_compiled_legal_entity() {
         let manifest: BrandManifest =
-            serde_yaml::from_str("version: 1\nbrand:\n  foundation: Other Foundation\n").unwrap();
+            serde_yaml::from_str("version: 1\nbrand:\n  firm_phone: +1 555 0100\n").unwrap();
         let branding = Branding::from_manifest(&manifest);
         scope(branding, async {
             assert_eq!(FIRM_BRAND.legal_entity, "Shook Law PLLC");
@@ -1338,14 +1158,10 @@ mod tests {
 
     #[tokio::test]
     async fn concurrent_brand_scopes_do_not_cross_contaminate() {
-        let first: BrandManifest = serde_yaml::from_str(
-            "version: 1\nbrand:\n  firm: First Law\n  foundation: First Foundation\n",
-        )
-        .unwrap();
-        let second: BrandManifest = serde_yaml::from_str(
-            "version: 1\nbrand:\n  firm: Second Law\n  foundation: Second Foundation\n",
-        )
-        .unwrap();
+        let first: BrandManifest =
+            serde_yaml::from_str("version: 1\nbrand:\n  firm: First Law\n").unwrap();
+        let second: BrandManifest =
+            serde_yaml::from_str("version: 1\nbrand:\n  firm: Second Law\n").unwrap();
         let first = Branding::from_manifest(&first);
         let second = Branding::from_manifest(&second);
 
@@ -1368,53 +1184,56 @@ mod tests {
             })
         );
         assert_eq!(first_name.0, "First Law");
-        assert!(first_name.1.contains("First Foundation"));
+        assert!(first_name.1.contains("First Law"));
         assert!(first_name.2.contains("First Law"));
+        assert!(!first_name.1.contains("Second Law"));
         assert_eq!(second_name.0, "Second Law");
-        assert!(second_name.1.contains("Second Foundation"));
+        assert!(second_name.1.contains("Second Law"));
         assert!(second_name.2.contains("Second Law"));
+        assert!(!second_name.1.contains("First Law"));
     }
 
-    /// The two brands are one family and two organizations, so their wordmarks
-    /// must not be the same string. One practises law and one may not; a reader
-    /// has to be able to tell from the header which they are reading.
+    /// One brand, and it is the law firm's.
+    ///
+    /// The nonprofit's wordmark used to sit beside this one, on a second brand
+    /// a reader could reach from the header. It is retired, and this asserts
+    /// that no built-in brand carries it back in.
     #[test]
-    fn the_firm_and_the_foundation_carry_distinct_wordmarks() {
-        assert_eq!(FOUNDATION_BRAND.site_name, "Neon Law Foundation");
-        assert_ne!(FIRM_BRAND.site_name, FOUNDATION_BRAND.site_name);
-        assert!(!FOUNDATION_BRAND.is_law_firm);
+    fn the_only_built_in_brand_is_the_firms() {
+        assert_eq!(FIRM_BRAND.site_name, "Neon Law");
+        assert!(FIRM_BRAND.is_law_firm);
+        assert_eq!(FIRM_BRAND.legal_entity, "Shook Law PLLC");
+        assert!(
+            !FIRM_BRAND.site_name.contains("Foundation"),
+            "the retired nonprofit wordmark is not the firm's: {}",
+            FIRM_BRAND.site_name
+        );
     }
 
     #[test]
-    fn both_brands_share_one_raster_social_image() {
-        // The Open Graph card needs a PNG (scrapers won't render the
-        // SVG favicon) and each brand shares its own mark.
+    fn the_brand_publishes_a_raster_social_image() {
+        // The Open Graph card needs a PNG — scrapers won't render the SVG
+        // favicon.
         let is_png = |path: &str| {
             std::path::Path::new(path)
                 .extension()
                 .is_some_and(|ext| ext.eq_ignore_ascii_case("png"))
         };
         assert!(is_png(FIRM_BRAND.social_image));
-        assert!(is_png(FOUNDATION_BRAND.social_image));
-        // One mark, shared. They carried separate images while the two brands
-        // wore separate palettes; the NL mark in teal is now both.
-        assert_eq!(FIRM_BRAND.social_image, FOUNDATION_BRAND.social_image);
     }
 
-    /// Each entity publishes its own box. Within the Ridgeview Mail Center the
-    /// box number is the whole address, so serving one entity's suite under
-    /// another's name misdelivers rather than bounces — `405-9002` is the
-    /// firm's and `405-9999` the Foundation's, and the retired partnership's
+    /// The firm publishes its own box. Within the Ridgeview Mail Center the box
+    /// number is the whole address, so serving another entity's suite under the
+    /// firm's name misdelivers rather than bounces — `405-9002` is the firm's,
+    /// while `405-9999` is the nonprofit's and the retired partnership's
     /// `405-9777` belongs to neither.
     #[test]
-    fn firm_and_foundation_carry_distinct_suite_addresses() {
+    fn the_firm_publishes_only_its_own_suite_address() {
         assert!(FIRM_BRAND.postal_address.contains("405-9002"));
-        assert!(FOUNDATION_BRAND.postal_address.contains("405-9999"));
-        assert_ne!(FIRM_BRAND.postal_address, FOUNDATION_BRAND.postal_address);
-        for brand in [&*FIRM_BRAND, &*FOUNDATION_BRAND] {
+        for wrong in ["405-9999", "405-9777"] {
             assert!(
-                !brand.postal_address.contains("405-9777"),
-                "the retired partnership's box is not a public brand's address"
+                !FIRM_BRAND.postal_address.contains(wrong),
+                "another entity's box is not the firm's published address"
             );
         }
     }
@@ -1426,13 +1245,10 @@ mod tests {
     /// above the fold. Demoting it below the practices would put the lead behind
     /// the things it leads.
     ///
-    /// Team used to close the row. The page was retired outright — routers,
-    /// views, path constants, sitemap and llms.txt rows — so a header entry
-    /// would now be a link to a `404`.
-    ///
-    /// Foundation closes it instead, and closes it deliberately: this row is the
-    /// header on both faces now, so the nonprofit needs a place in it, and the
-    /// place is after the firm's own work rather than before it.
+    /// Team used to close the row, and the nonprofit's home after it. Both
+    /// pages were retired outright — routers, views, path constants, sitemap
+    /// and llms.txt rows — so a header entry for either would now be a link to
+    /// a retired URL.
     #[test]
     fn the_firm_nav_leads_with_the_lead_offering_then_the_practices() {
         let labels: Vec<&str> = FIRM_BRAND.nav.iter().map(|n| n.label).collect();
@@ -1442,8 +1258,7 @@ mod tests {
                 "Fractional CTO",
                 "Litigation",
                 "Fractional GC",
-                "Legal Services",
-                "Foundation"
+                "Legal Services"
             ]
         );
         assert_eq!(
@@ -1453,8 +1268,8 @@ mod tests {
         );
         assert_eq!(
             FIRM_BRAND.nav.last().map(|link| link.href),
-            Some("/foundation"),
-            "the nonprofit closes the row, after the firm's own work"
+            Some("/services"),
+            "the published fee schedule closes the row"
         );
         assert!(
             FIRM_BRAND.nav.iter().all(|link| !link.is_dropdown()),
@@ -1487,8 +1302,6 @@ mod tests {
                 "Blog",
                 "Contact",
                 "Docs",
-                "Firm",
-                "Foundation",
                 "Navigator",
                 "Presentations",
                 "Privacy",
@@ -1498,35 +1311,29 @@ mod tests {
         );
         assert_eq!(
             footer.len(),
-            10,
-            "the footer lays the row out as two columns of five: {footer:?}"
+            8,
+            "the footer lays the row out as two columns of four: {footer:?}"
         );
         let mut sorted = footer.clone();
         sorted.sort_unstable();
         assert_eq!(footer, sorted, "the footer nav is alphabetized by label");
-        // Every label is linked once — from exactly one of the two rows — with
-        // Foundation the single deliberate exception. The nonprofit's own header
-        // is gone, so this row is the header on both faces: the cross-link has
-        // to be at the top of a Foundation page as well as the bottom, and a
-        // reader who scrolled to the footer looking for it should still find it
-        // in the site map there. Named rather than skipped by a general rule, so
-        // a second duplicate cannot creep in behind this one.
+        // Every label is linked once, from exactly one of the two rows. There
+        // is no longer any exception: the one duplicate was the nonprofit's
+        // cross-link, which had to sit in both rows while the site served two
+        // faces, and both faces are one now.
         let header: Vec<&str> = FIRM_BRAND.nav.iter().map(|n| n.label).collect();
-        for label in footer.iter().filter(|label| **label != "Foundation") {
+        for label in &footer {
             assert!(
                 !header.contains(label),
                 "{label} is linked once, from the footer"
             );
         }
-        assert!(
-            header.contains(&"Foundation"),
-            "the nonprofit is linked from the header too, now that it has no \
-             header of its own: {header:?}"
-        );
-        assert!(
-            !header.contains(&"Team"),
-            "the team page is retired, so neither row may link it",
-        );
+        for retired in ["Team", "Foundation", "Firm"] {
+            assert!(
+                !header.contains(&retired) && !footer.contains(&retired),
+                "{retired} names a retired or redundant entry that neither row may link",
+            );
+        }
         assert!(
             super::firm_footer_nav()
                 .iter()
@@ -1535,83 +1342,31 @@ mod tests {
         );
     }
 
-    /// Both faces are reachable from the footer, each labelled by the
-    /// organization rather than by its wordmark.
+    /// No row links a retired URL.
     ///
-    /// One binary serves both faces, so neither is a different host a link
-    /// would have to leave for. That makes the pair of cross-links both
-    /// possible and correct — and they belong in the footer, because a visitor
-    /// at the top of a law firm's page is deciding whether to hire a lawyer.
+    /// The legal aid audience page, the Team page, and the whole `/foundation`
+    /// tree were retired outright, and `/foundation/*` answers `410 Gone`. A
+    /// link in either row would send a reader at one of those answers, which is
+    /// the failure this catches for every retired shape at once.
     #[test]
-    fn the_footer_nav_reaches_both_the_firm_and_the_foundation() {
-        for (label, href) in [("Firm", "/"), ("Foundation", "/foundation")] {
-            let link = super::firm_footer_nav()
-                .iter()
-                .find(|link| link.label == label)
-                .unwrap_or_else(|| panic!("{label} is linked from the shared footer"));
-            assert_eq!(link.href, href);
-        }
-    }
-
-    /// The nonprofit carries the firm's header row, because the site publishes
-    /// one header.
-    ///
-    /// It used to carry its own two entries — the workshop catalog and a legal
-    /// aid audience page. That page is retired and the header is unified, so
-    /// this asserts the two rows are now the same object rather than two lists
-    /// that could drift: a reader on `/foundation` meets the same destinations
-    /// as a reader anywhere else, with the nonprofit itself among them.
-    ///
-    /// `home_href` is deliberately still its own prefix. The header is shared;
-    /// the nonprofit's front door is not, and the footer's "Foundation"
-    /// cross-link and the header entry both have to land on it.
-    ///
-    /// This asserts the constants. Nothing in the request path reads
-    /// `FOUNDATION_BRAND.nav` any more — one resolver builds the chrome for
-    /// every page — so what this catches is a future divergent row being
-    /// declared here, not a page rendering one. The rendered proof is
-    /// `server::tests::firm_routes`'s
-    /// `the_foundation_front_door_wears_the_shared_header`.
-    #[test]
-    fn the_foundation_carries_the_firms_header_row() {
-        assert_eq!(
-            FOUNDATION_BRAND
-                .nav
-                .iter()
-                .map(|n| n.label)
-                .collect::<Vec<_>>(),
-            FIRM_BRAND.nav.iter().map(|n| n.label).collect::<Vec<_>>(),
-            "one header serves both faces"
-        );
-        assert!(
-            FOUNDATION_BRAND
-                .nav
-                .iter()
-                .any(|link| link.href == "/foundation"),
-            "and it links the nonprofit, which is the reader's way back to it"
-        );
-        assert_eq!(
-            FOUNDATION_BRAND.home_href, "/foundation",
-            "the Foundation's home is its own prefix, not the firm's root"
-        );
-    }
-
-    /// The retired legal aid audience page is linked from neither row.
-    ///
-    /// It was the Foundation header's second entry, and the header was the only
-    /// way that audience found it. The page is gone, so a link in either row
-    /// would now be a link to a `404` — the same failure the retired Team entry
-    /// is guarded against above.
-    #[test]
-    fn neither_row_links_the_retired_legal_aid_page() {
+    fn neither_row_links_a_retired_url() {
         for link in FIRM_BRAND.nav.iter().chain(super::firm_footer_nav()) {
-            assert!(
-                !link.href.contains("legal-aid"),
-                "{} links the retired legal aid page: {}",
-                link.label,
-                link.href
-            );
+            for retired in [
+                "/foundation",
+                "legal-aid",
+                "/team",
+                "/mission",
+                "/attorneys",
+            ] {
+                assert!(
+                    !link.href.starts_with(retired),
+                    "{} links the retired {retired}: {}",
+                    link.label,
+                    link.href
+                );
+            }
             assert_ne!(link.label, "Legal aid centers");
+            assert_ne!(link.label, "Foundation");
         }
     }
 
@@ -1628,11 +1383,9 @@ mod tests {
 
     /// The workshop catalog stays one click from every page.
     ///
-    /// It was in the Foundation header as that row's deliberate exception to
-    /// the `/foundation` prefix rule. That row is gone, so the footer entry is
-    /// now the only thing keeping the public catalog off "reachable by typing
-    /// the URL" — which is why it is asserted here rather than left to the
-    /// alphabetical list above.
+    /// The footer entry is the only thing keeping the public catalog off
+    /// "reachable by typing the URL", which is why it is asserted here rather
+    /// than left to the alphabetical list above.
     #[test]
     fn the_public_workshop_catalog_is_linked_from_the_footer() {
         let workshops = super::firm_footer_nav()
@@ -1640,21 +1393,6 @@ mod tests {
             .find(|n| n.label == "Workshops")
             .expect("the public workshop catalog is linked");
         assert_eq!(workshops.href, "/workshops");
-        // Notations sits behind the session boundary, so no row advertises it:
-        // an entry would send a signed-out reader at a login door.
-        assert!(
-            FIRM_BRAND
-                .nav
-                .iter()
-                .chain(super::firm_footer_nav())
-                .all(|link| link.href != "/foundation/notations"),
-            "the gated notations index is advertised by neither row"
-        );
-    }
-
-    #[test]
-    fn foundation_email_defaults_to_neonlaw_org() {
-        assert_eq!(super::foundation_email(), "support@neonlaw.org");
     }
 
     #[test]

@@ -177,21 +177,6 @@ allow if {
     is_clerk(input.session)
 }
 
-# The Foundation's reading surfaces behind the session boundary. The talks
-# are the Foundation's public face and render at `/`; everything else it
-# publishes — the mission letter, Notations, the transparency disclosures,
-# is readable by any authenticated person.
-#
-# This is a *reading* grant and nothing more: no role is implied by it, and a
-# `client` reaches exactly these pages and no others. The stricter workshop
-# rules below still govern the class material itself.
-foundation_reading_surface := {"mission", "notations", "transparency"}
-
-allow if {
-    foundation_reading_surface[input.path[0]]
-    is_authenticated(input.session)
-}
-
 # Workshop reads are public and never reach this policy. Claiming a completion
 # certificate remains a firm-side action for Lawyer and Clerk; Owner and Admin
 # reach it through the bypass above.

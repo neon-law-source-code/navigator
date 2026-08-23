@@ -35,7 +35,7 @@ pub mod service;
 pub mod welcome;
 
 pub use dispatch::{dispatch_state, parse_slug, DispatchError, EmailPayload};
-pub use layout::{base_url_from_env, render_email_html, EmailBrand};
+pub use layout::{base_url_from_env, brand_name, render_email_html, support_email};
 pub use service::{
     Attachment, CapturingEmail, EmailError, EmailService, OutboundEmail, SendGridEmail,
     SendReceipt, DEFAULT_FROM_EMAIL,

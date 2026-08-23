@@ -1,8 +1,7 @@
 //! Route parity for the Neon Law public host.
 //!
 //! Neon Law serves the firm brand surface and the host legal/crawler documents,
-//! never the Foundation's pages, and the shared Navigator boundary still closes
-//! the authenticated surface. The state carries `PolicyClient::passthrough`, so
+//! and the shared Navigator boundary still closes the authenticated surface. The state carries `PolicyClient::passthrough`, so
 //! a `/lawyer` redirect proves the boundary is router composition, not policy.
 
 use axum::{
@@ -671,32 +670,25 @@ async fn the_firm_nav_leads_with_the_lead_offering_then_the_practices() {
     let transactional = header
         .find(r#"href="/fractional-gc""#)
         .expect("Fractional GC is in the nav");
-    // And the nonprofit closes the row. It is in the header at all because the
-    // Foundation's own header is gone: this row is the header on both faces, so
-    // without the entry the 501(c)(3) would be reachable from the top of a page
-    // only by a reader who knew to scroll past the whole thing.
-    let foundation = header
-        .find(r#"href="/foundation""#)
-        .expect("Foundation is in the nav");
     assert!(
         lead < litigation && litigation < transactional && transactional < services,
         "the lead offering leads, then the two quoted practices, then the schedule: {header}"
     );
-    assert!(
-        services < foundation,
-        "the nonprofit closes the row, after the firm's own work: {header}"
-    );
     assert_eq!(
         header.matches("<li").count(),
-        5,
-        "the header is the lead offering, the three practices, and the \
-         Foundation, and nothing else: {header}"
+        4,
+        "the header is the lead offering and the three practices, and nothing \
+         else: {header}"
+    );
+    assert!(
+        !header.contains(r#"href="/foundation""#),
+        "no header entry reaches a retired URL: {header}"
     );
 }
 
 #[tokio::test]
 async fn the_footer_carries_the_pages_the_header_does_not() {
-    // All ten routes are one click away from every public page. Checked on
+    // All eight routes are one click away from every public page. Checked on
     // `/litigation` rather than `/`, because the footer is shared chrome and a
     // page that is not the home page proves it renders everywhere.
     //
@@ -706,15 +698,11 @@ async fn the_footer_carries_the_pages_the_header_does_not() {
     // that anyone may read them, these links are what stop each being reachable
     // only by typing the URL.
     //
-    // Firm (`/`) and Foundation (`/foundation`) are the pair that reaches each
-    // organization's home from anywhere on the site. `/privacy` and `/terms`
-    // ride the row on the same footing as the rest.
-    const ROW: [&str; 10] = [
+    // `/privacy` and `/terms` ride the row on the same footing as the rest.
+    const ROW: [&str; 8] = [
         "/blog",
         "/contact",
         "/docs",
-        "/",
-        "/foundation",
         "/navigator",
         "/presentations",
         "/privacy",
@@ -742,11 +730,16 @@ async fn the_footer_carries_the_pages_the_header_does_not() {
         positions.windows(2).all(|pair| pair[0] < pair[1]),
         "the footer row is alphabetized by label: {footer}"
     );
-    // The team page is retired, so neither row may link it.
-    assert!(
-        !footer.contains(r#"href="/team""#),
-        "the team page is retired, so the footer must not link it: {footer}"
-    );
+    // A retired URL is linked by neither row. The team page and the whole
+    // `/foundation` tree are both withdrawn, and `/foundation/*` answers
+    // `410 Gone` — a footer link would send a reader on every page at that
+    // answer.
+    for retired in [r#"href="/team""#, r#"href="/foundation""#] {
+        assert!(
+            !footer.contains(retired),
+            "{retired} is retired, so the footer must not link it: {footer}"
+        );
+    }
 }
 
 #[tokio::test]
@@ -970,18 +963,17 @@ async fn the_llms_index_publishes_no_fee() {
 
 /// The platform page is the firm's, and it makes one invitation.
 ///
-/// It lives on this host rather than the Foundation's because it speaks for the
-/// firm: the firm builds Navigator, and the page invites the reader to co-counsel
-/// a pro bono case with the firm and the Foundation together. Three things must
-/// survive on the rendered page: the co-counsel invitation, the client-serving
-/// purpose the firm states outright, and the absence of any published rate.
+/// The firm builds Navigator, and the page invites the reader to co-counsel a
+/// pro bono case with the firm. Three things must survive on the rendered page:
+/// the co-counsel invitation, the client-serving purpose the firm states
+/// outright, and the absence of any published rate.
 #[tokio::test]
-async fn the_navigator_page_invites_foundation_co_counsel_and_publishes_no_rate() {
+async fn the_navigator_page_invites_pro_bono_co_counsel_and_publishes_no_rate() {
     let app = site_app().await;
     let body = body_string(anon_get(&app, "/navigator").await).await;
     assert!(
-        body.contains("Co-Counsel a Pro Bono Case with us and the Neon Law Foundation"),
-        "the only invitation is pro bono Foundation co-counsel: {body}"
+        body.contains("Co-Counsel a Pro Bono Case with Us"),
+        "the only invitation is pro bono co-counsel: {body}"
     );
     assert!(
         body.contains(
@@ -1027,7 +1019,7 @@ async fn the_navigator_page_invites_foundation_co_counsel_and_publishes_no_rate(
 #[tokio::test]
 async fn the_navigator_page_publishes_the_cli_at_the_release_it_runs() {
     const DOWNLOAD_BASE: &str =
-        "https://github.com/neon-law-foundation/navigator/releases/download/";
+        "https://github.com/neon-law-source-code/navigator/releases/download/";
 
     let app = site_app().await;
     let body = body_string(anon_get(&app, "/navigator").await).await;
@@ -1069,7 +1061,7 @@ async fn the_navigator_page_publishes_the_cli_at_the_release_it_runs() {
     for (slug, extension) in [("linux", "tar.gz"), ("macos", "tar.gz"), ("windows", "zip")] {
         let filename = format!("navigator-{version}-{slug}.{extension}");
         let href = format!(
-            "https://github.com/neon-law-foundation/navigator/releases/download/\
+            "https://github.com/neon-law-source-code/navigator/releases/download/\
              {version}/{filename}"
         )
         .replace(char::is_whitespace, "");
@@ -1099,11 +1091,11 @@ async fn the_navigator_page_publishes_the_cli_at_the_release_it_runs() {
 
     // The Homebrew route, and the reason it is the recommended one on a Mac.
     assert!(
-        body.contains("brew install neon-law-foundation/navigator/navigator"),
+        body.contains("brew install neon-law-source-code/navigator/navigator"),
         "the tap-qualified install command renders: {body}"
     );
     assert!(
-        body.contains("brew upgrade neon-law-foundation/navigator/navigator"),
+        body.contains("brew upgrade neon-law-source-code/navigator/navigator"),
         "the upgrade command renders: {body}"
     );
     assert!(
@@ -1459,49 +1451,51 @@ async fn firm_brand_pngs_are_high_resolution_square_assets() {
     }
 }
 
-/// The site serves the Foundation's pages under its own prefix, and only there.
+/// The retired nonprofit surface answers `410 Gone` and renders nothing.
 ///
-/// This asserted the opposite while the two brands were separate hosts: a
-/// Foundation path on the firm's host was a `404`, because the firm's binary
-/// did not mount it. One binary mounts both now, so the risk moved to the
-/// prefix — a Foundation page reachable at the site root would put the
-/// nonprofit's programme behind the law firm's brand, which is the thing the
-/// separate hosts were protecting.
+/// Two failure modes, and the test distinguishes them. A page that came back
+/// answers `200` — the surface was retired, so serving one republishes an
+/// organization the site no longer speaks for. A path that fell out of the
+/// retired-path table answers `404`, which reads as a typo and tells a crawler
+/// to keep asking rather than to drop the URL.
 #[tokio::test]
-async fn the_foundation_surface_serves_only_under_its_prefix() {
+async fn the_retired_nonprofit_surface_answers_gone() {
     let app = site_app().await;
 
     for path in [
         "/foundation",
         "/foundation/education",
         "/foundation/attorneys",
+        "/foundation/mission",
+        "/foundation/notations",
+        "/foundation/transparency",
+        "/education",
+        "/attorneys",
+        "/mission",
+        "/notations",
+        "/transparency",
     ] {
+        let response = anon_get(&app, path).await;
         assert_eq!(
-            anon_get(&app, path).await.status(),
-            StatusCode::OK,
-            "the Foundation page {path} must serve under its prefix"
+            response.status(),
+            StatusCode::GONE,
+            "the retired page {path} must answer 410 Gone"
+        );
+        assert!(
+            response.headers().get("location").is_none(),
+            "{path} must not redirect: there is no firm page that replaces it"
         );
     }
 
-    // The retired root URLs are redirects, never pages. Serving one would give
-    // the same content two live addresses and split its search authority.
-    for retired in ["/education", "/attorneys"] {
+    // The legal aid audience page was retired before the rest of the surface
+    // and never entered the retired-path table, so both of its addresses answer
+    // `404` rather than `410`. Pinned so a later sweep does not quietly
+    // reclassify a URL nobody decided to keep answering for.
+    for never_tabled in ["/foundation/legal-aid", "/legal-aid"] {
         assert_eq!(
-            anon_get(&app, retired).await.status(),
-            StatusCode::PERMANENT_REDIRECT,
-            "{retired} is a retired Foundation URL and must redirect, not serve"
-        );
-    }
-
-    // The legal aid audience page is retired outright — not moved, not gated.
-    // Both of its addresses answer `404`: the canonical one because the router
-    // is gone, and the root one because its `301` went with it. A redirect left
-    // behind would cost a backlink a round trip to reach the same dead end.
-    for gone in ["/foundation/legal-aid", "/legal-aid"] {
-        assert_eq!(
-            anon_get(&app, gone).await.status(),
+            anon_get(&app, never_tabled).await.status(),
             StatusCode::NOT_FOUND,
-            "{gone} is retired outright and must answer 404"
+            "{never_tabled} is retired outright and must answer 404"
         );
     }
 }
@@ -1532,9 +1526,8 @@ async fn site_host_serves_the_talks_catalog_anonymously() {
     assert!(index.contains(talk), "the catalog lists {talk}: {index}");
 }
 
-/// A talk's hub renders under the firm's brand, and still carries the deck
-/// affordances the Foundation host used to prove: the start button, the
-/// Markdown twin, and the chapter rail.
+/// A talk's hub renders under the firm's brand, and carries the deck
+/// affordances: the start button, the Markdown twin, and the chapter rail.
 #[tokio::test]
 async fn a_talk_hub_renders_under_the_firm_brand() {
     let app = site_app_with_talks().await;
@@ -1633,16 +1626,15 @@ async fn a_talk_hub_renders_under_the_firm_brand() {
     assert!(
         slides.contains("workshop-navigator-slide")
             && slides.contains(r#"data-practice-mark="helm""#)
-            && slides.contains("github.com/neon-law-foundation/navigator"),
+            && slides.contains("github.com/neon-law-source-code/navigator"),
         "the Navigator identity slide must replace its Markdown marker: {slides}"
     );
 }
 
 /// A talk wears the firm's chrome, including its footer disclaimer.
 ///
-/// The two categories share five router constructors, and before the move they
-/// hardcoded the Foundation's chrome pre-layer. This pins that a talk page
-/// still carries the firm's own footer.
+/// The two categories share five router constructors, and this pins that a talk
+/// page carries the firm's own footer rather than a bare one.
 #[tokio::test]
 async fn a_talk_wears_the_firm_footer() {
     let app = site_app_with_talks().await;
@@ -1945,7 +1937,7 @@ async fn real_thanks_apple_post_is_capped_and_renders_the_photo_collage() {
     // End-to-end over the SHIPPED post file: the loader parses
     // `content/blog/20260619_thanks_apple.md`, the router renders it, and
     // we assert the two things this change wired up — the 65ch reading
-    // measure (matching `/foundation`) and the photo collage,
+    // measure and the photo collage,
     // authored as a markdown bullet list of images that resolves through
     // the asset seam to `/public/img/thanks-apple/collage-N.jpg`.
     let mut state = site_state().await;
@@ -2255,16 +2247,15 @@ async fn contact_returns_contact_page_html() {
     // The published address, which is `contact@` rather than the `support@`
     // mailbox the mail pipeline sends from and threads inbound replies on.
     assert!(body.contains("mailto:contact@neonlaw.com"));
-    // The contact CTA is the firm's own inbox. The shared footer below also
-    // carries the Foundation's address, so what matters is that the page's
-    // invitation to make contact reaches the firm rather than the nonprofit.
+    // The contact CTA is the firm's own inbox, and no other organization's
+    // address appears as an invitation to make contact.
     assert!(
         body.contains(r#"href="mailto:contact@neonlaw.com""#),
         "the contact CTA reaches the firm: {body}"
     );
     assert!(
-        !body.contains(r#"href="mailto:support@neonlaw.org" class="nav-btn"#),
-        "the Foundation address is never the firm page's contact CTA: {body}"
+        !body.contains("neonlaw.org"),
+        "no retired organization's address appears on the contact page: {body}"
     );
     // The firm's voice line, written for a reader and dialable as digits.
     assert!(body.contains("+1 510 800 2080"), "firm phone: {body}");
@@ -2299,9 +2290,6 @@ async fn contact_returns_contact_page_html() {
 /// The component and chrome tests prove the line renders from the right props;
 /// this proves the props actually reach a served page — the wiring through
 /// `chrome_for` and the two `inject_*_chrome` layers, which no unit test sees.
-/// Both faces are checked because the Foundation's chrome is built by *mutating*
-/// the firm's and clearing its regulated fields, so it is exactly the place a
-/// shared field gets dropped by accident.
 ///
 /// The star count is deliberately not asserted. It comes from a cache that only
 /// `portal::hosting::run` starts filling, so a test-built router publishes the
@@ -2310,7 +2298,7 @@ async fn contact_returns_contact_page_html() {
 #[tokio::test]
 async fn every_public_page_links_the_source_repository() {
     let app = site_router(site_state().await);
-    for uri in ["/", "/contact", "/foundation"] {
+    for uri in ["/", "/contact", "/navigator"] {
         let resp = app
             .clone()
             .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
@@ -2319,11 +2307,11 @@ async fn every_public_page_links_the_source_repository() {
         assert_eq!(resp.status(), StatusCode::OK, "{uri}");
         let body = body_string(resp).await;
         assert!(
-            body.contains(r#"href="https://github.com/neon-law-foundation/navigator""#),
+            body.contains(r#"href="https://github.com/neon-law-source-code/navigator""#),
             "{uri} links the repository: {body}"
         );
         assert!(
-            body.contains("github-stars__repo") && body.contains("neon-law-foundation/navigator"),
+            body.contains("github-stars__repo") && body.contains("neon-law-source-code/navigator"),
             "{uri} names it as the project's source: {body}"
         );
         // No number, because nothing spawned the refresh — the link stands on
@@ -2369,28 +2357,9 @@ async fn the_team_surface_is_retired_in_full() {
     }
 }
 
-/// The pre-split `/foundation/contact` alias is retired. It existed because
-/// `/contact` carried the Foundation's channels alongside the firm's; now that
-/// the page is the firm's alone, the alias would land a visitor looking for the
-/// Foundation on a page that never mentions it.
-#[tokio::test]
-async fn foundation_contact_is_not_served() {
-    let app = site_router(site_state().await);
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .uri("/foundation/contact")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
-}
-
 /// A mounted white-label brand bundle rebrands the firm home and its chrome.
-/// This is the render-side coverage that complements the Foundation host's
-/// declared-asset-serving test (the firm home lives on this host now).
+/// This is the render-side coverage that complements the declared-asset-serving
+/// test in `routes.rs`.
 #[tokio::test]
 async fn a_mounted_brand_bundle_rebrands_the_firm_home() {
     let bundle_dir = tempfile::tempdir().unwrap();
@@ -2478,8 +2447,7 @@ async fn a_mounted_brand_bundle_rebrands_the_firm_home() {
 ///
 /// The firm's Reno box is already the Nevada tile in the contact band above, so
 /// a second copy of the same street, suite, and city at the very bottom told a
-/// reader nothing the band had not; the Foundation receives mail at that same
-/// box, so its own line named no further destination either. Both went.
+/// reader nothing the band had not. It went.
 ///
 /// Asserted here rather than in the component, because the addresses were the
 /// firm's real ones out of `views::brand` — a component fixture that simply
@@ -2505,71 +2473,5 @@ async fn the_firm_footer_publishes_no_registered_address_row() {
     assert!(
         body.contains("Ste 405-9002"),
         "the office the band publishes is untouched: {body}"
-    );
-}
-
-/// The Foundation's front door wears the shared header, not one of its own.
-///
-/// This is the rendered proof that the nonprofit's header is gone. It had its
-/// own: the "Neon Law Foundation" wordmark, its own mark, `/foundation` as the
-/// brand link, and a two-entry row (the workshop catalog and a legal aid
-/// audience page). A reader on `/foundation` now meets the same header as a
-/// reader anywhere else, with the nonprofit itself among its destinations.
-///
-/// Asserted on the real route rather than on the brand constants, because
-/// nothing in the request path reads `FOUNDATION_BRAND.nav` any longer — a
-/// constant-level test would pass while the page rendered anything at all.
-#[tokio::test]
-async fn the_foundation_front_door_wears_the_shared_header() {
-    let app = site_app().await;
-    let body = body_string(anon_get(&app, "/foundation").await).await;
-    let header = body
-        .split(r#"<ul class="site-header__links""#)
-        .nth(1)
-        .and_then(|rest| rest.split("</ul>").next())
-        .expect("the Foundation page renders the shared header");
-
-    // The firm's row, in full, including the entry back to the nonprofit.
-    for href in [
-        "/fractional-cto",
-        "/litigation",
-        "/fractional-gc",
-        "/services",
-        "/foundation",
-    ] {
-        assert!(
-            header.contains(&format!(r#"href="{href}""#)),
-            "the shared header carries {href}: {header}"
-        );
-    }
-    assert_eq!(
-        header.matches("<li").count(),
-        5,
-        "and nothing else: {header}"
-    );
-
-    // The retired row is gone: no second wordmark, and no link to the audience
-    // page that row existed to carry.
-    let brand = body
-        .split("site-header__brand")
-        .nth(1)
-        .and_then(|rest| rest.split("</a>").next())
-        .expect("the header renders a brand mark");
-    assert!(
-        brand.contains("Neon Law") && !brand.contains("Neon Law Foundation"),
-        "the header wears one wordmark, the firm's: {brand}"
-    );
-    //
-    // Scoped to the link, not the phrase: the Foundation's home page still has
-    // a card whose prose opens "Legal aid centers have more matters than
-    // capacity", which is true and stayed. What went is the route and every
-    // href to it — including the deep link that card used to carry.
-    assert!(
-        !body.contains("/foundation/legal-aid"),
-        "the retired audience page is linked from nowhere on the page: {body}"
-    );
-    assert!(
-        !header.contains("Legal aid centers"),
-        "and the retired row's label is gone from the header: {header}"
     );
 }

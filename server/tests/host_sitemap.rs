@@ -1,17 +1,16 @@
-//! `/sitemap.xml` on **both** hosts, composed exactly as their binaries compose
-//! them.
+//! `/sitemap.xml`, composed exactly as the binary composes it.
 //!
-//! A sitemap is a promise: every URL in it is a page this host serves. The two
-//! brands merge one shared crawler table (`host_crawler_and_legal_routes`), and
-//! while the path list inside it was hardcoded that promise was broken in both
-//! directions — the Foundation advertised `/litigation` and `/blog`, the firm
-//! advertised `/education`, and each is a `404` on the host that offered it.
-//! Google reports those as errors and spends crawl budget rediscovering them.
+//! A sitemap is a promise: every URL in it is a page this host serves. The
+//! crawler table (`host_crawler_and_legal_routes`) is shared by every brand
+//! host, and while the path list inside it was hardcoded that promise was
+//! broken — a hardcoded list advertises one brand's pages on another's host,
+//! and each of those is a `404` for the crawler that follows it. Google reports
+//! those as errors and spends crawl budget rediscovering them.
 //!
 //! So the assertion here is the promise itself, made against the real
-//! composition rather than against a restated list: fetch each host's sitemap,
-//! then fetch every URL in it from that same host. A path a brand adds enters
-//! this gate by being advertised.
+//! composition rather than against a restated list: fetch the sitemap, then
+//! fetch every URL in it from the same host. A path a brand adds enters this
+//! gate by being advertised.
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
@@ -53,10 +52,9 @@ fn compose(
 
 /// The site, composed exactly as the binary composes it.
 ///
-/// One helper where there were two. `firm_app` and `foundation_app` named the
-/// two hosts while they were separate deployments; they became the same
-/// expression when the crates merged, and keeping both would have implied a
-/// separation the router no longer has.
+/// One helper where there were two, from when the firm and a nonprofit were
+/// separate deployments. They became the same expression when the crates
+/// merged, and the second face is retired outright now.
 async fn app() -> Router {
     let state = state().await;
     let dioxus = neon::public_dioxus_routers(&state);
@@ -139,19 +137,19 @@ async fn the_firm_sitemap_advertises_only_pages_the_firm_host_serves() {
     }
 }
 
-/// Every URL the Foundation advertises is a page the Foundation host serves —
-/// and serves to a stranger, which is the stricter half. A gated page answers
-/// a redirect rather than `200`, so a crawler sent to one lands on the login
-/// door.
+/// Every URL the sitemap advertises is a page this host serves — and serves to
+/// a stranger, which is the stricter half. A gated page answers a redirect
+/// rather than `200`, so a crawler sent to one lands on the login door, and a
+/// retired page answers `410`.
 #[tokio::test]
-async fn the_foundation_sitemap_advertises_only_pages_the_foundation_host_serves() {
+async fn the_sitemap_advertises_only_pages_the_host_serves_anonymously() {
     let app = app().await;
     for path in advertised_paths(&app).await {
         let (status, _) = get(&app, &path).await;
         assert_eq!(
             status,
             StatusCode::OK,
-            "the Foundation sitemap advertises {path}, which its host answers with {status}"
+            "the sitemap advertises {path}, which the host answers with {status}"
         );
     }
 }
@@ -163,10 +161,7 @@ async fn the_foundation_sitemap_advertises_only_pages_the_foundation_host_serves
 /// that happens to overlap.
 #[tokio::test]
 async fn every_advertised_url_falls_under_a_declared_brand_path() {
-    for (brand, app, declared) in [
-        ("the firm", app().await, neon::PUBLIC_PATHS),
-        ("the Foundation", app().await, neon::PUBLIC_PATHS),
-    ] {
+    for (brand, app, declared) in [("the firm", app().await, neon::PUBLIC_PATHS)] {
         for path in advertised_paths(&app).await {
             assert!(
                 declared.iter().any(|pattern| matches(pattern, &path)),
@@ -176,16 +171,9 @@ async fn every_advertised_url_falls_under_a_declared_brand_path() {
     }
 }
 
-/// The sitemap files each face under the prefix that serves it.
-///
-/// One binary means one sitemap, so the old cross-host gate — "the Foundation
-/// must not advertise a firm page" — no longer describes a failure that can
-/// happen: every page here resolves. What can still go wrong is the prefix. A
-/// Foundation page advertised at the site root, or a firm page under
-/// `/foundation`, tells a crawler the nonprofit published the fee schedule or
-/// that the law firm runs the grant programme.
+/// The sitemap advertises the firm's pages and no retired URL.
 #[tokio::test]
-async fn the_sitemap_files_each_face_under_its_own_prefix() {
+async fn the_sitemap_advertises_the_firm_and_nothing_retired() {
     let advertised = advertised_paths(&app().await).await;
 
     for firm_page in [
@@ -204,29 +192,25 @@ async fn the_sitemap_files_each_face_under_its_own_prefix() {
         );
     }
 
-    for foundation_page in [
+    // A retired URL answers `410 Gone`, which is an answer rather than a
+    // document. Advertising one asks a crawler to index a withdrawal.
+    for retired in [
         "/foundation",
         "/foundation/education",
         "/foundation/attorneys",
-    ] {
-        assert!(
-            advertised.iter().any(|path| path == foundation_page),
-            "the Foundation page {foundation_page} must be advertised: {advertised:?}"
-        );
-    }
-
-    // A retired URL is a `301`, not a document. Advertising one asks a crawler
-    // to index a redirect and splits the page's authority across two URLs.
-    for retired in [
+        "/foundation/mission",
+        "/foundation/notations",
+        "/foundation/transparency",
         "/education",
         "/legal-aid",
         "/attorneys",
         "/mission",
         "/notations",
+        "/transparency",
     ] {
         assert!(
             !advertised.iter().any(|path| path == retired),
-            "{retired} is a retired Foundation URL and must not be advertised: {advertised:?}"
+            "{retired} is retired and must not be advertised: {advertised:?}"
         );
     }
 }

@@ -10,10 +10,7 @@ use axum::body::Body;
 use axum::http::{header, Request, StatusCode};
 use http_body_util::BodyExt;
 use portal::workshops::{WorkshopChapter, WorkshopSection};
-use portal::{
-    AppState, AuthConfig, CanonicalHost, MarketingIndex, SessionStore, WorkshopIndex,
-    WorkshopMaterial,
-};
+use portal::{AppState, AuthConfig, CanonicalHost, SessionStore, WorkshopIndex, WorkshopMaterial};
 use scraper::{Html, Selector};
 use std::collections::HashMap;
 use store::test_support::mem_surreal;
@@ -30,13 +27,9 @@ async fn state_with_engines() -> (AppState, store::surreal::SurrealDb) {
 
 /// The **firm** host, composed through `neon`'s own entry points.
 ///
-/// This file is otherwise the Foundation host's, and deliberately so. The
-/// Catalog material surface is the exception: both catalogs — the anonymous
-/// talks and the gated Navigator classes — mount on the firm's host, so the
-/// tests that assert how a class or a talk *renders* have to drive that
-/// composition. What belongs to the Foundation host is that it serves neither,
-/// which `the_workshops_surface_is_not_mounted_on_the_foundation_host` and its
-/// `presentations` twin assert against [`server::neon_router`].
+/// Both catalogs — the anonymous talks and the gated Navigator classes — mount
+/// on this host, so the tests that assert how a class or a talk *renders* drive
+/// this composition rather than the bare `server::neon_router`.
 fn catalog_router(state: AppState) -> axum::Router {
     let dioxus = neon::public_dioxus_routers(&state);
     portal::bootstrap(
@@ -107,10 +100,9 @@ fn workshop_session_cookie() -> String {
     session_cookie_for_role(store::persons::Role::Lawyer)
 }
 
-/// A session for the Foundation's gated reading surfaces — the mission letter,
-/// Notations, and the transparency disclosures. Deliberately a `client`: those pages read for any
-/// authenticated person, and using the weakest role is what proves it.
-fn foundation_reader_cookie() -> String {
+/// The weakest authenticated role, for asserting what a signed-in reader
+/// reaches — and, on a retired surface, what they no longer do.
+fn client_reader_cookie() -> String {
     session_cookie_for_role(store::persons::Role::Client)
 }
 
@@ -463,16 +455,6 @@ async fn empty_state() -> AppState {
     portal::test_support::app_state(portal::test_support::embedded_surreal().await).await
 }
 
-async fn state_with_bundled_marketing() -> AppState {
-    let marketing_dir = std::path::Path::new(portal::DEFAULT_MARKETING_DIR);
-    let marketing_docs = portal::marketing::loader::load_dir(marketing_dir)
-        .expect("bundled marketing content loads");
-    AppState {
-        marketing: MarketingIndex::new(marketing_docs),
-        ..portal::test_support::app_state(portal::test_support::embedded_surreal().await).await
-    }
-}
-
 async fn empty_state_with_auth(auth: AuthConfig) -> AppState {
     AppState {
         auth,
@@ -519,9 +501,7 @@ async fn state_with_workshops(materials: Vec<WorkshopMaterial>) -> AppState {
         surreal: store::surreal::test_support::mem().await,
         workshops: WorkshopIndex::new(materials),
         docs: portal::DocsIndex::empty(),
-        marketing: MarketingIndex::empty(),
         blog: portal::BlogIndex::empty(),
-        transparency: portal::TransparencyIndex::empty(),
         auth: AuthConfig::new(true, None),
         google_oauth: portal::google_oauth::GoogleOauthConfig::passthrough(),
         rate_limit: portal::rate_limit::RateLimit::disabled(),
@@ -680,9 +660,9 @@ async fn app_projects_renders_the_client_dashboard() {
 /// The dashboard blurb names the firm the client actually hired, resolved from
 /// the request-scoped branding rather than written into the copy.
 ///
-/// Both halves matter. The default deploy must name the firm — the sentence used
-/// to name Neon Law, the Foundation, which is not the entity a portal client
-/// engaged. A mounted white-label bundle must name *its* firm, which is the
+/// Both halves matter. The default deploy must name the firm — the sentence
+/// used to name a nonprofit, which is not the entity a portal client engaged. A
+/// mounted white-label bundle must name *its* firm, which is the
 /// failure a `views::brand` read inside the server function would produce: that
 /// task does not inherit the brand `task_local`, so it would silently publish
 /// this firm's name in someone else's portal.
@@ -1357,14 +1337,14 @@ async fn policy_evaluation_errors_fail_closed_at_the_router_boundary() {
     );
 }
 
-/// The firm holds the root and the Foundation holds its own prefix.
+/// The firm holds the root, and the retired nonprofit surface holds nothing.
 ///
-/// The reverse held while the Foundation had a host of its own: it was
-/// canonical at `/`, and `/foundation` `301`ed there. Consolidation inverted
-/// both halves, and reinstating either would put one organization's front door
-/// on the other's address.
+/// Both halves matter against the real composition. A regression that
+/// remounted the nonprofit's pages would answer `200` on the second half; one
+/// that dropped the retired-path table would answer `404`, which reads as a
+/// typo rather than a withdrawal.
 #[tokio::test]
-async fn the_firm_holds_the_root_and_the_foundation_its_prefix() {
+async fn the_firm_holds_the_root_and_the_retired_surface_answers_gone() {
     let app = server::neon_router(
         empty_state().await,
         std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
@@ -1381,92 +1361,67 @@ async fn the_firm_holds_the_root_and_the_foundation_its_prefix() {
         body.contains("Neon Law"),
         "the site root is the firm's home: {body}"
     );
+    assert!(
+        !body.contains("Neon Law Foundation"),
+        "and it names no retired organization: {body}"
+    );
 
-    // The Foundation's home is a page at its own prefix, not a redirect.
-    let foundation = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri("/foundation")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(foundation.status(), StatusCode::OK);
-    let body = body_string(foundation).await;
-    assert!(
-        body.contains("Everyone in America should be able to exercise their legal rights."),
-        "the Foundation's home leads with its tagline: {body}"
-    );
-    assert!(
-        body.contains("501(c)(3) nonprofit"),
-        "the Foundation's home says what it is: {body}"
-    );
+    for path in [
+        "/foundation",
+        "/foundation/mission",
+        "/foundation/education",
+        "/foundation/attorneys",
+        "/foundation/notations",
+        "/foundation/transparency",
+        "/mission",
+        "/education",
+        "/attorneys",
+        "/notations",
+        "/transparency",
+    ] {
+        let resp = app
+            .clone()
+            .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::GONE, "{path}");
+        assert!(
+            resp.headers().get("location").is_none(),
+            "{path} must not redirect"
+        );
+    }
 }
 
-/// The Foundation's former root URLs `301` beneath its prefix.
+/// A signed-in reader gets `410` on the retired surface too.
+///
+/// The mission letter, Notations, and the transparency disclosures read for any
+/// authenticated person before they were retired, so a stale grant would show
+/// up here and nowhere else: an anonymous request would be `410` while a
+/// `client` session still rendered the page.
 #[tokio::test]
-async fn the_foundations_former_root_urls_redirect_beneath_its_prefix() {
+async fn a_signed_in_reader_also_gets_gone_on_the_retired_surface() {
     let app = server::neon_router(
         empty_state().await,
         std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
     );
-    for (from, to) in [
-        ("/mission", "/foundation/mission"),
-        ("/notations", "/foundation/notations"),
-        ("/transparency", "/foundation/transparency"),
-    ] {
-        let resp = app
-            .clone()
-            .oneshot(Request::builder().uri(from).body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-        assert_eq!(resp.status(), StatusCode::PERMANENT_REDIRECT, "{from}");
-        assert_eq!(resp.headers().get("location").unwrap(), to, "{from}");
-    }
-}
-
-#[tokio::test]
-async fn foundation_mission_centers_training_outcomes() {
-    let app = server::neon_router(
-        state_with_bundled_marketing().await,
-        std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
-    );
-    for (uri, training_pillar) in [(
+    for path in [
         "/foundation/mission",
-        "judgment, collaboration, and adversarial review",
-    )] {
+        "/foundation/notations",
+        "/foundation/transparency",
+        "/foundation/transparency/bylaws",
+    ] {
         let resp = app
             .clone()
             .oneshot(
                 Request::builder()
-                    .uri(uri)
-                    .header(axum::http::header::COOKIE, foundation_reader_cookie())
+                    .uri(path)
+                    .header(axum::http::header::COOKIE, client_reader_cookie())
                     .body(Body::empty())
                     .unwrap(),
             )
             .await
             .unwrap();
-        assert_eq!(resp.status(), StatusCode::OK);
-        let body = body_string(resp).await;
-        assert!(
-            body.contains(training_pillar),
-            "{uri} should center the Foundation's AI-training pillars: {body}",
-        );
-        for retired_claim in [
-            "Neon Law Navigator",
-            "github.com/neon-law-foundation/navigator",
-            "AGPL-3.0-or-later",
-            "use-the-navigator",
-            "support@neonlaw.org",
-            "501(c)(3)",
-        ] {
-            assert!(
-                !body.contains(retired_claim),
-                "{uri} must not publish retired product or unconfirmed claims ({retired_claim}): {body}",
-            );
-        }
+        assert_eq!(resp.status(), StatusCode::GONE, "{path}");
     }
 }
 
@@ -1505,11 +1460,10 @@ async fn legacy_help_route_is_gone() {
 
 /// The firm's marketing surface serves at the site root.
 ///
-/// This asserted the exact opposite while the Foundation had a host of its own:
-/// every firm route `404`ed there, because the Foundation's binary did not
-/// mount them. One binary mounts both faces now, so each of these is a live
-/// page — and the invariant that replaced the `404` is that none of them
-/// answers beneath `/foundation`.
+/// Each of these is a live page at the root, and the paired invariant is that
+/// no firm route answers beneath a retired prefix: `/foundation` and everything
+/// under it is either `410` (the pages that existed) or `404` (the ones that
+/// never did), and never a firm page.
 #[tokio::test]
 async fn the_firm_marketing_surface_serves_at_the_site_root() {
     let app = server::neon_router(
@@ -1530,12 +1484,14 @@ async fn the_firm_marketing_surface_serves_at_the_site_root() {
     }
     // `/foundation/team` stays in the shadowed list even though `/team` itself
     // is retired: the property is that no firm route answers beneath the
-    // nonprofit's prefix, and a path that 404s for two reasons still must not
-    // start answering for one of them.
+    // retired prefix, and a path that 404s for two reasons still must not start
+    // answering for one of them.
     for shadowed in [
         "/foundation/blog",
         "/foundation/contact",
         "/foundation/team",
+        "/foundation/navigator",
+        "/foundation/services",
     ] {
         let resp = app
             .clone()
@@ -1550,7 +1506,7 @@ async fn the_firm_marketing_surface_serves_at_the_site_root() {
         assert_eq!(
             resp.status(),
             StatusCode::NOT_FOUND,
-            "a firm page must not answer beneath the nonprofit's prefix: {shadowed}"
+            "a firm page must not answer beneath the retired prefix: {shadowed}"
         );
     }
 }
@@ -1572,9 +1528,9 @@ async fn mounted_brand_bundle_serves_only_declared_assets() {
     state.brand_bundle = Some(bundle);
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
 
-    // The declared brand assets are served from `/public/brand/*` on the
-    // Foundation host too; the firm home + contact rendering under a custom
-    // brand bundle is exercised on the firm surface.
+    // The declared brand assets are served from `/public/brand/*`; the firm
+    // home + contact rendering under a custom brand bundle is exercised on the
+    // firm surface.
     let logo = app
         .clone()
         .oneshot(
@@ -1829,9 +1785,7 @@ async fn health_returns_503_when_the_store_is_down() {
         surreal: store::surreal::SurrealDb::uninitialized(),
         workshops: WorkshopIndex::empty(),
         docs: portal::DocsIndex::empty(),
-        marketing: MarketingIndex::empty(),
         blog: portal::BlogIndex::empty(),
-        transparency: portal::TransparencyIndex::empty(),
         auth: AuthConfig::new(true, None),
         google_oauth: portal::google_oauth::GoogleOauthConfig::passthrough(),
         rate_limit: portal::rate_limit::RateLimit::disabled(),
@@ -1891,168 +1845,6 @@ async fn health_returns_503_when_the_store_is_down() {
 }
 
 #[tokio::test]
-async fn the_foundation_home_is_its_marketing_page_and_reads_anonymously() {
-    // `/foundation` is what the Foundation says about itself: what it does, for
-    // whom, and how to start. It must answer a stranger — it is the one page
-    // the whole anonymous Foundation surface hangs off, and the only public
-    // explanation of the nonprofit that exists.
-    let app = server::neon_router(
-        empty_state().await,
-        std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
-    );
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .uri("/foundation")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body = body_string(resp).await;
-    assert!(
-        body.contains("Everyone in America should be able to exercise their legal rights."),
-        "the home page leads with the Foundation's tagline: {body}"
-    );
-    assert!(
-        body.contains("501(c)(3) nonprofit"),
-        "the home page says what the Foundation is: {body}"
-    );
-    // The one route in. A home page that renders no way to reach the
-    // Foundation is a brochure for an organization you cannot contact.
-    assert!(
-        body.contains("mailto:support@neonlaw.org"),
-        "the home page opens the Foundation's inbox: {body}"
-    );
-    assert!(
-        !body.contains("class=\"mission-letter\""),
-        "the mission letter moved to /mission: {body}"
-    );
-}
-
-#[tokio::test]
-async fn the_mission_letter_moved_to_its_own_gated_path() {
-    let app = server::neon_router(
-        empty_state().await,
-        std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
-    );
-    let anonymous = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri("/foundation/mission")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(anonymous.status(), StatusCode::SEE_OTHER);
-
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .uri("/foundation/mission")
-                .header(axum::http::header::COOKIE, foundation_reader_cookie())
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body = body_string(resp).await;
-    // One header means one name in the title: the page titles itself from
-    // the chrome's brand, and the nonprofit's own wordmark is retired.
-    assert!(body.contains("<title>Neon Law | Mission</title>"), "{body}");
-    assert!(body.contains("class=\"mission-letter\""));
-}
-
-#[tokio::test]
-async fn retired_foundation_navigator_routes_are_unpublished() {
-    let app = server::neon_router(
-        empty_state().await,
-        std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
-    );
-    for uri in [
-        "/foundation/navigator",
-        "/foundation/navigator/lsp",
-        "/foundation/navigator/cli",
-        "/foundation/navigator/mcp",
-        "/foundation/navigator/web",
-        "/lsp",
-    ] {
-        let response = app
-            .clone()
-            .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::NOT_FOUND, "{uri}");
-    }
-}
-
-#[tokio::test]
-async fn notations_serve_the_tree_readme_under_foundation_brand() {
-    let app = server::neon_router(
-        empty_state().await,
-        std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
-    );
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .uri("/foundation/notations")
-                .header(axum::http::header::COOKIE, foundation_reader_cookie())
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body = body_string(resp).await;
-    assert!(
-        body.contains("<title>Neon Law | Notations</title>"),
-        "{body}"
-    );
-    assert!(body.contains(">Notations</h1>"));
-    // The hero + story open the page above the tree README.
-    assert!(body.contains("product-hero__title"));
-    // The hero band is inert without its own stylesheet, which the layout
-    // linked on every page. A Dioxus page loads only what it names, so the page
-    // must hoist it — and only the real route proves that, since the head
-    // elements never appear in a component's rendered body markup.
-    assert!(
-        body.contains("/public/css/product-hero.css"),
-        "the hero stylesheet must be linked: {body}"
-    );
-    assert!(body.contains("executable form of legal work"));
-    assert!(body.contains("The tree has exactly four top-level shelves"));
-    assert!(body.contains("templates/forms/united_states/nevada/state/nv__llc_formation.md"));
-    assert!(body.contains("href=\"/docs/notation\""));
-    assert!(body.contains(
-        "href=\"https://github.com/neon-law-foundation/navigator/blob/main/README.md#trademarks\""
-    ));
-}
-
-#[tokio::test]
-async fn old_foundation_templates_url_is_not_mounted() {
-    // The page was renamed Templates → Notations and the old URL was not
-    // kept (no redirect): `/foundation/templates` 404s.
-    let app = server::neon_router(
-        empty_state().await,
-        std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
-    );
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .uri("/foundation/templates")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
-}
-
-#[tokio::test]
 async fn api_template_raw_serves_non_confidential_markdown_inline() {
     let app = server::neon_router(
         empty_state().await,
@@ -2080,11 +1872,9 @@ async fn api_template_raw_serves_non_confidential_markdown_inline() {
 
 /// The talks surface mounts, and only at the site root.
 ///
-/// It was absent while the Foundation had a host of its own — a second mount
-/// there would have published the firm's talks under the nonprofit's brand.
-/// One binary serves both faces now, so the talks mount here; what must not
-/// happen is a copy appearing beneath `/foundation`, which is the same
-/// misattribution one prefix down.
+/// What must not happen is a copy appearing beneath a retired prefix: the
+/// nonprofit's surface is gone, and a talk answering under it would republish
+/// the firm's work at a URL the site says is withdrawn.
 #[tokio::test]
 async fn the_talks_surface_mounts_only_at_the_site_root() {
     let materials = portal::workshops::loader::load_navigator(std::path::Path::new(
@@ -2128,7 +1918,7 @@ async fn the_talks_surface_mounts_only_at_the_site_root() {
         assert_eq!(
             resp.status(),
             StatusCode::NOT_FOUND,
-            "the firm's talks must not also publish under the nonprofit's prefix: {shadowed}"
+            "the firm's talks must not also publish under a retired prefix: {shadowed}"
         );
     }
 }
@@ -2194,10 +1984,6 @@ async fn robots_txt_advertises_sitemap_and_blocks_private_surfaces() {
         "Disallow: /docs",
         "Disallow: /design",
         "Disallow: /templates",
-        // Gated Foundation pages are named rather than sending a bot at a login redirect.
-        "Disallow: /notations",
-        "Disallow: /transparency",
-        "Disallow: /mission",
     ] {
         assert!(body.contains(authenticated), "{authenticated} in {body}");
     }
@@ -2311,7 +2097,7 @@ async fn sitemap_xml_lists_public_routes_from_loaded_indexes() {
     assert!(body.starts_with("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"));
     for loc in [
         "https://www.neonlaw.com/",
-        "https://www.neonlaw.com/foundation/education",
+        "https://www.neonlaw.com/services",
     ] {
         assert!(
             body.contains(&format!("<loc>{loc}</loc>")),
@@ -2319,10 +2105,10 @@ async fn sitemap_xml_lists_public_routes_from_loaded_indexes() {
         );
     }
     // The talks are the firm's and the sitemap is one document now, so they
-    // ARE advertised — at the site root, never beneath the nonprofit's prefix.
+    // ARE advertised — at the site root, never beneath a retired prefix.
     assert!(
         !body.contains("<loc>https://www.neonlaw.com/foundation/presentations</loc>"),
-        "the firm's talks must not be filed under the nonprofit: {body}"
+        "the firm's talks must not be filed under a retired prefix: {body}"
     );
     assert!(
         !body.contains("<loc>https://www.neonlaw.com/app/team</loc>"),
@@ -2340,29 +2126,29 @@ async fn sitemap_xml_lists_public_routes_from_loaded_indexes() {
             "sitemap must not advertise authenticated {authenticated}: {body}"
         );
     }
-    // The Foundation advertises its marketing pages and nothing else it
-    // publishes: the rest reads only for a signed-in visitor, and a sitemap
-    // entry resolving to a login redirect is worse than no entry at all. The
-    // two Catalog material catalogs are absent for a different reason — they
-    // are the firm's, and this host serves neither.
+    // The retired nonprofit surface is advertised nowhere. A `410` is an
+    // answer, not a document, and a sitemap entry pointing at one invites the
+    // crawl the status code exists to stop.
     //
-    // `/workshops` has left this list. The classes are public now, so the
-    // catalog is a page a crawler should find rather than a login door it
-    // should be kept away from.
-    for gated in [
+    // `/workshops` is deliberately absent from this list. The classes are
+    // public now, so the catalog is a page a crawler should find.
+    for retired in [
+        "/foundation",
+        "/foundation/education",
+        "/foundation/attorneys",
         "/foundation/notations",
         "/foundation/transparency",
         "/foundation/mission",
+        "/mission",
+        "/transparency",
     ] {
         assert!(
-            !body.contains(&format!("<loc>https://www.neonlaw.com{gated}")),
-            "sitemap must not advertise gated {gated}: {body}"
+            !body.contains(&format!("<loc>https://www.neonlaw.com{retired}")),
+            "sitemap must not advertise retired {retired}: {body}"
         );
     }
     // The firm's pages ARE advertised — one host, one sitemap. What must not
-    // appear is a firm page filed beneath the nonprofit's prefix.
-    // `host_sitemap.rs` is the gate for that property; this pins the pages a
-    // Foundation-only router used to omit.
+    // appear is a firm page filed beneath a retired prefix.
     for firm_page in ["/blog", "/litigation", "/contact"] {
         assert!(
             body.contains(&format!("<loc>https://www.neonlaw.com{firm_page}</loc>")),
@@ -2372,7 +2158,7 @@ async fn sitemap_xml_lists_public_routes_from_loaded_indexes() {
             !body.contains(&format!(
                 "<loc>https://www.neonlaw.com/foundation{firm_page}</loc>"
             )),
-            "a firm page must not be filed under the nonprofit: {firm_page}"
+            "a firm page must not be filed under a retired prefix: {firm_page}"
         );
     }
 }
@@ -2408,7 +2194,7 @@ async fn old_descriptive_service_slugs_are_gone_with_no_redirect() {
     // user asked not to preserve them. The former paths must 404 (not 301),
     // so this pins that we didn't silently leave a redirect behind.
     let app = server::neon_router(
-        state_with_bundled_marketing().await,
+        empty_state().await,
         std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
     );
     for path in [
@@ -2425,47 +2211,6 @@ async fn old_descriptive_service_slugs_are_gone_with_no_redirect() {
             resp.status(),
             StatusCode::NOT_FOUND,
             "{path} should be gone with no redirect"
-        );
-    }
-}
-
-#[tokio::test]
-async fn the_foundation_publishes_a_page_for_each_audience_it_serves() {
-    // `/education` was retired once, when CLEs collapsed into the single
-    // `/workshops` surface. It is back, and it is a different page: not the
-    // class catalog, but the Foundation's explanation of what it teaches and
-    // to whom. It returns with `/attorneys` because the static marketing site
-    // that carried them is being retired (ENG-139), and that site was the
-    // Foundation's only public pitch to either constituency.
-    //
-    // A third audience page pitched to legal aid centers. It is retired
-    // outright — router, copy, path constant, sitemap and llms.txt rows, and the
-    // `/legal-aid` redirect — so this covers the two that remain.
-    //
-    // `/workshops` still exists on the firm's host. The two are not duplicates:
-    // one is the delivery, this is the argument for it.
-    let app = server::neon_router(
-        empty_state().await,
-        std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
-    );
-    for (path, marker) in [
-        ("/foundation/education", "What we cover"),
-        ("/foundation/attorneys", "What comes with the matter"),
-    ] {
-        let resp = app
-            .clone()
-            .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-        assert_eq!(
-            resp.status(),
-            StatusCode::OK,
-            "{path} is published, anonymously"
-        );
-        let body = body_string(resp).await;
-        assert!(
-            body.contains(marker),
-            "{path} renders its own argument, not a shared stub: {body}"
         );
     }
 }
@@ -2553,29 +2298,8 @@ fn sample_workshop() -> WorkshopMaterial {
     }
 }
 
-/// The anonymous half of Catalog: a `presentations`-category material. Same
-/// shape as [`sample_workshop`], different category — which is the only thing
-/// the gate keys on.
-fn sample_presentation() -> WorkshopMaterial {
-    WorkshopMaterial {
-        category: "presentations".into(),
-        slug: "rust-in-peace".into(),
-        title: "Rust in Peace".into(),
-        ..sample_workshop()
-    }
-}
-
-/// Workshop state whose policy is the real embedded Rego rather than the
-/// passthrough the other workshop tests use, so the role boundary is decided
-/// by the shipped policy instead of asserted against a stub.
-async fn state_with_enforced_workshops(materials: Vec<WorkshopMaterial>) -> AppState {
-    let mut state = state_with_workshops(materials).await;
-    state.policy = portal::policy::PolicyClient::embedded().expect("embedded policy compiles");
-    state
-}
-
-/// The `/workshops` surface mounts publicly at the site root and never under
-/// the Foundation's prefix.
+/// The `/workshops` surface mounts publicly at the site root and never under a
+/// retired prefix.
 #[tokio::test]
 async fn the_workshops_surface_mounts_only_at_the_site_root() {
     let app = server::neon_router(
@@ -2611,42 +2335,6 @@ async fn the_workshops_surface_mounts_only_at_the_site_root() {
     assert_eq!(resp.status(), StatusCode::OK);
 }
 
-/// The Foundation's marketing home stays anonymous beside the public material
-/// catalogs.
-#[tokio::test]
-async fn the_foundation_home_stays_anonymous_beside_the_public_catalogs() {
-    let app = server::neon_router(
-        state_with_enforced_workshops(vec![sample_workshop(), sample_presentation()]).await,
-        std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
-    );
-    let resp = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri("/foundation")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(
-        resp.status(),
-        StatusCode::OK,
-        "the marketing home must stay anonymously readable"
-    );
-    // A talk is anonymous too. Both categories share the same public routers.
-    let talk = app
-        .oneshot(
-            Request::builder()
-                .uri("/presentations/rust-in-peace")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(talk.status(), StatusCode::OK);
-}
-
 #[tokio::test]
 async fn the_workshops_index_lists_each_class_you_voiced() {
     let app = catalog_router(state_with_workshops(vec![sample_workshop()]).await);
@@ -2654,7 +2342,7 @@ async fn the_workshops_index_lists_each_class_you_voiced() {
         .oneshot(
             Request::builder()
                 .uri("/workshops")
-                .header(axum::http::header::COOKIE, foundation_reader_cookie())
+                .header(axum::http::header::COOKIE, client_reader_cookie())
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -2673,33 +2361,6 @@ async fn the_workshops_index_lists_each_class_you_voiced() {
     assert!(body.contains(">Runbook<"), "workshop title: {body}");
     assert!(body.contains("For lawyers"));
     assert!(body.contains("You walk out with a notation you built yourself."));
-}
-
-#[tokio::test]
-async fn foundation_prefixed_material_urls_are_not_mounted() {
-    // Workshops and presentations have only their top-level canonical paths.
-    let app = server::neon_router(
-        empty_state().await,
-        std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
-    );
-    for uri in [
-        "/foundation/workshops",
-        "/foundation/workshops/navigator",
-        "/foundation/show-and-tell",
-        "/show-and-tell",
-        "/events",
-        concat!("/foundation/ne", "bula"),
-        concat!("/foundation/ne", "bula/show-and-tell"),
-        concat!("/foundation/ne", "bula/presentations/rust-in-peace"),
-        concat!("/foundation/ne", "bula/workshops/use-the-navigator/step/2"),
-    ] {
-        let resp = app
-            .clone()
-            .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-        assert_eq!(resp.status(), StatusCode::NOT_FOUND, "{uri}");
-    }
 }
 
 #[tokio::test]
@@ -2811,30 +2472,41 @@ async fn llms_txt_indexes_the_markdown_corpus_with_absolute_urls() {
     assert_eq!(ctype, "text/markdown; charset=utf-8");
     let body = body_string(resp).await;
     // llmstxt.org shape: H1, a site summary, then curated links. The H1 names
-    // the site a crawler has reached — this is the Foundation's host — and the
-    // curated half is exactly two things: the public page and the talks that
-    // read beneath it.
+    // the site a crawler has reached, and the curated half is the firm's own
+    // public pages.
     assert!(body.starts_with("# Neon Law\n"));
-    assert!(body.contains("pairs legal aid centers with volunteer attorneys"));
     assert!(body.contains("`{{placeholders}}`"));
     assert!(body.contains("ground questionnaire states and placeholders"));
     assert!(body.contains("## Pages"));
-    // The Foundation's whole public surface: its home and its two audience
-    // pages. The workshops and presentations catalogs are public root-level
-    // material and are advertised in their own sections below.
+    // The firm's own marketing surface. The workshops and presentations
+    // catalogs are public root-level material and are advertised in their own
+    // sections below.
     for page in [
         "https://www.example.com/)",
-        "https://www.example.com/foundation/education)",
-        "https://www.example.com/foundation/attorneys)",
+        "https://www.example.com/services)",
+        "https://www.example.com/contact)",
     ] {
         assert!(
             body.contains(page),
             "llms.txt must advertise {page}: {body}"
         );
     }
+    // The retired nonprofit surface is advertised nowhere: every one of these
+    // answers `410`, and an LLM crawler sent at one learns nothing except that
+    // the index is stale.
+    for retired in [
+        "https://www.example.com/foundation",
+        "https://www.example.com/mission",
+        "https://www.example.com/transparency",
+    ] {
+        assert!(
+            !body.contains(retired),
+            "llms.txt must not advertise the retired {retired}: {body}"
+        );
+    }
     assert!(
-        !body.contains("https://www.example.com/foundation/presentations"),
-        "the firm's talks must not be filed under the nonprofit: {body}"
+        !body.contains("pairs legal aid centers with volunteer attorneys"),
+        "the retired nonprofit's summary is not the site's: {body}"
     );
 
     // Private or authenticated surfaces remain absent. A crawler that follows
@@ -2843,7 +2515,6 @@ async fn llms_txt_indexes_the_markdown_corpus_with_absolute_urls() {
     for gated in [
         "https://www.example.com/docs/",
         "https://www.example.com/templates",
-        "https://www.example.com/foundation/navigator/cli",
     ] {
         assert!(
             !body.contains(gated),
@@ -2855,7 +2526,7 @@ async fn llms_txt_indexes_the_markdown_corpus_with_absolute_urls() {
     // it is a developer surface rather than a marketing one, and adding it is a
     // deliberate content decision rather than a side effect of the licence.
     assert!(
-        !body.contains("https://github.com/neon-law-foundation/navigator"),
+        !body.contains("https://github.com/neon-law-source-code/navigator"),
         "llms.txt must not advertise the repository: {body}"
     );
     assert!(
@@ -3060,7 +2731,7 @@ async fn workshops_slides_renders_grid_and_mints_dedicated_csrf_cookie() {
     // still this page's own to hoist. Dropping it renders an unstyled deck.
     assert!(
         body.contains("/public/css/theme.css"),
-        "Foundation slides hoist the token layer they read"
+        "slides hoist the token layer they read"
     );
     assert!(body.contains("/public/js/workshop-progress.js"));
 }
@@ -6308,7 +5979,7 @@ async fn lawyer_dashboard_project_list_is_paginated_and_lawyer_scoped() {
 
 #[tokio::test]
 async fn visitor_analytics_counts_public_routes_and_excludes_private_surfaces() {
-    let state = state_with_bundled_marketing().await;
+    let state = empty_state().await;
     let db = state.surreal.clone();
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
 
@@ -7507,33 +7178,6 @@ async fn lawyer_dashboard_refuses_a_bearer_jwt_when_oidc_is_disabled() {
 }
 
 #[tokio::test]
-async fn foundation_mission_omits_signed_in_product_navigation() {
-    let (state, _surreal) = state_with_engines().await;
-    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
-
-    for role in [
-        store::persons::Role::Client,
-        store::persons::Role::Lawyer,
-        store::persons::Role::Admin,
-    ] {
-        let resp = get_with_role(app.clone(), "/foundation/mission", role).await;
-        assert_eq!(resp.status(), StatusCode::OK);
-        let body = body_string(resp).await;
-        assert_nav_links(
-            &body,
-            &[],
-            &[
-                "/app/team",
-                "/lawyer",
-                "/admin",
-                "/auth/login",
-                "/auth/logout",
-            ],
-        );
-    }
-}
-
-#[tokio::test]
 async fn the_signed_in_nav_offers_the_role_appropriate_app_workspaces() {
     // One shared navbar on every `/app` page
     // (`webapp::components::AppNavbar`), whose destinations come from the
@@ -8277,11 +7921,11 @@ async fn design_page_renders_the_component_gallery() {
         body.contains("template-disclaimer"),
         "renders the legal disclaimer"
     );
-    // Breadcrumb, off-site link, and freshness footer.
+    // Breadcrumb and off-site link.
     assert!(body.contains("nav-breadcrumb"), "renders the breadcrumb");
     assert!(
-        body.contains("nav-freshness"),
-        "renders the freshness footer"
+        !body.contains("nav-freshness"),
+        "the last-edited stamp is retired and must not render"
     );
     // The create/edit form card.
     assert!(body.contains("nav-form"), "renders the form card");
@@ -9315,9 +8959,9 @@ async fn admin_can_impersonate_client_and_exit_from_banner() {
         .clone()
         .oneshot(
             Request::builder()
-                // The impersonation banner rides the authenticated app chrome,
-                // not the public Foundation home; the migrated forms index
-                // carries it from the same session state.
+                // The impersonation banner rides the authenticated app chrome
+                // rather than a public page; the migrated forms index carries it
+                // from the same session state.
                 .uri("/app/forms")
                 .header(header::COOKIE, &impersonated_cookie)
                 .body(Body::empty())
@@ -14838,25 +14482,25 @@ async fn docs_glossary_renders_headings() {
     let resp = get_signed_in(app, "/docs/glossary").await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
-    // Firm-branded page title from the doc's leading H1. `/docs` is mounted once,
-    // in the composition every brand binary shares, so the Foundation's wordmark
-    // here published the nonprofit's identity on the firm's own host and on every
-    // white-label tenant's. These are the Firm's own operating docs.
+    // Firm-branded page title from the doc's leading H1. `/docs` is mounted
+    // once, in the composition every brand binary shares, so a second wordmark
+    // here would publish another organization's identity on the firm's own host
+    // and on every white-label tenant's. These are the Firm's own operating
+    // docs.
     assert!(
         body.contains("<title>Neon Law | Glossary</title>"),
         "docs pages wear the firm brand on every host"
     );
-    // One NL mark now serves both organizations, so the image no longer tells
-    // them apart and the title below carries the whole distinction: a docs page
-    // wearing the Foundation's wordmark would attribute the workspace's
-    // documentation to a 501(c)(3) that does not build it.
+    // The title carries the whole distinction: a docs page wearing a retired
+    // wordmark would attribute the workspace's documentation to an organization
+    // that does not build it.
     assert!(
         body.contains("/public/logo-neon.png"),
         "the NL mark in the docs header"
     );
     assert!(
         !body.contains("<title>Neon Law Foundation | Glossary</title>"),
-        "the Foundation wordmark must not return"
+        "the retired wordmark must not return"
     );
     // A known heading renders as an <h2> with a slug id so #council lands.
     assert!(

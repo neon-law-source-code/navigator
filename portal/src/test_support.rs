@@ -24,7 +24,7 @@
 
 use std::sync::Arc;
 
-use crate::{AppState, AuthConfig, CanonicalHost, MarketingIndex, SessionStore, WorkshopIndex};
+use crate::{AppState, AuthConfig, CanonicalHost, SessionStore, WorkshopIndex};
 
 /// The session signing key the test builder uses. Stable so encoded
 /// cookies round-trip across a test's requests.
@@ -114,9 +114,7 @@ pub async fn app_state(surreal: store::surreal::SurrealDb) -> AppState {
         surreal,
         workshops: WorkshopIndex::empty(),
         docs: crate::DocsIndex::empty(),
-        marketing: MarketingIndex::empty(),
         blog: crate::BlogIndex::empty(),
-        transparency: crate::TransparencyIndex::empty(),
         auth: AuthConfig::new(true, None),
         google_oauth: crate::google_oauth::GoogleOauthConfig::passthrough(),
         rate_limit: crate::rate_limit::RateLimit::disabled(),

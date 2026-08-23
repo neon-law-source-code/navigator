@@ -104,7 +104,7 @@ pub fn CertificateSentPage(chrome: PublicChrome, content: CertificateSentContent
                 p { class: "lede",
                     "Your certificate for "
                     em { "{content.workshop_title}" }
-                    " is on its way from the {chrome.foundation_name}."
+                    " is on its way from {chrome.firm_name}."
                 }
                 p {
                     "It can take a minute to arrive — and it's worth checking your spam folder."

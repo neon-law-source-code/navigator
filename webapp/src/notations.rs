@@ -202,7 +202,6 @@ mod tests {
                     href: "/foundation".to_string(),
                 }],
                 firm_name: "Neon Law".to_string(),
-                foundation_name: "Neon Law Foundation".to_string(),
                 ..PublicChrome::default()
             },
             content: NotationsContent {

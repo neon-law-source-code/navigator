@@ -1,18 +1,11 @@
-//! The Foundation's public marketing surface: its home page (`/`) and the two
-//! audience pages beneath it (`/education`, `/attorneys`).
+//! The band vocabulary every marketing page is built from, and the one
+//! renderer that draws it.
 //!
-//! These three pages are what a stranger sees when they arrive at
-//! `/foundation`. They are the Foundation's own explanation of what it does —
-//! it pairs legal aid centers with volunteer attorneys and AI, teaches the
-//! CLEs, and gives every placed matter a case management workspace at no cost.
-//!
-//! **Why one module for several pages.** The home page and the audience pages are
-//! the same handful of shapes in a different order: a hero, prose bands,
-//! card grids, a numbered walk, and a closing call to action. Modelling those
-//! shapes once ([`Band`]) and letting each page order them is what keeps a new
-//! audience page a data change rather than a new component tree. The home page
-//! keeps its own richer hero ([`HomeContent`]) because it carries the tagline
-//! and the mission statement no audience page repeats.
+//! **Why one module for several pages.** The firm's marketing pages are the
+//! same handful of shapes in a different order: a hero, prose bands, card
+//! grids, a numbered walk, and a closing call to action. Modelling those shapes
+//! once ([`Band`]) and letting each page order them is what keeps a new page a
+//! data change rather than a new component tree.
 //!
 //! Copy lives in the Rust that renders it, per the workspace's English-only
 //! rule: there is no catalog and no key lookup. The portal router resolves each
@@ -28,9 +21,9 @@ use crate::components::{
 };
 use crate::public_chrome::{PublicChrome, PublicFooter};
 
-/// The Foundation marketing stylesheet, hoisted alongside `theme.css` and the
-/// Foundation's cyan token layer.
-pub const FOUNDATION_MARKETING_STYLESHEET_HREF: &str = "/public/css/foundation-marketing.css";
+/// The marketing-page stylesheet, hoisted alongside `theme.css` and the shared
+/// token layer.
+pub const MARKETING_STYLESHEET_HREF: &str = "/public/css/marketing-page.css";
 
 /// One run of prose. `emphasis` renders it as `<strong>`.
 ///
@@ -190,8 +183,8 @@ pub enum Band {
         items: Vec<Download>,
         package: Option<PackageInstall>,
     },
-    /// The closing call to action. The Foundation publishes one route in —
-    /// its inbox — so this carries an address rather than a form.
+    /// The closing call to action. The firm publishes one route in on these
+    /// pages — its inbox — so this carries an address rather than a form.
     Cta {
         heading: String,
         body: Option<String>,
@@ -214,32 +207,7 @@ impl Band {
     }
 }
 
-/// The home page's hero: the name, the tagline, the standfirst, and the line
-/// the Foundation closes its argument on.
-#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
-pub struct Hero {
-    /// The badge above the title (`501(c)(3) nonprofit`). Empty renders none.
-    pub badge: String,
-    pub title: String,
-    pub tagline: String,
-    pub body: Vec<Paragraph>,
-    /// The pulled-out line under the standfirst. Empty renders none.
-    pub pullquote: String,
-    /// The address the hero's one action opens.
-    pub email: String,
-}
-
-/// Everything the Foundation home page renders.
-#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
-pub struct HomeContent {
-    pub head_title: String,
-    pub meta_description: String,
-    pub hero: Hero,
-    pub bands: Vec<Band>,
-}
-
-/// Everything one audience page renders. No hero badge and no pullquote: an
-/// audience page opens on its argument, not on the Foundation's identity.
+/// Everything one marketing page renders.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct PageContent {
     pub head_title: String,
@@ -252,20 +220,19 @@ pub struct PageContent {
     /// The line under the title.
     pub tagline: String,
     pub bands: Vec<Band>,
-    /// Which visual language the page wears. Defaults to the marketing skin
-    /// every Foundation page uses.
+    /// Which visual language the page wears.
     pub skin: PageSkin,
 }
 
 /// Which visual language a marketing page wears.
 ///
-/// One renderer serves the Foundation's audience pages and the firm's, and they
-/// want different typography: the Foundation's read as a campaign, the firm's
-/// practice pages as a practice. Rather than fork the renderer, a page names its
-/// skin and the stylesheet keys off a modifier class.
+/// One renderer serves every marketing page, and they want different
+/// typography: a campaign page and a practice page read differently. Rather
+/// than fork the renderer, a page names its skin and the stylesheet keys off a
+/// modifier class.
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PageSkin {
-    /// The Foundation's campaign look, and the firm's platform page.
+    /// The campaign look the `/navigator` platform page wears.
     #[default]
     Marketing,
     /// The firm's practice look — the serif statement, the glow, and the carded
@@ -284,68 +251,28 @@ impl PageSkin {
     }
 }
 
-/// The [`HomeContent`] the portal router injects for `/`.
+/// The [`PageContent`] the portal router injects for one marketing page.
 #[derive(Clone, Default)]
-pub struct InjectedFoundationHome(pub HomeContent);
+pub struct InjectedMarketingPage(pub PageContent);
 
-/// The [`PageContent`] the portal router injects for one audience page.
-#[derive(Clone, Default)]
-pub struct InjectedFoundationPage(pub PageContent);
-
-/// The home page's resolved view.
+/// A marketing page's resolved view.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
-pub struct FoundationHomeView {
-    pub chrome: PublicChrome,
-    pub content: HomeContent,
-}
-
-/// An audience page's resolved view.
-#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
-pub struct FoundationPageView {
+pub struct MarketingPageView {
     pub chrome: PublicChrome,
     pub content: PageContent,
 }
 
-/// Resolve the public chrome and the Foundation home page's static copy.
-#[server]
-pub async fn foundation_home_view() -> Result<FoundationHomeView, ServerFnError> {
-    let content = consume_context::<InjectedFoundationHome>().0;
-    Ok(FoundationHomeView {
-        chrome: crate::public_chrome::firm_public_chrome_from_context().await,
-        content,
-    })
-}
-
 /// Resolve the public chrome and one marketing page's static copy.
-///
-/// One function for both faces. The band vocabulary in this module is a
-/// page-layout system rather than a Foundation-only one, so the firm's
-/// `/navigator` and `/fractional-cto` pages use it wholesale — and now that the
-/// site publishes one header, they resolve the same chrome as the nonprofit's
-/// audience pages rather than a firm-branded twin of it.
 #[server]
-pub async fn marketing_page_view() -> Result<FoundationPageView, ServerFnError> {
-    let content = consume_context::<InjectedFoundationPage>().0;
-    Ok(FoundationPageView {
+pub async fn marketing_page_view() -> Result<MarketingPageView, ServerFnError> {
+    let content = consume_context::<InjectedMarketingPage>().0;
+    Ok(MarketingPageView {
         chrome: crate::public_chrome::firm_public_chrome_from_context().await,
         content,
     })
 }
 
-/// The home page's route entry.
-#[component]
-pub fn FoundationHomeEntry() -> Element {
-    let resource = use_server_future(foundation_home_view)?;
-    let view = match &*resource.read() {
-        Some(Ok(view)) => view.clone(),
-        _ => return rsx! {},
-    };
-    rsx! {
-        FoundationHome { chrome: view.chrome, content: view.content }
-    }
-}
-
-/// A marketing page's route entry, on either face.
+/// A marketing page's route entry.
 #[component]
 pub fn MarketingPageEntry() -> Element {
     let resource = use_server_future(marketing_page_view)?;
@@ -354,7 +281,7 @@ pub fn MarketingPageEntry() -> Element {
         _ => return rsx! {},
     };
     rsx! {
-        FoundationPage { chrome: view.chrome, content: view.content }
+        MarketingPage { chrome: view.chrome, content: view.content }
     }
 }
 
@@ -370,9 +297,7 @@ fn MarketingShell(
     /// Hoist the firm's component layer (`brand-firm.css`) alongside this
     /// page's own rules. The practice skin is written against that layer's
     /// vocabulary — the card, the glow, the eyebrow — so a page wearing it
-    /// needs the sheet that defines them. Marketing-skin pages do not, and
-    /// hoisting it there would put the firm's component rules on the
-    /// Foundation's pages.
+    /// needs the sheet that defines them. Marketing-skin pages do not.
     firm_components: bool,
     /// Hoist the home page's sheet (`home.css`). A page carrying a downloads
     /// band reuses that sheet's `.home-practice` box wholesale, and this is the
@@ -419,7 +344,7 @@ fn MarketingShell(
         if firm_components {
             document::Stylesheet { href: crate::brand_style::BRAND_STYLESHEET_HREF }
         }
-        document::Stylesheet { href: FOUNDATION_MARKETING_STYLESHEET_HREF }
+        document::Stylesheet { href: MARKETING_STYLESHEET_HREF }
         // After the marketing layer, because the download boxes take their
         // whole treatment from `home.css` and this page's own rules only
         // position them.
@@ -430,46 +355,10 @@ fn MarketingShell(
     }
 }
 
-/// The Foundation home page. Prop-driven, so it server-renders and unit-tests
+/// One marketing page. Prop-driven, so it server-renders and unit-tests
 /// without a server future.
 #[component]
-pub fn FoundationHome(chrome: PublicChrome, content: HomeContent) -> Element {
-    rsx! {
-        MarketingShell {
-            chrome: chrome.clone(),
-            title: content.head_title.clone(),
-            description: content.meta_description.clone(),
-            firm_components: false,
-            home_components: content.bands.iter().any(Band::is_downloads),
-            section { class: "fm-hero",
-                div { class: "fm-hero__inner",
-                    if !content.hero.badge.is_empty() {
-                        p { class: "fm-badge",
-                            span { class: "fm-badge__dot", aria_hidden: "true" }
-                            "{content.hero.badge}"
-                        }
-                    }
-                    h1 { class: "fm-hero__title", "{content.hero.title}" }
-                    p { class: "fm-hero__tagline", "{content.hero.tagline}" }
-                    div { class: "fm-hero__body",
-                        for paragraph in content.hero.body.iter() {
-                            Prose { runs: paragraph.clone() }
-                        }
-                    }
-                    if !content.hero.pullquote.is_empty() {
-                        p { class: "fm-hero__pullquote", "{content.hero.pullquote}" }
-                    }
-                    MailAction { email: content.hero.email.clone() }
-                }
-            }
-            Bands { items: content.bands.clone() }
-        }
-    }
-}
-
-/// One Foundation audience page.
-#[component]
-pub fn FoundationPage(chrome: PublicChrome, content: PageContent) -> Element {
+pub fn MarketingPage(chrome: PublicChrome, content: PageContent) -> Element {
     rsx! {
         MarketingShell {
             chrome: chrome.clone(),
@@ -752,11 +641,10 @@ fn Prose(runs: Paragraph) -> Element {
     }
 }
 
-/// The Foundation's one call to action: its inbox.
+/// A marketing page's one call to action: an inbox.
 ///
-/// Rendered as a `mailto:` anchor rather than a form. The Foundation takes
-/// intake by conversation, and a contact form on a nonprofit's front door
-/// implies a queue it does not run.
+/// Rendered as a `mailto:` anchor rather than a form. Intake on these pages is
+/// by conversation, and a contact form implies a queue behind it.
 #[component]
 fn MailAction(email: String, subject: Option<String>) -> Element {
     let href = subject.map_or_else(
@@ -780,9 +668,9 @@ mod tests {
 
     fn chrome() -> PublicChrome {
         PublicChrome {
-            brand_name: "Neon Law Foundation".to_string(),
+            brand_name: "Neon Law".to_string(),
             home_href: "/".to_string(),
-            logo_href: "/public/logo-foundation.svg".to_string(),
+            logo_href: "/public/logo.svg".to_string(),
             social_image: "https://example.test/og.png".to_string(),
             ..PublicChrome::default()
         }
@@ -802,7 +690,7 @@ mod tests {
             heading: "Run Navigator yourself".to_string(),
             description: Some("Pick your platform.".to_string()),
             version: "26.8.20".to_string(),
-            archive_href: "https://github.com/neon-law-foundation/navigator/releases".to_string(),
+            archive_href: "https://github.com/neon-law-source-code/navigator/releases".to_string(),
             archive_label: "every release".to_string(),
             items: crate::cli_release::PLATFORMS
                 .iter()
@@ -848,7 +736,7 @@ mod tests {
             .iter()
             .map(|slug| {
                 let href = format!(
-                    "https://github.com/neon-law-foundation/navigator/releases/download/26.8.20/\
+                    "https://github.com/neon-law-source-code/navigator/releases/download/26.8.20/\
                      navigator-26.8.20-{slug}."
                 )
                 .replace(char::is_whitespace, "");
@@ -962,7 +850,7 @@ mod tests {
             "install and upgrade select separately: {out}"
         );
         assert!(
-            out.contains("brew install neon-law-foundation/navigator/navigator"),
+            out.contains("brew install neon-law-source-code/navigator/navigator"),
             "the install command names the tap: {out}"
         );
     }
@@ -984,29 +872,26 @@ mod tests {
             body: vec![],
         }
         .is_downloads());
-        assert!(sample_home().bands.iter().all(|band| !band.is_downloads()));
+        assert!(sample_page().bands.iter().all(|band| !band.is_downloads()));
     }
 
-    fn sample_home() -> HomeContent {
-        HomeContent {
-            head_title: "Neon Law Foundation".to_string(),
-            meta_description: "A 501(c)(3).".to_string(),
-            hero: Hero {
-                badge: "501(c)(3) nonprofit".to_string(),
-                title: "Neon Law Foundation".to_string(),
-                tagline: "Everyone should be able to exercise their legal rights.".to_string(),
-                body: vec![vec![
-                    Run::plain("We pair centers with "),
-                    Run::strong("volunteer attorneys"),
-                ]],
-                pullquote: "A lawyer does the deciding.".to_string(),
-                email: "support@neonlaw.org".to_string(),
-            },
+    /// A page exercising every band shape in the vocabulary, in order.
+    fn sample_page() -> PageContent {
+        PageContent {
+            head_title: "Fractional CTO — Neon Law".to_string(),
+            meta_description: "The technology function, run by the firm.".to_string(),
+            title: "Fractional CTO".to_string(),
+            hero_mark: None,
+            tagline: "The technology function, run by the firm.".to_string(),
+            skin: PageSkin::Marketing,
             bands: vec![
                 Band::Statement {
                     heading: "Our mission".to_string(),
                     lead: "Not a shortage of law. A shortage of hours.".to_string(),
-                    body: vec![vec![Run::plain("Centers turn people away.")]],
+                    body: vec![vec![
+                        Run::plain("Routine matters should cost "),
+                        Run::strong("very little to run"),
+                    ]],
                 },
                 Band::Cards {
                     anchor: "what-we-do".to_string(),
@@ -1014,56 +899,45 @@ mod tests {
                     heading: "What we do".to_string(),
                     description: None,
                     items: vec![Card {
-                        title: "Education and CLEs".to_string(),
-                        chips: vec!["Continuing legal education".to_string()],
-                        body: vec![vec![Run::plain("We teach it directly.")]],
-                        href: Some("/education".to_string()),
-                        href_label: Some("See the curriculum".to_string()),
+                        title: "Company counsel".to_string(),
+                        chips: vec!["Flat monthly fee".to_string()],
+                        body: vec![vec![Run::plain("Cap table and employee agreements.")]],
+                        href: Some("/fractional-gc".to_string()),
+                        href_label: Some("See the practice".to_string()),
                     }],
                 },
                 Band::Steps {
                     anchor: "how-it-works".to_string(),
-                    overline: "The pairing".to_string(),
+                    overline: "The engagement".to_string(),
                     heading: "How it works".to_string(),
-                    description: Some("From a matter to a resolution.".to_string()),
+                    description: Some("From a first email to a signed retainer.".to_string()),
                     items: vec![Step {
-                        title: "A center brings us a matter".to_string(),
-                        body: vec![vec![Run::plain("From the center's own intake.")]],
+                        title: "You tell us about the matter".to_string(),
+                        body: vec![vec![Run::plain("In your own words.")]],
                     }],
                 },
                 Band::Cta {
                     heading: "Tell us about the matter.".to_string(),
                     body: None,
-                    email: "support@neonlaw.org".to_string(),
+                    email: "support@neonlaw.com".to_string(),
                     email_subject: None,
                 },
             ],
         }
     }
 
-    fn home_html() -> String {
+    fn page_html() -> String {
         fn app() -> Element {
-            rsx! { FoundationHome { chrome: chrome(), content: sample_home() } }
+            rsx! { MarketingPage { chrome: chrome(), content: sample_page() } }
         }
         render(app)
     }
 
     #[test]
-    fn home_renders_the_hero_identity_and_tagline() {
-        let out = home_html();
-        assert!(out.contains("501(c)(3) nonprofit"), "badge: {out}");
-        assert!(out.contains("<h1"), "the home page owns an h1: {out}");
+    fn a_page_bolds_the_runs_marked_for_emphasis() {
+        let out = page_html();
         assert!(
-            out.contains("Everyone should be able to exercise their legal rights."),
-            "tagline: {out}"
-        );
-    }
-
-    #[test]
-    fn home_bolds_the_runs_marked_for_emphasis() {
-        let out = home_html();
-        assert!(
-            out.contains("<strong>volunteer attorneys</strong>"),
+            out.contains("<strong>very little to run</strong>"),
             "an emphasised run renders as <strong>: {out}"
         );
     }
@@ -1110,8 +984,8 @@ mod tests {
     }
 
     #[test]
-    fn home_renders_every_band_in_order() {
-        let out = home_html();
+    fn a_page_renders_every_band_in_order() {
+        let out = page_html();
         let statement = out.find("shortage of hours").expect("statement band");
         let cards = out.find("What we do").expect("cards band");
         let steps = out.find("How it works").expect("steps band");
@@ -1124,33 +998,32 @@ mod tests {
 
     #[test]
     fn card_bands_carry_their_anchor_so_the_nav_can_link_them() {
-        // The header links `/#what-we-do` and `/#how-it-works`. A band that
-        // renders no id turns both into no-ops that scroll nowhere.
-        let out = home_html();
+        // A page's own nav links `#what-we-do` and `#how-it-works`. A band
+        // that renders no id turns both into no-ops that scroll nowhere.
+        let out = page_html();
         assert!(out.contains(r#"id="what-we-do""#), "cards anchor: {out}");
         assert!(out.contains(r#"id="how-it-works""#), "steps anchor: {out}");
     }
 
     #[test]
     fn a_card_deep_links_to_the_page_that_expands_it() {
-        let out = home_html();
+        let out = page_html();
         assert!(
-            out.contains(r#"href="/education""#),
-            "the program card links its audience page: {out}"
+            out.contains(r#"href="/fractional-gc""#),
+            "the card links the page that expands it: {out}"
         );
-        assert!(out.contains("See the curriculum"), "link label: {out}");
+        assert!(out.contains("See the practice"), "link label: {out}");
     }
 
     #[test]
-    fn every_call_to_action_opens_the_foundations_inbox() {
-        // The Foundation publishes one route in. A CTA that renders no
-        // `mailto:` is a dead end on the page whose whole job is to start a
-        // conversation.
-        let out = home_html();
+    fn every_call_to_action_opens_the_firms_inbox() {
+        // A CTA that renders no `mailto:` is a dead end on the band whose whole
+        // job is to start a conversation.
+        let out = page_html();
         assert_eq!(
-            out.matches(r#"href="mailto:support@neonlaw.org""#).count(),
-            2,
-            "the hero and the closing CTA both open the inbox: {out}"
+            out.matches(r#"href="mailto:support@neonlaw.com""#).count(),
+            1,
+            "the closing CTA opens the inbox: {out}"
         );
     }
 
@@ -1176,16 +1049,16 @@ mod tests {
     fn the_steps_band_is_an_ordered_list() {
         // "How it works" is a sequence, and a screen reader should hear it as
         // one. `<ul>` would drop the ordering the copy depends on.
-        let out = home_html();
+        let out = page_html();
         assert!(out.contains(r#"<ol class="fm-steps""#), "ordered: {out}");
     }
 
     /// The two skins put the page's `<h1>` in different places, and that is the
     /// whole point of the flag.
     ///
-    /// A Foundation audience page is a campaign: the title is the headline. A
-    /// firm practice page is a practice: the practice name is the label and the
-    /// statement is the headline, the way `/litigation` reads. One renderer
+    /// A campaign page reads as a campaign: the title is the headline. A
+    /// practice page reads as a practice: the practice name is the label and
+    /// the statement is the headline, the way `/litigation` reads. One renderer
     /// serves both, so this is what keeps a change to one from silently
     /// restyling the other.
     #[test]
@@ -1201,8 +1074,8 @@ mod tests {
                 skin,
             };
             let mut dom = VirtualDom::new_with_props(
-                FoundationPage,
-                FoundationPageProps {
+                MarketingPage,
+                MarketingPageProps {
                     chrome: chrome(),
                     content,
                 },
@@ -1253,31 +1126,32 @@ mod tests {
     }
 
     #[test]
-    fn an_audience_page_renders_its_title_and_bands_without_a_badge() {
+    fn a_marketing_page_renders_its_title_and_bands_without_a_badge() {
         fn app() -> Element {
             let content = PageContent {
-                head_title: "For attorneys — Neon Law Foundation".to_string(),
-                meta_description: "Take a pro bono matter.".to_string(),
-                title: "For volunteer attorneys".to_string(),
+                head_title: "Fractional General Counsel — Neon Law".to_string(),
+                meta_description: "Company counsel on a flat monthly fee.".to_string(),
+                title: "Fractional General Counsel".to_string(),
                 hero_mark: None,
                 tagline: "Work that arrives scoped.".to_string(),
                 bands: vec![Band::Cta {
-                    heading: "Take a matter.".to_string(),
-                    body: Some("Tell us your practice areas.".to_string()),
-                    email: "support@neonlaw.org".to_string(),
+                    heading: "Tell us about the company.".to_string(),
+                    body: Some("What you are building, and who is on the cap table.".to_string()),
+                    email: "support@neonlaw.com".to_string(),
                     email_subject: None,
                 }],
                 skin: PageSkin::Marketing,
             };
-            rsx! { FoundationPage { chrome: chrome(), content } }
+            rsx! { MarketingPage { chrome: chrome(), content } }
         }
         let out = render(app);
-        assert!(out.contains("For volunteer attorneys"), "title: {out}");
+        assert!(out.contains("Fractional General Counsel"), "title: {out}");
         assert!(out.contains("Work that arrives scoped."), "tagline: {out}");
-        assert!(out.contains("Take a matter."), "cta: {out}");
+        assert!(out.contains("Tell us about the company."), "cta: {out}");
         assert!(
             !out.contains("fm-badge"),
-            "an audience page opens on its argument, not the 501(c)(3) badge: {out}"
+            "a marketing page opens on its argument, and no page carries a badge \
+             now that the renderer draws no hero badge at all: {out}"
         );
     }
 }

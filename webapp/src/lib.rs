@@ -59,7 +59,6 @@ pub mod catalog_step;
 pub mod error_pages;
 pub mod expunge_document;
 pub mod expunge_requests;
-pub mod foundation_marketing;
 pub mod gov_forms;
 pub mod home;
 pub mod html_escape;
@@ -69,9 +68,9 @@ pub mod lawyer_project_detail;
 pub mod legal_page;
 pub mod letter_detail;
 pub mod litigation_page;
+pub mod marketing_page;
 pub mod matter_directory;
 pub mod matter_surface;
-pub mod mission;
 pub mod notations;
 pub mod people;
 pub mod person_show;
@@ -94,7 +93,6 @@ pub mod source_repository;
 pub mod team_home;
 pub mod template_gallery;
 pub mod transactional_page;
-pub mod transparency;
 pub mod walker_step;
 
 /// The root component `web` renders on the server and the wasm client

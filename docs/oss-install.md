@@ -116,8 +116,8 @@ appropriate; both web and workflow-worker mounts remain read-only.
 
 The `portal` workspace crate exposes the shared application core: the authenticated portal and Owner/Admin/Lawyer/Clerk
 surfaces, JSON API and documentation, MCP, A2A, and OIDC. Its `portal::router` entry point is the seam brand hosts use
-instead of copying these routes, keeping a Foundation, firm, or white-label deployment on the same application and
-documentation contract.
+instead of copying these routes, keeping the firm's deployment and any white-label deployment on the same application
+and documentation contract.
 
 The minimum to boot `web` against a real store:
 

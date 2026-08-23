@@ -121,15 +121,10 @@ pub struct BrandManifest {
 #[serde(deny_unknown_fields)]
 pub struct Brand {
     pub firm: Option<String>,
-    pub foundation: Option<String>,
     /// The legal person named in the footer's copyright line. Configurable so
     /// a rename is a manifest edit, not a code change; unset keeps today's
     /// value.
     pub firm_legal_entity: Option<String>,
-    /// The Foundation's corporate name, shown in its own footer. Distinct from
-    /// [`Brand::foundation`], which is the wordmark it trades under — a footer
-    /// that identifies the corporation must not print a brand there.
-    pub foundation_legal_entity: Option<String>,
     /// The firm's whole inbound address, when it is not `support@` on
     /// [`Brand::support_domain`]. Wins over `support_domain` when both are set.
     pub support_email: Option<String>,
@@ -137,7 +132,6 @@ pub struct Brand {
     /// and the address is `support@{support_domain}`. Distinct from
     /// [`Brand::primary_domain`], which is the infrastructure apex.
     pub support_domain: Option<String>,
-    pub foundation_email: Option<String>,
     /// The firm's published voice line, shown on `/contact`. Unset keeps the
     /// built-in number — a white-label deployment sets its own.
     pub firm_phone: Option<String>,
@@ -154,7 +148,6 @@ pub struct Brand {
     #[serde(default)]
     pub firm_attorneys: Vec<AttorneyEntry>,
     pub firm_address: Option<String>,
-    pub foundation_address: Option<String>,
     pub base_url: Option<String>,
     pub primary_domain: Option<String>,
     pub consultation_url: Option<String>,
@@ -203,8 +196,6 @@ pub struct OfficeEntry {
 pub struct Assets {
     pub firm_logo: Option<PathBuf>,
     pub firm_logo_raster: Option<PathBuf>,
-    pub foundation_logo: Option<PathBuf>,
-    pub foundation_logo_raster: Option<PathBuf>,
     /// Additional deployment-owned public files, keyed by their safe relative
     /// public path below `/public/brand/static/`.
     #[serde(default)]
@@ -218,11 +209,6 @@ impl Assets {
         for (field, path) in [
             ("assets.firm_logo", self.firm_logo.as_ref()),
             ("assets.firm_logo_raster", self.firm_logo_raster.as_ref()),
-            ("assets.foundation_logo", self.foundation_logo.as_ref()),
-            (
-                "assets.foundation_logo_raster",
-                self.foundation_logo_raster.as_ref(),
-            ),
         ] {
             if let Some(path) = path {
                 entries.push((field.to_string(), path));
@@ -267,23 +253,15 @@ fn validate(manifest: &BrandManifest, directory: &Path, diagnostics: &mut Vec<St
     }
     for (field, value) in [
         ("brand.firm", &manifest.brand.firm),
-        ("brand.foundation", &manifest.brand.foundation),
         ("brand.firm_legal_entity", &manifest.brand.firm_legal_entity),
         ("brand.firm_phone", &manifest.brand.firm_phone),
         ("brand.firm_address", &manifest.brand.firm_address),
-        (
-            "brand.foundation_address",
-            &manifest.brand.foundation_address,
-        ),
     ] {
         if value.as_ref().is_some_and(|value| value.trim().is_empty()) {
             diagnostics.push(format!("{field} must be omitted or non-empty"));
         }
     }
-    for (field, value) in [
-        ("brand.support_email", &manifest.brand.support_email),
-        ("brand.foundation_email", &manifest.brand.foundation_email),
-    ] {
+    for (field, value) in [("brand.support_email", &manifest.brand.support_email)] {
         if let Some(value) = value {
             if value.trim() != value
                 || value.chars().any(char::is_whitespace)
@@ -507,14 +485,8 @@ mod tests {
 
     #[test]
     fn validates_supported_fields_and_assets() {
-        let dir = write_bundle("version: 1\nportal_only: true\nbrand:\n  firm: Acme Law\n  foundation: Acme Foundation\n  support_email: support@acme.example\n  foundation_email: foundation@acme.example\n  firm_address: 1 Main St\n  foundation_address: 2 Main St\n  base_url: https://app.acme.example\n  primary_domain: acme.example\n  consultation_url: https://acme.example/book\n  terms_url: https://acme.example/terms\n  privacy_url: https://acme.example/privacy\nassets:\n  firm_logo: firm.svg\n  firm_logo_raster: firm.png\n  foundation_logo: foundation.svg\n  foundation_logo_raster: foundation.png\n  static_files:\n    letterhead.css: letterhead.css\n");
-        for file in [
-            "firm.svg",
-            "firm.png",
-            "foundation.svg",
-            "foundation.png",
-            "letterhead.css",
-        ] {
+        let dir = write_bundle("version: 1\nportal_only: true\nbrand:\n  firm: Acme Law\n  support_email: support@acme.example\n  firm_address: 1 Main St\n  base_url: https://app.acme.example\n  primary_domain: acme.example\n  consultation_url: https://acme.example/book\n  terms_url: https://acme.example/terms\n  privacy_url: https://acme.example/privacy\nassets:\n  firm_logo: firm.svg\n  firm_logo_raster: firm.png\n  static_files:\n    letterhead.css: letterhead.css\n");
+        for file in ["firm.svg", "firm.png", "letterhead.css"] {
             fs::write(dir.path().join(file), "brand").unwrap();
         }
         let bundle = BrandBundle::load(dir.path()).unwrap();

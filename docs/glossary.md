@@ -113,36 +113,29 @@ serve one entity's pages under another entity's tag.
 
 Two shapes ship:
 
-- **`neon`** — [the whole site](../neon/src/lib.rs), served at `www.neonlaw.com`: the law firm at the root and the
-  [Neon Law Foundation](#neon-law-foundation-nlf) beneath `/foundation`, one binary serving both faces. It is also the
-  only binary that mounts the [Presentation](#presentation) and workshop catalogs. Single-word crate name, matching its
-  siblings; the public domain and display brand live in the site configuration, not in the crate name.
+- **`neon`** — [the whole site](../neon/src/lib.rs), served at `www.neonlaw.com`: the law firm, at the root and nowhere
+  else. It is also the only binary that mounts the [Presentation](#presentation) and workshop catalogs. Single-word
+  crate name, matching its siblings; the public domain and display brand live in the site configuration, not in the
+  crate name.
 - **`tenant`** — [the white-label shape](../portal/src/tenant.rs), which publishes no public face at all and redirects
   its bare host into the portal. It lives inside `portal` rather than in a crate of its own because a tenant has no
   brand to compose — that is the entire point.
 
-One binary, two entities. The firm and the Foundation remain separate legal persons and their rows stay keyed to those
-persons; what consolidated is the hosting, not the organizations.
-
-Distinct from [`views::brand::SiteBrand`](../views/src/brand.rs) (`FIRM_BRAND`, `FOUNDATION_BRAND`), which is the
-presentation half: the strings, nav links, and footer attribution a page renders, overridable by a mounted
-`BrandManifest`. One names *which binary is serving*; the other names *what the page says*.
+Distinct from [`views::brand::SiteBrand`](../views/src/brand.rs) (`FIRM_BRAND`), the presentation half: the strings, nav
+links, and footer attribution a page renders, overridable by a mounted `BrandManifest`. One names *the serving binary*
+and the other *what the page says*.
 
 - Deployment map: [`environments.md`](environments.md#why-the-brand-is-the-image)
 
 ## Brand Seed
 
 The seed layer a [Brand](#brand) owns, applied on every boot of that binary **including production**. It carries the
-data one brand holds and another must not: `neon` seeds the Firm's and the Foundation's own entities and postal
-identities together, and `tenant` seeds none of ours at all.
+data one brand holds and another must not: `neon` seeds the Firm's own entities and postal identities, and `tenant`
+seeds none of ours at all ([`store::seed::BrandSeed`](../store/src/seed.rs)).
 
-One `neon` variant, not two. The firm and the Foundation are still separate legal entities and their rows stay keyed to
-those entities, but there is one deployment applying them, so there is one seed to apply
-([`store::seed::BrandSeed`](../store/src/seed.rs)).
-
-The canonical layer keeps the *shared registry* — the firm anchor, the Foundation, and the identities every deployment
-resolves by name. An entity no deployment of ours does business as belongs nowhere in these layers at all, which is what
-keeps a `tenant` boot carrying none of our corporate records.
+The canonical layer keeps the *shared registry* — the firm anchor and the identities every deployment resolves by name.
+An entity no deployment of ours does business as belongs nowhere in these layers at all, which is what keeps a `tenant`
+boot carrying none of our corporate records.
 
 It is the middle of three layers in [`store::seed`](../store/src/seed.rs), and the distinction that matters is which
 reach production:
@@ -154,9 +147,9 @@ reach production:
    development starts and never reach a deployment holding real files.
 
 A brand declares its `BrandSeed` in the `Brand` value it hands to the shared run loop, so the seed set is chosen by
-which binary is running rather than by configuration. The Firm's mailboxes and the Foundation's share a street, a suite,
-and a ZIP at one mail center, differing only in the box number — which is why "seed them all everywhere" reads as
-correct in any test that merely counts rows, and why the layer exists.
+which binary is running rather than by configuration. The Firm's mailboxes sit alongside other entities' at one mail
+center, sharing a street, a suite, and a ZIP and differing only in the box number — which is why "seed them all
+everywhere" reads as correct in any test that merely counts rows, and why the layer exists.
 
 ## Certified Mail
 
@@ -559,8 +552,8 @@ A **Retainer** is the same idea, narrowed: an Engagement whose bound Template is
 `onboarding__retainer`. The `portal::retainer_walk` walker, the [`docs/retainer_intake.md`](retainer_intake.md) state
 machine, and the firm's "signed retainer" disclaimer all refer to that specific kind of Notation.
 
-The schema noun in both cases is `Notation`. Marketing copy ([`mission.md`](../server/content/marketing/mission.md))
-speaks Engagement and Retainer because clients do; the database and the workflow runtime speak Notation.
+The schema noun in both cases is `Notation`. Client-facing copy speaks Engagement and Retainer because clients do; the
+database and the workflow runtime speak Notation.
 
 ## Entity
 
@@ -760,21 +753,19 @@ relationship-log entry naming the module and the actor.
 
 ## Neon Law Foundation (NLF)
 
-The 501(c)(3) nonprofit half of the operating structure — **Neon Law Foundation** runs access-to-justice cases and
-teaching programs (including AI in legal practice). The name is *Neon Law Foundation*, in full: "Neon Law" alone is the
-firm's registered mark, so the shortened form names the wrong entity. "NLF" is the abbreviation used across code
-comments and brand assets (e.g. the NLF PNG mark). See [`mission.md`](../server/content/marketing/mission.md) and the
-Foundation brand in [`views::brand`](../views/src/brand.rs). The Foundation **produces** Navigator and holds the
-copyright in it; the Firm **operates** it and owns the NEON LAW mark. The Foundation uses that mark under written
-permission from the Firm ([`NOTICE`](../NOTICE)) rather than owning it.
+A 501(c)(3) nonprofit, and **no longer part of this product's public surface**. Neon Law publishes one brand, the
+firm's, operated by Shook Law PLLC. There is no `/foundation` page, no Foundation entry in the header or footer, no
+Foundation brand in [`views::brand`](../views/src/brand.rs), and no Foundation copy anywhere the site serves; every URL
+that surface held answers `410 Gone` from [`neon::retired_path_routes`](../neon/src/redirects.rs).
 
-Structurally the Foundation is **middleware**: it pairs legal aid organizations with law firms rather than taking
-matters itself. A provider certifies a client's eligibility with a [Statement of Legal Aid
-(SOLA)](#statement-of-legal-aid-sola), the Foundation matches that matter to a firm by practice area, jurisdiction, and
-committable scope, and the firm supervises its own attorneys on the representation. The Foundation is therefore never
-co-counsel and supervises no representation — the work it prepares (intake summaries, issue spotting, first drafts)
-reaches the receiving attorney as a draft under **that attorney's** review, which is the arrangement that keeps a
-nonlawyer organization's substantive work lawful.
+The term survives here because the organization does, and because two of its relationships still bear on this
+repository. **It does not hold the copyright.** Copyright in Navigator belongs to Shook Law PLLC — see
+[`NOTICE`](../NOTICE) and [`licensing.md`](licensing.md#who-holds-what) — and the Foundation instead holds a perpetual,
+irrevocable right to *publish* the work under `AGPL-3.0-only`. It also uses the NEON LAW mark under written permission
+from the Firm rather than owning it.
+
+Both of those are executed instruments rather than settings, so retiring the public surface did not touch either. What
+becomes of them is a legal question and not a code change; [`licensing.md`](licensing.md) is where the answer lands.
 
 ## Neon Law Navigator
 
@@ -887,8 +878,7 @@ Values are stored folded — trimmed, lowercased, separators as single underscor
 ## Presentation
 
 A repo-authored deck of teaching or speaking material. Presentations live only at the top-level `/presentations`
-catalog; workshops live only at the top-level `/workshops` catalog. There is no Foundation-prefixed aggregate or
-umbrella program.
+catalog; workshops live only at the top-level `/workshops` catalog. There is no prefixed aggregate or umbrella program.
 
 **Presentations are anonymous.** The talks catalog renders at `/presentations` and each talk reads beneath it, under the
 firm's chrome, with no rule in `navigator.rego` at all.
@@ -898,11 +888,6 @@ mount under the firm's chrome with no session boundary, alongside the talks. The
 classes teach the software it publishes, so gating them would put a login door in front of the one document explaining
 how to run what anyone can already clone. The certificate `POST` keeps its own gate — who may *claim* a completion
 certificate stays an authorization question even when the material is free to read.
-
-What the Foundation still publishes sits behind its own session boundary in
-[`neon::foundation_gated_dioxus_routers`](../neon/src/pages.rs): the mission letter at `/foundation/mission`, Notations,
-and the transparency disclosures. The `foundation_reading_surface` rule opens those to any authenticated person. The
-site nav still names every gated page, which is what keeps one discoverable rather than invisible.
 
 Presentation and workshop material is **repo-authored, and stays that way**. The markdown under
 [`server/content/workshops/`](../server/content/workshops/) is indexed by a hard-coded manifest in
@@ -1230,14 +1215,14 @@ A **workflow** state's prefix is a step from the workflow-step catalog (`lawyer_
 ## Statement of Legal Aid (SOLA)
 
 The eligibility artifact a legal aid provider issues for one client: a certificate that this person qualifies for
-reduced-cost legal services. It is written by the **legal aid organization**, not by the Foundation and not by the firm
-— neither of those decides who is eligible, which is what keeps the means test with the organization that already
-administers one.
+reduced-cost legal services. It is written by the **legal aid organization**, not by the placing nonprofit and not by
+the firm — neither of those decides who is eligible, which is what keeps the means test with the organization that
+already administers one.
 
-A SOLA is what makes a matter placeable through the Foundation's pairing (see [Neon Law Foundation
-(NLF)](#neon-law-foundation-nlf)): the provider certifies eligibility, the Foundation matches the matter to a law firm,
-and the firm supervises its own attorneys on the representation under Model Rule 5.1. The certificate travels with the
-matter as the reason it qualifies, so a placed matter can always name the organization that certified it.
+A SOLA is what makes a matter placeable through a nonprofit's pairing: the provider certifies eligibility, the nonprofit
+matches the matter to a law firm, and the firm supervises its own attorneys on the representation under Model Rule 5.1.
+The certificate travels with the matter as the reason it qualifies, so a placed matter can always name the organization
+that certified it.
 
 Note the term is *Statement of Legal Aid*, not a statement **by** legal aid about the merits: it speaks to who may
 access reduced-cost help, never to whether a claim is good.

@@ -149,7 +149,6 @@ mod tests {
         fn app() -> Element {
             let chrome = PublicChrome {
                 brand_name: "Neon Law".to_string(),
-                foundation_name: "Neon Law Foundation".to_string(),
                 ..PublicChrome::default()
             };
             let content = ContactContent {

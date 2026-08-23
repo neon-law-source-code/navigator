@@ -10,9 +10,9 @@ canonical seed every deployment shares, and the booting brand's own seed — and
 applies the sample-matter fixture. Local boot also refreshes and stages each sample application before writing
 `.devx/env` for `web`.
 
-The brand layer is selected by the binary rather than by this variable. the brand layer seeds the Firm's own data and
-the Foundation's, and a white-label `tenant` boot seeds neither; each brand declares its `BrandSeed` in the `Brand`
-value it hands to the shared run loop. That split is why one deployment's postal identities never appear in another's
+The brand layer is selected by the binary rather than by this variable: the brand layer seeds the Firm's own data,
+and a white-label `tenant` boot seeds none; each brand declares its `BrandSeed` in the `Brand` value it hands to the
+shared run loop. That split is why one deployment's postal identities never appear in another's
 database. All three layers are idempotent, so a reset and recreate restores the same baseline.
 
 A **deployment operator** owns Kubernetes, cloud accounts, secrets, domains, and these environment values. That person

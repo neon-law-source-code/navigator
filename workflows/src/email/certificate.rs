@@ -5,9 +5,8 @@
 //! dispatches the `workshop__certificate` workflow against the shared
 //! [`StateMachineRuntime`], which lands on `email_send__certificate`;
 //! the dispatcher then renders this email, generates the certificate PDF
-//! ([`pdf::render_certificate`]), attaches it, and sends from the
-//! **Foundation** address (`support@neonlaw.org` by default) — a completion certificate is a
-//! Foundation-branded artifact, not a firm one.
+//! ([`pdf::render_certificate`]), attaches it, and sends from the firm's
+//! published address (`contact@neonlaw.com` by default).
 //!
 //! Progress is tracked entirely client-side (browser `localStorage`, no
 //! telemetry); this module never learns *which* slides were seen, only
@@ -22,10 +21,9 @@ use crate::runtime::{StateMachineRuntime, WorkflowRuntimeError};
 use crate::spec::MachineKind;
 use crate::specs::workshop_certificate_spec;
 
-/// Default subject for the Foundation brand. Mirrors the template's
-/// `subject:` frontmatter default; brand-aware sends use
-/// [`certificate_subject`].
-pub const CERTIFICATE_SUBJECT: &str = "Your Neon Law Foundation certificate of completion";
+/// Default subject. Mirrors the template's `subject:` frontmatter default;
+/// brand-aware sends use [`certificate_subject`].
+pub const CERTIFICATE_SUBJECT: &str = "Your Neon Law certificate of completion";
 
 /// Raw certificate email body (markdown with YAML frontmatter), bundled
 /// so the binary needn't read it off disk.
@@ -37,49 +35,44 @@ pub const TEMPLATE: Template = Template {
     raw: CERTIFICATE_TEMPLATE,
 };
 
-/// Brand-aware subject, resolved through the Foundation brand seam so a
-/// rebranded fork's certificate greets under its own foundation name.
+/// Brand-aware subject, resolved through the brand seam so a rebranded fork's
+/// certificate greets under its own name.
 #[must_use]
 pub fn certificate_subject() -> String {
     format!(
         "Your {} certificate of completion",
-        super::layout::EmailBrand::Foundation.alt()
+        super::layout::brand_name()
     )
 }
 
-/// The envelope `From:` for the certificate — the Foundation support
-/// address (default `support@neonlaw.org`).
-/// The domain must be authenticated in SendGrid (see
-/// `docs/deployment-secrets.md` / the PR notes) or the send is rejected.
+/// The envelope `From:` for the certificate — the firm's published address
+/// (default `contact@neonlaw.com`). The domain must be authenticated with the
+/// mail provider (see `docs/deployment-secrets.md`) or the send is rejected.
 #[must_use]
 pub fn cert_from_email() -> String {
-    super::layout::EmailBrand::Foundation.support_email()
+    super::layout::support_email().to_string()
 }
 
-/// Render the certificate email body: strip the frontmatter, substitute
-/// the recipient + workshop tokens and the Foundation brand tokens.
+/// Render the certificate email body: strip the frontmatter, substitute the
+/// recipient + workshop tokens and the brand tokens.
 #[must_use]
 pub fn render_certificate_body(name: &str, workshop_title: &str) -> String {
-    let brand = super::layout::EmailBrand::Foundation.alt();
-    let support = super::layout::EmailBrand::Foundation.support_email();
+    let brand = super::layout::brand_name();
+    let support = super::layout::support_email();
     let site_url = super::layout::base_url_from_env();
     let body = super::strip_frontmatter(CERTIFICATE_TEMPLATE);
     body.replace("{{recipient_name}}", name)
         .replace("{{workshop_title}}", workshop_title)
-        .replace("{{brand}}", &brand)
-        .replace("{{support_email}}", &support)
+        .replace("{{brand}}", brand)
+        .replace("{{support_email}}", support)
         .replace("{{site_url}}", &site_url)
 }
 
 /// Render the certificate email's HTML alternative: the substituted body
-/// wrapped in the Foundation-branded email layout.
+/// wrapped in the shared email layout.
 #[must_use]
 pub fn render_certificate_html(name: &str, workshop_title: &str, base_url: &str) -> String {
-    super::layout::render_email_html(
-        &render_certificate_body(name, workshop_title),
-        base_url,
-        super::layout::EmailBrand::Foundation,
-    )
+    super::layout::render_email_html(&render_certificate_body(name, workshop_title), base_url)
 }
 
 /// Generate the PDF certificate as an email [`Attachment`].
@@ -153,7 +146,7 @@ mod tests {
     }
 
     #[test]
-    fn html_wraps_body_with_foundation_brand() {
+    fn html_wraps_body_with_the_firm_brand() {
         let html = render_certificate_html(
             "Aries",
             "Deploy the Neon Law Navigator",
@@ -161,8 +154,11 @@ mod tests {
         );
         assert!(html.starts_with("<!doctype html>"));
         assert!(html.contains("Aries"));
-        // Foundation email carries the foundation logo, never the firm's.
         assert!(html.contains("logo-neon.png"));
+        assert!(
+            !html.contains("Foundation"),
+            "the certificate is the firm's artifact now: {html}"
+        );
     }
 
     #[test]

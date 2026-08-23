@@ -162,11 +162,7 @@ pub fn build_confirmation(report: &CanaryReport, recipient: &str) -> OutboundEma
     // Wrap the same body in the firm-branded HTML layout so the email
     // carries the Neon Law logo (this is a firm billing email); the
     // plain-text body stays the fallback part.
-    let html = workflows::email::render_email_html(
-        &body,
-        &workflows::email::base_url_from_env(),
-        workflows::email::EmailBrand::Firm,
-    );
+    let html = workflows::email::render_email_html(&body, &workflows::email::base_url_from_env());
     OutboundEmail::new(recipient.to_string(), subject, body).with_html(html)
 }
 

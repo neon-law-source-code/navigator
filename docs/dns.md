@@ -43,9 +43,8 @@ navigator ops dns setup \
   --dry-run
 ```
 
-There is one production site on one zone. The production deployment serves `www.neonlaw.com` — the firm at the root, the
-Neon Law Foundation under `/foundation` — with `workflows.neonlaw.com` on the same gateway address. Staging has no
-public host, so it has no DNS.
+There is one production site on one zone. The production deployment serves `www.neonlaw.com` — the firm — with
+`workflows.neonlaw.com` on the same gateway address. Staging has no public host, so it has no DNS.
 
 | Zone | Deployment | `www` / `workflows` → |
 | --- | --- | --- |

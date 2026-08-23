@@ -354,7 +354,7 @@ mod tests {
 
     fn payload() -> GithubIssuePayload {
         GithubIssuePayload {
-            repo: Some("neon-law-foundation/navigator".to_string()),
+            repo: Some("neon-law-source-code/navigator".to_string()),
             title: "Add the github notation shelf".to_string(),
             body: "## Observed problem\n\nNo intake for engineering work.\n".to_string(),
             labels: vec!["autobuild".to_string()],
@@ -364,9 +364,9 @@ mod tests {
     #[test]
     fn a_payload_repo_wins_over_the_environment_default() {
         let request = IssueRequest::from_payload(&payload(), Some("other/repo")).unwrap();
-        assert_eq!(request.owner, "neon-law-foundation");
+        assert_eq!(request.owner, "neon-law-source-code");
         assert_eq!(request.repo, "navigator");
-        assert_eq!(request.slug(), "neon-law-foundation/navigator");
+        assert_eq!(request.slug(), "neon-law-source-code/navigator");
     }
 
     #[test]
@@ -375,9 +375,9 @@ mod tests {
             repo: None,
             ..payload()
         };
-        let request = IssueRequest::from_payload(&bare, Some("neon-law-foundation/navigator"))
+        let request = IssueRequest::from_payload(&bare, Some("neon-law-source-code/navigator"))
             .expect("env default should resolve");
-        assert_eq!(request.slug(), "neon-law-foundation/navigator");
+        assert_eq!(request.slug(), "neon-law-source-code/navigator");
     }
 
     #[test]
@@ -419,7 +419,7 @@ mod tests {
     async fn the_rest_opener_posts_the_documented_request_and_reads_the_issue_back() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
-            .and(path("/repos/neon-law-foundation/navigator/issues"))
+            .and(path("/repos/neon-law-source-code/navigator/issues"))
             .and(header("authorization", "Bearer test-token"))
             .and(header("accept", "application/vnd.github+json"))
             .and(header("x-github-api-version", super::API_VERSION))
@@ -433,7 +433,7 @@ mod tests {
             ))
             .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
                 "number": 621,
-                "html_url": "https://github.com/neon-law-foundation/navigator/issues/621",
+                "html_url": "https://github.com/neon-law-source-code/navigator/issues/621",
             })))
             .mount(&server)
             .await;
@@ -445,7 +445,8 @@ mod tests {
             created,
             Some(OpenedIssue {
                 number: 621,
-                html_url: "https://github.com/neon-law-foundation/navigator/issues/621".to_string(),
+                html_url: "https://github.com/neon-law-source-code/navigator/issues/621"
+                    .to_string(),
             })
         );
     }
@@ -470,7 +471,7 @@ mod tests {
                 status,
                 message,
             }) => {
-                assert_eq!(slug, "neon-law-foundation/navigator");
+                assert_eq!(slug, "neon-law-source-code/navigator");
                 assert_eq!(status, 422);
                 assert_eq!(message, "Validation Failed");
             }
@@ -484,7 +485,7 @@ mod tests {
     async fn a_trailing_slash_on_the_api_base_is_normalized() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
-            .and(path("/repos/neon-law-foundation/navigator/issues"))
+            .and(path("/repos/neon-law-source-code/navigator/issues"))
             .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
                 "number": 1,
                 "html_url": "https://example.invalid/1",

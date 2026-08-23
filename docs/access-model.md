@@ -76,17 +76,12 @@ two are otherwise indistinguishable from a response body. Admin cannot create, e
 
 ### *anonymous*
 
-No row in `persons` at all. Sees the host's own public pages and the login door, and nothing else. On the Foundation
-host that public surface is deliberately narrow: the marketing home at `/`, its two audience pages, and the legal and
-crawler documents. The Foundation gates everything else it publishes — the mission letter, Notations, the transparency
-disclosures — so an anonymous reader who follows one gets the login door. The site nav still names them, which is what
-keeps a gated page discoverable rather than invisible.
+No row in `persons` at all. Sees the host's own public pages and the login door, and nothing else. Nearly every page
+on the firm's host is anonymous, including the [presentations](glossary.md#presentation) catalog at `/presentations`,
+every talk beneath it, and the `/workshops` catalog and workshop material.
 
-On the firm host nearly every page is anonymous, including the [presentations](glossary.md#presentation) catalog at
-`/presentations`, every talk beneath it, and the `/workshops` catalog and workshop material.
-
-Every shared Navigator surface — `/app`, `/lawyer`, `/admin`, `/clerk`, the JSON API, `/templates/*`, `/app/api`,
-`/app/api/openapi.json`, and the Foundation's gated pages — composes behind one router-level boundary,
+Every shared Navigator surface — `/app`, `/lawyer`, `/admin`, `/clerk`, the JSON API, `/templates/*`, `/app/api`, and
+`/app/api/openapi.json` — composes behind one router-level boundary,
 `portal::auth::require_session`. An anonymous browser is sent to `/auth/login?return_to=…`; an anonymous machine caller
 gets a `401` with a structured `{"error":"unauthenticated"}` document. Default-deny is therefore a property of router
 composition, not of a Rego rule that would have to redeploy in lockstep with the binary. Embedded Rego still runs behind
@@ -136,7 +131,7 @@ values: `1`, `true`, `yes`, `on`). Off is byte-for-byte the `403` behavior above
 unknown verified email JIT-creates a `client` with **no `person_project_roles` rows** — an empty portfolio until an
 admin assigns participation. Embedded Rego and the role/participation model are untouched; self-signup only changes
 whether an unknown email becomes a scopeless `client` or a `403`. The bootstrap-Owner carve-out is independent of the
-Foundation training host turns this on when trainings open; production keeps it off. See #738.
+A training deployment turns this on when trainings open; production keeps it off. See #738.
 
 ## Concrete people in the seed data
 
@@ -449,7 +444,7 @@ collapsed matter path. A failed handler-level Project ACL returns `404` so unrel
 The schema carries `PERMISSIONS NONE`, so everything above this heading describes authorization that lives *outside* the
 database. SurrealDB is not neutral that way: every table carries a `PERMISSIONS` clause and the engine evaluates it per
 row against the authenticated session. Adopting it (#1093) therefore forced a choice, settled in
-[#1145](https://github.com/neon-law-foundation/navigator/issues/1145).
+[#1145](https://github.com/neon-law-source-code/navigator/issues/1145).
 
 **Decision: authorization stays above the database.** Every Navigator process signs in to Surreal as root, and every
 table in `store/src/schema/navigator.surql` is defined with an explicit `PERMISSIONS NONE` clause. The tier and scope

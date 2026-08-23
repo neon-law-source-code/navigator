@@ -5,9 +5,8 @@
 
 /// The firm's public page copy.
 ///
-/// The firm builds Navigator for its own practice and uses it while
-/// co-counseling cases with the Neon Law Foundation. The `/navigator` page
-/// makes one invitation: co-counsel a pro bono case together.
+/// The firm builds Navigator for its own practice. The `/navigator` page makes
+/// one invitation: co-counsel a pro bono case with us.
 ///
 /// [`legal_services`] is the priced one: the routine consumer work — a will, a
 /// trust, a name change, a formation — with the firm's actual fee printed
@@ -15,7 +14,7 @@
 /// deciding whether they can afford a lawyer gets an answer from the page
 /// rather than from a consultation, and a firm that publishes its fees cannot
 /// quietly charge one client more than another for the same work.
-use webapp::foundation_marketing::{Band, Card, Download, PackageInstall, PageContent, Run, Step};
+use webapp::marketing_page::{Band, Card, Download, PackageInstall, PageContent, Run, Step};
 
 /// One published flat fee: what the matter is, what it costs, and what that
 /// figure does and does not cover.
@@ -158,7 +157,7 @@ pub fn fractional_cto() -> PageContent {
         title: "Fractional CTO".to_string(),
         hero_mark: Some(webapp::components::PracticeMark::Technology),
         tagline: "We run the technology function for law firms.".to_string(),
-        skin: webapp::foundation_marketing::PageSkin::Practice,
+        skin: webapp::marketing_page::PageSkin::Practice,
         bands: vec![
             fractional_cto_intro_band(),
             fractional_cto_work_band(),
@@ -296,7 +295,7 @@ fn fractional_cto_disclosure_band() -> Band {
 /// co-counsel invitation.
 pub fn navigator() -> PageContent {
     PageContent {
-        skin: webapp::foundation_marketing::PageSkin::Marketing,
+        skin: webapp::marketing_page::PageSkin::Marketing,
         head_title: format!(
             "Neon Law Navigator — {}",
             views::brand::FIRM_BRAND.site_name
@@ -318,8 +317,7 @@ pub fn navigator() -> PageContent {
             navigator_working_surface_band(),
             navigator_licence_band(),
             Band::Cta {
-                heading: "Co-Counsel a Pro Bono Case with us and the Neon Law Foundation"
-                    .to_string(),
+                heading: "Co-Counsel a Pro Bono Case with Us".to_string(),
                 body: Some(
                     "To see how vibe coding can help you tell more persuasive stories, we \
                      invite you to help make the world a better place and explore AI together."
@@ -388,7 +386,7 @@ fn navigator_vibe_band() -> Band {
                 Run::plain(" or check out our "),
                 Run::link(
                     "open-source software",
-                    "https://github.com/neon-law-foundation/navigator",
+                    "https://github.com/neon-law-source-code/navigator",
                 ),
                 Run::plain(" to learn more."),
             ],
@@ -459,8 +457,8 @@ fn navigator_downloads_band() -> Band {
                 vec![
                     Run::plain("The formula lives in our own tap, "),
                     Run::link(
-                        "neon-law-foundation/homebrew-navigator",
-                        "https://github.com/neon-law-foundation/homebrew-navigator",
+                        "neon-law-source-code/homebrew-navigator",
+                        "https://github.com/neon-law-source-code/homebrew-navigator",
                     ),
                     Run::plain(", which is updated by every release."),
                 ],
@@ -625,7 +623,7 @@ pub fn legal_services() -> PageContent {
         title: "Legal Services".to_string(),
         hero_mark: None,
         tagline: "One scope, one fee, agreed before we start.".to_string(),
-        skin: webapp::foundation_marketing::PageSkin::Practice,
+        skin: webapp::marketing_page::PageSkin::Practice,
         bands: vec![
             legal_services_intro_band(),
             legal_services_fee_band(),
@@ -752,7 +750,7 @@ fn legal_services_steps_band() -> Band {
 /// in the application underneath.
 #[cfg(test)]
 mod firm_copy_tests {
-    use webapp::foundation_marketing::{Band, Paragraph};
+    use webapp::marketing_page::{Band, Paragraph};
 
     /// Every word of prose a band renders, flattened. Titles, leads, overlines,
     /// descriptions, chips, and card bodies all count: a reader does not
@@ -893,9 +891,7 @@ mod firm_copy_tests {
     /// Every guard below reads the rendered band, so adding a matter without
     /// scoping it — or shipping a placeholder in its price — fails here rather
     /// than passing against a list this file happened to keep in step.
-    fn fee_cards(
-        content: &webapp::foundation_marketing::PageContent,
-    ) -> &[webapp::foundation_marketing::Card] {
+    fn fee_cards(content: &webapp::marketing_page::PageContent) -> &[webapp::marketing_page::Card] {
         content
             .bands
             .iter()
@@ -913,7 +909,7 @@ mod firm_copy_tests {
     /// link deleted — the working-surface card three bands up also points at
     /// `/contact`, so "the page routes to /contact" was true either way. An
     /// assertion about a band has to read that band.
-    fn navigator_licence_band(content: &webapp::foundation_marketing::PageContent) -> &Band {
+    fn navigator_licence_band(content: &webapp::marketing_page::PageContent) -> &Band {
         content
             .bands
             .iter()
@@ -926,12 +922,12 @@ mod firm_copy_tests {
 
     /// The platform page offers one concrete pro bono co-counsel invitation.
     #[test]
-    fn the_navigator_page_invites_pro_bono_foundation_co_counsel() {
+    fn the_navigator_page_invites_pro_bono_co_counsel() {
         let content = super::navigator();
         let text = format!("{} {}", page_text(&content.bands), content.meta_description);
         assert!(
-            text.contains("Co-Counsel a Pro Bono Case with us and the Neon Law Foundation"),
-            "the only invitation is pro bono Foundation co-counsel: {text}"
+            text.contains("Co-Counsel a Pro Bono Case with Us"),
+            "the only invitation is pro bono co-counsel: {text}"
         );
         assert!(
             text.contains(

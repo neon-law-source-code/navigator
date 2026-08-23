@@ -14,10 +14,7 @@ use super::Template;
 /// frontmatter.
 #[must_use]
 pub fn email_confirm_subject() -> String {
-    format!(
-        "Confirm your email for {}",
-        super::layout::EmailBrand::Firm.alt()
-    )
+    format!("Confirm your email for {}", super::layout::brand_name())
 }
 
 /// Raw template body (markdown with YAML frontmatter), bundled via
@@ -36,15 +33,15 @@ pub const TEMPLATE: Template = Template {
 /// `{{support_email}}`, `{{site_url}}`).
 #[must_use]
 pub fn render_email_confirm_body(name: &str, email: &str, confirm_url: &str) -> String {
-    let brand = super::layout::EmailBrand::Firm.alt();
-    let support = super::layout::EmailBrand::Firm.support_email();
+    let brand = super::layout::brand_name();
+    let support = super::layout::support_email();
     let site_url = super::layout::base_url_from_env();
     let body = super::strip_frontmatter(EMAIL_CONFIRM_TEMPLATE);
     body.replace("{{client_name}}", name)
         .replace("{{client_email}}", email)
         .replace("{{confirm_url}}", confirm_url)
-        .replace("{{brand}}", &brand)
-        .replace("{{support_email}}", &support)
+        .replace("{{brand}}", brand)
+        .replace("{{support_email}}", support)
         .replace("{{site_url}}", &site_url)
 }
 
@@ -60,7 +57,6 @@ pub fn render_email_confirm_html(
     super::layout::render_email_html(
         &render_email_confirm_body(name, email, confirm_url),
         base_url,
-        super::layout::EmailBrand::Firm,
     )
 }
 

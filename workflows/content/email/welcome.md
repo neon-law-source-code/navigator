@@ -12,8 +12,6 @@ Here's what to do next:
   a human will read yours.
 - Browse our services at <{{site_url}}> — flat-fee work, no hourly billing.
 
-{{foundation_blurb}}
-
 If this signup wasn't you, just reply and let us know — we'll close the account.
 
 — The {{brand}} team {{support_email}}

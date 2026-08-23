@@ -65,11 +65,11 @@ Navigator: it lives in the deployment's `config.toml` as `NAVIGATOR_GATEWAY_IP`,
 <prefix>-gateway-ip --global --format='value(address)'` prints the current value.
 
 The host cutover has happened. `www.neonlaw.com` and `workflows.neonlaw.com` both resolve to that address and are served
-by this deployment's Ingress, with both `ManagedCertificate` resources Active. The Foundation marketing site no longer
-holds the name. See [`marketing-sites`](marketing-sites.md).
+by this deployment's Ingress, with both `ManagedCertificate` resources Active. See
+[`marketing-sites`](marketing-sites.md).
 
-Each deployment serves its own host, and the host says what the deployment is. `www.neonlaw.com` is production: the firm
-at the root and the Foundation under `/foundation`, over real matters. Staging serves `staging.neonlaw.com` over sample
+Each deployment serves its own host, and the host says what the deployment is. `www.neonlaw.com` is production: the
+firm at the root, over real matters. Staging serves `staging.neonlaw.com` over sample
 data, so a visitor never has to guess which one they reached. `neon` is the identifier that names the GCP projects
 `neon-law-stg` and production and the image `neon-server`; the public brand lives only in the domain. Each row's
 Workspace is in the Drive table under [Matter storage](#matter-storage-and-workspace-attachment).
@@ -117,9 +117,8 @@ Every hosted row uses `NAVIGATOR_ENVIRONMENT=production` and `NAVIGATOR_CREDENTI
 weaker runtime profile. Set `GOOGLE_OAUTH_REQUIRED_HD=neonlaw.com` on both rows. This value is the selected Workspace
 login domain, not necessarily the site's public hostname.
 
-The Foundation runs its **own** Google Workspace on `neonlaw.org`. Consolidating the hosting did not merge the
-Workspaces: Foundation lawyers sign in with `@neonlaw.org` addresses and hold no identity in the Neon Law Workspace,
-which is why the login domain names one tenant rather than both faces the site serves.
+The login domain names one Workspace tenant. An identity in another organization's Workspace holds none here, which
+is why the value is the selected login domain rather than the site's public hostname.
 
 ## Why the brand is the image
 
@@ -144,12 +143,11 @@ GCS and Google Drive are separate lanes:
 Each row has a distinct Drive root. Staging and NLF attach to the Neon Law-controlled Workspace under roots of their
 own; the firm production root is separate as well. The selected Drive root never crosses deployments.
 
-That NLF attachment is a **known gap**, not the target shape. The Foundation's own Workspace (above) means its matter
-folders belong in its own tenant, and `cloud::drive` is already built for that: `DriveWorkspace` carries a
-`NeonLawFoundation` variant reading its own `NAVIGATOR_DRIVE_NEON_LAW_FOUNDATION_*` prefix. Nothing in the running code
-reaches it. `cloud::workspace`'s `GoogleWorkspace` enum has a single variant, `NeonLaw`, so the deployment resolves both
-its shared-drive and root-folder keys against the firm's `NAVIGATOR_DRIVE_NEON_LAW_*` prefix instead. Joining the two
-seams is a code change, so this table describes what the code does today.
+That NLF attachment is a **known gap**, not the target shape. `cloud::drive`'s `DriveWorkspace` carries a
+`NeonLawFoundation` variant reading its own `NAVIGATOR_DRIVE_NEON_LAW_FOUNDATION_*` prefix, and nothing in the running
+code reaches it. `cloud::workspace`'s `GoogleWorkspace` enum has a single variant, `NeonLaw`, so the deployment
+resolves both its shared-drive and root-folder keys against the firm's `NAVIGATOR_DRIVE_NEON_LAW_*` prefix instead.
+Retiring that unreached variant is a code change, so this table describes what the code does today.
 
 The selected Workspace block in each deployment's config is:
 
@@ -170,8 +168,7 @@ regional and remains a one-time administrative prerequisite; the regional GCP pr
 `ghcr` is the shared image hub and must never receive GKE or workload buckets. The two runtime projects are:
 
 - `neon-law-stg` — the one persistent staging deployment, serving its own host over sample matters.
-- the production deployment — serving `www.neonlaw.com` over real client matters: the firm at the root and the
-  Foundation under `/foundation`.
+- the production deployment — serving `www.neonlaw.com` over real client matters.
 
 Project IDs are immutable. Organization moves preserve the project ID and project number, so project-level IAM is the
 portable boundary. Avoid relying on organization-inherited IAM for a project that may move. The registry grants each

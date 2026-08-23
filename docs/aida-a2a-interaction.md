@@ -162,9 +162,9 @@ message-less non-result on any text-only A2A client. The Gemini Enterprise MCP-s
 planner to "show the user the error and ask whether to retry" (see
 [`gemini-enterprise-mcp.md`](gemini-enterprise-mcp.md)) — that only works if the error text is actually in the result.
 
-## The Foundation workshop runs on this surface
+## The Navigator workshop runs on this surface
 
-The Foundation's *Using the Navigator Workshop*
+The *Using the Navigator Workshop*
 ([`/workshops/use-the-navigator`](../server/content/workshops/navigator/README.md)), is the canonical end-user entry
 into exactly this A2A path. Lawyers add AIDA through Gemini's "Add AIDA" connector — no install, no CLI — and every
 "tool call" is a Gemini prompt routed through AIDA's tools over A2A. Two behaviors from this doc are the ones a workshop

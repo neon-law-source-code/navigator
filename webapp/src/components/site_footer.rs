@@ -183,7 +183,7 @@ fn tel_href(phone: &str) -> String {
 /// handed in per request, so the component itself is pure presentation.
 ///
 /// - `copyright_holder`: the legal person that owns the site and the words on
-///   it — `Neon Law` on the firm's deploy. It heads the legal strip, and
+///   it — `Shook Law PLLC` on the firm's deploy. It heads the legal strip, and
 ///   it is the only line naming the entity behind the site. Deliberately a
 ///   separate dial from the wordmark the page trades under, even where a
 ///   deploy sets both to the same words: a copyright notice has to name an
@@ -203,19 +203,18 @@ fn tel_href(phone: &str) -> String {
 /// - `logo_href` / `brand_name`: the mark the footer opens on and the wordmark
 ///   beside it. `crate::public_chrome::PublicFooter` feeds both from the firm
 ///   brand on every page of the site, so the bottom of a page names one
-///   organization whichever header it wears.
+///   organization whichever header a white-label bundle mounts above it.
 /// - `home_href`: where that mark links. A reader who has scrolled to the
 ///   bottom of a long page clicks the logo to get back to the top of the site,
 ///   and the header's mark is off screen by then — so the footer's has to be
-///   the same door rather than an inert picture. It is the *firm's* home on
-///   both faces, matching the mark and wordmark beside it: the footer names one
-///   organization, so it cannot send a reader to the other one's front page.
+///   the same door rather than an inert picture. It is the *firm's* home under
+///   any header, matching the mark and wordmark beside it.
 ///   Empty renders the mark unlinked, which is what a gallery driving the
 ///   component with no destination should get rather than an `<a href="">`
 ///   that reloads whatever page it is sitting on.
 /// - `nav`: the public routes the header does not carry, rendered as one list
-///   the stylesheet lays out in two columns of five on a wide viewport and one
-///   column of ten on a narrow one. Empty renders no row.
+///   the stylesheet lays out in two columns of four on a wide viewport and one
+///   column of eight on a narrow one. Empty renders no row.
 ///
 /// The whole footer is width-constrained to the same 72rem column the
 /// [`crate::components::SiteHeader`] nav uses, so its content lines up with
@@ -234,11 +233,6 @@ pub fn SiteFooterLegal(
     #[props(default)] brand_name: String,
     #[props(default)] home_href: String,
     #[props(default)] nav: Vec<FooterNavLink>,
-    /// The nonprofit named in the copyright line beside `copyright_holder`
-    /// (`"© {year} {copyright_holder} and {foundation}"`). Empty renders just
-    /// the holder.
-    #[props(default)]
-    foundation: String,
     /// The registered word mark the site trades under, spelled the way the
     /// register spells it, and the registration that proves it. Renders one
     /// notice under the copyright line — the site's two ownership facts read
@@ -446,8 +440,10 @@ pub fn SiteFooterLegal(
                         // legal person, which is what a copyright notice names
                         // — the wordmark cannot hold one. This heads the legal
                         // strip rather than trailing it, because it is the only
-                        // line naming the entity behind the site.
-                        "© {copyright_year} {copyright_holder} and {foundation}"
+                        // line naming the entity behind the site. One name: the
+                        // wordmark it trades under is named on the line below,
+                        // as the mark this same person registered.
+                        "© {copyright_year} {copyright_holder}"
                     }
                     // The other ownership fact, directly under the first: the
                     // wordmark this footer opens on is a registered mark, and
@@ -557,14 +553,12 @@ mod tests {
     }
 
     /// The link row a deploy hands this component, mirroring what
-    /// `views::brand::firm_footer_nav` publishes: the ten public routes the
+    /// `views::brand::firm_footer_nav` publishes: the eight public routes the
     /// header does not carry, alphabetized by label.
-    const FOOTER_ROW: [(&str, &str); 10] = [
+    const FOOTER_ROW: [(&str, &str); 8] = [
         ("Blog", "/blog"),
         ("Contact", "/contact"),
         ("Docs", "/docs"),
-        ("Firm", "/"),
-        ("Foundation", "/foundation"),
         ("Navigator", "/navigator"),
         ("Presentations", "/presentations"),
         ("Privacy", "/privacy"),
@@ -582,13 +576,12 @@ mod tests {
                     copyright_holder: "Neon Law".to_string(),
                     disclaimer: "This is an attorney advertisement.".to_string(),
                     copyright_year: 2026,
-                    foundation: "Neon Law Foundation".to_string(),
                     trademark: "NEON LAW".to_string(),
                     trademark_registration: "6,325,650".to_string(),
                     trademark_record_url:
                         "https://tmsearch.uspto.gov/search/search-results/90039224".to_string(),
-                    source_repo: "neon-law-foundation/navigator".to_string(),
-                    source_href: "https://github.com/neon-law-foundation/navigator".to_string(),
+                    source_repo: "neon-law-source-code/navigator".to_string(),
+                    source_href: "https://github.com/neon-law-source-code/navigator".to_string(),
                     source_stars: 1234u64,
                 }
             }
@@ -683,11 +676,11 @@ mod tests {
     fn closes_the_strip_with_the_source_repository_and_its_stars() {
         let out = legal_html();
         assert!(
-            out.contains(r#"href="https://github.com/neon-law-foundation/navigator""#),
+            out.contains(r#"href="https://github.com/neon-law-source-code/navigator""#),
             "the repository is linked: {out}"
         );
         assert!(
-            out.contains("github-stars__repo") && out.contains("neon-law-foundation/navigator"),
+            out.contains("github-stars__repo") && out.contains("neon-law-source-code/navigator"),
             "and named as the project's source: {out}"
         );
         assert!(
@@ -726,8 +719,8 @@ mod tests {
                     copyright_holder: "Neon Law".to_string(),
                     disclaimer: "This is an attorney advertisement.".to_string(),
                     copyright_year: 2026,
-                    source_repo: "neon-law-foundation/navigator".to_string(),
-                    source_href: "https://github.com/neon-law-foundation/navigator".to_string(),
+                    source_repo: "neon-law-source-code/navigator".to_string(),
+                    source_href: "https://github.com/neon-law-source-code/navigator".to_string(),
                 }
             }
         }
@@ -741,7 +734,7 @@ mod tests {
 
         let out = ssr(unfetched);
         assert!(
-            out.contains(r#"href="https://github.com/neon-law-foundation/navigator""#),
+            out.contains(r#"href="https://github.com/neon-law-source-code/navigator""#),
             "an unknown count still publishes the repository: {out}"
         );
         assert!(
@@ -750,12 +743,15 @@ mod tests {
         );
     }
 
-    /// The copyright names the entity that holds it — the firm's legal person,
-    /// not the wordmark it trades under.
+    /// The copyright names one entity: the firm's legal person, and nobody
+    /// else.
     ///
-    /// The nonprofit is a separate corporation and holds nothing here.
+    /// It used to name a second organization beside it, when the site served a
+    /// nonprofit's pages as well as the firm's. That surface is retired, and a
+    /// copyright line crediting an organization whose pages the site no longer
+    /// publishes would be a claim about ownership that is no longer true.
     #[test]
-    fn names_both_organizations_in_the_copyright() {
+    fn the_copyright_names_the_firms_legal_person_alone() {
         let out = legal_html();
         let copyright = out
             .split(r#"<p class="site-footer__copyright">"#)
@@ -766,14 +762,13 @@ mod tests {
             copyright.contains("\u{a9} 2026 Neon Law"),
             "the copyright names the holding entity: {copyright}"
         );
-        // Both organizations, because one footer serves both faces: the firm
-        // renders the legal services and the Foundation runs the programmes,
-        // and a shared page cannot credit only one of them. The *supporter*
-        // line is the one that must name the firm alone — asserted separately —
-        // or it reads as the nonprofit supporting itself.
         assert!(
-            copyright.contains("Neon Law Foundation"),
-            "the copyright names both organizations: {copyright}"
+            !copyright.contains("Foundation"),
+            "the copyright names one organization: {copyright}"
+        );
+        assert!(
+            !copyright.contains(" and "),
+            "and names it without a second: {copyright}"
         );
     }
 
@@ -875,9 +870,8 @@ mod tests {
                             href: href.to_string(),
                         })
                         .collect(),
-                    foundation: "Neon Law Foundation".to_string(),
-                    source_repo: "neon-law-foundation/navigator".to_string(),
-                    source_href: "https://github.com/neon-law-foundation/navigator".to_string(),
+                    source_repo: "neon-law-source-code/navigator".to_string(),
+                    source_href: "https://github.com/neon-law-source-code/navigator".to_string(),
                     navigator_version: "26.8.20".to_string(),
                     navigator_href: "/navigator".to_string(),
                 }
@@ -1261,8 +1255,8 @@ mod tests {
                     copyright_holder: "Neon Law".to_string(),
                     disclaimer: "This is an attorney advertisement.".to_string(),
                     copyright_year: 2026,
-                    source_repo: "neon-law-foundation/navigator".to_string(),
-                    source_href: "https://github.com/neon-law-foundation/navigator".to_string(),
+                    source_repo: "neon-law-source-code/navigator".to_string(),
+                    source_href: "https://github.com/neon-law-source-code/navigator".to_string(),
                 }
             }
         }

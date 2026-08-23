@@ -16,10 +16,7 @@ use super::Template;
 /// frontmatter.
 #[must_use]
 pub fn google_sign_in_subject() -> String {
-    format!(
-        "Sign in to {} with Google",
-        super::layout::EmailBrand::Firm.alt()
-    )
+    format!("Sign in to {} with Google", super::layout::brand_name())
 }
 
 /// Raw template body (markdown with YAML frontmatter), bundled via
@@ -37,15 +34,15 @@ pub const TEMPLATE: Template = Template {
 /// and the brand tokens (`{{brand}}`, `{{support_email}}`, `{{site_url}}`).
 #[must_use]
 pub fn render_google_sign_in_body(name: &str, email: &str, login_url: &str) -> String {
-    let brand = super::layout::EmailBrand::Firm.alt();
-    let support = super::layout::EmailBrand::Firm.support_email();
+    let brand = super::layout::brand_name();
+    let support = super::layout::support_email();
     let site_url = super::layout::base_url_from_env();
     let body = super::strip_frontmatter(GOOGLE_SIGN_IN_TEMPLATE);
     body.replace("{{client_name}}", name)
         .replace("{{client_email}}", email)
         .replace("{{login_url}}", login_url)
-        .replace("{{brand}}", &brand)
-        .replace("{{support_email}}", &support)
+        .replace("{{brand}}", brand)
+        .replace("{{support_email}}", support)
         .replace("{{site_url}}", &site_url)
 }
 
@@ -61,7 +58,6 @@ pub fn render_google_sign_in_html(
     super::layout::render_email_html(
         &render_google_sign_in_body(name, email, login_url),
         base_url,
-        super::layout::EmailBrand::Firm,
     )
 }
 

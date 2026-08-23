@@ -126,14 +126,6 @@ const PARAMETERISED: &[(&str, &[&str])] = &[
         // authored content rather than component output.
         &["/blog/thanks-apple", "/blog/going-all-in-on-rust"],
     ),
-    (
-        "/foundation/transparency/{slug}",
-        &["/foundation/transparency/bylaws"],
-    ),
-    (
-        "/foundation/transparency/minutes/{slug}",
-        &["/foundation/transparency/minutes/2026-q2"],
-    ),
     ("/workshops/{slug}", &["/workshops/use-the-navigator"]),
     (
         "/workshops/{slug}/slides",
@@ -170,11 +162,15 @@ const PARAMETERISED: &[(&str, &[&str])] = &[
     ),
 ];
 
-/// The Foundation's former root URLs. Each answers
-/// a `301` rather than a page, so auditing one would run axe against an empty
-/// redirect body — and its destination is declared separately and audited on
-/// its own.
-const RETIRED_REDIRECTS: &[&str] = &[
+/// The retired Neon Law Foundation URLs, at both the `/foundation` prefix they
+/// last held and the site root they held before it.
+///
+/// Each answers `410 Gone` with no body rather than a page, so auditing one
+/// would run axe against nothing at all. They stay declared in
+/// `neon::PUBLIC_PATHS` because the site still answers them; they are skipped
+/// here because there is no document to audit.
+const RETIRED_GONE: &[&str] = &[
+    "/foundation",
     "/mission",
     "/education",
     "/attorneys",
@@ -199,16 +195,13 @@ fn plan(path: &str) -> AuditPlan {
     if ["/robots.txt", "/sitemap.xml", "/llms.txt"].contains(&path) {
         return AuditPlan::Skip("a crawler document, not an HTML page");
     }
-    // The retired URLs are declared so they keep answering as permanent
-    // redirects; their targets are declared separately and audited on their
-    // own. This list inverted with the consolidation — it used to skip
-    // everything under `/foundation`, which is now where the Foundation's
-    // LIVE pages are, and the redirects moved to the site root.
-    if RETIRED_REDIRECTS
+    // The retired URLs are declared so the site keeps answering them, but a
+    // `410 Gone` carries no document, so there is nothing for axe to audit.
+    if RETIRED_GONE
         .iter()
         .any(|retired| *retired == path || path.starts_with(&format!("{retired}/")))
     {
-        return AuditPlan::Skip("a permanent redirect to a path audited on its own");
+        return AuditPlan::Skip("a retired URL answering 410 Gone, with no document to audit");
     }
     // The certificate request itself is a `POST` handler; the page a reader
     // lands on afterwards is `…/certificate/sent`, which is audited.
@@ -546,26 +539,42 @@ async fn the_component_gallery_passes_axe() {
 /// whole document once per brand, which is the smallest thing that actually
 /// covers the chrome.
 ///
-/// One host now serves both shells, so this audits the firm's root and the
-/// Foundation's `/foundation` against the same origin. It used to need a second
-/// base URL — the two brands were separate deployments, and auditing one twice
-/// would have left the other's chrome uncovered. That is no longer a risk the
-/// suite can have: both shells render from this binary.
+/// One shell serves the whole public site, so this audits it over more than one
+/// page body: the same header and footer around two different documents is what
+/// catches a body that breaks the document under only one of them.
 #[tokio::test]
-async fn each_brand_shell_passes_a_full_document_audit() {
+async fn the_public_shell_passes_a_full_document_audit() {
     for scheme in ColorScheme::both() {
         let Some(c) = session_in_scheme(scheme, &base_url()).await else {
             return;
         };
-        // The site root, then the Foundation's home beneath its prefix. One
-        // header and one footer serve both now, so this is no longer two shells
-        // — it is the same shell over two page bodies, and auditing both is
-        // what catches a body that breaks the document only under one of them.
-        for path in ["/", "/foundation"] {
+        for path in ["/", "/services", "/navigator"] {
             assert_route_passes_axe(&c, path, DOCUMENT_AXE_SCOPE, scheme).await;
             assert_public_shell(&c).await;
         }
         c.close().await.unwrap();
+    }
+}
+
+/// A retired URL answers `410 Gone` and renders no document, so the shell
+/// audits above never reach it — and this is what proves that is deliberate
+/// rather than a page the gate silently stopped covering.
+#[tokio::test]
+async fn a_retired_url_renders_no_document_to_audit() {
+    for path in RETIRED_GONE {
+        assert_eq!(
+            plan(path),
+            AuditPlan::Skip("a retired URL answering 410 Gone, with no document to audit"),
+            "{path} is retired and must be classified as a skip, not audited"
+        );
+    }
+    // And no retired URL leaks into the audited set through another arm.
+    let audited = audit_urls(neon::PUBLIC_PATHS);
+    for path in RETIRED_GONE {
+        assert!(
+            !audited.iter().any(|url| url == path),
+            "{path} is retired but reached the audited set: {audited:?}"
+        );
     }
 }
 
@@ -596,7 +605,6 @@ async fn the_authenticated_shell_passes_a_full_document_audit() {
 fn every_declared_public_path_is_classified() {
     let unclassified: Vec<&str> = neon::PUBLIC_PATHS
         .iter()
-        .chain(neon::PUBLIC_PATHS)
         .filter(|path| plan(path) == AuditPlan::Skip("UNCLASSIFIED"))
         .copied()
         .collect();
@@ -613,27 +621,20 @@ fn every_declared_public_path_is_classified() {
 
     // Printed so a CI log says what the public gate actually covered, rather
     // than only that it passed.
-    let firm = audit_urls(neon::PUBLIC_PATHS);
-    let foundation = audit_urls(neon::PUBLIC_PATHS);
+    let audited = audit_urls(neon::PUBLIC_PATHS);
     println!(
-        "public accessibility coverage: {} firm URL(s) from {} declared paths, \
-         {} Foundation URL(s) from {} declared paths",
-        firm.len(),
-        neon::PUBLIC_PATHS.len(),
-        foundation.len(),
+        "public accessibility coverage: {} URL(s) from {} declared paths",
+        audited.len(),
         neon::PUBLIC_PATHS.len(),
     );
-    // Floors, not counts: they catch a classifier that started skipping real
-    // pages, and are set below the true totals so adding a page never has to
-    // touch them. The firm carries the larger number now — both Catalog
-    // material catalogs mount there, which is most of the difference.
+    // A floor, not a count: it catches a classifier that started skipping real
+    // pages, and is set below the true total so adding a page never has to
+    // touch it.
     assert!(
-        firm.len() >= 20 && foundation.len() >= 12,
-        "the derived surface collapsed — {} firm and {} Foundation URLs is far \
-         below what the brands declare, so something is classifying real pages \
-         as skips",
-        firm.len(),
-        foundation.len(),
+        audited.len() >= 20,
+        "the derived surface collapsed — {} URLs is far below what the site \
+         declares, so something is classifying real pages as skips",
+        audited.len(),
     );
 }
 
@@ -687,13 +688,12 @@ fn the_incomplete_policy_separates_undecidable_from_unmeasurable() {
     );
 }
 
-/// The whole Foundation surface, in one signed-in session.
+/// The whole public surface, in one signed-in session.
 ///
-/// Derived from `FOUNDATION_PUBLIC_PATHS`, which declares the anonymous
-/// marketing pages and the gated reading surface together. A lawyer session
-/// reads both, so one pass covers the host;
-/// [`each_brand_shell_passes_a_full_document_audit`] separately proves the
-/// anonymous chrome. The talks are audited on the firm's host below.
+/// Derived from `neon::PUBLIC_PATHS`. A lawyer session reads every page a
+/// stranger can plus the gated ones, so one pass covers the host;
+/// [`the_public_shell_passes_a_full_document_audit`] separately proves the
+/// anonymous chrome.
 #[tokio::test]
 async fn neon_public_pages_pass_axe_wcag_a_and_aa() {
     let routes = audit_urls(neon::PUBLIC_PATHS);
@@ -712,7 +712,7 @@ async fn neon_public_pages_pass_axe_wcag_a_and_aa() {
 /// The whole public surface, derived from `neon::PUBLIC_PATHS` — both faces,
 /// since one table now declares them.
 ///
-/// Signed in as Lawyer so the same pass also reaches the Foundation's gated
+/// Signed in as Lawyer so the same pass also reaches the gated
 /// reading surface; workshops and presentations themselves are anonymous.
 #[tokio::test]
 async fn public_pages_pass_axe_wcag_a_and_aa() {

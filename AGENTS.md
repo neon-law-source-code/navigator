@@ -3,15 +3,14 @@
 **Neon Law Navigator** is copyright **Shook Law PLLC** (the Firm), which trades as **Neon Law**, operates it, and owns
 the NEON LAW mark; the **Neon Law Foundation** publishes it, holding a perpetual, irrevocable right to publish under
 `AGPL-3.0-only` that survives any change of the Firm's control. **This is a public, open-source repository** at
-[github.com/neon-law-foundation/navigator](https://github.com/neon-law-foundation/navigator): one grant,
+[github.com/neon-law-source-code/navigator](https://github.com/neon-law-source-code/navigator): one grant,
 `AGPL-3.0-only`, over the whole tree including the legal prose under `templates/`. Root [`LICENSE`](LICENSE) holds that
 grant as the Free Software Foundation publishes it, unaltered so every licence scanner names it; [`NOTICE`](NOTICE)
 beside it carries the copyright line and the Foundation's own statements, and is where any wording of ours belongs.
 Section 13 is the clause that matters operationally — a modified Navigator run for remote users owes those users its
 source. Outside contributions are **currently closed** — point anyone asking at `contact@neonlaw.org` — though the work
-in here assigns to the Firm. The marks are reserved. This monorepo holds one website — the firm at the root, the Neon
-Law Foundation under `/foundation` — and the delivery stack for legal services. See
-[`docs/licensing.md`](docs/licensing.md).
+in here assigns to the Firm. The marks are reserved. This monorepo holds one website — the firm at the root — and the
+delivery stack for legal services. See [`docs/licensing.md`](docs/licensing.md).
 
 **Everything you write here is published.** The no-client-data rule below is what stands between a live legal practice
 and a public tree, and it is now enforced by a test rather than by the absence of a publication path.
@@ -242,9 +241,9 @@ driving a topology it did not generate:
 cargo run -p cli -- dev browser-e2e --base-url http://localhost:3001
 ```
 
-The accessibility suite audits both shells — the firm's at the root and the Foundation's at `/foundation` — against the
-one host `browser-e2e` already starts. It needed a second base URL while the two brands were separate deployments; one
-binary serves both now, so there is nothing extra to start.
+The accessibility suite audits the public shell against the one host `browser-e2e` already starts. It needed a second
+base URL while the site served two brands from separate deployments; one binary serves one face now, so there is
+nothing extra to start.
 
 The Rust test suite needs no database, no container, and no configuration: each test opens its own embedded,
 memory-backed SurrealDB. Run it through nextest — the default profile prints failures only, so a green run is the
@@ -287,7 +286,7 @@ process — it is not inherited from the worktree directory, so relocating `CARG
 first binary (`navigator` itself) is verified before any Navigator code could run. Do not strip `com.apple.provenance`,
 disable Gatekeeper or SIP, notarize ephemeral test binaries, or wrap Cargo in a shell script to suppress the dialogs:
 each either weakens macOS security or cannot reach that first binary. The builds are unaffected. Tracked in
-[navigator#570](https://github.com/neon-law-foundation/navigator/issues/570) pending an upstream Codex host fix.
+[navigator#570](https://github.com/neon-law-source-code/navigator/issues/570) pending an upstream Codex host fix.
 
 Run local, reversible machine-bound commands directly. Production deploys, production database access, irreversible
 cloud operations, host maintenance, and dependency bumps stay propose-only. Put scratch files under `/tmp`, use unique

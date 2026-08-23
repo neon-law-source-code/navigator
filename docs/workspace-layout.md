@@ -23,8 +23,8 @@ Dioxus renders every page:
 - `server/public` holds the stylesheets and the few vendored scripts that pages load directly.
 - The only first-party TypeScript in the repository is the `lsp/vscode-ext` editor extension.
 
-`neon` serves the firm at `www.neonlaw.com` and the Neon Law Foundation at `www.neonlaw.com/foundation`. The binary
-serves exactly one face, so no runtime flag can point a deployment at another entity's public surface.
+`neon` serves the firm at `www.neonlaw.com`. The binary serves exactly one face, so no runtime flag can point a
+deployment at another entity's public surface.
 
 A brand crate owns that face outright: its marketing copy, its page compositions, and its path table all live in the
 crate whose binary publishes them. `portal` owns everything underneath — the authenticated application, the JSON API,

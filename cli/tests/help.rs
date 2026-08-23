@@ -79,7 +79,8 @@ fn top_level_help_keeps_orchestration_nested_under_groups() {
             // operator has to scan.
             "validate", // the one externally consumed command; it never moves
             "template", // the notation author's offline workbench
-            "db",       // direct store access
+            "db",       // deployment data command boundary
+            "login",    // browser loopback for the bearer db seed uses
             "site",     // a running deployment, via the stored bearer token
             "projects", // the Drive folder + the one repository a code names
             "dev",      // the local KIND loop plus the reference helpers
@@ -150,15 +151,19 @@ fn db_help_lists_the_direct_store_operations() {
 
     assert_eq!(
         command_names(&output),
-        vec![
-            "catalog-seed",
-            "import-contacts",
-            "list",
-            "project",
-            "erd",
-            "help",
-        ]
+        vec!["catalog-seed", "seed", "list", "project", "erd", "help",]
     );
+}
+
+#[test]
+fn db_seed_help_requires_the_seed_model_and_file() {
+    Command::cargo_bin("navigator")
+        .unwrap()
+        .args(["db", "seed", "--help"])
+        .assert()
+        .success()
+        .stdout(str::contains("<MODEL_NAME> <SEED_FILE>"))
+        .stdout(str::contains("--overwrite"));
 }
 
 /// `db project` is write-side and local; `site project open` drives a running

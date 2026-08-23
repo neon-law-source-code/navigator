@@ -522,6 +522,10 @@ pub struct PersonEdit {
     pub given_name: Option<Option<String>>,
     pub family_name: Option<Option<String>>,
     pub middle_name: Option<Option<String>>,
+    /// A seed reconciliation may replace the optional directory image while
+    /// leaving identity and authority untouched. Browser-facing commands do
+    /// not populate this field, so their existing PATCH contract is unchanged.
+    pub profile_image_url: Option<Option<String>>,
 }
 
 /// The contact facts a directory import owns: the display name and the
@@ -993,6 +997,9 @@ pub async fn edit(
     if input.middle_name.is_some() {
         assignments.push("middle_name = $middle_name");
     }
+    if input.profile_image_url.is_some() {
+        assignments.push("profile_image_url = $profile_image_url");
+    }
     if assignments.is_empty() {
         return find_by_id(db, id).await;
     }
@@ -1036,6 +1043,10 @@ pub async fn edit(
             bind("given_name", input.given_name.clone().unwrap_or_default()),
             bind("family_name", input.family_name.clone().unwrap_or_default()),
             bind("middle_name", input.middle_name.clone().unwrap_or_default()),
+            bind(
+                "profile_image_url",
+                input.profile_image_url.clone().unwrap_or_default(),
+            ),
         ],
     )
     .await;

@@ -95,7 +95,7 @@ fn auth_logout_reports_a_corrupt_credential_file() {
     );
 }
 
-/// Drive `navigator site login` far enough to exercise the browser-loopback
+/// Drive `navigator login` far enough to exercise the browser-loopback
 /// error path: read the redirect port off stdout, then POST a state-mismatch
 /// callback so `login_inner` rejects the token and `run_login` prints its
 /// error and exits `2` — without ever contacting a real identity provider.
@@ -110,7 +110,7 @@ fn auth_login_rejects_a_tampered_callback() {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .expect("spawn navigator site login");
+        .expect("spawn navigator login");
 
     // The loopback port is printed on the "Waiting for the redirect on
     // http://127.0.0.1:<port>/cb" line, before the accept() blocks.
@@ -140,7 +140,7 @@ fn auth_login_rejects_a_tampered_callback() {
     let mut resp = Vec::new();
     let _ = sock.read_to_end(&mut resp);
 
-    let status = child.wait().expect("navigator site login exits");
+    let status = child.wait().expect("navigator login exits");
     assert_eq!(status.code(), Some(2));
 
     let mut stderr = String::new();
@@ -150,5 +150,5 @@ fn auth_login_rejects_a_tampered_callback() {
         .unwrap()
         .read_to_string(&mut stderr)
         .unwrap();
-    assert!(stderr.contains("navigator site login:"), "stderr: {stderr}");
+    assert!(stderr.contains("navigator login:"), "stderr: {stderr}");
 }

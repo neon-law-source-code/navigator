@@ -325,6 +325,26 @@ pub fn document_with_base(base: &str) -> Value {
             }
           }
         },
+        "/app/api/seed": {
+          "post": {
+            "summary": "Reconcile a seed document",
+            "description": "Applies one YAML document in Navigator's standard `lookup_fields` / `records` seed format. The model is a supported singular glossary term. Existing lookup matches are unchanged by default; `overwrite` replaces the fields represented in the seed record. Authorization: Lawyer tier only.",
+            "requestBody": {
+              "required": true,
+              "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/SeedRequest" }
+              } }
+            },
+            "responses": {
+              "200": { "description": "Reconciliation summary", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/SeedReport" }
+              } } },
+              "401": { "description": "No authenticated session" },
+              "403": { "description": "Authenticated caller is not Lawyer/admin" },
+              "422": { "description": "Unsupported model or invalid seed document" }
+            }
+          }
+        },
         "/app/api/entities/{id}": {
           "get": {
             "summary": "Get one entity by id",
@@ -2194,6 +2214,25 @@ pub fn document_with_base(base: &str) -> Value {
             "type": "string",
             "enum": ["owner", "admin", "lawyer", "clerk", "client"],
               "description": "System-wide authorization tier stored in `persons.role`; Lawyer is a person licensed to practice law and authorized for Navigator legal work, while Owner/Admin are organization-level operators and Clerk is a supervised non-lawyer."
+          },
+          "SeedRequest": {
+            "type": "object",
+            "required": ["model", "yaml"],
+            "properties": {
+              "model": { "type": "string", "description": "Supported singular glossary term, currently `person` or `entity`." },
+              "yaml": { "type": "string", "description": "Seed YAML with `lookup_fields` and `records`." },
+              "overwrite": { "type": "boolean", "default": false }
+            }
+          },
+          "SeedReport": {
+            "type": "object",
+            "required": ["model", "created", "updated", "unchanged"],
+            "properties": {
+              "model": { "type": "string" },
+              "created": { "type": "integer", "minimum": 0 },
+              "updated": { "type": "integer", "minimum": 0 },
+              "unchanged": { "type": "integer", "minimum": 0 }
+            }
           },
           "CreatePersonRequest": {
             "type": "object",

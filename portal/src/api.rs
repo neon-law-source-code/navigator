@@ -96,6 +96,7 @@ fn api_operation_table() -> Vec<(&'static str, &'static str, MethodRouter<ApiSta
         ("POST", "/app/api/people/{id}/welcome", post(send_welcome)),
         ("GET", "/app/api/entities", get(list_entities)),
         ("POST", "/app/api/entities", post(create_entity)),
+        ("POST", "/app/api/seed", post(reconcile_seed)),
         ("GET", "/app/api/entities/{id}", get(get_entity)),
         ("PATCH", "/app/api/entities/{id}", patch(update_entity)),
         ("DELETE", "/app/api/entities/{id}", delete(delete_entity)),
@@ -865,6 +866,47 @@ async fn create_entity(
         store::entity_commands::create_entity(&state.surreal, &state.bootstrap_company, &input)
             .await?;
     Ok((StatusCode::CREATED, Json(created)).into_response())
+}
+
+/// The authenticated command behind `navigator db seed`. The CLI sends the
+/// seed document verbatim; parsing, natural-key lookup, and writes happen in
+/// the typed store registry rather than in a client with database credentials.
+#[derive(Debug, Deserialize)]
+struct SeedRequest {
+    model: String,
+    yaml: String,
+    #[serde(default)]
+    overwrite: bool,
+}
+
+async fn reconcile_seed(
+    State(state): State<ApiState>,
+    _lawyer: LawyerSession,
+    Json(input): Json<SeedRequest>,
+) -> Response {
+    let outcome = async {
+        let model = store::seed::SeedModel::parse(&input.model)?;
+        store::seed::reconcile_yaml(
+            &state.surreal,
+            model,
+            &input.yaml,
+            &state.bootstrap_company,
+            input.overwrite,
+        )
+        .await
+    }
+    .await;
+    match outcome {
+        Ok(report) => (StatusCode::OK, Json(report)).into_response(),
+        Err(error) => (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(serde_json::json!({
+                "error": "invalid_seed",
+                "message": error.to_string(),
+            })),
+        )
+            .into_response(),
+    }
 }
 
 /// `PATCH /app/api/entities/{id}` — the Entity update command. Same lawyer-tier

@@ -22,6 +22,10 @@ own persistence logic.
   or, where it cannot depend on `portal`, calls the **same** shared `store` / `workflows` command the `/app/api` handler
   calls. Convergence is at the command layer, not necessarily over HTTP: the `navigator site project open` subcommand
   and `POST /app/api/projects` both call the same `store::projects::open_matter`.
+- **Seed reconciliation.** `navigator db seed <MODEL_NAME> <SEED_FILE>` reads the standard seed YAML locally and sends
+  it with the bearer from `navigator login` to `POST /app/api/seed`. The deployment resolves the typed glossary model,
+  validates its `lookup_fields`, and performs lookup/create there; `--overwrite` changes only fields represented in the
+  seed model. The CLI never reads database credentials.
 - **MCP.** A tool in `mcp/src/tools/` translates its arguments into a shared command. The `mcp` crate cannot depend on
   `portal`, so it converges at the `store` / `workflows` layer — e.g. `aida_link_person_project` calls
   `store::participation::add_participant` / `update_participant`, the same commands the participation `/app/api` door

@@ -457,6 +457,16 @@ allow if {
     is_lawyer(input.session)
 }
 
+# Seed reconciliation: POST /app/api/seed accepts the same YAML envelope as
+# the checked-in seed files. The handler maps its model name through the typed
+# seed registry, so this rule grants a command rather than arbitrary database
+# access. It is lawyer-tier for the same reason as directory writes.
+allow if {
+    input.path == ["app", "api", "seed"]
+    input.method == "POST"
+    is_lawyer(input.session)
+}
+
 # Upload a contract for playbook review: POST /app/api/projects/{id}/contract-review
 # ingests an inbound third-party contract (multipart) and runs the deviation
 # analysis. Client-writable like the review surface — a matter's client may

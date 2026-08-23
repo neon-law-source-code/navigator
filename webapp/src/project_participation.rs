@@ -26,7 +26,7 @@
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::components::{Choice, Field, FormCard, Heading};
+use crate::components::{Choice, Field, FormCard, Heading, PersonChoice};
 use crate::people::ViewerRole;
 
 /// The form's `?error=` flash, set by the create/update handler's
@@ -45,18 +45,6 @@ pub struct ParticipationQuery {
     pub dri: Option<String>,
 }
 
-/// One assignable person: the id posted, and the name/email/tier shown. The tier
-/// is shown because it *is* the matter-side participation the write derives
-/// (`store::projects::participation_for_role`), so naming it in the option is
-/// how an admin sees what the row will say before they add it.
-#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
-pub struct AssignablePerson {
-    pub id: String,
-    pub name: String,
-    pub email: String,
-    pub role: String,
-}
-
 /// The rendered participation form.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct ParticipationView {
@@ -71,7 +59,7 @@ pub struct ParticipationView {
     pub project_name: String,
     /// `Some` on the edit mount, `None` on the add mount.
     pub role_id: Option<String>,
-    pub people: Vec<AssignablePerson>,
+    pub people: Vec<PersonChoice>,
     pub person_id: Option<String>,
     /// The accountability radio's value: `none`, `lawyer`, or `client`.
     pub dri: String,
@@ -119,7 +107,7 @@ async fn hidden(role: ViewerRole) -> ParticipationView {
 async fn dri_holders(
     surreal: &store::surreal::SurrealDb,
     project_id: uuid::Uuid,
-    people: &[AssignablePerson],
+    people: &[PersonChoice],
 ) -> Result<(Vec<String>, Vec<String>), ServerFnError> {
     let rows = store::projects::participations_for_project(surreal, project_id)
         .await
@@ -220,16 +208,11 @@ async fn load(
         None => None,
     };
 
-    let people: Vec<AssignablePerson> = store::persons::list_directory(&surreal, "", "", &[])
+    let people: Vec<PersonChoice> = store::persons::list_directory(&surreal, "", "", &[])
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?
         .into_iter()
-        .map(|p| AssignablePerson {
-            id: p.id.to_string(),
-            name: p.name,
-            email: p.email,
-            role: p.role.as_str().to_string(),
-        })
+        .map(|p| PersonChoice::new(p.id.to_string(), p.name, p.email).with_detail(p.role.as_str()))
         .collect();
 
     // A refused submit echoes its person back through the redirect query, so the
@@ -355,19 +338,18 @@ fn participation_body(view: &ParticipationView) -> Element {
         Some(role_id) => format!("/app/projects/{}/people/{role_id}/edit", view.project_code),
         None => format!("/app/projects/{}/people", view.project_code),
     };
-    let mut options = vec![Choice::new("", "Choose a person")];
-    options.extend(view.people.iter().map(|p| {
-        Choice::new(
-            p.id.clone(),
-            format!("{} <{}> — {}", p.name, p.email, p.role),
-        )
-    }));
     // Person and accountability are the only controls: the matter-side
     // participation follows from the tier already on the person's account, so
     // there is nothing left to type.
-    let mut fields = vec![Field::select("Person", "person_id", options, view.person_id.clone())
-        .help("Their participation on this matter follows the system tier shown beside each name.")
-        .required()];
+    let mut fields = vec![Field::person_picker(
+        "Person",
+        "person_id",
+        "Choose a person",
+        view.people.clone(),
+        view.person_id.clone(),
+    )
+    .help("Their participation on this matter follows the system tier shown beside each name.")
+    .required()];
     fields.push(dri_field(view));
 
     rsx! {
@@ -446,26 +428,26 @@ pub fn LawyerParticipationEdit() -> Element {
 
 #[cfg(test)]
 mod tests {
-    use super::{participation_body, AssignablePerson, ParticipationView};
-    use crate::people::ViewerRole;
+    use super::{participation_body, ParticipationView};
+    use crate::{components::PersonChoice, people::ViewerRole};
 
-    fn person() -> AssignablePerson {
-        AssignablePerson {
-            id: "00000000-0000-0000-0000-000000000001".to_string(),
-            name: "Libra Client".to_string(),
-            email: "libra@example.com".to_string(),
-            role: "client".to_string(),
-        }
+    fn person() -> PersonChoice {
+        PersonChoice::new(
+            "00000000-0000-0000-0000-000000000001",
+            "Libra Client",
+            "libra@example.com",
+        )
+        .with_detail("client")
     }
 
     /// The firm-side lawyer the lawyer marker can actually live on.
-    fn lawyer() -> AssignablePerson {
-        AssignablePerson {
-            id: "00000000-0000-0000-0000-000000000002".to_string(),
-            name: "Avery Attorney".to_string(),
-            email: "avery@neonlaw.com".to_string(),
-            role: "lawyer".to_string(),
-        }
+    fn lawyer() -> PersonChoice {
+        PersonChoice::new(
+            "00000000-0000-0000-0000-000000000002",
+            "Avery Attorney",
+            "avery@neonlaw.com",
+        )
+        .with_detail("lawyer")
     }
 
     fn view(role_id: Option<&str>, error: Option<&str>) -> ParticipationView {

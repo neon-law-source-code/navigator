@@ -45,6 +45,7 @@ pub mod links;
 pub mod navigator_chrome;
 pub mod pagination;
 pub mod people_list;
+pub mod person_picker;
 pub mod platform_mark;
 pub mod practice_card;
 pub mod pricing;
@@ -83,6 +84,7 @@ pub use navigator_chrome::{
 };
 pub use pagination::Pagination;
 pub use people_list::PeopleListInputs;
+pub use person_picker::{PersonChoice, PersonPicker};
 pub use platform_mark::PlatformMark;
 pub(crate) use platform_mark::PlatformMarkGlyph;
 pub use practice_card::PracticeMark;

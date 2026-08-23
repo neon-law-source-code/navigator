@@ -1469,6 +1469,21 @@ a.nav-pagination__link:hover {
   border-color: var(--nav-color-primary);
 }
 
+/* A Person foreign-key picker keeps the submitted UUID in its native select;
+   this input only narrows the list by name or email after hydration. */
+.person-picker__search-label {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 0.875rem;
+  color: var(--nav-color-text-muted);
+}
+
+.person-picker__matches {
+  margin: 0.25rem 0;
+  font-size: 0.875rem;
+  color: var(--nav-color-text-muted);
+}
+
 /* Input with a leading add-on (e.g. a "$" prefix). */
 .nav-input-group {
   display: flex;

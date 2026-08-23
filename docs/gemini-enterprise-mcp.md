@@ -4,6 +4,14 @@ How to expose Neon Law Navigator's `/mcp` endpoint to **Gemini Enterprise** so t
 catalog (today: `aida_create_person`, `aida_show_person`, `aida_list_jurisdictions`) during chat sessions, with no new
 identity provider to operate. All tool names are namespaced under the `aida_` prefix.
 
+The endpoint serves a **narrower catalog than the firm has**. Three tools — `aida_create_notation`,
+`aida_answer_notation`, and `aida_send_welcome_email` — are supervised acts: they email a client, or create or answer a
+Notation, which is a binding legal artifact. `mcp::tools::requires_confirmation` classifies them, and MCP has no
+`input-required` state to pause in, so `/mcp` withholds them from `tools/list` and refuses one named anyway rather than
+simulating an approval it cannot collect. Those acts are performed in `/app`, where a human approves them and the
+approval is recorded against the matter. Reading the catalog and finding three tools missing is the design, not a
+registration fault.
+
 This doc is the **setup** story — agent card, OAuth, registration. For the **runtime** behavior once a request lands —
 where AIDA pauses for a yes/no authorization and how a tool failure's reason reaches the user — see
 [`aida-a2a-interaction.md`](aida-a2a-interaction.md).

@@ -51,6 +51,65 @@ pub fn list_tools() -> Vec<Value> {
     ]
 }
 
+/// The tool descriptors a model client is *offered* — every catalog
+/// entry that runs without a licensed human approving it first.
+///
+/// This is deliberately narrower than [`list_tools`], and the gap is not
+/// an accident: it is exactly [`requires_confirmation`]. A tool that
+/// emails a client, or that creates or answers a Notation, is a
+/// supervised act, and neither MCP transport can collect that approval —
+/// the protocol has no `input-required` state to pause in. So the act is
+/// withheld rather than simulated, and it is performed in `/app`, where
+/// a human approves it and the approval is recorded against the matter.
+///
+/// Filtering rather than only refusing at call time is the point: a tool
+/// the model cannot see is a tool it cannot decide to try, so the model
+/// is never in the position of proposing an act the transport could not
+/// supervise. Both transports still refuse a named-anyway call —
+/// [`withheld_message`] is that refusal — because a host may hold a
+/// stale catalog.
+///
+/// Every transport that hands a catalog to a model calls this rather
+/// than [`list_tools`]: `mcp::server`'s `tools/list` for the `/mcp`
+/// endpoint, and `cli::mcp_bridge` for the stdio bridge. One predicate,
+/// two transports, so a newly-gated tool is withheld on both without a
+/// second edit. [`list_tools`] itself stays whole — it is the catalog,
+/// and `aida_list_tools` and the A2A agent card still describe every
+/// capability the firm has.
+#[must_use]
+pub fn advertised_catalog() -> Vec<Value> {
+    list_tools()
+        .into_iter()
+        .filter(|d| {
+            d.get("name")
+                .and_then(Value::as_str)
+                .is_some_and(|n| !requires_confirmation(n))
+        })
+        .collect()
+}
+
+/// Whether `tool_name` (prefixed or unprefixed) is in
+/// [`advertised_catalog`]. False for an unknown name as well as a gated
+/// one, so a caller that wants to tell those apart checks
+/// [`is_known_tool`] too.
+#[must_use]
+pub fn is_advertised(tool_name: &str) -> bool {
+    is_known_tool(tool_name) && !requires_confirmation(tool_name)
+}
+
+/// The refusal text for a gated tool a caller named anyway. Shared by
+/// both transports so the routing answer a model relays is the same one
+/// wherever it dialled in from: this is not "no such tool", it is "not
+/// here — do it where the approval can be recorded."
+#[must_use]
+pub fn withheld_message(tool_name: &str) -> String {
+    format!(
+        "`{tool_name}` requires a lawyer's explicit approval before it runs, and this \
+         connection cannot collect one. Perform it in the Navigator app, where the \
+         approval is recorded against the matter."
+    )
+}
+
 /// Required prefix for every MCP tool name we advertise. Multi-server
 /// MCP clients (Gemini Enterprise, `LibreChat`) surface tools from
 /// every connected server in one list — namespacing Neon Law Navigator's tools
@@ -634,6 +693,64 @@ mod tests {
         // An unknown tool defaults to side-effecting — the safe default.
         assert!(super::is_side_effecting("aida_some_future_writer"));
         assert!(super::is_side_effecting("totally_unknown"));
+    }
+
+    #[test]
+    fn advertised_catalog_withholds_exactly_the_confirmation_gated_tools() {
+        let catalog = super::advertised_catalog();
+        let advertised: Vec<&str> = catalog.iter().filter_map(|t| t["name"].as_str()).collect();
+
+        for gated in [
+            "aida_create_notation",
+            "aida_answer_notation",
+            "aida_send_welcome_email",
+        ] {
+            assert!(
+                super::requires_confirmation(gated),
+                "`{gated}` is expected to be a supervised act"
+            );
+            assert!(
+                !advertised.contains(&gated),
+                "`{gated}` must not be advertised; got {advertised:?}"
+            );
+        }
+
+        // Every other catalog entry is still offered — the filter withholds
+        // the supervised acts and nothing else.
+        let tools = list_tools();
+        let whole: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
+        for name in &whole {
+            assert_eq!(
+                advertised.contains(name),
+                !super::requires_confirmation(name),
+                "`{name}` advertised state disagrees with requires_confirmation"
+            );
+        }
+        assert_eq!(advertised.len(), whole.len() - 3);
+    }
+
+    #[test]
+    fn is_advertised_separates_gated_from_unknown() {
+        // Both answer `false`, and the distinction that matters to a caller
+        // is `is_known_tool` — a gated tool is real and routed elsewhere, an
+        // unknown one is a mistake.
+        assert!(super::is_advertised("aida_create_person"));
+        // The unprefixed A2A skill id resolves the same way.
+        assert!(super::is_advertised("create_person"));
+
+        assert!(!super::is_advertised("aida_create_notation"));
+        assert!(super::is_known_tool("aida_create_notation"));
+
+        assert!(!super::is_advertised("aida_not_a_tool"));
+        assert!(!super::is_known_tool("aida_not_a_tool"));
+    }
+
+    #[test]
+    fn withheld_message_names_the_tool_and_where_to_perform_it() {
+        let text = super::withheld_message("aida_send_welcome_email");
+        assert!(text.contains("aida_send_welcome_email"), "got `{text}`");
+        assert!(text.contains("Navigator app"), "got `{text}`");
+        assert!(text.contains("recorded against the matter"), "got `{text}`");
     }
 
     #[test]

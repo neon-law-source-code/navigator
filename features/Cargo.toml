@@ -86,7 +86,7 @@ name = "annual_report_filing"
 harness = false
 
 [[test]]
-name = "mcp_create_notation"
+name = "aida_create_notation"
 harness = false
 
 [[test]]

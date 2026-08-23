@@ -131,7 +131,10 @@ async fn dispatch(state: &McpState, principal: Option<&Principal>, req: &Request
                 }
             }),
         ),
-        "tools/list" => Response::ok(id, json!({ "tools": tools::list_tools() })),
+        // The advertised catalog, NOT the whole one: the confirmation-gated
+        // tools are withheld from every model client. See
+        // `tools::advertised_catalog` for why the two differ.
+        "tools/list" => Response::ok(id, json!({ "tools": tools::advertised_catalog() })),
         "tools/call" => handle_tools_call(state, principal, id, &req.params).await,
         "ping" => Response::ok(id, json!({})),
         // MCP notifications expect no reply, but HTTP needs a body —
@@ -158,6 +161,22 @@ async fn handle_tools_call(
         .get("arguments")
         .cloned()
         .unwrap_or_else(|| json!({}));
+
+    // A gated tool is absent from `tools/list`, but a client holding a stale
+    // catalog — or one naming a tool it never listed — can still ask for it.
+    // Refuse before dispatch, so the supervised act does not run, and say
+    // where to perform it instead. An *unknown* name falls through to
+    // `call_tool`, which answers it as `Unknown` rather than as a refusal.
+    if tools::is_known_tool(name) && !tools::is_advertised(name) {
+        telemetry::record_mcp_tool_called(name, telemetry::mcp_outcome::ERROR);
+        return Response::ok(
+            id,
+            json!({
+                "isError": true,
+                "content": [{ "type": "text", "text": tools::withheld_message(name) }]
+            }),
+        );
+    }
 
     // The one instrumented chokepoint for every `/mcp` tool call — the direct
     // counterpart to the A2A audit span, so the shared tool catalog is observable
@@ -256,8 +275,16 @@ mod tests {
         assert!(body["result"]["capabilities"]["tools"].is_object());
     }
 
+    /// `tools/list` serves the *advertised* catalog, so the three
+    /// confirmation-gated tools are absent and the other eleven present.
+    ///
+    /// This assertion used to run the other way — it pinned
+    /// `aida_create_notation` and `aida_answer_notation` as present,
+    /// which is the defect ENG-315 fixed. Asserting the absent set is the
+    /// point: a test that only checks what IS listed stays green when a
+    /// supervised act is served by mistake.
     #[tokio::test]
-    async fn tools_list_returns_aida_namespaced_descriptors() {
+    async fn tools_list_withholds_the_confirmation_gated_tools() {
         let router = build_router(state(&db().await));
         let (_, body) = call(
             router,
@@ -266,15 +293,123 @@ mod tests {
         .await;
         let tools = body["result"]["tools"].as_array().unwrap();
         let names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
-        assert!(names.contains(&"aida_create_person"));
-        assert!(names.contains(&"aida_show_person"));
-        assert!(names.contains(&"aida_list_jurisdictions"));
-        assert!(names.contains(&"aida_create_notation"));
-        assert!(names.contains(&"aida_answer_notation"));
-        assert!(names.contains(&"aida_validate_notation"));
+
+        for gated in [
+            "aida_create_notation",
+            "aida_answer_notation",
+            "aida_send_welcome_email",
+        ] {
+            assert!(
+                !names.contains(&gated),
+                "`{gated}` is a supervised act and must not be advertised on /mcp; got {names:?}"
+            );
+        }
+
+        for offered in [
+            "aida_create_person",
+            "aida_show_person",
+            "aida_list_jurisdictions",
+            "aida_list_entities",
+            "aida_validate_notation",
+            "aida_create_project",
+            "aida_list_projects",
+            "aida_link_person_project",
+            "aida_list_tools",
+            "aida_bulk_import",
+            "aida_spawn_legal_council",
+        ] {
+            assert!(
+                names.contains(&offered),
+                "`{offered}` missing; got {names:?}"
+            );
+        }
+
+        assert_eq!(names.len(), 11, "got {names:?}");
         for name in &names {
             assert!(name.starts_with("aida_"), "got `{name}`");
         }
+    }
+
+    /// The withheld set is exactly `requires_confirmation`, computed
+    /// rather than restated — so a newly-gated tool is covered by this
+    /// test the day it is classified, with no edit here.
+    #[tokio::test]
+    async fn tools_list_is_exactly_the_unconfirmed_catalog() {
+        let router = build_router(state(&db().await));
+        let (_, body) = call(
+            router,
+            json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" }),
+        )
+        .await;
+        let names: Vec<String> = body["result"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|t| t["name"].as_str().map(String::from))
+            .collect();
+
+        let expected: Vec<String> = crate::tools::list_tools()
+            .iter()
+            .filter_map(|t| t["name"].as_str())
+            .filter(|n| !crate::tools::requires_confirmation(n))
+            .map(String::from)
+            .collect();
+        assert_eq!(names, expected);
+        assert!(
+            crate::tools::list_tools().len() > expected.len(),
+            "the served catalog must be strictly narrower than the whole one"
+        );
+    }
+
+    /// Naming a gated tool anyway is refused *before* dispatch, with a
+    /// message routing the caller to where the approval is recorded.
+    #[tokio::test]
+    async fn tools_call_refuses_a_gated_tool_without_dispatching() {
+        let surreal = db().await;
+        let router = build_router(state(&surreal));
+        let (_, body) = call(
+            router,
+            json!({
+                "jsonrpc": "2.0",
+                "id": 4,
+                "method": "tools/call",
+                "params": {
+                    "name": "aida_create_notation",
+                    "arguments": { "template": "anything" }
+                }
+            }),
+        )
+        .await;
+        assert_eq!(body["result"]["isError"], true);
+        let text = body["result"]["content"][0]["text"].as_str().unwrap();
+        assert!(text.contains("aida_create_notation"), "got `{text}`");
+        assert!(text.contains("Navigator app"), "got `{text}`");
+        assert!(text.contains("approval"), "got `{text}`");
+    }
+
+    /// The refusal is not the unknown-tool answer. An unrecognized name
+    /// still falls through to `call_tool` and comes back as unknown, so
+    /// "gated" and "no such tool" stay distinguishable to a caller.
+    #[tokio::test]
+    async fn tools_call_still_reports_an_unknown_tool_as_unknown() {
+        let surreal = db().await;
+        let router = build_router(state(&surreal));
+        let (_, body) = call(
+            router,
+            json!({
+                "jsonrpc": "2.0",
+                "id": 5,
+                "method": "tools/call",
+                "params": { "name": "aida_not_a_tool", "arguments": {} }
+            }),
+        )
+        .await;
+        assert_eq!(body["result"]["isError"], true);
+        let text = body["result"]["content"][0]["text"].as_str().unwrap();
+        assert!(
+            !text.contains("Navigator app"),
+            "unknown must not read as a gated refusal; got `{text}`"
+        );
     }
 
     #[tokio::test]

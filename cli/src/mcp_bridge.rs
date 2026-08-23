@@ -202,7 +202,11 @@ async fn dispatch(
 
 /// The tools this bridge advertises: every catalog entry that runs
 /// without a human approving it — the reads, plus the CRM writers
-/// exempted by [`mcp::tools::requires_confirmation`].
+/// exempted by `mcp::tools::requires_confirmation`.
+///
+/// The predicate itself lives in [`mcp::tools::advertised_catalog`],
+/// shared with the `/mcp` endpoint so the two transports cannot drift:
+/// a newly-gated tool is withheld from both without a second edit.
 ///
 /// Confirmation is the only reason a tool is withheld. It used to not be:
 /// `aida_list_projects` was also held back because the read carried no
@@ -212,28 +216,9 @@ async fn dispatch(
 /// oversight directory — so there is nothing left for this transport to
 /// withhold, and a read that discloses only what its caller may see is
 /// one a model client may be handed.
-///
-/// Filtering here rather than refusing at call time is the point — a
-/// tool Claude cannot see is a tool it cannot decide to try, so the
-/// model is never in the position of proposing an act this transport
-/// could not supervise.
 #[must_use]
 pub fn advertised_catalog() -> Vec<Value> {
-    mcp::tools::list_tools()
-        .into_iter()
-        .filter(|d| {
-            d.get("name")
-                .and_then(Value::as_str)
-                .is_some_and(|n| !mcp::tools::requires_confirmation(n))
-        })
-        .collect()
-}
-
-/// Whether `name` is advertised by this bridge.
-fn is_advertised(name: &str) -> bool {
-    advertised_catalog()
-        .iter()
-        .any(|d| d.get("name").and_then(Value::as_str) == Some(name))
+    mcp::tools::advertised_catalog()
 }
 
 /// An MCP `tools/call` result. MCP carries tool *failures* in the result
@@ -376,16 +361,12 @@ async fn handle_tools_call(id: Value, params: &Value, upstream: &dyn Upstream) -
         .cloned()
         .unwrap_or_else(|| json!({}));
 
-    if !is_advertised(name) {
+    if !mcp::tools::is_advertised(name) {
         // Distinguish "gated, so deliberately absent" from "no such
         // tool". The first is a routing answer the user can act on; the
         // second is a mistake.
         let text = if mcp::tools::is_known_tool(name) {
-            format!(
-                "`{name}` requires a lawyer's explicit approval before it runs, and this \
-                 connection cannot collect one. Perform it in the Navigator app, where the \
-                 approval is recorded against the matter."
-            )
+            mcp::tools::withheld_message(name)
         } else {
             format!("`{name}` is not a tool this connection offers.")
         };

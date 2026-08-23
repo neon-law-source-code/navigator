@@ -9,6 +9,14 @@
 //! instrument. Scorpio's trust claim (from the engineer council
 //! review) is asserted at the bottom: the notation's `state` is
 //! `draft` until the attorney explicitly advances the workflow.
+//!
+//! Binding a notation is a `mcp::tools::requires_confirmation` act, so
+//! the walk runs over the supervised A2A surface (`POST
+//! /app/api/aida/rpc`): the attorney names the `create_notation` skill,
+//! the task pauses in `input-required`, and the same attorney
+//! authorizes it before anything is written. `/mcp` withholds the skill
+//! outright, which is exactly the workshop's point — the instrument
+//! never binds a matter on its own.
 
 #![allow(clippy::unused_async)]
 
@@ -25,7 +33,7 @@ use uuid::Uuid;
 use workflows::InMemoryRuntime;
 
 /// Stable code for the workshop's retainer template. Used by the
-/// `aida_create_notation` tool to look up the template row inserted
+/// `create_notation` skill to look up the template row inserted
 /// in the Background.
 const RETAINER_TEMPLATE_CODE: &str = "onboarding__retainer";
 
@@ -41,6 +49,8 @@ struct WorkshopWorld {
     notation_id: Option<Uuid>,
     /// JSON-RPC `id` counter so each call gets a fresh request id.
     next_rpc_id: u64,
+    /// Most recent A2A Task (paused, completed, or failed).
+    last_task: Option<Value>,
 }
 
 impl std::fmt::Debug for WorkshopWorld {
@@ -65,21 +75,31 @@ impl WorkshopWorld {
         self.next_rpc_id
     }
 
-    /// Send one MCP `tools/call` and return the `result` payload.
-    /// Asserts HTTP 200 + no JSON-RPC `error` member; tool-level
-    /// errors are surfaced through `result.isError` which callers
-    /// inspect.
-    async fn call_tool(&mut self, name: &str, arguments: Value) -> Value {
-        let rpc_id = self.fresh_rpc_id();
-        let body = json!({
-            "jsonrpc": "2.0",
-            "id": rpc_id,
-            "method": "tools/call",
-            "params": { "name": name, "arguments": arguments }
-        });
-        let req = Request::builder()
+    /// The structured tool output a completed A2A Task carries: the
+    /// `data` Part of its single artifact, which is the tool's
+    /// `structuredContent` verbatim.
+    fn task_data(&self) -> &Value {
+        &self.task()["artifacts"][0]["parts"][1]["data"]
+    }
+
+    fn task(&self) -> &Value {
+        self.last_task.as_ref().expect("no A2A task captured")
+    }
+
+    /// POST one JSON-RPC message to the A2A endpoint as the firm
+    /// attorney and capture the Task. Injecting the
+    /// [`portal::Principal`] mirrors the prod auth middleware: the tier
+    /// gate and the confirmation gate both resolve the caller against
+    /// `persons`, so an anonymous request could neither dispatch nor
+    /// approve.
+    async fn post_as_attorney(&mut self, body: Value) {
+        let email = self
+            .attorney_email
+            .clone()
+            .expect("the workshop seed registers the attorney persona");
+        let mut req = Request::builder()
             .method("POST")
-            .uri("/mcp")
+            .uri("/app/api/aida/rpc")
             .header(
                 "authorization",
                 portal::test_support::lawyer_bearer_header(),
@@ -87,15 +107,63 @@ impl WorkshopWorld {
             .header("content-type", "application/json")
             .body(Body::from(serde_json::to_vec(&body).unwrap()))
             .unwrap();
+        req.extensions_mut().insert(portal::Principal::new(email));
         let resp = self.app().oneshot(req).await.unwrap();
-        assert_eq!(resp.status(), StatusCode::OK, "MCP HTTP status");
+        assert_eq!(resp.status(), StatusCode::OK, "A2A HTTP status");
         let raw = body_string(resp).await;
-        let envelope: Value = serde_json::from_str(&raw).expect("MCP response is JSON");
+        let envelope: Value = serde_json::from_str(&raw).expect("A2A response is JSON");
         assert!(
             envelope.get("error").is_none(),
             "expected `result`, got JSON-RPC `error`: {envelope}",
         );
-        envelope["result"].clone()
+        self.last_task = Some(envelope["result"].clone());
+    }
+
+    /// Name a skill directly, through the `metadata.skill` entry point,
+    /// with its arguments alongside.
+    async fn name_skill(&mut self, skill: &str, arguments: Value) {
+        let rpc_id = self.fresh_rpc_id();
+        let body = json!({
+            "jsonrpc": "2.0",
+            "id": rpc_id,
+            "method": "message/send",
+            "params": { "message": {
+                "messageId": format!("m-{rpc_id}"),
+                "role": "user",
+                "kind": "message",
+                "parts": [],
+                "metadata": { "skill": skill, "arguments": arguments }
+            }}
+        });
+        self.post_as_attorney(body).await;
+    }
+
+    /// Answer the pending `input-required` authorization with a yes, so
+    /// the supervised act runs under the attorney's approval.
+    async fn authorize_pending(&mut self) {
+        let task_id = self.task()["id"]
+            .as_str()
+            .expect("paused task carries an id")
+            .to_string();
+        let context_id = self.task()["contextId"]
+            .as_str()
+            .expect("paused task carries a contextId")
+            .to_string();
+        let rpc_id = self.fresh_rpc_id();
+        let body = json!({
+            "jsonrpc": "2.0",
+            "id": rpc_id,
+            "method": "message/send",
+            "params": { "message": {
+                "messageId": format!("m-{rpc_id}"),
+                "role": "user",
+                "kind": "message",
+                "taskId": task_id,
+                "contextId": context_id,
+                "parts": [{ "kind": "data", "data": { "confirmation": "yes" } }]
+            }}
+        });
+        self.post_as_attorney(body).await;
     }
 }
 
@@ -176,23 +244,34 @@ async fn attorney_binds_notation(world: &mut WorkshopWorld) {
     let project_id = world
         .project_id
         .expect("the attorney opens the Project before binding a notation");
-    let result = world
-        .call_tool(
-            "aida_create_notation",
+    world
+        .name_skill(
+            "create_notation",
             json!({
                 "template_code": RETAINER_TEMPLATE_CODE,
                 "project_id": project_id,
             }),
         )
         .await;
-    assert_ne!(
-        result.get("isError"),
-        Some(&Value::Bool(true)),
-        "create_notation should succeed, got: {result}",
+    // Binding a notation is a supervised act, so nothing is written
+    // until the attorney answers the pause. That is the workshop's
+    // point: the instrument never acts on its own.
+    assert_eq!(
+        world.task()["status"]["state"],
+        "input-required",
+        "create_notation must pause for the attorney: {}",
+        world.task(),
     );
-    let id_str = result["structuredContent"]["notation_id"]
+    world.authorize_pending().await;
+    assert_eq!(
+        world.task()["status"]["state"],
+        "completed",
+        "the authorized binding should have run: {}",
+        world.task(),
+    );
+    let id_str = world.task_data()["notation_id"]
         .as_str()
-        .expect("structuredContent.notation_id missing");
+        .expect("artifact data carries the notation_id");
     world.notation_id = Some(Uuid::parse_str(id_str).expect("notation id is a UUID"));
 }
 

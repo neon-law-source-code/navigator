@@ -1058,6 +1058,99 @@ fn the_chain_of_title_is_recorded_and_nothing_contradicts_it() {
     );
 }
 
+/// The trademark reservation is an operative § 7(e) term, and it stays out of
+/// `LICENSE`.
+///
+/// Section 7 of the AGPL enumerates additional terms a distributor may attach,
+/// and 7(e) is the one for declining to grant trademark rights. That matters
+/// because § 7 also says any *other* added term is a "further restriction",
+/// which a downstream recipient may simply remove — so a reservation attached
+/// without naming its authority is a reservation that reads as unenforceable
+/// and invites being ignored. Naming 7(e) is what makes it a term of the
+/// distribution rather than a wish beside it.
+///
+/// **It has to take nothing away, and the text has to say so.** The AGPL never
+/// conveyed a trademark right in the first place, so declining to grant one
+/// removes no permission — but a reader deciding whether they may fork should
+/// not have to work that out. The disclaimer is asserted here because it is the
+/// sentence that distinguishes a permitted 7(e) term from a restriction, and it
+/// is also the first thing a rewrite would drop as redundant.
+///
+/// **Nominative reference has to survive.** A term that stopped someone saying
+/// truthfully what their work is based on would reach past trademark law into
+/// the licence, and it would break the one thing every fork legitimately needs
+/// to do: describe itself.
+///
+/// **`LICENSE` stays the FSF's text.** [`the_licence_file_is_the_grant_text_unaltered`]
+/// already bounds that file at both ends, and this asserts the complement — the
+/// term lives in `NOTICE`, so no scanner comparing `LICENSE` against the
+/// canonical text ever sees it and the repository keeps being read as
+/// `AGPL-3.0-only`. Trademark-declining 7(e) terms are ordinary and carry no
+/// SPDX exception identifier, so there is nothing for the tag to say either.
+#[test]
+fn the_trademark_reservation_is_a_section_7e_term_and_narrows_nothing() {
+    /// What the term has to establish, and what each part prevents.
+    const REQUIRED: [(&str, &str); 5] = [
+        (
+            "section 7(e)",
+            "the term must name its authority; an added term that does not is a \
+             \"further restriction\" a recipient may remove",
+        ),
+        (
+            "no right or licence under the trade names",
+            "the operative sentence must decline the grant rather than describe \
+             declining it",
+        ),
+        (
+            "further restriction",
+            "the term must say it is not one, which is the sentence that \
+             distinguishes a permitted § 7(e) term from a prohibited addition",
+        ),
+        (
+            "narrows no permission",
+            "the term must say it takes nothing away; a reader deciding whether \
+             they may fork should not have to derive that from § 7's structure",
+        ),
+        (
+            "nominative reference remains available",
+            "a fork has to be able to say truthfully what it is based on, or the \
+             term reaches past trademark law into the licence",
+        ),
+    ];
+
+    let notice = read(NOTICE_FILE);
+    let flat = flat_lower(&notice);
+
+    for (required, why) in REQUIRED {
+        assert!(
+            flat.contains(required),
+            "{NOTICE_FILE}: {why} (missing `{required}`)"
+        );
+    }
+
+    assert!(
+        notice.contains(REGISTRANT),
+        "the § 7(e) term must name `{REGISTRANT}`, whose marks it reserves — a \
+         reservation that names no owner tells a reader nothing about whose \
+         permission they would be asking for"
+    );
+
+    // The complement of `the_licence_file_is_the_grant_text_unaltered`: that test
+    // proves `LICENSE` begins and ends on the FSF's own lines, and this proves
+    // the term did not find its way in between. A § 7(e) term inside the licence
+    // file is what drops the scanner match and stops the repository being read
+    // as AGPL-3.0-only.
+    let license = flat_lower(&read(LICENSE_FILE));
+    for stray in ["section 7(e)", "shook law pllc", "6,325,650"] {
+        assert!(
+            !license.contains(stray),
+            "{LICENSE_FILE} must stay the Free Software Foundation's text and \
+             nothing else; `{stray}` belongs in {NOTICE_FILE}, where no licence \
+             scanner reads it"
+        );
+    }
+}
+
 /// Public surfaces that name the NEON LAW registration attribute it to the Firm.
 ///
 /// U.S. Reg. No. 6,325,650 belongs to the Firm, and the Firm licenses it to the

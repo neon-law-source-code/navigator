@@ -30,31 +30,6 @@ it, build it, fork it, redistribute it, and make any non-production use of it. *
 licence** from Shook Law PLLC. Four years after a version is published, that version converts to `AGPL-3.0-only` and the
 restriction ends for it permanently.
 
-**One licence covers everything the Firm can license** — the Rust workspace, the `navigator` CLI, the build and
-deployment tooling, and the notation bodies under `templates/`. There is no second grant to read and no per-tree
-exception to look up. The blank government PDFs under `templates/forms/` are the issuing agency's work, and the Firm
-licenses nothing in them, because they were never the Firm's to license.
-
-**The four parameters are the deal.** BUSL is a template, so the parameters in `LICENSE` are what make it this project's
-licence: the Licensor is Shook Law PLLC, the Licensed Work is Neon Law Navigator, the Change License is `AGPL-3.0-only`,
-the Change Date is four years from each version's publication — and the Additional Use Grant is `None`. That last one is
-why production use needs a licence: BUSL's base grant already covers non-production use, and the Additional Use Grant is
-the slot for permitting limited production use on top of it.
-
-**Running it for other people is the line.** Operating a portal, a matter, or a filing pipeline that someone relies on
-is production use. Reading the source, building it, running the tests, standing up the local tier, evaluating it, and
-developing against it are not. Ask at `contact@neonlaw.org` before deploying rather than after.
-
-Navigator was published under `AGPL-3.0-only` until this licence took effect, and **every copy distributed then is still
-an `AGPL-3.0-only` copy, permanently** — a licence already granted cannot be withdrawn. The relicence governs versions
-published from here on.
-
-<LICENSE> holds that grant: the Business Source License 1.1, its parameters filled in and its terms otherwise unaltered,
-so every tool that reads a licence file names it correctly. <NOTICE> beside it carries the Firm's own statements — the
-copyright line, what each parameter means, where the production boundary falls, the government forms it cannot license,
-and the marks it reserves. See [`docs/licensing.md`](docs/licensing.md) for why this software is published at all, and
-<CONTRIBUTING.md> for how contributions are licensed.
-
 Copyright (C) 2026 **Shook Law PLLC**.
 
 ## Trademarks

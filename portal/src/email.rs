@@ -80,7 +80,7 @@ pub fn select_backend<F: Fn(&str) -> Option<String>>(
         Some(base_url) => {
             let harness = get("NAVIGATOR_CI_HARNESS").as_deref() == Some("1");
             if !harness {
-                let official = url::Url::parse(&base_url).ok().is_some_and(|url| {
+                let official = url::Url::parse(&base_url).is_ok_and(|url| {
                     url.scheme() == "https"
                         && (url.path().is_empty() || url.path() == "/")
                         && matches!(

@@ -543,9 +543,7 @@ fn harness_decision(ready: bool, require: bool) -> HarnessDecision {
 /// or `true` (case-insensitive); anything else (incl. unset) is `false`.
 #[must_use]
 pub fn require_harness() -> bool {
-    std::env::var("NAV_REQUIRE_HARNESS")
-        .ok()
-        .is_some_and(|v| harness_required_from(&v))
+    std::env::var("NAV_REQUIRE_HARNESS").is_ok_and(|v| harness_required_from(&v))
 }
 
 /// Pure parse of the `NAV_REQUIRE_HARNESS` value: `1` or `true`

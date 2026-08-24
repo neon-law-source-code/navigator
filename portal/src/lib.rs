@@ -1,4 +1,8 @@
-#![allow(clippy::doc_markdown)]
+#![allow(
+    clippy::doc_markdown,
+    clippy::result_large_err,
+    clippy::unused_async_trait_impl
+)]
 // The OpenAPI document in `openapi.rs` is one large `serde_json::json!`
 // literal; each documented path/schema nests it deeper, so the default 128
 // recursion limit no longer expands it. Raise the ceiling for the whole crate.

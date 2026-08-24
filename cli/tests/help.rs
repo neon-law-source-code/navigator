@@ -57,14 +57,13 @@ fn command_names(output: &str) -> Vec<&str> {
 }
 
 #[test]
-fn top_level_help_disclaims_legal_advice() {
+fn top_level_help_is_a_terse_legal_safe_headline() {
     Command::cargo_bin("navigator")
         .unwrap()
         .arg("--help")
         .assert()
         .success()
-        .stdout(str::contains("Nothing here is legal advice"))
-        .stdout(str::contains("sovereign software for law firms"));
+        .stdout(str::contains("Navigator CLI, not legal advice."));
 }
 
 #[test]
@@ -109,15 +108,12 @@ fn top_level_help_keeps_orchestration_nested_under_groups() {
 }
 
 #[test]
-fn catalog_seed_help_explains_the_partial_seed_contract() {
-    // clap re-wraps long help paragraphs to the terminal width, so a phrase can
-    // straddle a line break. Collapse whitespace before matching on prose.
+fn catalog_seed_help_uses_a_headline() {
     let output = unwrapped(&help(&["db", "catalog-seed", "--help"]));
 
-    assert!(output.contains("workspace-owned template and question catalog"));
-    assert!(output.contains("workspace-shared"));
-    assert!(output.contains("clean files may seed"));
-    assert!(output.contains("exit nonzero"));
+    assert!(
+        output.contains("Seed the workspace-owned template and question catalog from clean files.")
+    );
 }
 
 /// `template` is the notation author's local workbench: every member operates
@@ -209,21 +205,17 @@ fn projects_help_lists_the_project_workspace_verbs() {
 /// deployment workspace coordinates and this machine. Neither help text may
 /// leave an operator guessing which one they want.
 #[test]
-fn the_two_doctors_say_which_one_they_are() {
+fn the_two_doctors_keep_distinct_headlines() {
     let projects = unwrapped(&help(&["projects", "doctor", "--help"]));
     assert!(
-        projects.contains("read-only"),
-        "projects doctor must state it writes nothing: {projects}"
-    );
-    assert!(
-        projects.contains("ops doctor"),
-        "projects doctor must disambiguate itself from ops doctor: {projects}"
+        projects.contains("Verify this machine and a Project workspace before Navigator creates."),
+        "projects doctor headline: {projects}"
     );
 
     let ops = unwrapped(&help(&["ops", "doctor", "--help"]));
     assert!(
-        ops.contains("scheduled-job") || ops.contains("CronJob"),
-        "ops doctor must name the cluster health it reports: {ops}"
+        ops.contains("Diagnose ongoing scheduled-job health."),
+        "ops doctor headline: {ops}"
     );
 }
 
@@ -289,9 +281,6 @@ fn ops_secrets_help_exposes_only_the_repo_apply_command() {
     // operator runs FROM the deployment checkout, so it needs it at least as
     // much as ship does.
     assert!(apply.contains("--deployments-dir <DIR>"));
-    // The rotation contract belongs in the help text. An operator who reads
-    // only this must still learn that re-encrypting the file revokes nothing.
-    assert!(apply.contains("rotating it at the provider first"));
 }
 
 /// `ops ship` selects its deployment by an explicit flag — the whole safety
@@ -310,11 +299,6 @@ fn ops_ship_help_requires_an_explicit_deployment() {
     // detail: renaming it would compile, leave every test green, and break
     // every operator who had written the old spelling down.
     assert!(output.contains("--assert-signing-iam"));
-    assert!(
-        output.contains("iam.serviceAccounts.setIamPolicy"),
-        "the help must name the permission the flag declines to use: {output}"
-    );
-    assert!(output.contains("deployments/<name>/config.toml"));
     assert!(!output.to_lowercase().contains("doppler"));
 
     // Omitting --deployment is a parse error, not a silent environment read.
@@ -336,10 +320,6 @@ fn ops_deployments_help_promises_a_read_only_names_only_check() {
     assert!(
         output.contains("without changing anything or decrypting anything"),
         "the help must state what it will not do: {output}"
-    );
-    assert!(
-        output.contains("no KMS grant, no credential, and no network"),
-        "the help must say what it does NOT need, or nobody will run it in CI: {output}"
     );
 
     // Pointed at a directory with no tree it fails at the flag, rather than
@@ -365,21 +345,7 @@ fn ops_deployments_help_promises_a_read_only_names_only_check() {
 fn ops_ship_help_describes_the_narrow_automated_lane() {
     let output = unwrapped(&help(&["ops", "ship", "--help"]));
     assert!(output.contains("--image-only"));
-    assert!(
-        output.contains("Refuses when the rendered manifests differ from the cluster"),
-        "the help must state the refusal, not just the flag: {output}"
-    );
-
-    // `--deployments-dir` is what lets the tree live in a checkout of its own.
     assert!(output.contains("--deployments-dir <DIR>"));
-    assert!(
-        output.contains("directory CONTAINING `deployments/`"),
-        "the help must resolve the tree-or-parent ambiguity: {output}"
-    );
-    assert!(
-        output.contains("NAVIGATOR_DEPLOYMENTS_DIR"),
-        "the help must name the environment fallback: {output}"
-    );
 
     // Pointed at a directory with no tree, it fails at the flag rather than
     // walking up out of it into some unrelated checkout.
@@ -412,16 +378,10 @@ fn worktree_env_help_lists_its_lifecycle_and_the_reclaim_command() {
 }
 
 #[test]
-fn worktree_env_sweep_help_states_the_dry_run_default_and_its_guards() {
+fn worktree_env_sweep_help_exposes_its_explicit_apply_flag() {
     let output = unwrapped(&help(&["dev", "worktree-env", "sweep", "--help"]));
 
-    // The safety contract belongs in the help text: an operator reaching for
-    // a delete command must be able to see, without reading the source, that
-    // it defaults to a dry run and what it refuses to touch.
-    assert!(output.contains("changes nothing unless `--apply` is given"));
-    assert!(output.contains("Never selects the shared `dev up` cluster"));
-    assert!(output.contains("never prunes Docker volumes"));
-    assert!(output.contains("Without it, `sweep` is a dry run"));
+    assert!(output.contains("--apply"));
 }
 
 #[test]
@@ -532,16 +492,11 @@ fn ops_gcp_help_lists_the_hub_alongside_the_environment_provisioner() {
     );
 }
 
-/// The hub provisions a registry and an identity; the environment provisioner
-/// provisions buckets and a cluster. Its help must say so, because the only
-/// thing separating the two commands at the terminal is which one the operator
-/// types.
 #[test]
-fn ops_gcp_hub_setup_help_states_what_it_will_not_create() {
+fn ops_gcp_hub_help_uses_a_headline() {
     let output = unwrapped(&help(&["ops", "gcp", "hub", "--help"]));
 
-    assert!(output.contains("never creates buckets, GKE, or IAP"));
-    assert!(output.contains("The hub is not an environment"));
+    assert!(output.contains("Provision the shared image hub."));
 }
 
 #[test]

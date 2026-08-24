@@ -2,7 +2,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use clap::{CommandFactory, Parser, Subcommand};
+use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 use serde::Deserialize;
 
 mod assets;
@@ -95,8 +95,8 @@ const THIRD_PARTY_NOTICES: &str = include_str!("../../THIRD-PARTY-NOTICES.txt");
 #[command(
     name = "navigator",
     version = cli_version(),
-    about = "Neon Law Navigator CLI — notation validator/catalog seeder + live-site matter driver",
-    long_about = "Neon Law Navigator CLI — notation validator/catalog seeder + live-site matter driver\n\nNothing here is legal advice. Neon Law Navigator is sovereign software for law firms to solve legal outcomes rapidly with environmentally friendly code."
+    about = "Navigator CLI, not legal advice.",
+    long_about = "Navigator CLI, not legal advice."
 )]
 struct Cli {
     /// Print the licence this binary is distributed under, then exit. Stands
@@ -111,6 +111,128 @@ struct Cli {
     /// still requires one, and a bare `navigator` prints help and exits 2.
     #[command(subcommand)]
     command: Option<Command>,
+}
+
+/// Return the first sentence of `text`, capped at ten words.
+///
+/// Clap derives help from the detailed Rust documentation beside each command.
+/// The documentation remains the source of operational detail, while terminal
+/// help is deliberately just a scan-friendly headline.
+fn help_headline(text: &str) -> String {
+    let sentence_end = text
+        .char_indices()
+        .find_map(|(index, character)| {
+            (matches!(character, '.' | '!' | '?' | ':' | ';' | '—')
+                && text[index + character.len_utf8()..]
+                    .chars()
+                    .next()
+                    .is_none_or(char::is_whitespace))
+            .then_some(index)
+        })
+        .unwrap_or(text.len());
+    let words = text[..sentence_end]
+        .split_whitespace()
+        .take(10)
+        .collect::<Vec<_>>();
+    if words.is_empty() {
+        return String::new();
+    }
+    format!("{}.", words.join(" ").trim_end_matches(['.', '!', '?']))
+}
+
+/// Replace every Clap description with its terse terminal headline.
+///
+/// The command tree carries all authored help, including nested subcommands
+/// and arguments, so centralizing this rule keeps every path consistent.
+fn concise_help(mut command: clap::Command) -> clap::Command {
+    let about = command.get_about().map(ToString::to_string);
+    let long_about = command.get_long_about().map(ToString::to_string);
+    if let Some(about) = about {
+        command = command.about(help_headline(&about));
+    }
+    if let Some(long_about) = long_about {
+        command = command.long_about(help_headline(&long_about));
+    }
+
+    let arguments = command
+        .get_arguments()
+        .map(|argument| {
+            (
+                argument.get_id().as_str().to_owned(),
+                argument.get_help().map(ToString::to_string),
+                argument.get_long_help().map(ToString::to_string),
+            )
+        })
+        .collect::<Vec<_>>();
+    for (id, help, long_help) in arguments {
+        command = command.mut_arg(id, |argument| {
+            let argument = match help {
+                Some(text) => argument.help(help_headline(&text)),
+                None => argument,
+            };
+            match long_help {
+                Some(text) => argument.long_help(help_headline(&text)),
+                None => argument,
+            }
+        });
+    }
+
+    for subcommand in command.get_subcommands_mut() {
+        let original = std::mem::replace(subcommand, clap::Command::new("placeholder"));
+        *subcommand = concise_help(original);
+    }
+    command
+}
+
+#[cfg(test)]
+mod help_tests {
+    use super::*;
+
+    fn assert_headlines(command: &clap::Command) {
+        for text in [command.get_about(), command.get_long_about()]
+            .into_iter()
+            .flatten()
+        {
+            let text = text.to_string();
+            assert!(
+                text.split_whitespace().count() <= 10,
+                "command `{}` is not terse: {text}",
+                command.get_name()
+            );
+            assert!(text.ends_with('.'));
+        }
+        for argument in command.get_arguments() {
+            for text in [argument.get_help(), argument.get_long_help()]
+                .into_iter()
+                .flatten()
+            {
+                let text = text.to_string();
+                assert!(
+                    text.split_whitespace().count() <= 10,
+                    "argument `{}` on `{}` is not terse: {text}",
+                    argument.get_id(),
+                    command.get_name()
+                );
+                assert!(text.ends_with('.'));
+            }
+        }
+        for subcommand in command.get_subcommands() {
+            assert_headlines(subcommand);
+        }
+    }
+
+    #[test]
+    fn every_cli_help_description_is_a_ten_word_headline() {
+        assert_headlines(&concise_help(Cli::command()));
+    }
+
+    #[test]
+    fn headline_preserves_the_first_sentence() {
+        assert_eq!(
+            help_headline("One two three. Four five six."),
+            "One two three."
+        );
+    }
 }
 
 // These Clap enums live only for the duration of one CLI invocation. Their
@@ -1574,7 +1696,8 @@ fn main() -> ExitCode {
     let _ = dotenvy::dotenv();
     let _ = dotenvy::from_path(".devx/env");
     let runtime = || tokio::runtime::Runtime::new().expect("tokio runtime");
-    let cli = Cli::parse();
+    let cli = Cli::from_arg_matches(&concise_help(Cli::command()).get_matches())
+        .expect("Clap matches come from Cli's command tree");
     // `--license` is `exclusive`, so reaching here means it was the only
     // argument. Print the embedded terms and stop before any dispatch.
     // `write_all` rather than `print!`: these two are the only commands whose
@@ -1594,7 +1717,7 @@ fn main() -> ExitCode {
     let Some(cli_command) = cli.command else {
         // A bare `navigator` is a usage error, so the help goes to stderr and
         // the exit code matches what clap returns for a missing subcommand.
-        eprint!("{}", Cli::command().render_help());
+        eprint!("{}", concise_help(Cli::command()).render_help());
         return ExitCode::from(2);
     };
     match cli_command {

@@ -122,6 +122,7 @@ pub async fn app_state(surreal: store::surreal::SurrealDb) -> AppState {
         portal_only: crate::PortalOnly::default(),
         sessions: SessionStore::new(TEST_SESSION_KEY),
         oauth: None,
+        oauth_microsoft: None,
         // One shared root for both lanes, mirroring dev/KIND. A test
         // that overrides `storage` and drives a form fill must override
         // `assets_storage` (and stage blanks — see [`stage_blank_forms`])
@@ -316,7 +317,7 @@ fn notation_choices(object_path: &str) -> std::collections::BTreeMap<String, Vec
 
 use jsonwebtoken::{encode, Algorithm, DecodingKey, EncodingKey, Header};
 
-use crate::oauth::{IdTokenVerifier, OAuthConfig};
+use crate::oauth::{IdTokenVerifier, IssuerPolicy, OAuthConfig, ProviderId};
 
 /// Issuer the test verifier pins and the test tokens claim.
 pub const TEST_OIDC_ISSUER: &str = "https://idp.test";
@@ -374,7 +375,49 @@ pub fn oidc_verifier(audience: &str) -> IdTokenVerifier {
         vec![(TEST_OIDC_KID.to_string(), key)],
         TEST_OIDC_ISSUER,
         audience,
+        IssuerPolicy::Exact,
     )
+}
+
+/// The templated issuer Microsoft's multi-tenant authorities publish, with the
+/// test host substituted for `login.microsoftonline.com` so the whole Entra
+/// path can be exercised against a local signing key.
+pub const TEST_ENTRA_ISSUER_TEMPLATE: &str = "https://entra.test/{tenantid}/v2.0";
+
+/// An [`IdTokenVerifier`] configured exactly as multi-tenant Entra requires:
+/// no fixed issuer, a per-token issuer interpolated from `tid`, and a tenant
+/// allowlist. `allowed_tenants` is what an operator would put in
+/// `OAUTH_MICROSOFT_ALLOWED_TENANTS`.
+#[must_use]
+pub fn entra_verifier(audience: &str, allowed_tenants: &[&str]) -> IdTokenVerifier {
+    let key = DecodingKey::from_rsa_pem(TEST_OIDC_PUB_PEM.as_bytes())
+        .expect("test OIDC public key parses");
+    IdTokenVerifier::from_keys(
+        vec![(TEST_OIDC_KID.to_string(), key)],
+        TEST_ENTRA_ISSUER_TEMPLATE,
+        audience,
+        IssuerPolicy::EntraTenants {
+            template: TEST_ENTRA_ISSUER_TEMPLATE.to_string(),
+            allowed_tenants: allowed_tenants
+                .iter()
+                .map(|tenant| (*tenant).to_ascii_lowercase())
+                .collect(),
+        },
+    )
+}
+
+/// An [`OAuthConfig`] standing in for the Microsoft door: labelled
+/// [`ProviderId::Microsoft`] so the callback picks the Entra claim rules, and
+/// carrying an [`entra_verifier`] so the templated-issuer path is the one
+/// under test.
+#[must_use]
+pub fn microsoft_oauth_config(
+    cfg: OAuthConfig,
+    client_id: &str,
+    allowed_tenants: &[&str],
+) -> OAuthConfig {
+    cfg.with_provider(ProviderId::Microsoft)
+        .with_id_token_verifier(entra_verifier(client_id, allowed_tenants))
 }
 
 /// Wrap an [`OAuthConfig`] with a test id_token verifier pinned to
@@ -393,6 +436,59 @@ struct TestIdTokenClaims<'a> {
     iss: &'a str,
     aud: &'a str,
     exp: i64,
+}
+
+/// An Entra-shaped id_token payload: `tid` and `preferred_username` present,
+/// and `email` optional, because Entra populates `email` from the directory's
+/// `mail` attribute and omits the claim when that attribute is empty.
+#[derive(serde::Serialize)]
+struct TestEntraIdTokenClaims<'a> {
+    sub: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    email: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    preferred_username: Option<&'a str>,
+    name: &'a str,
+    nonce: &'a str,
+    iss: &'a str,
+    tid: &'a str,
+    aud: &'a str,
+    exp: i64,
+}
+
+/// Sign an Entra-shaped id_token with the test key.
+///
+/// `tid` is both the tenant claim and the value interpolated into
+/// [`TEST_ENTRA_ISSUER_TEMPLATE`] to build `iss`, which is what a real
+/// multi-tenant token looks like. `iss_override` forces a mismatched issuer so
+/// a test can prove the per-tenant issuer check actually bites.
+#[must_use]
+pub fn sign_entra_id_token(
+    aud: &str,
+    nonce: &str,
+    sub: &str,
+    tid: &str,
+    preferred_username: Option<&str>,
+    email: Option<&str>,
+    iss_override: Option<&str>,
+) -> String {
+    let derived = TEST_ENTRA_ISSUER_TEMPLATE.replace("{tenantid}", tid);
+    let claims = TestEntraIdTokenClaims {
+        sub,
+        email,
+        preferred_username,
+        name: "Entra User",
+        nonce,
+        iss: iss_override.unwrap_or(derived.as_str()),
+        tid,
+        aud,
+        exp: crate::session::now_unix_secs() + 300,
+    };
+    let mut header = Header::new(Algorithm::RS256);
+    header.kid = Some(TEST_OIDC_KID.to_string());
+    let key = EncodingKey::from_rsa_pem(TEST_OIDC_PRIV_PEM.as_bytes())
+        .expect("test OIDC private key parses");
+    encode(&header, &claims, &key).expect("sign test entra id_token")
 }
 
 /// Sign a valid RS256 id_token with the test key. `aud` must equal the

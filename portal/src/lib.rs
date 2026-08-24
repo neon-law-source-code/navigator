@@ -315,6 +315,16 @@ pub struct AppState {
     pub portal_only: PortalOnly,
     pub sessions: SessionStore,
     pub oauth: Option<OAuthConfig>,
+    /// Microsoft Entra ID as a **second** browser sign-in provider, alongside
+    /// (never instead of) [`Self::oauth`]. `None` — the default, and every
+    /// deployment that does not set `OAUTH_MICROSOFT_CLIENT_ID` — leaves the
+    /// login page exactly as it was.
+    ///
+    /// The `/auth/*` router only mounts when [`Self::oauth`] is set, so the
+    /// primary slot stays the deployment's anchor: this is an additional door,
+    /// not a replacement one. Google keeps issuing its own `sub`, so no
+    /// existing `persons.oidc_subject` is invalidated by switching it on.
+    pub oauth_microsoft: Option<OAuthConfig>,
     /// Object storage backend (filesystem in dev, Google Cloud
     /// Storage in production via the `cloud` crate).
     pub storage: std::sync::Arc<dyn cloud::StorageService>,
@@ -1081,6 +1091,10 @@ pub fn bootstrap(
     let oauth_routes = state.oauth.as_ref().map(|oauth| {
         oauth::routes(oauth::AuthState {
             oauth: oauth.clone(),
+            // Second provider, when configured. Additive: absent, the chooser
+            // does not appear and `/auth/login` redirects straight to the
+            // primary IdP exactly as before.
+            oauth_microsoft: state.oauth_microsoft.clone(),
             sessions: state.sessions.clone(),
             surreal: state.surreal.clone(),
             email: state.email.clone(),

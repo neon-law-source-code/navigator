@@ -42,11 +42,155 @@ use crate::session::{
     SESSION_COOKIE_NAME,
 };
 
+/// The placeholder Microsoft's multi-tenant discovery documents put where a
+/// concrete tenant id would go. Verified live against
+/// `https://login.microsoftonline.com/organizations/v2.0/.well-known/openid-configuration`,
+/// which answers `"issuer": "https://login.microsoftonline.com/{tenantid}/v2.0"`.
+pub const ENTRA_TENANT_TEMPLATE: &str = "{tenantid}";
+
+/// Split `OAUTH_MICROSOFT_ALLOWED_TENANTS` into normalised tenant ids.
+///
+/// Comma-separated, whitespace-tolerant, lower-cased so a GUID pasted from the
+/// Entra portal in either case matches the `tid` claim. Empty entries are
+/// dropped, so a trailing comma is not a silently-empty allowlist entry that
+/// would match a token with an empty `tid`.
+fn parse_tenant_allowlist(raw: &str) -> Vec<String> {
+    raw.split(',')
+        .map(|entry| entry.trim().to_ascii_lowercase())
+        .filter(|entry| !entry.is_empty())
+        .collect()
+}
+
 /// Pre-auth (login-in-progress) cookie name.
 pub const PRE_AUTH_COOKIE_NAME: &str = "navigator_pre_auth";
 /// Pre-auth cookie lifetime — 5 minutes is plenty for the
 /// roundtrip to the IdP and back.
 pub const PRE_AUTH_TTL_SECS: i64 = 5 * 60;
+
+/// Which identity provider an [`OAuthConfig`] speaks to.
+///
+/// Navigator holds one config per provider and renders one button per
+/// configured provider. The slug is both the `/auth/login/{provider}` path
+/// segment and the value recorded in [`crate::session::SessionData::provider`],
+/// so a sign-out reaches the provider that actually minted the session.
+/// The serde spelling is deliberately the same string [`Self::slug`] returns,
+/// so the pre-auth cookie, the session cookie, and the `/auth/login/{provider}`
+/// path all name a provider identically. One spelling, three places.
+/// [`Default`] is the primary slot, which is what makes a `serde(default)`
+/// pre-auth or session cookie from before this enum existed decode as the door
+/// it was actually minted by.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+pub enum ProviderId {
+    /// The original single slot: `OAUTH_ISSUER_URL` and friends. Google in
+    /// production, Rauthy in the local lanes, any compliant OIDC provider in
+    /// principle — the module never hard-codes its endpoints.
+    #[default]
+    #[serde(rename = "oidc")]
+    Primary,
+    /// Microsoft Entra ID, configured from `OAUTH_MICROSOFT_*`. Separate from
+    /// [`Self::Primary`] because multi-tenant Entra needs per-token issuer
+    /// validation ([`IssuerPolicy::EntraTenants`]) that a normal single-issuer
+    /// provider does not.
+    #[serde(rename = "microsoft")]
+    Microsoft,
+}
+
+impl ProviderId {
+    /// URL path segment on `/auth/login/{provider}` and the string persisted in
+    /// the session cookie. `oidc` is the historical spelling of the primary
+    /// slot and is kept so existing links and bookmarks keep working.
+    #[must_use]
+    pub const fn slug(self) -> &'static str {
+        match self {
+            Self::Primary => "oidc",
+            Self::Microsoft => "microsoft",
+        }
+    }
+
+    /// Parse a slug back. `None` for anything unrecognised, which the route
+    /// turns into a 404 rather than silently falling back to a provider the
+    /// caller did not ask for.
+    #[must_use]
+    pub fn from_slug(slug: &str) -> Option<Self> {
+        match slug {
+            "oidc" => Some(Self::Primary),
+            "microsoft" => Some(Self::Microsoft),
+            _ => None,
+        }
+    }
+
+    /// The sign-in button label.
+    ///
+    /// Microsoft's branding rules require the exact words "Sign in with
+    /// Microsoft" and forbid exposing the "Azure" or "Active Directory"
+    /// brands, so the string is fixed rather than derived from config.
+    #[must_use]
+    pub const fn button_label(self) -> &'static str {
+        match self {
+            Self::Primary => webapp::auth_pages::GOOGLE_SIGN_IN,
+            Self::Microsoft => webapp::auth_pages::MICROSOFT_SIGN_IN,
+        }
+    }
+
+    /// Which claim carries the address a `persons` row is matched on.
+    ///
+    /// This is a security decision per provider, not a convenience:
+    /// `resolve_person_from_claims` falls back to matching a pre-seeded row by
+    /// address, so whichever claim is chosen here is what an attacker would
+    /// have to control in order to land on somebody else's row.
+    ///
+    /// - [`Self::Primary`] — `email`. Google issues `email_verified: true`
+    ///   only after proving the user controls that mailbox, so the address is
+    ///   evidence.
+    /// - [`Self::Microsoft`] — `preferred_username` first, the user principal
+    ///   name, which Entra can only issue on a domain the signing tenant has
+    ///   verified with Microsoft. `email` is the fallback for a directory that
+    ///   omits the UPN, and it is only reachable at all because
+    ///   `OAUTH_MICROSOFT_ALLOWED_TENANTS` has already confined the signer to
+    ///   a tenant an operator named.
+    fn identity_address(self, claims: &IdTokenClaims) -> Option<String> {
+        let pick = |value: &Option<String>| {
+            value
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string)
+        };
+        match self {
+            Self::Primary => pick(&claims.email),
+            Self::Microsoft => pick(&claims.preferred_username).or_else(|| pick(&claims.email)),
+        }
+    }
+}
+
+/// How to validate the `iss` claim on an id_token.
+///
+/// Almost every provider publishes a fixed issuer string and the check is a
+/// byte compare. Microsoft's multi-tenant authorities do not: `/organizations`
+/// and `/common` publish the literal template
+/// `https://login.microsoftonline.com/{tenantid}/v2.0`, and the token carries
+/// the signing tenant's GUID in its own `tid` claim. Pinning the template
+/// verbatim rejects every real token, so multi-tenant Entra needs the
+/// per-token form below.
+#[derive(Debug, Clone)]
+pub enum IssuerPolicy {
+    /// One fixed issuer, enforced inside `jsonwebtoken`'s own `Validation`.
+    Exact,
+    /// Microsoft Entra multi-tenant. `iss` must equal `template` with
+    /// `{tenantid}` replaced by the token's `tid`, and `tid` must appear in
+    /// `allowed_tenants`.
+    ///
+    /// The allowlist is consulted **first**, so the string we interpolate can
+    /// only ever be one an operator wrote into
+    /// `OAUTH_MICROSOFT_ALLOWED_TENANTS`; a token from an unlisted tenant is
+    /// rejected before its `tid` is used for anything at all.
+    EntraTenants {
+        /// The templated issuer read from the discovery document.
+        template: String,
+        /// Lower-cased tenant GUIDs permitted to sign in.
+        allowed_tenants: Vec<String>,
+    },
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum OAuthSetupError {
@@ -56,6 +200,14 @@ pub enum OAuthSetupError {
     DiscoveryFetch(String),
     #[error("parsing discovery doc: {0}")]
     DiscoveryParse(String),
+    /// `OAUTH_MICROSOFT_ALLOWED_TENANTS` was unset or empty while
+    /// `OAUTH_MICROSOFT_CLIENT_ID` was set. Fail boot rather than default to
+    /// "any Entra tenant": Entra's `email` claim is tenant-asserted and
+    /// unverified, so an open tenant list would let anybody able to create a
+    /// free Entra tenant assert a seeded person's address. The allowlist is
+    /// the control that makes multi-tenant sign-in safe, so it is mandatory.
+    #[error("OAUTH_MICROSOFT_ALLOWED_TENANTS must list at least one tenant id")]
+    MissingTenantAllowlist,
 }
 
 #[derive(Clone)]
@@ -65,6 +217,10 @@ pub struct OAuthConfig {
 
 #[derive(Clone)]
 struct OAuthConfigInner {
+    /// Which provider this config speaks to. Chooses the button label, the
+    /// `/auth/login/{provider}` slug, and which id_token claim carries the
+    /// address a `persons` row is matched on.
+    provider: ProviderId,
     client_id: String,
     client_secret: String,
     redirect_uri: String,
@@ -102,6 +258,7 @@ impl OAuthConfig {
     ) -> Self {
         Self {
             inner: Arc::new(OAuthConfigInner {
+                provider: ProviderId::Primary,
                 client_id: client_id.into(),
                 client_secret: client_secret.into(),
                 redirect_uri: redirect_uri.into(),
@@ -111,6 +268,24 @@ impl OAuthConfig {
                 id_token_verifier: None,
             }),
         }
+    }
+
+    /// Re-label a hand-built config as belonging to `provider`. Tests use it
+    /// to drive the Microsoft path against a mock IdP; production sets the
+    /// provider inside the `from_env` constructors.
+    #[must_use]
+    pub fn with_provider(self, provider: ProviderId) -> Self {
+        let mut inner = (*self.inner).clone();
+        inner.provider = provider;
+        Self {
+            inner: Arc::new(inner),
+        }
+    }
+
+    /// Which provider this config speaks to.
+    #[must_use]
+    pub fn provider(&self) -> ProviderId {
+        self.inner.provider
     }
 
     /// Attach an id_token verifier to a hand-built config. Tests use this
@@ -177,12 +352,125 @@ impl OAuthConfig {
         // pinned to the discovered issuer and our client_id audience.
         // This is the mandatory check on the redirect callback — a
         // forged or mis-issued id_token can never mint a session.
-        let verifier = IdTokenVerifier::from_jwks_url(&doc.jwks_uri, &doc.issuer, &client_id)
-            .await
-            .map_err(|e| OAuthSetupError::DiscoveryFetch(e.to_string()))?;
+        // The primary slot is a single-issuer provider by definition — the
+        // discovery document is fetched from the very issuer we then pin.
+        let verifier = IdTokenVerifier::from_jwks_url(
+            &doc.jwks_uri,
+            &doc.issuer,
+            &client_id,
+            IssuerPolicy::Exact,
+        )
+        .await
+        .map_err(|e| OAuthSetupError::DiscoveryFetch(e.to_string()))?;
 
         Ok(Some(Self {
             inner: Arc::new(OAuthConfigInner {
+                provider: ProviderId::Primary,
+                client_id,
+                client_secret,
+                redirect_uri,
+                authorization_endpoint: doc.authorization_endpoint,
+                token_endpoint: doc.token_endpoint,
+                end_session_endpoint: doc.end_session_endpoint,
+                id_token_verifier: Some(Arc::new(verifier)),
+            }),
+        }))
+    }
+
+    /// Default Microsoft authority: work-or-school accounts from any Entra
+    /// tenant, personal Microsoft accounts excluded. Business clients sign in
+    /// with the account they already hold, and an `@outlook.com` login cannot
+    /// silently become a second identity for the same human.
+    pub const DEFAULT_MICROSOFT_ISSUER: &'static str =
+        "https://login.microsoftonline.com/organizations/v2.0";
+
+    /// Build the **Microsoft Entra ID** provider from the environment.
+    ///
+    /// Reads:
+    ///
+    /// - `OAUTH_MICROSOFT_CLIENT_ID` — the Entra app registration's
+    ///   Application (client) ID. Unset gives `Ok(None)`: the second button
+    ///   never renders and every existing deployment is byte-identical.
+    /// - `OAUTH_MICROSOFT_CLIENT_SECRET` — the registration's client secret.
+    ///   Entra advertises `client_secret_post`, which is the form field
+    ///   [`exchange_code`] already sends.
+    /// - `OAUTH_MICROSOFT_ALLOWED_TENANTS` — **required** once the client id
+    ///   is set. Comma-separated Entra tenant ids. See
+    ///   [`IssuerPolicy::EntraTenants`] and
+    ///   [`OAuthSetupError::MissingTenantAllowlist`] for why it is not
+    ///   optional.
+    /// - `OAUTH_MICROSOFT_ISSUER_URL` — optional override, defaulting to
+    ///   [`Self::DEFAULT_MICROSOFT_ISSUER`]. Point it at
+    ///   `https://login.microsoftonline.com/<tenant-guid>/v2.0` for a
+    ///   single-tenant registration; that authority publishes a concrete
+    ///   issuer, so the ordinary [`IssuerPolicy::Exact`] byte compare applies
+    ///   without any further configuration.
+    ///
+    /// The redirect URI is deliberately **shared** with the primary provider
+    /// (`OAUTH_REDIRECT_URI`): both registrations point at `/auth/callback`,
+    /// and the callback tells them apart from the signed pre-auth cookie. So
+    /// adding a provider adds no new public route to register or defend.
+    pub async fn microsoft_from_env() -> Result<Option<Self>, OAuthSetupError> {
+        let Some(client_id) = std::env::var("OAUTH_MICROSOFT_CLIENT_ID")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+        else {
+            return Ok(None);
+        };
+        let client_secret = std::env::var("OAUTH_MICROSOFT_CLIENT_SECRET")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .ok_or(OAuthSetupError::Missing("OAUTH_MICROSOFT_CLIENT_SECRET"))?;
+        let redirect_uri = std::env::var("OAUTH_REDIRECT_URI")
+            .map_err(|_| OAuthSetupError::Missing("OAUTH_REDIRECT_URI"))?;
+        let allowed_tenants = parse_tenant_allowlist(
+            &std::env::var("OAUTH_MICROSOFT_ALLOWED_TENANTS").unwrap_or_default(),
+        );
+        if allowed_tenants.is_empty() {
+            return Err(OAuthSetupError::MissingTenantAllowlist);
+        }
+        let issuer = std::env::var("OAUTH_MICROSOFT_ISSUER_URL")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| Self::DEFAULT_MICROSOFT_ISSUER.to_string());
+
+        let url = format!(
+            "{}/.well-known/openid-configuration",
+            issuer.trim_end_matches('/')
+        );
+        let doc: DiscoveryDoc = reqwest::get(&url)
+            .await
+            .map_err(|e| OAuthSetupError::DiscoveryFetch(e.to_string()))?
+            .json()
+            .await
+            .map_err(|e| OAuthSetupError::DiscoveryParse(e.to_string()))?;
+
+        // A multi-tenant authority publishes the templated issuer; a
+        // single-tenant one publishes a concrete tenant id. Pick the policy
+        // from what the document actually says rather than from which
+        // authority we asked for.
+        let policy = if doc.issuer.contains(ENTRA_TENANT_TEMPLATE) {
+            IssuerPolicy::EntraTenants {
+                template: doc.issuer.clone(),
+                allowed_tenants: allowed_tenants.clone(),
+            }
+        } else {
+            IssuerPolicy::Exact
+        };
+        let verifier =
+            IdTokenVerifier::from_jwks_url(&doc.jwks_uri, &doc.issuer, &client_id, policy)
+                .await
+                .map_err(|e| OAuthSetupError::DiscoveryFetch(e.to_string()))?;
+
+        tracing::info!(
+            issuer = %doc.issuer,
+            tenants = allowed_tenants.len(),
+            "oauth: microsoft entra provider configured",
+        );
+
+        Ok(Some(Self {
+            inner: Arc::new(OAuthConfigInner {
+                provider: ProviderId::Microsoft,
                 client_id,
                 client_secret,
                 redirect_uri,
@@ -233,6 +521,20 @@ pub fn pkce_challenge(verifier: &str) -> String {
 /// Pre-auth cookie payload: enough to validate the callback later.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PreAuth {
+    /// Which provider this login is against.
+    ///
+    /// Both providers share one redirect URI (`/auth/callback`), so this is
+    /// what the callback disambiguates on. Keeping it inside the HMAC-signed
+    /// one-shot cookie next to `state` and the PKCE verifier means the code
+    /// can only ever be redeemed at the token endpoint of the provider the
+    /// login actually started against — the mitigation shape RFC 9207
+    /// describes for IdP mix-up.
+    ///
+    /// `serde(default)` so a login already in flight when a new build rolls
+    /// out decodes as [`ProviderId::Primary`] and completes normally instead
+    /// of failing on an unknown cookie shape.
+    #[serde(default)]
+    pub provider: ProviderId,
     pub state: String,
     pub verifier: String,
     /// One-time value sent on the authorize request and required to
@@ -247,7 +549,14 @@ pub struct PreAuth {
 impl PreAuth {
     #[must_use]
     pub fn new(return_to: String) -> Self {
+        Self::for_provider(ProviderId::Primary, return_to)
+    }
+
+    /// A pre-auth payload bound to `provider`.
+    #[must_use]
+    pub fn for_provider(provider: ProviderId, return_to: String) -> Self {
         Self {
+            provider,
             state: random_token_32(),
             verifier: pkce_verifier(),
             nonce: random_token_32(),
@@ -278,6 +587,20 @@ pub fn authorize_url(cfg: &OAuthConfig, pre: &PreAuth) -> String {
         "response_type=code&client_id={client}&redirect_uri={redirect}&scope={scope}&state={state}&nonce={nonce}&code_challenge={challenge}&code_challenge_method=S256",
     );
     url
+}
+
+/// The routes each configured provider's sign-in button points at, in the
+/// order they render. The primary door comes first so the page a signed-out
+/// person already knows does not reorder underneath them when a second
+/// provider is switched on.
+fn provider_buttons(s: &AuthState, return_to: &str) -> Vec<webapp::auth_pages::SignInProvider> {
+    s.configured_providers()
+        .into_iter()
+        .map(|provider| webapp::auth_pages::SignInProvider {
+            href: format!("/auth/login/{}?return_to={return_to}", provider.slug()),
+            label: provider.button_label().to_string(),
+        })
+        .collect()
 }
 
 /// Build the RP-initiated logout URL when the provider published an
@@ -358,6 +681,15 @@ fn urlencode(s: &str) -> String {
 #[derive(Clone)]
 pub struct AuthState {
     pub oauth: OAuthConfig,
+    /// Microsoft Entra ID, when `OAUTH_MICROSOFT_CLIENT_ID` is set. `None` —
+    /// the default — leaves `/auth/login` exactly as it was: one provider, one
+    /// immediate redirect, no chooser.
+    ///
+    /// This sits alongside [`Self::oauth`] rather than replacing it with a
+    /// list because the primary slot is the one every other part of the module
+    /// still reads for deployment-wide facts (the redirect URI's scheme, the
+    /// fallback end-session endpoint). A provider added here is additive.
+    pub oauth_microsoft: Option<OAuthConfig>,
     pub sessions: SessionStore,
     /// Store handle for the tables the auth flows
     /// touch (participation on a fresh signup, the sent-email log).
@@ -416,6 +748,40 @@ pub struct AuthState {
     pub secure_cookies: bool,
 }
 
+impl AuthState {
+    /// The config for `provider`, or `None` when that provider is not
+    /// configured on this deployment.
+    #[must_use]
+    pub fn provider_config(&self, provider: ProviderId) -> Option<&OAuthConfig> {
+        match provider {
+            ProviderId::Primary => Some(&self.oauth),
+            ProviderId::Microsoft => self.oauth_microsoft.as_ref(),
+        }
+    }
+
+    /// Every configured provider, primary first.
+    #[must_use]
+    pub fn configured_providers(&self) -> Vec<ProviderId> {
+        let mut out = vec![ProviderId::Primary];
+        if self.oauth_microsoft.is_some() {
+            out.push(ProviderId::Microsoft);
+        }
+        out
+    }
+
+    /// Look a session's recorded provider slug back up.
+    ///
+    /// Falls back to the primary provider for a session minted before the slug
+    /// was recorded, or for a slug this build no longer configures — logout
+    /// must clear the app session either way, so an unknown provider degrades
+    /// to the old single-provider behaviour rather than failing.
+    fn provider_config_for_slug(&self, slug: Option<&str>) -> &OAuthConfig {
+        slug.and_then(ProviderId::from_slug)
+            .and_then(|provider| self.provider_config(provider))
+            .unwrap_or(&self.oauth)
+    }
+}
+
 /// Configuration for the Identity Platform email/password sign-in path.
 ///
 /// The `api_key` is the project's Identity Platform **browser key** — it
@@ -456,10 +822,13 @@ impl IdentityPasswordConfig {
 pub fn routes(state: AuthState) -> Router {
     let mut router = Router::new()
         .route("/auth/login", get(login))
-        // The OIDC redirect, always reachable by its own path so the
-        // "Sign in with Google" button on the password chooser works even
-        // when `/auth/login` renders the chooser instead of redirecting.
-        .route("/auth/login/oidc", get(start_oidc_redirect))
+        // The per-provider redirect, always reachable by its own path so a
+        // button on the chooser works even when `/auth/login` renders the
+        // chooser instead of redirecting. `oidc` is the primary slot's slug,
+        // which is why the historical `/auth/login/oidc` URL still resolves;
+        // `microsoft` is Entra. An unrecognised or unconfigured slug 404s
+        // rather than falling back to a provider nobody asked for.
+        .route("/auth/login/{provider}", get(start_provider_redirect))
         // Email/password submit (Identity Platform). 404s when password
         // sign-in is not configured.
         .route("/auth/password", post(password_login))
@@ -575,10 +944,12 @@ async fn login(
     cookies: Cookies,
     Query(q): Query<LoginQuery>,
 ) -> Response {
-    // Password front door configured → render the chooser (email/password
-    // form + the OIDC button). Existing OIDC-only deploys (no API key)
-    // keep the immediate redirect, byte-identical.
-    if s.identity_password.is_some() {
+    // A chooser is only meaningful when there is something to choose: a
+    // password front door, or a second identity provider. A deployment with
+    // one provider and no password door keeps the immediate redirect,
+    // byte-identical to before this route learned about providers at all.
+    let providers = provider_buttons(&s, &q.return_to);
+    if s.identity_password.is_some() || providers.len() > 1 {
         // Hold the resolved notice so the borrowed `LoginNotice` it lends
         // the view outlives the render call.
         let notice = login_notice(q.notice.as_deref());
@@ -591,28 +962,45 @@ async fn login(
             StatusCode::OK,
         );
     }
-    start_oidc(&s, &cookies, q.return_to)
+    start_provider(&s, &cookies, ProviderId::Primary, q.return_to)
 }
 
-/// The OIDC redirect handler, exposed at `/auth/login/oidc` so the
-/// password chooser's "Sign in with Google" button reaches it.
-async fn start_oidc_redirect(
+/// The per-provider redirect handler behind `/auth/login/{provider}`, so each
+/// button on the chooser reaches the provider it names.
+async fn start_provider_redirect(
     State(s): State<AuthState>,
     cookies: Cookies,
+    axum::extract::Path(slug): axum::extract::Path<String>,
     Query(q): Query<LoginQuery>,
 ) -> Response {
-    start_oidc(&s, &cookies, q.return_to)
+    // Unknown slug, or a provider this deployment has not configured: 404.
+    // Silently substituting the primary provider would send somebody who
+    // clicked "Sign in with Microsoft" to a Google consent screen.
+    let Some(provider) = ProviderId::from_slug(&slug) else {
+        return (StatusCode::NOT_FOUND, "unknown sign-in provider").into_response();
+    };
+    if s.provider_config(provider).is_none() {
+        return (StatusCode::NOT_FOUND, "sign-in provider not configured").into_response();
+    }
+    start_provider(&s, &cookies, provider, q.return_to)
 }
 
-/// Set the pre-auth cookie and 302 to the IdP. Shared by `/auth/login`
-/// (OIDC-only deploys) and `/auth/login/oidc` (the chooser's button).
-fn start_oidc(s: &AuthState, cookies: &Cookies, return_to: String) -> Response {
-    let pre = PreAuth::new(return_to);
+/// Set the pre-auth cookie and 302 to `provider`'s IdP.
+fn start_provider(
+    s: &AuthState,
+    cookies: &Cookies,
+    provider: ProviderId,
+    return_to: String,
+) -> Response {
+    let Some(cfg) = s.provider_config(provider) else {
+        return (StatusCode::NOT_FOUND, "sign-in provider not configured").into_response();
+    };
+    let pre = PreAuth::for_provider(provider, return_to);
     let cookie_value = s
         .sessions
         .encode_signed_bytes(&serde_json::to_vec(&pre).expect("pre-auth is always serializable"));
     cookies.add(pre_auth_cookie(cookie_value, s.secure_cookies));
-    Redirect::to(&authorize_url(&s.oauth, &pre)).into_response()
+    Redirect::to(&authorize_url(cfg, &pre)).into_response()
 }
 
 /// Render the password sign-in page, mint a fresh login-CSRF token, and
@@ -631,7 +1019,12 @@ fn login_chooser_response(
     let signed = s.sessions.encode_signed_bytes(csrf.as_bytes());
     cookies.add(login_csrf_cookie(signed, s.secure_cookies));
     let page = webapp::auth_pages::login(
-        return_to, &csrf, /* oidc_enabled = */ true, error, notice,
+        return_to,
+        &csrf,
+        &provider_buttons(s, return_to),
+        s.identity_password.is_some(),
+        error,
+        notice,
     );
     (status, page).into_response()
 }
@@ -763,7 +1156,7 @@ async fn password_login(
             let Some(claims) = decode_unverified_payload(&id_token) else {
                 return (StatusCode::BAD_GATEWAY, "id_token claims parse failed").into_response();
             };
-            complete_sign_in(&s, &cookies, claims, &form.return_to).await
+            complete_sign_in(&s, &cookies, None, claims, &form.return_to).await
         }
         Err(PasswordError::Rejected) => login_chooser_response(
             &s,
@@ -817,6 +1210,27 @@ struct TokenResponse {
 #[derive(Debug, Deserialize)]
 struct IdTokenClaims {
     sub: String,
+    /// The issuer. Redundant for a single-issuer provider, where
+    /// `jsonwebtoken`'s own `Validation` has already enforced it. Load-bearing
+    /// under [`IssuerPolicy::EntraTenants`], where the expected value depends
+    /// on `tid` and so cannot be pinned before decode.
+    #[serde(default)]
+    iss: Option<String>,
+    /// Microsoft Entra tenant id of the signing directory. Absent from every
+    /// other provider's tokens; required when the issuer is templated.
+    #[serde(default)]
+    tid: Option<String>,
+    /// Entra's primary username, normally the user principal name.
+    ///
+    /// Preferred over `email` on the Microsoft door. Entra can only issue a
+    /// UPN on a domain the signing tenant has verified, whereas `email` is
+    /// populated from the directory's `mail` attribute, which nobody verifies
+    /// — Microsoft's own claims reference says of `email` that "this value
+    /// isn't guaranteed to be correct". Since a `persons` row is matched by
+    /// address, taking the unverified claim would let any tenant admin assert
+    /// somebody else's address. See [`ProviderId::identity_address`].
+    #[serde(default)]
+    preferred_username: Option<String>,
     #[serde(default)]
     email: Option<String>,
     /// Whether the IdP asserts the address is verified. Both Google
@@ -846,6 +1260,18 @@ struct IdTokenClaims {
 pub enum IdTokenError {
     #[error("token header is malformed or missing a `kid`")]
     Header,
+    /// Multi-tenant Entra token with no `tid`. Without it there is no issuer
+    /// to compare against, so the token cannot be validated at all.
+    #[error("token carries no `tid` claim, so its issuer cannot be validated")]
+    MissingTenant,
+    /// The signing tenant is not in `OAUTH_MICROSOFT_ALLOWED_TENANTS`. This is
+    /// the ordinary refusal for a stranger signing in from their own Entra
+    /// tenant, and it is the reason the allowlist is mandatory.
+    #[error("signing tenant is not in the configured allowlist")]
+    TenantNotAllowed,
+    /// `iss` did not match the tenant-interpolated issuer.
+    #[error("`iss` does not match the issuer expected for the token's tenant")]
+    Issuer,
     #[error("no JWKS key matches the token `kid`")]
     UnknownKid,
     #[error("signature, issuer, audience, or expiry check failed: {0}")]
@@ -866,6 +1292,11 @@ pub struct IdTokenVerifier {
     /// `(kid, key)` pairs from the JWKS document.
     keys: Vec<(String, DecodingKey)>,
     validation: Validation,
+    /// How `iss` is checked. [`IssuerPolicy::Exact`] delegates to
+    /// `validation`; [`IssuerPolicy::EntraTenants`] is enforced in
+    /// [`Self::verify`] after decode, because the expected issuer is not known
+    /// until the token's own `tid` claim has been read and allowlisted.
+    issuer_policy: IssuerPolicy,
 }
 
 impl IdTokenVerifier {
@@ -873,14 +1304,30 @@ impl IdTokenVerifier {
     /// to `issuer` and `audience`. `from_jwks_document` is the production
     /// caller; tests use it directly with a locally-held signing key.
     #[must_use]
-    pub fn from_keys(keys: Vec<(String, DecodingKey)>, issuer: &str, audience: &str) -> Self {
+    pub fn from_keys(
+        keys: Vec<(String, DecodingKey)>,
+        issuer: &str,
+        audience: &str,
+        issuer_policy: IssuerPolicy,
+    ) -> Self {
         let mut validation = Validation::new(Algorithm::RS256);
         // `set_issuer`/`set_audience` enable iss/aud enforcement; exp is
         // validated by default. These are the token-confusion defenses.
-        validation.set_issuer(&[issuer]);
+        //
+        // Under `EntraTenants` the discovered issuer is a template, so pinning
+        // it here would reject every real token. `iss` is still mandatory —
+        // `verify` enforces it against the interpolated, allowlisted value
+        // instead, and a token whose `tid` is absent or unlisted is refused.
+        if matches!(issuer_policy, IssuerPolicy::Exact) {
+            validation.set_issuer(&[issuer]);
+        }
         validation.set_audience(&[audience]);
         validation.validate_exp = true;
-        Self { keys, validation }
+        Self {
+            keys,
+            validation,
+            issuer_policy,
+        }
     }
 
     /// Build a verifier from an already-fetched JWKS document.
@@ -888,6 +1335,7 @@ impl IdTokenVerifier {
         doc: &JwksDocument,
         issuer: &str,
         audience: &str,
+        issuer_policy: IssuerPolicy,
     ) -> Result<Self, AuthSetupError> {
         let mut keys = Vec::new();
         for k in &doc.keys {
@@ -904,7 +1352,7 @@ impl IdTokenVerifier {
         if keys.is_empty() {
             return Err(AuthSetupError::Empty);
         }
-        Ok(Self::from_keys(keys, issuer, audience))
+        Ok(Self::from_keys(keys, issuer, audience, issuer_policy))
     }
 
     /// Fetch the JWKS at `url` and build the verifier.
@@ -912,6 +1360,7 @@ impl IdTokenVerifier {
         url: &str,
         issuer: &str,
         audience: &str,
+        issuer_policy: IssuerPolicy,
     ) -> Result<Self, AuthSetupError> {
         let doc: JwksDocument = reqwest::get(url)
             .await
@@ -919,7 +1368,65 @@ impl IdTokenVerifier {
             .json()
             .await
             .map_err(|e| AuthSetupError::Parse(e.to_string()))?;
-        Self::from_jwks_document(&doc, issuer, audience)
+        Self::from_jwks_document(&doc, issuer, audience, issuer_policy)
+    }
+
+    /// Enforce [`IssuerPolicy::EntraTenants`] against decoded claims.
+    ///
+    /// Order matters and is the security property: the tenant is allowlisted
+    /// **before** its id is interpolated, so the string compared against `iss`
+    /// can only ever be one an operator wrote into the environment. Microsoft
+    /// states the requirement directly — a multi-tenant application "must
+    /// validate that the `issuer` property in the published metadata matches
+    /// the `iss` claim in the token, in addition to the usual check that the
+    /// `iss` claim in the token contains the tenant ID (`tid`) claim."
+    fn check_entra_tenant(&self, claims: &IdTokenClaims) -> Result<(), IdTokenError> {
+        let IssuerPolicy::EntraTenants {
+            template,
+            allowed_tenants,
+        } = &self.issuer_policy
+        else {
+            return Ok(());
+        };
+        let tid = claims
+            .tid
+            .as_deref()
+            .map(str::trim)
+            .filter(|tid| !tid.is_empty())
+            .ok_or(IdTokenError::MissingTenant)?
+            .to_ascii_lowercase();
+        if !allowed_tenants.contains(&tid) {
+            return Err(IdTokenError::TenantNotAllowed);
+        }
+        let expected = template.replace(ENTRA_TENANT_TEMPLATE, &tid);
+        // Case-insensitive because the tenant id was lower-cased above and a
+        // host name is case-insensitive anyway. This weakens nothing: both
+        // halves of `expected` are ours — the template came from the discovery
+        // document and the tenant id from the allowlist — so the comparison is
+        // still against exactly one string an operator sanctioned.
+        if !claims
+            .iss
+            .as_deref()
+            .is_some_and(|iss| iss.eq_ignore_ascii_case(&expected))
+        {
+            return Err(IdTokenError::Issuer);
+        }
+        Ok(())
+    }
+
+    /// The configured issuer policy. Test-only: the unit tests assert that
+    /// switching Microsoft on leaves every other provider on the `Exact` path.
+    #[cfg(test)]
+    fn issuer_policy_for_test(&self) -> &IssuerPolicy {
+        &self.issuer_policy
+    }
+
+    /// [`Self::check_entra_tenant`] without a signed token. Test-only: it lets
+    /// the tenant and issuer rules be asserted claim-by-claim, which a
+    /// full-token test cannot do for a `tid` that is absent entirely.
+    #[cfg(test)]
+    fn check_entra_tenant_for_test(&self, claims: &IdTokenClaims) -> Result<(), IdTokenError> {
+        self.check_entra_tenant(claims)
     }
 
     /// Verify `token` and bind it to `expected_nonce`. Returns the
@@ -937,6 +1444,9 @@ impl IdTokenVerifier {
         let claims = decode::<IdTokenClaims>(token, key, &self.validation)
             .map_err(|e| IdTokenError::Validation(e.to_string()))?
             .claims;
+        // Multi-tenant Entra only: `iss` and `tid` together, since neither is
+        // meaningful without the other.
+        self.check_entra_tenant(&claims)?;
         // Bind the token to this login. Constant-time so the nonce can't
         // be timing-probed (it isn't a secret, but the compare is free).
         match claims.nonce.as_deref() {
@@ -970,15 +1480,27 @@ async fn callback(
         Ok(pre) => pre,
         Err(e) => return render(e),
     };
-    let token = match exchange_code(&s, &code, &pre).await {
+    // Which provider this code belongs to comes from the signed pre-auth
+    // cookie, never from the query string: the browser cannot forge it, and it
+    // was written by the `/auth/login/{provider}` that started this login. A
+    // provider that has since been unconfigured (a rolled-back deploy landing
+    // mid-login) is a 400, not a redemption against a different provider.
+    let Some(cfg) = s.provider_config(pre.provider) else {
+        tracing::warn!(
+            provider = pre.provider.slug(),
+            "oauth: callback for a provider this deployment no longer configures",
+        );
+        return render((StatusCode::BAD_REQUEST, "sign-in provider not configured"));
+    };
+    let token = match exchange_code(cfg, &code, &pre).await {
         Ok(token) => token,
         Err(e) => return render(e),
     };
-    let claims = match verify_id_token(&s, token, &pre.nonce) {
+    let claims = match verify_id_token(cfg, token, &pre.nonce) {
         Ok(claims) => claims,
         Err(e) => return render(e),
     };
-    complete_sign_in(&s, &cookies, claims, &pre.return_to).await
+    complete_sign_in(&s, &cookies, Some(pre.provider), claims, &pre.return_to).await
 }
 
 /// A renderable callback error: an HTTP status plus a static message.
@@ -1015,18 +1537,18 @@ fn consume_pre_auth(
 /// Phase 2: exchange the authorization `code` at the IdP's token
 /// endpoint (PKCE `code_verifier` from the pre-auth cookie).
 async fn exchange_code(
-    s: &AuthState,
+    cfg: &OAuthConfig,
     code: &str,
     pre: &PreAuth,
 ) -> Result<TokenResponse, CallbackError> {
     match reqwest::Client::new()
-        .post(s.oauth.token_endpoint())
+        .post(cfg.token_endpoint())
         .form(&[
             ("grant_type", "authorization_code"),
             ("code", code),
-            ("redirect_uri", s.oauth.inner.redirect_uri.as_str()),
-            ("client_id", s.oauth.inner.client_id.as_str()),
-            ("client_secret", s.oauth.inner.client_secret.as_str()),
+            ("redirect_uri", cfg.inner.redirect_uri.as_str()),
+            ("client_id", cfg.inner.client_id.as_str()),
+            ("client_secret", cfg.inner.client_secret.as_str()),
             ("code_verifier", pre.verifier.as_str()),
         ])
         .send()
@@ -1092,11 +1614,11 @@ fn oauth_error_fields(body: &str) -> (Option<&str>, Option<&str>) {
 /// misconfiguration, not a reason to trust the token unverified. Emits
 /// the audit events for both outcomes.
 fn verify_id_token(
-    s: &AuthState,
+    cfg: &OAuthConfig,
     token: TokenResponse,
     nonce: &str,
 ) -> Result<IdTokenClaims, CallbackError> {
-    let Some(verifier) = s.oauth.id_token_verifier() else {
+    let Some(verifier) = cfg.id_token_verifier() else {
         tracing::error!(
             "oauth: no id_token verifier configured; refusing to mint a session from an unverified token",
         );
@@ -1144,9 +1666,22 @@ fn verify_id_token(
 async fn complete_sign_in(
     s: &AuthState,
     cookies: &Cookies,
-    claims: IdTokenClaims,
+    provider: Option<ProviderId>,
+    mut claims: IdTokenClaims,
     return_to: &str,
 ) -> Response {
+    // Normalise the address a `persons` row will be matched on, per provider.
+    // Doing it here — once, before any lookup — means every downstream step
+    // (the resolve, the email-confirm gate, the welcome workflow, the session
+    // cookie) agrees on one address, and there is exactly one place to read to
+    // find out which claim a given door trusts.
+    //
+    // `None` is the Identity Platform password door, which has no OIDC
+    // provider: its token comes straight back over TLS from Google with the
+    // address the user just typed, so `email` is already the right claim.
+    if let Some(provider) = provider {
+        claims.email = provider.identity_address(&claims);
+    }
     // The IdP owns identity (`sub`); our `persons` table owns the rest —
     // name, memberships, billing, and the system-wide tier. The lookup is
     // strict: a person must be pre-seeded (matched on `oidc_subject` or
@@ -1236,6 +1771,9 @@ async fn complete_sign_in(
     let mut session = SessionData::fresh(claims.sub, role);
     session.email = claims.email;
     session.person_id = Some(person_id);
+    // Which door this session came through, so sign-out reaches the provider
+    // that actually holds the SSO session rather than always the primary one.
+    session.provider = provider.map(|provider| provider.slug().to_string());
     cookies.add(session_cookie(
         s.sessions.encode(&session),
         s.secure_cookies,
@@ -1442,6 +1980,16 @@ async fn resolve_existing_after_race(
 }
 
 async fn logout(State(s): State<AuthState>, cookies: Cookies) -> Response {
+    // Read the provider off the session *before* clearing the cookie: it names
+    // which IdP is holding the SSO session we are about to ask to end. Sending
+    // a Microsoft-authenticated person to the primary provider's end-session
+    // endpoint would leave their Entra session live and bounce them through a
+    // logout screen belonging to an account they never used.
+    let provider_slug = cookies
+        .get(SESSION_COOKIE_NAME)
+        .and_then(|cookie| s.sessions.decode(cookie.value()))
+        .and_then(|session| session.provider);
+    let end_session_cfg = s.provider_config_for_slug(provider_slug.as_deref());
     cookies.add(expired_cookie(SESSION_COOKIE_NAME));
     cookies.add(expired_cookie(PRE_AUTH_COOKIE_NAME));
     // RP-initiated OIDC logout: clearing our app session leaves the
@@ -1450,7 +1998,7 @@ async fn logout(State(s): State<AuthState>, cookies: Cookies) -> Response {
     // bounce the browser through it (with a `post_logout_redirect_uri` back to
     // the app) so the provider clears its session too. When it did not, fall
     // back to redirecting home — the app session is already cleared.
-    match end_session_url(&s.oauth) {
+    match end_session_url(end_session_cfg) {
         Some(url) => Redirect::to(&url).into_response(),
         None => Redirect::to("/").into_response(),
     }
@@ -1531,7 +2079,8 @@ mod tests {
         decode_unverified_payload, default_return_to, login_notice, oauth_error_fields,
         pkce_challenge, pkce_verifier, post_login_landing, resolve_existing_after_race,
         resolve_person_from_claims, self_signup_enabled, session_cookie, urlencode, IdTokenClaims,
-        IdTokenError, IdentityPasswordConfig, NoticeText, OAuthConfig, PreAuth, ResolveError,
+        IdTokenError, IdentityPasswordConfig, IssuerPolicy, NoticeText, OAuthConfig, PreAuth,
+        ProviderId, ResolveError,
     };
     use crate::session::{now_unix_secs, DEFAULT_SESSION_TTL_SECS};
     use crate::test_support::{oidc_verifier, sign_id_token};
@@ -1675,11 +2224,195 @@ mod tests {
     fn unknown_claims(email: &str) -> IdTokenClaims {
         IdTokenClaims {
             sub: format!("sub-{email}"),
+            iss: None,
+            tid: None,
+            preferred_username: None,
             email: Some(email.to_string()),
             email_verified: Some(true),
             name: Some("New Trainee".into()),
             nonce: None,
         }
+    }
+
+    /// Claims shaped the way multi-tenant Entra emits them: the address in
+    /// `preferred_username`, `tid` naming the signing directory, and `iss`
+    /// derived from that `tid`.
+    fn entra_claims(
+        tid: &str,
+        preferred_username: Option<&str>,
+        email: Option<&str>,
+    ) -> IdTokenClaims {
+        IdTokenClaims {
+            sub: "entra-pairwise-subject".into(),
+            iss: Some(format!("https://login.microsoftonline.com/{tid}/v2.0")),
+            tid: Some(tid.to_string()),
+            preferred_username: preferred_username.map(str::to_string),
+            email: email.map(str::to_string),
+            email_verified: None,
+            name: Some("Entra User".into()),
+            nonce: None,
+        }
+    }
+
+    #[test]
+    fn tenant_allowlist_normalises_and_drops_empty_entries() {
+        use super::parse_tenant_allowlist;
+        assert_eq!(
+            parse_tenant_allowlist("  AAAA-1111 , bbbb-2222,, "),
+            vec!["aaaa-1111".to_string(), "bbbb-2222".to_string()],
+            "entries are trimmed and lower-cased, and blanks are dropped",
+        );
+        // A blank value is an empty allowlist, not an allowlist containing "".
+        // The difference matters: an entry of "" would match a token whose
+        // `tid` is empty, which is the opposite of fail-closed.
+        assert!(parse_tenant_allowlist("").is_empty());
+        assert!(parse_tenant_allowlist(" , ,").is_empty());
+    }
+
+    #[test]
+    fn primary_provider_reads_the_address_from_email_only() {
+        // The Google/Rauthy door is unchanged: `email` and nothing else. A
+        // `preferred_username` on a primary-provider token must be ignored,
+        // or switching Microsoft on would quietly change how every existing
+        // provider resolves a person.
+        let claims = entra_claims("t", Some("upn@example.test"), Some("mail@example.test"));
+        assert_eq!(
+            ProviderId::Primary.identity_address(&claims).as_deref(),
+            Some("mail@example.test"),
+        );
+    }
+
+    #[test]
+    fn microsoft_provider_prefers_the_upn_and_falls_back_to_email() {
+        // UPN wins when both are present — the tenant-asserted `email` claim
+        // must never be able to select a person row out from under the UPN.
+        let both = entra_claims("t", Some("upn@example.test"), Some("mail@example.test"));
+        assert_eq!(
+            ProviderId::Microsoft.identity_address(&both).as_deref(),
+            Some("upn@example.test"),
+        );
+        // Entra omits `email` when a directory's `mail` attribute is empty, so
+        // the UPN alone has to be enough.
+        let upn_only = entra_claims("t", Some("upn@example.test"), None);
+        assert_eq!(
+            ProviderId::Microsoft.identity_address(&upn_only).as_deref(),
+            Some("upn@example.test"),
+        );
+        // And a directory that omits the UPN falls back — safe only because
+        // the tenant allowlist has already vouched for the signer.
+        let email_only = entra_claims("t", None, Some("mail@example.test"));
+        assert_eq!(
+            ProviderId::Microsoft
+                .identity_address(&email_only)
+                .as_deref(),
+            Some("mail@example.test"),
+        );
+        // A blank claim is not an address.
+        let blank = entra_claims("t", Some("   "), None);
+        assert_eq!(ProviderId::Microsoft.identity_address(&blank), None);
+    }
+
+    #[test]
+    fn provider_slugs_round_trip_and_reject_strangers() {
+        for provider in [ProviderId::Primary, ProviderId::Microsoft] {
+            assert_eq!(ProviderId::from_slug(provider.slug()), Some(provider));
+        }
+        // The historical URL is the primary slot's slug, so existing links and
+        // bookmarks keep resolving.
+        assert_eq!(ProviderId::from_slug("oidc"), Some(ProviderId::Primary));
+        assert_eq!(ProviderId::from_slug("okta"), None);
+        assert_eq!(ProviderId::from_slug(""), None);
+    }
+
+    #[test]
+    fn provider_serialises_as_its_slug_so_both_cookies_agree() {
+        // The pre-auth cookie names a provider by serde, the session cookie by
+        // `slug()`. They must be the same string or the two cookies disagree
+        // about which provider signed a person in.
+        for provider in [ProviderId::Primary, ProviderId::Microsoft] {
+            let encoded = serde_json::to_string(&provider).expect("provider serialises");
+            assert_eq!(encoded, format!("\"{}\"", provider.slug()));
+        }
+    }
+
+    #[test]
+    fn pre_auth_defaults_to_the_primary_provider_for_a_cookie_without_the_field() {
+        // A login already in flight when a new build rolls out has a cookie
+        // with no `provider`. It must complete against the primary provider,
+        // not fail on an unrecognised shape.
+        let legacy = serde_json::json!({
+            "state": "S",
+            "verifier": "V",
+            "nonce": "N",
+            "return_to": "/app/projects",
+            "exp": now_unix_secs() + 60,
+        });
+        let pre: PreAuth = serde_json::from_value(legacy).expect("legacy pre-auth decodes");
+        assert_eq!(pre.provider, ProviderId::Primary);
+    }
+
+    #[test]
+    fn entra_verifier_rejects_unlisted_tenants_mismatched_issuers_and_missing_tid() {
+        let verifier = crate::test_support::entra_verifier("aud", &["ALLOWED-TENANT"]);
+        // Allowlisted, issuer derived from the same tenant: accepted. The
+        // allowlist is compared case-insensitively, so a GUID pasted from the
+        // portal in either case works.
+        let ok = IdTokenClaims {
+            iss: Some(
+                crate::test_support::TEST_ENTRA_ISSUER_TEMPLATE
+                    .replace("{tenantid}", "allowed-tenant"),
+            ),
+            ..entra_claims("Allowed-Tenant", Some("sam@client.test"), None)
+        };
+        assert!(verifier.check_entra_tenant_for_test(&ok).is_ok());
+
+        // Unlisted tenant, internally consistent issuer: refused.
+        let stranger = IdTokenClaims {
+            iss: Some(
+                crate::test_support::TEST_ENTRA_ISSUER_TEMPLATE.replace("{tenantid}", "other"),
+            ),
+            ..entra_claims("other", Some("sam@client.test"), None)
+        };
+        assert!(matches!(
+            verifier.check_entra_tenant_for_test(&stranger),
+            Err(IdTokenError::TenantNotAllowed),
+        ));
+
+        // Allowlisted tenant claiming a different tenant's issuer: refused.
+        let crossed = IdTokenClaims {
+            iss: Some(
+                crate::test_support::TEST_ENTRA_ISSUER_TEMPLATE.replace("{tenantid}", "other"),
+            ),
+            ..entra_claims("allowed-tenant", Some("sam@client.test"), None)
+        };
+        assert!(matches!(
+            verifier.check_entra_tenant_for_test(&crossed),
+            Err(IdTokenError::Issuer),
+        ));
+
+        // No `tid` at all: nothing to validate the issuer against.
+        let no_tid = IdTokenClaims {
+            tid: None,
+            ..entra_claims("allowed-tenant", Some("sam@client.test"), None)
+        };
+        assert!(matches!(
+            verifier.check_entra_tenant_for_test(&no_tid),
+            Err(IdTokenError::MissingTenant),
+        ));
+    }
+
+    #[test]
+    fn exact_issuer_policy_leaves_the_tenant_check_inert() {
+        // Every non-Entra provider must be untouched by the tenant machinery:
+        // `Validation` has already enforced its fixed issuer, and a token with
+        // no `tid` is perfectly normal there.
+        let verifier = oidc_verifier("aud");
+        assert!(matches!(
+            verifier.issuer_policy_for_test(),
+            IssuerPolicy::Exact
+        ));
+        let claims = unknown_claims("lawyer@neonlaw.test");
+        assert!(verifier.check_entra_tenant_for_test(&claims).is_ok());
     }
 
     #[tokio::test]
@@ -1888,6 +2621,7 @@ mod tests {
     #[test]
     fn authorize_url_contains_every_required_param() {
         let pre = PreAuth {
+            provider: ProviderId::Primary,
             state: "STATE123".into(),
             verifier: "the-verifier".into(),
             nonce: "NONCE789".into(),
@@ -1917,6 +2651,7 @@ mod tests {
             "https://idp.example.com/token",
         );
         let pre = PreAuth {
+            provider: ProviderId::Primary,
             state: "S".into(),
             verifier: "v".into(),
             nonce: "n".into(),
@@ -1990,6 +2725,7 @@ mod tests {
     #[test]
     fn pre_auth_marked_expired_when_exp_in_past() {
         let p = PreAuth {
+            provider: ProviderId::Primary,
             state: "s".into(),
             verifier: "v".into(),
             nonce: "n".into(),

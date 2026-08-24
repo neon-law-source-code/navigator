@@ -60,6 +60,7 @@ impl FirmWorld {
             role,
             csrf_token: "test-csrf".into(),
             source: portal::session::SessionSource::Browser,
+            provider: None,
             impersonation: None,
         };
         format!("{SESSION_COOKIE_NAME}={}", self.sessions().encode(&session))

@@ -182,6 +182,7 @@ pub async fn require_policy(
                 role: claims.role,
                 csrf_token: String::new(),
                 source: crate::session::SessionSource::Browser,
+                provider: None,
                 impersonation: None,
             });
         }

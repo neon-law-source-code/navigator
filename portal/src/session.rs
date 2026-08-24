@@ -92,6 +92,17 @@ pub struct SessionData {
     /// password cookie flow, `Cli` for a `navigator login` bearer token.
     #[serde(default)]
     pub source: SessionSource,
+    /// Slug of the OIDC provider that authenticated this session
+    /// (`portal::oauth::ProviderId::slug`), or `None` for a door with no
+    /// upstream provider — the Identity Platform password form, a CLI bearer.
+    ///
+    /// Read on sign-out so RP-initiated logout ends the SSO session at the
+    /// provider that actually holds it. Stored as the slug rather than the
+    /// enum so this module keeps no dependency on the OAuth layer, and
+    /// `serde(default)` so sessions minted before the field existed keep
+    /// decoding — they simply fall back to the primary provider.
+    #[serde(default)]
+    pub provider: Option<String>,
     /// Present only when an admin has switched the browser session into a
     /// client lens. The session's `sub`/`email`/`person_id`/`role` are the
     /// effective client; this field preserves the actor for the banner and
@@ -118,6 +129,7 @@ impl SessionData {
             role,
             csrf_token: random_token_32(),
             source: SessionSource::Browser,
+            provider: None,
             impersonation: None,
         }
     }

@@ -221,6 +221,17 @@ pub async fn build_from_env(brand_seed: store::seed::BrandSeed) -> anyhow::Resul
         enabled = oauth.is_some(),
         "oauth (Authorization Code + PKCE) configured"
     );
+    // Second browser provider. Fails boot when half-configured (a client id
+    // with no secret, or no tenant allowlist) rather than quietly rendering a
+    // button that cannot complete a sign-in — the same posture as the primary
+    // slot, which errors when `OAUTH_ISSUER_URL` is set without its siblings.
+    let oauth_microsoft = crate::OAuthConfig::microsoft_from_env()
+        .await
+        .context("loading Microsoft Entra OAuth config")?;
+    tracing::info!(
+        enabled = oauth_microsoft.is_some(),
+        "oauth microsoft (Authorization Code + PKCE) configured"
+    );
 
     let policy =
         crate::policy::PolicyClient::embedded().context("compiling embedded Rego policy")?;
@@ -347,6 +358,7 @@ pub async fn build_from_env(brand_seed: store::seed::BrandSeed) -> anyhow::Resul
         blog,
         auth,
         google_oauth,
+        oauth_microsoft,
         rate_limit: crate::rate_limit::RateLimit::from_env(),
         canonical_host,
         portal_only,

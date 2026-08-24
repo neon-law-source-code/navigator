@@ -72,6 +72,43 @@ async fn site_app_with_talks() -> Router {
     site_router(state)
 }
 
+/// The host a configured firm deployment answers as.
+///
+/// The shared builder ships no canonical host, and a deployment that has not
+/// been told its own host now advertises nothing in its crawler documents
+/// rather than inventing a domain for the `<loc>` entries. Tests whose subject
+/// is *which* paths are advertised therefore have to configure one.
+const CANONICAL_TEST_HOST: &str = "www.neonlaw.com";
+
+/// The firm host told what its own canonical host is, as a served deployment
+/// has been.
+///
+/// Separate from [`site_app`] rather than folded into [`site_state`]: once a
+/// canonical host is configured the middleware redirects every request that
+/// does not carry a matching `Host`, and the rest of this file's requests
+/// deliberately carry none.
+async fn site_app_with_canonical_host() -> Router {
+    let mut state = site_state().await;
+    state.canonical_host = portal::CanonicalHost::new(Some(CANONICAL_TEST_HOST.to_string()));
+    site_router(state)
+}
+
+/// An anonymous request carrying the canonical `Host`, which a served request
+/// always does. Without it the canonical-host middleware answers a redirect
+/// instead of the document under test.
+async fn canonical_host_get(app: &Router, path: &str) -> axum::http::Response<Body> {
+    app.clone()
+        .oneshot(
+            Request::builder()
+                .uri(path)
+                .header(axum::http::header::HOST, CANONICAL_TEST_HOST)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap()
+}
+
 /// A signed session cookie for `role`, against the key
 /// `portal::test_support::app_state` builds its `SessionStore` with.
 fn session_cookie_for_role(role: store::persons::Role) -> String {
@@ -857,15 +894,22 @@ async fn every_public_page_wears_the_brand_mark_as_its_tab_icon() {
 
 #[tokio::test]
 async fn the_sitemap_advertises_both_practice_pages() {
-    let app = site_app().await;
-    let body = body_string(anon_get(&app, "/sitemap.xml").await).await;
+    let app = site_app_with_canonical_host().await;
+    let body = body_string(canonical_host_get(&app, "/sitemap.xml").await).await;
     // `/navigator` is a public marketing page like the two practice pages, so
     // it is discoverable like one. A page reachable only from a footer link is
     // a page search engines never find.
+    //
+    // Asserted as the whole absolute `<loc>` rather than as a bare path
+    // substring. The path alone also matches the same characters anywhere else
+    // in the document, and it says nothing about the authority the entry is
+    // published under -- which is the half that was wrong when every entry
+    // named a domain the firm does not own.
     for path in ["/services", "/litigation", "/fractional-gc", "/navigator"] {
+        let loc = format!("<loc>https://{CANONICAL_TEST_HOST}{path}</loc>");
         assert!(
-            body.contains(path),
-            "the sitemap must advertise {path}: {body}"
+            body.contains(&loc),
+            "the sitemap must advertise {loc}: {body}"
         );
     }
 }

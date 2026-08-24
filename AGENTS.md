@@ -21,6 +21,22 @@ and a public tree, and it is now enforced by a test rather than by the absence o
 This file is the short operating contract for agents. [`CLAUDE.md`](CLAUDE.md) is a symlink to it. The linked docs are
 authoritative: read the narrowest relevant doc before acting and keep durable detail there, not here.
 
+**Clone with `core.symlinks` on, or this file never reaches the agent reading it.** `CLAUDE.md`, and every entry under
+`.claude/skills/` and `.codex/skills/`, is a symlink. Git materialises one as a link only when `core.symlinks` is true,
+which is not the Windows default. With it off, each checks out as a small regular file holding its own target path:
+`CLAUDE.md` becomes nine bytes reading `AGENTS.md`, so a harness loads that string instead of this contract, and each
+skill becomes a file where a directory should be, so no skill registers and the councils silently do not exist. Nothing
+reports it - the clone succeeds, `git status` is clean, and the workspace tests pass. Set it once per clone, then
+re-check out the affected paths:
+
+```bash
+git config core.symlinks true
+git checkout -- CLAUDE.md .claude/skills .codex/skills
+```
+
+Windows also needs permission to create links at all: enable Developer Mode, or run that from an elevated shell.
+[`cli/tests/agent_instruction_links.rs`](cli/tests/agent_instruction_links.rs) fails a checkout in the broken state.
+
 ## Architecture invariants
 
 - **Navigator owns machine-bound flows.** The `navigator` CLI orchestrates every machine-bound flow; there are no shell

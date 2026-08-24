@@ -71,7 +71,6 @@ pub mod litigation_page;
 pub mod marketing_page;
 pub mod matter_directory;
 pub mod matter_surface;
-pub mod notations;
 pub mod people;
 pub mod person_show;
 pub mod playbooks;

@@ -457,12 +457,11 @@ a.nav-pagination__link:hover {
  *
  * Stated as a rule about inline links rather than an allow-list of page
  * containers. The allow-list this replaces named four containers, and the
- * browser accessibility gate found three more prose surfaces it had never been
- * extended to — the legal pages (`article.policy`), the transparency documents
- * (`article.transparency-doc`), and the 403 (`section.error-page`) — each
- * carrying a support address a color-blind reader could not tell from the
- * sentence around it. An allow-list has to be remembered into on every new
- * page; this does not.
+ * browser accessibility gate found more prose surfaces it had never been
+ * extended to — the legal pages (`article.policy`) and the 403
+ * (`section.error-page`) — each carrying a support address a color-blind
+ * reader could not tell from the sentence around it. An allow-list has to be
+ * remembered into on every new page; this does not.
  *
  * The discriminator is the class attribute: an inline prose link is a bare
  * `<a href>`, written by hand or emitted by the Markdown renderer, while every
@@ -1020,15 +1019,6 @@ a.nav-pagination__link:hover {
   border-radius: 1.25rem;
   background: color-mix(in oklab, var(--nav-color-surface-raised) 84%, transparent);
   box-shadow: 0 1.25rem 3.5rem color-mix(in oklab, var(--nav-color-text) 8%, transparent);
-}
-
-/* The Foundation footer's §6104(d) public-disclosure link, in the reach column
-   where the firm footer puts its voice line. */
-.site-footer__transparency {
-  display: block;
-  width: fit-content;
-  margin-top: 0.35rem;
-  font-weight: 600;
 }
 
 /* A grid rather than a wrapping flex row: each office needs a column of its
@@ -2792,44 +2782,6 @@ a.nav-link:hover {
  * call to action floating mid-tile — the `full_height()` the card set. */
 .admin-hub > .nav-card {
   height: 100%;
-}
-
-/* The Foundation's public-disclosure surface (#956 Phase 4): the transparency
- * hub and one document. The pages set their measure with an inline
- * `max-width` and leaned on Bootstrap's `.text-body-secondary` for the section
- * blurbs; Dioxus pages load neither, so both live here. `ch` tracks the body
- * font, so the measure holds as the type scales. */
-.transparency,
-.transparency-doc {
-  margin-inline: auto;
-}
-
-.transparency {
-  max-width: 70ch;
-}
-
-/* A single document reads as a letter, so it sets a tighter measure than the
- * hub's scannable list. */
-.transparency-doc {
-  max-width: 65ch;
-}
-
-.transparency-required,
-.transparency-voluntary,
-.transparency-minutes {
-  margin: 0 0 2rem;
-}
-
-.transparency-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.transparency-list li {
-  border-bottom: 1px solid var(--nav-color-border);
-  line-height: 1.6;
-  padding: 0.5rem 0;
 }
 
 /* The template gallery (#956 Phase 4). The pages used Bootstrap's

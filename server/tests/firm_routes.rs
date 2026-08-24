@@ -283,40 +283,53 @@ async fn site_host_serves_the_legal_services_page() {
 }
 
 #[tokio::test]
-async fn litigation_is_the_statement_and_the_two_filed_paragraphs() {
-    // The page is the firm's own filed copy: a statement, the company-side
-    // paragraph, the individuals paragraph, and the disclaimer. It arrived here
-    // by subtraction — a Rule 23 explainer, six certification-element cards, a
-    // chip strip, a phase rail, an authority strip, and a fee section all came
-    // off — so this asserts what is on it and the next test asserts what is not.
+async fn litigation_is_the_statement_and_the_filed_paragraphs() {
+    // The page is the firm's own filed copy: a statement, who the firm
+    // represents, the breadth of what it takes on, and how a matter runs. It
+    // arrived here by subtraction — a Rule 23 explainer, six
+    // certification-element cards, a chip strip, a phase rail, an authority
+    // strip, and a fee section all came off — so this asserts what is on it and
+    // the next test asserts what is not.
     let app = site_app().await;
     let resp = anon_get(&app, "/litigation").await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
     assert!(body.contains("<title>Neon Law | Litigation</title>"));
-    assert!(body.contains("Zealous"), "the statement: {body}");
+    assert!(body.contains("built"), "the statement: {body}");
+    assert!(body.contains("speed."), "the statement: {body}");
     assert!(
-        body.contains("Litigation — plaintiff and defense"),
+        body.contains("Litigation, plaintiff and defense"),
         "the eyebrow names both sides of the v: {body}"
     );
-    let company = body
-        .find("We represent emerging companies, founders, and investors in complex disputes")
-        .expect("the company-side paragraph");
-    let individuals = body
-        .find("We also represent individuals who have been defrauded by powerful corporations")
-        .expect("the individuals paragraph");
-    assert!(company < individuals, "in the filed order: {body}");
-    // The second paragraph's own list, which is the part an edit shortens first.
+    let seen = body
+        .find("We represent those who haven\u{2019}t been justly seen")
+        .expect("the who-we-represent paragraph");
+    let breadth = body
+        .find("There is little we will not take on")
+        .expect("the breadth paragraph");
+    assert!(seen < breadth, "in the filed order: {body}");
+    // The matter types the firm names, which is the part an edit shortens
+    // first. They are the whole reason a reader can tell whether this is their
+    // practice: "those who haven't been justly seen" is a stance, and these are
+    // what it means in cases. Categories only, never a matter.
     for named in [
-        "class actions, mass actions, or public entity representations",
-        "Native American tribes",
-        "unauthorized cryptocurrency transfers",
+        "trademark and copyright disputes",
+        "prison rights litigation",
+        "restraining orders",
+        "domestic violence",
     ] {
         assert!(
             body.contains(named),
             "the filed copy keeps {named:?}: {body}"
         );
     }
+    // The conflicts caveat is the one qualifier on an otherwise open door, and
+    // it is a real check rather than a hedge: `store::conflicts` runs a bounded
+    // multi-hop traversal before the firm can take a matter.
+    assert!(
+        body.contains("as long as we are not conflicted out"),
+        "the page states the conflicts caveat: {body}"
+    );
     // The third paragraph: how a matter runs here, after who the firm
     // represents. It sits last because a reader decides whether this is their
     // practice before they care how the file is kept.
@@ -324,7 +337,7 @@ async fn litigation_is_the_statement_and_the_two_filed_paragraphs() {
         .find("All litigation cases run on")
         .expect("the case-system paragraph");
     assert!(
-        individuals < system,
+        breadth < system,
         "how the work runs comes after who the firm represents: {body}"
     );
     // It is the one paragraph on the page that links, and the link is the
@@ -381,6 +394,48 @@ async fn litigation_publishes_no_quantified_efficiency_claim() {
     }
 }
 
+/// Speed is stated as method, never as outcome.
+///
+/// This is the load-bearing line of the reframe. "Litigation attorneys built
+/// for speed" is a claim a reader can hear as a promise about how fast their
+/// own case ends, and on an attorney-advertising page that reading is a bar
+/// problem rather than a copy preference. What makes the heading publishable is
+/// the paragraph that says so outright, so the disclaimer of it is guarded
+/// here: delete the sentence and the heading stops being defensible.
+#[tokio::test]
+async fn litigation_states_speed_as_method_and_not_as_outcome() {
+    let app = site_app().await;
+    let body = body_string(anon_get(&app, "/litigation").await).await;
+    assert!(
+        body.contains("It is not a promise about your result"),
+        "the page disclaims speed as an outcome: {body}"
+    );
+    // The firm turns work away because of how it works, and says so. This is
+    // the sentence that makes the speed claim credible rather than salesy, and
+    // it is the first thing a later copy edit would smooth off.
+    assert!(
+        body.contains("we will not be everyone\u{2019}s lawyer"),
+        "the page says who it is not for: {body}"
+    );
+}
+
+/// The litigation page publishes no em dash.
+///
+/// The firm's style call for this page: it reads as terse and direct, and an em
+/// dash is the punctuation that turns two short sentences into one long one. A
+/// guard rather than a habit because the resolver's own doc comments are full
+/// of them, so a sentence moved from a comment into the copy carries one in
+/// silently.
+#[tokio::test]
+async fn litigation_publishes_no_em_dash() {
+    let app = site_app().await;
+    let body = body_string(anon_get(&app, "/litigation").await).await;
+    assert!(
+        !body.contains('\u{2014}'),
+        "the litigation page must publish no em dash: {body}"
+    );
+}
+
 /// The paragraph claims only capabilities this workspace carries.
 ///
 /// Each needle below is a capability the copy asserts, matched to the module
@@ -418,7 +473,29 @@ async fn litigation_claims_only_capabilities_the_workspace_carries() {
     // Daily evidence scraping is the claim this page came closest to
     // publishing; there is no scraper, no docket poller, and no case-reporter
     // client in the tree, so the page must not imply one.
-    for unbuilt in ["scrapers we run", "scrape", "every day we", "crawl the web"] {
+    //
+    // The rest of this list is what the speed reframe drafted and had to cut.
+    // Each was true of how the firm works and false of what this workspace
+    // implements, which is the exact gap this test exists to hold: there is no
+    // embedding or vector index anywhere in the tree, so no semantic search and
+    // no vendor behind one; the `regex` crate is a dev-dependency only and the
+    // inbound matcher is `hay.contains(n)` over literal markers, so the page
+    // says "literally" rather than "regex"; there is no fact-extraction module;
+    // and `templates/` carries exactly one litigation template (a TRO), so a
+    // per-pleading library must not be advertised.
+    for unbuilt in [
+        "scrapers we run",
+        "scrape",
+        "every day we",
+        "crawl the web",
+        "semantic search",
+        "midpage",
+        "descrybe",
+        "regex",
+        "extract the facts",
+        "motion to dismiss",
+        "service of summons",
+    ] {
         assert!(
             !body.to_lowercase().contains(unbuilt),
             "the page must not claim {unbuilt:?}, which the workspace does not \

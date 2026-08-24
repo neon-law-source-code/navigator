@@ -8,7 +8,8 @@
    into a frame beside the hero, six Rule 23 element cards each growing a left
    rule on a view timeline, a chip strip, a phase rail drawn on scroll, and an
    authority strip that lifted on entry. All of it illustrated sections the page
-   no longer has. What is left is a statement and two paragraphs.
+   no longer has. What is left is a statement, the firm's own paragraphs, and
+   the same email and phone channels the footer closes every page with.
 
    The remaining animation is decoration, and the `prefers-reduced-motion` block
    at the bottom settles it. */
@@ -159,6 +160,37 @@
 .zeal-paragraph__link:hover,
 .zeal-paragraph__link:focus-visible {
   text-decoration-thickness: 2px;
+}
+
+/* The page's own call to action: the same two channels the footer closes
+   every page with (`.site-footer__office--channel` supplies the card, the
+   hover lift, and the swell; see `webapp::components::site_footer`), laid out
+   as their own centered row rather than the footer's three-column office
+   grid. The footer's grid-column rules key off `.site-footer__offices`, so a
+   different wrapper class here is what keeps this row from being pulled into
+   that layout instead of its own. */
+.zeal-cta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--footer-band-gap, 0.75rem);
+  margin: 2rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.zeal-cta .site-footer__office {
+  flex: 0 0 auto;
+  min-width: 14rem;
+}
+
+/* The footer's own channel link is `width: 100%` on purpose: it fills a fixed
+   grid cell there. This row has no such cell — it is two tiles sized to their
+   own content — so that rule is overridden here, or the anchor stretches to
+   the card's full width and `flex-wrap` drops the second tile onto its own
+   row instead of sitting beside the first. */
+.zeal-cta .site-footer__channel-link {
+  width: auto;
 }
 
 /* The heading's word-by-word rise is the page's only motion, and it is

@@ -431,13 +431,32 @@ fn hero_words(heading: &str, accent_words: usize) -> Vec<webapp::litigation_page
         .collect()
 }
 
-/// Resolve the firm `/litigation` page — the statement, the practice in two
-/// paragraphs, and the disclaimer.
+/// Resolve the firm `/litigation` page — the statement, the practice, and how
+/// the firm runs a matter.
+///
+/// **The page's claim is speed, and speed is stated as method rather than as
+/// outcome.** "Litigation attorneys built for speed" is a differentiator a bar
+/// examiner reads as an implied result unless the body binds it to *how the
+/// firm works*, so the closing paragraph says so outright. The same line is why
+/// `publishes_no_quantified_efficiency_claim` matters more here than it did
+/// under the previous framing: a page that leads with speed is one number away
+/// from advertising a result.
+///
+/// The copy carries no em dash. That is the firm's own style call for this
+/// page, and `publishes_no_em_dash` holds it.
 ///
 /// Brand-safe like [`resolve_firm_home_content`]: the `<title>` names the
-/// mounted brand, resolved at router-build time. Nothing here describes a matter
-/// the firm handled, which is what lets the page carry a record-free
-/// past-results disclaimer honestly.
+/// mounted brand, resolved at router-build time.
+///
+/// **The page names matter *types* the firm has litigated and never a matter.**
+/// Trademark and copyright, prison rights, divorce, restraining orders, and
+/// domestic violence are categories, so none of them identifies a client, a
+/// Project code, or an outcome. That distinction is what keeps the copy inside
+/// the no-client-data rule while still telling a reader whether this is their
+/// practice. Naming experience is also precisely the situation the footer's
+/// "Past results do not guarantee future outcomes." exists to cover, and
+/// `carries_the_regulated_copy_and_no_results_promise` asserts it reaches the
+/// reader.
 ///
 /// **The body is the firm's own filed copy and this resolver holds it verbatim.**
 /// The page arrived at these paragraphs by subtraction: it was a Rule 23
@@ -445,25 +464,36 @@ fn hero_words(heading: &str, accent_words: usize) -> Vec<webapp::litigation_page
 /// rail, a chip list, and a fee section. Each was a reasonable answer to a
 /// question a prospective client does not walk in with.
 ///
-/// The third paragraph — how a matter actually runs here — is the one addition
-/// since, and it is deliberately *prose in the same card* rather than a feature
-/// section, because a heading and a grid is the shape of everything this page
-/// shed. It is the firm's own copy and this resolver holds it verbatim, the
-/// same as the two above it.
+/// The last four paragraphs — how a matter actually runs here — are additions
+/// since, and they are deliberately *prose in the same card* rather than feature
+/// sections, because a heading and a grid is the shape of everything this page
+/// shed. `renders_two_sections_and_no_more` is what keeps that distinction, so a
+/// paragraph may be added here and a section may not.
 ///
-/// It is the only paragraph on the page that links, which is why the body is
-/// runs rather than plain strings: it names Navigator and points at
+/// The first of them is the only paragraph on the page that links, which is why
+/// the body is runs rather than plain strings: it names Navigator and points at
 /// `/navigator` instead of restating that page here, the same way the home
 /// page's prose does.
 ///
-/// The mechanism it describes is what the workspace can be opened to prove —
-/// the durable event-driven engine in `workflows-service`, the inbound triage
-/// that classifies a filing or a letter onto a live matter, and the deadline
-/// calculator that calendars a window from the rule that sets it. The savings
-/// sentence is the firm's own commitment about its fees rather than a claim
-/// about outcomes, and it carries no figure: a number or a ratio would go stale
-/// against the next matter and read as a binding quote, and
-/// `publishes_no_quantified_efficiency_claim` holds that line.
+/// **Every mechanism named is one the workspace can be opened to prove.** The
+/// durable event-driven engine lives in `workflows-service`; the inbound triage
+/// that classifies a filing or a letter onto a live matter is `nautilus`'s
+/// `LAWSUIT_MARKERS`, and "match that record literally" is the honest verb for
+/// it, because it tests literal markers rather than searching semantically;
+/// `DeadlineKind` calendars a window from the statute that sets it, which is
+/// why the sentence says "a statutory deadline" rather than "every deadline";
+/// the graph is the `relationship` relation plus the append-only
+/// `relationship_log`; and the filing kinds are `store::cases::EntryKind`.
+///
+/// **Four claims were drafted for this page and cut for want of an
+/// implementation**: semantic case-law search and the vendors behind it, regex
+/// over the record (the matcher is literal substring), fact extraction, and a
+/// per-pleading template library (the tree carries one litigation template, a
+/// TRO). A vendor name or a capability on this page is a claim that the
+/// workspace carries it, and
+/// `litigation_claims_only_capabilities_the_workspace_carries` is the guard
+/// that keeps the claim checkable. Describe the step; name the tool only once a
+/// module in this tree calls it.
 ///
 /// **This page states no disclaimer of its own.** It used to carry a
 /// past-results line under the body, duplicating what the shared footer says on
@@ -471,12 +501,18 @@ fn hero_words(heading: &str, accent_words: usize) -> Vec<webapp::litigation_page
 /// `views::brand::DEFAULT_BRANDING`'s `firm_disclaimer`, which opens with
 /// "Attorney advertisement." and reaches this page through `PublicFooter`.
 ///
-/// Those paragraphs name fee arrangements — contingency, monthly, and "no cost
-/// due if we lose" — which is why the no-fee-copy guard the earlier revision
-/// added is gone. For this practice the arrangement is part of the offer rather
-/// than a term to settle later: a reader deciding whether to call needs to know
-/// that a contingency case costs them nothing to bring. Fee *amounts* stay off
-/// the page, and the currency guard still holds that.
+/// **The page no longer states a fee arrangement, and that is a deliberate
+/// deletion rather than an oversight.** The two paragraphs that came out named
+/// contingency, monthly billing, and "no cost due if we lose", and an earlier
+/// revision kept them on the reasoning that for this practice the arrangement
+/// is part of the offer: a reader deciding whether to call needs to know a
+/// contingency case costs them nothing to bring. That reasoning did not stop
+/// being true when the paragraphs changed. It arguably binds harder now, since
+/// the copy addresses people whose first question is whether they can afford to
+/// walk in at all. Restoring a single sentence to that effect is the open
+/// question against this revision; it is recorded here rather than silently
+/// dropped. Fee *amounts* stay off the page either way, and the currency guard
+/// still holds that.
 pub(crate) fn resolve_litigation_content(
     branding: &views::brand::Branding,
 ) -> webapp::litigation_page::LitigationContent {
@@ -485,15 +521,15 @@ pub(crate) fn resolve_litigation_content(
     let mark = branding.firm.site_name;
     LitigationContent {
         head_title: format!("{mark} | Litigation"),
-        meta_description: "Litigation on both sides of the v. — plaintiff and defense. Complex \
-                           technology disputes for companies, and fraud cases for the people on \
-                           the receiving end."
+        meta_description: "Litigation attorneys built for speed. Plaintiff and defense, in \
+                           complex technology disputes for companies and fraud cases for the \
+                           people on the receiving end."
             .to_string(),
-        eyebrow: "Litigation — plaintiff and defense".to_string(),
-        heading: hero_words("Zealous advocates on both sides of the v.", 2),
-        lead: "We try cases for the party bringing the claim and for the party answering it. The \
-               work is the same discipline from either chair, and we take the side we are the \
-               right lawyers for."
+        eyebrow: "Litigation, plaintiff and defense".to_string(),
+        heading: hero_words("Litigation attorneys built for speed.", 2),
+        lead: "Our strategy is always the same. Do as much as we can, as early as we can, and get \
+               you to a resolution sooner. That is not the right approach for every case. It \
+               could be the right one for yours."
             .to_string(),
         cta_href: "/contact".to_string(),
         cta_label: "Contact us".to_string(),
@@ -504,33 +540,46 @@ pub(crate) fn resolve_litigation_content(
         // costs them nothing to bring.
         body: vec![
             vec![plain(
-                "We represent emerging companies, founders, and investors in complex disputes \
-                 involving cutting-edge technology. This includes disputes about cybersecurity, \
-                 investment disputes, business divorce, trademarks, trade secrets. We prefer not \
-                 to charge hourly for these cases, instead crafting contingency or monthly fee \
-                 deals to align our incentives with those of our clients.",
+                "We represent those who haven\u{2019}t been justly seen. We have litigated \
+                 trademark and copyright disputes, prison rights litigation, and divorce, among \
+                 others. Every problem is unique and as long as we are not conflicted out, we will listen to \
+                 your story, surround ourselves with experts, and do everything we can when \
+                 everything is on the line.",
             )],
             vec![plain(
-                "We also represent individuals who have been defrauded by powerful corporations. \
-                 This includes victims of deceptive business practices, cyber security failures, \
-                 unauthorized cryptocurrency transfers, electronic privacy violations, and other \
-                 harmful business practices. These cases can be organized as individual disputes, \
-                 class actions, mass actions, or public entity representations (on behalf of \
-                 cities, counties, Native American tribes, etc.). We pursue nearly all of these \
-                 cases at no cost to our clients, taking our fees \u{201c}on contingency,\u{201d} as a \
-                 percentage of the total recovery (with no cost due if we lose).",
+                "There is little we will not take on. We have handled restraining orders and \
+                 domestic violence matters. What these cases share is a person whose rights were \
+                 taken, phased out, or lost in a situation nobody had a form for. They do not \
+                 wait, and neither do we.",
             )],
             vec![
                 plain("All litigation cases run on "),
                 link("Neon Law Navigator", "/navigator"),
                 plain(
-                    ", the firm\u{2019}s case system. Our matter projects include a suite of \
-                     event-driven agentic workflows that respond to events like a new court \
-                     docket filing, letter, or new research and trigger agentic workflows that \
-                     mise en place our work to the highest extent possible. We pass these time \
-                     savings as money savings for our clients.",
+                    ", the firm\u{2019}s case system. Work arrives on the matter as an event: a \
+                     new court docket filing, a letter, or new research. Our event-driven agentic \
+                     workflows start the work that event implies instead of waiting for someone \
+                     to notice it. A statutory deadline is calendared from the statute that sets \
+                     it.",
                 ),
             ],
+            vec![plain(
+                "The system is data engineering applied to a case file. We build the matter as a \
+                 graph and log each relationship in it as the case moves, so the record of who is \
+                 connected to whom is kept as we go rather than reconstructed later. We match \
+                 that record literally, because litigation turns on what the record actually \
+                 says.",
+            )],
+            vec![plain(
+                "Filings land on the matter by kind: pleading, motion, opposition, reply, order. \
+                 The docket, the discovery, and the disclosures sit together, so the next \
+                 document starts from what the case already holds.",
+            )],
+            vec![plain(
+                "Speed is how we work. It is not a promise about your result, and it does not \
+                 suit every matter. It is why we will not be everyone\u{2019}s lawyer. If you \
+                 want to be seen today, we can be your lawyer.",
+            )],
         ],
     }
 }

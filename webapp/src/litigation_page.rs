@@ -1,8 +1,14 @@
 //! The firm litigation page (`/litigation`) — the disputes practice, told from
 //! both sides of the v.
 //!
-//! The page states one thing: the firm tries cases, for the party bringing the
-//! claim and for the party answering it. A statement and the body.
+//! The page states one thing: the firm tries cases fast, for the party bringing
+//! the claim and for the party answering it. A statement and the body.
+//!
+//! **Speed is the page's claim, and the body states it as method rather than as
+//! outcome.** A page that leads with speed is one number away from advertising
+//! a result, which is why `publishes_no_currency_amount` and the server-side
+//! quantified-efficiency guard both bind harder here than they did under the
+//! previous "zealous advocates" framing.
 //!
 //! **The body is the firm's own filed copy, and the page is what is left after
 //! subtracting everything else.** It was a Rule 23 explainer with six
@@ -18,11 +24,21 @@
 //! guard that keeps that distinction, so it is the one to read before adding
 //! copy here.
 //!
-//! The body names fee *arrangements* — contingency, monthly, "no cost due if we
-//! lose" — on purpose: for this practice the arrangement is part of the offer,
-//! because a reader deciding whether to call needs to know a contingency case
-//! costs nothing to bring. Fee *amounts* stay off the page, and
-//! `publishes_no_currency_amount` holds that.
+//! **The one call to action lives in the body card, not as a section of its
+//! own.** It is the same email and phone channels [`PublicFooter`] closes every
+//! page with — `mailto_href` and `tel_href` are the footer's own helpers,
+//! reused rather than restated so the subject line and the dialled digits stay
+//! one source — laid out as `.zeal-cta`, a centered row the page's own
+//! stylesheet places rather than the footer's three-column office grid.
+//! `renders_the_contact_channels_side_by_side` is the guard.
+//!
+//! The body once named fee *arrangements* — contingency, monthly, "no cost due
+//! if we lose" — on the reasoning that for this practice the arrangement is
+//! part of the offer. Those paragraphs have been replaced and the sentence went
+//! with them; whether to restore one is tracked in
+//! `neon::firm_pages::resolve_litigation_content`, which holds the copy. Fee
+//! *amounts* stay off the page regardless, and `publishes_no_currency_amount`
+//! holds that.
 //!
 //! **The regulated copy is the footer's, not this page's.** This page used to
 //! carry its own past-results disclaimer under the body, duplicating what the
@@ -42,7 +58,8 @@ use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::components::{
-    PracticeMark, PracticeMarkGlyph, PublicShell, SiteHeader, SiteNavLink, SocialMeta,
+    mailto_href, tel_href, Icon, IconName, PracticeMark, PracticeMarkGlyph, PublicShell,
+    SiteHeader, SiteNavLink, SocialMeta,
 };
 use crate::home::CopyRun;
 use crate::public_chrome::{PublicChrome, PublicFooter};
@@ -58,7 +75,8 @@ pub const LITIGATION_STYLESHEET_HREF: &str = "/public/css/litigation.css";
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct HeroWord {
     pub text: String,
-    /// Set on the words the firm sets in its own colour — "Zealous advocates".
+    /// Set on the words the firm sets in its own colour — "Litigation
+    /// attorneys".
     pub accent: bool,
 }
 
@@ -172,6 +190,40 @@ pub fn LitigationPage(chrome: PublicChrome, content: LitigationContent) -> Eleme
                         }
                     }
                 }
+                // The same two channels the footer closes every page with, not
+                // a second copy of them: `mailto_href` and `tel_href` are the
+                // footer's own helpers, so the subject line and the dialled
+                // digits can never drift between the two places they render.
+                // What differs here is layout, not content: side by side and
+                // centered, because this is the page's own ask rather than the
+                // sign-off every page carries.
+                //
+                // Each channel is conditional on the chrome actually carrying
+                // one, the same guard `PublicFooter` applies, so a chrome with
+                // no phone number does not render a dead `tel:` link with
+                // nothing to dial.
+                ul { class: "zeal-cta",
+                    if !chrome.firm_email.is_empty() {
+                        li { class: "site-footer__office site-footer__office--channel",
+                            a {
+                                class: "site-footer__channel-link",
+                                href: mailto_href(&chrome.firm_email),
+                                Icon { name: IconName::EnvelopeFill }
+                                span { "{chrome.firm_email}" }
+                            }
+                        }
+                    }
+                    if !chrome.firm_phone.is_empty() {
+                        li { class: "site-footer__office site-footer__office--channel",
+                            a {
+                                class: "site-footer__channel-link",
+                                href: tel_href(&chrome.firm_phone),
+                                Icon { name: IconName::TelephoneFill }
+                                span { "{chrome.firm_phone}" }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -241,40 +293,40 @@ mod tests {
         LitigationContent {
             head_title: "Neon Law | Litigation".to_string(),
             meta_description: "Litigation on both sides of the v.".to_string(),
-            eyebrow: "Litigation — plaintiff and defense".to_string(),
+            eyebrow: "Litigation, plaintiff and defense".to_string(),
             heading: vec![
                 HeroWord {
-                    text: "Zealous".to_string(),
+                    text: "Litigation".to_string(),
                     accent: true,
                 },
                 HeroWord {
-                    text: "advocates".to_string(),
+                    text: "attorneys".to_string(),
                     accent: true,
                 },
                 HeroWord {
-                    text: "on".to_string(),
+                    text: "built".to_string(),
                     accent: false,
                 },
                 HeroWord {
-                    text: "both".to_string(),
+                    text: "for".to_string(),
                     accent: false,
                 },
                 HeroWord {
-                    text: "sides.".to_string(),
+                    text: "speed.".to_string(),
                     accent: false,
                 },
             ],
-            lead: "We try the case from either chair.".to_string(),
+            lead: "We do as much as we can, as early as we can.".to_string(),
             cta_href: "/contact".to_string(),
             cta_label: "Contact us".to_string(),
             body: vec![
                 vec![plain(
-                    "We represent emerging companies, founders, and investors in complex disputes \
-                     involving cutting-edge technology.",
+                    "We represent those who haven\u{2019}t been justly seen. We have litigated \
+                     trademark and copyright disputes, prison rights litigation, and divorce.",
                 )],
                 vec![plain(
-                    "We also represent individuals who have been defrauded by powerful \
-                     corporations.",
+                    "There is little we will not take on. We have handled restraining orders and \
+                     domestic violence matters.",
                 )],
                 vec![
                     plain("All litigation cases run on "),
@@ -296,27 +348,61 @@ mod tests {
         dioxus_ssr::render(&dom)
     }
 
+    /// A chrome carrying real contact channels, for the one test that needs to
+    /// see them render as more than an empty `mailto:`/`tel:` href.
+    fn chrome_with_contact() -> PublicChrome {
+        PublicChrome {
+            firm_email: "counsel@neonlaw.com".to_string(),
+            firm_phone: "+1 555 010 0100".to_string(),
+            ..Default::default()
+        }
+    }
+
+    fn html_with(chrome: PublicChrome) -> String {
+        let mut dom = VirtualDom::new_with_props(
+            LitigationPage,
+            LitigationPageProps {
+                chrome,
+                content: content(),
+            },
+        );
+        dom.rebuild_in_place();
+        dioxus_ssr::render(&dom)
+    }
+
     #[test]
-    fn leads_with_the_zealous_advocacy_statement() {
+    fn leads_with_the_speed_statement() {
         let out = html();
         assert!(
             out.contains(r#"data-practice-mark="scales""#) && out.contains("zeal-hero__mark"),
             "the hero reuses the four-card litigation mark: {out}"
         );
         assert_eq!(out.matches("<h1").count(), 1, "one h1: {out}");
-        assert!(out.contains("Zealous"), "the statement: {out}");
-        assert!(out.contains("advocates"), "the statement: {out}");
+        assert!(out.contains("built"), "the statement: {out}");
+        assert!(out.contains("speed."), "the statement: {out}");
         // The eyebrow names both sides of the v. rather than one: the firm
         // brings cases and it answers them, and a page that advertised only the
         // plaintiff side would send half of its readers away.
         assert!(
-            out.contains("Litigation — plaintiff and defense"),
+            out.contains("Litigation, plaintiff and defense"),
             "the eyebrow names both sides: {out}"
         );
         assert!(
             out.contains(r#"href="/contact""#),
             "the CTA routes to contact"
         );
+    }
+
+    /// The page publishes no em dash.
+    ///
+    /// The firm's style call for this page, and a guard rather than a habit
+    /// because an em dash is the punctuation a copy edit reaches for by reflex:
+    /// the surrounding module doc comments are full of them, so a sentence
+    /// moved from a comment into the content carries one in silently.
+    #[test]
+    fn publishes_no_em_dash() {
+        let out = html();
+        assert!(!out.contains('\u{2014}'), "no em dash: {out}");
     }
 
     #[test]
@@ -354,25 +440,61 @@ mod tests {
         );
     }
 
-    /// Every body paragraph renders, in order: the company side, the individuals
-    /// defrauded by powerful corporations, then how the firm runs the matter.
-    /// The middle one is what an edit is most likely to drop, because the first
+    /// The page's call to action is the same two channels the footer closes
+    /// every page with, rendered a second time in its own centered row rather
+    /// than the footer's three-column grid.
+    ///
+    /// This asserts the reuse rather than the layout: both links carry the
+    /// same `mailto_href`/`tel_href` a real chrome resolves, which is what
+    /// keeps this row from drifting out of sync with the footer's own. The
+    /// `.zeal-cta` wrapper (not `.site-footer__offices`) is what keeps the
+    /// footer's grid-column rules from pulling these two tiles into its
+    /// vertical stack; the centering itself is a CSS concern this test does
+    /// not reach into.
+    #[test]
+    fn renders_the_contact_channels_side_by_side() {
+        let out = html_with(chrome_with_contact());
+        assert!(
+            out.contains(r#"class="zeal-cta""#),
+            "the CTA row wraps in its own class, not the footer's office grid: {out}"
+        );
+        assert_eq!(
+            out.matches(r#"class="site-footer__channel-link""#).count(),
+            4,
+            "two in the page's own CTA, two in the footer: {out}"
+        );
+        assert!(
+            out.contains("mailto:counsel@neonlaw.com"),
+            "the email channel resolves the same href the footer uses: {out}"
+        );
+        assert!(
+            out.contains("tel:+15550100100"),
+            "the phone channel resolves the same href the footer uses: {out}"
+        );
+        // Still no third section: the CTA is markup inside the existing body
+        // card, not a section of its own.
+        assert_eq!(out.matches("<section").count(), 2, "still the two: {out}");
+    }
+
+    /// Every body paragraph renders, in order: who the firm represents, the
+    /// breadth of what it takes on, then how the firm runs the matter. The
+    /// middle one is what an edit is most likely to drop, because the first
     /// reads like a complete practice description on its own.
     #[test]
     fn renders_every_paragraph_in_order() {
         let out = html();
-        let company = out
-            .find("We represent emerging companies")
-            .expect("the company paragraph");
-        let individuals = out
-            .find("We also represent individuals")
-            .expect("the individuals paragraph");
+        let seen = out
+            .find("We represent those who")
+            .expect("the who-we-represent paragraph");
+        let breadth = out
+            .find("There is little we will not take on")
+            .expect("the breadth paragraph");
         let system = out
             .find("All litigation cases run on")
             .expect("the case-system paragraph");
-        assert!(company < individuals, "in the filed order: {out}");
+        assert!(seen < breadth, "in the filed order: {out}");
         assert!(
-            individuals < system,
+            breadth < system,
             "how the work runs comes after who the firm represents: {out}"
         );
     }
@@ -450,9 +572,9 @@ mod tests {
         }
     }
 
-    /// No amount, ever. The body names fee *arrangements* because for this
-    /// practice the arrangement is part of the offer — a reader needs to know a
-    /// contingency case costs nothing to bring. A figure is different: a rate or
+    /// No amount, ever. A fee *arrangement* may be named, because for this
+    /// practice the arrangement is part of the offer and a reader needs to know
+    /// whether a case costs anything to bring. A figure is different: a rate or
     /// a percentage on a marketing page goes stale against what the firm charges
     /// and reads as a binding quote.
     #[test]

@@ -164,12 +164,17 @@ fn address_lines(address: &str) -> Vec<&str> {
 /// legal services — is what lets the firm route the message on sight rather
 /// than reading an untitled note to find out. `%20` rather than `+`: only the
 /// percent form decodes to a space in every client's `mailto:` handler.
-fn mailto_href(email: &str) -> String {
+///
+/// `pub(crate)` rather than private: [`crate::litigation_page`] reuses it for
+/// the same channel link outside the footer, and a second copy of the subject
+/// line would drift from this one silently.
+pub(crate) fn mailto_href(email: &str) -> String {
     format!("mailto:{email}?subject=Legal%20services.")
 }
 
 /// `tel:` dials digits, not the human spacing a number is written with.
-fn tel_href(phone: &str) -> String {
+/// `pub(crate)` for the same reason as [`mailto_href`].
+pub(crate) fn tel_href(phone: &str) -> String {
     format!(
         "tel:{}",
         phone

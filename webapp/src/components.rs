@@ -94,6 +94,10 @@ pub use sample_matters_banner::{SampleMattersBanner, SAMPLE_MATTERS_BANNER_ID};
 pub use site_footer::{
     FooterAttorney, FooterBarLicense, FooterNavLink, FooterOffice, SiteFooterLegal,
 };
+// `pub(crate)`, not `pub`: these two are reused by `crate::litigation_page`
+// for the same channel links outside the footer, but they are not part of
+// this crate's public component API.
+pub(crate) use site_footer::{mailto_href, tel_href};
 pub use site_header::{SiteHeader, SiteNavLink};
 pub use social::SocialMeta;
 pub use testimonial::{TestimonialCard, TestimonialSection};

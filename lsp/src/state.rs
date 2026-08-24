@@ -735,7 +735,7 @@ mod tests {
         let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
         assert!(labels.contains(&"retainer"), "labels: {labels:?}");
         assert!(labels.contains(&"letter"), "labels: {labels:?}");
-        assert!(labels.contains(&"minutes"), "labels: {labels:?}");
+        assert!(labels.contains(&"event"), "labels: {labels:?}");
         // The new instrument + workshop kinds are offered too.
         assert!(labels.contains(&"will"), "labels: {labels:?}");
         assert!(labels.contains(&"workshop"), "labels: {labels:?}");

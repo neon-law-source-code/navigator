@@ -242,7 +242,7 @@ test_anonymous_denied_on_clerk if {
 	not authz.allow with input as {"path": ["clerk"], "method": "GET", "session": null}
 }
 
-# ---------- the retired Foundation reading surfaces ----------
+# ---------- the retired nonprofit reading surfaces ----------
 # The mission letter, Notations, and the transparency disclosures were the one
 # grant in this policy that admitted `client` to a page outside their own
 # matters. Those pages are retired, so the grant is gone and every tier — the

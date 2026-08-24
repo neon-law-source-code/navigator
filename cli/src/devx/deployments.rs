@@ -1242,7 +1242,7 @@ sops:
         );
     }
 
-    /// The shape a Foundation-only row ships in: a deployment that executes no
+    /// The shape a signature-free row ships in: a deployment that executes no
     /// documents carries no `DOCUSIGN_*` at all and is still complete.
     ///
     /// This is the level `ops ship` measures at, so it is the level that has
@@ -1257,7 +1257,7 @@ sops:
             .into_iter()
             .filter(|key| !key.starts_with("DOCUSIGN_"))
             .collect();
-        let deployment = deployment(&[(PROJECT_ID, "neon-law-org")], &without_docusign);
+        let deployment = deployment(&[(PROJECT_ID, "neon-law-stg")], &without_docusign);
 
         let missing = unsatisfied_requirements(&deployment);
         assert!(
@@ -1280,7 +1280,7 @@ sops:
             .filter(|key| !key.starts_with("DOCUSIGN_"))
             .collect();
         base_url_only.push("DOCUSIGN_BASE_URL");
-        let deployment = deployment(&[(PROJECT_ID, "neon-law-org")], &base_url_only);
+        let deployment = deployment(&[(PROJECT_ID, "neon-law-stg")], &base_url_only);
 
         let missing = unsatisfied_requirements(&deployment);
         assert!(

@@ -62,10 +62,10 @@ impl Journey {
     /// Seed the canonical catalog and build the real site router over an
     /// in-memory app state, sharing one [`InMemoryRuntime`] journal.
     ///
-    /// One door. The firm's surface and the Foundation's were separate hosts
-    /// and this had an `open_firm` twin to pick between them; the consolidation
-    /// left one binary serving both, so every journey opens the same router and
-    /// walks whichever pages it is about.
+    /// One door. The site's faces were separate hosts once and this had an
+    /// `open_firm` twin to pick between them; one binary serves everything now,
+    /// so every journey opens the same router and walks whichever pages it is
+    /// about.
     pub async fn open(suite: &str) -> Self {
         let surreal = shared_surreal().await;
         let storage = fs_storage(suite).await;

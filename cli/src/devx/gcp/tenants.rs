@@ -22,15 +22,9 @@ use super::error::{SetupError, SetupResult};
 /// The shared image hub. Not an environment — nothing runs there.
 pub const HUB_PROJECT_ID: &str = "ghcr";
 
-/// The three runtime projects Neon Law Navigator runs in, in release order.
-/// `neon-law-stg` proves a release before either production project takes it.
-pub const ENVIRONMENT_PROJECT_IDS: &[&str] = &["neon-law-stg", "neon-law-org", "neon-law"];
-
-/// The static marketing project. Holds the published brand sites and nothing
-/// that serves an authenticated request: no database, no cluster, no
-/// application. Its buckets are world-readable by design, which is exactly why
-/// it must never be provisioned as an environment.
-pub const MARKETING_PROJECT_ID: &str = "neon-law-marketing";
+/// The runtime projects Neon Law Navigator runs in, in release order.
+/// `neon-law-stg` proves a release before production takes it.
+pub const ENVIRONMENT_PROJECT_IDS: &[&str] = &["neon-law-stg", "neon-law"];
 
 /// What a project ID is being provisioned as.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -39,8 +33,6 @@ pub enum TenantRole {
     Hub,
     /// `ops gcp setup` — one environment.
     Environment,
-    /// `ops gcp marketing setup` — the static marketing sites.
-    Marketing,
 }
 
 impl TenantRole {
@@ -50,7 +42,6 @@ impl TenantRole {
         match self {
             Self::Hub => "the image hub",
             Self::Environment => "an environment",
-            Self::Marketing => "the marketing sites",
         }
     }
 }
@@ -62,9 +53,6 @@ pub fn recorded_role(project_id: &str) -> Option<TenantRole> {
     let project_id = project_id.trim();
     if project_id == HUB_PROJECT_ID {
         return Some(TenantRole::Hub);
-    }
-    if project_id == MARKETING_PROJECT_ID {
-        return Some(TenantRole::Marketing);
     }
     ENVIRONMENT_PROJECT_IDS
         .contains(&project_id)
@@ -121,8 +109,8 @@ mod tests {
         );
         assert_eq!(
             ENVIRONMENT_PROJECT_IDS.len(),
-            3,
-            "docs/environments.md records three runtime projects",
+            2,
+            "docs/environments.md records two runtime projects",
         );
     }
 
@@ -150,49 +138,9 @@ mod tests {
     #[test]
     fn each_recorded_project_is_accepted_for_its_own_role() {
         validate_target(TenantRole::Hub, HUB_PROJECT_ID).unwrap();
-        validate_target(TenantRole::Marketing, MARKETING_PROJECT_ID).unwrap();
         for project_id in ENVIRONMENT_PROJECT_IDS {
             validate_target(TenantRole::Environment, project_id).unwrap();
         }
-    }
-
-    #[test]
-    fn the_marketing_project_is_neither_the_hub_nor_an_environment() {
-        assert_ne!(MARKETING_PROJECT_ID, HUB_PROJECT_ID);
-        assert!(
-            !ENVIRONMENT_PROJECT_IDS.contains(&MARKETING_PROJECT_ID),
-            "the marketing project serves world-readable buckets and runs no application",
-        );
-    }
-
-    /// The marketing project's buckets are public. Provisioning it as an
-    /// environment would put a documents bucket and a GKE cluster in a
-    /// project built around anonymous reads, so the guard runs before the
-    /// first GCP call rather than relying on the operator's memory.
-    #[test]
-    fn the_environment_command_refuses_the_marketing_project() {
-        let err = validate_target(TenantRole::Environment, MARKETING_PROJECT_ID)
-            .expect_err("the marketing project must never receive client documents");
-        let message = err.to_string();
-        assert!(message.contains(MARKETING_PROJECT_ID), "{message}");
-        assert!(message.contains("the marketing sites"), "{message}");
-        assert!(message.contains("an environment"), "{message}");
-    }
-
-    #[test]
-    fn the_marketing_command_refuses_an_environment_or_the_hub() {
-        for project_id in ENVIRONMENT_PROJECT_IDS.iter().chain([&HUB_PROJECT_ID]) {
-            let err = validate_target(TenantRole::Marketing, project_id)
-                .expect_err("only neon-law-marketing holds the static sites");
-            assert!(err.to_string().contains(project_id), "{err}");
-        }
-    }
-
-    #[test]
-    fn the_marketing_project_is_not_a_usable_image_hub() {
-        let err = validate_images_project("neon-law", MARKETING_PROJECT_ID)
-            .expect_err("images come from the hub, never from the marketing project");
-        assert!(err.to_string().contains(MARKETING_PROJECT_ID), "{err}");
     }
 
     #[test]

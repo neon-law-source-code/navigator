@@ -445,7 +445,7 @@ pub struct Brand {
     /// Which brand's own seeds this deployment applies. Unlike the
     /// sample-matter fixture, this layer reaches production, so
     /// it carries the data one brand owns and the other must not — the
-    /// Firm's postal identities against the Foundation's.
+    /// Firm's postal identities against another entity's.
     pub seed: store::seed::BrandSeed,
     /// The telemetry `service.name` this deployment reports under. It names
     /// the deployment rather than the process, so a trace says which face it

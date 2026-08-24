@@ -267,7 +267,7 @@ mod tests {
     /// engages when DocuSign is genuinely unset.
     #[test]
     fn a_deployment_that_declares_no_docusign_is_asked_for_none() {
-        let demanded = demanded(&[("NAVIGATOR_GCP_PROJECT_ID", "neon-law-org")]);
+        let demanded = demanded(&[("NAVIGATOR_GCP_PROJECT_ID", "neon-law-stg")]);
         for key in DOCUSIGN_KEYS {
             assert!(
                 !demanded.contains(&(*key).to_owned()),

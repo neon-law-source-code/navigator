@@ -35,7 +35,7 @@ pub struct CatalogIndexContent {
     /// The hero paragraph, reused as the page's meta description.
     pub lede: String,
     pub materials: Vec<CatalogMaterial>,
-    /// The Foundation inbox the empty state writes to.
+    /// The inbox the empty state writes to.
     pub contact_email: String,
     /// The line under the list. Empty renders nothing.
     pub footnote: String,
@@ -53,7 +53,7 @@ pub struct CatalogIndexView {
     pub content: CatalogIndexContent,
 }
 
-/// Resolve the Foundation chrome and this category's injected content.
+/// Resolve the shared chrome and this category's injected content.
 #[server]
 pub async fn catalog_index_view() -> Result<CatalogIndexView, ServerFnError> {
     let content = dioxus_fullstack_core::FullstackContext::extract::<
@@ -250,7 +250,7 @@ mod tests {
     }
 
     #[test]
-    fn an_empty_category_offers_the_foundation_inbox_instead() {
+    fn an_empty_category_offers_the_inbox_instead() {
         fn app() -> Element {
             let content = CatalogIndexContent {
                 title: "Presentations".to_string(),

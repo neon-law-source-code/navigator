@@ -11,7 +11,7 @@
 //! The vocabulary is a small, closed enum extended deliberately as the
 //! firm's practice areas grow. Most values name notation-family kinds (a
 //! legal template that becomes a running Notation); some name content
-//! pages (events, posts, board minutes, workshops); and the rest name
+//! pages (events, posts, workshops); and the rest name
 //! **matter dashboard kinds** — the page types an attorney composes,
 //! whose section skeletons live in [`crate::dashboard`].
 
@@ -54,9 +54,6 @@ pub enum Kind {
     Event,
     /// A published blog post under `web/content/blog/`.
     Post,
-    /// A quarterly board-minutes page under
-    /// `web/content/foundation/minutes/`.
-    Minutes,
     /// A public workshop / teaching page under
     /// `web/content/workshops/`.
     Workshop,
@@ -145,7 +142,6 @@ impl Kind {
         Kind::Memo,
         Kind::Event,
         Kind::Post,
-        Kind::Minutes,
         Kind::Workshop,
         Kind::Github,
         Kind::Transcript,
@@ -179,7 +175,6 @@ impl Kind {
             Kind::Memo => "memo",
             Kind::Event => "event",
             Kind::Post => "post",
-            Kind::Minutes => "minutes",
             Kind::Workshop => "workshop",
             Kind::Github => "github",
             Kind::Transcript => "transcript",
@@ -217,7 +212,6 @@ impl Kind {
             Kind::Memo => "An analytical work product (a review memo or opinion)",
             Kind::Event => "A public event page (web/content/events/)",
             Kind::Post => "A published blog post (web/content/blog/)",
-            Kind::Minutes => "A quarterly board-minutes page",
             Kind::Workshop => "A public workshop / teaching page (web/content/workshops/)",
             Kind::Github => {
                 "An engineering intake notation that opens a GitHub issue or pull request \
@@ -295,7 +289,6 @@ impl Kind {
             | Kind::Memo
             | Kind::Event
             | Kind::Post
-            | Kind::Minutes
             | Kind::Workshop
             | Kind::Github
             | Kind::Transcript
@@ -341,7 +334,7 @@ impl Kind {
 
     /// True when this kind is a notation-family kind — a legal template
     /// that declares a questionnaire/workflow and becomes a Notation — as
-    /// opposed to a content page (event/post/minutes/workshop).
+    /// opposed to a content page (event/post/workshop).
     #[must_use]
     pub fn is_notation(self) -> bool {
         matches!(
@@ -364,7 +357,7 @@ impl Kind {
     /// Every notation-family kind does, and so does [`Kind::Github`],
     /// which drives an engineering artifact through the same questionnaire
     /// grammar without being a legal instrument. A content page
-    /// (`post`, `minutes`, `workshop`) never does — [`crate::S104MissingKind`]
+    /// (`post`, `workshop`) never does — [`crate::S104MissingKind`]
     /// keys on this to flag a content page carrying a copied
     /// `questionnaire:`/`workflow:` block, which would otherwise skip every
     /// structural rule in silence.
@@ -407,7 +400,6 @@ impl Kind {
                 | Kind::Memo
                 | Kind::Event
                 | Kind::Post
-                | Kind::Minutes
                 | Kind::Workshop
                 | Kind::Github
                 | Kind::ReviewQueueWorkbench
@@ -448,7 +440,6 @@ impl Kind {
                 | Kind::Unclassified => true,
                 Kind::Event
                 | Kind::Post
-                | Kind::Minutes
                 | Kind::Workshop
                 | Kind::Github
                 | Kind::ReviewQueueWorkbench
@@ -505,7 +496,6 @@ pub const VALID: &[&str] = &[
     "memo",
     "event",
     "post",
-    "minutes",
     "workshop",
     "github",
     "review_queue_workbench",
@@ -590,7 +580,6 @@ mod tests {
         for kind in [
             Kind::Event,
             Kind::Post,
-            Kind::Minutes,
             Kind::Workshop,
             Kind::Github,
             Kind::ReviewQueueWorkbench,
@@ -633,7 +622,7 @@ mod tests {
                 kind.as_str()
             );
         }
-        for kind in [Kind::Event, Kind::Post, Kind::Minutes, Kind::Workshop] {
+        for kind in [Kind::Event, Kind::Post, Kind::Workshop] {
             assert!(!kind.is_notation(), "{} is a content page", kind.as_str());
         }
         // A dashboard kind composes registered sections. It declares no
@@ -713,7 +702,6 @@ mod tests {
             Kind::Memo,
             Kind::Event,
             Kind::Post,
-            Kind::Minutes,
             Kind::Workshop,
             Kind::Github,
             Kind::Transcript,

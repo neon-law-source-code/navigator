@@ -317,9 +317,9 @@ pub async fn login_as(c: &Client, email: &str, password: &str, return_to: &str) 
 
 /// [`login_as`] against an explicit origin.
 ///
-/// A session cookie belongs to the origin that set it, so a suite driving the
-/// firm's host beside the Foundation's cannot reuse a login taken at
-/// [`base_url`] — it has to sign in at the host it is about to read.
+/// A session cookie belongs to the origin that set it, so a suite driving more
+/// than one host cannot reuse a login taken at [`base_url`] — it has to sign in
+/// at the host it is about to read.
 pub async fn login_as_at(c: &Client, base_url: &str, email: &str, password: &str, return_to: &str) {
     c.goto(&format!("{base_url}/auth/login?return_to={return_to}"))
         .await

@@ -2,7 +2,7 @@
 //!
 //! A tenant deploy is a firm that runs Navigator behind its own marketing site.
 //! It publishes none of the first-party brands' pages — not the firm's, not the
-//! Foundation's — and answers its bare host with a redirect into
+//! own — and answers its bare host with a redirect into
 //! the portal, because the only thing it serves is the application.
 //!
 //! This is what `--site app` selected before #974 gave every face its own

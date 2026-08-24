@@ -98,7 +98,7 @@ pub struct CatalogStepView {
     pub content: StepContent,
 }
 
-/// Resolve the Foundation chrome and this step's content.
+/// Resolve the shared chrome and this step's content.
 #[server]
 pub async fn catalog_step_view() -> Result<CatalogStepView, ServerFnError> {
     let content =

@@ -515,38 +515,12 @@ fn ops_gcp_help_lists_the_hub_alongside_the_environment_provisioner() {
     assert_eq!(
         command_names(&output),
         vec![
-            // The three provisioners, widest blast radius first: an
-            // environment, then the shared registry, then the static sites.
-            "setup",
-            "hub",
-            "marketing", // Post-provisioning operations.
-            "iap",
-            "help",
+            // The two provisioners, widest blast radius first: an environment,
+            // then the shared registry.
+            "setup", "hub", // Post-provisioning operations.
+            "iap", "help",
         ]
     );
-}
-
-/// `marketing` provisions world-readable buckets. The environment provisioner
-/// provisions private client documents. The only thing separating the two at
-/// the terminal is which word the operator types, so the help has to say what
-/// this one refuses to build.
-#[test]
-fn ops_gcp_marketing_setup_help_states_what_it_will_not_create() {
-    let output = unwrapped(&help(&["ops", "gcp", "marketing", "--help"]));
-
-    assert!(output.contains("never creates GKE, private document storage"));
-    assert!(output.contains("The marketing project is not an environment"));
-}
-
-/// Certificate issuance is blocked until DNS resolves to the printed address,
-/// so an operator who reads only the help still learns that DNS is their next
-/// step and that this command will not do it for them.
-#[test]
-fn ops_gcp_marketing_setup_help_names_dns_as_the_operator_s_next_step() {
-    let output = unwrapped(&help(&["ops", "gcp", "marketing", "setup", "--help"]));
-
-    assert!(output.contains("Managed certificates cannot finish issuing"));
-    assert!(output.contains("not something this command performs"));
 }
 
 /// The hub provisions a registry and an identity; the environment provisioner

@@ -82,8 +82,8 @@ pub(super) const READER_ROLE: &str = "roles/artifactregistry.reader";
 const WORKLOAD_IDENTITY_USER_ROLE: &str = "roles/iam.workloadIdentityUser";
 
 /// The organization-policy constraint that gates domain restricted sharing.
-/// Once the Foundation's project sits in its own organization, `neon-law` and
-/// `neon-law-org` service accounts are foreign identities to it, so every
+/// Once each project sits in its own organization, a deployment's service
+/// accounts are foreign identities to the hub, so every
 /// `setIamPolicy` against the hub repository is evaluated against this
 /// constraint — including a routine provisioner re-run.
 pub const DOMAIN_RESTRICTED_SHARING_CONSTRAINT: &str = "constraints/iam.allowedPolicyMemberDomains";

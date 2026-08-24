@@ -36,7 +36,7 @@ jurisdiction prefix (`nv__llc_formation`, `us__form_990`, `ca__...`). A retainer
 ## Anatomy of a template file
 
 > For a plain-English, attorney-facing tour of every frontmatter key — across notation templates, events, blog posts,
-> and board minutes — see <frontmatter.md>. This section is the authoring-focused version.
+> and workshop pages — see <frontmatter.md>. This section is the authoring-focused version.
 
 Every template has two parts: YAML frontmatter (the contract) and a markdown body (the document, with
 `{{question_code}}` placeholders). Here is the shared retainer frontmatter from `templates/neon_law/shared/retainer.md`

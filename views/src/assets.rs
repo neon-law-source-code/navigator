@@ -242,8 +242,7 @@ pub enum Theme {
     /// The beautiful things in life: blossoms, birds, gardens.
     Beauty,
     /// The firm's own surface — the photography `www.neonlaw.com`
-    /// leads with, curated for the law firm host rather than for the
-    /// Foundation's editorial gallery.
+    /// leads with, curated for the law firm host.
     Firm,
 }
 

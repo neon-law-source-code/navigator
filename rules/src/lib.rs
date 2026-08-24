@@ -6,7 +6,6 @@
 pub mod c001;
 pub mod c002;
 pub mod c003;
-pub mod c004;
 pub mod citation;
 pub mod d001;
 pub mod d002;
@@ -94,7 +93,6 @@ pub mod workflow_steps;
 pub use c001::C001ContentTitle;
 pub use c002::C002ContentDescription;
 pub use c003::C003BlogFilename;
-pub use c004::C004MinutesFilename;
 pub use d001::D001UnknownSection;
 pub use d002::D002OutOfCatalogSection;
 pub use d003::D003RequiredSection;
@@ -325,7 +323,6 @@ pub fn description_for_code(code: &str) -> &'static str {
         "C001" => "Content page must declare a non-empty `title`",
         "C002" => "Content page must declare a non-empty `description`",
         "C003" => "Blog post filename must be `YYYYMMDD_slug.md`",
-        "C004" => "Board-minutes filename must be `YYYY-qN.md`",
         "D001" => "Matter dashboard section must be a recognized section type",
         "D002" => "Matter dashboard section must be in the declared kind's catalog",
         "D003" => "Matter dashboard must carry its required sections",
@@ -644,7 +641,7 @@ mod tests {
         // into two numbered codes (`M057`, `M061`) instead.
         use super::engine::{
             navigator_blog_rules, navigator_default_rules, navigator_event_rules,
-            navigator_markdown_only_rules, navigator_minutes_rules,
+            navigator_markdown_only_rules,
         };
         let mut codes: Vec<&'static str> = Vec::new();
         for set in [
@@ -652,7 +649,6 @@ mod tests {
             navigator_markdown_only_rules(),
             navigator_event_rules(),
             navigator_blog_rules(),
-            navigator_minutes_rules(),
         ] {
             codes.extend(set.iter().map(|r| r.code()));
         }

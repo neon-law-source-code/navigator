@@ -4,7 +4,7 @@ title: Thanks, Apple
 description: A farewell to my Apple teammates, and the north star that's taking me to Neon Law.
 ---
 
-_Nick is a lawyer for Neon Law and volunteer for the Neon Law Foundation_.
+_Nick is a lawyer for Neon Law_.
 
 ![If fruit falls, it's fair game](img/thanks-apple/collage-6.jpg)
 
@@ -30,7 +30,7 @@ A big thank you to Kartthik and Alejandro, my roommates for a bit, who took me i
 easiest chapter of my life, but it's one where I found brothers.
 
 I was on personal leave this past month, and during that time I realized my professional north star is doing everything
-I can to advance [access to justice](/foundation/mission). I'll be building my law firm, Neon Law, toward exactly that.
+I can to advance access to justice. I'll be building my law firm, Neon Law, toward exactly that.
 
 Thank you all, from the bottom of my heart.
 

@@ -412,7 +412,7 @@ mod tests {
         );
         // A `../`-relative link is left repo-relative. Deliberately a source
         // path rather than a content one: the previous example pointed at the
-        // Foundation's mission letter, which was deleted with that surface, and
+        // mission letter, which was deleted with that surface, and
         // an assertion anchored to prose outlives the prose.
         assert!(
             glossary

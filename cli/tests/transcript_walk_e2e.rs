@@ -285,5 +285,5 @@ fn neon_router(state: portal::AppState) -> axum::Router {
         neon::PUBLIC_PATHS,
         dioxus,
     )
-    .expect("the Foundation host must not claim Navigator-owned routes")
+    .expect("the public host must not claim Navigator-owned routes")
 }

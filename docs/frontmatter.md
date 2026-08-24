@@ -5,8 +5,8 @@ publish: true
 # Frontmatter: the cover sheet on every file
 
 This page is for the attorney who is about to write or edit a file in Neon Law Navigator — a notation template, a blog
-post, a workshop, or board minutes — and wants to know what the little block at the top is for. You do not need to be a
-programmer to read it. You need to know which label goes on which document, and what each line means.
+post, or a workshop — and wants to know what the little block at the top is for. You do not need to be a programmer to
+read it. You need to know which label goes on which document, and what each line means.
 
 ## You cannot quietly ship a broken document
 
@@ -40,9 +40,9 @@ wrong, the editor underlines it — the same way a word processor underlines a m
 You say what a file is by **declaring it**: a `kind:` key names the file's kind outright, and that declaration is the
 *only* classifier — the system never guesses the kind from a file's structure or its path. Its value is one of a small,
 fixed vocabulary. Most values name notation-template kinds — `retainer`, `letter`, `filing`, `will`, `trust`,
-`directive`, `agreement`, `onboarding`, `memo` — some name content pages — `post`, `minutes`, `workshop` — and one,
-`github`, names the engineering intake notations. A further ten name **matter dashboards**, the page types an attorney
-composes. Anything else is a blocking error (`S103`). The vocabulary grows as the firm's practice areas do.
+`directive`, `agreement`, `onboarding`, `memo` — some name content pages — `post`, `workshop` — and one, `github`, names
+the engineering intake notations. A further ten name **matter dashboards**, the page types an attorney composes.
+Anything else is a blocking error (`S103`). The vocabulary grows as the firm's practice areas do.
 
 A file that declares no `kind:` is ordinary prose, held only to general writing rules. Because classification is
 declaration-only, a file that carries notation *structure* — a `questionnaire:`/`workflow:` block — but forgets its
@@ -209,9 +209,9 @@ form: nv__llc_formation
 The three travel together: N109 requires `form:` and `origin_url:` whenever `output: form` is declared, and rejects a
 `form:` key on any other profile. So `form:` present and `output: form` always imply each other.
 
-## Blog posts and board minutes
+## Blog posts
 
-These two are the simplest: a `title` and a `description`, and a filename that follows a fixed shape.
+The simplest kind: a `title` and a `description`, and a filename that follows a fixed shape.
 
 A blog post (`server/content/blog/`) takes its publish date from the filename, so the name **must** be
 `YYYYMMDD_slug.md` (e.g. `20260625_going_all_in_on_rust.md`). A name whose date does not parse is silently dropped — the
@@ -259,11 +259,11 @@ document kind, so nothing is hidden:
 | `image_url`, `image_alt` | no | the event picture (same as on Luma) and its alt text | web build |
 | `public_slug` | no | a custom URL slug | web build |
 
-### Blog post, board minutes, and workshop page
+### Blog post and workshop page
 
 | Key | Required | Values | Checked by |
 | --- | --- | --- | --- |
-| `kind` | yes | `post` (blog), `minutes` (board minutes), `workshop` (workshop page) | S103 |
+| `kind` | yes | `post` (blog), `workshop` (workshop page) | S103 |
 | `title` | yes | any non-empty text | C001 |
 | `description` | yes | any non-empty text | C002 |
 
@@ -311,8 +311,8 @@ question, and at least one free-text question whose answer becomes the body.
 Three footnotes. `form` rides along on government-form templates and is bound to `output: form` — N109 requires the two
 together and rejects a `form:` key on any other profile, so a stray or orphaned `form:` is now a loud error rather than
 a silent one. Finally, on how the required `kind:` is enforced: a template that carries structure but omits `kind:`
-trips `S104` right in your editor; a content page (blog, minutes, workshop) has no such structural tell, so a repo-wide
-corpus test — not a per-file squiggle — fails CI if one ships without its `kind:`.
+trips `S104` right in your editor; a content page (blog, workshop) has no such structural tell, so a repo-wide corpus
+test — not a per-file squiggle — fails CI if one ships without its `kind:`.
 
 ## The squiggly underline: red versus yellow
 

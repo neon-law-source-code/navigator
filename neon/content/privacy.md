@@ -3,14 +3,10 @@ it with, and the choices you have. We aim to collect as little as possible and t
 
 ## Who We Are
 
-This policy covers two organizations that operate through this site:
-
-- **Neon Law Foundation** — a 501(c)(3) non-profit that runs our access-to-justice programs, cases, and AI teaching on
-  Neon Law Navigator, which it operates under license from Shook Law PLLC.
-- **Shook Law PLLC** — the law firm that renders legal services.
-
-Where it matters which organization holds your information, we say so below. The Foundation handles program, donor, and
-education data; Shook Law PLLC handles client and legal-matter data. Both apply the practices described here.
+This policy covers **Shook Law PLLC**, which trades as Neon Law and is the law firm that renders legal services through
+this site. One organization holds your information: there is no second entity behind any part of this site, and nothing
+collected here is held by anyone else on our behalf beyond the processors described below. The software running this
+site is Neon Law Navigator, which is owned and operated by Shook Law PLLC.
 
 ## Information We Collect
 
@@ -87,6 +83,5 @@ steps to notify you.
 
 ## Contact Us
 
-If you have questions about this Privacy Policy, please contact the Neon Law Foundation at
-[support@neonlaw.org](mailto:support@neonlaw.org), or Shook Law PLLC at
+If you have questions about this Privacy Policy, please contact Shook Law PLLC at
 [contact@neonlaw.com](mailto:contact@neonlaw.com) or +1 510 800 2080.

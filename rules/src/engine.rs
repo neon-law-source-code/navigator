@@ -46,11 +46,6 @@ pub enum DocumentKind {
     /// frontmatter rules (`C001`/`C002`) and the dated-filename rule
     /// (`C003`).
     BlogPost,
-    /// A quarterly board-minutes page under
-    /// `web/content/foundation/minutes/`, named `YYYY-qN.md`, carrying a
-    /// `title` and `description`. Gets the prose rules plus `C001`/`C002`
-    /// and the minutes-filename rule (`C004`).
-    BoardMinutes,
     /// A public workshop / teaching page under `web/content/workshops/`,
     /// carrying a `title` and `description`. Gets the prose rules plus the
     /// shared content-page rules (`C001`/`C002`).
@@ -570,7 +565,7 @@ pub fn navigator_event_rules() -> Vec<Box<dyn Rule>> {
 /// Prose Markdown rules plus the shared content-page frontmatter rules
 /// (`C001` title, `C002` description). This is the base for every
 /// published `web/content` page that is not a notation template —
-/// events, blog posts, and board minutes — each of which then adds its
+/// events, blog posts, and workshops — each of which then adds its
 /// own kind-specific rule(s).
 #[must_use]
 fn navigator_content_page_rules() -> Vec<Box<dyn Rule>> {
@@ -588,16 +583,6 @@ fn navigator_content_page_rules() -> Vec<Box<dyn Rule>> {
 pub fn navigator_blog_rules() -> Vec<Box<dyn Rule>> {
     let mut rules = navigator_content_page_rules();
     rules.push(Box::new(crate::C003BlogFilename));
-    rules
-}
-
-/// The rule set for a board-minutes page under
-/// `web/content/foundation/minutes/`: the shared content-page rules plus
-/// `C004`, which pins the `YYYY-qN.md` filename.
-#[must_use]
-pub fn navigator_minutes_rules() -> Vec<Box<dyn Rule>> {
-    let mut rules = navigator_content_page_rules();
-    rules.push(Box::new(crate::C004MinutesFilename));
     rules
 }
 
@@ -688,7 +673,6 @@ pub fn classify_source(file: &SourceFile) -> DocumentKind {
     match kind {
         crate::kind::Kind::Event => DocumentKind::Event,
         crate::kind::Kind::Post => DocumentKind::BlogPost,
-        crate::kind::Kind::Minutes => DocumentKind::BoardMinutes,
         crate::kind::Kind::Workshop => DocumentKind::Workshop,
         crate::kind::Kind::Github => DocumentKind::Github,
         // Every notation-family kind is handled by the `is_notation()`
@@ -729,7 +713,6 @@ pub fn navigator_classified_rules_with_codes(
         DocumentKind::NotationTemplate => navigator_default_rules_with_codes(valid_codes),
         DocumentKind::Event => navigator_event_rules(),
         DocumentKind::BlogPost => navigator_blog_rules(),
-        DocumentKind::BoardMinutes => navigator_minutes_rules(),
         DocumentKind::Workshop => navigator_workshop_rules(),
         DocumentKind::Github => navigator_github_rules_with_codes(valid_codes),
         DocumentKind::MatterDashboard => navigator_dashboard_rules(),
@@ -1138,8 +1121,6 @@ mod tests {
         assert_eq!(classify_source(&event), DocumentKind::Event);
         let post = source("anywhere.md", "---\ntitle: T\nkind: post\n---\n");
         assert_eq!(classify_source(&post), DocumentKind::BlogPost);
-        let minutes = source("anywhere.md", "---\ntitle: T\nkind: minutes\n---\n");
-        assert_eq!(classify_source(&minutes), DocumentKind::BoardMinutes);
         let workshop = source("anywhere.md", "---\ntitle: T\nkind: workshop\n---\n");
         assert_eq!(classify_source(&workshop), DocumentKind::Workshop);
     }
@@ -1167,19 +1148,19 @@ mod tests {
 
     #[test]
     fn a_content_path_alone_does_not_classify() {
-        // Path no longer classifies content pages either — a blog/minutes
-        // file that forgets its `kind:` is plain Markdown (the corpus
-        // guard test keeps the real content roots honest).
+        // Path no longer classifies content pages either — a blog or
+        // workshop file that forgets its `kind:` is plain Markdown (the
+        // corpus guard test keeps the real content roots honest).
         let blog = source(
             "web/content/blog/20260625_going_all_in_on_rust.md",
             "---\ntitle: Going All-In on Rust\ndescription: Why.\n---\n\nBody.\n",
         );
         assert_eq!(classify_source(&blog), DocumentKind::Markdown);
-        let minutes = source(
-            "web/content/foundation/minutes/2021-q1.md",
-            "---\ntitle: Minutes\ndescription: Q1.\n---\n\nBody.\n",
+        let workshop = source(
+            "server/content/workshops/navigator/DEPLOY.md",
+            "---\ntitle: Deploy\ndescription: How.\n---\n\nBody.\n",
         );
-        assert_eq!(classify_source(&minutes), DocumentKind::Markdown);
+        assert_eq!(classify_source(&workshop), DocumentKind::Markdown);
     }
 
     #[test]
@@ -1203,19 +1184,6 @@ mod tests {
             !codes.iter().any(|c| c.starts_with('N')),
             "a blog post is not a notation template: {codes:?}"
         );
-    }
-
-    #[test]
-    fn board_minutes_require_minutes_filename() {
-        let file = source(
-            "web/content/foundation/minutes/q1-2021.md",
-            "---\nkind: minutes\ntitle: T\ndescription: D\n---\n\nBody.\n",
-        );
-        let codes: Vec<&str> = lint_source_classified(&file)
-            .iter()
-            .map(|v| v.code)
-            .collect();
-        assert!(codes.contains(&"C004"), "expected C004, got {codes:?}");
     }
 
     #[test]

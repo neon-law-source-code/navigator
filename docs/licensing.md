@@ -15,8 +15,8 @@ them, and a fork never has to reconcile two sets of obligations across a directo
 **What changed, and what did not.** Navigator was published under `AGPL-3.0-only` from August 2026 until this licence
 took effect. Every copy distributed in that window is still an `AGPL-3.0-only` copy, permanently — a licence already
 granted cannot be withdrawn, and nothing here reaches back to it. The relicence governs versions published from here on.
-The Neon Law Foundation's perpetual right to publish under the AGPL was **released in writing** before the relicence,
-which is what makes `BUSL-1.1` the only grant now in effect rather than one of two.
+`BUSL-1.1` is the only grant now in effect: Shook Law PLLC holds the copyright and is the sole Licensor, and no other
+party is entitled to publish this work.
 
 ## The four parameters
 
@@ -56,8 +56,8 @@ work. So AGPL-3.0-only code can be included in a program with GPL-3.0 code, whic
 ends on its last covenant, and carries no prose of ours in between. The parameters block is part of the instrument —
 BUSL is filled in by its licensor — so the Firm's own name appears there legitimately, where under the FSF's text it
 never could. [`NOTICE`](../NOTICE) beside it carries everything we have to *say* — the copyright line, what each
-parameter means, where the production boundary falls, the SPDX tag, the released publication right, the government forms
-nobody here can license, the marks the Firm reserves, and the terms a contribution arrives under.
+parameter means, where the production boundary falls, the SPDX tag, the government forms nobody here can license, the
+marks the Firm reserves, and the terms a contribution arrives under.
 
 The split is what every other project does, and there is a mechanical reason for it. A licence file is read by machines
 as well as people: GitHub's repository page, `cargo deny`, SBOM generators, and a corporate review team's scanner all
@@ -74,37 +74,27 @@ an added clause to sit and no way to move the deal without failing a test.
 
 ## Who holds what
 
-Two facts, one organization, and a third that used to belong to somebody else.
+Two facts, one organization.
 
 | Held | By | Which is why |
 | --- | --- | --- |
 | Copyright in this repository | **Shook Law PLLC**, the law firm | Only the holder can grant the whole work |
 | **NEON LAW**, U.S. Reg. No. 6,325,650 | **Shook Law PLLC**, the law firm | The mark is not licensed here at all |
-| A right to publish under `AGPL-3.0-only` | **Neon Law Foundation**, until released | See below |
 
 **Why the Firm holds it.** The Firm writes this software, engages the people who write the rest of it, and operates a
 legal practice on it under the NEON LAW mark. A mark on legal services is how a client identifies who is accountable for
 their legal work, and that accountability belongs to the entity holding the bar licence — so the mark was always going
 to be the Firm's, and putting the copyright in the same hands is what lets one signature grant the whole work.
 
-**The third row is history, and it is written down because a release is invisible otherwise.** The **Neon Law
-Foundation** held a perpetual, irrevocable, non-exclusive, royalty-free right to publish this work under
-`AGPL-3.0-only`. It bound the Firm's successors and survived any change of the Firm's control, and its whole purpose was
-to make the AGPL grant something the Firm could not withdraw: a buyer of the Firm would have inherited a work somebody
-else was entitled to keep publishing, and could have been made to.
+**The Firm is the sole Licensor**, and no other party is entitled to publish this work. That is worth stating rather
+than leaving to inference, because the alternative — a second organization holding its own right to publish — would make
+a stated licence untrue while the repository looked exactly the same.
 
-That right is what a relicence had to deal with first. While it was in force, `BUSL-1.1` could not honestly be described
-as the only grant in effect — the Firm could license its own future versions however it liked, but a second organization
-could have gone on publishing the same work under the AGPL, and a repository stating one grant would have been
-describing half the picture. The Foundation **released the right in writing** before this licence took effect. Nothing
-survives it, and no other organization holds anything comparable.
-
-**A deliberate asymmetry, now that the right is gone.** The durability the second row used to provide is genuinely no
-longer there: the Firm may stop publishing, or change these parameters, whenever it chooses. What a reader can still
-rely on is narrower and worth stating exactly. Every copy already distributed keeps the terms it came with. Every
-version published under BUSL converts to `AGPL-3.0-only` on its own Change Date, and that conversion is a term of the
-licence each of those copies carries — so it does not depend on the Firm's later goodwill, or on the Firm still
-existing.
+**What that costs, stated plainly.** A sole Licensor may stop publishing, or change these parameters, whenever it
+chooses; nothing here promises otherwise. What a reader can rely on is narrower and does not depend on the Firm's later
+goodwill, or on the Firm still existing: every copy already distributed keeps the terms it came with, and every version
+published under BUSL converts to `AGPL-3.0-only` on its own Change Date, because that conversion is a term of the
+licence each of those copies already carries.
 
 **The practical consequence** is the sentence to read if you read only one: read it, build it, fork it, change it, and
 redistribute it — none of that needs anyone's permission. Running it to deliver legal services to other people is
@@ -139,8 +129,6 @@ under § 205 puts the assignment's date on the public record in its own right.
 | Instrument | Parties | Status |
 | --- | --- | --- |
 | Assignment of copyright, 17 U.S.C. § 204(a) | Nicholas Shook and Shook Law PLLC, to Shook Law PLLC | Executed |
-| Licence to publish under `AGPL-3.0-only` | Shook Law PLLC to the Neon Law Foundation | Released |
-| Release of that publication licence | Neon Law Foundation to Shook Law PLLC | Executed |
 
 Both assignors join the first instrument, each conveying whatever interest it holds. That is deliberate and costs one
 signature block: whether the work was already the Firm's turns on an employment question nobody needs to answer, and it
@@ -170,9 +158,9 @@ application states that the claimant obtained the work by written agreement and 
 ### This is not necessarily the last link
 
 Moving Navigator's copyright to a separate entity that does not practise law is under consideration. If that happens
-this section gains a row rather than being rewritten. Note what no longer travels with it: the Foundation's right to
-publish used to bind the Firm's successors, so a transfer carried that constraint along. With the right released, a
-transferee takes the copyright unencumbered — and becomes the Licensor who sets these parameters.
+this section gains a row rather than being rewritten. A transferee would take the copyright unencumbered, and would
+become the Licensor who sets these parameters — so the transfer is a decision about who controls the licence, not only
+about who owns the work.
 
 So read the holder named here as the holder of record today, and read this section — rather than any single sentence
 elsewhere — as the place the answer lives.
@@ -319,17 +307,15 @@ tests, standing up the local tier, evaluating it, and developing against it are 
 section about paying, silent on the free side, reads as though reading the source were chargeable — it is not.
 
 **Only the Firm can grant it.** This is not a policy choice that could have gone another way. A production exception is
-a permission carved out of the copyright, and a permission can only be given by whoever holds the right. There is no
-second organization with anything to carve from: the Foundation held a licence to publish rather than title, that
-licence has been released, and a licence to publish never conveyed a power to license others in the first place.
+a permission carved out of the copyright, and a permission can only be given by whoever holds the right. The Firm holds
+it, and no other party holds anything to carve from.
 
 **No price is published here or anywhere on the website.** A deployment's scope is not knowable in advance, so a figure
 would be a floor dressed as a fee — the same reason litigation and fractional general counsel carry none while the
 consumer flat fees are published in full. Write to [contact@neonlaw.org](mailto:contact@neonlaw.org).
 
-**Legal aid and nonprofit deployments should still write.** There is no standing sublicensing programme any more — the
-Foundation held that power and holds nothing now — but the Firm can license a legal aid office directly, and the reason
-the old programme existed has not gone away. Ask.
+**Legal aid and nonprofit deployments should write.** There is no standing programme with published terms, but the Firm
+can license a legal aid office directly, and the reason such a programme would exist has not gone away. Ask.
 
 One thing worth stating plainly, because the previous version of this section said the opposite and the sentence
 survives in forks: **production use is genuinely restricted now.** Under the AGPL, commercial licensing restricted

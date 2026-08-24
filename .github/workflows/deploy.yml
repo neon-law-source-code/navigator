@@ -1579,7 +1579,7 @@ jobs:
           # cannot be pointed at another legal entity's face by configuration.
           # Each isolated deployment selects its matching brand image;
           # every deployment pulls its own.
-          # `navigator-web` is an alias tag for this same Foundation brand
+          # `navigator-web` is an alias tag for this same site brand
           # image: the deployed GKE manifests still pull `navigator-web` (see
           # `k8s/base/web/web.yaml`), and they flip to `neon-server` with #796's
           # ship targets. It was its own matrix leg building the identical
@@ -2637,7 +2637,7 @@ jobs:
           TEXT=":package: *Neon Law Navigator ${TAG} — published assets*
 
           *Brand host image* (the binary is the site; no runtime flag selects the face)
-          • \`neon-server\` — www.neonlaw.com, the firm at the root and the Foundation under /foundation
+          • \`neon-server\` — www.neonlaw.com, the firm serving the whole site
 
           *Service images*
           • \`navigator-workflows-service\` — the durable-execution worker

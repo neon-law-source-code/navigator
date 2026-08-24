@@ -78,9 +78,9 @@ const LICENSE: &str = include_str!("../../LICENSE");
 ///
 /// `LICENSE` is the licence text plus its parameters, so beyond naming the
 /// Licensor and the Licensed Work it says little about how the grant applies
-/// here. `NOTICE` is what does: the copyright
-/// line, the marks the grant does not reach, the government forms the
-/// Foundation cannot license, and the § 13 network obligation in its own voice.
+/// here. `NOTICE` is what does: the copyright line, the marks the grant does not
+/// reach, the government forms nobody here can license, and where the production
+/// boundary falls.
 /// `--license` prints it first for that reason — the holder of a bare
 /// executable has no other way to learn any of it.
 const NOTICE: &str = include_str!("../../NOTICE");

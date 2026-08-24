@@ -58,7 +58,7 @@ impl SiteNavLink {
 ///   logo is decorative (`alt=""`) — the brand name follows in text and the
 ///   anchor is labelled, so the mark would otherwise be announced twice.
 /// - `destinations`: the primary marketing nav, in order.
-/// - `utility`: the auth-aware links (empty for an anonymous Foundation reader),
+/// - `utility`: the auth-aware links (empty for an anonymous reader),
 ///   rendered as a trailing group set off from the primary nav.
 /// - `menu_id`: the id tying the narrow-viewport burger label to its checkbox.
 ///   A page renders one header and wants the default; the `/design` gallery

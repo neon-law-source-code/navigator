@@ -525,10 +525,9 @@ fn hex_lower(bytes: &[u8]) -> String {
 /// loses to it and renders its label in the link colour instead of its own ink.
 ///
 /// That was invisible while link and primary were different hues, and became
-/// literal when the palette collapsed to one ramp per brand: the Foundation's
-/// only call to action rendered teal-on-teal, a 1:1 contrast ratio, and the
-/// firm's orange layer reproduced it exactly. The axe gate did not catch it, so
-/// this guard is what keeps it fixed.
+/// literal when the palette collapsed to one ramp: a call to action rendered
+/// teal-on-teal, a 1:1 contrast ratio. The axe gate did not catch it, so this
+/// guard is what keeps it fixed.
 #[test]
 fn the_filled_action_button_outranks_the_theme_link_rule() {
     let css = std::fs::read_to_string(public_dir().join("css/marketing-page.css"))

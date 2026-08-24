@@ -9,7 +9,7 @@
 //!
 //! The diagnosis is a pure function of four inputs — an environment lookup, a
 //! filesystem-existence probe, the stored credentials, and a clock — so the
-//! production, staging, and NLF configurations are all testable without
+//! production and staging configurations are both testable without
 //! mutating process-global environment variables (which races under parallel
 //! tests) and without touching a real Drive.
 //!
@@ -204,7 +204,7 @@ fn deployment_error_detail(error: &WorkspaceConfigError) -> String {
         ),
         WorkspaceConfigError::UnknownDeployment { project_id } => format!(
             "{project_id:?} is not a Project workspace deployment; expected one of \
-             neon-law, neon-law-stg, neon-law-org"
+             neon-law, neon-law-stg"
         ),
         WorkspaceConfigError::MissingCoordinate(key) if *key == NAVIGATOR_GITHUB_ORG => {
             format!(
@@ -443,7 +443,6 @@ mod tests {
         match project_id {
             "neon-law" => "NAVIGATOR_DRIVE_NEON_LAW_PRODUCTION_PROJECTS_ROOT_FOLDER_ID",
             "neon-law-stg" => "NAVIGATOR_DRIVE_NEON_LAW_STAGING_PROJECTS_ROOT_FOLDER_ID",
-            "neon-law-org" => "NAVIGATOR_DRIVE_NEON_LAW_NLF_PROJECTS_ROOT_FOLDER_ID",
             other => unreachable!("unknown deployment {other}"),
         }
     }
@@ -454,7 +453,6 @@ mod tests {
         for (project_id, root_name) in [
             ("neon-law", "Projects"),
             ("neon-law-stg", "Staging Projects"),
-            ("neon-law-org", "NLF Projects"),
         ] {
             let creds = logged_in("https://www.neonlaw.com", 10_000);
             let lookup = env(&deployment(project_id));

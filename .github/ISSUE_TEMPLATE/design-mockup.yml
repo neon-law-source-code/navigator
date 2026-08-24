@@ -55,7 +55,6 @@ body:
         should appear on.
       multiple: true
       options:
-        - nlf — Neon Law Foundation
         - neon — the public site
     validations:
       required: true

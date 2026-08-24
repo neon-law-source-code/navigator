@@ -352,14 +352,15 @@ fn the_linux_archive_name_matches_what_the_validate_action_downloads() {
 ///
 /// A recipient holds the archive and not the repository — that is the whole
 /// point of shipping a binary — so BUSL's condition that a conveyor display
-/// every recipient this License along with the work is met by the archive or not
-/// at all. § 13 can oblige that recipient to pass the corresponding source on in
-/// turn, and nobody honours an obligation from terms they were never shown.
+/// this License be displayed on every copy is met by the archive or not at all.
+/// Its parameters are what tell that recipient whether their own use needs a
+/// commercial licence, and nobody works that out from terms they were never
+/// shown.
 ///
 /// Both files, because they carry different halves of the answer. `LICENSE` is
-/// the Free Software Foundation's text unaltered, which says nothing about this
-/// work in particular; `NOTICE` carries the copyright line, the marks the grant
-/// does not reach, and § 13 in the Foundation's own voice.
+/// the licence text plus its parameters; `NOTICE` carries the copyright line,
+/// the marks the grant does not reach, and where the production boundary
+/// falls.
 ///
 /// Asserted per platform rather than once over the file, because the packaging
 /// steps are written in different shells against different paths and a fix to

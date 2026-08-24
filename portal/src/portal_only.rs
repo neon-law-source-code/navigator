@@ -3,8 +3,8 @@
 //! When the mounted brand manifest sets `portal_only: true`, `web` mounts only
 //! the *application* surface — `/app`, auth, the JSON `/api`, `/mcp`,
 //! the git transport, webhooks, the health probes, and the legal pages —
-//! and drops the entire public marketing + Foundation surface (the firm
-//! home page, `/contact`, `/team`, `/blog`, `/foundation/*`, the workshops
+//! and drops the entire public marketing surface (the firm
+//! home page, `/contact`, `/team`, `/blog`, the workshops
 //! and presentations). The bare host `/` 303-redirects to `/app/projects`.
 //!
 //! The use case is a law firm that deploys Neon Law Navigator under its own brand:

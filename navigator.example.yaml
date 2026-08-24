@@ -25,9 +25,8 @@ brand:
   # Display names. Overriding `firm` drops the linked ® in the footer —
   # NeonLaw's registered mark is not your name.
   firm: "Acme Law"
-  foundation: "Acme Law Foundation"
 
-  # Inbound support addresses (firm + foundation).
+  # Inbound support address.
   #
   # The firm's address has two dials. Set `support_domain` alone and the
   # address is `support@<support_domain>` — the ordinary case, one field to
@@ -40,15 +39,13 @@ brand:
   # derived from. Moving the mailbox must not move the cluster.
   support_domain: "acme.example"
   # support_email: "hello@acme.example"
-  foundation_email: "foundation@acme.example"
 
   # The firm's published voice line, shown on `/contact`. Omit to keep the
   # built-in number.
   firm_phone: "+1 555 010 0100"
 
-  # One-line postal addresses rendered in the footer.
+  # One-line postal address rendered in the footer.
   firm_address: "123 Main St Ste 100, Springfield, IL 62701"
-  foundation_address: "123 Main St Ste 200, Springfield, IL 62701"
 
   # Public origin + DNS apex. `base_url` is where email logos and
   # absolute links resolve; `primary_domain` hardens the Restate
@@ -76,10 +73,8 @@ portal_only: true
 assets:
   firm_logo: "./brand/logo-firm.svg"
   firm_logo_raster: "./brand/logo-firm.png"
-  foundation_logo: "./brand/logo-foundation.svg"
-  foundation_logo_raster: "./brand/logo-foundation.png"
 
-  # Optional public brand files beyond the four logo slots. Keys become
+  # Optional public brand files beyond the two logo slots. Keys become
   # `/public/brand/static/<key>`; values remain source-relative bundle paths.
   static_files:
     letterhead.css: "./brand/letterhead.css"

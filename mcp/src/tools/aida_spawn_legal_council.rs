@@ -192,8 +192,8 @@ pub fn descriptor() -> Value {
                         "Optional framing: what is this copy *for*? \
                          e.g., 'questionnaire prompt for the LLC \
                          formation notation', 'engagement-letter \
-                         paragraph on scope', 'Foundation mission blurb \
-                         for /foundation/mission'. Sharpens the bench; \
+                         paragraph on scope', 'access-to-justice blurb \
+                         for the practice pages'. Sharpens the bench; \
                          drop it and the voices will infer."
                 },
                 "full": {
@@ -426,7 +426,7 @@ mod tests {
     async fn full_invocation_lists_all_twelve_voices_in_order() {
         let result = call(&json!({
             "draft": "Welcome to Neon Law.",
-            "question": "Foundation mission blurb",
+            "question": "access-to-justice blurb",
             "full": true,
         }))
         .await
@@ -444,7 +444,7 @@ mod tests {
         assert_eq!(voices[1], "Scorpio");
         assert_eq!(voices[2], "Aries");
         assert_eq!(voices.last().copied(), Some("Pisces"));
-        assert_eq!(sc["framing"], "Foundation mission blurb");
+        assert_eq!(sc["framing"], "access-to-justice blurb");
     }
 
     #[tokio::test]

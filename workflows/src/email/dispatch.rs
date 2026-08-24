@@ -126,9 +126,10 @@ pub async fn dispatch_state(
         references: None,
         attachments: Vec::new(),
     };
-    // The workshop completion certificate rides a generated PDF and
-    // sends from the Foundation address (support@neonlaw.org) rather than
-    // the backend default. Every other slug keeps the previous shape.
+    // The workshop completion certificate rides a generated PDF and sends
+    // from the brand's own support address (`layout::support_email`, via
+    // `certificate::cert_from_email`) rather than the backend default. Every
+    // other slug keeps the previous shape.
     if slug == "certificate" {
         // `render_for_slug` above already validated `workshop_title` for the
         // certificate slug and returned `Err` if it was missing, so this can

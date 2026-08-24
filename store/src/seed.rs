@@ -109,9 +109,8 @@ pub const JURISDICTION_SEED_YAML: &str = canonical::JURISDICTION;
 /// the Neon Law mark, which is why it is the row the application refuses to
 /// delete. `Neon Law` is what the site is signed with; `Shook Law PLLC` is the
 /// legal person that renders the services and owns the mark, and only a legal
-/// person can anchor a client relationship. It is not the copyright holder —
-/// the software is the Neon Law Foundation's, and the two are deliberately
-/// different organizations. Moving this name is a data
+/// person can anchor a client relationship. It is also the copyright holder in
+/// Navigator and the Licensor named in `LICENSE`. Moving this name is a data
 /// change as well as a code one: `seed_entities` reconciles
 /// `entities.firm_anchor_key` on every boot, because the delete guard reads
 /// that column and not the name.
@@ -122,9 +121,9 @@ pub const FIRM_ENTITY_NAME: &str = "Shook Law PLLC";
 /// This is the third seed layer, and the only one besides the canonical set
 /// that reaches production. The canonical layer is what every deployment
 /// shares; the sample-matter fixture is disposable; this layer
-/// is the data one brand owns and the other must not carry. The Firm's postal
-/// identities and the Foundation's are the founding case: both are real, both
-/// belong in production, and neither belongs in the other's database.
+/// is the data one brand owns and another must not carry. The Firm's postal
+/// identities are the founding case: they are real, they belong in production,
+/// and they belong in no other deployment's database.
 ///
 /// A brand binary declares its own value in [`hosting::Brand`], so adding a
 /// brand is a new variant plus its seed directory rather than a branch in
@@ -133,12 +132,11 @@ pub const FIRM_ENTITY_NAME: &str = "Shook Law PLLC";
 /// [`hosting::Brand`]: https://docs.rs/portal
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BrandSeed {
-    /// `neonlaw.com` — Neon Law: the firm at the site root and the Neon Law
-    /// Foundation beneath `/foundation`, one binary serving both faces.
+    /// `neonlaw.com` — Neon Law: the firm, serving the whole site from its
+    /// root.
     ///
-    /// One variant, not two. The firm and the Foundation are still separate
-    /// legal entities and their rows stay keyed to those entities, but there
-    /// is one deployment applying them, so there is one seed to apply.
+    /// Rows stay keyed to the entity that owns them, so a further entity is a
+    /// further record rather than a further variant.
     Neon,
     /// A white-label tenant deployment, which carries none of our own
     /// entities' data. This is a real value rather than an absent one: a
@@ -647,9 +645,9 @@ pub async fn seed_sample_portfolio(
 }
 
 /// Apply one brand's own seeds. This is production data, deliberately: the
-/// Firm's postal identities and the Foundation's are real, and each belongs
-/// only in the deployment that serves that brand. Idempotent on the same
-/// natural keys as every other layer.
+/// Firm's postal identities are real, and they belong only in the deployment
+/// that serves that brand. Idempotent on the same natural keys as every other
+/// layer.
 ///
 /// # Errors
 ///
@@ -666,9 +664,9 @@ pub async fn seed_brand(surreal: &SurrealDb, brand: BrandSeed) -> anyhow::Result
 /// 1. The **canonical** seed, on every boot of every brand in every
 ///    environment: the shared identities, reference data, and catalog.
 /// 2. The booting **brand's own** seed, likewise in every environment
-///    including production. This is the layer that carries data one brand
-///    owns and the other must not: the brand layer seeds the Firm's mailboxes,
-///    `neon` the Foundation's, and neither sees the other's.
+///    including production. This is the layer that carries data one brand owns
+///    and another must not: `neon` seeds the Firm's own mailboxes, and a
+///    white-label tenant seeds none.
 /// 3. The disposable **sample-matter fixture**, on a `dev` profile only, so
 ///    synthetic Project, mail, or answer rows can never reach a deployment
 ///    holding real files.
@@ -2579,7 +2577,7 @@ records:
     ///
     /// Shook Law PLLC holds its own private mailbox at the Ridgeview Mail
     /// Center, and within that mail centre the box number is the whole address
-    /// — `405-9002`, `405-9005`, and `405-9999` are the same street, suite, and
+    /// — `405-9002`, `405-9005`, and `405-9011` are the same street, suite, and
     /// ZIP, so a wrong suffix delivers the firm's mail to another entity of
     /// ours rather than bouncing.
     ///
@@ -2748,17 +2746,17 @@ records:
             .await
             .unwrap()
             .expect("the anchor seeds");
-        let previous = crate::entities::find_by_name(&surreal, "Neon Law Foundation")
+        let previous = crate::entities::find_by_name(&surreal, "shook.family")
             .await
             .unwrap()
-            .expect("the Foundation is an ordinary seeded Entity");
+            .expect("shook.family is an ordinary seeded Entity");
         crate::entities::set_firm_anchor_key(&surreal, anchor.id, None)
             .await
             .unwrap();
         crate::entities::set_firm_anchor_key(
             &surreal,
             previous.id,
-            Some("neon law foundation".to_string()),
+            Some("shook.family".to_string()),
         )
         .await
         .unwrap();

@@ -8,12 +8,6 @@ records:
       jurisdiction:
         name: Nevada
         jurisdiction_type: state
-  - name: Neon Law Foundation
-    entity_type:
-      name: 501(c)(3) Non-Profit
-      jurisdiction:
-        name: Nevada
-        jurisdiction_type: state
   - name: shook.family
     entity_type:
       name: Family Trust

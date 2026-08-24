@@ -3,8 +3,7 @@
 //!
 //! Invariant (`AGENTS.md`): the repo holds the firm's OWN data and synthetic
 //! fixtures — never a client's. The only human-identifying contact data that
-//! may ship is the firm's (`@neonlaw.com`), the Foundation's (`@neonlaw.org`),
-//! and Nick Shook's
+//! may ship is the firm's (`@neonlaw.com` and `@neonlaw.org`), and Nick Shook's
 //! (`shook.family`); every other address must be a reserved synthetic domain
 //! (`example.com`, or a `.example` / `.invalid` / `.test` address, per RFC
 //! 2606 / RFC 6761). Anything else is a client-data suspect and fails the
@@ -49,10 +48,10 @@ const TEXT_EXTENSIONS: &[&str] = &[
 /// Domains whose local part identifies the firm or its principal, matched
 /// against the address's registrable domain and any subdomain of it.
 ///
-/// One entry per host that actually exists, and the consolidation left exactly
-/// three. `neonlaw.com` is the firm's own host, where it reads its mail
-/// (`views::brand::support_domain`); `neonlaw.org` is the Neon Law
-/// Foundation's, which the shared chrome publishes as `support@neonlaw.org`;
+/// One entry per host that actually exists, and there are three.
+/// `neonlaw.com` is the firm's own host, where it reads its mail
+/// (`views::brand::support_domain`); `neonlaw.org` is the firm's `.org`, which
+/// carries the contributions address `NOTICE` and `CONTRIBUTING.md` publish;
 /// `shook.family` is the principal's family trust. An address on any of them is
 /// the firm's, never a client's.
 const FIRM_DOMAINS: &[&str] = &["neonlaw.com", "neonlaw.org", "shook.family"];

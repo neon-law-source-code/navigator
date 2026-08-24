@@ -1,6 +1,5 @@
-//! Neon Law Navigator's CLI palette — the three Tailwind cyans that compose
-//! the Foundation mark (`server/public/logo-foundation.svg`). Each shade
-//! carries one letter: dark-teal `F`, cyan `L`, light-cyan `N`.
+//! Neon Law Navigator's CLI palette — three Tailwind cyans, darkest to
+//! lightest.
 //!
 //! - `CYAN_700` (`#0E7490`) — borders / separators / dim emphasis
 //! - `CYAN_500` (`#06B6D4`) — primary highlights (codes, keys)
@@ -15,7 +14,7 @@ use std::fmt::Display;
 
 use owo_colors::{OwoColorize, Stream, Style};
 
-/// Tailwind `cyan-700` — `#0E7490`. The `F` (Foundation mark only).
+/// Tailwind `cyan-700` — `#0E7490`. The darkest of the three.
 pub const CYAN_700: (u8, u8, u8) = (14, 116, 144);
 /// Tailwind `cyan-500` — `#06B6D4`. The `L`.
 pub const CYAN_500: (u8, u8, u8) = (6, 182, 212);

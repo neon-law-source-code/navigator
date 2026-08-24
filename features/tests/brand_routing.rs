@@ -82,14 +82,14 @@ async fn status(world: &mut BrandWorld, code: u16) {
 // page), so it is no longer a per-brand marker. The reliable per-brand
 // signal the layout still emits is the Open Graph `og:site_name`, set
 // from the page's `SiteBrand`. The trailing quote in the needle keeps
-// "Neon Law" from matching the "Neon Law Foundation" tag as a prefix.
+// "Neon Law" from matching a longer site-name tag as a prefix.
 /// Whether `body` declares `brand` as its `og:site_name`.
 ///
 /// HTML attributes may arrive in either order: `property="og:site_name"
 /// content="…"` or `content="…" property="og:site_name"`. A Gherkin step
 /// matches raw bytes, so both spellings are accepted. Each
 /// needle keeps the brand's closing quote, which is what stops "Neon Law" from
-/// matching the "Neon Law Foundation" tag as a prefix.
+/// matching a longer site-name tag as a prefix.
 fn declares_brand(body: &str, brand: &str) -> bool {
     body.contains(&format!("og:site_name\" content=\"{brand}\""))
         || body.contains(&format!("content=\"{brand}\" property=\"og:site_name\""))

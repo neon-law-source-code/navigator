@@ -1,9 +1,9 @@
-//! `C002` — a published content page (blog post, board minutes, or
+//! `C002` — a published content page (blog post or
 //! event) must declare a non-empty `description`.
 //!
 //! The `description` is not decoration: `portal::blog` renders it into the
 //! index blurb and the per-post `<meta name="description">`, and the
-//! events and transparency loaders require it the same way. A page that
+//! events loader requires it the same way. A page that
 //! ships without one renders with an empty social/search summary, so the
 //! rule requires it at authoring time.
 

@@ -32,7 +32,6 @@ pub enum GcpService {
     CloudResourceManager,
     ArtifactRegistry,
     Iam,
-    CertificateManager,
     SecretManager,
     CloudKms,
 }
@@ -50,7 +49,6 @@ impl GcpService {
             Self::CloudResourceManager => "https://cloudresourcemanager.googleapis.com",
             Self::ArtifactRegistry => "https://artifactregistry.googleapis.com",
             Self::Iam => "https://iam.googleapis.com",
-            Self::CertificateManager => "https://certificatemanager.googleapis.com",
             Self::SecretManager => "https://secretmanager.googleapis.com",
             Self::CloudKms => "https://cloudkms.googleapis.com",
         }

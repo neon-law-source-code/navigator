@@ -54,7 +54,7 @@ pub fn render_certificate(params: &CertificateParams) -> Result<Vec<u8>, PdfErro
 #rect(width: 100%, height: 100%, stroke: 1.5pt + rgb("#0aa3c2"), inset: 0pt, radius: 4pt)[
   #rect(width: 100%, height: 100%, stroke: 0.5pt + rgb("#0aa3c2"), inset: 24pt, radius: 2pt)[
     #align(center + horizon)[
-      #text(size: 15pt, tracking: 4pt, fill: rgb("#0aa3c2"))[NEON LAW FOUNDATION]
+      #text(size: 15pt, tracking: 4pt, fill: rgb("#0aa3c2"))[NEON LAW]
       #v(1.4em)
       #text(size: 38pt, weight: "bold")[Certificate of Completion]
       #v(1.8em)

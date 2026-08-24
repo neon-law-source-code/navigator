@@ -33,6 +33,10 @@ navigator ops ship --deployment <row> --deployments-dir . --tag 26.6.23 --dry-ru
 
 # No-rebuild push: restart service deployments so they re-read a rotated Secret value (no --tag needed).
 navigator ops ship --deployment <row> --deployments-dir . --restart-only
+
+# Under a no-IAM-changes rule: assert the web GSA's self-signing binding rather than granting it. An
+# absent binding stops the roll and prints the `gcloud` command for whoever holds `setIamPolicy`.
+navigator ops ship --deployment <row> --deployments-dir . --tag 26.6.23 --assert-signing-iam
 ```
 
 Configuration is read from the repository's `deployments/<name>/config.toml` — the GCP project / region / cluster for

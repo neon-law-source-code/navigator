@@ -294,9 +294,8 @@ fn validate(manifest: &BrandManifest, directory: &Path, diagnostics: &mut Vec<St
         ("brand.privacy_url", &manifest.brand.privacy_url),
     ] {
         if let Some(value) = value {
-            let valid = url::Url::parse(value).ok().is_some_and(|url| {
-                matches!(url.scheme(), "http" | "https") && url.host().is_some()
-            });
+            let valid = url::Url::parse(value)
+                .is_ok_and(|url| matches!(url.scheme(), "http" | "https") && url.host().is_some());
             if !valid {
                 diagnostics.push(format!("{field} must be an absolute http(s) URL"));
             }
@@ -363,10 +362,7 @@ fn validate_footer_contact(brand: &Brand, diagnostics: &mut Vec<String>) {
                 }
             }
             let valid = url::Url::parse(&license.license_url)
-                .ok()
-                .is_some_and(|url| {
-                    matches!(url.scheme(), "http" | "https") && url.host().is_some()
-                });
+                .is_ok_and(|url| matches!(url.scheme(), "http" | "https") && url.host().is_some());
             if !valid {
                 diagnostics.push(format!("{at}.license_url must be an absolute http(s) URL"));
             }

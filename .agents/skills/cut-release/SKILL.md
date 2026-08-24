@@ -11,5 +11,5 @@ through a PR; merging `main` drives publication.
 
 - Verify the requested version and the current manifest before changing it.
 - Make the smallest version-only commit, run the documented gate, and open the PR against `main`.
-- Watch the post-merge release workflow; report evidence and anything not verified.
+- Stop when that PR merges. Report its URL. Do not watch `deploy.yml` for the tag, images, archives, or tap.
 - Do not deploy, mutate production, or copy production coordinates into the branch, PR, or release notes.

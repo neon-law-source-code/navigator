@@ -49,7 +49,7 @@ pub fn render_password_reset_body(name: &str, email: &str, reset_url: &str) -> S
 
 /// Render the HTML alternative: the same substituted markdown wrapped in
 /// the inline-styled firm email layout with the firm logo. `base_url` is
-/// the public origin serving `/public/logo-neon.png`.
+/// the public origin serving `/public/logo.png`.
 #[must_use]
 pub fn render_password_reset_html(
     name: &str,
@@ -93,7 +93,7 @@ mod tests {
             "https://app.test",
         );
         assert!(html.starts_with("<!doctype html>"));
-        assert!(html.contains("logo-neon.png"));
+        assert!(html.contains("logo.png"));
         assert!(html.contains("https://app.test/auth/password/reset?token=abc"));
         assert!(!html.contains("subject:"));
     }

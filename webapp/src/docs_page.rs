@@ -140,7 +140,7 @@ mod tests {
             chrome: PublicChrome {
                 brand_name: "Neon Law".to_string(),
                 home_href: "/".to_string(),
-                logo_href: "/public/logo-firm.svg".to_string(),
+                logo_href: "/public/logo.svg".to_string(),
                 firm_name: "Neon Law".to_string(),
                 ..PublicChrome::default()
             },
@@ -194,7 +194,7 @@ mod tests {
         // way.
         assert!(out.contains("Neon Law"), "firm wordmark: {out}");
         assert!(
-            out.contains("/public/logo-firm.svg"),
+            out.contains("/public/logo.svg"),
             "firm mark, not the nonprofit's: {out}"
         );
     }

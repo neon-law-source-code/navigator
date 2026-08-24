@@ -238,7 +238,7 @@ mod tests {
         // A styled HTML alternative is attached so rich clients render
         // the logo + formatting; text-only clients fall back to `body`.
         let html = sent.html_body.as_deref().expect("html alternative set");
-        assert!(html.contains("logo-neon.png"));
+        assert!(html.contains("logo.png"));
         assert!(html.contains("Aries"));
 
         // And the same email actually went through the service.

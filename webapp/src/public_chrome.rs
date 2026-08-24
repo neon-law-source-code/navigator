@@ -361,9 +361,9 @@ mod tests {
     fn firm_chrome() -> PublicChrome {
         PublicChrome {
             brand_name: "Neon Law".to_string(),
-            logo_href: "/public/logo-firm.svg".to_string(),
+            logo_href: "/public/logo.svg".to_string(),
             firm_name: "Neon Law".to_string(),
-            firm_logo_href: "/public/logo-firm.svg".to_string(),
+            firm_logo_href: "/public/logo.svg".to_string(),
             firm_home_href: "/".to_string(),
             legal_entity: "Shook Law PLLC".to_string(),
             disclaimer: "This is an attorney advertisement.".to_string(),
@@ -415,7 +415,7 @@ mod tests {
         assert!(out.contains("\u{a9} 2026 Shook Law PLLC"), "{out}");
         assert!(out.contains("mailto:support@neonlaw.com"), "{out}");
         assert!(
-            out.contains(r#"class="site-footer__logo" src="/public/logo-firm.svg" alt="""#),
+            out.contains(r#"class="site-footer__logo" src="/public/logo.svg" alt="""#),
             "the firm footer carries the firm's mark: {out}"
         );
         assert!(!out.contains("site-footer--foundation"), "{out}");
@@ -476,7 +476,7 @@ mod tests {
             "the footer wordmark is the firm's: {out}"
         );
         assert!(
-            out.contains(r#"src="/public/logo-firm.svg""#),
+            out.contains(r#"src="/public/logo.svg""#),
             "and so is the mark: {out}"
         );
         assert!(

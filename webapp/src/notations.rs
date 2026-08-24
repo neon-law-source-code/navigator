@@ -191,7 +191,7 @@ mod tests {
                 // header would describe chrome no route produces.
                 brand_name: "Neon Law".to_string(),
                 home_href: "/".to_string(),
-                logo_href: "/public/logo-firm.svg".to_string(),
+                logo_href: "/public/logo.svg".to_string(),
                 firm_name: "Neon Law".to_string(),
                 ..PublicChrome::default()
             },

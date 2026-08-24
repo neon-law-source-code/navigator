@@ -3,7 +3,7 @@
 //! Email clients (Gmail, Outlook) strip `<style>` blocks and external
 //! stylesheets and never load SVG `<img>` sources, so this layout uses
 //! **inline** styles on a table skeleton and references the shared NL
-//! mark as a hosted **PNG** (`/logo-neon.png`, served by `web`'s static
+//! mark as a hosted **PNG** (`/logo.png`, served by `web`'s static
 //! asset route). It deliberately shares nothing with the `views`
 //! page shell — an email is not a web page, and we don't want the
 //! site nav/footer landing in someone's inbox.
@@ -83,7 +83,7 @@ pub fn support_email() -> &'static str {
 
 /// Render `content_markdown` into a self-contained, inline-styled HTML email
 /// document headed by the firm's logo. `base_url` is the public origin where
-/// the brand PNG (`/logo-neon.png`) is served (e.g. from
+/// the brand PNG (`/logo.png`) is served (e.g. from
 /// [`base_url_from_env`]); a trailing slash is tolerated.
 ///
 /// One brand, resolved from the mounted bundle. Every email this workspace
@@ -174,12 +174,12 @@ mod tests {
     fn embeds_logo_png_at_base_url_and_trims_trailing_slash() {
         let html = render_email_html("body", "https://example.test/");
         // Served from the exempt `/public` mount, not a gated site root.
-        assert!(html.contains(r#"src="https://example.test/public/logo-neon.png""#));
+        assert!(html.contains(r#"src="https://example.test/public/logo.png""#));
         assert!(html.contains(r#"alt="Neon Law""#));
         // No double slash from a trailing-slash base.
-        assert!(!html.contains("example.test//public/logo-neon.png"));
+        assert!(!html.contains("example.test//public/logo.png"));
         // Never reference the SVG — clients won't render it.
-        assert!(!html.contains("logo-neon.svg"));
+        assert!(!html.contains("logo.svg"));
     }
 
     /// Every email signs with the firm's wordmark, and with no other.
@@ -191,7 +191,7 @@ mod tests {
     #[test]
     fn every_email_signs_with_the_firms_wordmark() {
         let html = render_email_html("body", "https://example.test");
-        assert!(html.contains(r#"src="https://example.test/public/logo-neon.png""#));
+        assert!(html.contains(r#"src="https://example.test/public/logo.png""#));
         assert!(html.contains(r#"alt="Neon Law""#));
         assert!(
             !html.contains("Foundation"),

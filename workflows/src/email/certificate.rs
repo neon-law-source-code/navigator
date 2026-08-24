@@ -154,7 +154,7 @@ mod tests {
         );
         assert!(html.starts_with("<!doctype html>"));
         assert!(html.contains("Aries"));
-        assert!(html.contains("logo-neon.png"));
+        assert!(html.contains("logo.png"));
         assert!(
             !html.contains("Foundation"),
             "the certificate is the firm's artifact now: {html}"

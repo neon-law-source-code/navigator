@@ -412,7 +412,7 @@ async fn gallery_renders_people_list_and_social_meta() {
         "social image must come from branding, not a hard-coded URL: {html}"
     );
     assert!(
-        html.contains("/public/logo-neon.png"),
+        html.contains("/public/logo.png"),
         "og:image resolves from the firm brand's raster mark: {html}"
     );
     assert!(

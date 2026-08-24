@@ -209,7 +209,7 @@ static SITE_BASE_URL: LazyLock<String> = LazyLock::new(|| {
         .unwrap_or_default()
 });
 
-/// Resolve a root-relative path (`/public/logo-firm.png`) to an
+/// Resolve a root-relative path (`/public/logo.png`) to an
 /// absolute URL against [`SITE_BASE_URL`] for use in social-share
 /// meta tags. Returns `rel` unchanged when it is already absolute or
 /// when no base URL is configured.
@@ -578,24 +578,21 @@ mod tests {
         // With a configured origin, a `/public/...` logo path becomes
         // the absolute URL a social scraper can fetch.
         assert_eq!(
-            join_site("https://www.neonlaw.com", "/public/logo-firm.png"),
-            "https://www.neonlaw.com/public/logo-firm.png"
+            join_site("https://www.neonlaw.com", "/public/logo.png"),
+            "https://www.neonlaw.com/public/logo.png"
         );
         // Trailing slash on base, no leading slash on rel — still one
         // separator.
         assert_eq!(
-            join_site("https://www.neonlaw.com/", "public/logo-firm.png"),
-            "https://www.neonlaw.com/public/logo-firm.png"
+            join_site("https://www.neonlaw.com/", "public/logo.png"),
+            "https://www.neonlaw.com/public/logo.png"
         );
     }
 
     #[test]
     fn join_site_passes_through_when_unconfigured_or_already_absolute() {
         // No NAV_BASE_URL (dev/KIND/tests): keep the relative path.
-        assert_eq!(
-            join_site("", "/public/logo-firm.png"),
-            "/public/logo-firm.png"
-        );
+        assert_eq!(join_site("", "/public/logo.png"), "/public/logo.png");
         // Already-absolute image (e.g. a CDN URL): leave it untouched
         // rather than double-prefixing.
         assert_eq!(

@@ -869,7 +869,7 @@ mod tests {
                     copyright_holder: "Neon Law".to_string(),
                     disclaimer: "This is an attorney advertisement.".to_string(),
                     copyright_year: 2026,
-                    logo_href: "/public/logo-firm.svg".to_string(),
+                    logo_href: "/public/logo.svg".to_string(),
                     brand_name: "Neon Law".to_string(),
                     contact_email: "support@neonlaw.com".to_string(),
                     phone: "+1 510 800 2080".to_string(),
@@ -950,7 +950,7 @@ mod tests {
     fn renders_the_contact_cta_and_voice_line() {
         let out = contactable_html();
         assert!(
-            out.contains(r#"class="site-footer__logo" src="/public/logo-firm.svg" alt="""#),
+            out.contains(r#"class="site-footer__logo" src="/public/logo.svg" alt="""#),
             "the supplied brand mark renders as decorative footer identity: {out}"
         );
         // The subject rides the address, so the firm reads what the sender

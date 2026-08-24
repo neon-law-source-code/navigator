@@ -63,7 +63,7 @@ pub fn render_welcome_body(name: &str, email: &str) -> String {
 /// Render the welcome email's HTML alternative: the same substituted markdown
 /// body as [`render_welcome_body`], wrapped in the inline-styled email layout
 /// with the firm logo. `base_url` is the public origin serving
-/// `/logo-neon.png` (see [`super::layout::base_url_from_env`]).
+/// `/logo.png` (see [`super::layout::base_url_from_env`]).
 #[must_use]
 pub fn render_welcome_html(name: &str, email: &str, base_url: &str) -> String {
     super::layout::render_email_html(&render_welcome_body(name, email), base_url)
@@ -253,7 +253,7 @@ mod tests {
         assert!(html.starts_with("<!doctype html>"), "full HTML document");
         assert!(html.contains("Aries"), "name substituted into HTML");
         assert!(
-            html.contains(r#"src="https://example.test/public/logo-neon.png""#),
+            html.contains(r#"src="https://example.test/public/logo.png""#),
             "logo PNG embedded at the exempt /public base URL",
         );
         // The frontmatter must not survive into the rendered HTML.

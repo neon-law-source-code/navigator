@@ -4,11 +4,10 @@ publish: true
 
 # AIDA over A2A — confirmations and errors
 
-How AIDA behaves once a request reaches her over **A2A** — the surface Gemini Enterprise dials at `chat.neonlaw.com`
-(and any other A2A client). The agent-card, OAuth, and one-time wiring live in
-[`gemini-enterprise-mcp.md`](gemini-enterprise-mcp.md); this doc is the runtime interaction model: how a free-form ask
-becomes a tool call, where AIDA pauses to ask **yes/no**, and how a failure's *reason* gets back to the user instead of
-a blank non-result.
+How AIDA behaves once a request reaches her over **A2A** — the surface Gemini Enterprise dials (and any other A2A
+client). The agent-card, OAuth, and one-time wiring live in [`gemini-enterprise-mcp.md`](gemini-enterprise-mcp.md); this
+doc is the runtime interaction model: how a free-form ask becomes a tool call, where AIDA pauses to ask **yes/no**, and
+how a failure's *reason* gets back to the user instead of a blank non-result.
 
 It answers two questions that came out of real Gemini Enterprise use:
 

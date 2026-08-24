@@ -1209,8 +1209,9 @@ a.nav-pagination__link:hover {
   }
 }
 
-/* The label above an address: the state on the firm footer, the Foundation's
-   own entity on its footer. Named for the role, not for either value. */
+/* The label above an address: the state, on the firm footer. Named for the
+   role rather than the value, so a future brand's footer can reuse it with
+   its own label without a class rename. */
 .site-footer__office-label {
   display: block;
   margin-bottom: 0.2rem;

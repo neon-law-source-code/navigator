@@ -2,8 +2,8 @@
 //!
 //! The two-binary host pair that #860 removed rotted into two 95%-identical
 //! stacks: each grew its own reach into the domain crates until neither could
-//! be changed without the other. The replacement (#974) is three brand crates
-//! that are *composition only* — a `portal::hosting::Brand` value and a call to
+//! be changed without the other. The replacement (#974) is a crate per brand,
+//! each *composition only* — a `portal::hosting::Brand` value and a call to
 //! the shared run loop — so there is nothing in them to drift.
 //!
 //! Nothing but a test keeps them that way. A brand crate may name the
@@ -36,7 +36,7 @@ use std::path::{Path, PathBuf};
 ///
 /// The line this draws is *domain*, not size. A brand owns its public face —
 /// its copy, its page compositions, its path table — because that is the one
-/// thing the two brands genuinely do not share. What it may never name is
+/// thing brands genuinely do not share. What it may never name is
 /// `store`, `workflows`, `billing`, `rules`, or the auth machinery: those
 /// decide what is true and who may see it, and a brand that reached them
 /// could fork authorization from the application it claims to mount.

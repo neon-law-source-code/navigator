@@ -188,7 +188,7 @@ const RETIRED_GONE: &[&str] = &[
 /// [`every_declared_public_path_is_classified`] in the ordinary workspace run,
 /// long before the browser gate would have quietly not covered it.
 fn plan(path: &str) -> AuditPlan {
-    // The three crawler documents both brands register, matched exactly rather
+    // The three crawler documents the firm registers, matched exactly rather
     // than by suffix: a URL path is not a filename, and an exact list also
     // means a new non-HTML route has to be classified rather than slipping
     // through on its extension.

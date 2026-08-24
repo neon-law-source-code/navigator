@@ -1,11 +1,11 @@
-Feature: Bundled-template workflow composition (Foundation / nonprofit)
+Feature: Bundled-template workflow composition (nonprofit)
 
-  The Foundation brand runs the nonprofit side of Neon Law Navigator: 501(c)(3)
-  formation, the annual Form 990, and state-level charitable
-  solicitation registration. These scenarios pin each template's
-  reusable-step composition — like `legal_workflow_shapes.feature`
-  does for the firm side — so an accidental reshape on the Foundation
-  surface surfaces as a named failing scenario.
+  The firm's nonprofit practice covers 501(c)(3) formation, the annual Form
+  990, and state-level charitable solicitation registration. These scenarios
+  pin each template's reusable-step composition — like
+  `legal_workflow_shapes.feature` does for the rest of the firm's practice —
+  so an accidental reshape on the nonprofit templates surfaces as a named
+  failing scenario.
 
   A rejection scenario per template confirms the parser's MissingEnd
   guard catches a hand-mutilated copy with the workflow END dropped.

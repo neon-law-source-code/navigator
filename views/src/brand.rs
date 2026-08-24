@@ -1038,13 +1038,9 @@ mod tests {
     #[test]
     fn the_mark_and_the_entity_of_record_are_distinct() {
         assert_eq!(FIRM_BRAND.site_name, "Neon Law");
-        // The firm ALONE. The rendered copyright names both organizations, but
-        // it composes that line from this field and the Foundation's name
-        // ("© {year} {copyright_holder} and {foundation}"), so this one must
-        // stay the single legal person. The supporter line is why it matters:
-        // it reads "{copyright_holder} is a proud supporter of the Neon Law
-        // Foundation", and folding the nonprofit into this string would
-        // publish the Foundation announcing that it supports itself.
+        // The firm ALONE. The rendered copyright line is "© {year}
+        // {copyright_holder}", composed straight from this field, so this
+        // one must stay the single legal person the mark's registrant is.
         assert_eq!(FIRM_BRAND.legal_entity, "Shook Law PLLC");
         assert_ne!(
             FIRM_BRAND.site_name, FIRM_BRAND.legal_entity,

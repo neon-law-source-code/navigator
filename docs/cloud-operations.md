@@ -143,8 +143,8 @@ Code reaches production through PRs and dated images:
 2. After the version PR merges, an operator tags that merged `main` commit with `YY.M.D` or
    `YY.M.D-hotfix.N`, which starts `deploy.yml`. The workflow fetches `origin/main` and rejects a tag on an unmerged
    side branch before it publishes anything.
-3. The deploy workflow builds and publishes the service images to the Google Artifact Registry: the three brand server
-   images and `navigator-workflows-service`.
+3. The deploy workflow builds and publishes the service images to GHCR: the brand server image and
+   `navigator-workflows-service`.
 4. The same run rolls GKE onto that tag — `neon-law-stg` first, then production once staging is green — and reports
    both to `#navigator`. No operator step; the `ops ship` command below remains for a roll outside a release run.
 

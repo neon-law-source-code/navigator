@@ -18,9 +18,9 @@
 //! imported here.
 //!
 //! Colour is the same story one level down. A component emits a semantic class
-//! name and every value resolves through a `--nav-*` custom property, so the
-//! three brands that share this surface each supply their own values. A literal
-//! colour in a component pins one brand's identity into code all three consume.
+//! name and every value resolves through a `--nav-*` custom property, so
+//! whichever brands share this surface each supply their own values. A literal
+//! colour in a component pins one brand's identity into code every brand consumes.
 //!
 //! Both rules are enforced by the tests at the bottom of this file rather than
 //! stated only here — a boundary that lives in a comment erodes on the first
@@ -281,7 +281,7 @@ mod leaf_contract {
     }
 
     /// A component declares no literal colour. Every value resolves through a
-    /// `--nav-*` custom property, so one component surface serves three brands.
+    /// `--nav-*` custom property, so one component surface serves every brand.
     #[test]
     fn components_declare_no_literal_colors() {
         // A hex colour (`#06b6d4`), or a functional colour notation. Matching
@@ -323,7 +323,7 @@ mod leaf_contract {
                 assert!(
                     !literal_color(line),
                     "{}:{} declares a literal colour:\n{line}\nUse a `--nav-*` token: a literal \
-                     value pins one of three brands into shared code.",
+                     value pins one brand's identity into shared code.",
                     path.display(),
                     number + 1,
                 );

@@ -321,7 +321,7 @@ mod tests {
         );
     }
 
-    /// The default namespace is the Foundation's GHCR org, and it is a
+    /// The default namespace is Navigator's GHCR org, and it is a
     /// `<host>/<namespace>` pair rather than a bare host.
     ///
     /// `fetch_tags` splits on the first `/` to build both the token scope and

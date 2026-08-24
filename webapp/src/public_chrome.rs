@@ -277,7 +277,7 @@ fn chrome_for(brand: &views::brand::SiteBrand, utility: Vec<ChromeNavLink>) -> P
         // value replaces the constant when the footer year is wired through.
         copyright_year: 2026,
         // The contact band is firm-anchored for the same reason the legal strip
-        // is: one footer serves both brands, and the firm is the entity a
+        // is: one footer serves the firm, and the firm is the entity a
         // visitor calls, writes to, or walks in on.
         firm_email: views::brand::firm_email().to_string(),
         firm_phone: views::brand::firm_phone().to_string(),

@@ -1889,9 +1889,9 @@ async fn catalog_workshop_certificate_submit(
 ///
 /// These are host-specific, not brand-content: each host serves its own copy.
 /// `sitemap` and `llms` name the pages *this* host serves, and the legal
-/// documents carry *this* deployment's own privacy and terms text — both brands
-/// merging one hardcoded list is how each host came to advertise the other's
-/// pages as its own. See [`SitemapPaths`] and [`LlmsTxtDocument`].
+/// documents carry *this* deployment's own privacy and terms text — hardcoding
+/// one shared list is how a host would come to advertise another's pages as
+/// its own. See [`SitemapPaths`] and [`LlmsTxtDocument`].
 pub fn host_crawler_and_legal_routes(
     sitemap: SitemapPaths,
     llms: LlmsTxtDocument,

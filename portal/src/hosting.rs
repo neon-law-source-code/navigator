@@ -47,7 +47,7 @@ pub struct HostRuntime {
 /// storage and content, and assemble [`AppState`].
 ///
 /// The caller owns telemetry init (a per-binary service name) and the
-/// bind/serve loop; this function owns everything in between so the three brand
+/// bind/serve loop; this function owns everything in between so brand
 /// binaries cannot drift in how they assemble the application.
 ///
 /// `brand_seed` names whose seeds this boot applies. It is [`Brand::seed`] for
@@ -484,7 +484,7 @@ pub struct Brand {
 /// is load-bearing — `.env` before any environment read, telemetry before the
 /// first `tracing` call, and the Dioxus routers built from `state` before
 /// `state` moves into [`crate::bootstrap`] — and stating it once is what keeps
-/// three brand binaries from drifting the way the pre-#860 host pair did.
+/// brand binaries from drifting the way the pre-#860 host pair did.
 ///
 /// # Errors
 ///

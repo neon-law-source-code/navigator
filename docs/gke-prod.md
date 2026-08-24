@@ -1,7 +1,7 @@
 # GKE production deployment
 
 This page describes what one environment is made of. Which environments exist, which GCP project each one is, and how a
-single image serves all three brands is mapped in [`environments`](environments.md).
+single image serves the brand is mapped in [`environments`](environments.md).
 
 The Neon Law Navigator production deployment runs on **GKE Autopilot** with every supporting service managed by Google
 or Restate. The daily operator workload is reviewing dependency PRs and glancing at dashboards; no node patching, no DB

@@ -9,9 +9,7 @@
 //! least one of the six, and issues 02 through 11 removed them as a side effect
 //! of their own work. A rename that wide is easy to half-finish and easy to
 //! reintroduce: a doc paragraph pasted from an old one, a test fixture naming
-//! the old organization. So the invariant is asserted rather than remembered,
-//! the same way `brand_identifier_is_neon.rs` asserts that the brand identifier
-//! is `neon`.
+//! the old organization. So the invariant is asserted rather than remembered.
 //!
 //! **No forge host is a *bare* literal in the files that read forge
 //! configuration.** This is the sharper half, and it is the defect the collapse

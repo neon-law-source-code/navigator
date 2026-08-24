@@ -328,6 +328,30 @@ where
         env: NAVIGATOR_CHATWOOT_WEBSITE_TOKEN,
         value: non_empty_env(NAVIGATOR_CHATWOOT_WEBSITE_TOKEN, &get).unwrap_or_default(),
     });
+    // Optional, same shape as Chatwoot above: Sign in with Microsoft is a
+    // second provider next to Google, off by default. An empty
+    // `OAUTH_MICROSOFT_CLIENT_ID` is exactly what
+    // `portal::oauth::Provider::microsoft_from_env` reads as "no second
+    // provider" — `Ok(None)`, no button, every existing deployment stays
+    // byte-identical — so an omitted key and an explicitly blank one land on
+    // the same answer. Out of TABLE for the same reason as Chatwoot: a
+    // required entry here would block every roll that has not yet registered
+    // an Entra app registration.
+    substitutions.push(Substitution {
+        token: "YOUR_OAUTH_MICROSOFT_CLIENT_ID",
+        env: "OAUTH_MICROSOFT_CLIENT_ID",
+        value: non_empty_env("OAUTH_MICROSOFT_CLIENT_ID", &get).unwrap_or_default(),
+    });
+    // Optional for the same reason. Blank is safe even though
+    // `microsoft_from_env` treats a set client id with no tenant allowlist as
+    // a boot-failing misconfiguration (`OAuthSetupError::MissingTenantAllowlist`):
+    // that only matters once `OAUTH_MICROSOFT_CLIENT_ID` above is also
+    // non-empty, and a deployment that sets one is expected to set both.
+    substitutions.push(Substitution {
+        token: "YOUR_OAUTH_MICROSOFT_ALLOWED_TENANTS",
+        env: "OAUTH_MICROSOFT_ALLOWED_TENANTS",
+        value: non_empty_env("OAUTH_MICROSOFT_ALLOWED_TENANTS", &get).unwrap_or_default(),
+    });
     Ok(substitutions)
 }
 
@@ -3107,6 +3131,8 @@ mod tests {
         "YOUR_OAUTH_CLIENT_ID_BROWSER",
         "YOUR_OAUTH_CLIENT_ID_GEMINI",
         "YOUR_CHATWOOT_WEBSITE_TOKEN",
+        "YOUR_OAUTH_MICROSOFT_CLIENT_ID",
+        "YOUR_OAUTH_MICROSOFT_ALLOWED_TENANTS",
         RELEASE_TAG_TOKEN,
     ];
 

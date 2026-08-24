@@ -7,11 +7,11 @@
 # the binary (empty-string OTLP URL).
 #
 # Secrets (NAVIGATOR_SURREAL_PASSWORD, SESSION_SECRET, OAUTH_CLIENT_SECRET,
-# RESTATE_BROKER_URL, RESTATE_AUTH_TOKEN, SENDGRID_API_KEY,
-# DOCUSIGN_ACCESS_TOKEN, DOCUSIGN_HMAC_KEY — the last required by the
-# `enforce_deployment_invariants` boot check — XERO_TENANT_ID + XERO_CLIENT_ID
-# + XERO_CLIENT_SECRET for the Xero billing custom connection, and
-# SENDGRID_FROM_EMAIL) come in via `envFrom` from the
+# OAUTH_MICROSOFT_CLIENT_SECRET, RESTATE_BROKER_URL, RESTATE_AUTH_TOKEN,
+# SENDGRID_API_KEY, DOCUSIGN_ACCESS_TOKEN, DOCUSIGN_HMAC_KEY — the last
+# required by the `enforce_deployment_invariants` boot check —
+# XERO_TENANT_ID + XERO_CLIENT_ID + XERO_CLIENT_SECRET for the Xero billing
+# custom connection, and SENDGRID_FROM_EMAIL) come in via `envFrom` from the
 # `navigator-web-secrets` Kubernetes Secret. That Secret is
 # currently maintained out-of-band via `kubectl create secret
 # generic`; syncing it from Secret Manager is a deferred follow-up.
@@ -152,6 +152,21 @@ spec:
               value: YOUR_OAUTH_CLIENT_ID_BROWSER
             - name: OAUTH_REDIRECT_URI
               value: https://NAVIGATOR_PUBLIC_HOST/auth/callback
+            # Sign in with Microsoft, a second provider next to Google. Blank
+            # in both is the off state: `portal::oauth::Provider::microsoft_from_env`
+            # reads an empty OAUTH_MICROSOFT_CLIENT_ID as "no second provider"
+            # and the button never renders, so a deployment that has not yet
+            # registered an Entra app stays byte-identical. The matching
+            # OAUTH_MICROSOFT_CLIENT_SECRET is key material and comes in via
+            # `envFrom` above, alongside OAUTH_CLIENT_SECRET, not inline here.
+            # No OAUTH_MICROSOFT_ISSUER_URL: leaving it unset selects the
+            # multi-tenant `/organizations` authority, which is what makes
+            # `IdTokenVerifier` select `IssuerPolicy::EntraTenants` instead of
+            # a plain issuer byte compare.
+            - name: OAUTH_MICROSOFT_CLIENT_ID
+              value: YOUR_OAUTH_MICROSOFT_CLIENT_ID
+            - name: OAUTH_MICROSOFT_ALLOWED_TENANTS
+              value: YOUR_OAUTH_MICROSOFT_ALLOWED_TENANTS
             # Base URL surfaced in the OpenAPI `servers` block at
             # /app/api/openapi.json. Must include scheme and stop at the host —
             # the document tacks `/app/api/*` paths onto this value.

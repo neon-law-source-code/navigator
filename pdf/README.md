@@ -73,7 +73,7 @@ unbreakable, so a signature block moves to the next page whole instead of splitt
 One grey line sits under the rule, carrying every way to reach the firm, voice line first:
 
 ```text
-+1 510 707 6036  ·  contact@neonlaw.com  ·  www.neonlaw.com
++1 510 800 2080  ·  contact@neonlaw.com  ·  www.neonlaw.com
 ```
 
 **No street address appears on the letterhead.** The firm's postal address is a private-mailbox suite that nothing is

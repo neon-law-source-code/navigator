@@ -64,9 +64,9 @@ wiki is documentation outside the review gate every other word in the tree passe
 before this command carried them, and the hand-application did not hold, which is the argument for reconciling them
 rather than trusting a setting nobody re-checks.
 
-`neon-law-source-code/navigator` alone adds `NAVIGATOR_POLICY`'s three extras — the
-release-tag ruleset, the DevX labels, and the App-installation assertion — because it is the only repository that cuts a
-release or runs that automation.
+`neon-law-source-code/navigator` alone adds `NAVIGATOR_POLICY`'s three extras — the release-tag ruleset, the DevX
+labels, and the App-installation assertion — because it is the only repository that cuts a release or runs that
+automation.
 
 There is one lighter tier and one repository in it. A repository the Firm administers on someone else's behalf still
 receives the same gate; what earns the exception is not ownership but whether a person writes `main` at all.

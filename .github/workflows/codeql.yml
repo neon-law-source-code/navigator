@@ -5,9 +5,9 @@ name: CodeQL
 # Owning the workflow is what lets us scan Rust — the managed setup only offers
 # JavaScript/TypeScript — and pin the trigger.
 #
-# Runs ONLY on pull requests targeting `main`, never on push to `main`. This
-# mirrors the repo's CI philosophy (see ci.yml): `main` advances solely through
-# PRs, so the pre-merge run is the single gate and there is no post-merge scan.
+# Runs on pull requests targeting `main` and on pushes to `main`. The PR scan is
+# the merge gate; the post-merge scan keeps the default-branch alert inventory
+# current after a change lands.
 #
 # The managed "Code Quality analysis" toggle (Settings -> Security and quality)
 # must be turned OFF once this lands, or both configurations scan in parallel.
@@ -16,8 +16,11 @@ on:
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
 
-# One in-flight run per PR; a new push cancels the superseded scan.
+# One in-flight run per PR or default-branch push; a new revision cancels the
+# superseded scan.
 concurrency:
   group: codeql-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true

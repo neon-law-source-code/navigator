@@ -6,7 +6,7 @@
 # its worktree. `/workspace` is a cache seeded from the image build, never the
 # authority for a job's source.
 
-FROM rust:1.97-bookworm AS planner
+FROM rust:1.98-bookworm AS planner
 
 WORKDIR /workspace
 
@@ -23,7 +23,7 @@ COPY . ./
 
 RUN cargo chef prepare --recipe-path recipe.json
 
-FROM rust:1.97-bookworm AS runner
+FROM rust:1.98-bookworm AS runner
 
 ARG TARGETARCH
 ARG CHROME_FOR_TESTING_VERSION=150.0.7871.46

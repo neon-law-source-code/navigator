@@ -3,7 +3,7 @@
 # The private-mode Pingora gateway is its own small, reviewed image rather
 # than an upstream Nginx configuration. Pingora's zlib-ng dependency builds
 # from source, so this builder intentionally carries CMake.
-FROM rust:1.97-bookworm AS builder
+FROM rust:1.98-bookworm AS builder
 
 ARG TARGETARCH
 RUN apt-get update \

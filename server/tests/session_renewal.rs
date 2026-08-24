@@ -32,6 +32,7 @@ fn browser_session(exp: i64) -> SessionData {
         role: store::persons::Role::Client,
         csrf_token: "csrf-token".into(),
         source: SessionSource::Browser,
+        provider: None,
         impersonation: None,
     }
 }

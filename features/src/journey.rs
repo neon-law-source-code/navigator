@@ -121,6 +121,7 @@ impl Journey {
             role: person.role,
             csrf_token: JOURNEY_CSRF.into(),
             source: portal::session::SessionSource::Browser,
+            provider: None,
             impersonation: None,
         };
         format!("{SESSION_COOKIE_NAME}={}", self.sessions.encode(&session))

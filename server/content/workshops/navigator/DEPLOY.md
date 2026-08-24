@@ -863,6 +863,8 @@ runtime environment and the KIND secrets; they are never suitable for a public d
 | Applications credentials | `NAVIGATOR_APPLICATIONS_ACCESS_KEY`, `NAVIGATOR_APPLICATIONS_SECRET_KEY` |
 | LFS credentials | `NAVIGATOR_LFS_ACCESS_KEY`, `NAVIGATOR_LFS_SECRET_KEY` |
 | Browser OIDC | `OAUTH_ISSUER_URL`, `OAUTH_CLIENT_ID`, `OAUTH_CLIENT_SECRET`, `OAUTH_REDIRECT_URI`, `SESSION_SECRET` |
+| Sign in with Microsoft | `OAUTH_MICROSOFT_CLIENT_ID`, `OAUTH_MICROSOFT_CLIENT_SECRET` |
+| Microsoft tenant gate | `OAUTH_MICROSOFT_ALLOWED_TENANTS`, `OAUTH_MICROSOFT_ISSUER_URL` |
 | Policy and workflows | `RESTATE_BROKER_URL` |
 | Attachment scanner | `NAVIGATOR_CLAMD_ADDR` |
 | Harness-only integration placeholders | `SENDGRID_API_KEY`, `SENDGRID_INBOUND_SECRET` |
@@ -1010,6 +1012,9 @@ roles. Complete the global Workspace attachment once:
 | Browser OIDC issuer | `OAUTH_ISSUER_URL` | Browser login is not configured |
 | Browser OIDC client | `OAUTH_CLIENT_ID`, `OAUTH_CLIENT_SECRET` | Browser login is not configured |
 | Browser redirect | `OAUTH_REDIRECT_URI` | Browser login is not configured |
+| Microsoft door | `OAUTH_MICROSOFT_CLIENT_ID`, `OAUTH_MICROSOFT_CLIENT_SECRET` | Off; one provider, one button |
+| Microsoft tenants | `OAUTH_MICROSOFT_ALLOWED_TENANTS` | **Boot fails** when the client id is set |
+| Microsoft authority | `OAUTH_MICROSOFT_ISSUER_URL` | The `organizations` authority: work or school, any tenant |
 | Bearer JWKS | `OIDC_JWKS_URL`, `OIDC_AUDIENCE`, `OIDC_ISSUER` | Deployed JWT verification |
 | Bearer HMAC | `OIDC_HS256_SECRET` | Local/test verifier path |
 | Dev bypass | `OIDC_DISABLED` | Off; the dev profile and production reject `true` / `1` |

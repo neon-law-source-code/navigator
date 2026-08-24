@@ -145,6 +145,11 @@ pub async fn app_state_with_email(
         blog: portal::BlogIndex::empty(),
         auth: AuthConfig::new(true, None),
         google_oauth: portal::google_oauth::GoogleOauthConfig::passthrough(),
+        // The BDD runner exercises one browser provider. The Microsoft door has
+        // its own integration suite (`server/tests/microsoft_sso.rs`), and
+        // leaving it off here keeps `/auth/login` an immediate redirect rather
+        // than a chooser, which is what these scenarios drive.
+        oauth_microsoft: None,
         rate_limit: portal::rate_limit::RateLimit::disabled(),
         canonical_host: CanonicalHost::new(None),
         portal_only: portal::PortalOnly::default(),

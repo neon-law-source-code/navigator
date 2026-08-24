@@ -158,6 +158,7 @@ async fn open_detail(world: &mut DetailWorld, email: String, project_name: Strin
         role,
         csrf_token: "test-csrf".into(),
         source: portal::session::SessionSource::Browser,
+        provider: None,
         impersonation: None,
     };
     let cookie = format!(

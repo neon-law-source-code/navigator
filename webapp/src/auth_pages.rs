@@ -10,6 +10,20 @@ use dioxus::prelude::*;
 use crate::components::{PublicShell, SiteHeader, SiteNavLink};
 use crate::public_chrome::{firm_public_chrome, PublicChrome, PublicFooter};
 
+/// One sign-in button on the chooser: where it goes and what it says.
+///
+/// The caller owns both, because which providers exist is a deployment fact
+/// (`portal::oauth::AuthState::configured_providers`) and this crate renders
+/// pages rather than deciding policy.
+#[derive(Clone, PartialEq, Eq)]
+pub struct SignInProvider {
+    /// Absolute path including `?return_to=`, e.g.
+    /// `/auth/login/microsoft?return_to=/app/projects`.
+    pub href: String,
+    /// The button text, e.g. [`MICROSOFT_SIGN_IN`].
+    pub label: String,
+}
+
 #[derive(Clone, PartialEq, Eq)]
 pub enum LoginNotice {
     Danger(String),
@@ -36,7 +50,13 @@ enum Page {
     Login {
         return_to: String,
         csrf: String,
-        oidc_enabled: bool,
+        /// Every configured identity provider, in render order. Empty renders
+        /// no buttons at all, which is what a password-only deployment wants.
+        providers: Vec<SignInProvider>,
+        /// Whether the email/password form renders. Off for a deployment whose
+        /// only doors are identity providers, so the page does not offer a
+        /// credential nothing will accept.
+        password_enabled: bool,
         error: Option<String>,
         notice: Option<LoginNotice>,
     },
@@ -60,7 +80,8 @@ enum Page {
 pub fn login(
     return_to: &str,
     csrf: &str,
-    oidc_enabled: bool,
+    providers: &[SignInProvider],
+    password_enabled: bool,
     error: Option<&str>,
     notice: Option<LoginNotice>,
 ) -> Html<String> {
@@ -69,7 +90,8 @@ pub fn login(
         Page::Login {
             return_to: return_to.into(),
             csrf: csrf.into(),
-            oidc_enabled,
+            providers: providers.to_vec(),
+            password_enabled,
             error: error.map(str::to_string),
             notice,
         },
@@ -131,6 +153,13 @@ fn render(title: &str, page: Page) -> Html<String> {
 /// rather than a second copy of it that can drift.
 pub const GOOGLE_SIGN_IN: &str = "Sign in with Google";
 
+/// The Microsoft button label on the sign-in chooser.
+///
+/// Microsoft's branding guidance for apps requires the words "Sign in with
+/// Microsoft" and forbids showing end users the "Azure" or "Active Directory"
+/// brands, so the wording is fixed here rather than derived from config.
+pub const MICROSOFT_SIGN_IN: &str = "Sign in with Microsoft";
+
 #[derive(Props, Clone, PartialEq)]
 struct AuthPageProps {
     page: Page,
@@ -145,19 +174,23 @@ fn AuthPage(props: AuthPageProps) -> Element {
         section { class: "auth-page",
             div { class: "nav-card auth-card",
                 match props.page {
-                    Page::Login { return_to, csrf, oidc_enabled, error, notice } => rsx! {
+                    Page::Login { return_to, csrf, providers, password_enabled, error, notice } => rsx! {
                         h1 { "Sign in" }
                         if let Some(notice) = notice { p { class: "{notice.class()}", "{notice.message()}" } }
                         if let Some(error) = error { p { class: "nav-alert nav-alert--danger", "{error}" } }
-                        form { method: "post", action: "/auth/password",
-                            input { r#type: "hidden", name: "return_to", value: "{return_to}" }
-                            input { r#type: "hidden", name: "csrf_token", value: "{csrf}" }
-                            label { "Email" input { r#type: "email", name: "email", required: true } }
-                            label { "Password" input { r#type: "password", name: "password", required: true } }
-                            button { r#type: "submit", class: "nav-btn nav-btn--primary", "Sign in" }
+                        if password_enabled {
+                            form { method: "post", action: "/auth/password",
+                                input { r#type: "hidden", name: "return_to", value: "{return_to}" }
+                                input { r#type: "hidden", name: "csrf_token", value: "{csrf}" }
+                                label { "Email" input { r#type: "email", name: "email", required: true } }
+                                label { "Password" input { r#type: "password", name: "password", required: true } }
+                                button { r#type: "submit", class: "nav-btn nav-btn--primary", "Sign in" }
+                            }
                         }
-                        if oidc_enabled { p { a { class: "nav-btn nav-btn--secondary", href: "/auth/login/oidc?return_to={return_to}", "{GOOGLE_SIGN_IN}" } } }
-                        p { a { href: "/auth/password/reset", "Forgot your password?" } }
+                        for provider in providers.iter() {
+                            p { a { class: "nav-btn nav-btn--secondary", href: "{provider.href}", "{provider.label}" } }
+                        }
+                        if password_enabled { p { a { href: "/auth/password/reset", "Forgot your password?" } } }
                     },
                     Page::ResetRequest { csrf, error } => rsx! {
                         h1 { "Reset your password" }
@@ -211,14 +244,22 @@ fn footer(chrome: &PublicChrome) -> Element {
 mod tests {
     use super::{
         confirm_email, invalid_link, login, password_reset_new, password_reset_request,
-        LoginNotice, GOOGLE_SIGN_IN,
+        LoginNotice, SignInProvider, GOOGLE_SIGN_IN, MICROSOFT_SIGN_IN,
     };
+
+    fn provider(slug: &str, label: &str) -> SignInProvider {
+        SignInProvider {
+            href: format!("/auth/login/{slug}?return_to=/app/projects"),
+            label: label.to_string(),
+        }
+    }
 
     #[test]
     fn login_keeps_the_native_password_and_oidc_contracts() {
         let html = login(
             "/app/projects",
             "CSRF",
+            &[provider("oidc", GOOGLE_SIGN_IN)],
             true,
             Some("Try again"),
             Some(LoginNotice::Danger("Sign in required".into())),
@@ -240,6 +281,53 @@ mod tests {
             html.contains(GOOGLE_SIGN_IN),
             "missing {GOOGLE_SIGN_IN}: {html}"
         );
+    }
+
+    /// Two providers render two buttons, each to its own
+    /// `/auth/login/{provider}` route, in the order given. The order is
+    /// asserted because a signed-out person navigates the page by button
+    /// position, and switching a provider on must not shuffle it.
+    #[test]
+    fn login_renders_one_button_per_configured_provider_in_order() {
+        let html = login(
+            "/app/projects",
+            "CSRF",
+            &[
+                provider("oidc", GOOGLE_SIGN_IN),
+                provider("microsoft", MICROSOFT_SIGN_IN),
+            ],
+            false,
+            None,
+            None,
+        )
+        .0;
+        let google = html
+            .find(GOOGLE_SIGN_IN)
+            .unwrap_or_else(|| panic!("missing {GOOGLE_SIGN_IN}: {html}"));
+        let microsoft = html
+            .find(MICROSOFT_SIGN_IN)
+            .unwrap_or_else(|| panic!("missing {MICROSOFT_SIGN_IN}: {html}"));
+        assert!(google < microsoft, "primary provider must render first");
+        assert!(html.contains("/auth/login/oidc?return_to=/app/projects"));
+        assert!(html.contains("/auth/login/microsoft?return_to=/app/projects"));
+    }
+
+    /// With no password door there is no credential form and no reset link —
+    /// offering either would invite a password nothing will accept.
+    #[test]
+    fn login_without_a_password_door_renders_no_credential_form() {
+        let html = login(
+            "/app/projects",
+            "CSRF",
+            &[provider("oidc", GOOGLE_SIGN_IN)],
+            false,
+            None,
+            None,
+        )
+        .0;
+        assert!(!html.contains("action=\"/auth/password\""), "{html}");
+        assert!(!html.contains("/auth/password/reset"), "{html}");
+        assert!(html.contains(GOOGLE_SIGN_IN), "{html}");
     }
 
     #[test]

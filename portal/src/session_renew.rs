@@ -81,6 +81,7 @@ mod tests {
             role: Role::Client,
             csrf_token: "csrf".into(),
             source,
+            provider: None,
             impersonation: None,
         }
     }

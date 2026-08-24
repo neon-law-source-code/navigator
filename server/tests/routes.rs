@@ -509,6 +509,7 @@ async fn state_with_workshops(materials: Vec<WorkshopMaterial>) -> AppState {
         portal_only: portal::PortalOnly::default(),
         sessions: test_sessions(),
         oauth: None,
+        oauth_microsoft: None,
         storage: std::sync::Arc::new(
             cloud::FsStorage::new(std::env::temp_dir().join("navigator-web-test-storage"))
                 .await
@@ -1793,6 +1794,7 @@ async fn health_returns_503_when_the_store_is_down() {
         portal_only: portal::PortalOnly::default(),
         sessions: test_sessions(),
         oauth: None,
+        oauth_microsoft: None,
         storage: std::sync::Arc::new(
             cloud::FsStorage::new(std::env::temp_dir().join("navigator-web-test-storage"))
                 .await

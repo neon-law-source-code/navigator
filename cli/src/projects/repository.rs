@@ -67,6 +67,8 @@ const PORTAL_DIRECTORY: &str = "portal";
 const WORKFLOW: &str = ".github/workflows/gate.yml";
 /// The manifest a Project repository declares its Project code in.
 const PROJECT_MANIFEST: &str = "navigator.yaml";
+/// Seed-shaped YAML documents for `navigator db seed`, one file per model.
+const SEED_DIRECTORY: &str = "seeds";
 const ALLOWED_ROOTS: &[&str] = &[
     ".github",
     ".gitignore",
@@ -92,6 +94,13 @@ const ALLOWED_ROOTS: &[&str] = &[
     PROJECT_MANIFEST,
     store::sample_project::MANIFEST_FILE,
     PORTAL_DIRECTORY,
+    // A seed document names real people and real entities described by this
+    // Project's matter — the input to a production write through `navigator
+    // db seed`, not test scaffolding. That is the one distinction `fixtures/`
+    // cannot carry, which is why seed documents get their own root rather
+    // than filing under it: one file per model, using the standard
+    // `lookup_fields` / `records` shape, and nothing generated.
+    SEED_DIRECTORY,
     TEMPLATE_DIRECTORY,
     "tests",
 ];
@@ -926,6 +935,30 @@ jobs:
     fn the_project_manifest_is_part_of_the_layout() {
         assert!(ALLOWED_ROOTS.contains(&"navigator.yaml"));
         assert!(ALLOWED_ROOTS.contains(&"navigator.yml"));
+    }
+
+    /// `seeds/` is where a Project repository's `navigator db seed` documents
+    /// belong. Refusing it left nowhere in the layout for real actors a
+    /// matter names, and `fixtures/` is the wrong root: a fixture is invented
+    /// or firm-owned, while a seed document is the input to a production
+    /// write.
+    #[test]
+    fn the_seed_directory_is_part_of_the_layout() {
+        assert!(ALLOWED_ROOTS.contains(&"seeds"));
+    }
+
+    #[test]
+    fn a_checkout_carrying_seeds_has_no_layout_finding() {
+        let root = tempfile::tempdir().unwrap();
+        scaffold_minimal(root.path());
+        std::fs::create_dir_all(root.path().join("seeds")).unwrap();
+        std::fs::write(
+            root.path().join("seeds/Person.yaml"),
+            "lookup_fields:\n  - email\nrecords: []\n",
+        )
+        .unwrap();
+
+        assert_eq!(layout_findings(root.path()), Vec::<String>::new());
     }
 
     #[test]

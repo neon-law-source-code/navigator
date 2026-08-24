@@ -14495,7 +14495,7 @@ async fn docs_glossary_renders_headings() {
     // wordmark would attribute the workspace's documentation to an organization
     // that does not build it.
     assert!(
-        body.contains("/public/logo-neon.png"),
+        body.contains("/public/logo.png"),
         "the NL mark in the docs header"
     );
     assert!(

@@ -47,7 +47,7 @@ pub fn render_google_sign_in_body(name: &str, email: &str, login_url: &str) -> S
 }
 
 /// Render the HTML alternative wrapped in the inline-styled firm email
-/// layout. `base_url` is the public origin serving `/public/logo-neon.png`.
+/// layout. `base_url` is the public origin serving `/public/logo.png`.
 #[must_use]
 pub fn render_google_sign_in_html(
     name: &str,
@@ -102,7 +102,7 @@ mod tests {
             "https://app.test",
         );
         assert!(html.starts_with("<!doctype html>"));
-        assert!(html.contains("logo-neon.png"));
+        assert!(html.contains("logo.png"));
         assert!(html.contains("https://app.test/auth/login"));
     }
 

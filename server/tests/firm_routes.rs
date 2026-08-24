@@ -845,11 +845,11 @@ async fn every_public_page_wears_the_brand_mark_as_its_tab_icon() {
         // A `type` that disagrees with the bytes is an icon the browser
         // declines to draw, so the pair is asserted rather than the href alone.
         assert!(
-            head.contains(r#"href="/public/logo-neon.png""#),
+            head.contains(r#"href="/public/logo.svg""#),
             "{path}'s tab icon is the firm's own mark: {head}"
         );
         assert!(
-            head.contains(r#"type="image/png""#),
+            head.contains(r#"type="image/svg+xml""#),
             "{path}'s icon type matches the mark's bytes: {head}"
         );
     }
@@ -1383,43 +1383,28 @@ async fn home_states_the_practice_and_prices_through_contact() {
 /// The home page loads the firm's mark, and the mark's own files are served.
 ///
 /// Split from the copy guard above it: that test speaks for what the page says,
-/// this one for the brand assets it and every social scraper load. One NL mark
-/// serves the header and the social card alike — the brand carries a single
-/// raster for both (`views::brand`'s `both_brands_share_one_raster_social_image`)
-/// — so a scraper and a reader see the same image rather than two marks that can
-/// drift apart.
+/// this one for the brand assets it and every social scraper load. The site
+/// carries exactly one NL mark, in two forms: `logo.svg` (the header vector,
+/// `views::brand`'s `logo_href`) and `logo.png` (the full-resolution raster,
+/// `social_image`, proven a PNG by `views::brand`'s
+/// `the_brand_publishes_a_raster_social_image` since social scrapers won't
+/// rasterize SVG). There is no separate firm mark or wand asset.
 #[tokio::test]
 async fn home_loads_the_firm_mark_and_serves_its_files() {
     let app = site_app().await;
     let body = body_string(anon_get(&app, "/").await).await;
     assert!(
-        body.contains(r#"src="/public/logo-neon.png""#),
+        body.contains(r#"src="/public/logo.svg""#),
         "home header loads the NL mark: {body}"
     );
     assert!(
-        body.contains(r#"property="og:image""#) && body.contains("/public/logo-neon.png"),
+        body.contains(r#"property="og:image""#) && body.contains("/public/logo.png"),
         "home social metadata loads the NL mark: {body}"
     );
 
-    // The NL mark ships as both a header SVG and a high-resolution PNG for
-    // email, the PDF letterhead, and social cards. The firm wand stays a
-    // distinct high-resolution PNG.
     for (path, label, content_type) in [
-        (
-            "/public/logo-firm.svg",
-            "header vector mark",
-            "image/svg+xml",
-        ),
-        (
-            "/public/logo-firm-mark.png",
-            "firm wand raster",
-            "image/png",
-        ),
-        (
-            "/public/logo-firm.png",
-            "full-resolution raster",
-            "image/png",
-        ),
+        ("/public/logo.svg", "header vector mark", "image/svg+xml"),
+        ("/public/logo.png", "full-resolution raster", "image/png"),
     ] {
         let asset = anon_get(&app, path).await;
         assert_eq!(asset.status(), StatusCode::OK, "{label} status");
@@ -1435,20 +1420,18 @@ async fn home_loads_the_firm_mark_and_serves_its_files() {
 }
 
 #[tokio::test]
-async fn firm_brand_pngs_are_high_resolution_square_assets() {
+async fn firm_brand_png_is_a_high_resolution_square_asset() {
     let app = site_app().await;
 
-    for path in ["/public/logo-firm-mark.png", "/public/logo-firm.png"] {
-        let response = anon_get(&app, path).await;
-        assert_eq!(response.status(), StatusCode::OK, "{path} serves");
-        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .expect("PNG body");
-        assert!(bytes.starts_with(b"\x89PNG\r\n\x1a\n"), "{path} is a PNG");
-        let width = u32::from_be_bytes(bytes[16..20].try_into().expect("PNG width"));
-        let height = u32::from_be_bytes(bytes[20..24].try_into().expect("PNG height"));
-        assert_eq!((width, height), (1024, 1024), "{path} dimensions");
-    }
+    let response = anon_get(&app, "/public/logo.png").await;
+    assert_eq!(response.status(), StatusCode::OK, "logo.png serves");
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("PNG body");
+    assert!(bytes.starts_with(b"\x89PNG\r\n\x1a\n"), "logo.png is a PNG");
+    let width = u32::from_be_bytes(bytes[16..20].try_into().expect("PNG width"));
+    let height = u32::from_be_bytes(bytes[20..24].try_into().expect("PNG height"));
+    assert_eq!((width, height), (1024, 1024), "logo.png dimensions");
 }
 
 /// The retired nonprofit surface answers `410 Gone` and renders nothing.

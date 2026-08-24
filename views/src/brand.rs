@@ -384,8 +384,8 @@ pub static DEFAULT_BRANDING: Branding = Branding {
         // mode: every external reference inside the document is blocked, so an
         // SVG that merely wraps an external PNG paints nothing at all. This
         // one references nothing.
-        logo_href: "/public/logo-neon.png",
-        social_image: "/public/logo-neon.png",
+        logo_href: "/public/logo.svg",
+        social_image: "/public/logo.png",
         nav: FIRM_NAV,
         is_law_firm: true,
         // The professional LLC a client engages and the entity that renders the

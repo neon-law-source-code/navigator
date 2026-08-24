@@ -67,20 +67,13 @@ it, developing against it, and demonstrating it are not.  If you are unsure
 which side of the line you are on, write to contact@neonlaw.org and ask before
 deploying rather than after.
 
-THE NETWORK CASE IS NOT SPECIAL ANY MORE.  This work was published under
-AGPL-3.0-only until this licence took effect, and § 13 of that licence obliged
-anyone who modified it and ran it for remote users to offer those users the
-corresponding source.  BUSL has no equivalent clause and imposes no such
-obligation, because it does not need one: the deployment shape § 13 existed to
-reach is production use, which BUSL simply does not permit without a commercial
+THE NETWORK CASE.  BUSL carries no network clause, and needs none: the
+deployment shape such a clause reaches — running a modified version as a service
+for other people — is production use, which BUSL permits only under a commercial
 licence.  When a version reaches its Change Date and converts to AGPL-3.0-only,
-§ 13 attaches to that version in full.
-
-COPIES ALREADY GIVEN KEEP THEIR TERMS.  Every copy of this work distributed
-under AGPL-3.0-only before this licence took effect is still an AGPL-3.0-only
-copy, permanently, and nothing here reaches back to it.  A licence already
-granted cannot be withdrawn.  This notice governs versions published under BUSL
-going forward, and the repository history remains what it was.
+§ 13 of that licence attaches to that version in full, obliging anyone who
+modifies it and runs it for remote users to offer those users the corresponding
+source.
 
 GOVERNMENT FORMS ARE NOBODY'S HERE TO LICENSE.  The blank government PDFs under
 `templates/forms/` are works of the issuing state or federal agency.  The Firm
@@ -113,13 +106,16 @@ production exception is carved out of the copyright, so the holder of the
 copyright is the only party with anything to carve.  Write to
 contact@neonlaw.org.
 
-CONTRIBUTIONS.  Every contribution in this repository belongs to Shook Law
-PLLC, assigned by a written agreement its author signed before their first
-commit, and reaches you under BUSL-1.1 on the same terms as everything else
-here.  One holder able to grant the whole work is what lets a single licence
-cover the tree and a single party set its parameters, so the assignment is the
-mechanism and the grant to you is the result.  Outside contributions are closed
-as a matter of capacity; write to contact@neonlaw.org instead.
+CONTRIBUTIONS.  A contribution assigns to Shook Law PLLC — all right, title,
+and interest in it, including every copyright in it, worldwide and for the full
+term — and that assignment is the contributor licence agreement a contributor
+signs.  Every contribution in this repository arrived under one, signed before
+its author's first commit, and reaches you under BUSL-1.1 on the same terms as
+everything else here.  One holder able to grant the whole work is what lets a
+single licence cover the tree and a single party set its parameters, so the
+assignment is the mechanism and the grant to you is the result.  Outside
+contributions are closed as a matter of capacity; write to contact@neonlaw.org
+instead.
 
 NO LEGAL ADVICE.  This licence is not legal advice and creates no
 attorney-client relationship.  A template here is a starting point drafted for

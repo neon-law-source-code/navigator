@@ -604,6 +604,32 @@ fn contributions_are_closed_but_the_licence_terms_are_stated_anyway() {
         "CONTRIBUTING.md must name `{LICENSE}` as the terms a contribution is \
          licensed under; closed to pull requests is not closed to the grant"
     );
+
+    // What the assignment actually takes, on both surfaces a contributor and a
+    // fork's counsel read. `assigns to` names a direction; it does not say how
+    // much of the work moves, and an agreement whose scope a signer has to infer
+    // is the one they are entitled to read before signing.
+    for rel in ["CONTRIBUTING.md", NOTICE_FILE] {
+        let flat = flat_lower(&read(rel));
+        for (required, why) in [
+            (
+                "all right, title, and interest",
+                "it must state the scope the contributor conveys, rather than \
+                 leaving `assigns to` to carry it",
+            ),
+            (
+                "contributor licence agreement",
+                "it must name the instrument, so the assignment reads as an \
+                 agreement a contributor enters rather than a policy asserted \
+                 about them",
+            ),
+        ] {
+            assert!(
+                flat.contains(required),
+                "{rel}: {why} (missing `{required}`)"
+            );
+        }
+    }
     assert!(
         flat.contains("assigns to"),
         "CONTRIBUTING.md must state that a contribution assigns to the Firm, so \
@@ -1073,12 +1099,7 @@ fn the_chain_of_title_is_recorded_and_nothing_contradicts_it() {
         flat_record.contains("## chain of title"),
         "{RECORD} must carry a Chain of title section. `{OWNER} owns this`          repeated in a dozen files is what the previous version of this guard          confirmed, and it was wrong the whole time; a reader needs the route,          not the conclusion"
     );
-    for required in [
-        "17 u.s.c. § 204(a)",
-        "licence to publish",
-        "not yet filed",
-        "not yet recorded",
-    ] {
+    for required in ["17 u.s.c. § 204(a)", "not yet filed", "not yet recorded"] {
         assert!(
             flat_record.contains(required),
             "{RECORD}'s Chain of title must record `{required}` — an instrument              nobody can identify, or a registration step whose status is              unstated, is a gap that reads as a completed chain"

@@ -12,12 +12,6 @@ is the only licence file in the tree, and it covers everything the Firm is able 
 One grant and one file is the whole design. A reader never has to work out which instrument governs the file in front of
 them, and a fork never has to reconcile two sets of obligations across a directory boundary.
 
-**What changed, and what did not.** Navigator was published under `AGPL-3.0-only` from August 2026 until this licence
-took effect. Every copy distributed in that window is still an `AGPL-3.0-only` copy, permanently — a licence already
-granted cannot be withdrawn, and nothing here reaches back to it. The relicence governs versions published from here on.
-`BUSL-1.1` is the only grant now in effect: Shook Law PLLC holds the copyright and is the sole Licensor, and no other
-party is entitled to publish this work.
-
 ## The four parameters
 
 BUSL is a template. Its terms are invariant — its fourth Covenant of Licensor forbids modifying them — so the entire
@@ -103,9 +97,8 @@ does not give it.
 
 ## Chain of title
 
-Who wrote Navigator, and how the copyright reached the organization that holds it. This section exists because the
-answer used to be asserted rather than recorded: a dozen places in this tree agreed that a different organization owned
-the work, and the guard test proved they agreed with each other. Agreement is not a chain.
+Who wrote Navigator, and how the copyright reached the organization that holds it. A reader working out who can license
+them anything follows the route recorded here, rather than a conclusion repeated elsewhere in the tree.
 
 ### The authors
 
@@ -122,23 +115,17 @@ was published rather than any day it was written.
 
 ### The instruments
 
-Two, doing different jobs. Neither is reproduced here and neither is quoted: what this section records is that they
-exist and between whom. Their dates are held with the executed originals rather than published, though a recordation
-under § 205 puts the assignment's date on the public record in its own right.
+One instrument, and it is neither reproduced nor quoted here: what this section records is that it exists and between
+whom. Its date is held with the executed original rather than published, though a recordation under § 205 puts that date
+on the public record in its own right.
 
 | Instrument | Parties | Status |
 | --- | --- | --- |
 | Assignment of copyright, 17 U.S.C. § 204(a) | Nicholas Shook and Shook Law PLLC, to Shook Law PLLC | Executed |
 
-Both assignors join the first instrument, each conveying whatever interest it holds. That is deliberate and costs one
-signature block: whether the work was already the Firm's turns on an employment question nobody needs to answer, and it
-stops mattering once both have conveyed.
-
-The second and third rows are kept as separate lines rather than collapsed into one, because the licence to publish was
-in force for a period and copies went out under it. A single row reading "never granted" would be false, and the dates
-are what establish which copies carry the AGPL permanently. The third row is what made the relicence to `BUSL-1.1`
-possible: until it was executed, the Firm could publish new versions under any terms it liked but could not truthfully
-say the AGPL grant had ended.
+Both assignors join it, each conveying whatever interest it holds. That is deliberate and costs one signature block:
+whether the work was already the Firm's turns on an employment question nobody needs to answer, and it stops mattering
+once both have conveyed.
 
 Contributions arrive already assigned. Each author signed an employment or contractor agreement with Shook Law PLLC
 before their first commit, so no contribution in this tree needs a later transfer — see [Contributions](#contributions).
@@ -204,20 +191,15 @@ proofs of concept sit here too.
 If your case does not obviously fall on one side, write to `contact@neonlaw.org` and ask before deploying rather than
 after. A question costs nothing; a production deployment discovered later is an awkward conversation for both parties.
 
-### Section 13 returns at the Change Date
+### Section 13 arrives at the Change Date
 
-Navigator was Affero-licensed before this licence took effect, and § 13 is what a returning reader looks for first, so
-it is worth being exact about where it went.
-
-**Under BUSL there is no § 13 and no network clause at all.** BUSL needs none: the deployment shape § 13 existed to
-reach — running a modified version as a service for other people — is production use, which this licence simply does not
-permit without a commercial licence. The obligation is not relaxed; the activity is not granted.
+**BUSL carries no network clause,** and needs none: the deployment shape such a clause reaches — running a modified
+version as a service for other people — is production use, which this licence grants only through a commercial licence.
 
 **When a version reaches its Change Date it becomes `AGPL-3.0-only`, and § 13 attaches to that version in full.** From
 then on, anyone who modifies that version and lets users interact with it remotely over a network must offer *those
 users* — the people using that operator's own instance — the corresponding source of what they are running. The duty
-runs in that one direction only. It reaches neither this project nor the world at large: no fork owes anything here,
-then or now.
+runs in that one direction only.
 
 Two things § 13 will still not do when it arrives:
 
@@ -269,16 +251,14 @@ little to run, and this software is what makes them cost little. Publishing the 
 publishing the prices: a legal system where only the well-resourced can afford counsel is not fixed by one firm being
 efficient in private.
 
-**Source-available is a narrower promise than the one this repository used to make, and it is worth naming the
-difference.** Under `AGPL-3.0-only` another firm could run Navigator in production without asking anyone. Under
-`BUSL-1.1` it cannot, until that version's Change Date. What is unchanged is that the source is readable by anyone, that
-nothing in the mechanism is secret, and that every published version becomes AGPL four years on. What is changed is that
-the Firm now sells the right to operate it, and says so rather than implying otherwise.
+**Source-available is the promise this repository makes, and it is worth naming precisely.** The source is readable by
+anyone, nothing in the mechanism is secret, and every published version becomes `AGPL-3.0-only` four years on. The Firm
+sells the right to operate it in the meantime, and says so.
 
 Four consequences follow, and they are the trade being made:
 
 - **No trade-secret protection.** Anything published cannot be un-published, so no mechanism in this tree is a secret.
-  That was true under the AGPL and is equally true now; BUSL restricts use, not reading.
+  BUSL restricts use, not reading.
 - **The confidentiality boundary is procedural.** A publication path exists, so the no-client-data rule is enforced by
   a load-bearing test on every pull request — see [`agent-workflows.md`](agent-workflows.md#no-client-data-in-the-repo).
 - **Forks are expected, and none of them owes this project anything.** Reading, building on, and redistributing
@@ -293,18 +273,13 @@ question from either licence.
 ## Commercial licensing
 
 **Production use needs a commercial licence, and only the copyright holder can grant one.** That holder is **Shook Law
-PLLC**. This is the section that changed most in moving off the AGPL, so it is worth being exact about what is now for
-sale and what is not.
+PLLC**.
 
-**What is on offer is the right to run Navigator in production.** Under the AGPL this section described an optional
-extra — running and forking were already free, and a commercial licence bought relief from § 13 for a firm that wanted
-to keep its modifications private. Under BUSL it describes something a production user has no way around: the Additional
-Use Grant is `None`, so operating Navigator to deliver legal services to other people requires a licence from the Firm
-rather than merely benefiting from one.
+**What is on offer is the right to run Navigator in production.** The Additional Use Grant is `None`, so operating
+Navigator to deliver legal services to other people takes a licence from the Firm.
 
-**Non-production use needs no licence, and that half has not changed.** Reading the source, building it, running the
-tests, standing up the local tier, evaluating it, and developing against it are all granted by the licence itself. A
-section about paying, silent on the free side, reads as though reading the source were chargeable — it is not.
+**Non-production use needs no licence.** Reading the source, building it, running the tests, standing up the local tier,
+evaluating it, and developing against it are all granted by the licence itself.
 
 **Only the Firm can grant it.** This is not a policy choice that could have gone another way. A production exception is
 a permission carved out of the copyright, and a permission can only be given by whoever holds the right. The Firm holds
@@ -317,12 +292,6 @@ consumer flat fees are published in full. Write to [contact@neonlaw.org](mailto:
 **Legal aid and nonprofit deployments should write.** There is no standing programme with published terms, but the Firm
 can license a legal aid office directly, and the reason such a programme would exist has not gone away. Ask.
 
-One thing worth stating plainly, because the previous version of this section said the opposite and the sentence
-survives in forks: **production use is genuinely restricted now.** Under the AGPL, commercial licensing restricted
-nothing in the public grant. Under BUSL it is the grant. What is still true is narrower and worth keeping straight —
-every copy already distributed keeps the terms it came with, and no copy already taken can be reached by anything in
-this section.
-
 ## Trademarks
 
 **NEON LAW** is a registered trademark, U.S. Reg. No. 6,325,650, owned by Shook Law PLLC. The licence grants rights in
@@ -332,10 +301,8 @@ doc. It is also the reason `NOTICE` travels in every archive and image: the rese
 not hand a fork.
 
 The registrant and the copyright holder are the same organization — see [Who holds what](#who-holds-what) — and that
-changes nothing, which is the point worth stating rather than assuming. A copyright licence conveys rights in copyright.
-It does not reach a mark, so the Firm granting you everything it can grant under `BUSL-1.1` still leaves you without the
-name. The same answer used to follow from the two sitting in different hands; it now follows from what a copyright
-licence is, which is the sturdier reason.
+changes nothing. A copyright licence conveys rights in copyright. It does not reach a mark, so the Firm granting you
+everything it can grant under `BUSL-1.1` still leaves you without the name.
 
 This is the one reservation this project genuinely needs. A client identifies who is accountable for their legal work by
 the name on the door, so a fork trading as Neon Law would misdirect the person least able to check. Anyone may run,
@@ -345,19 +312,18 @@ deployment as Neon Law.
 ## Contributions
 
 **Outside contributions are closed right now**, and anyone is welcome to write to
-[contact@neonlaw.org](mailto:contact@neonlaw.org) instead. That is a capacity decision about pull requests and nothing
-more: it revokes nothing, because a licence already given cannot be taken back, and every copy already cloned keeps its
-rights whatever the contribution policy says.
+[contact@neonlaw.org](mailto:contact@neonlaw.org) instead. That is a capacity decision about pull requests: every copy
+already cloned keeps its rights whatever the contribution policy says.
 
-The terms are stated anyway, so they are knowable in advance and a fork's own authors know where they stand. **A
-contribution assigns to the Firm.** Every author in this repository signed a written agreement to that effect before
-their first commit, so the work is the Firm's on creation, and reopening to outside contributions means a contributor
-agreement on the same footing.
+**A contribution assigns to Shook Law PLLC — all right, title, and interest in it, including every copyright in it,
+worldwide and for the full term.** That assignment is the contributor licence agreement, and the terms sit here so they
+are knowable before anyone writes a line rather than at a merge. Inside the firm the instrument is the employment or
+contractor agreement each author signed before their first commit, so the work is the Firm's on creation; an outside
+contributor signs a contributor licence agreement on the same footing before a contribution merges.
 
-Assignment is the mechanism and it changes nothing about what you receive: the work reaches you under `BUSL-1.1`, the
-same terms the project ships under, wherever in the tree it lands. What it buys is a single holder able to grant the
-whole work — which is what lets one licence cover the tree and one party set its parameters, because a grant assembled
-from many holders is one nobody can reliably renew and nobody could relicense at all. See
+Assignment is the mechanism and the grant to you is the result: the work reaches you under `BUSL-1.1`, the same terms
+the project ships under, wherever in the tree it lands. What it buys is a single holder able to grant the whole work,
+which is what lets one licence cover the tree and one party set its parameters. See
 [`CONTRIBUTING.md`](../CONTRIBUTING.md).
 
 Two boundaries survive the opening, because this repository runs a live practice: **no client data ever enters the

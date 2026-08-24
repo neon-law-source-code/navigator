@@ -20,20 +20,20 @@ full when it does — it obliges an operator to offer those users, the people re
 source. See [`LICENSE`](LICENSE) for the grant, [`NOTICE`](NOTICE) for what the firm says about it, and
 [`docs/licensing.md`](docs/licensing.md).
 
-## How contributions are licensed
+## The contributor licence agreement
 
-The terms are stated here so they are knowable in advance, and so a fork's own authors know where they stand.
+**A contribution assigns to Shook Law PLLC — all right, title, and interest in it, including every copyright in it,
+worldwide and for the full term.** That assignment is the contributor licence agreement, and it sits here so the terms
+are knowable before anyone writes a line rather than at a merge.
 
-**A contribution assigns to Shook Law PLLC.** Every author in this repository signed a written agreement to that effect
-before their first commit — the employment or contractor agreement each of them already holds — so the work is the
-firm's on creation. Reopening to outside contributions means a contributor agreement on the same footing, and that is
-worth saying in advance rather than at a merge.
+Inside the firm the instrument is the employment or contractor agreement each author signed before their first commit,
+so the work is the firm's on creation. An outside contributor signs a contributor licence agreement on the same footing
+before a contribution merges, and that is worth saying in advance.
 
 Assignment is the mechanism; the grant to you is the result. Everything an author writes reaches you under `BUSL-1.1` on
 the same terms as the rest of the tree, `templates/` included — one grant over the tree means there is no second answer
 depending on which directory you touched. What assignment buys is a single holder able to grant the whole work, which is
-what lets one licence cover the tree and one party set its parameters: a grant assembled from many holders is one nobody
-can reliably renew, and nobody could relicense at all.
+what lets one licence cover the tree and one party set its parameters.
 
 If a change adds a blank government form, note that nobody here licenses anything in the agency's own PDF — only the
 catalog card, field map, and workflow beside it.

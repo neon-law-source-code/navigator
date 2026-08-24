@@ -325,7 +325,7 @@ jobs:
         if: github.ref_name == 'main' && steps.checker.outputs.ready != 'true'
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.97.0
+          toolchain: 1.98.0
       # THE WHOLE RELEASE DECISION, in one step so the job has one place to read
       # its outputs from. `ops release-check` reads
       # `[workspace.package].version`, lists every release tag, and compares them
@@ -523,7 +523,7 @@ jobs:
         if: matrix.image == 'neon-server'
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.97.0
+          toolchain: 1.98.0
       - uses: ./.github/actions/slack-progress
         if: matrix.image == 'neon-server'
         with:
@@ -851,7 +851,7 @@ jobs:
       - name: install rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.97.0
+          toolchain: 1.98.0
       - uses: ./.github/actions/slack-progress
         with:
           webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -2075,7 +2075,7 @@ jobs:
           ref: ${{ github.sha }}
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.97.0
+          toolchain: 1.98.0
       - uses: ./.github/actions/slack-progress
         with:
           webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -2151,7 +2151,7 @@ jobs:
           ref: ${{ github.sha }}
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.97.0
+          toolchain: 1.98.0
       - uses: ./.github/actions/slack-progress
         with:
           webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -2230,7 +2230,7 @@ jobs:
           ref: ${{ github.sha }}
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.97.0
+          toolchain: 1.98.0
       - uses: ./.github/actions/slack-progress
         with:
           webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}

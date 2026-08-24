@@ -275,7 +275,7 @@ jobs:
           fetch-depth: 2
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.97.0
+          toolchain: 1.98.0
           # `llvm-tools-preview` supplies `llvm-profdata`/`llvm-cov`, the
           # instrumentation tooling the coverage floor in the test step needs.
           components: rustfmt, clippy, llvm-tools-preview

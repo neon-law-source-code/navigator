@@ -15,7 +15,7 @@
 # binary is what the `gcr.io/distroless/static` runtime stage below runs.
 # The TLS stack arrives through `store`, which registers rustls's
 # `aws-lc-rs` provider for `wss://` Surreal endpoints; it and `ring` both
-# musl-target fine. We pin to the project's Rust 1.97.0 toolchain.
+# musl-target fine. We pin to the project's Rust 1.98.0 toolchain.
 
 FROM rust:1.98-bookworm AS builder
 
@@ -44,7 +44,7 @@ WORKDIR /src
 # changes.
 #
 # `rust-toolchain.toml` must land BEFORE `rustup target add`: the override
-# pins a specific 1.97.0 toolchain that rustup re-syncs the first time cargo
+# pins a specific 1.98.0 toolchain that rustup re-syncs the first time cargo
 # runs in this dir. Adding the target beforehand (against the base image's
 # default toolchain) leaves the re-synced toolchain without the musl std,
 # and `cargo build --target …-musl` then fails with `can't find crate for

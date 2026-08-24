@@ -37,7 +37,7 @@ cloud account.
 
 **To build and test:**
 
-- **Rust** — pinned to 1.97.0 by the workspace's `rust-toolchain.toml`, so installing [`rustup`](https://rustup.rs) is
+- **Rust** — pinned to 1.98.0 by the workspace's `rust-toolchain.toml`, so installing [`rustup`](https://rustup.rs) is
   enough: it reads that pin and fetches the right toolchain on your first `cargo` invocation.
 - **A C/C++ toolchain and linker for your host** — Microsoft C++ Build Tools on Windows, the Xcode command line tools
   on macOS, `build-essential` or equivalent on Linux. Several dependencies compile native code.

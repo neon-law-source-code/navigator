@@ -2323,10 +2323,28 @@ fn scheme_for_authority(authority: &str) -> &'static str {
     }
 }
 
-fn resolve_crawler_base_url(canonical_host: &CanonicalHost) -> String {
-    let authority = canonical_host.host().unwrap_or("www.example.com");
+/// The absolute base URL the crawler documents advertise, or `None` when this
+/// deployment has not been told what it is.
+///
+/// Deliberately ignores the request's `Host`, unlike [`resolve_base_url`].
+/// These two documents are the ones a search engine reads as a statement about
+/// the whole site, and behind a proxy the `Host` is frequently an internal
+/// service name; `crawler_discovery_ignores_internal_request_host_when_canonical_host_is_unset`
+/// keeps that guard honest. So `CANONICAL_HOST` is the only accepted source.
+///
+/// **`None` rather than a placeholder authority.** Ignoring an untrusted `Host`
+/// is right; substituting `www.example.com` for it was not. That is a real,
+/// resolvable domain the deployment does not own, and it turned a missing
+/// setting into 133 sitemap URLs pointing at somebody else's site — a document
+/// Google discards whole, which is why a stale search index was the first
+/// symptom rather than a broken link. An internal hostname would at least have
+/// been inert. The honest answer to "what host am I?" when nothing has said is
+/// no answer, so the callers below publish nothing rather than something false,
+/// and the gap is visible in Search Console instead of silent.
+fn resolve_crawler_base_url(canonical_host: &CanonicalHost) -> Option<String> {
+    let authority = canonical_host.host()?;
     let scheme = scheme_for_authority(authority);
-    format!("{scheme}://{authority}")
+    Some(format!("{scheme}://{authority}"))
 }
 
 fn text_response(content_type: &'static str, body: String) -> impl IntoResponse {
@@ -2364,12 +2382,27 @@ Disallow: /templates
 /// `/robots.txt` — the host's crawler policy. Its own public marketing and
 /// blog pages are crawlable. The sitemap URL is absolute so crawlers discover
 /// the canonical host even in forks.
+///
+/// The `Sitemap:` line appears only when this deployment knows its own host.
+/// The line is optional in the robots.txt convention and a crawler that does
+/// not find one falls back to `/sitemap.xml` on the host it is already reading,
+/// which is the right document. A line naming another domain is worse than an
+/// absent one: it sends the crawler somewhere the firm does not control. See
+/// [`resolve_crawler_base_url`].
 async fn robots_txt(
     State(canonical_host): State<CanonicalHost>,
     _headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
-    let base = resolve_crawler_base_url(&canonical_host);
-    let body = format!("{CRAWLER_DISALLOW_BLOCK}\nSitemap: {base}/sitemap.xml\n");
+    let body = if let Some(base) = resolve_crawler_base_url(&canonical_host) {
+        format!("{CRAWLER_DISALLOW_BLOCK}\nSitemap: {base}/sitemap.xml\n")
+    } else {
+        tracing::warn!(
+            "CANONICAL_HOST is unset, so /robots.txt advertises no sitemap and \
+             /sitemap.xml is empty; search engines cannot index this deployment \
+             until it is set"
+        );
+        CRAWLER_DISALLOW_BLOCK.to_string()
+    };
     text_response("text/plain; charset=utf-8", body)
 }
 
@@ -2461,8 +2494,20 @@ fn render_sitemap_xml(base: &str, paths: &std::collections::BTreeSet<String>) ->
 /// serving brand mounts. Content-backed pages (the firm's posts and talks) are
 /// read from `AppState`, so the sitemap follows the content loaded at boot.
 fn sitemap_xml(state: &AppState, brand_paths: SitemapPaths) -> Response {
-    let base = resolve_crawler_base_url(&state.canonical_host);
-    let body = render_sitemap_xml(&base, &sitemap_paths(state, brand_paths));
+    // Without a canonical host every `<loc>` would name a domain this
+    // deployment does not own, and a sitemap is only meaningful when its URLs
+    // are absolute. An empty `urlset` is valid, says nothing false, and reads
+    // as "0 URLs" wherever it is submitted. See `resolve_crawler_base_url`.
+    let (base, paths) = if let Some(base) = resolve_crawler_base_url(&state.canonical_host) {
+        (base, sitemap_paths(state, brand_paths))
+    } else {
+        tracing::warn!(
+            "CANONICAL_HOST is unset, so /sitemap.xml advertises no URLs; search \
+             engines cannot index this deployment until it is set"
+        );
+        (String::new(), std::collections::BTreeSet::new())
+    };
+    let body = render_sitemap_xml(&base, &paths);
     text_response("application/xml; charset=utf-8", body).into_response()
 }
 
@@ -2473,26 +2518,49 @@ mod crawler_discovery_tests {
     use std::collections::BTreeSet;
 
     #[test]
-    fn crawler_base_defaults_to_deployment_neutral_host() {
+    fn crawler_base_resolves_the_configured_canonical_host() {
+        for (configured, expected) in [
+            ("www.neonlaw.com", "https://www.neonlaw.com"),
+            ("localhost:3001", "http://localhost:3001"),
+            ("127.0.0.1:3001", "http://127.0.0.1:3001"),
+            ("0.0.0.0:3001", "http://0.0.0.0:3001"),
+        ] {
+            assert_eq!(
+                resolve_crawler_base_url(&CanonicalHost::new(Some(configured.into()))).as_deref(),
+                Some(expected),
+            );
+        }
+    }
+
+    /// The regression this returns `Option` to prevent.
+    ///
+    /// An unconfigured deployment used to resolve to `www.example.com` — a real
+    /// domain the firm does not own — and publish its whole sitemap under it.
+    /// No answer is the honest answer; the callers publish nothing rather than
+    /// something false.
+    #[test]
+    fn crawler_base_is_absent_rather_than_a_domain_the_deployment_does_not_own() {
+        assert_eq!(resolve_crawler_base_url(&CanonicalHost::new(None)), None);
         assert_eq!(
-            resolve_crawler_base_url(&CanonicalHost::new(None)),
-            "https://www.example.com"
+            resolve_crawler_base_url(&CanonicalHost::new(Some(String::new()))),
+            None,
+            "an empty setting is not a configured host",
         );
-        assert_eq!(
-            resolve_crawler_base_url(&CanonicalHost::new(Some("www.neonlaw.com".into()))),
-            "https://www.neonlaw.com"
+    }
+
+    /// An unconfigured deployment advertises no URLs at all — not 133 of them
+    /// on somebody else's domain.
+    #[test]
+    fn sitemap_without_a_canonical_host_advertises_nothing() {
+        let xml = render_sitemap_xml("", &BTreeSet::new());
+        assert!(!xml.contains("<loc>"), "no URL is advertised: {xml}");
+        assert!(
+            !xml.contains("example.com"),
+            "no placeholder domain reaches the document: {xml}"
         );
-        assert_eq!(
-            resolve_crawler_base_url(&CanonicalHost::new(Some("localhost:3001".into()))),
-            "http://localhost:3001"
-        );
-        assert_eq!(
-            resolve_crawler_base_url(&CanonicalHost::new(Some("127.0.0.1:3001".into()))),
-            "http://127.0.0.1:3001"
-        );
-        assert_eq!(
-            resolve_crawler_base_url(&CanonicalHost::new(Some("0.0.0.0:3001".into()))),
-            "http://0.0.0.0:3001"
+        assert!(
+            xml.contains("<urlset") && xml.contains("</urlset>"),
+            "the document stays well-formed: {xml}"
         );
     }
 

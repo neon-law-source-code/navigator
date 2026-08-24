@@ -2034,14 +2034,31 @@ async fn crawler_discovery_ignores_internal_request_host_when_canonical_host_is_
         .unwrap();
     assert_eq!(robots.status(), StatusCode::OK);
     let robots_body = body_string(robots).await;
-    assert!(robots_body.contains("Sitemap: https://www.example.com/sitemap.xml"));
-    assert!(
-        !robots_body.contains("www.neonlaw.com"),
-        "unset canonical host should use the deployment-neutral fallback: {robots_body}"
-    );
     assert!(
         !robots_body.contains("internal-service"),
         "robots.txt should not advertise proxy/internal hosts: {robots_body}"
+    );
+    assert!(
+        !robots_body.contains("www.neonlaw.com"),
+        "an unconfigured deployment invents no host: {robots_body}"
+    );
+    // The policy block is the half that does not depend on knowing the host,
+    // so it is still served in full.
+    assert!(
+        robots_body.contains("Disallow: /app"),
+        "the crawler policy is still published: {robots_body}"
+    );
+    // No `Sitemap:` line at all, rather than one naming a domain this
+    // deployment does not own. A crawler with no line falls back to
+    // `/sitemap.xml` on the host it is already reading, which is the right
+    // document; a line pointing at `example.com` sent it off-site.
+    assert!(
+        !robots_body.contains("Sitemap:"),
+        "an unconfigured deployment advertises no sitemap URL: {robots_body}"
+    );
+    assert!(
+        !robots_body.contains("example.com"),
+        "no placeholder domain is published: {robots_body}"
     );
 
     let sitemap = app
@@ -2056,14 +2073,27 @@ async fn crawler_discovery_ignores_internal_request_host_when_canonical_host_is_
         .unwrap();
     assert_eq!(sitemap.status(), StatusCode::OK);
     let sitemap_body = body_string(sitemap).await;
-    assert!(sitemap_body.contains("<loc>https://www.example.com/privacy</loc>"));
-    assert!(
-        !sitemap_body.contains("www.neonlaw.com"),
-        "unset canonical host should use the deployment-neutral fallback: {sitemap_body}"
-    );
     assert!(
         !sitemap_body.contains("internal-service"),
         "sitemap should not advertise proxy/internal hosts: {sitemap_body}"
+    );
+    assert!(
+        !sitemap_body.contains("www.neonlaw.com"),
+        "an unconfigured deployment invents no host: {sitemap_body}"
+    );
+    // The document stays well-formed and advertises nothing, rather than
+    // advertising every page under a domain this deployment does not own.
+    assert!(
+        !sitemap_body.contains("<loc>"),
+        "an unconfigured deployment advertises no URL: {sitemap_body}"
+    );
+    assert!(
+        !sitemap_body.contains("example.com"),
+        "no placeholder domain is published: {sitemap_body}"
+    );
+    assert!(
+        sitemap_body.contains("<urlset") && sitemap_body.contains("</urlset>"),
+        "the sitemap is still well-formed XML: {sitemap_body}"
     );
 }
 

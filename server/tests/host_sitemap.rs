@@ -21,8 +21,16 @@ use tower::ServiceExt;
 /// An `AppState` carrying the content the sitemap is built from. The shared
 /// builder ships empty indexes, so a sitemap built on it would advertise the
 /// static pages and none of the posts or talks — the half most likely to drift.
+///
+/// It also ships no canonical host, and a deployment that does not know its own
+/// host now advertises nothing at all rather than inventing a domain for the
+/// `<loc>` entries. That is the subject of
+/// `crawler_discovery_ignores_internal_request_host_when_canonical_host_is_unset`;
+/// what this file is about is *which* paths a configured deployment advertises,
+/// so it configures one.
 async fn state() -> portal::AppState {
     let mut state = portal::test_support::app_state(mem_surreal().await).await;
+    state.canonical_host = portal::CanonicalHost::new(Some(TEST_HOST.to_string()));
     state.blog = portal::blog::load_dir(std::path::Path::new(portal::DEFAULT_BLOG_DIR))
         .expect("load the bundled blog posts");
     state.workshops = portal::WorkshopIndex::new(
@@ -61,10 +69,24 @@ async fn app() -> Router {
     compose(state, neon::public_routes(), neon::PUBLIC_PATHS, dioxus)
 }
 
+/// The host this file's deployment is configured as, sent on every request.
+///
+/// Both halves matter. The sitemap resolves its absolute `<loc>` entries from
+/// it, and the canonical-host middleware redirects any request that arrives for
+/// a different one — so a request without it answers `308` rather than the page
+/// under test. A served request always carries a `Host`.
+const TEST_HOST: &str = "www.neonlaw.com";
+
 async fn get(app: &Router, path: &str) -> (StatusCode, String) {
     let resp = app
         .clone()
-        .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+        .oneshot(
+            Request::builder()
+                .uri(path)
+                .header(axum::http::header::HOST, TEST_HOST)
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
     let status = resp.status();

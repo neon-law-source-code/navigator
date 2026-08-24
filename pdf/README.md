@@ -73,7 +73,7 @@ unbreakable, so a signature block moves to the next page whole instead of splitt
 One grey line sits under the rule, carrying every way to reach the firm, voice line first:
 
 ```text
-+1 510 707 6036  ·  contact@neonlaw.com  ·  www.neonlaw.com
++1 510 800 2080  ·  contact@neonlaw.com  ·  www.neonlaw.com
 ```
 
 **No street address appears on the letterhead.** The firm's postal address is a private-mailbox suite that nothing is
@@ -86,6 +86,11 @@ in that struct's `Default`. A letter going out over a lawyer's signature says th
 template render` takes the default rather than assembling the identity per render. An empty field drops out cleanly: no
 dangling middot, and a line with nothing left in it is not emitted at all, so a deployment that publishes no phone still
 gets a correct letterhead.
+
+Hard-coding the identity is not permission to let it fall behind the firm's. `cli/tests/letterhead_brand_parity.rs`
+holds all four fields against `views::brand::DEFAULT_BRANDING`, so the website and the letterhead cannot publish
+different contact details: the voice line moved once while the letterhead kept the retired one, and nothing failed
+because the two constants had no relationship to disagree about. That test is the relationship.
 
 ## Fonts
 

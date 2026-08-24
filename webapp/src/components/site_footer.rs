@@ -831,7 +831,7 @@ mod tests {
                     logo_href: "/public/logo-firm.svg".to_string(),
                     brand_name: "Neon Law".to_string(),
                     contact_email: "support@neonlaw.com".to_string(),
-                    phone: "+1 510 707 6036".to_string(),
+                    phone: "+1 510 800 2080".to_string(),
                     // The real addresses, as `views::brand` publishes them: a
                     // suite is its own comma-separated part, which is what the
                     // footer breaks a line on.
@@ -920,11 +920,11 @@ mod tests {
         );
         // `tel:` dials digits only — the human spacing would not dial.
         assert!(
-            out.contains(r#"href="tel:+15107076036""#),
+            out.contains(r#"href="tel:+15108002080""#),
             "the voice line is dialable: {out}"
         );
         assert!(
-            out.contains("+1 510 707 6036"),
+            out.contains("+1 510 800 2080"),
             "the number is shown as written: {out}"
         );
     }

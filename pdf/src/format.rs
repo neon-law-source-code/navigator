@@ -53,7 +53,7 @@ pub struct Letterhead {
     /// looking for who is on the hook will go for it. Printed in
     /// letterspaced capitals, so supply it in its natural case.
     pub name: String,
-    /// The firm's voice line in dialable form, e.g. `+1 510 707 6036`.
+    /// The firm's voice line in dialable form, e.g. `+1 510 800 2080`.
     pub phone: String,
     /// The inbox a reader should write to, e.g. `contact@neonlaw.com`.
     pub email: String,
@@ -66,7 +66,7 @@ impl Default for Letterhead {
     fn default() -> Self {
         Self {
             name: "Neon Law".to_string(),
-            phone: "+1 510 707 6036".to_string(),
+            phone: "+1 510 800 2080".to_string(),
             email: "contact@neonlaw.com".to_string(),
             web: "www.neonlaw.com".to_string(),
         }
@@ -454,7 +454,7 @@ mod tests {
             "the wordmark is not exactly `Neon Law`: {letter}"
         );
         assert!(
-            letter.contains("+1 510 707 6036"),
+            letter.contains("+1 510 800 2080"),
             "letterhead must carry the voice line: {letter}"
         );
         assert!(letter.contains("logo-neon-law.png"));
@@ -499,7 +499,7 @@ mod tests {
             .find(|l| l.contains("fill: luma(40%)"))
             .expect("contact line");
         for part in [
-            "+1 510 707 6036",
+            "+1 510 800 2080",
             "contact\\@neonlaw.com",
             "www.neonlaw.com",
         ] {
@@ -597,7 +597,7 @@ mod tests {
             "tracking: 0.22em",          // letterspaced
             "#line(length: 100%",        // the rule across the page
             "stroke: 0.5pt + luma(35%)", // at the agreed weight
-            "+1 510 707 6036",           // the contact line, entire
+            "+1 510 800 2080",           // the contact line, entire
             "contact\\@neonlaw.com",
             "www.neonlaw.com",
             "fill: luma(40%)",

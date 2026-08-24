@@ -59,6 +59,9 @@ async fn mount_reads(server: &MockServer) {
             "delete_branch_on_merge": true,
             "squash_merge_commit_title": "PR_TITLE",
             "squash_merge_commit_message": "PR_BODY",
+            "has_issues": false,
+            "has_projects": false,
+            "has_wiki": false,
         })))
         .mount(server)
         .await;
@@ -74,6 +77,17 @@ async fn mount_reads(server: &MockServer) {
     Mock::given(method("GET"))
         .and(path("/users/owner"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({})))
+        .mount(server)
+        .await;
+    // Existing is not owning: GitHub honors a code owner only where that owner
+    // can write, so the reconcile asks this too.
+    Mock::given(method("GET"))
+        .and(path(
+            "/repos/neon-law-source-code/navigator/collaborators/owner/permission",
+        ))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({"permission": "admin"})),
+        )
         .mount(server)
         .await;
     // The required `ci` context is only bound to a repository whose workflow

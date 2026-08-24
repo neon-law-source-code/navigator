@@ -56,7 +56,15 @@ organization gets `COMMON_POLICY` and one in the deployment's own gets `CLIENT_P
 client-confidential defaults — private visibility, and none of the open-source governance files a published repository
 carries. That gate, in either organization, is the `production` branch protections, the CODEOWNERS assertion, and the
 merge policy — pull requests only, squash only, auto-merge, automatic head-branch deletion, and squash commits titled
-and described from the pull request. `neon-law-source-code/navigator` alone adds `NAVIGATOR_POLICY`'s three extras — the
+and described from the pull request.
+
+Repository features are reconciled alongside the merge policy, in the same `PATCH`, and all three are off: Issues,
+Projects, and the wiki. Issue tracking is Linear's, so a repository-level tracker is a second inbox nobody reads, and a
+wiki is documentation outside the review gate every other word in the tree passes through. They were applied by hand
+before this command carried them, and the hand-application did not hold, which is the argument for reconciling them
+rather than trusting a setting nobody re-checks.
+
+`neon-law-source-code/navigator` alone adds `NAVIGATOR_POLICY`'s three extras — the
 release-tag ruleset, the DevX labels, and the App-installation assertion — because it is the only repository that cuts a
 release or runs that automation.
 

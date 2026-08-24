@@ -566,9 +566,42 @@ struct RulesetSummary {
     name: String,
 }
 
+/// One repository, as `GET /repos/{owner}/{repo}` returns it.
+///
+/// The merge fields are `Option` because GitHub does not return them at all to
+/// a caller without admin access on the repository — it omits them rather than
+/// erroring, so a `bool` here turns "your token cannot administer this
+/// repository" into a serde decode failure naming a field, which is the least
+/// useful phrasing of that problem. [`RepositorySettings::from_live`] reports
+/// the absence as the permission question it is.
+///
+/// The feature fields are not `Option`: GitHub returns those to any caller who
+/// can see the repository at all.
 #[derive(Debug, Deserialize)]
-#[allow(clippy::struct_excessive_bools)] // Mirrors GitHub's merge-settings fields.
+#[allow(clippy::struct_excessive_bools)] // Mirrors GitHub's repository-settings fields.
 struct Repository {
+    allow_squash_merge: Option<bool>,
+    allow_merge_commit: Option<bool>,
+    allow_rebase_merge: Option<bool>,
+    allow_auto_merge: Option<bool>,
+    delete_branch_on_merge: Option<bool>,
+    squash_merge_commit_title: Option<String>,
+    squash_merge_commit_message: Option<String>,
+    has_issues: bool,
+    has_projects: bool,
+    has_wiki: bool,
+}
+
+/// The repository-level settings this command reconciles, as the body of one
+/// `PATCH /repos/{owner}/{repo}`.
+///
+/// Merge behaviour and the feature toggles are one payload rather than two
+/// because they are one endpoint: splitting them into two [`Action`]s would
+/// issue two PATCHes to the same URL and could leave a repository half
+/// reconciled if the second failed.
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[allow(clippy::struct_excessive_bools)] // Mirrors GitHub's repository-settings payload.
+struct RepositorySettings {
     allow_squash_merge: bool,
     allow_merge_commit: bool,
     allow_rebase_merge: bool,
@@ -576,18 +609,13 @@ struct Repository {
     delete_branch_on_merge: bool,
     squash_merge_commit_title: String,
     squash_merge_commit_message: String,
-}
-
-#[derive(Debug, Serialize)]
-#[allow(clippy::struct_excessive_bools)] // Mirrors GitHub's merge-settings payload.
-struct MergeSettings {
-    allow_squash_merge: bool,
-    allow_merge_commit: bool,
-    allow_rebase_merge: bool,
-    allow_auto_merge: bool,
-    delete_branch_on_merge: bool,
-    squash_merge_commit_title: &'static str,
-    squash_merge_commit_message: &'static str,
+    /// Issues, Projects, and the wiki are off on every repository the Firm
+    /// administers. Issue tracking is Linear's, so a repository-level issue
+    /// tracker is a second inbox nobody reads, and a wiki is documentation
+    /// outside the review gate every other word in the tree passes through.
+    has_issues: bool,
+    has_projects: bool,
+    has_wiki: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -611,7 +639,7 @@ struct Installation {
 /// or stop the command before any write can happen.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Action {
-    UpdateMergeSettings,
+    UpdateRepositorySettings,
     CreateRuleset { name: String },
     UpdateRuleset { name: String },
     CreateLabel { name: String },
@@ -621,7 +649,7 @@ enum Action {
 impl Action {
     fn description(&self) -> String {
         match self {
-            Self::UpdateMergeSettings => "update merge settings".to_string(),
+            Self::UpdateRepositorySettings => "update repository settings".to_string(),
             Self::CreateRuleset { name } => format!("create ruleset {name}"),
             Self::UpdateRuleset { name } => format!("update ruleset {name}"),
             Self::CreateLabel { name } => format!("create label {name}"),
@@ -866,6 +894,66 @@ fn rule(kind: &str, parameters: Option<serde_json::Value>) -> Rule {
     }
 }
 
+/// Every `context` the `required_status_checks` rule of a ruleset demands.
+fn required_contexts(payload: &RulesetPayload) -> Vec<String> {
+    payload
+        .rules
+        .iter()
+        .filter(|rule| rule.kind == "required_status_checks")
+        .filter_map(|rule| rule.parameters.as_ref())
+        .filter_map(|parameters| parameters.get("required_status_checks"))
+        .filter_map(|checks| checks.as_array())
+        .flatten()
+        .filter_map(|check| check.get("context"))
+        .filter_map(|context| context.as_str())
+        .map(str::to_string)
+        .collect()
+}
+
+/// Refuse to reconcile a ruleset whose live form requires a status check the
+/// desired form does not.
+///
+/// [`Action::UpdateRuleset`] PUTs the whole desired payload, so a context that
+/// is live but not desired is not merged — it is removed. Every other rule in
+/// this module fails closed rather than guessing, and this is the same hazard
+/// in its most damaging direction: the reconcile reports success, the ruleset
+/// still looks active, and a gate somebody deliberately added has stopped
+/// gating. That is strictly worse than no ruleset, which is at least visible.
+///
+/// `navigator`'s own `production` is the case that motivated this. It requires
+/// `ci` and `CodeQL`; `desired_branch_ruleset` builds `ci` alone, so a run
+/// would have dropped the CodeQL requirement added in `34170df` without
+/// printing anything about it.
+///
+/// The refusal is deliberately not a merge. A context this module does not
+/// know about is a policy decision somebody made outside it, and silently
+/// adopting it would make the desired state unreviewable in Rust — the whole
+/// point of the module. Naming it and stopping puts the decision back in a
+/// pull request.
+///
+/// # Errors
+///
+/// When a live ruleset requires a context the desired payload omits.
+fn assert_no_required_check_dropped(desired: &RulesetPayload, live: &RulesetPayload) -> Result<()> {
+    let wanted = required_contexts(desired);
+    let dropped: Vec<String> = required_contexts(live)
+        .into_iter()
+        .filter(|context| !wanted.contains(context))
+        .collect();
+    if dropped.is_empty() {
+        return Ok(());
+    }
+    bail!(
+        "ruleset {:?} currently requires {} status check(s) this command does not: {}. \
+         Reconciling would remove them, because an update writes the whole desired \
+         ruleset. Add them to `desired_branch_ruleset` in a reviewed change, or drop \
+         them from the repository deliberately, then re-run.",
+        live.name,
+        dropped.len(),
+        dropped.join(", ")
+    )
+}
+
 fn ruleset_by_name(
     policy: RepositoryPolicy,
     actions_app_id: u64,
@@ -882,13 +970,13 @@ fn ruleset_by_name(
 fn plan(
     policy: RepositoryPolicy,
     actions_app_id: u64,
-    merge_settings_match: bool,
+    settings_match: bool,
     live_rulesets: &[Option<RulesetPayload>],
     labels: &[Label],
 ) -> Vec<Action> {
     let mut actions = Vec::new();
-    if !merge_settings_match {
-        actions.push(Action::UpdateMergeSettings);
+    if !settings_match {
+        actions.push(Action::UpdateRepositorySettings);
     }
     for (desired, live) in desired_rulesets(policy, actions_app_id)
         .iter()
@@ -989,6 +1077,49 @@ impl GitHubClient {
             }
             page += 1;
         }
+    }
+
+    /// One account's effective permission on this repository, as GitHub's
+    /// legacy `permission` field spells it: `admin`, `write`, `read`, or
+    /// `none`.
+    ///
+    /// `maintain` collapses into `write` and `triage` into `read`, which is the
+    /// grouping that matters here: only `admin` and `write` let GitHub honor an
+    /// account as a code owner.
+    ///
+    /// The endpoint answers for a non-collaborator too rather than 404ing — a
+    /// stranger on a public repository reads back as `read` — so the answer is
+    /// always a permission and never an absence.
+    async fn collaborator_permission(&self, handle: &str) -> Result<String> {
+        #[derive(Deserialize)]
+        struct Permission {
+            permission: String,
+        }
+        let permission: Permission = self
+            .get_json(&self.repo_path(&format!("/collaborators/{handle}/permission")))
+            .await?;
+        Ok(permission.permission)
+    }
+
+    /// Whether a team is granted push or admin on **this** repository.
+    ///
+    /// An organization team can exist and hold no grant here, in which case
+    /// GitHub drops any CODEOWNERS rule naming it, exactly as it drops a
+    /// misspelled user.
+    async fn team_can_write(&self, slug: &str) -> Result<bool> {
+        #[derive(Deserialize)]
+        struct RepositoryTeam {
+            slug: String,
+            permission: String,
+        }
+        let teams: Vec<RepositoryTeam> = self.get_json(&self.repo_path("/teams")).await?;
+        Ok(teams.iter().any(|team| {
+            team.slug.eq_ignore_ascii_case(slug)
+                && matches!(
+                    team.permission.as_str(),
+                    "admin" | "push" | "write" | "maintain"
+                )
+        }))
     }
 
     /// Whether a resource exists, distinguishing "absent" from "the request
@@ -1148,11 +1279,14 @@ async fn reconcile(policy: RepositoryPolicy, client: &GitHubClient, dry_run: boo
             continue;
         };
         ruleset_ids.insert(desired.name.clone(), summary.id);
-        live_rulesets.push(Some(
-            client
-                .get_json::<RulesetPayload>(&client.repo_path(&format!("/rulesets/{}", summary.id)))
-                .await?,
-        ));
+        let live: RulesetPayload = client
+            .get_json(&client.repo_path(&format!("/rulesets/{}", summary.id)))
+            .await?;
+        // Before planning, and therefore before any write: an update PUTs the
+        // whole desired payload, so a required check that is live but not
+        // desired would be removed rather than kept.
+        assert_no_required_check_dropped(&desired, &live)?;
+        live_rulesets.push(Some(live));
     }
     let labels = if policy.labels.is_empty() {
         Vec::new()
@@ -1162,7 +1296,8 @@ async fn reconcile(policy: RepositoryPolicy, client: &GitHubClient, dry_run: boo
     let actions = plan(
         policy,
         actions_app_id,
-        merge_settings_match(&repository),
+        RepositorySettings::from_live(&repository, &client.repository)?
+            == desired_repository_settings(),
         &live_rulesets,
         &labels,
     );
@@ -1196,9 +1331,9 @@ async fn apply(
     action: Action,
 ) -> Result<()> {
     match action {
-        Action::UpdateMergeSettings => {
+        Action::UpdateRepositorySettings => {
             client
-                .patch_json(&client.repo_path(""), &desired_merge_settings())
+                .patch_json(&client.repo_path(""), &desired_repository_settings())
                 .await
         }
         Action::CreateRuleset { name } => {
@@ -1259,27 +1394,69 @@ fn label_by_name(policy: RepositoryPolicy, name: &str) -> Result<&'static Desire
         .ok_or_else(|| anyhow!("no desired label named {name}"))
 }
 
-fn desired_merge_settings() -> MergeSettings {
-    MergeSettings {
+fn desired_repository_settings() -> RepositorySettings {
+    RepositorySettings {
         allow_squash_merge: true,
         allow_merge_commit: false,
         allow_rebase_merge: false,
         allow_auto_merge: true,
         delete_branch_on_merge: true,
-        squash_merge_commit_title: "PR_TITLE",
-        squash_merge_commit_message: "PR_BODY",
+        squash_merge_commit_title: "PR_TITLE".to_string(),
+        squash_merge_commit_message: "PR_BODY".to_string(),
+        has_issues: false,
+        has_projects: false,
+        has_wiki: false,
     }
 }
 
-fn merge_settings_match(repository: &Repository) -> bool {
-    let desired = desired_merge_settings();
-    repository.allow_squash_merge == desired.allow_squash_merge
-        && repository.allow_merge_commit == desired.allow_merge_commit
-        && repository.allow_rebase_merge == desired.allow_rebase_merge
-        && repository.allow_auto_merge == desired.allow_auto_merge
-        && repository.delete_branch_on_merge == desired.delete_branch_on_merge
-        && repository.squash_merge_commit_title == desired.squash_merge_commit_title
-        && repository.squash_merge_commit_message == desired.squash_merge_commit_message
+impl RepositorySettings {
+    /// The live settings, in the shape the desired ones are written in, so the
+    /// two compare with `==` and no field can be added to the payload without
+    /// also being compared.
+    ///
+    /// # Errors
+    ///
+    /// When GitHub omitted the merge fields, which it does for a caller that
+    /// cannot administer the repository. That is a permission answer rather
+    /// than drift, and reconciling against a guess would report every such
+    /// repository as needing an update it is not allowed to make.
+    fn from_live(repository: &Repository, slug: &str) -> Result<Self> {
+        let missing = |field: &str| {
+            anyhow!(
+                "GitHub did not return {field:?} for {slug}, which it omits for a caller \
+                 without admin access on the repository; `ops github setup` needs admin \
+                 there to read and reconcile its settings"
+            )
+        };
+        Ok(Self {
+            allow_squash_merge: repository
+                .allow_squash_merge
+                .ok_or_else(|| missing("allow_squash_merge"))?,
+            allow_merge_commit: repository
+                .allow_merge_commit
+                .ok_or_else(|| missing("allow_merge_commit"))?,
+            allow_rebase_merge: repository
+                .allow_rebase_merge
+                .ok_or_else(|| missing("allow_rebase_merge"))?,
+            allow_auto_merge: repository
+                .allow_auto_merge
+                .ok_or_else(|| missing("allow_auto_merge"))?,
+            delete_branch_on_merge: repository
+                .delete_branch_on_merge
+                .ok_or_else(|| missing("delete_branch_on_merge"))?,
+            squash_merge_commit_title: repository
+                .squash_merge_commit_title
+                .clone()
+                .ok_or_else(|| missing("squash_merge_commit_title"))?,
+            squash_merge_commit_message: repository
+                .squash_merge_commit_message
+                .clone()
+                .ok_or_else(|| missing("squash_merge_commit_message"))?,
+            has_issues: repository.has_issues,
+            has_projects: repository.has_projects,
+            has_wiki: repository.has_wiki,
+        })
+    }
 }
 
 /// Every distinct owner named by a CODEOWNERS file, in first-seen order.
@@ -1310,19 +1487,29 @@ fn assert_codeowners(contents: &str) -> Result<Vec<String>> {
     Ok(owners)
 }
 
-/// Confirm every owner the file names actually exists on this host.
+/// Confirm every owner the file names can actually own a path in *this*
+/// repository.
 ///
 /// This is the assertion that makes `require_code_owner_review` mean something.
-/// GitHub does not reject a CODEOWNERS entry it cannot resolve — it drops the
-/// rule and leaves the matched paths unowned, which looks identical to having
-/// no CODEOWNERS file at all. A repository can therefore sit for months with a
+/// GitHub does not reject a CODEOWNERS entry it cannot honor — it drops the rule
+/// and leaves the matched paths unowned, which looks identical to having no
+/// CODEOWNERS file at all. A repository can therefore sit for months with a
 /// review gate switched on, a CODEOWNERS file committed, and no owner on any
 /// path.
 ///
-/// It is not a hypothetical. A handle carried over from a checkout on one forge
-/// resolves nowhere on another that shares no account namespace with it — an
-/// EMU-provisioned tenant and github.com being the pair that produced this
-/// failure — and it fails exactly that quietly.
+/// # Existing is not owning
+///
+/// This checked mere existence — `GET /users/{handle}` — and existence is the
+/// wrong question. GitHub honors a CODEOWNERS owner only if that account has
+/// **write access to this repository**; an account that exists and cannot write
+/// here is dropped exactly like a misspelling.
+///
+/// The gap was not hypothetical. `navigator`'s own CODEOWNERS named `@nick`,
+/// which is a real github.com account belonging to an unrelated person and not
+/// a collaborator on the repository. `GET /users/nick` answered 200, this
+/// assertion passed, and every path in the repository was unowned. A check that
+/// cannot tell a stranger from a reviewer is not a fail-closed check, so it now
+/// asks the question GitHub itself asks.
 async fn assert_owners_resolve(client: &GitHubClient, owners: &[String]) -> Result<()> {
     for owner in owners {
         // An email owner cannot be resolved through the API — GitHub matches it
@@ -1330,21 +1517,57 @@ async fn assert_owners_resolve(client: &GitHubClient, owners: &[String]) -> Resu
         let Some(handle) = owner.strip_prefix('@') else {
             continue;
         };
-        let (path, kind) = match handle.split_once('/') {
-            Some((org, team)) => (format!("/orgs/{org}/teams/{team}"), "team"),
-            None => (format!("/users/{handle}"), "user"),
-        };
-        if !client.exists(&path).await? {
-            bail!(
-                "CODEOWNERS names {owner}, which does not resolve to a {kind} on this host \
-                 ({}). GitHub ignores an owner it cannot resolve, so the paths it covers \
-                 would be left unowned and `require_code_owner_review` would pass anyone's \
-                 review. Correct the handle to one that exists here.",
-                client.api_base,
-            );
+        match handle.split_once('/') {
+            // A team owns paths here when the repository grants it push or
+            // admin. The organization-level team may exist and still have no
+            // grant on this repository, which is the team-shaped form of the
+            // same trap.
+            Some((org, team)) => {
+                if !client.exists(&format!("/orgs/{org}/teams/{team}")).await? {
+                    bail!(
+                        "CODEOWNERS names {owner}, which does not resolve to a team on this \
+                         host ({}). Correct the handle to one that exists here.",
+                        client.api_base,
+                    );
+                }
+                if !client.team_can_write(team).await? {
+                    bail!(
+                        "CODEOWNERS names team {owner}, which exists but has no write grant \
+                         on {}. GitHub honors a code owner only where that owner can write, \
+                         so every path this rule covers is left unowned and \
+                         `require_code_owner_review` would pass anyone's review. Grant the \
+                         team push access, or name an owner that has it.",
+                        client.repository,
+                    );
+                }
+            }
+            None => {
+                if !client.exists(&format!("/users/{handle}")).await? {
+                    bail!(
+                        "CODEOWNERS names {owner}, which does not resolve to a user on this \
+                         host ({}). Correct the handle to one that exists here.",
+                        client.api_base,
+                    );
+                }
+                let permission = client.collaborator_permission(handle).await?;
+                if !matches!(permission.as_str(), "admin" | "write") {
+                    bail!(
+                        "CODEOWNERS names {owner}, which is a real account on this host but \
+                         has {permission:?} access to {} rather than write. GitHub honors a \
+                         code owner only where that owner can write, so every path this rule \
+                         covers is left unowned and `require_code_owner_review` would pass \
+                         anyone's review — the file looks correct while gating nothing. Name \
+                         a collaborator, or grant this one write access.",
+                        client.repository,
+                    );
+                }
+            }
         }
     }
-    eprintln!("==> CODEOWNERS owners resolve: {}", owners.join(", "));
+    eprintln!(
+        "==> CODEOWNERS owners can write here: {}",
+        owners.join(", ")
+    );
     Ok(())
 }
 
@@ -1589,14 +1812,23 @@ mod tests {
 
     fn matching_repository() -> Repository {
         Repository {
-            allow_squash_merge: true,
-            allow_merge_commit: false,
-            allow_rebase_merge: false,
-            allow_auto_merge: true,
-            delete_branch_on_merge: true,
-            squash_merge_commit_title: "PR_TITLE".to_string(),
-            squash_merge_commit_message: "PR_BODY".to_string(),
+            allow_squash_merge: Some(true),
+            allow_merge_commit: Some(false),
+            allow_rebase_merge: Some(false),
+            allow_auto_merge: Some(true),
+            delete_branch_on_merge: Some(true),
+            squash_merge_commit_title: Some("PR_TITLE".to_string()),
+            squash_merge_commit_message: Some("PR_BODY".to_string()),
+            has_issues: false,
+            has_projects: false,
+            has_wiki: false,
         }
+    }
+
+    /// Whether the live repository reads as already reconciled.
+    fn settings_match(repository: &Repository) -> bool {
+        RepositorySettings::from_live(repository, "acme/navigator")
+            .is_ok_and(|live| live == desired_repository_settings())
     }
 
     /// No actor may bypass the integrity gate — including the administrator who
@@ -1808,8 +2040,24 @@ mod tests {
             .mount(&server)
             .await;
         Mock::given(method("GET"))
+            .and(path("/repos/acme/navigator/collaborators/nick/permission"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({"permission": "admin"})),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
             .and(path("/orgs/neon-law/teams/counsel"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({})))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/repos/acme/navigator/teams"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!([{"slug": "counsel", "permission": "push"}])),
+            )
             .mount(&server)
             .await;
         let client = test_client(&server);
@@ -1825,6 +2073,65 @@ mod tests {
         )
         .await
         .unwrap();
+    }
+
+    /// An owner that exists and cannot write here is dropped by GitHub exactly
+    /// like a misspelling, so it must fail the same way.
+    ///
+    /// This is the regression that made the check necessary rather than
+    /// theoretical. `navigator`'s CODEOWNERS named `@nick`, a real github.com
+    /// account belonging to an unrelated person whose permission on the
+    /// repository is `read`. Existence-only resolution passed it, and every
+    /// path in the repository was unowned while the file looked correct.
+    #[tokio::test]
+    async fn a_codeowner_who_cannot_write_here_fails_the_reconcile() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/users/nick"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({})))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/repos/acme/navigator/collaborators/nick/permission"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({"permission": "read"})),
+            )
+            .mount(&server)
+            .await;
+        let client = test_client(&server);
+        let error = assert_owners_resolve(&client, &["@nick".to_string()])
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("@nick"), "{error}");
+        assert!(error.contains("read"), "{error}");
+        assert!(error.contains("acme/navigator"), "{error}");
+        // It must not be reported as a spelling problem: the handle is real.
+        assert!(!error.contains("does not resolve"), "{error}");
+    }
+
+    /// A team with no grant on this repository is the team-shaped form of the
+    /// same trap: the organization team exists, and GitHub still drops the rule.
+    #[tokio::test]
+    async fn a_codeowner_team_without_a_repository_grant_fails() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/orgs/neon-law/teams/counsel"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({})))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/repos/acme/navigator/teams"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([])))
+            .mount(&server)
+            .await;
+        let client = test_client(&server);
+        let error = assert_owners_resolve(&client, &["@neon-law/counsel".to_string()])
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("@neon-law/counsel"), "{error}");
+        assert!(error.contains("no write grant"), "{error}");
     }
 
     /// A 500 is not an absent account. Treating every non-200 as "missing"
@@ -2098,7 +2405,7 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(
             plan(COMMON_POLICY, TEST_ACTIONS_APP_ID, false, &live, &[]),
-            vec![Action::UpdateMergeSettings]
+            vec![Action::UpdateRepositorySettings]
         );
     }
 
@@ -2258,14 +2565,14 @@ mod tests {
         // visibility write. Adding a variant that was one would stop compiling
         // here rather than shipping a one-way door.
         let writes_visibility = |action: &Action| match action {
-            Action::UpdateMergeSettings
+            Action::UpdateRepositorySettings
             | Action::CreateRuleset { .. }
             | Action::UpdateRuleset { .. }
             | Action::CreateLabel { .. }
             | Action::UpdateLabel { .. } => false,
         };
         for action in [
-            Action::UpdateMergeSettings,
+            Action::UpdateRepositorySettings,
             Action::CreateRuleset { name: "x".into() },
             Action::UpdateRuleset { name: "x".into() },
             Action::CreateLabel { name: "x".into() },
@@ -2611,6 +2918,9 @@ mod tests {
                 "delete_branch_on_merge": true,
                 "squash_merge_commit_title": "PR_TITLE",
                 "squash_merge_commit_message": "PR_BODY",
+                "has_issues": false,
+                "has_projects": false,
+                "has_wiki": false,
             })))
             .mount(&server)
             .await;
@@ -2680,6 +2990,9 @@ mod tests {
                 "delete_branch_on_merge": true,
                 "squash_merge_commit_title": "PR_TITLE",
                 "squash_merge_commit_message": "PR_BODY",
+                "has_issues": false,
+                "has_projects": false,
+                "has_wiki": false,
             })))
             .mount(server)
             .await;
@@ -2693,6 +3006,15 @@ mod tests {
         Mock::given(method("GET"))
             .and(path("/users/owner"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({})))
+            .mount(server)
+            .await;
+        // Existing is not owning: the owner must be able to write here.
+        Mock::given(method("GET"))
+            .and(path("/repos/acme/navigator/collaborators/owner/permission"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({"permission": "admin"})),
+            )
             .mount(server)
             .await;
         // The workflow must actually define the `ci` job the gate requires.
@@ -2872,7 +3194,120 @@ mod tests {
     #[test]
     fn merge_settings_detects_drift() {
         let mut repository = matching_repository();
-        repository.allow_rebase_merge = true;
-        assert!(!merge_settings_match(&repository));
+        repository.allow_rebase_merge = Some(true);
+        assert!(!settings_match(&repository));
+    }
+
+    /// Issues, Projects, and the wiki are part of the reconciled state, not
+    /// settings a human keeps in the GitHub UI.
+    ///
+    /// They were applied by hand across the Firm's repositories precisely
+    /// because this command did not carry them, and the hand-application did
+    /// not hold: one repository was surveyed with all three still on. Each is
+    /// asserted separately so turning one of them into a no-op cannot pass on
+    /// the strength of the other two.
+    #[test]
+    fn repository_features_are_reconciled() {
+        for mutate in [
+            (|repository: &mut Repository| repository.has_issues = true) as fn(&mut Repository),
+            |repository: &mut Repository| repository.has_projects = true,
+            |repository: &mut Repository| repository.has_wiki = true,
+        ] {
+            let mut repository = matching_repository();
+            mutate(&mut repository);
+            assert!(
+                !settings_match(&repository),
+                "a repository feature left on must plan an update"
+            );
+        }
+        let desired = desired_repository_settings();
+        assert!(!desired.has_issues);
+        assert!(!desired.has_projects);
+        assert!(!desired.has_wiki);
+    }
+
+    /// A feature toggle reaches GitHub in the same PATCH the merge settings
+    /// use, because they are the same endpoint.
+    #[test]
+    fn repository_settings_payload_carries_the_feature_toggles() {
+        let value = serde_json::to_value(desired_repository_settings()).unwrap();
+        assert_eq!(value["has_issues"], serde_json::json!(false));
+        assert_eq!(value["has_projects"], serde_json::json!(false));
+        assert_eq!(value["has_wiki"], serde_json::json!(false));
+        assert_eq!(value["allow_squash_merge"], serde_json::json!(true));
+    }
+
+    /// GitHub omits the merge fields for a caller without admin access rather
+    /// than refusing the read, and the resulting `null` must be reported as
+    /// the permission answer it is.
+    ///
+    /// Observed against a real repository: a token holding only `pull` on a
+    /// repository reads `allow_squash_merge: null`. Typed as `bool` that was a
+    /// serde decode error naming a field, which tells an operator nothing
+    /// about what to fix.
+    #[test]
+    fn missing_merge_fields_report_the_permission_problem() {
+        let repository: Repository = serde_json::from_value(serde_json::json!({
+            "allow_squash_merge": null,
+            "allow_merge_commit": null,
+            "allow_rebase_merge": null,
+            "allow_auto_merge": null,
+            "delete_branch_on_merge": null,
+            "squash_merge_commit_title": null,
+            "squash_merge_commit_message": null,
+            "has_issues": false,
+            "has_projects": false,
+            "has_wiki": false,
+        }))
+        .expect("a repository read without admin access still decodes");
+        let error = RepositorySettings::from_live(&repository, "acme/sample")
+            .expect_err("settings that GitHub withheld are not drift")
+            .to_string();
+        assert!(error.contains("acme/sample"), "{error}");
+        assert!(error.contains("admin access"), "{error}");
+    }
+
+    /// A ruleset already requiring a check this module does not know about is
+    /// refused, not quietly rewritten without it.
+    ///
+    /// The live case: `neon-law-source-code/navigator`'s `production` requires
+    /// `ci` and `CodeQL`, and an update writes the whole desired payload, which
+    /// names `ci` alone.
+    #[test]
+    fn a_live_required_check_is_never_dropped_silently() {
+        let desired = desired_branch_ruleset(TEST_ACTIONS_APP_ID);
+        let mut live = desired.clone();
+        for live_rule in &mut live.rules {
+            if live_rule.kind == "required_status_checks" {
+                live_rule.parameters = Some(serde_json::json!({
+                    "strict_required_status_checks_policy": false,
+                    "do_not_enforce_on_create": false,
+                    "required_status_checks": [
+                        {"context": REQUIRED_CHECK, "integration_id": TEST_ACTIONS_APP_ID},
+                        {"context": "CodeQL", "integration_id": 57789}
+                    ]
+                }));
+            }
+        }
+        let error = assert_no_required_check_dropped(&desired, &live)
+            .expect_err("a live-only required check must stop the reconcile")
+            .to_string();
+        assert!(error.contains("CodeQL"), "{error}");
+        assert!(error.contains(BRANCH_RULESET_NAME), "{error}");
+        // The context this module does own is not reported as dropped.
+        assert!(!error.contains("requires 2 status check"), "{error}");
+    }
+
+    /// The guard is silent on the ordinary case, so it cannot make an
+    /// already-converged repository unreconcilable.
+    #[test]
+    fn matching_required_checks_pass_the_guard() {
+        let desired = desired_branch_ruleset(TEST_ACTIONS_APP_ID);
+        assert!(assert_no_required_check_dropped(&desired, &desired.clone()).is_ok());
+        // A ruleset with no status-check rule at all (the review gate) has
+        // nothing to drop.
+        let review = desired_review_ruleset();
+        assert!(assert_no_required_check_dropped(&review, &review.clone()).is_ok());
+        assert!(required_contexts(&review).is_empty());
     }
 }

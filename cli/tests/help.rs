@@ -305,6 +305,15 @@ fn ops_ship_help_requires_an_explicit_deployment() {
     assert!(output.contains("--tag"));
     assert!(output.contains("--dry-run"));
     assert!(output.contains("--restart-only"));
+    // ENG-311. The flag an operator under a no-IAM-changes rule reaches for,
+    // so its spelling is part of the runbook rather than an implementation
+    // detail: renaming it would compile, leave every test green, and break
+    // every operator who had written the old spelling down.
+    assert!(output.contains("--assert-signing-iam"));
+    assert!(
+        output.contains("iam.serviceAccounts.setIamPolicy"),
+        "the help must name the permission the flag declines to use: {output}"
+    );
     assert!(output.contains("deployments/<name>/config.toml"));
     assert!(!output.to_lowercase().contains("doppler"));
 

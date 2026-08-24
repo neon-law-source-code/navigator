@@ -186,6 +186,15 @@ satisfying a requirement.
 If the image tag is unchanged and only a Secret changed, `--restart-only` rollout-restarts the service deployments so
 pods re-read `envFrom`.
 
+The roll asserts that the web service account holds `roles/iam.serviceAccountTokenCreator` on itself before anything
+rolls, because a pod without it 500s every document download — under Workload Identity the pod holds no private key and
+signs each download URL through IAM Credentials `signBlob`. That assertion is a read (`getIamPolicy`) and runs in every
+mode, `--dry-run` included. On a row `ops gcp setup` has provisioned the binding is already there and nothing is
+written. When it is absent the roll grants it, which needs `setIamPolicy`; `--assert-signing-iam` withdraws that
+authority, so the roll instead stops and prints the `gcloud` command for someone who holds the permission. Use it when
+the operator holding the release tag is under a no-IAM-changes rule: the invariant is still proved, only the grant
+moves.
+
 Run production cluster commands under the production secret context. Never paste real secret values into chat, docs,
 commits, or PR bodies.
 

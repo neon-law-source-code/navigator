@@ -930,6 +930,7 @@ pub fn dispatch(command: crate::Command) -> Result<()> {
             restart_only,
             image_only,
             tag,
+            assert_signing_iam,
         }) => ship::run_ship(&ship::ShipOpts {
             deployment,
             deployments_dir,
@@ -937,6 +938,7 @@ pub fn dispatch(command: crate::Command) -> Result<()> {
             restart_only,
             image_only,
             tag,
+            assert_signing_iam,
         }),
         crate::Command::Ops(crate::OpsCmd::Deployments { deployments_dir }) => {
             deployments::check(&deployments::root(deployments_dir.as_deref())?)

@@ -1159,6 +1159,7 @@ fn missing_requirements_by_deployment(
 // ---------- orchestration (shell-out; not unit-tested) ----------
 
 /// Options parsed from the `devx ship` flags.
+#[allow(clippy::struct_excessive_bools)] // One independent switch per CLI flag.
 #[derive(Debug, Clone, Default)]
 pub struct ShipOpts {
     /// Deployment directory under `deployments/` to roll. Required and
@@ -1194,6 +1195,13 @@ pub struct ShipOpts {
     /// `None` is rejected (we never guess the latest tag); only the
     /// `--restart-only` path, which changes no image, runs without it.
     pub tag: Option<String>,
+    /// Withdraw the roll's authority to write the web GSA's self-signing
+    /// binding: verify it, and refuse when it is absent instead of granting
+    /// it. For an operator under a no-IAM-changes rule — reading the policy
+    /// needs `getIamPolicy`, writing it needs `setIamPolicy`, and this flag
+    /// keeps the roll inside the first. It declines the write, never the
+    /// check; see [`ensure_web_signing_iam`].
+    pub assert_signing_iam: bool,
 }
 
 fn restart_deployments() -> &'static [&'static str] {
@@ -1484,7 +1492,7 @@ fn roll(
     //     signed URLs, which the pod can only mint if its GSA holds
     //     serviceAccountTokenCreator on itself. Verify-then-assert, so the
     //     steady state is a read — see `ensure_web_signing_iam`.
-    ensure_web_signing_iam(cfg, dry_run)?;
+    ensure_web_signing_iam(cfg, dry_run, signing_iam_authority(opts))?;
 
     // 2. Name the images this tag resolves to.
     let web_remote = cfg.web_image(&tag);
@@ -2655,6 +2663,34 @@ fn policy_grants_self_signing(policy: &serde_json::Value, gsa: &str) -> bool {
     })
 }
 
+/// What this roll is permitted to do about an absent self-binding.
+///
+/// The verify half is not selectable — the binding is asserted in every mode,
+/// because a pod that cannot sign 500s every document download. What varies is
+/// whether the roll may *establish* it, which is a different Google permission
+/// (`setIamPolicy`) from the one the verify needs (`getIamPolicy`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum SigningIamAuthority {
+    /// Write the binding when it is absent. The default, and what `ops gcp
+    /// setup` has usually already made a no-op.
+    #[default]
+    Write,
+    /// `--assert-signing-iam`: verify only. An absent binding fails the roll
+    /// with the command that would establish it, rather than attempting a
+    /// write the operator is not permitted.
+    AssertOnly,
+}
+
+/// Read the authority out of the parsed flags. One place, so the flag's
+/// meaning cannot drift between lanes.
+fn signing_iam_authority(opts: &ShipOpts) -> SigningIamAuthority {
+    if opts.assert_signing_iam {
+        SigningIamAuthority::AssertOnly
+    } else {
+        SigningIamAuthority::Write
+    }
+}
+
 /// The preflight error for a policy read that did not return an answer. The
 /// roll stops rather than guessing: an unverified binding is exactly the state
 /// that 500s every download. Names the permission, a role carrying it, and the
@@ -2684,6 +2720,26 @@ fn signing_iam_write_failed(gsa: &str, args: &[String], detail: &str) -> anyhow:
     )
 }
 
+/// The preflight refusal for `--assert-signing-iam`. Distinct from
+/// [`signing_iam_write_failed`], which reports a write this roll attempted and
+/// lost: here no write was attempted at all, because the flag withdrew the
+/// roll's authority to try one. The operator asked to be told rather than
+/// granted for, so the message is the grant they now have to arrange —
+/// the permission, a role carrying it, and the exact command, quoted verbatim
+/// for whoever does hold it.
+fn signing_iam_assert_failed(gsa: &str, args: &[String]) -> anyhow::Error {
+    anyhow!(
+        "{gsa} is missing {SELF_SIGNING_ROLE} on itself, and --assert-signing-iam withdrew \
+         this roll's authority to write it. Every document download would 500 on \
+         iam.serviceAccounts.signBlob, so the roll stops here rather than rolling onto a row \
+         that cannot sign. Establishing the binding needs `iam.serviceAccounts.setIamPolicy` \
+         on that service account (carried by roles/iam.serviceAccountAdmin) — have someone \
+         holding it run: `gcloud {}`, then re-run this roll. Dropping the flag lets the roll \
+         attempt that write itself.",
+        args.join(" "),
+    )
+}
+
 /// Ensure the web GSA can mint V4 GCS signed URLs. Under Workload
 /// Identity the pod holds no private key, so the storage SDK signs each
 /// document-download URL by calling IAM Credentials `signBlob` on its
@@ -2695,14 +2751,23 @@ fn signing_iam_write_failed(gsa: &str, args: &[String], detail: &str) -> anyhow:
 /// binding, so on a provisioned row the steady state is "already bound" — and
 /// gcloud's `add-iam-policy-binding` sends `setIamPolicy` unconditionally even
 /// then, which would make every roll require a write permission it otherwise
-/// has no use for. Reading first drops the common case to `getIamPolicy`. The
-/// write still happens when the binding is genuinely absent: this invariant is
-/// never skippable, only cheaper to confirm.
+/// has no use for. Reading first drops the common case to `getIamPolicy`.
+///
+/// The assertion is never skippable, only cheaper to confirm — but *who*
+/// establishes the binding is a choice, because reading the policy and writing
+/// it are different permissions. By default an absent binding is written here.
+/// Under `--assert-signing-iam` it is reported and the roll stops, which is
+/// the whole lane for an operator holding the release tag but no IAM write:
+/// they can prove the invariant without being able to grant it.
 ///
 /// `--dry-run` performs the read and declines only the write. The read is the
 /// half a dry-run can answer honestly, so it does.
-fn ensure_web_signing_iam(cfg: &ShipConfig, dry_run: bool) -> Result<()> {
-    ensure_web_signing_iam_with(cfg, dry_run, || read_web_signing_policy(cfg))
+fn ensure_web_signing_iam(
+    cfg: &ShipConfig,
+    dry_run: bool,
+    authority: SigningIamAuthority,
+) -> Result<()> {
+    ensure_web_signing_iam_with(cfg, dry_run, authority, || read_web_signing_policy(cfg))
 }
 
 /// Read the web GSA's IAM policy. Takes no `dry_run`, deliberately: this read
@@ -2735,6 +2800,7 @@ fn read_web_signing_policy(cfg: &ShipConfig) -> Result<serde_json::Value> {
 fn ensure_web_signing_iam_with(
     cfg: &ShipConfig,
     dry_run: bool,
+    authority: SigningIamAuthority,
     read_policy: impl FnOnce() -> Result<serde_json::Value>,
 ) -> Result<()> {
     let gsa = web_gsa_email(&cfg.project_id, &cfg.google_service_account_id);
@@ -2746,10 +2812,19 @@ fn ensure_web_signing_iam_with(
         return Ok(());
     }
 
+    let write_args = web_signing_iam_binding_args(&cfg.project_id, &cfg.google_service_account_id);
+
+    // Checked ahead of the dry-run branch, so the flag refuses under both
+    // modes. A dry-run answers "would the real roll work", and under this flag
+    // the real roll refuses — returning Ok here would be the same false green
+    // that moving the read into every mode was meant to end.
+    if authority == SigningIamAuthority::AssertOnly {
+        return Err(signing_iam_assert_failed(&gsa, &write_args));
+    }
+
     // The write is the only half a dry-run declines to perform, and it says so
     // loudly: an absent binding means the live roll needs `setIamPolicy`, which
     // nothing short of attempting the write can confirm the operator holds.
-    let write_args = web_signing_iam_binding_args(&cfg.project_id, &cfg.google_service_account_id);
     if dry_run {
         eprintln!("DRY-RUN $ gcloud {}", write_args.join(" "));
         eprintln!(
@@ -5416,7 +5491,7 @@ spec:
                 web_gsa_email("my-org-prod", "navigator-web")
             ),
         );
-        ensure_web_signing_iam_with(&sample_config(), true, || {
+        ensure_web_signing_iam_with(&sample_config(), true, SigningIamAuthority::Write, || {
             read_calls += 1;
             Ok(bound)
         })
@@ -5428,13 +5503,14 @@ spec:
     fn dry_run_fails_when_the_policy_cannot_be_read() {
         // The other half of the same property: a denied read is the answer to
         // "would the real roll work", so it must sink the dry-run too.
-        let err = ensure_web_signing_iam_with(&sample_config(), true, || {
-            Err(signing_iam_read_failed(
-                "gsa@example.com",
-                "PERMISSION_DENIED",
-            ))
-        })
-        .expect_err("a denied read must fail the dry-run");
+        let err =
+            ensure_web_signing_iam_with(&sample_config(), true, SigningIamAuthority::Write, || {
+                Err(signing_iam_read_failed(
+                    "gsa@example.com",
+                    "PERMISSION_DENIED",
+                ))
+            })
+            .expect_err("a denied read must fail the dry-run");
 
         assert!(err.to_string().contains("cannot verify"), "{err}");
     }
@@ -5445,8 +5521,10 @@ spec:
         // absent it reports what the live roll would do and returns Ok rather
         // than shelling out to gcloud.
         let empty = serde_json::json!({ "etag": "BwYb0000000=" });
-        ensure_web_signing_iam_with(&sample_config(), true, || Ok(empty))
-            .expect("dry-run must not attempt the IAM write");
+        ensure_web_signing_iam_with(&sample_config(), true, SigningIamAuthority::Write, || {
+            Ok(empty)
+        })
+        .expect("dry-run must not attempt the IAM write");
     }
 
     /// A `get-iam-policy` document in the shape gcloud returns, granting
@@ -5555,6 +5633,128 @@ spec:
         assert!(
             !policy_grants_self_signing(&policy, gsa),
             "a conditional grant is not the unconditional invariant the roll asserts"
+        );
+    }
+
+    #[test]
+    fn assert_only_refuses_an_absent_binding_instead_of_writing() {
+        // ENG-311. The residual this flag exists for: a LIVE roll (dry_run
+        // false) whose binding is absent must stop at the verify rather than
+        // reach for setIamPolicy. Nothing here is mocked past the read, so a
+        // regression that took the write branch would shell out to gcloud —
+        // the refusal, and its wording, is what proves it did not.
+        let empty = serde_json::json!({ "etag": "BwYb0000000=" });
+        let err = ensure_web_signing_iam_with(
+            &sample_config(),
+            false,
+            SigningIamAuthority::AssertOnly,
+            || Ok(empty),
+        )
+        .expect_err("an absent binding must fail the roll under --assert-signing-iam");
+        let text = err.to_string();
+
+        assert!(text.contains("--assert-signing-iam"), "{text}");
+        assert!(
+            text.contains("is missing"),
+            "the operator is told the binding is absent, not that it was unreadable: {text}"
+        );
+        assert!(
+            !text.contains("could not be written"),
+            "no write was attempted, so this is not the denied-write message: {text}"
+        );
+    }
+
+    #[test]
+    fn assert_only_refuses_under_dry_run_too() {
+        // A dry-run answers "would the real roll work". Under this flag the
+        // real roll refuses, so a dry-run that returned Ok would be the same
+        // false green that moving the read into every mode was meant to end.
+        let empty = serde_json::json!({ "etag": "BwYb0000000=" });
+        let err = ensure_web_signing_iam_with(
+            &sample_config(),
+            true,
+            SigningIamAuthority::AssertOnly,
+            || Ok(empty),
+        )
+        .expect_err("the dry-run must refuse exactly as the live roll would");
+
+        assert!(err.to_string().contains("--assert-signing-iam"), "{err}");
+    }
+
+    #[test]
+    fn assert_only_leaves_a_present_binding_untouched() {
+        // The flag narrows one branch and must not disturb the steady state:
+        // on a provisioned row — every row `ops gcp setup` has touched — the
+        // roll still clears the step on the read alone, live and dry alike.
+        let bound = policy_with(
+            "roles/iam.serviceAccountTokenCreator",
+            &format!(
+                "serviceAccount:{}",
+                web_gsa_email("my-org-prod", "navigator-web")
+            ),
+        );
+        let mut read_calls = 0;
+
+        ensure_web_signing_iam_with(
+            &sample_config(),
+            false,
+            SigningIamAuthority::AssertOnly,
+            || {
+                read_calls += 1;
+                Ok(bound)
+            },
+        )
+        .expect("a bound row clears the step whether or not the roll may write");
+
+        assert_eq!(read_calls, 1, "the verify is still performed: {read_calls}");
+    }
+
+    #[test]
+    fn the_assert_refusal_names_the_write_permission_and_quotes_the_hand_off() {
+        // The operator ran with the flag precisely because they cannot make
+        // this grant, so the refusal has to be a hand-off: the permission, a
+        // role carrying it, and the verbatim command for whoever holds it.
+        let gsa = "neon-law-stg-web@neon-law-stg.iam.gserviceaccount.com";
+        let text = signing_iam_assert_failed(
+            gsa,
+            &web_signing_iam_binding_args("neon-law-stg", "neon-law-stg-web"),
+        )
+        .to_string();
+
+        assert!(text.contains(gsa), "{text}");
+        assert!(text.contains("iam.serviceAccounts.setIamPolicy"), "{text}");
+        assert!(text.contains("roles/iam.serviceAccountAdmin"), "{text}");
+        assert!(
+            text.contains("gcloud iam service-accounts add-iam-policy-binding"),
+            "the hand-off must be copy-pasteable: {text}"
+        );
+        assert!(
+            text.contains("roles/iam.serviceAccountTokenCreator"),
+            "the quoted command must name the role it grants: {text}"
+        );
+    }
+
+    #[test]
+    fn the_roll_may_write_the_binding_unless_the_flag_withdraws_it() {
+        // The wiring. Defaulting this to AssertOnly would silently break every
+        // provisioning roll on an unbound row, so the default is asserted here
+        // rather than left to `#[derive(Default)]` going unread.
+        let mut opts = ShipOpts {
+            deployment: "neon-law-stg".into(),
+            tag: Some("26.8.22".into()),
+            ..ShipOpts::default()
+        };
+        assert_eq!(
+            signing_iam_authority(&opts),
+            SigningIamAuthority::Write,
+            "an operator who passed no flag keeps the historical behaviour"
+        );
+
+        opts.assert_signing_iam = true;
+        assert_eq!(
+            signing_iam_authority(&opts),
+            SigningIamAuthority::AssertOnly,
+            "--assert-signing-iam is what withdraws the write"
         );
     }
 

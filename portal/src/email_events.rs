@@ -329,7 +329,7 @@ mod tests {
          "sg_event_id":"evt-1","sg_message_id":"msg-1","template_slug":"welcome",
          "person_id":"p-1"},
         {"email":"a@example.com","timestamp":1716940860,"event":"click",
-         "sg_event_id":"evt-2","sg_message_id":"msg-1","url":"https://neonlaw.com",
+         "sg_event_id":"evt-2","sg_message_id":"msg-1","url":"https://www.neonlaw.com",
          "template_slug":"welcome","person_id":"p-1"}
     ]"#;
 
@@ -340,7 +340,7 @@ mod tests {
         assert_eq!(events[0].ev.event.as_deref(), Some("delivered"));
         assert_eq!(events[0].ev.template_slug.as_deref(), Some("welcome"));
         assert_eq!(events[0].ev.person_id.as_deref(), Some("p-1"));
-        assert_eq!(events[1].ev.url.as_deref(), Some("https://neonlaw.com"));
+        assert_eq!(events[1].ev.url.as_deref(), Some("https://www.neonlaw.com"));
         // raw_json preserves the whole object, including fields we
         // don't model as columns.
         assert!(events[1].raw_json.contains("\"event\":\"click\""));

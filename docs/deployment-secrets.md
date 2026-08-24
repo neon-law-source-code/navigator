@@ -286,15 +286,11 @@ Drive ids (documented in [`environments.md`](environments.md) but unconfigured; 
 and `DOCUSIGN_ACCESS_TOKEN` (the alternative to the DocuSign JWT triple, which every deployment authenticates with
 instead). Re-add each alongside the deployment that first carries a real value.
 
-`NAVIGATOR_GITHUB_APP_LOGIN` is misfiled on purpose, and it is the one entry in the production deployment's
-`secrets.enc.yaml` that is not key material. A bot login is a public coordinate and belongs in `config.toml` — but the
-App still carries a login the brand guard in `cli/tests/brand_identifier_is_neon.rs` holds to `neon`, and that guard
-reads plaintext anywhere in the workspace. Encrypting it satisfies the guard mechanically while the deployment keeps
-working.
+`NAVIGATOR_GITHUB_APP_LOGIN` is misfiled, and it is the one entry in the production deployment's `secrets.enc.yaml` that
+is not key material. A bot login is a public coordinate and belongs in `config.toml`.
 
-That is an interim, not a resolution. **Renaming the GitHub App is the real fix**; the value then moves back to
-`config.toml` where it belongs. Until then the exception is recorded here and in that deployment's `config.toml`, so
-nobody has to rediscover why a public identifier is sitting in an encrypted file.
+**Moving it to `config.toml` is the fix.** Until it moves, the exception is recorded here and in that deployment's
+`config.toml`, so nobody has to rediscover why a public identifier is sitting in an encrypted file.
 
 ## The parity gate
 

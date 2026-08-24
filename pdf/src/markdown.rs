@@ -442,8 +442,8 @@ mod tests {
     #[test]
     fn link_becomes_typst_link_call() {
         assert_eq!(
-            to_typst("[neon](https://neon.law)"),
-            "#link(\"https://neon.law\")[neon]"
+            to_typst("[neon](https://www.neonlaw.com)"),
+            "#link(\"https://www.neonlaw.com\")[neon]"
         );
     }
 

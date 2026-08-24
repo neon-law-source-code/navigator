@@ -1193,10 +1193,11 @@ async fn resume_after_confirmation(
         // pause that was not theirs — so it is the one place a missing
         // `person_id` would cost the most.
         let attempted_by = approver_person(&state.mcp.surreal, principal_email).await;
+        let attempted_actor = audit_actor(attempted_by.as_ref());
         audit_authorization(
             "denied_identity",
             principal_email,
-            audit_actor(attempted_by.as_ref()),
+            &attempted_actor,
             &task_id,
             &pending,
         );
@@ -1215,11 +1216,12 @@ async fn resume_after_confirmation(
     //     drew: an agent may *propose*, but a licensed human authorizes.
     let approver = approver_person(&state.mcp.surreal, principal_email).await;
     let approver_role = approver.as_ref().map(|p| p.role);
+    let approver_actor = audit_actor(approver.as_ref());
     if !approver_role.is_some_and(store::persons::Role::is_lawyer_tier) {
         audit_authorization(
             "denied_unauthorized",
             principal_email,
-            audit_actor(approver.as_ref()),
+            &approver_actor,
             &task_id,
             &pending,
         );
@@ -1237,7 +1239,7 @@ async fn resume_after_confirmation(
             audit_authorization(
                 "authorized",
                 principal_email,
-                audit_actor(approver.as_ref()),
+                &approver_actor,
                 &task_id,
                 &pending,
             );
@@ -1318,7 +1320,7 @@ async fn resume_after_confirmation(
             audit_authorization(
                 "declined",
                 principal_email,
-                audit_actor(approver.as_ref()),
+                &approver_actor,
                 &task_id,
                 &pending,
             );
@@ -1669,7 +1671,7 @@ fn describe_arguments(arguments: &Value, people: &HashMap<String, String>) -> St
 fn audit_authorization(
     decision: &str,
     principal_email: &str,
-    actor: AuditActor,
+    actor: &AuditActor,
     task_id: &str,
     pending: &PendingConfirmation,
 ) {

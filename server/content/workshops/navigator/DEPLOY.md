@@ -272,7 +272,7 @@ one site; it never shares a store database, bucket, Kubernetes namespace, or run
 
 | Deployment | GCP project | Site | Image | Resource prefix |
 | --- | --- | --- | --- | --- |
-| `neon-law-stg` | `neon-law-stg` | `www.neonlaw.com` | `neon-server` | `neon-law-stg` |
+| `neon-law-stg` | `neon-law-stg` | `staging.neonlaw.com` | `neon-server` | `neon-law-stg` |
 | `neon-law-prod` | `neon-law-prod` | `www.neonlaw.com` | `neon-server` | `neon-law-prod` |
 | `neon-law-prod` | `neon-law` | `www.neonlaw.com` | `neon-server` | `neon-law-prod` |
 
@@ -1366,7 +1366,7 @@ rows.
 
 | Deployment | Google browser callback | GitHub organization |
 | --- | --- | --- |
-| `neon-law-stg` | `https://www.neonlaw.com/auth/callback` | `neon-law` |
+| `neon-law-stg` | `https://staging.neonlaw.com/auth/callback` | `neon-law` |
 | `neon-law-prod` | `https://www.neonlaw.com/auth/callback` | `neon-law-source-code` |
 | `neon-law-prod` | `https://www.neonlaw.com/auth/callback` | `neon-law` |
 
@@ -1783,7 +1783,7 @@ To verify all three after a release, replace `YY.M.D` with the shipped tag:
 ```bash
 TAG=YY.M.D
 for host in \
-  www.neonlaw.com www.neonlaw.com www.neonlaw.com
+  staging.neonlaw.com www.neonlaw.com www.neonlaw.com
 do
   curl --fail --show-error --silent "https://${host}/readyz" >/dev/null
   curl --fail --show-error --silent "https://${host}/version" \
@@ -1804,7 +1804,7 @@ preserve the config/host mapping exactly. The message body is:
 
 Verified `/readyz`, `/version.release == "YY.M.D"`, and a browser visit:
 
-- [staging](https://www.neonlaw.com)
+- [staging](https://staging.neonlaw.com)
 - [Neon production](https://www.neonlaw.com)
 - [Neon Law production](https://www.neonlaw.com)
 
@@ -1834,7 +1834,7 @@ curl --fail --show-error --silent "https://${host}/version" |
 
 Change only `name` and `tag`; the host follows from the config. The current tree maps:
 
-- `neon-law-stg` → `www.neonlaw.com`
+- `neon-law-stg` → `staging.neonlaw.com`
 - `neon-law-prod` → `www.neonlaw.com`
 - `neon-law-prod` → `www.neonlaw.com`
 

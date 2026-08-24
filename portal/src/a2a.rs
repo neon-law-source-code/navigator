@@ -45,7 +45,7 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::agent_router::{AgentRouter, RoutedCall, RouterError, Step, Turn};
-use crate::audit_fields::{argument_count, argument_digest, person_id_field};
+use crate::audit_fields::person_id_field;
 use crate::canonical_host::CanonicalHost;
 use mcp::protocol::{codes, Request as RpcRequest, Response as RpcResponse};
 use mcp::{tools, McpState, Principal};
@@ -255,12 +255,34 @@ struct PendingConfirmation {
     /// principal may confirm it — you can't approve an action AIDA
     /// proposed to someone else.
     principal_email: String,
+    /// The opaque actor identity and global role at proposal time. The
+    /// authorization decision later records both this proposer and the person
+    /// who approved (or attempted to approve) the call.
+    proposer: AuditActor,
     /// The side-effecting call awaiting approval.
     pending_call: RoutedCall,
     /// What happens after the approver says yes.
     resume: Resume,
     /// When the pause was recorded, for [`PENDING_TTL`] pruning.
     created_at: Instant,
+}
+
+/// The non-identifying authorization context a durable audit record needs.
+///
+/// A person's UUID is correlatable within Navigator, but it contains no name
+/// or address. The role is the global `persons.role` tier, not a made-up
+/// project role; project participation is a separate, verified context that
+/// the MCP audit boundary will attach after it validates a project reference.
+struct AuditActor {
+    person_id: String,
+    role: &'static str,
+}
+
+fn audit_actor(person: Option<&store::persons::Person>) -> AuditActor {
+    AuditActor {
+        person_id: person_id_field(person),
+        role: person.map_or("none", |person| person.role.as_str()),
+    }
 }
 
 /// What a confirmed call continues into.
@@ -310,9 +332,8 @@ impl Resume {
 ///
 /// **Scope of durability (deliberate).** This store is *in-process and
 /// best-effort*: it holds the live handle needed to resume a paused
-/// task, nothing more. The durable, queryable record of *who authorized
-/// what* is the `target: "audit"` log stream (→ Iceberg), not this map —
-/// see [`audit_authorization`]. Consequence: a confirmation only
+/// task, nothing more. The authorization record is the `target: "audit"`
+/// telemetry event, not this map — see [`audit_authorization`]. Consequence: a confirmation only
 /// resolves if the follow-up `message/send` reaches the same process
 /// within [`PENDING_TTL`]. On a multi-replica deploy without session
 /// affinity (or across a pod restart), the resume can miss and AIDA
@@ -745,12 +766,13 @@ async fn dispatch_single(
         // Control 1 — tier. A side-effecting skill named directly must
         // be authorized by a lawyer/admin principal, the same tier the
         // router loop requires of the human who approves a paused
-        // side-effect. Audited (→ OTLP → Iceberg) either way.
+        // side-effect. Emitted as audit telemetry either way.
         let approver = match principal {
             Some(p) => approver_person(&state.mcp.surreal, &p.email).await,
             None => None,
         };
         let role = approver.as_ref().map(|p| p.role);
+        let proposer = audit_actor(approver.as_ref());
         let authorized = role.is_some_and(store::persons::Role::is_lawyer_tier);
         let confirmation_required = tools::requires_confirmation(skill);
         tracing::info!(
@@ -758,7 +780,9 @@ async fn dispatch_single(
             event = "a2a.direct_skill.side_effect",
             skill = %skill,
             principal_kind = principal_kind(principal.map_or(ANONYMOUS_PRINCIPAL, |p| p.email.as_str())),
-            person_id = %person_id_field(approver.as_ref()),
+            person_id = %proposer.person_id,
+            role = proposer.role,
+            audit = true,
             authorized,
             confirmed = false,
             confirmation_required,
@@ -801,12 +825,12 @@ async fn dispatch_single(
                 principal_kind = %principal_kind(
                     principal.map_or(ANONYMOUS_PRINCIPAL, |p| p.email.as_str())
                 ),
-                person_id = %person_id_field(approver.as_ref()),
+                person_id = %proposer.person_id,
+                role = proposer.role,
                 tool = %skill,
-                arguments_sha256 = %argument_digest(&pending_call.arguments),
-                argument_count = argument_count(&pending_call.arguments),
                 task_id = %task_id,
                 routed_via_llm = false,
+                audit = true,
                 "a2a: named skill needs confirmation → pausing (input-required)"
             );
             let response = input_required_response(
@@ -821,6 +845,7 @@ async fn dispatch_single(
                 PendingConfirmation {
                     context_id,
                     principal_email: principal.map_or_else(String::new, |p| p.email.clone()),
+                    proposer,
                     pending_call,
                     resume: Resume::DirectSkill,
                     created_at: Instant::now(),
@@ -1012,17 +1037,18 @@ async fn drive_loop(
                     };
                     let prompt = confirmation_prompt(&pending_call, &history);
                     let proposer = approver_person(&state.mcp.surreal, principal_email).await;
+                    let proposer = audit_actor(proposer.as_ref());
                     tracing::info!(
                         target: "audit",
                         event = "agent_action_authorization",
                         decision = "proposed",
                         principal_kind = %principal_kind(principal_email),
-                        person_id = %person_id_field(proposer.as_ref()),
+                        person_id = %proposer.person_id,
+                        role = proposer.role,
                         tool = %tool_name,
-                        arguments_sha256 = %argument_digest(&pending_call.arguments),
-                        argument_count = argument_count(&pending_call.arguments),
                         task_id = %task_id,
                         step = step_n,
+                        audit = true,
                         "a2a: side-effecting call → pausing for confirmation (input-required)"
                     );
                     let response = input_required_response(
@@ -1037,6 +1063,7 @@ async fn drive_loop(
                         PendingConfirmation {
                             context_id,
                             principal_email: principal_email.to_string(),
+                            proposer,
                             pending_call,
                             resume: Resume::Loop {
                                 user_text: user_text.to_string(),
@@ -1169,8 +1196,7 @@ async fn resume_after_confirmation(
         audit_authorization(
             "denied_identity",
             principal_email,
-            attempted_by.as_ref().map(|p| p.role),
-            attempted_by.as_ref(),
+            audit_actor(attempted_by.as_ref()),
             &task_id,
             &pending,
         );
@@ -1193,8 +1219,7 @@ async fn resume_after_confirmation(
         audit_authorization(
             "denied_unauthorized",
             principal_email,
-            approver_role,
-            approver.as_ref(),
+            audit_actor(approver.as_ref()),
             &task_id,
             &pending,
         );
@@ -1212,8 +1237,7 @@ async fn resume_after_confirmation(
             audit_authorization(
                 "authorized",
                 principal_email,
-                approver_role,
-                approver.as_ref(),
+                audit_actor(approver.as_ref()),
                 &task_id,
                 &pending,
             );
@@ -1294,8 +1318,7 @@ async fn resume_after_confirmation(
             audit_authorization(
                 "declined",
                 principal_email,
-                approver_role,
-                approver.as_ref(),
+                audit_actor(approver.as_ref()),
                 &task_id,
                 &pending,
             );
@@ -1633,19 +1656,20 @@ fn describe_arguments(arguments: &Value, people: &HashMap<String, String>) -> St
     }
 }
 
-/// Emit one structured audit event for an agent-action authorization
-/// decision. These flow into the log pipeline (and onward to Iceberg)
-/// as the durable, analyzable record of every side-effect AIDA proposed
-/// and how a human ruled on it — the supervision trail the legal council
-/// requires (ABA Model Rules 5.1/5.3). `target: "audit"` lets the
-/// pipeline select these out by target. NOTE: this log — not a database
-/// row — is the record of authority; the in-memory pending store is only
+/// Emit one structured audit event for an agent-action authorization decision.
+///
+/// Audit is telemetry with an explicit `audit = true` marker: these records
+/// form the authorization trail for each proposal and its terminal decision.
+/// They retain only bounded context — opaque actor ids, global roles, tool,
+/// decision, and correlation ids — never proposed arguments, their keys, a
+/// digest, or a count. The telemetry export and long-lived archive have their
+/// own value-scrubbing boundary; this event therefore does not claim an
+/// Iceberg row exists at emission time. The in-memory pending store is only
 /// the live, best-effort handle for resuming the paused task.
 fn audit_authorization(
     decision: &str,
     principal_email: &str,
-    approver_role: Option<store::persons::Role>,
-    approver: Option<&store::persons::Person>,
+    actor: AuditActor,
     task_id: &str,
     pending: &PendingConfirmation,
 ) {
@@ -1654,16 +1678,14 @@ fn audit_authorization(
         event = "agent_action_authorization",
         decision = decision,
         principal_kind = %principal_kind(principal_email),
-        approver_role = approver_role.map_or("none", |r| r.as_str()),
-        person_id = %person_id_field(approver),
-        // The proposer is a second principal, so it gets the same treatment as
-        // the approver above: whether it authenticated, never its address.
-        proposer_kind = %principal_kind(&pending.principal_email),
+        person_id = %actor.person_id,
+        role = actor.role,
+        proposer_person_id = %pending.proposer.person_id,
+        proposer_role = pending.proposer.role,
         tool = %pending.pending_call.tool_name,
-        arguments_sha256 = %argument_digest(&pending.pending_call.arguments),
-        argument_count = argument_count(&pending.pending_call.arguments),
         task_id = %task_id,
         context_id = %pending.context_id,
+        audit = true,
         "a2a: agent action authorization decision"
     );
 }
@@ -3622,7 +3644,7 @@ mod tests {
     /// instead of passing quietly the way the `direct_skill_side_effect_*`
     /// tests did while a whole tool-call payload rode this line.
     #[tokio::test]
-    async fn the_proposed_record_carries_a_digest_and_a_count_and_no_payload() {
+    async fn the_direct_proposed_record_carries_only_authorization_context() {
         let (engines, person_id) = welcome_fixture().await;
         let (_, rpc) = routes(state_with(engines));
 
@@ -3646,13 +3668,13 @@ mod tests {
         assert_eq!(
             field_names(&line),
             vec![
-                "argument_count",
-                "arguments_sha256",
+                "audit",
                 "decision",
                 "event",
                 "message",
                 "person_id",
                 "principal_kind",
+                "role",
                 "routed_via_llm",
                 "task_id",
                 "tool",
@@ -3663,13 +3685,8 @@ mod tests {
         let parsed: Value = serde_json::from_str(&line).expect("JSON line");
         let fields = &parsed["fields"];
         assert_eq!(
-            fields["arguments_sha256"],
-            Value::from(argument_digest(&json!({ "person_id": person_id }))),
-            "the digest must be of the payload actually proposed: {line}"
-        );
-        assert_eq!(
-            fields["argument_count"], 1,
-            "one top-level argument was proposed: {line}"
+            fields["role"], "lawyer",
+            "the proposing actor's global role must accompany their opaque id: {line}"
         );
         // The load-bearing assertion, and the reason this test exists: the
         // *value* the payload carried must not be reconstructible from the
@@ -3686,13 +3703,81 @@ mod tests {
         );
     }
 
+    /// The router loop emits a separate proposal site from `metadata.skill`.
+    /// Keep its field contract exact too: a payload regression in this path
+    /// must fail even though the direct-skill path remains clean.
+    #[tokio::test]
+    async fn the_loop_proposed_record_carries_only_authorization_context() {
+        let (engines, person_id) = welcome_fixture().await;
+        let lawyer = store::persons::find_by_email_ci(&engines, "lawyer@neonlaw.com")
+            .await
+            .expect("query the seeded lawyer")
+            .expect("welcome_fixture seeds lawyer@neonlaw.com");
+        let router = Arc::new(StubRouter {
+            tool_name: "send_welcome_email".to_string(),
+            arguments: json!({ "person_id": person_id }),
+        });
+        let (_, rpc) = routes(state_with_router(engines, router));
+
+        let buf = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        {
+            let _guard = capture_into(&buf);
+            let (_, body) = post_rpc_as(
+                rpc,
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": 53,
+                    "method": "message/send",
+                    "params": {
+                        "message": {
+                            "messageId": "m-53",
+                            "role": "user",
+                            "kind": "message",
+                            "parts": [{ "kind": "text", "text": "send a welcome email" }]
+                        }
+                    }
+                }),
+                "lawyer@neonlaw.com",
+            )
+            .await;
+            assert_eq!(body["result"]["status"]["state"], "input-required");
+        }
+
+        let logged = String::from_utf8(buf.lock().unwrap().clone()).expect("utf-8 log");
+        let line = audit_line(&logged, "agent_action_authorization");
+        assert_eq!(
+            field_names(&line),
+            vec![
+                "audit",
+                "decision",
+                "event",
+                "message",
+                "person_id",
+                "principal_kind",
+                "role",
+                "step",
+                "task_id",
+                "tool",
+            ],
+            "the loop proposal's field set is the contract; got: {line}"
+        );
+        assert!(
+            line.contains(&format!("\"person_id\":\"{}\"", lawyer.id)),
+            "the proposing lawyer must be queryable by id: {line}"
+        );
+        assert!(
+            !line.contains(&person_id.to_string()) && !line.contains('@'),
+            "the proposed tool-call values and addresses must not reach the audit stream: {line}"
+        );
+    }
+
     /// The same contract for the record `audit_authorization` emits — the one
     /// serving all four terminal decisions (`denied_identity`,
     /// `denied_unauthorized`, `authorized`, `declined`). Exercised through
     /// `authorized`, the decision whose evidentiary weight is highest: it is
     /// the record that says a licensed human agreed to a client-facing act.
     #[tokio::test]
-    async fn the_authorized_record_carries_a_digest_and_a_count_and_no_payload() {
+    async fn the_authorized_record_carries_both_actors_and_no_payload() {
         let (engines, person_id) = welcome_fixture().await;
         let (_, rpc) = routes(state_with(engines));
 
@@ -3728,16 +3813,16 @@ mod tests {
         assert_eq!(
             field_names(&line),
             vec![
-                "approver_role",
-                "argument_count",
-                "arguments_sha256",
+                "audit",
                 "context_id",
                 "decision",
                 "event",
                 "message",
                 "person_id",
                 "principal_kind",
-                "proposer_kind",
+                "proposer_person_id",
+                "proposer_role",
+                "role",
                 "task_id",
                 "tool",
             ],
@@ -3749,17 +3834,19 @@ mod tests {
             parsed["fields"]["decision"], "authorized",
             "this test asserts the approval record specifically: {line}"
         );
-        // The trail must still tie the proposal to its authorization. Both
-        // halves of that: the id it was paused under, and a digest saying the
-        // approved call is the *same* call that was proposed.
+        // The trail must still tie the proposal to its authorization, without
+        // retaining a representation of the proposed arguments.
         assert_eq!(
             parsed["fields"]["task_id"], task_id,
             "the approval must be tied to the proposal it resolves: {line}"
         );
         assert_eq!(
-            parsed["fields"]["arguments_sha256"],
-            Value::from(argument_digest(&json!({ "person_id": person_id }))),
-            "the digest must match the payload that was proposed: {line}"
+            parsed["fields"]["role"], "lawyer",
+            "the approving actor's global role must accompany their opaque id: {line}"
+        );
+        assert_eq!(
+            parsed["fields"]["proposer_role"], "lawyer",
+            "the original proposer's global role must survive the pause: {line}"
         );
         assert_eq!(
             parsed["fields"]["tool"], "send_welcome_email",

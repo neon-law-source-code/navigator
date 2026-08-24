@@ -69,8 +69,12 @@ by a licensed human (ABA Model Rule 5.3 supervision of a non-lawyer assistant). 
 - **Role** — only a lawyer principal (`lawyer` or `admin`) may authorize a client-facing side-effect. A client or
   non-lawyer `clerk` caller cannot.
 
-Every decision (`proposed` / `authorized` / `declined` / `denied_identity` / `denied_unauthorized`) is emitted as a
-`target: "audit"` event — that log, not the in-memory pending store, is the durable record of who authorized what.
+Every decision (`proposed` / `authorized` / `declined` / `denied_identity` / `denied_unauthorized`) is emitted into
+telemetry as a `target: "audit"`, `audit: true` event. It carries only bounded authorization context: the acting
+person's opaque `person_id` and global `role`, the tool, the decision, and correlation IDs. Terminal decisions also
+carry the proposer's opaque ID and role. It never carries tool-call arguments, argument keys, a digest, or a count; a
+project participation field belongs at the MCP audit boundary, after a project reference has been validated. The
+in-memory pending store is only the live resume handle, not an audit store.
 
 ### The confirmation is a structured yes/no choice — no free-text command surface
 

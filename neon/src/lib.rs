@@ -81,6 +81,14 @@ pub const PUBLIC_PATHS: &[&str] = &[
     "/transparency",
     "/transparency/{slug}",
     "/transparency/minutes/{slug}",
+    // --- Superseded firm URLs, answered as `301 Moved Permanently` ---------
+    // Paths from an earlier generation of the firm's own site. Unlike the
+    // Foundation's, the content behind each of these is still published — only
+    // the URL changed — so each names its successor rather than a withdrawal.
+    // See [`retired_path_routes`].
+    "/services/litigation",
+    "/for-lawyers",
+    "/support",
     // --- Shared -----------------------------------------------------------
     "/privacy",
     "/terms",

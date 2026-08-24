@@ -37,6 +37,18 @@ const RETIRED_PATHS: &[&str] = &[
     "/transparency/minutes/2026-q2",
 ];
 
+/// Every URL from an earlier generation of the firm's own site, and the page
+/// that carries what the reader came for now.
+///
+/// The content behind each of these is still published — only the path changed
+/// — which is what separates them from the `410` half above and what makes a
+/// `301` an honest answer rather than a guess.
+const SUPERSEDED_PATHS: &[(&str, &str)] = &[
+    ("/services/litigation", "/litigation"),
+    ("/for-lawyers", "/fractional-cto"),
+    ("/support", "/contact"),
+];
+
 async fn state() -> portal::AppState {
     portal::test_support::app_state(mem_surreal().await).await
 }
@@ -125,6 +137,120 @@ async fn the_retired_path_table_owns_no_live_page() {
             "{path} is a live page, so the retired-path table must not own it"
         );
     }
+}
+
+/// Every superseded firm URL answers `301` to its successor.
+///
+/// `301` specifically, not merely "a redirect": it is the status a search
+/// engine treats as permanent and follows when consolidating a stale result
+/// onto the live page, which is the whole reason these routes exist. A `302`
+/// or a `303` here would keep the dead URL in the index.
+#[tokio::test]
+async fn every_superseded_firm_url_answers_a_permanent_redirect() {
+    let app = neon::retired_path_routes().with_state(state().await);
+
+    for (path, target) in SUPERSEDED_PATHS {
+        let response = anonymous_get(&app, path).await;
+        assert_eq!(
+            response.status(),
+            StatusCode::MOVED_PERMANENTLY,
+            "{path} must answer 301 Moved Permanently"
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get(axum::http::header::LOCATION)
+                .and_then(|value| value.to_str().ok()),
+            Some(*target),
+            "{path} must point at {target}"
+        );
+    }
+}
+
+/// Every redirect target is a page the site actually publishes.
+///
+/// A redirect is a promise that what the reader wanted is at the other end of
+/// it. A target that 404s or 410s breaks the promise twice: the reader spends a
+/// round trip to find out, and the crawler consolidates a stale result onto a
+/// dead page. So the targets are checked against the live path table rather
+/// than merely spelled correctly.
+#[test]
+fn every_redirect_target_is_a_published_page() {
+    for (path, target) in SUPERSEDED_PATHS {
+        assert!(
+            neon::PUBLIC_PATHS.contains(target),
+            "{path} redirects to {target}, which the site does not declare"
+        );
+        assert!(
+            !RETIRED_PATHS.contains(target),
+            "{path} redirects to {target}, which is retired and answers 410"
+        );
+    }
+}
+
+/// A superseded URL redirects without a session, which is what a crawler and a
+/// stale search result both are.
+#[tokio::test]
+async fn a_superseded_url_redirects_rather_than_asking_for_a_login() {
+    let app = neon::retired_path_routes().with_state(state().await);
+
+    for (path, _) in SUPERSEDED_PATHS {
+        let status = anonymous_get(&app, path).await.status();
+        assert_eq!(
+            status,
+            StatusCode::MOVED_PERMANENTLY,
+            "{path} must redirect anonymously, not answer {status}"
+        );
+    }
+}
+
+/// No superseded path is advertised to a crawler.
+///
+/// The sitemap names pages, and a redirect is not a page. Advertising the old
+/// URL would ask a crawler to index the hop instead of its destination, which
+/// the destination is already advertised as in its own right.
+#[tokio::test]
+async fn no_superseded_path_reaches_the_sitemap() {
+    let state = state().await;
+    let sitemap = neon::sitemap_paths(&state);
+
+    for (path, _) in SUPERSEDED_PATHS {
+        assert!(
+            !sitemap.contains(*path),
+            "{path} is superseded and must not be advertised in the sitemap"
+        );
+    }
+}
+
+/// Every superseded path is declared in `PUBLIC_PATHS`, for the same reason
+/// every retired one is: a route nothing describes is a route nobody maintains.
+#[test]
+fn every_superseded_path_is_declared() {
+    for (path, _) in SUPERSEDED_PATHS {
+        assert!(
+            neon::PUBLIC_PATHS.contains(path),
+            "{path} is answered but not declared"
+        );
+    }
+}
+
+/// `/mission` stays `410` and is never redirected.
+///
+/// It is a Foundation URL, and the firm publishes no mission letter to send a
+/// reader to. This is the boundary between the two halves of the table, and it
+/// is asserted rather than left to the reader of the module doc because the
+/// tempting wrong fix — "it is in search results, so redirect it" — is exactly
+/// what `every_retired_foundation_url_answers_gone` already forbids.
+#[tokio::test]
+async fn the_mission_url_is_gone_rather_than_redirected() {
+    let app = neon::retired_path_routes().with_state(state().await);
+    let response = anonymous_get(&app, "/mission").await;
+
+    assert_eq!(response.status(), StatusCode::GONE);
+    assert!(
+        !SUPERSEDED_PATHS.iter().any(|(path, _)| *path == "/mission"),
+        "/mission has no successor and must not be given one"
+    );
 }
 
 /// Every retired path is declared in `PUBLIC_PATHS`.

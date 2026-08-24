@@ -597,8 +597,8 @@ struct Repository {
 ///
 /// Merge behaviour and the feature toggles are one payload rather than two
 /// because they are one endpoint: splitting them into two [`Action`]s would
-/// issue two PATCHes to the same URL and could leave a repository half
-/// reconciled if the second failed.
+/// issue two `PATCH` requests to the same URL and could leave a repository
+/// half reconciled if the second failed.
 #[derive(Debug, Serialize, PartialEq, Eq)]
 #[allow(clippy::struct_excessive_bools)] // Mirrors GitHub's repository-settings payload.
 struct RepositorySettings {
@@ -922,7 +922,7 @@ fn required_contexts(payload: &RulesetPayload) -> Vec<String> {
 ///
 /// `navigator`'s own `production` is the case that motivated this. It requires
 /// `ci` and `CodeQL`; `desired_branch_ruleset` builds `ci` alone, so a run
-/// would have dropped the CodeQL requirement added in `34170df` without
+/// would have dropped the `CodeQL` requirement added in `34170df` without
 /// printing anything about it.
 ///
 /// The refusal is deliberately not a merge. A context this module does not
@@ -1517,50 +1517,46 @@ async fn assert_owners_resolve(client: &GitHubClient, owners: &[String]) -> Resu
         let Some(handle) = owner.strip_prefix('@') else {
             continue;
         };
-        match handle.split_once('/') {
-            // A team owns paths here when the repository grants it push or
-            // admin. The organization-level team may exist and still have no
-            // grant on this repository, which is the team-shaped form of the
-            // same trap.
-            Some((org, team)) => {
-                if !client.exists(&format!("/orgs/{org}/teams/{team}")).await? {
-                    bail!(
-                        "CODEOWNERS names {owner}, which does not resolve to a team on this \
-                         host ({}). Correct the handle to one that exists here.",
-                        client.api_base,
-                    );
-                }
-                if !client.team_can_write(team).await? {
-                    bail!(
-                        "CODEOWNERS names team {owner}, which exists but has no write grant \
-                         on {}. GitHub honors a code owner only where that owner can write, \
-                         so every path this rule covers is left unowned and \
-                         `require_code_owner_review` would pass anyone's review. Grant the \
-                         team push access, or name an owner that has it.",
-                        client.repository,
-                    );
-                }
+        // A team owns paths here when the repository grants it push or admin.
+        // The organization-level team may exist and still have no grant on this
+        // repository, which is the team-shaped form of the same trap.
+        if let Some((org, team)) = handle.split_once('/') {
+            if !client.exists(&format!("/orgs/{org}/teams/{team}")).await? {
+                bail!(
+                    "CODEOWNERS names {owner}, which does not resolve to a team on this \
+                     host ({}). Correct the handle to one that exists here.",
+                    client.api_base,
+                );
             }
-            None => {
-                if !client.exists(&format!("/users/{handle}")).await? {
-                    bail!(
-                        "CODEOWNERS names {owner}, which does not resolve to a user on this \
-                         host ({}). Correct the handle to one that exists here.",
-                        client.api_base,
-                    );
-                }
-                let permission = client.collaborator_permission(handle).await?;
-                if !matches!(permission.as_str(), "admin" | "write") {
-                    bail!(
-                        "CODEOWNERS names {owner}, which is a real account on this host but \
-                         has {permission:?} access to {} rather than write. GitHub honors a \
-                         code owner only where that owner can write, so every path this rule \
-                         covers is left unowned and `require_code_owner_review` would pass \
-                         anyone's review — the file looks correct while gating nothing. Name \
-                         a collaborator, or grant this one write access.",
-                        client.repository,
-                    );
-                }
+            if !client.team_can_write(team).await? {
+                bail!(
+                    "CODEOWNERS names team {owner}, which exists but has no write grant \
+                     on {}. GitHub honors a code owner only where that owner can write, \
+                     so every path this rule covers is left unowned and \
+                     `require_code_owner_review` would pass anyone's review. Grant the \
+                     team push access, or name an owner that has it.",
+                    client.repository,
+                );
+            }
+        } else {
+            if !client.exists(&format!("/users/{handle}")).await? {
+                bail!(
+                    "CODEOWNERS names {owner}, which does not resolve to a user on this \
+                     host ({}). Correct the handle to one that exists here.",
+                    client.api_base,
+                );
+            }
+            let permission = client.collaborator_permission(handle).await?;
+            if !matches!(permission.as_str(), "admin" | "write") {
+                bail!(
+                    "CODEOWNERS names {owner}, which is a real account on this host but \
+                     has {permission:?} access to {} rather than write. GitHub honors a \
+                     code owner only where that owner can write, so every path this rule \
+                     covers is left unowned and `require_code_owner_review` would pass \
+                     anyone's review — the file looks correct while gating nothing. Name \
+                     a collaborator, or grant this one write access.",
+                    client.repository,
+                );
             }
         }
     }

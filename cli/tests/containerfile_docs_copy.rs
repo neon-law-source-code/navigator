@@ -462,11 +462,10 @@ fn regex_lite_build_targets(body: &str) -> Vec<String> {
 
 /// The brand images this workspace publishes.
 ///
-/// One: `neon` serves the firm at the site root and the Foundation beneath
-/// `/foundation`, so there is nothing for a second image to be. It stays a
-/// list rather than a constant because the white-label tenant shape
-/// (`portal::tenant`) is a second brand waiting to happen, and the guards
-/// below are written to hold whenever it arrives.
+/// One: `neon` serves the firm at the site root, so there is nothing for a
+/// second image to be. It stays a list rather than a constant because the
+/// white-label tenant shape (`portal::tenant`) is a second brand waiting to
+/// happen, and the guards below are written to hold whenever it arrives.
 const BRAND_IMAGES: [&str; 1] = ["neon"];
 
 /// Each brand image builds its own brand binary and runs it with no flag.

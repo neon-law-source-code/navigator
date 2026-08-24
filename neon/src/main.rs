@@ -1,4 +1,4 @@
-//! The `neon-server` binary: `neonlaw.org`.
+//! The `neon-server` binary: `neonlaw.com`.
 //!
 //! The composition it serves lives in the crate's library, so this binary and
 //! the tests that exercise its router cannot disagree. See [`neon::brand`].

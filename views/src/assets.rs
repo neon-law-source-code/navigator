@@ -231,7 +231,7 @@ fn join_site(base: &str, rel: &str) -> String {
     )
 }
 
-/// Which of the three brand stories a photo tells. Drives nothing in
+/// Which of the four brand stories a photo tells. Drives nothing in
 /// the markup — it is the editorial axis the page authors curate by.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Theme {

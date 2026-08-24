@@ -18,7 +18,7 @@
 //!    on an SSR-only page that ships no hydration bundle; a client that wants
 //!    client-side navigation wraps the anchor at the call site.
 //! 3. **Brand tokens.** Components emit semantic class names and every colour
-//!    resolves through a `--nav-*` custom property, so three brands share one
+//!    resolves through a `--nav-*` custom property, so every brand shares one
 //!    surface. The palette section below draws each swatch from its token
 //!    rather than a literal hex, and `components_declare_no_literal_colors`
 //!    fails the build on a raw colour value in a component or in this gallery.
@@ -293,7 +293,7 @@ fn DemoTableSection() -> Element {
 /// The brand tokens the gallery previews, each drawn from its own `--nav-*`
 /// custom property. The swatch chip resolves the token at paint time, so this
 /// page shows the *running deploy's* brand rather than a hard-coded ramp — the
-/// property that lets three brands share one component surface.
+/// property that lets every brand share one component surface.
 const SWATCH_TOKENS: &[&str] = &[
     "--nav-color-primary",
     "--nav-color-primary-hover",
@@ -450,8 +450,8 @@ fn ContractsSection() -> Element {
                     strong { "Brand tokens." }
                     " Components emit semantic class names and every colour resolves through a "
                     code { "--nav-*" }
-                    " custom property, so three brands share one surface. A literal colour in a \
-                     component pins one brand's identity into code all three consume; "
+                    " custom property, so every brand shares one surface. A literal colour in a \
+                     component pins one brand's identity into code every brand consumes; "
                     code { "components_declare_no_literal_colors" }
                     " fails the build on one."
                 }

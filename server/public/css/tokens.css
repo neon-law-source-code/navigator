@@ -9,14 +9,14 @@
 
   --nav-font-family: "GORP Serif", Georgia, serif;
 
-  /* The teal ramp — Navigator's default primary, and the Foundation's colour.
+  /* The teal ramp — Navigator's default primary colour.
      Hex is written out rather than left as `oklch()` so the tokens resolve the
      same everywhere `color-mix` is not available.
 
      The firm wears orange over this, in `brand-firm-tokens.css`, loaded by
      `webapp::public_chrome::PublicFooter` on the firm branch. That layer
      redeclares only the `--nav-color-*` aliases, so everything below stays the
-     single source for radii, neutrals, and state colours across both brands.
+     single source for radii, neutrals, and state colours across every brand.
      Anything added here that a brand might need to differ on belongs in the
      alias block, not baked into a component.
 

@@ -7,7 +7,7 @@ production component, so the page cannot drift from what ships.
 
 ## Summary
 
-- **One component tree, three brands, two render modes.** The same component renders an anonymous page that ships no
+- **One component tree, brand-agnostic, two render modes.** The same component renders an anonymous page that ships no
   hydration bundle and drives an authenticated, hydrated one.
 - **`webapp::components` is a leaf.** No router, no session, no application state, no data access, no brand colour.
 - **Semantic tokens only.** A component emits a class name; the token module decides what `--nav-*` it resolves to.

@@ -2623,7 +2623,7 @@ jobs:
       # this same workflow; if a matrix entry is added or retired, this list is
       # what tells the channel, so it must be edited alongside it.
       #
-      # The three brand images are the headline (#864 / #974): the binary is the
+      # The brand image is the headline (#864 / #974): the binary is the
       # site, so `neon-server` runs `/app/neon` and cannot be pointed at another
       # legal entity's face by configuration. `navigator-web` is an alias tag
       # built from the same Containerfile as `neon-server` — byte-identical —

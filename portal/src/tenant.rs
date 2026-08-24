@@ -1,9 +1,9 @@
 //! The white-label tenant shape: the application with no public face.
 //!
 //! A tenant deploy is a firm that runs Navigator behind its own marketing site.
-//! It publishes none of the first-party brands' pages — not the firm's, not the
-//! own — and answers its bare host with a redirect into
-//! the portal, because the only thing it serves is the application.
+//! It publishes none of the firm's public-facing pages and answers its bare
+//! host with a redirect into the portal, because the only thing it serves is
+//! the application.
 //!
 //! This is what `--site app` selected before #974 gave every face its own
 //! binary. It lights [`crate::PortalOnly`] rather than inventing a second way to
@@ -11,7 +11,7 @@
 //! mode with `portal_only: true`, and both routes into the behavior converge
 //! here.
 //!
-//! Unlike the three brand crates, this lives inside the application crate. A
+//! Unlike a brand crate, this lives inside the application crate. A
 //! tenant has no brand of its own to compose — that is the entire point — so
 //! there is nothing for a thin crate to hold.
 

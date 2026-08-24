@@ -1,5 +1,5 @@
-/* The Foundation's public marketing surface: the home page and the three
- * audience pages beneath it.
+/* The firm's public marketing surface: the home page and the practice
+ * pages beneath it.
  *
  * Everything here draws its colour from the `--nav-*` tokens, so both colour
  * schemes are handled by `tokens.css` rather than by a second set of rules
@@ -443,8 +443,8 @@
 
 /* ---- The firm's practice skin ------------------------------------------- */
 
-/* One renderer serves the Foundation's audience pages and the firm's, and they
-   want different typography. A page that names `PageSkin::Practice` gets the
+/* One renderer serves both of the firm's marketing looks, and they want
+   different typography. A page that names `PageSkin::Practice` gets the
    look the `/litigation` and `/fractional-gc` pages wear: an eyebrow over a
    serif statement, left-aligned, with the body in the firm's card.
 
@@ -452,8 +452,7 @@
    litigation page's own and is hoisted only there — but the card, the glow, and
    the eyebrow come from `brand-firm.css`, which a practice-skin page hoists (see
    `MarketingShell`'s `firm_components`). Everything below is scoped under the
-   modifier, so the Foundation's pages and the firm's platform page are
-   untouched.
+   modifier, so the plain `PageSkin::Marketing` pages are untouched.
 
    The base layer centres every band: `.fm-hero__inner`, `.fm-band__heading`, and
    `.fm-band--statement .fm-band__inner` all set `align-items: center` and

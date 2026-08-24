@@ -130,7 +130,7 @@ mod tests {
     #[test]
     fn ignores_absolute_urls_anchors_and_placeholders() {
         let dir = TempDir::new().unwrap();
-        let body = "[site](https://neonlaw.com) [top](#intro) [mail](mailto:x@y.com) \
+        let body = "[site](https://www.neonlaw.com) [top](#intro) [mail](mailto:x@y.com) \
                     [abs](/docs/glossary) [tmpl]({{confirm_url}})\n";
         let path = write(&dir, "docs/guide.md", body);
         assert!(

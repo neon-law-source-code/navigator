@@ -3,9 +3,9 @@
 # ---------- Stage 1: builder ----------
 #
 # Builds the `redirect` binary in the `cloud` crate. The Cloud Run
-# service answers two hosts (`neonlaw.com` → www,
-# `chat.neonlaw.com` → Gemini Enterprise landing) and ships no
-# templates / assets / DB — distroless/static is enough.
+# service answers standalone host redirects (see `cloud/src/redirect.rs`
+# for the current dispatch table) and ships no templates / assets / DB —
+# distroless/static is enough.
 #
 # Same single-COPY-then-build layout as Containerfile.workflows-service
 # so the build context is identical and `docker buildx` caches stay

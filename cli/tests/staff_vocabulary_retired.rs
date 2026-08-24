@@ -20,11 +20,11 @@
 //! is allowed explicitly rather than by exempting whole files, so a file
 //! carrying allowed prose still fails if a role reference appears in it later.
 //!
-//! The list shrinks as the prose does. Retiring the Foundation surface took its
-//! marketing copy with it, and four entries here described phrases only that
-//! copy used — so they were dropped rather than kept as an exemption matching
-//! nothing, which is what this file's own `every_allowed_phrase_still_occurs`
-//! test insists on.
+//! The list shrinks as the prose does. Retiring the nonprofit's public surface
+//! took its marketing copy with it, and four entries here described phrases only
+//! that copy used — so they were dropped rather than kept as an exemption
+//! matching nothing, which is what this file's own
+//! `every_allowed_phrase_still_occurs` test insists on.
 
 use std::fs;
 use std::path::{Path, PathBuf};

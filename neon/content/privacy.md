@@ -5,7 +5,8 @@ it with, and the choices you have. We aim to collect as little as possible and t
 
 This policy covers **Shook Law PLLC**, which trades as Neon Law and is the law firm that renders legal services through
 this site. One organization holds your information: there is no second entity behind any part of this site, and nothing
-collected here is held by anyone else on our behalf beyond the processors described below.
+collected here is held by anyone else on our behalf beyond the processors described below. The software running this
+site is Neon Law Navigator, which is owned and operated by Shook Law PLLC.
 
 ## Information We Collect
 

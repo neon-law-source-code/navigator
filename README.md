@@ -65,11 +65,6 @@ licence grants rights in copyright, not in trademarks, so no amount of permissio
 is the one thing a fork does not inherit. BUSL says as much itself: it grants no right in any trademark or logo of the
 Licensor.
 
-The **Neon Law Foundation** formerly held a perpetual, irrevocable, non-exclusive, royalty-free right to publish
-Navigator under `AGPL-3.0-only`, and **released that right in writing** before this licence took effect. No second
-organization holds a right to publish this work, and the Firm is the only party that can license it or set the
-parameters above.
-
 Run it, fork it, redistribute it, and say your work is built on Neon Law Navigator. Do not present your deployment as
 Neon Law: a law firm's mark is how a client identifies who is accountable for their legal work, so a fork trading as
 Neon Law would misdirect exactly the person least able to check. Rename your deployment through the brand manifest

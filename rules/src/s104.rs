@@ -13,7 +13,7 @@
 //!    (`questionnaire:`/`workflow:`) or the event machine (`starts_at:`)
 //!    but no `kind:` key, S104 tells the author to declare one.
 //! 2. **A content page carrying notation structure.** A content-page kind
-//!    (`post`, `minutes`, `workshop`) gets only the content-page rules, so
+//!    (`post`, `workshop`) gets only the content-page rules, so
 //!    a copied `questionnaire:`/`workflow:` block would be silently
 //!    accepted — no N-family checks ever run on it. S104 flags that
 //!    mismatch. (`event` is exempt: it declares its own `starts_at`
@@ -179,10 +179,13 @@ mod tests {
 
     #[test]
     fn a_content_page_carrying_notation_structure_is_flagged() {
-        // A workshop/post/minutes page gets only content-page rules, so a
-        // copied questionnaire/workflow block would never be N-checked.
-        // S104 flags the mismatch so the structure can't be silently kept.
-        for kind in ["workshop", "post", "minutes"] {
+        // A workshop or post page gets only content-page rules, so a copied
+        // questionnaire/workflow block would never be N-checked. S104 flags
+        // the mismatch so the structure can't be silently kept.
+        //
+        // `event` is deliberately absent: the rule exempts `Kind::Event`,
+        // which carries its own E-family structure.
+        for kind in ["workshop", "post"] {
             let v = S104MissingKind.lint(&file(&format!(
                 "---\nkind: {kind}\ntitle: T\nquestionnaire:\n  BEGIN:\n    _: END\n---\n"
             )));

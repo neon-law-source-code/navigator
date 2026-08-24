@@ -27,7 +27,15 @@ mod tests {
     #[test]
     fn only_the_staging_project_is_the_automation_authority() {
         assert!(is_automation_home(Some(AUTOMATION_HOME_PROJECT)));
-        for project in [None, Some("neon-law"), Some("neon-law-stg"), Some("ghcr")] {
+        // Every entry must be a project that is NOT the automation home, so
+        // none of them may be `AUTOMATION_HOME_PROJECT` — the assertion below is
+        // vacuous the moment one is.
+        for project in [
+            None,
+            Some("neon-law"),
+            Some("another-deployment"),
+            Some("ghcr"),
+        ] {
             assert!(
                 !is_automation_home(project),
                 "{project:?} must not consume the singleton GitHub webhook stream"

@@ -578,11 +578,11 @@ async fn the_brand_layer_is_idempotent_across_boots() {
         second.entities_inserted, 0,
         "the brand layer seeds entities too, and re-seeding must not duplicate them"
     );
-    // Four boxes plus the mail centre's own placeholder address. The mailroom
+    // Three boxes plus the mail centre's own placeholder address. The mailroom
     // seed is find-or-create on a UNIQUE name, so a second boot must not mint
     // a second facility — nor a second placeholder address behind it.
     assert_eq!(second.mailrooms_inserted, 0);
-    assert_eq!(store::addresses::list_all(&surreal).await.unwrap().len(), 5);
+    assert_eq!(store::addresses::list_all(&surreal).await.unwrap().len(), 4);
 }
 
 /// The `dev` portfolio's sample mail still arrives after the mail centre

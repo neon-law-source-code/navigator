@@ -46,11 +46,10 @@
 //! effect, and every copy distributed then is still an `AGPL-3.0-only` copy,
 //! permanently. A licence already granted cannot be withdrawn, so the relicence
 //! governs versions published from here on and reaches nothing already given.
-//! The Neon Law Foundation's perpetual right to publish under `AGPL-3.0-only`
-//! was released in writing before the relicence, which is why no second
-//! organization appears in these files any more — and that release is asserted
-//! below, because a repository that merely stopped mentioning a live right would
-//! look exactly the same.
+//! The Firm is the copyright holder and the sole Licensor. A second
+//! organization entitled to publish would make that untrue while every other
+//! check here stayed green, so its absence is asserted below rather than
+//! assumed.
 //!
 //! The trademark reservation is guarded just as hard, and for a reason the
 //! copyright grant does not cover. The licence permits forks, and a fork wearing
@@ -626,65 +625,38 @@ fn contributions_are_closed_but_the_licence_terms_are_stated_anyway() {
     );
 }
 
-/// The released publication right is recorded, and no second publisher is
-/// claimed.
+/// No document claims a second party may publish this work.
 ///
-/// This is the inverse of the assertion that used to sit here, and the inversion
-/// is the point. The Neon Law Foundation held a perpetual, irrevocable,
+/// This inverts an assertion that used to sit here, and the inversion is the
+/// point. A second organization once held a perpetual, irrevocable,
 /// royalty-free right to publish this work under `AGPL-3.0-only` that bound the
-/// Firm's successors — and while it was in force, a repository naming BUSL as
-/// its sole grant would have been describing terms that were not the only ones
-/// in effect. The right was released in writing before the relicence.
+/// Firm's successors, and while it was in force a repository naming `BUSL-1.1`
+/// as its sole grant would have been describing terms that were not the only
+/// ones in effect. Nothing holds such a right now, and the tree does not
+/// discuss it: the Firm is the copyright holder and the sole Licensor, which is
+/// a complete statement without a history lesson attached.
 ///
-/// A release is exactly the kind of fact a repository loses by saying nothing.
-/// Deleting the sentence that described the right leaves a tree that looks
-/// identical whether the right was released, forgotten, or simply
-/// unmentioned — so the release is asserted rather than trusted to review, the
-/// same way the right itself was.
-///
-/// The second half is the guard that matters going forward: no document may
-/// still describe a live right in somebody else's hands. That claim and the
-/// current licence cannot both be true, and the failure mode is a half-finished
-/// sweep leaving one file behind.
+/// What survives is the guard, because the failure mode did not go away. A
+/// second organization entitled to publish is exactly the claim that makes a
+/// stated licence untrue while every other check stays green — and it is the
+/// kind of sentence that returns by being copied out of an older file. So the
+/// assertion is that no document anywhere describes one, checked across every
+/// Markdown file rather than a list this test keeps in step.
 #[test]
-fn the_released_publication_right_is_recorded_and_no_live_one_is_claimed() {
-    /// The organization that held the right, named so the record says whose it
-    /// was rather than that "a right" ended.
-    const FORMER_PUBLISHER: &str = "Neon Law Foundation";
+fn no_document_claims_a_second_party_may_publish_this_work() {
+    /// The shapes such a claim arrives in.
+    ///
+    /// Matched against prose with whitespace collapsed, case folded, and
+    /// emphasis stripped — the wording most worth catching is the emphasized
+    /// kind, because emphasis is what a writer reaches for on the sentence they
+    /// think matters.
+    const CLAIMS: [&str; 4] = [
+        "right to publish",
+        "right to keep publishing",
+        "entitled to go on publishing",
+        "publication right",
+    ];
 
-    /// The release has to be stated as *done*, not contemplated.
-    const RELEASED: [&str; 2] = ["released", "in writing"];
-
-    for rel in [NOTICE_FILE, "docs/licensing.md"] {
-        let flat = read(rel).split_whitespace().collect::<Vec<_>>().join(" ");
-        let named: Vec<usize> = flat
-            .match_indices(FORMER_PUBLISHER)
-            .map(|(i, _)| i)
-            .collect();
-
-        assert!(
-            !named.is_empty(),
-            "{rel} must name `{FORMER_PUBLISHER}` and say its publication right \
-             was released — a tree that simply stops mentioning the right reads \
-             the same whether it ended or was overlooked"
-        );
-
-        let recorded = named.iter().any(|&at| {
-            let claim = window(&flat, at, FORMER_PUBLISHER.len()).to_lowercase();
-            RELEASED.iter().all(|term| claim.contains(term))
-        });
-        assert!(
-            recorded,
-            "{rel} names `{FORMER_PUBLISHER}` but no mention of it records the \
-             release. One sentence has to carry {RELEASED:?}: while that right \
-             was in force, `{LICENSE}` was not the only grant in effect, so the \
-             release is what makes this file's own licence claim true."
-        );
-    }
-
-    // Nothing anywhere may still assert a live right. Checked across every
-    // document rather than the two above, because the sweep that misses one file
-    // is the whole failure mode.
     let mut offenders = Vec::new();
     for path in markdown_documents() {
         let rel = path
@@ -693,27 +665,23 @@ fn the_released_publication_right_is_recorded_and_no_live_one_is_claimed() {
             .to_string_lossy()
             .replace('\\', "/");
         let body = unemphasized(&read(&rel));
-        for at in body
-            .match_indices("perpetual")
-            .map(|(i, _)| i)
-            .collect::<Vec<_>>()
-        {
-            let claim = window(&body, at, "perpetual".len());
-            // A sentence describing the right in the present tense, without the
-            // word that marks it historical.
-            if claim.contains("right to publish")
-                && !claim.contains("released")
-                && !claim.contains("formerly")
-                && !claim.contains("held")
-            {
-                offenders.push(format!("{rel}: …{claim}…"));
+        for claim in CLAIMS {
+            for (at, hit) in body.match_indices(claim) {
+                let window = window(&body, at, hit.len());
+                // The Firm holding its own copyright is not a second party, and
+                // neither is a sentence saying nobody else holds one.
+                if window.contains("no second") || window.contains("sole licensor") {
+                    continue;
+                }
+                offenders.push(format!("{rel}: says `{claim}` — …{window}…"));
             }
         }
     }
+
     assert!(
         offenders.is_empty(),
-        "the publication right was released; these documents still describe it \
-         as live, which contradicts `{LICENSE}` being the licence of record:\n  {}",
+        "{OWNER} is the sole Licensor; a second party entitled to publish would \
+         make `{LICENSE}` untrue as the licence of record:\n  {}",
         offenders.join("\n  ")
     );
 }
@@ -992,8 +960,8 @@ fn only_the_copyright_holder_may_sell_a_production_licence() {
         ),
         (
             "legal aid organizations at cost",
-            "that was the Foundation's sublicensing power, and the Foundation \
-             holds nothing to sublicense from any more",
+            "that was a sublicensing power held by a second organization, and \
+             no second organization holds anything to sublicense from",
         ),
     ];
 
@@ -1245,7 +1213,7 @@ fn the_trademark_reservation_restates_the_licences_own_carve_out() {
 /// Public surfaces that name the NEON LAW registration attribute it to the Firm.
 ///
 /// U.S. Reg. No. 6,325,650 belongs to the Firm, and the Firm licenses it to the
-/// Neon Law Foundation for its charitable work. A trademark notice that names
+/// nobody else. A trademark notice that names
 /// the wrong owner is worse than none at all, because it is the notice a reader
 /// relies on for permission — and under an outbound grant that reliance is no
 /// longer hypothetical, since the licence invites forks and the mark is the one
@@ -1275,9 +1243,7 @@ fn trademark_notices_name_the_firm_as_the_registrant() {
         // claim the licence deliberately does not grant.
         "docs/licensing.md",
         "templates/README.md",
-        // One binary serves the firm at the root and the Foundation under
-        // `/foundation`, so one bundled terms file carries the citation for
-        // both faces.
+        // The bundled terms file carries the citation for the served site.
         "neon/content/terms.md",
     ] {
         // Prose wraps at the Markdown line width, so a claim routinely straddles

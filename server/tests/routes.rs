@@ -3525,11 +3525,9 @@ async fn api_entities_lists_seeded_rows() {
     let resp = get_signed_in(app, "/app/api/entities").await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
+    // Two rows, so the listing is proven to serve more than the firm anchor.
     assert!(body.contains("\"name\":\"Shook Law PLLC\""), "got: {body}");
-    assert!(
-        body.contains("\"name\":\"Neon Law Foundation\""),
-        "got: {body}"
-    );
+    assert!(body.contains("\"name\":\"shook.family\""), "got: {body}");
 }
 
 #[tokio::test]

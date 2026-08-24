@@ -109,8 +109,8 @@ mod tests {
         );
         assert_eq!(
             ENVIRONMENT_PROJECT_IDS.len(),
-            3,
-            "docs/environments.md records three runtime projects",
+            2,
+            "docs/environments.md records two runtime projects",
         );
     }
 

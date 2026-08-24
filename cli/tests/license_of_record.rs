@@ -1029,7 +1029,7 @@ fn only_the_copyright_holder_may_sell_a_production_licence() {
             .find("## Commercial licensing")
             .expect("the heading was asserted above");
         let rest = &body[heading + "## Commercial licensing".len()..];
-        let end = rest.find("\n## ").map_or(rest.len(), |at| at);
+        let end = rest.find("\n## ").unwrap_or(rest.len());
         rest[..end].to_lowercase()
     };
     assert!(

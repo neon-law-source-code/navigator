@@ -6,7 +6,7 @@
 # which needs `cc`-flavored distroless rather than `static`).
 #
 # Image conventions match Containerfile.web (the `web` image): same Rust
-# toolchain pin (rust-toolchain.toml → 1.97.0), same musl target,
+# toolchain pin (rust-toolchain.toml → 1.98.0), same musl target,
 # same distroless base family.
 
 FROM rust:1.98-bookworm AS builder
@@ -38,7 +38,7 @@ WORKDIR /src
 # and still benefits from layer caching when nothing changes.
 #
 # `rust-toolchain.toml` must land BEFORE `rustup target add`: the override
-# pins a specific 1.97.0 toolchain that rustup re-syncs the first time cargo
+# pins a specific 1.98.0 toolchain that rustup re-syncs the first time cargo
 # runs in this dir. Adding the target beforehand (against the base image's
 # default toolchain) leaves the re-synced toolchain without the musl std,
 # and `cargo build --target …-musl` then fails with `can't find crate for

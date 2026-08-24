@@ -32,7 +32,7 @@ RUN apt-get update \
 WORKDIR /src
 
 # `rust-toolchain.toml` must land BEFORE `rustup target add`: the override
-# pins a specific 1.97.0 toolchain that rustup re-syncs the first time cargo
+# pins a specific 1.98.0 toolchain that rustup re-syncs the first time cargo
 # runs in this dir. Adding the target beforehand (against the base image's
 # default toolchain) leaves the re-synced toolchain without the musl std,
 # and `cargo build --target …-musl` then fails with `can't find crate for

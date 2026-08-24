@@ -345,8 +345,7 @@ pub fn template_has_questionnaire(markdown: &str) -> bool {
         return false;
     };
     serde_yaml::from_str::<serde_yaml::Value>(frontmatter)
-        .ok()
-        .is_some_and(|value| value.get("questionnaire").is_some())
+        .is_ok_and(|value| value.get("questionnaire").is_some())
 }
 
 /// Extract the `questionnaire:` block from a notation template's

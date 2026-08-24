@@ -376,16 +376,20 @@ fn pdf_string(bytes: &[u8]) -> String {
     if let Some(body) = bytes.strip_prefix(&[0xfe, 0xff]) {
         return String::from_utf16_lossy(
             &body
-                .chunks_exact(2)
-                .map(|pair| u16::from_be_bytes([pair[0], pair[1]]))
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|pair| u16::from_be_bytes(*pair))
                 .collect::<Vec<_>>(),
         );
     }
     if let Some(body) = bytes.strip_prefix(&[0xff, 0xfe]) {
         return String::from_utf16_lossy(
             &body
-                .chunks_exact(2)
-                .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|pair| u16::from_le_bytes(*pair))
                 .collect::<Vec<_>>(),
         );
     }
@@ -434,8 +438,7 @@ fn is_dynamic_xfa(doc: &Document, acroform: &Dictionary) -> bool {
         .is_ok_and(|needs| needs)
         || acroform
             .get(b"XFA")
-            .ok()
-            .is_some_and(|xfa| xfa_has_required_dynamic_render(doc, xfa))
+            .is_ok_and(|xfa| xfa_has_required_dynamic_render(doc, xfa))
 }
 
 fn xfa_has_required_dynamic_render(doc: &Document, xfa: &Object) -> bool {

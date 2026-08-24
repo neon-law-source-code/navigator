@@ -975,7 +975,7 @@ a.nav-pagination__link:hover {
   padding: 0;
 }
 
-/* Two columns of five on a wide viewport. The rows are fixed at five and the
+/* Two columns of four on a wide viewport. The rows are fixed at four and the
    flow runs down them before moving across, so the list reads top-to-bottom
    inside each column rather than snaking across the pair. One `<ul>` does
    this at every width — the narrow layout below simply stops columnizing it,
@@ -984,7 +984,7 @@ a.nav-pagination__link:hover {
   display: grid;
   grid-auto-flow: column;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-template-rows: repeat(5, auto);
+  grid-template-rows: repeat(4, auto);
   column-gap: var(--footer-band-gap);
   row-gap: 0.4rem;
   margin: 0;
@@ -1318,6 +1318,13 @@ a.nav-pagination__link:hover {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.35rem;
+}
+
+/* Separates the repository link from the release number sitting beside it on
+   the same line. Decorative punctuation, not content, so it is hidden from
+   assistive technology rather than announced as a bullet between two links. */
+.site-footer__release-sep {
+  color: var(--nav-color-text-muted);
 }
 
 @media (max-width: 54rem) {

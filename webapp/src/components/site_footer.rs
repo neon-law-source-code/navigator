@@ -255,8 +255,9 @@ pub fn SiteFooterLegal(
     #[props(default)] trademark_record_url: String,
     /// The public repository the platform is developed in — how it is named
     /// (`owner/name`), where it lives, and how many people have starred it.
-    /// Closes the strip: no box, no attribution prose, just the repository
-    /// and its star count. Both strings empty renders no line.
+    /// Closes the strip: no box, no attribution prose, just the repository,
+    /// its star count, and the running release beside it on the same line.
+    /// Both strings empty renders no line.
     ///
     /// `source_stars` is independently optional, and `None` is the ordinary
     /// case rather than a failure — see
@@ -266,9 +267,10 @@ pub fn SiteFooterLegal(
     #[props(default)] source_href: String,
     #[props(default)] source_stars: Option<u64>,
     /// The published release this deployment is running, and the page that
-    /// describes the platform. Beside the repository link, so the two halves of
-    /// the same fact read together: this is the software, and this is the build
-    /// of it serving the page.
+    /// describes the platform. Set right beside the repository link rather
+    /// than on a line of its own, so the two halves of the same fact read
+    /// together in one glance: this is the software, and this is the build of
+    /// it serving the page.
     ///
     /// A push is visible end to end — the moment a new image is live, the
     /// footer's number changes. Both strings empty renders no line, which is
@@ -506,31 +508,38 @@ pub fn SiteFooterLegal(
                         p { class: "site-footer__disclaimer", "{disclaimer}" }
                     }
                     // The repository the platform is developed in and the
-                    // release running here, closing the strip. No box, no
-                    // attribution prose — just the repository's name and its
-                    // star count, the way the rest of the site links off to
-                    // GitHub, and the version beside it.
+                    // release running here, closing the strip on one line. No
+                    // box, no attribution prose — just the repository's name
+                    // and its star count, the way the rest of the site links
+                    // off to GitHub, with the version right beside it rather
+                    // than on a line of its own.
                     //
-                    // Each half stands alone: a deploy publishes the repository
-                    // without a release stamp under `cargo run`, and the region
-                    // itself renders only when there is something to put in it.
+                    // Each half stands alone: a deploy publishes the
+                    // repository without a release stamp under `cargo run`,
+                    // and the region itself renders only when there is
+                    // something to put in it.
                     if (!source_repo.is_empty() && !source_href.is_empty())
                         || (!navigator_version.is_empty() && !navigator_href.is_empty())
                     {
                         div { class: "site-footer__legal-platform",
-                            if !source_repo.is_empty() && !source_href.is_empty() {
-                                p { class: "site-footer__source",
+                            p { class: "site-footer__source",
+                                if !source_repo.is_empty() && !source_href.is_empty() {
                                     GitHubStars {
                                         href: source_href.clone(),
                                         repo: source_repo.clone(),
                                         stars: source_stars,
                                     }
                                 }
-                            }
-                            if !navigator_version.is_empty() && !navigator_href.is_empty() {
-                                p { class: "site-footer__release",
-                                    a { href: "{navigator_href}",
-                                        "Neon Law Navigator #{navigator_version}"
+                                if !navigator_version.is_empty() && !navigator_href.is_empty() {
+                                    if !source_repo.is_empty() && !source_href.is_empty() {
+                                        span {
+                                            class: "site-footer__release-sep",
+                                            "aria-hidden": "true",
+                                            "\u{b7}"
+                                        }
+                                    }
+                                    a { class: "site-footer__release", href: "{navigator_href}",
+                                        "#{navigator_version}"
                                     }
                                 }
                             }
@@ -692,6 +701,38 @@ mod tests {
         assert!(
             disclaimer < source,
             "the source line closes the strip, under the disclaimer: {out}"
+        );
+    }
+
+    /// The running release sits right beside the repository link, on the same
+    /// line, rather than under it as a line of its own.
+    #[test]
+    fn sets_the_release_beside_the_repository_on_one_line() {
+        let out = contactable_html();
+        assert!(
+            out.contains("#26.8.20"),
+            "the version renders next to the repository: {out}"
+        );
+        assert!(
+            !out.contains("Neon Law Navigator #"),
+            "the release no longer carries its own sentence: {out}"
+        );
+        assert_eq!(
+            out.matches(r#"class="site-footer__source""#).count(),
+            1,
+            "one line carries both the repository and the release: {out}"
+        );
+        assert!(
+            !out.contains(r#"<p class="site-footer__release""#),
+            "the release is no longer its own paragraph: {out}"
+        );
+        let repo = out
+            .find("neon-law-source-code/navigator")
+            .expect("the repo");
+        let version = out.find("#26.8.20").expect("the version");
+        assert!(
+            repo < version,
+            "the version follows the repository it describes: {out}"
         );
     }
 
@@ -1210,8 +1251,8 @@ mod tests {
         assert!(!out.contains("site-footer__nav"), "no empty row: {out}");
     }
 
-    /// The footer names the release serving the page, beside the repository it
-    /// is built from.
+    /// The footer names the release serving the page, right beside the
+    /// repository it is built from, on the one line that closes the strip.
     ///
     /// This is what makes a push visible end to end: the moment a new image is
     /// live, the number at the bottom of every public page changes. It links
@@ -1221,32 +1262,33 @@ mod tests {
     fn publishes_the_release_it_is_running() {
         let out = contactable_html();
         assert!(
-            out.contains("Neon Law Navigator #26.8.20"),
+            out.contains("#26.8.20"),
             "the footer names the running release: {out}"
         );
         assert!(
-            out.contains(r#"<p class="site-footer__release"#),
-            "as its own line in the platform region: {out}"
+            out.contains(r#"<a class="site-footer__release" href="/navigator">"#),
+            "linked to the page describing the platform: {out}"
         );
         let platform = out
             .find("site-footer__legal-platform")
             .expect("the platform region renders");
-        let release = out
-            .find("site-footer__release")
-            .expect("the release line renders");
         let source = out.find("site-footer__source").expect("the source line");
+        let repo = out
+            .find("neon-law-source-code/navigator")
+            .expect("the repository renders");
+        let release = out.find("#26.8.20").expect("the release renders");
         assert!(
-            platform < source && source < release,
-            "the release sits under the repository it is built from: {out}"
+            platform < source && repo < release,
+            "the release sits beside the repository it is built from: {out}"
         );
     }
 
     /// An unstamped build publishes no version.
     ///
     /// `NAVIGATOR_RELEASE_TAG` is unset under a local `cargo run`, and a footer
-    /// reading "Neon Law Navigator #" is worse than no attribution. The
-    /// repository line is independent and still renders, and with both halves
-    /// absent the region itself disappears rather than leaving an empty box.
+    /// reading "#" is worse than no attribution. The repository line is
+    /// independent and still renders, and with both halves absent the region
+    /// itself disappears rather than leaving an empty box.
     #[test]
     fn omits_the_release_line_when_unpublished() {
         fn repository_only() -> Element {
@@ -1271,8 +1313,8 @@ mod tests {
         }
         let out = ssr(repository_only);
         assert!(
-            !out.contains("site-footer__release") && !out.contains("Neon Law Navigator #"),
-            "no release, no version line: {out}"
+            !out.contains("site-footer__release"),
+            "no release, no version link: {out}"
         );
         assert!(
             out.contains("site-footer__source"),

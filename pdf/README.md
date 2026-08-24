@@ -87,6 +87,11 @@ template render` takes the default rather than assembling the identity per rende
 dangling middot, and a line with nothing left in it is not emitted at all, so a deployment that publishes no phone still
 gets a correct letterhead.
 
+Hard-coding the identity is not permission to let it fall behind the firm's. `cli/tests/letterhead_brand_parity.rs`
+holds all four fields against `views::brand::DEFAULT_BRANDING`, so the website and the letterhead cannot publish
+different contact details: the voice line moved once while the letterhead kept the retired one, and nothing failed
+because the two constants had no relationship to disagree about. That test is the relationship.
+
 ## Fonts
 
 Every PDF is set in the firm stack `pdf::BRAND_FONT_STACK` — **GORP Serif** first, **Noto Serif** behind it. GORP Serif

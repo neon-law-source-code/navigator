@@ -111,6 +111,7 @@ pub enum SurrealError {
 }
 
 /// Connect using the process environment.
+#[allow(clippy::result_large_err)]
 pub async fn connect_from_env() -> Result<SurrealDb, SurrealError> {
     connect(&SurrealConfig::from_env()?).await
 }
@@ -170,6 +171,7 @@ pub async fn ping(db: &SurrealDb) -> Result<(), surrealdb::Error> {
 /// tier, and each deployment's Surreal Cloud namespace — is one
 /// coordinate pair, and a client that skipped the selection would
 /// happily run statements against no database at all.
+#[allow(clippy::result_large_err)]
 pub async fn connect(config: &SurrealConfig) -> Result<SurrealDb, SurrealError> {
     install_tls_provider();
     let db = surrealdb::engine::any::connect(config.endpoint.clone())

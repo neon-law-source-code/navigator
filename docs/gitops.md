@@ -270,33 +270,26 @@ match` instead — that is the only authoritative signal.
 | `.github/workflows/ci.yml` | `pull_request` → `main` | Rust quality gate |
 | `.github/workflows/deploy.yml` | a push to `main`, or a `kind-ci/**` branch | prove + tag + publish images |
 | `.github/workflows/ghcr-retention.yml` | 01:11 UTC nightly, or a dispatch | prune old GHCR versions |
-| `.github/workflows/codeql.yml` | `pull_request` → `main` | CodeQL scan — enable it, see below |
+| `.github/workflows/codeql.yml` | `pull_request` → `main`, and `push` → `main` | CodeQL scan |
 
-### CodeQL can be turned back on
+### CodeQL is enabled
 
-`codeql.yml` was `disabled_manually` while the repository was private, because uploading results needed Code Security
-and the enterprise did not have it. The scan itself always ran fine and then failed at the last step:
+The advanced CodeQL workflow scans pull requests targeting `main` and pushes to `main`. The pull-request scan supplies
+early feedback before merge; the post-merge scan refreshes the default-branch alert inventory so fixed findings close
+after the fix lands.
 
-```text
-Code Security must be enabled for this repository to use code scanning.
-```
+The repository is public, so CodeQL code scanning is available without GitHub Code Security. The workflow uses standard
+`ubuntu-latest` GitHub-hosted runners, which are free for public repositories.
 
-**Open-sourcing the repository removes the blocker.** Code Security was a paid GitHub Advanced Security feature on the
-private enterprise repository; code scanning is free on public repositories, so the upload step that always failed now
-succeeds. Turn it on:
+Keep the workflow enabled. If GitHub reports it as disabled, re-enable it with:
 
 ```bash
 gh workflow enable CodeQL
 ```
 
-Nothing in the workflow file needs to change.
-
-Leaving it enabled while it could only fail was not free, which is why it was disabled rather than tolerated. A
-permanently red check is worse than an absent one in two specific ways: it trains reviewers to read red as normal, and
-it held auto-merge. The CodeQL checks are not *required* — the `production` ruleset requires only `ci` — but a failing
-check of any kind makes the pull request's overall status roll up to `FAILURE`, and auto-merge will not fire against a
-failing rollup. PR #3 sat with a green required gate and had to be merged by hand for exactly this reason. If the scan
-starts failing for a real finding, that same rollup rule applies.
+The CodeQL checks are not *required* — the `production` ruleset requires only `ci` — but a failing check still makes the
+pull request's overall status roll up to `FAILURE`, and auto-merge will not fire against a failing rollup. A real CodeQL
+finding therefore needs to be resolved before auto-merge can land the pull request.
 
 ### One protection system, not two
 

@@ -9,7 +9,7 @@
 # toolchain pin (rust-toolchain.toml → 1.97.0), same musl target,
 # same distroless base family.
 
-FROM rust:1.97-bookworm AS builder
+FROM rust:1.98-bookworm AS builder
 
 # The musl target is chosen from BuildKit's automatic TARGETARCH so the
 # SAME Containerfile builds a native aarch64 image on an Apple-Silicon dev

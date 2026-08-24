@@ -17,7 +17,7 @@
 # `aws-lc-rs` provider for `wss://` Surreal endpoints; it and `ring` both
 # musl-target fine. We pin to the project's Rust 1.97.0 toolchain.
 
-FROM rust:1.97-bookworm AS builder
+FROM rust:1.98-bookworm AS builder
 
 # Toolchain prep: musl target + musl gcc for any C deps. The musl target
 # is chosen from BuildKit's automatic TARGETARCH so the SAME Containerfile

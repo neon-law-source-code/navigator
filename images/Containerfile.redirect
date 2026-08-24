@@ -11,7 +11,7 @@
 # so the build context is identical and `docker buildx` caches stay
 # warm across the images.
 
-FROM rust:1.97-bookworm AS builder
+FROM rust:1.98-bookworm AS builder
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends musl-tools \

@@ -13,7 +13,7 @@
 # dynamic loader. The whole workspace is copied (the build context is the
 # repo root) so the same Containerfile builds any scheduled-job binary.
 
-FROM rust:1.97-bookworm AS builder
+FROM rust:1.98-bookworm AS builder
 
 # Which crate's `trigger` binary to build. Required — no sensible default.
 ARG CRATE

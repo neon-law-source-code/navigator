@@ -117,6 +117,39 @@ async fn the_firm_llms_txt_advertises_only_documents_the_firm_host_serves() {
     }
 }
 
+/// The `/services` entry claims no dollar figure the page does not carry.
+///
+/// The firm publishes no fee amounts on its public pages: a matter's card on
+/// `/services` renders a price chip only once its fee is set, and every entry
+/// is unset today. An index that told a crawler the page named its fees "in
+/// dollars" would send it looking for numbers `/services` does not have, so
+/// this checks the promise against the page rather than restating the
+/// contract as a string match.
+#[tokio::test]
+async fn the_services_entry_does_not_overclaim_published_prices() {
+    let app = app().await;
+    let (status, services_body) = get(&app, "/services").await;
+    assert_eq!(status, StatusCode::OK, "{services_body}");
+    let services_publishes_a_price = services_body.contains("fm-chips");
+
+    let llms_txt = document(&app).await;
+    let services_line = llms_txt
+        .lines()
+        .find(|line| line.contains("](") && line.contains("/services)"))
+        .expect("the /services entry is in the index");
+
+    if !services_publishes_a_price {
+        assert!(
+            !services_line.contains('$'),
+            "the index promises a dollar figure the page does not carry: {services_line}"
+        );
+        assert!(
+            !services_line.to_lowercase().contains("in dollars"),
+            "the index promises a dollar figure the page does not carry: {services_line}"
+        );
+    }
+}
+
 /// The index advertises the firm's pages and nothing retired.
 #[tokio::test]
 async fn the_index_advertises_the_firm_and_nothing_retired() {
@@ -192,7 +225,7 @@ async fn the_index_opens_as_the_firm_and_names_nobody_retired() {
 async fn every_host_carries_the_shared_navigator_notes() {
     for (brand, body) in [("the firm", document(&app().await).await)] {
         for note in [
-            "This is not legal advice; attorney review remains required.",
+            "Nothing is legal advice without a signed retainer for an active project.",
             "A Template is a markdown file with YAML frontmatter",
             "`{{placeholders}}`",
             "ground questionnaire states and placeholders",
@@ -210,18 +243,8 @@ async fn every_host_carries_the_shared_navigator_notes() {
 #[tokio::test]
 async fn the_corpora_expand_over_the_loaded_materials() {
     let advertised = advertised_paths(&document(&app().await).await);
-    assert!(
-        advertised
-            .iter()
-            .any(|path| path == "/presentations/rust-in-peace.md"),
-        "the raw-Markdown twin a crawler fetches must be indexed: {advertised:?}"
-    );
 
     let body = document(&app().await).await;
-    assert!(
-        body.contains("## Presentation Corpus"),
-        "the talks are indexed under their own heading: {body}"
-    );
     assert!(
         body.contains("## Workshop Corpus"),
         "the workshops are indexed under their own heading: {body}"
@@ -234,10 +257,32 @@ async fn the_corpora_expand_over_the_loaded_materials() {
     );
 }
 
+/// The talks are not part of the crawlable index.
+///
+/// `/presentations` still serves anonymously, but the firm does not curate a
+/// Presentation Corpus section for `/llms.txt` — a crawler that wants the
+/// talks finds them from `/presentations` itself.
+#[tokio::test]
+async fn the_index_carries_no_presentation_corpus() {
+    let advertised = advertised_paths(&document(&app().await).await);
+    assert!(
+        !advertised
+            .iter()
+            .any(|path| path == "/presentations/rust-in-peace.md"),
+        "the presentation corpus must not be advertised: {advertised:?}"
+    );
+
+    let body = document(&app().await).await;
+    assert!(
+        !body.contains("## Presentation Corpus"),
+        "the index must not carry a Presentation Corpus section: {body}"
+    );
+}
+
 /// The document carries no empty section.
 ///
-/// `## Presentation Corpus` renders only when talks are loaded; a heading with
-/// nothing beneath it tells a crawler a corpus exists and then gives it none.
+/// A heading with nothing beneath it tells a crawler a corpus exists and then
+/// gives it none.
 #[tokio::test]
 async fn no_section_renders_empty() {
     let body = document(&app().await).await;

@@ -146,14 +146,17 @@ pub fn sitemap_paths(state: &AppState) -> std::collections::BTreeSet<String> {
 /// The site's `/llms.txt`: what a crawler has reached at `neonlaw.com`, and the
 /// pages it may read there.
 ///
-/// The firm's practice and its published fee schedule, in the order a reader
+/// The firm's practice and its flat-fee routine work, in the order a reader
 /// meets them. Every entry is a page this host serves anonymously; the
 /// individual posts a crawler walks from `/blog` are enumerated by
 /// [`sitemap_paths`] rather than curated here.
 ///
 /// `/services` is named as the fee schedule it is. The firm charges a fixed fee
 /// per matter, which is the thing that page exists to say — an index describing
-/// it as generic "legal services" would understate it.
+/// it as generic "legal services" would understate it. What it does not say is
+/// a dollar figure: the site publishes no fee amounts, and `/services` names
+/// its schedule's matters and scope without one. An index that told a crawler
+/// otherwise would send it looking for numbers the page does not carry.
 #[must_use]
 pub fn llms_txt(state: &AppState) -> portal::LlmsTxt {
     let mark = views::brand::FIRM_BRAND.site_name;
@@ -165,26 +168,23 @@ pub fn llms_txt(state: &AppState) -> portal::LlmsTxt {
              alongside a litigation and company-counsel practice quoted per engagement."
         ),
         pages: indexed_pages(mark),
-        sections: [
-            ("Workshop Corpus", "workshops"),
-            ("Presentation Corpus", "presentations"),
-        ]
-        .into_iter()
-        .map(|(heading, category)| portal::LlmsTxtSection {
-            heading: heading.to_string(),
-            links: state
-                .workshops
-                .materials()
-                .iter()
-                .filter(|material| material.category == category)
-                .map(|material| portal::LlmsTxtLink {
-                    title: material.title.clone(),
-                    path: format!("/{}/{}.md", material.category, material.slug),
-                    description: material.description.clone(),
-                })
-                .collect(),
-        })
-        .collect(),
+        sections: [("Workshop Corpus", "workshops")]
+            .into_iter()
+            .map(|(heading, category)| portal::LlmsTxtSection {
+                heading: heading.to_string(),
+                links: state
+                    .workshops
+                    .materials()
+                    .iter()
+                    .filter(|material| material.category == category)
+                    .map(|material| portal::LlmsTxtLink {
+                        title: material.title.clone(),
+                        path: format!("/{}/{}.md", material.category, material.slug),
+                        description: material.description.clone(),
+                    })
+                    .collect(),
+            })
+            .collect(),
     }
 }
 
@@ -200,9 +200,8 @@ fn indexed_pages(mark: &str) -> Vec<portal::LlmsTxtLink> {
         page(
             mark,
             "/",
-            "The firm's practice — flat-fee consumer legal work with every price published, \
-                 litigation on both sides of the v., and company counsel for emerging technology \
-                 companies.",
+            "The firm's practice — flat-fee consumer legal work, litigation on both sides of \
+                 the v., and company counsel for emerging technology companies.",
         ),
         page(
             "Fractional CTO",
@@ -214,9 +213,10 @@ fn indexed_pages(mark: &str) -> Vec<portal::LlmsTxtLink> {
         page(
             "Legal Services and fees",
             "/services",
-            "The published flat-fee schedule: what each routine matter costs, in dollars, \
-                 before you call. Wills, trusts, name changes, formations, trademarks, tenant \
-                 defense, and demand letters, each reviewed by a licensed attorney.",
+            "The flat-fee schedule: wills, trusts, name changes, formations, trademarks, \
+                 tenant defense, and demand letters, each a fixed fee agreed before work \
+                 begins and reviewed by a licensed attorney. The site names no dollar figure; \
+                 email the firm for the fee on your matter.",
         ),
         page(
             "Litigation",

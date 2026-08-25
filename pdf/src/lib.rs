@@ -99,7 +99,7 @@ pub const BRAND_FONT_STACK: &[&str] = &["GORP Serif", "Noto Serif"];
 ///
 /// Point it at an unpacked `gorp-serif-otf.zip` (the archive
 /// `navigator assets fonts upload-desktop` publishes, served to Lawyers at
-/// `/lawyer/fonts/gorp-serif.zip`). WOFF2 is a web format Typst cannot read;
+/// `/app/team/fonts/gorp-serif.zip`). WOFF2 is a web format Typst cannot read;
 /// this directory needs the desktop OTFs.
 pub const FONT_DIR_ENV: &str = "NAVIGATOR_PDF_FONT_DIR";
 

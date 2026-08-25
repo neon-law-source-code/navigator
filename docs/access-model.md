@@ -48,8 +48,9 @@ portal—but no firm documents, legal work, or write control on this surface. Th
 identically for every viewer (`store::access::can_see_project`, which is `matter_viewer(...).is_some()`), so admitting a
 Clerk to it grants nothing the matter page's own visibility does not.
 
-The sole exception to "never `/lawyer`" is `GET /lawyer/fonts/gorp-serif.zip`. Its exact-path embedded Rego rule admits
-Clerk to that firm brand asset only; it grants no other `/lawyer` route or legal authority.
+"Never `/lawyer`" now holds without exception. The firm brand fonts, the one object that used to need one, moved to `GET
+/app/team/fonts/gorp-serif.zip`, where the team home's own prefix rules admit every firm tier — a brand asset is not
+lawyer work, and the path now says so.
 
 Mailroom upload and contract-review preparation remain separate, future narrow route-level grants. Each must preserve
 both the Clerk actor and supervising lawyer in provenance; neither turns the Clerk into a legal adviser.

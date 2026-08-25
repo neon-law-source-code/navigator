@@ -148,36 +148,37 @@ test_anonymous_denied_on_lawyer if {
 	not authz.allow with input as {"path": ["lawyer"], "method": "GET", "session": null}
 }
 
-# The brand-font download is a firm brand asset: Owner, Admin, Lawyer, and — as the
-# one deliberate exact-path exception — Clerk may fetch it; client and
-# anonymous may not.
+# The brand-font download rides the /app/team prefix rules above rather than a
+# rule of its own, so it is asserted per tier here: all four firm tiers reach
+# it, and the two unauthorized audiences do not.
 test_lawyer_reaches_font_download if {
-	authz.allow with input as {"path": ["lawyer", "fonts", "gorp-serif.zip"], "method": "GET", "session": lawyer_session}
+	authz.allow with input as {"path": ["app", "team", "fonts", "gorp-serif.zip"], "method": "GET", "session": lawyer_session}
 }
 
 test_admin_reaches_font_download if {
-	authz.allow with input as {"path": ["lawyer", "fonts", "gorp-serif.zip"], "method": "GET", "session": admin_session}
+	authz.allow with input as {"path": ["app", "team", "fonts", "gorp-serif.zip"], "method": "GET", "session": admin_session}
 }
 
 test_owner_reaches_font_download if {
-	authz.allow with input as {"path": ["lawyer", "fonts", "gorp-serif.zip"], "method": "GET", "session": owner_session}
+	authz.allow with input as {"path": ["app", "team", "fonts", "gorp-serif.zip"], "method": "GET", "session": owner_session}
 }
 
 test_clerk_reaches_font_download if {
-	authz.allow with input as {"path": ["lawyer", "fonts", "gorp-serif.zip"], "method": "GET", "session": clerk_session}
+	authz.allow with input as {"path": ["app", "team", "fonts", "gorp-serif.zip"], "method": "GET", "session": clerk_session}
 }
 
 test_client_denied_on_font_download if {
-	not authz.allow with input as {"path": ["lawyer", "fonts", "gorp-serif.zip"], "method": "GET", "session": client_session}
+	not authz.allow with input as {"path": ["app", "team", "fonts", "gorp-serif.zip"], "method": "GET", "session": client_session}
 }
 
 test_anonymous_denied_on_font_download if {
-	not authz.allow with input as {"path": ["lawyer", "fonts", "gorp-serif.zip"], "method": "GET", "session": null}
+	not authz.allow with input as {"path": ["app", "team", "fonts", "gorp-serif.zip"], "method": "GET", "session": null}
 }
 
-# The exception is exact-path: a Clerk gets no *other* /lawyer route from it.
-test_clerk_still_denied_on_other_lawyer_paths if {
-	not authz.allow with input as {"path": ["lawyer", "fonts", "other.zip"], "method": "GET", "session": clerk_session}
+# The download moved off /lawyer, and with it the exact-path exception that
+# used to admit a Clerk there. Clerk is now denied every /lawyer path.
+test_clerk_denied_on_every_lawyer_path if {
+	not authz.allow with input as {"path": ["lawyer", "fonts", "gorp-serif.zip"], "method": "GET", "session": clerk_session}
 	not authz.allow with input as {"path": ["lawyer", "people"], "method": "GET", "session": clerk_session}
 }
 

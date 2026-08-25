@@ -50,7 +50,7 @@ static SLIDE_CONTENT: Dir<'static> =
 
 /// The full GORP Serif desktop family (the licensed `.otf` faces from the
 /// `TrashType` delivery), packaged as one ZIP. Firm workers download it from
-/// `/lawyer/fonts/gorp-serif.zip`. Unlike the public WOFF2 web faces, this key
+/// `/app/team/fonts/gorp-serif.zip`. Unlike the public WOFF2 web faces, this key
 /// lives in the *private* documents bucket so the authorization gate cannot be bypassed
 /// by a direct object URL; like the WOFF2 bytes it is an operator asset and
 /// never committed to this repository, whose licence does not extend to the
@@ -315,7 +315,7 @@ pub fn run_upload_fonts(dir: &Path, bucket: Option<String>) -> ExitCode {
 /// bucket because browsers fetch them auth-free, the installable desktop
 /// family is a restricted download: it goes to the *private* documents bucket
 /// (`NAVIGATOR_DOCUMENTS_BUCKET`), so the only way to the bytes is through the
-/// policy-gated `/lawyer/fonts/gorp-serif.zip` route — a predictable public URL
+/// policy-gated `/app/team/fonts/gorp-serif.zip` route — a predictable public URL
 /// can never bypass authorization. ADC auth; the `.otf` source is never
 /// committed.
 pub fn run_upload_desktop_fonts(dir: &Path, bucket: Option<String>) -> ExitCode {

@@ -471,14 +471,6 @@ fn DashboardDetails(role: ViewerRole) -> Element {
                         }
                         li { a { href: "/lawyer/schedules", "Cron schedules" } }
                     }
-                    h3 { class: "admin-details__heading", "Brand assets" }
-                    ul {
-                        li {
-                            a { href: "/lawyer/fonts/gorp-serif.zip", download: "",
-                                "GORP Serif fonts (.zip)"
-                            }
-                        }
-                    }
                     h3 { class: "admin-details__heading", "JSON API" }
                     ul {
                         for (href , label) in API_ENDPOINTS.iter() {
@@ -637,12 +629,14 @@ mod tests {
     #[test]
     fn the_navbar_offers_the_role_appropriate_app_destinations() {
         let lawyer = dioxus_ssr::render_element(lawyer_dashboard_body(&view()));
-        assert!(lawyer.contains(r#"href="/app/lawyer""#), "{lawyer}");
         assert!(lawyer.contains(r#"href="/app/projects""#), "{lawyer}");
+        assert!(lawyer.contains(r#"href="/app/team""#), "{lawyer}");
         assert!(lawyer.contains(r#"href="/auth/logout""#), "{lawyer}");
         assert!(!lawyer.contains(r#"href="/app/admin""#), "{lawyer}");
         assert!(!lawyer.contains("lawyer-nav__brand"), "no mark configured");
 
+        // The row does not grow with authority: the workbench and admin doors
+        // are cards on the Team home, so an Admin's navbar is a Lawyer's.
         let admin = dioxus_ssr::render_element(lawyer_dashboard_body(&DashboardView {
             role: ViewerRole::Admin,
             logo: Some(crate::components::AppLogo {
@@ -652,8 +646,8 @@ mod tests {
             }),
             ..view()
         }));
-        assert!(admin.contains(r#"href="/app/admin""#), "{admin}");
-        assert!(admin.contains(r#"href="/app/lawyer""#), "{admin}");
+        assert!(!admin.contains(r#"href="/app/admin""#), "{admin}");
+        assert!(admin.contains(r#"href="/app/team""#), "{admin}");
         assert!(
             admin.contains(r#"src="/public/brand/firm-logo.svg""#),
             "{admin}"

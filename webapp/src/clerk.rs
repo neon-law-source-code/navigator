@@ -247,27 +247,6 @@ fn clerk_nav() -> Element {
     }
 }
 
-/// The firm brand-asset download. Brand assets are shared across every firm
-/// worker rather than scoped to a matter, so this sits outside the projects list
-/// and shows even when a Clerk has no assignments yet. It is the one `/lawyer`
-/// link a Clerk sees — a firm brand asset, not a matter surface.
-fn brand_assets() -> Element {
-    rsx! {
-        section { class: "clerk-brand-assets",
-            h2 { "Brand assets" }
-            ul { class: "clerk-brand-assets__list",
-                li {
-                    // The suggested filename matches the route's own
-                    // `Content-Disposition: attachment` header.
-                    a { class: "nav-link", href: "/lawyer/fonts/gorp-serif.zip", download: "gorp-serif.zip",
-                        "GORP Serif fonts (.zip)"
-                    }
-                }
-            }
-        }
-    }
-}
-
 /// The page body shown when the Clerk surface does not exist for this viewer.
 fn clerk_not_found(heading: &str, message: &str) -> Element {
     rsx! {
@@ -327,7 +306,6 @@ pub fn ClerkProjects() -> Element {
                         }
                     }
                 }
-                {brand_assets()}
             } else {
                 {clerk_not_found("Not found", "This page is not available.")}
             }

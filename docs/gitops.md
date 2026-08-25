@@ -766,14 +766,13 @@ reachable only by a classic PAT holding `read:packages` — an Actions token is 
 is written, which is why every scheduled sweep failed on that one line before the list replaced it. The per-package
 version *listing* is a different lane, and the run's own token reaches it.
 
-**Deleting needs one grant that lives outside this repository.** Publishing an image with `GITHUB_TOKEN` links the
-package to the repository and gives it the `write` role, which uploads and downloads but cannot delete; only `admin`
-deletes. `admin` is granted per package under Package settings → "Manage Actions access", no REST API sets it, and
-`packages: write` is the ceiling of what a workflow permissions block can ask for — so `ops github setup` cannot codify
-it and `cli/tests/ghcr_retention.rs` cannot assert it. **A new image therefore needs that click before its first sweep,
-in addition to joining the `PACKAGES` list.** Without it every delete answers `404 Package not found`, which is also
-what a version another run already removed answers, so the sweep prunes nothing while reading like routine noise. The
-run's failure branch separates the two: when *nothing* was deleted it names this grant instead of counting warnings.
+**Deleting needs package-admin access.** Every published Containerfile carries the OCI source label for
+`neon-law-source-code/navigator`, so GHCR links a newly published package to that repository and its workflow token can
+receive the required access without a PAT. **A repository move does not repair packages that already exist:** reconnect
+each migrated package to the canonical source repository, then grant it `admin` under Package settings → "Manage Actions
+access". A missing link or grant makes every delete answer `404 Package not found`, which is also what a version another
+run already removed answers, so the sweep prunes nothing while reading like routine noise. The run's failure branch
+separates the two: when *nothing* was deleted it names this grant instead of counting warnings.
 
 **Rehearse a change before a night runs it live.** Dispatch the workflow with `dry_run: true` (the dispatch default) and
 it lists every deletion it would make and deletes nothing. That is the only safe way to prove a change to a job whose

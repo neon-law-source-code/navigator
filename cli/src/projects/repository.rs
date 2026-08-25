@@ -8,6 +8,7 @@
 //! ```text
 //! <organization>/<project-code>
 //! ├── .github/workflows/gate.yml
+//! ├── .github/workflows/publish.yml
 //! ├── portal/            # React + Vite; the client's portal
 //! ├── templates/         # *.md notation blueprints
 //! ├── AGENTS.md
@@ -65,6 +66,7 @@ const TEMPLATE_DIRECTORY: &str = "templates";
 /// The client portal's Vite workspace.
 const PORTAL_DIRECTORY: &str = "portal";
 const WORKFLOW: &str = ".github/workflows/gate.yml";
+const CD_WORKFLOW: &str = ".github/workflows/publish.yml";
 /// The manifest a Project repository declares its Project code in.
 const PROJECT_MANIFEST: &str = "navigator.yaml";
 /// Seed-shaped YAML documents for `navigator db seed`, one file per model.
@@ -171,6 +173,7 @@ pub fn scaffold(root: &Path, project_code: &str) -> ExitCode {
         ),
         (root.join("tests/README.md"), tests_readme()),
         (root.join(WORKFLOW), workflow()),
+        (root.join(CD_WORKFLOW), cd_workflow()),
     ];
 
     for (path, contents) in files {
@@ -734,11 +737,30 @@ jobs:
     .to_string()
 }
 
+/// The future Project publication workflow. Bucket provisioning and
+/// publication stay deliberately out of this scaffold until the additive
+/// `projects` migration is ready; the placeholder makes that boundary visible
+/// without performing a production action.
+fn cd_workflow() -> String {
+    r#"name: cd
+
+on:
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "TBD"
+"#
+    .to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        example_template, is_release_tag, repository_name, validate_layout, validate_workflow,
-        workflow, Finding, ALLOWED_ROOTS, WORKFLOW,
+        cd_workflow, example_template, is_release_tag, repository_name, validate_layout,
+        validate_workflow, workflow, Finding, ALLOWED_ROOTS, CD_WORKFLOW, WORKFLOW,
     };
     use std::path::Path;
 
@@ -755,6 +777,7 @@ mod tests {
         std::fs::create_dir_all(root.join(".github/workflows")).unwrap();
         std::fs::write(root.join("README.md"), "# fixture\n").unwrap();
         std::fs::write(root.join(WORKFLOW), workflow()).unwrap();
+        std::fs::write(root.join(CD_WORKFLOW), cd_workflow()).unwrap();
     }
 
     fn layout_findings(root: &Path) -> Vec<String> {

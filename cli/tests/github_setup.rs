@@ -59,6 +59,7 @@ async fn mount_reads(server: &MockServer) {
             "delete_branch_on_merge": true,
             "squash_merge_commit_title": "PR_TITLE",
             "squash_merge_commit_message": "PR_BODY",
+            "pull_request_creation_policy": "collaborators_only",
             "has_issues": false,
             "has_projects": false,
             "has_wiki": false,
@@ -76,7 +77,7 @@ async fn mount_reads(server: &MockServer) {
     // gate is written, because GitHub silently ignores one that does not exist.
     Mock::given(method("GET"))
         .and(path("/users/owner"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({})))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id": 42})))
         .mount(server)
         .await;
     // Existing is not owning: GitHub honors a code owner only where that owner

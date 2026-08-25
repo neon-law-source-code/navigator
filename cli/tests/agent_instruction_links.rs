@@ -1,9 +1,9 @@
 //! Prove that the agent instruction surfaces actually resolve in this checkout.
 //!
-//! `CLAUDE.md` is a symlink to `AGENTS.md`, and every entry under
-//! `.claude/skills/` and `.codex/skills/` is a symlink into `.agents/skills/`.
-//! That indirection is deliberate: one copy of each document, read by whichever
-//! agent harness is pointed at the tree.
+//! `CLAUDE.md` is a symlink to `AGENTS.md`. `.agents/skills/` holds the one
+//! canonical skill catalog, and every entry under `.claude/skills/` and
+//! `.codex/skills/` is a symlink into it. That indirection is deliberate: one
+//! copy of each document, read by whichever agent harness is pointed at the tree.
 //!
 //! Git only materialises a symlink as a link when `core.symlinks` is true, and
 //! that is not the default on Windows. With it off, `git checkout` writes a
@@ -16,7 +16,7 @@
 //! compiled code reads either path. What breaks is invisible from inside the
 //! repository: the harness loads `CLAUDE.md`, receives the literal string
 //! `AGENTS.md` instead of the operating contract, and proceeds without it; and
-//! it enumerates `.claude/skills/`, finds regular files where directories
+//! it enumerates a harness catalog, finds regular files where directories
 //! holding a `SKILL.md` should be, and registers no skill. The engineering,
 //! legal, and client councils then do not exist as far as that session is
 //! concerned, and the only symptom is that invoking one does nothing.
@@ -27,15 +27,19 @@
 //! knows to take is not a defence, so this guard makes the broken state loud at
 //! the point where every other workspace invariant is checked.
 //!
-//! The assertions deliberately compare *resolved content* rather than asking
-//! whether a path is a symlink. What matters is that the bytes an agent reads
-//! are the document, not the route by which the filesystem delivered them, and a
-//! content check states the requirement without pinning the mechanism.
+//! The assertions deliberately compare *resolved content* and catalog names
+//! rather than asking whether a path is a symlink. What matters is that the
+//! bytes an agent reads are the document and that every harness exposes the same
+//! skills, not the route by which the filesystem delivered them.
 //!
 //! The fix, once per clone, is in [`AGENTS.md`](../../AGENTS.md).
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
+
+const CANONICAL_SKILLS: &str = ".agents/skills";
+const HARNESSES: [&str; 2] = [".claude/skills", ".codex/skills"];
 
 /// The workspace root, one level up from the `cli` crate.
 fn repo_root() -> PathBuf {
@@ -57,58 +61,118 @@ const REMEDY: &str = "\n\nThis checkout materialised a symlink as a regular file
 /// this is the assertion that fails when those bytes are the nine-byte stub.
 #[test]
 fn claude_md_resolves_to_the_agent_contract() {
-    let root = repo_root();
-    let claude = fs::read_to_string(root.join("CLAUDE.md"))
-        .unwrap_or_else(|e| panic!("read CLAUDE.md: {e}{REMEDY}"));
-    let agents = fs::read_to_string(root.join("AGENTS.md"))
-        .unwrap_or_else(|e| panic!("read AGENTS.md: {e}"));
-
-    assert_eq!(
-        claude.len(),
-        agents.len(),
-        "CLAUDE.md is {} bytes and AGENTS.md is {} bytes, so CLAUDE.md is not \
-         resolving to the contract. Agents loading CLAUDE.md are running \
-         without it.{REMEDY}",
-        claude.len(),
-        agents.len(),
-    );
-    assert_eq!(
-        claude, agents,
-        "CLAUDE.md and AGENTS.md are the same length but differ in content.{REMEDY}"
-    );
+    assert_contract_resolves(&repo_root()).unwrap_or_else(|error| panic!("{error}{REMEDY}"));
 }
 
-/// Every skill entry must resolve to a directory holding a readable `SKILL.md`.
+/// Every harness must expose precisely the canonical catalog, and every entry
+/// must resolve to a directory holding a readable `SKILL.md`.
 ///
 /// A stub checks out as a regular file, so it fails the directory test first;
 /// the `SKILL.md` read then covers a link that resolves somewhere unexpected.
-/// Both harness directories are checked because they carry different subsets and
-/// a fix applied to one has been known to miss the other.
 #[test]
-fn every_skill_entry_resolves_to_a_readable_skill() {
-    for harness in [".claude/skills", ".codex/skills"] {
-        let dir = repo_root().join(harness);
-        let entries = fs::read_dir(&dir)
-            .unwrap_or_else(|e| panic!("read {}: {e}", dir.display()))
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap_or_else(|e| panic!("enumerate {}: {e}", dir.display()));
+fn harness_skill_catalogs_match_the_canonical_catalog() {
+    assert_harness_catalogs_resolve(&repo_root()).unwrap_or_else(|error| panic!("{error}{REMEDY}"));
+}
 
-        assert!(
-            !entries.is_empty(),
-            "{harness} holds no skills at all, which cannot be right."
-        );
+/// The guard itself must reject the regular-file form Git writes when it cannot
+/// materialise `CLAUDE.md` as a symlink.
+#[test]
+fn contract_guard_rejects_a_symlink_stub() {
+    let temp = tempfile::tempdir().expect("create temporary checkout");
+    fs::write(temp.path().join("AGENTS.md"), "the agent contract\n").expect("write contract");
+    fs::write(temp.path().join("CLAUDE.md"), "AGENTS.md").expect("write stub");
 
-        for entry in entries {
-            let path = entry.path();
-            let name = entry.file_name().to_string_lossy().into_owned();
-            assert!(
-                path.is_dir(),
-                "{harness}/{name} is not a directory. A skill is a directory \
-                 holding SKILL.md, so nothing will register it.{REMEDY}"
-            );
-            assert_skill_readable(&path, harness, &name);
+    let error = assert_contract_resolves(temp.path()).expect_err("stub must fail");
+    assert!(error.contains("not resolving to the contract"), "{error}");
+}
+
+/// The catalog guard must reject the regular-file form Git writes for a skill
+/// directory without mutating the repository that runs the test.
+#[test]
+fn catalog_guard_rejects_a_symlink_stub() {
+    let temp = tempfile::tempdir().expect("create temporary checkout");
+    write_skill(temp.path(), CANONICAL_SKILLS, "council");
+    for harness in HARNESSES {
+        fs::create_dir_all(temp.path().join(harness)).expect("create harness directory");
+    }
+    fs::write(
+        temp.path().join(".claude/skills/council"),
+        "../../.agents/skills/council",
+    )
+    .expect("write stub");
+    write_skill(temp.path(), ".codex/skills", "council");
+
+    let error = assert_harness_catalogs_resolve(temp.path()).expect_err("stub must fail");
+    assert!(
+        error.contains(".claude/skills/council is not a directory"),
+        "{error}"
+    );
+}
+
+fn assert_contract_resolves(root: &Path) -> Result<(), String> {
+    let claude = fs::read_to_string(root.join("CLAUDE.md"))
+        .map_err(|error| format!("read CLAUDE.md: {error}"))?;
+    let agents = fs::read_to_string(root.join("AGENTS.md"))
+        .map_err(|error| format!("read AGENTS.md: {error}"))?;
+
+    if claude.len() != agents.len() {
+        return Err(format!(
+            "CLAUDE.md is {} bytes and AGENTS.md is {} bytes, so CLAUDE.md is not \
+             resolving to the contract. Agents loading CLAUDE.md are running without it.",
+            claude.len(),
+            agents.len(),
+        ));
+    }
+    if claude != agents {
+        return Err("CLAUDE.md and AGENTS.md are the same length but differ in content.".into());
+    }
+
+    Ok(())
+}
+
+fn assert_harness_catalogs_resolve(root: &Path) -> Result<(), String> {
+    let canonical = skill_names(root, CANONICAL_SKILLS)?;
+    for harness in HARNESSES {
+        let skills = skill_names(root, harness)?;
+        if skills != canonical {
+            return Err(format!(
+                "{harness} does not expose the canonical skill catalog. Expected \
+                 {canonical:?}; found {skills:?}."
+            ));
         }
     }
+
+    Ok(())
+}
+
+fn skill_names(root: &Path, catalog: &str) -> Result<BTreeSet<String>, String> {
+    let dir = root.join(catalog);
+    let entries = fs::read_dir(&dir)
+        .map_err(|error| format!("read {}: {error}", dir.display()))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("enumerate {}: {error}", dir.display()))?;
+
+    if entries.is_empty() {
+        return Err(format!(
+            "{catalog} holds no skills at all, which cannot be right."
+        ));
+    }
+
+    entries
+        .into_iter()
+        .map(|entry| {
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if !path.is_dir() {
+                return Err(format!(
+                    "{catalog}/{name} is not a directory. A skill is a directory \
+                     holding SKILL.md, so nothing will register it."
+                ));
+            }
+            assert_skill_readable(&path, catalog, &name)?;
+            Ok(name)
+        })
+        .collect()
 }
 
 /// Read one skill's `SKILL.md` and require it to carry a document.
@@ -116,15 +180,22 @@ fn every_skill_entry_resolves_to_a_readable_skill() {
 /// The length floor is a sanity bound rather than a style rule: it separates a
 /// real skill from an empty or truncated file without asserting anything about
 /// what a skill has to say.
-fn assert_skill_readable(path: &Path, harness: &str, name: &str) {
+fn assert_skill_readable(path: &Path, harness: &str, name: &str) -> Result<(), String> {
     let manifest = path.join("SKILL.md");
-    let body = fs::read_to_string(&manifest).unwrap_or_else(|e| {
-        panic!("read {harness}/{name}/SKILL.md: {e}{REMEDY}");
-    });
-    assert!(
-        body.len() > 200,
-        "{harness}/{name}/SKILL.md is only {} bytes, which is not a skill \
-         document.{REMEDY}",
-        body.len(),
-    );
+    let body = fs::read_to_string(&manifest)
+        .map_err(|error| format!("read {harness}/{name}/SKILL.md: {error}"))?;
+    if body.len() <= 200 {
+        return Err(format!(
+            "{harness}/{name}/SKILL.md is only {} bytes, which is not a skill document.",
+            body.len(),
+        ));
+    }
+
+    Ok(())
+}
+
+fn write_skill(root: &Path, catalog: &str, name: &str) {
+    let path = root.join(catalog).join(name);
+    fs::create_dir_all(&path).expect("create skill directory");
+    fs::write(path.join("SKILL.md"), "x".repeat(201)).expect("write skill manifest");
 }

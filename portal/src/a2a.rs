@@ -3556,6 +3556,14 @@ mod tests {
     /// The wrong-caller denial is the decision a reader of the trail most
     /// wants an actor on, and it was the one left without one: its
     /// `audit_authorization` call passed `None` for both the tier and the row.
+    ///
+    /// The field set is asserted exactly, not by presence. `audit_authorization`
+    /// serves all four terminal decisions from one call site, but "the shared
+    /// builder is covered by the `authorized` path" is an assumption about the
+    /// emitter rather than a property of the stream: a field added under a
+    /// decision-specific branch would leave the `authorized` set untouched and
+    /// still reach a reader here. A refusal is also the record most likely to
+    /// grow a well-meant "why" field carrying the payload it refused.
     #[tokio::test]
     async fn the_denied_identity_record_names_the_person_who_tried() {
         let (engines, person_id) = welcome_fixture().await;
@@ -3606,6 +3614,25 @@ mod tests {
         let logged = String::from_utf8(buf.lock().unwrap().clone()).expect("utf-8 log");
         let line = audit_line(&logged, "agent_action_authorization");
 
+        assert_eq!(
+            field_names(&line),
+            vec![
+                "audit",
+                "context_id",
+                "decision",
+                "event",
+                "message",
+                "person_id",
+                "principal_kind",
+                "proposer_person_id",
+                "proposer_role",
+                "role",
+                "task_id",
+                "tool",
+            ],
+            "the refusal record's field set is the contract; got: {line}"
+        );
+
         assert!(
             line.contains("\"decision\":\"denied_identity\""),
             "the refusal must be recorded as denied_identity: {line}"
@@ -3613,6 +3640,19 @@ mod tests {
         assert!(
             line.contains(&format!("\"person_id\":\"{}\"", other.id)),
             "the person who tried to approve must be named: {line}"
+        );
+        // A denial still names the proposer, so the trail says whose proposal
+        // was refused and not merely that something was.
+        assert!(
+            line.contains("\"proposer_role\":\"lawyer\""),
+            "the original proposer's role must survive into the refusal: {line}"
+        );
+        // The argument value names a third person — neither the approver nor
+        // the proposer — so its id appearing here could only come from the
+        // payload the refusal declined to run.
+        assert!(
+            !line.contains(&person_id.to_string()),
+            "no tool-call argument value may reach the audit stream: {line}"
         );
         assert!(
             !line.contains('@'),

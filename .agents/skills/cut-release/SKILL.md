@@ -9,7 +9,10 @@ Read [`docs/gitops.md`](../../../docs/gitops.md), [`docs/agent-workflows.md`](..
 [`docs/public-contributor-safety.md`](../../../docs/public-contributor-safety.md). A release is a version bump landed
 through a PR; merging `main` drives publication.
 
-- Verify the requested version and the current manifest before changing it.
+- Verify the requested version and the current manifest before changing it. A `-hotfix.N` suffix is a
+  semver prerelease of that core, so it ranks *below* the matching ordinary release. After `26.8.22` is published, the
+  next hotfix is `26.8.23-hotfix.1`, not `26.8.22-hotfix.1`. See
+  [`docs/gitops.md`](../../../docs/gitops.md#why-a-hotfix-prerelease-ranks-below-its-date).
 - Make the smallest version-only commit, run the documented gate, and open the PR against `main`.
 - Stop when that PR merges. Report its URL. Do not watch `deploy.yml` for the tag, images, archives, or tap.
 - Do not deploy, mutate production, or copy production coordinates into the branch, PR, or release notes.

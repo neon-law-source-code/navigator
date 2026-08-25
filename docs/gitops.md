@@ -432,8 +432,8 @@ against the highest released version makes it a consequence instead:
 26.8.21  <  26.8.22-hotfix.3  <  26.8.22-hotfix.21  <  26.8.22
 ```
 
-So `26.8.22-hotfix.3` is admissible after `26.8.21` and **refused** after `26.8.22` — and nobody has to know why. See
-[Releasing twice in one day](#releasing-twice-in-one-day).
+So `26.8.22-hotfix.3` is admissible after `26.8.21` and **refused** after `26.8.22`. The hyphen is exactly why — see
+[Why a hotfix prerelease ranks below its date](#why-a-hotfix-prerelease-ranks-below-its-date).
 
 **This workflow deploys nothing, and holds no cloud credential.** It ends at the registry. Putting a version in front of
 real clients' matters is a separate act a person takes from their own machine — see [The deploy is a human
@@ -474,8 +474,23 @@ release the same day, and both are just "a bigger number":
 
 Both sort strictly above `26.8.22`, so both are admissible. What is **refused** is a prerelease of a version already
 released — `26.8.22-hotfix.1` after `26.8.22` — because semver ranks it below the release it would be fixing, and every
-consumer resolving those two versions would read the fix as the older one. `release-check` says so by name rather than
-letting it publish.
+consumer resolving those two versions would read the fix as the older one. `ops release-check` says so by name rather
+than letting it publish.
+
+### Why a hotfix prerelease ranks below its date
+
+The hyphen starts a **prerelease** identifier. `26.8.22-hotfix.1` is not "26.8.22 plus a fix"; it is an earlier,
+unstable form of `26.8.22`, the same construct as `1.0.0-rc.1`. Semver §11.3 gives a prerelease lower precedence than
+the matching normal version:
+
+```text
+26.8.22-hotfix.1  <  26.8.22  <  26.8.23-hotfix.1  <  26.8.23
+```
+
+After `26.8.22` is published, a same-day cut must bump the **core** — `26.8.23` or `26.8.23-hotfix.1`. A fourth numeric
+component (`26.8.22.1`) is not a version Cargo can parse, and build metadata (`26.8.22+hotfix.1`) cannot name an image
+tag, so neither is an escape. `ops release-check` refuses the older spelling as a regression before the pipeline spends
+a tag.
 
 `N` in `-hotfix.N` is an unpadded nonnegative integer and it is the operator's to choose: a uniqueness-and-ordering
 discriminator, never an hour. The padding is not cosmetic — semver forbids a leading zero in a numeric prerelease

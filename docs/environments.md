@@ -101,9 +101,9 @@ beside it: `workflows.neonlaw.com` for production, `workflows-staging.neonlaw.co
 deployment never borrows another row's host. Set `NAV_BASE_URL` to `https://$NAVIGATOR_PUBLIC_HOST`,
 `NAVIGATOR_WORKFLOWS_URL` to `https://$NAVIGATOR_WORKFLOWS_HOST/`, and `NAVIGATOR_ASSET_BASE_URL` to
 `$NAV_BASE_URL/assets`. The backing GCS bucket remains private; the application reads it through Workload Identity and
-serves this bounded public marketing lane at the same origin. Set both `CANONICAL_HOST` and `NAVIGATOR_PRIMARY_DOMAIN`
-to the exact `NAVIGATOR_PUBLIC_HOST`; otherwise canonical-host middleware or Restate registration can silently target a
-different site.
+serves this bounded public marketing lane at the same origin. `ops ship` derives the web pod's `CANONICAL_HOST` from
+`NAVIGATOR_PUBLIC_HOST`. Set `NAVIGATOR_PRIMARY_DOMAIN` to that same host for Restate registration; otherwise
+canonical-host middleware or Restate registration can silently target a different site.
 
 `NAVIGATOR_CHATWOOT_WEBSITE_TOKEN` is the one public-surface coordinate that is deliberately *not* set on every row. It
 names the Chatwoot inbox the support-chat widget opens a conversation against, and a row that omits it renders no widget

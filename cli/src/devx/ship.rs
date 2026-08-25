@@ -3270,6 +3270,10 @@ mod tests {
             "deployment-specific asset base URL substituted"
         );
         assert!(
+            web_env.contains("name: CANONICAL_HOST\n              value: www.neonlaw.com"),
+            "web receives the canonical host derived from its public host"
+        );
+        assert!(
             web_env.contains("name: GOOGLE_OAUTH_REQUIRED_HD"),
             "OAuth hosted-domain environment-variable name is preserved"
         );

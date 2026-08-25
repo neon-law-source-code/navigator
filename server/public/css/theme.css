@@ -272,6 +272,13 @@ textarea {
   color: var(--nav-color-on-primary);
 }
 
+/* The sign-in / password-recovery card renders its heading, form, and
+   provider buttons directly in `.nav-card` rather than through
+   `.nav-card__body`, so it needs its own padding. */
+.auth-card {
+  padding: 2rem;
+}
+
 /* Toast — the same four tones the `Toast` carries. */
 .nav-toast {
   display: flex;
@@ -418,6 +425,17 @@ a.nav-pagination__link:hover {
   border-color: var(--nav-color-secondary-hover);
   color: var(--nav-color-on-secondary);
   text-decoration: none;
+}
+
+/* An identity-provider button carries its brand mark beside the label. */
+.nav-btn--oauth {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.nav-oauth-icon {
+  flex-shrink: 0;
 }
 
 /* Alert — the disclaimer's warning surface. */

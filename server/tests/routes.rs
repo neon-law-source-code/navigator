@@ -791,11 +791,11 @@ async fn admin_page_is_visible_only_to_owner_and_admin() {
             !html.contains("<table"),
             "the landing must not embed the people table: {html}",
         );
-        // The shared `/app` navbar (`webapp::components::AppNavbar`), carrying
-        // the admin hub and the workbench this tier may reach. Its labels are
-        // interpolated per viewer, so Dioxus SSR splits each text node with
-        // hydration comments and a literal `>Admin</a>` never matches — the
-        // slice is scoped to the nav and the label checked inside it.
+        // The shared `/app` navbar (`webapp::components::AppNavbar`) renders the
+        // same three destinations at every firm tier — Projects, Team, and Sign
+        // out. The admin hub and the workbench are `/app/team` cards now, not
+        // navbar items, so the navbar itself carries neither: reaching them from
+        // here is one hop through Team.
         assert!(html.contains("class=\"lawyer-nav\""), "{html}");
         let (_, after_nav) = html
             .split_once("class=\"lawyer-nav\"")
@@ -803,9 +803,9 @@ async fn admin_page_is_visible_only_to_owner_and_admin() {
         let (navbar, _) = after_nav
             .split_once("</nav>")
             .expect("the navbar closes its element");
-        assert!(navbar.contains("href=\"/app/admin\""), "{html}");
-        assert!(navbar.contains("Admin"), "{html}");
-        assert!(navbar.contains("href=\"/app/lawyer\""), "{html}");
+        assert!(navbar.contains("href=\"/app/team\""), "{html}");
+        assert!(!navbar.contains("href=\"/app/admin\""), "{html}");
+        assert!(!navbar.contains("href=\"/app/lawyer\""), "{html}");
     }
 }
 

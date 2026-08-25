@@ -184,17 +184,19 @@ mod tests {
         assert!(!out.contains("col-md-6"), "no Bootstrap grid classes");
     }
 
+    /// The row is the shared three. The workbench and admin doors are cards on
+    /// `/app/team`, not navbar items, so this page's nav must not grow them
+    /// back — reaching them from here is one hop through Team.
     #[test]
-    fn the_nav_offers_the_admin_desk_to_an_admin() {
+    fn the_nav_offers_the_shared_firm_row_to_an_admin() {
         let out = html(ViewerRole::Admin);
-        assert!(
-            out.contains(r#"href="/app/admin""#),
-            "admin desk link: {out}"
-        );
         assert!(out.contains(r#"href="/app/projects""#), "matter surface");
+        assert!(out.contains(r#"href="/app/team""#), "team home: {out}");
         assert!(out.contains(r#"href="/auth/logout""#), "sign out");
-        // The workbench was the destination this page's hand-written nav dropped.
-        assert!(out.contains(r#"href="/app/lawyer""#), "workbench: {out}");
+        assert!(
+            !out.contains(r#"href="/app/lawyer""#),
+            "the workbench is a Team-home card, not a navbar door: {out}"
+        );
     }
 
     /// The mark is configured per deploy: rendered when the brand supplies one,

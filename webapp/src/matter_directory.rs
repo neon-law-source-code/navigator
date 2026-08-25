@@ -346,16 +346,21 @@ mod tests {
     }
 
     /// The page mounts the `/app` chrome, so an admin reading it keeps the same
-    /// navbar every other `/app` page renders.
+    /// navbar every other `/app` page renders — the shared three, with the
+    /// tier-gated doors left to the Team home's cards.
     #[test]
     fn the_page_carries_the_app_chrome() {
         let out = html(&directory(
             vec![row("acme-llc", "open", &["Nick Shook"])],
             ViewerRole::Owner,
         ));
-        assert!(out.contains(r#"href="/app/admin""#), "admin desk: {out}");
         assert!(out.contains(r#"href="/app/projects""#), "{out}");
+        assert!(out.contains(r#"href="/app/team""#), "team home: {out}");
         assert!(out.contains(r#"href="/auth/logout""#), "{out}");
+        assert!(
+            !out.contains(r#"href="/app/admin""#),
+            "the admin desk is a Team-home card, not a navbar door: {out}"
+        );
     }
 
     #[cfg(feature = "server")]

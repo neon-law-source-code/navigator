@@ -41,6 +41,11 @@ pub const APP_SIGN_OUT_HREF: &str = "/auth/logout";
 /// stay authoritative. This decides only what the navbar advertises, so a client
 /// is not shown a door that answers 403.
 ///
+/// The row is deliberately short: Projects, the firm's Team home, and Sign out.
+/// The Workbench and Admin doors are not here — they are cards on the Team home,
+/// which every firm tier lands on at sign-in, so the tier-gated surfaces are one
+/// click from the row rather than two more items in it.
+///
 /// Pure, so the role→destinations mapping is unit-tested directly rather than
 /// through nine rendered pages.
 #[must_use]
@@ -48,12 +53,6 @@ pub fn app_destinations(role: ViewerRole) -> Vec<AppNavLink> {
     let mut destinations = vec![AppNavLink::new("Projects", APP_PROJECTS_HREF)];
     if role.is_firm_tier() {
         destinations.push(AppNavLink::new("Team", APP_TEAM_HREF));
-    }
-    if role.is_lawyer_tier() {
-        destinations.push(AppNavLink::new("Lawyer", APP_LAWYER_HREF));
-    }
-    if role.is_admin_tier() {
-        destinations.push(AppNavLink::new("Admin", APP_ADMIN_HREF));
     }
     destinations.push(AppNavLink::new("Sign out", APP_SIGN_OUT_HREF));
     destinations
@@ -167,58 +166,48 @@ mod tests {
 
     /// A client sees the one destination every tier has, and the way out — never
     /// the firm-only Team home. A clerk is a firm tier, so it does get Team.
+    /// This is the boundary the row still draws; the tier splits above it moved
+    /// to the Team home's cards.
     #[test]
     fn a_client_is_offered_no_firm_workspace() {
         assert_eq!(labels(ViewerRole::Client), ["Projects", "Sign out"]);
         assert_eq!(labels(ViewerRole::Clerk), ["Projects", "Team", "Sign out"]);
     }
 
-    /// Lawyer reach the Team home and the workbench but not the administrative
-    /// landing.
+    /// Every firm tier is offered the same three: the row does not grow with
+    /// authority, because the tier-gated doors are the Team home's cards now.
     #[test]
-    fn lawyer_are_offered_the_workbench_only() {
-        assert_eq!(
-            labels(ViewerRole::Lawyer),
-            ["Projects", "Team", "Lawyer", "Sign out"]
-        );
-    }
-
-    /// The admin tiers are offered all of them, and the workbench is not dropped
-    /// on the way — the regression that lost Lawyer had Admin still rendering.
-    #[test]
-    fn the_admin_tiers_are_offered_both_workspaces() {
-        for role in [ViewerRole::Admin, ViewerRole::Owner] {
+    fn every_firm_tier_is_offered_the_same_row() {
+        for role in [
+            ViewerRole::Clerk,
+            ViewerRole::Lawyer,
+            ViewerRole::Admin,
+            ViewerRole::Owner,
+        ] {
             assert_eq!(
                 labels(role),
-                ["Projects", "Team", "Lawyer", "Admin", "Sign out"],
+                ["Projects", "Team", "Sign out"],
                 "rank {}",
                 role.authority_rank()
             );
         }
     }
 
-    /// The hrefs are the collapsed `/app` paths, not the retired `/lawyer` and
-    /// `/admin` prefixes the hand-written navs still pointed at.
+    /// The workbench and admin doors are not navbar items at any tier. They are
+    /// cards on `/app/team`, which every firm tier lands on at sign-in — so the
+    /// row must not carry them even for an Owner.
     #[test]
-    fn every_destination_targets_an_app_path() {
+    fn the_row_carries_neither_workbench_nor_admin() {
         let hrefs: Vec<String> = app_destinations(ViewerRole::Owner)
             .into_iter()
             .map(|link| link.href)
             .collect();
-        assert_eq!(
-            hrefs,
-            [
-                "/app/projects",
-                "/app/team",
-                "/app/lawyer",
-                "/app/admin",
-                "/auth/logout"
-            ]
-        );
+        assert_eq!(hrefs, ["/app/projects", "/app/team", "/auth/logout"]);
     }
 
-    /// The mapping reaches the rendered row: a lawyer viewer's navbar carries
-    /// Lawyer, a client's does not.
+    /// The mapping reaches the rendered row: a firm viewer's navbar carries the
+    /// Team home and neither tier-gated door; a client's carries neither the
+    /// Team home nor them.
     #[test]
     fn the_rendered_navbar_gates_the_firm_destinations() {
         fn render(role: ViewerRole) -> String {
@@ -233,13 +222,15 @@ mod tests {
             dioxus_ssr::render(&dom)
         }
 
-        let lawyer = render(ViewerRole::Lawyer);
-        assert!(lawyer.contains(r#"href="/app/lawyer""#), "{lawyer}");
-        assert!(!lawyer.contains(r#"href="/app/admin""#), "{lawyer}");
+        for role in [ViewerRole::Lawyer, ViewerRole::Admin, ViewerRole::Owner] {
+            let out = render(role);
+            assert!(out.contains(r#"href="/app/team""#), "{out}");
+            assert!(!out.contains(r#"href="/app/lawyer""#), "{out}");
+            assert!(!out.contains(r#"href="/app/admin""#), "{out}");
+        }
 
         let client = render(ViewerRole::Client);
-        assert!(!client.contains(r#"href="/app/lawyer""#), "{client}");
-        assert!(!client.contains(r#"href="/app/admin""#), "{client}");
+        assert!(!client.contains(r#"href="/app/team""#), "{client}");
         assert!(client.contains(r#"href="/app/projects""#), "{client}");
     }
 

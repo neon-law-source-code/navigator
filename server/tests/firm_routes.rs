@@ -163,10 +163,12 @@ async fn site_host_serves_the_firm_surface_and_host_documents() {
 
 #[tokio::test]
 async fn the_fractional_cto_page_leads_with_the_offering_and_prices_through_contact() {
-    // The firm's lead offering: it runs the technology function for a law firm.
-    // The page names who it is for, what the engagement covers, and quotes
-    // through `/contact` — the scope of running a firm's technology is not
-    // knowable in advance, so no figure and no turnaround appear.
+    // The firm's fractional CTO engagement: it runs the technology function for
+    // a law firm. This page now carries the copy the home page used to open on,
+    // which moved here when the site began leading with the litigation
+    // practice. It quotes through `/contact` — the scope of running a firm's
+    // technology is not knowable in advance, so no figure and no turnaround
+    // appear.
     let app = site_app().await;
     let resp = anon_get(&app, "/fractional-cto").await;
     assert_eq!(resp.status(), StatusCode::OK);
@@ -175,59 +177,113 @@ async fn the_fractional_cto_page_leads_with_the_offering_and_prices_through_cont
         body.contains("<title>Fractional CTO"),
         "the page titles itself Fractional CTO: {body}"
     );
+    // The hero, then the engagements prose the home page used to open on, then
+    // the CTA. Asserted as structure: the wording is the firm's to edit.
     assert!(
-        body.contains("We run the technology function for law firms."),
-        "the tagline: {body}"
+        body.contains(r#"<h1 class="fm-hero__title""#),
+        "the page states its offering in an h1: {body}"
     );
     assert!(
-        body.contains("Our clients are law firms."),
-        "the page names who it is for: {body}"
+        body.contains(r#"class="firm-eyebrow""#),
+        "the hero carries its eyebrow: {body}"
     );
-    for area in [
-        "AI enablement",
-        "Privacy and compliance",
-        "Security incident response",
-        "Complex counsel and co-counsel",
-    ] {
-        assert!(
-            body.contains(area),
-            "the engagement covers {area:?}: {body}"
-        );
-    }
+    assert_eq!(
+        body.matches(r#"class="fm-band fm-band--statement""#)
+            .count(),
+        1,
+        "one statement band, carrying the engagements prose: {body}"
+    );
+    // The band's opening line is a paragraph inside the card rather than a
+    // large lead above it, so the whole of the prose reads at one size.
+    assert!(
+        !body.contains(r#"class="fm-statement__lead""#),
+        "the statement carries no large lead above its card: {body}"
+    );
+    assert_eq!(
+        body.matches(r#"class="fm-statement__body""#).count(),
+        1,
+        "the prose sits in the band's body: {body}"
+    );
+    // The hero carries the practice-page header: the accent statement, the lead
+    // under it, and one call to action.
+    assert!(
+        body.contains(r#"class="fm-word fm-word--accent""#),
+        "the hero statement sets its opening words in the firm's colour: {body}"
+    );
+    assert!(
+        body.contains(r#"class="fm-hero__lead""#),
+        "the hero carries a lead: {body}"
+    );
+    assert!(
+        body.contains(r#"class="nav-btn nav-btn--primary fm-hero__cta" href="/contact""#),
+        "the hero carries one call to action: {body}"
+    );
+    // The prose names Navigator from inside a sentence rather than repeating
+    // that page here.
+    assert!(
+        body.contains(r#"href="/navigator""#),
+        "the prose links the platform inline: {body}"
+    );
     assert!(
         body.contains("mailto:"),
         "the page quotes through a contact CTA: {body}"
     );
+    // The cards band came off the page when the home copy moved onto it.
+    assert!(
+        !body.contains(r#"class="fm-cards"#),
+        "no cards band renders: {body}"
+    );
 }
 
+/// `/fractional-cto` and `/services` wear the practice-page header.
+///
+/// The same five parts `/litigation` opens on: the ringed mark, the eyebrow
+/// above the statement, the statement with its opening words in the firm's own
+/// colour, the lead under it, and one call to action. Asserted as structure on
+/// both pages at once — the wording is the firm's to edit, the shape is the
+/// thing that has to match across the practice pages.
 #[tokio::test]
-async fn the_fractional_cto_page_discloses_the_law_related_service_boundary() {
-    // The page sells both legal work and a law-related service, and RPC 5.7
-    // across CA, NV, and WA turns on whether a client can tell them apart:
-    // absent reasonable measures to explain otherwise, the protections of the
-    // attorney-client relationship are presumed to reach the non-legal work too.
-    //
-    // This guard is the reason that disclosure cannot be edited away as
-    // throat-clearing. It is the measure.
+async fn the_practice_pages_wear_the_same_header() {
     let app = site_app().await;
-    let body = body_string(anon_get(&app, "/fractional-cto").await).await;
-    assert!(
-        body.contains("law-related service rather than legal representation"),
-        "the page says which half is not the practice of law: {body}"
-    );
-    assert!(
-        body.contains("do not apply to that work unless we are separately engaged as your counsel"),
-        "the page says what the client does not get on that half: {body}"
-    );
-    assert!(
-        body.contains("engagement letter"),
-        "the page names where the line is actually drawn: {body}"
-    );
-    // Readiness counsel beside the auditor, never the attester.
-    for banned in ["certified", "certification", "we attest"] {
+    for path in ["/fractional-cto", "/services"] {
+        let body = body_string(anon_get(&app, path).await).await;
+        for part in [
+            r#"class="fm-hero fm-hero--page""#,
+            r#"class="fm-hero__mark"#,
+            r#"class="firm-eyebrow""#,
+            r#"<h1 class="fm-hero__title""#,
+            r#"class="fm-hero__line""#,
+            r#"class="fm-word fm-word--accent""#,
+            r#"class="fm-hero__lead""#,
+            r#"class="nav-btn nav-btn--primary fm-hero__cta" href="/contact""#,
+        ] {
+            assert!(
+                body.contains(part),
+                "{path} carries {part} in its header: {body}"
+            );
+        }
+        // The practice skin is what the header's typography keys off, so a page
+        // that lost the modifier would render the parts unstyled.
         assert!(
-            !body.to_lowercase().contains(banned),
-            "the page must not claim {banned:?}: {body}"
+            body.contains("fm-page--practice"),
+            "{path} wears the practice skin: {body}"
+        );
+        // The accent run is the opening of the statement, not the whole of it:
+        // the practice name is in brand and the claim after it is in text.
+        // Matched on the closing quote rather than the tag's `>`: SSR writes
+        // hydration attributes after the class, and the accented form is
+        // `class="fm-word fm-word--accent"`, so the quote is what tells a plain
+        // word from an accented one.
+        assert!(
+            body.contains(r#"class="fm-word""#),
+            "{path} keeps unaccented words after the accent run: {body}"
+        );
+        // The statement sets its own break rather than taking the viewport's:
+        // both practice pages read as two lines.
+        assert_eq!(
+            body.matches(r#"class="fm-hero__line""#).count(),
+            2,
+            "{path} breaks its statement into two lines: {body}"
         );
     }
 }
@@ -247,8 +303,8 @@ async fn site_host_serves_the_legal_services_page() {
         "the page titles itself Legal Services: {body}"
     );
     assert!(
-        body.contains("One scope, one fee, agreed before we start"),
-        "the page's tagline: {body}"
+        body.contains(r#"<h1 class="fm-hero__title""#),
+        "the page states its offering in an h1: {body}"
     );
     // Classless on purpose: `theme.css` cues inline prose links through
     // `.nav-theme :is(p, li) > a:not([class])`, so a class here would leave this
@@ -731,29 +787,29 @@ async fn the_firm_nav_leads_with_the_lead_offering_then_the_practices() {
         !header.contains(r#"href="/team""#),
         "the team page does not exist, so the header must not link it: {header}"
     );
-    // Fractional CTO leads, then the three practices. The ordering is a product
-    // decision and is asserted rather than left to the array literal: the firm
-    // leads with the offering the home page states above the fold.
-    let lead = header
-        .find(r#"href="/fractional-cto""#)
-        .expect("Fractional CTO is in the nav");
-    let services = header
-        .find(r#"href="/services""#)
-        .expect("Legal Services is in the nav");
+    // Litigation leads, then the three engagements beside it. The ordering is a
+    // product decision and is asserted rather than left to the array literal:
+    // the firm leads with the practice the home page opens on.
     let litigation = header
         .find(r#"href="/litigation""#)
         .expect("Litigation is in the nav");
+    let cto = header
+        .find(r#"href="/fractional-cto""#)
+        .expect("Fractional CTO is in the nav");
     let transactional = header
         .find(r#"href="/fractional-gc""#)
         .expect("Fractional GC is in the nav");
+    let services = header
+        .find(r#"href="/services""#)
+        .expect("Legal Services is in the nav");
     assert!(
-        lead < litigation && litigation < transactional && transactional < services,
-        "the lead offering leads, then the two quoted practices, then the schedule: {header}"
+        litigation < cto && cto < transactional && transactional < services,
+        "the lead practice leads, then the two quoted engagements, then the schedule: {header}"
     );
     assert_eq!(
         header.matches("<li").count(),
         4,
-        "the header is the lead offering and the three practices, and nothing \
+        "the header is the lead practice and the three engagements, and nothing \
          else: {header}"
     );
     assert!(
@@ -1271,23 +1327,38 @@ async fn home_points_at_the_three_practices_from_its_foot() {
     // reading the lead and leaving.
     let app = site_app().await;
     let body = body_string(anon_get(&app, "/").await).await;
+    // The section renders, with its heading wired to the copy rather than
+    // hard-coded in the view.
     assert!(
-        body.contains("Our legal practice"),
-        "the section heading: {body}"
+        body.contains(r#"aria-labelledby="home-practices-heading""#),
+        "the section labels itself by its own heading: {body}"
     );
-    for (heading, href) in [
-        ("Litigation", "/litigation"),
-        ("Fractional general counsel", "/fractional-gc"),
-        ("One-time legal services", "/services"),
-    ] {
-        assert!(body.contains(heading), "the {heading} box: {body}");
+    assert!(
+        body.contains(r#"id="home-practices-heading""#),
+        "the heading renders: {body}"
+    );
+    // Which pages the boxes reach is routing, not copy. Litigation is
+    // deliberately *not* among them: it is the page's lead and its close, so a
+    // fourth box would put the practice the page is built around into a row of
+    // alternatives.
+    for href in ["/fractional-cto", "/fractional-gc", "/services"] {
         assert!(
             body.contains(&format!(
                 r#"<a class="neon-card home-practice" href="{href}""#
             )),
-            "the {heading} box is itself the link to {href}: {body}"
+            "the box for {href} is itself the link: {body}"
         );
     }
+    assert!(
+        !body.contains(r#"<a class="neon-card home-practice" href="/litigation""#),
+        "litigation is the lead, not one of the boxes: {body}"
+    );
+    assert_eq!(
+        body.matches(r#"<a class="neon-card home-practice" href="#)
+            .count(),
+        3,
+        "three boxes and no more: {body}"
+    );
     // Each box opens on a drawn mark, hidden from assistive technology because
     // the heading beside it already names the practice. Stroked in
     // `currentColor` so it is white on the dark theme — which is why these are
@@ -1301,17 +1372,15 @@ async fn home_points_at_the_three_practices_from_its_foot() {
         body.contains(r#"stroke="currentColor""#),
         "the marks take the card's colour: {body}"
     );
-    // The retired "read more" labels: the whole box is the link now.
-    for retired in [
-        "The litigation practice",
-        "The fractional GC practice",
-        "The legal services schedule",
-    ] {
-        assert!(!body.contains(retired), "{retired} must not render: {body}");
-    }
-    // The boxes sit under the engagements prose, not above it: above, they would
+    // The whole box is the link now, so the separate "read more" anchor each
+    // box used to end in must not render: it was a second thing to click.
+    assert!(
+        !body.contains("home-practice__link"),
+        "no second anchor inside a box: {body}"
+    );
+    // The boxes sit under the litigation prose, not above it: above, they would
     // read as the page offering four things rather than leading with one.
-    let service = body.find("home-service").expect("the engagements section");
+    let service = body.find("home-service").expect("the litigation section");
     let practices = body.find("home-practices").expect("the practice boxes");
     assert!(service < practices, "prose then boxes: {body}");
 }
@@ -1326,8 +1395,8 @@ async fn home_opens_on_the_practice_statement_not_a_photograph() {
     let body = body_string(anon_get(&app, "/").await).await;
 
     assert!(
-        body.contains("Fractional CTO for law firms"),
-        "the practice statement is the first thing on the page: {body}"
+        body.contains(r#"<h1 class="home-statement__heading""#),
+        "the statement is the first thing on the page: {body}"
     );
     for gone in [
         "<picture",
@@ -1348,107 +1417,93 @@ async fn home_opens_on_the_practice_statement_not_a_photograph() {
 }
 
 #[tokio::test]
-async fn home_states_the_practice_and_prices_through_contact() {
-    // The home page opens with a one-line practice statement, then states the
-    // practice over the litigation header the public site leads with. Still no
-    // services catalog and no testimonials: nothing on the page is orderable or
-    // priced, and no figure about the firm's own matters is published.
+async fn home_renders_the_statement_and_the_practice_prose() {
+    // The shape of the page, not its wording. The copy lives in
+    // `neon::firm_pages::resolve_firm_home_content` and is the firm's to edit;
+    // what this guards is that every part of it reaches the reader, in order,
+    // and that the retired surfaces do not come back with it.
     let app = site_app().await;
     let resp = anon_get(&app, "/").await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
-    let statement = "Fractional CTO for law firms";
-    assert!(body.contains(statement), "the practice statement: {body}");
-    // Read at a glance, not read through. It was thirty-one words naming who the
-    // firm serves and what it protects them from; what the sentence means is the
-    // service section's job below it. The bound is what the guard is for — the
-    // exact wording is the firm's call, the length is what creeps back.
-    assert!(
-        statement.split_whitespace().count() <= 12,
-        "the practice statement stays one line: {statement}"
-    );
-    // The lead names the experience the offering rests on, and who it is for.
-    assert!(
-        body.contains("litigation, transactional, and FAANG-engineering experience"),
-        "the lead names the experience behind the offering: {body}"
-    );
-    assert!(
-        body.contains("all lawyers and clerks"),
-        "the lead names who it is for: {body}"
-    );
-    assert!(
-        body.contains("Contact us") && body.contains(r#"href="/contact""#),
-        "the contact CTA: {body}"
-    );
-    assert!(body.contains("<title>Neon Law | Home</title>"));
-    // The one section under the statement, and the commitment it closes on. The
-    // page leads with one offering; the other three practices are pages of their
-    // own, reached from the header.
-    assert!(
-        body.contains("Our engagements"),
-        "the engagements section heading: {body}"
-    );
-    for phrase in [
-        // Vibe coding as the storytelling tool, and the safety harness under it.
-        "safety harness to build these worlds responsibly",
-        // What we configure and deploy. The named third parties are the answer
-        // to "do you work with what we already run", so they are asserted.
-        "Google Workspace, DocuSign, and Xero",
-        "Descrybe, Midpage, and Trellis",
-        // What Navigator does not see. This is a privacy commitment on a public
-        // page, so it is guarded rather than left to a copy edit.
-        "By default, we do not see our clients&#39; matters.",
-        "anonymized telemetry",
-        // The co-counsel half.
-        "co-counsel on matters",
+
+    // The statement: one heading, one lead, one call to action, and the CTA
+    // goes to `/contact` because every engagement is quoted there.
+    for rendered in [
+        r#"class="home-statement__heading""#,
+        r#"class="home-statement__lead""#,
+        r#"class="nav-btn nav-btn--primary home-statement__cta" href="/contact""#,
     ] {
-        assert!(body.contains(phrase), "{phrase:?} reaches the page: {body}");
+        assert!(body.contains(rendered), "{rendered} renders: {body}");
     }
-    // The Navigator mention links its own page from inside the sentence.
-    assert!(
-        body.contains(r#"class="home-service__link" href="/navigator""#),
-        "the Navigator run links its page: {body}"
+    assert!(body.contains("<title>Neon Law | Home</title>"));
+
+    // The practice prose: one card of paragraphs under one heading. A card
+    // *per* practice area is the shape this page sheds, so the count is what
+    // the guard is for rather than the text inside it.
+    assert_eq!(
+        body.matches(r#"class="neon-card home-service""#).count(),
+        1,
+        "exactly one prose card: {body}"
     );
-    // The access-to-justice line came off the page deliberately.
     assert!(
-        !body.contains("committed to using AI to improve access to justice"),
-        "the retired commitment line is gone: {body}"
+        body.contains(r#"aria-labelledby="home-service-heading""#),
+        "the section labels itself by its own heading: {body}"
     );
-    // The retired home-page practice grid. The three practices have pages now;
-    // a card per practice here is what put four offerings on the page the lead
-    // is supposed to lead.
-    // Matched on the full class attribute where the retired name is a substring
-    // of a live one: the practice boxes at the foot of the page use
-    // `home-practice__heading`.
+    assert!(
+        body.matches(r#"class="home-service__paragraph""#).count() > 1,
+        "the practice is stated in paragraphs: {body}"
+    );
+    // One paragraph links the litigation practice from inside the sentence,
+    // which is what `CopyRun::href` exists for: the method is stated there
+    // rather than restated here.
+    assert!(
+        body.contains(r#"class="home-service__link" href="/litigation""#),
+        "the prose links the litigation practice inline: {body}"
+    );
+
+    // The retired home-page surfaces. Each is markup rather than wording: a
+    // practice grid, a per-practice card, a chip list, and the glow whose wash
+    // bled past the hero's edge into the page margin.
     for retired in [
         r#"class="practice-grid""#,
         r#"class="practice__heading""#,
         r#"class="litigation__heading""#,
         r#"class="firm-chip""#,
-        "Complex commercial litigation",
-        "General corporate advice",
-        "fractional outside general counsel",
-    ] {
-        assert!(
-            !body.contains(retired),
-            "the home page must not publish {retired:?}: {body}"
-        );
-    }
-    // No glow on this page: the wash bled past the hero's edge into the page
-    // margin. The litigation and transactional pages keep theirs — they open on
-    // type, not a picture.
-    assert!(
-        !body.contains("firm-glow"),
-        "the home page carries no glow: {body}"
-    );
-    for gone in [
+        "home-service__commitment",
+        // The numbered 1-2-3 and the closing band came off the page. Guarded so
+        // the markup does not come back empty with the next copy edit.
+        "home-process",
+        "home-step",
+        "home-closing",
+        "firm-glow",
         "hero-neon",
         "catalog-card",
         "testimonial-section",
         "justice-banner",
     ] {
-        assert!(!body.contains(gone), "{gone} must not render: {body}");
+        assert!(
+            !body.contains(retired),
+            "the home page must not render {retired:?}: {body}"
+        );
     }
+
+    // The page's sections, in the order the page argues in: the statement, what
+    // leading with litigation means, and the engagements beside it.
+    let at = |needle: &str| {
+        body.find(needle)
+            .unwrap_or_else(|| panic!("{needle}: {body}"))
+    };
+    let order = [
+        at("home-statement"),
+        at("home-service"),
+        at("home-practices"),
+    ];
+    assert!(
+        order.windows(2).all(|pair| pair[0] < pair[1]),
+        "statement, then prose, then boxes: {body}"
+    );
+
     // The shared chrome survives — header nav and the legal footer.
     assert!(body.contains("site-header"), "public header chrome");
     assert!(body.contains("site-footer__legal"), "public legal footer");

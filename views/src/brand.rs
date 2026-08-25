@@ -127,21 +127,21 @@ impl NavLink {
     }
 }
 
-/// The firm's header navigation: the lead offering, then the three practices
-/// under it.
+/// The firm's header navigation: the practice the firm leads with, then the
+/// three engagements beside it.
 ///
-/// Fractional CTO leads because it is what the firm leads with — it runs the
-/// technology function for the law firms it serves, and the home page states it
-/// as the one thing above the fold. The order is the claim, so it is asserted
-/// rather than left to this literal.
+/// Litigation leads because it is what the firm leads with — the home page
+/// opens on the disputes practice and states it as the one thing above the
+/// fold. The order is the claim, so it is asserted rather than left to this
+/// literal.
 ///
-/// The three that follow are real practices with pages of their own, and a
+/// The three that follow are real engagements with pages of their own, and a
 /// reader who came for one of them must not have to hunt the footer:
-/// `/litigation` the disputes practice, `/fractional-gc` (fractional general
-/// counsel) the company-counsel work, and `/services` the flat-fee schedule of
-/// routine one-time matters. The two quoted practices sit nearer the lead
-/// offering than the schedule does, because a firm reading the lead is the
-/// reader those two are for.
+/// `/fractional-cto` the technology function the firm runs for law firms,
+/// `/fractional-gc` (fractional general counsel) the company-counsel work, and
+/// `/services` the flat-fee schedule of routine one-time matters. The two
+/// quoted engagements sit nearer the lead practice than the schedule does,
+/// because a firm reading the lead is the reader those two are for.
 ///
 /// Every entry is the firm's own work, and no label here repeats in
 /// [`FIRM_FOOTER_NAV`] — see the
@@ -150,8 +150,8 @@ impl NavLink {
 /// Everything a reader looks for second — the Blog, Navigator, how to reach
 /// the firm — stays in [`FIRM_FOOTER_NAV`].
 const FIRM_NAV: &[NavLink] = &[
-    NavLink::leaf("Fractional CTO", "/fractional-cto"),
     NavLink::leaf("Litigation", "/litigation"),
+    NavLink::leaf("Fractional CTO", "/fractional-cto"),
     NavLink::leaf("Fractional GC", "/fractional-gc"),
     NavLink::leaf("Legal Services", "/services"),
 ];
@@ -1239,33 +1239,33 @@ mod tests {
         }
     }
 
-    /// The firm's header leads with the lead offering, then the three practices.
+    /// The firm's header leads with the lead practice, then the three
+    /// engagements beside it.
     ///
-    /// Fractional CTO is first on purpose and this is the assertion that keeps
-    /// it there: it is what the firm leads with, and the home page states it
-    /// above the fold. Demoting it below the practices would put the lead behind
-    /// the things it leads.
+    /// Litigation is first on purpose and this is the assertion that keeps it
+    /// there: it is what the firm leads with, and the home page opens on it.
+    /// Demoting it would put the lead behind the things it leads.
     ///
     /// Team used to close the row, and the nonprofit's home after it. Both
     /// pages were retired outright — routers, views, path constants, sitemap
     /// and llms.txt rows — so a header entry for either would now be a link to
     /// a retired URL.
     #[test]
-    fn the_firm_nav_leads_with_the_lead_offering_then_the_practices() {
+    fn the_firm_nav_leads_with_the_lead_practice_then_the_engagements() {
         let labels: Vec<&str> = FIRM_BRAND.nav.iter().map(|n| n.label).collect();
         assert_eq!(
             labels,
             [
-                "Fractional CTO",
                 "Litigation",
+                "Fractional CTO",
                 "Fractional GC",
                 "Legal Services"
             ]
         );
         assert_eq!(
             FIRM_BRAND.nav.first().map(|link| link.href),
-            Some("/fractional-cto"),
-            "the lead offering is the first thing in the header"
+            Some("/litigation"),
+            "the lead practice is the first thing in the header"
         );
         assert_eq!(
             FIRM_BRAND.nav.last().map(|link| link.href),

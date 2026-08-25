@@ -282,85 +282,100 @@ fn link(text: &str, href: &str) -> webapp::home::CopyRun {
     }
 }
 
-/// Build the engagements section the home page carries under its statement.
+/// Build the litigation statement the home page carries under its tagline.
 ///
-/// Four paragraphs, and the firm's own words in each: what vibe coding buys a
-/// lawyer, what we configure and deploy, what Navigator does and does not see,
-/// and the co-counsel half. Not four cards — the page leads with one offering,
-/// and a card grid here would read as four to choose between.
+/// **The page leads with litigation, and this is the section that says what
+/// that means.** Four paragraphs: who the firm stands with, why speed is the
+/// method rather than the point, how a matter is taken on, and what the rest of
+/// the firm's work is for. Not four cards, because a card grid here would read
+/// as four things to choose between and the page leads with one.
 ///
-/// The named third parties are named deliberately: a firm evaluating this wants
-/// to know whether we work with the tools it already runs, and a list is a
-/// factual statement about what we configure rather than a claim about outcomes.
-/// The Navigator mention links its own page rather than repeating that page here.
+/// **The practice areas named are categories, never a matter.** Personal
+/// injury, divorce, business divorce, and criminal investigations describe
+/// kinds of dispute, so none of them identifies a client, a Project code, or an
+/// outcome. That is what keeps this copy inside the no-client-data rule while
+/// still telling a reader whether this is their practice.
+///
+/// **Speed is stated as method, not as result.** "We move fast" on its own
+/// reads as an implied outcome, so the paragraph binds it to *how the firm
+/// works* and then says outright that speed is in service of being seen. The
+/// `/litigation` page states the same method at length, and this paragraph
+/// links there rather than restating it, which is why the body is runs rather
+/// than plain strings.
+///
+/// No fee arrangement and no amount: `no_firm_page_publishes_a_fee` covers this
+/// page like the rest, and every engagement is quoted through `/contact`.
 fn resolve_service_section() -> webapp::home::ServiceSection {
     webapp::home::ServiceSection {
-        heading: "Our engagements".to_string(),
+        heading: "We are by your side through tough times.".to_string(),
         body: vec![
             vec![plain(
-                "We believe vibe coding is an incredibly powerful storytelling tool that allows \
-                 you to connect on a deeper level of understanding with your clients. Using \
-                 state-of-the-art frontier models, you can create dynamic worlds that are unique \
-                 and bespoke to the unique client needs, such as litigation or an estate plan. We \
-                 empower you with a safety harness to build these worlds responsibly.",
+                "We stand with people who have been wrongly accused, and with people against \
+                 whom a real wrong was committed and no form was ever written for it. Personal \
+                 injury. Divorce, and the business divorce that looks nothing like it on paper \
+                 and exactly like it in the room. Criminal investigations, from the first letter \
+                 onward.",
             )],
             vec![
+                plain("We move fast and judiciously, and the "),
+                link("litigation practice", "/litigation"),
                 plain(
-                    "We configure your technical architecture, common software as a service tools \
-                     such as Google Workspace, DocuSign, and Xero, AI tooling like Claude and \
-                     OpenAI, MCP servers like Descrybe, Midpage, and Trellis, and deploy ",
+                    " states the method: do as much as we can, as early as we can, and get to a \
+                     resolution sooner. Speed is not the point of it. A person who is not seen \
+                     loses ground whether or not the case is close, and moving early is how we \
+                     keep that from happening quietly.",
                 ),
-                link("Neon Law Navigator", "/navigator"),
-                plain(" securely in your environment."),
             ],
             vec![plain(
-                "Neon Law Navigator is designed with privacy disclosure and professional ethics \
-                 in mind. By default, we do not see our clients' matters. We only collect \
-                 anonymized telemetry to ensure your systems are still working.",
+                "Every problem is unique. As long as we are not conflicted out, we will listen \
+                 to your story, surround ourselves with the experts it needs, and do everything \
+                 we can when everything is on the line.",
             )],
             vec![plain(
-                "That being said, our partner firms tap into our litigation and transactional \
-                 experience routinely to co-counsel on matters. We work fast, diligently, and \
-                 cost-effectively.",
+                "The rest of what we do exists because litigation taught us to build it: the \
+                 systems, the discipline, and the habit of writing everything down. Whatever \
+                 brings you in, the work runs the same way.",
             )],
         ],
     }
 }
 
-/// Build the three boxes at the foot of the home page: the practices the firm
-/// runs beside its lead offering.
+/// Build the three boxes at the foot of the home page: the engagements the firm
+/// runs beside the litigation practice it leads with.
+///
+/// **Litigation is not one of these boxes any more, and that is the point.** It
+/// is the page's lead and its close, so a fourth box repeating it here would
+/// put the practice the page is built around in a row of alternatives. What is
+/// left is the three the header carries beside it: the fractional CTO
+/// engagement, the fractional general counsel engagement, and the one-time
+/// legal services schedule.
 ///
 /// A sentence each and a link out. No area chips and no figure: the chip lists
-/// belong on the pages these link to, and every one of these practices is quoted
-/// per engagement — `no_firm_page_publishes_a_fee` covers this page like the
-/// rest.
+/// belong on the pages these link to, and every one of these engagements is
+/// quoted per engagement, so `no_firm_page_publishes_a_fee` covers this page
+/// like the rest.
 ///
-/// Each sentence names the fee *arrangement* rather than an amount, because for
-/// these three the arrangement is part of the offer: a reader deciding whether to
-/// call needs to know a contingency case costs nothing to bring and that the
-/// company-counsel work is one monthly figure rather than an hourly meter.
-///
-/// The marks are drawn line icons rather than emoji. The brief asked for a bigger
-/// mark in white, and a colour emoji cannot be recoloured — see
+/// The marks are drawn line icons rather than emoji, because a colour emoji
+/// cannot be recoloured to sit white on the dark theme — see
 /// [`webapp::home::PracticeMark`] for why that ruled emoji out.
 fn resolve_practice_links() -> Vec<webapp::home::PracticeLink> {
     use webapp::home::{PracticeLink, PracticeMark};
 
     vec![
         PracticeLink {
-            mark: PracticeMark::Scales,
-            heading: "Litigation".to_string(),
-            body: "We try cases on both sides of the v., in complex disputes over technology, \
-                   trade secrets, and fraud. Contingency and monthly arrangements rather than an \
-                   hourly meter."
+            mark: PracticeMark::Technology,
+            heading: "Fractional CTO".to_string(),
+            body: "We run the technology function for law firms: the architecture, the AI \
+                   tooling, and the privacy and compliance work under both. The same systems we \
+                   litigate on."
                 .to_string(),
-            href: "/litigation".to_string(),
+            href: "/fractional-cto".to_string(),
         },
         PracticeLink {
             mark: PracticeMark::Handshake,
             heading: "Fractional general counsel".to_string(),
             body: "Company counsel on one flat monthly fee, working at the pace your sales cycle \
-                   already runs at — contracts, licences, financings, and the corporate advice \
+                   already runs at: contracts, licences, financings, and the corporate advice \
                    under them."
                 .to_string(),
             href: "/fractional-gc".to_string(),
@@ -382,38 +397,47 @@ fn resolve_practice_links() -> Vec<webapp::home::PracticeLink> {
 /// Brand-safe like [`resolve_firm_contact_content`]: the `<title>` names the
 /// mounted brand, resolved at router-build time.
 ///
-/// The page leads with one offering. The firm's clients here are other law
-/// firms: it runs their technology function, carries the privacy and compliance
-/// work, and sits beside them as complex counsel and co-counsel. So the body is
-/// the statement, then one section of prose — no practice grid and no price.
-/// Litigation, Fractional GC, and Legal Services are real practices with their
-/// own pages; the header carries them, and every fee is quoted through
-/// `/contact`.
+/// **The page's statement is the firm's tagline, and the practice it leads with
+/// is litigation.** "Everyone deserves to be seen." is the whole of the `<h1>`:
+/// it is what the firm is for, and it is short enough to be read rather than
+/// read through. The lead under it names the two kinds of person the litigation
+/// practice is for — wrongly accused, or wronged — because a reader deciding
+/// whether to call needs to recognise themselves in the first two sentences.
+///
+/// **The page leads with litigation.** The statement opens on it,
+/// [`resolve_service_section`] says what it means, and the three boxes are the
+/// engagements that sit beside it. The fractional CTO engagement is still real
+/// work with a page of its own; it is no longer what this page opens on, and
+/// the copy that used to open this page now opens that one.
+///
+/// No hero photograph: a person deciding whether they can be heard at all is
+/// served by the first sentence, not by a landscape above it. No price, on any
+/// section — every engagement is quoted through `/contact`.
 pub(crate) fn resolve_firm_home_content(
     branding: &views::brand::Branding,
 ) -> webapp::home::HomeContent {
     let mark = branding.firm.site_name;
     webapp::home::HomeContent {
         head_title: format!("{mark} | {}", "Home"),
-        meta_description: "Fractional CTO for law firms — AI enablement delivered through the \
-                           firm, with the privacy and compliance work, complex counsel, and a \
-                           co-counsel network on Navigator."
+        meta_description: "Everyone deserves to be seen. Litigation for the wrongly accused and \
+                           the wronged: personal injury, divorce, business divorce, and criminal \
+                           investigations."
             .to_string(),
-        // No hero photograph. The page opens on the statement itself: a firm
-        // deciding whether to bring us in is served by the first sentence, not
-        // by a landscape above it.
+        // No hero photograph. The page opens on the statement itself: a person
+        // deciding whether they can be heard at all is served by the first
+        // sentence, not by a landscape above it.
         hero: None,
-        // One line, read at a glance. What the sentence means is the section
-        // below it.
-        heading: "Fractional CTO for law firms".to_string(),
-        lead: "We leverage our litigation, transactional, and FAANG-engineering experience to \
-               enhance legal practices with state-of-the-art agentic tooling. We help all lawyers \
-               and clerks tell wonderful stories with vibe-coding that align to their clients' \
-               needs."
+        // The firm's tagline, and the whole of the h1. Read at a glance; what
+        // it means is the section below it.
+        heading: "Everyone deserves to be seen.".to_string(),
+        lead: "We fight for people who have been wrongly accused, and for people who were \
+               wronged and handed no form to put it on. We move fast and judiciously, because \
+               being heard late is its own injury."
             .to_string(),
         contact_href: "/contact".to_string(),
         contact_label: "Contact us".to_string(),
         service: Some(resolve_service_section()),
+        practices_heading: "Our complementary practice".to_string(),
         practices: resolve_practice_links(),
     }
 }

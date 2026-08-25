@@ -14,7 +14,9 @@
 /// deciding whether they can afford a lawyer gets an answer from the page
 /// rather than from a consultation, and a firm that publishes its fees cannot
 /// quietly charge one client more than another for the same work.
-use webapp::marketing_page::{Band, Card, Download, PackageInstall, PageContent, Run, Step};
+use webapp::marketing_page::{
+    Band, Card, Download, HeroCta, PackageInstall, PageContent, Run, Step,
+};
 
 /// One published flat fee: what the matter is, what it costs, and what that
 /// figure does and does not cover.
@@ -147,21 +149,46 @@ const FLAT_FEES: &[FlatFee] = &[
 /// publishes a turnaround or a fee: the scope of running a firm's technology
 /// function is not knowable in advance, so it is quoted through `/contact` like
 /// the litigation and fractional-GC practices.
+/// Split one line of a hero statement into words, marking the first
+/// `accent_words` of them as the run the firm sets in its own colour.
+///
+/// The same shape `/litigation` uses: the opening in brand, the claim after it
+/// in text. Splitting here rather than in CSS is what lets the copy decide where
+/// the emphasis falls, and one call per line is what lets it decide where the
+/// statement breaks.
+fn hero_line(statement: &str, accent_words: usize) -> Vec<webapp::litigation_page::HeroWord> {
+    statement
+        .split_whitespace()
+        .enumerate()
+        .map(|(index, text)| webapp::litigation_page::HeroWord {
+            text: text.to_string(),
+            accent: index < accent_words,
+        })
+        .collect()
+}
+
 pub fn fractional_cto() -> PageContent {
     PageContent {
         head_title: format!("Fractional CTO — {}", views::brand::FIRM_BRAND.site_name),
-        meta_description: "Neon Law runs the technology function for law firms: AI enablement \
-                           delivered through the firm, the privacy and compliance work under it, \
-                           and complex counsel beside it."
+        meta_description: "Fractional CTO for law firms — AI enablement delivered through the \
+                           firm, with the privacy and compliance work, complex counsel, and a \
+                           co-counsel network on Navigator."
             .to_string(),
         title: "Fractional CTO".to_string(),
         hero_mark: Some(webapp::components::PracticeMark::Technology),
-        tagline: "We run the technology function for law firms.".to_string(),
+        tagline: "Save Time. Serve More.".to_string(),
+        // Two lines: the ask in the firm's colour, the promise under it in text.
+        hero_lines: vec![hero_line("Save Time.", 2), hero_line("Serve More.", 0)],
+        hero_lead: "We run the technology function for the law firms we serve, and we practise \
+                    beside them."
+            .to_string(),
+        hero_cta: Some(HeroCta {
+            href: "/contact".to_string(),
+            label: "Contact us".to_string(),
+        }),
         skin: webapp::marketing_page::PageSkin::Practice,
         bands: vec![
             fractional_cto_intro_band(),
-            fractional_cto_work_band(),
-            fractional_cto_disclosure_band(),
             Band::Cta {
                 heading: "Tell us what your firm is trying to do".to_string(),
                 body: Some(
@@ -176,115 +203,56 @@ pub fn fractional_cto() -> PageContent {
     }
 }
 
-/// Who the offering is for, and the one thing that makes it different from
-/// hiring a consultancy: it arrives through the firm.
+/// The engagements, in the firm's own words.
+///
+/// **This is the copy the home page used to open on**, moved here when the site
+/// began leading with the litigation practice instead. Four paragraphs: what
+/// vibe coding buys a lawyer, what we configure and deploy, what Navigator does
+/// and does not see, and the co-counsel half.
+///
+/// The named third parties are named deliberately: a firm evaluating this wants
+/// to know whether we work with the tools it already runs, and a list is a
+/// factual statement about what we configure rather than a claim about outcomes.
+/// The Navigator mention links its own page rather than repeating that page here.
 fn fractional_cto_intro_band() -> Band {
     Band::Statement {
-        heading: "Who this is for".to_string(),
-        lead: "Our clients are law firms.".to_string(),
+        heading: "Our engagements".to_string(),
+        // No visible lead: the statement that used to sit above this card in
+        // large type is now its opening paragraph, so the whole of the copy
+        // reads as one block of prose at one size.
+        lead: String::new(),
         body: vec![
+            vec![Run::plain(
+                "We leverage our litigation, transactional, and FAANG-engineering experience to \
+                 enhance legal practices with state-of-the-art agentic tooling. We help all \
+                 lawyers and clerks tell wonderful stories with vibe-coding that align to their \
+                 clients' needs.",
+            )],
+            vec![Run::plain(
+                "We believe vibe coding is an incredibly powerful storytelling tool that allows \
+                 you to connect on a deeper level of understanding with your clients. Using \
+                 state-of-the-art frontier models, you can create dynamic worlds that are unique \
+                 and bespoke to the unique client needs, such as litigation or an estate plan. We \
+                 empower you with a safety harness to build these worlds responsibly.",
+            )],
             vec![
                 Run::plain(
-                    "A firm that engages us keeps its clients and its matters. We run the \
-                     technology underneath: the AI tooling a lawyer works in, the policies that \
-                     govern its use, and the judgement about what it may do in a given matter. It \
-                     arrives ",
+                    "We configure your technical architecture, common software as a service tools \
+                     such as Google Workspace, DocuSign, and Xero, AI tooling like Claude and \
+                     OpenAI, MCP servers like Descrybe, Midpage, and Trellis, and deploy ",
                 ),
-                Run::link("through the law firm", "/navigator"),
-                Run::plain(", inside the engagement that firm already holds with its client."),
+                Run::link("Neon Law Navigator", "/navigator"),
+                Run::plain(" securely in your environment."),
             ],
             vec![Run::plain(
-                "That is also why the platform is part of the offer rather than a product sold \
-                 beside it. A firm working with us works on Navigator, and the other firms on it \
-                 are the co-counsel network that firm joins by being there.",
-            )],
-        ],
-    }
-}
-
-/// The four things the engagement actually covers.
-///
-/// Areas of work, not a priced catalog and not named products — the same rule
-/// the litigation and fractional-GC practices are written under. Nothing here is
-/// orderable and no card carries a figure.
-fn fractional_cto_work_band() -> Band {
-    Band::Cards {
-        anchor: "work".to_string(),
-        overline: "The engagement".to_string(),
-        heading: "What we take on".to_string(),
-        description: Some(
-            "Scope is set per firm and quoted through the contact page, because what a practice \
-             runs on today is not knowable in advance."
-                .to_string(),
-        ),
-        items: vec![
-            Card {
-                title: "AI enablement".to_string(),
-                chips: vec!["Tooling".to_string(), "Policy".to_string()],
-                body: vec![vec![Run::plain(
-                    "The tools a lawyer works in, the written policy that governs their use, and \
-                     the training that makes the policy real rather than filed.",
-                )]],
-                href: None,
-                href_label: None,
-            },
-            Card {
-                title: "Privacy and compliance".to_string(),
-                chips: vec!["Data protection".to_string(), "Vendor review".to_string()],
-                body: vec![vec![Run::plain(
-                    "What a firm owes the people whose data it holds: data protection, the \
-                     vendors it hands that data to, and readiness for the audits a client asks \
-                     about.",
-                )]],
-                href: None,
-                href_label: None,
-            },
-            Card {
-                title: "Security incident response".to_string(),
-                chips: vec![],
-                body: vec![vec![Run::plain(
-                    "The plan before an incident and the hands during one — who is called, what \
-                     is preserved, and who must be told.",
-                )]],
-                href: None,
-                href_label: None,
-            },
-            Card {
-                title: "Complex counsel and co-counsel".to_string(),
-                chips: vec![],
-                body: vec![vec![Run::plain(
-                    "The legal half, which is legal work: the harder question under the \
-                     technology, and a second lawyer when a matter needs one.",
-                )]],
-                href: Some("/litigation".to_string()),
-                href_label: Some("Our litigation practice".to_string()),
-            },
-        ],
-    }
-}
-
-/// The RPC 5.7 disclosure: which half of this engagement is the practice of law
-/// and which is not.
-///
-/// This band exists because the page sells both. A reader who cannot tell them
-/// apart is exactly the reader the rule protects, and the engagement letter is
-/// where the line is actually drawn — the page says so rather than implying the
-/// whole relationship is privileged.
-fn fractional_cto_disclosure_band() -> Band {
-    Band::Statement {
-        heading: "What is legal work here, and what is not".to_string(),
-        lead: "Some of this is the practice of law. Some of it is not.".to_string(),
-        body: vec![
-            vec![Run::plain(
-                "Running a firm's technology function is a law-related service rather than legal \
-                 representation. Where we provide it, the protections of the attorney-client \
-                 relationship — privilege and confidentiality among them — do not apply to that \
-                 work unless we are separately engaged as your counsel.",
+                "Neon Law Navigator is designed with privacy disclosure and professional ethics \
+                 in mind. By default, we do not see our clients' matters. We only collect \
+                 anonymized telemetry to ensure your systems are still working.",
             )],
             vec![Run::plain(
-                "The counsel and co-counsel half is legal work, and it is engaged as legal work. \
-                 Every engagement letter states which services it covers and under which \
-                 relationship, before anything begins.",
+                "That being said, our partner firms tap into our litigation and transactional \
+                 experience routinely to co-counsel on matters. We work fast, diligently, and \
+                 cost-effectively.",
             )],
         ],
     }
@@ -306,6 +274,12 @@ pub fn navigator() -> PageContent {
                            free for everything but running it for your own clients."
             .to_string(),
         title: "Neon Law Navigator".to_string(),
+        // The marketing skin renders the title as the headline and the tagline
+        // under it, so the practice skin's accent statement, hero lead, and hero
+        // button are not its shape.
+        hero_lines: Vec::new(),
+        hero_lead: String::new(),
+        hero_cta: None,
         hero_mark: Some(webapp::components::PracticeMark::Helm),
         tagline: "Vibe coding for lawyers. Lawyering is storytelling, and a story is written in \
                   passes."
@@ -635,8 +609,18 @@ pub fn legal_services() -> PageContent {
                            fixed fee and reviewed by a licensed attorney."
             .to_string(),
         title: "Legal Services".to_string(),
-        hero_mark: None,
-        tagline: "One scope, one fee, agreed before we start.".to_string(),
+        hero_mark: Some(webapp::components::PracticeMark::Gavel),
+        tagline: "Once-Billed Legal Services".to_string(),
+        // Two lines: the billing in the firm's colour, the noun under it in
+        // text. Hyphenated, so "once" reads as how often rather than as when.
+        hero_lines: vec![hero_line("Once-Billed", 1), hero_line("Legal Services", 0)],
+        hero_lead: "The routine matters a person or a company walks in with, each scoped and \
+                    quoted before any work begins."
+            .to_string(),
+        hero_cta: Some(HeroCta {
+            href: "/contact".to_string(),
+            label: "Contact us".to_string(),
+        }),
         skin: webapp::marketing_page::PageSkin::Practice,
         bands: vec![
             legal_services_intro_band(),
@@ -1219,8 +1203,8 @@ mod firm_copy_tests {
     /// law-related service, and the reader most likely to assume the
     /// attorney-client protections travel with it is a lawyer buying from a law
     /// firm — so the disclaimer has to be on the page rather than only in the
-    /// agreement. It mirrors [`super::fractional_cto_disclosure_band`], which
-    /// makes the same disclosure for the same reason.
+    /// agreement. This is the one page that carries it: `/fractional-cto` used
+    /// to make the same disclosure and no longer does.
     ///
     /// **No price.** A deployment's scope is not knowable in advance, so a
     /// figure here would be a floor dressed as a fee — the same reason

@@ -504,6 +504,58 @@
   line-height: 1.05;
 }
 
+/* One line of the statement. The statement decides its own breaks rather than
+   taking whatever the viewport gives it, so each line is a block. */
+.fm-page--practice .fm-hero__line {
+  display: block;
+}
+
+/* One word of the statement. The opening words carry the firm's colour, the way
+   `/litigation` sets "Litigation attorneys" — the practice name in brand, the
+   claim after it in text.
+
+   The gap between words is a margin rather than a space in the markup: each word
+   is its own inline-block, and an inline-block collapses the whitespace at its
+   own end, so a space in the view would render as nothing and run the heading
+   together. No reveal animation here — `/litigation` staggers its words on
+   entry, and that flourish belongs to the page the firm leads with rather than
+   to every practice page. */
+.fm-page--practice .fm-word {
+  display: inline-block;
+  margin-inline-end: 0.26em;
+}
+
+.fm-page--practice .fm-word--accent {
+  color: var(--firm-brand);
+}
+
+/* The paragraph under the statement, at the practice pages' lead size. */
+.fm-page--practice .fm-hero__lead {
+  margin: 0;
+  max-width: 44rem;
+  font-size: 1.125rem;
+  line-height: 1.6;
+  color: var(--nav-color-text-muted);
+}
+
+/* The one call to action in the hero wears the firm's colour rather than the
+   product chrome's cyan. `theme.css` sets the primary button through
+   `.nav-theme a.nav-btn--primary`, so this has to match that specificity to
+   win — the same pairing `/litigation` uses for the same button. */
+.nav-theme a.nav-btn--primary.fm-hero__cta,
+.nav-theme a.nav-btn--primary.fm-hero__cta:hover,
+.nav-theme a.nav-btn--primary.fm-hero__cta:focus-visible {
+  border-color: var(--firm-brand);
+  background: var(--firm-brand);
+  color: var(--firm-on-brand);
+}
+
+.nav-theme a.nav-btn--primary.fm-hero__cta:hover,
+.nav-theme a.nav-btn--primary.fm-hero__cta:focus-visible {
+  border-color: var(--firm-brand-strong);
+  background: var(--firm-brand-strong);
+}
+
 /* Every band reads as one left-aligned column. */
 .fm-page--practice .fm-band__inner {
   max-width: 62rem;

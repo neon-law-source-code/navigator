@@ -104,8 +104,8 @@ committed**. The renderer resolves it at run time from two places:
   (`~/Library/Fonts/GORPSerif-*.otf` on macOS), letters render in GORP Serif with no configuration at all.
 - **`NAVIGATOR_PDF_FONT_DIR`** (`pdf::FONT_DIR_ENV`) — a `PATH`-style list of directories to search. This is the seam
   for a container, which has no installed-font path of its own. Point it at an unpacked `gorp-serif-otf.zip`, the
-  archive `navigator assets fonts upload-desktop` publishes and `/lawyer/fonts/gorp-serif.zip` serves to Lawyers. Note
-  format: the web faces are WOFF2, which Typst cannot read — this directory needs the desktop OTFs.
+  archive `navigator assets fonts upload-desktop` publishes and `/app/team/fonts/gorp-serif.zip` serves to the firm.
+  Note format: the web faces are WOFF2, which Typst cannot read — this directory needs the desktop OTFs.
 
 Where the licensed faces are absent — CI, a fork, an operator who chose different typography — Typst falls through to
 Noto Serif and the document still renders. Noto Serif is the floor rather than a downgrade: two Google Fonts variable

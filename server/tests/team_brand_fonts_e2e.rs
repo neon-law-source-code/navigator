@@ -1,16 +1,18 @@
-//! Integration test for the lawyer-only brand-font download at
-//! `GET /lawyer/fonts/gorp-serif.zip`.
+//! Integration test for the firm brand-font download at
+//! `GET /app/team/fonts/gorp-serif.zip`.
 //!
-//! Proves the route is wired under the `/lawyer` sub-router and that an
-//! authenticated Lawyer session streams the ZIP staged in the private
-//! documents bucket with the right headers.
+//! Proves the route is wired under the team home's own prefix and that an
+//! authenticated firm session streams the ZIP staged in the private documents
+//! bucket with the right headers. The `.otf` bytes are never committed — the
+//! bucket is the only place they live, so this route is the only path to them.
 //!
 //! This harness deliberately disables auth (`AuthConfig::new(true, …)`)
 //! and runs the policy in passthrough (`PolicyClient::passthrough()`), so the
-//! role gate is NOT exercised here — it is the embedded `/lawyer` rule plus the
-//! exact-path Clerk exception, proven for this path in
-//! `portal/policy/navigator_test.rego` (`test_lawyer_reaches_font_download`,
-//! `test_clerk_reaches_font_download`, `test_client_denied_on_font_download`,
+//! role gate is NOT exercised here — it is embedded Rego's `/app/team` rules,
+//! proven per tier in `portal/policy/navigator_test.rego`
+//! (`test_lawyer_reaches_font_download`, `test_admin_reaches_font_download`,
+//! `test_owner_reaches_font_download`, `test_clerk_reaches_font_download`,
+//! `test_client_denied_on_font_download`,
 //! `test_anonymous_denied_on_font_download`) and end-to-end by the browser
 //! suite.
 
@@ -64,10 +66,14 @@ async fn build() -> Fixture {
     }
 }
 
-fn lawyer_cookie(sessions: &SessionStore) -> String {
-    let mut s = SessionData::fresh("lawyer-sub", Role::Lawyer);
+fn cookie_for(sessions: &SessionStore, role: Role) -> String {
+    let mut s = SessionData::fresh("firm-sub", role);
     s.person_id = Some(Uuid::now_v7());
     format!("{SESSION_COOKIE_NAME}={}", sessions.encode(&s))
+}
+
+fn lawyer_cookie(sessions: &SessionStore) -> String {
+    cookie_for(sessions, Role::Lawyer)
 }
 
 #[tokio::test]
@@ -79,7 +85,7 @@ async fn lawyer_downloads_the_gorp_serif_zip() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/lawyer/fonts/gorp-serif.zip")
+                .uri("/app/team/fonts/gorp-serif.zip")
                 .header("cookie", lawyer_cookie(&f.sessions))
                 .body(Body::empty())
                 .unwrap(),
@@ -122,7 +128,7 @@ async fn a_missing_bucket_object_is_a_loud_502() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/lawyer/fonts/gorp-serif.zip")
+                .uri("/app/team/fonts/gorp-serif.zip")
                 .header("cookie", lawyer_cookie(&sessions))
                 .body(Body::empty())
                 .unwrap(),
@@ -131,4 +137,54 @@ async fn a_missing_bucket_object_is_a_loud_502() {
         .unwrap();
 
     assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
+}
+
+/// The route moved off `/lawyer` so that a Clerk — the narrowest tier the team
+/// home renders for — reaches it through the page's own prefix rather than an
+/// exact-path exception. This proves the wiring answers a Clerk session; the
+/// tier gate itself is the Rego suite's, since this harness runs the policy in
+/// passthrough.
+#[tokio::test]
+async fn a_clerk_session_reaches_the_download_at_the_team_path() {
+    let f = build().await;
+    let resp = f
+        .app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/app/team/fonts/gorp-serif.zip")
+                .header("cookie", cookie_for(&f.sessions, Role::Clerk))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(bytes.as_ref(), STAGED_ZIP);
+}
+
+/// The old `/lawyer` path is gone, not aliased. A stale bookmark must 404
+/// rather than quietly keep working — otherwise the exact-path Clerk exception
+/// this move retired would still be reachable.
+#[tokio::test]
+async fn the_retired_lawyer_path_is_not_served() {
+    let f = build().await;
+    let resp = f
+        .app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/lawyer/fonts/gorp-serif.zip")
+                .header("cookie", lawyer_cookie(&f.sessions))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }

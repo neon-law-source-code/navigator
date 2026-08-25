@@ -1,6 +1,6 @@
-//! Firm brand fonts — lawyer + clerk download.
+//! Firm brand fonts — the `/app/team` firm-tier download.
 //!
-//! `GET /lawyer/fonts/gorp-serif.zip` streams the licensed GORP Serif
+//! `GET /app/team/fonts/gorp-serif.zip` streams the licensed GORP Serif
 //! desktop family (the `.otf` faces) as one ZIP. The bytes live only in
 //! the **private** documents bucket, uploaded by `navigator assets fonts
 //! upload-desktop`; this handler pulls them through
@@ -11,9 +11,11 @@
 //! bytes is this route, so a predictable public object URL can never
 //! bypass authorization.
 //!
-//! Authorization is embedded Rego policy's: the `/lawyer` rule admits Lawyer and admin, and
-//! one deliberate exact-path exception admits Clerk to this object alone
-//! (a firm brand asset, not lawyer work). `require_auth` rejects anonymous
+//! Authorization is embedded Rego policy's: the object sits under the team
+//! home's own `/app/team` prefix, whose rules admit all four firm tiers —
+//! Owner, Admin, Lawyer, and Clerk — and deny a client. A brand asset is not
+//! lawyer work, so it needs neither the `/lawyer` prefix nor the exact-path
+//! Clerk exception that prefix used to force. `require_auth` rejects anonymous
 //! callers first, so no handler-layer role check is needed here. A missing
 //! object is a loud `502`, never a fallback.
 
@@ -28,7 +30,7 @@ use axum::response::{IntoResponse, Response};
 /// this download handler cannot drift apart.
 pub const GORP_OTF_ZIP_KEY: &str = "fonts/gorp-serif/gorp-serif-otf.zip";
 
-/// `GET /lawyer/fonts/gorp-serif.zip` — download the GORP Serif desktop
+/// `GET /app/team/fonts/gorp-serif.zip` — download the GORP Serif desktop
 /// family as one ZIP attachment.
 ///
 /// `State<Arc<dyn StorageService>>` resolves to the *documents* (private)

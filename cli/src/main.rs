@@ -1243,7 +1243,7 @@ enum FontAction {
     },
     /// Package the licensed GORP Serif `.otf` desktop family into one ZIP and
     /// upload it to `fonts/gorp-serif/gorp-serif-otf.zip`, where the policy-gated
-    /// `/lawyer/fonts/gorp-serif.zip` route serves it. Unlike `upload` (public
+    /// `/app/team/fonts/gorp-serif.zip` route serves it. Unlike `upload` (public
     /// WOFF2 web faces), the installable family is a restricted download and
     /// goes to the *private* documents bucket; the `.otf` source is never
     /// committed.

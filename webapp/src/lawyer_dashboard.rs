@@ -471,14 +471,6 @@ fn DashboardDetails(role: ViewerRole) -> Element {
                         }
                         li { a { href: "/lawyer/schedules", "Cron schedules" } }
                     }
-                    h3 { class: "admin-details__heading", "Brand assets" }
-                    ul {
-                        li {
-                            a { href: "/lawyer/fonts/gorp-serif.zip", download: "",
-                                "GORP Serif fonts (.zip)"
-                            }
-                        }
-                    }
                     h3 { class: "admin-details__heading", "JSON API" }
                     ul {
                         for (href , label) in API_ENDPOINTS.iter() {

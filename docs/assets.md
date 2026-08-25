@@ -129,10 +129,11 @@ NAVIGATOR_DOCUMENTS_BUCKET=<project>-documents cargo run -p cli -- ops assets fo
   --dir '/path/to/GORP Serif'
 ```
 
-The route `GET /lawyer/fonts/gorp-serif.zip` streams that object; the lawyer dashboard and clerk landing both link it
-under **Brand assets**. Embedded Rego admits Lawyer and admin under `/lawyer`. Clerk has one exact-path exception: a
-font ZIP is a firm brand asset, not lawyer work. Client and anonymous callers are denied. A missing object is a loud
-`502`, never a fallback — the same pull-and-verify posture as the vendored government forms.
+The route `GET /app/team/fonts/gorp-serif.zip` streams that object; the `/app/team` home links it as its **Brand fonts**
+card. The object rides the team home's own prefix, so embedded Rego's `/app/team` rules admit exactly the four firm
+tiers — Owner, Admin, Lawyer, and Clerk — and deny client and anonymous callers. A font ZIP is a firm brand asset, not
+lawyer work, so it needs neither the `/lawyer` prefix nor the exact-path Clerk exception that prefix used to force. A
+missing object is a loud `502`, never a fallback — the same pull-and-verify posture as the vendored government forms.
 
 Publication is not verified by CI. `deploy.yml` builds and publishes images; it never probes a rolled deployment's asset
 origin, so an empty bucket reaches production silently. Run `assets verify` against the deployment's own public host

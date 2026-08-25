@@ -118,6 +118,13 @@ allow if {
 # inherit legal authority as a side effect of being admitted somewhere.
 # Downloading the CLI is not legal authority.
 #
+# These two rules are a prefix, so they also carry the page's own assets —
+# `/app/team/fonts/gorp-serif.zip`, the licensed GORP Serif desktop family the
+# home offers as a card. That download is a firm brand asset, not lawyer work,
+# and its audience is exactly this page's: all four firm tiers, no client. It
+# used to sit under `/lawyer`, where admitting a Clerk needed an exact-path
+# exception to "Clerk never enters /lawyer"; here it needs no rule of its own.
+#
 allow if {
     input.path[0] == "app"
     input.path[1] == "team"
@@ -164,17 +171,6 @@ allow if {
 allow if {
     input.path[0] == "lawyer"
     is_lawyer(input.session)
-}
-
-# The lawyer brand-font download is a firm brand asset, not lawyer work:
-# the licensed GORP Serif desktop family, served as one ZIP. A Clerk may
-# fetch it too — the one deliberate exception to "Clerk never enters
-# /lawyer", scoped to this exact object so it grants a font bundle and
-# nothing else. Lawyer and admin already reach it via the /lawyer rule
-# above and the admin bypass.
-allow if {
-    input.path == ["lawyer", "fonts", "gorp-serif.zip"]
-    is_clerk(input.session)
 }
 
 # Workshop reads are public and never reach this policy. Claiming a completion

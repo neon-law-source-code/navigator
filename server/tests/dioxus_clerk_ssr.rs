@@ -219,8 +219,7 @@ async fn clerk_list_ssrs_supervised_matters_and_names_the_supervisor() {
     // The lawyer workbench never leaks onto the Clerk lens. The *path* can no
     // longer carry that guarantee — the card above links to the same
     // `/app/projects/{code}` a lawyer uses — so assert on what the workbench
-    // renders instead. The brand-font download is the one `/lawyer` link a
-    // Clerk sees, a firm brand asset.
+    // renders instead.
     for workbench in [
         "Participation ledger",
         "Matter people",
@@ -233,14 +232,17 @@ async fn clerk_list_ssrs_supervised_matters_and_names_the_supervisor() {
             "the Clerk lens must not carry `{workbench}`: {html}"
         );
     }
+    // The brand-font download is a firm-wide asset, not a matter surface, so it
+    // is a card on the shared `/app/team` home rather than a list item here.
+    // The route still admits a Clerk; only the link moved.
     assert!(
-        html.contains("href=\"/lawyer/fonts/gorp-serif.zip\""),
-        "the firm brand-font download must stay on the page: {html}",
+        !html.contains("/lawyer/fonts/gorp-serif.zip"),
+        "the brand-font download lives on `/app/team`, not the matter list: {html}",
     );
 }
 
 #[tokio::test]
-async fn clerk_list_offers_the_brand_font_download_with_no_assignments() {
+async fn clerk_list_empty_state_explains_how_a_matter_appears() {
     let surreal = store::test_support::mem_surreal().await;
     let clerk = insert_person(
         &surreal,
@@ -259,8 +261,8 @@ async fn clerk_list_offers_the_brand_font_download_with_no_assignments() {
         "the empty state must explain how a matter appears: {html}",
     );
     assert!(
-        html.contains("href=\"/lawyer/fonts/gorp-serif.zip\""),
-        "brand assets are firm-wide, so the download shows with no matters: {html}",
+        !html.contains("/lawyer/fonts/gorp-serif.zip"),
+        "the empty list carries no brand-asset section either: {html}",
     );
 }
 

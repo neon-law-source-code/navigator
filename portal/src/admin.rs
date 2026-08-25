@@ -196,6 +196,23 @@ pub fn routes(
         .route("/admin/person/{id}/delete", post(admin_person_delete))
         .route("/admin/person/{id}/impersonate", post(people_impersonate));
     r = register_firm_routes(r, "/lawyer");
+    // Firm brand fonts — the licensed GORP Serif desktop family, served as one
+    // ZIP from the *private* documents bucket, so a direct object URL can never
+    // bypass this gate. The bytes are uploaded out-of-band by
+    // `navigator ops assets fonts upload-desktop`.
+    //
+    // Not under `/lawyer`: a brand asset is not lawyer work, and every firm
+    // tier — Clerk included — may fetch it. Sitting under `/lawyer` made Clerk
+    // an exact-path exception to "Clerk never enters /lawyer". Under
+    // `/app/team` the page that offers the card and the object it links share
+    // one prefix, so embedded Rego's existing `/app/team` rules admit exactly
+    // the four firm tiers here and deny a client, with no rule of its own.
+    // Registered here rather than inside `register_firm_routes` because that
+    // helper's `{prefix}` is `/lawyer`.
+    r = r.route(
+        "/app/team/fonts/gorp-serif.zip",
+        get(crate::brand_fonts::download_get),
+    );
     r = register_project_routes(r);
     r = r.route(
         "/app/notations/{id}/documents/{doc_id}",
@@ -265,16 +282,6 @@ fn register_firm_routes(r: Router<AdminState>, prefix: &str) -> Router<AdminStat
     // `dioxus_app::lawyer_dashboard_router`), so this chain now starts at the
     // firm brand fonts.
     r
-        // Firm brand fonts — the licensed GORP Serif desktop family, served
-        // as one ZIP from the *private* documents bucket (so a direct object
-        // URL can't bypass this gate). Owner, Admin, and Lawyer reach it via the shared
-        // `/lawyer` embedded Rego policy rule; Clerk via a deliberate exact-path exception (a
-        // firm brand asset, not lawyer work). The bytes are uploaded
-        // out-of-band by `navigator assets fonts upload-desktop`.
-        .route(
-            &format!("{prefix}/fonts/gorp-serif.zip"),
-            get(crate::brand_fonts::download_get),
-        )
         // `GET /lawyer/retainers/new` (the form) renders through Dioxus (#956
         // Phase 4, `dioxus_app::csrf_page_router`); the create posts here, and
         // axum merges the two same-path method routes.

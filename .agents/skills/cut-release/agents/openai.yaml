@@ -1,4 +1,4 @@
 interface:
   display_name: "Cut Release"
   short_description: "Validate the version you name, run the release preflight, land it, and tag the merged commit."
-  default_prompt: "Use $cut-release to cut a release. I will give you the version; validate it, run the preflight, write the workspace version, land it through a PR, and tag the merged commit."
+  default_prompt: "Use $cut-release to cut a release. If I give you a version, validate it; otherwise ask the CLI for today's default and stop if it says there is nothing to cut. Then run the preflight, write the workspace version, land it through a PR, and tag the merged commit."

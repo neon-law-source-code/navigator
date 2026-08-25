@@ -9,7 +9,14 @@ Read [`docs/gitops.md`](../../../docs/gitops.md), [`docs/agent-workflows.md`](..
 [`docs/public-contributor-safety.md`](../../../docs/public-contributor-safety.md). A release is a version bump landed
 through a PR; merging `main` drives publication.
 
-- Verify the requested version and the current manifest before changing it. A `-hotfix.N` suffix is a
+- **No version given: ask the CLI for today's, before doing anything else.** Run
+  `cargo run -p cli --quiet -- ops release-default-tag` in the checkout. It prints the bare `YY.M.D` tag for today's UTC
+  date on stdout when that date is releasable, and prints nothing to stdout — only a reason on stderr — when a version
+  at or past today's date is already published. An empty stdout means there is nothing to cut: say so and stop, without
+  touching the manifest, committing, or opening a PR. `ops release-version` itself is unaffected by this — it still
+  requires an explicit `--tag` and derives nothing; this command only supplies the name a human would otherwise have had
+  to work out by hand.
+- Verify the requested (or defaulted) version and the current manifest before changing it. A `-hotfix.N` suffix is a
   semver prerelease of that core, so it ranks *below* the matching ordinary release. After `26.8.22` is published, the
   next hotfix is `26.8.23-hotfix.1`, not `26.8.22-hotfix.1`. See
   [`docs/gitops.md`](../../../docs/gitops.md#why-a-hotfix-prerelease-ranks-below-its-date).

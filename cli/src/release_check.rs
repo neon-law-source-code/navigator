@@ -169,7 +169,11 @@ fn rev_parse(repo: &Path, revision: &str) -> Result<Option<String>> {
 }
 
 /// Refresh the release tags from `origin`.
-fn fetch_tags(repo: &Path) -> Result<()> {
+///
+/// `pub(crate)` because [`crate::release_default_tag`] fetches the same tags to
+/// answer a different question — one listing, shared, rather than a second
+/// `git fetch` copied alongside it.
+pub(crate) fn fetch_tags(repo: &Path) -> Result<()> {
     let output = git(repo, &["fetch", "--tags", "--quiet", "origin"])
         .context("fetch the release tags from origin")?;
     if !output.status.success() {
@@ -187,7 +191,9 @@ fn fetch_tags(repo: &Path) -> Result<()> {
 /// The glob is the coarse filter the `release-tags` ruleset also uses;
 /// [`release::parse`] is what actually decides, so this returning a non-version
 /// is expected and harmless.
-fn release_tags(repo: &Path) -> Result<Vec<String>> {
+///
+/// `pub(crate)` for the same reason as [`fetch_tags`].
+pub(crate) fn release_tags(repo: &Path) -> Result<Vec<String>> {
     let output = git(repo, &["tag", "--list", release::RELEASE_TAG_GLOB])
         .context("list the release tags")?;
     if !output.status.success() {

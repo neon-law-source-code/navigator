@@ -1,10 +1,11 @@
 //! Canonical-host enforcement middleware.
 //!
 //! When `CANONICAL_HOST` is set, every request whose `Host:` header
-//! is not the canonical value is 301-redirected to the same path on
-//! the canonical host. When the env var is unset (the default), the
-//! middleware is a pass-through — useful for local development and
-//! integration tests.
+//! is not the canonical value is permanently redirected to the same path on
+//! the canonical host, except `/health`: kubelet and load-balancer probes
+//! address a backend rather than its public hostname. When the env var is
+//! unset (the default), the middleware is a pass-through — useful for local
+//! development and integration tests.
 
 use axum::extract::{Request, State};
 use axum::http::{header, StatusCode, Uri};
@@ -55,6 +56,12 @@ pub async fn enforce_canonical_host(
     req: Request,
     next: Next,
 ) -> Response {
+    // Health probes reach a pod or backend IP and therefore cannot promise
+    // the public Host header. Redirecting them would mark every backend
+    // unhealthy as soon as canonical-host enforcement is enabled.
+    if req.uri().path() == "/health" {
+        return next.run(req).await;
+    }
     let Some(canonical) = cfg.canonical() else {
         return next.run(req).await;
     };
@@ -71,7 +78,7 @@ pub async fn enforce_canonical_host(
                 .path_and_query()
                 .map_or_else(|| "/".to_string(), ToString::to_string);
             let target = format!("https://{canonical}{path_and_query}");
-            // Build a 301 (permanent) so caches learn.
+            // Build a permanent redirect so caches learn.
             match Uri::try_from(&target) {
                 Ok(_) => Redirect::permanent(&target).into_response(),
                 Err(_) => (StatusCode::BAD_REQUEST, "invalid host redirect").into_response(),

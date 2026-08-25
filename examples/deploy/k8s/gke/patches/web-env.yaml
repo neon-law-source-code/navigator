@@ -50,6 +50,11 @@ spec:
             - $patch: replace
             - name: PORT
               value: "3001"
+            # Derived from the public-host coordinate so canonical redirects,
+            # robots.txt, and sitemap.xml all describe this deployment's own
+            # origin. `/health` stays exempt because probes address backends.
+            - name: CANONICAL_HOST
+              value: NAVIGATOR_PUBLIC_HOST
             - name: NAVIGATOR_EMAIL_BACKEND
               value: sendgrid
             - name: NAVIGATOR_CLAMD_ADDR

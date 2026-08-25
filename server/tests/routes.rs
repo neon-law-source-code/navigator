@@ -7813,6 +7813,25 @@ async fn canonical_host_redirects_when_host_mismatches() {
 }
 
 #[tokio::test]
+async fn canonical_host_keeps_health_available_on_a_noncanonical_host() {
+    let state =
+        empty_state_with_canonical_host(CanonicalHost::new(Some("neonlaw.org".into()))).await;
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/health")
+                .header("host", "10.0.0.12:3001")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert!(resp.headers().get(header::LOCATION).is_none());
+}
+
+#[tokio::test]
 async fn canonical_host_passes_through_when_host_matches() {
     let state =
         empty_state_with_canonical_host(CanonicalHost::new(Some("neonlaw.org".into()))).await;

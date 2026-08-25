@@ -162,22 +162,6 @@ const PARAMETERISED: &[(&str, &[&str])] = &[
     ),
 ];
 
-/// The retired Neon Law Foundation URLs, at both the `/foundation` prefix they
-/// last held and the site root they held before it.
-///
-/// Each answers `410 Gone` with no body rather than a page, so auditing one
-/// would run axe against nothing at all. They stay declared in
-/// `neon::PUBLIC_PATHS` because the site still answers them; they are skipped
-/// here because there is no document to audit.
-const RETIRED_GONE: &[&str] = &[
-    "/foundation",
-    "/mission",
-    "/education",
-    "/attorneys",
-    "/notations",
-    "/transparency",
-];
-
 /// Classify one path declared in `neon::PUBLIC_PATHS`.
 ///
 /// This is what stops the gate from being a hand-kept list that drifts behind
@@ -194,14 +178,6 @@ fn plan(path: &str) -> AuditPlan {
     // through on its extension.
     if ["/robots.txt", "/sitemap.xml", "/llms.txt"].contains(&path) {
         return AuditPlan::Skip("a crawler document, not an HTML page");
-    }
-    // The retired URLs are declared so the site keeps answering them, but a
-    // `410 Gone` carries no document, so there is nothing for axe to audit.
-    if RETIRED_GONE
-        .iter()
-        .any(|retired| *retired == path || path.starts_with(&format!("{retired}/")))
-    {
-        return AuditPlan::Skip("a retired URL answering 410 Gone, with no document to audit");
     }
     // The certificate request itself is a `POST` handler; the page a reader
     // lands on afterwards is `…/certificate/sent`, which is audited.
@@ -553,28 +529,6 @@ async fn the_public_shell_passes_a_full_document_audit() {
             assert_public_shell(&c).await;
         }
         c.close().await.unwrap();
-    }
-}
-
-/// A retired URL answers `410 Gone` and renders no document, so the shell
-/// audits above never reach it — and this is what proves that is deliberate
-/// rather than a page the gate silently stopped covering.
-#[tokio::test]
-async fn a_retired_url_renders_no_document_to_audit() {
-    for path in RETIRED_GONE {
-        assert_eq!(
-            plan(path),
-            AuditPlan::Skip("a retired URL answering 410 Gone, with no document to audit"),
-            "{path} is retired and must be classified as a skip, not audited"
-        );
-    }
-    // And no retired URL leaks into the audited set through another arm.
-    let audited = audit_urls(neon::PUBLIC_PATHS);
-    for path in RETIRED_GONE {
-        assert!(
-            !audited.iter().any(|url| url == path),
-            "{path} is retired but reached the audited set: {audited:?}"
-        );
     }
 }
 

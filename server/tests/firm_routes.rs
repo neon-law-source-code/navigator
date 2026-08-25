@@ -726,11 +726,10 @@ async fn the_firm_nav_leads_with_the_lead_offering_then_the_practices() {
             "the header nav carries {href}: {header}"
         );
     }
-    // Team closed this row until the page was retired outright. A header entry
-    // would now link a `404`, so neither row may carry it.
+    // `/team` publishes no page, so a header entry would link a `404`.
     assert!(
         !header.contains(r#"href="/team""#),
-        "the team page is retired, so the header must not link it: {header}"
+        "the team page does not exist, so the header must not link it: {header}"
     );
     // Fractional CTO leads, then the three practices. The ordering is a product
     // decision and is asserted rather than left to the array literal: the firm
@@ -759,7 +758,7 @@ async fn the_firm_nav_leads_with_the_lead_offering_then_the_practices() {
     );
     assert!(
         !header.contains(r#"href="/foundation""#),
-        "no header entry reaches a retired URL: {header}"
+        "no header entry reaches a path the site does not publish: {header}"
     );
 }
 
@@ -807,14 +806,12 @@ async fn the_footer_carries_the_pages_the_header_does_not() {
         positions.windows(2).all(|pair| pair[0] < pair[1]),
         "the footer row is alphabetized by label: {footer}"
     );
-    // A retired URL is linked by neither row. The team page and the whole
-    // `/foundation` tree are both withdrawn, and `/foundation/*` answers
-    // `410 Gone` — a footer link would send a reader on every page at that
-    // answer.
-    for retired in [r#"href="/team""#, r#"href="/foundation""#] {
+    // Neither row links a page the site does not publish: the team page and
+    // the whole `/foundation` tree.
+    for unpublished in [r#"href="/team""#, r#"href="/foundation""#] {
         assert!(
-            !footer.contains(retired),
-            "{retired} is retired, so the footer must not link it: {footer}"
+            !footer.contains(unpublished),
+            "{unpublished} names no page, so the footer must not link it: {footer}"
         );
     }
 }
@@ -1511,15 +1508,11 @@ async fn firm_brand_png_is_a_high_resolution_square_asset() {
     assert_eq!((width, height), (1024, 1024), "logo.png dimensions");
 }
 
-/// The retired nonprofit surface answers `410 Gone` and renders nothing.
-///
-/// Two failure modes, and the test distinguishes them. A page that came back
-/// answers `200` — the surface was retired, so serving one republishes an
-/// organization the site no longer speaks for. A path that fell out of the
-/// retired-path table answers `404`, which reads as a typo and tells a crawler
-/// to keep asking rather than to drop the URL.
+/// A path that names no page this site publishes answers `404`, and nothing
+/// else does — a page that came back would republish an organization this
+/// site does not represent.
 #[tokio::test]
-async fn the_retired_nonprofit_surface_answers_gone() {
+async fn an_unpublished_path_answers_not_found() {
     let app = site_app().await;
 
     for path in [
@@ -1529,33 +1522,19 @@ async fn the_retired_nonprofit_surface_answers_gone() {
         "/foundation/mission",
         "/foundation/notations",
         "/foundation/transparency",
+        "/foundation/legal-aid",
         "/education",
         "/attorneys",
         "/mission",
         "/notations",
         "/transparency",
+        "/legal-aid",
     ] {
         let response = anon_get(&app, path).await;
-        assert_eq!(
-            response.status(),
-            StatusCode::GONE,
-            "the retired page {path} must answer 410 Gone"
-        );
+        assert_eq!(response.status(), StatusCode::NOT_FOUND, "{path}");
         assert!(
             response.headers().get("location").is_none(),
-            "{path} must not redirect: there is no firm page that replaces it"
-        );
-    }
-
-    // The legal aid audience page was retired before the rest of the surface
-    // and never entered the retired-path table, so both of its addresses answer
-    // `404` rather than `410`. Pinned so a later sweep does not quietly
-    // reclassify a URL nobody decided to keep answering for.
-    for never_tabled in ["/foundation/legal-aid", "/legal-aid"] {
-        assert_eq!(
-            anon_get(&app, never_tabled).await.status(),
-            StatusCode::NOT_FOUND,
-            "{never_tabled} is retired outright and must answer 404"
+            "{path} must not redirect: the site publishes no page there"
         );
     }
 }

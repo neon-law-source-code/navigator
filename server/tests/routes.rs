@@ -101,7 +101,7 @@ fn workshop_session_cookie() -> String {
 }
 
 /// The weakest authenticated role, for asserting what a signed-in reader
-/// reaches — and, on a retired surface, what they no longer do.
+/// reaches.
 fn client_reader_cookie() -> String {
     session_cookie_for_role(store::persons::Role::Client)
 }
@@ -1338,14 +1338,12 @@ async fn policy_evaluation_errors_fail_closed_at_the_router_boundary() {
     );
 }
 
-/// The firm holds the root, and the retired nonprofit surface holds nothing.
+/// The firm holds the root, and nothing else answers there.
 ///
 /// Both halves matter against the real composition. A regression that
-/// remounted the nonprofit's pages would answer `200` on the second half; one
-/// that dropped the retired-path table would answer `404`, which reads as a
-/// typo rather than a withdrawal.
+/// remounted the nonprofit's pages would answer `200` on the second half.
 #[tokio::test]
-async fn the_firm_holds_the_root_and_the_retired_surface_answers_gone() {
+async fn the_firm_holds_the_root_and_nothing_else_answers_there() {
     let app = server::neon_router(
         empty_state().await,
         std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
@@ -1364,7 +1362,7 @@ async fn the_firm_holds_the_root_and_the_retired_surface_answers_gone() {
     );
     assert!(
         !body.contains("Neon Law Foundation"),
-        "and it names no retired organization: {body}"
+        "and it names no other organization: {body}"
     );
 
     for path in [
@@ -1385,7 +1383,7 @@ async fn the_firm_holds_the_root_and_the_retired_surface_answers_gone() {
             .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
             .await
             .unwrap();
-        assert_eq!(resp.status(), StatusCode::GONE, "{path}");
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND, "{path}");
         assert!(
             resp.headers().get("location").is_none(),
             "{path} must not redirect"
@@ -1393,14 +1391,12 @@ async fn the_firm_holds_the_root_and_the_retired_surface_answers_gone() {
     }
 }
 
-/// A signed-in reader gets `410` on the retired surface too.
+/// A signed-in reader gets `404` on an unpublished path too.
 ///
-/// The mission letter, Notations, and the transparency disclosures read for any
-/// authenticated person before they were retired, so a stale grant would show
-/// up here and nowhere else: an anonymous request would be `410` while a
-/// `client` session still rendered the page.
+/// A stale grant would show up here and nowhere else: an anonymous request is
+/// `404` while a `client` session renders the page anyway.
 #[tokio::test]
-async fn a_signed_in_reader_also_gets_gone_on_the_retired_surface() {
+async fn a_signed_in_reader_also_gets_not_found_on_an_unpublished_path() {
     let app = server::neon_router(
         empty_state().await,
         std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
@@ -1422,7 +1418,7 @@ async fn a_signed_in_reader_also_gets_gone_on_the_retired_surface() {
             )
             .await
             .unwrap();
-        assert_eq!(resp.status(), StatusCode::GONE, "{path}");
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND, "{path}");
     }
 }
 
@@ -1462,9 +1458,8 @@ async fn legacy_help_route_is_gone() {
 /// The firm's marketing surface serves at the site root.
 ///
 /// Each of these is a live page at the root, and the paired invariant is that
-/// no firm route answers beneath a retired prefix: `/foundation` and everything
-/// under it is either `410` (the pages that existed) or `404` (the ones that
-/// never did), and never a firm page.
+/// no firm route answers beneath `/foundation`: every path there is `404`, and
+/// never a firm page.
 #[tokio::test]
 async fn the_firm_marketing_surface_serves_at_the_site_root() {
     let app = server::neon_router(
@@ -1483,10 +1478,6 @@ async fn the_firm_marketing_surface_serves_at_the_site_root() {
             "the firm route {uri} must serve at the site root"
         );
     }
-    // `/foundation/team` stays in the shadowed list even though `/team` itself
-    // is retired: the property is that no firm route answers beneath the
-    // retired prefix, and a path that 404s for two reasons still must not start
-    // answering for one of them.
     for shadowed in [
         "/foundation/blog",
         "/foundation/contact",
@@ -1507,7 +1498,7 @@ async fn the_firm_marketing_surface_serves_at_the_site_root() {
         assert_eq!(
             resp.status(),
             StatusCode::NOT_FOUND,
-            "a firm page must not answer beneath the retired prefix: {shadowed}"
+            "a firm page must not answer beneath /foundation: {shadowed}"
         );
     }
 }
@@ -1874,9 +1865,8 @@ async fn api_template_raw_serves_non_confidential_markdown_inline() {
 
 /// The talks surface mounts, and only at the site root.
 ///
-/// What must not happen is a copy appearing beneath a retired prefix: the
-/// nonprofit's surface is gone, and a talk answering under it would republish
-/// the firm's work at a URL the site says is withdrawn.
+/// What must not happen is a copy appearing beneath `/foundation`: a talk
+/// answering there would republish the firm's work at a second URL.
 #[tokio::test]
 async fn the_talks_surface_mounts_only_at_the_site_root() {
     let materials = portal::workshops::loader::load_navigator(std::path::Path::new(
@@ -1920,7 +1910,7 @@ async fn the_talks_surface_mounts_only_at_the_site_root() {
         assert_eq!(
             resp.status(),
             StatusCode::NOT_FOUND,
-            "the firm's talks must not also publish under a retired prefix: {shadowed}"
+            "the firm's talks must not also publish under /foundation: {shadowed}"
         );
     }
 }
@@ -2107,10 +2097,10 @@ async fn sitemap_xml_lists_public_routes_from_loaded_indexes() {
         );
     }
     // The talks are the firm's and the sitemap is one document now, so they
-    // ARE advertised — at the site root, never beneath a retired prefix.
+    // ARE advertised — at the site root, never beneath `/foundation`.
     assert!(
         !body.contains("<loc>https://www.neonlaw.com/foundation/presentations</loc>"),
-        "the firm's talks must not be filed under a retired prefix: {body}"
+        "the firm's talks must not be filed under /foundation: {body}"
     );
     assert!(
         !body.contains("<loc>https://www.neonlaw.com/app/team</loc>"),
@@ -2128,13 +2118,11 @@ async fn sitemap_xml_lists_public_routes_from_loaded_indexes() {
             "sitemap must not advertise authenticated {authenticated}: {body}"
         );
     }
-    // The retired nonprofit surface is advertised nowhere. A `410` is an
-    // answer, not a document, and a sitemap entry pointing at one invites the
-    // crawl the status code exists to stop.
+    // The nonprofit's surface is advertised nowhere.
     //
     // `/workshops` is deliberately absent from this list. The classes are
     // public now, so the catalog is a page a crawler should find.
-    for retired in [
+    for unpublished in [
         "/foundation",
         "/foundation/education",
         "/foundation/attorneys",
@@ -2145,12 +2133,12 @@ async fn sitemap_xml_lists_public_routes_from_loaded_indexes() {
         "/transparency",
     ] {
         assert!(
-            !body.contains(&format!("<loc>https://www.neonlaw.com{retired}")),
-            "sitemap must not advertise retired {retired}: {body}"
+            !body.contains(&format!("<loc>https://www.neonlaw.com{unpublished}")),
+            "sitemap must not advertise {unpublished}: {body}"
         );
     }
     // The firm's pages ARE advertised — one host, one sitemap. What must not
-    // appear is a firm page filed beneath a retired prefix.
+    // appear is a firm page filed beneath `/foundation`.
     for firm_page in ["/blog", "/litigation", "/contact"] {
         assert!(
             body.contains(&format!("<loc>https://www.neonlaw.com{firm_page}</loc>")),
@@ -2160,7 +2148,7 @@ async fn sitemap_xml_lists_public_routes_from_loaded_indexes() {
             !body.contains(&format!(
                 "<loc>https://www.neonlaw.com/foundation{firm_page}</loc>"
             )),
-            "a firm page must not be filed under a retired prefix: {firm_page}"
+            "a firm page must not be filed under /foundation: {firm_page}"
         );
     }
 }
@@ -2300,8 +2288,8 @@ fn sample_workshop() -> WorkshopMaterial {
     }
 }
 
-/// The `/workshops` surface mounts publicly at the site root and never under a
-/// retired prefix.
+/// The `/workshops` surface mounts publicly at the site root and never under
+/// `/foundation`.
 #[tokio::test]
 async fn the_workshops_surface_mounts_only_at_the_site_root() {
     let app = server::neon_router(
@@ -2493,22 +2481,20 @@ async fn llms_txt_indexes_the_markdown_corpus_with_absolute_urls() {
             "llms.txt must advertise {page}: {body}"
         );
     }
-    // The retired nonprofit surface is advertised nowhere: every one of these
-    // answers `410`, and an LLM crawler sent at one learns nothing except that
-    // the index is stale.
-    for retired in [
+    // The nonprofit's surface is advertised nowhere.
+    for unpublished in [
         "https://www.example.com/foundation",
         "https://www.example.com/mission",
         "https://www.example.com/transparency",
     ] {
         assert!(
-            !body.contains(retired),
-            "llms.txt must not advertise the retired {retired}: {body}"
+            !body.contains(unpublished),
+            "llms.txt must not advertise {unpublished}: {body}"
         );
     }
     assert!(
         !body.contains("pairs legal aid centers with volunteer attorneys"),
-        "the retired nonprofit's summary is not the site's: {body}"
+        "the nonprofit's summary is not the site's: {body}"
     );
 
     // Private or authenticated surfaces remain absent. A crawler that follows

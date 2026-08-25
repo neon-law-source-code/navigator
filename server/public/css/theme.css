@@ -2721,24 +2721,6 @@ a.nav-link:hover {
   font-size: 0.9rem;
 }
 
-/* Firm brand assets — shared across every firm worker rather than scoped to a
- * matter, so the block sits below the projects list and shows even when a Clerk
- * has no assignments yet. */
-.clerk-brand-assets {
-  margin-top: 2.5rem;
-}
-
-.clerk-brand-assets h2 {
-  font-size: 1.1rem;
-  margin: 0 0 0.5rem;
-}
-
-.clerk-brand-assets__list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
 /* The detail page's matter facts: label/value pairs in two columns, collapsing
  * to stacked rows on a narrow viewport. */
 .clerk-facts {
@@ -3001,7 +2983,20 @@ a.nav-link:hover {
 }
 
 /* The `/app/team` team home is a grid of destination cards. The cards are `<a>`
-   elements, so the whole card is the click target rather than a nested link. */
+   elements, so the whole card is the click target rather than a nested link.
+
+   They wear the treatment a reader already met on the way down `/`: the
+   practice cards' gradient ground and brand-tinted edge, and their pointer
+   response — the border takes the brand colour, the box lifts, and a wash
+   swells across it on the diagonal. The footer's contact tiles carry the same
+   one, so the card is a single object across the public site and the app.
+
+   The values are `home.css`'s and `.site-footer__office--channel`'s
+   deliberately: same 28% edge, same 240ms border and lift, same 720ms swell.
+   `--nav-color-primary` is named directly rather than `--firm-brand`, and the
+   card ground is mixed here rather than taken from `--neon-card-bg`, because
+   `brand-firm.css` is hoisted by the marketing pages while `/app/team` carries
+   only this sheet. */
 .team-home__cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
@@ -3010,25 +3005,107 @@ a.nav-link:hover {
 }
 
 .team-home__card {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
   padding: 1.5rem;
-  border: 1px solid var(--nav-color-border);
-  border-radius: 0.75rem;
-  background: var(--nav-color-surface-raised);
+  border: 1px solid
+    color-mix(in oklab, var(--nav-color-primary) 28%, transparent);
+  border-radius: 1rem;
+  background-image: linear-gradient(
+    to bottom,
+    color-mix(in oklab, var(--nav-color-surface) 88%, transparent),
+    color-mix(in oklab, var(--nav-color-surface) 40%, transparent)
+  );
   text-decoration: none;
   color: inherit !important;
   transition:
-    border-color 0.15s ease,
-    transform 0.15s ease;
+    border-color 240ms ease,
+    transform 240ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.team-home__card:hover,
-.team-home__card:focus-visible {
+/* The fill lightens with the scheme, so the washes drawn from it thin out;
+   these hold the edge and the ground visible against the dark surface — the
+   same correction `brand-firm.css` makes for `.neon-card`. */
+@media (prefers-color-scheme: dark) {
+  .team-home__card {
+    border-color: color-mix(
+      in oklab,
+      var(--nav-color-primary) 24%,
+      transparent
+    );
+    background-image: linear-gradient(
+      to bottom,
+      color-mix(in oklab, var(--nav-color-surface-raised) 70%, transparent),
+      color-mix(in oklab, var(--nav-color-surface-raised) 32%, transparent)
+    );
+  }
+}
+
+/* `.nav-theme a:hover` recolours and underlines every link. On a box whose
+   whole surface is the anchor that underlined the title and both lines of
+   prose, and the card read as a wall of link text. The selector matches that
+   rule's specificity — element + two classes, as `home.css` does for
+   `.home-practice` — to keep the box a box. */
+.nav-theme a.team-home__card:hover,
+.nav-theme a.team-home__card:focus-visible {
   border-color: var(--nav-color-primary);
-  transform: translateY(-2px);
+  color: inherit;
   text-decoration: none;
+  transform: translateY(-2px);
+}
+
+/* The heading alone takes the brand colour — the affordance that says the box
+   is clickable. */
+.team-home__card:hover .team-home__card-title,
+.team-home__card:focus-visible .team-home__card-title {
+  color: var(--nav-color-primary-hover);
+}
+
+/* The wave, as `.home-practice::after` draws it: a circle anchored off the
+   box's bottom-left corner, scaled from nothing to past the top-right, so the
+   wash crosses the card on the diagonal rather than fading in flat. It sits at
+   `z-index: -1` under the card's own text, which is why the card isolates a
+   stacking context and clips its overflow. */
+.team-home__card::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset-inline-start: -25%;
+  inset-block-end: -55%;
+  inline-size: 150%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 30% 70%,
+    var(--nav-color-primary) 0%,
+    color-mix(in srgb, var(--nav-color-primary) 45%, transparent) 45%,
+    transparent 72%
+  );
+  opacity: 0;
+  transform: scale(0.2);
+  transform-origin: 0% 100%;
+  transition:
+    transform 720ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 320ms ease;
+}
+
+.team-home__card:hover::after,
+.team-home__card:focus-visible::after {
+  opacity: 0.22;
+  transform: scale(1.5);
+}
+
+/* The wave is decoration. Suppressed, the border and the lift still answer the
+   pointer, so the card never stops responding — it just stops swelling. */
+@media (prefers-reduced-motion: reduce) {
+  .team-home__card,
+  .team-home__card::after {
+    transition-duration: 1ms;
+  }
 }
 
 .team-home__card-title {

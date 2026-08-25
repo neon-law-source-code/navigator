@@ -19,6 +19,7 @@ use crate::components::{
     PlatformMark, PlatformMarkGlyph, PracticeMark, PracticeMarkGlyph, PublicShell, SiteHeader,
     SiteNavLink, SocialMeta,
 };
+use crate::litigation_page::HeroWord;
 use crate::public_chrome::{PublicChrome, PublicFooter};
 
 /// The marketing-page stylesheet, hoisted alongside `theme.css` and the shared
@@ -219,9 +220,32 @@ pub struct PageContent {
     pub hero_mark: Option<PracticeMark>,
     /// The line under the title.
     pub tagline: String,
+    /// The `<h1>` as lines of words: the outer `Vec` is the line breaks the
+    /// statement sets for itself, the inner one the words on that line, so the
+    /// practice skin can set the opening ones in the firm's own colour the way
+    /// `/litigation` does.
+    ///
+    /// Lines are data rather than a `<br>` in a string, because where a
+    /// statement breaks is a typographic decision the copy makes — leaving it to
+    /// the viewport gives a different reading at every width. Empty renders
+    /// `tagline` as one plain run instead, which is what the marketing skin and
+    /// any page that has not been given an accent split still do.
+    pub hero_lines: Vec<Vec<HeroWord>>,
+    /// The paragraph under the hero statement. Empty renders none.
+    pub hero_lead: String,
+    /// The one call to action in the hero. `None` renders none — the closing
+    /// [`Band::Cta`] is still where a page's address lives.
+    pub hero_cta: Option<HeroCta>,
     pub bands: Vec<Band>,
     /// Which visual language the page wears.
     pub skin: PageSkin,
+}
+
+/// The hero's one call to action: where it goes and what it says.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+pub struct HeroCta {
+    pub href: String,
+    pub label: String,
 }
 
 /// Which visual language a marketing page wears.
@@ -383,7 +407,40 @@ pub fn MarketingPage(chrome: PublicChrome, content: PageContent) -> Element {
                                 }
                             }
                             p { class: "firm-eyebrow", "{content.title}" }
-                            h1 { class: "fm-hero__title", "{content.tagline}" }
+                            h1 { class: "fm-hero__title",
+                                if content.hero_lines.is_empty() {
+                                    "{content.tagline}"
+                                } else {
+                                    for line in content.hero_lines.iter() {
+                                        span { class: "fm-hero__line",
+                                            for word in line.iter() {
+                                                // No trailing space: the word gap
+                                                // is a margin in the stylesheet.
+                                                // Each word is its own
+                                                // inline-block, which collapses
+                                                // the whitespace at its own end,
+                                                // so a space here would render as
+                                                // nothing and run the words
+                                                // together.
+                                                span {
+                                                    class: if word.accent { "fm-word fm-word--accent" } else { "fm-word" },
+                                                    "{word.text}"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            if !content.hero_lead.is_empty() {
+                                p { class: "fm-hero__lead", "{content.hero_lead}" }
+                            }
+                            if let Some(cta) = content.hero_cta.as_ref() {
+                                a {
+                                    class: "nav-btn nav-btn--primary fm-hero__cta",
+                                    href: "{cta.href}",
+                                    "{cta.label}"
+                                }
+                            }
                         }
                     } else {
                         div { class: "fm-hero__inner",
@@ -878,6 +935,9 @@ mod tests {
     /// A page exercising every band shape in the vocabulary, in order.
     fn sample_page() -> PageContent {
         PageContent {
+            hero_lines: Vec::new(),
+            hero_lead: String::new(),
+            hero_cta: None,
             head_title: "Fractional CTO — Neon Law".to_string(),
             meta_description: "The technology function, run by the firm.".to_string(),
             title: "Fractional CTO".to_string(),
@@ -1065,6 +1125,9 @@ mod tests {
     fn the_practice_skin_leads_with_the_eyebrow_and_the_marketing_skin_with_the_title() {
         fn page(skin: PageSkin) -> String {
             let content = PageContent {
+                hero_lines: Vec::new(),
+                hero_lead: String::new(),
+                hero_cta: None,
                 head_title: "T".to_string(),
                 meta_description: "D".to_string(),
                 title: "Fractional CTO".to_string(),
@@ -1129,6 +1192,9 @@ mod tests {
     fn a_marketing_page_renders_its_title_and_bands_without_a_badge() {
         fn app() -> Element {
             let content = PageContent {
+                hero_lines: Vec::new(),
+                hero_lead: String::new(),
+                hero_cta: None,
                 head_title: "Fractional General Counsel — Neon Law".to_string(),
                 meta_description: "Company counsel on a flat monthly fee.".to_string(),
                 title: "Fractional General Counsel".to_string(),

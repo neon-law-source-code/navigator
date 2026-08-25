@@ -100,6 +100,8 @@ pub struct HomeContent {
     pub contact_label: String,
     /// The one service, in prose. `None` leaves the page at the statement.
     pub service: Option<ServiceSection>,
+    /// The heading over the practice boxes. Empty when there are no boxes.
+    pub practices_heading: String,
     /// The other practices, as boxes at the foot of the page. Empty renders no
     /// section at all rather than an empty grid.
     pub practices: Vec<PracticeLink>,
@@ -224,7 +226,10 @@ pub fn HomePage(chrome: PublicChrome, content: HomeContent) -> Element {
                 ServiceProse { service: service.clone() }
             }
             if !content.practices.is_empty() {
-                PracticeLinks { practices: content.practices.clone() }
+                PracticeLinks {
+                    heading: content.practices_heading.clone(),
+                    practices: content.practices.clone(),
+                }
             }
         }
     }
@@ -260,12 +265,10 @@ fn ServiceProse(service: ServiceSection) -> Element {
 /// paragraph. The section labels itself so the boxes are not three unlabelled
 /// regions between the prose and the footer.
 #[component]
-fn PracticeLinks(practices: Vec<PracticeLink>) -> Element {
+fn PracticeLinks(heading: String, practices: Vec<PracticeLink>) -> Element {
     rsx! {
         section { class: "home-practices", "aria-labelledby": "home-practices-heading",
-            h2 { id: "home-practices-heading", class: "home-practices__heading",
-                "Our legal practice"
-            }
+            h2 { id: "home-practices-heading", class: "home-practices__heading", "{heading}" }
             div { class: "home-practices__grid",
                 for (index , practice) in practices.iter().enumerate() {
                     PracticeCard {
@@ -316,6 +319,7 @@ mod tests {
                         lead: "Our clients are law firms.".to_string(),
                         contact_href: "/contact".to_string(),
                         contact_label: "Contact us".to_string(),
+                        practices_heading: "The rest of what we do".to_string(),
                         practices: vec![PracticeLink {
                             mark: PracticeMark::Scales,
                             heading: "Litigation".to_string(),
@@ -596,6 +600,25 @@ mod tests {
         assert!(
             out.contains("M12 3v18"),
             "the litigation box carries the scales' beam: {out}"
+        );
+    }
+
+    /// The boxes take their heading from the content rather than the view.
+    ///
+    /// It used to be the literal "Our legal practice" in the markup, which
+    /// stopped being true when the boxes started carrying the fractional CTO
+    /// engagement beside the two legal practices. The heading is copy, so it
+    /// lives with the rest of the copy.
+    #[test]
+    fn the_practice_boxes_take_their_heading_from_the_content() {
+        let out = html();
+        assert!(
+            out.contains("The rest of what we do"),
+            "the injected heading renders: {out}"
+        );
+        assert!(
+            !out.contains("Our legal practice"),
+            "the hard-coded heading is gone: {out}"
         );
     }
 

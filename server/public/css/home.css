@@ -1,8 +1,12 @@
-/* Home page (`/`) layout: the photographic hero, then the statement, then the
-   one service in prose. The brand layer (`brand-firm.css`) owns the palette,
-   the serif, the card, and the motion; this file only places them. The page
-   publishes no services catalog and no practice grid — one statement, one
-   contact CTA, and one section saying what the firm does. */
+/* Home page (`/`) layout: the statement, the litigation practice in prose, and
+   the three engagements that sit beside litigation. The brand layer
+   (`brand-firm.css`) owns the palette, the serif, the card, and the motion;
+   this file only places them.
+
+   The page publishes no services catalog and no price. It leads with the
+   litigation practice, which is why the prose is one card of paragraphs rather
+   than a grid: a card per practice area is how a reader is told there are
+   several things to choose between. */
 
 /* ---- The hero ---------------------------------------------------------- */
 

@@ -169,6 +169,17 @@ pub static WEB_REQUIREMENTS: &[Requirement] = &[
     // project ACL) silently stops checking. Integration-tier: the explicit
     // staging CI harness has no real Google tenant to validate against.
     required!(integration "GOOGLE_OAUTH_CLIENT_IDS"),
+    // Sign in with Microsoft, declared by `OAUTH_MICROSOFT_CLIENT_ID` and
+    // otherwise absent — the same shape as DocuSign above.
+    // `portal::oauth::Provider::microsoft_from_env` reads an unset client id
+    // as "no second provider" (`Ok(None)`), so a deployment that has not
+    // registered an Entra app supplies neither key. But once the id is set,
+    // the client secret is not optional: `microsoft_from_env` returns
+    // `OAuthSetupError::Missing` without it, crash-looping the pod on every
+    // boot. `OAUTH_MICROSOFT_CLIENT_ID` itself rides inline Deployment env
+    // (`ship::INLINE_ENV_WEB_KEYS`), not the Secret rail, so it is not a
+    // requirement in its own right here — only the trigger for its secret.
+    required!(integration "OAUTH_MICROSOFT_CLIENT_SECRET" if "OAUTH_MICROSOFT_CLIENT_ID"),
     // The SurrealDB coordinates. `web` fails closed on a missing endpoint —
     // `portal::hosting` calls `store::surreal::connect_from_env` with no
     // fallback, and the person directory lives in that engine, so a
@@ -291,5 +302,36 @@ mod tests {
                 "{key} must be required once a deployment declares DOCUSIGN_BASE_URL"
             );
         }
+    }
+
+    /// A deployment that has not registered an Entra app must be able to say
+    /// so without being asked for a client secret it has no reason to hold.
+    #[test]
+    fn a_deployment_that_declares_no_microsoft_oauth_is_asked_for_none() {
+        let demanded = demanded(&[("NAVIGATOR_GCP_PROJECT_ID", "neon-law-stg")]);
+        assert!(
+            !demanded.contains(&"OAUTH_MICROSOFT_CLIENT_SECRET".to_owned()),
+            "OAUTH_MICROSOFT_CLIENT_SECRET must not be required of a deployment that declares no \
+             OAUTH_MICROSOFT_CLIENT_ID"
+        );
+    }
+
+    /// The other half, and the reason this is a trigger rather than a plain
+    /// requirement: once a deployment sets `OAUTH_MICROSOFT_CLIENT_ID`,
+    /// `portal::oauth::Provider::microsoft_from_env` fails without the
+    /// matching secret — the staging crash loop this guards, where the
+    /// SecretProviderClass projected the id's inline env but never the
+    /// secret.
+    #[test]
+    fn declaring_microsoft_oauth_demands_the_client_secret() {
+        let demanded = demanded(&[
+            ("NAVIGATOR_GCP_PROJECT_ID", "neon-law-stg"),
+            ("OAUTH_MICROSOFT_CLIENT_ID", "some-entra-app-id"),
+        ]);
+        assert!(
+            demanded.contains(&"OAUTH_MICROSOFT_CLIENT_SECRET".to_owned()),
+            "OAUTH_MICROSOFT_CLIENT_SECRET must be required once a deployment declares \
+             OAUTH_MICROSOFT_CLIENT_ID"
+        );
     }
 }

@@ -62,6 +62,13 @@ NAVIGATOR_WORKFLOWS_URL = "https://workflows.home.example.com/"
 # --- Sign-in ---------------------------------------------------------------
 GOOGLE_OAUTH_REQUIRED_HD = "example.com"
 
+# Declaring Microsoft OAuth is what makes OAUTH_MICROSOFT_CLIENT_SECRET
+# required, the same trigger shape as DocuSign below. This is the only row
+# that declares it; `example-deployment` supplies no OAUTH_MICROSOFT_CLIENT_ID
+# and so must have the object skipped instead.
+OAUTH_MICROSOFT_CLIENT_ID = "00000000-0000-0000-0000-000000000001"
+OAUTH_MICROSOFT_ALLOWED_TENANTS = "00000000-0000-0000-0000-000000000002"
+
 # --- Forge -----------------------------------------------------------------
 # The automation home runs the engineering webhook receiver, so the five-tuple
 # applies to this row and to no other. Two members are coordinates; the HMAC

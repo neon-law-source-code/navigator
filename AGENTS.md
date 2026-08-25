@@ -22,12 +22,12 @@ This file is the short operating contract for agents. [`CLAUDE.md`](CLAUDE.md) i
 authoritative: read the narrowest relevant doc before acting and keep durable detail there, not here.
 
 **Clone with `core.symlinks` on, or this file never reaches the agent reading it.** `.agents/skills/` is the one
-canonical skill catalog; every entry under `.claude/skills/` and `.codex/skills/` is a symlink into it, and
-`CLAUDE.md` is a symlink to this file. Git materialises a link only when `core.symlinks` is true, which is not the
-Windows default. With it off, each checks out as a small regular file holding its own target path: `CLAUDE.md` becomes
-nine bytes reading `AGENTS.md`, so a harness loads that string instead of this contract, and every exposed skill
-becomes a file where a directory should be. Nothing reports it - the clone succeeds and `git status` is clean. Set it
-once per clone, then re-check out the affected paths:
+canonical skill catalog; every entry under `.claude/skills/` and `.codex/skills/` is a symlink into it, and `CLAUDE.md`
+is a symlink to this file. Git materialises a link only when `core.symlinks` is true, which is not the Windows default.
+With it off, each checks out as a small regular file holding its own target path: `CLAUDE.md` becomes nine bytes reading
+`AGENTS.md`, so a harness loads that string instead of this contract, and every exposed skill becomes a file where a
+directory should be. Nothing reports it - the clone succeeds and `git status` is clean. Set it once per clone, then
+re-check out the affected paths:
 
 ```bash
 git config core.symlinks true

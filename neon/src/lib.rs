@@ -5,8 +5,8 @@
 //! Shook Law PLLC, and every page this crate serves is the firm's.
 //!
 //! This crate owns the public surface outright: its marketing copy, its page
-//! compositions, its path table, and the answers it still owes the URLs it no
-//! longer publishes. `portal` owns the authenticated application underneath.
+//! compositions, and its path table. `portal` owns the authenticated
+//! application underneath.
 //!
 //! The composition lives here rather than in `main` so the binary and the tests
 //! that exercise its router are the same expression. A test that restated the
@@ -17,13 +17,11 @@
 // composition entry points below, so the site's copy is not API.
 mod firm_copy;
 mod firm_pages;
-mod redirects;
 
 use portal::hosting::{Brand, BrandSeed, PublicRouter};
 use portal::AppState;
 
 pub use firm_pages::firm_public_dioxus_routers;
-pub use redirects::retired_path_routes;
 
 /// Every path this site registers, public and gated alike.
 ///
@@ -31,8 +29,7 @@ pub use redirects::retired_path_routes;
 /// `portal::RESERVED_PATH_PREFIXES` so it can never shadow a Navigator-owned
 /// surface. Access is decided by the route layers and the embedded policy.
 ///
-/// One population now: the firm's pages hold the root. The retired URLs trail
-/// the table, answered by [`retired_path_routes`] rather than rendered.
+/// The firm's pages hold the root, which is the site's whole surface.
 pub const PUBLIC_PATHS: &[&str] = &[
     // --- The firm ---------------------------------------------------------
     "/",
@@ -61,26 +58,6 @@ pub const PUBLIC_PATHS: &[&str] = &[
     "/workshops/{slug}/display/{step}",
     "/workshops/{slug}/certificate",
     "/workshops/{slug}/certificate/sent",
-    // --- Retired URLs, answered as `410 Gone` ------------------------------
-    // The Neon Law Foundation's pages, at both the prefix they last held and
-    // the site root they held before it. Every one is registered so the site
-    // answers a backlink with "this is gone" rather than with the generic
-    // `404` it gives a URL that never existed. See [`retired_path_routes`].
-    "/foundation",
-    "/foundation/mission",
-    "/foundation/education",
-    "/foundation/attorneys",
-    "/foundation/notations",
-    "/foundation/transparency",
-    "/foundation/transparency/{slug}",
-    "/foundation/transparency/minutes/{slug}",
-    "/mission",
-    "/education",
-    "/attorneys",
-    "/notations",
-    "/transparency",
-    "/transparency/{slug}",
-    "/transparency/minutes/{slug}",
     // --- Shared -----------------------------------------------------------
     "/privacy",
     "/terms",
@@ -97,9 +74,6 @@ pub const PUBLIC_PATHS: &[&str] = &[
 /// everything the site registers, including gated pages, the crawler documents
 /// `portal` adds for itself, and the `{slug}` patterns a crawler cannot follow;
 /// this is the subset a stranger can actually read, at concrete URLs.
-///
-/// A retired URL is deliberately absent: a `410` is an answer, not a document,
-/// and a sitemap entry pointing at one is worse than no entry at all.
 ///
 /// A talk's projector face (`/display/{step}`) and its certificate confirmation
 /// are left out for the same reason a crawler is not sent to a print dialog:
@@ -254,19 +228,17 @@ fn indexed_pages(mark: &str) -> Vec<portal::LlmsTxtLink> {
     ]
 }
 
-/// The site's public Axum table: the retired URLs, the crawler documents, and
-/// the one write on each workshop or presentation surface.
+/// The site's public Axum table: the crawler documents, and the one write on
+/// each workshop or presentation surface.
 ///
 /// Every *page* renders through the Dioxus SSR port, so it arrives via
-/// [`public_dioxus_routers`] rather than this table; a `410` and a certificate
-/// `POST` are not pages, which is why they mount here.
+/// [`public_dioxus_routers`] rather than this table; a certificate `POST` is
+/// not a page, which is why it mounts here.
 pub fn public_routes() -> PublicRouter<AppState> {
-    portal::catalog_presentation_command_routes()
-        .merge(retired_path_routes())
-        .merge(portal::host_crawler_and_legal_routes(
-            sitemap_paths,
-            llms_txt,
-        ))
+    portal::catalog_presentation_command_routes().merge(portal::host_crawler_and_legal_routes(
+        sitemap_paths,
+        llms_txt,
+    ))
 }
 
 /// Every Dioxus SSR router the site mounts: the firm's pages at the root, and

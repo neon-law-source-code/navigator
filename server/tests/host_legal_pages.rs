@@ -40,10 +40,6 @@ fn compose(
 }
 
 /// The site, composed exactly as the binary composes it.
-///
-/// One helper where there were two, from when the firm and a nonprofit were
-/// separate deployments. They became the same expression when the crates
-/// merged, and the second face is retired outright now.
 async fn app() -> Router {
     let state = state().await;
     let dioxus = neon::public_dioxus_routers(&state);

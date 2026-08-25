@@ -51,10 +51,6 @@ fn compose(
 }
 
 /// The site, composed exactly as the binary composes it.
-///
-/// One helper where there were two, from when the firm and a nonprofit were
-/// separate deployments. They became the same expression when the crates
-/// merged, and the second face is retired outright now.
 async fn app() -> Router {
     let state = state().await;
     let dioxus = neon::public_dioxus_routers(&state);
@@ -139,8 +135,7 @@ async fn the_firm_sitemap_advertises_only_pages_the_firm_host_serves() {
 
 /// Every URL the sitemap advertises is a page this host serves — and serves to
 /// a stranger, which is the stricter half. A gated page answers a redirect
-/// rather than `200`, so a crawler sent to one lands on the login door, and a
-/// retired page answers `410`.
+/// rather than `200`, so a crawler sent to one lands on the login door.
 #[tokio::test]
 async fn the_sitemap_advertises_only_pages_the_host_serves_anonymously() {
     let app = app().await;
@@ -171,9 +166,9 @@ async fn every_advertised_url_falls_under_a_declared_brand_path() {
     }
 }
 
-/// The sitemap advertises the firm's pages and no retired URL.
+/// The sitemap advertises the firm's pages.
 #[tokio::test]
-async fn the_sitemap_advertises_the_firm_and_nothing_retired() {
+async fn the_sitemap_advertises_the_firms_pages() {
     let advertised = advertised_paths(&app().await).await;
 
     for firm_page in [
@@ -189,28 +184,6 @@ async fn the_sitemap_advertises_the_firm_and_nothing_retired() {
         assert!(
             advertised.iter().any(|path| path == firm_page),
             "the firm page {firm_page} must be advertised: {advertised:?}"
-        );
-    }
-
-    // A retired URL answers `410 Gone`, which is an answer rather than a
-    // document. Advertising one asks a crawler to index a withdrawal.
-    for retired in [
-        "/foundation",
-        "/foundation/education",
-        "/foundation/attorneys",
-        "/foundation/mission",
-        "/foundation/notations",
-        "/foundation/transparency",
-        "/education",
-        "/legal-aid",
-        "/attorneys",
-        "/mission",
-        "/notations",
-        "/transparency",
-    ] {
-        assert!(
-            !advertised.iter().any(|path| path == retired),
-            "{retired} is retired and must not be advertised: {advertised:?}"
         );
     }
 }

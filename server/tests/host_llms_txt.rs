@@ -51,10 +51,6 @@ fn compose(
 }
 
 /// The site, composed exactly as the binary composes it.
-///
-/// One helper where there were two, from when the firm and a nonprofit were
-/// separate deployments. They became the same expression when the crates
-/// merged, and the second face is retired outright now.
 async fn app() -> Router {
     let state = state().await;
     let dioxus = neon::public_dioxus_routers(&state);
@@ -150,9 +146,9 @@ async fn the_services_entry_does_not_overclaim_published_prices() {
     }
 }
 
-/// The index advertises the firm's pages and nothing retired.
+/// The index advertises the firm's pages.
 #[tokio::test]
-async fn the_index_advertises_the_firm_and_nothing_retired() {
+async fn the_index_advertises_the_firms_pages() {
     let advertised = advertised_paths(&document(&app().await).await);
 
     for firm_page in [
@@ -170,43 +166,11 @@ async fn the_index_advertises_the_firm_and_nothing_retired() {
             "the firm page {firm_page} must be advertised: {advertised:?}"
         );
     }
-
-    // A retired URL answers `410 Gone`. Advertising one indexes a withdrawal as
-    // a document, and an LLM crawler that follows it learns only that the index
-    // is stale.
-    for retired in [
-        "/foundation",
-        "/foundation/education",
-        "/foundation/attorneys",
-        "/foundation/mission",
-        "/foundation/notations",
-        "/foundation/transparency",
-        "/education",
-        "/legal-aid",
-        "/mission",
-        "/notations",
-        "/transparency",
-    ] {
-        assert!(
-            !advertised.iter().any(|path| path == retired),
-            "{retired} is retired and must not be advertised: {advertised:?}"
-        );
-    }
-    for stray in [
-        "/foundation/services",
-        "/foundation/litigation",
-        "/foundation/blog",
-    ] {
-        assert!(
-            !advertised.iter().any(|path| path == stray),
-            "{stray} would file the firm's practice under a retired prefix: {advertised:?}"
-        );
-    }
 }
 
-/// The index opens as the firm and names no retired organization.
+/// The index opens as the firm and names no other organization.
 #[tokio::test]
-async fn the_index_opens_as_the_firm_and_names_nobody_retired() {
+async fn the_index_opens_as_the_firm_and_names_nobody_else() {
     let body = document(&app().await).await;
     assert!(
         body.starts_with(&format!("# {}\n", views::brand::FIRM_BRAND.site_name)),
@@ -214,7 +178,7 @@ async fn the_index_opens_as_the_firm_and_names_nobody_retired() {
     );
     assert!(
         !body.contains("Neon Law Foundation"),
-        "the retired organization is not named in the index: {body}"
+        "no other organization is named in the index: {body}"
     );
 }
 

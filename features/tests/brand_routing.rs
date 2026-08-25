@@ -121,17 +121,16 @@ async fn redirects_to(world: &mut BrandWorld, target: String) {
     );
 }
 
-/// A withdrawn URL answers `410` and points nowhere.
+/// A path with no page answers `404` and points nowhere.
 ///
-/// The status alone is not the assertion. A `410` carrying a `Location` is the
-/// shape a half-finished retirement takes — the route table says gone while the
-/// handler still names a successor — and a browser given both will follow the
-/// header, so the reader never sees the `410` at all.
+/// The status alone is not the assertion. A `404` carrying a `Location` would
+/// send a browser to a page that supposedly does not exist, since a browser
+/// given both follows the header and never surfaces the status at all.
 #[then("the response carries no redirect")]
 async fn carries_no_redirect(world: &mut BrandWorld) {
     assert_eq!(
         world.last_location, None,
-        "a withdrawn URL must point nowhere, got {:?}",
+        "an unpublished path must point nowhere, got {:?}",
         world.last_location,
     );
 }

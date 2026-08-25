@@ -218,11 +218,7 @@ mod tests {
     fn a_lawyer_gains_the_workbench_not_admin() {
         assert_eq!(
             card_ids(ViewerRole::Lawyer),
-            [
-                "team-card-projects",
-                "team-card-lawyer",
-                "team-card-fonts"
-            ]
+            ["team-card-projects", "team-card-lawyer", "team-card-fonts"]
         );
     }
 

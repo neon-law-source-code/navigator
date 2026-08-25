@@ -142,52 +142,27 @@ are different problems with different fixes, so they are different errors.
 Host-based resolution removed the allowlist, not the convention. A repository still has to *earn* the gate, and the two
 fail-closed assertions above are what it earns it with.
 
-Every other repository the Firm administers grew up terminating its `ci.yml` in a job named `verify`, with its
-`production` ruleset requiring that context. `assert_required_check_job` refuses to bind the gate until a job reports as
-`ci`, and `assert_codeowners` refuses until the file names an owner the API resolves. So adopting one is two edits *in
-that repository* — add the aggregating `ci` job, add `.github/CODEOWNERS` — before `ops github setup` will write
-anything.
+Every other repository the Firm administers must terminate its workflow in a job named `ci`. `assert_required_check_job`
+refuses to bind the gate until that job exists. If `.github/CODEOWNERS` is absent, the command plans a one-time creation
+with `* @shicholas`; if it exists, every named user or team must resolve and have write access before any ruleset is
+written.
 
 Order matters and is not a deadlock. Land the `ci` job while the ruleset still requires `verify`; both jobs run, the
 pull request merges on `verify`, and the reconcile afterwards moves the required context from `verify` to `ci`. A
 repository holding template content with no workflow at all has nothing for a required status check to bind to, so it
 takes the CODEOWNERS half and waits for a real `ci.yml` before it can take the rest.
 
-#### Review gate: one ruleset, by decision
+#### Review gate: two rulesets with a narrow bypass
 
-`production` is the whole gate. There is no `production-review` on `main`, and its absence is deliberate — a merge needs
-a green `ci`, not a second pair of eyes.
+Every governed source repository carries `production` and `production-review`. `production` has no bypass actors and
+therefore binds everyone to signed commits, linear history, no deletion or force-push, squash-only merges, resolved
+threads, and the required `ci` check. `production-review` requires one approval from a CODEOWNER, and its bypass actors
+are the numeric users or teams resolved from `.github/CODEOWNERS`. The bypass therefore releases only the review
+requirement for the people who can own the changed path; it does not release the integrity gate.
 
-The Firm ran a two-ruleset shape while it expected outside contributors: `production` for what binds everyone, and a
-separate `production-review` — bypassed by `OrganizationAdmin` — layering one code-owner approval on top. The split
-existed because bypass in GitHub is granted per **ruleset, never per rule**, so it was the only way to exempt the owner
-from approval without also exempting them from signing, linear history, and the test gate.
-
-That asymmetry bought something the current team does not need, and it was retired on 2026-08-19:
-
-> I have auto-merge enabled for everything, when it's a small team like Just Us, I think it's fine as long as the PRs
-> are small and you run through all the tests.
-
-What survives in `production` still binds everyone including the administrator, because it carries no bypass actor: the
-required `ci` check, signed commits, linear history, no deletion and no force-push, and a squash-only pull request with
-every review thread resolved. Nothing merges red, unsigned, or out of order. What changed is that nothing waits on a
-reviewer either — which is why "as long as the PRs are small and you run through all the tests" is the load-bearing half
-of that decision rather than a pleasantry.
-
-Retiring the review ruleset also removed a deadlock it created. Auto-merge merges as whoever *armed* it, and `ci.yml`'s
-`enable-automerge` job arms it as the App rather than as an `OrganizationAdmin`. Under `production-review` the owner's
-own pull requests could sit waiting for an approval that, by GitHub's own rule against self-approval, could never arrive
-— `.github/CODEOWNERS` names one owner and no one else. Auto-merge on green now lands them unattended, and `gh pr merge
---squash --admin` is no longer the owner's route around it.
-
-Restoring the gate is a policy decision rather than a settings click, and it costs a real reviewer: add a second code
-owner who resolves and actually reviews, *then* re-enable the ruleset. `require_code_owner_review` against a single
-owner is the deadlock above, not a gate.
-
-> **The code has not caught up.** `cli::devx::github_setup` still sets `review_gate: true` in both `COMMON_POLICY`
-> and `NAVIGATOR_POLICY`, still builds `desired_review_ruleset`, and its test still asserts that
-> `navigator` carries `production-review`. A run of `ops github setup` would therefore recreate the ruleset this
-> section says is intentionally absent. Reconciling the command with this decision is a separate change.
+The split is required because GitHub scopes bypasses to an entire ruleset rather than to an individual rule. Keeping the
+approval requirement separate gives code owners a safe self-merge path while all other production rules remain
+universal.
 
 Repository permissions are the outer boundary and are not managed by this command: a collaborator with `read` cannot
 push a branch at all, and with forking disabled has no fork path either. `production` governs everyone who *can* push —
@@ -204,8 +179,8 @@ This was not hypothetical while the repository sat on an EMU-provisioned enterpr
 with github.com: a handle carried over from a github.com checkout resolved to nothing. The public host removed that
 particular trap, and left the general one — a misspelled handle, or a person who has left the org — which fails exactly
 the same way and just as silently. `ops github setup` resolves every owner named in `.github/CODEOWNERS` against the API
-(`@user`, `@org/team`; email owners are matched against the commit author and are accepted as-is) and fails closed
-before writing anything.
+(`@user`, `@org/team`) and fails closed before writing anything. Email owners cannot become numeric ruleset actors and
+are rejected when the review gate is enabled.
 
 All assertions run before the first write, so a repository that cannot satisfy the policy is left exactly as it was
 rather than half-reconciled.
@@ -311,8 +286,8 @@ Nothing was given up in the trade. The rulesets are the stricter of the two — 
 them; a classic rule added by hand is invisible to that command and will drift.
 
 `production` keeps its empty `bypass_actors`, so the classic rule's admin enforcement is preserved for everything that
-must hold universally. Nothing is exempt for anyone — see [Review gate: one ruleset, by
-decision](#review-gate-one-ruleset-by-decision).
+must hold universally. The review-only bypass does not release any of these rules — see [Review gate: two rulesets with
+a narrow bypass](#review-gate-two-rulesets-with-a-narrow-bypass).
 
 One caveat learned the hard way: GitHub caches a pull request's merge state. Changing branch protection does **not**
 recompute it for pull requests whose checks have already finished — they stay `BLOCKED` until some later event on the

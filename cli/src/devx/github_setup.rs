@@ -35,6 +35,7 @@ use std::fmt;
 use std::process::Command;
 
 use anyhow::{anyhow, bail, Context, Result};
+use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use reqwest::header;
 use serde::{Deserialize, Serialize};
 
@@ -148,6 +149,7 @@ const BRANCH_RULESET_NAME: &str = "production";
 const TAG_RULESET_NAME: &str = "release-tags";
 const REVIEW_RULESET_NAME: &str = "production-review";
 const LABEL_COLOR: &str = "6f42c1";
+const DEFAULT_CODEOWNERS: &str = "* @shicholas\n";
 
 /// GitHub's own Actions App, which produces the `ci` check run the `production`
 /// ruleset requires. The **slug** is a property of GitHub's App rather than of
@@ -174,6 +176,9 @@ const ACTIONS_APP_SLUG: &str = "github-actions";
 /// whose workflows do not actually define that job, so adopting the convention
 /// is checked rather than assumed.
 const REQUIRED_CHECK: &str = "ci";
+/// Navigator's existing production gate also carries `CodeQL`. Preserve that
+/// repository-specific required check while tightening the shared policy.
+const NAVIGATOR_CODEQL_INTEGRATION_ID: u64 = 57789;
 
 /// Workflow files that may terminate in the [`REQUIRED_CHECK`] job, in the
 /// order they are looked for.
@@ -587,6 +592,7 @@ struct Repository {
     delete_branch_on_merge: Option<bool>,
     squash_merge_commit_title: Option<String>,
     squash_merge_commit_message: Option<String>,
+    pull_request_creation_policy: Option<String>,
     has_issues: bool,
     has_projects: bool,
     has_wiki: bool,
@@ -609,6 +615,7 @@ struct RepositorySettings {
     delete_branch_on_merge: bool,
     squash_merge_commit_title: String,
     squash_merge_commit_message: String,
+    pull_request_creation_policy: String,
     /// Issues, Projects, and the wiki are off on every repository the Firm
     /// administers. Issue tracking is Linear's, so a repository-level issue
     /// tracker is a second inbox nobody reads, and a wiki is documentation
@@ -639,6 +646,7 @@ struct Installation {
 /// or stop the command before any write can happen.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Action {
+    CreateCodeowners,
     UpdateRepositorySettings,
     CreateRuleset { name: String },
     UpdateRuleset { name: String },
@@ -649,6 +657,7 @@ enum Action {
 impl Action {
     fn description(&self) -> String {
         match self {
+            Self::CreateCodeowners => "create .github/CODEOWNERS".to_string(),
             Self::UpdateRepositorySettings => "update repository settings".to_string(),
             Self::CreateRuleset { name } => format!("create ruleset {name}"),
             Self::UpdateRuleset { name } => format!("update ruleset {name}"),
@@ -660,16 +669,28 @@ impl Action {
 
 /// Every policy payload this command writes, in the order it reconciles them.
 /// Kept as typed Rust data so a review sees every protected rule.
-fn desired_rulesets(policy: RepositoryPolicy, actions_app_id: u64) -> Vec<RulesetPayload> {
+fn desired_rulesets(
+    policy: RepositoryPolicy,
+    actions_app_id: u64,
+    review_bypass_actors: &[serde_json::Value],
+) -> Vec<RulesetPayload> {
     let mut rulesets = Vec::new();
     if policy.branch_protections {
-        rulesets.push(desired_branch_ruleset(actions_app_id));
+        let extra_checks = if policy.release_tags {
+            vec![serde_json::json!({
+                "context": "CodeQL",
+                "integration_id": NAVIGATOR_CODEQL_INTEGRATION_ID
+            })]
+        } else {
+            Vec::new()
+        };
+        rulesets.push(desired_branch_ruleset(actions_app_id, &extra_checks));
     }
     if policy.release_tags {
         rulesets.push(desired_tag_ruleset());
     }
     if policy.review_gate {
-        rulesets.push(desired_review_ruleset());
+        rulesets.push(desired_review_ruleset(review_bypass_actors.to_vec()));
     }
     rulesets
 }
@@ -688,7 +709,15 @@ fn desired_rulesets(policy: RepositoryPolicy, actions_app_id: u64) -> Vec<Rulese
 /// Splitting them buys the exact asymmetry the Firm wants. The administrator
 /// bypasses approval and nothing else; `required_status_checks` and
 /// `required_signatures` still apply to them, because those rules are here.
-fn desired_branch_ruleset(actions_app_id: u64) -> RulesetPayload {
+fn desired_branch_ruleset(
+    actions_app_id: u64,
+    extra_required_checks: &[serde_json::Value],
+) -> RulesetPayload {
+    let mut required_checks = vec![serde_json::json!({
+        "context": REQUIRED_CHECK,
+        "integration_id": actions_app_id
+    })];
+    required_checks.extend(extra_required_checks.iter().cloned());
     RulesetPayload {
         name: BRANCH_RULESET_NAME.to_string(),
         target: "branch".to_string(),
@@ -716,9 +745,7 @@ fn desired_branch_ruleset(actions_app_id: u64) -> RulesetPayload {
                 Some(serde_json::json!({
                     "strict_required_status_checks_policy": false,
                     "do_not_enforce_on_create": false,
-                    "required_status_checks": [
-                        {"context": REQUIRED_CHECK, "integration_id": actions_app_id}
-                    ]
+                    "required_status_checks": required_checks
                 })),
             ),
             // The floor every merge clears regardless of who is merging: a
@@ -741,6 +768,7 @@ fn desired_branch_ruleset(actions_app_id: u64) -> RulesetPayload {
                     "required_approving_review_count": 0,
                     "dismiss_stale_reviews_on_push": true,
                     "required_reviewers": [],
+                    "require_extra_approval_for_unattributed_changes": true,
                     "require_code_owner_review": false,
                     "dismissal_restriction": {"enabled": false, "allowed_actors": []},
                     "require_last_push_approval": false,
@@ -808,25 +836,16 @@ fn desired_tag_ruleset() -> RulesetPayload {
 /// commits, linear history, squash-only, resolved threads — lives in
 /// [`desired_branch_ruleset`], which no one bypasses.
 ///
-/// # Why `OrganizationAdmin`
-///
-/// The bypass names a role, not a person. `OrganizationAdmin` resolves to
-/// whoever owns the organization at evaluation time, so the policy survives the
-/// administrator changing without a code edit, and it cannot silently widen the
-/// way a hardcoded username or a `write`-role bypass would. GitHub stores this
-/// actor with a null `actor_id`; the payload spells that out so a read-back
-/// compares equal and the reconcile converges instead of rewriting the ruleset
-/// on every run.
-fn desired_review_ruleset() -> RulesetPayload {
+/// The bypass is built from the numeric users and teams resolved from
+/// `.github/CODEOWNERS`. That keeps the exemption aligned with the people who
+/// can actually approve the repository and avoids widening it to an
+/// organization-admin or repository-wide role.
+fn desired_review_ruleset(bypass_actors: Vec<serde_json::Value>) -> RulesetPayload {
     RulesetPayload {
         name: REVIEW_RULESET_NAME.to_string(),
         target: "branch".to_string(),
         enforcement: "active".to_string(),
-        bypass_actors: vec![serde_json::json!({
-            "actor_id": null,
-            "actor_type": "OrganizationAdmin",
-            "bypass_mode": "always"
-        })],
+        bypass_actors,
         conditions: Conditions {
             ref_name: RefName {
                 exclude: Vec::new(),
@@ -854,6 +873,7 @@ fn desired_review_ruleset() -> RulesetPayload {
                 // colleague's branch and then append their own final commit.
                 "require_last_push_approval": true,
                 "required_reviewers": [],
+                "require_extra_approval_for_unattributed_changes": true,
                 "dismissal_restriction": {"enabled": false, "allowed_actors": []},
                 "required_review_thread_resolution": true,
                 "allowed_merge_methods": ["squash"]
@@ -879,12 +899,54 @@ fn ruleset_matches(desired: &RulesetPayload, live: &RulesetPayload) -> bool {
         rules.sort_by(|left, right| left.kind.cmp(&right.kind));
         rules
     }
+    fn status_checks_are_compatible(desired: &Rule, live: &Rule) -> bool {
+        let Some(desired_parameters) = desired.parameters.as_ref() else {
+            return live.parameters.is_none();
+        };
+        let Some(live_parameters) = live.parameters.as_ref() else {
+            return false;
+        };
+        let Some(wanted) = desired_parameters
+            .get("required_status_checks")
+            .and_then(serde_json::Value::as_array)
+        else {
+            return desired_parameters == live_parameters;
+        };
+        let Some(actual) = live_parameters
+            .get("required_status_checks")
+            .and_then(serde_json::Value::as_array)
+        else {
+            return false;
+        };
+        wanted.iter().all(|check| actual.contains(check))
+            && desired_parameters
+                .as_object()
+                .into_iter()
+                .flat_map(|object| object.iter())
+                .filter(|(key, _)| key.as_str() != "required_status_checks")
+                .all(|(key, value)| live_parameters.get(key) == Some(value))
+    }
+
+    fn rules_match(desired: &Rule, live: &Rule) -> bool {
+        desired.kind == live.kind
+            && if desired.kind == "required_status_checks" {
+                status_checks_are_compatible(desired, live)
+            } else {
+                desired.parameters == live.parameters
+            }
+    }
+
     desired.name == live.name
         && desired.target == live.target
         && desired.enforcement == live.enforcement
         && desired.bypass_actors == live.bypass_actors
         && desired.conditions == live.conditions
-        && by_kind(desired) == by_kind(live)
+        && {
+            let wanted = by_kind(desired);
+            let actual = by_kind(live);
+            wanted.len() == actual.len()
+                && wanted.iter().zip(actual).all(|(d, l)| rules_match(d, l))
+        }
 }
 
 fn rule(kind: &str, parameters: Option<serde_json::Value>) -> Rule {
@@ -957,9 +1019,10 @@ fn assert_no_required_check_dropped(desired: &RulesetPayload, live: &RulesetPayl
 fn ruleset_by_name(
     policy: RepositoryPolicy,
     actions_app_id: u64,
+    review_bypass_actors: &[serde_json::Value],
     name: &str,
 ) -> Result<RulesetPayload> {
-    desired_rulesets(policy, actions_app_id)
+    desired_rulesets(policy, actions_app_id, review_bypass_actors)
         .into_iter()
         .find(|ruleset| ruleset.name == name)
         .ok_or_else(|| anyhow!("no desired ruleset named {name}"))
@@ -967,18 +1030,43 @@ fn ruleset_by_name(
 
 /// `live_rulesets` is positional: entry `i` is what the repository currently
 /// holds for `desired_rulesets(target)[i]`, or `None` when that ruleset is missing.
+#[cfg(test)]
 fn plan(
     policy: RepositoryPolicy,
     actions_app_id: u64,
+    review_bypass_actors: &[serde_json::Value],
+    settings_match: bool,
+    live_rulesets: &[Option<RulesetPayload>],
+    labels: &[Label],
+) -> Vec<Action> {
+    plan_with_codeowners(
+        policy,
+        actions_app_id,
+        review_bypass_actors,
+        false,
+        settings_match,
+        live_rulesets,
+        labels,
+    )
+}
+
+fn plan_with_codeowners(
+    policy: RepositoryPolicy,
+    actions_app_id: u64,
+    review_bypass_actors: &[serde_json::Value],
+    create_codeowners: bool,
     settings_match: bool,
     live_rulesets: &[Option<RulesetPayload>],
     labels: &[Label],
 ) -> Vec<Action> {
     let mut actions = Vec::new();
+    if create_codeowners {
+        actions.push(Action::CreateCodeowners);
+    }
     if !settings_match {
         actions.push(Action::UpdateRepositorySettings);
     }
-    for (desired, live) in desired_rulesets(policy, actions_app_id)
+    for (desired, live) in desired_rulesets(policy, actions_app_id, review_bypass_actors)
         .iter()
         .zip(live_rulesets)
     {
@@ -1122,6 +1210,25 @@ impl GitHubClient {
         }))
     }
 
+    async fn user_id(&self, handle: &str) -> Result<u64> {
+        #[derive(Deserialize)]
+        struct User {
+            id: u64,
+        }
+        Ok(self.get_json::<User>(&format!("/users/{handle}")).await?.id)
+    }
+
+    async fn team_id(&self, org: &str, team: &str) -> Result<u64> {
+        #[derive(Deserialize)]
+        struct Team {
+            id: u64,
+        }
+        Ok(self
+            .get_json::<Team>(&format!("/orgs/{org}/teams/{team}"))
+            .await?
+            .id)
+    }
+
     /// Whether a resource exists, distinguishing "absent" from "the request
     /// failed". A 404 is the answer; anything else that is not a success is an
     /// error, so a revoked token cannot be read as a missing account.
@@ -1161,22 +1268,6 @@ impl GitHubClient {
             bail!("GitHub GET {url} returned {}: {body}", status.as_u16());
         }
         Ok(Some(body))
-    }
-
-    async fn get_text(&self, path: &str) -> Result<String> {
-        let url = self.url(path);
-        let response = self
-            .http
-            .get(&url)
-            .header(header::ACCEPT, "application/vnd.github.raw+json")
-            .send()
-            .await?;
-        let status = response.status();
-        let body = response.text().await.unwrap_or_default();
-        if !status.is_success() {
-            bail!("GitHub GET {url} returned {}: {body}", status.as_u16());
-        }
-        Ok(body)
     }
 
     async fn put_json(&self, path: &str, body: &impl Serialize) -> Result<()> {
@@ -1254,14 +1345,25 @@ async fn reconcile(policy: RepositoryPolicy, client: &GitHubClient, dry_run: boo
     let actions_app_id = actions_integration_id(client).await?;
     eprintln!("==> {ACTIONS_APP_SLUG:?} App on this host is id {actions_app_id}");
 
-    if policy.assert_codeowners {
-        let codeowners = client
-            .get_text(&client.repo_path("/contents/.github/CODEOWNERS"))
-            .await?;
+    let mut create_codeowners = false;
+    let review_bypass_actors = if policy.assert_codeowners {
+        let codeowners = if let Some(contents) = client
+            .get_optional_text(&client.repo_path("/contents/.github/CODEOWNERS"))
+            .await?
+        {
+            contents
+        } else {
+            create_codeowners = true;
+            DEFAULT_CODEOWNERS.to_string()
+        };
         let owners = assert_codeowners(&codeowners)?;
         assert_owners_resolve(client, &owners).await?;
+        let actors = codeowner_bypass_actors(client, &owners).await?;
         eprintln!("==> CODEOWNERS verified");
-    }
+        actors
+    } else {
+        Vec::new()
+    };
 
     if policy.assert_devx_app {
         assert_app_installation(client).await?;
@@ -1270,7 +1372,7 @@ async fn reconcile(policy: RepositoryPolicy, client: &GitHubClient, dry_run: boo
     let summaries: Vec<RulesetSummary> = client.get_json(&client.repo_path("/rulesets")).await?;
     let mut ruleset_ids = HashMap::new();
     let mut live_rulesets = Vec::new();
-    for desired in desired_rulesets(policy, actions_app_id) {
+    for desired in desired_rulesets(policy, actions_app_id, &review_bypass_actors) {
         let Some(summary) = summaries
             .iter()
             .find(|summary| summary.name == desired.name)
@@ -1285,7 +1387,9 @@ async fn reconcile(policy: RepositoryPolicy, client: &GitHubClient, dry_run: boo
         // Before planning, and therefore before any write: an update PUTs the
         // whole desired payload, so a required check that is live but not
         // desired would be removed rather than kept.
-        assert_no_required_check_dropped(&desired, &live)?;
+        if !ruleset_matches(&desired, &live) {
+            assert_no_required_check_dropped(&desired, &live)?;
+        }
         live_rulesets.push(Some(live));
     }
     let labels = if policy.labels.is_empty() {
@@ -1293,9 +1397,11 @@ async fn reconcile(policy: RepositoryPolicy, client: &GitHubClient, dry_run: boo
     } else {
         client.get_all_labels().await?
     };
-    let actions = plan(
+    let actions = plan_with_codeowners(
         policy,
         actions_app_id,
+        &review_bypass_actors,
+        create_codeowners,
         RepositorySettings::from_live(&repository, &client.repository)?
             == desired_repository_settings(),
         &live_rulesets,
@@ -1317,7 +1423,15 @@ async fn reconcile(policy: RepositoryPolicy, client: &GitHubClient, dry_run: boo
         return Ok(());
     }
     for action in actions {
-        apply(policy, actions_app_id, client, &ruleset_ids, action).await?;
+        apply(
+            policy,
+            actions_app_id,
+            client,
+            &ruleset_ids,
+            &review_bypass_actors,
+            action,
+        )
+        .await?;
     }
     eprintln!("==> GitHub settings reconciled");
     Ok(())
@@ -1328,9 +1442,21 @@ async fn apply(
     actions_app_id: u64,
     client: &GitHubClient,
     ruleset_ids: &HashMap<String, u64>,
+    review_bypass_actors: &[serde_json::Value],
     action: Action,
 ) -> Result<()> {
     match action {
+        Action::CreateCodeowners => {
+            client
+                .put_json(
+                    &client.repo_path("/contents/.github/CODEOWNERS"),
+                    &serde_json::json!({
+                        "message": "chore: add repository code owners",
+                        "content": BASE64_STANDARD.encode(DEFAULT_CODEOWNERS),
+                    }),
+                )
+                .await
+        }
         Action::UpdateRepositorySettings => {
             client
                 .patch_json(&client.repo_path(""), &desired_repository_settings())
@@ -1340,7 +1466,7 @@ async fn apply(
             client
                 .post_json(
                     &client.repo_path("/rulesets"),
-                    &ruleset_by_name(policy, actions_app_id, &name)?,
+                    &ruleset_by_name(policy, actions_app_id, review_bypass_actors, &name)?,
                 )
                 .await
         }
@@ -1351,7 +1477,7 @@ async fn apply(
             client
                 .put_json(
                     &client.repo_path(&format!("/rulesets/{id}")),
-                    &ruleset_by_name(policy, actions_app_id, &name)?,
+                    &ruleset_by_name(policy, actions_app_id, review_bypass_actors, &name)?,
                 )
                 .await
         }
@@ -1403,6 +1529,7 @@ fn desired_repository_settings() -> RepositorySettings {
         delete_branch_on_merge: true,
         squash_merge_commit_title: "PR_TITLE".to_string(),
         squash_merge_commit_message: "PR_BODY".to_string(),
+        pull_request_creation_policy: "collaborators_only".to_string(),
         has_issues: false,
         has_projects: false,
         has_wiki: false,
@@ -1452,6 +1579,10 @@ impl RepositorySettings {
                 .squash_merge_commit_message
                 .clone()
                 .ok_or_else(|| missing("squash_merge_commit_message"))?,
+            pull_request_creation_policy: repository
+                .pull_request_creation_policy
+                .clone()
+                .ok_or_else(|| missing("pull_request_creation_policy"))?,
             has_issues: repository.has_issues,
             has_projects: repository.has_projects,
             has_wiki: repository.has_wiki,
@@ -1565,6 +1696,35 @@ async fn assert_owners_resolve(client: &GitHubClient, owners: &[String]) -> Resu
         owners.join(", ")
     );
     Ok(())
+}
+
+/// Resolve CODEOWNERS accounts to the numeric actors GitHub accepts in a
+/// ruleset bypass. The review ruleset is intentionally bypassed only for the
+/// owners that can approve the repository, not for the organization-admin
+/// role or a broad repository role.
+async fn codeowner_bypass_actors(
+    client: &GitHubClient,
+    owners: &[String],
+) -> Result<Vec<serde_json::Value>> {
+    let mut actors = Vec::new();
+    for owner in owners {
+        let Some(handle) = owner.strip_prefix('@') else {
+            bail!(
+                "CODEOWNERS names email {owner}, which cannot be represented as a GitHub ruleset actor; use a @user or @org/team owner"
+            );
+        };
+        let (actor_type, actor_id) = if let Some((org, team)) = handle.split_once('/') {
+            ("Team", client.team_id(org, team).await?)
+        } else {
+            ("User", client.user_id(handle).await?)
+        };
+        actors.push(serde_json::json!({
+            "actor_id": actor_id,
+            "actor_type": actor_type,
+            "bypass_mode": "always"
+        }));
+    }
+    Ok(actors)
 }
 
 /// Effective check-run names of every job in a workflow file.
@@ -1772,7 +1932,7 @@ mod tests {
         // The id is threaded, not constant: the same policy reconciled against
         // two hosts must require the check under each host's own App.
         for id in [TEST_ACTIONS_APP_ID, TEST_OTHER_APP_ID] {
-            let value = serde_json::to_value(desired_branch_ruleset(id)).unwrap();
+            let value = serde_json::to_value(desired_branch_ruleset(id, &[])).unwrap();
             let checks = value["rules"]
                 .as_array()
                 .unwrap()
@@ -1787,7 +1947,7 @@ mod tests {
     }
 
     fn live_ruleset() -> RulesetPayload {
-        let mut ruleset = desired_branch_ruleset(TEST_ACTIONS_APP_ID);
+        let mut ruleset = desired_branch_ruleset(TEST_ACTIONS_APP_ID, &[]);
         let pull_request = ruleset
             .rules
             .iter_mut()
@@ -1815,6 +1975,7 @@ mod tests {
             delete_branch_on_merge: Some(true),
             squash_merge_commit_title: Some("PR_TITLE".to_string()),
             squash_merge_commit_message: Some("PR_BODY".to_string()),
+            pull_request_creation_policy: Some("collaborators_only".to_string()),
             has_issues: false,
             has_projects: false,
             has_wiki: false,
@@ -1838,16 +1999,21 @@ mod tests {
     #[test]
     fn branch_ruleset_has_no_bypass_actors() {
         assert_eq!(
-            desired_branch_ruleset(TEST_ACTIONS_APP_ID).bypass_actors,
+            desired_branch_ruleset(TEST_ACTIONS_APP_ID, &[]).bypass_actors,
             Vec::<serde_json::Value>::new(),
         );
     }
 
-    /// The review gate requires a code owner's approval and exempts exactly one
-    /// actor: whoever owns the organization.
+    /// The review gate requires a code owner's approval and accepts the
+    /// resolved CODEOWNERS actors as its only bypasses.
     #[test]
     fn review_ruleset_requires_code_owner_approval() {
-        let value = serde_json::to_value(desired_review_ruleset()).unwrap();
+        let value = serde_json::to_value(desired_review_ruleset(vec![serde_json::json!({
+            "actor_id": 42,
+            "actor_type": "User",
+            "bypass_mode": "always"
+        })]))
+        .unwrap();
         assert_eq!(value["name"], "production-review");
         assert_eq!(value["target"], "branch");
         assert_eq!(value["enforcement"], "active");
@@ -1862,21 +2028,18 @@ mod tests {
         assert_eq!(parameters["require_last_push_approval"], true);
     }
 
-    /// The bypass names the organization-owner *role*, never a person.
-    ///
-    /// A username would have to be re-edited when the administrator changes, and
-    /// a `RepositoryRole` bypass would silently widen the exemption to everyone
-    /// holding that role. The null `actor_id` is what GitHub stores for this
-    /// actor type; spelling it in the desired payload is what lets a read-back
-    /// compare equal so the reconcile converges instead of rewriting the ruleset
-    /// on every run.
     #[test]
-    fn review_ruleset_is_bypassed_only_by_the_organization_owner() {
+    fn review_ruleset_is_bypassed_only_by_resolved_codeowners() {
         assert_eq!(
-            desired_review_ruleset().bypass_actors,
+            desired_review_ruleset(vec![serde_json::json!({
+                "actor_id": 42,
+                "actor_type": "User",
+                "bypass_mode": "always"
+            })])
+            .bypass_actors,
             vec![serde_json::json!({
-                "actor_id": null,
-                "actor_type": "OrganizationAdmin",
+                "actor_id": 42,
+                "actor_type": "User",
                 "bypass_mode": "always"
             })],
         );
@@ -1888,7 +2051,7 @@ mod tests {
     #[test]
     fn every_repository_carries_both_halves_of_the_gate() {
         let names = |policy| {
-            desired_rulesets(policy, TEST_ACTIONS_APP_ID)
+            desired_rulesets(policy, TEST_ACTIONS_APP_ID, &[])
                 .into_iter()
                 .map(|ruleset| ruleset.name)
                 .collect::<Vec<_>>()
@@ -1932,7 +2095,7 @@ mod tests {
             "slugs are matched case-insensitively, as they are for Navigator itself"
         );
         assert!(
-            desired_rulesets(TAP_POLICY, TEST_ACTIONS_APP_ID).is_empty(),
+            desired_rulesets(TAP_POLICY, TEST_ACTIONS_APP_ID, &[]).is_empty(),
             "a ruleset on the tap refuses the bump push that is the tap's whole purpose"
         );
     }
@@ -2071,6 +2234,39 @@ mod tests {
         .unwrap();
     }
 
+    #[tokio::test]
+    async fn codeowner_bypasses_use_resolved_numeric_actors() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/users/owner"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id": 42})))
+            .mount(&server)
+            .await;
+        let client = test_client(&server);
+        let actors = codeowner_bypass_actors(&client, &["@owner".to_string()])
+            .await
+            .unwrap();
+        assert_eq!(
+            actors,
+            vec![serde_json::json!({
+                "actor_id": 42,
+                "actor_type": "User",
+                "bypass_mode": "always"
+            })]
+        );
+    }
+
+    #[tokio::test]
+    async fn email_codeowners_cannot_be_ruleset_bypasses() {
+        let server = MockServer::start().await;
+        let client = test_client(&server);
+        let error = codeowner_bypass_actors(&client, &["legal@example.com".to_string()])
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("cannot be represented"), "{error}");
+    }
+
     /// An owner that exists and cannot write here is dropped by GitHub exactly
     /// like a misspelling, so it must fail the same way.
     ///
@@ -2154,7 +2350,7 @@ mod tests {
     /// bypass actor.
     #[test]
     fn branch_ruleset_still_requires_signatures_of_everyone() {
-        let ruleset = desired_branch_ruleset(TEST_ACTIONS_APP_ID);
+        let ruleset = desired_branch_ruleset(TEST_ACTIONS_APP_ID, &[]);
         assert!(ruleset
             .rules
             .iter()
@@ -2240,7 +2436,7 @@ mod tests {
 
     #[test]
     fn desired_ruleset_serializes_to_github_put_payload() {
-        let value = serde_json::to_value(desired_branch_ruleset(TEST_ACTIONS_APP_ID)).unwrap();
+        let value = serde_json::to_value(desired_branch_ruleset(TEST_ACTIONS_APP_ID, &[])).unwrap();
         assert_eq!(value["name"], "production");
         assert_eq!(
             value["conditions"]["ref_name"]["include"],
@@ -2274,7 +2470,7 @@ mod tests {
     /// posts a check here — the gate reads as configured and enforces nothing.
     #[test]
     fn branch_ruleset_gates_on_the_ci_test_check() {
-        let value = serde_json::to_value(desired_branch_ruleset(TEST_ACTIONS_APP_ID)).unwrap();
+        let value = serde_json::to_value(desired_branch_ruleset(TEST_ACTIONS_APP_ID, &[])).unwrap();
         let checks = value["rules"]
             .as_array()
             .unwrap()
@@ -2300,17 +2496,31 @@ mod tests {
     /// gate silently.
     #[test]
     fn every_repository_requires_the_same_check_context() {
-        for policy in [NAVIGATOR_POLICY, COMMON_POLICY] {
-            let contexts = desired_rulesets(policy, TEST_ACTIONS_APP_ID)
-                .into_iter()
-                .flat_map(|ruleset| ruleset.rules)
-                .filter(|rule| rule.kind == "required_status_checks")
-                .map(|rule| {
-                    rule.parameters.unwrap()["required_status_checks"][0]["context"].clone()
-                })
-                .collect::<Vec<_>>();
-            assert_eq!(contexts, vec![serde_json::json!("ci")], "{policy:?}");
-        }
+        let policy = COMMON_POLICY;
+        let contexts = desired_rulesets(policy, TEST_ACTIONS_APP_ID, &[])
+            .into_iter()
+            .flat_map(|ruleset| ruleset.rules)
+            .filter(|rule| rule.kind == "required_status_checks")
+            .map(|rule| rule.parameters.unwrap()["required_status_checks"][0]["context"].clone())
+            .collect::<Vec<_>>();
+        assert_eq!(contexts, vec![serde_json::json!("ci")], "{policy:?}");
+    }
+
+    #[test]
+    fn navigator_preserves_its_existing_codeql_check_alongside_ci() {
+        let contexts = desired_rulesets(NAVIGATOR_POLICY, TEST_ACTIONS_APP_ID, &[])
+            .into_iter()
+            .flat_map(|ruleset| ruleset.rules)
+            .filter(|rule| rule.kind == "required_status_checks")
+            .flat_map(|rule| {
+                rule.parameters.unwrap()["required_status_checks"]
+                    .as_array()
+                    .unwrap()
+                    .clone()
+            })
+            .filter_map(|check| check["context"].as_str().map(str::to_string))
+            .collect::<Vec<_>>();
+        assert_eq!(contexts, vec!["ci", "CodeQL"]);
     }
 
     /// The repository's own workflow satisfies the convention the policy
@@ -2352,13 +2562,14 @@ mod tests {
     /// never converges.
     #[test]
     fn rule_order_is_not_drift() {
-        let desired = desired_branch_ruleset(TEST_ACTIONS_APP_ID);
+        let desired = desired_branch_ruleset(TEST_ACTIONS_APP_ID, &[]);
         let mut permuted = desired.clone();
         permuted.rules.reverse();
         assert!(ruleset_matches(&desired, &permuted));
         assert!(plan(
             COMMON_POLICY,
             TEST_ACTIONS_APP_ID,
+            &[],
             true,
             &[Some(permuted)],
             &[]
@@ -2369,7 +2580,7 @@ mod tests {
     /// Reordering is forgiven; a changed rule is not.
     #[test]
     fn a_changed_rule_is_still_drift() {
-        let desired = desired_branch_ruleset(TEST_ACTIONS_APP_ID);
+        let desired = desired_branch_ruleset(TEST_ACTIONS_APP_ID, &[]);
         let mut weakened = desired.clone();
         weakened
             .rules
@@ -2386,21 +2597,29 @@ mod tests {
                 description: Some(label.description.to_string()),
             })
             .collect::<Vec<_>>();
-        let live = desired_rulesets(NAVIGATOR_POLICY, TEST_ACTIONS_APP_ID)
+        let live = desired_rulesets(NAVIGATOR_POLICY, TEST_ACTIONS_APP_ID, &[])
             .into_iter()
             .map(Some)
             .collect::<Vec<_>>();
-        assert!(plan(NAVIGATOR_POLICY, TEST_ACTIONS_APP_ID, true, &live, &labels).is_empty());
+        assert!(plan(
+            NAVIGATOR_POLICY,
+            TEST_ACTIONS_APP_ID,
+            &[],
+            true,
+            &live,
+            &labels
+        )
+        .is_empty());
     }
 
     #[test]
     fn planner_reconciles_merge_settings_before_other_drift() {
-        let live = desired_rulesets(COMMON_POLICY, TEST_ACTIONS_APP_ID)
+        let live = desired_rulesets(COMMON_POLICY, TEST_ACTIONS_APP_ID, &[])
             .into_iter()
             .map(Some)
             .collect::<Vec<_>>();
         assert_eq!(
-            plan(COMMON_POLICY, TEST_ACTIONS_APP_ID, false, &live, &[]),
+            plan(COMMON_POLICY, TEST_ACTIONS_APP_ID, &[], false, &live, &[]),
             vec![Action::UpdateRepositorySettings]
         );
     }
@@ -2410,12 +2629,18 @@ mod tests {
     #[test]
     fn planner_creates_a_missing_ruleset() {
         let live = vec![
-            Some(desired_branch_ruleset(TEST_ACTIONS_APP_ID)),
+            Some(desired_branch_ruleset(
+                TEST_ACTIONS_APP_ID,
+                &[serde_json::json!({
+                    "context": "CodeQL",
+                    "integration_id": NAVIGATOR_CODEQL_INTEGRATION_ID
+                })],
+            )),
             None,
             None,
         ];
         assert_eq!(
-            plan(NAVIGATOR_POLICY, TEST_ACTIONS_APP_ID, true, &live, &[]),
+            plan(NAVIGATOR_POLICY, TEST_ACTIONS_APP_ID, &[], true, &live, &[]),
             vec![
                 Action::CreateRuleset {
                     name: "release-tags".to_string()
@@ -2448,10 +2673,17 @@ mod tests {
         let live = vec![
             Some(live_ruleset()),
             Some(desired_tag_ruleset()),
-            Some(desired_review_ruleset()),
+            Some(desired_review_ruleset(Vec::new())),
         ];
         assert_eq!(
-            plan(NAVIGATOR_POLICY, TEST_ACTIONS_APP_ID, true, &live, &labels),
+            plan(
+                NAVIGATOR_POLICY,
+                TEST_ACTIONS_APP_ID,
+                &[],
+                true,
+                &live,
+                &labels
+            ),
             vec![
                 Action::UpdateRuleset {
                     name: "production".to_string()
@@ -2561,7 +2793,8 @@ mod tests {
         // visibility write. Adding a variant that was one would stop compiling
         // here rather than shipping a one-way door.
         let writes_visibility = |action: &Action| match action {
-            Action::UpdateRepositorySettings
+            Action::CreateCodeowners
+            | Action::UpdateRepositorySettings
             | Action::CreateRuleset { .. }
             | Action::UpdateRuleset { .. }
             | Action::CreateLabel { .. }
@@ -2580,8 +2813,8 @@ mod tests {
         // And the two organizations' policies differ in nothing the planner
         // reads, so a reconcile writes the same thing in either one.
         assert_eq!(
-            plan(COMMON_POLICY, TEST_ACTIONS_APP_ID, false, &[], &[]),
-            plan(CLIENT_POLICY, TEST_ACTIONS_APP_ID, false, &[], &[]),
+            plan(COMMON_POLICY, TEST_ACTIONS_APP_ID, &[], false, &[], &[]),
+            plan(CLIENT_POLICY, TEST_ACTIONS_APP_ID, &[], false, &[], &[]),
         );
     }
 
@@ -2799,7 +3032,7 @@ mod tests {
     /// The common policy is the full gate minus only the release automation.
     #[test]
     fn the_common_policy_is_the_full_gate_without_release_automation() {
-        let rulesets = desired_rulesets(COMMON_POLICY, TEST_ACTIONS_APP_ID);
+        let rulesets = desired_rulesets(COMMON_POLICY, TEST_ACTIONS_APP_ID, &[]);
         assert_eq!(rulesets.len(), 2);
         assert!(rulesets[0].bypass_actors.is_empty());
         let checks = serde_json::to_value(&rulesets[0]).unwrap()["rules"]
@@ -2841,7 +3074,14 @@ mod tests {
             // `reconcile` will have carried into the rule. Asserting the written
             // body against it is what proves the read reaches the write.
             .and(body_json(
-                serde_json::to_value(desired_branch_ruleset(TEST_ACTIONS_APP_ID)).unwrap(),
+                serde_json::to_value(desired_branch_ruleset(
+                    TEST_ACTIONS_APP_ID,
+                    &[serde_json::json!({
+                        "context": "CodeQL",
+                        "integration_id": NAVIGATOR_CODEQL_INTEGRATION_ID
+                    })],
+                ))
+                .unwrap(),
             ))
             .respond_with(ResponseTemplate::new(200))
             .expect(1)
@@ -2914,6 +3154,7 @@ mod tests {
                 "delete_branch_on_merge": true,
                 "squash_merge_commit_title": "PR_TITLE",
                 "squash_merge_commit_message": "PR_BODY",
+                "pull_request_creation_policy": "collaborators_only",
                 "has_issues": false,
                 "has_projects": false,
                 "has_wiki": false,
@@ -2986,6 +3227,7 @@ mod tests {
                 "delete_branch_on_merge": true,
                 "squash_merge_commit_title": "PR_TITLE",
                 "squash_merge_commit_message": "PR_BODY",
+                "pull_request_creation_policy": "collaborators_only",
                 "has_issues": false,
                 "has_projects": false,
                 "has_wiki": false,
@@ -3001,7 +3243,7 @@ mod tests {
         // written onto a repository where every path is in fact unowned.
         Mock::given(method("GET"))
             .and(path("/users/owner"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({})))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"id": 42})))
             .mount(server)
             .await;
         // Existing is not owning: the owner must be able to write here.
@@ -3046,7 +3288,15 @@ mod tests {
             .await;
         Mock::given(method("GET"))
             .and(path("/repos/acme/navigator/rulesets/9"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(desired_review_ruleset()))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(desired_review_ruleset(vec![
+                    serde_json::json!({
+                        "actor_id": 42,
+                        "actor_type": "User",
+                        "bypass_mode": "always"
+                    }),
+                ])),
+            )
             .mount(server)
             .await;
         Mock::given(method("GET"))
@@ -3251,6 +3501,7 @@ mod tests {
             "delete_branch_on_merge": null,
             "squash_merge_commit_title": null,
             "squash_merge_commit_message": null,
+            "pull_request_creation_policy": null,
             "has_issues": false,
             "has_projects": false,
             "has_wiki": false,
@@ -3271,7 +3522,7 @@ mod tests {
     /// names `ci` alone.
     #[test]
     fn a_live_required_check_is_never_dropped_silently() {
-        let desired = desired_branch_ruleset(TEST_ACTIONS_APP_ID);
+        let desired = desired_branch_ruleset(TEST_ACTIONS_APP_ID, &[]);
         let mut live = desired.clone();
         for live_rule in &mut live.rules {
             if live_rule.kind == "required_status_checks" {
@@ -3298,11 +3549,11 @@ mod tests {
     /// already-converged repository unreconcilable.
     #[test]
     fn matching_required_checks_pass_the_guard() {
-        let desired = desired_branch_ruleset(TEST_ACTIONS_APP_ID);
+        let desired = desired_branch_ruleset(TEST_ACTIONS_APP_ID, &[]);
         assert!(assert_no_required_check_dropped(&desired, &desired.clone()).is_ok());
         // A ruleset with no status-check rule at all (the review gate) has
         // nothing to drop.
-        let review = desired_review_ruleset();
+        let review = desired_review_ruleset(Vec::new());
         assert!(assert_no_required_check_dropped(&review, &review.clone()).is_ok());
         assert!(required_contexts(&review).is_empty());
     }

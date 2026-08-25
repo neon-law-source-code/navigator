@@ -233,7 +233,8 @@ EXPOSE 3001
 # Artifact Registry and GHCR read it for the package page, where a puller
 # actually looks.
 LABEL org.opencontainers.image.licenses="BUSL-1.1" \
-      org.opencontainers.image.vendor="Shook Law PLLC"
+      org.opencontainers.image.vendor="Shook Law PLLC" \
+      org.opencontainers.image.source="https://github.com/neon-law-source-code/navigator"
 
 COPY LICENSE /app/LICENSE
 COPY NOTICE  /app/NOTICE

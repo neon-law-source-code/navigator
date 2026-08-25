@@ -142,3 +142,7 @@ RUN cargo build --locked -p cli \
 # cook` above leaves the registry and dependency target artifacts warm.
 
 CMD ["bash"]
+
+# GHCR uses this OCI annotation to connect the runner image to the repository
+# that publishes it, so its Actions token retains package access after a move.
+LABEL org.opencontainers.image.source="https://github.com/neon-law-source-code/navigator"

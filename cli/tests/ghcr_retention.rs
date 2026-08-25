@@ -73,6 +73,36 @@ fn sweep_script() -> String {
         .join("\n")
 }
 
+/// A GHCR container package can inherit the publishing repository's access only
+/// when the image identifies that repository as its source. Without this OCI
+/// label a source-repository move leaves newly published packages unlinked and
+/// the retention workflow's `GITHUB_TOKEN` cannot delete their old versions.
+#[test]
+fn every_published_containerfile_links_the_canonical_source_repository() {
+    const SOURCE: &str =
+        "org.opencontainers.image.source=\"https://github.com/neon-law-source-code/navigator\"";
+    let images = repo_root().join("images");
+    let mut offenders = Vec::new();
+
+    for entry in fs::read_dir(&images).expect("read images/").flatten() {
+        let path = entry.path();
+        let name = entry.file_name().to_string_lossy().to_string();
+        if !name.starts_with("Containerfile.") {
+            continue;
+        }
+        let body = fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("read {}: {error}", path.display()));
+        if !body.contains(SOURCE) {
+            offenders.push(name);
+        }
+    }
+
+    assert!(
+        offenders.is_empty(),
+        "every published Containerfile must set `{SOURCE}` so GHCR links its package to the canonical source repository: {offenders:?}"
+    );
+}
+
 /// 01:11 UTC, and 1:11 rather than 1:00 on purpose: GitHub delays scheduled runs
 /// when the hosted-runner queue is deep, and the top of the hour is when it is
 /// deepest. The old nightly release held this slot; the sweep inherits it now

@@ -2534,7 +2534,7 @@ mod crawler_discovery_tests {
         assert!(out.contains("- [Writing](https://www.example.com/blog): Posts.\n"));
         // Both hosts mount the same application, so the notes about it are the
         // shared half and arrive without the brand supplying them.
-        assert!(out.contains("This is not legal advice"));
+        assert!(out.contains("Nothing is legal advice without a signed retainer"));
         assert!(out.contains("`{{placeholders}}`"));
     }
 
@@ -2629,7 +2629,7 @@ pub type LlmsTxtDocument = fn(&AppState) -> LlmsTxt;
 /// questionnaire — reads identically on either domain.
 const LLMS_TXT_NOTES: &str = "\
 Important notes:
-- This is not legal advice; attorney review remains required.
+- Nothing is legal advice without a signed retainer for an active project.
 - A Template is a markdown file with YAML frontmatter, `questionnaire:`, `workflow:`, and `{{placeholders}}`.
 - A Notation is a running instance of a Template, bound to a matter and respondent.
 - When writing notation, ground questionnaire states and placeholders in the Navigator glossary before inventing `custom_*` fields.

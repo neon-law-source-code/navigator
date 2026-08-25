@@ -2480,9 +2480,9 @@ async fn llms_txt_indexes_the_markdown_corpus_with_absolute_urls() {
     assert!(body.contains("`{{placeholders}}`"));
     assert!(body.contains("ground questionnaire states and placeholders"));
     assert!(body.contains("## Pages"));
-    // The firm's own marketing surface. The workshops and presentations
-    // catalogs are public root-level material and are advertised in their own
-    // sections below.
+    // The firm's own marketing surface. The workshops catalog is public
+    // root-level material and is advertised in its own section below; the
+    // presentations catalog is not curated into the index at all.
     for page in [
         "https://www.example.com/)",
         "https://www.example.com/services)",
@@ -2547,8 +2547,8 @@ async fn llms_txt_indexes_the_markdown_corpus_with_absolute_urls() {
             "llms.txt must not carry {heading}: {body}"
         );
     }
-    // This fixture holds one public workshop and no presentations, so the
-    // workshop corpus is present while the presentation corpus is empty.
+    // This fixture holds one public workshop, so the workshop corpus is
+    // present; the index does not curate a presentation corpus at all.
     assert!(body.contains("## Workshop Corpus"));
     assert!(body.contains("/workshops/use-the-navigator.md"));
     assert!(!body.contains("## Presentation Corpus"));
@@ -2593,10 +2593,9 @@ async fn deploy_workshop_md_twin_and_llms_index_the_real_content() {
     );
     assert!(body.contains("cargo run -p cli -- ops gcp setup --project-id"));
 
-    // The firm's llms.txt advertises the talks — anonymous, so a crawler can
-    // fetch every `.md` twin — and withholds the class twin this test just
-    // fetched with a session. Advertising a gated document is advertising a
-    // login redirect.
+    // The firm's llms.txt withholds the class twin this test just fetched
+    // with a session — advertising a gated document is advertising a login
+    // redirect — and does not curate a talks corpus at all.
     let resp = app
         .oneshot(
             Request::builder()
@@ -2609,8 +2608,8 @@ async fn deploy_workshop_md_twin_and_llms_index_the_real_content() {
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
     assert!(
-        body.contains("## Presentation Corpus"),
-        "the firm's llms.txt carries the talks corpus: {body}"
+        !body.contains("## Presentation Corpus"),
+        "the firm's llms.txt does not carry a talks corpus: {body}"
     );
     assert!(
         body.contains("## Workshop Corpus") && body.contains("/workshops/"),

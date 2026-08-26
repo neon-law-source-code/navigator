@@ -113,10 +113,11 @@ fn the_railed_calibration_draws_twenty_eight_more_runs_than_an_unrailed_one() {
     let railed = glyph_runs(&render(Variant::NumberedRailTrial, body));
     let unrailed = glyph_runs(&render(Variant::NoRailTrial, body));
 
+    let lines_per_page = Variant::NumberedRailTrial.calibration().lines_per_page as usize;
     assert!(
-        railed >= unrailed + pleading::LINES_PER_PAGE as usize,
+        railed >= unrailed + lines_per_page,
         "railed page carried {railed} runs against {unrailed} unrailed; \
-         the 28-number rail did not draw"
+         the {lines_per_page}-number rail did not draw"
     );
 }
 
@@ -128,14 +129,15 @@ fn the_unrailed_calibrations_draw_no_rail() {
     let body = "Argument.\n";
     let baseline = glyph_runs(&render(Variant::NoRailTrial, body));
     let appellate = glyph_runs(&render(Variant::Appellate, body));
+    let lines_per_page = Variant::NumberedRailTrial.calibration().lines_per_page as usize;
 
     assert!(
-        appellate < baseline + pleading::LINES_PER_PAGE as usize,
+        appellate < baseline + lines_per_page,
         "appellate drew rail-like runs it should not have"
     );
-    // A bare body is a handful of runs, nowhere near a 28-number rail.
+    // A bare body is a handful of runs, nowhere near a full-page rail.
     assert!(
-        baseline < pleading::LINES_PER_PAGE as usize,
+        baseline < lines_per_page,
         "an unrailed page should carry only the body, got {baseline} runs"
     );
 }
@@ -172,5 +174,59 @@ fn grid_skips_and_authority_entries_compile_into_the_page() {
     assert!(
         glyph_runs(&bytes) > 10,
         "the authorities table rendered nothing"
+    );
+}
+
+/// Every calibration renders in Tinos, never in the firm's own brand stack
+/// — a clean compile is not proof, because Typst silently falls back off a
+/// font stack that fails to resolve, and the firm stack (GORP Serif, Noto
+/// Serif) is registered with the engine too. Assert the embedded font
+/// program is actually Tinos.
+#[test]
+fn every_calibration_embeds_tinos_not_the_firm_stack() {
+    for variant in Variant::ALL {
+        let bytes = render(*variant, "Defendant answers the complaint.\n");
+        let embedded = |needle: &[u8]| bytes.windows(needle.len()).any(|w| w == needle);
+        assert!(
+            embedded(b"Tinos"),
+            "{} did not embed Tinos — the calibration's face fell back to \
+             something else",
+            variant.as_str()
+        );
+        assert!(
+            !embedded(b"NotoSerif") && !embedded(b"GORPSerif"),
+            "{} embedded the firm brand stack instead of its calibration's \
+             own face",
+            variant.as_str()
+        );
+    }
+}
+
+/// The whole point of deriving `leading` from the grid instead of echoing
+/// the type size (#889, and the fix pinned in `pleading`'s own
+/// `absolute_leading_completes_the_grid_unit_rather_than_echoing_the_type_size`)
+/// is that consecutive baselines land exactly [`Calibration::grid_unit`]
+/// apart. Proven here through the renderer: two one-line paragraphs on the
+/// railed calibration must be positioned one 24pt grid step apart, not the
+/// 14.5pt a naive `leading: {type_size}pt` would have produced.
+#[test]
+fn consecutive_lines_on_the_railed_calibration_land_one_grid_step_apart() {
+    let bytes = render(
+        Variant::NumberedRailTrial,
+        "Plaintiff states as follows.\n\nDefendant denies each allegation.\n",
+    );
+    let first = pdf::locate(&bytes, "Plaintiff states as follows", 1).expect("locate line one");
+    let second =
+        pdf::locate(&bytes, "Defendant denies each allegation", 1).expect("locate line two");
+    assert_eq!(first.rects[0].page_index, 0);
+    assert_eq!(second.rects[0].page_index, 0);
+
+    let (_, page_height) = US_LETTER;
+    let delta_pt = (second.rects[0].rect.y - first.rects[0].rect.y) * page_height;
+    let grid_unit = Variant::NumberedRailTrial.calibration().grid_unit;
+    assert!(
+        (delta_pt - grid_unit).abs() < 0.5,
+        "consecutive lines landed {delta_pt}pt apart, expected exactly the \
+         {grid_unit}pt grid step"
     );
 }

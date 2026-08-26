@@ -3,16 +3,12 @@
 //!
 //! A pleading is not generic paper. It is a fixed number frame that
 //! single-spaced material — the counsel block, the caption, footnotes —
-//! floats over. Every measurement here derives from one number:
-//!
-//! ```text
-//! text height = 672pt = 28 x 24pt
-//! ```
-//!
-//! [`GRID_UNIT`] is the 24pt line. [`LINES_PER_PAGE`] is the 28-line
-//! frame. Everything else is expressed in whole grid units, because a
-//! pleading's vertical rhythm is the thing the numbered rail registers
-//! against: a line that lands off-grid is a line whose number is wrong.
+//! floats over. Every measurement a calibration produces derives from one
+//! number: its [`Calibration::text_height`]. [`Calibration::grid_unit`] is
+//! the baseline pitch; [`Calibration::lines_per_page`] is the frame.
+//! Everything else is expressed in whole grid units, because a pleading's
+//! vertical rhythm is the thing the numbered rail registers against: a
+//! line that lands off-grid is a line whose number is wrong.
 //!
 //! # Jurisdiction is a parameter
 //!
@@ -27,12 +23,14 @@
 //! calibration is a closed enum ([`Variant`]) whose table is asserted in
 //! tests rather than a set of loose arguments a caller can transpose.
 //!
-//! # One type size
+//! # One type size, per calibration
 //!
-//! A pleading has no type scale. Everything is [`TYPE_SIZE`]; hierarchy
-//! comes from case, weight, underline, centring, and indent. Nothing here
-//! exposes a size parameter, for the same reason a pleading's heading
-//! takes no size argument.
+//! A given calibration has no type scale of its own: everything renders
+//! at [`Calibration::type_size`], and hierarchy comes from case, weight,
+//! underline, centring, and indent. Face, size, and grid are coupled —
+//! leading is a function of type size — so they travel together as one
+//! [`Calibration`] rather than as independent constants a caller could
+//! recombine into a pitch nothing was measured against.
 //!
 //! # One renderer
 //!
@@ -41,19 +39,83 @@
 //! geometry-agreement test. The browser displays what Rust produced — the
 //! rendered PDF, or the page renderings from #893 — and edits Markdown.
 
-/// The vertical grid. Every line of court paper sits on a 24pt baseline,
-/// and the numbered rail counts those baselines.
-pub const GRID_UNIT: f64 = 24.0;
+/// The face, size, and vertical grid a pleading renders at, coupled into
+/// one value because leading is a function of type size: a caller who
+/// could vary [`Calibration::grid_unit`] independently of
+/// [`Calibration::type_size`] could produce a pitch nothing was measured
+/// against, and a rail that registers against the wrong baselines is the
+/// failure this module exists to prevent.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Calibration {
+    /// The Typst font family this calibration sets. Never the firm's own
+    /// `pdf::BRAND_FONT_STACK` — a pleading's face is a court-rule
+    /// compliance decision (CRC 2.105: "essentially equivalent to
+    /// Courier, Times New Roman, or Arial"), not a branding one, so
+    /// [`preamble`] emits its own `#set text(font: ..)` rule that
+    /// overrides the firm stack for the document it produces.
+    pub face: &'static str,
+    /// Point size. CRC 2.104 sets a floor — "a font size not smaller
+    /// than 12 points" — not a ceiling.
+    pub type_size: f64,
+    /// The vertical grid a numbered rail registers against, in points.
+    pub grid_unit: f64,
+    /// Lines in the fixed number frame.
+    pub lines_per_page: u32,
+}
 
-/// Lines in the fixed number frame.
-pub const LINES_PER_PAGE: u32 = 28;
+impl Calibration {
+    /// Tinos at 14.5pt on a 24pt grid, 27 lines to the page — the one
+    /// calibration this module defines today.
+    ///
+    /// **Tinos.** CRC 2.105 requires a face "essentially equivalent to
+    /// Courier, Times New Roman, or Arial." Tinos (Steve Matteson /
+    /// Ascender) is metrically identical to Times New Roman, which
+    /// cannot itself be embedded here — it is Monotype-licensed. Tinos
+    /// ships from Google Fonts under the SIL Open Font License, the same
+    /// license family as the Noto Serif faces already embedded in this
+    /// crate, so vendoring it needed no new licensing analysis.
+    ///
+    /// **14.5pt.** CRC 2.104's "not smaller than 12 points" is a floor.
+    /// S.D. Cal. `CivLR` 5.1(a) and FRAP 32(a)(5) both require at least 14
+    /// points. 14.5pt clears every floor this module currently targets.
+    /// (S.D. Cal. `CivLR` 5.1(a) also says "double space," and separately
+    /// permits "not more than 28 lines per page" at "no smaller than
+    /// 14-point" — a page is only reachable at that line count under
+    /// sub-double leading, so the two clauses contradict each other. The
+    /// specific 28-line permission controls over the general
+    /// double-spacing instruction; this is not wired to a `Variant` yet,
+    /// so nothing here depends on the resolution, but record it so a
+    /// future S.D. Cal. calibration is not "fixed" back into the
+    /// contradiction.)
+    ///
+    /// **27 lines.** A Letter page (792pt) with a 1in top margin (CRC
+    /// 2.111(1) puts line 1 exactly 1in down the page) and this module's
+    /// 1in bottom margin leaves a 648pt / 9in text column. At a 24pt
+    /// (1/3in) grid that is exactly 27 lines — three per inch, landing
+    /// exactly on CRC 2.108(4)'s "at least three line numbers for every
+    /// vertical inch" floor with nothing left over. The previous 28-line
+    /// frame (text height 672pt = 9.33in) left a 0.67in foot below the
+    /// last line instead of running to the margin.
+    ///
+    /// A Century-family calibration for SCOTUS booklet filings (Sup. Ct.
+    /// R. 33.1(b) mandates the Century family at 12pt with 2pt-or-more
+    /// leading, which Tinos cannot satisfy) is a follow-up, not built
+    /// here. TODO: TeX Gyre Schola (GUST Font License, built from URW
+    /// Century Schoolbook L) is the OFL-compatible candidate face.
+    pub const DEFAULT: Calibration = Calibration {
+        face: "Tinos",
+        type_size: 14.5,
+        grid_unit: 24.0,
+        lines_per_page: 27,
+    };
 
-/// The single derivation the whole layout hangs off:
-/// `672pt = 28 x 24pt`.
-pub const TEXT_HEIGHT: f64 = GRID_UNIT * LINES_PER_PAGE as f64;
-
-/// The one type size. A pleading has no type scale.
-pub const TYPE_SIZE: f64 = 12.0;
+    /// The text column height this calibration's grid implies:
+    /// `lines_per_page x grid_unit`.
+    #[must_use]
+    pub fn text_height(&self) -> f64 {
+        self.grid_unit * f64::from(self.lines_per_page)
+    }
+}
 
 /// How leading is specified for a calibration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,7 +131,7 @@ pub enum Leading {
 /// A jurisdiction calibration of the same court-paper geometry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Variant {
-    /// Trial court with a numbered rail: 28 numbers, a double rule on the
+    /// Trial court with a numbered rail: 27 numbers, a double rule on the
     /// left and a single rule on the right.
     NumberedRailTrial,
     /// Trial court without a rail — a deeper top margin instead.
@@ -114,6 +176,18 @@ impl Variant {
         }
     }
 
+    /// The face, size, and grid this calibration renders at.
+    ///
+    /// Every current variant shares [`Calibration::DEFAULT`] — Tinos is
+    /// the one calibration this module defines. This is a method rather
+    /// than a shared constant so a future SCOTUS booklet variant can
+    /// return its own Century-family calibration without every other
+    /// variant's numbers moving with it.
+    #[must_use]
+    pub fn calibration(self) -> Calibration {
+        Calibration::DEFAULT
+    }
+
     /// The name this calibration is declared under.
     #[must_use]
     pub fn as_str(self) -> &'static str {
@@ -134,14 +208,18 @@ impl Variant {
     }
 }
 
-/// Vertical space, expressible **only** in whole grid units.
+/// Vertical space, expressible **only** in whole grid units of
+/// [`Calibration::DEFAULT`].
 ///
 /// Nothing inside the text column takes an arbitrary margin: a half-unit
 /// skip would put every following baseline off the rail. Callers state
 /// intent in lines, and this is the only way to move down the page.
 #[must_use]
 pub fn grid_skip(units: u32) -> String {
-    format!("#v({}pt, weak: false)\n", GRID_UNIT * f64::from(units))
+    format!(
+        "#v({}pt, weak: false)\n",
+        Calibration::DEFAULT.grid_unit * f64::from(units)
+    )
 }
 
 /// A brief that exceeds its allowed length, reported rather than silently
@@ -192,36 +270,46 @@ fn escape(s: &str) -> String {
 
 /// The Typst chrome for a pleading page under `variant`.
 ///
-/// Emits the geometry from the constants above so there is exactly one
-/// source of truth for the measurements; changing [`GRID_UNIT`] changes
-/// the rail, the leading, and the text height together.
+/// Emits the geometry from [`Variant::calibration`] so there is exactly
+/// one source of truth for the measurements; changing a calibration's
+/// grid changes the rail, the leading, and the text height together.
 #[must_use]
 pub fn preamble(variant: Variant) -> String {
     let top = variant.top_margin_inches();
-    // Line box of exactly 1em plus 1em of leading gives a 24pt baseline
-    // pitch that does not depend on the font's own ascender/descender
-    // metrics — the rail must register against the text regardless of
-    // which face is installed.
+    let cal = variant.calibration();
     let par_rule = match variant.leading() {
         Leading::Absolute => {
-            let size = TYPE_SIZE;
+            // Typst's baseline-to-baseline pitch is text-height (the span
+            // from top-edge to bottom-edge, here exactly 1em = type_size)
+            // plus `leading`. So `leading` is *derived* from the
+            // calibration rather than set equal to the type size: it is
+            // the remainder that completes one grid unit, and only
+            // happens to equal the type size when the type size is
+            // exactly half the grid (as the previous 12pt/24pt pair was).
+            // At 14.5pt/24pt it is not, and the rail must still register
+            // against the text regardless of which face or size is
+            // installed.
+            let leading = cal.grid_unit - cal.type_size;
             format!(
-                "#set text(size: {size}pt, top-edge: 0.75em, bottom-edge: -0.25em)\n\
-                 #set par(justify: false, leading: {size}pt, spacing: {size}pt)\n"
+                "#set text(font: (\"{face}\"), size: {size}pt, top-edge: 0.75em, bottom-edge: -0.25em)\n\
+                 #set par(justify: false, leading: {leading}pt, spacing: {leading}pt)\n",
+                face = cal.face,
+                size = cal.type_size,
             )
         }
         Leading::Relative => {
-            let size = TYPE_SIZE;
             format!(
-                "#set text(size: {size}pt)\n\
-                 #set par(justify: false, leading: 1em, spacing: 1em)\n"
+                "#set text(font: (\"{face}\"), size: {size}pt)\n\
+                 #set par(justify: false, leading: 1em, spacing: 1em)\n",
+                face = cal.face,
+                size = cal.type_size,
             )
         }
     };
 
     let background = if variant.has_rail() {
-        let count = LINES_PER_PAGE;
-        let pitch = GRID_UNIT;
+        let count = cal.lines_per_page;
+        let pitch = cal.grid_unit;
         format!(
             "  background: place(top + left, dx: 0.75in, dy: {top}in, \
              rail(count: {count}, pitch: {pitch}pt)),\n"
@@ -252,7 +340,7 @@ pub fn preamble(variant: Variant) -> String {
 /// once as Typst so the numbers and the rules share one coordinate
 /// system and cannot drift apart.
 const RAIL_FN: &str = "\
-#let rail(count: 28, pitch: 24pt) = {\n\
+#let rail(count: 27, pitch: 24pt) = {\n\
 \x20 box(width: 100%, height: count * pitch)[\n\
 \x20   #for i in range(count) [\n\
 \x20     #place(top + left, dy: i * pitch, \
@@ -269,17 +357,32 @@ stroke: 0.5pt))\n\
 #[cfg(test)]
 mod tests {
     use super::{
-        authority_entry, grid_skip, page_limit_warning, preamble, Leading, Variant, GRID_UNIT,
-        LINES_PER_PAGE, TEXT_HEIGHT, TYPE_SIZE,
+        authority_entry, grid_skip, page_limit_warning, preamble, Calibration, Leading, Variant,
     };
 
     /// The single derivation the layout hangs off. If this drifts, every
     /// other measurement is wrong.
     #[test]
-    fn text_height_is_twenty_eight_twenty_four_point_lines() {
-        assert!((TEXT_HEIGHT - 672.0).abs() < f64::EPSILON);
-        assert!((GRID_UNIT - 24.0).abs() < f64::EPSILON);
-        assert_eq!(LINES_PER_PAGE, 28);
+    fn text_height_is_twenty_seven_twenty_four_point_lines() {
+        let cal = Calibration::DEFAULT;
+        assert!((cal.text_height() - 648.0).abs() < f64::EPSILON);
+        assert!((cal.grid_unit - 24.0).abs() < f64::EPSILON);
+        assert_eq!(cal.lines_per_page, 27);
+        assert!((cal.type_size - 14.5).abs() < f64::EPSILON);
+        assert_eq!(cal.face, "Tinos");
+    }
+
+    /// 27 lines at a 1in top and a 1in bottom margin fills the Letter page
+    /// exactly: `792pt - 72pt - 72pt = 648pt`, the same 648pt
+    /// [`Calibration::text_height`] derives from the grid. A calibration
+    /// whose text height does not equal the margin-implied column would
+    /// either run past the bottom margin or leave dead space above it.
+    #[test]
+    fn the_default_calibration_text_height_fills_the_letter_page_between_one_inch_margins() {
+        const US_LETTER_HEIGHT_PT: f64 = 792.0;
+        const MARGIN_PT: f64 = 72.0;
+        let column = US_LETTER_HEIGHT_PT - MARGIN_PT - MARGIN_PT;
+        assert!((column - Calibration::DEFAULT.text_height()).abs() < f64::EPSILON);
     }
 
     /// The calibration table from the issue, asserted rather than
@@ -299,6 +402,12 @@ mod tests {
             );
             assert_eq!(variant.has_rail(), rail, "{} rail", variant.as_str());
             assert_eq!(variant.leading(), leading, "{} leading", variant.as_str());
+            assert_eq!(
+                variant.calibration(),
+                Calibration::DEFAULT,
+                "{} calibration",
+                variant.as_str()
+            );
         }
     }
 
@@ -365,12 +474,12 @@ mod tests {
     }
 
     /// The rail is emitted for exactly the calibration that has one, and
-    /// the geometry comes from the shared constants.
+    /// the geometry comes from [`Variant::calibration`].
     #[test]
     fn only_the_railed_calibration_emits_a_rail() {
         let railed = preamble(Variant::NumberedRailTrial);
         assert!(railed.contains("#let rail("));
-        assert!(railed.contains("count: 28"));
+        assert!(railed.contains("count: 27"));
         assert!(railed.contains("pitch: 24pt"));
         assert!(railed.contains("top: 1in"));
 
@@ -386,7 +495,8 @@ mod tests {
     }
 
     /// One type size everywhere — the preamble must not introduce a
-    /// second one, because a pleading has no type scale.
+    /// second one, because a given calibration has no type scale of its
+    /// own.
     #[test]
     fn the_preamble_sets_exactly_one_type_size() {
         for variant in Variant::ALL {
@@ -399,10 +509,56 @@ mod tests {
                 variant.as_str()
             );
             assert!(
-                src.contains(&format!("size: {TYPE_SIZE}pt")),
+                src.contains(&format!("size: {}pt", variant.calibration().type_size)),
                 "{} must set the one type size",
                 variant.as_str()
             );
         }
+    }
+
+    /// The face this calibration names — not the firm's own brand stack —
+    /// is what the preamble actually sets, and it has to be embedded for
+    /// the compile to resolve it without depending on the host.
+    #[test]
+    fn the_preamble_sets_the_calibrations_own_face_not_the_firm_stack() {
+        for variant in Variant::ALL {
+            let src = preamble(*variant);
+            assert!(
+                src.contains(&format!("font: (\"{}\")", variant.calibration().face)),
+                "{} must set its calibration's own face",
+                variant.as_str()
+            );
+            assert!(
+                !src.contains("GORP Serif") && !src.contains("Noto Serif"),
+                "{} must not fall back to the firm brand stack — a pleading's \
+                 face is a court-rule decision, not a branding one",
+                variant.as_str()
+            );
+        }
+    }
+
+    /// Absolute leading is derived so the baseline pitch lands exactly on
+    /// the grid: `text-height (= type_size) + leading = grid_unit`. This
+    /// only reduces to `leading == type_size` when the type size happens
+    /// to be exactly half the grid, which 14.5pt/24pt is not — a
+    /// regression here would silently walk the rail off the text.
+    #[test]
+    fn absolute_leading_completes_the_grid_unit_rather_than_echoing_the_type_size() {
+        let cal = Calibration::DEFAULT;
+        let expected_leading = cal.grid_unit - cal.type_size;
+        assert!(
+            (expected_leading - 9.5).abs() < f64::EPSILON,
+            "sanity: 24pt grid minus 14.5pt type is 9.5pt"
+        );
+
+        let src = preamble(Variant::NumberedRailTrial);
+        assert!(
+            src.contains(&format!("leading: {expected_leading}pt")),
+            "leading must complete the grid unit, not restate the type size: {src}"
+        );
+        assert!(
+            !src.contains(&format!("leading: {}pt", cal.type_size)),
+            "leading must not be set equal to the type size at this calibration"
+        );
     }
 }

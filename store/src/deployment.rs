@@ -215,12 +215,32 @@ pub fn ci_harness_enabled<F: Fn(&str) -> Option<String>>(get: &F) -> bool {
     get(CI_HARNESS).as_deref() == Some("1")
 }
 
+/// Whether `NAVIGATOR_CI_HARNESS=1` may relax anything for this profile.
+///
+/// The flag authorizes in-process fakes for the automated dev harness and
+/// nothing beyond it. `k8s/base/web/web.yaml` only ever pairs it with
+/// `NAVIGATOR_ENVIRONMENT=dev`, and `docs/third-party-integrations.md` states
+/// that production rejects it outright.
+///
+/// The scoping lives here, in one predicate, rather than at each call site.
+/// A caller that tests the raw flag instead grants production the same
+/// relaxation the dev harness gets — for a credential-shaped check that means
+/// a deployment keeps booting green while pointed at a provider's test
+/// environment, which is exactly what these checks exist to prevent.
+#[must_use]
+pub fn harness_relaxations_apply<F: Fn(&str) -> Option<String>>(
+    environment: DeploymentEnvironment,
+    get: &F,
+) -> bool {
+    environment == DeploymentEnvironment::Dev && ci_harness_enabled(get)
+}
+
 #[must_use]
 pub fn applicable_web_requirements<F: Fn(&str) -> Option<String>>(
     environment: DeploymentEnvironment,
     get: &F,
 ) -> Vec<Requirement> {
-    let harness = environment == DeploymentEnvironment::Dev && ci_harness_enabled(get);
+    let harness = harness_relaxations_apply(environment, get);
     let project_id = get("NAVIGATOR_GCP_PROJECT_ID");
     WEB_REQUIREMENTS
         .iter()

@@ -105,9 +105,12 @@ Required env (canonical `DOCUSIGN_*` names — same names in `.env` for sandbox 
   `DOCUSIGN_USER_ID` — the impersonated API user GUID (the JWT `sub`); the "API Username", not the email.
   `DOCUSIGN_ACCOUNT_ID` — the API Account ID GUID. `DOCUSIGN_PRIVATE_KEY` — the RSA private-key PEM whose public half is
   registered on the app. `DOCUSIGN_BASE_URL` — the eSignature REST base; `https://demo.docusign.net/restapi` for the
-  sandbox. `DOCUSIGN_OAUTH_BASE` — optional OAuth host; defaults to the demo host `https://account-d.docusign.com`.
-  `DOCUSIGN_SIGNER_EMAIL` — the firm countersignature inbox and the live test's signer. `DOCUSIGN_HMAC_KEY` — the
-  DocuSign Connect HMAC key used to verify completion webhooks (see below).
+  sandbox. `DOCUSIGN_OAUTH_BASE` — the OAuth host. A sandbox boot may omit it and take the demo default
+  `https://account-d.docusign.com`; a production boot may not. Once `DOCUSIGN_BASE_URL` declares the integration,
+  `store::deployment::WEB_REQUIREMENTS` demands it, and `portal::config::enforce_deployment_invariants` separately
+  rejects both an empty value alongside a JWT integration key and any value naming the demo host. Production is
+  `https://account.docusign.com`. `DOCUSIGN_SIGNER_EMAIL` — the firm countersignature inbox and the live test's signer.
+  `DOCUSIGN_HMAC_KEY` — the DocuSign Connect HMAC key used to verify completion webhooks (see below).
 
 ## Sandbox setup (one-time)
 

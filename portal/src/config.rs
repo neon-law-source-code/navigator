@@ -12,7 +12,10 @@
 //! is a thin wrapper that delegates to `std::env::var`.
 
 use store::{
-    deployment::{applicable_web_requirements, ci_harness_enabled, CREDENTIAL_ENVIRONMENT},
+    deployment::{
+        applicable_web_requirements, ci_harness_enabled, harness_relaxations_apply,
+        CREDENTIAL_ENVIRONMENT,
+    },
     DeploymentEnvironment, DeploymentEnvironmentError,
 };
 use thiserror::Error;
@@ -162,7 +165,19 @@ pub fn enforce_deployment_invariants<F: Fn(&str) -> Option<String>>(
         }
     }
 
-    if !ci_harness_enabled(&get) {
+    // Scoped to the dev profile through the same predicate the requirements
+    // table uses, so one flag keeps one meaning.
+    //
+    // Testing the raw flag here made every check below conditional on
+    // `NAVIGATOR_CI_HARNESS` in *any* profile. That was not reachable — the
+    // production arm above rejects the flag outright, so such a boot already
+    // failed — but it left these checks depending on that neighbouring guard
+    // rather than on their own evidence. Among them is the rejection of
+    // DocuSign's demo OAuth host, which is what keeps a production deployment
+    // from authenticating against demo and sending envelopes that carry no
+    // legal weight. A check that load-bearing should not be switchable off as
+    // a side effect of relaxing an unrelated flag.
+    if !harness_relaxations_apply(environment, &get) {
         if get("NAVIGATOR_EMAIL_BACKEND").is_some_and(|value| value != "sendgrid") {
             violations.push("NAVIGATOR_EMAIL_BACKEND must be exactly `sendgrid`".into());
         }
@@ -771,6 +786,30 @@ mod tests {
         assert!(
             enforce_deployment_invariants(DeploymentEnvironment::Production, lookup(&harness))
                 .is_err()
+        );
+    }
+
+    #[test]
+    fn the_docusign_demo_rejection_does_not_depend_on_the_harness_guard() {
+        // Defense in depth, not a reachable bypass: production + the harness
+        // flag is already its own violation a few lines up, so this boot fails
+        // either way. What is asserted here is *independence* — the DocuSign
+        // demo-host rejection must fire on its own evidence rather than rely
+        // on that neighbouring guard staying in place. Relaxing
+        // `NAVIGATOR_CI_HARNESS` handling for some future production-shaped
+        // smoke test would otherwise switch this check off as a side effect,
+        // with nothing failing to say so.
+        let mut pairs = full_with_jwks();
+        pairs.push(("NAVIGATOR_CI_HARNESS", "1"));
+        pairs.retain(|(key, _)| *key != "DOCUSIGN_OAUTH_BASE");
+        pairs.push(("DOCUSIGN_OAUTH_BASE", "https://account-d.docusign.com"));
+        let err = production_invariants(lookup(&pairs)).unwrap_err();
+        assert!(
+            err.violations
+                .iter()
+                .any(|violation| violation.starts_with("DOCUSIGN_OAUTH_BASE")),
+            "the demo OAuth host must be rejected on its own evidence, got: {:?}",
+            err.violations
         );
     }
 

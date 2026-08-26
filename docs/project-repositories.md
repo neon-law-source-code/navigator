@@ -341,8 +341,8 @@ The generated gate pins Navigator's validate action to `--action-version`, which
 release binary, or one built with `NAVIGATOR_RELEASE_TAG` set, both of which can only report a version this repository
 has already published. A plain local build cannot make that promise (`[workspace.package].version` is bumped on `main`
 days before the matching tag exists), so it carries no default at all, and `--action-version` must be named explicitly.
-A value that is not an exact release tag — including no value, when this binary cannot vouch for one — is refused
-before any file is written, so a gate that could never resolve is never created.
+A value that is not an exact release tag — including no value, when this binary cannot vouch for one — is refused before
+any file is written, so a gate that could never resolve is never created.
 
 It does **not** write `portal/`. That arrives from the vibe-coding lane ([`vibe-coding`](vibe-coding.md)), which knows
 how to make a Vite application and which released `@neon-law/ux` version to pin. Keeping it out of the scaffold is what

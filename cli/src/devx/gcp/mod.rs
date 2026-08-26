@@ -185,15 +185,23 @@ pub struct SetupConfig {
     pub drive_service_account_id: String,
     /// Kubernetes namespace containing the workload service accounts.
     pub kubernetes_namespace: String,
-    /// The applications organization and the one Project repository allowed to
-    /// publish to this deployment's applications bucket. Both must be set to
-    /// provision the `navigator-app-publisher` identity; absent, the deployment
-    /// declines the publisher lane (its portal bundles are then published by
-    /// hand or not yet). `applications_publisher_org` is the GHE org that owns
-    /// this deployment's Project repositories; `_repo` is the one repository the
-    /// impersonation binding pins.
+    /// The applications organization and every Project repository allowed to
+    /// publish to this deployment's applications bucket.
+    ///
+    /// The org must be set and the list non-empty to provision the publisher
+    /// lane; absent, the deployment declines it (its portal bundles are then
+    /// published by hand or not yet).
+    ///
+    /// **The org is singular and the repositories are plural, and that asymmetry
+    /// is the shape of the resources rather than an oversight.** One Workload
+    /// Identity provider serves the deployment and its `attributeCondition`
+    /// names exactly one `repository_owner`, so a second org would need a second
+    /// provider. Each repository, by contrast, gets its own service account:
+    /// the publisher's grant is conditioned on one object prefix and a condition
+    /// lives on a binding, so one account carries exactly one Project's portal.
+    /// Each entry is a repository name, which *is* the Project code.
     pub applications_publisher_org: Option<String>,
-    pub applications_publisher_repo: Option<String>,
+    pub applications_publisher_repos: Vec<String>,
 }
 
 impl Default for SetupConfig {
@@ -222,7 +230,7 @@ impl Default for SetupConfig {
             drive_service_account_id: "navigator-drive".to_string(),
             kubernetes_namespace: "navigator".to_string(),
             applications_publisher_org: None,
-            applications_publisher_repo: None,
+            applications_publisher_repos: Vec::new(),
         }
     }
 }
@@ -434,21 +442,38 @@ pub async fn run(client: &GcpClient, project_id: &str, config: &SetupConfig) -> 
     workload_identity::ensure_runtime_identity(client, project_id, config, &names.granted())
         .await?;
 
-    // The Project client-portal publisher identity, provisioned only when the
-    // deployment names the applications org and the one repository that may
-    // publish. It rides after the runtime identity because it binds the
-    // applications bucket the buckets stage created, and it is optional in the
-    // same sense the archive and telemetry buckets are: a deployment that
-    // declines it publishes its portal bundles by hand or not yet.
-    if let (Some(org), Some(repo)) = (
-        config.applications_publisher_org.as_deref(),
-        config.applications_publisher_repo.as_deref(),
-    ) {
-        eprintln!(
-            "gcp setup [{project_id}] application publisher identity {} ({org}/{repo})",
-            app_publisher::service_account_email(project_id)
-        );
-        app_publisher::ensure(client, project_id, org, repo, &names.applications).await?;
+    // One Project client-portal publisher identity per Project repository,
+    // provisioned only when the deployment names the applications org and at
+    // least one repository that may publish. It rides after the runtime identity
+    // because each publisher binds the applications bucket the buckets stage
+    // created, and the lane is optional in the same sense the archive and
+    // telemetry buckets are: a deployment that declines it publishes its portal
+    // bundles by hand or not yet.
+    //
+    // Every code is resolved here, before `ensure` makes its first call, so a
+    // code too long to own an account id refuses the whole stage rather than
+    // leaving the Projects ahead of it provisioned and the rest not.
+    let publisher_repos = config.applications_publisher_repos.as_slice();
+    let publisher_org = if publisher_repos.is_empty() {
+        None
+    } else {
+        config.applications_publisher_org.as_deref()
+    };
+    if let Some(org) = publisher_org {
+        for publisher in app_publisher::resolve_publishers(project_id, publisher_repos)? {
+            eprintln!(
+                "gcp setup [{project_id}] application publisher identity {} ({org}/{})",
+                publisher.email, publisher.code
+            );
+        }
+        app_publisher::ensure(
+            client,
+            project_id,
+            org,
+            publisher_repos,
+            &names.applications,
+        )
+        .await?;
     }
 
     // Registry before the cluster: GKE nodes pull the app images from

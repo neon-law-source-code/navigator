@@ -1,11 +1,13 @@
-//! Per-deployment publisher identity for Project client-portal bundles.
+//! Per-Project publisher identity for Project client-portal bundles.
 //!
 //! A Project repository's CI publishes its built `portal/dist/` to this
 //! deployment's private `<deployment>-applications` bucket, keyless, through
 //! Workload Identity Federation. This module provisions the Google half of that
 //! trust:
 //!
-//! 1. A `navigator-app-publisher` service account, one per deployment.
+//! 1. A `nav-pub-<code>` service account, **one per Project**. See
+//!    [`publisher_account_id`] for why the id carries the Project code verbatim
+//!    and what it refuses rather than shortening.
 //! 2. A custom role holding exactly `storage.objects.create`,
 //!    `storage.objects.update` and `storage.objects.get`, bound on the
 //!    applications bucket under an IAM **condition** that confines it to this
@@ -48,9 +50,17 @@
 //! never lists.
 //!
 //! A condition lives on a binding, and a binding names one role and one member
-//! set, so **a shared publisher account carries exactly one prefix**. One
-//! publisher identity per Project is a consequence of this shape, not a
-//! preference.
+//! set, so **a publisher account carries exactly one prefix**. One publisher
+//! identity per Project is a consequence of this shape, not a preference, and
+//! the account id is therefore derived from the Project code rather than from
+//! the GCP project id alone. [`ambiguous_repoint`] is what a *shared* account
+//! hit on the second Project; with one account per Project it is reachable only
+//! after a genuine repository rename.
+//!
+//! The deployment-level half — the custom role, the Workload Identity pool, and
+//! its provider — is provisioned once per run rather than once per Project, so
+//! a four-Project deployment POSTs one role and one provider. Only the account,
+//! the conditioned bucket binding, and the impersonation are per Project.
 //!
 //! The consumer half — the composite Action a Project repository runs — is
 //! `.github/actions/application-publish`; the provider resource and the service
@@ -66,6 +76,7 @@
 //! [`ensure_wif_impersonation`](super::artifact_registry::ensure_wif_impersonation),
 //! whose exclusive mode revokes a principal a repository rename left behind.
 
+use cloud::workspace::{is_valid_slug, SLUG_MAX_LEN};
 use serde_json::{json, Value};
 
 use super::artifact_registry::{ensure_wif_impersonation, project_number, GITHUB_OIDC_ISSUER};
@@ -73,8 +84,45 @@ use super::client::{GcpClient, GcpService};
 use super::error::{SetupError, SetupResult};
 use super::lro;
 
-/// Account id (local part of the SA email) of the per-deployment publisher.
-pub const APP_PUBLISHER_ACCOUNT_ID: &str = "navigator-app-publisher";
+/// The hard GCP ceiling on a service-account id, the local part of its email.
+///
+/// Google requires 6-30 characters, starting with a lowercase letter and ending
+/// alphanumeric. This is the first place in the pipeline that asserts it: no
+/// other account id here is derived from anything, so none of them could ever
+/// overflow.
+pub const ACCOUNT_ID_MAX_LEN: usize = 30;
+
+/// Everything in a publisher's account id that is not the Project code.
+///
+/// Read as *whose* (`nav`), *what* (`pub`), *which Project* (the code) — the
+/// same owner-first order as the sibling `navigator-web`, `navigator-drive` and
+/// `navigator-ci-pusher` accounts, shortened because 30 characters is the whole
+/// budget and `navigator-app-publisher-` alone spent 24 of them.
+///
+/// Three properties are load-bearing rather than aesthetic:
+///
+/// * **It is an instance of `nav-<role>-<code>`, not a name.** A second kind of
+///   per-Project identity gets a slot in the same scheme instead of inventing a
+///   second convention.
+/// * **It clears the 6-character minimum unconditionally.** The shortest valid
+///   Project code is one character, and `nav-pub-a` is nine, so a too-*short*
+///   id is unreachable and there is no branch for it to hide in.
+/// * **It starts with a lowercase letter.** [`cloud::workspace::is_valid_slug`]
+///   admits a leading digit, which GCP does not, so the prefix is also what
+///   makes every derived id well-formed.
+///
+/// `pub-` alone was rejected: in a deployment that also holds a *public* assets
+/// bucket it reads as "public" at least as readily as "publisher", and the one
+/// thing this account must never be is public.
+pub const PUBLISHER_ACCOUNT_PREFIX: &str = "nav-pub-";
+
+/// The longest Project code that fits inside a publisher account id.
+///
+/// Twenty-two characters, and it is a real ceiling rather than a soft target: a
+/// longer code is refused by [`publisher_account_id`], never shortened. See
+/// there for why no prefix makes this problem go away.
+pub const PUBLISHER_CODE_MAX_LEN: usize = ACCOUNT_ID_MAX_LEN - PUBLISHER_ACCOUNT_PREFIX.len();
+
 /// Workload Identity pool the Project repositories federate through. Distinct
 /// from the registry's `github` pool, which environment projects never create.
 pub const APP_PUBLISHER_WIF_POOL_ID: &str = "app-publisher";
@@ -142,10 +190,100 @@ pub fn publisher_condition_expression(bucket: &str, code: &str) -> String {
     format!("resource.name == \"{prefix}\" || resource.name.startsWith(\"{prefix}/\")")
 }
 
-/// The publisher service account email in `project_id`.
-#[must_use]
-pub fn service_account_email(project_id: &str) -> String {
-    format!("{APP_PUBLISHER_ACCOUNT_ID}@{project_id}.iam.gserviceaccount.com")
+/// The account id of `code`'s publisher, or a refusal if it cannot be derived.
+///
+/// The Project code travels **verbatim**, and the three alternatives were all
+/// rejected on trust rather than on length:
+///
+/// * **Truncation collides silently.** Two codes sharing the first 22 bytes fold
+///   onto one account, and the second provisioning run repoints the first
+///   Project's conditioned binding — exactly the failure
+///   [`ambiguous_repoint`] exists to refuse, arriving through a path that never
+///   reaches it.
+/// * **A hash is unauditable.** The id is the only human-readable link between a
+///   principal in a bucket IAM policy and a portal prefix, and matching those by
+///   eye is the one audit anyone can actually perform on that policy.
+/// * **An ordinal would be positional.** `nav-pub-1` never collides and is
+///   always short, but its meaning would live in the order of a configuration
+///   list, so reordering that list silently repoints every account after the
+///   edit.
+///
+/// **No prefix makes the ceiling go away, so the ceiling is not the axis to
+/// optimize.** Codes are client-derived, and a `surname-mattertype-jurisdiction`
+/// shape reaches 29 characters — which overflows a 30-character id even with a
+/// zero-length prefix. Shortening `nav-pub-` further would buy headroom only in
+/// the narrow band a code of 23 to 27 characters occupies, and would pay for it
+/// with an illegible principal and a convention that cannot extend. So the
+/// prefix optimizes for legibility and the overflow is refused here, by name.
+///
+/// The shape check is [`cloud::workspace::is_valid_slug`] rather than a second
+/// regular expression: a Project code, its repository name and this account id
+/// are one shape defined once.
+pub fn publisher_account_id(code: &str) -> SetupResult<String> {
+    if !is_valid_slug(code) {
+        return Err(SetupError::PublisherCodeRefused {
+            code: code.to_string(),
+            reason: format!(
+                "it is not a well-formed Project code: lowercase letters, digits and single \
+                 hyphens, alphanumeric at both ends, at most {SLUG_MAX_LEN} characters",
+            ),
+        });
+    }
+    if code.len() > PUBLISHER_CODE_MAX_LEN {
+        return Err(SetupError::PublisherCodeRefused {
+            code: code.to_string(),
+            reason: format!(
+                "its publisher account id `{PUBLISHER_ACCOUNT_PREFIX}{code}` would be {len} \
+                 characters and GCP allows at most {ACCOUNT_ID_MAX_LEN}. The code is carried \
+                 verbatim because a shortened one collides silently with every other code \
+                 sharing its first {PUBLISHER_CODE_MAX_LEN} bytes, so shorten the Project \
+                 code itself — it is also the repository name and the bucket prefix — to at \
+                 most {PUBLISHER_CODE_MAX_LEN} characters",
+                len = PUBLISHER_ACCOUNT_PREFIX.len() + code.len(),
+            ),
+        });
+    }
+    Ok(format!("{PUBLISHER_ACCOUNT_PREFIX}{code}"))
+}
+
+/// One Project's publisher identity, resolved and validated before any call.
+///
+/// Exists so the derivation is fallible exactly once, at the top of [`ensure`],
+/// and the provisioning loop below it carries strings that are already known to
+/// be well-formed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PublisherIdentity {
+    /// The Project code, which is also the repository name and the object prefix.
+    pub code: String,
+    /// Local part of the service-account email.
+    pub account_id: String,
+    /// The full service-account email.
+    pub email: String,
+}
+
+/// Resolve every Project's publisher identity, or refuse before provisioning any.
+///
+/// **This runs before the first POST, and that ordering is the point.** Checking
+/// each code as the loop reaches it would leave a deployment whose third code is
+/// too long with two accounts created, two bucket bindings written and two
+/// impersonations bound — a partial apply an operator then has to reason about.
+/// Refusing up front leaves nothing behind, and because the check is pure it
+/// also fires under `--dry-run` and in a test with no credentials.
+pub fn resolve_publishers(
+    project_id: &str,
+    codes: &[String],
+) -> SetupResult<Vec<PublisherIdentity>> {
+    codes
+        .iter()
+        .map(|code| {
+            let account_id = publisher_account_id(code)?;
+            Ok(PublisherIdentity {
+                email: format!("{account_id}@{project_id}.iam.gserviceaccount.com"),
+                code: code.clone(),
+                account_id,
+            })
+        })
+        .collect()
 }
 
 /// The full provider resource the deployment publishes as
@@ -194,73 +332,111 @@ pub fn wif_principal_set(project_number: &str, org: &str, repo: &str) -> String 
     )
 }
 
-/// Provision the publisher identity that publishes to `applications_bucket`.
+/// Provision one publisher identity per Project repository in `repos`.
 ///
-/// `org`/`repo` name the one Project repository allowed to publish, and `repo`
-/// is also the Project code the bucket condition is scoped to — the Action
-/// derives its object prefix from the same repository name, so a rename moves
-/// both together or neither. The applications bucket must already exist —
-/// [`ensure_publisher_grant`] binds the publisher on it — which is why `run`
-/// calls this after the buckets stage.
+/// `org` is the one applications organization this deployment federates, and it
+/// stays singular because the Workload Identity provider's `attributeCondition`
+/// names exactly one `repository_owner` and there is one provider per
+/// deployment. Each entry in `repos` is a repository name, which *is* the
+/// Project code the bucket condition is scoped to — the Action derives its
+/// object prefix from the same repository name, so a rename moves both together
+/// or neither.
+///
+/// The applications bucket must already exist — [`ensure_publisher_grant`]
+/// binds each publisher on it — which is why `run` calls this after the buckets
+/// stage.
+///
+/// Every code is resolved before the first call ([`resolve_publishers`]), and
+/// the three deployment-level resources are provisioned once rather than once
+/// per Project.
 pub async fn ensure(
     client: &GcpClient,
     project_id: &str,
     org: &str,
-    repo: &str,
+    repos: &[String],
     applications_bucket: &str,
 ) -> SetupResult<()> {
-    let sa = service_account_email(project_id);
-    ensure_publisher_account(client, project_id).await?;
+    let publishers = resolve_publishers(project_id, repos)?;
+
+    // Deployment-level, and hoisted out of the loop below: one custom role
+    // definition, one pool and one provider serve every Project here.
     ensure_publisher_role(client, project_id).await?;
-    ensure_publisher_grant(client, project_id, applications_bucket, repo, &sa).await?;
     ensure_wif_pool(client, project_id).await?;
     ensure_wif_provider(client, project_id, org).await?;
     let number = project_number(client, project_id).await?;
-    ensure_wif_impersonation(
-        client,
-        project_id,
-        &sa,
-        &wif_principal_set(&number, org, repo),
-    )
-    .await?;
 
-    // The two coordinates the Project repository sets as repository *secrets*.
-    // Printed so an operator can copy them straight into the repository's
+    // The coordinates each Project repository sets as repository *secrets*.
+    // Printed so an operator can copy them straight into each repository's
     // Actions secrets. They are public identifiers and the trust is enforced by
-    // the binding above, so neither is key material — but both name the
+    // the bindings below, so neither is key material — but both name the
     // deployment's GCP project, and a Project repository's Actions log is
     // public, so they are secrets to keep them out of it rather than because
     // they are sensitive. See docs/project-repositories.md and
     // `.github/actions/application-publish/action.yml`.
+    //
+    // The provider resource is one per deployment, so it is printed once even
+    // though every Project repository sets it as its own secret. The service
+    // account differs per Project and is printed inside the loop.
     eprintln!(
         "gcp setup [{project_id}] set repository secret \
          NAVIGATOR_APP_PUBLISHER_WIF_PROVIDER={}",
         wif_provider_resource(&number)
     );
-    eprintln!(
-        "gcp setup [{project_id}] set repository secret \
-         NAVIGATOR_APP_PUBLISHER_SERVICE_ACCOUNT={sa}"
-    );
+
+    for publisher in &publishers {
+        let PublisherIdentity { code, email, .. } = publisher;
+        ensure_publisher_account(client, project_id, publisher).await?;
+        ensure_publisher_grant(client, project_id, applications_bucket, code, email).await?;
+        ensure_wif_impersonation(
+            client,
+            project_id,
+            email,
+            &wif_principal_set(&number, org, code),
+        )
+        .await?;
+        eprintln!(
+            "gcp setup [{project_id}] set repository secret on {org}/{code} \
+             NAVIGATOR_APP_PUBLISHER_SERVICE_ACCOUNT={email}"
+        );
+    }
     Ok(())
 }
 
-/// Idempotently create the publisher service account. `serviceAccounts.create`
-/// returns the finished account rather than a long-running operation, so — like
-/// the marketing deployer — this must not be routed through an LRO wait.
-async fn ensure_publisher_account(client: &GcpClient, project_id: &str) -> SetupResult<()> {
+/// Idempotently create one Project's publisher service account.
+/// `serviceAccounts.create` returns the finished account rather than a
+/// long-running operation, so this must not be routed through an LRO wait.
+///
+/// The `displayName` and `description` carry the Project code unabridged. An
+/// account id is capped at 30 characters and a display name at 100, so this is
+/// where the console gets something to list and a reader gets prose — the id
+/// does not have to carry the whole burden of legibility. It carries the code
+/// anyway, because the id is what appears in a bucket IAM policy and the
+/// display name is not.
+async fn ensure_publisher_account(
+    client: &GcpClient,
+    project_id: &str,
+    publisher: &PublisherIdentity,
+) -> SetupResult<()> {
+    let PublisherIdentity {
+        code, account_id, ..
+    } = publisher;
     let path = format!("/v1/projects/{project_id}/serviceAccounts");
     let body = json!({
-        "accountId": APP_PUBLISHER_ACCOUNT_ID,
+        "accountId": account_id,
         "serviceAccount": {
-            "displayName": "Navigator application publisher",
-            "description": "Publishes Project portal bundles to the applications bucket",
+            "displayName": format!("Navigator application publisher — {code}"),
+            "description": format!(
+                "Publishes the {code} Project's portal bundle to the {code}/portal prefix of \
+                 the applications bucket. One publisher per Project: a condition lives on a \
+                 binding, so one account carries exactly one prefix.",
+            ),
         },
     });
     let resp = client.post_json(GcpService::Iam, &path, &body).await?;
     match resp.status_u16() {
         200..=299 | 409 => Ok(()),
         other => Err(SetupError::BadStatus {
-            operation: format!("create service account {APP_PUBLISHER_ACCOUNT_ID}"),
+            operation: format!("create service account {account_id}"),
             status: other,
             body: resp.into_text(),
         }),
@@ -665,10 +841,147 @@ mod tests {
     }
 
     #[test]
-    fn service_account_email_is_project_scoped() {
+    fn the_account_id_carries_the_project_code_verbatim() {
         assert_eq!(
-            service_account_email("neon-law-stg"),
-            "navigator-app-publisher@neon-law-stg.iam.gserviceaccount.com"
+            publisher_account_id("sample-litigation").unwrap(),
+            "nav-pub-sample-litigation",
+        );
+    }
+
+    /// The ceiling is exactly 22 characters of Project code, and it is derived
+    /// rather than typed: 30 minus the prefix. A change to the prefix moves the
+    /// ceiling with it, which is why nothing here hardcodes 22 twice.
+    #[test]
+    fn the_code_ceiling_is_thirty_minus_the_prefix() {
+        assert_eq!(PUBLISHER_ACCOUNT_PREFIX, "nav-pub-");
+        assert_eq!(PUBLISHER_CODE_MAX_LEN, 22);
+        assert_eq!(
+            PUBLISHER_ACCOUNT_PREFIX.len() + PUBLISHER_CODE_MAX_LEN,
+            ACCOUNT_ID_MAX_LEN,
+        );
+    }
+
+    /// Every account id the scheme can produce is a well-formed GCP one.
+    ///
+    /// This is the property the prefix was chosen for, and it is asserted at
+    /// both ends of the code-length range rather than argued in a comment. The
+    /// 6-character minimum is unreachable because the prefix alone is 8, and the
+    /// leading character is a letter even though
+    /// [`cloud::workspace::is_valid_slug`] would admit a code starting with a
+    /// digit.
+    #[test]
+    fn every_derived_account_id_is_a_valid_gcp_account_id() {
+        let longest = "a".repeat(PUBLISHER_CODE_MAX_LEN);
+        for code in ["a", "9", "0-a", "sample-transactional", longest.as_str()] {
+            let id = publisher_account_id(code)
+                .unwrap_or_else(|e| panic!("`{code}` must be accepted: {e}"));
+            assert!(
+                (6..=ACCOUNT_ID_MAX_LEN).contains(&id.len()),
+                "`{id}` is {} characters, outside GCP's 6-30",
+                id.len(),
+            );
+            let first = id.as_bytes()[0];
+            assert!(
+                first.is_ascii_lowercase(),
+                "`{id}` must start with a lowercase letter, not `{}`",
+                first as char,
+            );
+            assert!(
+                id.as_bytes()
+                    .last()
+                    .is_some_and(|b| b.is_ascii_lowercase() || b.is_ascii_digit()),
+                "`{id}` must end alphanumeric",
+            );
+            assert!(!id.contains("--"), "`{id}` must not carry a double hyphen");
+        }
+    }
+
+    /// A code one character past the ceiling is refused, and never shortened.
+    ///
+    /// Shortening is the failure this refusal exists to prevent: two codes
+    /// sharing their first 22 bytes would fold onto one account, and the second
+    /// provisioning run would repoint the first Project's conditioned binding —
+    /// reaching the outcome [`ambiguous_repoint`] refuses, by a path that never
+    /// consults it.
+    #[test]
+    fn a_code_past_the_ceiling_is_refused_rather_than_shortened() {
+        let too_long = "a".repeat(PUBLISHER_CODE_MAX_LEN + 1);
+        let err = publisher_account_id(&too_long)
+            .expect_err("a code past the ceiling must not produce an account id");
+        assert!(
+            matches!(err, SetupError::PublisherCodeRefused { .. }),
+            "{err}",
+        );
+        let message = err.to_string();
+        // The refusal names the ceiling and what to do, because the code is also
+        // the repository name and the bucket prefix — an operator changes it
+        // once, at Project creation, or not at all.
+        assert!(
+            message.contains("30") && message.contains("22"),
+            "the refusal must name both the GCP limit and the code ceiling: {message}",
+        );
+        assert!(
+            message.contains(&too_long),
+            "the refusal must name the offending code: {message}",
+        );
+    }
+
+    /// A code that is not a well-formed Project code is refused too.
+    ///
+    /// The shape check is [`cloud::workspace::is_valid_slug`] rather than a
+    /// second regular expression, so an uppercase or double-hyphenated value
+    /// cannot reach GCP as an account id at all.
+    #[test]
+    fn a_malformed_code_never_becomes_an_account_id() {
+        for code in [
+            "Sample",
+            "sample--estate",
+            "-sample",
+            "sample-",
+            "samp le",
+            "",
+        ] {
+            let err =
+                publisher_account_id(code).expect_err("a malformed Project code must be refused");
+            assert!(
+                matches!(err, SetupError::PublisherCodeRefused { .. }),
+                "`{code}`: {err}",
+            );
+        }
+    }
+
+    /// The whole list is validated before the first call, not as the loop
+    /// reaches each entry.
+    ///
+    /// A refusal on the third of four codes must leave nothing provisioned. This
+    /// asserts the pure half — that `resolve_publishers` fails as a unit — and
+    /// [`ensure`] calls it before its first request, which
+    /// `a_too_long_code_refuses_before_any_call_is_made` proves against a
+    /// recording client.
+    #[test]
+    fn resolve_publishers_refuses_the_whole_list_or_none_of_it() {
+        let ok = resolve_publishers(
+            "neon-law-stg",
+            &["sample-estate".to_string(), "sample-litigation".to_string()],
+        )
+        .expect("both codes fit");
+        assert_eq!(ok.len(), 2);
+        assert_eq!(ok[0].account_id, "nav-pub-sample-estate");
+        assert_eq!(
+            ok[1].email,
+            "nav-pub-sample-litigation@neon-law-stg.iam.gserviceaccount.com"
+        );
+
+        let mixed = resolve_publishers(
+            "neon-law-stg",
+            &[
+                "sample-estate".to_string(),
+                "a".repeat(PUBLISHER_CODE_MAX_LEN + 1),
+            ],
+        );
+        assert!(
+            matches!(mixed, Err(SetupError::PublisherCodeRefused { .. })),
+            "one unfittable code must refuse the whole list",
         );
     }
 
@@ -695,6 +1008,15 @@ mod tests {
         );
     }
 
+    fn joined_calls(client: &GcpClient) -> String {
+        client
+            .recorded_calls()
+            .iter()
+            .map(|c| format!("{} {}", c.url, c.body.as_deref().unwrap_or_default()))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
     #[tokio::test]
     async fn dry_run_records_the_full_publisher_provisioning() {
         let client = offline_dry_run_client();
@@ -702,7 +1024,7 @@ mod tests {
             &client,
             "neon-law-stg",
             "neon-law",
-            "acme",
+            &["acme".to_string()],
             "neon-law-stg-applications",
         )
         .await
@@ -716,12 +1038,8 @@ mod tests {
         // are separate operations: the definition is project-level and grants
         // nothing until the conditioned binding on the bucket references it.
         assert_eq!(calls.len(), 8, "unexpected dry-run calls: {calls:?}");
-        let joined = calls
-            .iter()
-            .map(|c| format!("{} {}", c.url, c.body.as_deref().unwrap_or_default()))
-            .collect::<Vec<_>>()
-            .join("\n");
-        assert!(joined.contains("navigator-app-publisher"));
+        let joined = joined_calls(&client);
+        assert!(joined.contains("nav-pub-acme"));
         assert!(joined.contains("workloadIdentityPools?workloadIdentityPoolId=app-publisher"));
         assert!(joined.contains("providers?workloadIdentityPoolProviderId=ghe-oidc"));
         assert!(joined.contains(GITHUB_OIDC_ISSUER));
@@ -735,9 +1053,87 @@ mod tests {
         assert!(!joined.contains("storage.objects.list"));
     }
 
-    const PUBLISHER: &str = "navigator-app-publisher@proj.iam.gserviceaccount.com";
+    /// Two Projects get two accounts, two prefixes, and two impersonations —
+    /// and still exactly one custom role, one pool and one provider.
+    ///
+    /// The count is the assertion that matters. Eight calls for one Project and
+    /// thirteen for two means the five per-Project calls doubled while the three
+    /// deployment-level POSTs did not, which is what hoisting them out of the
+    /// loop buys. And each Project's condition names only its own prefix, so
+    /// neither publisher can write into the other's portal.
+    #[tokio::test]
+    async fn two_projects_get_two_publishers_and_one_shared_pool() {
+        let client = offline_dry_run_client();
+        ensure(
+            &client,
+            "neon-law-stg",
+            "neon-law",
+            &["sample-estate".to_string(), "sample-litigation".to_string()],
+            "neon-law-stg-applications",
+        )
+        .await
+        .unwrap();
+        let calls = client.recorded_calls();
+        // 3 deployment-level (role, pool, provider) + 2 x 5 per Project (SA
+        // create, bucket IAM get, bucket IAM put, impersonation get,
+        // impersonation set) = 3 + 10 = 13.
+        assert_eq!(calls.len(), 13, "unexpected dry-run calls: {calls:?}");
+        let joined = joined_calls(&client);
+
+        assert!(joined.contains("nav-pub-sample-estate"));
+        assert!(joined.contains("nav-pub-sample-litigation"));
+        // One role, one pool, one provider for the whole deployment.
+        assert_eq!(joined.matches("/roles?roleId=").count(), 1);
+        assert_eq!(
+            joined
+                .matches("workloadIdentityPools?workloadIdentityPoolId=app-publisher")
+                .count(),
+            1,
+        );
+        assert_eq!(
+            joined
+                .matches("providers?workloadIdentityPoolProviderId=ghe-oidc")
+                .count(),
+            1,
+        );
+        // Each impersonation is pinned to its own repository, so one Project's
+        // CI cannot mint the other Project's publisher token.
+        assert!(joined.contains("attribute.repository/neon-law/sample-estate"));
+        assert!(joined.contains("attribute.repository/neon-law/sample-litigation"));
+    }
+
+    /// A code too long to own an account id refuses before the first request.
+    ///
+    /// Not merely "the run fails": the recording client must have seen nothing
+    /// at all. Checking each code as the loop reached it would leave the
+    /// Projects ahead of the bad one provisioned and the rest not, and a partial
+    /// IAM apply is the state an operator has to unpick by hand.
+    #[tokio::test]
+    async fn a_too_long_code_refuses_before_any_call_is_made() {
+        let client = offline_dry_run_client();
+        let err = ensure(
+            &client,
+            "neon-law-stg",
+            "neon-law",
+            &["sample-estate".to_string(), "a".repeat(23)],
+            "neon-law-stg-applications",
+        )
+        .await
+        .expect_err("a code that cannot own an account id must refuse the stage");
+        assert!(
+            matches!(err, SetupError::PublisherCodeRefused { .. }),
+            "{err}",
+        );
+        assert!(
+            client.recorded_calls().is_empty(),
+            "nothing may be provisioned before the whole list validates: {:?}",
+            client.recorded_calls(),
+        );
+    }
+
+    const PUBLISHER: &str = "nav-pub-sample-litigation@proj.iam.gserviceaccount.com";
     const PUBLISHER_MEMBER: &str =
-        "serviceAccount:navigator-app-publisher@proj.iam.gserviceaccount.com";
+        "serviceAccount:nav-pub-sample-litigation@proj.iam.gserviceaccount.com";
 
     /// The condition names the prefix itself *and* everything beneath it.
     ///

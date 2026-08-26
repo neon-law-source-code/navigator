@@ -304,6 +304,194 @@
   font-weight: 600;
 }
 
+/* ---- Connected Project -------------------------------------------------- */
+
+.fm-band--project-network {
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 45%, color-mix(in oklab, var(--nav-color-primary) 11%, transparent), transparent 38%),
+    color-mix(in srgb, var(--nav-color-primary) 3%, transparent);
+}
+
+.fm-project-network {
+  margin: 0;
+}
+
+.fm-project-network__map {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    "core"
+    "left"
+    "right";
+  gap: 1rem;
+  max-width: 66rem;
+  margin-inline: auto;
+}
+
+.fm-project-network__core,
+.fm-project-network__node {
+  position: relative;
+  border: 1px solid var(--nav-color-border);
+  border-radius: var(--nav-radius-lg);
+  background: var(--nav-color-surface);
+}
+
+.fm-project-network__core {
+  grid-area: core;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: clamp(1.75rem, 4vw, 2.5rem);
+  text-align: center;
+  box-shadow: 0 1.25rem 3rem color-mix(in oklab, var(--nav-color-primary) 15%, transparent);
+}
+
+.fm-project-network__wheel {
+  width: clamp(4.5rem, 10vw, 6.5rem);
+  height: clamp(4.5rem, 10vw, 6.5rem);
+  margin-block-end: 0.75rem;
+}
+
+.fm-project-network__eyebrow,
+.fm-project-network__external-label {
+  margin: 0;
+  color: var(--nav-color-primary);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.fm-project-network__core h3,
+.fm-project-network__node h3 {
+  margin: 0;
+  font-family: var(--nav-font-family);
+  font-size: 1.125rem;
+  line-height: 1.2;
+}
+
+.fm-project-network__core h3 {
+  margin-block: 0.3rem 0.5rem;
+  font-size: clamp(1.5rem, 3vw, 2rem);
+}
+
+.fm-project-network__core > p:last-child,
+.fm-project-network__node p {
+  margin: 0.5rem 0 0;
+  color: var(--nav-color-text-muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.fm-project-network__lane {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  grid-area: left;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fm-project-network__lane--right {
+  grid-area: right;
+}
+
+.fm-project-network__node {
+  padding: 1.1rem;
+}
+
+.fm-project-network__node--left {
+  border-color: color-mix(in srgb, #52749a 40%, var(--nav-color-border));
+}
+
+.fm-project-network__node--right {
+  border-color: color-mix(in srgb, #4f9b79 40%, var(--nav-color-border));
+}
+
+.fm-project-network__tool-panels {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  margin-block-start: 1.5rem;
+}
+
+.fm-project-network__external {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px dashed color-mix(in srgb, var(--nav-color-primary) 45%, var(--nav-color-border));
+  border-radius: var(--nav-radius-lg);
+  background: color-mix(in srgb, var(--nav-color-surface) 82%, transparent);
+}
+
+.fm-project-network__external--saas {
+  grid-column: 1 / -1;
+}
+
+.fm-project-network__tools {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fm-project-network__tool {
+  padding: 0.35rem 0.7rem;
+  border: 1px solid color-mix(in srgb, var(--nav-color-primary) 28%, transparent);
+  border-radius: 999px;
+  background: var(--nav-color-surface);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+@media (min-width: 42rem) {
+  .fm-project-network__tool-panels {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 56rem) {
+  .fm-project-network__map {
+    grid-template-columns: minmax(0, 1fr) minmax(13rem, 0.86fr) minmax(0, 1fr);
+    grid-template-areas:
+      "left core right";
+    align-items: stretch;
+    column-gap: clamp(2rem, 6vw, 5rem);
+  }
+
+  .fm-project-network__lane {
+    grid-template-columns: 1fr;
+    align-content: center;
+  }
+
+  .fm-project-network__core {
+    justify-content: center;
+  }
+
+  .fm-project-network__node::after {
+    position: absolute;
+    top: 50%;
+    width: clamp(2rem, 6vw, 5rem);
+    border-block-start: 1px solid color-mix(in srgb, var(--nav-color-primary) 55%, transparent);
+    content: "";
+  }
+
+  .fm-project-network__node--left::after {
+    right: calc(clamp(2rem, 6vw, 5rem) * -1);
+  }
+
+  .fm-project-network__node--right::after {
+    left: calc(clamp(2rem, 6vw, 5rem) * -1);
+  }
+}
+
 /* ---- Steps --------------------------------------------------------------- */
 
 .fm-band--steps {

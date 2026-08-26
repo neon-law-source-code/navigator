@@ -15,7 +15,7 @@
 /// rather than from a consultation, and a firm that publishes its fees cannot
 /// quietly charge one client more than another for the same work.
 use webapp::marketing_page::{
-    Band, Card, Download, HeroCta, PackageInstall, PageContent, Run, Step,
+    Band, Card, Download, HeroCta, PackageInstall, PageContent, ProjectNetworkNode, Run, Step,
 };
 
 /// One published flat fee: what the matter is, what it costs, and what that
@@ -286,6 +286,7 @@ pub fn navigator() -> PageContent {
             .to_string(),
         bands: vec![
             navigator_purpose_band(),
+            navigator_project_network_band(),
             navigator_vibe_band(),
             navigator_downloads_band(),
             navigator_working_surface_band(),
@@ -304,6 +305,78 @@ pub fn navigator() -> PageContent {
     }
 }
 
+/// The work surfaces a Project connects around Navigator.
+fn navigator_project_network_band() -> Band {
+    Band::ProjectNetwork {
+        anchor: "connected-project".to_string(),
+        overline: "One connected Project".to_string(),
+        heading: "Navigator is the center of the work.".to_string(),
+        description: Some(
+            "A Project can include one or more cases, companies, filings, and more so long as it's related to the best interest of our clients."
+                .to_string(),
+        ),
+        left: vec![
+            ProjectNetworkNode {
+                label: "Internal Slack".to_string(),
+                detail: "Firm-only Project conversation.".to_string(),
+            },
+            ProjectNetworkNode {
+                label: "Internal Notion".to_string(),
+                detail: "Firm working notes and knowledge.".to_string(),
+            },
+            ProjectNetworkNode {
+                label: "GitHub".to_string(),
+                detail: "Per-project versioned text including notation templates and client portal."
+                    .to_string(),
+            },
+            ProjectNetworkNode {
+                label: "Client portal".to_string(),
+                detail: "A vibe-coded Project application for the client experience.".to_string(),
+            },
+        ],
+        right: vec![
+            ProjectNetworkNode {
+                label: "Shared Slack".to_string(),
+                detail: "Client collaboration when the Project uses it.".to_string(),
+            },
+            ProjectNetworkNode {
+                label: "Per-Project Inbox".to_string(),
+                detail: "Project email intake and conversation.".to_string(),
+            },
+            ProjectNetworkNode {
+                label: "Google Drive folder".to_string(),
+                detail: "Large document intake".to_string(),
+            },
+            ProjectNetworkNode {
+                label: "External Notion".to_string(),
+                detail: "Client collaboration when the Project uses it.".to_string(),
+            },
+        ],
+        mcp_tools: vec![
+            "Court Listener".to_string(),
+            "Descrybe".to_string(),
+            "Exa".to_string(),
+            "Midpage".to_string(),
+        ],
+        agentic_coding_tools: vec![
+            "Antigravity".to_string(),
+            "Claude Code".to_string(),
+            "Codex".to_string(),
+            "Cursor".to_string(),
+        ],
+        saas_tools: vec![
+            "Chatwoot".to_string(),
+            "Descript".to_string(),
+            "DocuSign".to_string(),
+            "Google Workspace".to_string(),
+            "Highlight".to_string(),
+            "Linear".to_string(),
+            "Mercury".to_string(),
+            "Xero".to_string(),
+        ],
+    }
+}
+
 /// The firm's client-serving purpose for Navigator, and who works on it.
 fn navigator_purpose_band() -> Band {
     Band::Statement {
@@ -311,11 +384,7 @@ fn navigator_purpose_band() -> Band {
         lead: "We build Navigator for the purpose of serving clients as expeditiously, \
                precisely, accurately, and in alignment with their interests."
             .to_string(),
-        body: vec![vec![Run::plain(
-            "The firms we serve work on it too. A firm that engages us keeps its client and its \
-             matter; Navigator is where the work happens, and the other firms on it are the \
-             co-counsel network that firm joins by being there.",
-        )]],
+        body: Vec::new(),
     }
 }
 
@@ -804,6 +873,31 @@ mod firm_copy_tests {
                 let description = description.clone().unwrap_or_default();
                 format!("{overline} {heading} {description} {steps}")
             }
+            Band::ProjectNetwork {
+                overline,
+                heading,
+                description,
+                left,
+                right,
+                mcp_tools,
+                agentic_coding_tools,
+                saas_tools,
+                ..
+            } => {
+                let nodes = left
+                    .iter()
+                    .chain(right)
+                    .map(|node| format!("{} {}", node.label, node.detail))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                let description = description.clone().unwrap_or_default();
+                format!(
+                    "{overline} {heading} {description} {nodes} {} {} {}",
+                    mcp_tools.join(" "),
+                    agentic_coding_tools.join(" "),
+                    saas_tools.join(" ")
+                )
+            }
             // Every string the band puts on the page: the headings, the
             // version, each box's label, architecture, and filename, and the
             // package-manager prose and commands. The copy guards below read
@@ -875,7 +969,9 @@ mod firm_copy_tests {
                     .iter()
                     .flat_map(|s| from_paragraphs(&s.body))
                     .collect(),
-                Band::Downloads { .. } | Band::Cta { .. } => Vec::new(),
+                Band::ProjectNetwork { .. } | Band::Downloads { .. } | Band::Cta { .. } => {
+                    Vec::new()
+                }
             })
             .collect()
     }
@@ -1316,6 +1412,75 @@ mod firm_copy_tests {
         assert!(
             text.to_lowercase().contains("storytelling"),
             "the page ties the method to lawyering as storytelling: {text}"
+        );
+    }
+
+    /// The connected-Project diagram names the Project's work surfaces.
+    #[test]
+    fn the_navigator_page_maps_connected_project_surfaces() {
+        let content = super::navigator();
+        let diagram = content
+            .bands
+            .iter()
+            .find_map(|band| match band {
+                Band::ProjectNetwork {
+                    left,
+                    right,
+                    mcp_tools,
+                    agentic_coding_tools,
+                    saas_tools,
+                    ..
+                } => Some((left, right, mcp_tools, agentic_coding_tools, saas_tools)),
+                _ => None,
+            })
+            .expect("the Navigator page renders its connected-Project diagram");
+
+        let left_labels: Vec<&str> = diagram.0.iter().map(|node| node.label.as_str()).collect();
+        assert_eq!(
+            left_labels,
+            [
+                "Internal Slack",
+                "Internal Notion",
+                "GitHub",
+                "Client portal"
+            ]
+        );
+        let right_labels: Vec<&str> = diagram.1.iter().map(|node| node.label.as_str()).collect();
+        assert_eq!(
+            right_labels,
+            [
+                "Shared Slack",
+                "Per-Project Inbox",
+                "Google Drive folder",
+                "External Notion"
+            ]
+        );
+        assert!(diagram.0[2].detail.contains("Per-project versioned text"));
+        assert_eq!(diagram.1[2].detail, "Large document intake");
+        assert_eq!(
+            diagram.1[3].detail,
+            "Client collaboration when the Project uses it."
+        );
+        let mcp_tools: Vec<&str> = diagram.2.iter().map(String::as_str).collect();
+        assert_eq!(mcp_tools, ["Court Listener", "Descrybe", "Exa", "Midpage"]);
+        let agentic_coding_tools: Vec<&str> = diagram.3.iter().map(String::as_str).collect();
+        assert_eq!(
+            agentic_coding_tools,
+            ["Antigravity", "Claude Code", "Codex", "Cursor"]
+        );
+        let saas_tools: Vec<&str> = diagram.4.iter().map(String::as_str).collect();
+        assert_eq!(
+            saas_tools,
+            [
+                "Chatwoot",
+                "Descript",
+                "DocuSign",
+                "Google Workspace",
+                "Highlight",
+                "Linear",
+                "Mercury",
+                "Xero"
+            ]
         );
     }
 

@@ -48,6 +48,10 @@
 //!   browser refresh both survive.
 //! * A third-party bundle cannot ride Navigator's nonce CSP, so the response
 //!   carries its own [`PORTAL_CSP`] instead.
+//! * Every entrypoint (`index.html`, wherever it sits) has a small Neon Law
+//!   banner spliced into it — see [`portal_banner_html`] — so a participant
+//!   embedded in the Project's own bundle still has a way back to
+//!   `/app/projects/{code}`. Every other object streams unmodified.
 //!
 //! # A scope miss is 404, never 403
 //!
@@ -65,6 +69,7 @@ use axum::routing::get;
 use axum::Router;
 
 use cloud::workspace::PORTAL_MOUNT_SEGMENT;
+use webapp::html_escape::escape_attr;
 
 use crate::session::SessionData;
 
@@ -103,6 +108,9 @@ const NO_STORE: HeaderValue = HeaderValue::from_static("no-store");
 /// rather than inheriting the nonce CSP. It is applied on the response, and
 /// the global `if_not_present` CSP layer leaves it in place. `connect-src
 /// 'self'` is what lets the bundle reach its own same-origin `/app/api`.
+/// `style-src 'self' 'unsafe-inline'` is also what lets [`portal_banner_html`]
+/// carry inline styles: the banner is spliced into the bundle's own
+/// `index.html` rather than loaded from a stylesheet the bundle never links.
 const PORTAL_CSP: HeaderValue = HeaderValue::from_static(
     "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; \
      img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; \
@@ -299,7 +307,7 @@ async fn serve_bundle(
     let prefix = format!("{code}/{PORTAL_MOUNT_SEGMENT}");
     for candidate in bundle_candidates(&asset) {
         match fetch(&state.applications, &format!("{prefix}/{candidate}")).await {
-            Fetched::Found(object) => return bundle_response(&candidate, object),
+            Fetched::Found(object) => return bundle_response(&candidate, object, code),
             Fetched::Failed => return StatusCode::BAD_GATEWAY.into_response(),
             // Not this one; the next candidate is the point of the list.
             Fetched::Missing => {}
@@ -368,8 +376,14 @@ async fn fetch(storage: &Arc<dyn cloud::StorageService>, key: &str) -> Fetched {
 ///
 /// `served` is the bundle-relative path actually read, which decides both the
 /// content type and the cache policy: `index.html` names the live build and is
-/// `no-store`; every content-hashed asset is immutable for a year.
-fn bundle_response(served: &str, object: cloud::StoredObject) -> Response {
+/// `no-store`; every content-hashed asset is immutable for a year. An
+/// entrypoint also gets [`portal_banner_html`] spliced into it, so a
+/// participant has a way back to `/app/projects/{project_code}`; every other
+/// object streams unmodified.
+fn bundle_response(served: &str, mut object: cloud::StoredObject, project_code: &str) -> Response {
+    if is_index(served) {
+        object.bytes = open_with_banner(&object.bytes, &portal_banner_html(project_code));
+    }
     let mut response = object.bytes.into_response();
     let headers = response.headers_mut();
     headers.insert(
@@ -390,6 +404,59 @@ fn bundle_response(served: &str, object: cloud::StoredObject) -> Response {
         HeaderValue::from_static("nosniff"),
     );
     response
+}
+
+/// The small Neon Law banner spliced into a portal's entrypoint.
+///
+/// A participant embedded in a Project's own third-party bundle has no
+/// Navigator chrome around it otherwise — nothing on the page can get them
+/// back to the matter that mounted it. The markup is plain, self-contained
+/// HTML with inline styles rather than a themed component: the bundle links
+/// none of Navigator's stylesheet, so a class name here would resolve to
+/// nothing. `PORTAL_CSP`'s `style-src 'self' 'unsafe-inline'` is what allows
+/// the inline styles; no script runs.
+///
+/// `project_code` is already validated by [`store::projects::is_valid_code`]
+/// before this is called — lowercase letters, digits, and single hyphens only
+/// — but it is still escaped here rather than trusted, so this function's
+/// safety does not depend on staying downstream of that gate forever.
+fn portal_banner_html(project_code: &str) -> String {
+    let brand = views::brand::FIRM_BRAND.site_name;
+    let href = format!("/app/projects/{}", escape_attr(project_code));
+    format!(
+        "<div style=\"position:sticky;top:0;z-index:2147483647;display:flex;\
+         align-items:center;justify-content:space-between;gap:1rem;\
+         padding:0.5rem 1rem;background:#0f1a2b;color:#f5f7fa;\
+         font:600 14px/1.4 -apple-system,BlinkMacSystemFont,'Segoe UI',\
+         Helvetica,Arial,sans-serif;box-sizing:border-box;\">\
+         <span>{brand}</span>\
+         <a href=\"{href}\" style=\"color:#f5f7fa;\">&larr; Back to project</a>\
+         </div>"
+    )
+}
+
+/// Insert `banner` as the first child of the document body.
+///
+/// The same shape as `portal::dioxus_app::open_with_banner` for Navigator's
+/// own SSR surface, kept as a separate copy rather than a shared helper: that
+/// one operates on a `String` a Dioxus render already validated as UTF-8, and
+/// this one operates on bytes a third-party build produced, which carries no
+/// such guarantee.
+///
+/// A document with no `<body>` — or bytes that are not valid UTF-8 — is
+/// returned untouched. Dropping the banner is better than corrupting or
+/// failing the response over a build shape this cannot recognize.
+fn open_with_banner(html: &[u8], banner: &str) -> Vec<u8> {
+    let Ok(html) = std::str::from_utf8(html) else {
+        return html.to_vec();
+    };
+    let Some(start) = html.find("<body") else {
+        return html.as_bytes().to_vec();
+    };
+    let Some(end) = html[start..].find('>').map(|offset| start + offset + 1) else {
+        return html.as_bytes().to_vec();
+    };
+    format!("{}{banner}{}", &html[..end], &html[end..]).into_bytes()
 }
 
 /// Whether the served path is an entrypoint, which is what makes it
@@ -454,8 +521,9 @@ fn content_type_for(path: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{
-        asset_path_is_safe, bundle_candidates, content_type_for, is_index, Refused, INDEX,
-        PROJECT_PORTAL_ASSET, PROJECT_PORTAL_PATH, PROJECT_PORTAL_ROOT,
+        asset_path_is_safe, bundle_candidates, content_type_for, is_index, open_with_banner,
+        portal_banner_html, Refused, INDEX, PROJECT_PORTAL_ASSET, PROJECT_PORTAL_PATH,
+        PROJECT_PORTAL_ROOT,
     };
     use cloud::workspace::PORTAL_MOUNT_SEGMENT;
 
@@ -621,6 +689,50 @@ mod tests {
             candidates.contains(&"matters/open/index.html".to_string()),
             "the slashless form must find the directory index too"
         );
+    }
+
+    /// The banner names the brand and links back to the caller's own matter,
+    /// with the code escaped rather than trusted even though the caller
+    /// already validated it.
+    #[test]
+    fn the_banner_links_back_to_the_matter() {
+        let html = portal_banner_html("libra-formation");
+        assert!(html.contains("Neon Law"), "{html}");
+        assert!(
+            html.contains("href=\"/app/projects/libra-formation\""),
+            "{html}"
+        );
+    }
+
+    /// The banner lands as the body's first child, whatever attributes the
+    /// opening tag carries, and a document with no body — or invalid UTF-8 —
+    /// is returned untouched rather than corrupted.
+    #[test]
+    fn the_banner_opens_the_body_and_leaves_a_bodyless_document_alone() {
+        let banner = "<div id=\"b\">B</div>";
+
+        assert_eq!(
+            open_with_banner(
+                b"<html><head></head><body><div id=\"root\"></div></body></html>",
+                banner
+            ),
+            b"<html><head></head><body><div id=\"b\">B</div><div id=\"root\"></div></body></html>"
+        );
+        // The bundle's own body may carry attributes; the whole opening tag is
+        // skipped rather than a literal `<body>` matched.
+        assert_eq!(
+            open_with_banner(b"<body class=\"x\" data-y><p>P</p></body>", banner),
+            b"<body class=\"x\" data-y><div id=\"b\">B</div><p>P</p></body>"
+        );
+        assert_eq!(
+            open_with_banner(b"<p>fragment</p>", banner),
+            b"<p>fragment</p>"
+        );
+        assert_eq!(open_with_banner(b"<body", banner), b"<body");
+        // Invalid UTF-8 is returned byte-for-byte rather than lossily
+        // re-encoded, which would silently corrupt a binary response.
+        let invalid = [0xff, 0xfe, 0x00];
+        assert_eq!(open_with_banner(&invalid, banner), invalid);
     }
 
     /// An ES module must arrive as `text/javascript` or the browser refuses to

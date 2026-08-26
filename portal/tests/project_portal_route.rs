@@ -92,7 +92,9 @@ async fn fixture() -> Fixture {
         &project.code,
         "index.html",
         "text/html; charset=utf-8",
-        b"<!doctype html><title>Libra portal</title><script type=module src=\"./assets/app.js\"></script>",
+        b"<!doctype html><html><head><title>Libra portal</title></head><body>\
+          <div id=\"root\"></div><script type=module src=\"./assets/app.js\"></script>\
+          </body></html>",
     )
     .await;
     portal::test_support::publish_portal_object(
@@ -187,6 +189,10 @@ async fn the_portal_mount_and_the_matter_show_page_both_resolve() {
         StatusCode::OK,
         "the matter show page must survive the portal mount"
     );
+    assert!(
+        body_string(matter).await.contains("class=\"app-footer\""),
+        "every /app page carries the minimal footer"
+    );
 
     // The bare mount redirects to the trailing-slash form the Vite base joins
     // asset URLs onto.
@@ -256,6 +262,41 @@ async fn a_participant_streams_the_published_bundle() {
         "text/html; charset=utf-8"
     );
     assert!(body_string(deep).await.contains("Libra portal"));
+}
+
+/// The entrypoint carries a way back to the matter.
+///
+/// A participant embedded in a Project's own bundle has no Navigator chrome
+/// around it otherwise — nothing on the page can get them back to
+/// `/app/projects/{code}`. The banner is entrypoint-only: a content-hashed
+/// asset streams unmodified, because the bundle's own script/style bytes must
+/// stay byte-for-byte what was published.
+#[tokio::test]
+async fn the_entrypoint_carries_a_link_back_to_the_matter() {
+    let f = fixture().await;
+    let root = format!("/app/projects/{}/portal/", f.project_code);
+
+    let index = send(&f.app, &root, &f.participant_cookie).await;
+    let body = body_string(index).await;
+    assert!(
+        body.contains(&format!("href=\"/app/projects/{}\"", f.project_code)),
+        "{body}"
+    );
+    assert!(body.contains("Neon Law"), "{body}");
+    // Still the same document otherwise: the banner is inserted, not replacing
+    // the bundle's own markup.
+    assert!(body.contains("Libra portal"), "{body}");
+
+    let asset = send(
+        &f.app,
+        &format!("{root}assets/app.js"),
+        &f.participant_cookie,
+    )
+    .await;
+    assert!(
+        !body_string(asset).await.contains("Neon Law"),
+        "a content-hashed asset must stream unmodified"
+    );
 }
 
 /// A scope miss is 404, never 403 — and so is a Project with nothing published.

@@ -337,11 +337,12 @@ navigator projects repository validate .
 gate workflow, `README.md`, `AGENTS.md`, `CLAUDE.md`, a `templates/project_template.md` placeholder, and `tests/`.
 
 The generated gate pins Navigator's validate action to `--action-version`, which defaults to the release the running
-`navigator` reports as its own version. That default is a deliberate invariant rather than an accident of which binary
-the operator installed: the CLI and the action publish from one tagged commit, so the action at the CLI's version is
-exactly the one the scaffold was written against. Name the flag to pin a Project to some other release. A value that is
-not an exact release tag is refused before any file is written, so a gate that could never resolve is never created —
-which is the failure this replaced, a literal `26.7.27` emitted into every new repository long after it named nothing.
+`navigator` reports as its own version — but only when this binary can actually vouch for that version: a downloaded
+release binary, or one built with `NAVIGATOR_RELEASE_TAG` set, both of which can only report a version this repository
+has already published. A plain local build cannot make that promise (`[workspace.package].version` is bumped on `main`
+days before the matching tag exists), so it carries no default at all, and `--action-version` must be named explicitly.
+A value that is not an exact release tag — including no value, when this binary cannot vouch for one — is refused
+before any file is written, so a gate that could never resolve is never created.
 
 It does **not** write `portal/`. That arrives from the vibe-coding lane ([`vibe-coding`](vibe-coding.md)), which knows
 how to make a Vite application and which released `@neon-law/ux` version to pin. Keeping it out of the scaffold is what

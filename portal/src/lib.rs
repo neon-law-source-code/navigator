@@ -177,7 +177,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use axum::extract::{DefaultBodyLimit, FromRef, Path as AxumPath, State};
-use axum::http::{header, HeaderName, HeaderValue, Request, StatusCode};
+use axum::http::{header, HeaderName, HeaderValue, Method, Request, StatusCode, Uri};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
@@ -1748,14 +1748,18 @@ pub fn bootstrap(
     // last on the response):
     //
     //   request  → request-id → trace → security-headers → propagate-id
-    //            → host       → cookies → renew → handler
+    //            → trailing-slash → host → cookies → renew → handler
     //   response ← request-id ← trace ← security-headers ← propagate-id
-    //            ← host       ← cookies ← renew ← handler
+    //            ← trailing-slash ← host ← cookies ← renew ← handler
     //
     // We want the request-id assigned BEFORE the trace span opens
     // (so the span carries the id) and the security headers applied
     // to every response (including 3xx redirects from the host
     // layer), so they sit on the outside of the cookie + host pair.
+    // `redirect_trailing_slash` sits just inside them and outside the
+    // host/cookie/session-renew work, since a redirect needs none of
+    // that — but it still wants the same request-id and security
+    // headers every other response gets.
     // Session renewal sits *inside* the cookie manager so the cookie it
     // re-issues is serialized into the response's `Set-Cookie` header.
     Ok(router
@@ -1765,6 +1769,7 @@ pub fn bootstrap(
         ))
         .layer(tower_cookies::CookieManagerLayer::new())
         .layer(host_layer)
+        .layer(axum::middleware::from_fn(redirect_trailing_slash))
         .layer(PropagateRequestIdLayer::new(X_REQUEST_ID))
         .layer(SetResponseHeaderLayer::if_not_present(
             header::CONTENT_SECURITY_POLICY,
@@ -1796,6 +1801,139 @@ pub fn bootstrap(
             branding,
             scope_branding,
         )))
+}
+
+/// `true` when `path` is the Project client-portal subtree —
+/// `/app/projects/{code}/portal` and everything beneath it.
+///
+/// There a trailing slash is a route distinction the published bundle's own
+/// base URL depends on (see [`project_portal`]), not an accidental link
+/// variant, so [`trailing_slash_redirect_target`] must never touch it.
+fn is_project_portal_subtree(path: &str) -> bool {
+    let mut segments = path.split('/').filter(|segment| !segment.is_empty());
+    matches!(
+        (
+            segments.next(),
+            segments.next(),
+            segments.next(),
+            segments.next()
+        ),
+        (Some("app"), Some("projects"), Some(_code), Some("portal"))
+    )
+}
+
+/// The `Location` a trailing-slash request should redirect to, or `None`
+/// when the request must route normally.
+///
+/// Restricted to `GET`/`HEAD`: a redirect need not preserve a request body,
+/// and no route in this router registers a `POST` path ending in `/`, so
+/// widening this to every method would let a client silently retry a write
+/// as a `GET` against a path nothing actually serves that way. Excludes
+/// [`is_project_portal_subtree`], where the slash is meaningful rather than
+/// incidental. The query string, if any, survives onto the target.
+fn trailing_slash_redirect_target(method: &Method, uri: &Uri) -> Option<String> {
+    if method != Method::GET && method != Method::HEAD {
+        return None;
+    }
+    let path = uri.path();
+    if path.len() <= 1 || !path.ends_with('/') || is_project_portal_subtree(path) {
+        return None;
+    }
+    let stripped = path.trim_end_matches('/');
+    let stripped = if stripped.is_empty() { "/" } else { stripped };
+    Some(match uri.query() {
+        Some(query) => format!("{stripped}?{query}"),
+        None => stripped.to_string(),
+    })
+}
+
+/// Redirect a `GET`/`HEAD` request for a registered path's trailing-slash
+/// variant to the canonical, slash-free path.
+///
+/// A `301` — the conventional slash-normalization status — matching the
+/// existing single-route precedent in [`project_portal::redirect_to_slash`],
+/// since a `GET`/`HEAD`-only redirect need not preserve a method.
+async fn redirect_trailing_slash(req: Request<axum::body::Body>, next: Next) -> Response {
+    if let Some(target) = trailing_slash_redirect_target(req.method(), req.uri()) {
+        if let Ok(location) = HeaderValue::from_str(&target) {
+            return (
+                StatusCode::MOVED_PERMANENTLY,
+                [(header::LOCATION, location)],
+            )
+                .into_response();
+        }
+    }
+    next.run(req).await
+}
+
+#[cfg(test)]
+mod trailing_slash_tests {
+    use super::{is_project_portal_subtree, trailing_slash_redirect_target};
+    use axum::http::{Method, Uri};
+
+    fn target(method: &Method, uri: &str) -> Option<String> {
+        trailing_slash_redirect_target(method, &uri.parse::<Uri>().unwrap())
+    }
+
+    #[test]
+    fn strips_a_trailing_slash_from_a_get() {
+        assert_eq!(
+            target(&Method::GET, "/app/projects/"),
+            Some("/app/projects".to_string())
+        );
+    }
+
+    #[test]
+    fn strips_a_trailing_slash_from_a_head() {
+        assert_eq!(target(&Method::HEAD, "/docs/"), Some("/docs".to_string()));
+    }
+
+    #[test]
+    fn preserves_the_query_string() {
+        assert_eq!(
+            target(&Method::GET, "/app/projects/?sort=name"),
+            Some("/app/projects?sort=name".to_string())
+        );
+    }
+
+    #[test]
+    fn leaves_a_slash_free_path_alone() {
+        assert_eq!(target(&Method::GET, "/app/projects"), None);
+    }
+
+    #[test]
+    fn leaves_the_bare_root_alone() {
+        assert_eq!(target(&Method::GET, "/"), None);
+    }
+
+    #[test]
+    fn leaves_a_post_alone() {
+        assert_eq!(target(&Method::POST, "/app/projects/"), None);
+    }
+
+    #[test]
+    fn leaves_the_project_portal_root_alone() {
+        assert_eq!(target(&Method::GET, "/app/projects/acme/portal/"), None);
+    }
+
+    #[test]
+    fn leaves_a_project_portal_asset_alone() {
+        assert_eq!(
+            target(&Method::GET, "/app/projects/acme/portal/engagement/"),
+            None
+        );
+    }
+
+    #[test]
+    fn portal_subtree_detection_requires_all_four_segments() {
+        assert!(!is_project_portal_subtree("/app/projects/acme"));
+        assert!(!is_project_portal_subtree("/app/projects/acme/"));
+        assert!(is_project_portal_subtree("/app/projects/acme/portal"));
+        assert!(is_project_portal_subtree("/app/projects/acme/portal/"));
+        assert!(is_project_portal_subtree(
+            "/app/projects/acme/portal/assets/app.js"
+        ));
+    }
 }
 
 /// The `presentations`-category certificate POST. The static route already

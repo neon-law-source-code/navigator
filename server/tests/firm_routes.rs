@@ -1149,7 +1149,7 @@ async fn the_navigator_page_maps_a_connected_project() {
         "Per-Project Inbox",
         "Google Drive folder",
         "Shared Slack",
-        "External Notion",
+        "Shared Notion",
         "Navigator",
         "Web API MCP CLI",
         "GitHub",
@@ -1201,7 +1201,7 @@ async fn the_navigator_page_maps_a_connected_project() {
     );
     assert!(
         body.contains("Client collaboration when the Project uses it."),
-        "the External Notion node describes its collaboration role: {body}"
+        "the Shared Notion node describes its collaboration role: {body}"
     );
     assert!(
         body.contains("A Project can include one or more cases, companies, filings, and more")

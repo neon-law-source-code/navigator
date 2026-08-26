@@ -348,7 +348,7 @@ fn navigator_project_network_band() -> Band {
                 detail: "Large document intake".to_string(),
             },
             ProjectNetworkNode {
-                label: "External Notion".to_string(),
+                label: "Shared Notion".to_string(),
                 detail: "Client collaboration when the Project uses it.".to_string(),
             },
         ],
@@ -1452,7 +1452,7 @@ mod firm_copy_tests {
                 "Shared Slack",
                 "Per-Project Inbox",
                 "Google Drive folder",
-                "External Notion"
+                "Shared Notion"
             ]
         );
         assert!(diagram.0[2].detail.contains("Per-project versioned text"));

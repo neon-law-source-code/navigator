@@ -26,6 +26,7 @@
 //! stated only here — a boundary that lives in a comment erodes on the first
 //! deadline.
 
+pub mod app_footer;
 pub mod app_navbar;
 pub mod breadcrumb;
 pub mod card;
@@ -57,6 +58,9 @@ pub mod social;
 pub mod testimonial;
 pub mod toast;
 
+#[cfg(feature = "server")]
+pub use app_footer::render_app_footer;
+pub use app_footer::AppFooter;
 pub use app_navbar::{AppLogo, AppNavLink, AppNavbar};
 pub use breadcrumb::{BackBreadcrumb, LawyerPortalBreadcrumb};
 pub use card::Card;

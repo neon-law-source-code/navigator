@@ -153,6 +153,9 @@ async fn dioxus_document_head(req: Request, next: Next) -> Response {
     // shell's opening `<html>` tag here — whether that shell is bare or already
     // carries the template's `lang="en"`.
     let lang = "en";
+    // Captured before `next.run` consumes `req`: the footer below is gated on
+    // the request path, not on anything the render produced.
+    let path = req.uri().path().to_string();
     let response = next.run(req).await;
 
     let is_html = response
@@ -196,6 +199,17 @@ async fn dioxus_document_head(req: Request, next: Next) -> Response {
     let html = match chat {
         Some(widget) => close_with_script(&html, &widget.script_tags()),
         None => html,
+    };
+
+    // The minimal `/app` footer — a centered copyright line, nothing else.
+    // Gated on the request path rather than on the rendered shell: unlike the
+    // public/authenticated split above, the eight real `/app` pages render
+    // their navbar directly rather than through a shared `NavigatorShell`, so
+    // there is no shell marker to key off. See `webapp::components::AppFooter`.
+    let html = if renders_app_footer(&path) {
+        close_with_script(&html, &APP_FOOTER)
+    } else {
+        html
     };
 
     if let Ok(csp) = HeaderValue::from_str(&csp_with_nonce(&nonce, crate::asset_csp_origin(), chat))
@@ -252,9 +266,12 @@ fn is_public_page(html: &str) -> bool {
 
 /// Insert `script` as the last thing before `</body>`.
 ///
-/// Last, not first: the widget is chrome layered over a page that must already
-/// be readable without it, so it loads after the document's own content rather
-/// than competing with first paint.
+/// Last, not first: the support-chat widget this was written for is chrome
+/// layered over a page that must already be readable without it, so it loads
+/// after the document's own content rather than competing with first paint.
+/// The same shape serves the `/app` footer's injection — despite the name,
+/// the content inserted is an arbitrary HTML fragment, not necessarily a
+/// `<script>`.
 ///
 /// A document with no `</body>` is returned untouched, matching
 /// [`open_with_banner`]: an HTML response that is a fragment rather than a
@@ -274,6 +291,27 @@ fn close_with_script(html: &str, script: &str) -> String {
 /// per request.
 static SAMPLE_MATTERS_BANNER: std::sync::LazyLock<String> =
     std::sync::LazyLock::new(webapp::components::render_sample_matters_banner);
+
+/// The rendered `/app` footer, built once.
+///
+/// `views::brand::FIRM_BRAND` is a process-wide constant, so — like
+/// [`SAMPLE_MATTERS_BANNER`] — there is nothing to re-render per request.
+static APP_FOOTER: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(webapp::components::render_app_footer);
+
+/// Whether the rendered document is an authenticated `/app` page, which is
+/// what [`APP_FOOTER`] renders onto.
+///
+/// Decided from the request path rather than the rendered shell: unlike
+/// [`is_public_page`], the eight real `/app` pages render `AppNavbar` and
+/// their own `main` directly rather than through a shared `NavigatorShell`
+/// (issue tracked, not yet adopted), so there is no shell marker in the HTML
+/// to key off. `/app/` is a prefix, not an exact match, so it covers every
+/// page this middleware layers onto — `/app/projects`, `/app/projects/{code}`,
+/// `/app/team`, and the rest — without naming each one.
+fn renders_app_footer(path: &str) -> bool {
+    path.starts_with("/app/")
+}
 
 /// Insert `banner` as the first child of the document body.
 ///
@@ -3457,6 +3495,28 @@ mod tests {
             "{banner}"
         );
         assert!(banner.contains("Sample matters"), "{banner}");
+    }
+
+    /// Only a request path under `/app/` gets the footer — the public
+    /// marketing, blog, docs, and template routes this middleware also layers
+    /// onto must not.
+    #[test]
+    fn only_app_paths_render_the_footer() {
+        assert!(renders_app_footer("/app/projects"));
+        assert!(renders_app_footer("/app/projects/libra-formation"));
+        assert!(renders_app_footer("/app/team"));
+        assert!(!renders_app_footer("/blog"));
+        assert!(!renders_app_footer("/docs"));
+        assert!(!renders_app_footer("/lawyer/entity-types"));
+        assert!(!renders_app_footer("/app"));
+    }
+
+    /// The rendered footer is the one that actually reaches a response.
+    #[test]
+    fn the_rendered_footer_names_the_firm_of_record() {
+        let footer = &*APP_FOOTER;
+        assert!(footer.contains("Shook Law PLLC"), "{footer}");
+        assert!(footer.contains('©'), "{footer}");
     }
 
     /// The route-scoped policy widens `img-src`/`font-src` to the deployment

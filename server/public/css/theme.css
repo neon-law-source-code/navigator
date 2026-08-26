@@ -185,6 +185,22 @@ textarea {
   gap: 0.75rem;
 }
 
+/* The minimal footer every `/app` page carries — a centered copyright line,
+   nothing else. Distinct from `.navigator-footer`, which lays out a legal
+   attribution, a link row, and a release stamp for the not yet widely
+   adopted `NavigatorShell`. */
+.app-footer {
+  padding: 1.5rem 1rem;
+  text-align: center;
+  color: var(--nav-color-text-muted);
+  border-top: 1px solid var(--nav-color-border);
+  font-size: 0.875rem;
+}
+
+.app-footer__copyright {
+  margin: 0;
+}
+
 .navigator-chrome-showcase {
   overflow: hidden;
   border: 1px solid var(--nav-color-border);

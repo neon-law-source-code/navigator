@@ -30,14 +30,15 @@ use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::components::{
-    wire_runs, AppLogo, AppNavbar, BackBreadcrumb, Card, CatalogHero, Choice, CodeBlock, Column,
-    ConfirmDelete, DataTable, ExternalLink, Field, FooterAttorney, FooterBarLicense, FooterNavLink,
-    FooterOffice, FormCard, GitHubStars, Icon, IconName, ImpersonationBanner, ImpersonationView,
-    LawyerPortalBreadcrumb, LegalBlueprintDisclaimer, NavigatorDestination, NavigatorFooter,
-    NavigatorFooterLink, NavigatorNavbar, NavigatorShell, Pagination, PeopleListInputs,
-    PersonChoice, PersonPicker, PricingCard, PricingSection, PublicShell, RowActions, RunParagraph,
-    SampleMattersBanner, SiteFooterLegal, SiteHeader, SiteNavLink, SocialMeta, SortState,
-    TestimonialCard, TestimonialSection, Toast, ToastTone, THEME_STYLESHEET_HREF,
+    wire_runs, AppFooter, AppLogo, AppNavbar, BackBreadcrumb, Card, CatalogHero, Choice, CodeBlock,
+    Column, ConfirmDelete, DataTable, ExternalLink, Field, FooterAttorney, FooterBarLicense,
+    FooterNavLink, FooterOffice, FormCard, GitHubStars, Icon, IconName, ImpersonationBanner,
+    ImpersonationView, LawyerPortalBreadcrumb, LegalBlueprintDisclaimer, NavigatorDestination,
+    NavigatorFooter, NavigatorFooterLink, NavigatorNavbar, NavigatorShell, Pagination,
+    PeopleListInputs, PersonChoice, PersonPicker, PricingCard, PricingSection, PublicShell,
+    RowActions, RunParagraph, SampleMattersBanner, SiteFooterLegal, SiteHeader, SiteNavLink,
+    SocialMeta, SortState, TestimonialCard, TestimonialSection, Toast, ToastTone,
+    THEME_STYLESHEET_HREF,
 };
 // The vendor marks come from their own module rather than the theme root: they
 // are the one component whose colours are a third party's rather than the
@@ -411,6 +412,7 @@ pub fn DesignGallery() -> Element {
             FormShowcase {}
             PeopleListShowcase {}
             AppNavbarShowcase {}
+            AppFooterShowcase {}
             NavigatorChromeShowcase {}
             NavigationShowcase {}
             SnippetsSection {}
@@ -490,6 +492,24 @@ fn AppNavbarShowcase() -> Element {
                     }),
                 }
             }
+        }
+    }
+}
+
+/// The minimal footer every `/app` page carries, injected once into every
+/// response by `portal::dioxus_app::dioxus_document_head` rather than
+/// rendered by each of the eight real `/app` pages — see the component's own
+/// module docs for why. It carries nothing but the copyright line.
+#[component]
+fn AppFooterShowcase() -> Element {
+    rsx! {
+        section {
+            h2 { "Application footer" }
+            p {
+                "The one footer every authenticated /app page carries: a centered copyright "
+                "line naming the entity of record, and nothing else."
+            }
+            AppFooter { legal_entity: "Shook Law PLLC".to_string(), copyright_year: 2026 }
         }
     }
 }
@@ -1404,6 +1424,7 @@ mod tests {
         let crate_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         let gallery = std::fs::read_to_string(crate_root.join("src/design.rs")).expect("design.rs");
         for component in [
+            "AppFooter",
             "AppNavbar",
             "BackBreadcrumb",
             "LawyerPortalBreadcrumb",

@@ -2,35 +2,113 @@
 
 Working notes for the drift command. Written to stand alone: the thread that produced it is gone.
 
-- **Worktree** `C:\Users\jaska\navigator-wt-eng-347` (non-primary, verified against `git worktree list --porcelain`)
-- **Branch** `jask/eng-347-projects-drift-command`, at `b73038f` — level with `origin/main`
-  (`git rev-list --left-right --count origin/main...HEAD` → `0	0`)
-- **Issue** ENG-347, "Thirteen of nineteen Project repositories name a code no live project carries,
-  and nothing reports the drift" (High, project *Seed documents reach a deployment from CI, under a
-  scoped token*)
+- **Worktree** `C:\Users\jaska\navigator-wt-eng-347` (non-primary, verified via `git worktree list --porcelain`)
+- **Branch** `jask/eng-347-projects-drift-command`, branched from `origin/main` at `b73038f`
+- **Issue** ENG-347 (High), project *Seed documents reach a deployment from CI, under a scoped token*
 - **Date** 2026-08-25
 
 ## Bottom line, read this first
 
-The command **compiles and its CLI surface is wired**, but the gate never ran. **There is no PR, and
-nothing was pushed.** The branch is intact and the work is on disk but not committed to Git.
+**Nothing is pushed and there is no PR.** The work is committed locally. Three of the four gate
+checks are green; the fourth never completed, so the gate cannot be called green and a push was not
+justified.
 
-`cargo build -p cli --bin navigator` finished **green, exit 0, in 29m52s**, with no warnings emitted.
-That landed after the session had already been reported as blocked, so it is the last thing verified.
-The rest of the gate — fmt, clippy, the test suites, the Markdown validator — was deliberately **not**
-started, because the session was being closed out.
+The command's own tests are green: **22 of 22 `projects::drift::tests` pass.** One of them caught a
+real bug, which is fixed (see *The bug the tests caught*).
 
-The single most useful next action is to run the gate. Everything below is either read off the
-source at `b73038f` or is a design decision with its reasoning attached; none of it depends on the
-build.
+The blockers to finishing are environmental, not defects:
+
+- `cargo nextest run --workspace` was **killed three times mid-build** by something outside this
+  session. Not one workspace test ever executed.
+- `cargo test -p features` never ran.
+- The **live-host run was impossible from this machine**: no stored credentials, and no Project
+  repository checkout root to scan.
 
 ## Scope
 
-The **build half only** — the command that reports drift.
+The **build half only** — the command that reports drift. Out of scope and untouched: reconciling
+the thirteen repositories, creating or patching any Project row, anything touching a client entity.
+Nothing was written to production; in the end production was not even read.
 
-Explicitly out of scope, and untouched: reconciling the thirteen repositories, creating or patching
-any Project row, and anything touching a client entity. Production was read-only throughout; in the
-end not even read, because the live-host run never happened.
+## Gate results — exactly what was run
+
+| Check | Result |
+| --- | --- |
+| `cargo fmt --all -- --check` | **green** (after applying `cargo fmt --all`; the diff was pure formatting) |
+| `cargo clippy --workspace --all-targets -- -D warnings` | **green**, zero warnings |
+| `navigator validate docs/project-repositories.md` | **green** (after fixing 4 real errors) |
+| `cargo nextest run -p cli --bin navigator -E 'test(/projects::drift::/)'` | **green, 22/22** |
+| `cargo nextest run -p cli --bin navigator` (all 891) | **6 failures, all pre-existing host issues** — see below |
+| `cargo nextest run --workspace` | **never completed** — killed 3× mid-build |
+| `cargo test -p features` | **not run** |
+
+This is a **narrowed gate, not the workspace gate.** Do not report it as complete.
+
+### The Markdown errors were real
+
+```
+docs/project-repositories.md:405 S101: Line is 144 characters (max 120)
+docs/project-repositories.md:409 S101: Line is 136 characters (max 120)
+docs/project-repositories.md:397 S102: Line is 118 characters; could absorb "a" from line 398 to reach 120 (max 120)
+docs/project-repositories.md:433 S102: Line is 115 characters; could absorb "why." from line 434 to reach 120 (max 120)
+```
+
+Two over-long table cells and two under-packed prose lines — the rule is two-sided. Fixed by
+shortening the cells and reflowing both paragraphs with a greedy 120-**character** wrap. Use the CLI
+validator, never `awk`: `awk` counts bytes, so an em dash makes a correct line read two over.
+
+## Local test failures, and which are yours to care about
+
+The full `cli` binary suite is 891 tests. Run naively it looks alarming; almost all of it is this
+machine. The taxonomy, each item **proven** by re-running with the cause removed:
+
+| Failures | Cause | Proof |
+| --- | --- | --- |
+| 1 — `devx::github_setup::tests::dry_run_never_writes` | ambient `NAVIGATOR_GITHUB_APP_ID` / `NAVIGATOR_GITHUB_API_BASE` in the shell | passes with both unset |
+| 10 — all `release_check::*` and `release_default_tag::*` | global `commit.gpgsign = true`; the tests make commits in temp repos and signing fails | all 10 pass with `GIT_CONFIG_GLOBAL`/`GIT_CONFIG_SYSTEM` pointed at an empty file |
+| 6 — `devx::tests::render_env_*`, `devx::native::garage::*`, `devx::worktree_env::*` | Windows host paths | see below |
+| 1 — `projects::drift::tests::a_boolean_rowless_declaration_is_refused` | **a real bug in this change** | fixed; now passes |
+
+To run the `cli` suite cleanly on this machine:
+
+```bash
+: > /tmp/empty-gitconfig
+env -u NAVIGATOR_GITHUB_APP_ID -u NAVIGATOR_GITHUB_API_BASE \
+    GIT_CONFIG_GLOBAL=/tmp/empty-gitconfig GIT_CONFIG_SYSTEM=/tmp/empty-gitconfig \
+    cargo nextest run -p cli --bin navigator --no-fail-fast
+```
+
+The 6 Windows failures survive that and are **not** caused by this change — nothing in this diff
+touches `devx`. Their causes are visible in the assertions:
+
+- `devx::tests::render_env_threads_the_ports` — `assertion failed: env.contains("KUBECONFIG='/ws/.devx/kubeconfig'")`,
+  a POSIX-path expectation against a Windows path.
+- `devx::worktree_env::*` — `fatal: could not create leading directories of
+  '//?/C:/Users/.../linked/.git': Invalid argument`. `tempfile::tempdir()` hands back a `\\?\`
+  extended-length path and git cannot use it.
+
+**Caveat, stated plainly:** these 6 were *not* proven pre-existing by building the parent commit —
+that needs a full rebuild, which kept getting killed. The causal explanation is strong and the diff
+cannot reach `devx`, but it is inference, not observation.
+
+## The bug the tests caught
+
+`a_boolean_rowless_declaration_is_refused` failed on the first honest run, and it was right to.
+
+The design says the suppression key carries a **reason**, not a boolean, so nobody can silence a
+finding without recording why. The implementation deserialized it straight into `Option<String>` —
+and **`serde_yaml` is lenient: `no_live_row: true` coerces to the string `"true"`**, which read as a
+perfectly good reason. The rule the whole design rests on was not actually enforced.
+
+Fixed by holding the value untyped and requiring a genuine string:
+
+```rust
+no_live_row: Option<serde_yaml::Value>,
+```
+
+with `scan_repository` accepting only `Value::String`, refusing an empty one, and reporting anything
+else as a manifest error. This is worth remembering: **a permissive deserializer will quietly
+undo a validation rule expressed only in the type.**
 
 ## Verified — read from source at `b73038f`
 
@@ -44,30 +122,23 @@ end not even read, because the live-host run never happened.
 | `Project.repository_url` is `Option<String>` | `store/src/projects.rs:45` |
 | `projects doctor` already defines an `Ok`/`Warn`/`Fail` vocabulary | `cli/src/projects/doctor.rs:32`–`40` |
 | Exemptions are centralized *on purpose* for the allowed-root list | `cli/src/projects/repository.rs:41`–`48` |
-
-All four citations used in the PR body were re-read line-by-line at `b73038f` after `origin/main`
-moved, rather than trusted. They were exact.
+| `origin` (`neon-law-foundation/navigator`) redirects to `neon-law-source-code/navigator` | `gh api repos/neon-law-foundation/navigator --jq .full_name` |
 
 **The consequence that shaped the design:** the reverse direction is *unreachable* through the CSV
-route that the existing `site projects list` uses. It carries no `repository_url`, so it can answer
-only "does this repository have a row?" and never "does this row have a repository?". The drift
-command therefore reads `GET /app/api/projects`. **No server change is needed** — this was checked,
-not assumed.
+route the existing `site projects list` uses. It carries no `repository_url`, so it can answer only
+"does this repository have a row?" and never "does this row have a repository?". The command reads
+`GET /app/api/projects` instead. **No server change is needed** — checked, not assumed.
 
 ## Inferred — not proven by a run
 
 - **Matching a row's `repository_url` to a checkout by the URL's last path segment against the
-  directory name.** This is the assumption `cli/src/projects/repository.rs:26` already makes ("the
-  repository name *is* the code") and is consistent with it. A checkout deliberately cloned into a
-  differently named directory would read as drift. Judged acceptable; not observed either way.
-- **That the bearer token flow works against `/app/api/projects`.** `AuthedSession`
-  (`portal/src/api.rs:554`) reads `SessionData` from request extensions, which is the same
-  middleware that populates it for `/app/projects.csv` — and `cli/src/remote.rs` already drives that
-  route with a bearer. So it should work. **Never exercised.** If the live run 401s, this is the
-  first thing to check.
-- **That `--dir` holding only part of the fleet produces self-explaining output** rather than noise.
-  The finding text names the searched directory for exactly this reason, but nobody has read real
-  output.
+  directory name.** Consistent with `cli/src/projects/repository.rs:26` ("the repository name *is*
+  the code"). A checkout cloned into a differently named directory would read as drift.
+- **That the bearer flow works against `/app/api/projects`.** `AuthedSession`
+  (`portal/src/api.rs:554`) reads `SessionData` from request extensions — the same middleware that
+  serves `/app/projects.csv`, which `cli/src/remote.rs` already drives with a bearer. **Never
+  exercised.** If the live run 401s, look here first.
+- **That the 6 Windows `devx` failures are pre-existing** (see caveat above).
 
 ## The design decision, and why
 
@@ -75,21 +146,19 @@ not assumed.
 thirteen are closed matters left without rows on purpose. A tool that reports eight known-good
 repositories as failures is a tool nobody runs twice.
 
-Decided via the repository's Engineering Council (`/council`). Four shapes were considered:
+Decided via the repository's Engineering Council (`/council`). Four shapes considered:
 
-1. **A constant list of the codes to skip, in Navigator's source.** *Barred by an invariant, not by
-   taste.* A Project code **is** a client identifier — it names who retained the firm — and this
-   tree is public. `AGENTS.md` forbids naming a real client matter in anything that leaves the
-   practice. The eight codes cannot be written here at all.
-2. **A `--ignore` flag or file.** Rejected: it does not remove the identifier, it relocates it to a
-   runbook, a CI invocation, or a pasted command — written down just the same and reviewed less.
-3. **Infer from repository shape** (no `portal/`, no `seeds/`, no `templates/` ⇒ nothing
-   load-bearing). Rejected, and this is the one worth understanding: **an empty repository is also
-   exactly what a brand-new *unreconciled* Project looks like.** That rule would go silent about
-   precisely the gaps the command exists to find. Shape is evidence of impact, never of intent.
+1. **A constant list of codes to skip, in Navigator's source.** *Barred by an invariant, not taste.*
+   A Project code **is** a client identifier — it names who retained the firm — and this tree is
+   public. `AGENTS.md` forbids naming a real client matter in anything that leaves the practice. The
+   eight codes cannot be written here at all.
+2. **A `--ignore` flag or file.** Rejected: does not remove the identifier, relocates it to a
+   runbook or CI invocation — written down just the same, reviewed less.
+3. **Infer from repository shape** (no `portal/`, no `seeds/` ⇒ nothing load-bearing). Rejected, and
+   this is the one worth understanding: **an empty repository is also exactly what a brand-new
+   *unreconciled* Project looks like.** That rule would go silent about precisely the gaps the
+   command exists to find. Shape is evidence of impact, never of intent.
 4. **The repository declares its own absence.** Chosen.
-
-So a repository that is meant to have no row says so in the manifest it already carries:
 
 ```yaml
 # navigator.yaml
@@ -97,24 +166,16 @@ project: <project-code>
 no_live_row: the matter closed in <month>; no row was opened
 ```
 
-The fact lives beside the matter it is about, is reviewed by whoever knows that matter, and dies
-with the repository.
+The value is a reason, not a boolean — see *The bug the tests caught* for how nearly that failed.
+**Suppressed is not silent:** declared row-less repositories are counted in the footer and listed by
+`--all`.
 
-**The value is a reason string, not a boolean.** `no_live_row: true` fails to deserialize and is
-reported as a manifest error. A boolean would let someone silence a red line without recording why.
-
-**Suppressed is not silent.** Declared row-less repositories are counted in the report footer and
-listed by `--all`. A report that hides repositories without saying so fails the same way as one that
-cries wolf about them.
-
-**A tension a reviewer will notice, and the answer:** `cli/src/projects/repository.rs:41`–`48` says
-in as many words that exemptions live centrally, *not* per repository, because a per-repository
-exemption file makes a gate advisory. This PR goes the other way. The distinguishing fact is that
-the allowed-root list governs a rule **identical for every repository** — which paths may sit at a
-root — so centralizing costs nothing. Whether one matter is meant to have a row is a **per-matter
-fact only that matter knows**, and centralizing it costs a client identifier in a public tree. This
-is called out explicitly in both the module doc and the PR body so it does not read as
-inconsistency.
+**A tension a reviewer will notice:** `cli/src/projects/repository.rs:41`–`48` says exemptions live
+centrally, *not* per repository, because a per-repository exemption file makes a gate advisory. This
+change goes the other way. The distinguishing fact is that the allowed-root list governs a rule
+**identical for every repository**, so centralizing costs nothing; whether one matter is meant to
+have a row is a **per-matter fact only that matter knows**. Called out in the module doc, the doc
+section, and the commit message so it does not read as inconsistency.
 
 ## What was built
 
@@ -122,136 +183,98 @@ inconsistency.
 
 | File | Change |
 | --- | --- |
-| `cli/src/projects/drift.rs` | **new**, ~1090 lines including 20 tests |
+| `cli/src/projects/drift.rs` | **new**, ~1100 lines including 22 tests |
 | `cli/src/projects/mod.rs` | registers the module |
-| `cli/src/main.rs` | `ProjectsCmd::Drift` variant + dispatch arm (+45 lines) |
+| `cli/src/main.rs` | `ProjectsCmd::Drift` variant + dispatch arm |
 | `cli/tests/help.rs` | verb list now `["doctor", "repository", "drift", "help"]` |
-| `docs/project-repositories.md` | new section *Reconciling repositories against live rows* (+70 lines) |
+| `docs/project-repositories.md` | new section *Reconciling repositories against live rows* |
 
-Structure follows `doctor.rs`: a **pure `analyze()`** over two already-read inputs, with a thin IO
-shell around it, so every asymmetry is testable without a network or a filesystem. Severity reuses
-`doctor::Status` rather than introducing a second severity vocabulary in a neighbouring file.
+Pure `analyze()` over two already-read inputs with a thin IO shell, mirroring `doctor.rs`, so every
+asymmetry is testable without network or filesystem. Severity reuses `doctor::Status`.
 
-Nine finding kinds:
+| kind | status |
+| --- | --- |
+| `repository-has-no-row` | fail |
+| `row-has-no-repository-url` | fail |
+| `row-repository-absent` | fail |
+| `code-mismatch` | fail |
+| `duplicate-code` | fail |
+| `unreadable-manifest` | fail |
+| `manifest-disagrees-with-name` | warn |
+| `no-manifest` | warn |
+| `rowless-by-declaration` | ok, counted |
 
-| kind | status | meaning |
-| --- | --- | --- |
-| `repository-has-no-row` | fail | repository declares a code no live row carries |
-| `row-has-no-repository-url` | fail | row records no repository at all |
-| `row-repository-absent` | fail | row's URL names a repository not present under `--dir` |
-| `code-mismatch` | fail | row and the repository its URL names spell the code differently |
-| `duplicate-code` | fail | two checkouts claim one code |
-| `unreadable-manifest` | fail | `navigator.yaml` unparsable, or names an invalid code |
-| `manifest-disagrees-with-name` | warn | manifest declares a code other than the directory name |
-| `no-manifest` | warn | checkout declares no Project, so it cannot be reconciled |
-| `rowless-by-declaration` | ok | declared deliberate; counted, never failed |
-
-`row-has-no-repository-url` is deliberately **its own category** rather than folded into the dangling-URL
-case. It was the failure that hit the entire fleet without reporting anything, and *never recorded*
-is a different problem from *recorded wrong*.
-
-The scan takes immediate subdirectories of `--dir` that contain a `.git`, so the scan root is a
-directory of sibling clones. A checkout with no `navigator.yaml` is still reported (`no-manifest`)
-rather than skipped — skipping it would make an unmanifested Project repository indistinguishable
-from a reconciled one.
-
-Exit is nonzero only on a `Fail`; warnings do not make a fleet drifted.
+`row-has-no-repository-url` is its own category, not folded into the dangling-URL case: it was the
+failure that hit an entire fleet silently, and *never recorded* is a different problem from
+*recorded wrong*.
 
 ## Deliberately not done
 
-### The layout gate — deferred, and this is not an oversight
+### The layout gate — deferred, not overlooked
 
-The issue's third ask — "add the constraint that would have caught it", i.e. the layout gate
-refusing a repository whose declared code names no live row — is **deliberately not in this work**.
-Confirmed as the right call, 2026-08-25.
-
-The reason is structural, not effort. That check needs a host **and a bearer token** available inside
-a Project repository's own CI run, and minting one from the repository's GitHub Actions OIDC identity
-is the entire subject of **ENG-345**. Stacking it here would make a small, reviewable, read-only
-command change depend on an unresolved authentication story, and would land a gate that cannot run
-green until that story finishes.
-
-Sequence: this command first (no auth story — it runs from an operator's machine against a login
-they already have), then the gate on top of ENG-345. `cli/src/projects/repository.rs::validate` is
-untouched.
+The issue's third ask — the layout gate refusing a repository whose declared code names no live row
+— is deliberately excluded. It needs a host **and a bearer token** inside a Project repository's own
+CI run, and minting one from that repository's GitHub Actions OIDC identity is the whole subject of
+**ENG-345**. Stacking it here would make a small, read-only command change depend on an unresolved
+authentication story, and land a gate that cannot run green until that story finishes.
+`cli/src/projects/repository.rs::validate` is untouched.
 
 ### The thirteen repositories
 
-Not reconciled, by instruction. Three are blocked elsewhere: two wait on client entity facts, and one
-on ENG-351 (a Florida P.A. has no representable entity type). Eight are closed matters left row-less
-on purpose — which is what the `no_live_row:` key exists to record. Adding that key to those eight
-repositories is **eight separate one-line PRs in those repositories**, not work in this one.
+Not reconciled, by instruction. Two wait on client entity facts, one on ENG-351 (a Florida P.A. has
+no representable entity type). Eight are closed matters left row-less on purpose — which is what
+`no_live_row:` exists to record. Adding that key is **eight one-line PRs in those repositories**, not
+work in this one.
 
-## Not verified — the honest list
+### The live-host run
 
-Nothing in this list was run. Do not report any of it as passing.
+**Could not be done from this machine.** `navigator projects drift --host https://www.neonlaw.com
+--dir .` returns:
 
-**What *was* verified, and is the only build evidence that exists:**
+```
+navigator: not logged in to https://www.neonlaw.com — run `navigator login --host …`
+```
 
-- `cargo build -p cli --bin navigator` — **green, exit 0, 29m52s, no warnings.** The crate compiles.
-- `navigator projects --help` lists `doctor`, `repository`, `drift`, `help` — in that order, which is
-  what `cli/tests/help.rs` now asserts. So that test should pass, though it has not been run.
-- `navigator projects drift --help` renders `--host`, `--dir` (default `.`), `--all`, `--json`.
+There is no stored credentials file, and `navigator login` is an interactive browser OIDC flow that
+was not started unattended. Separately, **there is no Project repository checkout root on this
+machine** (`~/neon-law` and siblings do not exist), so even with a login the scan would have had
+nothing to compare and every row would have reported `row-repository-absent`.
 
-That covers compilation and argument wiring only. It says nothing about whether the 20 unit tests
-pass, whether clippy is clean under `-D warnings`, or whether the Markdown validates.
-
-- `cargo fmt --check`
-- `cargo clippy --workspace --all-targets -- -D warnings`
-- `cargo nextest run --workspace`
-- `cargo test -p features`
-- `cargo run -p cli --quiet -- validate docs/project-repositories.md` — **the Markdown has never
-  been through the validator.** The two-sided line rule (S101 caps at 120 *characters*; S102
-  requires prose lines be packed) is easy to violate by hand, and the new doc section is 70 lines of
-  prose. Expect fixes here.
-- The live-host run. The command has never executed against anything.
-
-The code compiles, so first-compile errors are *not* expected. Clippy under `-D warnings` is the
-likelier source of friction, along with the Markdown line rules.
+Whoever picks this up needs both: a `navigator login --host <h>`, and the fleet cloned under one
+directory as [`docs/project-repositories.md` § Local checkouts](docs/project-repositories.md)
+describes.
 
 ## What the next person should pick up, in order
 
-1. **Run the gate**, pinned to `C:\Users\jaska\navigator-wt-eng-347`. The crate already compiles and
-   `target/` is warm, so this should be far quicker than the 30-minute cold build. `cargo fmt` then
-   `clippy -D warnings` then `cargo nextest run -p cli` is the fast loop; the full workspace suite
-   and `cargo test -p features` before pushing.
-2. **Run the Markdown validator** on `docs/project-repositories.md`. Use the CLI, never `awk` — awk
-   counts bytes, so em dashes make a correct line read two characters over.
-3. **`git fetch origin` and rebase onto `origin/main`** (signed: `git rebase -S origin/main`).
-   `origin/main` was `b73038f` at the time of writing and moves often. Re-read any cited line number
-   after the rebase rather than trusting it; that has bitten a sibling thread.
-4. **Commit, push, open the PR.** Body drafted at
-   `C:\Users\jaska\AppData\Local\Temp\claude\C--Users-jaska-navigator-wt-eng-347\47d3fb42-6fc7-4dbb-8494-b0c7cb3ce0ae\scratchpad\pr-body.md`
-   — **it currently ticks the Test plan boxes, which is false until the gate is actually green.
-   Fix that before posting.** `gh pr create` needs `--repo` and `--head` explicit: the git remote
-   still names the pre-migration org and the command fails without them. Normal PR, not a draft. Arm
-   auto-merge; do not merge and do not approve.
-5. **Then run it against the live host** and paste the real output into the PR thread. The concrete
-   thing to confirm is the reverse direction: a row whose `repository_url` still names a repository
-   under its pre-rename name should surface as `row-repository-absent`. A forge rename leaves a
-   redirect, so that URL keeps resolving over HTTP — which is exactly why nothing noticed before.
+1. **Finish the gate.** `target/` is warm. Run the full `cargo nextest run --workspace` and
+   `cargo test -p features`, using the env-neutralising invocation above. Expect the 6 Windows
+   `devx` failures; confirm they also fail on `origin/main` before dismissing them.
+2. **Rebase onto `origin/main`** (`git fetch origin && git rebase -S origin/main`), then re-read any
+   cited line number rather than trusting it across the rebase.
+3. **`git rm --cached ENG-347-DRIFT-FINDINGS.md`** so this file does not ride into the diff. It is
+   currently **committed**, deliberately, so a stray checkout cannot lose it — but it is a working
+   note, not part of the change.
+4. **Push and open a normal PR** (not draft). `gh pr create` **requires `--repo
+   neon-law-source-code/navigator` and `--head jask/eng-347-projects-drift-command`**: the git remote
+   still names the pre-migration org `neon-law-foundation`, which redirects for `git push` but makes
+   `gh pr create` fail. Arm auto-merge; do not merge, do not approve. A PR body is drafted in the
+   session scratchpad — **its Test-plan boxes are ticked and must be corrected to match whatever was
+   actually run.**
+5. **Then run the command against the live host** and paste the output into the PR thread. The
+   concrete thing to confirm is the reverse direction: a row whose `repository_url` still names a
+   repository under its pre-rename name should surface as `row-repository-absent`. A forge rename
+   leaves a redirect, so that URL keeps resolving over HTTP — which is exactly why nothing noticed
+   before.
 
 ## Worktree state at handoff
 
-Nothing is committed. `git status --porcelain`:
+See the final commit on the branch. `ENG-347-DRIFT-FINDINGS.md` is committed on purpose (durability);
+remove it from the branch at PR time per step 3.
 
-```
- M cli/src/main.rs
- M cli/src/projects/mod.rs
- M cli/tests/help.rs
- M docs/project-repositories.md
-?? ENG-347-DRIFT-FINDINGS.md
-?? cli/src/projects/drift.rs
-```
+No KIND environment was created, so there is nothing to tear down. No cargo processes were left
+running — every killed run was checked for orphans and none were found.
 
-`ENG-347-DRIFT-FINDINGS.md` is this file. It is untracked on purpose — it is a working note, not
-part of the change, and should **not** be committed into the PR.
-
-No KIND environment was created, so there is nothing to tear down. The `cargo build` finished and
-exited cleanly, so this thread leaves no cargo process holding a lock, and `target/` is warm.
-
-If a later build in this worktree seems stuck, check for orphaned cargo processes from *sibling*
-worktrees before assuming breakage — they share `~/.cargo`, and that contention is a known hazard on
-this machine rather than a fault. It cost this session a 30-minute build: cargo buffered its entire
-output and flushed only at exit, so the run looked dead at zero bytes the whole way through. Slow and
-silent is the expected shape here, not a symptom.
+**Machine notes worth keeping:** sibling worktrees share `~/.cargo`, so builds here are slow by
+nature. Cargo buffers its entire output and flushes only at exit, so a run at zero bytes for thirty
+minutes is normal, not hung. A cold workspace build took **29m52s**; test-profile builds are slower
+still because they rebuild the dependency chain again.

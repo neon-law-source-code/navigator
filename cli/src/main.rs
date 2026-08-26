@@ -1881,12 +1881,7 @@ fn main() -> ExitCode {
                 dir,
                 all,
                 json,
-            } => runtime().block_on(projects::drift::run(
-                host.host.as_deref(),
-                &dir,
-                all,
-                json,
-            )),
+            } => runtime().block_on(projects::drift::run(host.host.as_deref(), &dir, all, json)),
         },
         Command::Template { action } => match action {
             TemplateCmd::Format { file } => format::run(&file),

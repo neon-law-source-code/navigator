@@ -86,7 +86,12 @@ pub const MANIFEST_ROWLESS_KEY: &str = "no_live_row";
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 struct Manifest {
     project: Option<String>,
-    no_live_row: Option<String>,
+    /// Deliberately the raw YAML value rather than `Option<String>`. Deserializing
+    /// straight into a string is *lenient*: `no_live_row: true` coerces to the
+    /// string `"true"` and reads as a perfectly good reason, which is exactly the
+    /// boolean-shaped suppression [`MANIFEST_ROWLESS_KEY`] exists to refuse. The
+    /// value is held untyped here and required to be a genuine string below.
+    no_live_row: Option<serde_yaml::Value>,
 }
 
 /// One checkout found under the scan root.
@@ -162,9 +167,15 @@ pub enum Finding {
     /// Legal today — nothing derives one from the other — and worth seeing,
     /// because it is the shape that lets a repository assert the wrong code as
     /// settled fact.
-    ManifestDisagreesWithName { repository: String, declared: String },
+    ManifestDisagreesWithName {
+        repository: String,
+        declared: String,
+    },
     /// Two checkouts claiming one Project code.
-    DuplicateCode { code: String, repositories: Vec<String> },
+    DuplicateCode {
+        code: String,
+        repositories: Vec<String>,
+    },
     /// A manifest that is present but unreadable, or names an invalid code.
     UnreadableManifest { repository: String, detail: String },
     /// A checkout carrying no manifest. Reported rather than skipped: a
@@ -497,10 +508,27 @@ fn scan_repository(directory: &Path) -> ScannedRepository {
             ));
         }
     }
-    let reason = manifest
-        .no_live_row
-        .map(|reason| reason.trim().to_string())
-        .filter(|reason| !reason.is_empty());
+    // A declaration must carry prose. Anything else — a boolean, a number, a
+    // list — records that a finding was silenced without recording why, which
+    // is the one thing this key must not allow.
+    let reason = match manifest.no_live_row {
+        None => None,
+        Some(serde_yaml::Value::String(reason)) => {
+            let reason = reason.trim().to_string();
+            if reason.is_empty() {
+                return unreadable(format!(
+                    "`{MANIFEST_ROWLESS_KEY}:` must give the reason this repository has no live row"
+                ));
+            }
+            Some(reason)
+        }
+        Some(_) => {
+            return unreadable(format!(
+                "`{MANIFEST_ROWLESS_KEY}:` must be the reason this repository has no live row, \
+                 written as text"
+            ))
+        }
+    };
     ScannedRepository {
         directory: name,
         declared_code: declared,
@@ -516,8 +544,8 @@ fn scan_repository(directory: &Path) -> ScannedRepository {
 /// vendored copy or a nested fixture as a Project repository.
 pub fn scan(root: &Path) -> Result<Vec<ScannedRepository>> {
     let mut found = Vec::new();
-    let entries =
-        std::fs::read_dir(root).with_context(|| format!("read the scan root {}", root.display()))?;
+    let entries = std::fs::read_dir(root)
+        .with_context(|| format!("read the scan root {}", root.display()))?;
     for entry in entries {
         let entry = entry.with_context(|| format!("read an entry under {}", root.display()))?;
         let path = entry.path();
@@ -835,7 +863,10 @@ mod tests {
             &[row("acme-studio", Some("https://github.com/an-org/acme"))],
         );
 
-        assert_eq!(kinds(&report.findings), vec!["manifest-disagrees-with-name"]);
+        assert_eq!(
+            kinds(&report.findings),
+            vec!["manifest-disagrees-with-name"]
+        );
         assert!(report.is_reconciled());
     }
 
@@ -980,7 +1011,10 @@ mod tests {
         assert_eq!(found[0].declared_code.as_deref(), Some("acme"));
         assert_eq!(found[0].rowless_reason, None);
         assert_eq!(found[1].declared_code.as_deref(), Some("beta"));
-        assert_eq!(found[1].rowless_reason.as_deref(), Some("the matter closed"));
+        assert_eq!(
+            found[1].rowless_reason.as_deref(),
+            Some("the matter closed")
+        );
     }
 
     /// The scan root is a directory of sibling clones. A subdirectory that is

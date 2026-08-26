@@ -474,19 +474,19 @@ from `GET /app/api/projects`. That route rather than `GET /app/projects.csv`, wh
 carries `id, code, name, status, entity_name` and no `repository_url`, so it can answer only whether a repository has a
 row, never whether a row has a repository.
 
-Both directions matter, and the reverse one is the direction nothing checked. A row's `repository_url` is optional, so
-a row that never recorded one is indistinguishable at a glance from a row that did — and a repository is resolved back
-to its row *through* that column, so an empty one fails every resolution silently. A recorded-but-stale URL is quieter
+Both directions matter, and the reverse one is the direction nothing checked. A row's `repository_url` is optional, so a
+row that never recorded one is indistinguishable at a glance from a row that did — and a repository is resolved back to
+its row *through* that column, so an empty one fails every resolution silently. A recorded-but-stale URL is quieter
 still: a forge rename leaves a redirect, so the old URL keeps resolving over HTTP long after the repository stopped
 answering to that name.
 
 | Finding | Meaning |
 | --- | --- |
-| `repository-has-no-row` | The repository declares a code no live row carries. A portal published under `<code>/portal/` would mount nowhere. |
+| `repository-has-no-row` | Declares a code no live row carries; a portal under `<code>/portal/` mounts nowhere. |
 | `row-has-no-repository-url` | The row records no repository at all, so nothing resolves a repository back to it. |
 | `row-repository-absent` | The row's URL names a repository not present under `--dir`. |
 | `code-mismatch` | The row and the repository its URL names spell the code differently. |
-| `manifest-disagrees-with-name` | The manifest declares a code other than the repository's own name. Legal today; warned, not failed. |
+| `manifest-disagrees-with-name` | Declares a code other than the repository's name. Warned, not failed. |
 | `duplicate-code` | Two checkouts claim one Project code. |
 | `unreadable-manifest` | `navigator.yaml` is present but unparsable, or names an invalid code. |
 | `no-manifest` | The checkout declares no Project, so it cannot be reconciled. Warned, not failed. |
@@ -510,8 +510,8 @@ project: <project-code>
 no_live_row: the matter closed in <month>; no row was opened
 ```
 
-The value is the reason, not a boolean, because a boolean records that someone silenced a finding without recording
-why. `no_live_row: true` is refused as a manifest error rather than honored as a suppression.
+The value is the reason, not a boolean, because a boolean records that someone silenced a finding without recording why.
+`no_live_row: true` is refused as a manifest error rather than honored as a suppression.
 
 The suppression cannot live in Navigator's own source. A Project code *is* a client identifier — it names who retained
 the firm — and this repository is public, so a constant list of the codes to skip would publish exactly what

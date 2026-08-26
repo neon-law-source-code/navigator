@@ -32,6 +32,7 @@ pub mod f116;
 pub mod f117;
 pub mod f118;
 pub mod f119;
+pub mod f120;
 pub mod frontmatter;
 pub mod kind;
 pub mod links;
@@ -122,6 +123,7 @@ pub use f119::{
     describe_change_surface, describe_github_notation, F119GithubNotation, CHANGE_SURFACES,
     CHANGE_SURFACE_STATE, ENGINEERING_COUNCIL_STATE, GITHUB_NOTATIONS, GITHUB_SHELF,
 };
+pub use f120::F120BodyStateGrounding;
 pub use kind::Kind;
 pub use m001::M001HeadingIncrement;
 pub use m003::M003HeadingStyle;
@@ -317,6 +319,7 @@ pub fn description_for_code(code: &str) -> &'static str {
              `create_pull_request.md` and ask the change-surface, Engineering Council, and \
              narrative questions"
         }
+        "N120" => "Template body placeholder must name a declared questionnaire state",
         "E001" => "Event must declare both a `starts_at` timestamp and a `timezone`",
         "E002" => "A file is either an event or a notation template, never both",
         "E004" => "Event must declare a `luma_url` to check it out on Luma",

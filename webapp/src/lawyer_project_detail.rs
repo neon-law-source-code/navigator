@@ -630,6 +630,13 @@ pub fn LawyerProjectDetail() -> Element {
                         }
                     }
                 }
+                // Real-time upload progress: `upload-progress.js` finds the
+                // form via this field's id and replays the native submit as
+                // an XHR so it can render `upload.loaded` / `upload.total`
+                // as they arrive — a plain `Field::file(...)` id defaults to
+                // its `name` ("file"), which the Estate transcript uploader
+                // below also uses, so this needs its own id to stay unique.
+                document::Script { src: "/public/js/upload-progress.js", defer: true }
                 FormCard {
                     title: "Upload documents".to_string(),
                     action: "/app/projects/{view.code}/documents/upload",
@@ -638,7 +645,7 @@ pub fn LawyerProjectDetail() -> Element {
                     multipart: true,
                     csrf_token: Some(csrf.clone()),
                     fields: vec![
-                        Field::file("Files", "file").required().multiple()
+                        Field::file("Files", "file").id("document-upload-file").required().multiple()
                             .help("Select one file or several — each is filed as its own document."),
                         Field::text("Kind", "kind", "").placeholder("intake")
                             .help("Optional — defaults to `unclassified`. Applies to every file in this batch."),

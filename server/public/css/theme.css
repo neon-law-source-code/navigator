@@ -1936,6 +1936,32 @@ a.nav-link:hover {
   margin: 0 0 1rem;
 }
 
+/* Real-time document-upload progress (upload-progress.js). Hidden until the
+   script shows it; the bar and label both update on every XHR `progress`
+   event, so the fill width and the byte count move together in real time. */
+.upload-progress {
+  margin: 0.75rem 0 1rem;
+}
+
+.upload-progress__track {
+  overflow: hidden;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--nav-color-surface-raised);
+}
+
+.upload-progress__fill {
+  height: 100%;
+  background: var(--nav-color-primary);
+  transition: width 0.15s ease-out;
+}
+
+.upload-progress__label {
+  margin-top: 0.35rem;
+  font-size: 0.9rem;
+  color: var(--nav-color-text-muted);
+}
+
 /* Muted secondary text + empty-state rows. */
 .nav-muted,
 .muted,

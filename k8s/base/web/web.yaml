@@ -202,6 +202,13 @@ kind: Ingress
 metadata:
   name: navigator-web
   namespace: navigator
+  annotations:
+    # ingress-nginx's compiled-in default (1m) sits in front of the app's
+    # own document-batch ceiling (portal::project_documents::MAX_BATCH_BYTES,
+    # 500 MB) — without raising it here, a large scanned-PDF upload never
+    # reaches the pod at all. Headroom above 500 MB covers multipart
+    # boundary/header overhead across a full batch.
+    nginx.ingress.kubernetes.io/proxy-body-size: "550m"
 spec:
   ingressClassName: nginx
   rules:

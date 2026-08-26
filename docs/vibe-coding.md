@@ -178,9 +178,9 @@ the deployment's private applications bucket — see
 [`project-repositories`](project-repositories.md#publishing-the-built-bundle). Two pieces are still open, and an issue
 in this lane should reference them rather than assume them:
 
-- **Provisioning the publish target.** The applications bucket and the `navigator-app-publisher` identity are not yet
-  provisioned per deployment, and the shared reusable-workflow home in `ux/core` is not yet wired, so the caller
-  transcribes the job for now.
+- **Provisioning the publish target.** The applications bucket and the Project's own `nav-pub-<code>` publisher identity
+  are not yet provisioned for any deployment, and the shared reusable-workflow home in `ux/core` is not yet wired, so
+  the caller transcribes the job for now.
 - **Serving that bundle.** The route resolves and authorizes, and then answers 404, because there is nothing published
   to stream. A participant and a nonparticipant get the same non-disclosing response, so the status code discloses
   nothing about which one they are.

@@ -30,9 +30,9 @@
 #   NAVIGATOR_APP_PUBLISHER_SERVICE_ACCOUNT  printed by `navigator ops gcp setup`
 #
 # And `neon-law-stg` needs the publisher identity those two coordinates name,
-# which it does not have: it carries no `navigator-app-publisher` account and no
-# `app-publisher` Workload Identity pool, so nothing there can federate a
-# publish yet.
+# which it does not have: it carries no `nav-pub-<code>` account for any of these
+# three Projects and no `app-publisher` Workload Identity pool, so nothing there
+# can federate a publish yet.
 #
 # ## Why this is held rather than applied, and what is actually outstanding
 #

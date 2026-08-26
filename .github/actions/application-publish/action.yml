@@ -34,7 +34,7 @@ description: >-
 # They are secrets, and this action masks their components, for a narrower
 # reason: two of the three carry the deployment's GCP project identity in their
 # own text — the service-account email *is* the project id
-# (`navigator-app-publisher@<project>.iam.gserviceaccount.com`) and the provider
+# (`nav-pub-<code>@<project>.iam.gserviceaccount.com`) and the provider
 # resource *is* the project number (`projects/<number>/locations/global/...`) —
 # and the bucket name is `<deployment>-applications`, so it names the deployment.
 # The Project repositories consuming this action are public and so are their
@@ -120,7 +120,8 @@ inputs:
     required: true
   service_account:
     description: >-
-      The publisher identity to impersonate, `navigator-app-publisher@<project>.iam.gserviceaccount.com`.
+      This Project's own publisher identity to impersonate,
+      `nav-pub-<code>@<project>.iam.gserviceaccount.com`.
       Passed from the repository secret `NAVIGATOR_APP_PUBLISHER_SERVICE_ACCOUNT`.
       It is bound to write the applications bucket and nothing else. A secret
       rather than a variable because the email *is* the GCP project id —
@@ -183,9 +184,10 @@ runs:
             fi
         }
 
-        # `navigator-app-publisher@<project-id>.iam.gserviceaccount.com`
-        # — cli/src/devx/gcp/app_publisher.rs composes it, so the id is exactly
-        # the text between the `@` and the fixed suffix.
+        # `nav-pub-<code>@<project-id>.iam.gserviceaccount.com`
+        # — cli/src/devx/gcp/app_publisher.rs composes it, so the project id is
+        # exactly the text between the `@` and the fixed suffix. The local part
+        # differs per Project; nothing here depends on its shape.
         project_id="${SERVICE_ACCOUNT#*@}"
         project_id="${project_id%%.iam.gserviceaccount.com}"
         mask "${project_id}"

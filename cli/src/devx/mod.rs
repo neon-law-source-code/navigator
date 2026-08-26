@@ -581,17 +581,26 @@ pub enum GcpCmd {
         #[arg(long, env = "NAVIGATOR_APPLICATIONS_BUCKET")]
         applications_bucket: Option<String>,
         /// The GHE organization that owns this deployment's Project
-        /// repositories. Provisions the `navigator-app-publisher` identity when
-        /// set together with `--applications-publisher-repo`; omit both to
-        /// decline the publisher lane. Falls back to `NAVIGATOR_GITHUB_ORG`.
+        /// repositories. Provisions the publisher lane when set together with
+        /// at least one `--applications-publisher-repo`; omit both to decline
+        /// it. Singular because one Workload Identity provider serves the
+        /// deployment and its attribute condition names one owner. Falls back
+        /// to `NAVIGATOR_GITHUB_ORG`.
         #[arg(long, env = "NAVIGATOR_GITHUB_ORG")]
         applications_publisher_org: Option<String>,
-        /// The one Project repository the publisher's impersonation binding
-        /// pins, so a sibling app repository cannot publish as it. Provisions
-        /// the publisher identity only when set together with
-        /// `--applications-publisher-org`.
-        #[arg(long, env = "NAVIGATOR_APP_PUBLISHER_REPO")]
-        applications_publisher_repo: Option<String>,
+        /// A Project repository the publisher lane provisions an identity for.
+        /// Repeatable, once per Project, and each value is a repository name —
+        /// which is also the Project code and the bucket object prefix. Each
+        /// gets its own `nav-pub-<code>` service account, because the grant is
+        /// conditioned on one prefix and one account can carry only one.
+        /// Comma-separated through `NAVIGATOR_APP_PUBLISHER_REPOS`.
+        #[arg(
+            long = "applications-publisher-repo",
+            env = "NAVIGATOR_APP_PUBLISHER_REPOS",
+            value_delimiter = ',',
+            num_args = 1
+        )]
+        applications_publisher_repos: Vec<String>,
         /// Long-term Iceberg archive of this deployment's Surreal store
         /// (`neon-law-archives-<deployment>`). No lifecycle rule: this is where
         /// long-term storage lives. Omit to skip the lane entirely — there is
@@ -825,7 +834,7 @@ pub fn dispatch(command: crate::Command) -> Result<()> {
             logs_bucket,
             applications_bucket,
             applications_publisher_org,
-            applications_publisher_repo,
+            applications_publisher_repos,
             archives_bucket,
             telemetry_bucket,
             google_service_account_id,
@@ -842,7 +851,7 @@ pub fn dispatch(command: crate::Command) -> Result<()> {
                 logs_bucket,
                 applications_bucket,
                 applications_publisher_org,
-                applications_publisher_repo,
+                applications_publisher_repos,
                 archives_bucket,
                 telemetry_bucket,
                 ..gcp::SetupConfig::default()

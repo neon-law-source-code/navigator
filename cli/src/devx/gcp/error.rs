@@ -95,6 +95,15 @@ pub enum SetupError {
     #[error("malformed GCP response: {0}")]
     Malformed(&'static str),
 
+    /// A Project code cannot become a publisher service-account id.
+    ///
+    /// Either it is not a well-formed Project code, or it is too long: an
+    /// account id is capped at 30 characters and the code travels verbatim,
+    /// because a shortened code collides silently with every other code sharing
+    /// its prefix. Raised before any call is made, so nothing is provisioned.
+    #[error("Project code `{code}` cannot own a publisher service account: {reason}")]
+    PublisherCodeRefused { code: String, reason: String },
+
     /// Live state and the requested state are both plausible, and the
     /// provisioner cannot tell which is intended — so it refuses instead of
     /// overwriting. Distinct from [`Self::BadStatus`]: no call failed, and

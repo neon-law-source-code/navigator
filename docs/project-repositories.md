@@ -211,7 +211,7 @@ It carries no organization, host, or client. The three coordinates it cannot der
 | --- | --- |
 | `NAVIGATOR_APPLICATIONS_BUCKET` | the deployment's private applications bucket, e.g. `neon-law-applications` |
 | `NAVIGATOR_APP_PUBLISHER_WIF_PROVIDER` | the full Workload Identity provider resource, pool and provider id included |
-| `NAVIGATOR_APP_PUBLISHER_SERVICE_ACCOUNT` | `navigator-app-publisher@<project>.iam.gserviceaccount.com` |
+| `NAVIGATOR_APP_PUBLISHER_SERVICE_ACCOUNT` | `nav-pub-<code>@<project>.iam.gserviceaccount.com`, this Project's own |
 
 **Secrets for disclosure reduction, not for access control.** All three are public identifiers and knowing them grants
 nothing; the Workload Identity binding on Google's side is the gate, and it is the only one. They are secrets because
@@ -287,16 +287,44 @@ The role bound under that condition is a custom one holding exactly `storage.obj
 against the *bucket* — no object-name condition can scope it, and granting it would leak every other Project's object
 names. The publish does not need it, because it uploads with `cp`, which never lists.
 
-**A condition lives on a binding, and a binding names one role and one member set, so a shared publisher account can
-carry exactly one prefix.** One publisher identity per Project therefore follows from the shape rather than from
-preference: a second Project bound to the same account either widens the condition until the isolation is gone, or needs
-its own account.
+**A condition lives on a binding, and a binding names one role and one member set, so a publisher account can carry
+exactly one prefix.** One publisher identity per Project therefore follows from the shape rather than from preference: a
+second Project bound to the same account either widens the condition until the isolation is gone, or needs its own
+account. So the account id carries the Project code, and `--applications-publisher-repo` is repeatable, once per
+Project. The applications organization stays singular: one Workload Identity provider serves the deployment and its
+attribute condition names exactly one `repository_owner`.
 
-The publisher account is derived from the GCP project id alone, so every Project in a deployment would share it. A
-provisioning run that finds the publisher already bound to a *different* prefix therefore **refuses** rather than
-repointing it. The live policy cannot distinguish a repository rename, where repointing is correct, from a second
-Project, where repointing silently revokes the first Project's publish — so the ambiguity is surfaced to an operator
-instead of resolved by guessing. After a genuine rename, remove the stale binding by hand and re-run.
+A provisioning run that finds a publisher already bound to a *different* prefix still **refuses** rather than repointing
+it. With one account per Project that is reachable only after a repository rename — it used to be what rolling out a
+second Project hit, because the account was derived from the GCP project id alone and every Project shared it. The live
+policy cannot distinguish a rename, where repointing is correct, from a collision, where repointing silently revokes
+another Project's publish, so the ambiguity is surfaced to an operator instead of resolved by guessing. After a genuine
+rename, remove the stale binding by hand and re-run.
+
+#### The account id is `nav-pub-<code>`, and a Project code longer than 22 characters is refused
+
+A GCP service-account id is 6-30 characters, so the code and its prefix share a 30-character budget. `nav-pub-` spends
+eight of them and leaves twenty-two for the code, which is asserted in `cli/src/devx/gcp/app_publisher.rs` as
+`PUBLISHER_CODE_MAX_LEN` rather than written down twice. The prefix reads *whose*, *what*, *which Project*, matching the
+owner-first order of the sibling `navigator-web`, `navigator-drive` and `navigator-ci-pusher` accounts; it is an
+instance of `nav-<role>-<code>` rather than a name, so a second kind of per-Project identity gets a slot in the same
+scheme; and because the prefix alone is eight characters and begins with a letter, every id the scheme can produce
+satisfies GCP's minimum length and its leading-letter rule without a branch to check them.
+
+**The Project code travels verbatim, and a code that does not fit is refused before anything is provisioned.** The three
+alternatives all fail on trust rather than on length. Truncating collides silently: two codes sharing their first
+twenty-two bytes fold onto one account, and the next run repoints the first Project's conditioned binding — the outcome
+the refusal above exists to prevent, reached by a path that never consults it. A hash is unauditable, because the id is
+the only human-readable link between a principal in a bucket IAM policy and a portal prefix. An ordinal would put an
+account's meaning in the order of a configuration list, so an edit to that list would silently repoint every account
+after it.
+
+No prefix makes the ceiling go away, which is why the prefix optimizes for legibility instead. Codes are client-derived,
+and a `surname-mattertype-jurisdiction` shape reaches twenty-nine characters — over the limit even with a zero-length
+prefix. So the practical rule is a property of a Project's code, not of this module: **a Project whose portal publishes
+needs a code of at most 22 characters.** The refusal names the code, the id it would have produced, both limits, and the
+fact that the code is also the repository name and the bucket prefix, so it is changed once at Project creation or not
+at all.
 
 ### The `neon-law-staging` sample lane
 

@@ -18,10 +18,14 @@ Feature: Mutable two-sided intake assembles and sends through DocuSign
       | Libra Prime       |
     And lawyers add the custom clause "This engagement is governed by Nevada law."
     And lawyers finish the intake walk:
-      | value       |
-      | Libra Prime |
-      | Estate Plan |
-      | nevada      |
+      | value                                |
+      | Libra Prime                          |
+      | Firm Principal                       |
+      | Estate Plan                          |
+      | 2026-09-01                           |
+      | Draft and file the matter documents. |
+      | 450 per hour                         |
+      | nevada                               |
     Then the matter is awaiting attorney review
     And the matter has no signature request yet
     When the attorney approves and sends the document

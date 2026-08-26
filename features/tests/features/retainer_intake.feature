@@ -13,9 +13,9 @@ Feature: Retainer intake walk
     When the lawyer visits /lawyer/notations/:id/step
     Then the response status is 200
     And the page asks the "person__client" question
-    And the page shows "step 1 of 3"
+    And the page shows "step 1 of 7"
 
-  Scenario: Answering the first question advances to project__engagement
+  Scenario: Answering the first question advances to person__lawyer_dri
     When the lawyer submits "Libra" to /lawyer/notations/:id/step
     Then the response status is 303
     And the response redirects back to /lawyer/notations/:id/step
@@ -23,14 +23,18 @@ Feature: Retainer intake walk
     And the last transition lands on "person__client"
     And an answer row exists with value "Libra"
 
-  Scenario: Walking all three questions drives the workflow through END
+  Scenario: Walking all seven questions drives the workflow through END
     When the lawyer submits the full questionnaire:
-      | value       |
-      | Libra       |
-      | Estate plan |
-      | nevada      |
+      | value                                 |
+      | Libra                                 |
+      | Firm Principal                        |
+      | Estate plan                           |
+      | 2026-09-01                            |
+      | Draft and file the matter documents.  |
+      | 450 per hour                          |
+      | nevada                                |
     Then the final response status is 303
-    And the questionnaire runtime has recorded 4 transitions
+    And the questionnaire runtime has recorded 8 transitions
     And the last transition lands on "END"
     And a GET to /lawyer/notations/:id/step now redirects to /app/lawyer
 

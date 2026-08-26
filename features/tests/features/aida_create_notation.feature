@@ -34,9 +34,29 @@ Feature: AIDA walks a notation to END under a lawyer's authorization
     Then AIDA pauses for authorization to "Answer Notation"
     When the firm authorizes the pending action
     Then the task completes with status "needs_answer"
+    And the next question is "person__lawyer_dri"
+
+    When the LLM names the answer_notation skill with code "person__lawyer_dri" value "Firm Principal"
+    And the firm authorizes the pending action
+    Then the task completes with status "needs_answer"
     And the next question is "project__engagement"
 
     When the LLM names the answer_notation skill with code "project__engagement" value "Apollo"
+    And the firm authorizes the pending action
+    Then the task completes with status "needs_answer"
+    And the next question is "custom_datetime__engagement_start_date"
+
+    When the LLM names the answer_notation skill with code "custom_datetime__engagement_start_date" value "2026-09-01"
+    And the firm authorizes the pending action
+    Then the task completes with status "needs_answer"
+    And the next question is "custom_text__engagement_scope"
+
+    When the LLM names the answer_notation skill with code "custom_text__engagement_scope" value "Draft and file the Apollo formation documents."
+    And the firm authorizes the pending action
+    Then the task completes with status "needs_answer"
+    And the next question is "custom_text__fee_basis"
+
+    When the LLM names the answer_notation skill with code "custom_text__fee_basis" value "$450 per hour"
     And the firm authorizes the pending action
     Then the task completes with status "needs_answer"
     And the next question is "custom_single_choice__governing_law"

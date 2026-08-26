@@ -539,6 +539,86 @@ async fn bootstrap_mounts_host_public_routes_behind_the_shared_boundary() {
     );
 }
 
+/// Appending a trailing slash to a first-tranche path must not orphan an old
+/// link: today it falls through to the 404 fallback as if the path had never
+/// been registered, so an inbound link with a stray slash simply breaks. The
+/// router must instead redirect it back to the exact registered path.
+///
+/// The Project portal subtree is exempt, because there a trailing slash is
+/// not an accidental link variant but the route the bundle's own base URL
+/// depends on — asserted separately in
+/// `project_portal_route.rs::a_trailing_slash_within_the_portal_bundle_is_never_stripped`.
+#[tokio::test]
+async fn a_trailing_slash_redirects_to_the_registered_path() {
+    let app = portal::router(contract_state().await);
+
+    for (path, _access) in CONTRACT {
+        if path.contains("/portal") {
+            continue;
+        }
+        let slashed = format!("{path}/");
+        let response = anonymous_get(&app, &slashed).await;
+        assert_eq!(
+            response.status(),
+            StatusCode::MOVED_PERMANENTLY,
+            "{slashed} must redirect to {path}, not fall through to the fallback"
+        );
+        let location = response
+            .headers()
+            .get(axum::http::header::LOCATION)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default();
+        assert_eq!(
+            location, *path,
+            "{slashed} must redirect to the exact registered path"
+        );
+    }
+}
+
+/// The redirect is a link-safety net for `GET`/`HEAD` navigation, not a
+/// general path rewrite: no route in this router registers a `POST` path
+/// ending in `/`, so a `POST` with a stray trailing slash must keep 404ing
+/// exactly as it did before, rather than being redirected somewhere a client
+/// would silently retry as a `GET`.
+#[tokio::test]
+async fn a_trailing_slash_is_not_redirected_for_a_post() {
+    let app = portal::router(contract_state().await);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/auth/login/")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        response.status(),
+        StatusCode::NOT_FOUND,
+        "a POST with a trailing slash must not be redirected"
+    );
+}
+
+/// A query string on the slashed request survives onto the redirect target.
+#[tokio::test]
+async fn a_trailing_slash_redirect_preserves_the_query_string() {
+    let app = portal::router(contract_state().await);
+
+    let response = anonymous_get(&app, "/app/projects/?sort=name").await;
+
+    assert_eq!(response.status(), StatusCode::MOVED_PERMANENTLY);
+    let location = response
+        .headers()
+        .get(axum::http::header::LOCATION)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default();
+    assert_eq!(location, "/app/projects?sort=name");
+}
+
 /// The production brand composition path enforces the same reserved-prefix
 /// contract as the standalone [`portal::mount`] seam. A brand declaration is
 /// rejected before Axum can merge it, so host order can never shadow a shared

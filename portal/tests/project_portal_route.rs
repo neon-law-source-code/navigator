@@ -368,6 +368,35 @@ async fn a_trailing_slash_client_route_falls_back_to_the_entrypoint() {
     assert!(body_string(nested).await.contains("Libra portal"));
 }
 
+/// The portal subtree is exempt from the global trailing-slash redirect.
+///
+/// A blanket "strip the trailing slash" rule would collapse `.../portal/`
+/// back down to `.../portal`, which itself redirects to `.../portal/` —
+/// an infinite loop — and would 404 every section link a published bundle's
+/// own client-side router emits (see
+/// `a_trailing_slash_client_route_falls_back_to_the_entrypoint`). Both the
+/// root and a nested section link must answer as real content, never a
+/// `301`.
+#[tokio::test]
+async fn a_trailing_slash_within_the_portal_bundle_is_never_stripped() {
+    let f = fixture().await;
+    let root = format!("/app/projects/{}/portal/", f.project_code);
+
+    let index = send(&f.app, &root, &f.participant_cookie).await;
+    assert_ne!(
+        index.status(),
+        StatusCode::MOVED_PERMANENTLY,
+        "the portal root's trailing slash is the route itself, not a redirect target"
+    );
+
+    let section = send(&f.app, &format!("{root}engagement/"), &f.participant_cookie).await;
+    assert_ne!(
+        section.status(),
+        StatusCode::MOVED_PERMANENTLY,
+        "a portal's own client-side section link must not be redirected"
+    );
+}
+
 /// A published directory index serves its own path, not the root entrypoint.
 ///
 /// A portal built as multiple pages rather than one bundle publishes

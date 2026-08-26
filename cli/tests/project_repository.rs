@@ -18,10 +18,21 @@ fn navigator() -> Command {
     Command::cargo_bin("navigator").unwrap()
 }
 
+/// The pin these fixtures scaffold with.
+///
+/// A literal, not this binary's own reported version: a `cargo test` build
+/// carries neither a runtime nor a build-time `NAVIGATOR_RELEASE_TAG`, so
+/// `scaffold`'s default is empty here and these tests are not the ones
+/// exercising that default — `the_scaffold_default_pin_is_a_release_tag_or_empty`
+/// and `the_scaffold_refuses_a_pin_that_is_not_a_release_tag` in
+/// `cli/src/projects/repository.rs` are.
+const FIXTURE_PIN: &str = "26.8.23";
+
 fn scaffold(dir: &Path, project_code: &str) -> assert_cmd::assert::Assert {
     navigator()
         .args(["projects", "repository", "scaffold", project_code, "--dir"])
         .arg(dir)
+        .args(["--action-version", FIXTURE_PIN])
         .assert()
 }
 

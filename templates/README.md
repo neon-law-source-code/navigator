@@ -82,7 +82,7 @@ templates/github/
 A GitHub notation borrows the questionnaire grammar the legal notations use, so it reads the same way, but it is not a
 legal instrument: it binds to no respondent, declares no jurisdiction or `confidential:` classification, never reaches
 lawyer review, and is never imported as a `templates` row. The rules it is held to are the questionnaire-grammar subset
-(`N101`, `N103`, `N104`, `N113`, `N115`, `N118`) plus `N119`, which pins the shelf's contract.
+(`N101`, `N103`, `N104`, `N113`, `N115`, `N118`, `N120`) plus `N119`, which pins the shelf's contract.
 
 Both files ask the same two questions before anything else. **The change surface** — `web`, `api`, `infrastructure`, or
 `form` — says what the change touches, and each value implies the gate the work has to clear; hover any of them in an

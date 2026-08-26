@@ -372,6 +372,7 @@ fn navigator_project_network_band() -> Band {
             "Highlight".to_string(),
             "Linear".to_string(),
             "Mercury".to_string(),
+            "Twilio".to_string(),
             "Xero".to_string(),
         ],
     }
@@ -1479,6 +1480,7 @@ mod firm_copy_tests {
                 "Highlight",
                 "Linear",
                 "Mercury",
+                "Twilio",
                 "Xero"
             ]
         );

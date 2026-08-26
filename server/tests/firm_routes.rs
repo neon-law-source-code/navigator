@@ -1171,6 +1171,7 @@ async fn the_navigator_page_maps_a_connected_project() {
         "Highlight",
         "Linear",
         "Mercury",
+        "Twilio",
         "Xero",
     ] {
         assert!(body.contains(label), "the diagram names {label}: {body}");

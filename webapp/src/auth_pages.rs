@@ -188,7 +188,10 @@ fn AuthPage(props: AuthPageProps) -> Element {
                             }
                         }
                         for provider in providers.iter() {
-                            p { a { class: "nav-btn nav-btn--secondary", href: "{provider.href}", "{provider.label}" } }
+                            p { a { class: "nav-btn nav-btn--secondary nav-btn--oauth", href: "{provider.href}",
+                                {provider_icon(&provider.label)}
+                                span { "{provider.label}" }
+                            } }
                         }
                         if password_enabled { p { a { href: "/auth/password/reset", "Forgot your password?" } } }
                     },
@@ -231,6 +234,57 @@ fn AuthPage(props: AuthPageProps) -> Element {
             }
         }
     } }
+}
+
+/// The brand mark for a sign-in button, chosen from the fixed button label
+/// rather than the provider slug: [`GOOGLE_SIGN_IN`] and [`MICROSOFT_SIGN_IN`]
+/// are the only labels [`portal::oauth::ProviderId::button_label`] ever hands
+/// this crate, and each carries its own multi-colour brand mark instead of the
+/// single-colour `currentColor` set in [`crate::components::Icon`].
+fn provider_icon(label: &str) -> Element {
+    if label == GOOGLE_SIGN_IN {
+        google_mark()
+    } else if label == MICROSOFT_SIGN_IN {
+        microsoft_mark()
+    } else {
+        rsx! {}
+    }
+}
+
+/// Google's official four-colour "G" mark.
+fn google_mark() -> Element {
+    rsx! {
+        svg {
+            class: "nav-oauth-icon",
+            xmlns: "http://www.w3.org/2000/svg",
+            "viewBox": "0 0 18 18",
+            width: "18",
+            height: "18",
+            "aria-hidden": "true",
+            path { fill: "#4285F4", d: "M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.874 2.684-6.615z" }
+            path { fill: "#34A853", d: "M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" }
+            path { fill: "#FBBC05", d: "M3.964 10.706A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.706V4.962H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.038l3.007-2.332z" }
+            path { fill: "#EA4335", d: "M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.581C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.962L3.964 7.294C4.672 5.167 6.656 3.58 9 3.58z" }
+        }
+    }
+}
+
+/// Microsoft's official four-square mark.
+fn microsoft_mark() -> Element {
+    rsx! {
+        svg {
+            class: "nav-oauth-icon",
+            xmlns: "http://www.w3.org/2000/svg",
+            "viewBox": "0 0 21 21",
+            width: "18",
+            height: "18",
+            "aria-hidden": "true",
+            rect { x: "1", y: "1", width: "9", height: "9", fill: "#f25022" }
+            rect { x: "1", y: "11", width: "9", height: "9", fill: "#00a4ef" }
+            rect { x: "11", y: "1", width: "9", height: "9", fill: "#7fba00" }
+            rect { x: "11", y: "11", width: "9", height: "9", fill: "#ffb900" }
+        }
+    }
 }
 
 fn header(chrome: &PublicChrome) -> Element {
@@ -310,6 +364,33 @@ mod tests {
         assert!(google < microsoft, "primary provider must render first");
         assert!(html.contains("/auth/login/oidc?return_to=/app/projects"));
         assert!(html.contains("/auth/login/microsoft?return_to=/app/projects"));
+    }
+
+    /// Each provider button carries its own brand mark, not the other's or a
+    /// generic glyph — a signed-out person recognizes the button by colour
+    /// before reading the label.
+    #[test]
+    fn login_renders_each_providers_brand_mark() {
+        let html = login(
+            "/app/projects",
+            "CSRF",
+            &[
+                provider("oidc", GOOGLE_SIGN_IN),
+                provider("microsoft", MICROSOFT_SIGN_IN),
+            ],
+            false,
+            None,
+            None,
+        )
+        .0;
+        assert!(
+            html.contains("nav-oauth-icon") && html.contains("fill=\"#4285F4\""),
+            "missing Google mark: {html}"
+        );
+        assert!(
+            html.contains("fill=\"#f25022\""),
+            "missing Microsoft mark: {html}"
+        );
     }
 
     /// With no password door there is no credential form and no reset link —

@@ -1130,6 +1130,91 @@ async fn the_navigator_page_invites_pro_bono_co_counsel_and_publishes_no_rate() 
     );
 }
 
+/// The public Navigator page maps the Project's connected work around Navigator.
+#[tokio::test]
+async fn the_navigator_page_maps_a_connected_project() {
+    let app = site_app().await;
+    let body = body_string(anon_get(&app, "/navigator").await).await;
+
+    assert!(
+        body.contains(r#"class="fm-project-network""#)
+            && body.contains(r#"src="/public/navigator-wheel.svg""#),
+        "the connected-Project diagram renders the Navigator wheel: {body}"
+    );
+    for label in [
+        "Internal Slack",
+        "Internal Notion",
+        "GitHub",
+        "Client portal",
+        "Per-Project Inbox",
+        "Google Drive folder",
+        "Shared Slack",
+        "Shared Notion",
+        "Navigator",
+        "Web API MCP CLI",
+        "GitHub",
+        "MCPs",
+        "Court Listener",
+        "Descrybe",
+        "Exa",
+        "Midpage",
+        "Agentic Legal Coding",
+        "Antigravity",
+        "Claude Code",
+        "Codex",
+        "Cursor",
+        "SaaS",
+        "DocuSign",
+        "Google Workspace",
+        "Descript",
+        "Chatwoot",
+        "Highlight",
+        "Linear",
+        "Mercury",
+        "Twilio",
+        "Xero",
+    ] {
+        assert!(body.contains(label), "the diagram names {label}: {body}");
+    }
+    assert!(
+        !body.contains("separate from protected Project documents"),
+        "the removed public-site node detail is absent: {body}"
+    );
+    assert!(
+        !body.contains("Navigator keeps the Project in view while each connected service retains its own access controls."),
+        "the removed access-controls sentence is absent: {body}"
+    );
+    assert!(
+        !body.contains("The firms we serve work on it too."),
+        "the removed co-counsel-network paragraph is absent: {body}"
+    );
+    assert!(
+        !body.contains("Navigator Web"),
+        "the center names Navigator rather than its prior web-only label: {body}"
+    );
+    assert!(
+        body.contains("Per-project versioned text including notation templates and client portal."),
+        "the GitHub node describes the Project source contract: {body}"
+    );
+    assert!(
+        body.contains("Large document intake"),
+        "the Google Drive node describes its intake role: {body}"
+    );
+    assert!(
+        body.contains("Client collaboration when the Project uses it."),
+        "the Shared Notion node describes its collaboration role: {body}"
+    );
+    assert!(
+        body.contains("A Project can include one or more cases, companies, filings, and more")
+            && body.contains("related to the best interest of our clients."),
+        "the Project description explains how related work belongs together: {body}"
+    );
+    assert!(
+        !body.contains("Navigator is a website, MCP, and CLI that helps us rapidly create documents, ground sources and truth claims, organize files and folders, and reuse the glossary and ontology."),
+        "the removed Navigator summary is absent: {body}"
+    );
+}
+
 /// `/navigator` publishes the CLI as three download boxes and the Homebrew
 /// route, anonymously, at the release this deployment runs.
 ///

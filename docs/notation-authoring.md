@@ -370,11 +370,11 @@ silently dropped. Hierarchical (kids / dotted `/T`) field names remain out of sc
   other events ack with 200. The engagement terms are attorney-reviewed at `lawyer_review` *before* the document is
   sent, so signature receipt is a ministerial transition with no second human gate. Covered by a `.feature` (happy +
   forgery) and an end-to-end integration test through the real provider against a mocked endpoint.
-- **Google Drive — fully removed.** The per-Project archive is the append-only git repo served from `web` (see
-  [`project-repositories`](project-repositories.md)); the `projects.drive_folder_id` column, the `DriveSync` Restate
-  workflow, the `aida_drive_*` MCP tools, the web/CLI sync surfaces, the `cloud::drive` REST client, and the `cli drive`
-  OAuth door (`login` / `ls`) have all been dropped. Drive is no longer a document-ingest surface, and nothing in the
-  dependency graph speaks to it — a matter is reached by cloning its git URL.
+- **Google Drive — retained.** Each Project keeps a private Google Drive folder for firm working files, including large
+  documents the firm intends to ingest. Navigator stores that folder as a firm-only Project resource; legal files and
+  client material stay out of the Project repository, which holds only templates and client-portal source. The old
+  direct Drive synchronization workflow and Drive API/CLI surfaces remain removed: retaining the folder does not restore
+  a second document store.
 
 ## Roadmap
 

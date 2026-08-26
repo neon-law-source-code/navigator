@@ -95,6 +95,17 @@ pub struct Step {
     pub body: Vec<Paragraph>,
 }
 
+/// One labeled place in a Project's connected-work diagram.
+///
+/// The public diagram names the work surface, not a particular account, URL,
+/// or matter. That keeps the visual useful without publishing a client or a
+/// provider credential.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+pub struct ProjectNetworkNode {
+    pub label: String,
+    pub detail: String,
+}
+
 /// One platform's download box.
 ///
 /// Resolved server-side by the page that mounts the band — the href carries a
@@ -162,6 +173,18 @@ pub enum Band {
         heading: String,
         description: Option<String>,
         items: Vec<Step>,
+    },
+    /// A Project-centered map of the work surfaces that meet around Navigator.
+    ProjectNetwork {
+        anchor: String,
+        overline: String,
+        heading: String,
+        description: Option<String>,
+        left: Vec<ProjectNetworkNode>,
+        right: Vec<ProjectNetworkNode>,
+        mcp_tools: Vec<String>,
+        agentic_coding_tools: Vec<String>,
+        saas_tools: Vec<String>,
     },
     /// The three CLI download boxes, and the package-manager route beside
     /// them.
@@ -532,6 +555,85 @@ fn Bands(items: Vec<Band>) -> Element {
                                         div { class: "fm-step__body",
                                             for paragraph in step.body.iter() {
                                                 Prose { runs: paragraph.clone() }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                Band::ProjectNetwork {
+                    anchor,
+                    overline,
+                    heading,
+                    description,
+                    left,
+                    right,
+                    mcp_tools,
+                    agentic_coding_tools,
+                    saas_tools,
+                } => rsx! {
+                    section { class: "fm-band fm-band--project-network", id: "{anchor}",
+                        div { class: "fm-band__inner",
+                            BandHeading {
+                                overline: overline.clone(),
+                                heading: heading.clone(),
+                                description: description.clone(),
+                            }
+                            figure { class: "fm-project-network",
+                                div { class: "fm-project-network__map",
+                                    ul { class: "fm-project-network__lane fm-project-network__lane--left",
+                                        "aria-label": "Project resources to the left of Navigator",
+                                        for node in left.iter() {
+                                            li { class: "fm-project-network__node fm-project-network__node--left",
+                                                h3 { "{node.label}" }
+                                                p { "{node.detail}" }
+                                            }
+                                        }
+                                    }
+                                    div { class: "fm-project-network__core",
+                                        img {
+                                            class: "fm-project-network__wheel",
+                                            src: "/public/navigator-wheel.svg",
+                                            alt: "Neon Law Navigator wheel",
+                                        }
+                                        p { class: "fm-project-network__eyebrow", "The Project center" }
+                                        h3 { "Navigator" }
+                                        p { "Web API MCP CLI" }
+                                    }
+                                    ul { class: "fm-project-network__lane fm-project-network__lane--right",
+                                        "aria-label": "Project resources to the right of Navigator",
+                                        for node in right.iter() {
+                                            li { class: "fm-project-network__node fm-project-network__node--right",
+                                                h3 { "{node.label}" }
+                                                p { "{node.detail}" }
+                                            }
+                                        }
+                                    }
+                                }
+                                div { class: "fm-project-network__tool-panels",
+                                    div { class: "fm-project-network__external",
+                                        p { class: "fm-project-network__external-label", "MCPs" }
+                                        ul { class: "fm-project-network__tools", "aria-label": "MCPs",
+                                            for tool in mcp_tools.iter() {
+                                                li { class: "fm-project-network__tool", "{tool}" }
+                                            }
+                                        }
+                                    }
+                                    div { class: "fm-project-network__external",
+                                        p { class: "fm-project-network__external-label", "Agentic Legal Coding" }
+                                        ul { class: "fm-project-network__tools", "aria-label": "Agentic legal coding tools",
+                                            for tool in agentic_coding_tools.iter() {
+                                                li { class: "fm-project-network__tool", "{tool}" }
+                                            }
+                                        }
+                                    }
+                                    div { class: "fm-project-network__external fm-project-network__external--saas",
+                                        p { class: "fm-project-network__external-label", "SaaS" }
+                                        ul { class: "fm-project-network__tools", "aria-label": "SaaS tools",
+                                            for tool in saas_tools.iter() {
+                                                li { class: "fm-project-network__tool", "{tool}" }
                                             }
                                         }
                                     }
@@ -976,6 +1078,42 @@ mod tests {
                         body: vec![vec![Run::plain("In your own words.")]],
                     }],
                 },
+                Band::ProjectNetwork {
+                    anchor: "connected-project".to_string(),
+                    overline: "The map".to_string(),
+                    heading: "One Project".to_string(),
+                    description: Some("The work, in one view.".to_string()),
+                    left: vec![ProjectNetworkNode {
+                        label: "Internal Slack".to_string(),
+                        detail: "Firm conversation.".to_string(),
+                    }],
+                    right: vec![ProjectNetworkNode {
+                        label: "Client portal".to_string(),
+                        detail: "Client experience.".to_string(),
+                    }],
+                    mcp_tools: vec![
+                        "Court Listener".to_string(),
+                        "Descrybe".to_string(),
+                        "Exa".to_string(),
+                        "Midpage".to_string(),
+                    ],
+                    agentic_coding_tools: vec![
+                        "Antigravity".to_string(),
+                        "Claude Code".to_string(),
+                        "Codex".to_string(),
+                        "Cursor".to_string(),
+                    ],
+                    saas_tools: vec![
+                        "Chatwoot".to_string(),
+                        "Descript".to_string(),
+                        "DocuSign".to_string(),
+                        "Google Workspace".to_string(),
+                        "Highlight".to_string(),
+                        "Linear".to_string(),
+                        "Mercury".to_string(),
+                        "Xero".to_string(),
+                    ],
+                },
                 Band::Cta {
                     heading: "Tell us about the matter.".to_string(),
                     body: None,
@@ -1049,11 +1187,54 @@ mod tests {
         let statement = out.find("shortage of hours").expect("statement band");
         let cards = out.find("What we do").expect("cards band");
         let steps = out.find("How it works").expect("steps band");
+        let network = out.find("One Project").expect("connected Project band");
         let cta = out.find("Tell us about the matter.").expect("cta band");
         assert!(
-            statement < cards && cards < steps && steps < cta,
+            statement < cards && cards < steps && steps < network && network < cta,
             "bands render in the order the content lists them: {out}"
         );
+    }
+
+    #[test]
+    fn a_project_network_renders_the_wheel_and_accessible_resource_lanes() {
+        let out = page_html();
+        assert!(
+            out.contains(r#"id="connected-project""#),
+            "network anchor: {out}"
+        );
+        assert!(
+            out.contains(r#"src="/public/navigator-wheel.svg""#),
+            "the diagram uses Navigator's own wheel: {out}"
+        );
+        assert!(
+            out.contains(r#"aria-label="Project resources to the left of Navigator""#)
+                && out.contains(r#"aria-label="Project resources to the right of Navigator""#),
+            "the two resource lanes are named: {out}"
+        );
+        for label in [
+            "Internal Slack",
+            "Client portal",
+            "Navigator",
+            "Web API MCP CLI",
+            "MCPs",
+            "Court Listener",
+            "Agentic Legal Coding",
+            "Antigravity",
+            "Claude Code",
+            "Codex",
+            "Cursor",
+            "SaaS",
+            "DocuSign",
+            "Google Workspace",
+            "Descript",
+            "Chatwoot",
+            "Highlight",
+            "Linear",
+            "Mercury",
+            "Xero",
+        ] {
+            assert!(out.contains(label), "missing diagram label {label}: {out}");
+        }
     }
 
     #[test]

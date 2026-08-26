@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     viewBox="0 0 24 24"
+     width="256"
+     height="256"
+     fill="none"
+     stroke="#007C91"
+     stroke-width="1.5"
+     stroke-linecap="round"
+     stroke-linejoin="round"
+     role="img"
+     aria-labelledby="title desc">
+  <title id="title">Neon Law Navigator wheel</title>
+  <desc id="desc">A line-art ship's wheel with eight spokes.</desc>
+  <circle cx="12" cy="12" r="3.25"/>
+  <circle cx="12" cy="12" r="7"/>
+  <path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>
+  <path d="m4.93 4.93 2.12 2.12m9.9 9.9 2.12 2.12m0-14.14-2.12 2.12m-9.9 9.9-2.12 2.12"/>
+</svg>

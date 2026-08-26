@@ -357,7 +357,7 @@ cannot push to `ux/core`.
 ## Scaffolding a repository
 
 ```bash
-navigator projects repository scaffold <project-code> --dir .
+navigator projects repository scaffold <project-code> --dir . --action-version YY.M.D
 navigator projects repository validate .
 ```
 

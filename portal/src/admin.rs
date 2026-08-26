@@ -7,7 +7,7 @@
 use std::sync::Arc;
 use uuid::Uuid;
 
-use axum::extract::{Extension, FromRef, Path, State};
+use axum::extract::{DefaultBodyLimit, Extension, FromRef, Path, State};
 use axum::http::StatusCode;
 use axum::middleware;
 use axum::response::{IntoResponse, Redirect, Response};
@@ -546,7 +546,13 @@ fn register_project_routes(r: Router<AdminState>) -> Router<AdminState> {
         )
         .route(
             &format!("{prefix}/{{project_code}}/documents/upload"),
-            post(crate::project_documents::upload),
+            // Axum's own default body limit (~2 MB) sits in front of this
+            // handler's own `MAX_BATCH_BYTES` check — without raising it
+            // here, a large scanned-PDF batch never reaches the handler at
+            // all, it 413s at the framework layer.
+            post(crate::project_documents::upload).layer(DefaultBodyLimit::max(
+                crate::project_documents::MAX_BATCH_BYTES,
+            )),
         )
         // Northstar: file a sitting's transcript into an estate matter
         // (text / file / link) — threads the reusable document-intake

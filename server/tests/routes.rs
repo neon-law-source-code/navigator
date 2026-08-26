@@ -12587,6 +12587,41 @@ async fn project_documents_upload_rejects_a_batch_over_the_file_ceiling() {
 }
 
 #[tokio::test]
+async fn project_documents_upload_accepts_a_pdf_past_axums_default_body_limit() {
+    // Axum's own default request-body limit (~2 MB) sits in front of this
+    // route's `MAX_BATCH_BYTES` (500 MB) — without a `DefaultBodyLimit`
+    // layer on the route, a scanned-PDF batch this size 413s before the
+    // handler's own check, or the PDF safety validator, ever runs.
+    let (state, surreal) = state_with_engines().await;
+    let (project_id, project_code) = batch_upload_project(&state).await;
+    let app = server::neon_router(
+        state.clone(),
+        std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
+    );
+
+    let (cookie, csrf) = admin_on_project(&surreal, project_id).await;
+    let boundary = "----navigator-large-pdf";
+    let pdf_bytes = vec![0u8; 3 * 1024 * 1024];
+    let body = documents_multipart(
+        boundary,
+        &csrf,
+        &[("scanned-discovery.pdf", "application/pdf", &pdf_bytes)],
+    );
+
+    let resp = post_documents_batch(app, &project_code, &cookie, boundary, body).await;
+    assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+
+    let docs = store::assets::list_all(&state.surreal).await.unwrap();
+    assert_eq!(
+        docs.iter()
+            .filter(|d| d.filename.as_deref() == Some("scanned-discovery.pdf"))
+            .count(),
+        1,
+        "a PDF larger than Axum's default body limit is filed, not 413'd"
+    );
+}
+
+#[tokio::test]
 async fn project_documents_upload_keeps_a_named_empty_file() {
     // A picker with nothing selected posts an unnamed empty part, which is
     // "nothing selected". A *named* zero-byte part is a real selection and

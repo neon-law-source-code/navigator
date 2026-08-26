@@ -100,7 +100,11 @@ const MAX_BATCH_FILES: usize = 50;
 /// 10 MB files cost the same memory, so the limit that matters is the
 /// total. Sized for scanned-PDF discovery batches, which is the heaviest
 /// legitimate traffic this route sees.
-const MAX_BATCH_BYTES: usize = 500 * 1024 * 1024;
+///
+/// `pub(crate)` so `admin.rs` can raise Axum's own default ~2 MB body
+/// limit to match on this route — without that layer, Axum rejects a
+/// multi-megabyte PDF long before this constant's check ever runs.
+pub(crate) const MAX_BATCH_BYTES: usize = 500 * 1024 * 1024;
 
 /// `POST /app/projects/{project_code}/documents/upload`.
 pub async fn upload(

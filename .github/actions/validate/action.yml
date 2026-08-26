@@ -12,9 +12,9 @@ description: >-
 # Consuming repository, in full:
 #
 #     - uses: actions/checkout@<sha>  # v7
-#     - uses: neon-law-source-code/navigator/.github/actions/validate@26.7.27
+#     - uses: neon-law-source-code/navigator/.github/actions/validate@YY.M.D
 #       with:
-#         version: "26.7.27"
+#         version: "YY.M.D"
 #
 # ## One gate for a Project repository
 #
@@ -34,9 +34,9 @@ description: >-
 # that can be satisfied by being skipped is not a gate.
 #
 #     - run: pnpm --dir portal build
-#     - uses: neon-law-source-code/navigator/.github/actions/validate@26.8.11
+#     - uses: neon-law-source-code/navigator/.github/actions/validate@YY.M.D
 #       with:
-#         version: "26.8.11"
+#         version: "YY.M.D"
 #         project_repository: true
 #
 # `version` is required and must be an exact tag. That is the house rule from
@@ -47,8 +47,8 @@ description: >-
 inputs:
   version:
     description: >-
-      Exact immutable release tag to download, e.g. `26.7.27` or
-      `26.8.19-hotfix.14`. Required and never `latest` — consumed binaries are
+      Exact immutable release tag to download, shaped `YY.M.D` or
+      `YY.M.D-hotfix.N`. Required and never `latest` — consumed binaries are
       pinned.
     required: true
   dir:

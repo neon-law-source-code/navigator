@@ -1254,6 +1254,8 @@ mod tests {
         seed_question(surreal, "person").await;
         seed_question(surreal, "project").await;
         seed_question(surreal, "custom_text").await;
+        // The retainer's engagement-start-date question (N120).
+        seed_question(surreal, "custom_datetime").await;
         // The retainer's governing-law question (ENG-145).
         seed_question(surreal, "custom_single_choice").await;
     }
@@ -1621,7 +1623,11 @@ mod tests {
             ordered_question_codes(&definition.spec),
             vec![
                 "person__client".to_string(),
+                "person__lawyer_dri".to_string(),
                 "project__engagement".to_string(),
+                "custom_datetime__engagement_start_date".to_string(),
+                "custom_text__engagement_scope".to_string(),
+                "custom_text__fee_basis".to_string(),
                 "custom_single_choice__governing_law".to_string(),
             ],
             "a scoped body-only override keeps the bundled questionnaire"
@@ -1638,7 +1644,11 @@ mod tests {
         let project_id = seed_project(&surreal).await;
         let bundled_chain = vec![
             "person__client".to_string(),
+            "person__lawyer_dri".to_string(),
             "project__engagement".to_string(),
+            "custom_datetime__engagement_start_date".to_string(),
+            "custom_text__engagement_scope".to_string(),
+            "custom_text__fee_basis".to_string(),
             "custom_single_choice__governing_law".to_string(),
         ];
 
@@ -1828,10 +1838,10 @@ mod tests {
         .unwrap();
         match next {
             NextStep::NeedsAnswer { question } => {
-                assert_eq!(question.code, "project__engagement");
+                assert_eq!(question.code, "person__lawyer_dri");
             }
             NextStep::QuestionnaireComplete => {
-                panic!("expected NeedsAnswer(project__engagement), got QuestionnaireComplete");
+                panic!("expected NeedsAnswer(person__lawyer_dri), got QuestionnaireComplete");
             }
         }
     }
@@ -1897,7 +1907,14 @@ mod tests {
 
         let walk = [
             ("person__client", "Libra"),
+            ("person__lawyer_dri", "Firm Principal"),
             ("project__engagement", "Apollo"),
+            ("custom_datetime__engagement_start_date", "2026-09-01"),
+            (
+                "custom_text__engagement_scope",
+                "Draft and file the Apollo formation documents.",
+            ),
+            ("custom_text__fee_basis", "$450 per hour"),
             ("custom_single_choice__governing_law", "nevada"),
         ];
         let mut last = NextStep::QuestionnaireComplete;
@@ -1949,7 +1966,14 @@ mod tests {
         let id = started.notation_id;
         for (code, value) in [
             ("person__client", "Libra"),
+            ("person__lawyer_dri", "Firm Principal"),
             ("project__engagement", "Apollo"),
+            ("custom_datetime__engagement_start_date", "2026-09-01"),
+            (
+                "custom_text__engagement_scope",
+                "Draft and file the Apollo formation documents.",
+            ),
+            ("custom_text__fee_basis", "$450 per hour"),
             ("custom_single_choice__governing_law", "nevada"),
         ] {
             answer_step(
@@ -2018,13 +2042,13 @@ mod tests {
         )
         .await
         .unwrap();
-        // After one answer: should be project__engagement.
+        // After one answer: should be person__lawyer_dri.
         match current_step(&surreal, &runtime, None, id).await.unwrap() {
             NextStep::NeedsAnswer { question } => {
-                assert_eq!(question.code, "project__engagement");
+                assert_eq!(question.code, "person__lawyer_dri");
             }
             NextStep::QuestionnaireComplete => {
-                panic!("expected NeedsAnswer(project__engagement), got QuestionnaireComplete");
+                panic!("expected NeedsAnswer(person__lawyer_dri), got QuestionnaireComplete");
             }
         }
     }

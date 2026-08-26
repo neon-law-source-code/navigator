@@ -9,11 +9,26 @@ output: letter
 prompts:
   client_name: What is the client's full legal name?
   project_name: What is the project name for this engagement?
+  lawyer_dri: Which lawyer is directly responsible for this engagement?
 audiences:
   client_name: client
   project_name: lawyer
   governing_law: lawyer
+  lawyer_dri: lawyer
+  engagement_start_date: lawyer
+  engagement_scope: lawyer
+  fee_basis: lawyer
 custom_questions:
+  engagement_start_date:
+    prompt: When does this engagement begin?
+  engagement_scope:
+    prompt: >-
+      In a sentence or two, what is the minimum scope of this engagement - the work the Firm is committing to
+      right now? Everything else is added later in writing.
+  fee_basis:
+    prompt: >-
+      How is the Firm paid on this engagement? State the amount, the unit, and the basis, in the words of the
+      writing the parties signed - for example "$450 per hour", "$12,500 per month", or "30% of net recovery".
   governing_law:
     prompt: >-
       Which state's law governs this engagement? Nevada by default; choose California or Washington only if the
@@ -26,8 +41,16 @@ questionnaire:
   BEGIN:
     _: person__client
   person__client:
+    _: person__lawyer_dri
+  person__lawyer_dri:
     _: project__engagement
   project__engagement:
+    _: custom_datetime__engagement_start_date
+  custom_datetime__engagement_start_date:
+    _: custom_text__engagement_scope
+  custom_text__engagement_scope:
+    _: custom_text__fee_basis
+  custom_text__fee_basis:
     _: custom_single_choice__governing_law
   custom_single_choice__governing_law:
     _: END
@@ -96,7 +119,7 @@ Every matter the Firm opens names **one person on each side who answers for it**
 Client. We call each of them the directly responsible individual, or DRI. Other people work on the matter; these two
 answer for it, so you always know who to ask where things stand. Neither name changes except in writing.
 
-> **A. The Firm's directly responsible individual is {{custom_text__firm_dri}}.** That lawyer is principally
+> **A. The Firm's directly responsible individual is {{person__lawyer_dri.name}}.** That lawyer is principally
 > responsible for this engagement — for the work, for the schedule, and for telling you candidly where the Matter
 > stands, and is reached through the firm channel in Section IV rather than a personal inbox.
 >

@@ -150,7 +150,15 @@ async fn walk_to_lawyer_review(
     nid: uuid::Uuid,
     surreal: &store::surreal::SurrealDb,
 ) {
-    for value in ["Libra", "Estate%20plan", "nevada"] {
+    for value in [
+        "Libra",
+        "Firm%20Principal",
+        "Estate%20plan",
+        "2026-09-01",
+        "Draft%20and%20file%20the%20matter%20documents.",
+        "450%20per%20hour",
+        "nevada",
+    ] {
         let resp = app
             .clone()
             .oneshot(

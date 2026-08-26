@@ -234,6 +234,18 @@ mod tests {
         )
         .await
         .unwrap();
+        // The retainer's engagement-start-date question (N120): the walk
+        // resolves `custom_datetime__engagement_start_date` through this code.
+        store::questions::create(
+            surreal,
+            &store::questions::NewQuestion::new(
+                "custom_datetime",
+                "Prompt for a custom date",
+                "string",
+            ),
+        )
+        .await
+        .unwrap();
         // The retainer's governing-law question (ENG-145): the walk resolves
         // `custom_single_choice__governing_law` through this question code.
         store::questions::create(
@@ -377,7 +389,7 @@ mod tests {
         assert_eq!(out["structuredContent"]["status"], "needs_answer");
         assert_eq!(
             out["structuredContent"]["next_question"]["code"],
-            "project__engagement"
+            "person__lawyer_dri"
         );
     }
 
@@ -387,12 +399,21 @@ mod tests {
         seed(&surreal).await;
         let runtime = InMemoryRuntime::new();
         let (id, mut code) = start_retainer(&surreal, &runtime).await;
-        // The retainer walk asks three questions: the client, the
-        // engagement name, and which state's law governs (ENG-145 moved the
-        // governing-law question onto the firm's one engagement agreement).
+        // The retainer walk asks the client, the firm DRI, the engagement
+        // name, the engagement's start date/scope/fee basis (N120 grounded
+        // these against the questionnaire), and which state's law governs
+        // (ENG-145 moved the governing-law question onto the firm's one
+        // engagement agreement).
         let values = [
             ("person__client", "Libra"),
+            ("person__lawyer_dri", "Firm Principal"),
             ("project__engagement", "Apollo"),
+            ("custom_datetime__engagement_start_date", "2026-09-01"),
+            (
+                "custom_text__engagement_scope",
+                "Draft and file the Apollo formation documents.",
+            ),
+            ("custom_text__fee_basis", "$450 per hour"),
             ("custom_single_choice__governing_law", "nevada"),
         ];
         let mut last: Value = Value::Null;

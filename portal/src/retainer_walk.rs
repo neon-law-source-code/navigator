@@ -2932,19 +2932,22 @@ mod tests {
 
     #[test]
     fn progress_for_begin_is_step_1() {
-        // Three questions: client identity, engagement name, governing law.
+        // Seven questions: client identity, firm DRI, engagement name,
+        // engagement start date, engagement scope, fee basis, governing law
+        // (N120 grounded the four bare placeholders the retainer body used
+        // to leave undeclared).
         let spec = retainer_intake_questionnaire();
-        assert_eq!(progress_for(&spec, &StateName::begin()), (1, 3));
+        assert_eq!(progress_for(&spec, &StateName::begin()), (1, 7));
     }
 
     #[test]
     fn progress_for_client_state_is_step_2() {
         // After answering the client identity question, the next question is
-        // the engagement name — the walker should display "step 2 of 3."
+        // the firm DRI — the walker should display "step 2 of 7."
         let spec = retainer_intake_questionnaire();
         assert_eq!(
             progress_for(&spec, &StateName::from("person__client")),
-            (2, 3)
+            (2, 7)
         );
     }
 
@@ -2956,7 +2959,7 @@ mod tests {
                 &spec,
                 &StateName::from("custom_single_choice__governing_law")
             ),
-            (3, 3)
+            (7, 7)
         );
     }
 

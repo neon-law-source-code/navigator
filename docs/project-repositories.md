@@ -458,6 +458,76 @@ the report immediately, because every later coordinate would otherwise describe 
 
 It is not `ops doctor`, which diagnoses scheduled-job health in a running Kubernetes namespace.
 
+## Reconciling repositories against live rows
+
+One `projects.code` names both a repository and a row, and nothing makes the two agree. A repository declares its code
+in `navigator.yaml`; a row records its repository in `project.repository_url`. Either side can be written without the
+other, and neither side complains. `navigator projects drift` reads both and reports where they disagree:
+
+```bash
+navigator projects drift --dir ~/<organization>
+navigator projects drift --dir ~/<organization> --all --json
+```
+
+It reads every checkout directly under `--dir` — the [local checkout root](#local-checkouts) — and lists the live rows
+from `GET /app/api/projects`. That route rather than `GET /app/projects.csv`, which `site projects list` uses: the CSV
+carries `id, code, name, status, entity_name` and no `repository_url`, so it can answer only whether a repository has a
+row, never whether a row has a repository.
+
+Both directions matter, and the reverse one is the direction nothing checked. A row's `repository_url` is optional, so
+a row that never recorded one is indistinguishable at a glance from a row that did — and a repository is resolved back
+to its row *through* that column, so an empty one fails every resolution silently. A recorded-but-stale URL is quieter
+still: a forge rename leaves a redirect, so the old URL keeps resolving over HTTP long after the repository stopped
+answering to that name.
+
+| Finding | Meaning |
+| --- | --- |
+| `repository-has-no-row` | The repository declares a code no live row carries. A portal published under `<code>/portal/` would mount nowhere. |
+| `row-has-no-repository-url` | The row records no repository at all, so nothing resolves a repository back to it. |
+| `row-repository-absent` | The row's URL names a repository not present under `--dir`. |
+| `code-mismatch` | The row and the repository its URL names spell the code differently. |
+| `manifest-disagrees-with-name` | The manifest declares a code other than the repository's own name. Legal today; warned, not failed. |
+| `duplicate-code` | Two checkouts claim one Project code. |
+| `unreadable-manifest` | `navigator.yaml` is present but unparsable, or names an invalid code. |
+| `no-manifest` | The checkout declares no Project, so it cannot be reconciled. Warned, not failed. |
+| `rowless-by-declaration` | The repository declares it is meant to have no row. Counted, never failed. |
+
+The row-side findings assume `--dir` holds the whole fleet. Run against part of it, "no repository is present" is true
+but uninteresting, so each such finding names the directory it searched rather than hiding the assumption behind a flag.
+
+Warnings do not make a fleet drifted, in the same sense `projects doctor` uses. The command exits nonzero only when a
+finding is a failure, and it is strictly read-only on both sides: it creates no row, patches none, and closes none.
+
+### A repository declares its own absence
+
+Not every repository without a row is drift. A closed matter may deliberately carry no row, and a command that reports
+known-good repositories as failures is a command nobody runs twice. The repository says so in the manifest it already
+carries:
+
+```yaml
+# navigator.yaml
+project: <project-code>
+no_live_row: the matter closed in <month>; no row was opened
+```
+
+The value is the reason, not a boolean, because a boolean records that someone silenced a finding without recording
+why. `no_live_row: true` is refused as a manifest error rather than honored as a suppression.
+
+The suppression cannot live in Navigator's own source. A Project code *is* a client identifier — it names who retained
+the firm — and this repository is public, so a constant list of the codes to skip would publish exactly what
+[`AGENTS.md`](../AGENTS.md) forbids. A `--ignore` flag only moves that list into a runbook or a CI invocation, where it
+is written down just the same and reviewed less. Inferring intent from shape — no `portal/`, no `seeds/`, so nothing is
+load-bearing — is worse than either: an empty repository is also what a brand-new *unreconciled* Project looks like, so
+that rule would go quiet about precisely the gaps the command exists to find.
+
+This is the opposite of the call the allowed-root list in `cli::projects::repository` makes, and deliberately so. That
+list governs a rule identical for every repository — which paths may sit at a root — so centralizing it costs nothing
+and keeps the gate from going advisory. Whether one matter is meant to have a row is a per-matter fact only that matter
+knows.
+
+Declared row-less repositories are still counted in the footer, and `--all` lists them. Suppressed and silent are
+different things: a report that hides repositories without saying so fails the same way as one that cries wolf.
+
 ## Shared notations
 
 The notations that are not specific to one Project live in **this** repository, under `templates/neon_law/<product>/`

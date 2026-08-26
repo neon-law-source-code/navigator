@@ -381,6 +381,40 @@ enum ProjectsCmd {
         #[command(subcommand)]
         action: ProjectRepositoryAction,
     },
+    /// Reconcile Project repositories against the live Project rows, and
+    /// report where the two disagree.
+    ///
+    /// One `projects.code` names both a repository and a row, and nothing
+    /// makes the two agree. This reads every `navigator.yaml` under `--dir`,
+    /// lists the live rows, and reports both directions: a repository whose
+    /// code no row carries, a row recording no repository at all, a row whose
+    /// `repository_url` names a repository that is not present, and a code
+    /// the two sides spell differently.
+    ///
+    /// The row-side findings assume `--dir` holds the whole fleet — run
+    /// against part of it, "no repository is present" is true but
+    /// uninteresting, so each such finding names the directory it searched.
+    ///
+    /// A repository that is *meant* to have no row says so in its own
+    /// `navigator.yaml`, with `no_live_row: <reason>`. Those are counted in
+    /// the footer and listed by `--all`, never failed.
+    ///
+    /// Strictly read-only: it creates no row, patches none, and closes none.
+    /// Reconciling a repository to a row is a decision about a matter.
+    Drift {
+        #[command(flatten)]
+        host: HostOpt,
+        /// Directory holding the Project repository checkouts, one per
+        /// repository. Defaults to the current directory.
+        #[arg(long, default_value = ".")]
+        dir: PathBuf,
+        /// Also list the repositories that declare they have no live row.
+        #[arg(long)]
+        all: bool,
+        /// Emit the report as JSON instead of a table.
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1842,6 +1876,17 @@ fn main() -> ExitCode {
                     projects::repository::validate(&dir, repository.as_deref())
                 }
             },
+            ProjectsCmd::Drift {
+                host,
+                dir,
+                all,
+                json,
+            } => runtime().block_on(projects::drift::run(
+                host.host.as_deref(),
+                &dir,
+                all,
+                json,
+            )),
         },
         Command::Template { action } => match action {
             TemplateCmd::Format { file } => format::run(&file),

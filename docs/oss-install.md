@@ -33,7 +33,8 @@ here, and that seam exists so a fork does not have to patch views to drop them.
 ## 0. Prerequisites
 
 Grouped by what you are actually doing. Only the first two groups are needed to build and test; nothing here requires a
-cloud account.
+cloud account. Every entry below is here because a command on this page, or the CLI those commands reach, actually
+invokes it — the list is derived from call sites rather than from the CI runner's image inventory.
 
 **To build and test:**
 
@@ -60,8 +61,28 @@ compile without it.
 **To build images and deploy:**
 
 - **Docker**, for image builds. The test suite needs none.
-- **`kubectl`**, **`kustomize`** and **`gcloud`** — only if you are following the GCP example below.
+- **`kubectl`** and **`gcloud`** — only if you are following the GCP example below. Kustomize needs no separate install:
+  every overlay in this repository is rendered through `kubectl apply -k` or `kubectl kustomize`, which is the copy of
+  Kustomize built into `kubectl`. Nothing here shells out to a standalone `kustomize` binary.
 - **A domain you control**, with the ability to set A records.
+
+**To run the local KIND cluster** (`navigator dev up`, and the per-worktree `dev worktree-env up`):
+
+The cluster lane refuses to start unless all four of these are on `PATH` — `cli/src/devx/orchestrate.rs:43` opens it
+with `require_tools(&["kind", "kubectl", "docker", "helm"])`. Docker and `kubectl` are already above and both arrive
+with Docker Desktop, which is exactly why the remaining two are easy to miss:
+
+- **`kind`, at v0.32.0** — the version `.github/workflows/deploy.yml:749` pins for the KIND integration gate, in
+  lockstep with the `kindest/node:v1.36.1` digest pinned at `.github/workflows/deploy.yml:756`. Take that version rather
+  than the latest release: the workflow records that v0.32.0's `kind load` is what understands the containerd config v4
+  the v1.36.1 node writes, and that the two are meant to be bumped together.
+- **`helm`, any release with OCI registry support** — the lane uses it for one thing, `helm upgrade --install` of the
+  Restate Operator chart from `oci://ghcr.io/restatedev/restate-operator-helm` at `cli/src/devx/orchestrate.rs:525`.
+  Nothing in this repository pins it and CI takes whatever its runner image ships, so there is no version to cite here
+  the way there is for the tools above; v4.2.4 is known to pull the pinned chart.
+
+[`../AGENTS.md#local-kind-development`](../AGENTS.md#local-kind-development) documents what that lane brings up, the
+ports it claims, and how to tear it down again.
 
 **Optional, for the browser suites:** a matching Chrome/ChromeDriver pair. The browser and e2e tests self-skip without
 one, so this can wait until you need it.

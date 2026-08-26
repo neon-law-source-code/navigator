@@ -539,12 +539,16 @@ custom_questions:
     #[test]
     fn retainer_intake_questionnaire_walks_client_to_project_engagement() {
         let q = retainer_intake_questionnaire();
-        // BEGIN → client → engagement → governing law → END.
-        // Walk via the `_` condition.
+        // BEGIN → client → firm DRI → engagement → start date → scope →
+        // fee basis → governing law → END. Walk via the `_` condition.
         let mut here = StateName::begin();
         let order = [
             "person__client",
+            "person__lawyer_dri",
             "project__engagement",
+            "custom_datetime__engagement_start_date",
+            "custom_text__engagement_scope",
+            "custom_text__fee_basis",
             "custom_single_choice__governing_law",
             "END",
         ];

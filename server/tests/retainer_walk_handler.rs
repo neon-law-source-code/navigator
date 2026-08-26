@@ -141,7 +141,7 @@ async fn step_get_at_begin_renders_the_first_question() {
     let html = body_string(resp).await;
     // First question after BEGIN is the client record.
     assert!(html.contains("person__client"), "html: {html}");
-    assert!(html.contains("step 1 of 3"));
+    assert!(html.contains("step 1 of 7"));
     assert!(html.contains(format!("/lawyer/notations/{nid}/step").as_str()));
 }
 
@@ -260,7 +260,7 @@ async fn step_post_writes_answer_signals_runtime_and_redirects_to_next_question(
         "the walked state name is recorded on the answer"
     );
 
-    // Next GET asks the lawyer-side project question.
+    // Next GET asks the lawyer-side firm-DRI question.
     let resp = app
         .oneshot(
             Request::builder()
@@ -276,8 +276,8 @@ async fn step_post_writes_answer_signals_runtime_and_redirects_to_next_question(
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let html = body_string(resp).await;
-    assert!(html.contains("project__engagement"));
-    assert!(html.contains("step 2 of 3"));
+    assert!(html.contains("person__lawyer_dri"));
+    assert!(html.contains("step 2 of 7"));
 }
 
 #[tokio::test]
@@ -308,9 +308,17 @@ async fn step_post_for_unknown_notation_returns_404() {
 async fn walking_the_full_questionnaire_records_all_transitions_through_end() {
     let (app, _surreal, nid, runtime) = build_app_and_notation().await;
 
-    // Walk all three questions. The last POST drives the workflow; every answer
-    // redirects (303) — the last onto the review screen.
-    for value in ["Libra", "Estate plan", "nevada"] {
+    // Walk all seven questions. The last POST drives the workflow; every
+    // answer redirects (303) — the last onto the review screen.
+    for value in [
+        "Libra",
+        "Firm Principal",
+        "Estate plan",
+        "2026-09-01",
+        "Draft and file the matter documents.",
+        "450 per hour",
+        "nevada",
+    ] {
         let resp = app
             .clone()
             .oneshot(
@@ -330,8 +338,8 @@ async fn walking_the_full_questionnaire_records_all_transitions_through_end() {
         assert_eq!(resp.status(), StatusCode::SEE_OTHER, "value={value}");
     }
 
-    // Runtime: BEGIN → client → project → governing law → END = 4
-    // events on the questionnaire
+    // Runtime: BEGIN → client → firm DRI → project → start date → scope →
+    // fee basis → governing law → END = 8 events on the questionnaire
     // timeline. The walker no longer writes `notation_events` —
     // in production the workflows-service worker does, via
     // `ctx.run`; here, the InMemoryRuntime is the source of truth.
@@ -339,8 +347,8 @@ async fn walking_the_full_questionnaire_records_all_transitions_through_end() {
         StateMachineRuntime::events(runtime.as_ref(), MachineKind::Questionnaire, nid).await;
     assert_eq!(
         events.len(),
-        4,
-        "expected 4 questionnaire transitions, got {events:?}"
+        8,
+        "expected 8 questionnaire transitions, got {events:?}"
     );
     assert_eq!(events.last().unwrap().to, StateName::end());
 
@@ -367,7 +375,7 @@ async fn walking_the_full_questionnaire_records_all_transitions_through_end() {
 }
 
 /// Tiny URL-encoder for the test bodies — only escapes the
-/// characters the four retainer answers actually contain.
+/// characters the seven retainer answers actually contain.
 fn urlencoding(s: &str) -> String {
     s.replace(' ', "%20").replace('@', "%40")
 }
@@ -1133,8 +1141,16 @@ async fn start_post_rejects_missing_at_in_client_email_with_validation_error() {
 async fn final_post_drives_workflow_and_renders_result_with_substituted_template() {
     let (app, surreal, nid, _runtime) = build_app_and_notation().await;
 
-    // Walk all three questions.
-    for value in ["Libra", "Estate plan", "nevada"] {
+    // Walk all seven questions.
+    for value in [
+        "Libra",
+        "Firm Principal",
+        "Estate plan",
+        "2026-09-01",
+        "Draft and file the matter documents.",
+        "450 per hour",
+        "nevada",
+    ] {
         let resp = app
             .clone()
             .oneshot(

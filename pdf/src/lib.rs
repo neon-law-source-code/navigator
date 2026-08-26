@@ -31,6 +31,18 @@
 //! `TrashType` terms recorded in
 //! `server/public/fonts/gorp-serif/LICENSE.txt`.
 //!
+//! A third face, **Tinos**, is embedded alongside Noto Serif for a narrower
+//! reason: [`pleading`] renders court paper, which has its own typeface rule
+//! (CRC 2.105: "essentially equivalent to Courier, Times New Roman, or
+//! Arial") independent of the firm's brand stack above. Tinos is metrically
+//! identical to Times New Roman — which cannot itself be embedded, being
+//! Monotype-licensed — and ships from Google Fonts under the SIL Open Font
+//! License 1.1, at `pdf/assets/fonts/Tinos/OFL.txt`. It is registered with
+//! the same `.fonts(..)` call as the brand stack so it is available whenever
+//! Typst source asks for it, but [`FONT_PREAMBLE`] never sets it as a
+//! default — only [`pleading::preamble`] does, for the documents it
+//! produces.
+//!
 //! ## Redaction styles
 //!
 //! Separate from the typeface above, these are the ways a *redacted*
@@ -76,6 +88,15 @@ pub use safety::{validate_pdf, validate_pdf_with_limit, PdfSafetyError, DEFAULT_
 const NOTO_SERIF: &[u8] = include_bytes!("../assets/fonts/NotoSerif/NotoSerif-VF.ttf");
 const NOTO_SERIF_ITALIC: &[u8] =
     include_bytes!("../assets/fonts/NotoSerif/NotoSerif-Italic-VF.ttf");
+
+/// Tinos, embedded for [`pleading`] rather than for the firm brand stack —
+/// see the module-level `## Fonts` section. Four static faces (Google Fonts
+/// ships Tinos unhinted rather than as a `wght`-axis variable font) cover
+/// regular, italic, bold, and bold italic.
+const TINOS_REGULAR: &[u8] = include_bytes!("../assets/fonts/Tinos/Tinos-Regular.ttf");
+const TINOS_ITALIC: &[u8] = include_bytes!("../assets/fonts/Tinos/Tinos-Italic.ttf");
+const TINOS_BOLD: &[u8] = include_bytes!("../assets/fonts/Tinos/Tinos-Bold.ttf");
+const TINOS_BOLD_ITALIC: &[u8] = include_bytes!("../assets/fonts/Tinos/Tinos-BoldItalic.ttf");
 
 /// The firm logo, embedded so the letterhead in [`OutputFormat::Letter`]
 /// never depends on a file on disk. Registered with the Typst engine
@@ -214,7 +235,14 @@ pub fn render(source: &str) -> Result<Vec<u8>, PdfError> {
     let with_font = format!("{}{source}", *FONT_PREAMBLE);
     let engine = TypstEngine::builder()
         .main_file(with_font)
-        .fonts([NOTO_SERIF, NOTO_SERIF_ITALIC])
+        .fonts([
+            NOTO_SERIF,
+            NOTO_SERIF_ITALIC,
+            TINOS_REGULAR,
+            TINOS_ITALIC,
+            TINOS_BOLD,
+            TINOS_BOLD_ITALIC,
+        ])
         .with_static_file_resolver([(LOGO_PATH, FIRM_LOGO)])
         .search_fonts_with(font_search_options())
         .build();

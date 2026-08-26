@@ -154,12 +154,39 @@ impl Finding {
     }
 }
 
-/// Create the reviewed scaffold without overwriting existing work.
-pub fn scaffold(root: &Path, project_code: &str) -> ExitCode {
+/// Create the reviewed scaffold without overwriting existing work, pinning the
+/// generated gate to `action_version`.
+///
+/// The pin is refused here rather than in the generated file. A gate emitted at
+/// `main`, at `latest`, or at a version this repository does not publish is a
+/// gate the Project cannot run, and the operator learns that on the run that
+/// blocks their first pull request rather than on the command that wrote it.
+/// `docs/project-repositories.md` requires an exact immutable release tag, so
+/// this is that rule enforced at the one place the file is written.
+pub fn scaffold(root: &Path, project_code: &str, action_version: &str) -> ExitCode {
+    // Trimmed once, here, before it is either checked or written: `is_release_tag`
+    // trims internally, so an untrimmed value could pass this refusal and still
+    // reach `workflow` with the whitespace intact, corrupting the `uses:` ref it
+    // was just cleared to write.
+    let action_version = action_version.trim();
+
     if !store::projects::is_valid_code(project_code) {
         eprintln!(
             "navigator: invalid Project code `{project_code}`; use lowercase letters, digits, and single hyphens (80 characters maximum), and not a segment Navigator routes itself"
         );
+        return ExitCode::from(2);
+    }
+
+    if !is_release_tag(action_version) {
+        if action_version.is_empty() {
+            eprintln!(
+                "navigator: no --action-version was given, and this build cannot confirm its \
+                 own version is one this repository has published (only a downloaded release \
+                 binary, or one built with `NAVIGATOR_RELEASE_TAG` set, can); pass {RELEASE_TAG_SHAPE}"
+            );
+        } else {
+            eprintln!("navigator: invalid validate-action version `{action_version}`; use {RELEASE_TAG_SHAPE}");
+        }
         return ExitCode::from(2);
     }
 
@@ -172,7 +199,7 @@ pub fn scaffold(root: &Path, project_code: &str) -> ExitCode {
             example_template(),
         ),
         (root.join("tests/README.md"), tests_readme()),
-        (root.join(WORKFLOW), workflow()),
+        (root.join(WORKFLOW), workflow(action_version)),
         (root.join(CD_WORKFLOW), cd_workflow()),
     ];
 
@@ -520,9 +547,7 @@ fn validate_workflow(path: &Path, contents: &str, errors: &mut Vec<Finding>) {
     if !is_release_tag(action_version) {
         errors.push(Finding::at(
             path,
-            format!(
-                "validation action ref `{action_version}` must be an exact release version, such as YY.M.D or YY.M.D-hotfix.N"
-            ),
+            format!("validation action ref `{action_version}` must be {RELEASE_TAG_SHAPE}"),
         ));
     }
     if step
@@ -542,6 +567,12 @@ fn validate_workflow(path: &Path, contents: &str, errors: &mut Vec<Finding>) {
 fn is_release_tag(version: &str) -> bool {
     crate::devx::registry::is_release_tag(version)
 }
+
+/// What `is_release_tag` requires, spelled out once so `scaffold`'s CLI-time
+/// refusal and `validate_workflow`'s CI-time finding describe the one rule in
+/// one sentence rather than two that are free to drift.
+const RELEASE_TAG_SHAPE: &str =
+    "an exact release tag, such as YY.M.D or YY.M.D-hotfix.N — never `main` or `latest`";
 
 fn validate_templates(
     root: &Path,
@@ -703,18 +734,30 @@ Replace this placeholder with the Project-specific template approved for import.
     .to_string()
 }
 
-/// The one CI gate, in the one job name `ops github setup` requires.
+/// The one CI gate, in the one job name `ops github setup` requires, pinned to
+/// `action_version`.
 ///
 /// There is deliberately **no** `paths:` filter. A filtered job that skips
 /// reports success for work it never did, and a required check that can be
 /// satisfied by a skip is not a gate. So the job always runs and the action
 /// no-ops internally over whichever half this repository carries.
+///
+/// # The pin is an argument, not a literal
+///
+/// `[scaffold]` refuses to call this with anything [`is_release_tag`] rejects,
+/// the way `ops release-version` refuses a malformed `--tag`: a gate emitted
+/// at `main`, at `latest`, or at a version this repository has not published
+/// is a gate the Project cannot run, so the choice belongs to the operator
+/// (or to `main.rs`'s `published_cli_version`, when this binary can vouch for
+/// its own version) rather than to a literal frozen in this string.
+///
 /// A raw string, not a `\`-continued one. A backslash continuation strips the
 /// leading whitespace of the next line, which silently reflows YAML into
 /// something that no longer parses — and a generated workflow that does not
 /// parse fails in the Project repository rather than here.
-fn workflow() -> String {
-    r#"name: ci
+fn workflow(action_version: &str) -> String {
+    format!(
+        r#"name: ci
 
 on:
   pull_request:
@@ -729,12 +772,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: neon-law-source-code/navigator/.github/actions/validate@26.7.27
+      - uses: {VALIDATE_ACTION}{action_version}
         with:
-          version: "26.7.27"
+          version: "{action_version}"
           project_repository: true
 "#
-    .to_string()
+    )
 }
 
 /// The future Project publication workflow. Bucket provisioning and
@@ -759,10 +802,19 @@ jobs:
 #[cfg(test)]
 mod tests {
     use super::{
-        cd_workflow, example_template, is_release_tag, repository_name, validate_layout,
+        cd_workflow, example_template, is_release_tag, repository_name, scaffold, validate_layout,
         validate_workflow, workflow, Finding, ALLOWED_ROOTS, CD_WORKFLOW, WORKFLOW,
     };
     use std::path::Path;
+
+    /// The pin the fixtures below scaffold with.
+    ///
+    /// A literal, not `crate::published_cli_version()`: a fixture that reads
+    /// the running binary's version makes every layout test depend on how
+    /// this build was stamped, and an ambient `NAVIGATOR_RELEASE_TAG` would
+    /// then decide whether they pass. The one test that must speak about the
+    /// real default says so itself.
+    const FIXTURE_PIN: &str = "26.8.23";
 
     /// The messages `validate_workflow` reports for one gate file.
     fn findings(contents: &str) -> Vec<String> {
@@ -776,7 +828,7 @@ mod tests {
     fn scaffold_minimal(root: &Path) {
         std::fs::create_dir_all(root.join(".github/workflows")).unwrap();
         std::fs::write(root.join("README.md"), "# fixture\n").unwrap();
-        std::fs::write(root.join(WORKFLOW), workflow()).unwrap();
+        std::fs::write(root.join(WORKFLOW), workflow(FIXTURE_PIN)).unwrap();
         std::fs::write(root.join(CD_WORKFLOW), cd_workflow()).unwrap();
     }
 
@@ -930,7 +982,7 @@ jobs:
         let found = findings(contents);
         assert_eq!(found.len(), 1, "{found:?}");
         assert!(
-            found[0].contains("must be an exact release version"),
+            found[0].contains("must be an exact release tag"),
             "{found:?}"
         );
     }
@@ -948,7 +1000,7 @@ jobs:
     /// is how three defects lived in one twelve-line function.
     #[test]
     fn the_scaffolded_gate_passes_its_own_validation() {
-        assert_eq!(findings(&workflow()), Vec::<String>::new());
+        assert_eq!(findings(&workflow(FIXTURE_PIN)), Vec::<String>::new());
     }
 
     /// Six Project repositories declare their Project in a root manifest. The
@@ -1031,12 +1083,98 @@ jobs:
 
     #[test]
     fn the_generated_gate_is_one_unfiltered_required_job() {
-        let generated = workflow();
+        let generated = workflow(FIXTURE_PIN);
         assert!(generated.contains("\n  ci:\n"), "{generated}");
         assert!(
             !generated.contains("paths:"),
             "a path-filtered required check can be satisfied by a skip"
         );
         assert!(generated.contains("project_repository: true"));
+    }
+
+    /// The pin the caller names reaches both places that carry it, and no
+    /// literal survives in the generator.
+    #[test]
+    fn the_generated_gate_pins_the_version_it_was_given() {
+        let generated = workflow("26.8.23");
+        assert!(
+            generated.contains(
+                "- uses: neon-law-source-code/navigator/.github/actions/validate@26.8.23"
+            ),
+            "{generated}"
+        );
+        assert!(generated.contains(r#"version: "26.8.23""#), "{generated}");
+        assert!(
+            !generated.contains("26.7.27"),
+            "a hard-coded literal is back:\n{generated}"
+        );
+    }
+
+    /// The default pin is empty, or it is a release tag — never a
+    /// version-shaped string this build merely happens to carry.
+    ///
+    /// This is the guard that makes the invariant structural rather than
+    /// asserted once: a hard-coded pin cannot be checked by anything, because
+    /// it is correct on the day it is typed and nothing revisits it, while
+    /// this assertion runs on every build. `cargo test` itself is the "cannot
+    /// vouch for it" case — it bakes neither a runtime nor a build-time
+    /// `NAVIGATOR_RELEASE_TAG` — so `published_cli_version()` is empty here,
+    /// and `the_scaffold_refuses_a_pin_that_is_not_a_release_tag` covers what
+    /// `scaffold` does with that. This test is what a release CLI build, or
+    /// one built with `NAVIGATOR_RELEASE_TAG` set, has to satisfy instead.
+    #[test]
+    fn the_scaffold_default_pin_is_a_release_tag_or_empty() {
+        let default = crate::published_cli_version();
+        if default.is_empty() {
+            return;
+        }
+        assert!(
+            is_release_tag(default),
+            "the scaffold would emit `{default}`, which is not an exact release tag"
+        );
+        assert_eq!(findings(&workflow(default)), Vec::<String>::new());
+    }
+
+    /// A pin the gate could never resolve is refused where the file is
+    /// written.
+    ///
+    /// `validate_workflow` cannot catch a version-shaped-but-unpublished pin:
+    /// it holds the pin to the *shape* of a release tag, which `main` fails
+    /// but a plausible-looking version that was never published passes. So
+    /// the shape rule is enforced at the command, before a Project repository
+    /// carries the result — and an empty default (this build cannot vouch for
+    /// its own version) is refused the same way as an explicit `main`.
+    #[test]
+    fn the_scaffold_refuses_a_pin_that_is_not_a_release_tag() {
+        for refused in ["main", "latest", ""] {
+            let root = tempfile::tempdir().unwrap();
+            scaffold(root.path(), "example-project", refused);
+            assert!(
+                !root.path().join(WORKFLOW).exists(),
+                "`{refused}` was accepted and a gate was written"
+            );
+            assert!(
+                !root.path().join("README.md").exists(),
+                "`{refused}` was refused only after writing other files"
+            );
+        }
+    }
+
+    /// A pin surrounded by whitespace is trimmed before it is either checked
+    /// or written, rather than sailing past the shape check (which trims
+    /// internally) and reaching the generated `uses:`/`version:` lines intact
+    /// — which would corrupt a ref that the check had just approved.
+    #[test]
+    fn the_scaffold_trims_the_pin_before_checking_and_writing() {
+        let root = tempfile::tempdir().unwrap();
+        scaffold(root.path(), "example-project", " 26.8.23 ");
+        let generated = std::fs::read_to_string(root.path().join(WORKFLOW)).unwrap();
+        assert!(
+            generated.contains(
+                "- uses: neon-law-source-code/navigator/.github/actions/validate@26.8.23"
+            ),
+            "{generated}"
+        );
+        assert!(generated.contains(r#"version: "26.8.23""#), "{generated}");
     }
 }

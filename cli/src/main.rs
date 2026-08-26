@@ -59,6 +59,33 @@ fn cli_version() -> &'static str {
     env!("NAVIGATOR_CLI_VERSION")
 }
 
+/// The version [`ProjectRepositoryAction::Scaffold`] pins its generated gate
+/// to by default — [`cli_version`] narrowed to the sources that name an
+/// *actually published* release, never the bare `CARGO_PKG_VERSION` fallback
+/// `build.rs` uses so `--version` still prints something on a plain local
+/// build.
+///
+/// A runtime `NAVIGATOR_RELEASE_TAG` only appears in a deployed container,
+/// started from an image published under that tag, so it cannot precede the
+/// tag. The build-time-baked `NAVIGATOR_CLI_VERSION` is trustworthy the same
+/// way, but only when `NAVIGATOR_CLI_VERSION_IS_RELEASE` confirms `build.rs`
+/// actually saw `NAVIGATOR_RELEASE_TAG` rather than falling back to the crate
+/// version — which is bumped on `main` before the tag naming it exists. When
+/// neither source is available this returns empty, and `scaffold`'s own
+/// `is_release_tag` refusal then asks the operator to name `--action-version`
+/// themselves rather than have the gate guess.
+pub(crate) fn published_cli_version() -> &'static str {
+    if let Ok(tag) = std::env::var("NAVIGATOR_RELEASE_TAG") {
+        let tag = tag.trim();
+        if !tag.is_empty() {
+            return Box::leak(tag.to_owned().into_boxed_str());
+        }
+    }
+    option_env!("NAVIGATOR_CLI_VERSION_IS_RELEASE")
+        .map(|_| env!("NAVIGATOR_CLI_VERSION"))
+        .unwrap_or_default()
+}
+
 /// The licence, compiled into the binary.
 ///
 /// A downloaded `navigator` arrives as one executable with no repository and
@@ -365,6 +392,13 @@ enum ProjectRepositoryAction {
         /// Directory to create or complete. Defaults to the current directory.
         #[arg(long, default_value = ".")]
         dir: PathBuf,
+        /// Exact release tag the generated gate pins Navigator's validate
+        /// action to. Defaults to this binary's own version when — and only
+        /// when — that version is one this repository has actually
+        /// published; a plain local build cannot vouch for its own crate
+        /// version, so it carries no default and this must be named.
+        #[arg(long, default_value = published_cli_version())]
+        action_version: String,
     },
     /// Validate a Project repository: its layout, its notation templates, and
     /// its portal's build shape.
@@ -1799,9 +1833,11 @@ fn main() -> ExitCode {
                 projects::doctor::run(host.host.as_deref(), project.as_deref())
             }
             ProjectsCmd::Repository { action } => match action {
-                ProjectRepositoryAction::Scaffold { project_code, dir } => {
-                    projects::repository::scaffold(&dir, &project_code)
-                }
+                ProjectRepositoryAction::Scaffold {
+                    project_code,
+                    dir,
+                    action_version,
+                } => projects::repository::scaffold(&dir, &project_code, &action_version),
                 ProjectRepositoryAction::Validate { dir, repository } => {
                     projects::repository::validate(&dir, repository.as_deref())
                 }

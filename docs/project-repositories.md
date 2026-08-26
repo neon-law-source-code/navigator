@@ -189,7 +189,11 @@ What the gate proves:
   and out through `/auth/logout`, and those are outside the mount on purpose.
 
 Pin the action to an exact immutable release tag (`YY.M.D`, or `YY.M.D-hotfix.N`), never `main` or `latest`. Publishing
-a rolling pointer is allowed; consuming one is not.
+a rolling pointer is allowed; consuming one is not. The tag must also be one this repository actually published: a
+`uses:` at a ref that does not exist fails the run outright with "unable to resolve action", and unlike a renamed
+repository — which GitHub redirects, so the old spelling keeps working — a missing ref has nothing to redirect to. The
+shape rule is machine-checkable and `validate` enforces it; whether the tag exists is not, which is why `scaffold`
+derives the pin from a release rather than accepting a version someone typed from memory.
 
 ## Publishing the built bundle
 
@@ -331,6 +335,14 @@ navigator projects repository validate .
 
 `scaffold` is idempotent and leaves existing files alone. It writes the repository shell and the templates half — the
 gate workflow, `README.md`, `AGENTS.md`, `CLAUDE.md`, a `templates/project_template.md` placeholder, and `tests/`.
+
+The generated gate pins Navigator's validate action to `--action-version`, which defaults to the release the running
+`navigator` reports as its own version — but only when this binary can actually vouch for that version: a downloaded
+release binary, or one built with `NAVIGATOR_RELEASE_TAG` set, both of which can only report a version this repository
+has already published. A plain local build cannot make that promise (`[workspace.package].version` is bumped on `main`
+days before the matching tag exists), so it carries no default at all, and `--action-version` must be named explicitly.
+A value that is not an exact release tag — including no value, when this binary cannot vouch for one — is refused before
+any file is written, so a gate that could never resolve is never created.
 
 It does **not** write `portal/`. That arrives from the vibe-coding lane ([`vibe-coding`](vibe-coding.md)), which knows
 how to make a Vite application and which released `@neon-law/ux` version to pin. Keeping it out of the scaffold is what

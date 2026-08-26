@@ -13021,6 +13021,11 @@ async fn project_detail_page_renders_documents_and_upload_form() {
         "action=\"/app/projects/{project_code}/documents/upload\""
     )));
     assert!(body.contains("enctype=\"multipart/form-data\""));
+    // The real-time progress-bar island: the script loads, and the file
+    // input carries the id the script targets — a bare `Field::file(...)`
+    // id would collide with the Estate transcript uploader's `id="file"`.
+    assert!(body.contains("/public/js/upload-progress.js"));
+    assert!(body.contains("id=\"document-upload-file\""));
 }
 
 #[tokio::test]

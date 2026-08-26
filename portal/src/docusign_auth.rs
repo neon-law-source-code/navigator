@@ -160,10 +160,15 @@ impl DocuSignJwtAuth {
     ///
     /// Required: `DOCUSIGN_INTEGRATION_KEY` (the app's Integration Key /
     /// OAuth client id), `DOCUSIGN_USER_ID` (the impersonated API user
-    /// GUID), `DOCUSIGN_PRIVATE_KEY` (the RSA private-key PEM). Optional:
-    /// `DOCUSIGN_OAUTH_BASE`, defaulting to the demo host; a scheme-less
-    /// value is upgraded to `https://` so a bare `account.docusign.com`
-    /// still yields a valid token URL.
+    /// GUID), `DOCUSIGN_PRIVATE_KEY` (the RSA private-key PEM).
+    ///
+    /// `DOCUSIGN_OAUTH_BASE` defaults to the demo host here, which is
+    /// correct for the sandbox and test lanes this constructor also serves.
+    /// It is not a production fallback: `portal::config` rejects a
+    /// production boot that declares DocuSign and omits the key, so the
+    /// default below is unreachable from a guarded production process. A
+    /// scheme-less value is upgraded to `https://` so a bare
+    /// `account.docusign.com` still yields a valid token URL.
     #[must_use]
     pub fn from_env() -> Option<Self> {
         let get = |k: &str| std::env::var(k).ok().filter(|s| !s.is_empty());

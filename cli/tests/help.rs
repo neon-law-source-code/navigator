@@ -466,9 +466,14 @@ fn ops_help_lists_operator_members() {
             // whether a given commit's version IS one, and `deploy.yml` runs it
             // on every push to `main`. Together they replaced the pushed tag:
             // `release-provenance` proved a tag came from `main`, which a push to
-            // `main` now asserts by construction.
+            // `main` now asserts by construction. `release-default-tag` sits
+            // upstream of `release-version`: it answers "what would today's
+            // date even be called, and is it worth asking for" so the
+            // `cut-release` skill has a name to hand `--tag`, without
+            // `release-version` itself deriving one.
             "lsp",
             "assets",
+            "release-default-tag",
             "release-version",
             "release-check",
             "notices",

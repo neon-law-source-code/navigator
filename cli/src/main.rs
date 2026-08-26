@@ -25,6 +25,7 @@ mod project;
 mod projects;
 mod release;
 mod release_check;
+mod release_default_tag;
 mod release_version;
 mod remote;
 mod scaffold;
@@ -953,6 +954,33 @@ enum OpsCmd {
         #[command(subcommand)]
         action: AssetsAction,
     },
+    /// The version the `cut-release` skill should hand to `--tag` on
+    /// `ops release-version` when the operator names none: today's UTC date
+    /// under the `YY.M.D` convention, unless a release already exists that
+    /// makes today's date no improvement over what is already published.
+    ///
+    /// Prints the bare tag on stdout and nothing else when there is one, so a
+    /// caller can capture it directly: `tag=$(navigator ops
+    /// release-default-tag)`. Prints nothing to stdout — only a
+    /// human-readable reason on stderr — when today is already covered, so an
+    /// empty capture means "nothing to cut" rather than a value to parse.
+    /// Exits 0 either way: "nothing to cut today" is the ordinary answer on
+    /// most days, not a failure.
+    ///
+    /// This changes nothing about `ops release-version`, which still requires
+    /// `--tag` and still derives nothing — see its own doc for why. This
+    /// command only answers the narrower question of what today's date would
+    /// even be called and whether it is worth asking for; naming the release
+    /// is still `--tag`'s job.
+    ReleaseDefaultTag {
+        /// Git checkout whose tags are the record of what has been released.
+        #[arg(long, default_value = ".")]
+        repo: PathBuf,
+        /// Compare against the tags already in this clone instead of fetching
+        /// from `origin` first. Offline, and only as current as the clone.
+        #[arg(long)]
+        no_fetch: bool,
+    },
     /// Write `--tag` into `[workspace.package].version` so the commit a release
     /// tags carries the version its Git tag names. Every crate inherits it
     /// (`version.workspace = true`) and `navigator --version` reports it. Run
@@ -1862,11 +1890,15 @@ fn main() -> ExitCode {
         Command::Ops(
             action @ (OpsCmd::Lsp { .. }
             | OpsCmd::Assets { .. }
+            | OpsCmd::ReleaseDefaultTag { .. }
             | OpsCmd::ReleaseCheck { .. }
             | OpsCmd::ReleaseVersion { .. }
             | OpsCmd::Notices { .. }),
         ) => match action {
             OpsCmd::Notices { out, check } => notices::run(&out, check),
+            OpsCmd::ReleaseDefaultTag { repo, no_fetch } => {
+                release_default_tag::run(chrono::Utc::now(), &repo, !no_fetch)
+            }
             OpsCmd::ReleaseVersion {
                 tag,
                 manifest_path,

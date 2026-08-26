@@ -390,6 +390,13 @@ runtime environment variable `NAVIGATOR_RELEASE_TAG`.
 is where it is written down — but a version that departs from it publishes just as well, provided it is newer than the
 last one. What the date really bought was uniqueness, and comparing against the tags buys that directly.
 
+**`ops release-default-tag` computes today's name, so nobody has to by hand.** When the operator running `cut-release`
+names no version, this command prints today's `YY.M.D` on stdout — or nothing, when a version at or past it is already
+published, which is not an error. It sits upstream of `release-version` rather than inside it: `release-version` still
+requires an explicit `--tag` and still derives nothing, for the reason above the table — a clock-derived name is a fact
+about when a command ran, not an operator decision. This command only supplies the candidate a human would otherwise
+have worked out by counting days since the last release; naming the release is still `--tag`'s job.
+
 Three shape facts still hold, because they are semver's:
 
 - **No leading zeros.** August is `8`; `26.08.22` is not a version at all, and neither is `-hotfix.08`.

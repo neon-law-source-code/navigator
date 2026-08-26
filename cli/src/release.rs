@@ -48,6 +48,7 @@
 //! module exists to have none of.
 
 use anyhow::{bail, Context, Result};
+use chrono::{DateTime, Datelike, Utc};
 use semver::Version;
 
 /// The glob `deploy.yml` and the `release-tags` ruleset both use to name a
@@ -197,6 +198,47 @@ pub fn standing(
         Some(highest) => Standing::Regression {
             highest: highest.clone(),
         },
+    }
+}
+
+/// Format `now` as the `YY.M.D` release-naming convention: two-digit year,
+/// unpadded month, unpadded day. `now` being August 22nd 2026 UTC gives
+/// `26.8.22`.
+///
+/// This is a NAME, not a validity claim. It is `pub(crate)` because
+/// [`crate::release_default_tag`] is the only caller with a clock to give it
+/// — an operator names a release explicitly, through `ops release-version
+/// --tag`, and that command never reads one. See [`default_tag`] for where
+/// this fits.
+pub(crate) fn today_tag(now: DateTime<Utc>) -> String {
+    format!("{}.{}.{}", now.year() % 100, now.month(), now.day())
+}
+
+/// The version `ops release-default-tag` should suggest when the operator
+/// asks for one and names no version themselves: today's UTC date under the
+/// `YY.M.D` convention, unless a release already exists that makes today's
+/// date no improvement.
+///
+/// `None` is not an error. It is today's ordinary "nothing to cut" answer —
+/// on a day the operator already released, or (had the clock skewed
+/// backwards) on a day a later version already exists. Either way there is
+/// nothing this candidate would publish that is not already published, which
+/// is exactly [`Standing::AlreadyReleased`] and [`Standing::Regression`]. Only
+/// [`Standing::Releasable`] is a name worth handing back.
+///
+/// This never reads a tag pointing at `HEAD`: unlike [`standing`]'s caller in
+/// `release_check`, there is no commit yet whose manifest could carry this
+/// candidate, so the idempotent-rerun case cannot arise here.
+#[must_use]
+pub(crate) fn default_tag(now: DateTime<Utc>, tags: &[String]) -> Option<Version> {
+    let candidate = parse(&today_tag(now)).expect(
+        "today_tag formats a plain three-component, unpadded, non-negative version, which parse \
+         always accepts",
+    );
+    let highest = highest_release(tags);
+    match standing(&candidate, highest.as_ref(), false) {
+        Standing::Releasable => Some(candidate),
+        Standing::AlreadyReleased | Standing::Regression { .. } => None,
     }
 }
 
@@ -439,5 +481,78 @@ rust-version = "1.97.0"
 version = "26.8.22"
 "#;
         assert_eq!(workspace_version(manifest).expect("a version"), "26.8.22");
+    }
+
+    fn utc(year: i32, month: u32, day: u32) -> DateTime<Utc> {
+        use chrono::TimeZone;
+        Utc.with_ymd_and_hms(year, month, day, 12, 0, 0)
+            .single()
+            .expect("a valid calendar date")
+    }
+
+    /// The convention: two-digit year, unpadded month, unpadded day.
+    #[test]
+    fn today_tag_formats_the_yy_m_d_convention() {
+        assert_eq!(today_tag(utc(2026, 8, 22)), "26.8.22");
+        // Single-digit month AND day must not gain a leading zero — that
+        // shape is exactly what `parse` refuses.
+        assert_eq!(today_tag(utc(2026, 1, 5)), "26.1.5");
+        assert_eq!(today_tag(utc(2099, 12, 31)), "99.12.31");
+    }
+
+    /// Every date this function can format is itself an admissible release
+    /// version — the contract [`default_tag`] leans on to skip re-parsing.
+    #[test]
+    fn today_tag_always_parses() {
+        for date in [utc(2026, 8, 22), utc(2026, 1, 1), utc(2030, 12, 31)] {
+            assert!(parse(&today_tag(date)).is_ok());
+        }
+    }
+
+    /// An empty repository has nothing to be behind: today's date is the
+    /// release.
+    #[test]
+    fn default_tag_is_releasable_with_no_tags_at_all() {
+        assert_eq!(
+            default_tag(utc(2026, 8, 22), &[]),
+            Some(parse("26.8.22").expect("valid"))
+        );
+    }
+
+    /// Today's date is newer than everything already released: releasable.
+    #[test]
+    fn default_tag_is_releasable_past_every_release() {
+        let tags = vec!["26.8.20".to_string(), "26.8.21-hotfix.3".to_string()];
+        assert_eq!(
+            default_tag(utc(2026, 8, 22), &tags),
+            Some(parse("26.8.22").expect("valid"))
+        );
+    }
+
+    /// A release already exists for today: nothing to cut, and it is not an
+    /// error — this is the ordinary state of asking twice in one day.
+    #[test]
+    fn default_tag_is_none_when_today_is_already_released() {
+        let tags = vec!["26.8.21".to_string(), "26.8.22".to_string()];
+        assert_eq!(default_tag(utc(2026, 8, 22), &tags), None);
+    }
+
+    /// A LATER version is already released than today's date would name —
+    /// the "or later" half of the rule. Still not an error: there is nothing
+    /// today's date would publish that is not already superseded.
+    #[test]
+    fn default_tag_is_none_when_a_later_version_is_already_released() {
+        let tags = vec!["26.8.23".to_string()];
+        assert_eq!(default_tag(utc(2026, 8, 22), &tags), None);
+    }
+
+    /// Non-release refs cannot raise the bar today's date has to clear.
+    #[test]
+    fn default_tag_ignores_non_release_tags() {
+        let tags = vec!["latest".to_string(), "buildcache".to_string()];
+        assert_eq!(
+            default_tag(utc(2026, 8, 22), &tags),
+            Some(parse("26.8.22").expect("valid"))
+        );
     }
 }

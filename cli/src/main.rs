@@ -47,7 +47,7 @@ use devx::{DnsCmd, GcpCmd, RestateCmd, StagingAction, WorktreeEnvCmd};
 /// 3. The workspace crate version on a plain local build — `0.1.0` between
 ///    releases, or the `YY.M.D` a release stamped into `Cargo.toml` — since
 ///    `build.rs` falls back to `CARGO_PKG_VERSION` when no tag is present.
-fn cli_version() -> &'static str {
+pub(crate) fn cli_version() -> &'static str {
     if let Ok(tag) = std::env::var("NAVIGATOR_RELEASE_TAG") {
         let tag = tag.trim();
         if !tag.is_empty() {
@@ -365,6 +365,11 @@ enum ProjectRepositoryAction {
         /// Directory to create or complete. Defaults to the current directory.
         #[arg(long, default_value = ".")]
         dir: PathBuf,
+        /// Exact release tag the generated gate pins Navigator's validate
+        /// action to, defaulting to the version this binary reports as its own
+        /// because the CLI and that action publish from one tagged commit
+        #[arg(long, default_value = cli_version())]
+        action_version: String,
     },
     /// Validate a Project repository: its layout, its notation templates, and
     /// its portal's build shape.
@@ -1799,9 +1804,11 @@ fn main() -> ExitCode {
                 projects::doctor::run(host.host.as_deref(), project.as_deref())
             }
             ProjectsCmd::Repository { action } => match action {
-                ProjectRepositoryAction::Scaffold { project_code, dir } => {
-                    projects::repository::scaffold(&dir, &project_code)
-                }
+                ProjectRepositoryAction::Scaffold {
+                    project_code,
+                    dir,
+                    action_version,
+                } => projects::repository::scaffold(&dir, &project_code, &action_version),
                 ProjectRepositoryAction::Validate { dir, repository } => {
                     projects::repository::validate(&dir, repository.as_deref())
                 }

@@ -154,11 +154,26 @@ impl Finding {
     }
 }
 
-/// Create the reviewed scaffold without overwriting existing work.
-pub fn scaffold(root: &Path, project_code: &str) -> ExitCode {
+/// Create the reviewed scaffold without overwriting existing work, pinning the
+/// generated gate to `action_version`.
+///
+/// The pin is refused here rather than in the generated file. A gate emitted at
+/// `main`, at `latest`, or at a version this repository does not publish is a
+/// gate the Project cannot run, and the operator learns that on the run that
+/// blocks their first pull request rather than on the command that wrote it.
+/// `docs/project-repositories.md` requires an exact immutable release tag, so
+/// this is that rule enforced at the one place the file is written.
+pub fn scaffold(root: &Path, project_code: &str, action_version: &str) -> ExitCode {
     if !store::projects::is_valid_code(project_code) {
         eprintln!(
             "navigator: invalid Project code `{project_code}`; use lowercase letters, digits, and single hyphens (80 characters maximum), and not a segment Navigator routes itself"
+        );
+        return ExitCode::from(2);
+    }
+
+    if !is_release_tag(action_version) {
+        eprintln!(
+            "navigator: invalid validate-action version `{action_version}`; use an exact release tag such as YY.M.D or YY.M.D-hotfix.N, never `main` or `latest`"
         );
         return ExitCode::from(2);
     }
@@ -172,7 +187,7 @@ pub fn scaffold(root: &Path, project_code: &str) -> ExitCode {
             example_template(),
         ),
         (root.join("tests/README.md"), tests_readme()),
-        (root.join(WORKFLOW), workflow()),
+        (root.join(WORKFLOW), workflow(action_version)),
         (root.join(CD_WORKFLOW), cd_workflow()),
     ];
 
@@ -703,18 +718,38 @@ Replace this placeholder with the Project-specific template approved for import.
     .to_string()
 }
 
-/// The one CI gate, in the one job name `ops github setup` requires.
+/// The one CI gate, in the one job name `ops github setup` requires, pinned to
+/// `action_version`.
 ///
 /// There is deliberately **no** `paths:` filter. A filtered job that skips
 /// reports success for work it never did, and a required check that can be
 /// satisfied by a skip is not a gate. So the job always runs and the action
 /// no-ops internally over whichever half this repository carries.
+///
+/// # The pin is an argument, not a literal
+///
+/// It used to be `26.7.27` written into this string twice. A hard-coded pin
+/// does not go stale the way a comment does — it goes stale and **keeps being
+/// emitted**, so every repository scaffolded after the pin died is born with a
+/// gate that cannot run. `26.7.27` names no tag and no release in this
+/// repository, and [`validate_workflow`] could not say so: it holds a pin to
+/// the *shape* of a release tag, which a version that never existed satisfies.
+/// So the scaffold's own gate passed the whole way down.
+///
+/// Taking it as an argument moves the choice to the operator, the way
+/// `ops release-version` takes `--tag`, and the default is the release this
+/// binary *is* — see `cli_version` in `main.rs`. That default is not a fact
+/// about someone's install: the CLI and the action publish from one tagged
+/// commit, so the action at the CLI's own version is the one this file
+/// transcribes.
+///
 /// A raw string, not a `\`-continued one. A backslash continuation strips the
 /// leading whitespace of the next line, which silently reflows YAML into
 /// something that no longer parses — and a generated workflow that does not
 /// parse fails in the Project repository rather than here.
-fn workflow() -> String {
-    r#"name: ci
+fn workflow(action_version: &str) -> String {
+    format!(
+        r#"name: ci
 
 on:
   pull_request:
@@ -729,12 +764,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: neon-law-source-code/navigator/.github/actions/validate@26.7.27
+      - uses: {VALIDATE_ACTION}{action_version}
         with:
-          version: "26.7.27"
+          version: "{action_version}"
           project_repository: true
 "#
-    .to_string()
+    )
 }
 
 /// The future Project publication workflow. Bucket provisioning and
@@ -759,10 +794,19 @@ jobs:
 #[cfg(test)]
 mod tests {
     use super::{
-        cd_workflow, example_template, is_release_tag, repository_name, validate_layout,
+        cd_workflow, example_template, is_release_tag, repository_name, scaffold, validate_layout,
         validate_workflow, workflow, Finding, ALLOWED_ROOTS, CD_WORKFLOW, WORKFLOW,
     };
     use std::path::Path;
+
+    /// The pin the fixtures below scaffold with.
+    ///
+    /// A literal, not `crate::cli_version()`: a fixture that reads the running
+    /// binary's version makes every layout test depend on how this build was
+    /// stamped, and an ambient `NAVIGATOR_RELEASE_TAG` would then decide whether
+    /// they pass. The one test that must speak about the real default says so
+    /// itself.
+    const FIXTURE_PIN: &str = "26.8.23";
 
     /// The messages `validate_workflow` reports for one gate file.
     fn findings(contents: &str) -> Vec<String> {
@@ -776,7 +820,7 @@ mod tests {
     fn scaffold_minimal(root: &Path) {
         std::fs::create_dir_all(root.join(".github/workflows")).unwrap();
         std::fs::write(root.join("README.md"), "# fixture\n").unwrap();
-        std::fs::write(root.join(WORKFLOW), workflow()).unwrap();
+        std::fs::write(root.join(WORKFLOW), workflow(FIXTURE_PIN)).unwrap();
         std::fs::write(root.join(CD_WORKFLOW), cd_workflow()).unwrap();
     }
 
@@ -948,7 +992,7 @@ jobs:
     /// is how three defects lived in one twelve-line function.
     #[test]
     fn the_scaffolded_gate_passes_its_own_validation() {
-        assert_eq!(findings(&workflow()), Vec::<String>::new());
+        assert_eq!(findings(&workflow(FIXTURE_PIN)), Vec::<String>::new());
     }
 
     /// Six Project repositories declare their Project in a root manifest. The
@@ -1031,12 +1075,75 @@ jobs:
 
     #[test]
     fn the_generated_gate_is_one_unfiltered_required_job() {
-        let generated = workflow();
+        let generated = workflow(FIXTURE_PIN);
         assert!(generated.contains("\n  ci:\n"), "{generated}");
         assert!(
             !generated.contains("paths:"),
             "a path-filtered required check can be satisfied by a skip"
         );
         assert!(generated.contains("project_repository: true"));
+    }
+
+    /// The pin the caller names reaches both places that carry it, and no
+    /// literal survives in the generator.
+    ///
+    /// `26.7.27` was written into this file twice and emitted unchanged for a
+    /// month. It names no tag and no release in this repository, so a Project
+    /// scaffolded from it got a gate GitHub cannot resolve — a `uses:` at a ref
+    /// that does not exist is not redirected the way a renamed repository is.
+    #[test]
+    fn the_generated_gate_pins_the_version_it_was_given() {
+        let generated = workflow("26.8.23");
+        assert!(
+            generated.contains(
+                "- uses: neon-law-source-code/navigator/.github/actions/validate@26.8.23"
+            ),
+            "{generated}"
+        );
+        assert!(generated.contains(r#"version: "26.8.23""#), "{generated}");
+        assert!(
+            !generated.contains("26.7.27"),
+            "the dead literal is back:\n{generated}"
+        );
+    }
+
+    /// The default pin is the release this binary reports as its own, and that
+    /// has to be a release tag every time this crate is built.
+    ///
+    /// This is the guard that makes the staleness structural rather than fixed
+    /// once. A hard-coded pin cannot be checked by anything, because it is
+    /// correct on the day it is typed and nothing revisits it; a derived one is
+    /// wrong only if this assertion is also wrong, and this assertion runs on
+    /// every build.
+    #[test]
+    fn the_scaffold_default_pin_is_a_release_tag() {
+        let default = crate::cli_version();
+        assert!(
+            is_release_tag(default),
+            "the scaffold would emit `{default}`, which is not an exact release tag"
+        );
+        assert_eq!(findings(&workflow(default)), Vec::<String>::new());
+    }
+
+    /// A pin the gate could never resolve is refused where the file is written.
+    ///
+    /// `validate_workflow` cannot catch this one: it holds the pin to the
+    /// *shape* of a release tag, which `main` fails but a plausible-looking
+    /// version that was never published passes. So the shape rule is enforced
+    /// at the command, before a Project repository carries the result.
+    #[test]
+    fn the_scaffold_refuses_a_pin_that_is_not_a_release_tag() {
+        for refused in ["main", "latest", ""] {
+            let root = tempfile::tempdir().unwrap();
+            scaffold(root.path(), "example-project", refused);
+            assert!(
+                !root.path().join(WORKFLOW).exists(),
+                "`{refused}` was accepted and a gate was written"
+            );
+            assert!(
+                !root.path().join("README.md").exists(),
+                "`{refused}` was refused only after writing other files"
+            );
+        }
     }
 }

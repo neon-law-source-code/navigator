@@ -207,7 +207,7 @@ async fn lawyer_walks_the_full_retainer_questionnaire_end_to_end() {
     // Drives every leg of the stepwise retainer flow in a real
     // browser:
     //   1. POST /lawyer/retainers/new          → /step
-    //   2. POST /step × 3 (one question each) → result page
+    //   2. POST /step × 7 (one question each) → result page
     //
     // Preconditions (beyond the module's chromedriver + KIND
     // requirements): the `onboarding__retainer` template must
@@ -219,11 +219,27 @@ async fn lawyer_walks_the_full_retainer_questionnaire_end_to_end() {
     };
     login_as_lawyer(&c).await;
 
-    // The three answers we'll submit, in walker order (person__client →
-    // project__engagement → custom_single_choice__governing_law). The values are
-    // unique enough that we can fish them back out of the rendered result page.
+    // The seven answers we'll submit, in walker order (person__client →
+    // person__lawyer_dri → project__engagement →
+    // custom_datetime__engagement_start_date → custom_text__engagement_scope →
+    // custom_text__fee_basis → custom_single_choice__governing_law). The values
+    // are unique enough that we can fish them back out of the rendered result
+    // page.
+    // `custom_datetime__engagement_start_date` renders a native
+    // `<input type="datetime-local">` (its `Question.answer_type` is the
+    // generic `datetime`, not `custom_datetime`) — the value must be a full
+    // `YYYY-MM-DDTHH:MM` string, or the browser's own value setter silently
+    // blanks an incomplete one before the form ever submits it.
     let client_email = format!("walk-{}@example.com", std::process::id());
-    let answers = ["Libra", "Estate Plan — Libra", "Nevada"];
+    let answers = [
+        "Libra",
+        "Firm Principal",
+        "Estate Plan — Libra",
+        "2026-09-01T00:00",
+        "Draft and file the matter documents.",
+        "450 per hour",
+        "Nevada",
+    ];
 
     // --- Step 0: create the Notation -------------------------
     c.goto(&format!("{}/lawyer/retainers/new", base_url()))
@@ -279,7 +295,7 @@ async fn lawyer_walks_the_full_retainer_questionnaire_end_to_end() {
     // POST /retainers/new redirects to /lawyer/notations/:id/step.
     // Capture the id while we're here — we'll use it after the
     // walk to read the journal directly and confirm exactly
-    // three `notation_event` rows landed on the
+    // eight `notation_event` rows landed on the
     // questionnaire timeline.
     let started = std::time::Instant::now();
     let notation_id = loop {
@@ -294,11 +310,11 @@ async fn lawyer_walks_the_full_retainer_questionnaire_end_to_end() {
         tokio::time::sleep(Duration::from_millis(200)).await;
     };
 
-    // --- Steps 1–3: walk the questionnaire -------------------
+    // --- Steps 1–7: walk the questionnaire -------------------
     for (i, value) in answers.iter().enumerate() {
-        // Each step renders "step N of 3" — wait for the right
+        // Each step renders "step N of 7" — wait for the right
         // one to be sure we're looking at the form we expect.
-        wait_for_text(&c, &format!("step {} of 3", i + 1), Duration::from_secs(10)).await;
+        wait_for_text(&c, &format!("step {} of 7", i + 1), Duration::from_secs(10)).await;
 
         // Set the answer value via JS (chromedriver send_keys is
         // unreliable on freshly-rendered forms).
@@ -413,14 +429,16 @@ async fn lawyer_walks_the_full_retainer_questionnaire_end_to_end() {
         .expect("read notation_event from surreal");
     events.retain(|e| e.machine_kind == store::notation_events::MACHINE_QUESTIONNAIRE);
 
-    // Four rows: BEGIN → person__client → project__engagement →
+    // Eight rows: BEGIN → person__client → person__lawyer_dri →
+    // project__engagement → custom_datetime__engagement_start_date →
+    // custom_text__engagement_scope → custom_text__fee_basis →
     // custom_single_choice__governing_law → END. The walker signals the worker
-    // once per question (three times) and once more for the trailer-to-END in the
-    // last POST.
+    // once per question (seven times) and once more for the trailer-to-END in
+    // the last POST.
     assert_eq!(
         events.len(),
-        4,
-        "expected 4 questionnaire transitions for notation {notation_id}, got {events:?}",
+        8,
+        "expected 8 questionnaire transitions for notation {notation_id}, got {events:?}",
     );
     let states: Vec<(&str, &str, &str)> = events
         .iter()
@@ -436,9 +454,25 @@ async fn lawyer_walks_the_full_retainer_questionnaire_end_to_end() {
         states,
         vec![
             ("BEGIN", "person__client", "_"),
-            ("person__client", "project__engagement", "_"),
+            ("person__client", "person__lawyer_dri", "_"),
+            ("person__lawyer_dri", "project__engagement", "_"),
             (
                 "project__engagement",
+                "custom_datetime__engagement_start_date",
+                "_"
+            ),
+            (
+                "custom_datetime__engagement_start_date",
+                "custom_text__engagement_scope",
+                "_"
+            ),
+            (
+                "custom_text__engagement_scope",
+                "custom_text__fee_basis",
+                "_"
+            ),
+            (
+                "custom_text__fee_basis",
                 "custom_single_choice__governing_law",
                 "_"
             ),
@@ -447,7 +481,7 @@ async fn lawyer_walks_the_full_retainer_questionnaire_end_to_end() {
         "questionnaire walked the wrong path",
     );
     // Payload assertions: the walker now threads the respondent's
-    // answer through the signal so each of the three answered
+    // answer through the signal so each of the seven answered
     // transitions carries `{"answer_value": "..."}`. The trailing
     // `custom_single_choice__governing_law → END` row has no answer and stays
     // NULL. Build the expected JSON via the same `answer_payload`

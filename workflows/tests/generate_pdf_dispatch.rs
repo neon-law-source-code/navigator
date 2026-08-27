@@ -35,7 +35,7 @@ fn deps(surreal: store::surreal::SurrealDb, storage: Arc<dyn cloud::StorageServi
 async fn generate_pdf_persists_the_render_as_a_document_asset() {
     let surreal = mem_surreal().await;
     let notation_id =
-        store::test_support::seed_notation_with_kind(&surreal, Some("retainer")).await;
+        store::test_support::seed_notation_with_kind(&surreal, Some("onboarding")).await;
     let project_id = store::notations::find_by_id(&surreal, notation_id)
         .await
         .unwrap()
@@ -77,7 +77,7 @@ async fn generate_pdf_persists_the_render_as_a_document_asset() {
         .into_iter()
         .find(|d| d.project_id == Some(project_id))
         .expect("a document filed on the notation's project");
-    assert_eq!(doc.kind.as_deref(), Some("retainer"));
+    assert_eq!(doc.kind.as_deref(), Some("onboarding"));
     assert_eq!(doc.source.as_deref(), Some("generated"));
     assert_eq!(doc.content_type, "application/pdf");
     let stored = storage.get(&doc.storage_key).await.unwrap();
@@ -105,7 +105,7 @@ async fn generate_pdf_dedups_storage_when_the_same_bytes_render_twice() {
     // object — the audit trail stays honest without paying storage twice.
     let surreal = mem_surreal().await;
     let notation_id =
-        store::test_support::seed_notation_with_kind(&surreal, Some("retainer")).await;
+        store::test_support::seed_notation_with_kind(&surreal, Some("onboarding")).await;
     let storage = fs_storage().await;
     let deps = deps(surreal.clone(), storage.clone());
 

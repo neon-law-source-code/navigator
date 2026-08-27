@@ -83,6 +83,13 @@ pub enum IngestError {
     /// read back.
     #[error("writing a document asset returned no usable row")]
     WriteReturnedNothing,
+    /// `args.kind` is not a [`rules::kind::Kind`] valid in
+    /// [`rules::kind::Lane::Asset`]. The ingest boundary rejects rather than
+    /// silently coercing to `unclassified` — a lane whose whole job is
+    /// classification should refuse a bad classification loudly, not file it
+    /// under a value the caller never chose.
+    #[error("`{0}` is not a valid asset-lane kind")]
+    InvalidKind(String),
 }
 
 /// Inputs to [`ingest_bytes`]. Held in a struct (rather than a long
@@ -96,8 +103,10 @@ pub struct IngestArgs<'a> {
     pub source: &'a str,
     /// Caller-visible filename. Goes into `assets.filename`.
     pub filename: &'a str,
-    /// Document classification — `retainer`, `intake`, `invoice`, … Goes
-    /// into `assets.kind`.
+    /// Document classification — one of [`rules::kind::Kind::valid_for`]
+    /// [`rules::kind::Lane::Asset`] (`onboarding`, `offboarding`,
+    /// `unclassified`, …). Goes into `assets.kind`; [`ingest_bytes`] rejects
+    /// any other value.
     pub kind: &'a str,
     /// MIME content type of `bytes`.
     pub content_type: &'a str,
@@ -195,6 +204,10 @@ pub async fn ingest_bytes_as(
     identity: &DocumentIdentity<'_>,
     bytes: &[u8],
 ) -> Result<IngestedDocument, IngestError> {
+    if !rules::kind::Kind::parse(args.kind).is_some_and(|k| k.valid_for(rules::kind::Lane::Asset)) {
+        return Err(IngestError::InvalidKind(args.kind.to_string()));
+    }
+
     let sha_hex = sha256_hex(bytes);
     let byte_size = i64::try_from(bytes.len()).unwrap_or(i64::MAX);
     let storage_key = format!("blobs/{sha_hex}");
@@ -343,7 +356,7 @@ mod tests {
             project_id,
             source: "upload",
             filename: "retainer.pdf",
-            kind: "retainer",
+            kind: "onboarding",
             content_type: "application/pdf",
             description: Some("client-signed retainer"),
             secondary_storage_key: None,
@@ -371,7 +384,7 @@ mod tests {
         assert_eq!(a.byte_size, 11);
         assert_eq!(a.storage_key, format!("blobs/{}", out.sha256_hex));
         assert_eq!(a.filename.as_deref(), Some("retainer.pdf"));
-        assert_eq!(a.kind.as_deref(), Some("retainer"));
+        assert_eq!(a.kind.as_deref(), Some("onboarding"));
         assert_eq!(a.project_id, Some(project_id));
         assert_eq!(a.source.as_deref(), Some("upload"));
         assert_eq!(a.description.as_deref(), Some("client-signed retainer"));
@@ -393,7 +406,7 @@ mod tests {
             project_id,
             source: "upload",
             filename: fname,
-            kind: "intake",
+            kind: "unclassified",
             content_type: "text/plain",
             description: None,
             secondary_storage_key: None,
@@ -439,7 +452,7 @@ mod tests {
             project_id,
             source: "upload",
             filename: "exhibit.pdf",
-            kind: "intake",
+            kind: "unclassified",
             content_type: "application/pdf",
             description: None,
             secondary_storage_key: None,
@@ -472,7 +485,7 @@ mod tests {
             project_id,
             source: "upload",
             filename: fname,
-            kind: "intake",
+            kind: "unclassified",
             content_type: "text/plain",
             description: None,
             secondary_storage_key: None,
@@ -500,7 +513,7 @@ mod tests {
             project_id,
             source: source::GENERATED,
             filename: "document.pdf",
-            kind: "retainer_pdf",
+            kind: "onboarding",
             content_type: "application/pdf",
             description: None,
             secondary_storage_key: Some(notation_key),
@@ -523,7 +536,7 @@ mod tests {
             project_id,
             source: "upload",
             filename: "a.txt",
-            kind: "intake",
+            kind: "unclassified",
             content_type: "text/plain",
             description: None,
             secondary_storage_key: None,
@@ -573,6 +586,55 @@ mod tests {
         assert!(
             ingest_bytes(&db, &storage, &args, b"bytes").await.is_err(),
             "the engine accepted visibility `clientt`"
+        );
+    }
+
+    /// The ingest boundary is the asset lane's write gate: a `kind` outside
+    /// `rules::kind::Kind::valid_for(Lane::Asset)` must be refused before any
+    /// bytes are written or any row is inserted, not silently coerced to
+    /// `unclassified`.
+    #[tokio::test]
+    async fn ingest_bytes_rejects_a_kind_outside_the_asset_lane() {
+        let (db, storage, _tmp, project_id) = fixtures().await;
+        let args = IngestArgs {
+            project_id,
+            source: "upload",
+            filename: "typo.pdf",
+            kind: "bogus",
+            content_type: "application/pdf",
+            description: None,
+            secondary_storage_key: None,
+            visibility: visibility::INTERNAL,
+        };
+        assert!(
+            matches!(
+                ingest_bytes(&db, &storage, &args, b"bytes").await,
+                Err(IngestError::InvalidKind(k)) if k == "bogus"
+            ),
+            "the engine accepted kind `bogus`"
+        );
+    }
+
+    /// A template-lane-only kind (a matter dashboard, a content page) is not
+    /// a document classification either — the same lane split
+    /// `rules::kind::Kind::valid_for` enforces on the template side must hold
+    /// on the asset side.
+    #[tokio::test]
+    async fn ingest_bytes_rejects_a_template_lane_only_kind() {
+        let (db, storage, _tmp, project_id) = fixtures().await;
+        let args = IngestArgs {
+            project_id,
+            source: "upload",
+            filename: "not-a-workshop.pdf",
+            kind: "workshop",
+            content_type: "application/pdf",
+            description: None,
+            secondary_storage_key: None,
+            visibility: visibility::INTERNAL,
+        };
+        assert!(
+            ingest_bytes(&db, &storage, &args, b"bytes").await.is_err(),
+            "the engine accepted the template-lane-only kind `workshop`"
         );
     }
 }

@@ -48,8 +48,12 @@ pub fn memo_storage_key(notation_id: Uuid) -> String {
     format!("notations/{notation_id}/review-memo.pdf")
 }
 
-/// `documents.kind` the rendered memo is filed under in the Project.
-const MEMO_KIND: &str = "review_memo";
+/// `documents.kind` the rendered memo is filed under in the Project —
+/// `rules::kind::Kind::Memo`'s `as_str()`. The ingest boundary now validates
+/// this against `Kind::valid_for(Lane::Asset)` (ENG-370), so it must be the
+/// real enum value rather than the `review_memo` step-name-adjacent spelling
+/// this constant carried before that gate existed.
+const MEMO_KIND: &str = "memo";
 
 // --- the loaded review + its matter ---------------------------------------
 

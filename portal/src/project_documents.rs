@@ -297,13 +297,21 @@ async fn file_one(
     )
     .await
     .map_err(|e| {
+        // An invalid kind is a bad request, not a server fault: the upload
+        // form's `<select>` cannot produce one, so this only fires for a
+        // direct/bearer caller sending an unrecognized asset-lane kind.
+        let status = if matches!(e, store::documents::IngestError::InvalidKind(_)) {
+            StatusCode::BAD_REQUEST
+        } else {
+            StatusCode::INTERNAL_SERVER_ERROR
+        };
         tracing::error!(
             project_id = %project_id,
             filename = %file_name,
             error = %e,
             "project document upload failed"
         );
-        StatusCode::INTERNAL_SERVER_ERROR
+        status
     })?;
     Ok(())
 }

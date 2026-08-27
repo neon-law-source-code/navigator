@@ -14005,6 +14005,7 @@ dependencies = [
  "dioxus-ssr",
  "percent-encoding",
  "reqwest 0.13.4",
+ "rules",
  "serde",
  "serde_json",
  "store",

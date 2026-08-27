@@ -234,6 +234,182 @@ async fn a_matter_closed_on_a_bespoke_offboarding_code_still_clears_the_flag() {
     );
 }
 
+// ---- the asset lane (an uploaded, lawyer-classified letter counts too) ----
+
+async fn asset_storage(name: &str) -> Arc<dyn cloud::StorageService> {
+    Arc::new(
+        cloud::FsStorage::new(std::env::temp_dir().join(format!("navigator-matter-flags-{name}")))
+            .await
+            .unwrap(),
+    )
+}
+
+async fn upload(
+    surreal: &store::surreal::SurrealDb,
+    storage: &Arc<dyn cloud::StorageService>,
+    project_id: Uuid,
+    filename: &str,
+    kind: &str,
+) {
+    store::documents::ingest_bytes(
+        surreal,
+        storage,
+        &store::documents::IngestArgs {
+            project_id,
+            source: store::documents::source::UPLOAD,
+            filename,
+            kind,
+            content_type: "application/pdf",
+            description: None,
+            secondary_storage_key: None,
+            visibility: store::documents::visibility::INTERNAL,
+        },
+        b"uploaded bytes",
+    )
+    .await
+    .unwrap();
+}
+
+async fn lifecycle_sets_for(surreal: &store::surreal::SurrealDb, project_id: Uuid) -> (bool, bool) {
+    let projects = vec![store::projects::find_by_id(surreal, project_id)
+        .await
+        .unwrap()
+        .expect("matter row")];
+    let (has_engagement, has_closing) = store::projects::matter_lifecycle_sets(surreal, &projects)
+        .await
+        .unwrap();
+    (
+        has_engagement.contains(&project_id),
+        has_closing.contains(&project_id),
+    )
+}
+
+#[tokio::test]
+async fn an_uploaded_onboarding_asset_clears_the_engagement_flag_with_no_notation_at_all() {
+    let (_app, surreal) = build_app().await;
+    let storage = asset_storage("asset-only-onboarding").await;
+    let matter = project(&surreal, "Asset-only onboarding", "open").await;
+    upload(&surreal, &storage, matter, "engagement.pdf", "onboarding").await;
+
+    let (has_engagement, _) = lifecycle_sets_for(&surreal, matter).await;
+    assert!(
+        has_engagement,
+        "an uploaded onboarding-kind asset must clear the engagement flag with no notation"
+    );
+}
+
+#[tokio::test]
+async fn an_uploaded_offboarding_asset_clears_the_closing_flag_with_no_notation_at_all() {
+    let (_app, surreal) = build_app().await;
+    let storage = asset_storage("asset-only-offboarding").await;
+    let matter = project(&surreal, "Asset-only offboarding", "closed").await;
+    upload(&surreal, &storage, matter, "closing.pdf", "offboarding").await;
+
+    let (_, has_closing) = lifecycle_sets_for(&surreal, matter).await;
+    assert!(
+        has_closing,
+        "an uploaded offboarding-kind asset must clear the closing flag with no notation"
+    );
+}
+
+#[tokio::test]
+async fn a_notation_alone_still_clears_the_flags_with_no_asset_present() {
+    // The regression the asset fold must not introduce: a matter opened and
+    // closed purely through the questionnaire walk, with no uploaded asset
+    // at all, must clear exactly as it did before this fold existed.
+    let (_app, surreal) = build_app().await;
+    let person = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::new("Notation Only", "notation-only@example.com"),
+    )
+    .await
+    .unwrap();
+    let matter = project(&surreal, "Notation-only matter", "closed").await;
+    notation(&surreal, matter, person.id, "onboarding__retainer").await;
+    notation(&surreal, matter, person.id, "offboarding__letter").await;
+
+    let (has_engagement, has_closing) = lifecycle_sets_for(&surreal, matter).await;
+    assert!(
+        has_engagement,
+        "a matter-opening notation must still clear the engagement flag"
+    );
+    assert!(
+        has_closing,
+        "a matter-closing notation must still clear the closing flag"
+    );
+}
+
+#[tokio::test]
+async fn neither_a_notation_nor_an_asset_leaves_the_matter_badged() {
+    let (_app, surreal) = build_app().await;
+    let matter = project(&surreal, "Nothing filed", "closed").await;
+
+    let (has_engagement, has_closing) = lifecycle_sets_for(&surreal, matter).await;
+    assert!(
+        !has_engagement && !has_closing,
+        "a matter with neither a notation nor an asset must not clear either flag"
+    );
+}
+
+#[tokio::test]
+async fn an_asset_of_a_non_opening_kind_does_not_clear_the_engagement_flag() {
+    // A lawyer-classified upload only counts when its kind actually opens
+    // (or closes) a matter — an ordinary letter uploaded to the matter must
+    // not silently satisfy the engagement badge.
+    let (_app, surreal) = build_app().await;
+    let storage = asset_storage("asset-wrong-kind").await;
+    let matter = project(&surreal, "Wrong-kind upload", "open").await;
+    upload(&surreal, &storage, matter, "demand.pdf", "letter").await;
+
+    let (has_engagement, has_closing) = lifecycle_sets_for(&surreal, matter).await;
+    assert!(
+        !has_engagement && !has_closing,
+        "an ordinary-letter upload must not clear either lifecycle flag"
+    );
+}
+
+#[tokio::test]
+async fn an_uploaded_engagement_letter_clears_the_badge_on_the_rendered_projects_list() {
+    let (app, surreal) = build_app().await;
+    let storage = asset_storage("rendered-list-upload").await;
+    let matter = project(&surreal, "Uploaded engagement matter", "open").await;
+    upload(&surreal, &storage, matter, "engagement.pdf", "onboarding").await;
+    let matter_code = store::projects::find_by_id(&surreal, matter)
+        .await
+        .unwrap()
+        .expect("matter row")
+        .code;
+
+    let admin_person = participating_admin(&surreal, &[matter]).await;
+    let mut admin = SessionData::fresh("admin-sub", Role::Admin);
+    admin.person_id = Some(admin_person);
+    let cookie = format!(
+        "{SESSION_COOKIE_NAME}={}",
+        SessionStore::new(SESSION_KEY).encode(&admin)
+    );
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/app/projects")
+                .header("cookie", cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let html = body_string(resp).await;
+    let row = html
+        .split("<tr")
+        .find(|frag| frag.contains(&matter_code))
+        .unwrap_or_default()
+        .to_string();
+    assert!(
+        !row.contains("no retainer"),
+        "an uploaded engagement letter must clear the badge on the rendered list: {row}"
+    );
+}
+
 // ---- the rendered list ----
 
 async fn build_app() -> (axum::Router, store::surreal::SurrealDb) {

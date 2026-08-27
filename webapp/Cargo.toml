@@ -49,6 +49,12 @@ axum = { workspace = true, optional = true }
 # behind `server` like `store`, so the wasm client build never pulls the
 # server-side brand helpers.
 views = { workspace = true, optional = true }
+# Server-only: the document-upload Kind select is built from
+# `rules::kind::Kind::valid_for(Lane::Asset)` rather than duplicating the
+# vocabulary as literal strings. Gated behind `server` like `store` — `rules`
+# pulls `walkdir`, which has no wasm32 story, and the wasm client never needs
+# the list since the server-computed choices ride the wire in the view.
+rules = { workspace = true, optional = true }
 # Server-only: the client matter-detail `#[server]` function probes the object
 # store for which of a notation's PDFs (rendered / signed / certificate) exist,
 # to decide which download links to render. Gated behind `server` like `store` —
@@ -104,7 +110,7 @@ web = ["dioxus/web"]
 # Selected transitively by `web`; pulls the server-side renderer so
 # `dioxus-server`'s `render_handler` can SSR `App`, plus the `store` query
 # layer the server functions run against and the request-extraction helper.
-server = ["dioxus/server", "dep:store", "dep:dioxus-fullstack-core", "dep:axum", "dep:views", "dep:cloud", "dep:tracing", "dep:dioxus-ssr", "dep:reqwest", "dep:tokio"]
+server = ["dioxus/server", "dep:store", "dep:dioxus-fullstack-core", "dep:axum", "dep:views", "dep:cloud", "dep:tracing", "dep:dioxus-ssr", "dep:reqwest", "dep:tokio", "dep:rules"]
 
 [lints]
 workspace = true

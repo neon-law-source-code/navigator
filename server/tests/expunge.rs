@@ -211,7 +211,7 @@ async fn governed_expunge_removes_every_key_of_a_generated_pdf() {
             respondent_type: "person".into(),
             asset_id: None,
             form_code: None,
-            kind: Some("retainer".into()),
+            kind: Some("onboarding".into()),
             source_commit_sha: None,
         },
     )

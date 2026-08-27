@@ -45,7 +45,7 @@ async fn seed_asset(surreal: &SurrealDb, project_id: Uuid) -> Uuid {
             project_id,
             source: "upload",
             filename: "exhibit.pdf",
-            kind: "intake",
+            kind: "unclassified",
             content_type: "application/pdf",
             description: None,
             visibility: store::documents::visibility::INTERNAL,

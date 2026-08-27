@@ -476,6 +476,44 @@ pub async fn count_for_projects(db: &SurrealDb, project_ids: &[Uuid]) -> Result<
     Ok(usize::try_from(counted.unwrap_or(0)).unwrap_or(0))
 }
 
+/// `(project_id, kind)` for every asset filed across `project_ids`, in one
+/// round trip — what the matter-lifecycle fold needs and nothing else, so it
+/// reads a narrow projection rather than every [`Asset`] field. An empty
+/// slice never reaches the engine.
+///
+/// # Errors
+/// [`AssetError::Db`] if the lookup fails.
+pub async fn kinds_by_projects(
+    db: &SurrealDb,
+    project_ids: &[Uuid],
+) -> Result<Vec<(Uuid, Option<String>)>, AssetError> {
+    #[derive(SurrealValue)]
+    struct KindRow {
+        project_id: Option<surrealdb::types::RecordId>,
+        kind: Option<String>,
+    }
+
+    if project_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let keys: Vec<surrealdb::types::RecordId> = project_ids
+        .iter()
+        .map(|id| record_id(crate::projects::PROJECT_TABLE, *id))
+        .collect();
+    let mut response = db
+        .query(format!(
+            "SELECT project_id, kind FROM {TABLE} WHERE project_id IN $projects"
+        ))
+        .bind(("projects", keys))
+        .await
+        .and_then(surrealdb::IndexedResults::check)?;
+    let rows: Vec<KindRow> = response.take(0)?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|r| Some((record_uuid(r.project_id.as_ref()?)?, r.kind)))
+        .collect())
+}
+
 /// Every asset, newest first — the `/lawyer/assets` transparency listing.
 ///
 /// Unbounded. That is a real

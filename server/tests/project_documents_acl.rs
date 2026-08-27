@@ -65,7 +65,7 @@ async fn build_fixture() -> Fixture {
         ),
         (
             "review-memo.pdf",
-            "review_memo",
+            "memo",
             b"attorney work product".as_slice(),
             store::documents::visibility::INTERNAL,
         ),

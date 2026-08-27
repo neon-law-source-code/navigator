@@ -462,41 +462,60 @@ It is not `ops doctor`, which diagnoses scheduled-job health in a running Kubern
 
 One `projects.code` names both a repository and a row, and nothing makes the two agree. A repository declares its code
 in `navigator.yaml`; a row records its repository in `project.repository_url`. Either side can be written without the
-other, and neither side complains. `navigator projects drift` reads both and reports where they disagree:
+other, and neither side complains.
+
+Reconciliation is therefore two halves, in two places, because the two questions need different things:
+
+| Question | Answered by | Needs |
+| --- | --- | --- |
+| Does this row agree with the repository it records? | [the reconciliation door][door] | One row and a rule |
+| Does this repository's declared code name a live row? | `navigator projects drift` | The checkouts on a machine |
+
+[door]: #reconciling-the-rows-against-what-they-record
+
+The row half belongs on the server because a row can be checked against itself: a Project code *is* its repository name,
+so a row whose URL names a different repository is drift with no checkout involved. The repository half cannot be: only
+a machine holding the clones knows what repositories exist. This section is the second half.
 
 ```bash
 navigator projects drift --dir ~/<organization>
 navigator projects drift --dir ~/<organization> --all --json
 ```
 
-It reads every checkout directly under `--dir` — the [local checkout root](#local-checkouts) — and lists the live rows
-from `GET /app/api/projects`. That route rather than `GET /app/projects.csv`, which `site projects list` uses: the CSV
-carries `id, code, name, status, entity_name` and no `repository_url`, so it can answer only whether a repository has a
-row, never whether a row has a repository.
+It reads every checkout directly under `--dir` — the [local checkout root](#local-checkouts) — and takes the live
+Project codes from `project_codes` on the reconciliation report. The codes rather than the findings, because a row that
+is entirely fine produces no finding: an absence in the finding set would mean "reconciled" and "does not exist"
+indistinguishably, and the whole question here is which codes exist.
 
-Both directions matter, and the reverse one is the direction nothing checked. A row's `repository_url` is optional, so a
-row that never recorded one is indistinguishable at a glance from a row that did — and a repository is resolved back to
-its row *through* that column, so an empty one fails every resolution silently. A recorded-but-stale URL is quieter
-still: a forge rename leaves a redirect, so the old URL keeps resolving over HTTP long after the repository stopped
-answering to that name.
+Deliberately not `GET /app/api/projects`. That route returns the *caller's* matters — `store::access::visible_projects`
+scopes to participation rows for every firm tier, Owner and Admin included — so a repository whose row exists but the
+caller does not participate in would read as a repository with no row at all, which is the loudest finding this command
+emits. The reconciliation door is admin-tier and reads every row.
 
-| Finding | Meaning |
+| Finding | Meaning | Severity |
+| --- | --- | --- |
+| `repository-has-no-row` | Declares a code no live row carries; a portal under `<code>/portal/` mounts nowhere | fail |
+| `duplicate-code` | Two checkouts claim one Project code. | fail |
+| `unreadable-manifest` | `navigator.yaml` is present but unparsable, or names an invalid code. | fail |
+| `manifest-disagrees-with-name` | Declares a code other than the repository's name. | warn |
+| `no-manifest` | The checkout declares no Project, so it cannot be reconciled. | warn |
+| `rowless-by-declaration` | The repository declares it is meant to have no row. | counted, never failed |
+
+Warnings do not make a fleet drifted, in the same sense `projects doctor` uses. It is strictly read-only on both sides:
+it creates no row, patches none, and closes none — reconciling a repository to a row is a decision about a matter.
+
+Exit codes are three values rather than two, because a gate reads them:
+
+| Code | Meaning |
 | --- | --- |
-| `repository-has-no-row` | Declares a code no live row carries; a portal under `<code>/portal/` mounts nowhere. |
-| `row-has-no-repository-url` | The row records no repository at all, so nothing resolves a repository back to it. |
-| `row-repository-absent` | The row's URL names a repository not present under `--dir`. |
-| `code-mismatch` | The row and the repository its URL names spell the code differently. |
-| `manifest-disagrees-with-name` | Declares a code other than the repository's name. Warned, not failed. |
-| `duplicate-code` | Two checkouts claim one Project code. |
-| `unreadable-manifest` | `navigator.yaml` is present but unparsable, or names an invalid code. |
-| `no-manifest` | The checkout declares no Project, so it cannot be reconciled. Warned, not failed. |
-| `rowless-by-declaration` | The repository declares it is meant to have no row. Counted, never failed. |
+| `0` | Every repository reconciles. Warnings do not change this. |
+| `1` | At least one failing finding. |
+| `2` | The report could not be produced — the scan root, the login, the host, or the response. |
 
-The row-side findings assume `--dir` holds the whole fleet. Run against part of it, "no repository is present" is true
-but uninteresting, so each such finding names the directory it searched rather than hiding the assumption behind a flag.
-
-Warnings do not make a fleet drifted, in the same sense `projects doctor` uses. The command exits nonzero only when a
-finding is a failure, and it is strictly read-only on both sides: it creates no row, patches none, and closes none.
+The split between `1` and `2` is the one that matters: a gate treating "drifted" and "could not ask" alike goes green on
+an expired token. `--json` carries the same answer as `reconciled`, and each finding serializes with its own fields
+beside its `kind` and `severity`, so a consumer reads the repository or code it needs by name rather than parsing the
+`detail` sentence.
 
 ### A repository declares its own absence
 

@@ -68,7 +68,13 @@ const PORTAL_DIRECTORY: &str = "portal";
 const WORKFLOW: &str = ".github/workflows/gate.yml";
 const CD_WORKFLOW: &str = ".github/workflows/publish.yml";
 /// The manifest a Project repository declares its Project code in.
-const PROJECT_MANIFEST: &str = "navigator.yaml";
+/// The manifest a Project repository declares its Project in.
+///
+/// `pub(super)` rather than private because [`super::drift`] reads the same
+/// file and must not spell it a second time: two constants for one filename is
+/// a rename waiting to leave one of them stale, and the gate that *admits* the
+/// file and the command that *reads* it are exactly the pair that must agree.
+pub(super) const PROJECT_MANIFEST: &str = "navigator.yaml";
 /// Seed-shaped YAML documents for `navigator db seed`, one file per model.
 const SEED_DIRECTORY: &str = "seeds";
 const ALLOWED_ROOTS: &[&str] = &[
@@ -250,9 +256,16 @@ pub fn validate(root: &Path, repository: Option<&str>) -> ExitCode {
         return ExitCode::from(2);
     }
 
-    // The repository name is the Project code. Nothing declares it, so nothing
-    // can disagree with it — but a checkout named something a Project code
-    // could never be is a checkout this validator cannot speak about.
+    // The repository name is the Project code, and that is the value this
+    // validator speaks about: a checkout named something a Project code could
+    // never be is a checkout it cannot judge.
+    //
+    // The manifest also declares a code, so the two *can* disagree — see
+    // `super::drift`, which reports it. This validator deliberately does not
+    // resolve that disagreement. It runs inside one repository's own CI with no
+    // access to the live row, and the rule is that the row wins and the
+    // repository is corrected; a gate that picked a winner without seeing the
+    // row would be guessing, and would fail a repository mid-correction.
     let code = repository_name(root, repository);
     if !store::projects::is_valid_code(&code) {
         errors.push(Finding::at(

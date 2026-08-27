@@ -1,28 +1,42 @@
-//! `navigator projects drift` — reconcile Project repositories against live
-//! Project rows.
+//! `navigator projects drift` — reconcile Project *repositories* against the
+//! live Project rows.
 //!
-//! One `projects.code` names both a repository and a row, and nothing makes
-//! the two agree. A repository declares its code in `navigator.yaml`; a row
+//! One `projects.code` names both a repository and a row, and nothing makes the
+//! two agree. A repository declares its code in its root manifest; a row
 //! records its repository in `projects.repository_url`. Either side can be
 //! written without the other, and neither side complains — so a repository can
-//! publish a portal under `<code>/portal/` that no row mounts, and a row can
-//! carry a repository URL that names nothing.
+//! publish a portal under `<code>/portal/` that no row mounts.
 //!
-//! Both failures are silent by construction. A portal publish under an
-//! unmounted prefix *succeeds*; the mount then 404s for a reason that reads as
-//! a missing bundle. And `repository_url` is `Option<String>`
-//! ([`store::projects::Project::repository_url`]), so a row that never
-//! recorded one is indistinguishable at a glance from a row that did — which
-//! matters because a repository is resolved to its row *through* that column.
+//! # This is the repository half only
 //!
-//! # Why the live rows come from the JSON route
+//! The row half lives in [`store::project_reconcile`], behind
+//! `GET /app/api/project-repositories`, and the split is not arbitrary: the two
+//! halves need different things and fail differently.
 //!
-//! `GET /app/projects.csv` — the route `site projects list` uses — emits
-//! `id, code, name, status, entity_name` (`portal::admin::projects_csv`) and
-//! carries no `repository_url`. It can only answer "does this repository have
-//! a row?", never "does this row have a repository?". `GET /app/api/projects`
-//! serializes the whole [`store::projects::Project`], so the reverse direction
-//! is answerable without widening a CSV contract other readers depend on.
+//! A row can be checked against itself. A Project code *is* its repository name
+//! ([`cloud::workspace::is_valid_slug`]), so a row whose `repository_url` names
+//! a different repository is drift provable from that one row — no checkout, no
+//! fleet, no configuration. That belongs on the server, where every row is
+//! visible and no local state is assumed.
+//!
+//! A repository cannot. "Does this checkout's declared code name a live row?"
+//! needs the checkout, and only a machine holding the clones can answer it.
+//! That is this command, and it is why the command still exists.
+//!
+//! # Why it reads codes rather than rows
+//!
+//! The one thing this half needs from the server is the set of live codes.
+//! Findings cannot supply it: a row that is entirely fine produces no finding,
+//! so an absence in the finding set means "reconciled" and "does not exist"
+//! indistinguishably. `project_codes` on the reconciliation report carries the
+//! codes themselves, which is exactly the question and nothing more.
+//!
+//! It is deliberately *not* `GET /app/api/projects`. That route returns the
+//! caller's own matters — `store::access::visible_projects` scopes to
+//! participation rows for every firm tier, Owner and Admin included — so a
+//! repository whose row exists but the caller does not participate in would
+//! have read as a repository with no row at all, which is the loudest failure
+//! this command emits.
 //!
 //! # Why a repository declares its own absence
 //!
@@ -57,7 +71,7 @@
 //! Suppressed and silent are different things: a report that hides repositories
 //! without saying so fails the same way as one that cries wolf about them.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::process::ExitCode;
 
@@ -67,10 +81,16 @@ use comfy_table::{presets::UTF8_FULL, Cell, ContentArrangement, Table};
 use crate::palette;
 use crate::projects::doctor::Status;
 
-/// The manifest a Project repository declares its Project in. Distinct from
-/// `store::sample_project::MANIFEST_FILE` (`navigator.yml`, keyed `name:`),
-/// which is a bundle's publish manifest and a different contract.
-pub const MANIFEST: &str = "navigator.yaml";
+/// The manifest a Project repository declares its Project in.
+///
+/// Taken from [`super::repository`] rather than spelled again: two constants for
+/// one filename is a rename waiting to leave one of them stale, and the layout
+/// gate that admits the file and the command that reads it are exactly the pair
+/// that must agree. Distinct from `store::sample_project::MANIFEST_FILE`
+/// (`navigator.yml`, keyed `name:`), which is a bundle's publish manifest and a
+/// different contract.
+use super::repository::PROJECT_MANIFEST as MANIFEST;
+
 /// The manifest key naming the Project this repository belongs to.
 pub const MANIFEST_CODE_KEY: &str = "project";
 /// The manifest key declaring that this repository is *meant* to have no live
@@ -121,21 +141,16 @@ impl ScannedRepository {
     }
 }
 
-/// One live Project row, as `GET /app/api/projects` serializes it.
-///
-/// A deliberately narrow view of [`store::projects::Project`]: this command
-/// reconciles codes and repository URLs, and reading the rest of a matter's
-/// row — its entity, its Drive folder, its Slack channels — would pull client
-/// detail into a report that does not need it.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
-pub struct LiveProject {
-    pub code: String,
-    #[serde(default)]
-    pub repository_url: Option<String>,
-}
-
 /// What the two sides disagree about.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// Serialized internally tagged, so every variant's fields survive onto the
+/// wire beside its `kind` — the same shape `store::project_reconcile::Finding`
+/// emits, because a gate reading both halves should not need two parsers. The
+/// alternative, flattening each finding into a `detail` sentence, makes the
+/// prose the contract: a consumer wanting the repository a finding is about has
+/// to pull it back out of English.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum Finding {
     /// A repository whose code no live row carries.
     RepositoryHasNoRow { repository: String, code: String },
@@ -144,24 +159,6 @@ pub enum Finding {
         repository: String,
         code: String,
         reason: String,
-    },
-    /// A row recording no repository at all. The column is optional, so this
-    /// is the state that fails silently: nothing resolves a repository back to
-    /// this row, and nothing says so.
-    RowHasNoRepositoryUrl { code: String },
-    /// A row whose `repository_url` names a repository not present under the
-    /// scan root. A forge rename leaves a redirect, so the stale URL keeps
-    /// resolving over HTTP and this is the only thing that notices.
-    RowRepositoryAbsent {
-        code: String,
-        url: String,
-        named: String,
-    },
-    /// A row and the repository its URL names declare different codes.
-    CodeMismatch {
-        repository: String,
-        declared: String,
-        row: String,
     },
     /// A repository whose manifest declares a code other than its own name.
     /// Legal today — nothing derives one from the other — and worth seeing,
@@ -195,9 +192,6 @@ impl Finding {
             Self::RowlessByDeclaration { .. } => Status::Ok,
             Self::ManifestDisagreesWithName { .. } | Self::NoManifest { .. } => Status::Warn,
             Self::RepositoryHasNoRow { .. }
-            | Self::RowHasNoRepositoryUrl { .. }
-            | Self::RowRepositoryAbsent { .. }
-            | Self::CodeMismatch { .. }
             | Self::DuplicateCode { .. }
             | Self::UnreadableManifest { .. } => Status::Fail,
         }
@@ -209,9 +203,6 @@ impl Finding {
         match self {
             Self::RepositoryHasNoRow { .. } => "repository-has-no-row",
             Self::RowlessByDeclaration { .. } => "rowless-by-declaration",
-            Self::RowHasNoRepositoryUrl { .. } => "row-has-no-repository-url",
-            Self::RowRepositoryAbsent { .. } => "row-repository-absent",
-            Self::CodeMismatch { .. } => "code-mismatch",
             Self::ManifestDisagreesWithName { .. } => "manifest-disagrees-with-name",
             Self::DuplicateCode { .. } => "duplicate-code",
             Self::UnreadableManifest { .. } => "unreadable-manifest",
@@ -226,11 +217,8 @@ impl Finding {
         match self {
             Self::RepositoryHasNoRow { code, .. }
             | Self::RowlessByDeclaration { code, .. }
-            | Self::RowHasNoRepositoryUrl { code }
-            | Self::RowRepositoryAbsent { code, .. }
             | Self::DuplicateCode { code, .. } => code,
-            Self::CodeMismatch { repository, .. }
-            | Self::ManifestDisagreesWithName { repository, .. }
+            Self::ManifestDisagreesWithName { repository, .. }
             | Self::UnreadableManifest { repository, .. }
             | Self::NoManifest { repository } => repository,
         }
@@ -238,12 +226,12 @@ impl Finding {
 
     /// One sentence naming what disagrees with what.
     ///
-    /// `scan_root` is quoted into the repository-absent case on purpose: run
-    /// against a directory holding part of the fleet, that finding is true but
-    /// uninteresting, and naming the directory is what lets a reader tell the
-    /// two apart without a flag.
+    /// No longer takes the scan root. The only finding that needed it was the
+    /// row-side "no such repository under this directory", which was true but
+    /// uninteresting whenever the root held part of the fleet — the whole
+    /// conditional-on-a-machine shape that moved to the server.
     #[must_use]
-    pub fn detail(&self, scan_root: &str) -> String {
+    pub fn detail(&self) -> String {
         match self {
             Self::RepositoryHasNoRow { repository, code } => format!(
                 "`{repository}` declares Project `{code}`, which no live row carries; \
@@ -252,22 +240,6 @@ impl Finding {
             Self::RowlessByDeclaration { reason, .. } => {
                 format!("declared to have no live row: {reason}")
             }
-            Self::RowHasNoRepositoryUrl { code } => format!(
-                "row `{code}` records no repository_url, so nothing resolves a repository \
-                 back to it"
-            ),
-            Self::RowRepositoryAbsent { url, named, .. } => format!(
-                "row names `{url}`, and no repository `{named}` is present under {scan_root}; \
-                 a forge rename leaves a redirect, so the stale URL still resolves"
-            ),
-            Self::CodeMismatch {
-                repository,
-                declared,
-                row,
-            } => format!(
-                "`{repository}` declares Project `{declared}`, but the row naming it as its \
-                 repository is `{row}`"
-            ),
             Self::ManifestDisagreesWithName {
                 repository,
                 declared,
@@ -296,8 +268,11 @@ pub struct Report {
     /// Checkouts examined. Printed because every row-side finding is only
     /// meaningful against a scan of the whole fleet.
     pub repositories: usize,
-    /// Live rows read from the host.
-    pub rows: usize,
+    /// Live Project codes read from the host. Printed because a repository
+    /// reported as having no row is only trustworthy against a known number of
+    /// live codes — nought would mean the read failed, not that the fleet is
+    /// entirely unreconciled.
+    pub live_codes: usize,
 }
 
 impl Report {
@@ -321,40 +296,21 @@ impl Report {
     }
 }
 
-/// The repository a `repository_url` names.
+/// Compare each repository against the set of live Project codes. Pure: every
+/// input is already read.
 ///
-/// The last path segment, with a trailing `.git` removed. A whole URL is
-/// stored rather than a name ([`store::projects::Project::repository_url`]),
-/// and that segment is what a checkout on disk is named for — the same
-/// assumption `super::repository::validate` makes when it takes the Project
-/// code from the directory name.
-#[must_use]
-pub fn repository_named_by(url: &str) -> Option<String> {
-    let trimmed = url.trim().trim_end_matches('/');
-    if trimmed.is_empty() {
-        return None;
-    }
-    let segment = trimmed.rsplit('/').next()?;
-    let segment = segment.strip_suffix(".git").unwrap_or(segment);
-    // A URL with no path at all leaves the host as its last segment. That is
-    // not special-cased: no checkout is named `github.com`, so it reports as
-    // naming nothing, which is both true and what a reader needs to see.
-    if segment.is_empty() {
-        return None;
-    }
-    Some(segment.to_string())
-}
-
-/// Compare the two sides. Pure: every input is already read.
+/// `live_codes` is the sorted `project_codes` from the reconciliation report.
+/// A set rather than a row list, because that is the entire question this half
+/// asks of the server — whether a declared code names a live row — and taking
+/// anything wider would pull matter detail into a command that has no use for
+/// it and prints its findings to a terminal.
 ///
-/// Order is deliberate — repository-side findings first, then row-side, then
-/// whole-fleet integrity — so a reader walks the same path the drift takes.
-#[must_use]
-pub fn analyze(repositories: &[ScannedRepository], rows: &[LiveProject]) -> Report {
+/// Order is deliberate — per-repository findings in scan order, then
+/// whole-fleet integrity — so two runs over the same checkouts read the same.
+pub fn analyze(repositories: &[ScannedRepository], live_codes: &[String]) -> Report {
     let mut findings = Vec::new();
 
-    let rows_by_code: BTreeMap<&str, &LiveProject> =
-        rows.iter().map(|row| (row.code.as_str(), row)).collect();
+    let live: BTreeSet<&str> = live_codes.iter().map(String::as_str).collect();
 
     // Which repositories claim which code, so a duplicate is reported rather
     // than letting one checkout silently shadow another.
@@ -390,7 +346,7 @@ pub fn analyze(repositories: &[ScannedRepository], rows: &[LiveProject]) -> Repo
             Some(_) => {}
         }
         let code = repository.code();
-        if rows_by_code.contains_key(code) {
+        if live.contains(code) {
             continue;
         }
         match &repository.rowless_reason {
@@ -403,43 +359,6 @@ pub fn analyze(repositories: &[ScannedRepository], rows: &[LiveProject]) -> Repo
                 repository: repository.directory.clone(),
                 code: code.to_string(),
             }),
-        }
-    }
-
-    // ── Row side ───────────────────────────────────────────────────────────
-    let by_directory: BTreeMap<&str, &ScannedRepository> = repositories
-        .iter()
-        .map(|repository| (repository.directory.as_str(), repository))
-        .collect();
-
-    for row in rows {
-        let Some(url) = row
-            .repository_url
-            .as_deref()
-            .map(str::trim)
-            .filter(|url| !url.is_empty())
-        else {
-            findings.push(Finding::RowHasNoRepositoryUrl {
-                code: row.code.clone(),
-            });
-            continue;
-        };
-        let named = repository_named_by(url).unwrap_or_default();
-        match by_directory.get(named.as_str()) {
-            None => findings.push(Finding::RowRepositoryAbsent {
-                code: row.code.clone(),
-                url: url.to_string(),
-                named,
-            }),
-            Some(repository) => {
-                if repository.manifest_error.is_none() && repository.code() != row.code {
-                    findings.push(Finding::CodeMismatch {
-                        repository: repository.directory.clone(),
-                        declared: repository.code().to_string(),
-                        row: row.code.clone(),
-                    });
-                }
-            }
         }
     }
 
@@ -456,7 +375,7 @@ pub fn analyze(repositories: &[ScannedRepository], rows: &[LiveProject]) -> Repo
     Report {
         findings,
         repositories: repositories.len(),
-        rows: rows.len(),
+        live_codes: live.len(),
     }
 }
 
@@ -558,21 +477,49 @@ pub fn scan(root: &Path) -> Result<Vec<ScannedRepository>> {
     Ok(found)
 }
 
-/// Read the live rows. `GET /app/api/projects` rather than the CSV route,
-/// because the CSV carries no `repository_url`.
-async fn fetch_rows(base: &str, token: &str) -> Result<Vec<LiveProject>> {
+/// Read the live Project codes from the reconciliation door.
+///
+/// `GET /app/api/project-repositories` rather than `GET /app/api/projects`. The
+/// latter returns the *caller's* matters — `store::access::visible_projects`
+/// scopes to participation rows for every firm tier, Owner and Admin included —
+/// so a repository whose row exists but this caller does not participate in
+/// would read as a repository with no row, which is the loudest finding here.
+/// The door is admin-tier and reads every row.
+///
+/// Only `project_codes` is taken. The report's findings are the row side's
+/// answer and this half has no business re-reporting them: a reader who wants
+/// them asks the door.
+async fn fetch_live_codes(base: &str, token: &str) -> Result<Vec<String>> {
+    #[derive(serde::Deserialize)]
+    struct Reconciliation {
+        project_codes: Vec<String>,
+    }
+
     let response = reqwest::Client::new()
-        .get(format!("{base}/app/api/projects"))
+        .get(format!("{base}/app/api/project-repositories"))
         .bearer_auth(token)
         .send()
         .await
-        .context("GET /app/api/projects")?;
+        .context("GET /app/api/project-repositories")?;
     let status = response.status();
     let body = response.text().await.unwrap_or_default();
     if !status.is_success() {
-        return Err(anyhow!("listing live projects failed: {status}"));
+        // The body is quoted, not discarded: this door is admin-tier, so the
+        // overwhelmingly likely failure is a caller who is merely lawyer-tier,
+        // and a bare status leaves them guessing which of the two it was.
+        return Err(anyhow!(
+            "listing live Project codes failed: {status}: {}",
+            first_line(&body)
+        ));
     }
-    serde_json::from_str(&body).context("parse the live project rows")
+    Ok(serde_json::from_str::<Reconciliation>(&body)
+        .context("parse the reconciliation report")?
+        .project_codes)
+}
+
+/// The first line of a response body, for a one-line error.
+fn first_line(body: &str) -> &str {
+    body.lines().next().unwrap_or_default().trim()
 }
 
 fn render(report: &Report, scan_root: &str, all: bool) {
@@ -602,7 +549,7 @@ fn render(report: &Report, scan_root: &str, all: bool) {
                 Cell::new(mark),
                 Cell::new(finding.subject()),
                 Cell::new(finding.kind()),
-                Cell::new(finding.detail(scan_root)),
+                Cell::new(finding.detail()),
             ]);
         }
         println!("{table}");
@@ -612,10 +559,10 @@ fn render(report: &Report, scan_root: &str, all: bool) {
     println!(
         "{}",
         palette::dim(format!(
-            "{} repositories under {scan_root}, {} live rows: {} drifted, {} to review, \
-             {declared} declared row-less",
+            "{} repositories under {scan_root}, {} live Project codes: {} drifted, \
+             {} to review, {declared} declared row-less",
             report.repositories,
-            report.rows,
+            report.live_codes,
             report.of(Status::Fail).len(),
             report.of(Status::Warn).len(),
         ))
@@ -635,31 +582,53 @@ fn as_json(report: &Report, scan_root: &str) -> serde_json::Value {
     serde_json::json!({
         "scan_root": scan_root,
         "repositories": report.repositories,
-        "rows": report.rows,
+        "live_codes": report.live_codes,
         "reconciled": report.is_reconciled(),
         "findings": report
             .findings
             .iter()
-            .map(|finding| serde_json::json!({
-                "status": match finding.status() {
-                    Status::Ok => "ok",
-                    Status::Warn => "warn",
-                    Status::Fail => "fail",
-                },
-                "kind": finding.kind(),
-                "subject": finding.subject(),
-                "detail": finding.detail(scan_root),
-            }))
+            .map(|finding| {
+                // The variant's own fields, plus the two a consumer needs that
+                // are not fields: how loudly to take it, and the sentence for a
+                // human reading the JSON rather than the table.
+                let mut value = serde_json::to_value(finding)
+                    .unwrap_or_else(|_| serde_json::json!({"kind": finding.kind()}));
+                if let Some(object) = value.as_object_mut() {
+                    object.insert(
+                        "severity".into(),
+                        serde_json::json!(match finding.status() {
+                            Status::Ok => "ok",
+                            Status::Warn => "warn",
+                            Status::Fail => "fail",
+                        }),
+                    );
+                    object.insert("detail".into(), serde_json::json!(finding.detail()));
+                }
+                value
+            })
             .collect::<Vec<_>>(),
     })
 }
 
 /// `navigator projects drift [--host h] [--dir d] [--all] [--json]`.
 ///
-/// Read-only on both sides: it reads manifests off the local disk and lists
-/// live rows over a bearer token. Nothing is created, patched, or closed —
-/// reconciling a repository to a row is a decision about a matter, not a
-/// mechanical fix, so this command reports and stops.
+/// Read-only on both sides: it reads manifests off the local disk and lists the
+/// live Project codes over a bearer token. Nothing is created, patched, or
+/// closed — reconciling a repository to a row is a decision about a matter, not
+/// a mechanical fix, so this command reports and stops.
+///
+/// # Exit codes
+///
+/// A gate reads these, so they are three values rather than two:
+///
+/// | Code | Meaning |
+/// | --- | --- |
+/// | `0` | Every repository reconciles. Warnings do not change this. |
+/// | `1` | At least one failing finding. |
+/// | `2` | The report could not be produced — the scan root, the login, the host, or the response. |
+///
+/// The split between `1` and `2` is the one that matters: a gate that treats
+/// "drifted" and "could not ask" alike goes green on an expired token.
 pub async fn run(host: Option<&str>, dir: &Path, all: bool, json: bool) -> ExitCode {
     let scan_root = dir.display().to_string();
     let repositories = match scan(dir) {
@@ -669,9 +638,9 @@ pub async fn run(host: Option<&str>, dir: &Path, all: bool, json: bool) -> ExitC
             return ExitCode::from(2);
         }
     };
-    let rows = match crate::remote::resolve(host) {
-        Ok((base, token)) => match fetch_rows(&base, &token).await {
-            Ok(rows) => rows,
+    let live_codes = match crate::remote::resolve(host) {
+        Ok((base, token)) => match fetch_live_codes(&base, &token).await {
+            Ok(codes) => codes,
             Err(error) => {
                 eprintln!("navigator: {error:#}");
                 return ExitCode::from(2);
@@ -683,7 +652,7 @@ pub async fn run(host: Option<&str>, dir: &Path, all: bool, json: bool) -> ExitC
         }
     };
 
-    let report = analyze(&repositories, &rows);
+    let report = analyze(&repositories, &live_codes);
     if json {
         match serde_json::to_string_pretty(&as_json(&report, &scan_root)) {
             Ok(rendered) => println!("{rendered}"),
@@ -705,9 +674,7 @@ pub async fn run(host: Option<&str>, dir: &Path, all: bool, json: bool) -> ExitC
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        analyze, repository_named_by, scan, Finding, LiveProject, ScannedRepository, MANIFEST,
-    };
+    use super::{analyze, as_json, scan, Finding, ScannedRepository, MANIFEST};
     use crate::projects::doctor::Status;
     use std::path::Path;
 
@@ -739,11 +706,10 @@ mod tests {
         }
     }
 
-    fn row(code: &str, url: Option<&str>) -> LiveProject {
-        LiveProject {
-            code: code.to_string(),
-            repository_url: url.map(str::to_string),
-        }
+    /// The live codes as the reconciliation door reports them: `project_codes`
+    /// and nothing else, which is all this half asks for.
+    fn live(codes: &[&str]) -> Vec<String> {
+        codes.iter().map(|code| (*code).to_string()).collect()
     }
 
     fn kinds(findings: &[Finding]) -> Vec<&'static str> {
@@ -756,10 +722,7 @@ mod tests {
 
     #[test]
     fn a_repository_matched_to_its_row_reports_nothing() {
-        let report = analyze(
-            &[repository("acme")],
-            &[row("acme", Some("https://github.com/an-org/acme"))],
-        );
+        let report = analyze(&[repository("acme")], &live(&["acme"]));
 
         assert_eq!(kinds(&report.findings), Vec::<&str>::new());
         assert!(report.is_reconciled());
@@ -767,7 +730,7 @@ mod tests {
 
     #[test]
     fn a_repository_whose_code_no_row_carries_is_drift() {
-        let report = analyze(&[repository("acme")], &[]);
+        let report = analyze(&[repository("acme")], &live(&[]));
 
         assert_eq!(kinds(&report.findings), vec!["repository-has-no-row"]);
         assert!(!report.is_reconciled());
@@ -779,7 +742,7 @@ mod tests {
     /// is meant to have no row is not drift, and the fleet stays reconciled.
     #[test]
     fn a_repository_declaring_no_live_row_is_not_drift() {
-        let report = analyze(&[declared_rowless("acme")], &[]);
+        let report = analyze(&[declared_rowless("acme")], &live(&[]));
 
         assert_eq!(kinds(&report.findings), vec!["rowless-by-declaration"]);
         assert_eq!(report.findings[0].status(), Status::Ok);
@@ -791,7 +754,7 @@ mod tests {
     /// and `--all` list from.
     #[test]
     fn a_declared_rowless_repository_is_still_counted() {
-        let report = analyze(&[declared_rowless("acme"), repository("beta")], &[]);
+        let report = analyze(&[declared_rowless("acme"), repository("beta")], &live(&[]));
 
         assert_eq!(report.repositories, 2);
         assert_eq!(report.of(Status::Ok).len(), 1);
@@ -802,94 +765,18 @@ mod tests {
     /// declares it *and* has one is fully reconciled, and says nothing.
     #[test]
     fn a_declaration_is_inert_once_the_row_exists() {
-        let report = analyze(
-            &[declared_rowless("acme")],
-            &[row("acme", Some("https://github.com/an-org/acme"))],
-        );
+        let report = analyze(&[declared_rowless("acme")], &live(&["acme"]));
 
         assert_eq!(kinds(&report.findings), Vec::<&str>::new());
     }
 
     // ── The row side, which is the direction nothing checked ───────────────
 
-    /// The state that failed across a whole fleet without reporting anything:
-    /// the column is optional, so a row that never recorded a repository reads
-    /// exactly like one that did.
-    #[test]
-    fn a_row_recording_no_repository_url_is_its_own_finding() {
-        let report = analyze(&[repository("acme")], &[row("acme", None)]);
-
-        assert_eq!(kinds(&report.findings), vec!["row-has-no-repository-url"]);
-        assert!(!report.is_reconciled());
-    }
-
-    /// An empty string is the same failure as a missing value, and must not
-    /// fall through to "names a repository called nothing".
-    #[test]
-    fn a_row_recording_a_blank_repository_url_is_the_same_finding() {
-        let report = analyze(&[repository("acme")], &[row("acme", Some("   "))]);
-
-        assert_eq!(kinds(&report.findings), vec!["row-has-no-repository-url"]);
-    }
-
-    /// The reverse direction, and the reason it needs a command at all: a forge
-    /// rename leaves a redirect, so the stale URL keeps resolving over HTTP and
-    /// nothing goes red. Here the checkout has been renamed and the row still
-    /// names the repository under its old name.
-    #[test]
-    fn a_renamed_repository_leaves_the_row_naming_a_repository_that_is_gone() {
-        let report = analyze(
-            &[repository("acme-studio")],
-            // A row's code is immutable, so it was the repository that moved;
-            // the row's URL was not updated with it.
-            &[row("acme-studio", Some("https://github.com/an-org/acme"))],
-        );
-
-        assert_eq!(kinds(&report.findings), vec!["row-repository-absent"]);
-        assert!(!report.is_reconciled());
-        assert!(
-            report.findings[0].detail("/fleet").contains("acme"),
-            "the finding must name the repository the row points at"
-        );
-    }
-
-    /// Before the rename the same pair reconciles: the checkout is still named
-    /// for the old repository and the manifest already declares the new code.
-    /// The disagreement is worth seeing, but it is not a failure.
-    #[test]
-    fn the_same_pair_reconciles_before_the_rename() {
-        let report = analyze(
-            &[declaring("acme", "acme-studio")],
-            &[row("acme-studio", Some("https://github.com/an-org/acme"))],
-        );
-
-        assert_eq!(
-            kinds(&report.findings),
-            vec!["manifest-disagrees-with-name"]
-        );
-        assert!(report.is_reconciled());
-    }
-
-    #[test]
-    fn a_row_and_the_repository_it_names_may_disagree_about_the_code() {
-        let report = analyze(
-            &[declaring("acme", "beta")],
-            &[row("acme", Some("https://github.com/an-org/acme"))],
-        );
-
-        assert!(
-            kinds(&report.findings).contains(&"code-mismatch"),
-            "{:?}",
-            kinds(&report.findings)
-        );
-        assert!(!report.is_reconciled());
-    }
-
     // ── Repository integrity ───────────────────────────────────────────────
 
     #[test]
     fn a_manifest_disagreeing_with_the_repository_name_warns_but_does_not_fail() {
-        let report = analyze(&[declaring("acme", "beta")], &[row("beta", None)]);
+        let report = analyze(&[declaring("acme", "beta")], &live(&["beta"]));
 
         assert_eq!(
             kinds_of(&report.of(Status::Warn)),
@@ -901,7 +788,7 @@ mod tests {
     fn two_checkouts_claiming_one_code_is_a_failure() {
         let report = analyze(
             &[repository("acme"), declaring("acme-fork", "acme")],
-            &[row("acme", Some("https://github.com/an-org/acme"))],
+            &live(&["acme"]),
         );
 
         assert!(
@@ -920,7 +807,7 @@ mod tests {
             ..repository("acme")
         };
 
-        let report = analyze(&[broken], &[]);
+        let report = analyze(&[broken], &live(&[]));
 
         assert_eq!(kinds(&report.findings), vec!["unreadable-manifest"]);
         assert!(!report.is_reconciled());
@@ -936,10 +823,7 @@ mod tests {
             ..repository("acme")
         };
 
-        let report = analyze(
-            &[bare],
-            &[row("acme", Some("https://github.com/an-org/acme"))],
-        );
+        let report = analyze(&[bare], &live(&["acme"]));
 
         assert_eq!(kinds(&report.findings), vec!["no-manifest"]);
         assert_eq!(report.findings[0].status(), Status::Warn);
@@ -948,37 +832,106 @@ mod tests {
 
     // ── The URL to repository rule ─────────────────────────────────────────
 
+    // ── The wire shape ─────────────────────────────────────────────────────
+
+    /// The contract a gate reads, which previously had no test at all.
+    ///
+    /// Each finding carries its own fields beside `kind`, so a consumer asking
+    /// "which repository?" reads `repository` rather than pulling it out of the
+    /// `detail` sentence. `detail` is still there, for a human reading the JSON.
     #[test]
-    fn a_repository_url_names_its_last_path_segment() {
-        assert_eq!(
-            repository_named_by("https://github.com/an-org/acme").as_deref(),
-            Some("acme")
-        );
-        assert_eq!(
-            repository_named_by("https://github.com/an-org/acme.git").as_deref(),
-            Some("acme")
-        );
-        assert_eq!(
-            repository_named_by("https://github.com/an-org/acme/").as_deref(),
-            Some("acme")
-        );
-        assert_eq!(
-            repository_named_by("https://gitlab.example/a-group/a-project").as_deref(),
-            Some("a-project")
+    fn a_finding_serializes_with_its_own_fields_beside_its_kind() {
+        let report = analyze(&[repository("acme")], &live(&[]));
+
+        let json = as_json(&report, "/fleet");
+
+        assert_eq!(json["scan_root"], "/fleet");
+        assert_eq!(json["repositories"], 1);
+        assert_eq!(json["live_codes"], 0);
+        assert_eq!(json["reconciled"], false);
+
+        let finding = &json["findings"][0];
+        assert_eq!(finding["kind"], "repository-has-no-row");
+        assert_eq!(finding["severity"], "fail");
+        assert_eq!(finding["repository"], "acme");
+        assert_eq!(finding["code"], "acme");
+        assert!(
+            finding["detail"]
+                .as_str()
+                .is_some_and(|d| d.contains("acme")),
+            "the sentence survives for a human: {finding}"
         );
     }
 
-    /// A URL with no path leaves the host as its last segment. That is not
-    /// special-cased: no checkout is named for a forge host, so it reports as
-    /// naming nothing present, which is exactly right.
+    /// A warning does not make the fleet drifted, and the JSON says so — the
+    /// field a gate branches on rather than the exit code it may not see.
     #[test]
-    fn a_url_with_no_path_names_no_repository_present() {
-        let report = analyze(
-            &[repository("acme")],
-            &[row("acme", Some("https://forge.example"))],
-        );
+    fn the_json_reports_reconciled_when_only_warnings_were_found() {
+        let report = analyze(&[declaring("acme", "beta")], &live(&["beta"]));
 
-        assert_eq!(kinds(&report.findings), vec!["row-repository-absent"]);
+        let json = as_json(&report, "/fleet");
+
+        assert_eq!(json["findings"][0]["severity"], "warn");
+        assert_eq!(json["reconciled"], true);
+    }
+
+    /// A declared row-less repository is `ok`, and it reaches the JSON even
+    /// though the table hides it without `--all`. Suppressed is not silent.
+    #[test]
+    fn a_declared_rowless_repository_reaches_the_json_as_ok() {
+        let report = analyze(&[declared_rowless("acme")], &live(&[]));
+
+        let json = as_json(&report, "/fleet");
+
+        assert_eq!(json["findings"][0]["severity"], "ok");
+        assert_eq!(json["findings"][0]["kind"], "rowless-by-declaration");
+        assert!(
+            json["findings"][0]["reason"].as_str().is_some(),
+            "the written reason is a field, not only prose"
+        );
+        assert_eq!(json["reconciled"], true);
+    }
+
+    /// `kind()` and the serialized tag are written in two places, so a test
+    /// holds them together rather than a comment asking the next author to
+    /// remember. The same guard `store::project_reconcile` carries.
+    #[test]
+    fn every_findings_kind_matches_its_serialized_tag() {
+        let findings = [
+            Finding::RepositoryHasNoRow {
+                repository: "acme".into(),
+                code: "acme".into(),
+            },
+            Finding::RowlessByDeclaration {
+                repository: "acme".into(),
+                code: "acme".into(),
+                reason: "the matter closed".into(),
+            },
+            Finding::ManifestDisagreesWithName {
+                repository: "acme".into(),
+                declared: "beta".into(),
+            },
+            Finding::DuplicateCode {
+                code: "acme".into(),
+                repositories: vec!["acme".into(), "acme-fork".into()],
+            },
+            Finding::UnreadableManifest {
+                repository: "acme".into(),
+                detail: "not valid YAML".into(),
+            },
+            Finding::NoManifest {
+                repository: "acme".into(),
+            },
+        ];
+
+        for finding in &findings {
+            let json = serde_json::to_value(finding).expect("a finding serializes");
+            assert_eq!(
+                json["kind"],
+                finding.kind(),
+                "{finding:?} serializes a tag its kind() does not match"
+            );
+        }
     }
 
     // ── The scan ───────────────────────────────────────────────────────────
@@ -1084,41 +1037,6 @@ mod tests {
                 .is_some_and(|detail| detail.contains("not a valid Project code")),
             "{:?}",
             found[0].manifest_error
-        );
-    }
-
-    /// The live route serializes the whole `store::projects::Project`. The
-    /// narrow view here must read that payload and ignore the rest of a
-    /// matter's row rather than failing on an unexpected field.
-    #[test]
-    fn a_live_row_deserializes_from_the_whole_project_payload() {
-        let payload = r#"[{
-            "id": "6e8b6f2e-0f1e-4f0a-9c3a-2b7d5a1c9e44",
-            "code": "acme",
-            "name": "Acme Widgets",
-            "status": "open",
-            "entity_id": "0f9b1d5c-9a2e-4d3b-8c1f-7e6a4b2d0c11",
-            "description": null,
-            "drive_folder_id": null,
-            "repository_url": "https://github.com/an-org/acme",
-            "git_initialized_at": null,
-            "forge_provisioned_at": null,
-            "closed_at": null,
-            "internal_slack_channel_url": null,
-            "external_slack_channel_url": null,
-            "private_notion_page_url": null,
-            "shared_notion_page_url": null,
-            "inserted_at": "2026-08-25T00:00:00Z",
-            "updated_at": "2026-08-25T00:00:00Z"
-        }]"#;
-
-        let rows: Vec<LiveProject> = serde_json::from_str(payload).unwrap();
-
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].code, "acme");
-        assert_eq!(
-            rows[0].repository_url.as_deref(),
-            Some("https://github.com/an-org/acme")
         );
     }
 }

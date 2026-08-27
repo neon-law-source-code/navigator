@@ -674,9 +674,11 @@ pub async fn run(host: Option<&str>, dir: &Path, all: bool, json: bool) -> ExitC
 
 #[cfg(test)]
 mod tests {
-    use super::{analyze, as_json, scan, Finding, ScannedRepository, MANIFEST};
+    use super::{analyze, as_json, fetch_live_codes, scan, Finding, ScannedRepository, MANIFEST};
     use crate::projects::doctor::Status;
     use std::path::Path;
+    use wiremock::matchers::{header, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
     /// A repository that parsed cleanly and declares its own name as its code —
     /// the shape every reconciled repository has.
@@ -932,6 +934,85 @@ mod tests {
                 "{finding:?} serializes a tag its kind() does not match"
             );
         }
+    }
+
+    // ── Reading the live codes ─────────────────────────────────────────────
+
+    /// The happy path, and the narrowness of it: only `project_codes` is taken
+    /// off a report that also carries findings, counts, and flags. This half
+    /// has no business re-reporting the row side's answer.
+    #[tokio::test]
+    async fn the_live_codes_come_from_the_reconciliation_door() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/app/api/project-repositories"))
+            .and(header("authorization", "Bearer a-token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "rows": 2,
+                "reconciled": false,
+                "compared_against_deployment_forge": false,
+                "project_codes": ["acme", "beta"],
+                "findings": [{"kind": "no-repository-url", "severity": "warn", "code": "beta"}],
+            })))
+            .mount(&server)
+            .await;
+
+        let codes = fetch_live_codes(&server.uri(), "a-token")
+            .await
+            .expect("the door answers");
+
+        assert_eq!(codes, vec!["acme".to_string(), "beta".to_string()]);
+    }
+
+    /// The reason the body is quoted rather than discarded. This door is
+    /// admin-tier, so the overwhelmingly likely refusal is a caller who is
+    /// merely lawyer-tier — and a bare `403 Forbidden` leaves them unable to
+    /// tell "wrong tier" from "wrong host".
+    #[tokio::test]
+    async fn a_refusal_quotes_what_the_host_said() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/app/api/project-repositories"))
+            .respond_with(ResponseTemplate::new(403).set_body_json(serde_json::json!({
+                "error": "forbidden",
+                "message": "This endpoint requires the admin tier."
+            })))
+            .mount(&server)
+            .await;
+
+        let error = fetch_live_codes(&server.uri(), "a-token")
+            .await
+            .expect_err("a refusal is an error");
+        let rendered = format!("{error:#}");
+
+        assert!(rendered.contains("403"), "{rendered}");
+        assert!(
+            rendered.contains("admin tier"),
+            "the host's own reason must reach the operator: {rendered}"
+        );
+    }
+
+    /// A success that is not the report — a login redirect landing on HTML, the
+    /// shape a misconfigured host produces — fails as a parse rather than
+    /// silently reconciling against nought live codes. Nought codes would
+    /// report every repository as having no row.
+    #[tokio::test]
+    async fn a_success_that_is_not_the_report_fails_rather_than_reading_as_empty() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/app/api/project-repositories"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("<html>sign in</html>"))
+            .mount(&server)
+            .await;
+
+        let error = fetch_live_codes(&server.uri(), "a-token")
+            .await
+            .expect_err("HTML is not a report");
+
+        assert!(
+            format!("{error:#}").contains("parse the reconciliation report"),
+            "{error:#}"
+        );
     }
 
     // ── The scan ───────────────────────────────────────────────────────────

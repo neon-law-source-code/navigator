@@ -458,6 +458,95 @@ the report immediately, because every later coordinate would otherwise describe 
 
 It is not `ops doctor`, which diagnoses scheduled-job health in a running Kubernetes namespace.
 
+## Reconciling repositories against live rows
+
+One `projects.code` names both a repository and a row, and nothing makes the two agree. A repository declares its code
+in `navigator.yaml`; a row records its repository in `project.repository_url`. Either side can be written without the
+other, and neither side complains.
+
+Reconciliation is therefore two halves, in two places, because the two questions need different things:
+
+| Question | Answered by | Needs |
+| --- | --- | --- |
+| Does this row agree with the repository it records? | [the reconciliation door][door] | One row and a rule |
+| Does this repository's declared code name a live row? | `navigator projects drift` | The checkouts on a machine |
+
+[door]: #reconciling-the-rows-against-what-they-record
+
+The row half belongs on the server because a row can be checked against itself: a Project code *is* its repository name,
+so a row whose URL names a different repository is drift with no checkout involved. The repository half cannot be: only
+a machine holding the clones knows what repositories exist. This section is the second half.
+
+```bash
+navigator projects drift --dir ~/<organization>
+navigator projects drift --dir ~/<organization> --all --json
+```
+
+It reads every checkout directly under `--dir` — the [local checkout root](#local-checkouts) — and takes the live
+Project codes from `project_codes` on the reconciliation report. The codes rather than the findings, because a row that
+is entirely fine produces no finding: an absence in the finding set would mean "reconciled" and "does not exist"
+indistinguishably, and the whole question here is which codes exist.
+
+Deliberately not `GET /app/api/projects`. That route returns the *caller's* matters — `store::access::visible_projects`
+scopes to participation rows for every firm tier, Owner and Admin included — so a repository whose row exists but the
+caller does not participate in would read as a repository with no row at all, which is the loudest finding this command
+emits. The reconciliation door is admin-tier and reads every row.
+
+| Finding | Meaning | Severity |
+| --- | --- | --- |
+| `repository-has-no-row` | Declares a code no live row carries; a portal under `<code>/portal/` mounts nowhere | fail |
+| `duplicate-code` | Two checkouts claim one Project code. | fail |
+| `unreadable-manifest` | `navigator.yaml` is present but unparsable, or names an invalid code. | fail |
+| `manifest-disagrees-with-name` | Declares a code other than the repository's name. | warn |
+| `no-manifest` | The checkout declares no Project, so it cannot be reconciled. | warn |
+| `rowless-by-declaration` | The repository declares it is meant to have no row. | counted, never failed |
+
+Warnings do not make a fleet drifted, in the same sense `projects doctor` uses. It is strictly read-only on both sides:
+it creates no row, patches none, and closes none — reconciling a repository to a row is a decision about a matter.
+
+Exit codes are three values rather than two, because a gate reads them:
+
+| Code | Meaning |
+| --- | --- |
+| `0` | Every repository reconciles. Warnings do not change this. |
+| `1` | At least one failing finding. |
+| `2` | The report could not be produced — the scan root, the login, the host, or the response. |
+
+The split between `1` and `2` is the one that matters: a gate treating "drifted" and "could not ask" alike goes green on
+an expired token. `--json` carries the same answer as `reconciled`, and each finding serializes with its own fields
+beside its `kind` and `severity`, so a consumer reads the repository or code it needs by name rather than parsing the
+`detail` sentence.
+
+### A repository declares its own absence
+
+Not every repository without a row is drift. A closed matter may deliberately carry no row, and a command that reports
+known-good repositories as failures is a command nobody runs twice. The repository says so in the manifest it already
+carries:
+
+```yaml
+# navigator.yaml
+project: <project-code>
+no_live_row: the matter closed in <month>; no row was opened
+```
+
+The value is the reason, not a boolean, because a boolean records that someone silenced a finding without recording why.
+`no_live_row: true` is refused as a manifest error rather than honored as a suppression.
+
+The suppression cannot live in Navigator's own source. A Project code *is* a client identifier — it names who retained
+the firm — and this repository is public, so a constant list of the codes to skip would publish exactly what
+[`AGENTS.md`](../AGENTS.md) forbids. A `--ignore` flag only moves that list into a runbook or a CI invocation, where it
+is written down just the same and reviewed less. Inferring intent from shape — no `portal/`, no `seeds/`, so nothing is
+load-bearing — is worse than either: an empty repository is also what a brand-new *unreconciled* Project looks like, so
+that rule would go quiet about precisely the gaps the command exists to find.
+
+This is the opposite of the call the allowed-root list in `cli::projects::repository` makes, and deliberately so. That
+list governs a rule identical for every repository — which paths may sit at a root — so centralizing it costs nothing
+and keeps the gate from going advisory. Whether one matter is meant to have a row is a per-matter fact only that matter
+knows.
+
+Declared row-less repositories are still counted in the footer, and `--all` lists them. Suppressed and silent are
+different things: a report that hides repositories without saying so fails the same way as one that cries wolf.
+
 ## Shared notations
 
 The notations that are not specific to one Project live in **this** repository, under `templates/neon_law/<product>/`

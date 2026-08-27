@@ -8,4 +8,5 @@
 //! and inspect the operator's own machine.
 
 pub mod doctor;
+pub mod drift;
 pub mod repository;

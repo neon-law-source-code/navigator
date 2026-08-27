@@ -657,6 +657,11 @@ async fn get_person(
 /// What it discloses is one code and one repository URL per matter, and no
 /// matter content — which is what makes reading every row proportionate.
 ///
+/// The report also carries `project_codes`: every live code, sorted, including
+/// the ones with no finding. That is what the *repository* side reads — a
+/// checkout asking whether its declared code names a live row cannot learn it
+/// from the findings, because a row that is entirely fine produces none.
+///
 /// The deployment's forge pair is read where it is available and skipped where
 /// it is not. Absent configuration is the local loop and the test suite, not an
 /// error: every *failing* finding is computable without it, and the report

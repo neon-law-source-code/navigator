@@ -48,6 +48,11 @@ portal—but no firm documents, legal work, or write control on this surface. Th
 identically for every viewer (`store::access::can_see_project`, which is `matter_viewer(...).is_some()`), so admitting a
 Clerk to it grants nothing the matter page's own visibility does not.
 
+A lawyer already participating in the matter controls this directly, by adding or removing the Clerk's participation row
+through `POST` / `DELETE /app/api/projects/{id}/participants[/{role_id}]` — see [Participation](#participation) below.
+There is no separate visibility flag: the participation row *is* the toggle, on while the row exists (and the matter
+still names a licensed lawyer DRI), off the moment it is removed.
+
 "Never `/lawyer`" now holds without exception. The firm brand fonts, the one object that used to need one, moved to `GET
 /app/team/fonts/gorp-serif.zip`, where the team home's own prefix rules admit every firm tier — a brand asset is not
 lawyer work, and the path now says so.
@@ -199,9 +204,17 @@ participation history, append a row to `relationship_logs` — that's what the t
 (`m20260526_create_provenance_tables.rs`).
 
 Each person has at most one current participation row for a Project. Changing the participation updates that row; it
-does not create a second, competing assignment. Creating, changing, or removing a participation row is an admin-only
-membership operation because it changes who can see the matter. Lawyer assigned to the matter can read the ledger but
-cannot alter it.
+does not create a second, competing assignment.
+
+Two doors write it, scoped differently on purpose. The firm-wide participation form (`/app/projects/{code}/people`)
+stays admin-only, because it reads the whole people directory to pick who to add — a broad capability that changing who
+can see the matter deserves. `POST/PATCH/DELETE /app/api/projects/{id}/participants[/…]` is narrower in what it reads
+(it names a person already known to the caller) and admits any lawyer already participating in that matter, not only
+admin — the same "must already be on the matter" re-check `/close` uses, with Owner/Admin bypassing it as everywhere
+else. This is the door a participating lawyer uses to grant or revoke a Clerk's portal visibility on their own matter:
+adding the Clerk's participation row is what admits them through `store::access::can_see_project`, and removing it is
+the toggle back off — see [`clerk`](#clerk) above. A lawyer with no row on the matter gets the same non-disclosing `404`
+an unrelated caller would, from either door.
 
 ## The directory lens
 

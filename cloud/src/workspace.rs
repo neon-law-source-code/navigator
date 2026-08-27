@@ -68,6 +68,53 @@ pub const NAVIGATOR_GIT_HOST: &str = "NAVIGATOR_GIT_HOST";
 /// told one.
 pub const DEFAULT_GIT_HOST: &str = "github.com";
 
+/// Navigator's own repository, which is never a Project's.
+///
+/// Not configuration and not derived from any deployment's pair: this one
+/// repository holds Navigator itself, on one host, under one organization,
+/// forever. Every deployment the Firm operates is built from it, so it is the
+/// one repository URL that is the same everywhere while a Project's is the one
+/// that differs everywhere.
+///
+/// It is a constant here so the distinction is checkable rather than
+/// remembered. Two rules read it, and both exist because the confusion is easy
+/// to make and silent to live with: [`RESERVED_PROJECT_CODES`] refuses
+/// `navigator` as a Project code, and `store::project_reconcile` fails a
+/// Project row that records this URL. A matter whose repository is Navigator
+/// would mount the product's own source as a client portal.
+pub const NAVIGATOR_REPOSITORY_URL: &str = "https://github.com/neon-law-source-code/navigator";
+
+/// Whether a URL names Navigator's own repository rather than a Project's.
+///
+/// Compared on the normalized form a person is likely to paste — a trailing
+/// slash, a `.git` suffix, surrounding whitespace, and case in the scheme and
+/// host — because the point is to catch the paste, not to reward a tidy one.
+/// The path is compared case-sensitively: forge paths are case-sensitive, and
+/// a differently-cased path is a different repository.
+#[must_use]
+pub fn is_navigator_repository(url: &str) -> bool {
+    fn normalize(url: &str) -> String {
+        let trimmed = url.trim().trim_end_matches('/');
+        let trimmed = trimmed.strip_suffix(".git").unwrap_or(trimmed);
+        match trimmed.split_once("://") {
+            Some((scheme, rest)) => match rest.split_once('/') {
+                Some((authority, path)) => format!(
+                    "{}://{}/{path}",
+                    scheme.to_ascii_lowercase(),
+                    authority.to_ascii_lowercase()
+                ),
+                None => format!(
+                    "{}://{}",
+                    scheme.to_ascii_lowercase(),
+                    rest.to_ascii_lowercase()
+                ),
+            },
+            None => trimmed.to_string(),
+        }
+    }
+    normalize(url) == NAVIGATOR_REPOSITORY_URL
+}
+
 /// The customer whose Projects this deployment serves.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WorkspaceCustomer {
@@ -114,7 +161,15 @@ pub const PORTAL_MOUNT_SEGMENT: &str = "portal";
 /// `/app/api`, `/auth/*`), which a fourth-segment name could never shadow.
 /// There is no application name left to reserve, because the mount segment is
 /// the literal [`PORTAL_MOUNT_SEGMENT`].
-pub const RESERVED_PROJECT_CODES: &[&str] = &["new"];
+///
+/// `navigator` is reserved for a different reason: not a route collision but a
+/// repository one. A Project code *is* its repository name, so a matter coded
+/// `navigator` in the Firm's own organization would name
+/// [`NAVIGATOR_REPOSITORY_URL`] — the product's own source — and every rule
+/// that treats a Project repository as client-adjacent would then be pointed at
+/// Navigator itself. A Project is never Navigator, and this is where that stops
+/// being a convention.
+pub const RESERVED_PROJECT_CODES: &[&str] = &["navigator", "new"];
 
 /// Whether a value is safe as a URL segment, a repository name, and a folder
 /// name in the firm's shared drive.
@@ -353,6 +408,37 @@ impl WorkspaceConfig {
         format!("/app/projects/{project_code}/{PORTAL_MOUNT_SEGMENT}/")
     }
 
+    /// The repository URL this deployment would create for `project_code`.
+    ///
+    /// Composable without asking anyone: [`Self::host`] and
+    /// [`Self::organization`] are the deployment's one creation target, and a
+    /// Project code *is* its repository name by construction
+    /// ([`is_valid_slug`]). So the coordinate a new Project's repository will
+    /// occupy is known before the repository exists.
+    ///
+    /// # This is a default and an expectation, never a fallback
+    ///
+    /// Nothing may compose this into a link for a matter whose
+    /// `repository_url` is unset. Composing on *read* is what
+    /// `store::projects::Project::repository_url` replaced, and the reason is
+    /// still true: a composed URL always resolves, so it renders a confident
+    /// link for a matter that has no repository at all. The stored URL remains
+    /// the only truth about where a Project's source actually is.
+    ///
+    /// The two legitimate uses are the two this method exists for: seeding the
+    /// target at creation time, and comparing against what a row recorded so a
+    /// reconciler can say *this row is not where this deployment would have put
+    /// it*. A Project whose source genuinely lives on another forge is a
+    /// difference worth surfacing, not an error — which is why the comparison
+    /// belongs to a caller that can grade it, rather than to this method.
+    #[must_use]
+    pub fn expected_repository_url(&self, project_code: &str) -> String {
+        format!(
+            "https://{}/{}/{}",
+            self.host, self.organization, project_code
+        )
+    }
+
     pub fn drive_coordinates<F: Fn(&str) -> Option<String>>(
         &self,
         get: F,
@@ -376,9 +462,11 @@ impl WorkspaceConfig {
 #[cfg(test)]
 mod tests {
     use super::{
-        is_valid_slug, DeploymentWorkspace, GoogleWorkspace, WorkspaceConfig, WorkspaceConfigError,
-        WorkspaceCustomer, DEFAULT_GIT_HOST, NAVIGATOR_GCP_PROJECT_ID, NAVIGATOR_GITHUB_ORG,
-        NAVIGATOR_GIT_HOST, NAVIGATOR_PROJECTS_DRIVE_MOUNT, RESERVED_PROJECT_CODES, SLUG_MAX_LEN,
+        is_navigator_repository, is_valid_slug, DeploymentWorkspace, GoogleWorkspace,
+        WorkspaceConfig, WorkspaceConfigError, WorkspaceCustomer, DEFAULT_GIT_HOST,
+        NAVIGATOR_GCP_PROJECT_ID, NAVIGATOR_GITHUB_ORG, NAVIGATOR_GIT_HOST,
+        NAVIGATOR_PROJECTS_DRIVE_MOUNT, NAVIGATOR_REPOSITORY_URL, RESERVED_PROJECT_CODES,
+        SLUG_MAX_LEN,
     };
     use std::collections::HashMap;
 
@@ -578,6 +666,147 @@ mod tests {
             .expect("an unnamed host resolves to the default");
         assert_eq!(defaulted.organization, AN_ORGANIZATION);
         assert_eq!(defaulted.host, DEFAULT_GIT_HOST);
+    }
+
+    /// The creation target is the pair plus the code, in that order.
+    ///
+    /// Composed rather than stored because every part is already known: the
+    /// pair is this deployment's one creation target, and a Project code is its
+    /// repository name by construction.
+    #[test]
+    fn the_expected_repository_is_the_forge_pair_plus_the_code() {
+        let workspace = WorkspaceConfig::from_lookup(lookup(&[
+            (NAVIGATOR_GCP_PROJECT_ID, "neon-law-stg"),
+            (NAVIGATOR_GITHUB_ORG, AN_ORGANIZATION),
+            (NAVIGATOR_GIT_HOST, "forge.example"),
+        ]))
+        .expect("a fully configured pair resolves");
+
+        assert_eq!(
+            workspace.expected_repository_url("sample-litigation"),
+            "https://forge.example/an-organization/sample-litigation"
+        );
+    }
+
+    /// The default host is composed in exactly as a configured one is, so a
+    /// deployment that names no host still has a creation target.
+    #[test]
+    fn the_expected_repository_uses_the_default_host_when_none_is_named() {
+        let workspace = WorkspaceConfig::from_lookup(lookup(&forge("neon-law-stg")))
+            .expect("an unnamed host resolves to the default");
+
+        assert_eq!(
+            workspace.expected_repository_url("sample-estate"),
+            format!("https://{DEFAULT_GIT_HOST}/{AN_ORGANIZATION}/sample-estate")
+        );
+    }
+
+    /// The last path segment of the expected URL is the code itself.
+    ///
+    /// This is the property a reconciler reads back: a Project code is its
+    /// repository name, so a recorded URL naming a different last segment is
+    /// drift no matter which forge or organization holds it. Asserted here
+    /// rather than only where it is consumed, because it is this method that
+    /// has to keep it true.
+    #[test]
+    fn the_expected_repository_ends_in_the_code() {
+        let workspace =
+            WorkspaceConfig::from_lookup(lookup(&forge("neon-law-stg"))).expect("resolves");
+
+        for code in ["sample-litigation", "sample-transactional", "a1"] {
+            let url = workspace.expected_repository_url(code);
+            assert_eq!(
+                url.rsplit('/').next(),
+                Some(code),
+                "the expected URL for {code} must end in the code: {url}"
+            );
+        }
+    }
+
+    /// A Project's expected repository is never Navigator's own, on any
+    /// deployment. The two enforcements meet here: the code `navigator` is
+    /// reserved, so nothing composable reaches Navigator's URL even when the
+    /// deployment's pair is Navigator's own host and organization.
+    #[test]
+    fn no_deployment_composes_navigators_own_repository_for_a_project() {
+        let navigators_own_pair = WorkspaceConfig::from_lookup(lookup(&[
+            (NAVIGATOR_GCP_PROJECT_ID, "neon-law-stg"),
+            (NAVIGATOR_GITHUB_ORG, "neon-law-source-code"),
+        ]))
+        .expect("resolves");
+
+        assert!(
+            RESERVED_PROJECT_CODES.contains(&"navigator"),
+            "the refusal that makes the composition below unreachable"
+        );
+        // The one code that would have composed it is refused upstream, so this
+        // asserts the shape rather than a reachable state.
+        assert_eq!(
+            navigators_own_pair.expected_repository_url("navigator"),
+            NAVIGATOR_REPOSITORY_URL,
+            "if this ever stops matching, the reserved code above stops protecting anything"
+        );
+        for code in ["sample-litigation", "acme", "a1"] {
+            assert!(
+                !is_navigator_repository(&navigators_own_pair.expected_repository_url(code)),
+                "{code} must not compose Navigator's own repository"
+            );
+        }
+    }
+
+    /// The three parts of Navigator's own URL, so a fixture can vary one at a
+    /// time without spelling a forge host — which the coordinate guard in
+    /// `cli/tests/forge_coordinate_retired.rs` forbids in this file, and rightly:
+    /// a bare host here is how a composed Project coordinate got reintroduced
+    /// the first time.
+    fn navigator_url_parts() -> (&'static str, &'static str, &'static str) {
+        let (scheme, rest) = NAVIGATOR_REPOSITORY_URL
+            .split_once("://")
+            .expect("the constant carries a scheme");
+        let (host, path) = rest.split_once('/').expect("the constant carries a path");
+        (scheme, host, path)
+    }
+
+    /// The paste, in every spelling someone plausibly makes it.
+    #[test]
+    fn navigators_repository_is_recognized_however_it_is_written() {
+        let (scheme, host, path) = navigator_url_parts();
+        for spelling in [
+            NAVIGATOR_REPOSITORY_URL.to_string(),
+            format!("{NAVIGATOR_REPOSITORY_URL}/"),
+            format!("{NAVIGATOR_REPOSITORY_URL}.git"),
+            format!("  {NAVIGATOR_REPOSITORY_URL}  "),
+            // Scheme and host shouted, path left alone: the two halves the
+            // normalization lowercases.
+            format!("{}://{}/{path}", scheme.to_uppercase(), host.to_uppercase()),
+        ] {
+            assert!(is_navigator_repository(&spelling), "{spelling}");
+        }
+    }
+
+    /// The rule is about one repository, not a namespace. The Firm's own
+    /// organization is an ordinary place for a matter to live, and a
+    /// differently-cased path is a different repository on a case-sensitive
+    /// forge.
+    #[test]
+    fn only_navigators_own_repository_is_navigator() {
+        let (scheme, host, path) = navigator_url_parts();
+        let (organization, repository) = path.split_once('/').expect("org and repository");
+        for other in [
+            // A different repository in Navigator's own organization.
+            format!("{scheme}://{host}/{organization}/acme"),
+            // Navigator's repository name in somebody else's organization.
+            format!("{scheme}://{host}/an-organization/{repository}"),
+            // The same path on a different forge.
+            format!("{scheme}://forge.example/{path}"),
+            // A case-sensitive forge path is a different repository.
+            format!(
+                "{scheme}://{host}/{organization}/{}",
+                repository.to_uppercase()
+            ),
+        ] {
+            assert!(!is_navigator_repository(&other), "{other}");
+        }
     }
 
     /// The mount is the code plus one literal segment.

@@ -2048,7 +2048,10 @@ async fn projects_update_lawyer_only(
     };
     let project_id = project.id;
     let command = store::projects::UpdateProjectCommand {
-        name: input.name,
+        // The form always posts every field, so it is a full replacement even
+        // though the command is a patch. A blank name still fails the command's
+        // own refusal rather than clearing the column.
+        name: Some(input.name),
         entity_id: input.entity_id,
         description: Some(input.description),
         internal_slack_channel_url: Some(input.internal_slack_channel_url),

@@ -527,6 +527,20 @@ allow if {
     is_authenticated(input.session)
 }
 
+# Reconcile every matter against the repository it records: GET
+# /app/api/project-repositories. Admin-only, and it carries its own noun rather
+# than sitting under `projects` on purpose — the projects GET rule above admits
+# any authenticated caller up to five segments, so nesting this there would make
+# it policy-reachable by a client. Three segments and GET.
+allow if {
+	input.path[0] == "app"
+	input.path[1] == "api"
+	input.path[2] == "project-repositories"
+	count(input.path) == 3
+	input.method == "GET"
+	is_admin(input.session)
+}
+
 # Authorize a client document-deletion request: POST
 # /app/api/expunge-requests/{id}/authorize runs the governed expunge, so it is
 # admin-only — the one write on this surface that the lawyer tier alone cannot

@@ -52,6 +52,14 @@ collide with a literal route. Which side of a genuine collision wins depends on 
 refused rather than the precedence reasoned about — in `store::projects::is_valid_code` and in an `ASSERT` on
 `project.code`, because a Rust check only guards the write paths that call it.
 
+`navigator` is refused too, for a different reason: not a route collision but a repository one. Because the repository
+name *is* the code, a matter coded `navigator` in the Firm's own organization would name Navigator's own source rather
+than a matter's, and every rule that treats a Project repository as client-adjacent would then be pointed at the
+product. `cloud::workspace::NAVIGATOR_REPOSITORY_URL` names that one repository — one host, one organization, the same
+on every deployment forever, which is exactly what a Project's repository never is — and
+`cloud::workspace::RESERVED_PROJECT_CODES` carries both refusals. The shared gate action refuses the same two names, and
+`cli/tests/project_gate.rs` holds the two lists identical in both directions.
+
 ## The repository name is the Project code
 
 A Project code is **lowercase letters, digits, and single hyphens**, alphanumeric at both ends, at most 80 characters —
@@ -150,6 +158,38 @@ having no public fallback while the pointer that actually served users had one.
 | `repository_url` recorded | The lawyer sees it verbatim. Never verified — the target may not exist yet. |
 | `repository_url` absent | The pointer is absent. Not an error, and nothing is composed. |
 | A value that is not an `http(s)` URL with a host and path | Refused at the write, not stored. |
+
+### Reconciling the rows against what they record
+
+`GET /app/api/project-repositories` reports where a Project row and its `repository_url` disagree, across every matter
+in the deployment. It reads rows rather than checkouts, and both halves of that are deliberate.
+
+A scan of local clones would make every answer conditional on the operator having cloned the whole fleet, and silently
+wrong when they have not — in a Project repository's own CI run exactly one checkout is present, so every other matter
+would read as a repository that is gone. And the matter list is a lens rather than an inventory:
+`store::access::visible_projects` scopes to the caller's participation rows for **every** firm tier, Owner and Admin
+included, so a read through it cannot tell "no such row" from "not yours".
+
+So the door is admin-tier and reads all rows directly. That tier is the control rather than a precaution: reading every
+matter is the privileged reach the matter surface refuses to grant silently, so it is a door an administrator navigates
+to. It discloses one code and one repository URL per matter, and no matter content.
+
+| Finding | Severity | Needs the forge pair |
+| --- | --- | --- |
+| `repository-name-is-not-code` — the recorded URL names a different repository | fail | no |
+| `records-navigator-itself` — the row records Navigator's own repository | fail | no |
+| `duplicate-repository-url` — two matters record one repository | fail | no |
+| `repository-url-invalid` — a value today's write gate would refuse | fail | no |
+| `no-repository-url` — the row records none | warn | no |
+| `repository-outside-deployment-forge` — recorded somewhere this deployment would not have created it | warn | yes |
+
+Every **failing** finding is computable from one row and a rule, because the code is the repository name. Only the last
+needs configuration, and it is a warning by design: a Project's source may live on any forge, in an organization the
+Firm does not own, which is the state a stored URL exists to permit. Where a deployment has no pair configured, the
+report carries `compared_against_deployment_forge: false`, so an absent warning is never read as agreement.
+
+Findings serialize internally tagged — each carries its own fields beside its `kind` and `severity` — so a consumer
+reads what it needs by name rather than parsing a sentence.
 
 ## The CI gate
 

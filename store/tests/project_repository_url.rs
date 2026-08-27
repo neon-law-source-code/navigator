@@ -151,7 +151,7 @@ async fn the_edit_command_validates_and_clears_the_repository_url() {
     let row = project(&surreal, "repo-command").await;
 
     let command = |url: Option<&str>| UpdateProjectCommand {
-        name: "Repo Command".to_string(),
+        name: Some("Repo Command".to_string()),
         repository_url: url.map(str::to_string),
         ..Default::default()
     };

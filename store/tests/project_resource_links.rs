@@ -30,7 +30,7 @@ async fn project(surreal: &store::surreal::SurrealDb, code: &str) -> store::proj
 
 fn command(name: &str) -> UpdateProjectCommand {
     UpdateProjectCommand {
-        name: name.to_string(),
+        name: Some(name.to_string()),
         ..Default::default()
     }
 }

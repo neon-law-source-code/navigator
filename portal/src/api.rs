@@ -102,6 +102,16 @@ fn api_operation_table() -> Vec<(&'static str, &'static str, MethodRouter<ApiSta
         ("DELETE", "/app/api/entities/{id}", delete(delete_entity)),
         ("GET", "/app/api/jurisdictions", get(list_jurisdictions)),
         ("GET", "/app/api/entity-types", get(list_entity_types)),
+        // Deliberately *not* under `/app/api/projects/`: the policy rule for
+        // that prefix admits any authenticated caller up to five segments, so a
+        // reconciliation path nested there would be policy-reachable by a
+        // client even though the handler refuses one. Its own noun keeps the
+        // admin-only rule exact.
+        (
+            "GET",
+            "/app/api/project-repositories",
+            get(reconcile_project_repositories_door),
+        ),
         // Read clusters (#866): the matter-centric reads the portal pages load.
         ("GET", "/app/api/projects", get(list_projects_door)),
         ("GET", "/app/api/projects/{id}", get(get_project_door)),
@@ -632,6 +642,42 @@ async fn get_person(
 // own matter for a client); the by-id reads gate on `can_see_project` and
 // collapse an out-of-scope resource to a non-disclosing 404. Playbooks and
 // contract reviews are firm tools, so they take the lawyer tier.
+
+/// `GET /app/api/project-repositories` — reconcile every Project row against
+/// the repository it records.
+///
+/// Admin-tier only, and the tier is the point rather than a precaution. Every
+/// other matter read on this surface is participation-scoped — Owner and Admin
+/// included, because `store::access::visible_projects_as_lawyer` grants no
+/// silent bypass and privileged reach is a place you navigate to. A
+/// reconciliation report is that place: the question is about the whole
+/// deployment, so it reads [`store::projects::all`] and gates on
+/// `is_admin_tier` instead of pretending a per-caller lens is an inventory.
+///
+/// What it discloses is one code and one repository URL per matter, and no
+/// matter content — which is what makes reading every row proportionate.
+///
+/// The deployment's forge pair is read where it is available and skipped where
+/// it is not. Absent configuration is the local loop and the test suite, not an
+/// error: every *failing* finding is computable without it, and the report
+/// carries `compared_against_deployment_forge` so a reader is told which
+/// comparison did not run rather than reading its absence as agreement.
+async fn reconcile_project_repositories_door(
+    State(state): State<ApiState>,
+    authed: AuthedSession,
+) -> Result<Response, ApiError> {
+    if !authed.0.role.is_admin_tier() {
+        return Err(ApiError::Forbidden);
+    }
+    let projects = store::projects::all(&state.surreal)
+        .await
+        .map_err(|error| ApiError::Db(error.to_string()))?;
+    let rows: Vec<store::project_reconcile::RowUnderReview<'_>> =
+        projects.iter().map(Into::into).collect();
+    let deployment = cloud::workspace::WorkspaceConfig::from_env().ok();
+    let report = store::project_reconcile::reconcile(&rows, deployment.as_ref());
+    Ok((StatusCode::OK, Json(report)).into_response())
+}
 
 /// `GET /app/api/projects` — the matters the caller may see, already scoped.
 async fn list_projects_door(

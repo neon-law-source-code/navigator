@@ -118,9 +118,16 @@ fn regorus_matches_every_checked_in_policy_decision() {
     //         (authenticated, client-visible-filtered in the handler) and the
     //         expunge queue + a notation's review documents (lawyer-tier)
     // 233 + 134 = 367.
+    //
+    // + 6 for the admin-only reconciliation read (GET
+    //   /app/api/project-repositories): the five-case tier matrix, plus one
+    //   case pinning *why* it carries its own noun — the `projects` GET rule
+    //   admits any authenticated caller up to five segments, so the same report
+    //   nested there would be policy-reachable by a client.
+    // 367 + 6 = 373.
     assert_eq!(
         test_names.len(),
-        367,
+        373,
         "the policy decision inventory changed; review every new or removed rule"
     );
 

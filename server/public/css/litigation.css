@@ -19,6 +19,10 @@
 /* One column. The statement had a graphic beside it and now has the width. */
 .zeal-hero {
   position: relative;
+  /* `.zeal-hero__glow` bleeds 25vw past each edge on purpose; without a clip
+     here that bleed becomes real layout width, which is what put a
+     horizontal scrollbar under every phone-width visit to this page. */
+  overflow: hidden;
   display: grid;
   gap: clamp(2rem, 6vw, 4rem);
   align-items: center;

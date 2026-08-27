@@ -1488,3 +1488,56 @@ async fn catalog_step_arrow_keys_navigate_but_shift_and_focused_controls_do_not(
 
     c.close().await.unwrap();
 }
+
+/// The public marketing surface at a phone width — no page renders wider than
+/// its own viewport.
+///
+/// `/navigator` shipped a CSS Grid blowout: `.public-shell` sets
+/// `grid-template-rows` but left its column implicit, so the column's
+/// automatic minimum size took the min-content width of the page's
+/// `<pre>` Homebrew commands (unbreakable by `white-space: pre`) and grew the
+/// whole shell — header and footer included — past a 375px viewport. Every
+/// practice-skin page (`/litigation`, `/fractional-gc`, `/fractional-cto`,
+/// `/services`) carried a second, unrelated defect: their hero's decorative
+/// glow bleeds `-25vw` past each edge on purpose, and the hero it bleeds from
+/// carried no `overflow: hidden` to clip that bleed back to real layout
+/// width. Both are one-line CSS fixes; this is the regression gate for
+/// either recurring, on the pages that actually carried them plus a couple of
+/// neighbors that share the same shell and hero.
+#[tokio::test]
+async fn public_marketing_pages_have_no_horizontal_overflow_on_mobile() {
+    let Some(c) = new_client_or_skip().await else {
+        return;
+    };
+    c.set_window_size(375, 812).await.unwrap();
+
+    for path in [
+        "/",
+        "/navigator",
+        "/litigation",
+        "/fractional-gc",
+        "/fractional-cto",
+        "/services",
+    ] {
+        c.goto(&format!("{}{path}", base_url())).await.unwrap();
+        wait_for_text(&c, "Neon Law", Duration::from_secs(10)).await;
+        let widths = c
+            .execute(
+                "return [document.documentElement.scrollWidth, \
+                 document.documentElement.clientWidth];",
+                vec![],
+            )
+            .await
+            .unwrap();
+        let widths = widths.as_array().expect("[scrollWidth, clientWidth]");
+        let scroll_width = widths[0].as_u64().unwrap();
+        let client_width = widths[1].as_u64().unwrap();
+        assert!(
+            scroll_width <= client_width,
+            "{path} scrolls horizontally at a phone width: \
+             scrollWidth={scroll_width} clientWidth={client_width}",
+        );
+    }
+
+    c.close().await.unwrap();
+}

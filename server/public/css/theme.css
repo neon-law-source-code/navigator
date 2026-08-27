@@ -681,10 +681,18 @@ a.nav-pagination__link:hover {
 }
 
 /* Public page shell — the skeleton every migrated public page wraps its
-   content in: header, a centered main content column, and the footer strip. */
+   content in: header, a centered main content column, and the footer strip.
+   The single column is `minmax(0, 1fr)` rather than left implicit, because an
+   implicit auto column's automatic minimum size is the min-content size of
+   whatever it contains — and unbreakable content deep inside (a `<pre>` shell
+   command with no wrap points, a wide decorative row) then grows the column,
+   and with it the header and footer, past the viewport. `minmax(0, ...)` lets
+   the column shrink to the shell's own width and pushes overflow handling back
+   onto the content, which is where each band already deals with it. */
 .public-shell {
   min-height: 100vh;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr) auto;
 }
 

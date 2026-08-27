@@ -665,6 +665,10 @@
    a plain background. */
 .fm-page--practice .fm-hero--page {
   position: relative;
+  /* `.fm-hero__glow` bleeds 25vw past each edge on purpose (see below);
+     without a clip here that bleed becomes real layout width, pushing every
+     practice-skin page wider than a phone viewport. */
+  overflow: hidden;
   padding: clamp(2.5rem, 7vw, 5rem) 0 clamp(2rem, 5vw, 3rem);
   background: none;
 }

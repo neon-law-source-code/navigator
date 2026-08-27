@@ -4454,13 +4454,21 @@ async fn api_projects_add_participant_authorizes_only_lawyer_and_admin() {
     assert_eq!(resp.status(), StatusCode::FORBIDDEN);
     assert!(!participation_exists(&surreal, matter, addee.id).await);
 
-    // lawyer and admin → 201, the participation row lands
+    // lawyer and admin → 201, the participation row lands. The lawyer case is
+    // seeded onto the matter first: ENG-35 scopes this door to a lawyer who
+    // already participates (admin keeps the bypass, seeded with no row below),
+    // the same re-check `/close` uses.
     for (label, role) in [
         ("lawyer", store::persons::Role::Lawyer),
         ("admin", store::persons::Role::Admin),
     ] {
         let matter = seeded_matter(&surreal).await;
         let actor = seeded_actor(&surreal, &format!("{label}-part-actor@example.com"), role).await;
+        if role == store::persons::Role::Lawyer {
+            store::projects::add_participation(&surreal, matter, actor.id, "lawyer")
+                .await
+                .unwrap();
+        }
         let addee = seeded_actor(
             &surreal,
             &format!("{label}-addee@example.com"),
@@ -4579,7 +4587,8 @@ async fn api_projects_participant_item_authorizes_only_lawyer_and_admin() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::FORBIDDEN);
 
-    // lawyer/admin → 200
+    // lawyer/admin → 200. The lawyer case is seeded onto the matter first —
+    // see the POST loop above for why.
     for (label, role_kind) in [
         ("lawyer", store::persons::Role::Lawyer),
         ("admin", store::persons::Role::Admin),
@@ -4591,6 +4600,11 @@ async fn api_projects_participant_item_authorizes_only_lawyer_and_admin() {
             role_kind,
         )
         .await;
+        if role_kind == store::persons::Role::Lawyer {
+            store::projects::add_participation(&surreal, matter, actor.id, "lawyer")
+                .await
+                .unwrap();
+        }
         let (cookie, csrf) = session_cookie_and_csrf_for_person(&actor);
         let resp = app
             .clone()
@@ -4643,7 +4657,8 @@ async fn api_projects_participant_item_authorizes_only_lawyer_and_admin() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::FORBIDDEN);
 
-    // lawyer → 204
+    // lawyer → 204. Seeded onto the matter first — see the POST loop above
+    // for why.
     let (matter, role, _) = seed_participant(&surreal, "del-lawyer").await;
     let actor = seeded_actor(
         &surreal,
@@ -4651,6 +4666,9 @@ async fn api_projects_participant_item_authorizes_only_lawyer_and_admin() {
         store::persons::Role::Lawyer,
     )
     .await;
+    store::projects::add_participation(&surreal, matter, actor.id, "lawyer")
+        .await
+        .unwrap();
     let (cookie, csrf) = session_cookie_and_csrf_for_person(&actor);
     let resp = app
         .clone()

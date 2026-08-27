@@ -759,6 +759,69 @@ mod tests {
         assert_eq!(holders(&surreal, matter, DriSide::Lawyer).await, [lawyer]);
     }
 
+    /// ENG-35: there is no separate Clerk-visibility flag. Adding a Clerk's
+    /// participation row through this command is the whole toggle — it is what
+    /// makes `store::access::can_see_project` admit them to the matter and its
+    /// portal, and removing the row is the toggle back off. Both API doors
+    /// funnel through this exact command, so proving it here proves the
+    /// behavior for either.
+    #[tokio::test]
+    async fn adding_and_removing_a_clerks_participation_toggles_matter_visibility() {
+        let surreal = crate::test_support::mem_surreal().await;
+        let matter = project(&surreal, "clerk-toggle").await;
+        let lawyer = person(&surreal, "lawyer", Role::Lawyer).await;
+        let clerk = person(&surreal, "clerk", Role::Clerk).await;
+
+        // A matter always has a lawyer DRI in production (the invariant this
+        // module enforces); a Clerk's supervised view requires one to exist,
+        // so designate it here rather than relying on an unstated default.
+        add(
+            &surreal,
+            matter,
+            lawyer,
+            DriRequest::Designate(DriSide::Lawyer),
+            DriActor::System,
+        )
+        .await
+        .unwrap();
+
+        assert!(
+            !crate::access::can_see_project(&surreal, Some(clerk), Role::Clerk, matter)
+                .await
+                .unwrap(),
+            "off before any participation row exists"
+        );
+
+        let row = add(
+            &surreal,
+            matter,
+            clerk,
+            DriRequest::Unchanged,
+            DriActor::System,
+        )
+        .await
+        .unwrap();
+        assert_eq!(row.participation, "clerk");
+
+        assert!(
+            crate::access::can_see_project(&surreal, Some(clerk), Role::Clerk, matter)
+                .await
+                .unwrap(),
+            "on once a lawyer has added the Clerk's participation row"
+        );
+
+        remove_participant(&surreal, matter, row.id, DriActor::System)
+            .await
+            .unwrap();
+
+        assert!(
+            !crate::access::can_see_project(&surreal, Some(clerk), Role::Clerk, matter)
+                .await
+                .unwrap(),
+            "off again once the row is removed"
+        );
+    }
+
     /// Accountability on each side is a set. Designating a second lawyer adds
     /// them beside the first rather than taking the marker away, which is the
     /// whole point: a matter can be two lawyers' responsibility at once.

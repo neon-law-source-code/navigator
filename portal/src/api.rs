@@ -1085,17 +1085,34 @@ struct AddParticipantRequest {
 }
 
 /// `POST /app/api/projects/{id}/participants` — add a person to a matter's
-/// participation ledger. Lawyer-tier only. The command
+/// participation ledger. Lawyer-tier and matter-scoped: the acting lawyer must
+/// already participate in this matter (admin/owner bypass, same as
+/// [`close_matter`]) — a lawyer with no row on the matter gets the same
+/// non-disclosing `404` an unrelated caller would. The command
 /// (`store::participation::add_participant`) validates the matter and person
 /// exist, derives the participation from the person's tier, and enforces one row
 /// per person + matter; the same command the lawyer participation form funnels
-/// through.
+/// through. This is also the door a participating lawyer uses to grant or
+/// revoke a Clerk's portal visibility on their own matter: adding a Clerk here
+/// is what makes `store::access::can_see_project` admit them, and removing the
+/// row (see [`remove_participant`]) is the toggle back off.
 async fn add_participant(
     State(state): State<ApiState>,
-    _lawyer: LawyerSession,
+    lawyer: LawyerSession,
     Path(id): Path<Uuid>,
     JsonOrForm(input): JsonOrForm<AddParticipantRequest>,
 ) -> Result<Response, ApiError> {
+    let in_scope = store::access::can_see_project_as_lawyer(
+        &state.surreal,
+        lawyer.0.person_id,
+        lawyer.0.role,
+        id,
+    )
+    .await
+    .unwrap_or(false);
+    if !in_scope {
+        return Err(ApiError::NotFound);
+    }
     let row = store::participation::add_participant(
         &state.surreal,
         &store::participation::AddParticipantCommand {
@@ -1119,17 +1136,28 @@ struct UpdateParticipantRequest {
 }
 
 /// `PATCH /app/api/projects/{id}/participants/{role_id}` — edit a matter
-/// participation row. Lawyer-tier only. The command
-/// (`store::participation::update_participant`) validates the row belongs to the
-/// matter and the person exists, re-derives the participation from that person's
-/// tier, and checks no other row duplicates the person and that the edit does not
-/// strand the matter's lawyer DRI.
+/// participation row. Lawyer-tier and matter-scoped, like [`add_participant`].
+/// The command (`store::participation::update_participant`) validates the row
+/// belongs to the matter and the person exists, re-derives the participation
+/// from that person's tier, and checks no other row duplicates the person and
+/// that the edit does not strand the matter's lawyer DRI.
 async fn update_participant(
     State(state): State<ApiState>,
-    _lawyer: LawyerSession,
+    lawyer: LawyerSession,
     Path((id, role_id)): Path<(Uuid, Uuid)>,
     JsonOrForm(input): JsonOrForm<UpdateParticipantRequest>,
 ) -> Result<Response, ApiError> {
+    let in_scope = store::access::can_see_project_as_lawyer(
+        &state.surreal,
+        lawyer.0.person_id,
+        lawyer.0.role,
+        id,
+    )
+    .await
+    .unwrap_or(false);
+    if !in_scope {
+        return Err(ApiError::NotFound);
+    }
     let row = store::participation::update_participant(
         &state.surreal,
         &store::participation::UpdateParticipantCommand {
@@ -1146,10 +1174,10 @@ async fn update_participant(
 }
 
 /// `DELETE /app/api/projects/{id}/participants/{role_id}` — remove a matter
-/// participation row. Lawyer-tier only. The command
-/// (`store::participation::remove_participant`) refuses to remove the matter's
-/// *last* lawyer DRI (that would strand its accountable lawyer). `204 No
-/// Content` on success.
+/// participation row. Lawyer-tier and matter-scoped, like [`add_participant`].
+/// The command (`store::participation::remove_participant`) refuses to remove
+/// the matter's *last* lawyer DRI (that would strand its accountable lawyer).
+/// `204 No Content` on success.
 ///
 /// Removing a row that carries a marker is a DRI change, so this door names its
 /// actor: the command gates the removal on it and writes it to the audit trail.
@@ -1160,6 +1188,17 @@ async fn remove_participant(
     Path((id, role_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Response, ApiError> {
     let acting = lawyer.0.person_id.ok_or(ApiError::Forbidden)?;
+    let in_scope = store::access::can_see_project_as_lawyer(
+        &state.surreal,
+        lawyer.0.person_id,
+        lawyer.0.role,
+        id,
+    )
+    .await
+    .unwrap_or(false);
+    if !in_scope {
+        return Err(ApiError::NotFound);
+    }
     store::participation::remove_participant(
         &state.surreal,
         id,

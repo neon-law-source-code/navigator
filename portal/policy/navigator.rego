@@ -466,10 +466,13 @@ allow if {
 
 # Add-participant command: POST /app/api/projects/{id}/participants adds a person
 # to a matter's participation ledger (co-counsel, paralegal, a second client
-# contact). Firm-side matter-management action, so lawyer/admin only; a
-# client or anonymous write never reaches the handler's own LawyerSession
-# check. Scoped to the participants sub-path and POST, the one verb this
-# slice ships — edit/remove earn their own grants when they land.
+# contact, or a Clerk being granted portal visibility). Firm-side
+# matter-management action, so lawyer/admin only; a client or anonymous write
+# never reaches the handler's own LawyerSession check. The handler additionally
+# re-checks that the acting lawyer participates in the matter (admin bypasses),
+# same as `/close` below, and collapses an out-of-scope matter to 404. Scoped to
+# the participants sub-path and POST, the one verb this slice ships — edit/remove
+# earn their own grants when they land.
 allow if {
     input.path[0] == "app"
     input.path[1] == "api"
@@ -665,9 +668,11 @@ allow if {
 
 # Edit + remove a participation row: PATCH/DELETE
 # /app/api/projects/{id}/participants/{role_id} rewrite or drop one participant
-# (the command refuses to strand the matter's lawyer DRI). Same firm-side
-# matter-management action as the add above; lawyer/admin only. Scoped
-# to the participant-item path (five segments) and the two mutating verbs.
+# (the command refuses to strand the matter's lawyer DRI) — this is also how a
+# participating lawyer revokes a Clerk's portal visibility. Same firm-side
+# matter-management action as the add above; lawyer/admin only at the tier, and
+# the handler re-checks matter participation the same way. Scoped to the
+# participant-item path (five segments) and the two mutating verbs.
 allow if {
     input.path[0] == "app"
     input.path[1] == "api"

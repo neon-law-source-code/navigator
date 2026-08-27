@@ -2261,8 +2261,55 @@ a.nav-link:hover {
   margin: 0;
 }
 
-/* Matter-lifecycle warning badge on the lawyer projects list (no retainer / no
- * closing letter). A small amber pill. */
+/* The matter row's lifecycle indicator on the lawyer projects list: awaiting an
+ * engagement letter (amber), engagement letter on file (green), closed (red).
+ *
+ * Colour is added to the words, never substituted for them. A red/green
+ * distinction carried by hue is invisible to the most common form of color
+ * blindness, so each state renders its own text and `title`; the fill is a
+ * second, faster channel for a reader scanning a list, not the only one.
+ *
+ * Each state fixes BOTH its background and its text, so the pill's internal
+ * contrast is the same in either color scheme rather than depending on the
+ * page beneath it — which is why these are literal values and not
+ * `var(--nav-color-*)`. Measured foreground-on-fill: amber 6.84:1, green
+ * 7.29:1, red 7.60:1, all clearing WCAG AA for normal text. The tints are the
+ * 50/300/800 steps of one family, so the three read as one set. */
+.matter-lifecycle {
+  display: inline-block;
+  padding: 0.1rem 0.4rem;
+  border-radius: var(--nav-radius-sm);
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.matter-lifecycle--awaiting {
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  color: #92400e;
+}
+
+.matter-lifecycle--engaged {
+  background: #ecfdf5;
+  border: 1px solid #6ee7b7;
+  color: #065f46;
+}
+
+.matter-lifecycle--closed {
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  color: #991b1b;
+}
+
+/* An unstaffed matter in the directory (`matter_directory.rs`). Amber like the
+ * awaiting state and deliberately a separate rule: a missing lawyer DRI is a
+ * staffing gap, not a position on the matter's lifecycle track, and the two
+ * shared one class only because one amber pill happened to exist. Keeping them
+ * apart means restyling either cannot silently restyle the other. */
+.matter-unstaffed,
+/* The outstanding closing letter on a closed matter — a second, independent
+ * fact riding beside the red indicator rather than folded into it. */
 .matter-flag {
   display: inline-block;
   padding: 0.1rem 0.4rem;
@@ -3047,8 +3094,26 @@ a.nav-link:hover {
   /* The firm logo anchors this triad at rgb(0, 181, 216) / #00b5d8. Keeping its
      HSL saturation and lightness, the companions sit 120 degrees apart on the
      color wheel: green #23d800 (+120deg) and red #d80023 (-120deg). Archived
-     projects are intentionally outside this chart, so the green remains
-     available for a future third represented status. */
+     projects are intentionally outside this chart.
+
+     The green reserved here for "a future third represented status" was
+     claimed by the matter row's lifecycle indicator (`.matter-lifecycle`),
+     but as a *meaning*, not as this value: green = an engagement letter is on
+     file. #23d800 is a chart fill, sized to read as a wedge behind a legend.
+     As text it measures 1.93:1 against white, so a pill that a lawyer reads
+     words off cannot use it; the indicator takes a tinted pair from the same
+     family as the amber it sits beside.
+
+     The pie is deliberately NOT split into three to match. It answers a
+     different question: the pie counts a portfolio (how much of my workload is
+     still open), the row places a matter (where is this one on its track).
+     Cyan-vs-red partitions a total; yellow/green/red is a position on a track,
+     and forcing one palette on both would assert an equivalence that does not
+     hold. The dashboard also loads no lifecycle data at all
+     (`webapp::lawyer_dashboard` filters on `status` alone), so a third slice
+     is a new per-matter fan-out query on a summary tile, not a colour change.
+     Both surfaces label every colour in text, so neither asks a reader to
+     decode a hue unaided. */
   --project-status-cyan: rgb(0, 181, 216);
   --project-status-green: rgb(35, 216, 0);
   --project-status-red: rgb(216, 0, 35);

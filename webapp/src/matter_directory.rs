@@ -229,7 +229,16 @@ pub fn matter_directory_body(view: &MatterDirectoryView) -> Element {
                             td { class: "project-status", "{row.status}" }
                             td { class: "matter-directory-dri",
                                 if row.lawyer_dris.is_empty() {
-                                    span { class: "matter-flag", "Unassigned" }
+                                    // Its own class, not the lifecycle
+                                    // indicator's: an unstaffed matter is a
+                                    // staffing gap, not a position on the
+                                    // matter's lifecycle track. The two shared
+                                    // one amber pill only because one existed.
+                                    span {
+                                        class: "matter-unstaffed",
+                                        title: "No lawyer is accountable for this matter yet.",
+                                        "Unassigned"
+                                    }
                                 } else {
                                     "{row.dri_label()}"
                                 }

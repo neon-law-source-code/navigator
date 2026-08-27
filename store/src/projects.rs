@@ -1996,6 +1996,67 @@ pub fn matter_flags(has_engagement: bool, status: &str, has_closing: bool) -> (b
     (missing_retainer, missing_closing_letter)
 }
 
+/// Where a matter sits on its lifecycle track, as one of three states.
+///
+/// The Projects list renders a matter's position with a coloured indicator, and
+/// the three positions are what a lawyer scanning a portfolio needs to tell
+/// apart without reading each row. Computed here rather than in the view for
+/// the same reason [`matter_flags`] is: it is a rule about matters, and the
+/// render is a consumer of it.
+///
+/// # What each state claims
+///
+/// [`MatterLifecycle::Awaiting`] and [`MatterLifecycle::Engaged`] both turn on
+/// `missing_retainer`, which since the asset fold in [`matter_lifecycle_sets`]
+/// answers **"is there an engagement letter on file"** — not "is it executed".
+/// That distinction is load-bearing in a way it was not before this type
+/// existed. The warning badge it replaces rendered only on *absence* and
+/// asserted nothing when clear, so a matter with a filed draft simply carried
+/// no warning. `Engaged` asserts, and a reader takes an affirmative signal more
+/// firmly than a missing one.
+///
+/// The predicate is therefore left exactly as wide as it was, and the *label*
+/// is what narrows. Whatever renders this type must state the fact the store
+/// actually checked — an engagement letter is on file — and never the
+/// conclusion a reader might draw from it, that the matter is live, active, or
+/// properly papered. A filed letter is a location, not an execution. That is a
+/// constraint on the copy, not on this rule, so it is enforced where the copy
+/// lives: `webapp::project_list::MatterTone`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MatterLifecycle {
+    /// Open, with no engagement letter on file by either route — the matter is
+    /// being worked before it was papered.
+    Awaiting,
+    /// Open, with an engagement letter on file.
+    Engaged,
+    /// Closed. Whether the matter still owes its offboarding letter is a
+    /// separate fact and keeps its own badge: a closed matter reads red either
+    /// way, and swallowing the outstanding letter into the colour would drop a
+    /// real obligation off the row.
+    Closed,
+}
+
+impl MatterLifecycle {
+    /// The matter's position, from the same three facts [`matter_flags`] reads.
+    ///
+    /// `status` wins over the engagement question: a closed matter is closed
+    /// whether or not it was ever papered, and rendering it as awaiting its
+    /// engagement letter would ask a lawyer to act on a matter that is over.
+    ///
+    /// An unrecognized `status` reads as [`MatterLifecycle::Awaiting`] — the
+    /// state that shows a warning. A status this build does not know is not
+    /// evidence that a matter is in good order, and over-warning is the safe
+    /// direction, the same way an unknown `kind` never opens a matter.
+    #[must_use]
+    pub fn of(status: &str, missing_retainer: bool) -> Self {
+        match status {
+            "closed" => Self::Closed,
+            _ if missing_retainer => Self::Awaiting,
+            _ => Self::Engaged,
+        }
+    }
+}
+
 /// For the given matters, return `(project_ids with a matter-opening engagement,
 /// project_ids with a closing__letter notation)` in three batched queries
 /// (notations for these projects, the templates they bind, then the assets

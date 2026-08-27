@@ -373,7 +373,7 @@ fn resolve_practice_links() -> Vec<webapp::home::PracticeLink> {
         },
         PracticeLink {
             mark: PracticeMark::Handshake,
-            heading: "Fractional general counsel".to_string(),
+            heading: "Fractional GC".to_string(),
             body: "Company counsel on one flat monthly fee, working at the pace your sales cycle \
                    already runs at: contracts, licences, financings, and the corporate advice \
                    under them."
@@ -382,7 +382,7 @@ fn resolve_practice_links() -> Vec<webapp::home::PracticeLink> {
         },
         PracticeLink {
             mark: PracticeMark::Gavel,
-            heading: "One-time legal services".to_string(),
+            heading: "One-Time Services".to_string(),
             body: "The routine matters a person or a company walks in with: a will, a trust, a \
                    formation, a trademark, an annual report. One scope and one flat fee, agreed \
                    before we start."
@@ -551,7 +551,7 @@ pub(crate) fn resolve_litigation_content(
             .to_string(),
         eyebrow: "Values-Based Litigation".to_string(),
         heading: hero_words("Litigation built for speed.", 1),
-        lead: "Our strategy is always the same. Do as much as we can, as early as we can, and get \
+        lead: "Our strategy is generally the same. Do as much as we can, as early as we can, and get \
                you to a resolution sooner. That is not the right approach for every case. It \
                could be the right one for yours."
             .to_string(),

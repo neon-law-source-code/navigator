@@ -1971,6 +1971,16 @@ pub fn template_opens_a_matter(kind: Option<&str>) -> bool {
         .is_some_and(rules::kind::Kind::opens_a_matter)
 }
 
+/// Whether a template's declared `kind` makes its notation the letter that
+/// closes a matter — the mirror of [`template_opens_a_matter`]. Keyed off the
+/// declared kind, never the template `code`, so a bespoke offboarding letter
+/// named otherwise still counts as the closing letter.
+#[must_use]
+pub fn template_closes_a_matter(kind: Option<&str>) -> bool {
+    kind.and_then(rules::kind::Kind::parse)
+        .is_some_and(rules::kind::Kind::closes_a_matter)
+}
+
 /// From a matter's engagement/closing facts, the two lifecycle warning flags:
 /// `missing_retainer` (no matter-opening engagement) and `missing_closing_letter`
 /// (a `closed` matter without a closing letter).
@@ -1982,14 +1992,15 @@ pub fn matter_flags(has_engagement: bool, status: &str, has_closing: bool) -> (b
 }
 
 /// For the given matters, return `(project_ids with a matter-opening engagement,
-/// project_ids with an offboarding__letter notation)` in two batched queries
-/// (notations for these projects, then the templates they bind). The engagement
-/// side keys off the template's declared `kind`; the closing letter off its
-/// `code`.
+/// project_ids with a matter-closing offboarding letter)` in two batched queries
+/// (notations for these projects, then the templates they bind). Both keys go
+/// through [`template_opens_a_matter`] and [`template_closes_a_matter`] — never
+/// a template's `code` — so a bespoke engagement or closing letter named
+/// otherwise still counts.
 ///
 /// Both `notations` and `templates` are Surreal-resident since ENG-121, but
-/// this stays two batched queries either way — one round trip per table,
-/// not one round trip per Project.
+/// this stays two batched queries either way — one round trip per table, not
+/// one round trip per Project.
 ///
 /// Errors propagate rather than collapsing to an empty set: an empty set is
 /// indistinguishable from "this matter has no engagement", so swallowing a
@@ -2029,7 +2040,7 @@ pub async fn matter_lifecycle_sets(
             if template_opens_a_matter(t.kind.as_deref()) {
                 has_engagement.insert(n.project_id);
             }
-            if t.code == "offboarding__letter" {
+            if template_closes_a_matter(t.kind.as_deref()) {
                 has_closing.insert(n.project_id);
             }
         }

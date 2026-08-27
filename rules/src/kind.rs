@@ -47,6 +47,12 @@ pub enum Kind {
     /// (the estate plan, the fractional-GC engagement) — whether one
     /// instrument or a bundle, it is the same act of opening the matter.
     Onboarding,
+    /// The firm-signed letter that **closes a matter** — the mirror of
+    /// [`Kind::Onboarding`] (see [`Kind::closes_a_matter`]). Distinct from
+    /// the general [`Kind::Letter`]: every offboarding letter is a letter,
+    /// but `Kind::Letter` alone must not clear a matter's offboarding flag,
+    /// or any demand or notice letter would silently close it out.
+    Offboarding,
     /// An analytical work product the firm delivers — a review memo or
     /// opinion (`services__contract_review`), not an executed instrument.
     Memo,
@@ -138,6 +144,7 @@ impl Kind {
         Kind::Directive,
         Kind::Agreement,
         Kind::Onboarding,
+        Kind::Offboarding,
         Kind::Memo,
         Kind::Event,
         Kind::Post,
@@ -170,6 +177,7 @@ impl Kind {
             Kind::Directive => "directive",
             Kind::Agreement => "agreement",
             Kind::Onboarding => "onboarding",
+            Kind::Offboarding => "offboarding",
             Kind::Memo => "memo",
             Kind::Event => "event",
             Kind::Post => "post",
@@ -204,6 +212,7 @@ impl Kind {
             Kind::Directive => "An advance health-care or durable financial directive",
             Kind::Agreement => "A private agreement (employment, contractor, LLC operating)",
             Kind::Onboarding => "The engagement that opens a matter — one instrument or a bundle",
+            Kind::Offboarding => "The firm-signed letter that closes a matter",
             Kind::Memo => "An analytical work product (a review memo or opinion)",
             Kind::Event => "A public event page (web/content/events/)",
             Kind::Post => "A published blog post (web/content/blog/)",
@@ -281,6 +290,53 @@ impl Kind {
             | Kind::Trust
             | Kind::Directive
             | Kind::Agreement
+            | Kind::Offboarding
+            | Kind::Memo
+            | Kind::Event
+            | Kind::Post
+            | Kind::Workshop
+            | Kind::Github
+            | Kind::Transcript
+            | Kind::InboundContract
+            | Kind::CertificateOfNaturalization
+            | Kind::Unclassified
+            | Kind::ReviewQueueWorkbench
+            | Kind::VerifierSplitView
+            | Kind::MatterStatusConsole
+            | Kind::DocketDeadlineBoard
+            | Kind::DocumentWorkbench
+            | Kind::AuthorityLibrary
+            | Kind::DiscoveryCockpit
+            | Kind::HearingConsole
+            | Kind::DeliverablePackage
+            | Kind::EngagementBillingRecords => false,
+        }
+    }
+
+    /// True when a notation of this kind is the **letter that closes a
+    /// matter** — the mirror of [`Kind::opens_a_matter`]. Callers that ask
+    /// "does this matter have its offboarding letter yet?"
+    /// (`store::projects::template_closes_a_matter`) key off this rather
+    /// than a template's `code`, so a bespoke closing letter is classified
+    /// by what it *is*, not by what it happens to be named.
+    ///
+    /// `Kind::Letter` alone does **not** close a matter — an ordinary
+    /// demand, notice, or settlement letter must not be mistaken for the
+    /// one that ends the representation.
+    ///
+    /// Deliberately an exhaustive `match`: adding a [`Kind`] fails to
+    /// compile until it declares which side of this line it falls on.
+    #[must_use]
+    pub fn closes_a_matter(self) -> bool {
+        match self {
+            Kind::Offboarding => true,
+            Kind::Letter
+            | Kind::Filing
+            | Kind::Will
+            | Kind::Trust
+            | Kind::Directive
+            | Kind::Agreement
+            | Kind::Onboarding
             | Kind::Memo
             | Kind::Event
             | Kind::Post
@@ -341,6 +397,7 @@ impl Kind {
                 | Kind::Directive
                 | Kind::Agreement
                 | Kind::Onboarding
+                | Kind::Offboarding
                 | Kind::Memo
         )
     }
@@ -390,6 +447,7 @@ impl Kind {
                 | Kind::Directive
                 | Kind::Agreement
                 | Kind::Onboarding
+                | Kind::Offboarding
                 | Kind::Memo
                 | Kind::Event
                 | Kind::Post
@@ -425,6 +483,7 @@ impl Kind {
                 | Kind::Directive
                 | Kind::Agreement
                 | Kind::Onboarding
+                | Kind::Offboarding
                 | Kind::Memo
                 | Kind::Transcript
                 | Kind::InboundContract
@@ -484,6 +543,7 @@ pub const VALID: &[&str] = &[
     "directive",
     "agreement",
     "onboarding",
+    "offboarding",
     "memo",
     "event",
     "post",
@@ -604,6 +664,7 @@ mod tests {
             Kind::Directive,
             Kind::Agreement,
             Kind::Onboarding,
+            Kind::Offboarding,
             Kind::Memo,
         ] {
             assert!(
@@ -691,6 +752,7 @@ mod tests {
             Kind::Trust,
             Kind::Directive,
             Kind::Agreement,
+            Kind::Offboarding,
             Kind::Memo,
             Kind::Event,
             Kind::Post,
@@ -703,6 +765,47 @@ mod tests {
             assert!(
                 !kind.opens_a_matter(),
                 "{} does not open a matter",
+                kind.as_str()
+            );
+        }
+    }
+
+    #[test]
+    fn closing_kinds_are_the_offboarding_letter_and_nothing_else() {
+        // The mirror of `matter_opening_kinds_are_the_engagements_and_nothing_else`:
+        // the one kind that closes a matter is the offboarding letter.
+        assert!(
+            Kind::Offboarding.closes_a_matter(),
+            "offboarding closes a matter"
+        );
+        // `Kind::Letter` is the load-bearing negative case: every offboarding
+        // letter is a letter, but an ordinary letter must not close a matter,
+        // or any demand/notice/settlement letter would silently end the
+        // representation.
+        assert!(!Kind::Letter.closes_a_matter());
+        // Every other kind is work done *inside* an already-open matter, the
+        // engagement that opened it, or a content page — none of them is the
+        // offboarding letter.
+        for kind in [
+            Kind::Letter,
+            Kind::Filing,
+            Kind::Will,
+            Kind::Trust,
+            Kind::Directive,
+            Kind::Agreement,
+            Kind::Onboarding,
+            Kind::Memo,
+            Kind::Event,
+            Kind::Post,
+            Kind::Workshop,
+            Kind::Github,
+            Kind::Transcript,
+            Kind::InboundContract,
+            Kind::CertificateOfNaturalization,
+        ] {
+            assert!(
+                !kind.closes_a_matter(),
+                "{} does not close a matter",
                 kind.as_str()
             );
         }

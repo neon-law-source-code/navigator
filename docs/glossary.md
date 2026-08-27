@@ -783,6 +783,20 @@ layers stay in sync because the worker writes them through `ctx.run`.
 - Schema: [`notation_event` in `navigator.surql`](../store/src/schema/navigator.surql) Queries:
   [`store::notation_events`](../store/src/notation_events.rs) Lives in: the `notation_event` table in SurrealDB
 
+## Offboarding
+
+The codebase term for the notation that **closes a matter** — `rules::kind::Kind::Offboarding`, classified by
+[`Kind::closes_a_matter`](../rules/src/kind.rs), the mirror of [`Kind::opens_a_matter`](#onboarding). In conversation
+and with clients this is the **closing letter**: the firm-signed letter that confirms the representation is concluded,
+seeded as `neon_law/shared/offboarding_letter.md` (`code: offboarding__letter`).
+
+`store::projects::matter_lifecycle_sets` keys the matching lifecycle flag off this classifier — never off the template's
+`code` — so a bespoke closing letter still clears the badge as long as it declares `kind: offboarding`. The Restate step
+names inside that template's `workflow:` block (`generate_pdf__closing_letter`, `firm_signature__closing_letter`) and
+the `closing_letter_storage_key` object-storage prefix are **deliberately frozen** at their old spelling — a Restate
+step name is part of a durable journal, and the storage prefix already has objects filed under it, so renaming either
+would orphan an in-flight invocation or an existing document rather than merely rename a word.
+
 ## On-Chain Record
 
 The workflow prefix `onchain` records an attorney attestation in the durable attestation table and, when configured,

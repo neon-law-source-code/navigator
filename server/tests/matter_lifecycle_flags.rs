@@ -131,6 +131,109 @@ fn the_badge_reads_every_kind_straight_from_the_classifier() {
     }
 }
 
+// ---- what counts as the matter-closing offboarding letter ----
+
+#[test]
+fn an_offboarding_template_closes_a_matter_whatever_its_code() {
+    // The flag keys off the declared `kind`, never the template's code —
+    // the mirror of the engagement side above.
+    assert!(store::projects::template_closes_a_matter(Some(
+        "offboarding"
+    )));
+}
+
+#[test]
+fn an_ordinary_letter_does_not_close_a_matter() {
+    // `kind: letter` is too broad to be the closing classifier — every
+    // offboarding letter is a letter, but a demand, notice, or settlement
+    // letter must not silently clear the badge.
+    assert!(!store::projects::template_closes_a_matter(Some("letter")));
+}
+
+#[test]
+fn work_inside_an_open_matter_does_not_close_it() {
+    for kind in ["onboarding", "filing", "will", "trust", "directive", "memo"] {
+        assert!(
+            !store::projects::template_closes_a_matter(Some(kind)),
+            "{kind} is work inside a matter, not the letter that closes it"
+        );
+    }
+}
+
+#[test]
+fn an_absent_or_unknown_kind_never_closes_a_matter() {
+    assert!(!store::projects::template_closes_a_matter(None));
+    assert!(!store::projects::template_closes_a_matter(Some("bogus")));
+}
+
+#[test]
+fn the_closing_badge_reads_every_kind_straight_from_the_classifier() {
+    // The mirror of `the_badge_reads_every_kind_straight_from_the_classifier`:
+    // the badge must answer "does this kind close a matter?" from
+    // `rules::kind::Kind::closes_a_matter` and nothing else.
+    for kind in rules::kind::Kind::ALL {
+        assert_eq!(
+            store::projects::template_closes_a_matter(Some(kind.as_str())),
+            kind.closes_a_matter(),
+            "the badge must classify {} straight from `Kind::closes_a_matter`",
+            kind.as_str()
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_matter_closed_on_a_bespoke_offboarding_code_still_clears_the_flag() {
+    // The assertion that would have caught the defect this issue fixes:
+    // keying the closing badge off `t.code == "closing__letter"` badges a
+    // matter offboarded on a differently-named template forever, even
+    // though its template legitimately declares `kind: offboarding`.
+    let (app, surreal) = build_app().await;
+    let _ = app;
+    let person = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::new("Bespoke", "bespoke@example.com"),
+    )
+    .await
+    .unwrap();
+    let matter = project(&surreal, "Bespoke closing matter", "closed").await;
+
+    let bespoke = store::templates::save_version(
+        &surreal,
+        Some(matter),
+        "practice__bespoke_closing",
+        store::templates::Version {
+            title: "Bespoke Closing Letter".into(),
+            respondent_type: "person".into(),
+            asset_id: None,
+            form_code: None,
+            kind: Some("offboarding".into()),
+            source_commit_sha: None,
+        },
+    )
+    .await
+    .unwrap()
+    .into_model();
+
+    store::notations::create(
+        &surreal,
+        &store::notations::NewNotation::new(bespoke.id, person.id, matter, "BEGIN"),
+    )
+    .await
+    .unwrap();
+
+    let projects = vec![store::projects::find_by_id(&surreal, matter)
+        .await
+        .unwrap()
+        .expect("matter row")];
+    let (_, has_closing) = store::projects::matter_lifecycle_sets(&surreal, &projects)
+        .await
+        .unwrap();
+    assert!(
+        has_closing.contains(&matter),
+        "a bespoke-coded kind: offboarding template must still clear the closing-letter flag"
+    );
+}
+
 // ---- the rendered list ----
 
 async fn build_app() -> (axum::Router, store::surreal::SurrealDb) {

@@ -392,6 +392,7 @@ pub fn skeleton(kind: Kind) -> Option<Skeleton> {
         | Kind::Directive
         | Kind::Agreement
         | Kind::Onboarding
+        | Kind::Offboarding
         | Kind::Memo
         | Kind::Event
         | Kind::Post

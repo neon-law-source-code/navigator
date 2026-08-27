@@ -1107,6 +1107,7 @@ mod tests {
             "directive",
             "agreement",
             "onboarding",
+            "offboarding",
             "memo",
         ] {
             let file = source(

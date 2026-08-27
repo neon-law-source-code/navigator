@@ -34,8 +34,8 @@ merge queue. Anyone may write to <contact@neonlaw.org>.
 
 ### Contribute to the product repository
 
-The whole stack is written in Rust in one public monorepo. Anyone can open issues and pull requests. The most useful
-corpus contributions are specific ones:
+The whole stack is written in Rust in one public monorepo, licensed BUSL-1.1. Outside pull requests are closed;
+authorized lawyers contribute inside the firm. The most useful corpus contributions are specific ones:
 
 - Add a missing legal template. Add a government PDF form. Improve a field map. Add a test that locks a workflow to the
   law it implements.
@@ -43,10 +43,13 @@ corpus contributions are specific ones:
 ---
 
 Everything you have seen in these workshops — the `web` app, the `navigator` CLI, the durable workflows — lives in one
-public monorepo anyone can read, run, and fork. Start by standing it up yourself with the [Operating Neon Law
-Navigator](/workshops/deploy-the-navigator) workshop or the local KIND loop, then file what you find. Contributions are
-inbound = outbound: what you submit is licensed on the same terms the project ships under, you keep the copyright in
-what you write, and there is no agreement to sign and no acceptance bot to clear.
+public monorepo anyone can read, run, and fork under BUSL-1.1. Production use needs a commercial licence from Shook Law
+PLLC. Start by standing it up yourself with the [Operating Neon Law Navigator](/workshops/deploy-the-navigator) workshop
+or the local KIND loop, then write to <contact@neonlaw.org> with what you find. A contribution that lands in the
+repository assigns to Shook Law PLLC — all right, title, and interest, including every copyright in it — under the
+contributor licence agreement. Firm authors signed that before their first commit; an outside author would sign the same
+before a merge, and outside merges are closed for now. The grant out is BUSL-1.1, the same terms the rest of the tree
+ships under.
 
 **Scope is not the gate — the local KIND loop is.** A contribution may be as ambitious as the problem demands: a
 sweeping refactor, a new service beside the existing ones, even replacing a subsystem. What every change must do is run
@@ -55,11 +58,11 @@ SurrealDB, Rauthy, Garage, Restate, and OpenObserve in one KIND dependency tier.
 dependency wires it into that loop in the same pull request, with a KIND manifest beside the existing ones, so the whole
 stack still comes up locally.
 
-That rule is what keeps production portable and contribution open. In production, persistent state lives on managed
-services — a hosted SurrealDB, Cloud Storage for documents — and each one has a cloud-agnostic stand-in inside KIND, so
-the topology you test locally is the topology a firm deploys. And because the full stack runs on a laptop, you never
-need a cloud account or someone else's cloud bill to verify your work: clone the repository, run `dev up`, prove the
-change against the running stack, and open the pull request.
+That rule is what keeps production portable. In production, persistent state lives on managed services — a hosted
+SurrealDB, Cloud Storage for documents — and each one has a cloud-agnostic stand-in inside KIND, so the topology you
+test locally is the topology a firm deploys. And because the full stack runs on a laptop, you never need a cloud account
+or someone else's cloud bill to verify your work: clone the repository, run `dev up`, and prove the change against the
+running stack. An authorized lawyer then opens the pull request.
 
 ### View content images locally
 

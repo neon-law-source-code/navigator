@@ -19,6 +19,7 @@
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::csrf::CsrfToken;
 use crate::people::ViewerRole;
 use crate::portal_project_list::PersonId;
 
@@ -74,6 +75,10 @@ pub struct ClerkProjectDetailView {
     /// white-label deploy's tab reads its own name.
     #[serde(default)]
     pub firm_name: String,
+    /// The session CSRF token for the client-preview form. The control changes
+    /// only the current browser lens; it does not change a matter.
+    #[serde(default)]
+    pub csrf_token: String,
 }
 
 /// Read the injected viewer tier, defaulting to the least-privileged tier when
@@ -177,6 +182,11 @@ pub async fn get_clerk_project() -> Result<ClerkProjectDetailView, ServerFnError
             .await?;
     let role = injected_role().await;
     let firm_name = crate::app_chrome::firm_name_from_context().await;
+    let csrf_token =
+        dioxus_fullstack_core::FullstackContext::extract::<axum::Extension<CsrfToken>, _>()
+            .await
+            .map(|axum::Extension(token)| token.0)
+            .unwrap_or_default();
     let not_found = |role| {
         commit_not_found();
         Ok(ClerkProjectDetailView {
@@ -184,6 +194,7 @@ pub async fn get_clerk_project() -> Result<ClerkProjectDetailView, ServerFnError
             project: None,
             resources: crate::project_resources::ProjectResourcesView::default(),
             role,
+            csrf_token: csrf_token.clone(),
         })
     };
     let Some(person_id) = injected_person_id()
@@ -231,6 +242,7 @@ pub async fn get_clerk_project() -> Result<ClerkProjectDetailView, ServerFnError
         }),
         resources,
         role,
+        csrf_token,
     })
 }
 
@@ -314,8 +326,9 @@ pub fn ClerkProjects() -> Element {
 }
 
 /// The Clerk matter page — the matter's name,
-/// status, and supervising lawyer, plus the limited-access disclosure. Read-only:
-/// there are no forms on this surface.
+/// status, and supervising lawyer, plus the limited-access disclosure. The one
+/// form opens the matter's existing client rendering, and the server rechecks
+/// the Clerk's supervised access before switching the session.
 #[component]
 pub fn ClerkProjectDetail() -> Element {
     let resource = use_server_future(get_clerk_project)?;
@@ -349,6 +362,13 @@ pub fn ClerkProjectDetail() -> Element {
                         dd { "{project.status}" }
                         dt { "Supervising lawyer" }
                         dd { "{project.lawyer_dri}" }
+                    }
+                    form {
+                        class: "lawyer-detail__inline-form",
+                        method: "post",
+                        action: "/app/projects/{project.code}/view-as-client",
+                        input { r#type: "hidden", name: "_csrf", value: "{view.csrf_token}" }
+                        button { class: "nav-btn nav-btn--secondary", r#type: "submit", "View as Client" }
                     }
                     crate::project_resources::ProjectResourcesPanel { view: view.resources.clone() }
                     div { class: "nav-form-notice", role: "note",

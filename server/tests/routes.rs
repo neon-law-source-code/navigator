@@ -9068,6 +9068,184 @@ async fn admin_can_impersonate_client_and_exit_from_banner() {
     assert!(restored.impersonation.is_none());
 }
 
+/// The matter workbench exposes the client lens to every firm tier, but only
+/// after the handler has verified that the caller already belongs to this
+/// matter. The preview is a real client session (so downstream reads use their
+/// ordinary client guards) and the exit banner can restore the precise actor.
+#[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn every_firm_tier_can_view_an_assigned_matter_as_its_client() {
+    let (state, surreal) = state_with_engines().await;
+    let client = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "Preview client",
+            "preview-client@example.com",
+            store::persons::Role::Client,
+        ),
+    )
+    .await
+    .unwrap();
+    let supervisor = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "Preview supervisor",
+            "preview-supervisor@example.com",
+            store::persons::Role::Lawyer,
+        ),
+    )
+    .await
+    .unwrap();
+    let entity_id = store::test_support::seed_entity(&surreal).await;
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+
+    for role in [
+        store::persons::Role::Clerk,
+        store::persons::Role::Lawyer,
+        store::persons::Role::Admin,
+        store::persons::Role::Owner,
+    ] {
+        let actor = store::persons::create(
+            &surreal,
+            &store::persons::NewPerson::with_role(
+                format!("{role:?} previewer"),
+                format!("preview-{role:?}-{}@example.com", uuid::Uuid::now_v7()).to_lowercase(),
+                role,
+            ),
+        )
+        .await
+        .unwrap();
+        let project = store::projects::create(
+            &surreal,
+            &store::projects::NewProject {
+                code: format!("client-preview-{}", uuid::Uuid::now_v7()),
+                name: format!("{role:?} client preview"),
+                status: "open".into(),
+                entity_id,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        store::projects::add_participation(&surreal, project.id, client.id, "client")
+            .await
+            .unwrap();
+        store::projects::designate_dri_in_surreal(
+            &surreal,
+            project.id,
+            client.id,
+            store::projects::DriSide::Client,
+        )
+        .await
+        .unwrap();
+        if role == store::persons::Role::Clerk {
+            store::projects::add_participation(&surreal, project.id, supervisor.id, "attorney")
+                .await
+                .unwrap();
+            store::projects::designate_dri_in_surreal(
+                &surreal,
+                project.id,
+                supervisor.id,
+                store::projects::DriSide::Lawyer,
+            )
+            .await
+            .unwrap();
+            store::projects::add_participation(&surreal, project.id, actor.id, "clerk")
+                .await
+                .unwrap();
+        } else {
+            store::projects::add_participation(&surreal, project.id, actor.id, "attorney")
+                .await
+                .unwrap();
+        }
+        let (cookie, csrf) = session_cookie_and_csrf_for_person(&actor);
+
+        let detail = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/app/projects/{}", project.code))
+                    .header(header::COOKIE, &cookie)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(detail.status(), StatusCode::OK, "{role:?}");
+        let detail_body = body_string(detail).await;
+        assert!(
+            detail_body.contains("View as Client"),
+            "{role:?}: {detail_body}"
+        );
+        if role.is_lawyer_tier() {
+            assert!(
+                detail_body.contains(&format!("/lawyer/entities/{entity_id}/edit")),
+                "{role:?}: {detail_body}"
+            );
+            assert!(
+                detail_body.contains("Edit entity"),
+                "{role:?}: {detail_body}"
+            );
+        }
+
+        let preview = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/app/projects/{}/view-as-client", project.code))
+                    .header(header::COOKIE, cookie)
+                    .header("content-type", "application/x-www-form-urlencoded")
+                    .body(Body::from(format!("_csrf={csrf}")))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(preview.status(), StatusCode::SEE_OTHER, "{role:?}");
+        let expected_location = format!("/app/projects/{}", project.code);
+        assert_eq!(
+            preview
+                .headers()
+                .get(header::LOCATION)
+                .and_then(|location| location.to_str().ok()),
+            Some(expected_location.as_str()),
+            "{role:?}"
+        );
+        let effective = decode_session_cookie_pair(&session_cookie_pair(&preview));
+        assert_eq!(effective.role, store::persons::Role::Client, "{role:?}");
+        assert_eq!(effective.person_id, Some(client.id), "{role:?}");
+        assert_eq!(
+            effective
+                .impersonation
+                .as_ref()
+                .map(|impersonation| impersonation.actor_person_id),
+            Some(Some(actor.id)),
+            "{role:?}"
+        );
+        let client_detail = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/app/projects/{}", project.code))
+                    .header(header::COOKIE, session_cookie_pair(&preview))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(client_detail.status(), StatusCode::OK, "{role:?}");
+        let client_detail_body = body_string(client_detail).await;
+        assert!(
+            client_detail_body.contains("Impersonating Preview client"),
+            "{role:?}: {client_detail_body}"
+        );
+        assert!(
+            client_detail_body.contains("End impersonation"),
+            "{role:?}: {client_detail_body}"
+        );
+    }
+}
+
 #[tokio::test]
 async fn impersonation_exit_bypasses_policy_for_active_impersonation() {
     let (state, surreal) = state_with_engines().await;

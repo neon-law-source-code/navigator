@@ -48,6 +48,12 @@ portal—but no firm documents, legal work, or write control on this surface. Th
 identically for every viewer (`store::access::can_see_project`, which is `matter_viewer(...).is_some()`), so admitting a
 Clerk to it grants nothing the matter page's own visibility does not.
 
+On an assigned matter, the `View as Client` control starts the established client-lens session for that matter's client
+DRI and takes the Clerk to the client rendering. The impersonation banner names the effective client and provides the
+single exit back to the Clerk session. The Clerk page itself remains read-only; once in the client lens, every client
+read or action continues through its ordinary client-side authorization. The server resolves both the current Clerk's
+supervised access and the matter's client DRI rather than accepting either identity from the browser.
+
 A lawyer already participating in the matter controls this directly, by adding or removing the Clerk's participation row
 through `POST` / `DELETE /app/api/projects/{id}/participants[/{role_id}]` — see [Participation](#participation) below.
 There is no separate visibility flag: the participation row *is* the toggle, on while the row exists (and the matter

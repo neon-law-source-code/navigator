@@ -183,7 +183,7 @@ async fn dioxus_document_head(req: Request, next: Next) -> Response {
     // must stay within the document's first 1024 bytes, and a face block
     // carrying two absolute bucket URLs is large enough to push it out.
     let rendered = String::from_utf8_lossy(&bytes);
-    let html = stamp_html_lang(&rendered, lang)
+    let html = stamp_document_title(&stamp_html_lang(&rendered, lang), &path)
         .replace("<script>", &format!("<script nonce=\"{nonce}\">"))
         .replacen("</head>", &format!("{}</head>", *GORP_HEAD), 1);
     let html = if *SAMPLE_MATTERS {
@@ -582,6 +582,91 @@ fn stamp_html_lang(html: &str, lang: &str) -> String {
         return html.to_string();
     };
     format!("{}<html lang=\"{lang}\">{}", &html[..start], &html[end..])
+}
+
+/// Derive the browser-tab title from the route that produced the document,
+/// retaining a mounted firm's mark on its public pages.
+///
+/// The root is the one named exception: it is the firm's home, not an empty
+/// path. `/app` is Navigator itself rather than a word readers need to see, so
+/// its descendants begin with `Navigator`.
+fn title_for_path_with_firm(path: &str, firm_name: &str) -> String {
+    let mut segments = path
+        .trim_matches('/')
+        .split('/')
+        .filter(|segment| !segment.is_empty());
+
+    let Some(first) = segments.next() else {
+        return format!("{firm_name} | Home");
+    };
+
+    let mut parts = if first == "app" {
+        vec!["Navigator".to_string()]
+    } else {
+        vec![firm_name.to_string(), title_segment(first)]
+    };
+    parts.extend(segments.map(title_segment));
+    parts.join(" | ")
+}
+
+/// Turn one URL path segment into its tab-title label. Route paths are
+/// kebab-cased, while titles are word-spaced and title-cased.
+fn title_segment(segment: &str) -> String {
+    segment
+        .split(['-', '_'])
+        .filter(|word| !word.is_empty())
+        .map(|word| match word {
+            "aida" => "AIDA".to_string(),
+            "api" => "API".to_string(),
+            "cto" => "CTO".to_string(),
+            "gc" => "GC".to_string(),
+            "id" => "ID".to_string(),
+            "mcp" => "MCP".to_string(),
+            "oidc" => "OIDC".to_string(),
+            other => {
+                let mut chars = other.chars();
+                let Some(first) = chars.next() else {
+                    return String::new();
+                };
+                first.to_uppercase().collect::<String>() + &chars.as_str().to_lowercase()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Replace the rendered component's title with the route-derived title.
+///
+/// Components still declare a title for isolated SSR tests and client-side
+/// navigation, but the HTTP response's document head is the canonical browser
+/// title. Keeping the normalization here makes every server-rendered route
+/// follow the same policy.
+fn stamp_document_title(html: &str, path: &str) -> String {
+    let Some(start) = html.find("<title") else {
+        return html.to_string();
+    };
+    let Some(open_end) = html[start..].find('>').map(|offset| start + offset + 1) else {
+        return html.to_string();
+    };
+    let Some(close_start) = html[open_end..]
+        .find("</title>")
+        .map(|offset| open_end + offset)
+    else {
+        return html.to_string();
+    };
+
+    let rendered_title = &html[open_end..close_start];
+    let firm_name = rendered_title
+        .split_once(" | ")
+        .map_or("Neon Law", |(prefix, _)| prefix);
+
+    format!(
+        "{}{}{}{}",
+        &html[..open_end],
+        title_for_path_with_firm(path, firm_name),
+        "</title>",
+        &html[close_start + "</title>".len()..]
+    )
 }
 
 /// Inject the public page's auth-aware header utility links (see
@@ -3814,6 +3899,41 @@ mod tests {
         );
     }
 
+    #[test]
+    fn browser_titles_follow_the_url_hierarchy() {
+        let cases = [
+            ("/", "Neon Law | Home"),
+            ("/navigator", "Neon Law | Navigator"),
+            ("/app", "Navigator"),
+            ("/app/team", "Navigator | Team"),
+            ("/app/projects", "Navigator | Projects"),
+            (
+                "/app/projects/sample-litigation",
+                "Navigator | Projects | Sample Litigation",
+            ),
+        ];
+
+        for (path, expected) in cases {
+            assert_eq!(
+                title_for_path_with_firm(path, "Neon Law"),
+                expected,
+                "{path}"
+            );
+        }
+    }
+
+    #[test]
+    fn document_title_is_replaced_without_touching_the_rest_of_the_head() {
+        let html = "<html><head><meta charset=\"UTF-8\"><title>Old title</title>\
+                    <meta name=\"description\" content=\"x\"></head><body></body></html>";
+        let stamped = stamp_document_title(html, "/app/projects");
+        assert_eq!(
+            stamped,
+            "<html><head><meta charset=\"UTF-8\"><title>Navigator | Projects</title>\
+             <meta name=\"description\" content=\"x\"></head><body></body></html>"
+        );
+    }
+
     /// Only the HTML render is rewritten. A wasm/glue asset response passes
     /// through with no font `<style>` spliced into its bytes and no CSP header
     /// bolted on.
@@ -3880,6 +4000,10 @@ mod tests {
             .await
             .unwrap();
         let html = String::from_utf8(bytes.to_vec()).unwrap();
+        assert!(
+            html.contains("<title>Neon Law | Page</title>"),
+            "the document title follows the request path: {html}"
+        );
         assert_eq!(
             html.matches("font-family:'GORP Serif'").count(),
             2,

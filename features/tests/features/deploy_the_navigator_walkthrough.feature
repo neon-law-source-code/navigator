@@ -29,7 +29,7 @@ Feature: Workshop "Operating Neon Law Navigator"
   Scenario: Remember — the workshop is registered on the firm surface
     When a reader visits "/workshops/deploy-the-navigator"
     Then the response status is 200
-    And the page title is "Neon Law | Operating Neon Law Navigator"
+    And the page title is "Neon Law | Workshops | Deploy The Navigator"
     And the page shows no "not accepting clients" banner
 
   Scenario: Remember — the class is public, so no login door stands in front of it

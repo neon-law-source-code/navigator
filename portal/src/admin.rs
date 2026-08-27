@@ -983,7 +983,7 @@ async fn project_view_as_client(
                 .into_response();
         }
     };
-    // A staff person whose sole row is client-side is already in the client
+    // A caller whose sole row is client-side is already in the client
     // rendering. Only the supervised Clerk or firm workbench variants may
     // enter a client preview from this control.
     if !matches!(

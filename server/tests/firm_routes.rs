@@ -354,8 +354,8 @@ async fn litigation_is_the_statement_and_the_filed_paragraphs() {
     assert!(body.contains("built"), "the statement: {body}");
     assert!(body.contains("speed."), "the statement: {body}");
     assert!(
-        body.contains("Litigation, plaintiff and defense"),
-        "the eyebrow names both sides of the v: {body}"
+        body.contains("Values-Based Litigation"),
+        "the eyebrow: {body}"
     );
     let seen = body
         .find("We represent those who haven\u{2019}t been justly seen")
@@ -452,7 +452,7 @@ async fn litigation_publishes_no_quantified_efficiency_claim() {
 
 /// Speed is stated as method, never as outcome.
 ///
-/// This is the load-bearing line of the reframe. "Litigation attorneys built
+/// This is the load-bearing line of the reframe. "Litigation built
 /// for speed" is a claim a reader can hear as a promise about how fast their
 /// own case ends, and on an attorney-advertising page that reading is a bar
 /// problem rather than a copy preference. What makes the heading publishable is

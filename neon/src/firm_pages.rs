@@ -459,7 +459,7 @@ fn hero_words(heading: &str, accent_words: usize) -> Vec<webapp::litigation_page
 /// the firm runs a matter.
 ///
 /// **The page's claim is speed, and speed is stated as method rather than as
-/// outcome.** "Litigation attorneys built for speed" is a differentiator a bar
+/// outcome.** "Litigation built for speed" is a differentiator a bar
 /// examiner reads as an implied result unless the body binds it to *how the
 /// firm works*, so the closing paragraph says so outright. The same line is why
 /// `publishes_no_quantified_efficiency_claim` matters more here than it did
@@ -549,8 +549,8 @@ pub(crate) fn resolve_litigation_content(
                            complex technology disputes for companies and fraud cases for the \
                            people on the receiving end."
             .to_string(),
-        eyebrow: "Litigation, plaintiff and defense".to_string(),
-        heading: hero_words("Litigation attorneys built for speed.", 2),
+        eyebrow: "Values-Based Litigation".to_string(),
+        heading: hero_words("Litigation built for speed.", 1),
         lead: "Our strategy is always the same. Do as much as we can, as early as we can, and get \
                you to a resolution sooner. That is not the right approach for every case. It \
                could be the right one for yours."

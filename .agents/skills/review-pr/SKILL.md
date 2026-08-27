@@ -24,5 +24,9 @@ The action is narrow:
 7. Push, reply with the proof, and resolve only the handled thread.
 8. Report unrelated comments, CI failures, and branch state without changing them.
 
+A reply is published, so it references planning by bare issue identifier (`ENG-1234`) — never a `linear.app` URL, an
+issue title, or a project name. See [Linking a PR to its Linear
+issue](../../../docs/agent-workflows.md#linking-a-pr-to-its-linear-issue).
+
 For a dirty tree that needs a new PR, use `create-pr`. For a failed GitHub Action, use the separate failed-Action flow
 in [`docs/agent-workflows.md`](../../../docs/agent-workflows.md#address-a-failed-github-action).

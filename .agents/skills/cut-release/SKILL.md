@@ -22,4 +22,7 @@ through a PR; merging `main` drives publication.
   [`docs/gitops.md`](../../../docs/gitops.md#why-a-hotfix-prerelease-ranks-below-its-date).
 - Make the smallest version-only commit, run the documented gate, and open the PR against `main`.
 - Stop when that PR merges. Report its URL. Do not watch `deploy.yml` for the tag, images, archives, or tap.
-- Do not deploy, mutate production, or copy production coordinates into the branch, PR, or release notes.
+- Do not deploy, mutate production, or copy production coordinates into the branch, PR, or release notes. Where release
+  notes cite planning, cite the bare Linear issue identifier (`ENG-1234`) — never a `linear.app` URL, issue title, or
+  project name. See [Linking a PR to its Linear
+  issue](../../../docs/agent-workflows.md#linking-a-pr-to-its-linear-issue).

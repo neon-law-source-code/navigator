@@ -47,6 +47,14 @@ Load-bearing rules from those docs:
   like the e2e, so it counts as uncovered too. The floor measures the whole workspace, so cover what you wrote yourself.
   See the full note in the doc's [Create a PR](../../../docs/agent-workflows.md#create-a-pr) gate.
 - Group by blast radius: one reviewable concern per commit, staging each path explicitly.
+- **Link the Linear issue by identifier, and by nothing else.** Put one magic-word trailer in the PR body — `Closes
+  ENG-1234` — so Linear links the PR and completes the issue on merge. Keep the identifier out of the PR title, which
+  becomes the squash-merge subject. The roadmap stays private even though the code is public, so no `linear.app` URL
+  (its path carries the issue title as a slug), no issue title, project, initiative, milestone, or cycle name, and no
+  branch name copied from Linear's **Copy git branch name**, which appends that slug — name the branch
+  `<initials>/eng-1234-<short-neutral-topic>` yourself. See [Linking a PR to its Linear
+  issue](../../../docs/agent-workflows.md#linking-a-pr-to-its-linear-issue), which also carries the one exposure this
+  discipline cannot close: Linear's own linkback comment.
 - Capture a live walkthrough of any user-visible change into `/tmp/navigator-screenshots/`, look at it yourself, and
   embed it in the PR body via [[pr-image-upload]] (one `curl` to the tenant's `user-attachments` store, authenticated by
   `gh auth token`). The artifact lives in `/tmp` and the PR body links it; reach for `curl` rather than the `gh-image`

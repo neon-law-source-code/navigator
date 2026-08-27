@@ -21,8 +21,12 @@ Never put any of the following in Git, pull requests, commit messages, issues, p
 other external planning surfaces:
 
 - client or matter data, including party names, matter codes, addresses, contact details, answers, or work product;
-- legal files, document bodies, uploads, generated documents, or screenshots containing their contents; or
-- production identifiers, credentials, hosts, project names, buckets, service accounts, or operational coordinates.
+- legal files, document bodies, uploads, generated documents, or screenshots containing their contents;
+- production identifiers, credentials, hosts, project names, buckets, service accounts, or operational coordinates; or
+- the product roadmap — Linear issue titles, project, initiative, milestone, or cycle names, and `linear.app` URLs,
+  whose path carries the issue title as a slug. The roadmap lives in Linear; a published branch, PR, or commit
+  references it by bare issue identifier (`ENG-1234`) and nothing more. See [Linking a PR to its Linear
+  issue](agent-workflows.md#linking-a-pr-to-its-linear-issue).
 
 Do not work around this rule by redacting a copy, using a realistic placeholder, or moving the material to another
 third-party service. Client data and legal files belong in Navigator-managed systems and the firm's approved file

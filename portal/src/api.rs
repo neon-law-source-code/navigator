@@ -2488,6 +2488,25 @@ async fn upload_document_door(
     } else {
         store::documents::visibility::INTERNAL
     };
+    // The asset lane is closed at `store::documents::ingest_bytes`, which
+    // refuses a kind outside it. Refuse it here too, so a caller that sends
+    // one reads a `400` naming its own mistake rather than a `500` — this is
+    // a malformed request, not a server fault. The browser form narrows to
+    // `unclassified` instead, because there a lawyer's document is at stake
+    // and the picker already constrains the value; an API caller states the
+    // kind deliberately and is better told it was wrong.
+    let kind = input
+        .kind
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| rules::kind::Kind::Unclassified.as_str());
+    if !rules::kind::Kind::parse(kind).is_some_and(|k| k.valid_for(rules::kind::Lane::Asset)) {
+        return Ok(bad_request(
+            "invalid_kind",
+            "kind must be a document classification valid for a matter.",
+        ));
+    }
     // File under the acting lawyer for git attribution, mirroring the form.
     let (author_name, author_email) = match lawyer.0.person_id {
         Some(pid) => match store::persons::find_by_id(&state.surreal, pid)
@@ -2504,12 +2523,7 @@ async fn upload_document_door(
         project_id: id,
         source: store::documents::source::UPLOAD,
         filename,
-        kind: input
-            .kind
-            .as_deref()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .unwrap_or("unclassified"),
+        kind,
         content_type: input
             .content_type
             .as_deref()

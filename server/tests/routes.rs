@@ -7668,7 +7668,7 @@ async fn client_project_detail_hides_internal_review_memo_but_lawyer_sees_it() {
         project_id,
         source: "upload",
         filename: "review-memo.pdf",
-        kind: "review_memo",
+        kind: "memo",
         content_type: "application/pdf",
         description: Some("Inbound contract review memo"),
         secondary_storage_key: None,
@@ -10139,7 +10139,7 @@ async fn admin_generic_listings_render_row_cells_from_the_database() {
             project_id: asset_project.id,
             source: store::documents::source::UPLOAD,
             filename: "retainer.pdf",
-            kind: "engagement",
+            kind: "agreement",
             content_type: "application/pdf",
             description: None,
             secondary_storage_key: None,
@@ -10225,7 +10225,7 @@ async fn admin_generic_listings_render_row_cells_from_the_database() {
             vec![
                 format!("blobs/{asset_sha}"),
                 "retainer.pdf".to_string(),
-                "engagement".to_string(),
+                "agreement".to_string(),
                 "application/pdf".to_string(),
                 asset_bytes.len().to_string(),
                 asset_sha.clone(),
@@ -10327,7 +10327,7 @@ async fn seed_matter_content(surreal: &store::surreal::SurrealDb) -> MatterConte
             project_id: visible.id,
             source: store::documents::source::UPLOAD,
             filename: "visible-brief.pdf",
-            kind: "engagement",
+            kind: "agreement",
             content_type: "application/pdf",
             description: None,
             secondary_storage_key: None,
@@ -10345,7 +10345,7 @@ async fn seed_matter_content(surreal: &store::surreal::SurrealDb) -> MatterConte
             project_id: hidden.id,
             source: store::documents::source::UPLOAD,
             filename: "hidden-brief.pdf",
-            kind: "engagement",
+            kind: "agreement",
             content_type: "application/pdf",
             description: None,
             secondary_storage_key: None,
@@ -12362,7 +12362,7 @@ async fn project_documents_upload_writes_blob_and_document_with_description() {
     body.extend_from_slice(payload);
     body.extend_from_slice(format!("\r\n--{boundary}\r\n").as_bytes());
     body.extend_from_slice(b"Content-Disposition: form-data; name=\"kind\"\r\n\r\n");
-    body.extend_from_slice(b"intake");
+    body.extend_from_slice(b"retainer");
     body.extend_from_slice(format!("\r\n--{boundary}\r\n").as_bytes());
     body.extend_from_slice(b"Content-Disposition: form-data; name=\"description\"\r\n\r\n");
     body.extend_from_slice(b"signed retainer from client");
@@ -12403,7 +12403,7 @@ async fn project_documents_upload_writes_blob_and_document_with_description() {
     assert_eq!(docs[0].byte_size, i64::try_from(payload.len()).unwrap());
     assert_eq!(docs[0].content_type, "text/plain");
     assert_eq!(docs[0].filename.as_deref(), Some("hello.txt"));
-    assert_eq!(docs[0].kind.as_deref(), Some("intake"));
+    assert_eq!(docs[0].kind.as_deref(), Some("retainer"));
     assert_eq!(docs[0].project_id, Some(project_id));
     assert_eq!(docs[0].source.as_deref(), Some("upload"));
     assert_eq!(
@@ -12411,6 +12411,86 @@ async fn project_documents_upload_writes_blob_and_document_with_description() {
         Some("signed retainer from client")
     );
     assert!(docs[0].received_at.is_some());
+}
+
+/// The upload door narrows a `kind` outside the asset lane to
+/// `unclassified` rather than losing the document.
+///
+/// `store::documents::ingest_bytes` refuses an out-of-lane kind, which is
+/// right for a boundary whose job is classification. But the thing being
+/// filed is a legal document, and a hand-crafted or stale submission must
+/// not make it vanish behind a 500. So the door narrows first: the file
+/// lands, honestly labelled `unclassified`, and — the part that matters —
+/// the matter's lifecycle badge is untouched, because `unclassified` opens
+/// no matter.
+///
+/// `retainer_pdf` is the shape this guards against: a plausible-looking
+/// value that was never a `Kind`, of the sort the form's old free-text box
+/// invited.
+#[tokio::test]
+async fn project_documents_upload_narrows_an_out_of_lane_kind_to_unclassified() {
+    let (state, surreal) = state_with_engines().await; // auth disabled
+
+    let __dri = store::test_support::dri_person(&surreal).await;
+    let project = test_project(&surreal, "Out Of Lane Kind", "open").await;
+    let project_id = project.id;
+    let project_code = project.code;
+
+    let app = server::neon_router(
+        state.clone(),
+        std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
+    );
+
+    let (cookie, csrf) = admin_on_project(&surreal, project_id).await;
+    let boundary = "----navigator-test-out-of-lane-boundary";
+    let payload: &[u8] = b"a document filed under a classification nobody defined";
+    let mut body: Vec<u8> = Vec::new();
+    body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
+    body.extend_from_slice(b"Content-Disposition: form-data; name=\"_csrf\"\r\n\r\n");
+    body.extend_from_slice(csrf.as_bytes());
+    body.extend_from_slice(format!("\r\n--{boundary}\r\n").as_bytes());
+    body.extend_from_slice(
+        b"Content-Disposition: form-data; name=\"file\"; filename=\"letter.pdf\"\r\n",
+    );
+    body.extend_from_slice(b"Content-Type: application/pdf\r\n\r\n");
+    body.extend_from_slice(payload);
+    body.extend_from_slice(format!("\r\n--{boundary}\r\n").as_bytes());
+    body.extend_from_slice(b"Content-Disposition: form-data; name=\"kind\"\r\n\r\n");
+    body.extend_from_slice(b"retainer_pdf");
+    body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/app/projects/{project_code}/documents/upload"))
+                .header("cookie", cookie)
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::SEE_OTHER,
+        "the document must be filed, not lost to an error"
+    );
+
+    let docs = store::assets::list_all(&state.surreal).await.unwrap();
+    assert_eq!(docs.len(), 1, "the document landed");
+    assert_eq!(
+        docs[0].kind.as_deref(),
+        Some("unclassified"),
+        "an out-of-lane kind is narrowed to the honest value, not stored as sent"
+    );
+    assert!(
+        !store::projects::asset_opens_a_matter(docs[0].kind.as_deref().unwrap_or_default()),
+        "a narrowed upload must not clear the matter's engagement badge"
+    );
 }
 
 #[tokio::test]
@@ -12453,7 +12533,7 @@ async fn project_documents_upload_files_one_document_per_file_in_a_batch() {
     }
     body.extend_from_slice(format!("\r\n--{boundary}\r\n").as_bytes());
     body.extend_from_slice(b"Content-Disposition: form-data; name=\"kind\"\r\n\r\n");
-    body.extend_from_slice(b"intake");
+    body.extend_from_slice(b"filing");
     body.extend_from_slice(format!("\r\n--{boundary}\r\n").as_bytes());
     body.extend_from_slice(b"Content-Disposition: form-data; name=\"description\"\r\n\r\n");
     body.extend_from_slice(b"discovery batch three");
@@ -12500,7 +12580,7 @@ async fn project_documents_upload_files_one_document_per_file_in_a_batch() {
     // Batch-level metadata is stamped on every document in the batch.
     for doc in &docs {
         assert_eq!(doc.project_id, Some(project_id));
-        assert_eq!(doc.kind.as_deref(), Some("intake"));
+        assert_eq!(doc.kind.as_deref(), Some("filing"));
         assert_eq!(doc.description.as_deref(), Some("discovery batch three"));
         assert_eq!(doc.source.as_deref(), Some("upload"));
         assert!(doc.received_at.is_some());
@@ -12998,7 +13078,7 @@ async fn project_detail_page_renders_documents_and_upload_form() {
         project_id,
         source: "upload",
         filename: "engagement-letter.pdf",
-        kind: "intake",
+        kind: "unclassified",
         content_type: "application/pdf",
         description: Some("Initial upload"),
         secondary_storage_key: None,
@@ -13180,7 +13260,7 @@ async fn project_document_download_404s_when_doc_belongs_to_a_different_project(
         project_id: project_a,
         source: "upload",
         filename: "secret.pdf",
-        kind: "intake",
+        kind: "unclassified",
         content_type: "application/pdf",
         description: None,
         secondary_storage_key: None,
@@ -13427,7 +13507,7 @@ async fn project_detail_page_renders_an_empty_matter_calendar() {
         project_id,
         source: "upload",
         filename: "engagement-letter.pdf",
-        kind: "intake",
+        kind: "unclassified",
         content_type: "application/pdf",
         description: Some("Initial upload"),
         secondary_storage_key: None,

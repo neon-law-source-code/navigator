@@ -371,7 +371,10 @@ struct UploadedFile {
 /// them.
 struct UploadBatch {
     files: Vec<UploadedFile>,
-    /// Already defaulted to `unclassified` when the form left it blank.
+    /// A `rules::kind::Kind` valid for `Lane::Asset`. Already narrowed to
+    /// `unclassified` when the form left it blank or sent anything else —
+    /// the honest value wins over a malformed submission, exactly as the
+    /// safe tier does for `visibility` below.
     kind: String,
     /// `None` when the form left it blank, so it isn't stored as `""`.
     description: Option<String>,
@@ -447,11 +450,24 @@ async fn read_upload_batch(multipart: &mut Multipart) -> Result<UploadBatch, Bat
 
     Ok(UploadBatch {
         files,
+        // `store::documents::ingest_bytes` refuses a kind outside the asset
+        // lane, and refusing is right for a boundary whose job is
+        // classification. But a lawyer's document must not be lost to a
+        // malformed POST, so the door narrows an unrecognized value to
+        // `unclassified` here instead: the file lands, honestly labelled as
+        // unclassified, and the matter's lifecycle warnings are untouched.
+        // The form itself only offers lane-valid values, so this is the
+        // hand-crafted-submission path, not the ordinary one.
         kind: kind
             .as_deref()
             .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map_or_else(|| "unclassified".to_string(), str::to_string),
+            .filter(|k| {
+                rules::kind::Kind::parse(k).is_some_and(|k| k.valid_for(rules::kind::Lane::Asset))
+            })
+            .map_or_else(
+                || rules::kind::Kind::Unclassified.as_str().to_string(),
+                str::to_string,
+            ),
         description: description
             .as_deref()
             .map(str::trim)

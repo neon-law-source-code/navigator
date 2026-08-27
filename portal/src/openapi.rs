@@ -1858,7 +1858,7 @@ pub fn document_with_base(base: &str) -> Value {
                     "filename": { "type": "string" },
                     "content_base64": { "type": "string", "description": "Base64-encoded file bytes" },
                     "content_type": { "type": "string" },
-                    "kind": { "type": "string" },
+                    "kind": { "type": "string", "description": "Document classification. One of the kinds valid for a document filed on a matter; defaults to `unclassified`. Anything else is a 400." },
                     "visibility": { "type": "string", "enum": ["client", "internal"] },
                     "description": { "type": "string" }
                   }
@@ -1869,7 +1869,7 @@ pub fn document_with_base(base: &str) -> Value {
               "201": { "description": "The document was filed", "content": { "application/json": {
                 "schema": { "type": "object", "required": ["document_id"], "properties": { "document_id": { "type": "string", "format": "uuid" } } }
               } } },
-              "400": { "description": "Blank filename or undecodable base64", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+              "400": { "description": "Blank filename, undecodable base64, or a kind outside the document classifications", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
               "401": { "description": "No authenticated session", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
               "403": { "description": "Authenticated caller is not Lawyer/admin", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
               "404": { "description": "No such matter, or out of scope", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },

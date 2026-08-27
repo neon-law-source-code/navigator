@@ -395,6 +395,68 @@ fn not_found(
     }
 }
 
+/// The document classifications the upload form offers, as
+/// `(value, lawyer-facing label)`, in the order they are shown.
+///
+/// The values are exactly `rules::kind::Kind::valid_for(Lane::Asset)` — the
+/// lane `store::documents::ingest_bytes` enforces — so a lawyer is never
+/// offered a classification the ingest would then refuse.
+///
+/// It is a literal list rather than a call into `rules` for the same reason
+/// `rules::kind::VALID` is: this module compiles into the wasm client bundle,
+/// and `rules` carries a filesystem walker and a YAML parser that have no
+/// business there. `asset_kind_choices_are_exactly_the_asset_lane` pins the
+/// two together, exactly as `valid_strings_are_exactly_the_template_lane`
+/// pins `VALID` to the template lane.
+///
+/// The labels are written for a lawyer choosing what a document *is*, not
+/// lifted from `Kind::describe`, whose text is editor-completion copy and
+/// carries "asset-lane only" notes that mean nothing on this form.
+///
+/// `unclassified` leads because it is the default: the honest value for a
+/// document nobody has classified yet.
+pub const ASSET_KIND_CHOICES: &[(&str, &str)] = &[
+    ("unclassified", "Unclassified — not yet classified"),
+    (
+        "retainer",
+        "Retainer — the engagement letter that opens this matter",
+    ),
+    (
+        "onboarding",
+        "Onboarding — the intake engagement that opens this matter",
+    ),
+    (
+        "letter",
+        "Letter — correspondence sent on the client's behalf",
+    ),
+    ("filing", "Filing — filed with a court or government body"),
+    ("will", "Will — a last will and testament"),
+    ("trust", "Trust — a trust instrument"),
+    (
+        "directive",
+        "Directive — a health-care or financial directive",
+    ),
+    (
+        "agreement",
+        "Agreement — employment, contractor, or operating",
+    ),
+    ("memo", "Memo — analytical work product"),
+    ("transcript", "Transcript — a recorded sitting"),
+    ("inbound_contract", "Inbound contract — sent in for review"),
+    (
+        "certificate_of_naturalization",
+        "Certificate of naturalization — USCIS Form N-550",
+    ),
+];
+
+/// [`ASSET_KIND_CHOICES`] as form options.
+fn asset_kind_choices() -> Vec<crate::components::Choice> {
+    ASSET_KIND_CHOICES
+        .iter()
+        .map(|(value, label)| crate::components::Choice::new(*value, *label))
+        .collect()
+}
+
 /// The lawyer matter-detail workbench, server-side rendered.
 #[component]
 pub fn LawyerProjectDetail() -> Element {
@@ -647,8 +709,9 @@ pub fn LawyerProjectDetail() -> Element {
                     fields: vec![
                         Field::file("Files", "file").id("document-upload-file").required().multiple()
                             .help("Select one file or several — each is filed as its own document."),
-                        Field::text("Kind", "kind", "").placeholder("intake")
-                            .help("Optional — defaults to `unclassified`. Applies to every file in this batch."),
+                        Field::select("Kind", "kind", asset_kind_choices(),
+                            Some("unclassified".to_string()))
+                            .help("What this document is. Applies to every file in this batch. Leave it unclassified if you are not sure — filing a document as the engagement letter tells the matters list this matter has been papered."),
                         Field::text("Description", "description", "")
                             .placeholder("Letter from Acme Bank dated 2026-05-23")
                             .help("Optional. Applies to every file in this batch."),

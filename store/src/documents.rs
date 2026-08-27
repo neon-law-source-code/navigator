@@ -83,6 +83,11 @@ pub enum IngestError {
     /// read back.
     #[error("writing a document asset returned no usable row")]
     WriteReturnedNothing,
+    /// The `kind` is not a value that can classify a document filed on a
+    /// matter — an unrecognized string, or a [`rules::kind::Kind`] that
+    /// belongs to the template lane only (a teaching page, a dashboard).
+    #[error("`{0}` does not classify a document that can be filed on a matter")]
+    KindNotFilable(String),
 }
 
 /// Inputs to [`ingest_bytes`]. Held in a struct (rather than a long
@@ -96,8 +101,10 @@ pub struct IngestArgs<'a> {
     pub source: &'a str,
     /// Caller-visible filename. Goes into `assets.filename`.
     pub filename: &'a str,
-    /// Document classification — `retainer`, `intake`, `invoice`, … Goes
-    /// into `assets.kind`.
+    /// Document classification. Must be a [`rules::kind::Kind`] valid for
+    /// [`rules::kind::Lane::Asset`] — [`ingest_bytes`] rejects anything
+    /// else. `unclassified` is the honest value when nobody has classified
+    /// the artifact yet. Goes into `assets.kind`.
     pub kind: &'a str,
     /// MIME content type of `bytes`.
     pub content_type: &'a str,
@@ -167,24 +174,51 @@ pub struct IngestedDocument {
 /// Ingest one artifact: write the bytes (if new), insert the document
 /// `asset` row, return the id.
 ///
+/// # The asset lane is closed here
+///
+/// `args.kind` must be a [`rules::kind::Kind`] valid for
+/// [`rules::kind::Lane::Asset`], whose doc comment names this the lane's
+/// ingest boundary. An unrecognized string and a valid-but-wrong-lane one
+/// are rejected by the same arm: neither classifies a document that can be
+/// filed on a matter.
+///
+/// It **rejects** rather than coercing to `unclassified`, because this is
+/// the lane whose whole job is classification — silently rewriting a
+/// caller's stated kind would file the document under a classification
+/// nobody chose, and the caller would never learn its own value was wrong.
+/// A caller that would rather file than fail narrows the value to
+/// `unclassified` itself, in front of this boundary, where the choice is
+/// visible (`portal::project_documents::read_upload_batch` does exactly
+/// that for the upload form).
+///
+/// [`crate::assets::file_revision`] applies the identical check as its
+/// first rule, so both of the lane's write doors are closed. The raw write
+/// [`ingest_bytes_as`] deliberately does not — see its doc comment.
+///
 /// # Errors
-/// [`IngestError`] on a storage or database failure.
+/// [`IngestError::KindNotFilable`] when `args.kind` is outside the asset
+/// lane; otherwise [`IngestError`] on a storage or database failure.
 pub async fn ingest_bytes(
     db: &SurrealDb,
     storage: &Arc<dyn StorageService>,
     args: &IngestArgs<'_>,
     bytes: &[u8],
 ) -> Result<IngestedDocument, IngestError> {
+    if !rules::kind::Kind::parse(args.kind).is_some_and(|k| k.valid_for(rules::kind::Lane::Asset)) {
+        return Err(IngestError::KindNotFilable(args.kind.to_string()));
+    }
     ingest_bytes_as(db, storage, args, &DocumentIdentity::default(), bytes).await
 }
 
 /// [`ingest_bytes`], filing the bytes as a revision of the document named
 /// by `identity`.
 ///
-/// The raw write. It does **not** enforce the asset lane's rules — that
-/// is [`crate::assets::file_revision`]'s job, and slugged callers should
-/// go through it so no call site reimplements the no-op and immutability
-/// checks and drifts.
+/// The raw write. It does **not** enforce the asset lane's rules — not the
+/// `kind` check [`ingest_bytes`] applies, and not the no-op and
+/// immutability checks that are [`crate::assets::file_revision`]'s job.
+/// Slugged callers go through `file_revision` so no call site reimplements
+/// them and drifts; every other caller goes through [`ingest_bytes`].
+/// Between the two, no unchecked `kind` reaches `assets.kind`.
 ///
 /// # Errors
 /// Propagates database and storage errors.
@@ -336,6 +370,79 @@ mod tests {
         (db, storage, tmp, project_id)
     }
 
+    /// The asset lane is closed at ingest: a `kind` outside
+    /// `Kind::valid_for(Lane::Asset)` never reaches `assets.kind`.
+    ///
+    /// The three refused shapes are refused for three different reasons,
+    /// and each has been written by real code in this workspace: a free-text
+    /// classification a lawyer typed into what used to be a text box, a
+    /// plausible-looking compound nobody defined, and a real `Kind` that
+    /// belongs to the template lane only.
+    #[tokio::test]
+    async fn ingest_refuses_a_kind_outside_the_asset_lane() {
+        let (db, storage, _tmp, project_id) = fixtures().await;
+        for (kind, why) in [
+            ("intake", "free text, not a Kind at all"),
+            ("retainer_pdf", "a plausible compound nobody defined"),
+            (
+                "workshop",
+                "a real Kind, but a teaching page is never filed on a matter",
+            ),
+        ] {
+            let args = IngestArgs {
+                project_id,
+                source: "upload",
+                filename: "letter.pdf",
+                kind,
+                content_type: "application/pdf",
+                description: None,
+                secondary_storage_key: None,
+                visibility: visibility::INTERNAL,
+            };
+
+            let err = ingest_bytes(&db, &storage, &args, b"bytes")
+                .await
+                .expect_err(&format!("`{kind}` must be refused: {why}"));
+            assert!(
+                matches!(&err, IngestError::KindNotFilable(k) if k == kind),
+                "`{kind}` must be refused as unfilable ({why}); got {err:?}"
+            );
+        }
+
+        // Nothing was written on the way to the refusal — the check runs
+        // before the storage put and before the row insert, so a rejected
+        // ingest leaves the matter exactly as it found it.
+        assert!(
+            !crate::assets::exists_for_project(&db, project_id)
+                .await
+                .unwrap(),
+            "a refused ingest must not leave an asset row behind"
+        );
+    }
+
+    /// `unclassified` is deliberately accepted: it is the lane's honest
+    /// "nobody has classified this yet" value, and the upload form's
+    /// default. Refusing it would leave a lawyer no truthful way to file a
+    /// document they have not yet classified.
+    #[tokio::test]
+    async fn ingest_accepts_the_unclassified_default() {
+        let (db, storage, _tmp, project_id) = fixtures().await;
+        let args = IngestArgs {
+            project_id,
+            source: "upload",
+            filename: "scan.pdf",
+            kind: "unclassified",
+            content_type: "application/pdf",
+            description: None,
+            secondary_storage_key: None,
+            visibility: visibility::INTERNAL,
+        };
+
+        ingest_bytes(&db, &storage, &args, b"bytes")
+            .await
+            .expect("`unclassified` is in the asset lane");
+    }
+
     #[tokio::test]
     async fn ingest_writes_a_document_asset_with_provenance() {
         let (db, storage, _tmp, project_id) = fixtures().await;
@@ -393,7 +500,7 @@ mod tests {
             project_id,
             source: "upload",
             filename: fname,
-            kind: "intake",
+            kind: "unclassified",
             content_type: "text/plain",
             description: None,
             secondary_storage_key: None,
@@ -439,7 +546,7 @@ mod tests {
             project_id,
             source: "upload",
             filename: "exhibit.pdf",
-            kind: "intake",
+            kind: "unclassified",
             content_type: "application/pdf",
             description: None,
             secondary_storage_key: None,
@@ -472,7 +579,7 @@ mod tests {
             project_id,
             source: "upload",
             filename: fname,
-            kind: "intake",
+            kind: "unclassified",
             content_type: "text/plain",
             description: None,
             secondary_storage_key: None,
@@ -500,7 +607,7 @@ mod tests {
             project_id,
             source: source::GENERATED,
             filename: "document.pdf",
-            kind: "retainer_pdf",
+            kind: "retainer",
             content_type: "application/pdf",
             description: None,
             secondary_storage_key: Some(notation_key),
@@ -523,7 +630,7 @@ mod tests {
             project_id,
             source: "upload",
             filename: "a.txt",
-            kind: "intake",
+            kind: "unclassified",
             content_type: "text/plain",
             description: None,
             secondary_storage_key: None,

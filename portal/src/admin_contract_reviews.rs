@@ -49,7 +49,13 @@ pub fn memo_storage_key(notation_id: Uuid) -> String {
 }
 
 /// `documents.kind` the rendered memo is filed under in the Project.
-const MEMO_KIND: &str = "review_memo";
+///
+/// [`rules::kind::Kind::Memo`] — "an analytical work product (a review memo or
+/// opinion)" — which is what this is. The value has to be a real `Kind` in the
+/// asset lane, because [`store::documents::ingest_bytes`] refuses anything
+/// else. What keeps the memo off the client's document list is its
+/// `visibility`, not its kind.
+const MEMO_KIND: &str = "memo";
 
 // --- the loaded review + its matter ---------------------------------------
 

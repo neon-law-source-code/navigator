@@ -485,6 +485,160 @@ a.nav-pagination__link:hover {
   margin: 0 auto;
 }
 
+/* Documentation index: a flat card catalog. The layout provides the reading
+ * room metaphor; the ordered list remains the sole collection. */
+.docs-catalog {
+  padding: clamp(2rem, 6vw, 5rem) 1.25rem;
+  background:
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--nav-color-primary) 7%, transparent) 1px,
+      transparent 1px
+    ),
+    var(--nav-color-bg);
+  background-size: 2.25rem 2.25rem;
+}
+
+.docs-catalog__desk {
+  max-width: 72rem;
+  margin: 0 auto;
+}
+
+.docs-catalog h1 {
+  max-width: 18ch;
+  margin: 0.4rem 0 0;
+  font-size: clamp(2.25rem, 6vw, 4rem);
+  line-height: 1;
+  text-wrap: balance;
+}
+
+.docs-catalog__lede {
+  margin: 1rem 0 0;
+  font-size: clamp(1.1rem, 2vw, 1.35rem);
+  font-weight: 600;
+}
+
+.docs-catalog__start {
+  color: var(--nav-color-primary);
+  text-decoration: underline;
+  text-decoration-thickness: 0.1em;
+  text-underline-offset: 0.16em;
+}
+
+.docs-catalog__start:hover {
+  color: var(--nav-color-primary-hover);
+}
+
+.docs-catalog__start:focus-visible {
+  outline: 3px solid var(--nav-color-primary);
+  outline-offset: 0.25rem;
+  border-radius: var(--nav-radius-sm);
+}
+
+.docs-catalog__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+  gap: 1rem;
+  padding: 0;
+  margin: 2rem 0 0;
+  list-style: none;
+}
+
+.docs-catalog__card {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  display: flex;
+  min-height: 8rem;
+  flex-direction: column;
+  justify-content: center;
+  padding: 1.25rem;
+  border: 1px solid color-mix(in oklab, var(--nav-color-primary) 28%, transparent);
+  border-radius: 1rem;
+  background-image: linear-gradient(
+    to bottom,
+    color-mix(in oklab, var(--nav-color-surface) 88%, transparent),
+    color-mix(in oklab, var(--nav-color-surface) 40%, transparent)
+  );
+  color: inherit !important;
+  text-decoration: none;
+  transition:
+    border-color 240ms ease,
+    transform 240ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.nav-theme a.docs-catalog__card:hover,
+.nav-theme a.docs-catalog__card:focus-visible {
+  border-color: var(--nav-color-primary);
+  color: inherit;
+  text-decoration: none;
+  transform: translateY(-2px);
+}
+
+.nav-theme a.docs-catalog__card:focus-visible {
+  outline: 3px solid var(--nav-color-primary);
+  outline-offset: 0.25rem;
+}
+
+.docs-catalog__card::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset-inline-start: -25%;
+  inset-block-end: -55%;
+  inline-size: 150%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 30% 70%,
+    var(--nav-color-primary) 0%,
+    color-mix(in srgb, var(--nav-color-primary) 45%, transparent) 45%,
+    transparent 72%
+  );
+  opacity: 0;
+  transform: scale(0.2);
+  transform-origin: 0% 100%;
+  transition:
+    transform 720ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 320ms ease;
+}
+
+.docs-catalog__card:hover::after,
+.docs-catalog__card:focus-visible::after {
+  opacity: 0.22;
+  transform: scale(1.5);
+}
+
+.docs-catalog__card-title {
+  margin: 0;
+  font-size: 1.2rem;
+  line-height: 1.25;
+  color: var(--nav-color-text);
+}
+
+.docs-catalog__card:hover .docs-catalog__card-title,
+.docs-catalog__card:focus-visible .docs-catalog__card-title {
+  color: var(--nav-color-primary-hover);
+}
+
+@media (prefers-color-scheme: dark) {
+  .docs-catalog__card {
+    border-color: color-mix(in oklab, var(--nav-color-primary) 24%, transparent);
+    background-image: linear-gradient(
+      to bottom,
+      color-mix(in oklab, var(--nav-color-surface-raised) 70%, transparent),
+      color-mix(in oklab, var(--nav-color-surface-raised) 32%, transparent)
+    );
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .docs-catalog__card,
+  .docs-catalog__card::after {
+    transition-duration: 1ms;
+  }
+}
+
 /* Reading links must be recognizable without color alone (WCAG 1.4.1). The
  * global anchor reset keeps navigation compact, but prose is where a visitor
  * needs an always-visible cue that a word leaves the page.

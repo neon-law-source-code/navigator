@@ -3056,10 +3056,25 @@ async fn inject_doc(
 
     match docs.find(&slug) {
         Some(doc) => {
+            let mut catalog: Vec<_> = if slug == DOCS_INDEX_SLUG {
+                docs.docs()
+                    .iter()
+                    .filter(|entry| entry.slug != DOCS_INDEX_SLUG)
+                    .map(|entry| webapp::docs_page::DocCatalogEntry {
+                        title: entry.title.clone(),
+                        href: format!("/docs/{}", entry.slug),
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            };
+            catalog.sort_by_cached_key(|entry| entry.title.to_lowercase());
             req.extensions_mut().insert(webapp::docs_page::InjectedDoc(
                 webapp::docs_page::DocContent {
                     title: doc.title.clone(),
                     body_html: doc.body_html.clone(),
+                    is_index: slug == DOCS_INDEX_SLUG,
+                    catalog,
                 },
             ));
             next.run(req).await

@@ -14571,6 +14571,88 @@ async fn docs_glossary_renders_headings() {
     );
     // Cross-doc link rewritten to a site route.
     assert!(body.contains("href=\"/docs/notation\""));
+    assert!(
+        body.contains("class=\"docs-article\""),
+        "article pages retain their reading layout"
+    );
+    assert!(
+        !body.contains("docs-catalog"),
+        "the catalog presentation belongs only to /docs"
+    );
+}
+
+#[tokio::test]
+async fn docs_index_is_a_flat_accessible_catalog_of_every_published_guide() {
+    let docs = portal::docs::loader::bundled();
+    let app = server::neon_router(
+        state_with_docs().await,
+        std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
+    );
+    let response = get_signed_in(app, "/docs").await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = body_string(response).await;
+
+    assert!(
+        body.contains("class=\"docs-catalog\""),
+        "catalog shell: {body}"
+    );
+    assert!(
+        body.contains("aria-label=\"Documentation catalog\""),
+        "named catalog navigation: {body}"
+    );
+    assert!(
+        body.contains("<ol class=\"docs-catalog__cards\""),
+        "ordered cards: {body}"
+    );
+    assert!(
+        !body.contains("docs-article"),
+        "root uses catalog, not article: {body}"
+    );
+    assert_eq!(body.matches("<h1").count(), 1, "one page heading: {body}");
+    assert!(
+        body.contains("Start with Glossary"),
+        "the index offers a direct first stop: {body}"
+    );
+    for retired_copy in [
+        "Reading room",
+        "Published guides, A–Z.",
+        "Choose a title. Start with the glossary.",
+        "Accession",
+        "Read guide",
+    ] {
+        assert!(
+            !body.contains(retired_copy),
+            "{retired_copy} must not return: {body}"
+        );
+    }
+
+    let mut published: Vec<_> = docs
+        .docs()
+        .iter()
+        .filter(|doc| doc.slug != "index")
+        .collect();
+    published.sort_by_cached_key(|doc| doc.title.to_lowercase());
+    let cards_start = body
+        .find("<ol class=\"docs-catalog__cards\"")
+        .expect("catalog cards");
+    let cards = &body[cards_start..];
+    let mut previous = 0;
+    for doc in published {
+        let href = format!("href=\"/docs/{}\"", doc.slug);
+        let position = cards
+            .find(&href)
+            .unwrap_or_else(|| panic!("missing {href}: {cards}"));
+        assert!(
+            position > previous,
+            "catalog order for {}: {cards}",
+            doc.title
+        );
+        previous = position;
+    }
+    assert!(
+        body.contains("class=\"neon-card docs-catalog__card\""),
+        "each catalog destination is a navigation card: {body}"
+    );
 }
 
 #[tokio::test]

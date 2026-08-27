@@ -38,6 +38,18 @@ pub struct DocContent {
     pub title: String,
     /// The rendered HTML body (already sanitized; NOT raw markdown).
     pub body_html: String,
+    /// True only for `/docs`, which renders a card catalog instead of the
+    /// Markdown index body.
+    pub is_index: bool,
+    /// Every published guide, supplied only to the index route.
+    pub catalog: Vec<DocCatalogEntry>,
+}
+
+/// One catalog card on the documentation index.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+pub struct DocCatalogEntry {
+    pub title: String,
+    pub href: String,
 }
 
 /// The [`DocContent`] the portal route's pre-layer injects for the matched slug,
@@ -106,7 +118,16 @@ pub fn docs_body(view: &DocsPageView) -> Element {
     let footer = rsx! {
         PublicFooter { chrome: chrome.clone() }
     };
-    let body_html = view.content.body_html.clone();
+    let content = if view.content.is_index {
+        docs_catalog(&view.content)
+    } else {
+        let body_html = view.content.body_html.clone();
+        rsx! {
+            // The body is already-rendered, already-sanitized HTML baked from
+            // the `docs/` tree, so it is emitted verbatim.
+            article { class: "docs-article", dangerous_inner_html: "{body_html}" }
+        }
+    };
     rsx! {
         document::Title { "{head_title}" }
         document::Meta { name: "description", content: DOC_DESCRIPTION }
@@ -117,10 +138,42 @@ pub fn docs_body(view: &DocsPageView) -> Element {
             image: chrome.social_image.clone(),
         }
         PublicShell { header, footer,
-            // The body is already-rendered, already-sanitized HTML baked from
-            // the `docs/` tree, so it is emitted verbatim — the page used
-            // `PreEscaped` for the same reason.
-            article { class: "docs-article", dangerous_inner_html: "{body_html}" }
+            {content}
+        }
+    }
+}
+
+/// The public `/docs` reading room. The collection stays flat: the cards sort
+/// by title, but no subject group changes a guide's place in the list.
+fn docs_catalog(content: &DocContent) -> Element {
+    let mut catalog = content.catalog.clone();
+    catalog.sort_by_cached_key(|entry| entry.title.to_lowercase());
+    rsx! {
+        section { class: "docs-catalog", "aria-labelledby": "docs-catalog-title",
+            div { class: "docs-catalog__desk",
+                h1 { id: "docs-catalog-title", "Documentation" }
+                p { class: "docs-catalog__lede",
+                    a { class: "docs-catalog__start", href: "/docs/glossary", "Start with Glossary" }
+                }
+                nav { class: "docs-catalog__list", "aria-label": "Documentation catalog",
+                    ol { class: "docs-catalog__cards",
+                        for (index , entry) in catalog.into_iter().enumerate() {
+                            li {
+                                a {
+                                    class: "neon-card docs-catalog__card",
+                                    href: "{entry.href}",
+                                    "aria-labelledby": "docs-catalog-card-{index}",
+                                    h2 {
+                                        id: "docs-catalog-card-{index}",
+                                        class: "docs-catalog__card-title",
+                                        "{entry.title}"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -147,12 +200,20 @@ mod tests {
             content: DocContent {
                 title: title.to_string(),
                 body_html: body_html.to_string(),
+                ..DocContent::default()
             },
         }
     }
 
     fn render(view: &DocsPageView) -> String {
         dioxus_ssr::render_element(docs_body(view))
+    }
+
+    fn catalog_entry(title: &str, slug: &str) -> DocCatalogEntry {
+        DocCatalogEntry {
+            title: title.to_string(),
+            href: format!("/docs/{slug}"),
+        }
     }
 
     #[test]
@@ -179,6 +240,101 @@ mod tests {
         assert!(
             out.contains(r#"class="docs-article""#),
             "article class: {out}"
+        );
+        assert!(
+            !out.contains("docs-catalog"),
+            "articles keep their existing reading layout: {out}"
+        );
+    }
+
+    #[test]
+    fn the_index_is_a_flat_alphabetical_catalog() {
+        let mut view = view("Documentation", "");
+        view.content.is_index = true;
+        view.content.catalog = vec![
+            catalog_entry("Workflow guide", "workflow-guide"),
+            catalog_entry("Access model", "access-model"),
+            catalog_entry("Glossary", "glossary"),
+        ];
+
+        let out = render(&view);
+        let access = out.find(">Access model</h2>").expect("access entry");
+        let glossary = out.find(">Glossary</h2>").expect("glossary entry");
+        let workflow = out.find(">Workflow guide</h2>").expect("workflow entry");
+        assert!(
+            access < glossary && glossary < workflow,
+            "alphabetical catalog: {out}"
+        );
+        assert!(
+            out.contains("href=\"/docs/access-model\""),
+            "catalog link: {out}"
+        );
+        assert!(
+            !out.contains("docs-article"),
+            "the index uses its own presentation: {out}"
+        );
+    }
+
+    #[test]
+    fn the_index_uses_named_navigation_and_a_single_heading() {
+        let mut view = view("Documentation", "");
+        view.content.is_index = true;
+        view.content.catalog = vec![catalog_entry("Glossary", "glossary")];
+
+        let out = render(&view);
+        assert!(
+            out.contains("<section class=\"docs-catalog\""),
+            "index landmark: {out}"
+        );
+        assert!(
+            out.contains("<nav class=\"docs-catalog__list\" aria-label=\"Documentation catalog\""),
+            "named catalog navigation: {out}"
+        );
+        assert_eq!(out.matches("<h1").count(), 1, "one page heading: {out}");
+        assert!(
+            out.contains("<ol class=\"docs-catalog__cards\""),
+            "ordered list: {out}"
+        );
+        assert!(
+            out.contains("Start with Glossary"),
+            "direct starting point: {out}"
+        );
+        for retired_copy in [
+            "Reading room",
+            "Published guides, A–Z.",
+            "Choose a title. Start with the glossary.",
+            "Accession",
+            "Read guide",
+        ] {
+            assert!(
+                !out.contains(retired_copy),
+                "{retired_copy} must not render: {out}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_catalog_card_is_one_named_navigation_link() {
+        let mut view = view("Documentation", "");
+        view.content.is_index = true;
+        view.content.catalog = vec![catalog_entry("Glossary", "glossary")];
+
+        let out = render(&view);
+        assert!(
+            out.contains(
+                "<a class=\"neon-card docs-catalog__card\" href=\"/docs/glossary\" aria-labelledby=\"docs-catalog-card-0\""
+            ),
+            "the complete card is the destination: {out}"
+        );
+        assert!(
+            out.contains(
+                "<h2 id=\"docs-catalog-card-0\" class=\"docs-catalog__card-title\">Glossary</h2>"
+            ),
+            "the card has a concise name: {out}"
+        );
+        assert!(
+            !out.contains("<article"),
+            "catalog cards are links, not article wrappers: {out}"
         );
     }
 

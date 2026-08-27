@@ -304,7 +304,7 @@ async fn internal_document_is_excluded_from_the_client_zip_but_included_for_lawy
         project_id: f.project_id,
         source: source::UPLOAD,
         filename: "review-memo.pdf",
-        kind: "review_memo",
+        kind: "memo",
         content_type: "application/pdf",
         description: None,
         secondary_storage_key: None,

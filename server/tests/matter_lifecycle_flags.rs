@@ -3,7 +3,7 @@
 //!
 //! The firm's lifecycle invariant: every matter opens on an onboarding
 //! (`onboarding__*`) notation — the client's retainer — and a *closed*
-//! matter carries a `closing__letter`. Neither is schema-enforced, so the
+//! matter carries an `offboarding__letter`. Neither is schema-enforced, so the
 //! Projects list surfaces the gaps with a warning badge. These tests pin
 //! both the pure rule (`store::projects::matter_flags`) and the rendered list.
 
@@ -68,23 +68,88 @@ fn an_open_matter_never_owes_a_closing_letter() {
     );
 }
 
-// ---- what counts as the matter-opening engagement ----
+// ---- the yellow/green/red lifecycle indicator ----
 
 #[test]
-fn a_retainer_template_opens_a_matter_whatever_its_code() {
-    // The flag keys off the declared `kind`, never the template's code.
-    // Every `kind: retainer` template happens to use an `onboarding__*`
-    // code today; a future one that does not must still count, or the
-    // badge would lie about a matter that has its engagement.
-    assert!(store::projects::template_opens_a_matter(Some("retainer")));
+fn an_open_matter_missing_its_onboarding_letter_is_the_yellow_state() {
+    assert_eq!(
+        store::projects::matter_lifecycle("open", true, false),
+        store::projects::MatterLifecycle::NeedsOnboarding
+    );
 }
 
 #[test]
-fn an_onboarding_engagement_opens_a_matter() {
-    // `onboarding__estate` / `onboarding__nexus` are `kind: onboarding`,
-    // not `retainer` — the intake-driven engagements that open a bundle
-    // of instruments. They open a matter just as a retainer does.
+fn an_open_matter_with_its_onboarding_letter_is_the_green_live_state() {
+    assert_eq!(
+        store::projects::matter_lifecycle("open", false, false),
+        store::projects::MatterLifecycle::Live
+    );
+}
+
+#[test]
+fn a_closed_matter_with_its_offboarding_letter_is_the_red_state() {
+    assert_eq!(
+        store::projects::matter_lifecycle("closed", false, false),
+        store::projects::MatterLifecycle::Closed
+    );
+}
+
+#[test]
+fn a_closed_matter_still_owing_its_offboarding_letter_is_still_the_red_state() {
+    // Red covers both — the still-owed gap keeps surfacing through the
+    // separate "no offboarding letter" badge, not a fourth colour.
+    assert_eq!(
+        store::projects::matter_lifecycle("closed", false, true),
+        store::projects::MatterLifecycle::Closed
+    );
+}
+
+#[test]
+fn every_lifecycle_state_carries_its_own_class_and_a_distinct_text_label() {
+    use store::projects::MatterLifecycle;
+    let states = [
+        MatterLifecycle::NeedsOnboarding,
+        MatterLifecycle::Live,
+        MatterLifecycle::Closed,
+    ];
+    let classes: Vec<&str> = states.iter().map(|s| s.class()).collect();
+    let labels: Vec<&str> = states.iter().map(|s| s.label()).collect();
+    assert_eq!(
+        classes
+            .iter()
+            .collect::<std::collections::HashSet<_>>()
+            .len(),
+        3,
+        "each state must render its own class: {classes:?}"
+    );
+    assert_eq!(
+        labels
+            .iter()
+            .collect::<std::collections::HashSet<_>>()
+            .len(),
+        3,
+        "each state must carry its own text label — colour cannot be the only signal: {labels:?}"
+    );
+}
+
+// ---- what counts as the matter-opening engagement ----
+
+#[test]
+fn an_onboarding_template_opens_a_matter_whatever_its_code() {
+    // The flag keys off the declared `kind`, never the template's code.
+    // Every onboarding template happens to use an `onboarding__*` code
+    // today; a future one that does not must still count, or the badge
+    // would lie about a matter that has its engagement.
     assert!(store::projects::template_opens_a_matter(Some("onboarding")));
+}
+
+#[test]
+fn a_retired_retainer_kind_string_no_longer_opens_a_matter() {
+    // `Kind::Retainer` was merged into `Kind::Onboarding` — every
+    // `kind: retainer` template was reclassified `kind: onboarding`, so
+    // the bare string `"retainer"` is no longer a recognized `Kind` at
+    // all and must not open a matter by accident.
+    assert!(!store::projects::template_opens_a_matter(Some("retainer")));
 }
 
 #[test]
@@ -128,6 +193,285 @@ fn the_badge_reads_every_kind_straight_from_the_classifier() {
             kind.as_str()
         );
     }
+}
+
+// ---- what counts as the matter-closing offboarding letter ----
+
+#[test]
+fn an_offboarding_template_closes_a_matter_whatever_its_code() {
+    // The flag keys off the declared `kind`, never the template's code —
+    // the mirror of the engagement side above.
+    assert!(store::projects::template_closes_a_matter(Some(
+        "offboarding"
+    )));
+}
+
+#[test]
+fn an_ordinary_letter_does_not_close_a_matter() {
+    // `kind: letter` is too broad to be the closing classifier — every
+    // offboarding letter is a letter, but a demand, notice, or settlement
+    // letter must not silently clear the badge.
+    assert!(!store::projects::template_closes_a_matter(Some("letter")));
+}
+
+#[test]
+fn work_inside_an_open_matter_does_not_close_it() {
+    for kind in ["onboarding", "filing", "will", "trust", "directive", "memo"] {
+        assert!(
+            !store::projects::template_closes_a_matter(Some(kind)),
+            "{kind} is work inside a matter, not the letter that closes it"
+        );
+    }
+}
+
+#[test]
+fn an_absent_or_unknown_kind_never_closes_a_matter() {
+    assert!(!store::projects::template_closes_a_matter(None));
+    assert!(!store::projects::template_closes_a_matter(Some("bogus")));
+}
+
+#[test]
+fn the_closing_badge_reads_every_kind_straight_from_the_classifier() {
+    // The mirror of `the_badge_reads_every_kind_straight_from_the_classifier`:
+    // the badge must answer "does this kind close a matter?" from
+    // `rules::kind::Kind::closes_a_matter` and nothing else.
+    for kind in rules::kind::Kind::ALL {
+        assert_eq!(
+            store::projects::template_closes_a_matter(Some(kind.as_str())),
+            kind.closes_a_matter(),
+            "the badge must classify {} straight from `Kind::closes_a_matter`",
+            kind.as_str()
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_matter_closed_on_a_bespoke_offboarding_code_still_clears_the_flag() {
+    // The assertion that would have caught the defect this issue fixes:
+    // keying the closing badge off `t.code == "closing__letter"` badges a
+    // matter offboarded on a differently-named template forever, even
+    // though its template legitimately declares `kind: offboarding`.
+    let (app, surreal) = build_app().await;
+    let _ = app;
+    let person = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::new("Bespoke", "bespoke@example.com"),
+    )
+    .await
+    .unwrap();
+    let matter = project(&surreal, "Bespoke closing matter", "closed").await;
+
+    let bespoke = store::templates::save_version(
+        &surreal,
+        Some(matter),
+        "practice__bespoke_closing",
+        store::templates::Version {
+            title: "Bespoke Closing Letter".into(),
+            respondent_type: "person".into(),
+            asset_id: None,
+            form_code: None,
+            kind: Some("offboarding".into()),
+            source_commit_sha: None,
+        },
+    )
+    .await
+    .unwrap()
+    .into_model();
+
+    store::notations::create(
+        &surreal,
+        &store::notations::NewNotation::new(bespoke.id, person.id, matter, "BEGIN"),
+    )
+    .await
+    .unwrap();
+
+    let projects = vec![store::projects::find_by_id(&surreal, matter)
+        .await
+        .unwrap()
+        .expect("matter row")];
+    let (_, has_closing) = store::projects::matter_lifecycle_sets(&surreal, &projects)
+        .await
+        .unwrap();
+    assert!(
+        has_closing.contains(&matter),
+        "a bespoke-coded kind: offboarding template must still clear the closing-letter flag"
+    );
+}
+
+// ---- the asset lane (an uploaded, lawyer-classified letter counts too) ----
+
+async fn asset_storage(name: &str) -> Arc<dyn cloud::StorageService> {
+    Arc::new(
+        cloud::FsStorage::new(std::env::temp_dir().join(format!("navigator-matter-flags-{name}")))
+            .await
+            .unwrap(),
+    )
+}
+
+async fn upload(
+    surreal: &store::surreal::SurrealDb,
+    storage: &Arc<dyn cloud::StorageService>,
+    project_id: Uuid,
+    filename: &str,
+    kind: &str,
+) {
+    store::documents::ingest_bytes(
+        surreal,
+        storage,
+        &store::documents::IngestArgs {
+            project_id,
+            source: store::documents::source::UPLOAD,
+            filename,
+            kind,
+            content_type: "application/pdf",
+            description: None,
+            secondary_storage_key: None,
+            visibility: store::documents::visibility::INTERNAL,
+        },
+        b"uploaded bytes",
+    )
+    .await
+    .unwrap();
+}
+
+async fn lifecycle_sets_for(surreal: &store::surreal::SurrealDb, project_id: Uuid) -> (bool, bool) {
+    let projects = vec![store::projects::find_by_id(surreal, project_id)
+        .await
+        .unwrap()
+        .expect("matter row")];
+    let (has_engagement, has_closing) = store::projects::matter_lifecycle_sets(surreal, &projects)
+        .await
+        .unwrap();
+    (
+        has_engagement.contains(&project_id),
+        has_closing.contains(&project_id),
+    )
+}
+
+#[tokio::test]
+async fn an_uploaded_onboarding_asset_clears_the_engagement_flag_with_no_notation_at_all() {
+    let (_app, surreal) = build_app().await;
+    let storage = asset_storage("asset-only-onboarding").await;
+    let matter = project(&surreal, "Asset-only onboarding", "open").await;
+    upload(&surreal, &storage, matter, "engagement.pdf", "onboarding").await;
+
+    let (has_engagement, _) = lifecycle_sets_for(&surreal, matter).await;
+    assert!(
+        has_engagement,
+        "an uploaded onboarding-kind asset must clear the engagement flag with no notation"
+    );
+}
+
+#[tokio::test]
+async fn an_uploaded_offboarding_asset_clears_the_closing_flag_with_no_notation_at_all() {
+    let (_app, surreal) = build_app().await;
+    let storage = asset_storage("asset-only-offboarding").await;
+    let matter = project(&surreal, "Asset-only offboarding", "closed").await;
+    upload(&surreal, &storage, matter, "closing.pdf", "offboarding").await;
+
+    let (_, has_closing) = lifecycle_sets_for(&surreal, matter).await;
+    assert!(
+        has_closing,
+        "an uploaded offboarding-kind asset must clear the closing flag with no notation"
+    );
+}
+
+#[tokio::test]
+async fn a_notation_alone_still_clears_the_flags_with_no_asset_present() {
+    // The regression the asset fold must not introduce: a matter opened and
+    // closed purely through the questionnaire walk, with no uploaded asset
+    // at all, must clear exactly as it did before this fold existed.
+    let (_app, surreal) = build_app().await;
+    let person = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::new("Notation Only", "notation-only@example.com"),
+    )
+    .await
+    .unwrap();
+    let matter = project(&surreal, "Notation-only matter", "closed").await;
+    notation(&surreal, matter, person.id, "onboarding__retainer").await;
+    notation(&surreal, matter, person.id, "offboarding__letter").await;
+
+    let (has_engagement, has_closing) = lifecycle_sets_for(&surreal, matter).await;
+    assert!(
+        has_engagement,
+        "a matter-opening notation must still clear the engagement flag"
+    );
+    assert!(
+        has_closing,
+        "a matter-closing notation must still clear the closing flag"
+    );
+}
+
+#[tokio::test]
+async fn neither_a_notation_nor_an_asset_leaves_the_matter_badged() {
+    let (_app, surreal) = build_app().await;
+    let matter = project(&surreal, "Nothing filed", "closed").await;
+
+    let (has_engagement, has_closing) = lifecycle_sets_for(&surreal, matter).await;
+    assert!(
+        !has_engagement && !has_closing,
+        "a matter with neither a notation nor an asset must not clear either flag"
+    );
+}
+
+#[tokio::test]
+async fn an_asset_of_a_non_opening_kind_does_not_clear_the_engagement_flag() {
+    // A lawyer-classified upload only counts when its kind actually opens
+    // (or closes) a matter — an ordinary letter uploaded to the matter must
+    // not silently satisfy the engagement badge.
+    let (_app, surreal) = build_app().await;
+    let storage = asset_storage("asset-wrong-kind").await;
+    let matter = project(&surreal, "Wrong-kind upload", "open").await;
+    upload(&surreal, &storage, matter, "demand.pdf", "letter").await;
+
+    let (has_engagement, has_closing) = lifecycle_sets_for(&surreal, matter).await;
+    assert!(
+        !has_engagement && !has_closing,
+        "an ordinary-letter upload must not clear either lifecycle flag"
+    );
+}
+
+#[tokio::test]
+async fn an_uploaded_engagement_letter_clears_the_badge_on_the_rendered_projects_list() {
+    let (app, surreal) = build_app().await;
+    let storage = asset_storage("rendered-list-upload").await;
+    let matter = project(&surreal, "Uploaded engagement matter", "open").await;
+    upload(&surreal, &storage, matter, "engagement.pdf", "onboarding").await;
+    let matter_code = store::projects::find_by_id(&surreal, matter)
+        .await
+        .unwrap()
+        .expect("matter row")
+        .code;
+
+    let admin_person = participating_admin(&surreal, &[matter]).await;
+    let mut admin = SessionData::fresh("admin-sub", Role::Admin);
+    admin.person_id = Some(admin_person);
+    let cookie = format!(
+        "{SESSION_COOKIE_NAME}={}",
+        SessionStore::new(SESSION_KEY).encode(&admin)
+    );
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/app/projects")
+                .header("cookie", cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let html = body_string(resp).await;
+    let row = html
+        .split("<tr")
+        .find(|frag| frag.contains(&matter_code))
+        .unwrap_or_default()
+        .to_string();
+    assert!(
+        !row.contains("no retainer"),
+        "an uploaded engagement letter must clear the badge on the rendered list: {row}"
+    );
 }
 
 // ---- the rendered list ----
@@ -285,13 +629,13 @@ async fn projects_list_flags_the_lifecycle_gaps_and_nothing_else() {
     notation(&surreal, a, person.id, "onboarding__retainer").await;
     // B: open, no onboarding notation → missing retainer.
     let b = project(&surreal, "Bare open matter", "open").await;
-    // C: closed, has its retainer but no closing letter → missing closing letter.
+    // C: closed, has its retainer but no offboarding letter → missing offboarding letter.
     let c = project(&surreal, "Closed no letter", "closed").await;
     notation(&surreal, c, person.id, "onboarding__estate").await;
     // D: closed, has both → clean.
     let d = project(&surreal, "Closed with letter", "closed").await;
     notation(&surreal, d, person.id, "onboarding__retainer").await;
-    notation(&surreal, d, person.id, "closing__letter").await;
+    notation(&surreal, d, person.id, "offboarding__letter").await;
 
     // The matters list is participation-scoped for every tier since ENG-81,
     // so the acting admin is put on each seeded matter rather than relying on
@@ -333,21 +677,79 @@ async fn projects_list_flags_the_lifecycle_gaps_and_nothing_else() {
     // B — bare open matter — is flagged as missing its retainer only.
     let b = row_for("Bare open matter");
     assert!(&b.contains("no retainer"));
-    absent(&b, "no closing letter");
+    absent(&b, "no offboarding letter");
 
     // C — closed without a letter — is flagged for the closing letter only
     // (it has its onboarding__estate retainer).
     let c = row_for("Closed no letter");
-    assert!(&c.contains("no closing letter"));
+    assert!(&c.contains("no offboarding letter"));
     absent(&c, "no retainer");
 
     // A and D are clean — no badge either way.
     let a = row_for("Has retainer open");
     absent(&a, "no retainer");
-    absent(&a, "no closing letter");
+    absent(&a, "no offboarding letter");
     let d = row_for("Closed with letter");
     absent(&d, "no retainer");
-    absent(&d, "no closing letter");
+    absent(&d, "no offboarding letter");
+}
+
+#[tokio::test]
+async fn projects_list_renders_each_lifecycle_state_with_its_own_class() {
+    let (app, surreal) = build_app().await;
+    let person = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::new("Lifecycle Row", "lifecycle-row@example.com"),
+    )
+    .await
+    .unwrap();
+
+    // Yellow: open, no onboarding notation.
+    let yellow = project(&surreal, "Yellow lifecycle matter", "open").await;
+    // Green: open, with its onboarding notation.
+    let green = project(&surreal, "Green lifecycle matter", "open").await;
+    notation(&surreal, green, person.id, "onboarding__retainer").await;
+    // Red: closed.
+    let red = project(&surreal, "Red lifecycle matter", "closed").await;
+
+    let admin_person = participating_admin(&surreal, &[yellow, green, red]).await;
+    let mut admin = SessionData::fresh("admin-sub", Role::Admin);
+    admin.person_id = Some(admin_person);
+    let cookie = format!(
+        "{SESSION_COOKIE_NAME}={}",
+        SessionStore::new(SESSION_KEY).encode(&admin)
+    );
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/app/projects")
+                .header("cookie", cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let html = body_string(resp).await;
+    let row_for = |name: &str| -> String {
+        html.split("<tr")
+            .find(|frag| frag.contains(name))
+            .unwrap_or("")
+            .to_string()
+    };
+
+    assert!(
+        row_for("Yellow lifecycle matter").contains("matter-lifecycle--yellow"),
+        "an open matter missing its onboarding letter must render the yellow class"
+    );
+    assert!(
+        row_for("Green lifecycle matter").contains("matter-lifecycle--green"),
+        "an open matter with its onboarding letter must render the green class"
+    );
+    assert!(
+        row_for("Red lifecycle matter").contains("matter-lifecycle--red"),
+        "a closed matter must render the red class"
+    );
 }
 
 #[tokio::test]

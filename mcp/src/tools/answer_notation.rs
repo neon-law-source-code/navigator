@@ -210,7 +210,7 @@ mod tests {
                 respondent_type: "person".into(),
                 asset_id: None,
                 form_code: None,
-                kind: Some("retainer".into()),
+                kind: Some("onboarding".into()),
                 source_commit_sha: None,
             },
         )

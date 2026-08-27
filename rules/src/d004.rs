@@ -115,7 +115,7 @@ client: []\n  clerk: []\n---\n";
     #[test]
     fn a_non_dashboard_kind_is_left_alone() {
         assert!(D004LensComposition
-            .lint(&file("---\nkind: retainer\n---\n"))
+            .lint(&file("---\nkind: onboarding\n---\n"))
             .is_empty());
     }
 }

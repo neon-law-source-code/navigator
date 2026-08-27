@@ -583,7 +583,8 @@ custom_questions:
         // The same frontmatter shape under a legal kind, at a path N119
         // would otherwise reject, must produce nothing.
         let fm = valid_frontmatter().replace("kind: github", "kind: letter");
-        let v = F119GithubNotation.lint(&at("templates/neon_law/shared/closing_letter.md", &fm));
+        let v =
+            F119GithubNotation.lint(&at("templates/neon_law/shared/offboarding_letter.md", &fm));
         assert!(v.is_empty(), "{v:?}");
         assert!(F119GithubNotation
             .lint(&at("docs/index.md", "title: Docs\n"))

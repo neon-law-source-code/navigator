@@ -1,8 +1,8 @@
 ---
-kind: letter
+kind: offboarding
 title: Closing Letter
 respondent_type: person_and_entity
-code: closing__letter
+code: offboarding__letter
 jurisdiction: NV
 confidential: true
 prompts:

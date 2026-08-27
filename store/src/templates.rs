@@ -390,8 +390,8 @@ pub struct Version {
     pub asset_id: Option<Uuid>,
     pub form_code: Option<String>,
     /// Declared notation kind — one of the notation-family `kind:` values
-    /// (`retainer`, `letter`, `filing`, `will`, `trust`, `directive`,
-    /// `agreement`, `onboarding`, `memo`) from the template's frontmatter;
+    /// (`letter`, `filing`, `will`, `trust`, `directive`, `agreement`,
+    /// `onboarding`, `offboarding`, `memo`) from the template's frontmatter;
     /// `None` for a template stored before it declared one. The
     /// engagement-first matter gate keys off the kinds that open a matter
     /// (`rules::kind::Kind::opens_a_matter`).

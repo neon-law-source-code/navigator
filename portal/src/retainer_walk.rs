@@ -531,7 +531,7 @@ pub(crate) async fn link_retainer_rows(
 }
 
 /// Template code for the firm-signed matter-close letter.
-const CLOSING_TEMPLATE_CODE: &str = "closing__letter";
+const CLOSING_TEMPLATE_CODE: &str = "offboarding__letter";
 
 /// Why opening a matter's closing-letter notation failed. Shared by the lawyer
 /// `/app/projects/{project_code}/close` form and the `/app/api/projects/{id}/close` door
@@ -540,7 +540,7 @@ const CLOSING_TEMPLATE_CODE: &str = "closing__letter";
 pub enum CloseMatterError {
     /// No matter with that id.
     MatterNotFound,
-    /// The `closing__letter` template is not seeded for this deployment.
+    /// The `offboarding__letter` template is not seeded for this deployment.
     ClosingTemplateMissing,
     /// The matter has no client participant to address the letter to.
     NoClient,
@@ -552,7 +552,9 @@ impl std::fmt::Display for CloseMatterError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::MatterNotFound => write!(f, "matter not found"),
-            Self::ClosingTemplateMissing => write!(f, "the closing__letter template is not seeded"),
+            Self::ClosingTemplateMissing => {
+                write!(f, "the offboarding__letter template is not seeded")
+            }
             Self::NoClient => write!(
                 f,
                 "this matter has no client to address the closing letter to"
@@ -566,7 +568,7 @@ impl std::error::Error for CloseMatterError {}
 
 /// Open the firm-signed closing-letter notation on an existing matter, returning
 /// the new notation's id. The one command behind both the lawyer close form and
-/// the REST close door: it creates only the `closing__letter` Notation — bound
+/// the REST close door: it creates only the `offboarding__letter` Notation — bound
 /// to the matter and addressed to the matter's client. The status flip to
 /// `closed` is the close workflow's job when the walk completes (see
 /// `workflows-service`), not this command's; this only starts the walk.
@@ -1132,7 +1134,7 @@ pub async fn step_post(
             if notation_template_code(&state.surreal, notation_id)
                 .await
                 .as_deref()
-                == Some("closing__letter")
+                == Some("offboarding__letter")
             {
                 return match drive_closing_workflow(&state, notation_id, acting).await {
                     // The matter is now closed and the letter firm-signed.
@@ -2422,7 +2424,7 @@ async fn drive_closing_workflow(
     notation_id: Uuid,
     acting: Option<Uuid>,
 ) -> Result<StateName, WorkflowDriveError> {
-    let yaml = workflows::catalog_spec_yaml("closing__letter")
+    let yaml = workflows::catalog_spec_yaml("offboarding__letter")
         .ok_or(WorkflowDriveError::TemplateMissing(notation_id))?;
     let spec = workflows::workflow_spec_from_yaml(yaml)
         .map_err(|e| WorkflowDriveError::Spec(e.to_string()))?;

@@ -36,7 +36,7 @@ async fn build_app() -> Harness {
             .await
             .unwrap(),
     );
-    // The canonical seed brings the `closing__letter` template the command
+    // The canonical seed brings the `offboarding__letter` template the command
     // resolves.
     seed::seed_canonical(&surreal, &storage).await.unwrap();
     let runtime: Arc<dyn StateMachineRuntime> = Arc::new(InMemoryRuntime::new());

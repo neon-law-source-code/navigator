@@ -1,5 +1,5 @@
 ---
-kind: retainer
+kind: onboarding
 title: Retainer Agreement
 respondent_type: person_and_entity
 code: onboarding__retainer

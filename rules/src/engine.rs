@@ -1100,7 +1100,6 @@ mod tests {
         // Every notation-family kind classifies as a notation template,
         // regardless of path or whether a questionnaire block is present.
         for value in [
-            "retainer",
             "letter",
             "filing",
             "will",
@@ -1108,6 +1107,7 @@ mod tests {
             "directive",
             "agreement",
             "onboarding",
+            "offboarding",
             "memo",
         ] {
             let file = source(
@@ -1212,7 +1212,7 @@ mod tests {
         // the other. A half-declared template never lints clean.
         let workflow_only = source(
             "templates/neon_law/shared/draft.md",
-            "---\nkind: retainer\ntitle: Draft\ncode: x__draft\nworkflow:\n  BEGIN:\n    created: END\n---\n",
+            "---\nkind: onboarding\ntitle: Draft\ncode: x__draft\nworkflow:\n  BEGIN:\n    created: END\n---\n",
         );
         let codes: Vec<&str> = lint_source_classified(&workflow_only)
             .iter()
@@ -1228,7 +1228,7 @@ mod tests {
 
         let questionnaire_only = source(
             "templates/neon_law/shared/draft.md",
-            "---\nkind: retainer\ntitle: Draft\ncode: x__draft\nquestionnaire:\n  BEGIN:\n    _: END\n---\n",
+            "---\nkind: onboarding\ntitle: Draft\ncode: x__draft\nquestionnaire:\n  BEGIN:\n    _: END\n---\n",
         );
         assert!(
             lint_source_classified(&questionnaire_only)
@@ -1303,7 +1303,7 @@ mod tests {
         let file = source(
             "draft.md",
             r"---
-kind: retainer
+kind: onboarding
 title: Draft
 respondent_type: person
 confidential: true
@@ -1336,7 +1336,7 @@ Body.
         let file = source(
             "templates/custom/draft.md",
             r"---
-kind: retainer
+kind: onboarding
 title: Draft
 respondent_type: person
 code: draft__unknown_question

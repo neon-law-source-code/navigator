@@ -117,6 +117,10 @@ pub struct LawyerDetailView {
     pub estate: Option<EstateData>,
     pub participations: Vec<ParticipationRow>,
     pub documents: Vec<LawyerDocRow>,
+    /// The upload form's Kind select, as `(value, label)` pairs — every
+    /// `rules::kind::Kind::valid_for(Lane::Asset)` value, computed
+    /// server-side so the wasm client never needs the `rules` crate.
+    pub asset_kind_choices: Vec<(String, String)>,
     pub csrf_token: String,
     /// The matter calendar's active sort, read from `?sort=`/`?dir=` and
     /// normalised to the advertised columns.
@@ -149,6 +153,19 @@ async fn dri_names(
         .collect();
     names.sort();
     Ok(names)
+}
+
+/// The document-upload Kind select's options, as `(value, label)` — every
+/// `Kind` valid in the asset lane, in [`rules::kind::Kind::ALL`] order. Computed
+/// here rather than duplicated as literal strings, so a new asset-lane kind
+/// reaches the upload form for free.
+#[cfg(feature = "server")]
+fn asset_kind_choices() -> Vec<(String, String)> {
+    rules::kind::Kind::ALL
+        .iter()
+        .filter(|k| k.valid_for(rules::kind::Lane::Asset))
+        .map(|k| (k.as_str().to_string(), k.describe().to_string()))
+        .collect()
 }
 
 /// Fetch the lawyer-lens workbench for one matter. Refuses a non-lawyer caller and
@@ -357,6 +374,7 @@ pub async fn get_lawyer_project_detail() -> Result<LawyerDetailView, ServerFnErr
         estate,
         participations,
         documents,
+        asset_kind_choices: asset_kind_choices(),
         csrf_token,
         calendar_sort,
         calendar_dir,
@@ -661,8 +679,16 @@ pub fn LawyerProjectDetail() -> Element {
                     fields: vec![
                         Field::file("Files", "file").id("document-upload-file").required().multiple()
                             .help("Select one file or several — each is filed as its own document."),
-                        Field::text("Kind", "kind", "").placeholder("intake")
-                            .help("Optional — defaults to `unclassified`. Applies to every file in this batch."),
+                        Field::select(
+                            "Kind",
+                            "kind",
+                            view.asset_kind_choices
+                                .iter()
+                                .map(|(value, label)| crate::components::Choice::new(value.clone(), label.clone()))
+                                .collect(),
+                            Some("unclassified".to_string()),
+                        )
+                        .help("Defaults to unclassified. Applies to every file in this batch."),
                         Field::text("Description", "description", "")
                             .placeholder("Letter from Acme Bank dated 2026-05-23")
                             .help("Optional. Applies to every file in this batch."),
@@ -690,7 +716,7 @@ pub fn LawyerProjectDetail() -> Element {
                         }
                         " or "
                         a { class: "nav-link", href: "mailto:support@neonlaw.com", "support@neonlaw.com" }
-                        ". Closing is bespoke: a lawyer DRI opens the closing-letter walk, and signing the closing letter marks the matter complete."
+                        ". Closing is bespoke: a lawyer DRI opens the offboarding-letter walk, and signing the offboarding letter marks the matter complete."
                     }
                     // A matter always has at least one lawyer DRI — they are who
                     // close it. An empty set is therefore a gap to fill, not a

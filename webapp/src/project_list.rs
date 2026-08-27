@@ -32,6 +32,14 @@ pub struct ProjectRow {
     pub missing_retainer: bool,
     /// A `closed` matter with no closing letter — surfaced as a warning badge.
     pub missing_closing_letter: bool,
+    /// `store::projects::MatterLifecycle::class()` for this row — the
+    /// yellow/green/red indicator's CSS class. Computed server-side since
+    /// `MatterLifecycle` is not a wasm-safe type.
+    pub lifecycle_class: String,
+    /// `store::projects::MatterLifecycle::label()` for this row — the text
+    /// label that accompanies the colour, so the state never rests on colour
+    /// alone.
+    pub lifecycle_label: String,
 }
 
 /// The rendered lawyer projects list: the rows, the active `?sort=`, and the
@@ -94,6 +102,33 @@ fn parse_sort(raw: &str) -> Vec<(String, bool)> {
             None => (segment.to_string(), false),
         })
         .collect()
+}
+
+/// Build one rendered row from a matter and its lifecycle facts: the two
+/// diligence flags ([`store::projects::matter_flags`]) plus the yellow/green/red
+/// indicator ([`store::projects::matter_lifecycle`]) they feed.
+#[cfg(feature = "server")]
+fn project_row(
+    entity_name: String,
+    m: store::projects::Project,
+    has_engagement: bool,
+    has_closing: bool,
+) -> ProjectRow {
+    let (missing_retainer, missing_closing_letter) =
+        store::projects::matter_flags(has_engagement, &m.status, has_closing);
+    let lifecycle =
+        store::projects::matter_lifecycle(&m.status, missing_retainer, missing_closing_letter);
+    ProjectRow {
+        entity_name,
+        id: m.id.to_string(),
+        code: m.code,
+        name: m.name,
+        status: m.status,
+        missing_retainer,
+        missing_closing_letter,
+        lifecycle_class: lifecycle.class().to_string(),
+        lifecycle_label: lifecycle.label().to_string(),
+    }
 }
 
 /// Fetch the lawyer projects list for the current request: refuse non-lawyer,
@@ -189,20 +224,10 @@ pub async fn get_project_list() -> Result<ProjectListView, ServerFnError> {
     let rows = matters
         .into_iter()
         .map(|m| {
-            let (missing_retainer, missing_closing_letter) = store::projects::matter_flags(
-                has_engagement.contains(&m.id),
-                &m.status,
-                has_closing.contains(&m.id),
-            );
-            ProjectRow {
-                entity_name: by_entity(m.entity_id),
-                id: m.id.to_string(),
-                code: m.code,
-                name: m.name,
-                status: m.status,
-                missing_retainer,
-                missing_closing_letter,
-            }
+            let entity_name = by_entity(m.entity_id);
+            let has_eng = has_engagement.contains(&m.id);
+            let has_close = has_closing.contains(&m.id);
+            project_row(entity_name, m, has_eng, has_close)
         })
         .collect();
 
@@ -295,12 +320,18 @@ pub fn LawyerProjects() -> Element {
                                 if row.missing_closing_letter {
                                     " "
                                     span { class: "matter-flag",
-                                        title: "This closed matter has no closing letter.",
-                                        "no closing letter"
+                                        title: "This closed matter has no offboarding letter.",
+                                        "no offboarding letter"
                                     }
                                 }
                             }
-                            td { class: "project-status", "{row.status}" }
+                            td { class: "project-status",
+                                span {
+                                    class: "{row.lifecycle_class}",
+                                    title: "Lifecycle: {row.lifecycle_label}",
+                                    "{row.lifecycle_label}"
+                                }
+                            }
                             td { class: "project-entity", "{row.entity_name}" }
                         }
                     }

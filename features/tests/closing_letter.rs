@@ -1,10 +1,10 @@
 //! Cucumber runner for `features/closing_letter.feature`.
 //!
-//! Drives the admin walker (`/lawyer/notations/:id/step`) over a
-//! `closing__letter` notation. The walker is generic over the bound
+//! Drives the admin walker (`/lawyer/notations/:id/step`) over an
+//! `offboarding__letter` notation. The walker is generic over the bound
 //! template's questionnaire, so this mirrors `retainer_intake.rs` with
-//! the closing template's six-question walk — the firm-signed bookend
-//! to the client-signed retainer.
+//! the offboarding template's six-question walk — the firm-signed bookend
+//! to the client-signed onboarding letter.
 
 // Cucumber's step-attribute macros require `async fn`, so assertion
 // steps that don't await anything still have to be declared async.
@@ -22,7 +22,7 @@ use tower::ServiceExt;
 use uuid::Uuid;
 use workflows::{InMemoryRuntime, MachineKind, StateMachineRuntime, StateName};
 
-const TEMPLATE_CODE: &str = "closing__letter";
+const TEMPLATE_CODE: &str = "offboarding__letter";
 
 #[derive(Default, World)]
 #[world(init = Self::default)]
@@ -89,7 +89,7 @@ async fn seed_notation(world: &mut ClosingWorld, name: String, email: String) {
     let tmpl = store::templates::resolve(&features::shared_surreal().await, None, TEMPLATE_CODE)
         .await
         .unwrap()
-        .expect("seed_canonical inserts closing__letter");
+        .expect("seed_canonical inserts offboarding__letter");
     let person =
         store::test_support::ensure_person(&surreal, &store::persons::NewPerson::new(name, email))
             .await;

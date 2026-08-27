@@ -165,8 +165,8 @@ The Client Council's findings are requirements for the surfaces the workflows bu
 
 ## Build sequence
 
-Nautilus engagements are `projects` matters opened by `onboarding__` and closed by `closing__letter`. The workflows ride
-the existing `workflows-service` Restate worker — one worker, no per-workflow pod — and the existing inbound-email
+Nautilus engagements are `projects` matters opened by `onboarding__` and closed by `offboarding__letter`. The workflows
+ride the existing `workflows-service` Restate worker — one worker, no per-workflow pod — and the existing inbound-email
 engine and `@approve` gate. Build order, each as one PR:
 
 1. **01 — Intake & consumer-report dispute** (`fcra_dispute`, § 1681i; 30-day reinvestigation timer).

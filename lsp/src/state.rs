@@ -673,7 +673,7 @@ mod tests {
 
     /// A notation template with a questionnaire + workflow block and one
     /// typed questionnaire state, for the completion/hover/diagnostics tests.
-    const TEMPLATE: &str = "---\nkind: retainer\ntitle: T\nquestionnaire:\n  BEGIN:\n    _: entity__company\n  entity__company:\n    _: END\n  END: {}\nworkflow:\n  BEGIN:\n    _: lawyer_review\n  lawyer_review:\n    _: END\n  END: {}\n---\n\nBody.\n";
+    const TEMPLATE: &str = "---\nkind: onboarding\ntitle: T\nquestionnaire:\n  BEGIN:\n    _: entity__company\n  entity__company:\n    _: END\n  END: {}\nworkflow:\n  BEGIN:\n    _: lawyer_review\n  lawyer_review:\n    _: END\n  END: {}\n---\n\nBody.\n";
 
     #[test]
     fn capabilities_advertise_completion() {
@@ -733,7 +733,8 @@ mod tests {
             },
         );
         let labels: Vec<&str> = items.iter().map(|i| i.label.as_str()).collect();
-        assert!(labels.contains(&"retainer"), "labels: {labels:?}");
+        assert!(labels.contains(&"onboarding"), "labels: {labels:?}");
+        assert!(labels.contains(&"offboarding"), "labels: {labels:?}");
         assert!(labels.contains(&"letter"), "labels: {labels:?}");
         assert!(labels.contains(&"event"), "labels: {labels:?}");
         // The new instrument + workshop kinds are offered too.

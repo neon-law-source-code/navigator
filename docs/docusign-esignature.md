@@ -81,7 +81,7 @@ Signed templates today:
 
 Deliberately **not** e-signed: `will__simple` (Nevada wills need two attesting witnesses + a notarized self-proving
 affidavit, NRS 133.040/133.050, or the NRS 133.085 qualified-custodian path) keeps its in-person `testator_signature` →
-`witnesses` → `notarization` flow; `closing__letter` is firm correspondence (firm signature only).
+`witnesses` → `notarization` flow; `offboarding__letter` is firm correspondence (firm signature only).
 
 ## Authentication: JWT grant
 

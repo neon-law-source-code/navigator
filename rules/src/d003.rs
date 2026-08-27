@@ -160,7 +160,7 @@ client: [boundary_note, provenance_statement]\n---\n";
     #[test]
     fn a_non_dashboard_kind_is_left_alone() {
         assert!(D003RequiredSection
-            .lint(&file("---\nkind: retainer\nlenses:\n  lawyer: []\n---\n"))
+            .lint(&file("---\nkind: onboarding\nlenses:\n  lawyer: []\n---\n"))
             .is_empty());
     }
 }

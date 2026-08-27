@@ -1971,6 +1971,21 @@ pub fn template_opens_a_matter(kind: Option<&str>) -> bool {
         .is_some_and(rules::kind::Kind::opens_a_matter)
 }
 
+/// Whether an uploaded document's declared `kind` makes it the engagement that
+/// opens a matter — the asset lane's twin of [`template_opens_a_matter`],
+/// reading the same classifier so the two lanes cannot drift into disagreeing
+/// about what an engagement letter is.
+///
+/// The kind is whatever the lawyer chose when filing the document, already
+/// narrowed to [`rules::kind::Lane::Asset`] by
+/// [`crate::documents::ingest_bytes`]. A string this build does not recognize
+/// never opens a matter: the badge stays on, which over-warns rather than
+/// silently calling a matter opened.
+#[must_use]
+pub fn asset_opens_a_matter(kind: &str) -> bool {
+    rules::kind::Kind::parse(kind).is_some_and(rules::kind::Kind::opens_a_matter)
+}
+
 /// From a matter's engagement/closing facts, the two lifecycle warning flags:
 /// `missing_retainer` (no matter-opening engagement) and `missing_closing_letter`
 /// (a `closed` matter without a closing letter).
@@ -1982,14 +1997,61 @@ pub fn matter_flags(has_engagement: bool, status: &str, has_closing: bool) -> (b
 }
 
 /// For the given matters, return `(project_ids with a matter-opening engagement,
-/// project_ids with a closing__letter notation)` in two batched queries
-/// (notations for these projects, then the templates they bind). The engagement
-/// side keys off the template's declared `kind`; the closing letter off its
-/// `code`.
+/// project_ids with a closing__letter notation)` in three batched queries
+/// (notations for these projects, the templates they bind, then the assets
+/// filed on them).
 ///
-/// Both `notations` and `templates` are Surreal-resident since ENG-121, but
-/// this stays two batched queries either way — one round trip per table,
-/// not one round trip per Project.
+/// # Both document lanes count
+///
+/// A matter's engagement letter reaches it by either of two routes, and the
+/// firm papers matters both ways: the questionnaire walk generates a notation
+/// bound to a template, and a letter signed on paper or returned from an
+/// e-signature provider is uploaded as a PDF and becomes an `assets` row.
+/// Reading only `notations` badged the second matter `no retainer`
+/// permanently, with no action available that would clear it, while its
+/// countersigned letter sat in the matter's own document list. Both lanes are
+/// therefore consulted, and both key off [`rules::kind::Kind::opens_a_matter`]
+/// — never a template `code` and never a variant name.
+///
+/// # What the engagement flag claims: *on file*, not *executed*
+///
+/// It answers **"is there an engagement letter on file"**, and deliberately
+/// not "is it executed". An `assets` row carries no signature state — see
+/// [`crate::documents::IngestArgs`], which records where bytes came from and
+/// what they are, never whether anyone signed them — so an execution test
+/// would be inventing a fact Navigator does not hold. The input it trusts
+/// instead is the **lawyer's own classification** at upload: choosing an
+/// opening kind is the firm asserting that this document opens the matter.
+///
+/// The trade-off is accepted deliberately, and runs one way on purpose. A
+/// lawyer who files an unexecuted draft under an opening kind clears the badge
+/// on a matter that has no executed letter. That is a misclassification by a
+/// licensed professional on a firm-side worklist, it is recoverable because
+/// the document is right there on the matter to inspect, and — decisively —
+/// this badge is an **exception report**: it renders on absence and asserts
+/// nothing when clear. Blocking it would cost the far more common failure this
+/// discipline exists to prevent, a known-wrong warning that trains every
+/// reader to ignore the badge on every matter.
+///
+/// # The offboarding side reads notations only
+///
+/// The closing set has no asset arm, because the vocabulary has no value that
+/// means "this letter offboards the matter". The shipped closing-letter
+/// template declares `kind: letter`, and so does every demand, notice, and
+/// settlement letter the firm sends; matching [`rules::kind::Kind::Letter`]
+/// here would clear the badge on any closed matter that ever sent a letter,
+/// which is worse than the `code` literal below. The honest classifier needs a
+/// `closes_a_matter()` mirror of [`rules::kind::Kind::opens_a_matter`], which
+/// ENG-371 adds. When it lands, the asset loop below gains the symmetric arm
+/// and the literal goes.
+///
+/// # Three round trips, never one per Project
+///
+/// `notations`, `templates`, and `assets` are each read once for the whole
+/// slice. The query count grows by a constant with the asset lane, not by one
+/// per Project — a matters list is the one page that renders every matter a
+/// lawyer participates on, so per-row queries are what this shape exists to
+/// avoid.
 ///
 /// Errors propagate rather than collapsing to an empty set: an empty set is
 /// indistinguishable from "this matter has no engagement", so swallowing a
@@ -2032,6 +2094,18 @@ pub async fn matter_lifecycle_sets(
             if t.code == "closing__letter" {
                 has_closing.insert(n.project_id);
             }
+        }
+    }
+    // The upload lane. One opening-kind document is enough however many the
+    // matter holds, and this only ever unions into the set the notations
+    // built — an uploaded letter can clear a matter the walk never papered,
+    // and can never un-clear one it did.
+    for (project_id, kind) in crate::assets::kinds_for_projects(surreal, &project_ids)
+        .await
+        .map_err(|error| error.to_string())?
+    {
+        if asset_opens_a_matter(&kind) {
+            has_engagement.insert(project_id);
         }
     }
     Ok((has_engagement, has_closing))

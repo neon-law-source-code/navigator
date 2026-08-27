@@ -288,7 +288,7 @@ pub fn LawyerProjects() -> Element {
                                 if row.missing_retainer {
                                     " "
                                     span { class: "matter-flag",
-                                        title: "This matter has no onboarding notation — it was never opened on a retainer.",
+                                        title: "No engagement letter is on file for this matter — no onboarding notation, and no uploaded document classified as one.",
                                         "no retainer"
                                     }
                                 }

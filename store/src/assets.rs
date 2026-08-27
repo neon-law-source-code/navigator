@@ -476,6 +476,54 @@ pub async fn count_for_projects(db: &SurrealDb, project_ids: &[Uuid]) -> Result<
     Ok(usize::try_from(counted.unwrap_or(0)).unwrap_or(0))
 }
 
+/// The `(project_id, kind)` of every asset filed across `project_ids`, in
+/// one round trip — the matter-lifecycle fold, which needs each matter's
+/// document *classifications* and none of the rows.
+///
+/// Projects only the two columns it classifies on. A matter's documents are
+/// client material; the lifecycle badge needs to know what kind of thing was
+/// filed, never what it says, so nothing else is read into memory.
+///
+/// A row whose `project_id` or `kind` is unset is dropped: neither can
+/// classify a matter. An empty slice never reaches the engine.
+///
+/// # Errors
+/// [`AssetError::Db`] if the lookup fails.
+pub async fn kinds_for_projects(
+    db: &SurrealDb,
+    project_ids: &[Uuid],
+) -> Result<Vec<(Uuid, String)>, AssetError> {
+    if project_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let keys: Vec<surrealdb::types::RecordId> = project_ids
+        .iter()
+        .map(|id| record_id(crate::projects::PROJECT_TABLE, *id))
+        .collect();
+    let mut response = db
+        .query(format!(
+            "SELECT project_id, kind FROM {TABLE} WHERE project_id IN $projects"
+        ))
+        .bind(("projects", keys))
+        .await
+        .and_then(surrealdb::IndexedResults::check)?;
+    let rows: Vec<AssetKindRow> = response.take(0)?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|row| {
+            let project = record_uuid(&row.project_id?)?;
+            Some((project, row.kind?))
+        })
+        .collect())
+}
+
+/// The two-column projection [`kinds_for_projects`] reads.
+#[derive(SurrealValue)]
+struct AssetKindRow {
+    project_id: Option<surrealdb::types::RecordId>,
+    kind: Option<String>,
+}
+
 /// Every asset, newest first — the `/lawyer/assets` transparency listing.
 ///
 /// Unbounded. That is a real

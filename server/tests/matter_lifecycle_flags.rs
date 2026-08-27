@@ -1,11 +1,22 @@
 #![allow(clippy::doc_markdown)]
 //! Matter-lifecycle warning flags on the admin Projects list.
 //!
-//! The firm's lifecycle invariant: every matter opens on an onboarding
-//! (`onboarding__*`) notation — the client's retainer — and a *closed*
-//! matter carries a `closing__letter`. Neither is schema-enforced, so the
-//! Projects list surfaces the gaps with a warning badge. These tests pin
-//! both the pure rule (`store::projects::matter_flags`) and the rendered list.
+//! The firm's lifecycle invariant: every matter opens on an engagement the
+//! client agreed to — the retainer — and a *closed* matter carries a
+//! closing letter. Neither is schema-enforced, so the Projects list
+//! surfaces the gaps with a warning badge.
+//!
+//! The engagement reaches a matter down either of two lanes, and the badge
+//! reads both: the questionnaire walk creates a **notation** bound to a
+//! template, and a letter signed on paper (or returned from an e-signature
+//! provider) is uploaded as an **asset**. A matter papered the second way
+//! used to read `no retainer` forever, with no action available that would
+//! clear it, so these tests pin the asset lane as explicitly as the
+//! notation one.
+//!
+//! Pinned here: the pure rule (`store::projects::matter_flags`), both
+//! classifiers, the upload form's constrained vocabulary, and the rendered
+//! list.
 
 use std::sync::Arc;
 
@@ -130,6 +141,128 @@ fn the_badge_reads_every_kind_straight_from_the_classifier() {
     }
 }
 
+// ---- what counts as the matter-opening engagement, on the upload lane ----
+
+#[test]
+fn an_uploaded_engagement_letter_opens_a_matter() {
+    // The two kinds a lawyer can file an engagement letter under. This is
+    // the whole point of the asset lane: a letter signed on paper and
+    // uploaded opens the matter exactly as a generated notation does.
+    assert!(store::projects::asset_opens_a_matter("retainer"));
+    assert!(store::projects::asset_opens_a_matter("onboarding"));
+}
+
+#[test]
+fn an_uploaded_document_that_is_not_the_engagement_does_not_open_a_matter() {
+    // Every other thing a lawyer files on a matter. `unclassified` matters
+    // most: it is the upload form's default, so a lawyer who uploads
+    // without classifying must not clear the badge by accident.
+    for kind in [
+        "unclassified",
+        "letter",
+        "filing",
+        "will",
+        "trust",
+        "directive",
+        "agreement",
+        "memo",
+        "transcript",
+        "inbound_contract",
+        "certificate_of_naturalization",
+    ] {
+        assert!(
+            !store::projects::asset_opens_a_matter(kind),
+            "an uploaded `{kind}` is not the engagement that opens a matter"
+        );
+    }
+}
+
+#[test]
+fn an_unknown_uploaded_kind_never_opens_a_matter() {
+    // A string this build does not recognize cannot be an engagement. The
+    // badge stays on: over-warning beats silently calling a matter opened.
+    assert!(!store::projects::asset_opens_a_matter(""));
+    assert!(!store::projects::asset_opens_a_matter("bogus"));
+    // The free-text values this workspace filed before the vocabulary was
+    // enforced at ingest. None of them was ever a `Kind`.
+    assert!(!store::projects::asset_opens_a_matter("intake"));
+    assert!(!store::projects::asset_opens_a_matter("retainer_pdf"));
+    assert!(!store::projects::asset_opens_a_matter("engagement"));
+}
+
+#[test]
+fn both_lanes_read_the_same_classifier_for_every_kind() {
+    // The two lanes must not drift into disagreeing about what an
+    // engagement letter is: a matter papered by upload and a matter
+    // papered by the walk have to badge identically. Walking `Kind::ALL`
+    // means a new kind cannot slip through classified one way and not the
+    // other.
+    for kind in rules::kind::Kind::ALL {
+        assert_eq!(
+            store::projects::asset_opens_a_matter(kind.as_str()),
+            store::projects::template_opens_a_matter(Some(kind.as_str())),
+            "the two lanes disagree about {}",
+            kind.as_str()
+        );
+        assert_eq!(
+            store::projects::asset_opens_a_matter(kind.as_str()),
+            kind.opens_a_matter(),
+            "the upload lane must classify {} straight from `Kind::opens_a_matter`",
+            kind.as_str()
+        );
+    }
+}
+
+// ---- the upload form's vocabulary ----
+
+#[test]
+fn asset_kind_choices_are_exactly_the_asset_lane() {
+    // The upload form offers a literal list rather than calling into
+    // `rules`, because that module compiles into the wasm client bundle
+    // (see `ASSET_KIND_CHOICES`). This is what keeps the two honest — the
+    // same discipline `valid_strings_are_exactly_the_template_lane`
+    // applies to `rules::kind::VALID`.
+    //
+    // Drift either way is a real defect: an extra value offers a lawyer a
+    // classification `store::documents::ingest_bytes` would refuse, and a
+    // missing one hides a classification they are entitled to file under.
+    let offered: std::collections::BTreeSet<&str> =
+        webapp::lawyer_project_detail::ASSET_KIND_CHOICES
+            .iter()
+            .map(|(value, _)| *value)
+            .collect();
+    let lane: std::collections::BTreeSet<&str> = rules::kind::Kind::ALL
+        .iter()
+        .filter(|k| k.valid_for(rules::kind::Lane::Asset))
+        .map(|k| k.as_str())
+        .collect();
+    assert_eq!(offered, lane);
+}
+
+#[test]
+fn the_upload_form_defaults_to_unclassified() {
+    // `unclassified` leads the list and is the field's selected value, so
+    // the default upload asserts nothing about the matter's lifecycle.
+    assert_eq!(
+        webapp::lawyer_project_detail::ASSET_KIND_CHOICES
+            .first()
+            .map(|(value, _)| *value),
+        Some("unclassified")
+    );
+}
+
+#[test]
+fn every_offered_choice_carries_a_label() {
+    // The select is the only documentation a lawyer gets for what these
+    // values mean, so a bare enum string is not acceptable copy.
+    for (value, label) in webapp::lawyer_project_detail::ASSET_KIND_CHOICES {
+        assert!(
+            label.len() > value.len(),
+            "`{value}` needs a lawyer-facing label, got {label:?}"
+        );
+    }
+}
+
 // ---- the rendered list ----
 
 async fn build_app() -> (axum::Router, store::surreal::SurrealDb) {
@@ -192,6 +325,39 @@ async fn notation(
     )
     .await
     .unwrap();
+}
+
+/// File a document on the matter, classified as `kind` — the upload lane.
+///
+/// Goes through `store::documents::ingest_bytes`, the same door
+/// `portal::project_documents::upload` uses, so the row this writes is the
+/// row a lawyer's upload writes. `filename` varies per call because ingest
+/// dedups identical bytes within a matter.
+async fn upload(surreal: &store::surreal::SurrealDb, project_id: Uuid, kind: &str) {
+    let tmp = std::env::temp_dir().join(format!("navigator-lifecycle-upload-{}", Uuid::now_v7()));
+    let storage: Arc<dyn cloud::StorageService> = Arc::new(
+        cloud::FsStorage::new(tmp)
+            .await
+            .expect("a temp storage root for the uploaded document"),
+    );
+    let filename = format!("{kind}-{}.pdf", Uuid::now_v7());
+    store::documents::ingest_bytes(
+        surreal,
+        &storage,
+        &store::documents::IngestArgs {
+            project_id,
+            source: store::documents::source::UPLOAD,
+            filename: &filename,
+            kind,
+            content_type: "application/pdf",
+            description: Some("countersigned, returned on paper"),
+            secondary_storage_key: None,
+            visibility: store::documents::visibility::INTERNAL,
+        },
+        filename.as_bytes(),
+    )
+    .await
+    .unwrap_or_else(|e| panic!("filing a `{kind}` document must succeed: {e}"));
 }
 
 async fn body_string(resp: axum::http::Response<Body>) -> String {
@@ -348,6 +514,133 @@ async fn projects_list_flags_the_lifecycle_gaps_and_nothing_else() {
     let d = row_for("Closed with letter");
     absent(&d, "no retainer");
     absent(&d, "no closing letter");
+}
+
+/// The defect this issue exists to fix, at the surface a lawyer reads.
+///
+/// A matter whose engagement letter arrived as a signed PDF — not through
+/// the questionnaire walk — used to read `no retainer` on `/app/projects`
+/// permanently, with no action available that would clear it, while the
+/// countersigned letter sat in the matter's own document list. This is the
+/// mutation check for the asset arm of `store::projects::matter_lifecycle_sets`:
+/// remove that arm and the first assertion here fails.
+#[tokio::test]
+async fn an_uploaded_engagement_letter_clears_the_retainer_badge() {
+    let (app, surreal) = build_app().await;
+
+    // E: open, engagement letter uploaded as a PDF, no notation → clean.
+    let e = project(&surreal, "Uploaded retainer open", "open").await;
+    upload(&surreal, e, "retainer").await;
+    // F: open, an uploaded document that is not the engagement → still
+    // missing its retainer. An upload must not clear the badge merely by
+    // existing; only its classification can.
+    let f = project(&surreal, "Uploaded exhibit open", "open").await;
+    upload(&surreal, f, "filing").await;
+    upload(&surreal, f, "unclassified").await;
+    // G: open, engagement letter uploaded under the other opening kind.
+    let g = project(&surreal, "Uploaded onboarding open", "open").await;
+    upload(&surreal, g, "onboarding").await;
+
+    let admin_person = participating_admin(&surreal, &[e, f, g]).await;
+    let mut admin = SessionData::fresh("admin-sub", Role::Admin);
+    admin.person_id = Some(admin_person);
+    let cookie = format!(
+        "{SESSION_COOKIE_NAME}={}",
+        SessionStore::new(SESSION_KEY).encode(&admin)
+    );
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/app/projects")
+                .header("cookie", cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let html = body_string(resp).await;
+
+    let row_for = |name: &str| -> String {
+        html.split("<tr")
+            .find(|frag| frag.contains(name))
+            .unwrap_or("")
+            .to_string()
+    };
+
+    let e = row_for("Uploaded retainer open");
+    assert!(
+        !e.contains("no retainer"),
+        "an uploaded `retainer` is this matter's engagement letter; the badge must clear: {e}"
+    );
+    let g = row_for("Uploaded onboarding open");
+    assert!(
+        !g.contains("no retainer"),
+        "an uploaded `onboarding` engagement must clear the badge too: {g}"
+    );
+    let f = row_for("Uploaded exhibit open");
+    assert!(
+        f.contains("no retainer"),
+        "a filing and an unclassified upload are not an engagement letter;          the badge must stay: {f}"
+    );
+}
+
+/// An uploaded engagement letter clears the badge on the *sets* function
+/// directly, without the render in the way.
+///
+/// The rendered test above is what a lawyer sees; this is the invariant
+/// underneath it, and it also pins the part the render cannot show — that
+/// the notation lane still works unchanged, and that the two lanes union
+/// rather than one overwriting the other.
+#[tokio::test]
+async fn the_lifecycle_sets_union_both_document_lanes() {
+    let (_app, surreal) = build_app().await;
+    let person = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::new("Libra", "libra@example.com"),
+    )
+    .await
+    .unwrap();
+
+    // Notation only — the walk path, unchanged.
+    let walked = project(&surreal, "Walked", "open").await;
+    notation(&surreal, walked, person.id, "onboarding__retainer").await;
+    // Upload only — the path this change adds.
+    let uploaded = project(&surreal, "Uploaded", "open").await;
+    upload(&surreal, uploaded, "retainer").await;
+    // Both lanes on one matter — counted once, not double-counted into
+    // some other state.
+    let both = project(&surreal, "Both", "open").await;
+    notation(&surreal, both, person.id, "onboarding__estate").await;
+    upload(&surreal, both, "onboarding").await;
+    // Neither lane.
+    let neither = project(&surreal, "Neither", "open").await;
+    // An upload that classifies as something else entirely.
+    let other = project(&surreal, "Other", "open").await;
+    upload(&surreal, other, "transcript").await;
+
+    let ids = [walked, uploaded, both, neither, other];
+    let mut matters = Vec::new();
+    for id in ids {
+        matters.push(
+            store::projects::find_by_id(&surreal, id)
+                .await
+                .unwrap()
+                .expect("seeded matter"),
+        );
+    }
+    let (has_engagement, _has_closing) = store::projects::matter_lifecycle_sets(&surreal, &matters)
+        .await
+        .expect("the lifecycle sets load");
+
+    assert!(has_engagement.contains(&walked), "notation lane");
+    assert!(has_engagement.contains(&uploaded), "upload lane");
+    assert!(has_engagement.contains(&both), "both lanes");
+    assert!(!has_engagement.contains(&neither), "neither lane");
+    assert!(
+        !has_engagement.contains(&other),
+        "a transcript is not an engagement letter"
+    );
 }
 
 #[tokio::test]

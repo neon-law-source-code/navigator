@@ -174,7 +174,7 @@ async fn the_fractional_cto_page_leads_with_the_offering_and_prices_through_cont
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
     assert!(
-        body.contains("<title>Fractional CTO"),
+        body.contains("<title>Neon Law | Fractional CTO"),
         "the page titles itself Fractional CTO: {body}"
     );
     // The hero, then the engagements prose the home page used to open on, then
@@ -299,7 +299,7 @@ async fn site_host_serves_the_legal_services_page() {
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
     assert!(
-        body.contains("<title>Legal Services"),
+        body.contains("<title>Neon Law | Services"),
         "the page titles itself Legal Services: {body}"
     );
     assert!(
@@ -669,7 +669,7 @@ async fn transactional_names_the_fee_structure_and_prices_through_contact() {
     let resp = anon_get(&app, "/fractional-gc").await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
-    assert!(body.contains("<title>Neon Law | Fractional General Counsel</title>"));
+    assert!(body.contains("<title>Neon Law | Fractional GC</title>"));
     assert!(
         body.contains("Accurate.") && body.contains("Efficient.") && body.contains("Speedy."),
         "the statement: {body}"
@@ -1713,7 +1713,7 @@ async fn a_talk_hub_renders_under_the_firm_brand() {
 
     let body = body_string(anon_get(&app, "/presentations/rust-in-peace").await).await;
     assert!(
-        body.contains("<title>Neon Law | Rust in Peace</title>"),
+        body.contains("<title>Neon Law | Presentations | Rust In Peace</title>"),
         "the talk's title names the firm, not the nonprofit: {body}"
     );
     // The overview's "Start →" button points at the first step under the
@@ -1939,7 +1939,7 @@ async fn the_three_classes_render_and_land_beside_each_other() {
     let body =
         body_string(role_get(&app, "/workshops/contribute-to-the-navigator", lawyer).await).await;
     assert!(
-        body.contains("<title>Neon Law | Contributing to Neon Law Navigator</title>"),
+        body.contains("<title>Neon Law | Workshops | Contribute To The Navigator</title>"),
         "the class title names the firm: {body}"
     );
     assert!(
@@ -2194,7 +2194,7 @@ async fn blog_post_head_prefixes_the_brand_and_shares_the_card() {
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
     assert!(
-        body.contains("<title>Neon Law | Thanks, Apple</title>"),
+        body.contains("<title>Neon Law | Blog | Thanks Apple</title>"),
         "brand-prefixed document title: {body}"
     );
     assert!(

@@ -128,7 +128,13 @@ async fn get_as(app: &axum::Router, project_code: &str, cookie: &str) -> String 
 async fn a_matter_with_no_integrations_set_has_no_integrations_section() {
     let f = build_fixture().await;
     let html = get_as(&f.app, &f.project_code, &f.lawyer_cookie).await;
-    assert!(!html.contains("Integrations"), "no Xero and no repository");
+    let visible = html
+        .split_once("</head>")
+        .map_or(html.as_str(), |(_, body)| body);
+    assert!(
+        !visible.contains("Integrations"),
+        "no Xero and no repository"
+    );
     // The Resources panel is still here: the client portal is configured by the
     // matter existing rather than by a column, so it is the one row a matter
     // with nothing else set still carries.
@@ -308,7 +314,10 @@ async fn a_client_sees_the_shared_resources_and_none_of_the_firms() {
             "a client's page rendered the firm-only row `{firm_row}`"
         );
     }
-    assert!(!html.contains("Integrations"), "Xero stays lawyer-only");
+    let visible = html
+        .split_once("</head>")
+        .map_or(html.as_str(), |(_, body)| body);
+    assert!(!visible.contains("Integrations"), "Xero stays lawyer-only");
     // A client configures nothing.
     assert!(!html.contains("Configure resources"));
 }

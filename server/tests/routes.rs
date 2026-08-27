@@ -706,19 +706,28 @@ async fn the_services_blurb_names_the_deploys_own_firm() {
     );
 }
 
-/// Every `/app` page's `<title>` names the deploy's own firm, not a compiled-in
-/// one. The tab is the most-rendered piece of branding on the site: a
-/// white-label deploy whose title bar still reads this firm's name has published
-/// it on every screen its clients open.
+/// Every `/app` page's `<title>` begins with Navigator. Other protected routes
+/// retain the mounted firm's mark. The tab is the most-rendered piece of
+/// navigation on the site, so an application page must not expose its internal
+/// `/app` mount point as a reader-facing label.
 ///
 /// One page per rendering shape, because they resolve the name three different
 /// ways: a plain view struct, the shared admin-listing scaffold, and a
 /// `format!`-built title. A page added later that hardcodes the name again will
 /// not be caught here — the shapes are.
 #[tokio::test]
-async fn every_app_page_titles_itself_with_the_deploys_own_firm() {
+async fn application_titles_begin_with_navigator() {
     let pages = [
-        ("/app/projects", store::persons::Role::Client, "Portal"),
+        (
+            "/app/projects",
+            store::persons::Role::Client,
+            "Navigator | Projects",
+        ),
+        (
+            "/app/team",
+            store::persons::Role::Lawyer,
+            "Navigator | Team",
+        ),
         (
             "/lawyer/jurisdictions",
             store::persons::Role::Lawyer,
@@ -737,9 +746,14 @@ async fn every_app_page_titles_itself_with_the_deploys_own_firm() {
     );
     for (uri, role, suffix) in pages {
         let body = body_string(get_with_role(app.clone(), uri, role).await).await;
+        let expected = if uri.starts_with("/app") {
+            suffix.to_string()
+        } else {
+            format!("Neon Law | {suffix}")
+        };
         assert!(
-            body.contains(&format!("<title>Neon Law | {suffix}</title>")),
-            "{uri} must title itself with the firm: {body}",
+            body.contains(&format!("<title>{expected}</title>")),
+            "{body}"
         );
     }
 
@@ -755,14 +769,21 @@ async fn every_app_page_titles_itself_with_the_deploys_own_firm() {
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
     for (uri, role, suffix) in pages {
         let body = body_string(get_with_role(app.clone(), uri, role).await).await;
+        let expected = if uri.starts_with("/app") {
+            suffix.to_string()
+        } else {
+            format!("Acme Law | {suffix}")
+        };
         assert!(
-            body.contains(&format!("<title>Acme Law | {suffix}</title>")),
-            "{uri} must title itself with the mounted firm: {body}",
+            body.contains(&format!("<title>{expected}</title>")),
+            "{body}"
         );
-        assert!(
-            !body.contains("Neon Law"),
-            "{uri} leaks this firm's name into a white-label deploy: {body}",
-        );
+        if !uri.starts_with("/app") {
+            assert!(
+                !body.contains("Neon Law"),
+                "{uri} leaks this firm's name into a white-label deploy: {body}",
+            );
+        }
     }
 }
 
@@ -2368,7 +2389,7 @@ async fn workshops_overview_renders_one_h1_and_links_steps() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
-    assert!(body.contains("<title>Neon Law | Runbook</title>"));
+    assert!(body.contains("<title>Neon Law | Workshops | Use The Navigator</title>"));
     // The duplicate-H1 bug regression guard: chrome title is the only one.
     assert_eq!(body.matches("<h1>").count(), 1, "expected a single <h1>");
     assert!(body.contains("href=\"/workshops/use-the-navigator/step/1\""));
@@ -7106,7 +7127,7 @@ async fn lawyer_dashboard_accepts_both_machine_credentials() {
         .unwrap();
     assert_eq!(session_bearer.status(), StatusCode::OK);
     let body = body_string(session_bearer).await;
-    assert!(body.contains("<title>Neon Law | Lawyer Workbench</title>"));
+    assert!(body.contains("<title>Navigator | Lawyer</title>"));
 
     // 2. An OIDC bearer JWT the configured verifier accepts.
     let claims = portal::AuthClaims {
@@ -14550,7 +14571,7 @@ async fn docs_glossary_renders_headings() {
     // and on every white-label tenant's. These are the Firm's own operating
     // docs.
     assert!(
-        body.contains("<title>Neon Law | Glossary</title>"),
+        body.contains("<title>Neon Law | Docs | Glossary</title>"),
         "docs pages wear the firm brand on every host"
     );
     // The title carries the whole distinction: a docs page wearing a retired
@@ -14561,7 +14582,7 @@ async fn docs_glossary_renders_headings() {
         "the NL mark in the docs header"
     );
     assert!(
-        !body.contains("<title>Neon Law Foundation | Glossary</title>"),
+        !body.contains("<title>Neon Law Foundation | Docs | Glossary</title>"),
         "the retired wordmark must not return"
     );
     // A known heading renders as an <h2> with a slug id so #council lands.

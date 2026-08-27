@@ -65,20 +65,14 @@ async fn the_firm_host_serves_both_legal_documents() {
 
     let (status, html) = get(&app, "/privacy").await;
     assert_eq!(status, StatusCode::OK);
-    assert!(
-        html.contains("<title>Neon Law | Privacy Policy</title>"),
-        "{html}"
-    );
+    assert!(html.contains("<title>Neon Law | Privacy</title>"), "{html}");
     // A section only the real `neon/content/privacy.md` carries, so the body is
     // the compiled-in document and not an empty shell.
     assert!(html.contains("Donor Privacy"), "{html}");
 
     let (status, html) = get(&app, "/terms").await;
     assert_eq!(status, StatusCode::OK);
-    assert!(
-        html.contains("<title>Neon Law | Terms of Service</title>"),
-        "{html}"
-    );
+    assert!(html.contains("<title>Neon Law | Terms</title>"), "{html}");
     assert!(html.contains("No Legal Advice"), "{html}");
 }
 

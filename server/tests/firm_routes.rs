@@ -671,8 +671,8 @@ async fn transactional_names_the_fee_structure_and_prices_through_contact() {
     let body = body_string(resp).await;
     assert!(body.contains("<title>Neon Law | Fractional General Counsel</title>"));
     assert!(
-        body.contains("Accurate. Efficient. Speedy."),
-        "the statement"
+        body.contains("Accurate.") && body.contains("Efficient.") && body.contains("Speedy."),
+        "the statement: {body}"
     );
     assert!(
         body.contains("One flat monthly fee"),

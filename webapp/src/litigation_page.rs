@@ -75,8 +75,7 @@ pub const LITIGATION_STYLESHEET_HREF: &str = "/public/css/litigation.css";
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct HeroWord {
     pub text: String,
-    /// Set on the words the firm sets in its own colour — "Litigation
-    /// attorneys".
+    /// Set on the words the firm sets in its own colour — "Litigation".
     pub accent: bool,
 }
 

@@ -766,7 +766,7 @@ pub(crate) fn resolve_transactional_content(
                            turnaround."
             .to_string(),
         eyebrow: "Fractional General Counsel".to_string(),
-        heading: "Accurate. Efficient. Speedy.".to_string(),
+        heading: hero_words("Accurate. Efficient. Speedy.", 1),
         lead: "Company counsel on one flat monthly fee, working at the pace your sales cycle \
                already runs at. A redline comes back in one business day."
             .to_string(),

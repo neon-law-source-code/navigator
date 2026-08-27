@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use crate::components::{
     PracticeMark, PracticeMarkGlyph, PublicShell, SiteHeader, SiteNavLink, SocialMeta,
 };
+use crate::litigation_page::HeroWord;
 use crate::public_chrome::{PublicChrome, PublicFooter};
 
 /// The self-contained transactional stylesheet, hoisted after the brand layer.
@@ -63,7 +64,7 @@ pub struct TransactionalContent {
     pub head_title: String,
     pub meta_description: String,
     pub eyebrow: String,
-    pub heading: String,
+    pub heading: Vec<HeroWord>,
     pub lead: String,
     pub cta_href: String,
     pub cta_label: String,
@@ -183,7 +184,17 @@ fn SpeedHero(content: TransactionalContent) -> Element {
                     class: "speed-hero__mark".to_string(),
                 }
                 p { class: "firm-eyebrow", "{content.eyebrow}" }
-                h1 { id: "speed-heading", class: "speed-hero__heading", "{content.heading}" }
+                h1 { id: "speed-heading", class: "speed-hero__heading",
+                    for word in content.heading.iter() {
+                        span {
+                            class: if word.accent { "speed-word speed-word--accent" } else { "speed-word" },
+                            // No trailing space: the word gaps are a margin in
+                            // the stylesheet, the same convention `/litigation`
+                            // uses for the same reason.
+                            "{word.text}"
+                        }
+                    }
+                }
                 p { class: "speed-hero__lead", "{content.lead}" }
                 a {
                     class: "nav-btn nav-btn--primary speed-hero__cta",
@@ -298,7 +309,20 @@ mod tests {
             head_title: "Neon Law | Transactional".to_string(),
             meta_description: "Company counsel on a flat monthly fee.".to_string(),
             eyebrow: "Transactional".to_string(),
-            heading: "Accurate. Efficient. Speedy.".to_string(),
+            heading: vec![
+                HeroWord {
+                    text: "Accurate.".to_string(),
+                    accent: true,
+                },
+                HeroWord {
+                    text: "Efficient.".to_string(),
+                    accent: false,
+                },
+                HeroWord {
+                    text: "Speedy.".to_string(),
+                    accent: false,
+                },
+            ],
             lead: "Company counsel that runs inside your sales cycle.".to_string(),
             cta_href: "/contact".to_string(),
             cta_label: "Contact us".to_string(),
@@ -352,8 +376,12 @@ mod tests {
         );
         assert_eq!(out.matches("<h1").count(), 1, "one h1: {out}");
         assert!(
-            out.contains("Accurate. Efficient. Speedy."),
+            out.contains("Accurate.") && out.contains("Efficient.") && out.contains("Speedy."),
             "the statement: {out}"
+        );
+        assert!(
+            out.contains(r#"speed-word speed-word--accent">Accurate.</span>"#),
+            "Accurate. carries the firm's colour: {out}"
         );
         assert!(
             out.contains(r#"href="/contact""#),

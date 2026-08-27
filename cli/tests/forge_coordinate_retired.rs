@@ -23,8 +23,9 @@
 //! `cloud::workspace::DEFAULT_GIT_HOST`. What made the old fallback a defect was
 //! never that a host had a default — it was that the default was anonymous,
 //! undocumented, and reached by a variable nobody had set. So the rule is that
-//! the default is *named*: [`is_named_default`] admits the one constant and its
-//! uses, and [`the_host_default_is_declared_exactly_once`] refuses a second one.
+//! the default is *named*: [`is_named_constant`] admits the named constants and
+//! their uses, and [`the_host_default_is_declared_exactly_once`] refuses a second
+//! host default.
 //! Every other spelling of a forge host in these files still fails.
 //!
 //! **No Project repository URL is composed at all.** A Project's source is a
@@ -213,15 +214,26 @@ fn is_comment(line: &str) -> bool {
     trimmed.starts_with("//") || trimmed.starts_with('#') || trimmed.starts_with("--")
 }
 
-/// The one place a forge host may be spelled: the declaration of the named
-/// default, and the code that reads it by name.
+/// The two places a forge host may be spelled: the declaration of a named
+/// constant, and the code that reads one by name.
 ///
-/// A default reached through this constant is a decision a reader can find and
+/// A value reached through a named constant is a decision a reader can find and
 /// a test can pin. The defect this guard exists for was the opposite shape — an
 /// anonymous `"github.com"` inlined into an `unwrap_or_else`, which is why the
 /// admission is by *name* rather than by file or by line number.
-fn is_named_default(line: &str) -> bool {
-    line.contains("DEFAULT_GIT_HOST")
+///
+/// Two constants qualify, and they are opposites:
+///
+/// - `DEFAULT_GIT_HOST` is the host half of a **configurable** coordinate, and
+///   the one default a deployment may omit.
+/// - `NAVIGATOR_REPOSITORY_URL` is Navigator's **own** repository, which is not
+///   configurable at all: one host, one organization, one repository, the same
+///   on every deployment forever. It is admitted precisely *because* it is
+///   never a Project's — a Project's repository is a stored URL, and this one
+///   is the fixed value a Project's may never be. `cloud::workspace` holds the
+///   tests that keep those two apart.
+fn is_named_constant(line: &str) -> bool {
+    line.contains("DEFAULT_GIT_HOST") || line.contains("NAVIGATOR_REPOSITORY_URL")
 }
 
 /// No forge host is a bare literal in the code that composes a Project
@@ -238,7 +250,7 @@ fn no_forge_host_is_a_bare_literal_where_a_coordinate_is_composed() {
         let body = std::fs::read_to_string(&path)
             .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
         for (index, line) in body.lines().enumerate() {
-            if is_comment(line) || is_named_default(line) {
+            if is_comment(line) || is_named_constant(line) {
                 continue;
             }
             let lowered = line.to_lowercase();
@@ -263,7 +275,7 @@ fn no_forge_host_is_a_bare_literal_where_a_coordinate_is_composed() {
 
 /// The named default is declared once, in the module that owns the coordinate.
 ///
-/// [`is_named_default`] admits every line mentioning the constant, so a second
+/// [`is_named_constant`] admits every line mentioning the constant, so a second
 /// declaration elsewhere would inherit the admission and reintroduce exactly the
 /// per-crate disagreement the collapse removed: two defaults, one of them the
 /// permissive one, and no way to tell from a call site which was in force.

@@ -251,6 +251,13 @@ runs:
             echo "::error::'new' is a route Navigator serves itself and cannot be a Project code."
             exit 1
         fi
+        # cloud::workspace::RESERVED_PROJECT_CODES — a Project code is its
+        # repository name, so `navigator` would name Navigator's own source
+        # rather than a matter's. A Project is never Navigator.
+        if [ "${code}" = "navigator" ]; then
+            echo "::error::'navigator' names Navigator's own repository and cannot be a Project code."
+            exit 1
+        fi
 
         # cloud::workspace::WorkspaceConfig::portal_mount. Nothing is composed
         # and nothing is parsed: the repository name is the code, and `portal` is

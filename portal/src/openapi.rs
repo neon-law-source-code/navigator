@@ -568,8 +568,12 @@ pub fn document_with_base(base: &str) -> Value {
                belong to the matter-open path), and it does not change the matter's \
                lifecycle `status`/`closed_at` — moving through open/closed/archived is a transition \
                with firm retention semantics, handled by dedicated lifecycle commands, not this \
-               edit. `name` is required; `entity_id` and `description` are optional — an omitted \
-               field is left untouched and a blank `description` clears it. Authorization: the \
+               edit. **Every field is optional and this is always a patch**: send only the \
+               fields you want to change. An absent field — or an explicit `null` — leaves its \
+               column exactly as it was, and an empty string clears it. Nothing is blanked out \
+               because a body did not mention it. `name` is the one exception to clearing: an \
+               empty `name` is rejected rather than applied, while omitting it leaves the name \
+               alone. Authorization: the \
                caller's `persons.role` must be `lawyer` or `admin`; anonymous, `client`, and \
                non-lawyer `clerk` callers are rejected.",
             "parameters": [
@@ -2370,21 +2374,37 @@ pub fn document_with_base(base: &str) -> Value {
           },
           "UpdateProjectRequest": {
             "type": "object",
-            "required": ["name"],
+            "description": "A patch. Every field is optional: send only what you want to change. Absent — or an explicit \
+                            JSON `null` — leaves a column exactly as it was; an empty string clears it. No column is ever \
+                            blanked out because the body did not mention it, so a caller that knows about three fields \
+                            cannot erase the other five.",
             "properties": {
               "name":        { "type": "string",
-                               "description": "Full replacement; must not be blank." },
+                               "description": "Omit to leave unchanged. The one field with no clear operation: a blank \
+                                               name is rejected rather than applied, because a matter with no name is not \
+                                               a state a patch may produce." },
               "entity_id":   { "type": "string", "format": "uuid",
-                               "description": "Omit the field entirely to leave the matter's entity unchanged; a value moves it. \
+                               "description": "Omit to leave the matter's entity unchanged; a value moves it. \
                                                `projects.entity_id` is NOT NULL, so there is no clear operation — a JSON `null` \
                                                is accepted but treated as omission (leaves the entity unchanged), never as a clear." },
               "description": { "type": "string",
-                               "description": "Omit the field entirely to leave unchanged; a blank string clears it. A JSON `null` \
-                                               is accepted but treated as omission (leaves the description unchanged); send \"\" to clear." }
+                               "description": "Omit to leave unchanged; a blank string clears it. A JSON `null` \
+                                               is accepted but treated as omission; send \"\" to clear." },
+              "repository_url": { "type": "string",
+                               "description": "The matter's source repository, as a whole URL on any forge. Omit to leave \
+                                               unchanged; a blank string clears it. A value must be an http(s) URL naming a \
+                                               host and a path, with no embedded credential." },
+              "internal_slack_channel_url": { "type": "string",
+                               "description": "The lawyer-only Slack channel. Omit to leave unchanged; a blank string clears it." },
+              "external_slack_channel_url": { "type": "string",
+                               "description": "The Slack channel shared with the client. Omit to leave unchanged; a blank string clears it." },
+              "private_notion_page_url": { "type": "string",
+                               "description": "The firm-only Notion page. Omit to leave unchanged; a blank string clears it." },
+              "shared_notion_page_url": { "type": "string",
+                               "description": "The Notion page shared with the client. Omit to leave unchanged; a blank string clears it." }
             },
             "example": {
-              "name": "Acme LLC — Formation",
-              "description": "Delaware LLC formation with an operating agreement."
+              "repository_url": "https://forge.example/an-organization/acme"
             }
           },
           "AddParticipantRequest": {

@@ -1292,12 +1292,43 @@ pub async fn set_drive_folder_id(
 /// `closed_at` are intentionally absent — moving a matter through
 /// open/closed/archived is a lifecycle change whose retention semantics are a
 /// firm-policy determination, so it belongs in [`transition_project`],
-/// not this general edit. `name` is a full replacement;
-/// `entity_id`, `description`, and the two Slack channel links are optional
-/// so a caller can leave any of them untouched.
+/// not this general edit.
+///
+/// # This is always a patch
+///
+/// **Every field is optional, and an absent field is never written.** A caller
+/// sends the fields it wants to change and nothing else; the columns it omits
+/// keep the values they had. There is no field whose absence means "blank this
+/// out", because that is how a partial update silently destroys data a caller
+/// never mentioned — a client that reads a matter, edits one field, and sends
+/// its own narrow body should not be able to erase the four collaboration
+/// links by not knowing about them.
+///
+/// So the three states a column can be in are:
+///
+/// | The body | Effect |
+/// | --- | --- |
+/// | the field is absent (or `null`) | the column is left exactly as it was |
+/// | the field is `""` | the column is cleared |
+/// | the field has a value | the column is set to it |
+///
+/// `null` and absent are deliberately the same. `serde` cannot distinguish them
+/// on an `Option` without a nested `Option`, and collapsing them toward *leave
+/// alone* is the safe direction: the failure mode of the other choice is a
+/// caller wiping a column it did not intend to touch. Clearing is therefore
+/// always explicit, and always the empty string — the same value an HTML form
+/// posts for a text input a person emptied, so the form and the JSON caller
+/// converge on one rule rather than each getting its own.
+///
+/// `name` is the one field that refuses `""`, because a matter with no name is
+/// not a state a patch may produce. Omitting it leaves the name alone.
 #[derive(Debug, Default, serde::Deserialize)]
 pub struct UpdateProjectCommand {
-    pub name: String,
+    /// The matter's name. Absent leaves it alone, like every other field here;
+    /// present-but-blank is refused, because a matter with no name is not a
+    /// state a patch may produce.
+    #[serde(default)]
+    pub name: Option<String>,
     #[serde(default)]
     pub entity_id: Option<Uuid>,
     #[serde(default)]
@@ -1472,8 +1503,10 @@ pub async fn update_project(
     id: Uuid,
     input: &UpdateProjectCommand,
 ) -> Result<Project, ProjectCommandError> {
-    if input.name.trim().is_empty() {
-        return Err(ProjectCommandError::Invalid("Name is required."));
+    if let Some(name) = &input.name {
+        if name.trim().is_empty() {
+            return Err(ProjectCommandError::Invalid("Name is required."));
+        }
     }
     // A blank submission clears the column; anything else must be a URL that
     // could actually be cloned and safely rendered as a link.
@@ -1506,10 +1539,10 @@ pub async fn update_project(
     // and bound from the same row rather than from two `if` blocks a hundred
     // lines apart that have to be kept in step.
     let text_columns = optional_text_columns(input);
-    let mut assignments = vec![
-        "name = $name".to_string(),
-        "updated_at = $updated_at".to_string(),
-    ];
+    let mut assignments = vec!["updated_at = $updated_at".to_string()];
+    if input.name.is_some() {
+        assignments.push("name = $name".to_string());
+    }
     if input.entity_id.is_some() {
         assignments.push("entity_id = $entity_id".to_string());
     }
@@ -1524,7 +1557,15 @@ pub async fn update_project(
             assignments.join(", ")
         ))
         .bind(("id", record_id(PROJECT_TABLE, id)))
-        .bind(("name", input.name.trim().to_string()))
+        .bind((
+            "name",
+            input
+                .name
+                .as_deref()
+                .map(str::trim)
+                .unwrap_or_default()
+                .to_string(),
+        ))
         .bind(("updated_at", chrono::Utc::now().to_rfc3339()));
     if let Some(entity_id) = input.entity_id {
         response = response.bind(("entity_id", record_id(ENTITY_TABLE, entity_id)));

@@ -158,7 +158,7 @@ async fn lawyer_sees_the_internal_slack_button_and_the_optional_external_one() {
         &f.surreal,
         f.project_id,
         &store::projects::UpdateProjectCommand {
-            name: "Libra integrations".into(),
+            name: Some("Libra integrations".into()),
             internal_slack_channel_url: Some(INTERNAL.into()),
             ..Default::default()
         },
@@ -185,7 +185,7 @@ async fn lawyer_sees_the_external_slack_button_when_the_matter_has_one() {
         &f.surreal,
         f.project_id,
         &store::projects::UpdateProjectCommand {
-            name: "Libra integrations".into(),
+            name: Some("Libra integrations".into()),
             external_slack_channel_url: Some(EXTERNAL.into()),
             ..Default::default()
         },
@@ -246,7 +246,7 @@ async fn a_client_sees_the_shared_resources_and_none_of_the_firms() {
         &f.surreal,
         f.project_id,
         &store::projects::UpdateProjectCommand {
-            name: "Libra integrations".into(),
+            name: Some("Libra integrations".into()),
             internal_slack_channel_url: Some(PRIVATE_SLACK.into()),
             external_slack_channel_url: Some(SHARED_SLACK.into()),
             private_notion_page_url: Some(PRIVATE_NOTION.into()),

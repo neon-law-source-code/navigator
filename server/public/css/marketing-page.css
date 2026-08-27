@@ -648,10 +648,15 @@
    page reads as one column of prose, so each of those is undone explicitly —
    `text-align` alone would leave the blocks centred inside their own max-width. */
 
-/* The bands carry 1.5rem of inline padding and the hero carries none, so the
-   statement sat 24px left of every heading under it. The hero takes the bands'
-   padding instead: on a practice page the eyebrow, the statement, and the first
-   band heading all begin on one line down the left edge.
+/* The bands carry 1.5rem of inline padding and the hero carried none, which
+   left the statement 24px left of every heading under it — and, worse, 24px
+   left of `/litigation` and `/fractional-gc`'s own hero, whose sheets never
+   add that padding at all: those pages take their whole inset from
+   `.public-shell__main`'s 1rem. A practice page's mark, eyebrow, and heading
+   are the site's one strip readers see repeat across four routes, so both the
+   hero and the bands now take their inset from the shell alone, matching
+   `/litigation` and `/fractional-gc` pixel for pixel instead of only matching
+   each other.
 
    The base hero's own wash comes off. It is a radial gradient centred at 50%,
    and the practice skin adds `firm-glow` — a second centred wash — so the two
@@ -660,8 +665,15 @@
    a plain background. */
 .fm-page--practice .fm-hero--page {
   position: relative;
-  padding: clamp(2.5rem, 7vw, 5rem) 1.5rem clamp(2rem, 5vw, 3rem);
+  padding: clamp(2.5rem, 7vw, 5rem) 0 clamp(2rem, 5vw, 3rem);
   background: none;
+}
+
+/* The band's own inline padding is what pushed a practice page's content
+   24px right of `/litigation` and `/fractional-gc`; the shell's 1rem is
+   already the inset every other practice-skin element aligns to. */
+.fm-page--practice .fm-band {
+  padding-inline: 0;
 }
 
 .fm-page--practice .fm-hero__glow {

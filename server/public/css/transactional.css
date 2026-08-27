@@ -54,9 +54,10 @@
   box-shadow: 0 1rem 3rem var(--firm-brand-glow);
 }
 
-/* The three words are one sentence in the markup, so the heading stays a
-   single readable string for a screen reader and for search. The cadence comes
-   from the type, not from splitting it into elements. */
+/* The three words are still one sentence in the markup — each sits in its own
+   `span` for the accent colour, not for motion, so a screen reader and search
+   still read one unbroken string. The heading keeps its single entrance
+   animation rather than staggering per word the way `/litigation` does. */
 .speed-hero__heading {
   margin: 0;
   font-family: var(--firm-serif);
@@ -66,6 +67,19 @@
   letter-spacing: -0.015em;
   text-wrap: balance;
   animation: speed-heading-in 650ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+/* The word gap is a margin rather than a space in the markup, the same
+   convention `/litigation`'s `.zeal-word` uses: each word is its own
+   inline-block so its colour can be set alone, and an inline-block collapses
+   the whitespace at its own end. */
+.speed-word {
+  display: inline-block;
+  margin-inline-end: 0.28em;
+}
+
+.speed-word--accent {
+  color: var(--firm-brand);
 }
 
 @keyframes speed-heading-in {

@@ -373,7 +373,7 @@ fn resolve_practice_links() -> Vec<webapp::home::PracticeLink> {
         },
         PracticeLink {
             mark: PracticeMark::Handshake,
-            heading: "Fractional general counsel".to_string(),
+            heading: "Fractional GC".to_string(),
             body: "Company counsel on one flat monthly fee, working at the pace your sales cycle \
                    already runs at: contracts, licences, financings, and the corporate advice \
                    under them."
@@ -382,7 +382,7 @@ fn resolve_practice_links() -> Vec<webapp::home::PracticeLink> {
         },
         PracticeLink {
             mark: PracticeMark::Gavel,
-            heading: "One-time legal services".to_string(),
+            heading: "One-Time Services".to_string(),
             body: "The routine matters a person or a company walks in with: a will, a trust, a \
                    formation, a trademark, an annual report. One scope and one flat fee, agreed \
                    before we start."
@@ -459,7 +459,7 @@ fn hero_words(heading: &str, accent_words: usize) -> Vec<webapp::litigation_page
 /// the firm runs a matter.
 ///
 /// **The page's claim is speed, and speed is stated as method rather than as
-/// outcome.** "Litigation attorneys built for speed" is a differentiator a bar
+/// outcome.** "Litigation built for speed" is a differentiator a bar
 /// examiner reads as an implied result unless the body binds it to *how the
 /// firm works*, so the closing paragraph says so outright. The same line is why
 /// `publishes_no_quantified_efficiency_claim` matters more here than it did
@@ -549,9 +549,9 @@ pub(crate) fn resolve_litigation_content(
                            complex technology disputes for companies and fraud cases for the \
                            people on the receiving end."
             .to_string(),
-        eyebrow: "Litigation, plaintiff and defense".to_string(),
-        heading: hero_words("Litigation attorneys built for speed.", 2),
-        lead: "Our strategy is always the same. Do as much as we can, as early as we can, and get \
+        eyebrow: "Values-Based Litigation".to_string(),
+        heading: hero_words("Litigation built for speed.", 1),
+        lead: "Our strategy is generally the same. Do as much as we can, as early as we can, and get \
                you to a resolution sooner. That is not the right approach for every case. It \
                could be the right one for yours."
             .to_string(),
@@ -766,7 +766,7 @@ pub(crate) fn resolve_transactional_content(
                            turnaround."
             .to_string(),
         eyebrow: "Fractional General Counsel".to_string(),
-        heading: "Accurate. Efficient. Speedy.".to_string(),
+        heading: hero_words("Accurate. Efficient. Speedy.", 1),
         lead: "Company counsel on one flat monthly fee, working at the pace your sales cycle \
                already runs at. A redline comes back in one business day."
             .to_string(),

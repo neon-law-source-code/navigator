@@ -565,7 +565,7 @@ fn the_repository_root_carries_exactly_one_licence_file() {
 /// These are independent facts and the file has to keep them apart. Closed is a
 /// *capacity* decision about pull requests, revocable at will. Assignment is the
 /// ownership position, stated in advance so a fork's authors know the terms
-/// without having to ask. And the grant out is `AGPL-3.0-only` either way, which
+/// without having to ask. And the grant out is `BUSL-1.1` either way, which
 /// is the sentence that stops the other two being misread: a reader who
 /// concludes that a closed door or a signed assignment means the grant is closed
 /// too has reached the one thing this repository can never say, because every
@@ -648,6 +648,74 @@ fn contributions_are_closed_but_the_licence_terms_are_stated_anyway() {
          and a written assignment takes more than that. The grant out is still \
          `{LICENSE}` — say that instead of a term that now reads as a promise \
          there is no agreement to sign"
+    );
+}
+
+/// No public document promises a contributor they keep the copyright and sign
+/// nothing.
+///
+/// `inbound = outbound` means the inbound licence equals the outbound one and
+/// nothing further is taken. A written assignment takes more than that, so the
+/// phrase reads as a promise there is no agreement to sign. The workshop deck
+/// that teaches contribution is the document most likely to be read aloud to
+/// someone who has not opened `CONTRIBUTING.md`; it has to name `{LICENSE}`
+/// and `{OWNER}`, state the assignment, and not contradict them.
+#[test]
+fn no_document_promises_a_contributor_keeps_the_copyright() {
+    /// The workshop that teaches contribution. Holder and licence already live
+    /// in its intro notes; this pin keeps the spoken face and the presenter
+    /// notes from drifting off them.
+    const DECK: &str = "server/content/workshops/navigator/CONTRIBUTE.md";
+
+    /// Phrases that state the discarded inbound-equals-outbound position.
+    const STALE: [&str; 3] = [
+        "inbound = outbound",
+        "you keep the copyright",
+        "there is no agreement to sign",
+    ];
+
+    let mut offenders = Vec::new();
+    for path in markdown_documents() {
+        let rel = path
+            .strip_prefix(repo_root())
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .replace("../", "");
+        let flat = unemphasized(&fs::read_to_string(&path).unwrap_or_default());
+        for claim in STALE {
+            if flat.contains(claim) {
+                offenders.push(format!("{rel}: says `{claim}`"));
+            }
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "a contribution assigns to {OWNER} under a contributor licence \
+         agreement; these documents still promise the discarded keep-your-\
+         copyright position:\n  {}",
+        offenders.join("\n  ")
+    );
+
+    let deck = read(DECK);
+    let flat = unemphasized(&deck);
+    assert!(
+        deck.contains(LICENSE),
+        "{DECK} must name `{LICENSE}` as the licence of record, not the Change \
+         License"
+    );
+    assert!(
+        deck.contains(OWNER),
+        "{DECK} must name `{OWNER}` as the copyright holder"
+    );
+    assert!(
+        flat.contains("assigns to"),
+        "{DECK} must state that a contribution assigns to the Firm, matching \
+         CONTRIBUTING.md"
+    );
+    assert!(
+        !flat.contains("anyone can open issues and pull requests"),
+        "{DECK} must not invite a room to open pull requests while \
+         CONTRIBUTING.md says outside contributions are closed"
     );
 }
 

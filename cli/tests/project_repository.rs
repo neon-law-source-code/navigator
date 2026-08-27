@@ -72,7 +72,15 @@ fn the_scaffold_produces_a_repository_that_validates_and_is_idempotent() {
     assert!(workflow.contains("project_repository: true"));
     assert!(workflow.contains("actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"));
     let cd = fs::read_to_string(dir.path().join(".github/workflows/publish.yml")).unwrap();
-    assert!(cd.contains("echo \"TBD\""));
+    assert!(
+        !cd.contains("TBD"),
+        "the publish workflow is still a placeholder:\n{cd}"
+    );
+    assert!(cd.contains("id-token: write"));
+    assert!(
+        cd.contains("neon-law-source-code/navigator/.github/actions/application-publish@26.8.23")
+    );
+    assert!(cd.contains("secrets.NAVIGATOR_APPLICATIONS_BUCKET"));
 
     // Neither retired manifest is written. `mount.json` and `navigator.toml`
     // declared a repository's own coordinates and every reader of them is gone;

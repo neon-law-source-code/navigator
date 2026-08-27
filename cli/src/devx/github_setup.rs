@@ -175,7 +175,12 @@ const ACTIONS_APP_SLUG: &str = "github-actions";
 /// [`assert_required_check_job`] refuses to bind this gate on a repository
 /// whose workflows do not actually define that job, so adopting the convention
 /// is checked rather than assumed.
-const REQUIRED_CHECK: &str = "ci";
+///
+/// `pub(crate)` because [`super::super::projects::repository`]'s generated
+/// gate must terminate in a job spelled the same way this module binds the
+/// ruleset to — two constants for one convention is a rename waiting to leave
+/// one of them stale.
+pub(crate) const REQUIRED_CHECK: &str = "ci";
 /// Navigator's existing production gate also carries `CodeQL`. Preserve that
 /// repository-specific required check while tightening the shared policy.
 const NAVIGATOR_CODEQL_INTEGRATION_ID: u64 = 57789;

@@ -99,7 +99,7 @@ mod tests {
     fn a_non_dashboard_kind_is_left_alone() {
         // A notation template with an unrelated `lenses:` key is not this
         // rule's business.
-        let body = "---\nkind: retainer\nlenses:\n  lawyer: [vibe_chart]\n---\n";
+        let body = "---\nkind: onboarding\nlenses:\n  lawyer: [vibe_chart]\n---\n";
         assert!(D001UnknownSection.lint(&file(body)).is_empty());
         assert!(D001UnknownSection.lint(&file("plain prose")).is_empty());
     }

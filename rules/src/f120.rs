@@ -158,7 +158,7 @@ mod tests {
         let first = states.first().copied().unwrap_or("END");
         let mut lines = vec![
             "---".to_string(),
-            "kind: retainer".to_string(),
+            "kind: onboarding".to_string(),
             "title: T".to_string(),
             "questionnaire:".to_string(),
             "  BEGIN:".to_string(),
@@ -265,7 +265,7 @@ mod tests {
     fn a_frontmatter_without_a_questionnaire_is_skipped() {
         assert!(F120BodyStateGrounding
             .lint(&file(
-                "---\nkind: retainer\ntitle: T\n---\n\n{{custom_text__x}}\n"
+                "---\nkind: onboarding\ntitle: T\n---\n\n{{custom_text__x}}\n"
             ))
             .is_empty());
     }
@@ -273,7 +273,7 @@ mod tests {
     #[test]
     fn a_placeholder_in_the_frontmatter_is_not_a_body_placeholder() {
         // A prompt may quote a token; only the body renders.
-        let contents = "---\nkind: retainer\ntitle: T\ncustom_questions:\n  x:\n    prompt: \
+        let contents = "---\nkind: onboarding\ntitle: T\ncustom_questions:\n  x:\n    prompt: \
                         \"say {{custom_text__x}}\"\nquestionnaire:\n  BEGIN:\n    _: END\n  \
                         END: {}\n---\n\nBody.\n";
         assert!(F120BodyStateGrounding.lint(&file(contents)).is_empty());

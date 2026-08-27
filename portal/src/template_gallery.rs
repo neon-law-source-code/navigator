@@ -316,10 +316,10 @@ mod tests {
 
     #[test]
     fn confidential_templates_are_not_reachable() {
-        // Retainer + Closing Letter are `confidential: true`; they must
+        // Retainer + Offboarding Letter are `confidential: true`; they must
         // never be on the list and so must 404 by being absent.
         assert!(find_path("engagements/retainer").is_none());
-        assert!(find_path("neon_law/shared/closing_letter").is_none());
+        assert!(find_path("neon_law/shared/offboarding_letter").is_none());
         // A guessed/typo'd path is also absent.
         assert!(find_path("nonprofit/DoesNotExist").is_none());
     }

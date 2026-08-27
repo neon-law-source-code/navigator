@@ -92,7 +92,7 @@ mod tests {
         // so the N-family fires (here: N108 requires a `code`).
         let (_file, violations) = lint_buffer(
             std::path::PathBuf::from("draft.md"),
-            "---\nkind: retainer\ntitle: Draft\nworkflow:\n  BEGIN:\n    created: END\n---\n"
+            "---\nkind: onboarding\ntitle: Draft\nworkflow:\n  BEGIN:\n    created: END\n---\n"
                 .to_string(),
         );
         assert!(

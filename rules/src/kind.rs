@@ -22,11 +22,6 @@
 /// [`crate::S103KindEnum`] flags the bad value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
-    /// The engagement agreement that opens a matter. A lawyer creates it on
-    /// the Project like any other notation — opening the Project does not
-    /// open it — and it is one of the two kinds the self-serve doors accept
-    /// as a matter's first notation (see [`Kind::opens_a_matter`]).
-    Retainer,
     /// A letter the firm sends on a client's behalf (demand, notice,
     /// settlement, closing).
     Letter,
@@ -43,9 +38,14 @@ pub enum Kind {
     /// A private agreement between the client and a third party
     /// (employment, contractor, LLC operating agreement).
     Agreement,
-    /// A transcript- or intake-driven onboarding engagement that opens a
-    /// bundle of instruments (the estate plan, the fractional-GC
-    /// engagement) — a process, not a single instrument.
+    /// The engagement that opens a matter — a lawyer creates it on the
+    /// Project like any other notation (opening the Project does not open
+    /// it) and it is the one kind the self-serve doors accept as a
+    /// matter's first notation (see [`Kind::opens_a_matter`]). Covers both
+    /// a single-instrument engagement letter and a transcript- or
+    /// intake-driven onboarding that opens a bundle of instruments at once
+    /// (the estate plan, the fractional-GC engagement) — whether one
+    /// instrument or a bundle, it is the same act of opening the matter.
     Onboarding,
     /// An analytical work product the firm delivers — a review memo or
     /// opinion (`services__contract_review`), not an executed instrument.
@@ -131,7 +131,6 @@ pub enum Kind {
 impl Kind {
     /// Every recognized kind, in declaration order.
     pub const ALL: &'static [Kind] = &[
-        Kind::Retainer,
         Kind::Letter,
         Kind::Filing,
         Kind::Will,
@@ -164,7 +163,6 @@ impl Kind {
     #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {
-            Kind::Retainer => "retainer",
             Kind::Letter => "letter",
             Kind::Filing => "filing",
             Kind::Will => "will",
@@ -199,16 +197,13 @@ impl Kind {
     #[must_use]
     pub fn describe(self) -> &'static str {
         match self {
-            Kind::Retainer => "The engagement agreement that opens a matter",
             Kind::Letter => "A letter the firm sends on the client's behalf",
             Kind::Filing => "A document filed with a government body",
             Kind::Will => "A last will and testament",
             Kind::Trust => "A trust instrument",
             Kind::Directive => "An advance health-care or durable financial directive",
             Kind::Agreement => "A private agreement (employment, contractor, LLC operating)",
-            Kind::Onboarding => {
-                "A multi-instrument onboarding engagement (an intake bundle, not one instrument)"
-            }
+            Kind::Onboarding => "The engagement that opens a matter — one instrument or a bundle",
             Kind::Memo => "An analytical work product (a review memo or opinion)",
             Kind::Event => "A public event page (web/content/events/)",
             Kind::Post => "A published blog post (web/content/blog/)",
@@ -267,9 +262,9 @@ impl Kind {
 
     /// True when a notation of this kind is the **engagement that opens a
     /// matter** — the document whose absence means a Project was never
-    /// really opened. `Retainer` is the engagement for a single-instrument
-    /// matter; `Onboarding` is the intake-driven engagement that opens a
-    /// bundle of them. Callers that ask "does this matter have its
+    /// really opened. `Onboarding` covers both a single-instrument
+    /// engagement letter and the intake-driven engagement that opens a
+    /// bundle of instruments. Callers that ask "does this matter have its
     /// engagement yet?" (`portal::admin::matter_flags`) key off this rather
     /// than a template's `code`, so a new engagement template is classified
     /// by what it *is*, not by what it happens to be named.
@@ -279,7 +274,7 @@ impl Kind {
     #[must_use]
     pub fn opens_a_matter(self) -> bool {
         match self {
-            Kind::Retainer | Kind::Onboarding => true,
+            Kind::Onboarding => true,
             Kind::Letter
             | Kind::Filing
             | Kind::Will
@@ -339,8 +334,7 @@ impl Kind {
     pub fn is_notation(self) -> bool {
         matches!(
             self,
-            Kind::Retainer
-                | Kind::Letter
+            Kind::Letter
                 | Kind::Filing
                 | Kind::Will
                 | Kind::Trust
@@ -389,8 +383,7 @@ impl Kind {
             // frontmatter: the notation family, the content pages, the
             // GitHub intake, and the matter dashboards.
             Lane::Template => match self {
-                Kind::Retainer
-                | Kind::Letter
+                Kind::Letter
                 | Kind::Filing
                 | Kind::Will
                 | Kind::Trust
@@ -425,8 +418,7 @@ impl Kind {
             // Content pages and dashboards are excluded: neither is ever
             // a byte artifact on a matter.
             Lane::Asset => match self {
-                Kind::Retainer
-                | Kind::Letter
+                Kind::Letter
                 | Kind::Filing
                 | Kind::Will
                 | Kind::Trust
@@ -485,7 +477,6 @@ pub enum Lane {
 /// the LSP does not offer them. `valid_strings_are_exactly_the_template_lane`
 /// pins the two together.
 pub const VALID: &[&str] = &[
-    "retainer",
     "letter",
     "filing",
     "will",
@@ -606,7 +597,6 @@ mod tests {
     #[test]
     fn notation_family_covers_every_instrument_and_excludes_content_pages() {
         for kind in [
-            Kind::Retainer,
             Kind::Letter,
             Kind::Filing,
             Kind::Will,
@@ -684,12 +674,14 @@ mod tests {
 
     #[test]
     fn matter_opening_kinds_are_the_engagements_and_nothing_else() {
-        // The two kinds that open a matter: the retainer that is a
-        // matter's first notation, and the onboarding engagement that
-        // opens a bundle of instruments (the estate plan, fractional GC).
-        for kind in [Kind::Retainer, Kind::Onboarding] {
-            assert!(kind.opens_a_matter(), "{} opens a matter", kind.as_str());
-        }
+        // The one kind that opens a matter: the onboarding engagement,
+        // whether a single-instrument engagement letter or the
+        // intake-driven onboarding that opens a bundle of instruments
+        // (the estate plan, fractional GC).
+        assert!(
+            Kind::Onboarding.opens_a_matter(),
+            "onboarding opens a matter"
+        );
         // Every other kind is work done *inside* an already-open matter,
         // or a content page — none of them is the engagement.
         for kind in [
@@ -764,8 +756,8 @@ mod tests {
 
     #[test]
     fn declared_reads_a_recognized_kind_from_frontmatter() {
-        let body = "---\ntitle: T\nkind: retainer\n---\n\nBody.\n";
-        assert_eq!(declared(body), Some(Kind::Retainer));
+        let body = "---\ntitle: T\nkind: onboarding\n---\n\nBody.\n";
+        assert_eq!(declared(body), Some(Kind::Onboarding));
     }
 
     #[test]

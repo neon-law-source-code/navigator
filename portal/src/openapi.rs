@@ -645,7 +645,7 @@ pub fn document_with_base(base: &str) -> Value {
           "post": {
             "summary": "Open a matter's closing-letter notation",
             "description":
-              "Opens the firm-signed `closing__letter` notation on an existing matter, addressed to \
+              "Opens the firm-signed `offboarding__letter` notation on an existing matter, addressed to \
                the matter's client — the REST mirror of the lawyer close control, converging on the \
                same command. `201 Created` carrying the new notation's id; the walk that follows \
                (and the eventual flip to `closed`) is driven separately. Authorization: the \

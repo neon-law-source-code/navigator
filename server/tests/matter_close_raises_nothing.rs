@@ -3,12 +3,12 @@
 //!
 //! Accounting originates in Xero: lawyers agree a matter's price with the
 //! client and raise the invoice there directly. So countersigning a
-//! `closing__letter` must close the matter and touch the accounting seam
+//! `offboarding__letter` must close the matter and touch the accounting seam
 //! **not at all** — no `ensure_contact`, no `create_invoice`, and no
 //! `xero_invoice` mirror row.
 //!
 //! The close path is deliberately shape-agnostic: `close_matter_post`
-//! reads the project, the `closing__letter` template, and the project's
+//! reads the project, the `offboarding__letter` template, and the project's
 //! client participation, and nothing else. It never consults a product, a
 //! catalog price, or the matter's originating work. This test pins that by
 //! closing several unrelated matters through the same real HTTP walk —
@@ -187,7 +187,7 @@ async fn any_matter_closes_and_none_of_them_raises_money() {
             .await
             .unwrap(),
     );
-    // The canonical seed brings the `closing__letter` template, the
+    // The canonical seed brings the `offboarding__letter` template, the
     // originating templates below, and the whole product catalog — so a
     // priced `northstar` row really is present and still buys nothing.
     seed::seed_canonical(&surreal, &storage).await.unwrap();

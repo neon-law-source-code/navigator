@@ -537,10 +537,9 @@ with it; no door creates a retainer alongside the matter.
 
 The engagement-first rule is enforced at create time on the **self-serve doors** — `web`'s project-scoped create route
 and the CLI, which share `workflows::notation_session::create_notation_from_repo`. There, a matter's first Notation must
-be a template whose declared `kind` opens a matter — `retainer`, or the intake-driven `onboarding` that opens a bundle
-of instruments at once (the estate plan, the fractional-GC engagement). One classifier answers that for the whole
-workspace, `rules::kind::Kind::opens_a_matter`; see [`docs/frontmatter.md`](frontmatter.md) for the `kind` vocabulary.
-Later Notations — filings, letters — may be any kind.
+be a template whose declared `kind` opens a matter — see [Onboarding](#onboarding). One classifier answers that for the
+whole workspace, `rules::kind::Kind::opens_a_matter`; see [`docs/frontmatter.md`](frontmatter.md) for the `kind`
+vocabulary. Later Notations — filings, letters — may be any kind.
 
 **[AIDA](#aida) is not bound by that rule**, because it is lawyer-directed rather than self-serve.
 `aida_create_notation` opens the notation through the policy-free `start_notation` primitive, so an attorney driving the
@@ -789,6 +788,20 @@ layers stay in sync because the worker writes them through `ctx.run`.
 The workflow prefix `onchain` records an attorney attestation in the durable attestation table and, when configured,
 through the chain backend. See [`solana-attestation.md`](solana-attestation.md) and
 [`workflows::step::STEP_PREFIXES`](../workflows/src/step.rs).
+
+## Onboarding
+
+The codebase term for the notation that **opens a matter** — `rules::kind::Kind::Onboarding`, classified by
+[`Kind::opens_a_matter`](../rules/src/kind.rs). It covers both a single-instrument engagement letter and a
+transcript-/intake-driven engagement that opens a bundle of instruments at once (the estate plan, the fractional-GC
+engagement) — the same act of opening the matter either way. `Kind::Retainer` used to name the single-instrument case
+separately; it has been merged into `Kind::Onboarding`, because no call site ever distinguished the two.
+
+In conversation and with clients this is the **retainer** or the **engagement letter** — see [Engagement /
+Retainer](#engagement--retainer) for that client-facing shape. The codebase and the workflow runtime speak Onboarding;
+the templates that declare it keep their conversational titles ("Retainer Agreement", "Engagement Letter") and codes
+(`onboarding__retainer`, `onboarding__engagement_letter`) unchanged — only their declared `kind:` collapsed to the one
+value.
 
 ## Participation
 

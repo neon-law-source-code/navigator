@@ -295,8 +295,8 @@ pub fn LawyerProjects() -> Element {
                                 if row.missing_closing_letter {
                                     " "
                                     span { class: "matter-flag",
-                                        title: "This closed matter has no closing letter.",
-                                        "no closing letter"
+                                        title: "This closed matter has no offboarding letter.",
+                                        "no offboarding letter"
                                     }
                                 }
                             }

@@ -21,7 +21,7 @@ this index says how it is built.
   (3) seeded questions, (4) workflow YAML from the shared step library, (5) Restate handlers. Use only Person / Entity /
   role nouns from [`glossary.md`](glossary.md).
 - **Matter lifecycle.** A Nautilus engagement is a `projects` matter opened by `onboarding__` and closed by
-  `closing__letter` when the representation ends.
+  `offboarding__letter` when the representation ends.
 
 ## Guardrails (every outbound letter, every workflow)
 

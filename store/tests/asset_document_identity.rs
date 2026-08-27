@@ -353,7 +353,7 @@ async fn a_kind_change_is_a_different_document_not_a_revision() {
     file_revision(
         &db,
         &storage,
-        &args(project_id, "retainer"),
+        &args(project_id, "onboarding"),
         &identity("engagement"),
         b"v1",
     )
@@ -373,7 +373,7 @@ async fn a_kind_change_is_a_different_document_not_a_revision() {
         matches!(
             err,
             RevisionError::KindChanged { ref existing, ref attempted, .. }
-                if existing == "retainer" && attempted == "agreement"
+                if existing == "onboarding" && attempted == "agreement"
         ),
         "expected a KindChanged rejection, got {err:?}"
     );
@@ -382,7 +382,7 @@ async fn a_kind_change_is_a_different_document_not_a_revision() {
     file_revision(
         &db,
         &storage,
-        &args(project_id, "retainer"),
+        &args(project_id, "onboarding"),
         &identity("engagement"),
         b"v2",
     )

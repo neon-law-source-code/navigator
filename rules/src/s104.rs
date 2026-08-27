@@ -130,7 +130,7 @@ mod tests {
         // A template that DOES declare its kind is fine.
         assert!(S104MissingKind
             .lint(&file(
-                "---\nkind: retainer\nquestionnaire:\n  BEGIN:\n    _: END\n---\n"
+                "---\nkind: onboarding\nquestionnaire:\n  BEGIN:\n    _: END\n---\n"
             ))
             .is_empty());
     }

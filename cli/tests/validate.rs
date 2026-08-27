@@ -67,7 +67,7 @@ fn validate_default_rule_set_flags_missing_frontmatter() {
     write(
         dir.path(),
         "templates/notes.md",
-        "---\nkind: retainer\nquestionnaire:\n  BEGIN:\n    _: END\n---\n\nBody.\n",
+        "---\nkind: onboarding\nquestionnaire:\n  BEGIN:\n    _: END\n---\n\nBody.\n",
     );
     navigator()
         .args(["validate"])
@@ -641,7 +641,7 @@ fn validate_fix_leaves_diagnostic_only_violations_for_human() {
     write(
         dir.path(),
         "templates/needs.md",
-        "---\nkind: retainer\nrespondent_type: entity\nquestionnaire:\n  BEGIN:\n    _: END\n---\n\n\tTabbed\n",
+        "---\nkind: onboarding\nrespondent_type: entity\nquestionnaire:\n  BEGIN:\n    _: END\n---\n\n\tTabbed\n",
     );
     navigator()
         .args(["validate", "--fix"])

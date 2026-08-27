@@ -412,11 +412,11 @@ async fn start_get_renders_the_minimal_create_form() {
         html.contains("onboarding__estate"),
         "every seeded onboarding template should be an option",
     );
-    // Only onboarding templates open a matter; a closing letter is not an
-    // option here (it belongs to the close flow).
+    // Only onboarding templates open a matter; an offboarding letter is not
+    // an option here (it belongs to the close flow).
     assert!(
-        !html.contains("closing__letter"),
-        "the closing letter must not be a matter-open option",
+        !html.contains("offboarding__letter"),
+        "the offboarding letter must not be a matter-open option",
     );
     // The walker collects these; they must NOT be on the create form.
     assert!(!html.contains("name=\"person__client\""));
@@ -867,7 +867,7 @@ async fn close_matter_post_starts_a_closing_walk_for_an_existing_matter() {
     let scoped_closing_tmpl = store::templates::save_version(
         &surreal,
         Some(project.id),
-        "closing__letter",
+        "offboarding__letter",
         store::templates::Version {
             title: "Project Closing Letter".into(),
             respondent_type: "person".into(),
@@ -919,7 +919,7 @@ async fn close_matter_post_starts_a_closing_walk_for_an_existing_matter() {
         "redirect was {loc:?}"
     );
 
-    // A closing__letter notation now hangs off the matter, addressed
+    // An offboarding__letter notation now hangs off the matter, addressed
     // to its client, at BEGIN — ready to walk.
     let notations = store::notations::list_by_project(&surreal, project.id)
         .await

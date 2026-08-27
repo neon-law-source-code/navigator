@@ -116,8 +116,8 @@ pub const BUNDLED_SPEC_YAML: &[(&str, &str)] = &[
         include_str!("../specs/onboarding__nexus.yaml"),
     ),
     (
-        "closing__letter",
-        include_str!("../specs/closing__letter.yaml"),
+        "offboarding__letter",
+        include_str!("../specs/offboarding__letter.yaml"),
     ),
     (
         "ca__llc_operating_agreement",

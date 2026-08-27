@@ -1982,7 +1982,7 @@ pub fn matter_flags(has_engagement: bool, status: &str, has_closing: bool) -> (b
 }
 
 /// For the given matters, return `(project_ids with a matter-opening engagement,
-/// project_ids with a closing__letter notation)` in two batched queries
+/// project_ids with an offboarding__letter notation)` in two batched queries
 /// (notations for these projects, then the templates they bind). The engagement
 /// side keys off the template's declared `kind`; the closing letter off its
 /// `code`.
@@ -2029,7 +2029,7 @@ pub async fn matter_lifecycle_sets(
             if template_opens_a_matter(t.kind.as_deref()) {
                 has_engagement.insert(n.project_id);
             }
-            if t.code == "closing__letter" {
+            if t.code == "offboarding__letter" {
                 has_closing.insert(n.project_id);
             }
         }

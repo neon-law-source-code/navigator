@@ -3,7 +3,7 @@
 //!
 //! The firm's lifecycle invariant: every matter opens on an onboarding
 //! (`onboarding__*`) notation — the client's retainer — and a *closed*
-//! matter carries a `closing__letter`. Neither is schema-enforced, so the
+//! matter carries an `offboarding__letter`. Neither is schema-enforced, so the
 //! Projects list surfaces the gaps with a warning badge. These tests pin
 //! both the pure rule (`store::projects::matter_flags`) and the rendered list.
 
@@ -71,20 +71,21 @@ fn an_open_matter_never_owes_a_closing_letter() {
 // ---- what counts as the matter-opening engagement ----
 
 #[test]
-fn a_retainer_template_opens_a_matter_whatever_its_code() {
+fn an_onboarding_template_opens_a_matter_whatever_its_code() {
     // The flag keys off the declared `kind`, never the template's code.
-    // Every `kind: retainer` template happens to use an `onboarding__*`
-    // code today; a future one that does not must still count, or the
-    // badge would lie about a matter that has its engagement.
-    assert!(store::projects::template_opens_a_matter(Some("retainer")));
+    // Every onboarding template happens to use an `onboarding__*` code
+    // today; a future one that does not must still count, or the badge
+    // would lie about a matter that has its engagement.
+    assert!(store::projects::template_opens_a_matter(Some("onboarding")));
 }
 
 #[test]
-fn an_onboarding_engagement_opens_a_matter() {
-    // `onboarding__estate` / `onboarding__nexus` are `kind: onboarding`,
-    // not `retainer` — the intake-driven engagements that open a bundle
-    // of instruments. They open a matter just as a retainer does.
-    assert!(store::projects::template_opens_a_matter(Some("onboarding")));
+fn a_retired_retainer_kind_string_no_longer_opens_a_matter() {
+    // `Kind::Retainer` was merged into `Kind::Onboarding` — every
+    // `kind: retainer` template was reclassified `kind: onboarding`, so
+    // the bare string `"retainer"` is no longer a recognized `Kind` at
+    // all and must not open a matter by accident.
+    assert!(!store::projects::template_opens_a_matter(Some("retainer")));
 }
 
 #[test]
@@ -285,13 +286,13 @@ async fn projects_list_flags_the_lifecycle_gaps_and_nothing_else() {
     notation(&surreal, a, person.id, "onboarding__retainer").await;
     // B: open, no onboarding notation → missing retainer.
     let b = project(&surreal, "Bare open matter", "open").await;
-    // C: closed, has its retainer but no closing letter → missing closing letter.
+    // C: closed, has its retainer but no offboarding letter → missing offboarding letter.
     let c = project(&surreal, "Closed no letter", "closed").await;
     notation(&surreal, c, person.id, "onboarding__estate").await;
     // D: closed, has both → clean.
     let d = project(&surreal, "Closed with letter", "closed").await;
     notation(&surreal, d, person.id, "onboarding__retainer").await;
-    notation(&surreal, d, person.id, "closing__letter").await;
+    notation(&surreal, d, person.id, "offboarding__letter").await;
 
     // The matters list is participation-scoped for every tier since ENG-81,
     // so the acting admin is put on each seeded matter rather than relying on
@@ -333,21 +334,21 @@ async fn projects_list_flags_the_lifecycle_gaps_and_nothing_else() {
     // B — bare open matter — is flagged as missing its retainer only.
     let b = row_for("Bare open matter");
     assert!(&b.contains("no retainer"));
-    absent(&b, "no closing letter");
+    absent(&b, "no offboarding letter");
 
     // C — closed without a letter — is flagged for the closing letter only
     // (it has its onboarding__estate retainer).
     let c = row_for("Closed no letter");
-    assert!(&c.contains("no closing letter"));
+    assert!(&c.contains("no offboarding letter"));
     absent(&c, "no retainer");
 
     // A and D are clean — no badge either way.
     let a = row_for("Has retainer open");
     absent(&a, "no retainer");
-    absent(&a, "no closing letter");
+    absent(&a, "no offboarding letter");
     let d = row_for("Closed with letter");
     absent(&d, "no retainer");
-    absent(&d, "no closing letter");
+    absent(&d, "no offboarding letter");
 }
 
 #[tokio::test]

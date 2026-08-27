@@ -385,8 +385,7 @@ pub fn skeleton(kind: Kind) -> Option<Skeleton> {
             required: &[S::EngagementLetter, S::Invoice],
             optional: &[S::PrebillReview, S::DownloadList],
         },
-        Kind::Retainer
-        | Kind::Letter
+        Kind::Letter
         | Kind::Filing
         | Kind::Will
         | Kind::Trust
@@ -660,8 +659,8 @@ mod tests {
 
     #[test]
     fn scaffold_returns_none_for_a_non_dashboard_kind() {
-        assert!(scaffold(Kind::Retainer, "Nope").is_none());
-        assert!(catalog(Kind::Retainer).is_empty());
+        assert!(scaffold(Kind::Onboarding, "Nope").is_none());
+        assert!(catalog(Kind::Onboarding).is_empty());
     }
 
     #[test]

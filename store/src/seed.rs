@@ -216,8 +216,8 @@ mod canonical {
     /// shipped catalog is bundled so a fresh cluster carries every
     /// template without an import pass.
     pub const TEMPLATE_RETAINER: &str = include_str!("../../templates/neon_law/shared/retainer.md");
-    pub const TEMPLATE_CLOSING_LETTER: &str =
-        include_str!("../../templates/neon_law/shared/closing_letter.md");
+    pub const TEMPLATE_OFFBOARDING_LETTER: &str =
+        include_str!("../../templates/neon_law/shared/offboarding_letter.md");
     pub const TEMPLATE_ANNUAL_REPORT_NV: &str =
         include_str!("../../templates/forms/united_states/nevada/state/nv__annual_report.md");
     pub const TEMPLATE_DISSOLUTION_NV: &str =
@@ -295,8 +295,8 @@ pub const SEEDED_TEMPLATES: &[SeededTemplate] = &[
         markdown: canonical::TEMPLATE_RETAINER,
     },
     SeededTemplate {
-        label: "neon_law/shared/closing_letter.md",
-        markdown: canonical::TEMPLATE_CLOSING_LETTER,
+        label: "neon_law/shared/offboarding_letter.md",
+        markdown: canonical::TEMPLATE_OFFBOARDING_LETTER,
     },
     SeededTemplate {
         label: "forms/united_states/nevada/state/nv__annual_report.md",
@@ -3011,7 +3011,7 @@ records:
         // `include_str!` entry is caught, not just the retainer.
         for code in [
             "onboarding__retainer",
-            "closing__letter",
+            "offboarding__letter",
             "trusts__nevada",
             "will__simple",
             "ca__llc_operating_agreement",

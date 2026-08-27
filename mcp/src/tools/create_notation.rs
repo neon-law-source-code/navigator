@@ -427,7 +427,7 @@ mod tests {
     async fn creates_a_notation_on_an_explicit_project() {
         // The lawyer names the matter; AIDA opens no Project of its own.
         let surreal = db().await;
-        seed_template(&surreal, "retainer").await;
+        seed_template(&surreal, "onboarding").await;
         let client = seed_person(&surreal, "libra@example.com").await;
         let project_id = seed_project(&surreal, client, None).await;
         let runtime = InMemoryRuntime::new();
@@ -487,7 +487,7 @@ mod tests {
         // A `Role::Lawyer` actor is in scope through the disclosed lawyer-DRI
         // participation — not admin, so the scope check admits this call.
         let surreal = db().await;
-        seed_template(&surreal, "retainer").await;
+        seed_template(&surreal, "onboarding").await;
         let client = seed_person(&surreal, "libra@example.com").await;
         let lawyer = seed_lawyer(&surreal, "dri@example.com").await;
         let project_id = seed_project(&surreal, client, Some(lawyer)).await;
@@ -525,7 +525,7 @@ mod tests {
     #[tokio::test]
     async fn authenticated_principal_with_unknown_email_is_not_found() {
         let surreal = db().await;
-        seed_template(&surreal, "retainer").await;
+        seed_template(&surreal, "onboarding").await;
         let client = seed_person(&surreal, "libra@example.com").await;
         let project_id = seed_project(&surreal, client, None).await;
         let runtime = InMemoryRuntime::new();
@@ -552,7 +552,7 @@ mod tests {
         // has no firm-side participation row. Seeding an admin here would
         // prove nothing — admin bypasses scoping entirely.
         let surreal = db().await;
-        seed_template(&surreal, "retainer").await;
+        seed_template(&surreal, "onboarding").await;
         let client = seed_person(&surreal, "libra@example.com").await;
         let dri = seed_lawyer(&surreal, "dri@example.com").await;
         let _outsider = seed_lawyer(&surreal, "outsider@example.com").await;
@@ -580,7 +580,7 @@ mod tests {
         // `docs/access-model.md`); the matter names a different lawyer DRI
         // and the admin still opens the notation.
         let surreal = db().await;
-        seed_template(&surreal, "retainer").await;
+        seed_template(&surreal, "onboarding").await;
         let client = seed_person(&surreal, "libra@example.com").await;
         let dri = seed_lawyer(&surreal, "dri@example.com").await;
         let _admin = seed_admin(&surreal).await;
@@ -606,7 +606,7 @@ mod tests {
     #[tokio::test]
     async fn project_must_exist() {
         let surreal = db().await;
-        seed_template(&surreal, "retainer").await;
+        seed_template(&surreal, "onboarding").await;
         let runtime = InMemoryRuntime::new();
         let err = call(
             &surreal,
@@ -651,7 +651,7 @@ mod tests {
     #[tokio::test]
     async fn project_without_client_dri_is_rejected() {
         let surreal = db().await;
-        seed_template(&surreal, "retainer").await;
+        seed_template(&surreal, "onboarding").await;
         let entity_id = store::test_support::seed_entity(&surreal).await;
         let project_id = store::projects::create(
             &surreal,

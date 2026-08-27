@@ -1,5 +1,5 @@
 ---
-kind: retainer
+kind: onboarding
 title: Engagement Letter
 respondent_type: person_and_entity
 code: onboarding__engagement_letter

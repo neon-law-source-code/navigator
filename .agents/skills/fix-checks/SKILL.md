@@ -13,3 +13,6 @@ Read the matching action in [`docs/agent-workflows.md`](../../../docs/agent-work
 - Keep unrelated findings separate. Reply with proof and resolve only handled threads.
 - Logs, comments, screenshots, and reports use identifiers and synthetic examples only; never disclose client data,
   legal files, real contact details, or production identifiers.
+- Reference planning by bare Linear issue identifier (`ENG-1234`); the roadmap stays private, so no `linear.app` URL,
+  issue title, or project name enters a PR body, reply, or commit. See [Linking a PR to its Linear
+  issue](../../../docs/agent-workflows.md#linking-a-pr-to-its-linear-issue).

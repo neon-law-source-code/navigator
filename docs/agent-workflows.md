@@ -93,12 +93,52 @@ When a dirty tree is ready to land:
    a raw `/tmp` URL. Rendering tests are not live proof. For authenticated pages, follow
    [`AGENTS.md`](../AGENTS.md#authentication-and-lawyer-access): grant lawyer against `web`'s database and authenticate
    through Rauthy, never a hand-written cookie.
-8. Push and open a PR against `main`; auto-merge lands it once the required checks pass and its review threads are
-   resolved. CI enables auto-merge on open — do not run `gh pr merge` yourself; let auto-merge land it.
+8. Push and open a PR against `main`, linking its Linear issue with a bare `Closes ENG-NN` trailer in the body — see
+   [Linking a PR to its Linear issue](#linking-a-pr-to-its-linear-issue). Auto-merge lands it once the required checks
+   pass and its review threads are resolved. CI enables auto-merge on open — do not run `gh pr merge` yourself; let
+   auto-merge land it.
 9. Clean up task-owned local resources before ending the session. See [Resource cleanup](#resource-cleanup).
 
 If the work should become multiple PRs, decide that before committing. Use the Engineering Council for real sequencing
 questions.
+
+### Linking a PR to its Linear issue
+
+Link the PR to the issue it satisfies, and link it by identifier alone. Linear holds the product roadmap, and this
+repository is public, so a branch name, PR title, PR body, or commit message is published permanently. `ENG-1234` is
+opaque — it names a number and nothing else. An issue title, a project or initiative name, or a `linear.app` URL is not:
+the URL path carries the title as a slug, so pasting one publishes that title even though opening the link needs an
+account.
+
+Put one magic-word trailer in the PR **body**, carrying nothing but the identifier:
+
+```text
+Closes ENG-1234
+```
+
+Linear links the PR on open and completes the issue on merge. The closing magic words are `close`, `fix`, `resolve`,
+`complete`, and `implement` with their inflections; to link a PR without moving the issue on merge, use a contributing
+word instead — `ref`, `references`, `part of`, `related to`, `contributes to`, `towards`. Several issues take one list,
+`Closes ENG-1234, ENG-1235`. Linear reads the PR title and body but never comments or commit messages, so the trailer
+belongs in the body the PR opens with. Keep the identifier out of the title: that title becomes the squash-merge
+subject, and it stays a clean Conventional Commit.
+
+Nothing else about the roadmap goes into a public surface:
+
+- no `linear.app` URL, in a PR body, commit message, review reply, code comment, or doc — its slug is the issue title;
+- no issue title, project name, initiative name, milestone, or cycle, quoted or paraphrased;
+- no branch name copied from Linear's **Copy git branch name**, which appends that title slug. Name the branch
+  yourself as `<initials>/eng-1234-<short-neutral-topic>`: the identifier is the part Linear matches, and the rest is
+  yours to keep bland.
+
+Write the PR for a reader with no Linear account — the change and its reasoning in full, the roadmap it belongs to
+nowhere. A PR whose justification lives only behind its issue link is unreviewable in public anyway.
+
+Linear can write onto the PR too, and that half is not the agent's to control: where linkbacks are enabled, the GitHub
+integration comments on the linked PR with the issue title and description, withholding them — identifier and link alone
+— only for a private team. It posts none on this repository today: a PR that did link and did auto-complete its issue
+carries no Linear comment at all. So the trailer is safe as long as that holds, which is a workspace setting rather than
+anything this tree gates. Re-verify it rather than assuming it, and raise a change in it rather than routing around it.
 
 ### Grouping changes into commits
 

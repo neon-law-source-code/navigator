@@ -96,6 +96,7 @@ pub struct LawyerDetailView {
     pub code: String,
     pub name: String,
     pub status: String,
+    pub entity_id: Option<String>,
     pub entity_name: Option<String>,
     /// Everyone accountable on each side, by name. Empty on the lawyer side is
     /// the unassigned matter the oversight lens exists to flag.
@@ -244,10 +245,11 @@ pub async fn get_lawyer_project_detail() -> Result<LawyerDetailView, ServerFnErr
     if !visible {
         return Ok(not_found(id, role, logo, csrf_token));
     }
-    let entity_name = store::entities::find_by_id(&surreal, project.entity_id)
+    let entity = store::entities::find_by_id(&surreal, project.entity_id)
         .await
-        .map_err(server_error)?
-        .map(|e| e.name);
+        .map_err(server_error)?;
+    let entity_id = entity.as_ref().map(|entity| entity.id.to_string());
+    let entity_name = entity.map(|entity| entity.name);
 
     // The matter's Xero invoice, if any (at most one — the mirror is unique
     // on `project_id`, so it is already grouped per matter). Absent until an
@@ -330,6 +332,7 @@ pub async fn get_lawyer_project_detail() -> Result<LawyerDetailView, ServerFnErr
         code: project.code,
         name: project.name,
         status: project.status,
+        entity_id,
         entity_name,
         lawyer_dris,
         client_dris,
@@ -455,10 +458,21 @@ pub fn LawyerProjectDetail() -> Element {
                     "Code: " code { "{view.code}" }
                     " · Status: {view.status}"
                     " · Entity: {entity_disp}"
+                    if let Some(entity_id) = view.entity_id.as_ref() {
+                        " · "
+                        a { class: "nav-link", href: "/lawyer/entities/{entity_id}/edit", "Edit entity" }
+                    }
                     " · Lawyer DRI: {lawyer_dri_disp}"
                     " · Client DRI: {client_dri_disp}"
                     " · "
                     a { class: "nav-link", href: "/app/projects/{view.code}/edit", "Edit project" }
+                }
+                form {
+                    class: "lawyer-detail__inline-form",
+                    method: "post",
+                    action: "/app/projects/{view.code}/view-as-client",
+                    input { r#type: "hidden", name: "_csrf", value: "{csrf}" }
+                    button { class: "nav-btn nav-btn--secondary", r#type: "submit", "View as Client" }
                 }
             }
 

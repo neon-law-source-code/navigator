@@ -139,6 +139,8 @@ pub fn router() -> Option<Router> {
 ///   `'unsafe-inline'` or a CDN host;
 /// - declare the licensed GORP Serif faces against the deployment asset origin,
 ///   so the page is set in the firm's typeface (see the module docs); and
+/// - mark the platform and authenticated Navigator surfaces with the wheel
+///   favicon, while public firm pages keep their brand-selected icon; and
 /// - boot the support-chat widget on public pages, when the deployment carries
 ///   one ([`crate::chatwoot`]). This is the one thing the page renders from a
 ///   third-party origin, so the CSP widening travels with the injection rather
@@ -183,9 +185,18 @@ async fn dioxus_document_head(req: Request, next: Next) -> Response {
     // must stay within the document's first 1024 bytes, and a face block
     // carrying two absolute bucket URLs is large enough to push it out.
     let rendered = String::from_utf8_lossy(&bytes);
+    let navigator_favicon = if is_navigator_page(&path) {
+        navigator_favicon_fragment()
+    } else {
+        ""
+    };
     let html = stamp_document_title(&stamp_html_lang(&rendered, lang), &path)
         .replace("<script>", &format!("<script nonce=\"{nonce}\">"))
-        .replacen("</head>", &format!("{}</head>", *GORP_HEAD), 1);
+        .replacen(
+            "</head>",
+            &format!("{navigator_favicon}{}</head>", *GORP_HEAD),
+            1,
+        );
     let html = if *SAMPLE_MATTERS {
         open_with_banner(&html, &SAMPLE_MATTERS_BANNER)
     } else {
@@ -262,6 +273,21 @@ fn is_public_page(html: &str) -> bool {
         "class=\"{}\"",
         webapp::components::PUBLIC_SHELL_MARKER
     ))
+}
+
+/// Whether the rendered document belongs to Navigator's authenticated
+/// surfaces. Those pages use the Navigator wheel as their tab mark; other
+/// public pages keep the firm-branded icon selected by
+/// [`webapp::components::SiteHeader`].
+fn is_navigator_page(path: &str) -> bool {
+    ["/navigator", "/app", "/lawyer", "/admin"]
+        .iter()
+        .any(|prefix| path == *prefix || path.starts_with(&format!("{prefix}/")))
+}
+
+/// The favicon link for Navigator's platform and authenticated pages.
+fn navigator_favicon_fragment() -> &'static str {
+    r#"<link rel="icon" type="image/svg+xml" href="/public/navigator-wheel.svg">"#
 }
 
 /// Insert `script` as the last thing before `</body>`.
@@ -960,6 +986,7 @@ pub fn project_detail_router(
                 .layer(from_fn(inject_app_brand_mark))
                 .layer(from_fn(inject_person_id))
                 .layer(from_fn(inject_csrf_token))
+                .layer(from_fn(inject_impersonation))
                 .layer(from_fn_with_state(detail_stores, inject_show_approve_plan))
                 .layer(from_fn_with_state(
                     repository_surreal,
@@ -3853,6 +3880,14 @@ mod tests {
             !portal_csp.contains("chatwoot"),
             "and keeps the strict policy: {portal_csp}"
         );
+        assert!(
+            portal_html.contains(navigator_favicon_fragment()),
+            "the authenticated Navigator page uses the wheel favicon: {portal_html}"
+        );
+        assert!(
+            !public_html.contains(navigator_favicon_fragment()),
+            "public pages keep their firm-branded favicon: {public_html}"
+        );
     }
 
     /// The public shell selects a page; the authenticated shell does not.
@@ -3872,6 +3907,26 @@ mod tests {
         // document on its own.
         assert!(!is_public_page(r#"<main class="public-shell__main">"#));
         assert!(!is_public_page("<div>no shell at all</div>"));
+    }
+
+    #[test]
+    fn only_navigator_paths_select_the_wheel_favicon() {
+        for path in [
+            "/navigator",
+            "/app",
+            "/app/projects",
+            "/lawyer/entities",
+            "/admin/people",
+        ] {
+            assert!(is_navigator_page(path), "Navigator path: {path}");
+        }
+        for path in ["/", "/blog", "/auth/login", "/public/favicon.svg"] {
+            assert!(!is_navigator_page(path), "non-Navigator path: {path}");
+        }
+        assert_eq!(
+            navigator_favicon_fragment(),
+            r#"<link rel="icon" type="image/svg+xml" href="/public/navigator-wheel.svg">"#
+        );
     }
 
     /// The loader is injected as the last thing before `</body>` — after the

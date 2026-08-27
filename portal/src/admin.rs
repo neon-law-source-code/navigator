@@ -520,6 +520,14 @@ fn register_project_routes(r: Router<AdminState>) -> Router<AdminState> {
             &format!("{prefix}/{{project_code}}"),
             post(projects_update_lawyer_only),
         )
+        // A firm participant can open the same matter through its client's
+        // lens without first leaving the matter workbench. The handler resolves
+        // both the participant and the accountable client server-side; neither
+        // identity comes from the form.
+        .route(
+            &format!("{prefix}/{{project_code}}/view-as-client"),
+            post(project_view_as_client),
+        )
         .route(
             &format!("{prefix}/{{project_code}}/people"),
             post(project_participation_create),
@@ -912,6 +920,136 @@ async fn people_impersonate(
     // The actor now holds the impersonated client's session, so land them on
     // the client matter view they are standing in.
     Redirect::to("/app/projects").into_response()
+}
+
+/// `POST /app/projects/{project_code}/view-as-client` — let a firm member who
+/// can already open this matter inspect its client rendering. The target is the
+/// matter's first client DRI in stable participation order, never a person id
+/// supplied by the browser. Matters open with that DRI, and if a later edit has
+/// left none, the preview is unavailable rather than guessing a client.
+///
+/// This is deliberately narrower than the admin people-directory impersonation
+/// route above: it requires matter membership and can only select this matter's
+/// accountable client. It still uses the standard impersonation session so every
+/// downstream client-lens read and the exit banner retain their established
+/// behavior.
+#[allow(clippy::too_many_lines)]
+async fn project_view_as_client(
+    State(state): State<AdminState>,
+    session: Option<Extension<SessionData>>,
+    cookies: tower_cookies::Cookies,
+    Path(project_code): Path<String>,
+) -> Response {
+    let Some(Extension(session)) = session else {
+        return not_found_response();
+    };
+    // The client tier has no separate preview to enter, and an impersonating
+    // session must never nest or choose another client.
+    if session.role == store::persons::Role::Client || session.impersonation.is_some() {
+        return not_found_response();
+    }
+    let Some(project) = (match store::projects::find_by_code(&state.surreal, &project_code).await {
+        Ok(project) => project,
+        Err(error) => {
+            tracing::error!(error = %error, project_code, "client preview: matter lookup failed");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                webapp::error_pages::server_error(),
+            )
+                .into_response();
+        }
+    }) else {
+        return not_found_response();
+    };
+    let viewer = match store::access::matter_viewer(
+        &state.surreal,
+        session.person_id,
+        session.role,
+        project.id,
+    )
+    .await
+    {
+        Ok(viewer) => viewer,
+        Err(error) => {
+            tracing::error!(
+                error,
+                project_code,
+                "client preview: matter access check failed"
+            );
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                webapp::error_pages::server_error(),
+            )
+                .into_response();
+        }
+    };
+    // A staff person whose sole row is client-side is already in the client
+    // rendering. Only the supervised Clerk or firm workbench variants may
+    // enter a client preview from this control.
+    if !matches!(
+        viewer,
+        Some(
+            store::access::MatterViewer::Clerk
+                | store::access::MatterViewer::Lawyer
+                | store::access::MatterViewer::LawyerDri,
+        )
+    ) {
+        return not_found_response();
+    }
+    let client_id = match store::projects::participations_for_project(&state.surreal, project.id)
+        .await
+    {
+        Ok(rows) => rows
+            .into_iter()
+            .find(|row| row.is_client_dri)
+            .map(|row| row.person_id),
+        Err(error) => {
+            tracing::error!(error = %error, project_code, "client preview: client DRI lookup failed");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                webapp::error_pages::server_error(),
+            )
+                .into_response();
+        }
+    };
+    let Some(client_id) = client_id else {
+        return not_found_response();
+    };
+    let target = match store::persons::find_by_id(&state.surreal, client_id).await {
+        Ok(Some(person)) if person.role == store::persons::Role::Client => person,
+        Ok(_) => return not_found_response(),
+        Err(error) => {
+            tracing::error!(error = %error, project_code, client_id = %client_id, "client preview: target lookup failed");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                webapp::error_pages::server_error(),
+            )
+                .into_response();
+        }
+    };
+
+    let mut effective = SessionData::fresh(
+        target
+            .oidc_subject
+            .clone()
+            .unwrap_or_else(|| format!("person:{}", target.id)),
+        store::persons::Role::Client,
+    );
+    effective.email = Some(target.email.clone());
+    effective.person_id = Some(target.id);
+    effective.source = session.source;
+    effective.impersonation = Some(Impersonation {
+        actor_sub: session.sub,
+        actor_email: session.email,
+        actor_person_id: session.person_id,
+        target_name: target.name,
+        target_email: target.email,
+    });
+    cookies.add(crate::oauth::session_cookie(
+        state.sessions.encode(&effective),
+        state.secure_cookies,
+    ));
+    Redirect::to(&format!("/app/projects/{}", project.code)).into_response()
 }
 
 async fn stop_impersonation(

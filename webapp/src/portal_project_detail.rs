@@ -92,6 +92,11 @@ pub struct ProjectDetailView {
     pub resources: crate::project_resources::ProjectResourcesView,
     pub csrf_token: String,
     pub role: ViewerRole,
+    /// The original firm actor when this client lens is a matter preview. The
+    /// page renders its exit banner from this server-injected state rather than
+    /// inferring anything from the effective client session.
+    #[serde(default)]
+    pub impersonation: Option<crate::components::ImpersonationView>,
     /// The deploy's brand mark for the navbar. `None` when the mounted brand
     /// configures none.
     #[serde(default)]
@@ -164,6 +169,14 @@ pub async fn get_project_detail() -> Result<ProjectDetailView, ServerFnError> {
     .await
     .map(|axum::Extension(token)| token.0)
     .unwrap_or_default();
+    let crate::components::Impersonating(impersonation) =
+        dioxus_fullstack_core::FullstackContext::extract::<
+            axum::Extension<crate::components::Impersonating>,
+            _,
+        >()
+        .await
+        .map(|axum::Extension(impersonation)| impersonation)
+        .unwrap_or_default();
     // The estate "Approve my plan" decision is computed by the portal router
     // (it can reach the `workflows`/estate logic `webapp` cannot) and injected.
     let ShowApprovePlan(show_approve_plan) =
@@ -276,6 +289,7 @@ pub async fn get_project_detail() -> Result<ProjectDetailView, ServerFnError> {
         resources,
         csrf_token,
         role,
+        impersonation,
         logo,
     })
 }
@@ -392,6 +406,7 @@ pub fn ClientProjectDetail() -> Element {
     rsx! {
         document::Title { "{view.name}" }
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
+        crate::components::ImpersonationBanner { view: view.impersonation.clone() }
         crate::components::AppNavbar {
             destinations: crate::app_chrome::app_destinations(view.role),
             logo: view.logo.clone(),

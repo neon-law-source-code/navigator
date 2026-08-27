@@ -201,6 +201,19 @@ pub struct Report {
     /// means every [`Finding::RepositoryOutsideDeploymentForge`] was skipped,
     /// which a reader must be told rather than left to infer from an absence.
     pub compared_against_deployment_forge: bool,
+    /// Every live Project code, sorted.
+    ///
+    /// The findings answer "which rows disagree with themselves", and a code
+    /// that is fine appears in none of them — so the finding set cannot answer
+    /// the *repository* side's question, which is whether a checkout's declared
+    /// code names a live row at all. This carries that answer.
+    ///
+    /// It is the codes and nothing else. A code is a client identifier, so the
+    /// caller is already admin-tier and this adds no reach the findings did not
+    /// have — they name codes too. What it deliberately does not carry is any
+    /// other column: a repository-side reconciliation needs to know a code
+    /// exists, never anything about the matter behind it.
+    pub project_codes: Vec<String>,
 }
 
 impl Report {
@@ -238,13 +251,14 @@ impl Report {
 impl serde::Serialize for Report {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeStruct;
-        let mut state = serializer.serialize_struct("Report", 4)?;
+        let mut state = serializer.serialize_struct("Report", 5)?;
         state.serialize_field("rows", &self.rows)?;
         state.serialize_field("reconciled", &self.is_reconciled())?;
         state.serialize_field(
             "compared_against_deployment_forge",
             &self.compared_against_deployment_forge,
         )?;
+        state.serialize_field("project_codes", &self.project_codes)?;
         state.serialize_field("findings", &self.reported())?;
         state.end()
     }
@@ -344,10 +358,15 @@ pub fn reconcile(rows: &[RowUnderReview<'_>], deployment: Option<&WorkspaceConfi
 
     findings.extend(duplicate_repository_urls(rows));
 
+    let mut project_codes: Vec<String> = rows.iter().map(|row| row.code.to_string()).collect();
+    project_codes.sort_unstable();
+    project_codes.dedup();
+
     Report {
         findings,
         rows: rows.len(),
         compared_against_deployment_forge: deployment.is_some(),
+        project_codes,
     }
 }
 
@@ -774,6 +793,56 @@ mod tests {
                 "{finding:?} serializes a tag its kind() does not match"
             );
         }
+    }
+
+    /// The codes exist so the *repository* side can ask a question the findings
+    /// cannot answer: does this checkout's declared code name a live row? A row
+    /// that is entirely fine produces no finding, so it would otherwise be
+    /// indistinguishable from a row that does not exist.
+    #[test]
+    fn the_report_lists_every_live_code_including_the_ones_with_no_finding() {
+        let report = reconcile(
+            &[
+                // Fine — produces no finding at all.
+                row("acme", Some("https://forge.example/an-organization/acme")),
+                // Drifted — produces one.
+                row("beta", Some("https://forge.example/an-organization/other")),
+            ],
+            None,
+        );
+
+        assert_eq!(
+            report.project_codes,
+            vec!["acme".to_string(), "beta".to_string()],
+            "a code with no finding must still be listed: {:?}",
+            report.findings
+        );
+    }
+
+    /// Sorted and deduplicated, so a repository-side caller can binary-search
+    /// it and two runs over the same rows read identically.
+    #[test]
+    fn the_live_codes_are_sorted_and_deduplicated() {
+        let report = reconcile(
+            &[row("gamma", None), row("acme", None), row("gamma", None)],
+            None,
+        );
+
+        assert_eq!(
+            report.project_codes,
+            vec!["acme".to_string(), "gamma".to_string()]
+        );
+    }
+
+    /// The codes reach the wire, because the repository-side caller reads them
+    /// over HTTP rather than in process.
+    #[test]
+    fn the_live_codes_serialize() {
+        let report = reconcile(&[row("acme", None)], None);
+
+        let json = serde_json::to_value(&report).expect("the report serializes");
+
+        assert_eq!(json["project_codes"], serde_json::json!(["acme"]));
     }
 
     /// A report over many rows keeps its count and orders per-row findings

@@ -468,7 +468,11 @@ pub fn document_with_base(base: &str) -> Value {
                report's `reconciled` is false when any finding is a `fail`. Where the deployment \
                has a configured forge pair, a row recorded outside it is reported as a `warn` and \
                `compared_against_deployment_forge` is true; where it has none that comparison is \
-               skipped and the flag is false. Authorization: admin-tier only (`owner`/`admin`) — \
+               skipped and the flag is false. `project_codes` lists every live Project code, sorted, \
+               including the ones with no finding — the repository-side reconciliation (`navigator \
+               projects drift`) reads it to ask whether a checkout's declared code names a live row \
+               at all, which the finding set alone cannot answer. Authorization: admin-tier only \
+               (`owner`/`admin`) — \
                unlike every other matter read here, this deliberately reads all rows rather than \
                the caller's participation-scoped lens, so `lawyer`, `clerk`, and `client` are \
                rejected.",

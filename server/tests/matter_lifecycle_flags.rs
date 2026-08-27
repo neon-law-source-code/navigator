@@ -68,6 +68,70 @@ fn an_open_matter_never_owes_a_closing_letter() {
     );
 }
 
+// ---- the yellow/green/red lifecycle indicator ----
+
+#[test]
+fn an_open_matter_missing_its_onboarding_letter_is_the_yellow_state() {
+    assert_eq!(
+        store::projects::matter_lifecycle("open", true, false),
+        store::projects::MatterLifecycle::NeedsOnboarding
+    );
+}
+
+#[test]
+fn an_open_matter_with_its_onboarding_letter_is_the_green_live_state() {
+    assert_eq!(
+        store::projects::matter_lifecycle("open", false, false),
+        store::projects::MatterLifecycle::Live
+    );
+}
+
+#[test]
+fn a_closed_matter_with_its_offboarding_letter_is_the_red_state() {
+    assert_eq!(
+        store::projects::matter_lifecycle("closed", false, false),
+        store::projects::MatterLifecycle::Closed
+    );
+}
+
+#[test]
+fn a_closed_matter_still_owing_its_offboarding_letter_is_still_the_red_state() {
+    // Red covers both — the still-owed gap keeps surfacing through the
+    // separate "no offboarding letter" badge, not a fourth colour.
+    assert_eq!(
+        store::projects::matter_lifecycle("closed", false, true),
+        store::projects::MatterLifecycle::Closed
+    );
+}
+
+#[test]
+fn every_lifecycle_state_carries_its_own_class_and_a_distinct_text_label() {
+    use store::projects::MatterLifecycle;
+    let states = [
+        MatterLifecycle::NeedsOnboarding,
+        MatterLifecycle::Live,
+        MatterLifecycle::Closed,
+    ];
+    let classes: Vec<&str> = states.iter().map(|s| s.class()).collect();
+    let labels: Vec<&str> = states.iter().map(|s| s.label()).collect();
+    assert_eq!(
+        classes
+            .iter()
+            .collect::<std::collections::HashSet<_>>()
+            .len(),
+        3,
+        "each state must render its own class: {classes:?}"
+    );
+    assert_eq!(
+        labels
+            .iter()
+            .collect::<std::collections::HashSet<_>>()
+            .len(),
+        3,
+        "each state must carry its own text label — colour cannot be the only signal: {labels:?}"
+    );
+}
+
 // ---- what counts as the matter-opening engagement ----
 
 #[test]
@@ -628,6 +692,64 @@ async fn projects_list_flags_the_lifecycle_gaps_and_nothing_else() {
     let d = row_for("Closed with letter");
     absent(&d, "no retainer");
     absent(&d, "no offboarding letter");
+}
+
+#[tokio::test]
+async fn projects_list_renders_each_lifecycle_state_with_its_own_class() {
+    let (app, surreal) = build_app().await;
+    let person = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::new("Lifecycle Row", "lifecycle-row@example.com"),
+    )
+    .await
+    .unwrap();
+
+    // Yellow: open, no onboarding notation.
+    let yellow = project(&surreal, "Yellow lifecycle matter", "open").await;
+    // Green: open, with its onboarding notation.
+    let green = project(&surreal, "Green lifecycle matter", "open").await;
+    notation(&surreal, green, person.id, "onboarding__retainer").await;
+    // Red: closed.
+    let red = project(&surreal, "Red lifecycle matter", "closed").await;
+
+    let admin_person = participating_admin(&surreal, &[yellow, green, red]).await;
+    let mut admin = SessionData::fresh("admin-sub", Role::Admin);
+    admin.person_id = Some(admin_person);
+    let cookie = format!(
+        "{SESSION_COOKIE_NAME}={}",
+        SessionStore::new(SESSION_KEY).encode(&admin)
+    );
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/app/projects")
+                .header("cookie", cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let html = body_string(resp).await;
+    let row_for = |name: &str| -> String {
+        html.split("<tr")
+            .find(|frag| frag.contains(name))
+            .unwrap_or("")
+            .to_string()
+    };
+
+    assert!(
+        row_for("Yellow lifecycle matter").contains("matter-lifecycle--yellow"),
+        "an open matter missing its onboarding letter must render the yellow class"
+    );
+    assert!(
+        row_for("Green lifecycle matter").contains("matter-lifecycle--green"),
+        "an open matter with its onboarding letter must render the green class"
+    );
+    assert!(
+        row_for("Red lifecycle matter").contains("matter-lifecycle--red"),
+        "a closed matter must render the red class"
+    );
 }
 
 #[tokio::test]

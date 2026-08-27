@@ -1991,6 +1991,70 @@ pub fn matter_flags(has_engagement: bool, status: &str, has_closing: bool) -> (b
     (missing_retainer, missing_closing_letter)
 }
 
+/// The lawyer-facing traffic-light summary of a matter's lifecycle: the one
+/// state a reader scans for on the Projects list, distinct from the finer
+/// diligence badges [`matter_flags`] computes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MatterLifecycle {
+    /// Open, but never opened on an onboarding letter — the matter was never
+    /// properly opened.
+    NeedsOnboarding,
+    /// Open, with its onboarding letter on file — live.
+    Live,
+    /// Closed. A closed matter is always this variant, whether or not it is
+    /// missing its offboarding letter — that finer-grained gap stays the
+    /// separate `missing_closing_letter` badge's job, not a fourth colour.
+    Closed,
+}
+
+impl MatterLifecycle {
+    /// The CSS class this state renders as. `matter-lifecycle` carries the
+    /// shared pill shape; the modifier carries the colour.
+    #[must_use]
+    pub fn class(self) -> &'static str {
+        match self {
+            MatterLifecycle::NeedsOnboarding => "matter-lifecycle matter-lifecycle--yellow",
+            MatterLifecycle::Live => "matter-lifecycle matter-lifecycle--green",
+            MatterLifecycle::Closed => "matter-lifecycle matter-lifecycle--red",
+        }
+    }
+
+    /// The visible text label — colour is never the only signal, so this
+    /// (not just the class) is what a colour-blind or screen-reader reader
+    /// gets.
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        match self {
+            MatterLifecycle::NeedsOnboarding => "needs onboarding",
+            MatterLifecycle::Live => "live",
+            MatterLifecycle::Closed => "closed",
+        }
+    }
+}
+
+/// The lifecycle state a matter row renders, from its `status` and whether
+/// it is missing its onboarding letter. `missing_closing_letter` is taken
+/// but deliberately does not branch the result: a closed matter is
+/// [`MatterLifecycle::Closed`] whether or not it still owes its offboarding
+/// letter, and that gap keeps surfacing through the existing "no offboarding
+/// letter" badge alongside this indicator, not folded into a fourth colour.
+///
+/// Deliberately an exhaustive match on `(status == "closed", missing_retainer)`
+/// so the closing-letter parameter's non-effect on the outcome is visible at
+/// the call site, not just asserted in a doc comment.
+#[must_use]
+pub fn matter_lifecycle(
+    status: &str,
+    missing_retainer: bool,
+    missing_closing_letter: bool,
+) -> MatterLifecycle {
+    match (status == "closed", missing_retainer, missing_closing_letter) {
+        (true, _, _) => MatterLifecycle::Closed,
+        (false, true, _) => MatterLifecycle::NeedsOnboarding,
+        (false, false, _) => MatterLifecycle::Live,
+    }
+}
+
 /// For the given matters, return `(project_ids with a matter-opening engagement,
 /// project_ids with a matter-closing offboarding letter)` in three batched
 /// queries (notations for these projects, the templates they bind, and the

@@ -2262,7 +2262,11 @@ a.nav-link:hover {
 }
 
 /* Matter-lifecycle warning badge on the lawyer projects list (no retainer / no
- * closing letter). A small amber pill. */
+ * offboarding letter) and the matter directory's "Unassigned" DRI flag. One
+ * amber pill shape shared by two unrelated concepts — a missing document and
+ * an unassigned accountable lawyer — which is deliberate: neither is the
+ * three-state lifecycle indicator below (`.matter-lifecycle`), so sharing
+ * this class does not collide with it. */
 .matter-flag {
   display: inline-block;
   padding: 0.1rem 0.4rem;
@@ -2273,6 +2277,38 @@ a.nav-link:hover {
   font-size: 0.75rem;
   font-weight: 600;
   white-space: nowrap;
+}
+
+/* The matter row's yellow/green/red lifecycle indicator
+ * (`store::projects::MatterLifecycle`). A neutral, theme-aware surface with
+ * a colour-coded left border plus a visible text label — never colour alone,
+ * so the state still reads under the most common form of colour blindness
+ * and to a screen reader. Reuses the shared `--nav-color-warning` /
+ * `-success` / `-danger` tokens (defined for both light and dark in
+ * `tokens.css`) rather than literal hex, so contrast holds in either theme
+ * without a separate audit here. */
+.matter-lifecycle {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: var(--nav-radius-sm);
+  border-left: 3px solid;
+  background: var(--nav-color-surface-raised);
+  color: var(--nav-color-text);
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.matter-lifecycle--yellow {
+  border-left-color: var(--nav-color-warning);
+}
+
+.matter-lifecycle--green {
+  border-left-color: var(--nav-color-success);
+}
+
+.matter-lifecycle--red {
+  border-left-color: var(--nav-color-danger);
 }
 
 .projects-empty {
@@ -3048,7 +3084,17 @@ a.nav-link:hover {
      HSL saturation and lightness, the companions sit 120 degrees apart on the
      color wheel: green #23d800 (+120deg) and red #d80023 (-120deg). Archived
      projects are intentionally outside this chart, so the green remains
-     available for a future third represented status. */
+     available for a future third represented status.
+
+     ENG-372 claimed that third status — but on the matter *row*
+     (`.matter-lifecycle`), not this pie. The row's green means "open, with
+     its onboarding letter on file"; this pie's cyan means "open" full stop,
+     with no engagement-letter distinction. Splitting the pie to match would
+     be the better product answer, but it is a dashboard change riding along
+     a lifecycle-badge fix, so the smaller diff won: this pie still answers
+     "open vs closed" portfolio-wide, and the row separately answers "where
+     is this one matter in its lifecycle." Two colour languages on one tier,
+     accepted deliberately rather than reconciled here. */
   --project-status-cyan: rgb(0, 181, 216);
   --project-status-green: rgb(35, 216, 0);
   --project-status-red: rgb(216, 0, 35);

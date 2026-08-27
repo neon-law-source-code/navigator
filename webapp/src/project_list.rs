@@ -4,8 +4,10 @@
 //! The successor to the `projects_index` render. A sortable table of the
 //! matters visible through the lawyer lens (`store::access::visible_projects_as_lawyer`
 //! — admin sees all, lawyer sees participated matters), each row carrying its
-//! resolved entity name and the two matter-lifecycle warning badges
-//! (`store::projects::matter_flags`: missing retainer, missing closing letter).
+//! resolved entity name, its lifecycle indicator
+//! (`store::projects::MatterLifecycle`: awaiting an engagement letter, engaged,
+//! or closed) and, on a closed matter that still owes one, the outstanding
+//! closing-letter badge (`store::projects::matter_flags`).
 //! The resolved entity-name column and the badges are computed server-side, so
 //! all four sort columns (`code` / `name` / `status` / `entity_name`) sort in
 //! one in-memory composite comparator. The "Add project" control links to the
@@ -17,6 +19,82 @@ use serde::{Deserialize, Serialize};
 use crate::components::{Column, DataTable, SortState};
 use crate::people::ViewerRole;
 use crate::portal_project_list::PersonId;
+
+/// Where a matter sits on its lifecycle track, in a wasm-safe shape.
+///
+/// The rule is `store::projects::MatterLifecycle`, which the server-side loader
+/// computes and converts into this. The client build cannot reach `store`, so
+/// the variants are mirrored rather than re-derived — re-deriving the rule in
+/// the view is exactly the drift that put `matter_flags` in the store in the
+/// first place. `the_view_tone_mirrors_the_store_lifecycle` pins the two
+/// together.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+pub enum MatterTone {
+    /// Open, no engagement letter on file.
+    Awaiting,
+    /// Open, engagement letter on file.
+    Engaged,
+    /// Closed.
+    Closed,
+}
+
+impl MatterTone {
+    /// The indicator's class. Deliberately exhaustive: a fourth state fails to
+    /// compile until it declares how it renders.
+    #[must_use]
+    pub fn class(self) -> &'static str {
+        match self {
+            Self::Awaiting => "matter-lifecycle matter-lifecycle--awaiting",
+            Self::Engaged => "matter-lifecycle matter-lifecycle--engaged",
+            Self::Closed => "matter-lifecycle matter-lifecycle--closed",
+        }
+    }
+
+    /// The words on the indicator.
+    ///
+    /// Colour never travels alone: a red/green distinction carried by hue is
+    /// invisible to the most common form of colour blindness, so each state
+    /// says what it is in text beside the colour rather than instead of it.
+    ///
+    /// `Engaged` states the fact the store checked — a letter is **on file** —
+    /// and never "live", "active", or "papered". Those are conclusions about
+    /// the representation that a filed document does not establish, and this
+    /// indicator asserts where the warning badge it replaces only rendered on
+    /// absence. `store::projects::MatterLifecycle` carries the full reasoning.
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Awaiting => "no engagement letter",
+            Self::Engaged => "engagement letter on file",
+            Self::Closed => "closed",
+        }
+    }
+
+    /// The indicator's `title` — what was consulted, and what it does not claim.
+    #[must_use]
+    pub fn description(self) -> &'static str {
+        match self {
+            Self::Awaiting => {
+                "No engagement letter is on file for this matter — no onboarding notation, and no uploaded document classified as one."
+            }
+            Self::Engaged => {
+                "An engagement letter is on file for this matter, as an onboarding notation or an uploaded document classified as one. Filed, not verified as executed."
+            }
+            Self::Closed => "This matter is closed.",
+        }
+    }
+}
+
+#[cfg(feature = "server")]
+impl From<store::projects::MatterLifecycle> for MatterTone {
+    fn from(lifecycle: store::projects::MatterLifecycle) -> Self {
+        match lifecycle {
+            store::projects::MatterLifecycle::Awaiting => Self::Awaiting,
+            store::projects::MatterLifecycle::Engaged => Self::Engaged,
+            store::projects::MatterLifecycle::Closed => Self::Closed,
+        }
+    }
+}
 
 /// One matter row, in a wasm-safe shape (plain fields — no `store`/`SeaORM`
 /// types cross to the client build).
@@ -31,7 +109,22 @@ pub struct ProjectRow {
     /// The matter has no matter-opening engagement — surfaced as a warning badge.
     pub missing_retainer: bool,
     /// A `closed` matter with no closing letter — surfaced as a warning badge.
+    /// Kept beside `lifecycle` rather than folded into it: a closed matter
+    /// reads `Closed` whether or not it owes its letter, and collapsing the two
+    /// would drop a real obligation off the row.
     pub missing_closing_letter: bool,
+    /// Where this matter sits on its lifecycle track.
+    #[serde(default = "awaiting_tone")]
+    pub lifecycle: MatterTone,
+}
+
+/// `serde` default for [`ProjectRow::lifecycle`].
+///
+/// The warning state, not the clean one: a row deserialized without a lifecycle
+/// is a row this build cannot place, and defaulting to `Engaged` would paint it
+/// as papered on no evidence.
+fn awaiting_tone() -> MatterTone {
+    MatterTone::Awaiting
 }
 
 /// The rendered lawyer projects list: the rows, the active `?sort=`, and the
@@ -194,7 +287,10 @@ pub async fn get_project_list() -> Result<ProjectListView, ServerFnError> {
                 &m.status,
                 has_closing.contains(&m.id),
             );
+            let lifecycle =
+                store::projects::MatterLifecycle::of(&m.status, missing_retainer).into();
             ProjectRow {
+                lifecycle,
                 entity_name: by_entity(m.entity_id),
                 id: m.id.to_string(),
                 code: m.code,
@@ -285,13 +381,22 @@ pub fn LawyerProjects() -> Element {
                             }
                             td { class: "project-name",
                                 "{row.name}"
-                                if row.missing_retainer {
-                                    " "
-                                    span { class: "matter-flag",
-                                        title: "No engagement letter is on file for this matter — no onboarding notation, and no uploaded document classified as one.",
-                                        "no retainer"
-                                    }
+                                " "
+                                // Every matter carries exactly one lifecycle
+                                // indicator, including the clean one — the
+                                // state a reader most needs to confirm is the
+                                // common one, and a badge that only appears
+                                // when something is wrong cannot confirm it.
+                                span {
+                                    class: "{row.lifecycle.class()}",
+                                    title: "{row.lifecycle.description()}",
+                                    "{row.lifecycle.label()}"
                                 }
+                                // Closed and still owing its offboarding letter
+                                // is a second, independent fact: the matter is
+                                // over, and something is still outstanding on
+                                // it. It rides beside the red rather than
+                                // inside it.
                                 if row.missing_closing_letter {
                                     " "
                                     span { class: "matter-flag",

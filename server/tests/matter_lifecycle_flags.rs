@@ -10,9 +10,9 @@
 //! reads both: the questionnaire walk creates a **notation** bound to a
 //! template, and a letter signed on paper (or returned from an e-signature
 //! provider) is uploaded as an **asset**. A matter papered the second way
-//! used to read `no retainer` forever, with no action available that would
-//! clear it, so these tests pin the asset lane as explicitly as the
-//! notation one.
+//! used to badge as missing its engagement letter forever, with no action
+//! available that would clear it, so these tests pin the asset lane as
+//! explicitly as the notation one.
 //!
 //! Pinned here: the pure rule (`store::projects::matter_flags`), both
 //! classifiers, the upload form's constrained vocabulary, and the rendered
@@ -34,6 +34,14 @@ use store::test_support::mem_surreal;
 use workflows::{InMemoryRuntime, StateMachineRuntime};
 
 const SESSION_KEY: &str = "test-session-key-not-for-production";
+
+// The three lifecycle indicator classes, named once. Tests assert on these
+// rather than on the indicator's words: the copy is what a lawyer reads and may
+// be reworded, while the class is the contract between the rule in `store` and
+// the rule in `theme.css`.
+const AWAITING: &str = "matter-lifecycle--awaiting";
+const ENGAGED: &str = "matter-lifecycle--engaged";
+const CLOSED: &str = "matter-lifecycle--closed";
 
 // ---- the pure rule ----
 
@@ -139,6 +147,157 @@ fn the_badge_reads_every_kind_straight_from_the_classifier() {
             kind.as_str()
         );
     }
+}
+
+// ---- the three lifecycle states ----
+
+#[test]
+fn an_open_matter_without_its_engagement_letter_is_awaiting() {
+    assert_eq!(
+        store::projects::MatterLifecycle::of("open", true),
+        store::projects::MatterLifecycle::Awaiting
+    );
+}
+
+#[test]
+fn an_open_matter_with_its_engagement_letter_is_engaged() {
+    // The state this indicator exists for. It is the most common one and the
+    // one a reader most needs to confirm without reading, and before this type
+    // it rendered as the absence of a badge — indistinguishable from a row
+    // nobody had looked at.
+    assert_eq!(
+        store::projects::MatterLifecycle::of("open", false),
+        store::projects::MatterLifecycle::Engaged
+    );
+}
+
+#[test]
+fn a_closed_matter_is_closed_however_it_was_papered() {
+    // `status` wins over the engagement question in both directions. A closed
+    // matter that was never papered must not read as awaiting its engagement
+    // letter: that would ask a lawyer to act on a matter that is over.
+    assert_eq!(
+        store::projects::MatterLifecycle::of("closed", false),
+        store::projects::MatterLifecycle::Closed
+    );
+    assert_eq!(
+        store::projects::MatterLifecycle::of("closed", true),
+        store::projects::MatterLifecycle::Closed
+    );
+}
+
+#[test]
+fn a_closed_matter_still_owing_its_letter_is_red_and_still_owes_it() {
+    // The case the colour must not swallow. `matter_flags` and
+    // `MatterLifecycle` answer different questions about the same matter, and
+    // both answers ride on the row: it is closed (red), and the offboarding
+    // letter is still outstanding (its own badge). Folding the second into the
+    // first would drop a real obligation off the list.
+    let (missing_retainer, missing_closing_letter) =
+        store::projects::matter_flags(true, "closed", false);
+    assert_eq!(
+        store::projects::MatterLifecycle::of("closed", missing_retainer),
+        store::projects::MatterLifecycle::Closed
+    );
+    assert!(
+        missing_closing_letter,
+        "the outstanding closing letter is a separate fact the row still carries"
+    );
+}
+
+#[test]
+fn an_unrecognized_status_reads_as_awaiting_rather_than_engaged() {
+    // A status this build does not know is not evidence a matter is in good
+    // order. Over-warning is the safe direction, the same way an unknown
+    // document kind never opens a matter.
+    assert_eq!(
+        store::projects::MatterLifecycle::of("archived", true),
+        store::projects::MatterLifecycle::Awaiting
+    );
+    assert_eq!(
+        store::projects::MatterLifecycle::of("", true),
+        store::projects::MatterLifecycle::Awaiting
+    );
+}
+
+// ---- the rule and its rendering cannot drift ----
+
+#[test]
+fn the_view_tone_mirrors_the_store_lifecycle() {
+    // The client build cannot reach `store`, so `MatterTone` mirrors
+    // `MatterLifecycle` rather than re-deriving it. This is what keeps the
+    // mirror honest: every state converts, and to a distinct class.
+    use store::projects::MatterLifecycle;
+    use webapp::project_list::MatterTone;
+
+    let pairs = [
+        (MatterLifecycle::Awaiting, AWAITING),
+        (MatterLifecycle::Engaged, ENGAGED),
+        (MatterLifecycle::Closed, CLOSED),
+    ];
+    let mut seen = std::collections::BTreeSet::new();
+    for (lifecycle, expected) in pairs {
+        let tone = MatterTone::from(lifecycle);
+        assert!(
+            tone.class().contains(expected),
+            "{expected} must be the class for this state, got {}",
+            tone.class()
+        );
+        assert!(
+            seen.insert(tone.class()),
+            "each state needs its own class; {} repeats",
+            tone.class()
+        );
+    }
+}
+
+#[test]
+fn every_lifecycle_state_says_what_it_is_in_words() {
+    // Colour is never the only signal. A red/green distinction carried by hue
+    // is invisible to the most common form of colour blindness, so each state
+    // carries text and a `title` beside the fill rather than instead of it.
+    use webapp::project_list::MatterTone;
+
+    for tone in [
+        MatterTone::Awaiting,
+        MatterTone::Engaged,
+        MatterTone::Closed,
+    ] {
+        assert!(!tone.label().trim().is_empty(), "a state with no words");
+        assert!(
+            tone.description().len() > tone.label().len(),
+            "the title must say more than the label repeats"
+        );
+    }
+}
+
+#[test]
+fn the_engaged_state_states_the_checked_fact_and_not_a_conclusion() {
+    // The load-bearing copy rule. The engagement predicate answers "is there an
+    // engagement letter on file", not "is it executed" — and this indicator
+    // ASSERTS where the warning badge it replaces only rendered on absence.
+    // A reader takes an affirmative signal more firmly than a missing one, so
+    // the words state the fact the store checked and never the conclusion a
+    // reader might draw from it.
+    use webapp::project_list::MatterTone;
+
+    let label = MatterTone::Engaged.label();
+    assert!(
+        label.contains("on file"),
+        "the green must name what was checked; got {label:?}"
+    );
+    for conclusion in ["live", "active", "papered", "good standing", "executed"] {
+        assert!(
+            !label.contains(conclusion),
+            "the green must not claim {conclusion:?}: a filed letter is a location, not an execution"
+        );
+    }
+    assert!(
+        MatterTone::Engaged
+            .description()
+            .contains("not verified as executed"),
+        "the title must say plainly that filing is not execution"
+    );
 }
 
 // ---- what counts as the matter-opening engagement, on the upload lane ----
@@ -431,7 +590,10 @@ async fn a_matter_show_page_carries_no_engagement_letter_disclaimer() {
         .code;
 
     let html = get_project(&app, &bare_code, admin_person).await;
-    assert!(!html.contains("no retainer"), "{html}");
+    // Asserted on the class, not the copy: the words on the indicator are
+    // catalog copy and may be reworded, but the show page must carry no
+    // lifecycle indicator at all.
+    assert!(!html.contains("matter-lifecycle"), "{html}");
     assert!(!html.contains("has no engagement letter"), "{html}");
     assert!(!html.contains("notation create"), "{html}");
 }
@@ -492,34 +654,48 @@ async fn projects_list_flags_the_lifecycle_gaps_and_nothing_else() {
             .to_string()
     };
 
-    // `absent` reads as the negation of the `contains` checks below: a badge
-    // the row must NOT carry.
-    let absent = |row: &str, badge: &str| assert!(!row.contains(badge), "{row}");
+    // Every assertion below is on a CLASS, never on the words. The indicator's
+    // copy is catalog copy a lawyer reads; the class is the contract between
+    // the rule in `store` and the stylesheet, and it is what must not drift.
+    let absent = |row: &str, class: &str| assert!(!row.contains(class), "{row}");
 
-    // B — bare open matter — is flagged as missing its retainer only.
+    // B — bare open matter — awaits its engagement letter, and owes no
+    // closing letter because it is not closed.
     let b = row_for("Bare open matter");
-    assert!(&b.contains("no retainer"));
+    assert!(b.contains(AWAITING), "{b}");
+    absent(&b, ENGAGED);
+    absent(&b, CLOSED);
     absent(&b, "no closing letter");
 
-    // C — closed without a letter — is flagged for the closing letter only
-    // (it has its onboarding__estate retainer).
+    // C — closed without a letter — reads closed, and separately still owes
+    // its closing letter. Two independent facts on one row: the matter is
+    // over, and something is outstanding on it.
     let c = row_for("Closed no letter");
-    assert!(&c.contains("no closing letter"));
-    absent(&c, "no retainer");
+    assert!(c.contains(CLOSED), "{c}");
+    assert!(c.contains("no closing letter"), "{c}");
+    absent(&c, AWAITING);
+    absent(&c, ENGAGED);
 
-    // A and D are clean — no badge either way.
+    // A — open with its retainer — is the live state, and now says so rather
+    // than saying nothing.
     let a = row_for("Has retainer open");
-    absent(&a, "no retainer");
+    assert!(a.contains(ENGAGED), "{a}");
+    absent(&a, AWAITING);
+    absent(&a, CLOSED);
     absent(&a, "no closing letter");
+
+    // D — closed with both — reads closed and owes nothing further.
     let d = row_for("Closed with letter");
-    absent(&d, "no retainer");
+    assert!(d.contains(CLOSED), "{d}");
+    absent(&d, AWAITING);
+    absent(&d, ENGAGED);
     absent(&d, "no closing letter");
 }
 
 /// The defect this issue exists to fix, at the surface a lawyer reads.
 ///
 /// A matter whose engagement letter arrived as a signed PDF — not through
-/// the questionnaire walk — used to read `no retainer` on `/app/projects`
+/// the questionnaire walk — used to badge as missing it on `/app/projects`
 /// permanently, with no action available that would clear it, while the
 /// countersigned letter sat in the matter's own document list. This is the
 /// mutation check for the asset arm of `store::projects::matter_lifecycle_sets`:
@@ -568,20 +744,21 @@ async fn an_uploaded_engagement_letter_clears_the_retainer_badge() {
             .to_string()
     };
 
+    // On the class, not the copy — same contract as the state tests above.
     let e = row_for("Uploaded retainer open");
     assert!(
-        !e.contains("no retainer"),
-        "an uploaded `retainer` is this matter's engagement letter; the badge must clear: {e}"
+        e.contains(ENGAGED),
+        "an uploaded `retainer` is this matter's engagement letter; it reads engaged: {e}"
     );
     let g = row_for("Uploaded onboarding open");
     assert!(
-        !g.contains("no retainer"),
-        "an uploaded `onboarding` engagement must clear the badge too: {g}"
+        g.contains(ENGAGED),
+        "an uploaded `onboarding` engagement reads engaged too: {g}"
     );
     let f = row_for("Uploaded exhibit open");
     assert!(
-        f.contains("no retainer"),
-        "a filing and an unclassified upload are not an engagement letter;          the badge must stay: {f}"
+        f.contains(AWAITING),
+        "a filing and an unclassified upload are not an engagement letter;          the matter still awaits one: {f}"
     );
 }
 

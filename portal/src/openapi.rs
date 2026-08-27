@@ -457,6 +457,35 @@ pub fn document_with_base(base: &str) -> Value {
             }
           }
         },
+        "/app/api/project-repositories": {
+          "get": {
+            "summary": "Reconcile every matter against the repository it records (admin)",
+            "description":
+              "Reports where a Project row and its `repository_url` disagree, across every matter \
+               in the deployment. A Project code is its repository name, so a row whose recorded \
+               URL names a different repository is drift provable from the row alone — no checkout \
+               and no configuration required. Findings carry a `severity` of `warn` or `fail`; the \
+               report's `reconciled` is false when any finding is a `fail`. Where the deployment \
+               has a configured forge pair, a row recorded outside it is reported as a `warn` and \
+               `compared_against_deployment_forge` is true; where it has none that comparison is \
+               skipped and the flag is false. Authorization: admin-tier only (`owner`/`admin`) — \
+               unlike every other matter read here, this deliberately reads all rows rather than \
+               the caller's participation-scoped lens, so `lawyer`, `clerk`, and `client` are \
+               rejected.",
+            "responses": {
+              "200": { "description": "The reconciliation report", "content": { "application/json": { "schema": { "type": "object" } } } },
+              "401": { "description": "No authenticated session", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } },
+              "403": { "description": "Authenticated caller is not admin-tier", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } },
+              "500": { "description": "The matters could not be read", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } }
+            }
+          }
+        },
         "/app/api/projects": {
           "get": {
             "summary": "List the caller's matters",

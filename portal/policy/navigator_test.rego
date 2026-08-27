@@ -659,6 +659,40 @@ test_anonymous_denied_authorize_expunge if {
 	not authz.allow with input as {"path": ["app", "api", "expunge-requests", "e1", "authorize"], "method": "POST", "session": null}
 }
 
+# ---------- GET /app/api/project-repositories (ADMIN tier only — reads every matter's row) ----------
+
+test_admin_can_read_project_repositories if {
+	authz.allow with input as {"path": ["app", "api", "project-repositories"], "method": "GET", "session": admin_session}
+}
+
+# The tier is the whole control. Every other matter read on this surface is
+# participation-scoped, so a lawyer reaching an all-rows report would be the
+# silent directory bypass `visible_projects_as_lawyer` refuses to grant.
+test_lawyer_denied_project_repositories if {
+	not authz.allow with input as {"path": ["app", "api", "project-repositories"], "method": "GET", "session": lawyer_session}
+}
+
+test_clerk_denied_project_repositories if {
+	not authz.allow with input as {"path": ["app", "api", "project-repositories"], "method": "GET", "session": clerk_session}
+}
+
+test_client_denied_project_repositories if {
+	not authz.allow with input as {"path": ["app", "api", "project-repositories"], "method": "GET", "session": client_session}
+}
+
+test_anonymous_denied_project_repositories if {
+	not authz.allow with input as {"path": ["app", "api", "project-repositories"], "method": "GET", "session": null}
+}
+
+# The reason this door carries its own noun. Nested under `projects` the rule
+# admitting any authenticated caller up to five segments would have reached it,
+# so a client would have been policy-allowed on an admin-only report. Asserted
+# so a future move back under that prefix fails here rather than in review.
+test_a_client_reaches_a_projects_subpath_but_not_this_one if {
+	authz.allow with input as {"path": ["app", "api", "projects", "reconcile"], "method": "GET", "session": client_session}
+	not authz.allow with input as {"path": ["app", "api", "project-repositories"], "method": "GET", "session": client_session}
+}
+
 # ---------- POST /app/api/expunge-requests/{id}/deny (lawyer tier only) ----------
 
 test_lawyer_can_deny_expunge if {

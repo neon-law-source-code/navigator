@@ -30,7 +30,7 @@ mod doctor;
 mod e2e;
 mod garage;
 mod gcp;
-mod github_setup;
+pub(crate) mod github_setup;
 mod lifecycle;
 mod native;
 mod observability;

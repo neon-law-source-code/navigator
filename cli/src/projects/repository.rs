@@ -61,6 +61,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use crate::devx::github_setup::REQUIRED_CHECK;
+
 /// The notation blueprints Navigator imports.
 const TEMPLATE_DIRECTORY: &str = "templates";
 /// The client portal's Vite workspace.
@@ -206,7 +208,7 @@ pub fn scaffold(root: &Path, project_code: &str, action_version: &str) -> ExitCo
         ),
         (root.join("tests/README.md"), tests_readme()),
         (root.join(WORKFLOW), workflow(action_version)),
-        (root.join(CD_WORKFLOW), cd_workflow()),
+        (root.join(CD_WORKFLOW), cd_workflow(action_version)),
     ];
 
     for (path, contents) in files {
@@ -747,13 +749,63 @@ Replace this placeholder with the Project-specific template approved for import.
     .to_string()
 }
 
-/// The one CI gate, in the one job name `ops github setup` requires, pinned to
-/// `action_version`.
+/// The pinned actions every generated workflow installs Node and pnpm with.
 ///
-/// There is deliberately **no** `paths:` filter. A filtered job that skips
+/// SHA-pinned per `docs/gitops.md`, each resolved from the tag named in its
+/// trailing comment via the GitHub API rather than typed from memory: a wrong
+/// SHA is indistinguishable from a correct one until the run that needs it.
+const SETUP_NODE_ACTION: &str =
+    "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0";
+const PNPM_SETUP_ACTION: &str =
+    "pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10";
+const CHECKOUT_ACTION: &str = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1";
+
+/// The pinned publish action a Project repository's CD workflow calls.
+const APPLICATION_PUBLISH_ACTION: &str =
+    "neon-law-source-code/navigator/.github/actions/application-publish@";
+
+/// The condition every portal-specific step in a generated workflow carries.
+///
+/// `scaffold` never writes `portal/` — it arrives later from the vibe-coding
+/// lane, onto a `gate.yml` that is already written and never regenerated. So
+/// whether a portal exists cannot be decided once at generation time; it has
+/// to be asked at every run, which is what this expression does.
+const IF_PORTAL_PRESENT: &str = "hashFiles('portal/package.json') != ''";
+
+/// The standard install/lint/typecheck/build/test sequence, one line per
+/// script, package-manager-agnostic in what it checks but pnpm in what it
+/// runs: every Project repository observed today uses pnpm, and a repository
+/// that genuinely needs a different one remains free to hand-edit the
+/// generated file, the same way it is already free to add anything else.
+fn pnpm_step(name: &str, script: &str) -> String {
+    format!("      - name: {name}\n        if: {IF_PORTAL_PRESENT}\n        run: pnpm --dir portal {script}\n")
+}
+
+fn setup_steps() -> String {
+    format!(
+        "      - uses: {CHECKOUT_ACTION}\n      \
+         - uses: {SETUP_NODE_ACTION}\n        if: {IF_PORTAL_PRESENT}\n        with:\n          node-version: \"22\"\n      \
+         - uses: {PNPM_SETUP_ACTION}\n        if: {IF_PORTAL_PRESENT}\n"
+    )
+}
+
+/// The CI gate, promoted from the hand-built shape the Project repositories
+/// had already converged on before this generator caught up to them, pinned
+/// to `action_version`.
+///
+/// # Fan-in, not one flat job
+///
+/// `lint`, `verify`, and `notation` each run unconditionally and no-op
+/// internally over a half this repository does not carry ([`IF_PORTAL_PRESENT`]
+/// gates every portal-specific step; the pinned validate action already no-ops
+/// over an absent portal on its own). [`REQUIRED_CHECK`] is the one job the
+/// ruleset actually binds to, and it asserts each dependency's `result`
+/// explicitly rather than trusting a bare `needs:` — a **skipped** job reports
+/// no result at all, so a bare `needs:` would read that as success and leave a
+/// required check nothing ever fails, stuck "Expected" forever. There is
+/// deliberately **no** `paths:` filter anywhere: a filtered job that skips
 /// reports success for work it never did, and a required check that can be
-/// satisfied by a skip is not a gate. So the job always runs and the action
-/// no-ops internally over whichever half this repository carries.
+/// satisfied by a skip is not a gate.
 ///
 /// # The pin is an argument, not a literal
 ///
@@ -769,8 +821,10 @@ Replace this placeholder with the Project-specific template approved for import.
 /// something that no longer parses — and a generated workflow that does not
 /// parse fails in the Project repository rather than here.
 fn workflow(action_version: &str) -> String {
+    let setup = setup_steps();
+    let install = pnpm_step("Install portal dependencies", "install --frozen-lockfile");
     format!(
-        r#"name: ci
+        r#"name: {REQUIRED_CHECK}
 
 on:
   pull_request:
@@ -778,45 +832,97 @@ on:
     branches: [main]
 
 jobs:
-  # The one required check. It always runs: the gate no-ops over a half this
-  # repository does not carry, rather than being skipped by a path filter and
-  # reporting success for a job that never ran.
-  ci:
+  lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+{setup}{install}{lint_step}
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+{setup}{install}{typecheck_step}{test_step}{build_step}
+  notation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: {CHECKOUT_ACTION}
       - uses: {VALIDATE_ACTION}{action_version}
         with:
           version: "{action_version}"
           project_repository: true
-"#
+
+  # The one required check. See the doc comment above for why it asserts
+  # `needs.<job>.result` explicitly instead of trusting a bare `needs:`.
+  {REQUIRED_CHECK}:
+    needs: [lint, verify, notation]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every job to have succeeded
+        run: |
+          test "${{{{ needs.lint.result }}}}" = "success"
+          test "${{{{ needs.verify.result }}}}" = "success"
+          test "${{{{ needs.notation.result }}}}" = "success"
+"#,
+        lint_step = pnpm_step("Lint the portal", "lint"),
+        typecheck_step = pnpm_step("Typecheck the portal", "typecheck"),
+        test_step = pnpm_step("Test the portal", "test"),
+        build_step = pnpm_step("Build the portal", "build"),
     )
 }
 
-/// The future Project publication workflow. Bucket provisioning and
-/// publication stay deliberately out of this scaffold until the additive
-/// `projects` migration is ready; the placeholder makes that boundary visible
-/// without performing a production action.
-fn cd_workflow() -> String {
-    r#"name: cd
+/// The Project publication workflow: install, lint, typecheck, test, and build
+/// the portal, re-validate the whole repository, then publish through the
+/// pinned `application-publish` action — the same shape
+/// `docs/project-repositories.md` already documents as the thin caller a
+/// Project repository carries, generated here instead of hand-copied into
+/// each one.
+///
+/// The three deployment coordinates (`applications_bucket`,
+/// `workload_identity_provider`, `service_account`) are read from repository
+/// secrets, never written as literals: they are this deployment's own, not a
+/// Project's, and a Project repository's own generated workflow must not
+/// carry them.
+fn cd_workflow(action_version: &str) -> String {
+    let setup = setup_steps();
+    let install = pnpm_step("Install portal dependencies", "install --frozen-lockfile");
+    format!(
+        r#"name: publish
 
 on:
-  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - run: echo "TBD"
-"#
-    .to_string()
+{setup}{install}{lint_step}{typecheck_step}{test_step}{build_step}      - uses: {VALIDATE_ACTION}{action_version}
+        with:
+          version: "{action_version}"
+          project_repository: true
+      - name: Publish the built portal
+        if: {IF_PORTAL_PRESENT}
+        uses: {APPLICATION_PUBLISH_ACTION}{action_version}
+        with:
+          applications_bucket: ${{{{ secrets.NAVIGATOR_APPLICATIONS_BUCKET }}}}
+          workload_identity_provider: ${{{{ secrets.NAVIGATOR_APP_PUBLISHER_WIF_PROVIDER }}}}
+          service_account: ${{{{ secrets.NAVIGATOR_APP_PUBLISHER_SERVICE_ACCOUNT }}}}
+"#,
+        lint_step = pnpm_step("Lint the portal", "lint"),
+        typecheck_step = pnpm_step("Typecheck the portal", "typecheck"),
+        test_step = pnpm_step("Test the portal", "test"),
+        build_step = pnpm_step("Build the portal", "build"),
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
         cd_workflow, example_template, is_release_tag, repository_name, scaffold, validate_layout,
-        validate_workflow, workflow, Finding, ALLOWED_ROOTS, CD_WORKFLOW, WORKFLOW,
+        validate_workflow, workflow, Finding, ALLOWED_ROOTS, CD_WORKFLOW, REQUIRED_CHECK, WORKFLOW,
     };
     use std::path::Path;
 
@@ -842,7 +948,7 @@ mod tests {
         std::fs::create_dir_all(root.join(".github/workflows")).unwrap();
         std::fs::write(root.join("README.md"), "# fixture\n").unwrap();
         std::fs::write(root.join(WORKFLOW), workflow(FIXTURE_PIN)).unwrap();
-        std::fs::write(root.join(CD_WORKFLOW), cd_workflow()).unwrap();
+        std::fs::write(root.join(CD_WORKFLOW), cd_workflow(FIXTURE_PIN)).unwrap();
     }
 
     fn layout_findings(root: &Path) -> Vec<String> {
@@ -1121,6 +1227,144 @@ jobs:
             !generated.contains("26.7.27"),
             "a hard-coded literal is back:\n{generated}"
         );
+    }
+
+    /// The gate fans three feeder jobs into the one required check, rather
+    /// than cramming install/lint/typecheck/build/test into the required job
+    /// itself — the shape the Project repositories had already converged on
+    /// before this generator caught up to them.
+    #[test]
+    fn the_generated_gate_fans_three_jobs_into_the_required_check() {
+        let generated = workflow(FIXTURE_PIN);
+        for job in ["lint:", "verify:", "notation:"] {
+            assert!(
+                generated.contains(&format!("\n  {job}\n")),
+                "missing job `{job}`:\n{generated}"
+            );
+        }
+        assert!(
+            generated.contains(&format!(
+                "\n  {REQUIRED_CHECK}:\n    needs: [lint, verify, notation]\n"
+            )),
+            "{generated}"
+        );
+    }
+
+    /// A **skipped** job reports no result at all, so the required check
+    /// asserts each dependency's result explicitly rather than trusting a
+    /// bare `needs:` — the failure mode `ops github setup`'s own docstring
+    /// warns leaves a pull request stuck on an expected check forever.
+    #[test]
+    fn the_required_check_asserts_every_dependencys_result() {
+        let generated = workflow(FIXTURE_PIN);
+        assert!(generated.contains("if: always()"), "{generated}");
+        for job in ["lint", "verify", "notation"] {
+            assert!(
+                generated.contains(&format!("needs.{job}.result")),
+                "the required check does not check `{job}`'s result:\n{generated}"
+            );
+        }
+    }
+
+    /// The portal-specific steps no-op at run time rather than being decided
+    /// once at generation time: `scaffold` never writes `portal/`, so a gate
+    /// written before the portal exists must still work once it arrives
+    /// later. The validate action no-ops internally over an absent portal
+    /// already, so its own step must not carry a second, redundant
+    /// condition.
+    #[test]
+    fn the_portal_steps_are_conditioned_not_generated_away() {
+        let generated = workflow(FIXTURE_PIN);
+        for step in [
+            "Install portal dependencies",
+            "Lint the portal",
+            "Typecheck the portal",
+            "Test the portal",
+            "Build the portal",
+        ] {
+            assert!(
+                generated.contains(&format!(
+                    "- name: {step}\n        if: hashFiles('portal/package.json') != ''\n"
+                )),
+                "`{step}` is missing its run-time no-op condition:\n{generated}"
+            );
+        }
+        assert!(
+            !generated.contains(
+                "if: hashFiles('portal/package.json') != ''\n        uses: neon-law-source-code/navigator"
+            ),
+            "{generated}"
+        );
+    }
+
+    /// The publish workflow is the real thing now, not a placeholder that
+    /// reads as configured while doing nothing.
+    #[test]
+    fn cd_workflow_publishes_through_the_pinned_actions() {
+        let generated = cd_workflow(FIXTURE_PIN);
+        assert!(!generated.contains("TBD"), "{generated}");
+        assert!(
+            generated.contains("push:\n    branches: [main]"),
+            "{generated}"
+        );
+        assert!(generated.contains("id-token: write"), "{generated}");
+        assert!(
+            generated.contains(
+                "neon-law-source-code/navigator/.github/actions/application-publish@26.8.23"
+            ),
+            "{generated}"
+        );
+        for secret in [
+            "secrets.NAVIGATOR_APPLICATIONS_BUCKET",
+            "secrets.NAVIGATOR_APP_PUBLISHER_WIF_PROVIDER",
+            "secrets.NAVIGATOR_APP_PUBLISHER_SERVICE_ACCOUNT",
+        ] {
+            assert!(generated.contains(secret), "{generated}");
+        }
+        // The three deployment coordinates are read from secrets, never
+        // written as literals: they are this deployment's own, not a
+        // Project's.
+        assert!(!generated.contains("neon-law-applications"), "{generated}");
+    }
+
+    /// The pin reaches the publish action too, and no literal survives.
+    #[test]
+    fn cd_workflow_pins_the_version_it_was_given() {
+        let generated = cd_workflow("26.8.23");
+        assert!(
+            generated.contains(
+                "neon-law-source-code/navigator/.github/actions/application-publish@26.8.23"
+            ),
+            "{generated}"
+        );
+        assert!(
+            !generated.contains("26.7.27"),
+            "a hard-coded literal is back:\n{generated}"
+        );
+    }
+
+    /// Neither generated workflow takes a Project code, and this proves
+    /// nothing project-specific leaks in behind that: the only organization
+    /// named in either file is Navigator's own, the one exception
+    /// `cli/tests/forge_coordinate_retired.rs` allows.
+    #[test]
+    fn the_generated_workflows_name_no_project() {
+        for generated in [workflow(FIXTURE_PIN), cd_workflow(FIXTURE_PIN)] {
+            for line in generated.lines() {
+                let Some(reference) = line.trim_start().strip_prefix("uses: ") else {
+                    continue;
+                };
+                let owner = reference.split('/').next().unwrap_or_default();
+                assert!(
+                    matches!(owner, "actions" | "pnpm" | "neon-law-source-code"),
+                    "unexpected organization `{owner}` in generated workflow:\n{generated}"
+                );
+            }
+            assert!(
+                !generated.contains("NAVIGATOR_GCP_PROJECT_ID"),
+                "a deployment coordinate leaked into the generated workflow:\n{generated}"
+            );
+        }
     }
 
     /// The default pin is empty, or it is a release tag — never a

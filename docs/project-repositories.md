@@ -193,7 +193,8 @@ reads what it needs by name rather than parsing a sentence.
 
 ## The CI gate
 
-One composite action is the whole gate, consumed identically by every Project repository in every organization:
+One composite action verifies the layout, the portal build, and the mount, consumed identically by every Project
+repository in every organization:
 
 ```yaml
 - uses: actions/checkout@<sha>  # v7
@@ -209,9 +210,18 @@ name, which is the Project code, plus a literal segment. A forge host never appe
 repository may move between forges without touching the gate. `cli/tests/project_gate.rs` pins the shell against the
 Rust definitions it transcribes, because bash cannot call Rust.
 
+`navigator projects repository scaffold` generates the fuller shape every Project repository converged on by hand before
+this generator caught up: three feeder jobs — `lint`, `verify` (typecheck, test, build), and `notation` (the snippet
+above) — fanned into one required check. Each feeder job runs unconditionally and no-ops over a half this repository
+does not carry: every portal-specific step carries a run-time `hashFiles('portal/package.json') != ''` condition,
+because `scaffold` writes the gate before the portal exists and the same file must keep working once the portal arrives
+later from the vibe-coding lane.
+
 **There is no path filter, and that is deliberate.** A filtered job that skips reports success for work it never did,
-and a required check a skip can satisfy is not a gate. So the one job always runs and each half no-ops over a repository
-that does not carry it. The job is spelled `ci`, which is the one required context `navigator ops github setup` binds.
+and a required check a skip can satisfy is not a gate. So every job always runs and each half no-ops over a repository
+that does not carry it, rather than being skipped. The required job is spelled `ci`, which is the one context `navigator
+ops github setup` binds — and, because a **skipped** job reports no result at all, that job asserts each feeder job's
+`result` explicitly rather than trusting a bare `needs:`, which a skip would satisfy silently.
 
 What the gate proves:
 
@@ -279,8 +289,10 @@ provider's `attributeCondition` must never be rewritten by hand: one CEL express
 Navigator's own `navigator-ci-pusher` deploy identity included, so a clause appended carelessly breaks Navigator's
 deploys an hour later and somewhere else.
 
-The thin caller workflow lives in the Project repository, not here. It grants `id-token: write`, installs with a locked
-dependency graph, lints, typechecks, tests, and builds with the derived Vite base, runs the gate, then publishes:
+The thin caller workflow lives in the Project repository, not here — `navigator projects repository scaffold` writes it
+as `.github/workflows/publish.yml`, so a scaffolded repository never hand-copies it. It grants `id-token: write`,
+installs with a locked dependency graph, lints, typechecks, tests, and builds with the derived Vite base, runs the gate,
+then publishes:
 
 ```yaml
 # <organization>/<project-code>/.github/workflows/publish.yml — an example of what a

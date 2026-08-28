@@ -93,8 +93,7 @@ A questionnaire state name is `<type>__<role>` — a **question type** and the *
 `person__trustor`, `entity__company`, `address__for_company`. The `<type>` half is a closed set (the
 [`store::question_registry`](https://github.com/neon-law-source-code/navigator/blob/main/store/src/question_registry.rs)
 registry); `N113` rejects a typed state whose `<type>` is not registered. The `<role>` suffix is free naming that keeps
-two answers of one type distinct — `entity__company` and `entity__subsidiary`
-are two separate entities, not one.
+two answers of one type distinct — `entity__company` and `entity__subsidiary` are two separate entities, not one.
 
 Every type is one of three kinds:
 
@@ -194,8 +193,8 @@ cargo run -p cli --quiet -- validate <path>
 
 `navigator-lsp` is a single Rust binary speaking LSP over stdio. It shares the exact rules engine the CLI uses, so the
 editor and CI can never disagree. Supported editors ship copy-paste configs under
-[`lsp/`](https://github.com/neon-law-source-code/navigator/tree/main/lsp) docs: VS Code, Neovim, Helix,
-Emacs, Zed. The authoring loop for a non-engineer legal author:
+[`lsp/`](https://github.com/neon-law-source-code/navigator/tree/main/lsp) docs: VS Code, Neovim, Helix, Emacs,
+Zed. The authoring loop for a non-engineer legal author:
 
 1. **Type.** Open `templates/neon_law/shared/letter.md` in your editor. Write
    legal prose and frontmatter — no proprietary tool, no markup beyond markdown.

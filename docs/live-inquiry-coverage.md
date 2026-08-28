@@ -3,8 +3,8 @@
 Live Inquiry Coverage is the generic shape behind a live-sitting helper. The common dock point is the markdown Template
 that already creates a Notation: its frontmatter declares the `questionnaire:` and `workflow:` graphs, the LSP/CLI
 validate that structure, and a running Notation binds those declarations to a Project. Live coverage projects the
-Template's declared Questions into an Inquiry Set, listens to a transcript as it develops, and shows which items
-are answered, ambiguous, or still need follow-up.
+Template's declared Questions into an Inquiry Set, listens to a transcript as it develops, and shows which items are
+answered, ambiguous, or still need follow-up.
 
 The model fits depositions, witness interviews, intake interviews, and any other transcript-bearing matter session.
 
@@ -280,8 +280,7 @@ Conclusions:
   lever. At realistic volume (~20 sittings / month ≈ ~`$28` / month) cost is not a binding constraint on this feature.
 - **If cost ever does bite, the levers are Speech-to-Text-side, not the debounce dial**: a discounted dynamic-batch tier
   (`$0.004` / min) for post-hoc rather than live coverage, or routing coverage through the already-paid Gemini
-  Enterprise seam at ~`$0` marginal inference cost. These are deferred options, not v1
-  work.
+  Enterprise seam at ~`$0` marginal inference cost. These are deferred options, not v1 work.
 
 ## Speaker attribution
 

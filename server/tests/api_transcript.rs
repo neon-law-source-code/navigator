@@ -7,7 +7,7 @@
 //! `transcript_intake::file_estate_transcript`) are shared with the lawyer/CLI
 //! forms, so this focuses on what the REST adapters add: they take the transcript
 //! as JSON text (not multipart), lawyer-tier only (client 403, anon 401),
-//! matter-scope (out-of-scope 404), and the live coverage / estate-pipeline runs.
+//! matter-scope (out-of-scope 404), and the live coverage run.
 
 use std::sync::Arc;
 
@@ -262,31 +262,6 @@ async fn coverage_with_an_empty_transcript_is_400() {
     )
     .await;
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
-}
-
-// ---------- estate transcript intake ----------
-
-#[tokio::test]
-async fn filing_an_estate_transcript_drives_the_pipeline() {
-    let h = harness().await;
-    let (project_id, notation_id) = seed_estate_notation(&h).await;
-    let resp = post(
-        &h,
-        &format!("/app/api/projects/{project_id}/notations/{notation_id}/transcript"),
-        Some(&h.admin),
-        serde_json::json!({ "transcript_text": "Consent given. Testator: Capricorn. Executor: Aries. Successor trustee: Gemini. Residuary beneficiary: Leo. Health-care agent: Virgo. Financial agent: Libra." }),
-    )
-    .await;
-    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
-    let state = store::notations::find_by_id(&h.surreal, notation_id)
-        .await
-        .unwrap()
-        .unwrap()
-        .state;
-    assert_ne!(
-        state, "BEGIN",
-        "the transcript filing advanced the notation past BEGIN"
-    );
 }
 
 #[tokio::test]

@@ -325,28 +325,23 @@ Embedded Rego's allow rules in priority order:
    route-admission decision only: it says the request may reach a handler, not that the caller may see the row. On the
    matter surface the handler then applies the participation gate below, so an unassigned Owner passes embedded Rego and
    still gets a `404`. The trust call is that these tiers imply a fiduciary duty audited elsewhere (Drive activity, DB
-   write logs). Operational surfaces such as `/app/admin`, `/app/admin/analytics`, and
-   `/app/admin/people` enforce the Owner/Admin tier in their handlers, so the broader `/lawyer/*`
-   lawyer-tier gate cannot expose them.
-2. **Lawyer-tier surfaces** — `/app/admin/entity-types`, `/app/admin/templates`, and the other
-   firm-internal pages gate on `session.role` being `"owner"`, `"admin"`, or `"lawyer"`. `"clerk"`
-   is intentionally absent. The people directory is
-   **not** among them: its browser surface is `/app/admin/people`, Owner/Admin only, since ENG-304
-   deleted the `/lawyer` mirror. The Person *commands* stay lawyer-tier at
-   `POST/PATCH/DELETE /app/api/people*`, so what a lawyer lost is the form, not the capability. That
-   tier check is the whole gate only for firm *reference* data. A `/lawyer` listing that
-   reads **matter content** — `/lawyer/answers`, `/lawyer/assets`, `/lawyer/relationship-logs` —
+   write logs). Operational surfaces such as `/app/admin`, `/app/admin/analytics`, and `/app/admin/people` enforce the
+   Owner/Admin tier in their handlers, so the broader `/lawyer/*` lawyer-tier gate cannot expose them.
+2. **Lawyer-tier surfaces** — `/app/admin/entity-types`, `/app/admin/templates`, and the other firm-internal pages gate
+   on `session.role` being `"owner"`, `"admin"`, or `"lawyer"`. `"clerk"` is intentionally absent. The people directory
+   is **not** among them: its browser surface is `/app/admin/people`, Owner/Admin only, since ENG-304 deleted the
+   `/lawyer` mirror. The Person *commands* stay lawyer-tier at `POST/PATCH/DELETE /app/api/people*`, so what a lawyer
+   lost is the form, not the capability. That tier check is the whole gate only for firm *reference* data. A `/lawyer`
+   listing that reads **matter content** — `/lawyer/answers`, `/lawyer/assets`, `/lawyer/relationship-logs` —
    additionally scopes its rows to the caller's participation ledger through
-   `webapp::admin_listing::require_lawyer_in_matters`, so a lawyer
-   holding no row reads nothing there, and a row carrying no project link is absent from a scoped
-   read rather than admitted. Owner and Admin keep the unscoped read. Two listings stay firm-wide
-   on purpose: `/lawyer/disclosures` and `/lawyer/person-entity-roles` feed
-   `store::conflicts::check_new_matter`, and ABA Model Rule 1.10 imputes a conflict
-   firm-wide, so a lawyer must be able to see one arising out of a matter they are not on — scoping
-   either would narrow the conflict check to the checker's own caseload. `/app/admin/letters` and
-   `/app/admin/email-log` are Owner/Admin only:
-   `letter` and `sent_email` carry no project link to scope by, so the admin gate is the interim close until one exists.
-   Which class each listing belongs to is written down once, in `webapp::admin_listing::LAWYER_LISTINGS`.
+   `webapp::admin_listing::require_lawyer_in_matters`, so a lawyer holding no row reads nothing there, and a row
+   carrying no project link is absent from a scoped read rather than admitted. Owner and Admin keep the unscoped read.
+   Two listings stay firm-wide on purpose: `/lawyer/disclosures` and `/lawyer/person-entity-roles` feed
+   `store::conflicts::check_new_matter`, and ABA Model Rule 1.10 imputes a conflict firm-wide, so a lawyer must be able
+   to see one arising out of a matter they are not on — scoping either would narrow the conflict check to the checker's
+   own caseload. `/app/admin/letters` and `/app/admin/email-log` are Owner/Admin only: `letter` and `sent_email` carry
+   no project link to scope by, so the admin gate is the interim close until one exists. Which class each listing
+   belongs to is written down once, in `webapp::admin_listing::LAWYER_LISTINGS`.
 3. **Clerk supervised lens** — a Clerk enters `/app/projects` with everyone else, and
    `store::access::matter_viewer` resolves them to `MatterViewer::Clerk` only when they hold a firm-side row and the
    matter has a flagged lawyer DRI who currently holds the lawyer tier. That variant renders the matter name, status,

@@ -394,9 +394,9 @@ policy. Six tests:
 2. `embedded_policy_denies_client_admin_route_with_403` — the compiled policy denies a Client-tier caller with 403.
 3. `second_login_with_same_subject_does_not_create_duplicate_person` — re-running the login doesn't insert a second row.
 4. `user_with_db_lawyer_role_can_hit_every_admin_route` — pre-seeds `role = lawyer` in the DB, logs in (promoting the
-   row), hits six app routes (`/app/lawyer`, `/app/admin/entities`, `/app/admin/jurisdictions`, `/app/admin/entity-types`,
-   `/app/admin/templates`, `/app/admin/questions`) using the production policy. The people index is absent because it answers
-   at `/app/admin/people`, Owner/Admin only.
+   row), hits six app routes (`/app/lawyer`, `/app/admin/entities`, `/app/admin/jurisdictions`,
+   `/app/admin/entity-types`, `/app/admin/templates`, `/app/admin/questions`) using the production policy. The people
+   index is absent because it answers at `/app/admin/people`, Owner/Admin only.
 5. `user_with_empty_db_roles_is_denied_even_when_token_would_have_granted` — fresh user, default `role = client`; every
    `/lawyer/*` route returns 403.
 6. `db_role_revocation_takes_effect_on_next_login` — a lawyer user starts with lawyer, succeeds; row is updated to `role

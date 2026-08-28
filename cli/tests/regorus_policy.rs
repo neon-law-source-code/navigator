@@ -130,9 +130,14 @@ fn regorus_matches_every_checked_in_policy_decision() {
     //   /app/api/project-surfaces/{id}): the five-case tier matrix, plus one
     //   noun-isolation case matching project-repositories.
     // 373 + 6 = 379.
+    //
+    // + 4 for firm-administration listings under `/app/admin`: Lawyer reaches
+    //   the named reference resources, and is denied Person CRUD, analytics,
+    //   Clerk, and client on those same paths.
+    // 379 + 4 = 383.
     assert_eq!(
         test_names.len(),
-        379,
+        383,
         "the policy decision inventory changed; review every new or removed rule"
     );
 

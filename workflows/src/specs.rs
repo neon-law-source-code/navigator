@@ -96,6 +96,10 @@ pub const BUNDLED_SPEC_YAML: &[(&str, &str)] = &[
         include_str!("../specs/offboarding__letter.yaml"),
     ),
     (
+        "memo__contract_review",
+        include_str!("../specs/memo__contract_review.yaml"),
+    ),
+    (
         "nv__dissolution",
         include_str!("../specs/nv__dissolution.yaml"),
     ),

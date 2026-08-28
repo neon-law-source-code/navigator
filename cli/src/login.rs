@@ -77,7 +77,7 @@ async fn login_inner(host: &str, no_browser: bool) -> Result<String> {
         open_in_browser(&start_url);
     }
 
-    let token = wait_for_token(listener, &state).await?;
+    let token = wait_for_token(listener, &state, &base).await?;
 
     // Verify the token actually works AND learn the identity + expiry in
     // one call. Only after this succeeds do we touch the credential file,
@@ -221,7 +221,7 @@ async fn fetch_whoami(base: &str, token: &str) -> Result<WhoAmI> {
 /// One-shot loopback listener that returns the `token` query parameter
 /// from the first GET it sees, after verifying the echoed `state` matches
 /// what we sent (CSRF / token-injection guard).
-async fn wait_for_token(listener: TcpListener, expected_state: &str) -> Result<String> {
+async fn wait_for_token(listener: TcpListener, expected_state: &str, base: &str) -> Result<String> {
     // 5-minute hard timeout so a user who closes the browser tab doesn't
     // leave `navigator site login` hanging forever.
     #[allow(clippy::duration_suboptimal_units)]
@@ -230,12 +230,62 @@ async fn wait_for_token(listener: TcpListener, expected_state: &str) -> Result<S
         .await
         .map_err(|_| anyhow!("timed out waiting for the browser redirect"))?
         .context("accept callback connection")?;
-    handle_callback_socket(socket, expected_state).await
+    handle_callback_socket(socket, expected_state, base).await
+}
+
+/// Render the tiny page the loopback callback hands back to the browser, in
+/// the site's own chrome (theme tokens + the licensed GORP Serif face)
+/// instead of an unstyled system-font note.
+///
+/// The listener serves exactly one response and closes the socket, so this
+/// can't be a page on `web`'s own router — it has to carry its stylesheet
+/// and font `src`s as *absolute* URLs against `base`, the host the browser
+/// was just sent to sign in on, rather than the relative `/public/...`
+/// paths a routed page uses (those would resolve against the loopback
+/// listener itself, which serves nothing else).
+fn callback_page_html(base: &str, title: &str, heading: &str, body_html: &str) -> String {
+    let regular = format!("{base}/public/fonts/gorp-serif/GORPSerif-Regular.woff2");
+    let bold = format!("{base}/public/fonts/gorp-serif/GORPSerif-Bold.woff2");
+    let faces = views::assets::gorp_font_face_css(&regular, &bold);
+    format!(
+        "<!DOCTYPE html><html lang=\"en\"><head>\
+         <meta charset=\"utf-8\">\
+         <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\
+         <meta name=\"color-scheme\" content=\"light dark\">\
+         <meta name=\"robots\" content=\"noindex\">\
+         <title>{title}</title>\
+         <link rel=\"stylesheet\" href=\"{base}/public/css/theme.css\">\
+         <style>{faces}</style>\
+         </head><body class=\"nav-theme\">\
+         <main class=\"public-shell__main error-page\">\
+         <h1>{heading}</h1>\
+         {body_html}\
+         </main></body></html>"
+    )
+}
+
+/// Escape the handful of characters that would let an untrusted value (the
+/// `error` query param a compromised or misbehaving identity provider could
+/// echo back) break out of the HTML it is interpolated into.
+fn escape_html(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    for ch in raw.chars() {
+        match ch {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&#39;"),
+            _ => out.push(ch),
+        }
+    }
+    out
 }
 
 async fn handle_callback_socket(
     mut socket: tokio::net::TcpStream,
     expected_state: &str,
+    base: &str,
 ) -> Result<String> {
     let mut buf = [0u8; 8192];
     let n = socket.read(&mut buf).await.context("read callback")?;
@@ -264,7 +314,12 @@ async fn handle_callback_socket(
     }
 
     if let Some(err) = error {
-        let body = format!("<html><body><h1>Login failed</h1><p>{err}</p></body></html>");
+        let body = callback_page_html(
+            base,
+            "Login failed",
+            "Login failed",
+            &format!("<p>{}</p>", escape_html(&err)),
+        );
         send_response(&mut socket, 400, "Bad Request", "text/html", &body).await;
         return Err(anyhow!("login failed: {err}"));
     }
@@ -281,11 +336,13 @@ async fn handle_callback_socket(
         return Err(anyhow!("state mismatch — refusing the token"));
     }
     let token = token.ok_or_else(|| anyhow!("callback missing `token`"))?;
-    let body = "<html><body style=\"font-family:system-ui;padding:2rem\">\
-                <h1>Login successful</h1>\
-                <p>You can close this tab and return to the terminal.</p>\
-                </body></html>";
-    send_response(&mut socket, 200, "OK", "text/html", body).await;
+    let body = callback_page_html(
+        base,
+        "Login successful",
+        "Login successful",
+        "<p>You can close this tab and return to the terminal.</p>",
+    );
+    send_response(&mut socket, 200, "OK", "text/html", &body).await;
     Ok(token)
 }
 
@@ -371,11 +428,14 @@ mod tests {
         let _ = s.read(&mut buf).await;
     }
 
+    const TEST_BASE: &str = "https://staging.neonlaw.com";
+
     #[tokio::test]
     async fn callback_returns_token_on_state_match() {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
-        let server = tokio::spawn(async move { wait_for_token(listener, "the-nonce").await });
+        let server =
+            tokio::spawn(async move { wait_for_token(listener, "the-nonce", TEST_BASE).await });
         drive_a_callback(addr, "/cb?token=sess.blob&state=the-nonce").await;
         let token = server.await.unwrap().unwrap();
         assert_eq!(token, "sess.blob");
@@ -385,7 +445,8 @@ mod tests {
     async fn callback_rejects_state_mismatch() {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
-        let server = tokio::spawn(async move { wait_for_token(listener, "the-nonce").await });
+        let server =
+            tokio::spawn(async move { wait_for_token(listener, "the-nonce", TEST_BASE).await });
         drive_a_callback(addr, "/cb?token=sess.blob&state=tampered").await;
         let err = server.await.unwrap().unwrap_err();
         assert!(format!("{err:#}").contains("state mismatch"));
@@ -395,10 +456,45 @@ mod tests {
     async fn callback_surfaces_an_error_param() {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
-        let server = tokio::spawn(async move { wait_for_token(listener, "the-nonce").await });
+        let server =
+            tokio::spawn(async move { wait_for_token(listener, "the-nonce", TEST_BASE).await });
         drive_a_callback(addr, "/cb?error=access_denied&state=the-nonce").await;
         let err = server.await.unwrap().unwrap_err();
         assert!(format!("{err:#}").contains("access_denied"));
+    }
+
+    #[test]
+    fn callback_page_carries_the_theme_and_gorp_face_from_base() {
+        let html = callback_page_html(
+            TEST_BASE,
+            "Login successful",
+            "Login successful",
+            "<p>You can close this tab and return to the terminal.</p>",
+        );
+        assert!(
+            html.contains(&format!(r#"href="{TEST_BASE}/public/css/theme.css""#)),
+            "theme stylesheet: {html}"
+        );
+        assert!(html.contains("GORP Serif"), "brand face: {html}");
+        assert!(
+            html.contains(&format!("{TEST_BASE}/public/fonts/gorp-serif/")),
+            "font src absolute against base: {html}"
+        );
+    }
+
+    #[test]
+    fn callback_page_escapes_an_untrusted_error_value() {
+        let html = callback_page_html(
+            TEST_BASE,
+            "Login failed",
+            "Login failed",
+            &format!("<p>{}</p>", escape_html("<script>evil()</script>")),
+        );
+        assert!(
+            !html.contains("<script>evil()</script>"),
+            "raw markup leaked: {html}"
+        );
+        assert!(html.contains("&lt;script&gt;"), "escaped instead: {html}");
     }
 
     #[test]

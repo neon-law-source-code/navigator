@@ -5,15 +5,16 @@ analytical Parquet/Iceberg `archives` lane.
 
 ## Storage and retention
 
-Cloud deployments set `NAVIGATOR_SURREAL_ARCHIVES_BUCKET=neon-law-archives`. Keys are point-in-time selectable:
+Cloud deployments set `NAVIGATOR_SURREAL_ARCHIVES_BUCKET=neon-law-archives-staging`. Keys are point-in-time selectable:
 
 ```text
 surreal-backups/<namespace>/<database>/<utc-timestamp>-<uuid>.surql
 ```
 
-Retain objects for ten years, transition them to Coldline after one year, and keep the bucket private. The
-`workflows-service` workload identity needs `roles/storage.objectUser` on `neon-law-archives`; that IAM binding is an
-operator action.
+The bucket carries no lifecycle rule — objects are kept indefinitely — and stays private. The ten-year retention and
+Coldline transition belong to the separate analytical Iceberg bucket instead; see
+[`iceberg-archive.md`](iceberg-archive.md). The `workflows-service` workload identity needs `roles/storage.objectUser`
+on the archives bucket; that IAM binding is an operator action.
 
 ## Restore drill
 

@@ -64,9 +64,9 @@ instance, and the `<prefix>-gateway-ip` global address. That address is a deploy
 Navigator: it lives in the deployment's `config.toml` as `NAVIGATOR_GATEWAY_IP`, and `gcloud compute addresses describe
 <prefix>-gateway-ip --global --format='value(address)'` prints the current value.
 
-The host cutover has happened. `www.neonlaw.com` and `workflows.neonlaw.com` both resolve to that address and are served
-by this deployment's Ingress, with both `ManagedCertificate` resources Active. The static marketing site that held
-`www.neonlaw.com` before the cutover is retired, along with the tooling that published it.
+`www.neonlaw.com` and `workflows.neonlaw.com` both resolve to that address and are served by this deployment's Ingress,
+with both `ManagedCertificate` resources Active. This deployment's Ingress serves the complete public route table at
+`www.neonlaw.com`; there is no separate marketing-site deployment or publishing tool.
 
 Each deployment serves its own host, and the host says what the deployment is. `www.neonlaw.com` is production: the firm
 at the root, over real matters. Staging serves `staging.neonlaw.com` over sample data, so a visitor never has to guess

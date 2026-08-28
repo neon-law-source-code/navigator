@@ -208,9 +208,10 @@ available only to the explicit CI harness. See [`third-party-integrations.md`](t
 
 ## 3. (GCP path) Provision the cloud resources
 
-The `navigator` CLI ships a one-shot, idempotent provisioner for the GCP-side infrastructure — VPC, four GCS buckets,
-runtime identity, GKE Autopilot cluster, Fleet membership, Gateway static IP, and the deployment's KMS key. It
-provisions no database: the store is SurrealDB, and you bring your own instance.
+The `navigator` CLI ships a one-shot, idempotent provisioner for the GCP-side infrastructure — VPC, five GCS buckets
+(`assets`, `documents`, `exports`, `logs`, `applications`), runtime identity, GKE Autopilot cluster, Fleet membership,
+Gateway static IP, and the deployment's KMS key. It provisions no database: the store is SurrealDB, and you bring your
+own instance.
 
 ```bash
 gcloud auth application-default login
@@ -281,13 +282,13 @@ kubectl apply -k /tmp/my-overlay
 
 ## 5. Build and push the image
 
-The `images/Containerfile.web` recipe produces the multi-stage `navigator-web` image (build context is the repo root).
+The `images/Containerfile.neon` recipe produces the multi-stage `neon-server` image (build context is the repo root).
 Tag it for your registry and push:
 
 ```bash
 TAG=$(git rev-parse --short HEAD)
-docker build -f images/Containerfile.web -t my-registry/navigator-web:$TAG .
-docker push my-registry/navigator-web:$TAG
+docker build -f images/Containerfile.neon -t my-registry/neon-server:$TAG .
+docker push my-registry/neon-server:$TAG
 ```
 
 Then roll your cluster onto the new tag — `navigator ops ship --tag <TAG>` renders the embedded manifest tree from your

@@ -90,9 +90,8 @@ nor the new one. Plan the cutover as a short outage rather than a swap:
    certificate available`) in that window means propagation, not misconfiguration — check the target proxy really
    carries the certificate before changing anything.
 
-A Certificate Manager DNS authorization can cut a hostname over with **no** TLS gap, which is how the retired static
-marketing site used to move. That option is not available here: the GKE ingress owns its certificates, so plan for the
-window above rather than expecting a seamless switch.
+A Certificate Manager DNS authorization can cut a hostname over with **no** TLS gap. That option is not available here:
+the GKE ingress owns its certificates, so plan for the window above rather than expecting a seamless switch.
 
 Verified on the production cutover of 2026-08-05: `www.neonlaw.com` moved off the marketing site, and the host was
 unreachable over HTTPS for roughly half an hour between the DNS change and the edge serving the certificate.
@@ -212,8 +211,8 @@ substituted from the selected deployment's `deployments/<name>/config.toml` — 
 `kubectl diff -k` (surface drift) and `kubectl apply -k` (reconcile). The apply is **unconditional**: any structural
 change on `main` (a renamed container, a new sidecar, a volume, an env-list edit) reaches the cluster on the next ship
 rather than silently rotting. There is no persistent overlay folder and no image-only fall-through — the CLI generates
-from the checked-in coordinates what a deployer used to hand-keep. The manifests are embedded; only the `deployments/`
-tree of the repository checkout is read at ship time.
+from the checked-in coordinates the manifests a deployer would otherwise hand-keep. The manifests are embedded; only the
+`deployments/` tree of the repository checkout is read at ship time.
 
 The substitution values live in the selected deployment's `config.toml` — plaintext, reviewable coordinates in this
 repo:

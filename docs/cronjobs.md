@@ -1,8 +1,9 @@
 # Scheduled jobs (CronJobs)
 
-How Neon Law Navigator runs anything on a clock — the nightly Archives backup and the weekly billing canary today, with
-more periodic jobs to come. Every scheduled job is a **Kubernetes `CronJob`** in the `navigator` namespace. **Kubernetes
-owns the clock.**
+How Neon Law Navigator runs anything on a clock. Seven scheduled jobs exist today: the nightly Archives backup, the
+daily Surreal archive export, the daily billing digest, the daily invoice reconciliation, the weekly billing canary, and
+the six-hourly engine heartbeat alongside its GitHub-automation counterpart. Every scheduled job is a **Kubernetes
+`CronJob`** in the `navigator` namespace. **Kubernetes owns the clock.**
 
 GitHub Actions is **not** a scheduler here. CI/CD on GitHub does exactly one thing for the runtime: build and push
 images. Anything that runs on a schedule is a k8s `CronJob` in the cluster — never a GitHub `schedule:` trigger — so the
@@ -42,8 +43,8 @@ Everything is Rust and env-driven — no per-deployment value is baked into a co
    (one `--build-arg CRATE=`/`BIN=` row). CI (`deploy.yml`) builds and publishes it to
    `YOUR_GCP_REGION-docker.pkg.dev/YOUR_IMAGES_PROJECT_ID/navigator/navigator-<name>` tagged `YY.M.D` (the release date)
    plus `latest`; the GKE nodes pull it via Workload Identity (the registry is private, and lives in the images project,
-   not the cluster's). The workspace no longer ships per-image `cargo run -p cli -- image-<name>` build commands — CI
-   owns image builds, and the local KIND loop **pulls** them (`navigator dev deploy` / `dev worktree-env --demo`).
+   not the cluster's). CI owns image builds — there is no per-image `cargo run -p cli -- image-<name>` build command —
+   and the local KIND loop **pulls** them (`navigator dev deploy` / `dev worktree-env --demo`).
 3. **A manifest** under `examples/deploy/k8s/exports/` with placeholders (`YOUR_PROJECT_ID` for the environment,
    `YOUR_IMAGES_PROJECT_ID` for the registry the image comes from, the image tag, any ingress URL), namespace
    `navigator`. Render real values at apply time; keep the committed file generic.
@@ -116,7 +117,7 @@ kubectl apply -f /tmp/cron-<name>.yaml
 ```bash
 kubectl -n navigator get cronjob                                   # schedules + last-run times
 kubectl -n navigator create job --from=cronjob/<name> <name>-manual-001   # fire one now
-kubectl -n navigator dev logs job/<name>-manual-001                    # read its output
+kubectl -n navigator logs job/<name>-manual-001                       # read its output
 kubectl -n navigator patch cronjob <name> -p '{"spec":{"suspend":true}}'  # pause without deleting
 ```
 

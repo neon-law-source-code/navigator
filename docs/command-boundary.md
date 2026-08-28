@@ -20,8 +20,8 @@ own persistence logic.
   embedded Rego checks.
 - **CLI.** A subcommand either calls an authenticated `/app/api/*` route over HTTP (`cli/src/remote.rs`, bearer token)
   or, where it cannot depend on `portal`, calls the **same** shared `store` / `workflows` command the `/app/api` handler
-  calls. Convergence is at the command layer, not necessarily over HTTP: the `navigator site project open` subcommand
-  and `POST /app/api/projects` both call the same `store::projects::open_matter`.
+  calls. Convergence is at the command layer, not necessarily over HTTP: the `navigator db project create` subcommand
+  (`cli/src/project.rs::create`) and `POST /app/api/projects` both call the same `store::projects::open_matter`.
 - **Seed reconciliation.** `navigator db seed <MODEL_NAME> <SEED_FILE>` reads the standard seed YAML locally and sends
   it with the bearer from `navigator login` to `POST /app/api/seed`. The deployment resolves the typed glossary model,
   validates its `lookup_fields`, and performs lookup/create there; `--overwrite` changes only fields represented in the
@@ -36,22 +36,23 @@ own persistence logic.
 Where the command lives: `store` and `workflows` hold the persistence and durable-execution cores plus their typed error
 enums; `portal` command modules hold adapter logic that must not live in `store` (matter-scope resolution, client-lens
 checks). The `/app/api` handler and the web form are both thin adapters over that one command. Every `/app/api` route is
-documented in `portal::api::documented_api_paths()` and `web/src/openapi.rs`, guarded by `web/tests/openapi_drift.rs`,
-and carries an authorization-matrix test across anonymous callers plus Owner, Admin, Lawyer, Clerk, and Client. Role
-semantics follow [`access-model`](access-model.md): embedded Rego reads the system tier (`persons.role`), and
-`participation` is derived from that same column rather than named by a caller.
+documented in `portal::api::documented_api_operations()` and `portal/src/openapi.rs`, guarded by
+`server/tests/openapi_drift.rs`, and carries an authorization-matrix test across anonymous callers plus Owner, Admin,
+Lawyer, Clerk, and Client. Role semantics follow [`access-model`](access-model.md): embedded Rego reads the system tier
+(`persons.role`), and `participation` is derived from that same column rather than named by a caller.
 
 ## Carve-outs — paths allowed to write directly
 
-These are **system- and internal-initiated** writes, not user or tool commands, so they do not travel the boundary. The
-carve-out is deliberate and enumerated; a new one needs a documented reason.
+These would be **system- and internal-initiated** writes, not user or tool commands, so they would not travel the
+boundary. The allowlist in `cli/tests/command_boundary.rs` is currently empty: every write in `cli/src` and `mcp/src`
+routes through the shared command boundary, with no exemption. A new carve-out needs a documented reason added both here
+and to that allowlist.
+
+Categories outside `cli/src` and `mcp/src` altogether are not part of that allowlist, but they are still
+system-initiated rather than user- or tool-initiated, so they do not travel the boundary either:
 
 - **Schema migrations and canonical catalog seed** — `store` migrations and `store::seed`. Firm-owned reference and
   bootstrap data, not a runtime write.
-- **The bundled-catalog importer** — `cli/src/import.rs`. Its template writes already route through the shared
-  `store::templates::save_version` command; the one remaining inline write registers auto-import question-code stubs so
-  the `N104` validation pass has a populated `questions` table to check against. Catalog provisioning from repo-bundled
-  workspace files, the same category as the seed.
 - **Restate durable workers** — the `workflows*` crates. A journaled handler *is* the command execution; it must never
   make an HTTP call back into `web` for its own durable side effect (see [`durable-workflows`](durable-workflows.md)).
 - **Inbound webhooks** — DKIM-verified inbound email and equivalent event ingress. System-initiated by an external
@@ -62,10 +63,10 @@ carve-out is deliberate and enumerated; a new one needs a documented reason.
 ## Enforcement
 
 `cli/tests/command_boundary.rs` ratchets the machine-caller adapter layers: neither `cli/src` nor `mcp/src` may
-construct an entity `ActiveModel` for a write outside the carve-out allowlist above, and the allowlist cannot rot (a
-listed file that stops writing fails the test). A new inline write in a CLI subcommand or MCP tool fails there, pointing
-the author at the shared command. Web-adapter convergence is enforced per slice by each door's authorization-matrix test
-plus the OpenAPI drift guard.
+construct an entity `ActiveModel` for a write outside the (currently empty) carve-out allowlist above, and the allowlist
+cannot rot (a listed file that stops writing fails the test). A new inline write in a CLI subcommand or MCP tool fails
+there, pointing the author at the shared command. Web-adapter convergence is enforced per slice by each door's
+authorization-matrix test plus the OpenAPI drift guard.
 
 See also [`access-model`](access-model.md) (who may write), [`rego-policy`](rego-policy.md) (the decision engine), and
 [`workspace-layout`](workspace-layout.md) (the crate map).

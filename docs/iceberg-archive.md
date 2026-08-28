@@ -1,8 +1,10 @@
 # Iceberg archive — design
 
-Status: **writer landed** (`archives::iceberg::author_snapshot`); wiring it into the nightly snapshot phase + BigLake
-registration are the remaining steps. This doc names every table, its partitioning, the GCS layout, the BigQuery wiring,
-and the retention policy.
+Status: **writer landed** (`archives::iceberg::author_snapshot`) and already wired for the telemetry tables — the
+nightly `Archives` workflow's `iceberg_telemetry` phase (`archives/src/workflow.rs`) promotes `otel_logs`,
+`otel_traces`, and `otel_metrics` to Iceberg tables every run. Wiring the primary SurrealDB entity-table snapshot writer
+and BigLake registration are the remaining steps. This doc names every table, its partitioning, the GCS layout, the
+BigQuery wiring, and the retention policy.
 
 ## Evaluation outcome (recorded 2026-06-14)
 
@@ -67,6 +69,13 @@ Each nightly run writes a **full snapshot** of the current SurrealDB table. Reco
 strings and datetimes as RFC 3339 strings, because the Parquet contract is nullable UTF-8 columns. Point-in-time queries
 come from Iceberg's snapshot log, not from diffing.
 
+### Telemetry table snapshots (already promoted, nightly)
+
+`otel_logs`, `otel_traces`, and `otel_metrics` (`archives/src/workflow.rs`'s `TELEMETRY_TABLES`) are promoted to Iceberg
+tables every nightly run by the `iceberg_telemetry` phase, reusing the same `author_snapshot` /
+`author_iceberg_for_prefix` writer described above. `otel_logs` keeps its full snapshot log; `otel_traces` and
+`otel_metrics` prune snapshots older than 30 days to match their GCS lifecycle window.
+
 ## Partitioning
 
 - **SurrealDB table snapshots:** partition by `dt` = the run date (`SnapshotConfig.run_date`, UTC), identity transform.
@@ -116,8 +125,8 @@ catalog choice does not change the bytes on GCS — only how BigQuery is pointed
 ## Retention
 
 - **Data + manifests:** keep **10 years**, matching the matter-file retention the client consents to in the retainer
-  (`projects.closed_at + 10y`, see [glossary](glossary.md)). A lifecycle rule transitions `iceberg/**` to Coldline at
-  365 days (the existing GCS lifecycle, see the GCP cost-cleanup notes) and deletes at 10 years.
+  (`projects.closed_at + 10y`, see <surreal-archives.md>). A lifecycle rule transitions `iceberg/**` to Coldline at 365
+  days (the existing GCS lifecycle, see the GCP cost-cleanup notes) and deletes at 10 years.
 - **Snapshot expiry:** Iceberg snapshot-expiry (dropping old manifest entries) is **not** run — the snapshot log is the
   point-in-time index we want, and 10 years of nightly full snapshots is small relative to the data. Revisit only if the
   metadata grows unwieldy.
@@ -152,8 +161,9 @@ Run inline; the deliberation is not kept, only the decisions:
 2. ~~Restore the SurrealDB analytical snapshot source.~~ **Done**: every `DEFINE TABLE` is discovered from the shipped
    schema and read through one generic query path.
 3. ~~Emit `metadata/` (table metadata JSON + manifest list + manifest), append-only~~ — **done** as a reusable
-   writer (`archives::iceberg::author_snapshot`, unit-tested for metadata round-trip + snapshot-log chaining). Calling
-   it from the nightly snapshot phase is the next wiring step.
+   writer (`archives::iceberg::author_snapshot`, unit-tested for metadata round-trip + snapshot-log chaining), and
+   **already wired** for the telemetry tables via the `iceberg_telemetry` workflow phase. Calling it from the primary
+   SurrealDB entity-table snapshot phase is the remaining wiring step.
 4. Rename the data partition dir to `dt=<date>`. **Pending** (the writer is unpartitioned in v1, so this is cosmetic
    until identity-partitioning lands).
 5. Wire BigLake (or external tables, per the operator's call) and add a smoke query. **Pending** (machine-bound; the

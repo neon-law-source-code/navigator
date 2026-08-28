@@ -241,11 +241,9 @@ in another, and this is what resolves that:
   its nine objects. The production deployment is that case; it runs `StubSignatureProvider`, which `portal::signature`
   reaches only through genuine absence.
 
-Referencing an object a deployment does not write used to abort its ship at the resolve preflight, which is what kept
-the production deployment from completing a first ship. Adding an object to the manifest is therefore safe once **any**
-deployment carries it; the rows that do not carry it render without it, and
-`ship::tests::the_rendered_class_references_exactly_what_the_deployment_writes` holds that for every deployment in the
-tree.
+Adding an object to the manifest is therefore safe once **any** deployment carries it; the rows that do not carry it
+render without it, and `ship::tests::the_rendered_class_references_exactly_what_the_deployment_writes` holds that for
+every deployment in the tree.
 
 The production deployment is live on the projected Secret. Bringing another deployment onto it, one at a time and never
 two in one sitting:

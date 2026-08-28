@@ -58,7 +58,7 @@ async fn render_jurisdictions_as(
 
     let router: Router = Router::<FullstackState>::new()
         .route(
-            "/lawyer/jurisdictions",
+            "/app/admin/jurisdictions",
             get(render_handler).layer(axum::Extension(role)),
         )
         .with_state(FullstackState::new(
@@ -69,7 +69,7 @@ async fn render_jurisdictions_as(
     let response = router
         .oneshot(
             Request::builder()
-                .uri("/lawyer/jurisdictions")
+                .uri("/app/admin/jurisdictions")
                 .body(Body::empty())
                 .expect("request"),
         )

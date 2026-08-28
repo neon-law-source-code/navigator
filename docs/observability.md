@@ -48,7 +48,7 @@ parameters or referrer host classification. Do not add raw IP addresses, user ag
 URL paths, arbitrary query parameters, full query strings, or full `Referer` URLs to visitor analytics. Unknown or
 sensitive query parameters are ignored, invalid allowed values collapse to `invalid`, missing referrers collapse to
 `direct`, same-site referrers to `internal`, and unrecognized external hosts to `other`. The operational view is
-admin-only at `/admin/analytics`.
+admin-only at `/app/admin/analytics`.
 
 ## Where it lands: direct OpenObserve
 

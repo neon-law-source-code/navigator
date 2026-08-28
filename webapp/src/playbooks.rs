@@ -9,8 +9,8 @@
 //! so an attorney edits the playbook as a block.
 //!
 //! The successor to the `views::pages::admin::playbooks`. The three `GET`
-//! renders live here; `POST /lawyer/playbooks` (create) and `POST
-//! /lawyer/playbooks/{id}` (update) stay on `portal::admin_playbooks`, which axum
+//! renders live here; `POST /app/admin/playbooks` (create) and `POST
+//! /app/admin/playbooks/{id}` (update) stay on `portal::admin_playbooks`, which axum
 //! merges onto the same paths. Those handlers follow post/redirect/get: a
 //! refusal redirects back to the form carrying its message as `?error=` **and
 //! the rejected positions text**, which these loaders overlay onto the stored
@@ -204,7 +204,7 @@ fn playbook_list_body(view: &PlaybookListView) -> Element {
                     "The negotiating positions a Company's inbound contracts are measured against."
                 }
                 p {
-                    a { class: "nav-btn nav-btn--primary", href: "/lawyer/playbooks/new",
+                    a { class: "nav-btn nav-btn--primary", href: "/app/admin/playbooks/new",
                         "Add playbook"
                     }
                 }
@@ -212,13 +212,13 @@ fn playbook_list_body(view: &PlaybookListView) -> Element {
             if rows.is_empty() {
                 p { class: "playbooks-empty",
                     "No playbooks yet. "
-                    a { href: "/lawyer/playbooks/new", "Add the first." }
+                    a { href: "/app/admin/playbooks/new", "Add the first." }
                 }
             } else {
                 DataTable {
                     columns,
                     sort,
-                    base_path: "/lawyer/playbooks".to_string(),
+                    base_path: "/app/admin/playbooks".to_string(),
                     for row in rows.iter() {
                         tr { class: "playbook-row",
                             td { class: "playbook-entity", "{row.entity_name}" }
@@ -229,7 +229,7 @@ fn playbook_list_body(view: &PlaybookListView) -> Element {
                             }
                             td { class: "playbook-actions",
                                 RowActions {
-                                    edit_href: format!("/lawyer/playbooks/{}/edit", row.id),
+                                    edit_href: format!("/app/admin/playbooks/{}/edit", row.id),
                                     row_label: row.name.clone(),
                                 }
                             }
@@ -251,7 +251,7 @@ pub struct PlaybookNewView {
     pub csrf_token: String,
     pub role: ViewerRole,
     /// The `?error=` flash rendered above the form — set when `POST
-    /// /lawyer/playbooks` refuses the create. `None` on a plain visit.
+    /// /app/admin/playbooks` refuses the create. `None` on a plain visit.
     #[serde(default)]
     pub error: Option<String>,
     /// The rejected submission, echoed back so a refusal costs one correction
@@ -312,7 +312,7 @@ pub async fn get_playbook_new_form() -> Result<PlaybookNewView, ServerFnError> {
 }
 
 /// The lawyer "add playbook" form. Server-side rendered as a native `POST` to
-/// `/lawyer/playbooks` carrying the CSRF token, so it works without JavaScript.
+/// `/app/admin/playbooks` carrying the CSRF token, so it works without JavaScript.
 #[component]
 pub fn LawyerPlaybookNew() -> Element {
     let resource = use_server_future(get_playbook_new_form)?;
@@ -366,12 +366,12 @@ fn playbook_new_body(view: &PlaybookNewView) -> Element {
             }
             FormCard {
                 title: "Add playbook".to_string(),
-                action: "/lawyer/playbooks".to_string(),
+                action: "/app/admin/playbooks".to_string(),
                 submit_label: "Create".to_string(),
                 csrf_token: Some(view.csrf_token.clone()),
                 fields,
             }
-            p { a { href: "/lawyer/playbooks", "← Cancel" } }
+            p { a { href: "/app/admin/playbooks", "← Cancel" } }
         }
     }
 }
@@ -477,7 +477,7 @@ pub async fn get_playbook_edit_form() -> Result<PlaybookEditView, ServerFnError>
 
 /// The lawyer "edit playbook" form — the company and name are fixed context; the
 /// attorney replaces the position set. A native `POST` to
-/// `/lawyer/playbooks/{id}` carrying the CSRF token.
+/// `/app/admin/playbooks/{id}` carrying the CSRF token.
 #[component]
 pub fn LawyerPlaybookEdit() -> Element {
     let resource = use_server_future(get_playbook_edit_form)?;
@@ -516,7 +516,7 @@ fn playbook_edit_body(view: &PlaybookEditView) -> Element {
             match view.fields {
                 Some(fields) => {
                     let context = format!("{} — {}", fields.entity_name, fields.name);
-                    let action = format!("/lawyer/playbooks/{}", view.id);
+                    let action = format!("/app/admin/playbooks/{}", view.id);
                     let form_fields = vec![
                         Field::textarea("Positions", "positions", fields.positions, 14)
                             .help(POSITIONS_HELP)
@@ -536,14 +536,14 @@ fn playbook_edit_body(view: &PlaybookEditView) -> Element {
                             csrf_token: Some(view.csrf_token.clone()),
                             fields: form_fields,
                         }
-                        p { a { href: "/lawyer/playbooks", "← Cancel" } }
+                        p { a { href: "/app/admin/playbooks", "← Cancel" } }
                     }
                 }
                 None => rsx! {
                     document::Title { "{view.firm_name} | Lawyer | Playbooks | Not found" }
                     h1 { "Playbook not found" }
                     p { "No playbook exists with id " code { "{view.id}" } "." }
-                    p { a { href: "/lawyer/playbooks", "← Back to playbooks" } }
+                    p { a { href: "/app/admin/playbooks", "← Back to playbooks" } }
                 },
             }
         }
@@ -562,7 +562,7 @@ fn LawyerNav(role: ViewerRole) -> Element {
                 a { class: "nav-link", href: "/lawyer", "Lawyer" }
             }
             if role.is_admin_tier() {
-                a { class: "nav-link", href: "/admin", "Admin" }
+                a { class: "nav-link", href: "/app/admin", "Admin" }
             }
             a { class: "nav-link", href: "/auth/logout", "Sign out" }
         }
@@ -648,7 +648,7 @@ mod tests {
             role: ViewerRole::Lawyer,
         }));
         assert!(html.contains("No playbooks yet."), "{html}");
-        assert!(html.contains("/lawyer/playbooks/new"), "{html}");
+        assert!(html.contains("/app/admin/playbooks/new"), "{html}");
     }
 
     #[test]
@@ -666,7 +666,7 @@ mod tests {
         assert!(html.contains(">4<"), "{html}");
         assert!(html.contains(">Yes<"), "{html}");
         assert!(
-            html.contains(&format!("href=\"/lawyer/playbooks/{ID}/edit\"")),
+            html.contains(&format!("href=\"/app/admin/playbooks/{ID}/edit\"")),
             "{html}",
         );
     }
@@ -683,7 +683,7 @@ mod tests {
             ..PlaybookNewView::default()
         }));
         assert_forms_accessible(&html, "playbooks::LawyerPlaybookNew");
-        assert!(html.contains("action=\"/lawyer/playbooks\""), "{html}");
+        assert!(html.contains("action=\"/app/admin/playbooks\""), "{html}");
         assert!(html.contains("One position per line"), "{html}");
         assert!(html.contains("value=\"TOK\""), "{html}");
         assert!(!html.contains("nav-form-error"), "{html}");
@@ -736,7 +736,7 @@ mod tests {
         }));
         assert_forms_accessible(&html, "playbooks::LawyerPlaybookEdit");
         assert!(
-            html.contains(&format!("action=\"/lawyer/playbooks/{ID}\"")),
+            html.contains(&format!("action=\"/app/admin/playbooks/{ID}\"")),
             "{html}",
         );
         assert!(html.contains("Acme Inc — Vendor MSA"), "{html}");

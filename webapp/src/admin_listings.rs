@@ -604,7 +604,7 @@ const EMAIL_LOG_PER_PAGE: u64 = 50;
 /// Recipient, subject, and sender of every message the deployment has sent is
 /// matter content, but `sent_email` carries no project link at all — not even
 /// an indirect one — so there is nothing to scope by. Same interim close as
-/// `/lawyer/letters`: the admin gate now, a real `project_id` and backfill in
+/// `/app/admin/letters`: the admin gate now, a real `project_id` and backfill in
 /// its own issue.
 #[server]
 pub async fn list_email_log() -> Result<AdminListingView, ServerFnError> {
@@ -666,7 +666,7 @@ pub async fn list_email_log() -> Result<AdminListingView, ServerFnError> {
     view.pagination = Some(crate::admin_listing::PageState {
         current: u32::try_from(page).unwrap_or(u32::MAX),
         total: u32::try_from(total_pages).unwrap_or(u32::MAX),
-        base_path: "/lawyer/email-log".to_string(),
+        base_path: "/app/admin/email-log".to_string(),
     });
     Ok(view)
 }
@@ -706,7 +706,7 @@ pub async fn list_templates() -> Result<AdminListingView, ServerFnError> {
         &crate::admin_listing::PortedSort {
             keys: &["code", "title", "respondent_type"],
             active: &sort,
-            base_path: "/lawyer/templates",
+            base_path: "/app/admin/templates",
         },
         rows.into_iter()
             .filter(|t| t.project_id.is_none())
@@ -752,7 +752,7 @@ pub async fn list_questions() -> Result<AdminListingView, ServerFnError> {
             // so its key is empty and the header stays fixed.
             keys: &["code", "", "answer_type"],
             active: &sort,
-            base_path: "/lawyer/questions",
+            base_path: "/app/admin/questions",
         },
         rows.into_iter()
             .map(|q| vec![q.code, q.prompt, q.answer_type])

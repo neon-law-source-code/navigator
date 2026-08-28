@@ -54,18 +54,34 @@ pub const LAWYER_LISTINGS: &[(&str, &str, Disclosure)] = &[
     // Firm reference data — no matter behind any row.
     (
         "list_jurisdictions",
-        "/lawyer/jurisdictions",
+        "/app/admin/jurisdictions",
         Disclosure::Reference,
     ),
     (
         "list_git_repositories",
-        "/lawyer/git-repositories",
+        "/app/admin/git-repositories",
         Disclosure::Reference,
     ),
-    ("list_addresses", "/lawyer/addresses", Disclosure::Reference),
-    ("list_mailrooms", "/lawyer/mailrooms", Disclosure::Reference),
-    ("list_templates", "/lawyer/templates", Disclosure::Reference),
-    ("list_questions", "/lawyer/questions", Disclosure::Reference),
+    (
+        "list_addresses",
+        "/app/admin/addresses",
+        Disclosure::Reference,
+    ),
+    (
+        "list_mailrooms",
+        "/app/admin/mailrooms",
+        Disclosure::Reference,
+    ),
+    (
+        "list_templates",
+        "/app/admin/templates",
+        Disclosure::Reference,
+    ),
+    (
+        "list_questions",
+        "/app/admin/questions",
+        Disclosure::Reference,
+    ),
     // Who is on which matter is the ledger itself, not a matter's content.
     (
         "list_person_project_roles",
@@ -95,8 +111,12 @@ pub const LAWYER_LISTINGS: &[(&str, &str, Disclosure)] = &[
         Disclosure::ConflictGraph,
     ),
     // No project link on `letter` or `sent_email` to scope by.
-    ("list_letters", "/lawyer/letters", Disclosure::AdminOnly),
-    ("list_email_log", "/lawyer/email-log", Disclosure::AdminOnly),
+    ("list_letters", "/app/admin/letters", Disclosure::AdminOnly),
+    (
+        "list_email_log",
+        "/app/admin/email-log",
+        Disclosure::AdminOnly,
+    ),
 ];
 
 /// The `?page=` pagination state for a paginated listing (e.g. the email log),
@@ -109,7 +129,7 @@ pub struct PageState {
     pub current: u32,
     /// The total number of pages (`max(1, ceil(rows / per_page))`).
     pub total: u32,
-    /// The route path the `?page=` anchors target, e.g. `/lawyer/email-log`.
+    /// The route path the `?page=` anchors target, e.g. `/app/admin/email-log`.
     pub base_path: String,
 }
 

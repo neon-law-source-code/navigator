@@ -548,7 +548,7 @@ pub fn LawyerContractReview() -> Element {
                 a { class: "nav-link", href: "/lawyer", "Lawyer" }
             }
             if role.is_admin_tier() {
-                a { class: "nav-link", href: "/admin", "Admin" }
+                a { class: "nav-link", href: "/app/admin", "Admin" }
             }
             a { class: "nav-link", href: "/auth/logout", "Sign out" }
         }

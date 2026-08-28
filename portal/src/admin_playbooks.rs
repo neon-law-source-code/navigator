@@ -1,5 +1,5 @@
-//! Admin playbook writes — `POST /lawyer/playbooks` and
-//! `POST /lawyer/playbooks/{id}`.
+//! Admin playbook writes — `POST /app/admin/playbooks` and
+//! `POST /app/admin/playbooks/{id}`.
 //!
 //! A **playbook** is a client Entity's set of negotiating positions, the
 //! yardstick the inbound-contract review measures a third-party contract
@@ -38,7 +38,7 @@ pub struct CreateInput {
     positions: String,
 }
 
-/// `POST /lawyer/playbooks` — create a playbook for a Company.
+/// `POST /app/admin/playbooks` — create a playbook for a Company.
 pub async fn create(
     State(surreal): State<store::surreal::SurrealDb>,
     Form(input): Form<CreateInput>,
@@ -78,7 +78,7 @@ pub struct UpdateInput {
     positions: String,
 }
 
-/// `POST /lawyer/playbooks/{id}` — replace the position set.
+/// `POST /app/admin/playbooks/{id}` — replace the position set.
 pub async fn update(
     State(surreal): State<store::surreal::SurrealDb>,
     Path(id): Path<Uuid>,
@@ -130,7 +130,7 @@ fn back_to_edit(id: Uuid, positions: &str, message: &str) -> Response {
     let mut query = String::new();
     push_query(&mut query, "error", message);
     push_query(&mut query, "positions", positions);
-    redirect_with_query(&format!("/lawyer/playbooks/{id}/edit"), &query)
+    redirect_with_query(&format!("/app/admin/playbooks/{id}/edit"), &query)
 }
 
 fn redirect_with_query(path: &str, query: &str) -> Response {

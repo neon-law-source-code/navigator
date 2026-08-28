@@ -4,7 +4,7 @@
 //! The successor to the `views::pages::admin::entities::new_form`. It reads
 //! the entity-type and jurisdiction choices and the session CSRF token, and
 //! renders the shared [`crate::components::FormCard`] as a native `POST` to
-//! `/lawyer/entities` — the existing create handler. This establishes the
+//! `/app/admin/entities` — the existing create handler. This establishes the
 //! `FormCard` + CSRF create pattern the other CRUD forms reuse. The handler
 //! follows post/redirect/get: a refused create redirects back here with its
 //! message as `?error=`, which renders above the form.
@@ -31,7 +31,7 @@ pub struct EntityNewView {
     pub csrf_token: String,
     pub role: ViewerRole,
     /// The `?error=` flash rendered above the form — set when `POST
-    /// /lawyer/entities` refuses the create and redirects back here. `None` on a
+    /// /app/admin/entities` refuses the create and redirects back here. `None` on a
     /// plain visit.
     #[serde(default)]
     pub error: Option<String>,
@@ -103,7 +103,7 @@ pub async fn get_entity_new_form() -> Result<EntityNewView, ServerFnError> {
 }
 
 /// The lawyer "add entity" form. Server-side rendered as a native `POST` form to
-/// `/lawyer/entities` carrying the CSRF token, so it works without JavaScript.
+/// `/app/admin/entities` carrying the CSRF token, so it works without JavaScript.
 #[component]
 pub fn LawyerEntityNew() -> Element {
     let resource = use_server_future(get_entity_new_form)?;
@@ -157,12 +157,12 @@ fn entity_new_body(view: &EntityNewView) -> Element {
             }
             FormCard {
                 title: "Add entity".to_string(),
-                action: "/lawyer/entities".to_string(),
+                action: "/app/admin/entities".to_string(),
                 submit_label: "Create entity".to_string(),
                 csrf_token: Some(view.csrf_token.clone()),
                 fields,
             }
-            p { a { href: "/lawyer/entities", "← Cancel" } }
+            p { a { href: "/app/admin/entities", "← Cancel" } }
         }
     }
 }
@@ -192,13 +192,13 @@ mod tests {
             error: None,
         }));
         assert_forms_accessible(&html, "entity_new::LawyerEntityNew");
-        assert!(html.contains("action=\"/lawyer/entities\""), "{html}");
+        assert!(html.contains("action=\"/app/admin/entities\""), "{html}");
         assert!(!html.contains("nav-form-error"), "{html}");
     }
 
     #[test]
     fn a_refused_create_surfaces_its_message_above_a_resubmittable_form() {
-        // `POST /lawyer/entities` redirects a refused create back here carrying
+        // `POST /app/admin/entities` redirects a refused create back here carrying
         // its message as `?error=`. Without the flash the reload reads as a
         // no-op: the entity is simply absent and nothing says why.
         let html = dioxus_ssr::render_element(entity_new_body(&EntityNewView {
@@ -212,7 +212,7 @@ mod tests {
         assert!(html.contains("nav-form-error"), "{html}");
         assert!(html.contains("Name is required."), "{html}");
         // The form is still there to correct and resubmit, CSRF token intact.
-        assert!(html.contains("action=\"/lawyer/entities\""), "{html}");
+        assert!(html.contains("action=\"/app/admin/entities\""), "{html}");
         assert!(html.contains("value=\"TOK\""), "{html}");
     }
 }

@@ -3,7 +3,7 @@
 //! The successor to the `views::pages::admin::landing`. The admin root is
 //! a small hub, not a data table: it links to the admin-only surfaces so each
 //! has a stable home. The people directory itself lives one click away at
-//! `/admin/people`.
+//! `/app/admin/people`.
 //!
 //! The page has no per-request content beyond the viewer's tier, so the tiles
 //! are a compile-time table rather than a loaded view model.
@@ -29,14 +29,14 @@ const ADMIN_LINKS: &[AdminLink] = &[
         title: "People",
         blurb: "Administer every person: roles, records, impersonation, and removal. \
                 The bootstrap Owner record is immutable.",
-        href: "/admin/people",
+        href: "/app/admin/people",
         cta: "Manage people",
     },
     AdminLink {
         title: "Visitor analytics",
         blurb: "Traffic to the public site — visits by day and month, top routes, \
                 countries, and referrers.",
-        href: "/admin/analytics",
+        href: "/app/admin/analytics",
         cta: "View analytics",
     },
     AdminLink {
@@ -143,11 +143,11 @@ mod tests {
     fn the_hub_links_to_people_analytics_and_matters() {
         let out = html(ViewerRole::Admin);
         assert!(
-            out.contains(r#"href="/admin/people""#),
+            out.contains(r#"href="/app/admin/people""#),
             "people tile: {out}"
         );
         assert!(
-            out.contains(r#"href="/admin/analytics""#),
+            out.contains(r#"href="/app/admin/analytics""#),
             "analytics tile: {out}"
         );
         assert!(

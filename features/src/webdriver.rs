@@ -440,7 +440,7 @@ pub async fn login_as_lawyer_at(c: &Client, base_url: &str) {
 
 /// Drive the bundled `admin@neonlaw.com` Rauthy account to the firm team home,
 /// its post-login landing. This is the tier the person-administration surface
-/// (`/admin/people*`) admits; unlike the other four fixtures it holds no
+/// (`/app/admin/people*`) admits; unlike the other four fixtures it holds no
 /// participation row on the seeded matters, which is deliberate (ENG-81).
 pub async fn login_as_admin(c: &Client) {
     login_as_bundled_fixture(c, "admin@neonlaw.com", "/app/team").await;

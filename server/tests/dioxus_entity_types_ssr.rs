@@ -59,7 +59,7 @@ async fn render_entity_types_as(
 
     let router: Router = Router::<FullstackState>::new()
         .route(
-            "/lawyer/entity-types",
+            "/app/admin/entity-types",
             get(render_handler).layer(axum::Extension(role)),
         )
         .with_state(FullstackState::new(
@@ -98,7 +98,7 @@ async fn lawyer_entity_types_component_ssrs_directory_from_the_database() {
 
     let (status, html) = render_entity_types_as(
         &surreal,
-        "/lawyer/entity-types",
+        "/app/admin/entity-types",
         webapp::people::ViewerRole::Lawyer,
     )
     .await;
@@ -119,7 +119,7 @@ async fn lawyer_entity_types_honors_jsonapi_sort_descending_by_name() {
 
     let (status, html) = render_entity_types_as(
         &surreal,
-        "/lawyer/entity-types?sort=-name",
+        "/app/admin/entity-types?sort=-name",
         webapp::people::ViewerRole::Lawyer,
     )
     .await;
@@ -133,8 +133,8 @@ async fn lawyer_entity_types_honors_jsonapi_sort_descending_by_name() {
     );
     // The sort header is a real anchor carrying the toggled ?sort= value.
     assert!(
-        html.contains("/lawyer/entity-types?sort=name")
-            || html.contains("/lawyer/entity-types?sort=-name"),
+        html.contains("/app/admin/entity-types?sort=name")
+            || html.contains("/app/admin/entity-types?sort=-name"),
         "sort header must be an anchor with a ?sort= toggle; got: {html}",
     );
 }
@@ -150,7 +150,7 @@ async fn list_entity_types_refuses_a_non_lawyer_viewer() {
     // authority, so the lawyer-only directory never reaches a non-lawyer caller.
     let (status, html) = render_entity_types_as(
         &surreal,
-        "/lawyer/entity-types",
+        "/app/admin/entity-types",
         webapp::people::ViewerRole::Client,
     )
     .await;

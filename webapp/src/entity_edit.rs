@@ -6,7 +6,7 @@
 //! render. It reads the `{id}`, loads the entity (a not-found state when the id
 //! resolves to no row), and renders the shared [`crate::components::FormCard`]
 //! prefilled with the entity's name and selected type / jurisdiction, posting to
-//! `/lawyer/entities/{id}` — the existing update handler. That handler is
+//! `/app/admin/entities/{id}` — the existing update handler. That handler is
 //! POST-only and follows post/redirect/get: it redirects to the list on success
 //! and back to this page on a refusal, carrying the message and the rejected
 //! values in the query, which the loader overlays onto the stored row.
@@ -38,7 +38,7 @@ pub struct EntityEditView {
     pub csrf_token: String,
     pub role: ViewerRole,
     /// The `?error=` flash rendered above the form — set when `POST
-    /// /lawyer/entities/{id}` refuses the update and redirects back here. `None`
+    /// /app/admin/entities/{id}` refuses the update and redirects back here. `None`
     /// on a plain visit.
     #[serde(default)]
     pub error: Option<String>,
@@ -159,7 +159,7 @@ fn options_with_placeholder(choices: &[FormChoice]) -> Vec<Choice> {
 }
 
 /// The lawyer "edit entity" form. Server-side rendered as a native `POST` to
-/// `/lawyer/entities/{id}` carrying the CSRF token, prefilled with the entity's
+/// `/app/admin/entities/{id}` carrying the CSRF token, prefilled with the entity's
 /// values — or a not-found state when the id resolves to no entity.
 #[component]
 pub fn LawyerEntityEdit() -> Element {
@@ -223,19 +223,19 @@ fn entity_edit_body(view: &EntityEditView) -> Element {
                         document::Title { "{view.firm_name} | Lawyer | Entities | Edit entity" }
                         FormCard {
                             title: "Edit entity".to_string(),
-                            action: "/lawyer/entities/{view.id}",
+                            action: "/app/admin/entities/{view.id}",
                             submit_label: "Save changes".to_string(),
                             csrf_token: Some(view.csrf_token.clone()),
                             fields: form_fields,
                         }
-                        p { a { href: "/lawyer/entities", "← Cancel" } }
+                        p { a { href: "/app/admin/entities", "← Cancel" } }
                     }
                 }
                 None => rsx! {
                     document::Title { "{view.firm_name} | Lawyer | Entities | Not found" }
                     h1 { "Entity not found" }
                     p { "No entity exists with id " code { "{view.id}" } "." }
-                    p { a { href: "/lawyer/entities", "← Back to entities" } }
+                    p { a { href: "/app/admin/entities", "← Back to entities" } }
                 },
             }
         }
@@ -280,7 +280,7 @@ mod tests {
         }))));
         assert_forms_accessible(&html, "entity_edit::LawyerEntityEdit");
         assert!(
-            html.contains(&format!("action=\"/lawyer/entities/{ID}\"")),
+            html.contains(&format!("action=\"/app/admin/entities/{ID}\"")),
             "{html}"
         );
         assert!(html.contains("value=\"Acme\""), "{html}");
@@ -288,7 +288,7 @@ mod tests {
 
     #[test]
     fn a_refused_update_shows_its_message_over_the_rejected_values() {
-        // `POST /lawyer/entities/{id}` redirects a refused update back here with
+        // `POST /app/admin/entities/{id}` redirects a refused update back here with
         // its message and the submitted values in the query, which the loader
         // overlays onto the stored row. The form must therefore show what was
         // typed, not what is stored — otherwise the correction is retyped.
@@ -308,7 +308,7 @@ mod tests {
         );
         assert!(html.contains("value=\"Neon Law\""), "{html}");
         assert!(
-            html.contains(&format!("action=\"/lawyer/entities/{ID}\"")),
+            html.contains(&format!("action=\"/app/admin/entities/{ID}\"")),
             "{html}"
         );
     }

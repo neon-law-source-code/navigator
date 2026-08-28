@@ -729,14 +729,14 @@ async fn application_titles_begin_with_navigator() {
             "Navigator | Team",
         ),
         (
-            "/lawyer/jurisdictions",
+            "/app/admin/jurisdictions",
             store::persons::Role::Lawyer,
-            "Lawyer | Jurisdictions",
+            "Navigator | Admin | Jurisdictions",
         ),
         (
-            "/admin/people",
+            "/app/admin/people",
             store::persons::Role::Admin,
-            "Admin | People",
+            "Navigator | Admin | People",
         ),
     ];
 
@@ -806,8 +806,8 @@ async fn admin_page_is_visible_only_to_owner_and_admin() {
         // `/app/admin` is a landing hub, not the people table — it links to
         // the administrative surfaces.
         assert!(html.contains("<h1>Admin</h1>"), "{html}");
-        assert!(html.contains("href=\"/admin/people\""), "{html}");
-        assert!(html.contains("href=\"/admin/analytics\""), "{html}");
+        assert!(html.contains("href=\"/app/admin/people\""), "{html}");
+        assert!(html.contains("href=\"/app/admin/analytics\""), "{html}");
         assert!(
             !html.contains("<table"),
             "the landing must not embed the people table: {html}",
@@ -847,10 +847,10 @@ async fn admin_people_surface_is_admin_only_with_full_controls() {
 
     // Lawyer (non-admin) is denied every admin people route.
     for path in [
-        "/admin/people".to_string(),
-        "/admin/people/new".to_string(),
-        format!("/admin/person/{}", client.id),
-        format!("/admin/person/{}/edit", client.id),
+        "/app/admin/people".to_string(),
+        "/app/admin/people/new".to_string(),
+        format!("/app/admin/people/{}", client.id),
+        format!("/app/admin/people/{}/edit", client.id),
     ] {
         let resp = get_with_role(app.clone(), &path, store::persons::Role::Lawyer).await;
         assert_eq!(
@@ -861,28 +861,36 @@ async fn admin_people_surface_is_admin_only_with_full_controls() {
     }
 
     // Admin sees the list with the full controls and the singular
-    // `/admin/person` detail path.
-    let resp = get_with_role(app.clone(), "/admin/people", store::persons::Role::Admin).await;
+    // `/app/admin/people` detail path.
+    let resp = get_with_role(
+        app.clone(),
+        "/app/admin/people",
+        store::persons::Role::Admin,
+    )
+    .await;
     assert_eq!(resp.status(), StatusCode::OK);
     let html = body_string(resp).await;
     assert!(
-        html.contains(&format!("href=\"/admin/person/{}/edit\"", client.id)),
+        html.contains(&format!("href=\"/app/admin/people/{}/edit\"", client.id)),
         "{html}",
     );
     // The Dioxus list offers delete via a native `POST` form (the row used
     // `hx-delete` to the REST endpoint); a client row is deletable.
     assert!(
-        html.contains(&format!("action=\"/admin/person/{}/delete\"", client.id)),
+        html.contains(&format!(
+            "action=\"/app/admin/people/{}/delete\"",
+            client.id
+        )),
         "admin list must offer delete on a client row: {html}",
     );
     assert!(
-        html.contains("<title>Neon Law | Admin | People</title>"),
+        html.contains("<title>Navigator | Admin | People</title>"),
         "admin people title must mirror its route hierarchy: {html}",
     );
     // The create form has always been mounted, but the list linked nothing to
     // it — so the only way to add a person was to know and type the URL.
     assert!(
-        html.contains("href=\"/admin/people/new\""),
+        html.contains("href=\"/app/admin/people/new\""),
         "the admin list must offer a way into the create form: {html}",
     );
     // The page must link the theme stylesheet, or its `nav-table` / `nav-btn` /
@@ -897,7 +905,7 @@ async fn admin_people_surface_is_admin_only_with_full_controls() {
     // The detail page resolves under the singular path.
     let resp = get_with_role(
         app,
-        &format!("/admin/person/{}", client.id),
+        &format!("/app/admin/people/{}", client.id),
         store::persons::Role::Admin,
     )
     .await;
@@ -906,8 +914,8 @@ async fn admin_people_surface_is_admin_only_with_full_controls() {
 
 #[tokio::test]
 async fn admin_people_new_form_renders_for_admin_with_csrf() {
-    // The `/admin/people/new` create form renders through Dioxus: admin sees a
-    // native form posting to `/admin/people` with the session CSRF token and the
+    // The `/app/admin/people/new` create form renders through Dioxus: admin sees a
+    // native form posting to `/app/admin/people` with the session CSRF token and the
     // name / email / role controls (the role select is unlocked for admins).
     let (state, _surreal) = state_with_engines().await;
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
@@ -916,7 +924,7 @@ async fn admin_people_new_form_renders_for_admin_with_csrf() {
     let resp = app
         .oneshot(
             Request::builder()
-                .uri("/admin/people/new")
+                .uri("/app/admin/people/new")
                 .header(header::COOKIE, &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -926,7 +934,7 @@ async fn admin_people_new_form_renders_for_admin_with_csrf() {
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
     assert!(body.contains("Add person"), "{body}");
-    let form = DomForm::parse(&body, "/admin/people");
+    let form = DomForm::parse(&body, "/app/admin/people");
     assert_eq!(form.value("_csrf"), csrf);
     // The name, email, and role controls are present (role unlocked for admin).
     assert!(body.contains("name=\"name\""), "{body}");
@@ -947,7 +955,7 @@ async fn admin_people_new_form_lists_owner_first_for_owner() {
     let resp = app
         .oneshot(
             Request::builder()
-                .uri("/admin/people/new")
+                .uri("/app/admin/people/new")
                 .header(header::COOKIE, cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -977,7 +985,7 @@ async fn admin_people_new_creates_a_person_via_native_form_post() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/admin/people")
+                .uri("/app/admin/people")
                 .header(header::COOKIE, &cookie)
                 .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
                 .body(Body::from(format!(
@@ -993,7 +1001,7 @@ async fn admin_people_new_creates_a_person_via_native_form_post() {
         resp.headers()
             .get(header::LOCATION)
             .and_then(|v| v.to_str().ok()),
-        Some("/admin/people"),
+        Some("/app/admin/people"),
     );
     let created = store::persons::find_by_email_ci(&surreal, "nova@test.invalid")
         .await
@@ -1013,7 +1021,7 @@ async fn only_owner_can_create_an_owner_identity() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/admin/people")
+                .uri("/app/admin/people")
                 .header(header::COOKIE, admin_cookie)
                 .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
                 .body(Body::from(format!(
@@ -1045,7 +1053,7 @@ async fn only_owner_can_create_an_owner_identity() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/admin/people")
+                .uri("/app/admin/people")
                 .header(header::COOKIE, owner_cookie)
                 .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
                 .body(Body::from(format!(
@@ -1102,7 +1110,7 @@ async fn api_people_create_coerces_a_lawyer_callers_submitted_role() {
 }
 
 /// The Dioxus admin people list's per-row Delete posts to the native
-/// `POST /admin/person/{id}/delete` route (the row used `hx-delete`). Prove
+/// `POST /app/admin/people/{id}/delete` route (the row used `hx-delete`). Prove
 /// it removes a client and redirects to the list, and that the command still
 /// blocks deleting a non-client record (surfaced as an `?error=` redirect, not a
 /// deletion) — defense in depth over the row only showing Delete for clients.
@@ -1138,7 +1146,7 @@ async fn admin_person_delete_via_native_form_removes_client_but_blocks_lawyer() 
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/admin/person/{}/delete", client.id))
+                .uri(format!("/app/admin/people/{}/delete", client.id))
                 .header(header::COOKIE, &cookie)
                 .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
                 .body(Body::from(format!("_csrf={csrf}")))
@@ -1151,7 +1159,7 @@ async fn admin_person_delete_via_native_form_removes_client_but_blocks_lawyer() 
         resp.headers()
             .get(header::LOCATION)
             .and_then(|v| v.to_str().ok()),
-        Some("/admin/people"),
+        Some("/app/admin/people"),
     );
     assert!(
         store::persons::find_by_id(&surreal, client.id)
@@ -1168,7 +1176,7 @@ async fn admin_person_delete_via_native_form_removes_client_but_blocks_lawyer() 
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/admin/person/{}/delete", lawyer.id))
+                .uri(format!("/app/admin/people/{}/delete", lawyer.id))
                 .header(header::COOKIE, &cookie)
                 .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
                 .body(Body::from(format!("_csrf={csrf}")))
@@ -1184,7 +1192,7 @@ async fn admin_person_delete_via_native_form_removes_client_but_blocks_lawyer() 
         .unwrap_or_default()
         .to_string();
     assert!(
-        location.starts_with("/admin/people?error="),
+        location.starts_with("/app/admin/people?error="),
         "a blocked delete must redirect with an error flag, got: {location}",
     );
     assert!(
@@ -1215,7 +1223,7 @@ async fn admin_person_delete_via_native_form_removes_client_but_blocks_lawyer() 
 ///
 /// The capability is untouched: Person commands stay lawyer-tier at
 /// `POST/PATCH/DELETE /app/api/people*`, and this is only the browser form
-/// moving to the admin console. `/lawyer/people.csv` survives — it is a
+/// moving to the admin console. `/app/admin/people.csv` survives — it is a
 /// lawyer-tier read with no admin sibling.
 #[tokio::test]
 async fn lawyer_people_mirror_paths_are_gone() {
@@ -1286,14 +1294,14 @@ async fn lawyer_people_mirror_paths_are_gone() {
     // sibling, so deleting it would cost a lawyer a capability.
     let csv = get_with_role(
         app.clone(),
-        "/lawyer/people.csv",
+        "/app/admin/people.csv",
         store::persons::Role::Lawyer,
     )
     .await;
     assert_eq!(
         csv.status(),
         StatusCode::OK,
-        "/lawyer/people.csv is a surviving lawyer-tier read",
+        "/app/admin/people.csv is a surviving lawyer-tier read",
     );
 
     // The admin console is unchanged and still Owner/Admin-only.
@@ -1303,28 +1311,28 @@ async fn lawyer_people_mirror_paths_are_gone() {
         (store::persons::Role::Lawyer, StatusCode::FORBIDDEN),
         (store::persons::Role::Clerk, StatusCode::FORBIDDEN),
     ] {
-        let resp = get_with_role(app.clone(), "/admin/people", role).await;
+        let resp = get_with_role(app.clone(), "/app/admin/people", role).await;
         assert_eq!(
             resp.status(),
             expected,
-            "/admin/people must answer {expected} for {role:?}",
+            "/app/admin/people must answer {expected} for {role:?}",
         );
     }
-    let admin_list = get_with_role(app, "/admin/people", store::persons::Role::Admin).await;
+    let admin_list = get_with_role(app, "/app/admin/people", store::persons::Role::Admin).await;
     let html = body_string(admin_list).await;
     assert!(
-        html.contains("<title>Neon Law | Admin | People</title>"),
+        html.contains("<title>Navigator | Admin | People</title>"),
         "the surviving people surface is the admin console's: {html}",
     );
     assert!(
-        html.contains("/admin/person/") && html.contains("/impersonate"),
+        html.contains("/app/admin/people/") && html.contains("/impersonate"),
         "the admin surface keeps its per-row Edit / Delete / Impersonate actions: {html}",
     );
 }
 
 #[tokio::test]
 async fn admin_people_dioxus_route_is_gated_by_embedded_policy() {
-    // The Dioxus `/admin/people` sub-router carries the same `require_auth` +
+    // The Dioxus `/app/admin/people` sub-router carries the same `require_auth` +
     // `require_policy` layers as the surface it replaced. Prove the policy layer
     // is live on it: an authenticated admin session under a deny-all embedded
     // policy is refused (403), not served the directory. This keeps the
@@ -1335,12 +1343,12 @@ async fn admin_people_dioxus_route_is_gated_by_embedded_policy() {
         std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
     );
 
-    let resp = get_with_role(app, "/admin/people", store::persons::Role::Admin).await;
+    let resp = get_with_role(app, "/app/admin/people", store::persons::Role::Admin).await;
     assert_eq!(
         resp.status(),
         StatusCode::FORBIDDEN,
         "an authenticated admin session must be turned away from the Dioxus \
-         /admin/people route when the policy denies — the route is policy-gated"
+         /app/admin/people route when the policy denies — the route is policy-gated"
     );
 }
 
@@ -1351,7 +1359,7 @@ async fn policy_evaluation_errors_fail_closed_at_the_router_boundary() {
         std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
     );
 
-    let response = get_with_role(app, "/admin/people", store::persons::Role::Admin).await;
+    let response = get_with_role(app, "/app/admin/people", store::persons::Role::Admin).await;
     assert_eq!(
         response.status(),
         StatusCode::FORBIDDEN,
@@ -3440,8 +3448,8 @@ async fn admin_person_show_page_renders_for_any_role() {
     for (id, name) in ids {
         // Both the bare show URL and the /edit alias must render.
         for uri in [
-            format!("/admin/person/{id}"),
-            format!("/admin/person/{id}/edit"),
+            format!("/app/admin/people/{id}"),
+            format!("/app/admin/people/{id}/edit"),
         ] {
             let resp = app
                 .clone()
@@ -3476,7 +3484,7 @@ async fn admin_person_show_page_missing_person_keeps_signed_in_chrome() {
     let resp = app
         .oneshot(
             Request::builder()
-                .uri(format!("/admin/person/{missing}"))
+                .uri(format!("/app/admin/people/{missing}"))
                 .header(header::COOKIE, admin_session_cookie())
                 .body(Body::empty())
                 .unwrap(),
@@ -6078,13 +6086,13 @@ async fn admin_analytics_page_is_admin_only_and_renders_empty_state() {
 
     let lawyer = get_with_role(
         app.clone(),
-        "/admin/analytics",
+        "/app/admin/analytics",
         store::persons::Role::Lawyer,
     )
     .await;
     assert_eq!(lawyer.status(), StatusCode::FORBIDDEN);
 
-    let resp = get_with_role(app, "/admin/analytics", store::persons::Role::Admin).await;
+    let resp = get_with_role(app, "/app/admin/analytics", store::persons::Role::Admin).await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
     assert!(body.contains("Visitor analytics"), "{body}");
@@ -6105,7 +6113,7 @@ async fn admin_analytics_page_sends_the_anonymous_browser_to_login() {
     let resp = app
         .oneshot(
             Request::builder()
-                .uri("/admin/analytics")
+                .uri("/app/admin/analytics")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -6116,7 +6124,7 @@ async fn admin_analytics_page_sends_the_anonymous_browser_to_login() {
         resp.headers()
             .get(axum::http::header::LOCATION)
             .and_then(|value| value.to_str().ok()),
-        Some("/auth/login?return_to=/admin/analytics"),
+        Some("/auth/login?return_to=/app/admin/analytics"),
     );
 }
 
@@ -6130,7 +6138,7 @@ async fn admin_analytics_page_returns_500_when_the_summary_query_fails() {
     state.surreal = store::surreal::test_support::unreachable();
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
 
-    let resp = get_with_role(app, "/admin/analytics", store::persons::Role::Admin).await;
+    let resp = get_with_role(app, "/app/admin/analytics", store::persons::Role::Admin).await;
     assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
 }
 
@@ -6156,7 +6164,7 @@ async fn admin_analytics_page_renders_recorded_dimension_totals() {
     }
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
 
-    let resp = get_with_role(app, "/admin/analytics", store::persons::Role::Admin).await;
+    let resp = get_with_role(app, "/app/admin/analytics", store::persons::Role::Admin).await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
     assert!(body.contains("/blog/{slug}"), "route row missing: {body}");
@@ -6199,7 +6207,7 @@ async fn lawyer_dashboard_managed_pages_create_grounded_records() {
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/admin/people/new")
+                .uri("/app/admin/people/new")
                 .header(header::COOKIE, &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -6236,7 +6244,7 @@ async fn lawyer_dashboard_managed_pages_create_grounded_records() {
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/lawyer/entities/new")
+                .uri("/app/admin/entities/new")
                 .header(header::COOKIE, &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -6248,7 +6256,7 @@ async fn lawyer_dashboard_managed_pages_create_grounded_records() {
     assert!(body.contains("Add entity"), "{body}");
     assert!(body.contains(&entity_type.id.to_string()), "{body}");
     assert!(body.contains(&jurisdiction.id.to_string()), "{body}");
-    let mut entity_form = DomForm::parse(&body, "/lawyer/entities");
+    let mut entity_form = DomForm::parse(&body, "/app/admin/entities");
     assert_eq!(entity_form.value("_csrf"), csrf);
     entity_form.enter("name", "Managed Entity");
     entity_form.choose("entity_type_id", entity_type.id.to_string());
@@ -6258,7 +6266,7 @@ async fn lawyer_dashboard_managed_pages_create_grounded_records() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/lawyer/entities")
+                .uri("/app/admin/entities")
                 .header(header::COOKIE, &cookie)
                 .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
                 .body(Body::from(entity_form.into_body()))
@@ -6333,7 +6341,7 @@ fn entity_write_outcome(response: &axum::response::Response) -> EntityWriteOutco
         return EntityWriteOutcome::NotRedirected(response.status());
     }
     let location = redirect_location(response);
-    if location == "/lawyer/entities" {
+    if location == "/app/admin/entities" {
         return EntityWriteOutcome::Created;
     }
     let flash = location
@@ -6399,7 +6407,7 @@ async fn lawyer_entity_create_rejects_blank_name() {
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/lawyer/entities/new")
+                .uri("/app/admin/entities/new")
                 .header(header::COOKIE, &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -6410,7 +6418,7 @@ async fn lawyer_entity_create_rejects_blank_name() {
     let body = body_string(form).await;
     // Fill the real form but leave the required name blank, so the submit
     // deserializes yet trips the server-side "name is required" guard.
-    let mut entity_form = DomForm::parse(&body, "/lawyer/entities");
+    let mut entity_form = DomForm::parse(&body, "/app/admin/entities");
     assert_eq!(entity_form.value("_csrf"), csrf);
     entity_form.enter("name", "");
     entity_form.choose("entity_type_id", entity_type.id.to_string());
@@ -6420,7 +6428,7 @@ async fn lawyer_entity_create_rejects_blank_name() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/lawyer/entities")
+                .uri("/app/admin/entities")
                 .header(header::COOKIE, &cookie)
                 .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
                 .body(Body::from(entity_form.into_body()))
@@ -6433,7 +6441,7 @@ async fn lawyer_entity_create_rejects_blank_name() {
     assert_eq!(rejected.status(), StatusCode::SEE_OTHER);
     let location = redirect_location(&rejected);
     assert_eq!(
-        location, "/lawyer/entities/new?error=Name%20is%20required.",
+        location, "/app/admin/entities/new?error=Name%20is%20required.",
         "a refused create must bounce back to the form with its message",
     );
 
@@ -6455,7 +6463,7 @@ async fn lawyer_entity_create_rejects_blank_name() {
     assert_eq!(reloaded.status(), StatusCode::OK);
     let reloaded = body_string(reloaded).await;
     assert!(reloaded.contains("Name is required."), "{reloaded}");
-    let reloaded_form = DomForm::parse(&reloaded, "/lawyer/entities");
+    let reloaded_form = DomForm::parse(&reloaded, "/app/admin/entities");
     assert_eq!(reloaded_form.value("_csrf"), csrf);
 }
 
@@ -6478,7 +6486,10 @@ async fn lawyer_and_admin_cannot_delete_the_bootstrap_company() {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(format!("/lawyer/entities/{}/delete", bootstrap_company.id))
+                    .uri(format!(
+                        "/app/admin/entities/{}/delete",
+                        bootstrap_company.id
+                    ))
                     .header(header::COOKIE, &cookie)
                     .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
                     .body(Body::from(format!("_csrf={csrf}")))
@@ -6502,7 +6513,7 @@ async fn lawyer_and_admin_cannot_delete_the_bootstrap_company() {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(format!("/lawyer/entities/{}", bootstrap_company.id))
+                    .uri(format!("/app/admin/entities/{}", bootstrap_company.id))
                     .header(header::COOKIE, &cookie)
                     .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
                     .body(Body::from(format!(
@@ -6553,7 +6564,7 @@ async fn a_case_variant_rename_cannot_fork_the_bootstrap_company() {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(format!("/lawyer/entities/{}", firm.id))
+                    .uri(format!("/app/admin/entities/{}", firm.id))
                     .header(header::COOKIE, &cookie)
                     .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
                     .body(Body::from(format!(
@@ -6623,7 +6634,7 @@ async fn lawyer_entity_create_reports_invalid_choices() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/lawyer/entities")
+                .uri("/app/admin/entities")
                 .header(header::COOKIE, &cookie)
                 .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
                 .body(Body::from(body))
@@ -6634,8 +6645,9 @@ async fn lawyer_entity_create_reports_invalid_choices() {
     assert_eq!(failed.status(), StatusCode::SEE_OTHER);
     let location = redirect_location(&failed);
     assert!(
-        location
-            .starts_with("/lawyer/entities/new?error=Unknown%20entity%20type%20or%20jurisdiction"),
+        location.starts_with(
+            "/app/admin/entities/new?error=Unknown%20entity%20type%20or%20jurisdiction"
+        ),
         "the unknown-reference message must ride the redirect: {location}",
     );
 
@@ -6658,7 +6670,7 @@ async fn lawyer_entity_create_reports_invalid_choices() {
         reloaded.contains("Unknown entity type or jurisdiction"),
         "{reloaded}"
     );
-    let reloaded_form = DomForm::parse(&reloaded, "/lawyer/entities");
+    let reloaded_form = DomForm::parse(&reloaded, "/app/admin/entities");
     assert_eq!(reloaded_form.value("_csrf"), csrf);
 }
 
@@ -6694,7 +6706,7 @@ async fn lawyer_entity_update_reloads_edit_form_on_conflict() {
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
     let (cookie, csrf) = admin_session_cookie_and_csrf();
 
-    let action = format!("/lawyer/entities/{}", acme.id);
+    let action = format!("/app/admin/entities/{}", acme.id);
     let rename = app
         .clone()
         .oneshot(
@@ -6714,7 +6726,7 @@ async fn lawyer_entity_update_reloads_edit_form_on_conflict() {
     assert_eq!(rename.status(), StatusCode::SEE_OTHER);
     let location = redirect_location(&rename);
     assert!(
-        location.starts_with(&format!("/lawyer/entities/{}/edit?error=", acme.id)),
+        location.starts_with(&format!("/app/admin/entities/{}/edit?error=", acme.id)),
         "a refused rename must bounce back to the edit form: {location}",
     );
 
@@ -6787,7 +6799,7 @@ async fn lawyer_entity_update_reloads_edit_form_on_blank_name() {
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
     let (cookie, csrf) = admin_session_cookie_and_csrf();
 
-    let action = format!("/lawyer/entities/{}", entity.id);
+    let action = format!("/app/admin/entities/{}", entity.id);
     let blank = app
         .clone()
         .oneshot(
@@ -6809,7 +6821,7 @@ async fn lawyer_entity_update_reloads_edit_form_on_blank_name() {
     assert_eq!(
         location,
         format!(
-            "/lawyer/entities/{}/edit?error=Name%20is%20required.\
+            "/app/admin/entities/{}/edit?error=Name%20is%20required.\
              &name=%20%20&entity_type_id={}&jurisdiction_id={}",
             entity.id, entity_type.id, jurisdiction.id,
         ),
@@ -6871,12 +6883,12 @@ async fn lawyer_entity_edit_form_includes_csrf() {
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
     let (cookie, csrf) = admin_session_cookie_and_csrf();
 
-    let action = format!("/lawyer/entities/{}", entity.id);
+    let action = format!("/app/admin/entities/{}", entity.id);
     let edit = app
         .clone()
         .oneshot(
             Request::builder()
-                .uri(format!("/lawyer/entities/{}/edit", entity.id))
+                .uri(format!("/app/admin/entities/{}/edit", entity.id))
                 .header(header::COOKIE, &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -6904,7 +6916,7 @@ async fn admin_entities_list_rejects_unknown_sort_with_400() {
     let resp = app
         .oneshot(
             Request::builder()
-                .uri("/lawyer/entities?sort=ssn")
+                .uri("/app/admin/entities?sort=ssn")
                 .header(header::COOKIE, admin_session_cookie())
                 .body(Body::empty())
                 .unwrap(),
@@ -6925,7 +6937,7 @@ async fn admin_entities_list_renders_the_delete_refusal_flash() {
 
     let resp = get_with_role(
         app,
-        "/lawyer/entities?error=Couldn%27t%20delete%20this%20entity.",
+        "/app/admin/entities?error=Couldn%27t%20delete%20this%20entity.",
         store::persons::Role::Lawyer,
     )
     .await;
@@ -6967,7 +6979,7 @@ async fn admin_entities_list_hides_delete_for_the_bootstrap_company() {
     }
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
 
-    let resp = get_with_role(app, "/lawyer/entities", store::persons::Role::Lawyer).await;
+    let resp = get_with_role(app, "/app/admin/entities", store::persons::Role::Lawyer).await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
     assert!(body.contains("Regular Co") && body.contains(store::seed::FIRM_ENTITY_NAME));
@@ -7024,7 +7036,7 @@ async fn admin_entities_list_multi_field_sort_keeps_first_field_primary() {
 
     let resp = get_with_role(
         app,
-        "/lawyer/entities?sort=name,entity_type",
+        "/app/admin/entities?sort=name,entity_type",
         store::persons::Role::Lawyer,
     )
     .await;
@@ -7056,7 +7068,7 @@ async fn lawyer_entity_edit_form_missing_entity_returns_404() {
         .clone()
         .oneshot(
             Request::builder()
-                .uri(format!("/lawyer/entities/{missing}/edit"))
+                .uri(format!("/app/admin/entities/{missing}/edit"))
                 .header(header::COOKIE, &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -7296,7 +7308,7 @@ async fn lawyer_pages_preserve_lawyer_tier_nav_links() {
         ),
     ];
 
-    for path in ["/lawyer/entities", "/app/projects"] {
+    for path in ["/app/admin/entities", "/app/projects"] {
         for (role, expected, unexpected) in cases.clone() {
             let resp = get_with_role(app.clone(), path, role).await;
             assert_eq!(resp.status(), StatusCode::OK);
@@ -8031,10 +8043,10 @@ async fn root_serves_marketing_anonymously() {
 async fn admin_people_index_shows_empty_state() {
     let (state, _surreal) = state_with_engines().await;
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
-    // `/admin/people` renders through Dioxus; its `list_admin_people` server
+    // `/app/admin/people` renders through Dioxus; its `list_admin_people` server
     // function refuses any non-admin viewer, so the directory is exercised as
     // admin.
-    let resp = get_with_role(app, "/admin/people", store::persons::Role::Admin).await;
+    let resp = get_with_role(app, "/app/admin/people", store::persons::Role::Admin).await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
     assert!(body.contains("No people yet."));
@@ -8065,7 +8077,7 @@ async fn form_encoded_create_via_api_lists_the_person() {
         .unwrap();
     assert_eq!(create.status(), StatusCode::CREATED);
 
-    let list = get_with_role(app, "/admin/people", store::persons::Role::Admin).await;
+    let list = get_with_role(app, "/app/admin/people", store::persons::Role::Admin).await;
     assert_eq!(list.status(), StatusCode::OK);
     let body = body_string(list).await;
     assert!(body.contains("Libra"));
@@ -8152,7 +8164,7 @@ async fn form_encoded_edit_and_delete_via_api() {
         .unwrap();
     assert_eq!(delete.status(), StatusCode::OK);
 
-    let list = get_with_role(app, "/admin/people", store::persons::Role::Admin).await;
+    let list = get_with_role(app, "/app/admin/people", store::persons::Role::Admin).await;
     assert!(body_string(list).await.contains("No people yet."));
 }
 
@@ -8928,7 +8940,7 @@ async fn admin_people_page_renders_directory() {
     let resp = app
         .oneshot(
             Request::builder()
-                .uri("/admin/people")
+                .uri("/app/admin/people")
                 .header(header::COOKIE, cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -8974,7 +8986,7 @@ async fn admin_can_impersonate_client_and_exit_from_banner() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/admin/person/{}/impersonate", client.id))
+                .uri(format!("/app/admin/people/{}/impersonate", client.id))
                 .header(header::COOKIE, admin_cookie)
                 .header("content-type", "application/x-www-form-urlencoded")
                 .body(Body::from(format!("_csrf={admin_csrf}")))
@@ -9179,7 +9191,7 @@ async fn every_firm_tier_can_view_an_assigned_matter_as_its_client() {
         );
         if role.is_lawyer_tier() {
             assert!(
-                detail_body.contains(&format!("/lawyer/entities/{entity_id}/edit")),
+                detail_body.contains(&format!("/app/admin/entities/{entity_id}/edit")),
                 "{role:?}: {detail_body}"
             );
             assert!(
@@ -9279,7 +9291,7 @@ async fn impersonation_exit_bypasses_policy_for_active_impersonation() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/admin/person/{}/impersonate", client.id))
+                .uri(format!("/app/admin/people/{}/impersonate", client.id))
                 .header(header::COOKIE, admin_cookie)
                 .header("content-type", "application/x-www-form-urlencoded")
                 .body(Body::from(format!("_csrf={admin_csrf}")))
@@ -9355,7 +9367,7 @@ async fn admin_cannot_impersonate_lawyer_person() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/admin/person/{}/impersonate", lawyer.id))
+                .uri(format!("/app/admin/people/{}/impersonate", lawyer.id))
                 .header(header::COOKIE, cookie)
                 .header("content-type", "application/x-www-form-urlencoded")
                 .body(Body::from(format!("_csrf={csrf}")))
@@ -9396,7 +9408,7 @@ async fn admin_cannot_impersonate_admin_person() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/admin/person/{}/impersonate", other_admin.id))
+                .uri(format!("/app/admin/people/{}/impersonate", other_admin.id))
                 .header(header::COOKIE, cookie)
                 .header("content-type", "application/x-www-form-urlencoded")
                 .body(Body::from(format!("_csrf={csrf}")))
@@ -9439,7 +9451,7 @@ async fn lawyer_cannot_impersonate_client_person() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/admin/person/{}/impersonate", client.id))
+                .uri(format!("/app/admin/people/{}/impersonate", client.id))
                 .header(header::COOKIE, cookie)
                 .header("content-type", "application/x-www-form-urlencoded")
                 .body(Body::from(format!("_csrf={csrf}")))
@@ -9491,7 +9503,7 @@ async fn impersonating_admin_cannot_start_second_impersonation() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/admin/person/{}/impersonate", client.id))
+                .uri(format!("/app/admin/people/{}/impersonate", client.id))
                 .header(header::COOKIE, admin_cookie)
                 .header("content-type", "application/x-www-form-urlencoded")
                 .body(Body::from(format!("_csrf={admin_csrf}")))
@@ -9506,7 +9518,7 @@ async fn impersonating_admin_cannot_start_second_impersonation() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/admin/person/{}/impersonate", other_client.id))
+                .uri(format!("/app/admin/people/{}/impersonate", other_client.id))
                 .header(header::COOKIE, impersonated_cookie)
                 .header("content-type", "application/x-www-form-urlencoded")
                 .body(Body::from(format!("_csrf={}", impersonated.csrf_token)))
@@ -9553,12 +9565,12 @@ async fn admin_people_index_shows_impersonate_only_for_client_rows() {
     let (cookie, _) = session_cookie_and_csrf_for_person(&admin);
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
 
-    // Impersonation lives on the admin console surface (`/admin/people`),
+    // Impersonation lives on the admin console surface (`/app/admin/people`),
     // not the de-scoped lawyer workbench list.
     let resp = app
         .oneshot(
             Request::builder()
-                .uri("/admin/people")
+                .uri("/app/admin/people")
                 .header(header::COOKIE, cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -9567,16 +9579,16 @@ async fn admin_people_index_shows_impersonate_only_for_client_rows() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
-    assert!(body.contains(&format!("/admin/person/{}/impersonate", client.id)));
-    assert!(!body.contains(&format!("/admin/person/{}/impersonate", lawyer.id)));
-    assert!(!body.contains(&format!("/admin/person/{}/impersonate", admin.id)));
+    assert!(body.contains(&format!("/app/admin/people/{}/impersonate", client.id)));
+    assert!(!body.contains(&format!("/app/admin/people/{}/impersonate", lawyer.id)));
+    assert!(!body.contains(&format!("/app/admin/people/{}/impersonate", admin.id)));
 }
 
 #[tokio::test]
 async fn admin_people_delete_returns_the_deleted_person_as_json() {
     // `/app/api/*` is a machine door: the delete answers with the row it removed,
     // typed, for a caller that will read it. It has no browser consumer — the
-    // people surface is Dioxus and posts to `/admin/people`.
+    // people surface is Dioxus and posts to `/app/admin/people`.
 
     let (state, surreal) = state_with_engines().await;
     let libra = store::persons::create(
@@ -9679,7 +9691,7 @@ async fn admin_people_index_drops_id_column_and_renders_sort_links() {
     let (state, surreal) = state_with_engines().await;
     seed_three_people(&surreal).await;
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
-    let resp = get_with_role(app, "/admin/people", store::persons::Role::Admin).await;
+    let resp = get_with_role(app, "/app/admin/people", store::persons::Role::Admin).await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
     // No ID column header rendered.
@@ -9689,11 +9701,11 @@ async fn admin_people_index_drops_id_column_and_renders_sort_links() {
     );
     // Sortable Name + Email headers expose JSON:API ?sort= links.
     assert!(
-        body.contains("href=\"/admin/people?sort=name\""),
+        body.contains("href=\"/app/admin/people?sort=name\""),
         "expected ?sort=name link, got: {body}",
     );
     assert!(
-        body.contains("href=\"/admin/people?sort=email\""),
+        body.contains("href=\"/app/admin/people?sort=email\""),
         "expected ?sort=email link, got: {body}",
     );
 }
@@ -9703,7 +9715,12 @@ async fn admin_people_index_honors_jsonapi_sort_ascending_by_name() {
     let (state, surreal) = state_with_engines().await;
     seed_three_people(&surreal).await;
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
-    let resp = get_with_role(app, "/admin/people?sort=name", store::persons::Role::Admin).await;
+    let resp = get_with_role(
+        app,
+        "/app/admin/people?sort=name",
+        store::persons::Role::Admin,
+    )
+    .await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
     // Leo → Libra → Taurus in render order.
@@ -9715,7 +9732,7 @@ async fn admin_people_index_honors_jsonapi_sort_ascending_by_name() {
     assert!(i_libra < i_taurus, "Libra before Taurus in body");
     // Active ascending → the Name header link must flip to descending.
     assert!(
-        body.contains("href=\"/admin/people?sort=-name\""),
+        body.contains("href=\"/app/admin/people?sort=-name\""),
         "expected flipped descending link, got: {body}",
     );
 }
@@ -9725,7 +9742,12 @@ async fn admin_people_index_honors_jsonapi_sort_descending_by_name() {
     let (state, surreal) = state_with_engines().await;
     seed_three_people(&surreal).await;
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
-    let resp = get_with_role(app, "/admin/people?sort=-name", store::persons::Role::Admin).await;
+    let resp = get_with_role(
+        app,
+        "/app/admin/people?sort=-name",
+        store::persons::Role::Admin,
+    )
+    .await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
     let (i_leo, _) = first_index_of(&body, &[">Leo<"]).expect("Leo row");
@@ -9745,7 +9767,7 @@ async fn admin_people_index_rejects_unknown_sort_key_with_400() {
     let resp = app
         .oneshot(
             Request::builder()
-                .uri("/admin/people?sort=ssn")
+                .uri("/app/admin/people?sort=ssn")
                 .header(header::COOKIE, admin_session_cookie())
                 .body(Body::empty())
                 .unwrap(),
@@ -9766,7 +9788,7 @@ async fn admin_people_index_honors_jsonapi_filter_on_name() {
     // forms decode to the same key.
     let resp = get_with_role(
         app,
-        "/admin/people?filter%5Bname%5D=Libra",
+        "/app/admin/people?filter%5Bname%5D=Libra",
         store::persons::Role::Admin,
     )
     .await;
@@ -9787,13 +9809,13 @@ async fn admin_people_index_stitches_filter_through_sort_links() {
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
     let resp = get_with_role(
         app,
-        "/admin/people?filter%5Bname%5D=Libra",
+        "/app/admin/people?filter%5Bname%5D=Libra",
         store::persons::Role::Admin,
     )
     .await;
     let body = body_string(resp).await;
     assert!(
-        body.contains("href=\"/admin/people?filter[name]=Libra&#38;sort=name\""),
+        body.contains("href=\"/app/admin/people?filter[name]=Libra&#38;sort=name\""),
         "expected filter to survive sort link, got: {body}",
     );
 }
@@ -9811,13 +9833,13 @@ async fn admin_jurisdictions_is_read_only_listing() {
     }
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
 
-    // `/lawyer/jurisdictions` now renders through the Dioxus generic admin-listing
+    // `/app/admin/jurisdictions` now renders through the Dioxus generic admin-listing
     // router (#641 Phase 3), carrying the same `require_auth` + `require_policy`
     // gate the surface had — so an authenticated lawyer session sees the
     // read-only listing server-side rendered.
     let resp = get_with_role(
         app.clone(),
-        "/lawyer/jurisdictions",
+        "/app/admin/jurisdictions",
         store::persons::Role::Lawyer,
     )
     .await;
@@ -9833,15 +9855,15 @@ async fn admin_jurisdictions_is_read_only_listing() {
     assert!(ca < nv, "expected California (CA) before Nevada (NV)");
     // No CRUD affordances: no Add/Edit/Delete buttons, no `new` link, no form.
     assert!(
-        !body.contains("/lawyer/jurisdictions/new"),
+        !body.contains("/app/admin/jurisdictions/new"),
         "Add link should be gone",
     );
     assert!(
-        !body.contains("/lawyer/jurisdictions/1/edit"),
+        !body.contains("/app/admin/jurisdictions/1/edit"),
         "Edit link should be gone",
     );
     assert!(
-        !body.contains("action=\"/lawyer/jurisdictions"),
+        !body.contains("action=\"/app/admin/jurisdictions"),
         "no form action should target this surface",
     );
 
@@ -9854,7 +9876,7 @@ async fn admin_jurisdictions_is_read_only_listing() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/lawyer/jurisdictions")
+                .uri("/app/admin/jurisdictions")
                 .header(header::COOKIE, cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/x-www-form-urlencoded")
@@ -9869,7 +9891,7 @@ async fn admin_jurisdictions_is_read_only_listing() {
     let new = app
         .oneshot(
             Request::builder()
-                .uri("/lawyer/jurisdictions/new")
+                .uri("/app/admin/jurisdictions/new")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -9891,7 +9913,12 @@ async fn lawyer_jurisdictions_dioxus_route_is_gated_by_embedded_policy() {
         std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
     );
 
-    let resp = get_with_role(app, "/lawyer/jurisdictions", store::persons::Role::Lawyer).await;
+    let resp = get_with_role(
+        app,
+        "/app/admin/jurisdictions",
+        store::persons::Role::Lawyer,
+    )
+    .await;
     assert_eq!(
         resp.status(),
         StatusCode::FORBIDDEN,
@@ -9908,11 +9935,11 @@ async fn admin_git_repositories_is_read_only_listing() {
         .unwrap();
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
 
-    // `/lawyer/git-repositories` renders through the Dioxus generic admin-listing
+    // `/app/admin/git-repositories` renders through the Dioxus generic admin-listing
     // router (#641 Phase 3) under the same auth + embedded Rego policy gate.
     let resp = get_with_role(
         app.clone(),
-        "/lawyer/git-repositories",
+        "/app/admin/git-repositories",
         store::persons::Role::Lawyer,
     )
     .await;
@@ -9921,14 +9948,14 @@ async fn admin_git_repositories_is_read_only_listing() {
     assert!(body.contains("abc123"));
     assert!(body.contains("deadbeef"));
     // No CRUD affordances.
-    assert!(!body.contains("/lawyer/git-repositories/new"));
-    assert!(!body.contains("action=\"/lawyer/git-repositories"));
+    assert!(!body.contains("/app/admin/git-repositories/new"));
+    assert!(!body.contains("action=\"/app/admin/git-repositories"));
 
     // /new is gone.
     let new = app
         .oneshot(
             Request::builder()
-                .uri("/lawyer/git-repositories/new")
+                .uri("/app/admin/git-repositories/new")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -9976,7 +10003,7 @@ async fn admin_generic_listings_all_mount_and_render_their_heading() {
     let (state, _surreal) = state_with_engines().await;
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
 
-    // Authenticated as Admin: `/lawyer/letters` and `/lawyer/email-log` refuse
+    // Authenticated as Admin: `/app/admin/letters` and `/app/admin/email-log` refuse
     // the Lawyer tier since ENG-303 (no project link on `letter` or
     // `sent_email` to scope by), and the admin tier reads every listing here.
     // What each gate admits is the subject of
@@ -9986,14 +10013,14 @@ async fn admin_generic_listings_all_mount_and_render_their_heading() {
     for (path, heading) in [
         ("/lawyer/notations", "Notations"),
         ("/lawyer/answers", "Answers"),
-        ("/lawyer/addresses", "Addresses"),
+        ("/app/admin/addresses", "Addresses"),
         ("/lawyer/assets", "Assets"),
         ("/lawyer/person-project-roles", "Person-project roles"),
         ("/lawyer/disclosures", "Disclosures"),
         ("/lawyer/relationship-logs", "Relationship logs"),
-        ("/lawyer/mailrooms", "Mailrooms"),
-        ("/lawyer/letters", "Letters"),
-        ("/lawyer/email-log", "Email log"),
+        ("/app/admin/mailrooms", "Mailrooms"),
+        ("/app/admin/letters", "Letters"),
+        ("/app/admin/email-log", "Email log"),
     ] {
         let resp = get_with_role(app.clone(), path, store::persons::Role::Admin).await;
         assert_eq!(
@@ -10034,7 +10061,7 @@ async fn admin_mailrooms_listing_resolves_the_address_join() {
         .unwrap();
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
 
-    let resp = get_with_role(app, "/lawyer/mailrooms", store::persons::Role::Lawyer).await;
+    let resp = get_with_role(app, "/app/admin/mailrooms", store::persons::Role::Lawyer).await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
     assert!(
@@ -10114,7 +10141,7 @@ async fn admin_letter_detail_renders_the_record_from_its_path_id() {
 
 #[tokio::test]
 async fn admin_email_log_paginates_over_fifty_rows() {
-    // Admin, not Lawyer: `/lawyer/email-log` refuses the Lawyer tier since
+    // Admin, not Lawyer: `/app/admin/email-log` refuses the Lawyer tier since
     // ENG-303 — `sent_email` carries no project link to scope by, so the admin
     // gate is the interim close. Which tier is admitted is
     // `unscopeable_matter_content_listings_require_the_admin_tier`'s subject;
@@ -10147,7 +10174,7 @@ async fn admin_email_log_paginates_over_fifty_rows() {
     // Page 1: rows render, and the pager offers page 2.
     let resp = get_with_role(
         app.clone(),
-        "/lawyer/email-log",
+        "/app/admin/email-log",
         store::persons::Role::Admin,
     )
     .await;
@@ -10166,7 +10193,7 @@ async fn admin_email_log_paginates_over_fifty_rows() {
         "page 1 of 2 must show; got: {body}",
     );
     assert!(
-        body.contains("/lawyer/email-log?page=2"),
+        body.contains("/app/admin/email-log?page=2"),
         "the pager must anchor to page 2; got: {body}",
     );
 
@@ -10174,7 +10201,7 @@ async fn admin_email_log_paginates_over_fifty_rows() {
     // oldest message (0), since newest-first paging puts 50..1 on page 1.
     let resp2 = get_with_role(
         app.clone(),
-        "/lawyer/email-log?page=2",
+        "/app/admin/email-log?page=2",
         store::persons::Role::Admin,
     )
     .await;
@@ -10193,7 +10220,7 @@ async fn admin_email_log_paginates_over_fifty_rows() {
     // rows (not an empty table) so the rows and the "Page 2 of 2" label agree.
     let resp_oob = get_with_role(
         app,
-        "/lawyer/email-log?page=99",
+        "/app/admin/email-log?page=99",
         store::persons::Role::Admin,
     )
     .await;
@@ -10236,7 +10263,7 @@ async fn admin_addresses_listing_renders_row_cells_from_the_database() {
     .unwrap();
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
 
-    let resp = get_with_role(app, "/lawyer/addresses", store::persons::Role::Lawyer).await;
+    let resp = get_with_role(app, "/app/admin/addresses", store::persons::Role::Lawyer).await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
     for cell in ["500 Silver Street", "Reno", "NV", "USA"] {
@@ -10885,7 +10912,7 @@ async fn conflict_graph_listings_stay_firm_wide_for_an_unparticipating_lawyer() 
     );
 }
 
-/// ENG-303: `/lawyer/letters` and `/lawyer/email-log` refuse the Lawyer tier
+/// ENG-303: `/app/admin/letters` and `/app/admin/email-log` refuse the Lawyer tier
 /// and serve Owner/Admin. `letter` and `sent_email` carry no project link, so
 /// the admin gate is the interim close until one exists.
 #[tokio::test]
@@ -10937,8 +10964,8 @@ async fn unscopeable_matter_content_listings_require_the_admin_tier() {
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
 
     for (path, disclosed) in [
-        ("/lawyer/letters", "Demand letter summary"),
-        ("/lawyer/email-log", "logged-recipient@example.com"),
+        ("/app/admin/letters", "Demand letter summary"),
+        ("/app/admin/email-log", "logged-recipient@example.com"),
     ] {
         // A Lawyer-tier session is refused outright — a real 403, not a
         // successful page with an empty table.
@@ -11027,13 +11054,13 @@ async fn admin_entity_types_is_read_only_listing() {
     }
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
 
-    // `/lawyer/entity-types` now renders through the Dioxus sub-router (#641
+    // `/app/admin/entity-types` now renders through the Dioxus sub-router (#641
     // Phase 3), carrying the same `require_auth` + `require_policy` gate as the
     // surface it replaced — so an authenticated lawyer session sees the
     // read-only listing server-side rendered.
     let resp = get_with_role(
         app.clone(),
-        "/lawyer/entity-types",
+        "/app/admin/entity-types",
         store::persons::Role::Lawyer,
     )
     .await;
@@ -11043,13 +11070,13 @@ async fn admin_entity_types_is_read_only_listing() {
     assert!(body.contains("Trust"));
     // No CRUD affordances.
     assert!(
-        !body.contains("/lawyer/entity-types/new"),
+        !body.contains("/app/admin/entity-types/new"),
         "Add link should be gone",
     );
     assert!(!body.contains("/edit"), "Edit link should be gone");
     assert!(!body.contains("/delete"), "Delete form should be gone");
     assert!(
-        !body.contains("action=\"/lawyer/entity-types"),
+        !body.contains("action=\"/app/admin/entity-types"),
         "no form action should target this surface",
     );
 
@@ -11062,7 +11089,7 @@ async fn admin_entity_types_is_read_only_listing() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/lawyer/entity-types")
+                .uri("/app/admin/entity-types")
                 .header(header::COOKIE, cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/x-www-form-urlencoded")
@@ -11079,7 +11106,7 @@ async fn admin_entity_types_is_read_only_listing() {
             .clone()
             .oneshot(
                 Request::builder()
-                    .uri(format!("/lawyer/entity-types{sub}"))
+                    .uri(format!("/app/admin/entity-types{sub}"))
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -11088,14 +11115,14 @@ async fn admin_entity_types_is_read_only_listing() {
         assert_eq!(
             gone.status(),
             StatusCode::NOT_FOUND,
-            "/lawyer/entity-types{sub} should be 404",
+            "/app/admin/entity-types{sub} should be 404",
         );
     }
     let del = app
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/lawyer/entity-types/00000000-0000-0000-0000-000000000000/delete")
+                .uri("/app/admin/entity-types/00000000-0000-0000-0000-000000000000/delete")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -11106,7 +11133,7 @@ async fn admin_entity_types_is_read_only_listing() {
 
 #[tokio::test]
 async fn lawyer_entity_types_dioxus_route_is_gated_by_embedded_policy() {
-    // The Dioxus `/lawyer/entity-types` sub-router (#641 Phase 3) carries the
+    // The Dioxus `/app/admin/entity-types` sub-router (#641 Phase 3) carries the
     // same `require_auth` + `require_policy` layers as the lawyer surface it
     // replaced. Prove the policy layer is live: an authenticated lawyer session
     // under a deny-all embedded policy is refused (403), not served the listing.
@@ -11116,12 +11143,12 @@ async fn lawyer_entity_types_dioxus_route_is_gated_by_embedded_policy() {
         std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
     );
 
-    let resp = get_with_role(app, "/lawyer/entity-types", store::persons::Role::Lawyer).await;
+    let resp = get_with_role(app, "/app/admin/entity-types", store::persons::Role::Lawyer).await;
     assert_eq!(
         resp.status(),
         StatusCode::FORBIDDEN,
         "an authenticated lawyer session must be turned away from the Dioxus \
-         /lawyer/entity-types route when the policy denies — the route is policy-gated"
+         /app/admin/entity-types route when the policy denies — the route is policy-gated"
     );
 }
 
@@ -11136,7 +11163,7 @@ async fn admin_entity_types_index_rejects_unknown_sort_key_with_400() {
     let resp = app
         .oneshot(
             Request::builder()
-                .uri("/lawyer/entity-types?sort=jurisdiction")
+                .uri("/app/admin/entity-types?sort=jurisdiction")
                 .header(header::COOKIE, admin_session_cookie())
                 .body(Body::empty())
                 .unwrap(),
@@ -11158,7 +11185,7 @@ async fn admin_entity_types_index_rejects_a_malformed_sort_query_with_400() {
     let resp = app
         .oneshot(
             Request::builder()
-                .uri("/lawyer/entity-types?sort=%ZZ")
+                .uri("/app/admin/entity-types?sort=%ZZ")
                 .header(header::COOKIE, admin_session_cookie())
                 .body(Body::empty())
                 .unwrap(),
@@ -11191,7 +11218,7 @@ async fn admin_templates_is_read_only_listing() {
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/lawyer/templates")
+                .uri("/app/admin/templates")
                 .header(header::COOKIE, admin_session_cookie())
                 .body(Body::empty())
                 .unwrap(),
@@ -11203,10 +11230,10 @@ async fn admin_templates_is_read_only_listing() {
     assert!(body.contains("Nevada Trust"));
     assert!(body.contains("trusts__nevada"));
     // No CRUD affordances.
-    assert!(!body.contains("/lawyer/templates/new"));
+    assert!(!body.contains("/app/admin/templates/new"));
     assert!(!body.contains("/edit"));
     assert!(!body.contains("/delete"));
-    assert!(!body.contains("action=\"/lawyer/templates"));
+    assert!(!body.contains("action=\"/app/admin/templates"));
 
     let (cookie, csrf) = admin_session_cookie_and_csrf();
     let post = app
@@ -11214,7 +11241,7 @@ async fn admin_templates_is_read_only_listing() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/lawyer/templates")
+                .uri("/app/admin/templates")
                 .header(header::COOKIE, cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/x-www-form-urlencoded")
@@ -11228,7 +11255,7 @@ async fn admin_templates_is_read_only_listing() {
     let new = app
         .oneshot(
             Request::builder()
-                .uri("/lawyer/templates/new")
+                .uri("/app/admin/templates/new")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -11251,7 +11278,7 @@ async fn admin_questions_is_read_only_listing() {
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/lawyer/questions")
+                .uri("/app/admin/questions")
                 .header(header::COOKIE, admin_session_cookie())
                 .body(Body::empty())
                 .unwrap(),
@@ -11263,10 +11290,10 @@ async fn admin_questions_is_read_only_listing() {
     assert!(body.contains("What is your legal name?"));
     assert!(body.contains("legal_name"));
     // No CRUD affordances.
-    assert!(!body.contains("/lawyer/questions/new"));
+    assert!(!body.contains("/app/admin/questions/new"));
     assert!(!body.contains("/edit"));
     assert!(!body.contains("/delete"));
-    assert!(!body.contains("action=\"/lawyer/questions"));
+    assert!(!body.contains("action=\"/app/admin/questions"));
 
     let (cookie, csrf) = admin_session_cookie_and_csrf();
     let post = app
@@ -11274,7 +11301,7 @@ async fn admin_questions_is_read_only_listing() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/lawyer/questions")
+                .uri("/app/admin/questions")
                 .header(header::COOKIE, cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/x-www-form-urlencoded")
@@ -11288,7 +11315,7 @@ async fn admin_questions_is_read_only_listing() {
     let new = app
         .oneshot(
             Request::builder()
-                .uri("/lawyer/questions/new")
+                .uri("/app/admin/questions/new")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -11672,7 +11699,7 @@ async fn admin_send_welcome_writes_audit_row_and_redirects() {
         .await
         .unwrap();
     // The API door answers a typed `sent` status. The browser's own
-    // `?notice=welcome_sent` flash rides the `/admin/person/{id}` POST instead.
+    // `?notice=welcome_sent` flash rides the `/app/admin/people/{id}` POST instead.
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
     assert!(
@@ -11767,7 +11794,7 @@ async fn admin_person_show_floats_success_toast_after_welcome_sent() {
         .oneshot(
             Request::builder()
                 .uri(format!(
-                    "/admin/person/{}/edit?notice=welcome_sent",
+                    "/app/admin/people/{}/edit?notice=welcome_sent",
                     libra.id
                 ))
                 .header(header::COOKIE, admin_session_cookie())
@@ -11809,7 +11836,7 @@ async fn admin_person_show_floats_failure_toast_after_welcome_failed() {
         .oneshot(
             Request::builder()
                 .uri(format!(
-                    "/admin/person/{}/edit?notice=welcome_failed",
+                    "/app/admin/people/{}/edit?notice=welcome_failed",
                     libra.id
                 ))
                 .header(header::COOKIE, admin_session_cookie())
@@ -11836,14 +11863,14 @@ async fn admin_person_show_floats_failure_toast_after_welcome_failed() {
 
 #[tokio::test]
 async fn admin_email_log_empty_state_explains_what_lands_here() {
-    // Admin, not Lawyer: `/lawyer/email-log` refuses the Lawyer tier since
+    // Admin, not Lawyer: `/app/admin/email-log` refuses the Lawyer tier since
     // ENG-303 — `sent_email` carries no project link to scope by, so the admin
     // gate is the interim close. Which tier is admitted is
     // `unscopeable_matter_content_listings_require_the_admin_tier`'s subject;
     // this test is about the log itself.
     let (state, _surreal) = state_with_engines().await;
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
-    let resp = get_with_role(app, "/lawyer/email-log", store::persons::Role::Admin).await;
+    let resp = get_with_role(app, "/app/admin/email-log", store::persons::Role::Admin).await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
     // With no rows the listing shows the shared empty state, and the subtitle
@@ -11860,7 +11887,7 @@ async fn admin_email_log_empty_state_explains_what_lands_here() {
 
 #[tokio::test]
 async fn admin_email_log_lists_rows_newest_first() {
-    // Admin, not Lawyer: `/lawyer/email-log` refuses the Lawyer tier since
+    // Admin, not Lawyer: `/app/admin/email-log` refuses the Lawyer tier since
     // ENG-303 — `sent_email` carries no project link to scope by, so the admin
     // gate is the interim close. Which tier is admitted is
     // `unscopeable_matter_content_listings_require_the_admin_tier`'s subject;
@@ -11888,7 +11915,7 @@ async fn admin_email_log_lists_rows_newest_first() {
         .unwrap();
     }
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
-    let resp = get_with_role(app, "/lawyer/email-log", store::persons::Role::Admin).await;
+    let resp = get_with_role(app, "/app/admin/email-log", store::persons::Role::Admin).await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
     assert!(body.contains("newest@example.com"));
@@ -12226,7 +12253,7 @@ async fn the_removed_billing_and_cap_table_lawyer_paths_no_longer_resolve() {
         "/lawyer/entity-billing-profiles".to_string(),
         "/lawyer/invoices".to_string(),
         "/lawyer/invoice-line-items".to_string(),
-        format!("/lawyer/entities/{entity}/cap-table"),
+        format!("/app/admin/entities/{entity}/cap-table"),
     ] {
         let resp = get_with_role(app.clone(), &path, store::persons::Role::Lawyer).await;
         assert_eq!(
@@ -12293,7 +12320,7 @@ async fn admin_people_csv_exports_inserted_rows() {
     let csv = app
         .oneshot(
             Request::builder()
-                .uri("/lawyer/people.csv")
+                .uri("/app/admin/people.csv")
                 .header(header::COOKIE, admin_session_cookie())
                 .body(Body::empty())
                 .unwrap(),
@@ -12323,7 +12350,7 @@ async fn admin_entities_csv_is_servable_and_emits_headers_even_when_empty() {
     let resp = app
         .oneshot(
             Request::builder()
-                .uri("/lawyer/entities.csv")
+                .uri("/app/admin/entities.csv")
                 .header(header::COOKIE, admin_session_cookie())
                 .body(Body::empty())
                 .unwrap(),
@@ -13931,7 +13958,7 @@ async fn admin_people_edit_form_shows_role_select_pre_filled() {
     let resp = app
         .oneshot(
             Request::builder()
-                .uri(format!("/admin/person/{}/edit", lawyer.id))
+                .uri(format!("/app/admin/people/{}/edit", lawyer.id))
                 .header(header::COOKIE, admin_session_cookie())
                 .body(Body::empty())
                 .unwrap(),
@@ -13984,7 +14011,7 @@ async fn admin_person_edit_page_offers_an_editable_role_select() {
     let resp = app
         .oneshot(
             Request::builder()
-                .uri(format!("/admin/person/{}/edit", libra.id))
+                .uri(format!("/app/admin/people/{}/edit", libra.id))
                 .header(header::COOKIE, admin_session_cookie())
                 .body(Body::empty())
                 .unwrap(),
@@ -14035,7 +14062,7 @@ async fn admin_person_edit_page_locks_the_bootstrap_owner_role() {
     let resp = app
         .oneshot(
             Request::builder()
-                .uri(format!("/admin/person/{}/edit", boss.id))
+                .uri(format!("/app/admin/people/{}/edit", boss.id))
                 .header(header::COOKIE, admin_session_cookie())
                 .body(Body::empty())
                 .unwrap(),
@@ -14081,7 +14108,7 @@ async fn admin_person_edit_page_locks_the_role_select_for_a_higher_tier_target()
     let resp = app
         .oneshot(
             Request::builder()
-                .uri(format!("/admin/person/{}/edit", boss.id))
+                .uri(format!("/app/admin/people/{}/edit", boss.id))
                 .header(header::COOKIE, admin_session_cookie())
                 .body(Body::empty())
                 .unwrap(),
@@ -14137,7 +14164,7 @@ async fn admin_can_update_a_persons_role() {
     assert_eq!(row.role, store::persons::Role::Admin);
 }
 
-/// The Dioxus admin person edit form posts to the native `POST /admin/person/{id}`
+/// The Dioxus admin person edit form posts to the native `POST /app/admin/people/{id}`
 /// update route (the form PATCHed the REST `/app/api/people/{id}`). Prove the
 /// native form persists the change and redirects back to the show view — a plain
 /// form (no JavaScript), so a 303 not the REST API's 200+JSON.
@@ -14161,7 +14188,7 @@ async fn admin_person_update_via_native_form_persists_and_redirects() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/admin/person/{}", libra.id))
+                .uri(format!("/app/admin/people/{}", libra.id))
                 .header(header::COOKIE, &cookie)
                 .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
                 .body(Body::from(format!(
@@ -14176,7 +14203,7 @@ async fn admin_person_update_via_native_form_persists_and_redirects() {
         resp.headers()
             .get(header::LOCATION)
             .and_then(|v| v.to_str().ok()),
-        Some(format!("/admin/person/{}", libra.id).as_str()),
+        Some(format!("/app/admin/people/{}", libra.id).as_str()),
     );
     let row = store::persons::find_by_id(&surreal, libra.id)
         .await
@@ -14187,7 +14214,7 @@ async fn admin_person_update_via_native_form_persists_and_redirects() {
 }
 
 /// The Dioxus admin person page's welcome-email button posts to the native
-/// `POST /admin/person/{id}/welcome` route. Prove it redirects back to the show
+/// `POST /app/admin/people/{id}/welcome` route. Prove it redirects back to the show
 /// view with a `?notice=` flag (the flash the page floats), not a 5xx.
 #[tokio::test]
 async fn admin_person_welcome_redirects_with_notice() {
@@ -14209,7 +14236,7 @@ async fn admin_person_welcome_redirects_with_notice() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/admin/person/{}/welcome", libra.id))
+                .uri(format!("/app/admin/people/{}/welcome", libra.id))
                 .header(header::COOKIE, &cookie)
                 .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
                 .body(Body::from(format!("_csrf={csrf}")))
@@ -14224,7 +14251,7 @@ async fn admin_person_welcome_redirects_with_notice() {
         .and_then(|v| v.to_str().ok())
         .unwrap_or_default();
     assert!(
-        location.starts_with(&format!("/admin/person/{}?notice=welcome_", libra.id)),
+        location.starts_with(&format!("/app/admin/people/{}?notice=welcome_", libra.id)),
         "welcome send must redirect to the show view with a notice flag, got: {location}",
     );
 }
@@ -14255,7 +14282,7 @@ async fn admin_person_show_renders_flash_from_query() {
         .oneshot(
             Request::builder()
                 .uri(format!(
-                    "/admin/person/{}?error=Email%20already%20in%20use",
+                    "/app/admin/people/{}?error=Email%20already%20in%20use",
                     libra.id
                 ))
                 .header(header::COOKIE, &cookie)
@@ -14274,7 +14301,10 @@ async fn admin_person_show_renders_flash_from_query() {
     let resp = app
         .oneshot(
             Request::builder()
-                .uri(format!("/admin/person/{}?notice=welcome_sent", libra.id))
+                .uri(format!(
+                    "/app/admin/people/{}?notice=welcome_sent",
+                    libra.id
+                ))
                 .header(header::COOKIE, &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -14315,7 +14345,7 @@ async fn admin_person_welcome_requires_a_confirmation_step() {
     let resp = app
         .oneshot(
             Request::builder()
-                .uri(format!("/admin/person/{}", libra.id))
+                .uri(format!("/app/admin/people/{}", libra.id))
                 .header(header::COOKIE, &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -14342,7 +14372,10 @@ async fn admin_person_welcome_requires_a_confirmation_step() {
         "confirmation must offer a confirm button, got: {body}",
     );
     assert!(
-        body.contains(&format!("action=\"/admin/person/{}/welcome\"", libra.id)),
+        body.contains(&format!(
+            "action=\"/app/admin/people/{}/welcome\"",
+            libra.id
+        )),
         "confirm button must post the welcome send, got: {body}",
     );
 }
@@ -14462,11 +14495,11 @@ async fn migrated_dioxus_forms_pass_structural_a11y() {
     // The create forms (no id), then the person show/edit pages (seeded id).
     // All render through the shared `webapp::FormCard`.
     let routes = [
-        "/admin/people".to_string(),
-        "/admin/people/new".to_string(),
-        "/lawyer/entities/new".to_string(),
-        format!("/admin/person/{}", libra.id),
-        format!("/admin/person/{}/edit", libra.id),
+        "/app/admin/people".to_string(),
+        "/app/admin/people/new".to_string(),
+        "/app/admin/entities/new".to_string(),
+        format!("/app/admin/people/{}", libra.id),
+        format!("/app/admin/people/{}/edit", libra.id),
     ];
     for route in routes {
         let resp = app
@@ -14508,7 +14541,7 @@ async fn bootstrap_owner_row_renders_all_fields_disabled_with_banner() {
     let resp = app
         .oneshot(
             Request::builder()
-                .uri(format!("/admin/person/{}/edit", owner_row.id))
+                .uri(format!("/app/admin/people/{}/edit", owner_row.id))
                 .header(header::COOKIE, admin_session_cookie())
                 .body(Body::empty())
                 .unwrap(),
@@ -15114,7 +15147,7 @@ async fn lawyer_cannot_fork_the_bootstrap_company_within_its_jurisdiction() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/lawyer/entities")
+                .uri("/app/admin/entities")
                 .header(header::COOKIE, &cookie)
                 .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
                 .body(Body::from(format!(
@@ -15170,7 +15203,7 @@ async fn lawyer_cannot_fork_the_bootstrap_company_into_another_jurisdiction() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/lawyer/entities")
+                .uri("/app/admin/entities")
                 .header(header::COOKIE, &cookie)
                 .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
                 .body(Body::from(format!(
@@ -15217,7 +15250,7 @@ async fn renaming_another_entity_into_the_firm_name_is_refused() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/lawyer/entities")
+                .uri("/app/admin/entities")
                 .header(header::COOKIE, &cookie)
                 .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
                 .body(Body::from(format!(
@@ -15244,7 +15277,7 @@ async fn renaming_another_entity_into_the_firm_name_is_refused() {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(format!("/lawyer/entities/{}", acme.id))
+                    .uri(format!("/app/admin/entities/{}", acme.id))
                     .header(header::COOKIE, &cookie)
                     .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
                     .body(Body::from(format!(
@@ -15306,7 +15339,7 @@ async fn the_firm_anchor_stays_freely_editable_apart_from_its_name() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/lawyer/entities/{}", firm.id))
+                .uri(format!("/app/admin/entities/{}", firm.id))
                 .header(header::COOKIE, &cookie)
                 .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
                 .body(Body::from(format!(
@@ -15348,7 +15381,7 @@ async fn entities_that_are_not_the_firm_anchor_may_share_a_name_and_jurisdiction
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/lawyer/entities")
+                    .uri("/app/admin/entities")
                     .header(header::COOKIE, &cookie)
                     .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
                     .body(Body::from(format!(
@@ -15403,7 +15436,7 @@ async fn concurrent_creates_cannot_fork_the_firm_anchor() {
             let response = app.oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/lawyer/entities")
+                    .uri("/app/admin/entities")
                     .header(header::COOKIE, &cookie)
                     .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
                     .body(Body::from(format!(
@@ -15504,7 +15537,7 @@ async fn a_delete_racing_a_rename_into_the_firm_name_never_removes_the_anchor() 
                 app.oneshot(
                     Request::builder()
                         .method("POST")
-                        .uri(format!("/lawyer/entities/{vid}/delete"))
+                        .uri(format!("/app/admin/entities/{vid}/delete"))
                         .header(header::COOKIE, &cookie)
                         .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
                         .body(Body::from(format!("_csrf={csrf}")))
@@ -15521,7 +15554,7 @@ async fn a_delete_racing_a_rename_into_the_firm_name_never_removes_the_anchor() 
                 let response = app.oneshot(
                     Request::builder()
                         .method("POST")
-                        .uri(format!("/lawyer/entities/{vid}"))
+                        .uri(format!("/app/admin/entities/{vid}"))
                         .header(header::COOKIE, &cookie)
                         .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
                         .body(Body::from(format!(
@@ -15613,7 +15646,7 @@ async fn a_rename_racing_a_rename_into_the_firm_name_never_loses_the_anchor() {
                 let response = app.oneshot(
                     Request::builder()
                         .method("POST")
-                        .uri(format!("/lawyer/entities/{vid}"))
+                        .uri(format!("/app/admin/entities/{vid}"))
                         .header(header::COOKIE, &cookie)
                         .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
                         .body(Body::from(format!(
@@ -15634,7 +15667,7 @@ async fn a_rename_racing_a_rename_into_the_firm_name_never_loses_the_anchor() {
                 app.oneshot(
                     Request::builder()
                         .method("POST")
-                        .uri(format!("/lawyer/entities/{vid}"))
+                        .uri(format!("/app/admin/entities/{vid}"))
                         .header(header::COOKIE, &cookie)
                         .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
                         .body(Body::from(format!(
@@ -15673,7 +15706,7 @@ async fn a_rename_racing_a_rename_into_the_firm_name_never_loses_the_anchor() {
 
 // ---- Lawyer playbooks (#956 Phase 4) ----
 //
-// The `/lawyer/playbooks` cluster shipped with no route-level coverage at
+// The `/app/admin/playbooks` cluster shipped with no route-level coverage at
 // all — only in-file unit tests on the pure parsers, which never touch a
 // handler. These tests pin the behaviour the surface actually has (the sort
 // `400`, the unknown-id `404`, and each refusal) so the Dioxus port is proved
@@ -15757,7 +15790,7 @@ async fn lawyer_playbooks_list_renders_each_playbook_with_its_company() {
     .await;
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
 
-    let resp = get_with_role(app, "/lawyer/playbooks", store::persons::Role::Lawyer).await;
+    let resp = get_with_role(app, "/app/admin/playbooks", store::persons::Role::Lawyer).await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
     assert!(body.contains("Acme Inc"), "{body}");
@@ -15765,7 +15798,7 @@ async fn lawyer_playbooks_list_renders_each_playbook_with_its_company() {
     // The position count is the column that tells an attorney the playbook is
     // populated rather than an empty shell.
     assert!(body.contains(">2<"), "{body}");
-    assert!(body.contains("/lawyer/playbooks/new"), "{body}");
+    assert!(body.contains("/app/admin/playbooks/new"), "{body}");
 }
 
 #[tokio::test]
@@ -15778,7 +15811,7 @@ async fn lawyer_playbooks_list_rejects_unknown_sort_with_400() {
 
     let resp = get_with_role(
         app.clone(),
-        "/lawyer/playbooks?sort=positions",
+        "/app/admin/playbooks?sort=positions",
         store::persons::Role::Lawyer,
     )
     .await;
@@ -15787,7 +15820,7 @@ async fn lawyer_playbooks_list_rejects_unknown_sort_with_400() {
     // An advertised key still renders.
     let ok = get_with_role(
         app,
-        "/lawyer/playbooks?sort=-name",
+        "/app/admin/playbooks?sort=-name",
         store::persons::Role::Lawyer,
     )
     .await;
@@ -15831,7 +15864,7 @@ async fn lawyer_playbook_create_refusals_bounce_back_with_the_typed_positions() 
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/lawyer/playbooks")
+                    .uri("/app/admin/playbooks")
                     .header(header::COOKIE, &cookie)
                     .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
                     .body(Body::from(format!(
@@ -15850,7 +15883,7 @@ async fn lawyer_playbook_create_refusals_bounce_back_with_the_typed_positions() 
         );
         let location = redirect_location(&rejected);
         assert!(
-            location.starts_with("/lawyer/playbooks/new?error="),
+            location.starts_with("/app/admin/playbooks/new?error="),
             "{location}",
         );
 
@@ -15878,7 +15911,7 @@ async fn lawyer_playbook_create_refusals_bounce_back_with_the_typed_positions() 
                 "the typed positions must survive the refusal: {reloaded}",
             );
         }
-        let form = DomForm::parse(&reloaded, "/lawyer/playbooks");
+        let form = DomForm::parse(&reloaded, "/app/admin/playbooks");
         assert_eq!(form.value("_csrf"), csrf);
     }
 }
@@ -15901,7 +15934,7 @@ async fn lawyer_playbook_create_lands_the_playbook_and_returns_to_the_list() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/lawyer/playbooks")
+                .uri("/app/admin/playbooks")
                 .header(header::COOKIE, &cookie)
                 .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
                 .body(Body::from(format!(
@@ -15916,9 +15949,9 @@ async fn lawyer_playbook_create_lands_the_playbook_and_returns_to_the_list() {
         .await
         .unwrap();
     assert_eq!(created.status(), StatusCode::SEE_OTHER);
-    assert_eq!(redirect_location(&created), "/lawyer/playbooks");
+    assert_eq!(redirect_location(&created), "/app/admin/playbooks");
 
-    let listed = get_with_role(app, "/lawyer/playbooks", store::persons::Role::Lawyer).await;
+    let listed = get_with_role(app, "/app/admin/playbooks", store::persons::Role::Lawyer).await;
     let body = body_string(listed).await;
     assert!(body.contains("Vendor MSA"), "{body}");
 }
@@ -15939,7 +15972,7 @@ async fn lawyer_playbook_edit_form_prefills_the_stored_positions() {
     let resp = app
         .oneshot(
             Request::builder()
-                .uri(format!("/lawyer/playbooks/{playbook_id}/edit"))
+                .uri(format!("/app/admin/playbooks/{playbook_id}/edit"))
                 .header(header::COOKIE, &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -15955,7 +15988,7 @@ async fn lawyer_playbook_edit_form_prefills_the_stored_positions() {
         body.contains("Liability | mutual cap | 2x fees | uncapped | high"),
         "{body}",
     );
-    let form = DomForm::parse(&body, &format!("/lawyer/playbooks/{playbook_id}"));
+    let form = DomForm::parse(&body, &format!("/app/admin/playbooks/{playbook_id}"));
     assert_eq!(form.value("_csrf"), csrf);
 }
 
@@ -15966,7 +15999,7 @@ async fn lawyer_playbook_edit_form_404s_on_an_unknown_id() {
 
     let resp = get_with_role(
         app,
-        &format!("/lawyer/playbooks/{}/edit", uuid::Uuid::from_u128(404)),
+        &format!("/app/admin/playbooks/{}/edit", uuid::Uuid::from_u128(404)),
         store::persons::Role::Lawyer,
     )
     .await;
@@ -15996,7 +16029,7 @@ async fn lawyer_playbook_update_refusals_bounce_back_with_the_typed_positions() 
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(format!("/lawyer/playbooks/{playbook_id}"))
+                    .uri(format!("/app/admin/playbooks/{playbook_id}"))
                     .header(header::COOKIE, &cookie)
                     .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
                     .body(Body::from(format!(
@@ -16010,7 +16043,7 @@ async fn lawyer_playbook_update_refusals_bounce_back_with_the_typed_positions() 
         assert_eq!(rejected.status(), StatusCode::SEE_OTHER, "{expected}");
         let location = redirect_location(&rejected);
         assert!(
-            location.starts_with(&format!("/lawyer/playbooks/{playbook_id}/edit?error=")),
+            location.starts_with(&format!("/app/admin/playbooks/{playbook_id}/edit?error=")),
             "{location}",
         );
 
@@ -16054,7 +16087,7 @@ async fn lawyer_playbook_update_replaces_the_positions_and_returns_to_the_list()
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/lawyer/playbooks/{playbook_id}"))
+                .uri(format!("/app/admin/playbooks/{playbook_id}"))
                 .header(header::COOKIE, &cookie)
                 .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
                 .body(Body::from(format!(
@@ -16066,7 +16099,7 @@ async fn lawyer_playbook_update_replaces_the_positions_and_returns_to_the_list()
         .await
         .unwrap();
     assert_eq!(saved.status(), StatusCode::SEE_OTHER);
-    assert_eq!(redirect_location(&saved), "/lawyer/playbooks");
+    assert_eq!(redirect_location(&saved), "/app/admin/playbooks");
 
     let row = store::playbooks::by_id(&surreal, playbook_id)
         .await
@@ -16088,7 +16121,10 @@ async fn lawyer_playbook_update_404s_on_an_unknown_id() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/lawyer/playbooks/{}", uuid::Uuid::from_u128(404)))
+                .uri(format!(
+                    "/app/admin/playbooks/{}",
+                    uuid::Uuid::from_u128(404)
+                ))
                 .header(header::COOKIE, &cookie)
                 .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
                 .body(Body::from(format!(
@@ -16517,6 +16553,36 @@ async fn the_retired_project_prefixes_are_not_served() {
         "/portal/forms".to_string(),
     ] {
         let resp = get_with_cookie(app.clone(), &uri, &cookie).await;
+        assert_eq!(
+            resp.status(),
+            StatusCode::NOT_FOUND,
+            "{uri} must 404 — no compatibility shim"
+        );
+    }
+}
+
+/// Firm-administration listings and Person CRUD left `/lawyer` and `/admin`
+/// without a redirect layer. Deep links in sent email 404.
+#[tokio::test]
+async fn the_moved_admin_listings_are_not_served_at_the_old_paths() {
+    let (state, _surreal) = state_with_engines().await;
+    let cookie = admin_session_cookie_with_person();
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+
+    for uri in [
+        "/lawyer/entities",
+        "/lawyer/entities/new",
+        "/lawyer/entity-types",
+        "/lawyer/playbooks",
+        "/lawyer/schedules",
+        "/lawyer/letters",
+        "/lawyer/email-log",
+        "/lawyer/people.csv",
+        "/admin/people",
+        "/admin/people/new",
+        "/admin/analytics",
+    ] {
+        let resp = get_with_cookie(app.clone(), uri, &cookie).await;
         assert_eq!(
             resp.status(),
             StatusCode::NOT_FOUND,

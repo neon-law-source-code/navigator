@@ -1208,7 +1208,7 @@ pub fn bootstrap(
     );
     // #641 Phase 3 (admin cluster): the "add entity" create form renders through
     // Dioxus — the first CRUD create form, on the shared `FormCard` + CSRF page
-    // router. It posts to the unchanged `/lawyer/entities` create handler.
+    // router. It posts to the unchanged `/app/admin/entities` create handler.
     let dioxus_entity_new = dioxus_app::csrf_page_router(
         dioxus_app::LAWYER_ENTITY_NEW_PATH,
         webapp::entity_new::LawyerEntityNew,
@@ -1231,7 +1231,7 @@ pub fn bootstrap(
     );
     // #641 Phase 3 (admin cluster): the "edit entity" form renders through
     // Dioxus — the first CRUD edit form (a `FormCard` prefilled from the record
-    // by its `{id}`). It posts to the unchanged `POST /lawyer/entities/{id}`.
+    // by its `{id}`). It posts to the unchanged `POST /app/admin/entities/{id}`.
     let dioxus_entity_edit = dioxus_app::csrf_page_router(
         dioxus_app::LAWYER_ENTITY_EDIT_PATH,
         webapp::entity_edit::LawyerEntityEdit,
@@ -1241,7 +1241,7 @@ pub fn bootstrap(
         state.auth.clone(),
     );
     // #641 Phase 3 (admin cluster): the entities list renders through Dioxus — a
-    // sortable table with per-row edit/delete actions. `POST /lawyer/entities`
+    // sortable table with per-row edit/delete actions. `POST /app/admin/entities`
     // (create) stays on the admin router; axum merges the same-path methods.
     let dioxus_entity_list = dioxus_app::entity_list_router(
         state.surreal.clone(),
@@ -1251,7 +1251,7 @@ pub fn bootstrap(
     );
     // #956 Phase 4: the contract-negotiation playbooks cluster renders through
     // Dioxus — the sortable listing plus the create and edit-positions forms.
-    // `POST /lawyer/playbooks` (create) and `POST /lawyer/playbooks/{id}` (update)
+    // `POST /app/admin/playbooks` (create) and `POST /app/admin/playbooks/{id}` (update)
     // stay on `admin_playbooks`; axum merges the same-path methods. Both now
     // redirect a refusal back to the form with an `?error=` flash and the
     // rejected positions text instead of re-rendering inline.
@@ -1291,7 +1291,7 @@ pub fn bootstrap(
         state.auth.clone(),
     );
     // #956 Phase 4: the cron-schedule reference renders through Dioxus at
-    // `/lawyer/schedules`. Each row's "Run now" is a native CSRF-carrying `POST`
+    // `/app/admin/schedules`. Each row's "Run now" is a native CSRF-carrying `POST`
     // to `cron_schedules`, which redirects back here with a `?notice=` flash —
     // already post/redirect/get, so nothing about the write path changes.
     let dioxus_schedules = dioxus_app::csrf_page_router(
@@ -1303,7 +1303,7 @@ pub fn bootstrap(
         state.auth.clone(),
     );
     // #956 Phase 4: the visitor-analytics dashboard renders through Dioxus at
-    // `/admin/analytics`. Read-only, so it rides the plain listing router; the
+    // `/app/admin/analytics`. Read-only, so it rides the plain listing router; the
     // admin-only gate lives in the loader, which commits a real 403.
     let dioxus_analytics = dioxus_app::admin_listing_router(
         dioxus_app::ADMIN_ANALYTICS_PATH,
@@ -1315,7 +1315,7 @@ pub fn bootstrap(
     );
     // #641 Phase 3 (admin cluster): the admin "add person" form renders through
     // Dioxus — an admin-only create form on the shared FormCard + CSRF page
-    // router. It posts to the native `POST /admin/people` create handler.
+    // router. It posts to the native `POST /app/admin/people` create handler.
     let dioxus_admin_people_new = dioxus_app::csrf_page_router(
         dioxus_app::ADMIN_PEOPLE_NEW_PATH,
         webapp::admin_people_new::AdminPeopleNew,
@@ -1413,8 +1413,8 @@ pub fn bootstrap(
         state.auth.clone(),
     );
     // #641 Phase 3 (admin cluster): the admin console people list renders through
-    // Dioxus at /admin/people — the sortable directory with a per-row
-    // Edit/Delete/Impersonate action column. `POST /admin/people` (create) stays
+    // Dioxus at /app/admin/people — the sortable directory with a per-row
+    // Edit/Delete/Impersonate action column. `POST /app/admin/people` (create) stays
     // on the router; axum merges the same-path methods.
     let dioxus_admin_people = dioxus_app::admin_people_router(
         state.bootstrap_owner_email.clone(),
@@ -1426,7 +1426,7 @@ pub fn bootstrap(
     // #641 Phase 3 (admin cluster): the admin console person show/edit page
     // renders through Dioxus — the prefilled edit form (name/email/role + the
     // read-only legal-name parts) plus the welcome/impersonate actions, mounted
-    // at `/admin/person/{id}` and its `/edit` alias. Its native-form update,
+    // at `/app/admin/people/{id}` and its `/edit` alias. Its native-form update,
     // welcome, and impersonate actions post to the admin router; axum merges
     // the same-path methods.
     let dioxus_admin_person_show = dioxus_app::admin_person_show_router(
@@ -1479,7 +1479,7 @@ pub fn bootstrap(
         // ENG-221: the Owner/Admin matter directory at `/app/admin/projects` —
         // every matter's code, name, status, and accountable lawyer, reached
         // without a participation row on any of them. Sortable, so it rides the
-        // same seam `/admin/people` and `/admin/analytics` do; the admin-tier
+        // same seam `/app/admin/people` and `/app/admin/analytics` do; the admin-tier
         // gate lives in the loader, which commits a real 403.
         dioxus_app::sortable_admin_listing_router(
             dioxus_app::ADMIN_MATTER_DIRECTORY_PATH,
@@ -1593,7 +1593,7 @@ pub fn bootstrap(
     // embedded Rego policy layers.
     for dioxus_router in [
         // The lawyer entity-types directory (#641 Phase 3) renders through
-        // Dioxus at `/lawyer/entity-types`, replacing the read view.
+        // Dioxus at `/app/admin/entity-types`, replacing the read view.
         dioxus_entity_types,
         dioxus_expunge_queue,
         dioxus_expunge_document,
@@ -1606,8 +1606,8 @@ pub fn bootstrap(
         dioxus_entity_edit,
         dioxus_entity_list,
         // The contract-negotiation playbooks cluster (#956 Phase 4) renders
-        // through Dioxus at `/lawyer/playbooks`, `/lawyer/playbooks/new`, and
-        // `/lawyer/playbooks/{id}/edit`; the two write `POST`s stay on
+        // through Dioxus at `/app/admin/playbooks`, `/app/admin/playbooks/new`, and
+        // `/app/admin/playbooks/{id}/edit`; the two write `POST`s stay on
         // `admin_playbooks`, which axum merges onto the same paths.
         // The lawyer workbench (#956 Phase 4) renders through Dioxus at `/lawyer`,
         // replacing the dashboard.
@@ -1616,8 +1616,8 @@ pub fn bootstrap(
         dioxus_playbook_new,
         dioxus_playbook_edit,
         // The cron-schedule reference and the visitor-analytics dashboard
-        // (#956 Phase 4) render through Dioxus at `/lawyer/schedules` and
-        // `/admin/analytics`; the manual-run `POST`s stay on `cron_schedules`.
+        // (#956 Phase 4) render through Dioxus at `/app/admin/schedules` and
+        // `/app/admin/analytics`; the manual-run `POST`s stay on `cron_schedules`.
         dioxus_schedules,
         dioxus_analytics,
         dioxus_admin_people,
@@ -2070,7 +2070,6 @@ pub const RESERVED_PATH_PREFIXES: &[&str] = &[
     "/dioxus-demo",
     "/app",
     "/lawyer",
-    "/admin",
     "/auth",
     "/mcp",
     "/docs",

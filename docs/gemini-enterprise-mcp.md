@@ -268,7 +268,7 @@ chat ran `aida_create_person` end-to-end and the row landed in the store.
 
    > Add a person to the CRM: Test User, test+verify@neonlaw.com.
 
-4. Refresh `https://www.your-domain.example/admin/people` — the new row should appear with the timestamp
+4. Refresh `https://www.your-domain.example/app/admin/people` — the new row should appear with the timestamp
    matching the chat call. That surface is Owner/Admin-only, so sign in as one to read it back.
 
 If you want a *purpose-built* agent (custom instructions, model, or workflow) on top of the data store, your Gemini

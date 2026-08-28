@@ -207,8 +207,8 @@ fn audit_urls(declared: &[&str]) -> Vec<String> {
 
 /// One representative of each portal/lawyer page archetype.
 ///
-/// Sampled rather than enumerated, per the scoping note above: `/lawyer/entities`
-/// and `/lawyer/addresses` are the same listing component over different rows,
+/// Sampled rather than enumerated, per the scoping note above: `/app/admin/entities`
+/// and `/app/admin/addresses` are the same listing component over different rows,
 /// and the component itself is audited at `/design`. What a route adds beyond
 /// its components is its *composition* — landmark nesting, heading order, the
 /// page's own controls — so one route per archetype is what earns its runtime
@@ -228,9 +228,9 @@ const PORTAL_ARCHETYPE_ROUTES: &[&str] = &[
     "/app/projects",
     // A sortable listing with row actions — a different archetype from the
     // fixed-order listings above.
-    "/lawyer/playbooks",
+    "/app/admin/playbooks",
     // A person detail page: a read view rather than a list or a form.
-    "/lawyer/entities",
+    "/app/admin/entities",
 ];
 
 /// The lawyer create forms, scoped to the form body.
@@ -239,19 +239,19 @@ const PORTAL_ARCHETYPE_ROUTES: &[&str] = &[
 /// `FormCard` *instance* — a different field set, and a field set is data the
 /// gallery's demo form does not carry.
 const LAWYER_FORM_ROUTES: &[&str] = &[
-    "/lawyer/entities/new",
+    "/app/admin/entities/new",
     "/app/projects/new",
     "/lawyer/retainers/new",
     // Beyond the four this suite has gated since #120: the playbook create
     // form, which is the only one carrying a textarea.
     //
-    // `/admin/people/new` is not here for the same reason `/app/admin` is not
+    // `/app/admin/people/new` is not here for the same reason `/app/admin` is not
     // an archetype: it is admin-only, and the fixture is `lawyer`, so auditing
     // it would silently audit the 403 instead of the form. Since ENG-304 deleted
     // the `/lawyer/people/new` mirror, that is the whole people-form surface, so
     // this suite no longer audits one — the four below share the same
     // `FormCard`, and the component is audited at `/design`.
-    "/lawyer/playbooks/new",
+    "/app/admin/playbooks/new",
 ];
 
 /// What one axe run found: decided failures, and the checks it could not

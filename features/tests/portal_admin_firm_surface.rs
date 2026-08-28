@@ -171,7 +171,7 @@ async fn post_impersonate(world: &mut FirmWorld, actor_email: String, target_ema
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/admin/person/{target_id}/impersonate"))
+                .uri(format!("/app/admin/people/{target_id}/impersonate"))
                 .header("cookie", cookie)
                 .header("content-type", "application/x-www-form-urlencoded")
                 .body(Body::from("_csrf=test-csrf"))

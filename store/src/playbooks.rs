@@ -205,7 +205,7 @@ pub async fn for_entity(db: &SurrealDb, entity_id: Uuid) -> Result<Vec<Playbook>
     Ok(many(response)?)
 }
 
-/// Every playbook, name order — the lawyer `/lawyer/playbooks` listing,
+/// Every playbook, name order — the lawyer `/app/admin/playbooks` listing,
 /// which is not scoped to one Entity.
 ///
 /// # Errors

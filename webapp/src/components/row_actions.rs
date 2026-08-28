@@ -119,8 +119,8 @@ mod tests {
             rsx! {
                 RowActions {
                     view_href: "/app/projects/42".to_string(),
-                    edit_href: "/admin/person/42/edit".to_string(),
-                    delete_action: "/admin/person/42/delete".to_string(),
+                    edit_href: "/app/admin/people/42/edit".to_string(),
+                    delete_action: "/app/admin/people/42/delete".to_string(),
                     csrf_token: "TOK".to_string(),
                 }
             }
@@ -134,7 +134,7 @@ mod tests {
             "view link: {html}"
         );
         assert!(
-            html.contains(r#"href="/admin/person/42/edit""#),
+            html.contains(r#"href="/app/admin/people/42/edit""#),
             "edit link: {html}"
         );
         assert!(html.contains(r#"data-action="view""#));
@@ -147,14 +147,14 @@ mod tests {
         fn app() -> Element {
             rsx! {
                 RowActions {
-                    delete_action: "/admin/person/42/delete".to_string(),
+                    delete_action: "/app/admin/people/42/delete".to_string(),
                     csrf_token: "SESSION_TOKEN".to_string(),
                 }
             }
         }
         let html = ssr(app);
         assert!(html.contains(r#"method="post""#), "native POST: {html}");
-        assert!(html.contains(r#"action="/admin/person/42/delete""#));
+        assert!(html.contains(r#"action="/app/admin/people/42/delete""#));
         assert!(
             html.contains(r#"name="_csrf""#) && html.contains("SESSION_TOKEN"),
             "csrf: {html}"
@@ -170,7 +170,7 @@ mod tests {
     #[test]
     fn delete_method_defaults_to_post_and_is_overridable_for_a_preview() {
         fn production() -> Element {
-            rsx! { RowActions { delete_action: "/admin/person/42/delete".to_string() } }
+            rsx! { RowActions { delete_action: "/app/admin/people/42/delete".to_string() } }
         }
         // A preview can submit with GET when it must not issue a real mutation.
         fn preview() -> Element {

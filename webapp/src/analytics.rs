@@ -15,7 +15,7 @@ use crate::components::{Column, DataTable, SortState};
 use crate::people::ViewerRole;
 
 /// The page's own path.
-pub const ANALYTICS_PATH: &str = "/admin/analytics";
+pub const ANALYTICS_PATH: &str = "/app/admin/analytics";
 
 /// Visits in one time bucket — a day (`2026-07-09`) or a month (`2026-07`).
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -193,7 +193,7 @@ fn analytics_body(view: &AnalyticsView) -> Element {
                 a { class: "nav-link", href: "/lawyer", "Lawyer" }
             }
             if view.role.is_admin_tier() {
-                a { class: "nav-link", href: "/admin", "Admin" }
+                a { class: "nav-link", href: "/app/admin", "Admin" }
             }
             a { class: "nav-link", href: "/auth/logout", "Sign out" }
         }

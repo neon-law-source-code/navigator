@@ -407,13 +407,13 @@ fn the_collector_finds_the_real_router() {
          broken and a retired path could hide behind one"
     );
 
-    let literal = sites
-        .iter()
-        .any(|s| s.kind == SiteKind::Registration && s.value == "/admin/person/{id}/impersonate");
+    let literal = sites.iter().any(|s| {
+        s.kind == SiteKind::Registration && s.value == "/app/admin/people/{id}/impersonate"
+    });
     assert!(
         literal,
         "the literal-argument shape stopped being extracted (expected \
-         `/admin/person/{{id}}/impersonate` from portal/src/admin.rs)"
+         `/app/admin/people/{{id}}/impersonate` from portal/src/admin.rs)"
     );
 
     let via = sites

@@ -478,7 +478,7 @@ pub fn LawyerProjectDetail() -> Element {
                     " · Entity: {entity_disp}"
                     if let Some(entity_id) = view.entity_id.as_ref() {
                         " · "
-                        a { class: "nav-link", href: "/lawyer/entities/{entity_id}/edit", "Edit entity" }
+                        a { class: "nav-link", href: "/app/admin/entities/{entity_id}/edit", "Edit entity" }
                     }
                     " · Lawyer DRI: {lawyer_dri_disp}"
                     " · Client DRI: {client_dri_disp}"

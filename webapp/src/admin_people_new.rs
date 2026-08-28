@@ -1,9 +1,9 @@
 //! The "add person" create form as a Dioxus component (#641 Phase 3, admin
-//! cluster) — the admin console's `/admin/people/new`, Owner/Admin-only.
+//! cluster) — the admin console's `/app/admin/people/new`, Owner/Admin-only.
 //!
 //! The successor to the `admin_people_new` GET render. It reads the injected
 //! CSRF token and any `?error=` flash, and renders the shared
-//! [`crate::components::FormCard`] as a native `POST /admin/people` — a route
+//! [`crate::components::FormCard`] as a native `POST /app/admin/people` — a route
 //! that wraps the person create command (the form posted to the REST
 //! `/app/api/people` over HTMX; the Dioxus form uses a plain form, no
 //! JavaScript). On a rejected create the handler redirects back here with
@@ -29,7 +29,7 @@ pub struct PeopleNewQuery {
 
 /// The route the native create form posts to, and the list path Cancel returns
 /// to. One surface, so one path.
-pub const CREATE_PATH: &str = "/admin/people";
+pub const CREATE_PATH: &str = "/app/admin/people";
 
 /// The rendered "add person" form: the session CSRF token, an optional error
 /// flash, and the viewer's tier.
@@ -66,7 +66,7 @@ async fn people_new_context() -> (String, Option<String>) {
     (csrf_token, error)
 }
 
-/// Load the "add person" form (`/admin/people/new`): refuse non-admin-tier
+/// Load the "add person" form (`/app/admin/people/new`): refuse non-admin-tier
 /// callers. The role select is unlocked, because `require_admin` admits only
 /// Owner and Admin and both may set a role.
 #[server]
@@ -88,7 +88,7 @@ pub fn AdminPeopleNew() -> Element {
     render_people_new(&resource)
 }
 
-/// Render the resolved "add person" form: a native `POST /admin/people`
+/// Render the resolved "add person" form: a native `POST /app/admin/people`
 /// carrying the CSRF token, with the name / email / role controls.
 fn render_people_new(resource: &Resource<Result<PeopleNewView, ServerFnError>>) -> Element {
     let view = match &*resource.read() {

@@ -1,4 +1,4 @@
-Feature: Admin re-sends welcome email from /admin/people
+Feature: Admin re-sends welcome email from /app/admin/people
 
   The firm sometimes needs to re-fire a welcome email — the OAuth callback
   fires one on first signup, but a user who never opened that one (or

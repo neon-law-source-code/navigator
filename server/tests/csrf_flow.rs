@@ -54,7 +54,7 @@ fn fresh_session_cookie(s: &SessionStore) -> (String, String) {
     (format!("{SESSION_COOKIE_NAME}={cookie_value}"), token)
 }
 
-/// A form-encoded `/lawyer/entities` create body that redirects on
+/// A form-encoded `/app/admin/entities` create body that redirects on
 /// success — the canonical classic-form (`CsrfMode::Form`) vector now
 /// that People mutations moved to the JSON `/app/api/*` surface. Seeds the
 /// entity-type FK the insert needs, plus a real jurisdiction row in the
@@ -98,7 +98,7 @@ async fn admin_form_renders_csrf_hidden_input_when_session_present() {
     let resp = app
         .oneshot(
             Request::builder()
-                .uri("/admin/people/new")
+                .uri("/app/admin/people/new")
                 .header("cookie", cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -125,7 +125,7 @@ async fn admin_post_with_session_and_matching_csrf_redirects() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/lawyer/entities")
+                .uri("/app/admin/entities")
                 .header("content-type", "application/x-www-form-urlencoded")
                 .header("cookie", cookie)
                 .body(Body::from(form))
@@ -153,7 +153,7 @@ async fn admin_post_with_session_and_missing_csrf_returns_403() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/lawyer/entities")
+                .uri("/app/admin/entities")
                 .header("content-type", "application/x-www-form-urlencoded")
                 .header("cookie", cookie)
                 .body(Body::from("name=Csrf%20Co"))
@@ -178,7 +178,7 @@ async fn admin_post_with_session_and_wrong_csrf_returns_403() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/lawyer/entities")
+                .uri("/app/admin/entities")
                 .header("content-type", "application/x-www-form-urlencoded")
                 .header("cookie", cookie)
                 .body(Body::from("_csrf=NOT_THE_REAL_TOKEN&name=Csrf%20Co"))
@@ -203,7 +203,7 @@ async fn admin_post_without_session_passes_through_csrf_layer() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/lawyer/entities")
+                .uri("/app/admin/entities")
                 .header("content-type", "application/x-www-form-urlencoded")
                 .body(Body::from(form))
                 .unwrap(),
@@ -230,7 +230,7 @@ async fn admin_post_with_tampered_session_cookie_passes_through() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/lawyer/entities")
+                .uri("/app/admin/entities")
                 .header("content-type", "application/x-www-form-urlencoded")
                 .header(
                     "cookie",

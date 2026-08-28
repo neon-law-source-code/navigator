@@ -62,12 +62,12 @@ async fn lawyer_form_pages_render_the_session_csrf_token() {
     // Lawyer form pages reachable with the canonical seed. Each must render
     // the hidden `_csrf` field carrying the session token.
     let form_pages = [
-        "/lawyer/entities/new",
+        "/app/admin/entities/new",
         // The people create form is the admin console's since ENG-304; the
         // session above is an admin one, so it renders here.
-        "/admin/people/new",
+        "/app/admin/people/new",
         "/app/projects/new",
-        "/lawyer/playbooks/new",
+        "/app/admin/playbooks/new",
     ];
 
     for path in form_pages {

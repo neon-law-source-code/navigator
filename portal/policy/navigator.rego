@@ -137,10 +137,42 @@ allow if {
     is_clerk(input.session)
 }
 
-# /app/admin is Owner/Admin only, and needs no rule of its own: the route
-# bypass at the top of this policy is exactly that set. Spelled out here as a
-# deny-by-omission note rather than a rule, because adding an `is_lawyer` rule
-# for it would silently widen it to Lawyer.
+# /app/admin is Owner/Admin only at the hub, the matter directory
+# (`/app/admin/projects`), Person CRUD (`/app/admin/people`), and visitor
+# analytics. Those need no rule of their own: the route bypass at the top of
+# this policy is exactly that set. Spelled out here as a deny-by-omission note
+# rather than a rule, because a prefix `is_lawyer` grant for `/app/admin` would
+# silently widen the hub and the matter directory to Lawyer.
+#
+# Firm-administration listings that a Lawyer already reached under `/lawyer`
+# now live as named resources under `/app/admin`. The grant is the resource
+# segment, not the prefix, so `/app/admin/people` and `/app/admin/projects`
+# stay Owner/Admin. Letters and the email log are in the set so admission
+# matches the old `/lawyer` prefix; their handlers still require the admin
+# tier.
+admin_lawyer_resources := {
+	"letters",
+	"email-log",
+	"addresses",
+	"entities",
+	"entity-types",
+	"git-repositories",
+	"jurisdictions",
+	"mailrooms",
+	"playbooks",
+	"questions",
+	"templates",
+	"schedules",
+	"people.csv",
+}
+
+allow if {
+	input.path[0] == "app"
+	input.path[1] == "admin"
+	count(input.path) >= 3
+	admin_lawyer_resources[input.path[2]]
+	is_lawyer(input.session)
+}
 
 # /app/notations/:id/documents/:doc_id exposes reviewed notation
 # PDFs through the client lens. The handler resolves the notation to

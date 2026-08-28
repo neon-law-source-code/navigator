@@ -115,11 +115,11 @@ fn workshop_bootstrap_owner_guidance_matches_the_auth_and_admin_code() {
     }
 
     assert!(
-        section.contains("/admin/people"),
+        section.contains("/app/admin/people"),
         "DEPLOY.md sign-in section must name the admin people console",
     );
     assert!(
-        admin_rs.contains("/admin/people"),
+        admin_rs.contains("/app/admin/people"),
         "the workshop names an admin people route the application no longer mounts",
     );
     // Key on the sentence that makes the role-management claim, not on the

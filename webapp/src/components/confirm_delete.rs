@@ -77,8 +77,8 @@ mod tests {
                 ConfirmDelete {
                     title: "Delete person".to_string(),
                     message: "Delete libra@example.com? This cannot be undone.".to_string(),
-                    confirm_action: "/admin/person/42/delete".to_string(),
-                    cancel_href: "/admin/people".to_string(),
+                    confirm_action: "/app/admin/people/42/delete".to_string(),
+                    cancel_href: "/app/admin/people".to_string(),
                     csrf_token: "SESSION_TOKEN".to_string(),
                 }
             }
@@ -87,7 +87,7 @@ mod tests {
         assert!(html.contains("Delete libra@example.com?"), "{html}");
         assert!(html.contains(r#"method="post""#), "native POST: {html}");
         assert!(
-            html.contains(r#"action="/admin/person/42/delete""#),
+            html.contains(r#"action="/app/admin/people/42/delete""#),
             "{html}"
         );
         assert!(
@@ -130,8 +130,8 @@ mod tests {
             rsx! {
                 ConfirmDelete {
                     message: "Are you sure?".to_string(),
-                    confirm_action: "/admin/person/42/delete".to_string(),
-                    cancel_href: "/admin/people".to_string(),
+                    confirm_action: "/app/admin/people/42/delete".to_string(),
+                    cancel_href: "/app/admin/people".to_string(),
                 }
             }
         }

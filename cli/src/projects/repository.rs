@@ -9,6 +9,7 @@
 //! <organization>/<project-code>
 //! ├── .github/workflows/gate.yml
 //! ├── .github/workflows/publish.yml
+//! ├── .claude/skills/    # synced from Navigator via `sync-skills`
 //! ├── portal/            # React + Vite; the client's portal
 //! ├── templates/         # *.md notation blueprints
 //! ├── AGENTS.md
@@ -113,6 +114,13 @@ const ALLOWED_ROOTS: &[&str] = &[
     SEED_DIRECTORY,
     TEMPLATE_DIRECTORY,
     "tests",
+    // Navigator's own agent skills, synced in by `sync_skills` from this
+    // binary's compiled-in copies (see [`SYNCED_SKILLS`]). Refusing it would
+    // make the layout unsatisfiable for the thing ENG-383 exists to let a
+    // Project repository carry: a Project's portal is client-facing legal
+    // copy, and the skills synced here are the review councils that critique
+    // exactly that.
+    ".claude",
 ];
 const FORBIDDEN_COMPONENTS: &[&str] = &[
     "answers",
@@ -145,6 +153,29 @@ const VITE_LOCKFILES: &[&str] = &[
     "pnpm-lock.yaml",
     "yarn.lock",
     "bun.lockb",
+];
+
+/// The skill catalog synced into every Project repository, embedded at build
+/// time from Navigator's own canonical `.agents/skills/` — never read from a
+/// live checkout at runtime, so a downloaded release binary can write it with
+/// no wider clone. Kept intentionally small: every skill synced here is one
+/// to keep true in every repository that carries it. A Project's portal is
+/// client-facing legal copy — an engagement summary, a documents tab, a
+/// matter timeline — so the two review councils that critique exactly that,
+/// plus the general engineering council, are the initial set.
+const SYNCED_SKILLS: &[(&str, &str)] = &[
+    (
+        "council",
+        include_str!("../../../.agents/skills/council/SKILL.md"),
+    ),
+    (
+        "legal-council",
+        include_str!("../../../.agents/skills/legal-council/SKILL.md"),
+    ),
+    (
+        "client-council",
+        include_str!("../../../.agents/skills/client-council/SKILL.md"),
+    ),
 ];
 
 #[derive(Debug)]
@@ -236,6 +267,33 @@ pub fn scaffold(root: &Path, project_code: &str, action_version: &str) -> ExitCo
     ExitCode::SUCCESS
 }
 
+/// Write Navigator's canonical skill catalog into a Project repository, from
+/// this binary's own compiled-in copies (see [`SYNCED_SKILLS`]).
+///
+/// Unlike [`scaffold`], which leaves an existing file alone, this always
+/// overwrites: the point of syncing is that the copy in the repository stays
+/// identical to the canonical one, not that it is merely present. A hand
+/// edit is exactly the drift [`validate`] is meant to catch, and catching it
+/// is only useful if re-running this command is also how an operator fixes
+/// it.
+pub fn sync_skills(root: &Path) -> ExitCode {
+    for (name, contents) in SYNCED_SKILLS {
+        let path = root.join(".claude/skills").join(name).join("SKILL.md");
+        if let Some(parent) = path.parent() {
+            if let Err(error) = fs::create_dir_all(parent) {
+                eprintln!("navigator: create {}: {error}", parent.display());
+                return ExitCode::from(2);
+            }
+        }
+        if let Err(error) = fs::write(&path, contents) {
+            eprintln!("navigator: write {}: {error}", path.display());
+            return ExitCode::from(2);
+        }
+        println!("synced    {}", path.display());
+    }
+    ExitCode::SUCCESS
+}
+
 /// Validate one Project's repository.
 ///
 /// Templates are intentionally passed to the rule engine under bare filenames:
@@ -283,6 +341,7 @@ pub fn validate(root: &Path, repository: Option<&str>) -> ExitCode {
     let has_portal = root.join(PORTAL_DIRECTORY).is_dir();
 
     validate_layout(root, &mut errors);
+    validate_skills(root, &mut errors);
     let templates = if has_templates {
         validate_templates(root, &mut errors, &mut warnings)
     } else {
@@ -420,6 +479,34 @@ fn validate_layout(root: &Path, errors: &mut Vec<Finding>) {
                     "legal documents and rendered output must not be committed",
                 ));
             }
+        }
+    }
+}
+
+/// A synced skill whose content has drifted from the canonical copy.
+///
+/// Freshness is judged against the copy compiled into *this* binary, not a
+/// live `.agents/skills` clone or a fetch of the pinned release. That mirrors
+/// [`validate_workflow`]'s own pin check exactly (see ENG-356): CI runs the
+/// validate action at the version the gate pins, so the binary performing
+/// this comparison already *is* "the canonical copy at the pinned CLI
+/// version" in the one place this check runs for real. A skill that has not
+/// been synced yet is not a finding — sync is opt-in per repository, the same
+/// policy `templates/` and `portal/` get: absent means "hasn't adopted this,"
+/// not "broken."
+fn validate_skills(root: &Path, errors: &mut Vec<Finding>) {
+    for (name, canonical) in SYNCED_SKILLS {
+        let path = root.join(".claude/skills").join(name).join("SKILL.md");
+        match fs::read_to_string(&path) {
+            Ok(contents) if contents == *canonical => {}
+            Ok(_) => errors.push(Finding::at(
+                &path,
+                format!(
+                    "synced skill `{name}` has drifted from the canonical copy; \
+                     run `navigator projects repository sync-skills`"
+                ),
+            )),
+            Err(_) => {}
         }
     }
 }

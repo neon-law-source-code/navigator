@@ -206,3 +206,90 @@ fn the_template_repository_command_is_gone() {
         .assert()
         .failure();
 }
+
+fn sync_skills(dir: &Path) -> assert_cmd::assert::Assert {
+    navigator()
+        .args(["projects", "repository", "sync-skills"])
+        .arg(dir)
+        .assert()
+}
+
+/// ENG-383: a Project repository can carry `.claude/skills/` without the
+/// layout gate refusing it as an unexpected root, and `sync-skills` is what
+/// populates it from Navigator's own compiled-in copies.
+#[test]
+fn sync_skills_writes_the_canonical_catalog_and_validate_accepts_it() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "example-project").success();
+
+    sync_skills(dir.path())
+        .success()
+        .stdout(str::contains("synced"));
+
+    for skill in ["council", "legal-council", "client-council"] {
+        let path = dir
+            .path()
+            .join(".claude/skills")
+            .join(skill)
+            .join("SKILL.md");
+        assert!(path.is_file(), "expected {} to exist", path.display());
+        assert!(!fs::read_to_string(&path).unwrap().is_empty());
+    }
+
+    validate(dir.path(), "example-project")
+        .success()
+        .stdout(str::contains("0 error(s)"));
+}
+
+/// `sync-skills` overwrites rather than leaving an existing file alone (unlike
+/// `scaffold`) — the whole point is that the repository's copy stays
+/// identical to the canonical one, so re-running it is also how an operator
+/// clears the drift `validate` reports.
+#[test]
+fn sync_skills_overwrites_a_hand_edited_copy() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "example-project").success();
+    sync_skills(dir.path()).success();
+
+    let path = dir.path().join(".claude/skills/council/SKILL.md");
+    let canonical = fs::read_to_string(&path).unwrap();
+    fs::write(&path, "hand-edited drift").unwrap();
+
+    sync_skills(dir.path()).success();
+    assert_eq!(fs::read_to_string(&path).unwrap(), canonical);
+}
+
+/// A synced skill that has drifted from the canonical copy fails `validate`
+/// and names the file, so a hand edit or a stale sync is caught rather than
+/// silently diverging across 19 repositories.
+#[test]
+fn validate_fails_on_a_drifted_synced_skill() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "example-project").success();
+    sync_skills(dir.path()).success();
+
+    fs::write(
+        dir.path().join(".claude/skills/council/SKILL.md"),
+        "drifted content",
+    )
+    .unwrap();
+
+    validate(dir.path(), "example-project")
+        .failure()
+        .code(1)
+        .stderr(str::contains("synced skill `council` has drifted"))
+        .stderr(str::contains("sync-skills"));
+}
+
+/// A repository that has never synced skills at all is not failed for it:
+/// syncing is opt-in per repository, the same policy `templates/`/`portal/`
+/// get.
+#[test]
+fn validate_passes_when_no_skills_have_been_synced() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "example-project").success();
+
+    validate(dir.path(), "example-project")
+        .success()
+        .stdout(str::contains("0 error(s)"));
+}

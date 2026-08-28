@@ -199,7 +199,7 @@ fn projects_help_lists_the_project_workspace_verbs() {
     );
     assert_eq!(
         command_names(&help(&["projects", "repository", "--help"])),
-        vec!["scaffold", "validate", "help"]
+        vec!["scaffold", "validate", "sync-skills", "help"]
     );
     assert_eq!(
         command_names(&help(&["projects", "surfaces", "--help"])),

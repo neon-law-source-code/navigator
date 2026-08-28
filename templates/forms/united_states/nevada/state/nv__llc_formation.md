@@ -1,6 +1,6 @@
 ---
 kind: filing
-title: Neon Law Nest — Nevada Entity Formation
+title: Nevada LLC Formation
 respondent_type: person_and_entity
 code: nv__llc_formation
 jurisdiction: NV

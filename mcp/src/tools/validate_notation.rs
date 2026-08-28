@@ -192,7 +192,7 @@ mod tests {
 kind: trust\n\
 title: Trust\n\
 respondent_type: entity\n\
-code: trusts__nevada\n\
+code: sample__trust\n\
 confidential: false\n\
 questionnaire:\n  \
   BEGIN:\n    \

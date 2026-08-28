@@ -1409,7 +1409,7 @@ pub fn bootstrap(
     );
     // #641 Phase 3: the comment-only client document-review page renders through
     // Dioxus at /app/projects/{project_code}/review/{doc_id}; the comment data API
-    // (`…/comments` GET/POST, driven by the northstar-review custom element)
+    // (`…/comments` GET/POST, driven by the document-review custom element)
     // stays on the Axum data API.
     let dioxus_review = dioxus_app::review_router(
         state.surreal.clone(),

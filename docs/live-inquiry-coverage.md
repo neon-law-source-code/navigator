@@ -1,6 +1,6 @@
 # Live Inquiry Coverage
 
-Live Inquiry Coverage is the generic shape behind the proposed Northstar live-sitting helper. The common dock point is
+Live Inquiry Coverage is the generic shape behind a live-sitting helper. The common dock point is
 the markdown Template that already creates a Notation: its frontmatter declares the `questionnaire:` and `workflow:`
 graphs, the LSP/CLI validate that structure, and a running Notation binds those declarations to a Project. Live coverage
 projects the Template's declared Questions into an Inquiry Set, listens to a transcript as it develops, and shows which
@@ -10,23 +10,17 @@ The model fits depositions, witness interviews, intake interviews, and any other
 
 ## Feature gating
 
-<<<<<<< HEAD
 Today, the Google Speech-to-Text provider (`cloud/src/speech.rs`) compiles in unconditionally as part of the `cloud`
 crate — there is no Cargo feature gate around it, and the `cli -- template transcribe` probe described below already
-calls it directly. The offline-first lane ([`northstar-estate-flow.md`](northstar-estate-flow.md)) remains the shipped
-default for Northstar; nothing routes live audio into a Northstar sitting yet.
-=======
-Live transcription is **off by default and gated behind a feature flag**. Live coverage is an opt-in adjunct a
-deployment turns on deliberately. The flag has two layers so the speech-to-text and coverage code is not even loaded
-until it is enabled:
->>>>>>> 732a12e (Slim the notation catalog to public forms plus sample letters.)
+calls it directly. The offline-first transcript-upload lane remains the shipped default; nothing routes live audio into
+a sitting yet.
 
-A live Northstar/`web` integration is proposed to ship **off by default and gated behind a runtime flag** rather than a
+A live `web` integration is proposed to ship **off by default and gated behind a runtime flag** rather than a
 compile-time one: a per-deployment flag would control whether the live-session routes and UI are exposed, and a
 deployment that has not turned it on would behave exactly as today — offline upload only. Because the runtime flag would
-be the only gate, nothing about a default Northstar sitting changes ("the sitting's gravity is the product, not a laptop
-running captions") unless a deployment explicitly opts into live coverage, and live coverage is a lawyer-side tool —
-most naturally a deposition, witness, or intake interview — rather than captions running during a solemn estate sitting.
+be the only gate, nothing about a default sitting changes unless a deployment explicitly opts into live coverage, and
+live coverage is a lawyer-side tool — most naturally a deposition, witness, or intake interview — rather than captions
+running during a solemn estate sitting.
 
 ## Language scope
 
@@ -40,7 +34,7 @@ silent assumption to discover at build time.
 - **Inquiry** — one thing the session should answer. It is broader than a notation `Question`: a Template question can
   become an Inquiry, but a deposition outline item or intake checklist item can also be an Inquiry.
 - **Inquiry Set** — an ordered group of Inquiries used for one class of session.
-- **Live Inquiry Session** — one transcript-bearing event on a Project, such as a Northstar sitting or deposition.
+- **Live Inquiry Session** — one transcript-bearing event on a Project, such as an estate sitting or deposition.
 - **Transcript Segment** — one append-only chunk of transcript text from a provider or manual capture surface.
 - **Coverage Finding** — the current model/lawyer assessment for one Inquiry in one Live Inquiry Session.
 - **Evidence Segment** — the segment reference that supports a Coverage Finding.
@@ -330,7 +324,7 @@ questionnaire:
     _: executor_name
 ```
 
-For Northstar, each questionnaire `Question` becomes an Inquiry for the live sitting. The Inquiry Set is Project-scoped
+Each questionnaire `Question` becomes an Inquiry for the live sitting. The Inquiry Set is Project-scoped
 when lawyers customize it for one client, and workspace-shared when it is the default for a Template.
 
 A later Template extension can make the mapping explicit without replacing the questionnaire:
@@ -338,7 +332,7 @@ A later Template extension can make the mapping explicit without replacing the q
 ```yaml
 live_inquiry:
   mode: derive_from_questionnaire
-  session_label: Northstar sitting
+  session_label: Estate sitting
   answer_policy: lawyer_confirms
   respondent_speaker_role: client
   follow_up_style: conversational
@@ -408,9 +402,9 @@ surfaces.
 
 ## Acceptance criteria for the first implementation
 
-- The live `web` integration is off unless its proposed runtime flag is enabled; with the flag off, Northstar behaves
-  exactly as today — offline upload only.
-- Lawyers can start a Live Inquiry Session from a Northstar Project.
+- The live `web` integration is off unless its proposed runtime flag is enabled; with the flag off, the matter
+  behaves exactly as today — offline upload only.
+- Lawyers can start a Live Inquiry Session from a Project.
 - The session is seeded by normalizing the estate Template questionnaire; no new Template grammar is required for v1.
 - Transcript, coverage, and Inquiry prompts are English only for v1.
 - Final transcript segments persist immediately.

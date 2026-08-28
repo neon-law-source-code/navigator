@@ -231,9 +231,9 @@ today:
 | `client_review` | State-only | Respondent approves attorney-reviewed drafts on the Phase A review surface. |
 | `reask__*` | State-only | Re-collects flagged answers after `changes_requested`, then loops back to `lawyer_review`. |
 | `document_intake__<slug>` | Implemented | Worker files a provided artifact (text/file/link) via `ingest_bytes`. |
-| `extract__*` | Seam | Northstar: estate inputs mined from the transcript by AIDA/Gemini; advanced on completion. |
+| `extract__*` | Seam | Estate inputs mined from the transcript by AIDA/Gemini; advanced on completion. |
 | `analysis__*` | Seam | Contract review: web (Vertex Gemini) flags playbook deviations; System wait state. |
-| `document_drafts__*` | Implemented | Northstar: web renders drafts into review_documents rows (System wait state). |
+| `document_drafts__*` | Implemented | Web renders drafts into review_documents rows (System wait state). |
 | `generate_pdf__retainer_pdf` | Implemented | Worker-dispatched: render + storage persist wrapped in `ctx.run`. |
 | `sent_for_signature__pending` | Implemented | Wait state; e-signature webhook signals `signature_received` → END. |
 | `notarization`, `_signature` | State-only | Trust/will signing states; a human act, no worker side effect. |

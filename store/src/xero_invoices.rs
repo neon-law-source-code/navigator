@@ -356,7 +356,7 @@ mod tests {
     #[tokio::test]
     async fn upsert_inserts_one_row() {
         let surreal = crate::surreal::test_support::mem().await;
-        let project_id = seed_project(&surreal, "northstar").await;
+        let project_id = seed_project(&surreal, "sample-matter").await;
 
         let row = upsert(&surreal, &input(project_id, "xero-1", 333_300))
             .await
@@ -375,7 +375,7 @@ mod tests {
     #[tokio::test]
     async fn project_unique_index_refuses_a_second_invoice() {
         let surreal = crate::surreal::test_support::mem().await;
-        let project_id = seed_project(&surreal, "northstar").await;
+        let project_id = seed_project(&surreal, "sample-matter").await;
         upsert(&surreal, &input(project_id, "xero-1", 333_300))
             .await
             .unwrap();
@@ -399,7 +399,7 @@ mod tests {
     #[tokio::test]
     async fn upsert_is_idempotent_on_project_id() {
         let surreal = crate::surreal::test_support::mem().await;
-        let project_id = seed_project(&surreal, "northstar").await;
+        let project_id = seed_project(&surreal, "sample-matter").await;
 
         upsert(&surreal, &input(project_id, "xero-1", 333_300))
             .await
@@ -420,7 +420,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn concurrent_upserts_for_one_project_settle_on_one_row() {
         let surreal = crate::surreal::test_support::mem().await;
-        let project_id = seed_project(&surreal, "northstar").await;
+        let project_id = seed_project(&surreal, "sample-matter").await;
         let input = input(project_id, "xero-1", 333_300);
 
         let racers: Vec<_> = (0..8)
@@ -450,7 +450,7 @@ mod tests {
     #[tokio::test]
     async fn upsert_preserves_reconciled_amount_paid() {
         let surreal = crate::surreal::test_support::mem().await;
-        let project_id = seed_project(&surreal, "northstar").await;
+        let project_id = seed_project(&surreal, "sample-matter").await;
 
         upsert(&surreal, &input(project_id, "xero-1", 333_300))
             .await
@@ -468,7 +468,7 @@ mod tests {
     #[tokio::test]
     async fn record_reconcile_updates_status_and_paid() {
         let surreal = crate::surreal::test_support::mem().await;
-        let project_id = seed_project(&surreal, "northstar").await;
+        let project_id = seed_project(&surreal, "sample-matter").await;
         upsert(&surreal, &input(project_id, "xero-1", 333_300))
             .await
             .unwrap();

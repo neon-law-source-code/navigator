@@ -1,4 +1,4 @@
-//! Northstar estate pipeline — transcript → answers → review drafts.
+//! Estate pipeline — transcript → answers → review drafts.
 //!
 //! After the recorded sitting's transcript is filed
 //! (`document_intake__transcript`), the matter has to turn that
@@ -40,19 +40,19 @@ struct Instrument {
 
 const ESTATE_INSTRUMENTS: &[Instrument] = &[
     Instrument {
-        template_code: "northstar__will",
+        template_code: "instrument__will",
         kind: "will",
     },
     Instrument {
-        template_code: "northstar__trust",
+        template_code: "instrument__trust",
         kind: "trust",
     },
     Instrument {
-        template_code: "northstar__directive_health",
+        template_code: "instrument__directive_health",
         kind: "directive_health",
     },
     Instrument {
-        template_code: "northstar__directive_financial",
+        template_code: "instrument__directive_financial",
         kind: "directive_financial",
     },
 ];
@@ -74,7 +74,7 @@ pub trait EstateExtractor: Send + Sync {
 pub struct StubEstateExtractor;
 
 /// `(state_name, &[label aliases])`. The first label found wins. The state
-/// name matches the typed glossary roles in the northstar instrument bodies
+/// name matches the typed glossary roles in the estate instrument bodies
 /// and disambiguates the several roles that share one registry question.
 const STUB_LABELS: &[(&str, &[&str])] = &[
     (
@@ -321,7 +321,7 @@ pub async fn drive_estate_pipeline(
 }
 
 /// Find the project's transcript-driven onboarding notation — the
-/// Northstar estate matter. Data-driven, never a hard-coded template
+/// transcript-driven estate matter. Data-driven, never a hard-coded template
 /// code: a notation qualifies when its bound template's workflow has a
 /// `transcript_uploaded` edge out of `BEGIN` (the signal the creation
 /// flow, the transcript handler, and the matter page all key off).

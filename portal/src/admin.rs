@@ -341,7 +341,7 @@ fn register_firm_matter_routes(r: Router<AdminState>, prefix: &str) -> Router<Ad
             &format!("{prefix}/notations/{{id}}/reask"),
             post(crate::retainer_walk::reask_post),
         )
-        // Northstar: the attorney releases the generated estate drafts to
+        // The attorney releases the generated estate drafts to
         // the client — advances lawyer_review → client_review and flips each
         // draft to pending_review (visible on the Phase A review surface).
         .route(
@@ -529,7 +529,7 @@ fn register_project_routes(r: Router<AdminState>) -> Router<AdminState> {
                 crate::project_documents::MAX_BATCH_BYTES,
             )),
         )
-        // Northstar: file a sitting's transcript into an estate matter
+        // File a sitting's transcript into an estate matter
         // (text / file / link) — threads the reusable document-intake
         // step through the workflow's `transcript_uploaded` signal.
         .route(
@@ -578,14 +578,14 @@ fn register_project_routes(r: Router<AdminState>) -> Router<AdminState> {
             &format!("{prefix}/{{project_code}}/documents/{{doc_id}}/request-deletion"),
             post(crate::expunge_request_route::client_request),
         )
-        // Northstar: the client approves their estate plan, firing
+        // The client approves their estate plan, firing
         // `client_approved` (client_review -> sent_for_signature__pending)
         // and flipping every released draft to `approved`.
         .route(
             &format!("{prefix}/{{project_code}}/approve-plan"),
             post(crate::estate::approve_plan_post),
         )
-        // Comment-only client review surface (Northstar Phase A). The page
+        // Comment-only client review surface. The page
         // renders through Dioxus (`dioxus_app::review_router`); the comment
         // `GET`/`POST` (the custom element's data API) stay here.
         .route(

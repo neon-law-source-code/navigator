@@ -1,5 +1,5 @@
 #![allow(clippy::doc_markdown, clippy::too_many_lines)]
-//! Integration tests for the Northstar comment-only review surface
+//! Integration tests for the comment-only review surface
 //! (`/app/projects/:project_code/review/:doc_id`).
 //!
 //! Covers the three things the surface promises:
@@ -47,7 +47,7 @@ async fn build_fixture() -> Fixture {
     let tmpl = store::templates::save_version(
         &surreal,
         None,
-        "onboarding__estate",
+        "sitting__transcript",
         store::templates::Version {
             title: "Estate Plan".into(),
             respondent_type: "person".into(),
@@ -165,7 +165,7 @@ async fn scoped_client_sees_advanced_draft_and_its_body() {
     let html = body_string(resp).await;
     assert!(html.contains("Last Will and Testament"), "html: {html}");
     assert!(html.contains("<h2>Article I</h2>"));
-    assert!(html.contains("<northstar-review"));
+    assert!(html.contains("<document-review"));
 }
 
 #[tokio::test]

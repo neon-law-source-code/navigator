@@ -133,7 +133,7 @@ mod tests {
     #[tokio::test]
     async fn reconcile_marks_paid_invoices_and_counts_changes() {
         let surreal = store::surreal::test_support::mem().await;
-        let project_id = seed_mirror(&surreal, "northstar", "inv-1").await;
+        let project_id = seed_mirror(&surreal, "sample-matter", "inv-1").await;
 
         let stub = StubBillingProvider::new();
         stub.set_invoice_status(

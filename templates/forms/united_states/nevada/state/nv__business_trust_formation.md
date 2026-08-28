@@ -1,6 +1,6 @@
 ---
 kind: filing
-title: Neon Law Nest — Nevada Business Trust Formation
+title: Nevada Business Trust Formation
 respondent_type: person_and_entity
 code: nv__business_trust_formation
 jurisdiction: NV

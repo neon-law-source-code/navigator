@@ -708,7 +708,7 @@ One physical piece of mail, incoming or outgoing, scoped to a Mailroom.
 
 ## Live Inquiry Session
 
-One Project-scoped, transcript-bearing event — for example a Northstar sitting, deposition, witness interview, or client
+One Project-scoped, transcript-bearing event — for example an estate sitting, deposition, witness interview, or client
 intake call — evaluated against an [Inquiry](#inquiry) Set while the transcript develops. Transcript segments persist
 immediately, speaker labels are provisional until mapped to a [Person](#person), and Coverage Findings remain proposed
 until a lawyer confirms them.

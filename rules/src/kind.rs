@@ -70,7 +70,7 @@ pub enum Kind {
     /// [`Kind::Github`] is therefore not [`Kind::is_notation`]; the rules
     /// it is held to are the questionnaire-grammar subset plus `N119`.
     Github,
-    /// A recorded sitting transcript filed on a matter (the Northstar
+    /// A recorded sitting transcript filed on a matter (the
     /// estate intake's `document_intake__transcript` step). **Asset-lane
     /// only** — a document classification for an `assets` row, not a
     /// notation-template kind; declaring `kind: transcript` in a

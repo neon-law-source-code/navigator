@@ -1,7 +1,7 @@
-Feature: Nest formation, end to end
+Feature: Nevada entity formation, end to end
 
-  Neon Law Nest forms a Nevada entity for a flat $1,111 a year. This is the
-  whole arc of one formation, following Libra — a first-time founder — and
+  Navigator forms a Nevada LLC through the official Secretary of State packet.
+  This is the whole arc of one formation, following Libra — a first-time founder — and
   one Neon Law attorney from the first intake to a stamped filing with the
   Nevada Secretary of State: the firm opens the matter, the founder answers
   the onboarding questionnaire, the attorney reviews the filled packet, the

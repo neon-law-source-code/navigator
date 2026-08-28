@@ -1,4 +1,4 @@
-//! Northstar transcript-upload surface.
+//! Transcript-upload surface.
 //!
 //! `POST /app/projects/{project_code}/notations/:nid/transcript` — the
 //! lawyer/agent surface that files a sitting's transcript into an estate

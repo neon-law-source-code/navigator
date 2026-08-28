@@ -45,7 +45,7 @@ use crate::people::ViewerRole;
 #[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct ProjectRepositoryPointer(pub Option<String>);
 
-/// One generated estate draft (Northstar), in a wasm-safe shape.
+/// One generated estate draft, in a wasm-safe shape.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct EstateDraft {
     pub title: String,
@@ -811,14 +811,14 @@ pub fn ParticipationTable(
     }
 }
 
-/// The Northstar estate section: the workflow state and the stage-appropriate
+/// The estate section: the workflow state and the stage-appropriate
 /// control — the transcript uploader at `BEGIN`, the generated drafts and a
 /// release control at `lawyer_review`, a waiting note at `client_review`.
 #[component]
 fn EstateSection(project_code: String, estate: EstateData, csrf_token: String) -> Element {
     rsx! {
         section { class: "lawyer-detail__section project-estate",
-            h2 { "Estate plan — Northstar" }
+            h2 { "Estate plan" }
             p { "Workflow state: " strong { class: "estate-state", "{estate.state}" } }
             if estate.state == "BEGIN" {
                 p { class: "nav-muted", "The sitting is recorded offline and transcribed. File it here in whichever form you have — you can do this from a phone. Paste the transcript text, upload a transcript file, or paste a link to the recording." }

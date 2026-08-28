@@ -73,15 +73,7 @@ is a template + spec, not a new handler — the spec just needs the retainer's s
 
 Signed templates today:
 
-<<<<<<< HEAD
-- **`onboarding__retainer`** — the firm's engagement agreement; client signs, firm countersigns.
-- **`northstar__trust`** — the Nevada revocable trust instrument; the settlor signs as `client`, the attorney
-  countersigns as `firm`. The trust instrument is valid e-signed (NRS 163.008 — no witnesses or notary required), but
-  any deed funding **real property** into the trust must be notarized and recorded as a separate step; the template
-  states this caveat and the deed is **not** e-signed here.
-=======
 - **`onboarding__letter`** — the firm's engagement agreement; client signs, firm countersigns.
->>>>>>> 732a12e (Slim the notation catalog to public forms plus sample letters.)
 
 `offboarding__letter` is firm correspondence (firm signature only).
 

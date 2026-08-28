@@ -288,8 +288,8 @@ pub async fn dri_person(surreal: &crate::surreal::SurrealDb) -> Uuid {
 /// Seed one notation (with its template, person, and project) and
 /// return the notation id. Shared by the helper-module tests that need
 /// a matter to hang rows off (`review_documents`, `document_comments`).
-/// The template declares `kind: onboarding`, matching its
-/// `onboarding__estate` code — see [`seed_notation_with_kind`] for a
+/// The template declares `kind: onboarding`. The code is a unique synthetic
+/// id (`sitting__transcript-…`), not a catalog template — see [`seed_notation_with_kind`] for a
 /// test that needs a different (or absent) declared kind.
 ///
 /// See [`seed_project`] for the same shape.
@@ -320,7 +320,7 @@ async fn seed_notation_with_kind_surreal(
     let tmpl = crate::templates::save_version(
         surreal,
         None,
-        &format!("onboarding__estate-{}", Uuid::now_v7()),
+        &format!("sitting__transcript-{}", Uuid::now_v7()),
         crate::templates::Version {
             title: "Estate Plan".into(),
             respondent_type: "person".into(),

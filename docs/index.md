@@ -92,13 +92,7 @@ when a file exists under `docs/` with no entry here, so this list cannot decay t
 ## Worked demos
 
 - [`naturalization-intake-demo.md`](naturalization-intake-demo.md) — walking the naturalization intake locally.
-<<<<<<< HEAD
-- [`nautilus-design.md`](nautilus-design.md) — Neon Law Nautilus screening-shield design.
-- [`nautilus-workflows.md`](nautilus-workflows.md) — Nautilus screening-dispute workflows.
-- [`northstar-estate-flow.md`](northstar-estate-flow.md) — the Northstar estate-plan flow.
 - [`live-inquiry-coverage.md`](live-inquiry-coverage.md) — proposed live transcript coverage during a matter session.
-=======
->>>>>>> 732a12e (Slim the notation catalog to public forms plus sample letters.)
 - [`solana-attestation.md`](solana-attestation.md) — on-chain attestation on Solana.
 
 ## Editor integration

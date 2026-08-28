@@ -121,7 +121,7 @@ fn validate_default_treats_code_only_frontmatter_as_markdown() {
     write(
         dir.path(),
         "server/content/marketing/service.md",
-        "---\ntitle: Service\ncode: northstar\n---\n\nBody.\n",
+        "---\ntitle: Service\ncode: sample\n---\n\nBody.\n",
     );
     navigator()
         .args(["validate"])

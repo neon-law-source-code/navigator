@@ -530,7 +530,7 @@ mod tests {
     #[test]
     fn normalizes_estate_questionnaire_into_inquiries() {
         let template = LoadedTemplate {
-            code: "onboarding__estate".to_string(),
+            code: "sitting__transcript".to_string(),
             questionnaire: serde_yaml::from_str(
                 r"
 BEGIN:
@@ -564,9 +564,9 @@ END: {}
         // coverage must run from a body string. A transcript that mentions
         // consent covers the recording-consent inquiry; an inquiry the
         // transcript never touches still needs follow-up.
-        let body = "---\ncode: onboarding__estate\nquestionnaire:\n  BEGIN:\n    _: custom_yes_no__recording_consent\n  custom_yes_no__recording_consent:\n    _: person__testator\n  person__testator:\n    _: END\n  END: {}\n---\nBody prose.\n";
+        let body = "---\ncode: sitting__transcript\nquestionnaire:\n  BEGIN:\n    _: custom_yes_no__recording_consent\n  custom_yes_no__recording_consent:\n    _: person__testator\n  person__testator:\n    _: END\n  END: {}\n---\nBody prose.\n";
         let template = load_template_from_str(body, "fallback").unwrap();
-        assert_eq!(template.code, "onboarding__estate");
+        assert_eq!(template.code, "sitting__transcript");
 
         let output = cover_text(
             template,
@@ -602,7 +602,7 @@ END: {}
                 prompt: "Do you consent to recording this sitting?".to_string(),
                 answer_type: "yes_no".to_string(),
                 source: InquirySource::TemplateQuestion {
-                    template_code: "onboarding__estate".to_string(),
+                    template_code: "sitting__transcript".to_string(),
                     question_code: "custom_yes_no__recording_consent".to_string(),
                 },
             },

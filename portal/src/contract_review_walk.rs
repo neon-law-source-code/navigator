@@ -1,10 +1,9 @@
 //! Inbound contract review — the web-driven upload + analysis pipeline.
 //!
-//! The first review-*in* matter. A Nexus client (or lawyer acting for the
-//! client) uploads a third-party contract into an existing Project; this
-//! module then:
+//! A client (or lawyer acting for the client) uploads a third-party contract
+//! into an existing Project; this module then:
 //!
-//!   1. opens a `services__contract_review` notation and files the contract
+//!   1. opens a `memo__contract_review` notation and files the contract
 //!      through the workflow — `contract_uploaded` lands on
 //!      `document_intake__inbound_contract`, and the worker writes the
 //!      content-addressed blob + `documents` row (the same
@@ -53,7 +52,7 @@ pub(crate) const INTAKE_FILED: &str = "intake_filed";
 /// the findings; the matter lands at `lawyer_review`.
 pub(crate) const ANALYSIS_READY: &str = "analysis_ready";
 /// Template code for the inbound-contract-review matter.
-pub(crate) const CONTRACT_REVIEW_TEMPLATE_CODE: &str = "services__contract_review";
+pub(crate) const CONTRACT_REVIEW_TEMPLATE_CODE: &str = "memo__contract_review";
 /// `documents.kind` (and the `document_intake__<slug>` slug) for the filed
 /// inbound contract.
 pub(crate) const INBOUND_CONTRACT_KIND: &str = "inbound_contract";
@@ -97,7 +96,7 @@ impl From<String> for ContractReviewError {
 /// `POST /app/projects/{project_code}/contract-review` — upload an inbound contract
 /// for playbook review.
 ///
-/// Opens a `services__contract_review` notation on the project, files the
+/// Opens a `memo__contract_review` notation on the project, files the
 /// uploaded contract, runs the deviation analysis against the client
 /// Entity's playbook, and lands the matter at `lawyer_review`. Row-scoped: a
 /// caller who can't see the project gets `404`.

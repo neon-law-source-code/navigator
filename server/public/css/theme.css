@@ -2615,24 +2615,24 @@ a.nav-link:hover {
 
 /* Client document-review page (/app/projects/{id}/review/{doc_id}). The
  * document/sidebar two-column layout and the comment-range highlight — the
- * `northstar-review` custom element upgrades the markup in the browser. */
-.northstar-review-page northstar-review {
+ * `document-review` custom element upgrades the markup in the browser. */
+.document-review-page document-review {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 20rem;
   gap: 1.5rem;
   align-items: start;
 }
 
-.northstar-review-page .nr-document {
+.document-review-page .nr-document {
   line-height: 1.7;
 }
 
-.northstar-review-page .nr-sidebar {
+.document-review-page .nr-sidebar {
   position: sticky;
   top: 1rem;
 }
 
-.northstar-review-page .nr-document ::selection {
+.document-review-page .nr-document ::selection {
   background: #fde68a;
 }
 
@@ -2641,7 +2641,7 @@ a.nav-link:hover {
 }
 
 @media (max-width: 48rem) {
-  .northstar-review-page northstar-review {
+  .document-review-page document-review {
     grid-template-columns: 1fr;
   }
 }

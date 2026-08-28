@@ -1792,8 +1792,7 @@ pub fn legal_dioxus_routers(brand_name: &str, privacy_body: &str, terms_body: &s
     ]
 }
 
-/// The comment-only client document-review path (#641 Phase 3, Northstar Phase
-/// A). The comment `GET`/`POST` stays on the Axum data API used by the custom
+/// The comment-only client document-review path (#641 Phase 3). The comment `GET`/`POST` stays on the Axum data API used by the custom
 /// element.
 pub const REVIEW_PATH: &str = "/app/projects/{project_code}/review/{doc_id}";
 

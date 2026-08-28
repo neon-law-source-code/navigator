@@ -2327,7 +2327,7 @@ struct ContractReviewResponse {
 
 /// `POST /app/api/projects/{id}/contract-review` — upload an inbound third-party
 /// contract for playbook review (`multipart/form-data`: a `file` part, or a
-/// `text` part with the pasted contract). Opens a `services__contract_review`
+/// `text` part with the pasted contract). Opens a `memo__contract_review`
 /// notation, files the contract, runs the deviation analysis against the
 /// client Entity's playbook, and lands the matter at `lawyer_review`.
 ///

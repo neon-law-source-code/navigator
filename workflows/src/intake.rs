@@ -12,7 +12,7 @@
 //! the e-sign and inbound-email intake lanes use. One
 //! abstraction, many instances:
 //!
-//! - **transcript** (Northstar estate) — the first instance. The sitting
+//! - **transcript** (estate) — the first instance. The sitting
 //!   is recorded offline and transcribed by AIDA on the already-paid
 //!   Google Gemini Enterprise (~$0 marginal cost, the access-to-justice
 //!   lever); the transcript text is then uploaded here.

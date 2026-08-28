@@ -125,7 +125,7 @@ mod tests {
         assert!(S104MissingKind.lint(&file("# Just prose\n")).is_empty());
         // Frontmatter without a machine — a marketing page — is fine.
         assert!(S104MissingKind
-            .lint(&file("---\ntitle: Service\ncode: northstar\n---\n"))
+            .lint(&file("---\ntitle: Service\ncode: sample\n---\n"))
             .is_empty());
         // A template that DOES declare its kind is fine.
         assert!(S104MissingKind

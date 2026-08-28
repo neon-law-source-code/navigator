@@ -9,9 +9,9 @@
 //! the Notation `web` has just committed. Against separate databases the step
 //! raises `RecordNotFound` and the matter-open path returns a 500.
 //!
-//! The on-ramp is the **estate** retainer walk (`POST /lawyer/retainers/new`
-//! with `onboarding__estate`), which is transcript-driven and so starts its
-//! workflow in the create request itself — the same "commit a Notation, then
+//! The on-ramp is the engagement letter walk (`POST /lawyer/retainers/new`
+//! with `onboarding__letter`), which starts its workflow in the create request
+//! itself — the same "commit a Notation, then
 //! journal it through the worker" shape that exhibits #377. `POST
 //! /app/projects` no longer fires a workflow at all (opening a matter and
 //! opening its retainer are two steps; see the glossary's Engagement /

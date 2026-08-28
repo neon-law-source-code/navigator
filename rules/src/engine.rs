@@ -1060,7 +1060,7 @@ mod tests {
     fn classifier_treats_code_alone_as_markdown() {
         let file = source(
             "web/content/marketing/service.md",
-            "---\ntitle: Service\ncode: northstar\n---\n\nBody.\n",
+            "---\ntitle: Service\ncode: sample\n---\n\nBody.\n",
         );
         assert_eq!(classify_source(&file), DocumentKind::Markdown);
     }
@@ -1286,7 +1286,7 @@ mod tests {
     fn classified_lint_does_not_apply_n_rules_to_code_only_content() {
         let file = source(
             "web/content/marketing/service.md",
-            "---\ntitle: Service\ncode: northstar\n---\n\nBody.\n",
+            "---\ntitle: Service\ncode: sample\n---\n\nBody.\n",
         );
         let codes: Vec<&str> = lint_source_classified(&file)
             .iter()
@@ -1370,16 +1370,16 @@ Body.
         write(
             dir.path(),
             "web/content/marketing/service.md",
-            "---\ntitle: Service\ncode: northstar\n---\n\nBody.\n",
+            "---\ntitle: Service\ncode: sample\n---\n\nBody.\n",
         );
         write(
             dir.path(),
-            "templates/neon_law/northstar/nv__generic_trust.md",
+            "templates/neon_law/shared/sample_trust.md",
             r"---
 kind: trust
 title: Nevada Trust
 respondent_type: entity
-code: trusts__nevada
+code: sample__trust
 jurisdiction: NV
 confidential: true
 questionnaire:
@@ -1420,16 +1420,16 @@ Body.
                 "---\nkind: trust\ntitle: T\nquestionnaire:\n  BEGIN:\n    _: END\ncode: {code}\n---\nBody.\n"
             )
         };
-        // Two templates share `trusts__nevada`; one is unique.
-        write(dir.path(), "templates/a/x.md", &tmpl("trusts__nevada"));
-        write(dir.path(), "templates/b/y.md", &tmpl("trusts__nevada"));
-        write(dir.path(), "templates/c/z.md", &tmpl("wills__simple"));
+        // Two templates share `sample__trust`; one is unique.
+        write(dir.path(), "templates/a/x.md", &tmpl("sample__trust"));
+        write(dir.path(), "templates/b/y.md", &tmpl("sample__trust"));
+        write(dir.path(), "templates/c/z.md", &tmpl("sample__will"));
         let v = code_uniqueness_violations(dir.path(), &DefaultFileFilter::default()).unwrap();
         assert_eq!(v.len(), 1, "{v:?}");
         assert_eq!(v[0].code, "N111");
         // The second file in sorted order (b/y.md) is the one flagged.
         assert!(v[0].path.ends_with("templates/b/y.md"), "{:?}", v[0].path);
-        assert!(v[0].message.contains("trusts__nevada"));
+        assert!(v[0].message.contains("sample__trust"));
     }
 
     #[test]

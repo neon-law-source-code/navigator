@@ -78,7 +78,7 @@ mod tests {
     fn lint_buffer_keeps_code_only_frontmatter_in_markdown_mode() {
         let (_file, violations) = lint_buffer(
             std::path::PathBuf::from("web/content/marketing/service.md"),
-            "---\ntitle: Service\ncode: northstar\n---\n\nBody.\n".to_string(),
+            "---\ntitle: Service\ncode: sample\n---\n\nBody.\n".to_string(),
         );
         assert!(
             violations.iter().all(|v| !v.code.starts_with('N')),

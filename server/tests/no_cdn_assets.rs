@@ -141,7 +141,7 @@ fn served_css_imports_nothing_from_an_external_origin() {
 /// `vendor_assets.rs` / their own provenance and may legitimately carry `http`
 /// namespace URIs inside string literals, so they are not line-scanned here.
 const FIRST_PARTY_JS: &[&str] = &[
-    "js/northstar-review.js",
+    "js/document-review.js",
     "js/collage-lightbox.js",
     "js/workshop-progress.js",
     "js/upload-progress.js",

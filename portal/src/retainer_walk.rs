@@ -371,7 +371,7 @@ pub async fn start_post(
         return (StatusCode::INTERNAL_SERVER_ERROR, "internal").into_response();
     }
 
-    // Transcript-driven onboarding (Northstar estate) has no questionnaire
+    // Transcript-driven onboarding (estate) has no questionnaire
     // to walk before intake — the recorded sitting's transcript fills the
     // answers via extraction. Detect it by the `transcript_uploaded` edge
     // out of `BEGIN` (data-driven, never a hard-coded template code), start

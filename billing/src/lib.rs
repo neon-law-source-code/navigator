@@ -622,14 +622,14 @@ mod tests {
     const ID2: Uuid = Uuid::from_u128(2);
     const ID42: Uuid = Uuid::from_u128(42);
 
-    /// A flat-fee Northstar estate matter: one line, billed once.
+    /// A flat-fee estate matter: one line, billed once.
     fn northstar_invoice() -> InvoiceRequest {
         InvoiceRequest {
             contact_name: "Libra".into(),
             contact_email: "libra@example.com".into(),
             reference: "NL-NORTHSTAR-0001".into(),
             line_items: vec![InvoiceLine {
-                description: "Northstar estate plan (flat fee)".into(),
+                description: "Estate plan (flat fee)".into(),
                 quantity: 1,
                 // $3,333.00 in cents.
                 unit_amount_cents: 333_300,
@@ -638,7 +638,7 @@ mod tests {
         }
     }
 
-    /// The billed party for a Northstar matter — an organisation Xero
+    /// The billed party for an estate matter — an organisation Xero
     /// dedupes on its unique name.
     fn acme_contact() -> ContactRequest {
         ContactRequest {

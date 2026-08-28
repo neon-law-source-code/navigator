@@ -230,9 +230,9 @@ async fn client_project_fixture(
 ) -> (uuid::Uuid, String, String) {
     client_project_fixture_for_product(
         surreal,
-        "Northstar Client",
+        "Portal Client",
         "fractional-client@example.com",
-        "Northstar Service",
+        "Sample Matter",
     )
     .await
 }
@@ -5538,7 +5538,7 @@ async fn api_validate_template_returns_clean_for_valid_markdown() {
 kind: trust\n\
 title: Trust\n\
 respondent_type: entity\n\
-code: trusts__nevada\n\
+code: sample__trust\n\
 confidential: false\n\
 questionnaire:\n  \
   BEGIN:\n    \
@@ -5851,7 +5851,7 @@ async fn lawyer_dashboard_leads_with_project_kpis_and_calendar() {
     let other_dri = store::test_support::dri_person(&surreal).await;
 
     for (name, status, lawyer_dri, lawyer_participates) in [
-        ("Northstar estate plan", "open", Some(lawyer.id), true),
+        ("Estate sitting matter", "open", Some(lawyer.id), true),
         ("Acme contract review", "open", Some(other_dri), true),
         ("Closed formation cleanup", "closed", Some(lawyer.id), true),
         (
@@ -5923,7 +5923,7 @@ async fn lawyer_dashboard_leads_with_project_kpis_and_calendar() {
     );
     let calendar = calendar_section(&body);
     assert!(
-        !calendar.contains("Acme contract review") && !calendar.contains("Northstar estate plan"),
+        !calendar.contains("Acme contract review") && !calendar.contains("Estate sitting matter"),
         "calendar should not synthesize project events before event storage exists: {calendar}",
     );
     assert!(
@@ -7385,10 +7385,10 @@ async fn client_portal_lists_single_project_with_kpi_cards() {
         body.contains(&format!("/app/projects/{project_code}")),
         "the project code keys the detail link: {body}"
     );
-    assert!(body.contains("Northstar Service"), "{body}");
+    assert!(body.contains("Sample Matter"), "{body}");
     // Every matter is priced bespoke, so the dashboard carries no service
     // label, no price, and no Services tile.
-    assert!(!body.contains("Neon Law Northstar"), "{body}");
+    assert!(!body.contains("Catalog Service Label"), "{body}");
     assert!(!body.contains('$'), "no price on the dashboard: {body}");
     for label in ["Open", "Documents", "Closed"] {
         assert!(body.contains(label), "missing KPI label {label}: {body}");
@@ -7405,9 +7405,9 @@ async fn client_portal_shows_the_matter_without_a_service_or_price() {
     let (state, surreal) = state_with_engines().await;
     let (_project_id, _project_code, cookie) = client_project_fixture_for_product(
         &surreal,
-        "Nest Client",
-        "nest-client@example.com",
-        "Nest Client Co.",
+        "Formation Client",
+        "formation-client@example.com",
+        "Formation Client Co.",
     )
     .await;
 
@@ -7426,10 +7426,10 @@ async fn client_portal_shows_the_matter_without_a_service_or_price() {
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
     assert!(
-        body.contains("Nest Client Co."),
+        body.contains("Formation Client Co."),
         "the matter name renders: {body}"
     );
-    assert!(!body.contains("Neon Law Nest"), "no service label: {body}");
+    assert!(!body.contains("Other Catalog Label"), "no service label: {body}");
     assert!(!body.contains('$'), "no price anywhere: {body}");
 }
 
@@ -7453,7 +7453,7 @@ async fn client_direct_projects_url_uses_portal_list_not_admin_table() {
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
     assert!(body.contains("Your services"), "{body}");
-    assert!(body.contains("Northstar Service"), "{body}");
+    assert!(body.contains("Sample Matter"), "{body}");
     assert!(
         body.contains(&format!("/app/projects/{project_code}")),
         "client list should link to the matter detail: {body}",
@@ -7482,7 +7482,7 @@ async fn client_direct_projects_url_uses_portal_list_not_admin_table() {
 async fn client_portal_projects_scopes_and_aggregates_the_signed_in_client_dashboard() {
     let (state, surreal) = state_with_engines().await;
 
-    // The signed-in client's own open Northstar matter, plus two filed documents
+    // The signed-in client's own open sample matter, plus two filed documents
     // so the Documents KPI is a distinctive, non-trivial count.
     let (project_id, project_code, cookie) = client_project_fixture(&state.surreal).await;
     for filename in ["homer-v-flanders-i.pdf", "homer-v-flanders-ii.pdf"] {
@@ -7519,11 +7519,11 @@ async fn client_portal_projects_scopes_and_aggregates_the_signed_in_client_dashb
     // The signed-in client's own matter, by name. There is no catalog to
     // resolve a service label or a price from — every matter is bespoke.
     assert!(
-        body.contains("Northstar Service"),
+        body.contains("Sample Matter"),
         "own matter name: {body}"
     );
     assert!(
-        !body.contains("Neon Law Northstar"),
+        !body.contains("Catalog Service Label"),
         "no service label: {body}"
     );
     assert!(!body.contains('$'), "no price: {body}");
@@ -7537,7 +7537,7 @@ async fn client_portal_projects_scopes_and_aggregates_the_signed_in_client_dashb
     let other_detail = format!("/app/projects/{other_code}");
     for leaked in [
         "Someone Else's Matter",
-        "Neon Law Nest",
+        "Other Catalog Label",
         other_detail.as_str(),
     ] {
         assert!(
@@ -7602,7 +7602,7 @@ async fn client_project_detail_shows_no_service_panel_and_no_price() {
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
     assert!(
-        body.contains("Northstar Service"),
+        body.contains("Sample Matter"),
         "the matter name renders: {body}"
     );
     assert!(
@@ -7623,7 +7623,7 @@ async fn client_project_detail_links_the_documents_zip() {
         &surreal,
         "Nest Detail Client",
         "nest-detail-client@example.com",
-        "Nest Client Co.",
+        "Formation Client Co.",
     )
     .await;
 
@@ -10302,7 +10302,7 @@ async fn admin_generic_listings_render_row_cells_from_the_database() {
     let notation_template = store::templates::save_version(
         &surreal,
         None,
-        "onboarding__estate",
+        "sitting__transcript",
         store::templates::Version {
             title: "Estate Plan".into(),
             respondent_type: "person".into(),
@@ -11204,7 +11204,7 @@ async fn admin_templates_is_read_only_listing() {
     let _ = store::templates::save_version(
         &state.surreal,
         None,
-        "trusts__nevada",
+        "sample__trust",
         store::templates::Version {
             title: "Nevada Trust".into(),
             respondent_type: "entity".into(),
@@ -11231,7 +11231,7 @@ async fn admin_templates_is_read_only_listing() {
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
     assert!(body.contains("Nevada Trust"));
-    assert!(body.contains("trusts__nevada"));
+    assert!(body.contains("sample__trust"));
     // No CRUD affordances.
     assert!(!body.contains("/app/admin/templates/new"));
     assert!(!body.contains("/edit"));

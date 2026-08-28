@@ -222,11 +222,11 @@ async fn any_matter_closes_and_none_of_them_raises_money() {
         },
         Matter {
             what: "estate work",
-            originating_template: Some("onboarding__estate"),
+            originating_template: Some("sitting__transcript"),
         },
         Matter {
             what: "a consumer-report engagement",
-            originating_template: Some("nautilus__fcra_dispute"),
+            originating_template: Some("inbound__correspondence"),
         },
     ];
 

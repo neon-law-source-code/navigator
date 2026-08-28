@@ -130,20 +130,10 @@ workflow:
 
 Each key, in plain English:
 
-<<<<<<< HEAD
-- **`kind`** — what this notation is: `letter` (a letter the firm sends on the client's behalf), `filing` (a document
-  filed with a government body), `will`, `trust`, `directive` (a health-care or durable financial directive),
-  `agreement` (employment, contractor, or LLC operating), `onboarding` (the engagement that opens a matter — a
-  single-instrument engagement letter or a multi-instrument intake bundle such as the estate plan), `offboarding` (the
-  firm-signed letter that closes a matter), or `memo` (an analytical work product like a contract review). It is
-  **required** on every notation template — the declared kind is the sole classifier, so a template without it lints as
-  prose — and an unrecognized value is a blocking error.
-=======
 - **`kind`** — what this notation is: `onboarding` (the engagement that opens a matter), `offboarding` (the closing
   letter), `letter` (a letter the firm sends on the client's behalf), `filing` (a document filed with a government body),
   `will`, `trust`, `directive`, `agreement`, or `memo`. It is **required** on every notation template — the declared
   kind is the sole classifier, so a template without it lints as prose — and an unrecognized value is a blocking error.
->>>>>>> 732a12e (Slim the notation catalog to public forms plus sample letters.)
 - **`title`** — the human name of the document, e.g. `Retainer Agreement`. It cannot be blank.
 - **`code`** — the document's permanent file number, in `snake_case` (e.g. `onboarding__letter`). It must be unique
   across the whole project, and you do not change it once clients have signed under it. The reason is the record: the
@@ -231,7 +221,7 @@ A template backed by an official government form (under `templates/forms/`) decl
 
 ```yaml
 kind: filing
-title: Neon Law Nest — Nevada Entity Formation
+title: Nevada LLC Formation
 respondent_type: person_and_entity
 code: nv__llc_formation
 jurisdiction: NV

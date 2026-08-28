@@ -1673,7 +1673,7 @@ pub fn document_with_base(base: &str) -> Value {
             "description":
               "Uploads an inbound third-party contract for deviation review as `multipart/form-data`: \
                either a `file` part (the contract) or a `text` part (the pasted contract). Opens a \
-               `services__contract_review` notation, files the contract, runs the deviation analysis \
+               contract-review notation, files the contract, runs the deviation analysis \
                against the client company's playbook, and lands the matter at `lawyer_review`. Same \
                command the lawyer/portal upload form drives. Client-writable: a matter's client may \
                submit their own contract, or the firm may — so any authenticated caller is admitted, \

@@ -927,7 +927,9 @@ matter, and AIDA's `aida_create_notation` names the Project it acts on rather th
 
 Each Project has **one** deployment-scoped source repository, named for its `code`, holding that Project's notation
 templates under `templates/` and its client portal under `portal/`. It contains source only; legal files, client
-material, answers, and produced documents remain in Google Drive and Navigator [Assets](#asset).
+material, answers, and produced documents remain in the deployment's private documents bucket (prefix `projects/<code>`)
+and Navigator [Assets](#asset). Google Drive stays as a per-Project ingest dropbox — Workspace users drop files in;
+Navigator copies them into the documents bucket and never treats the folder as a live store.
 [`project-repositories`](project-repositories.md) is the canonical deployment map and source boundary.
 
 `projects.code` is **lowercase letters, digits, and single hyphens**, alphanumeric at both ends, at most 80 characters —
@@ -940,7 +942,7 @@ column and neither consults the id — `portal::dioxus_app::project_show_path` w
 renders, and `project_id_from_path` reads one back. A lowercase UUID is itself a well-formed code, so nothing could
 refuse one on sight; what keeps ids out of URLs is the lookup, not the shape of the segment.
 
-The code is **required at matter-open and never derived**: `code` names the matter's folder in the firm's shared drive
+The code is **required at matter-open and never derived**: `code` names the matter's Drive ingest folder
 and its object-storage prefix, and that mapping is an equality check, so a code Navigator invented would name no folder.
 (`code_from_name` remains available to fixture and internal callers that are not matter-opens.) Uppercase and
 underscores stay out deliberately: Drive and macOS are case-insensitive, so uppercase would let one folder answer to two
@@ -950,9 +952,13 @@ Object-storage artifacts (rendered PDFs, signed documents, generated exports) li
 `gs://YOUR_PROJECT_ID-assets/projects/{id}/` for machine reads, and the nightly store→Parquet snapshots are immutable
 objects in GCS — so deleting a Project's database rows never deletes its archives.
 
-Google Drive is the Project's legal-file workspace. Its deployment-selected root holds one folder per matter, named for
-`projects.code`; working files that are not yet Navigator documents live there. Project participation grants Navigator
-and deployed Project-application access, never source-forge access.
+Working files live under the documents-bucket prefix `projects/{code}` — a key convention in the deployment's private
+documents bucket, not a bucket per Project. Google Drive is the Project's ingest dropbox. Its deployment-selected root
+holds one folder per matter, named for `projects.code`; Workspace membership lets people drop files in, and Navigator
+copies them into the documents bucket. Drive is never the serve origin and never a CI publish target. Project
+participation grants Navigator and deployed Project-application access, never source-forge access. Opening a Project
+creates or adopts the three handles through `store::project_surfaces`; `POST /app/api/project-surfaces/{id}` and
+`navigator projects surfaces reconcile --project <code>` retry a failed or legacy row.
 
 - Schema and commands: [`store::projects`](../store/src/projects.rs) ·
   [`store/src/schema/navigator.surql`](../store/src/schema/navigator.surql)

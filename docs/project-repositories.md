@@ -1,10 +1,11 @@
 # Project workspace and repository contract
 
-Each Navigator [Project](glossary.md#project) coordinates four distinct surfaces. They are not interchangeable stores:
+Each Navigator [Project](glossary.md#project) coordinates five distinct surfaces. They are not interchangeable stores:
 
 | Surface | Authority | Contains |
 | --- | --- | --- |
-| Google Drive | Firm working files | Legal files and internal working material |
+| Documents bucket | Working files | Path-like keys under `projects/<code>` in the deployment's private documents bucket |
+| Google Drive | Ingest dropbox | Files people drop in; Navigator copies them into the documents bucket |
 | Navigator | Matter record | Project identity, participation, Notations, and asset provenance |
 | Project repository | Source control | Notation templates and client-portal source only |
 | Served client portal | Authorized application | The Project's client-facing surface |
@@ -42,10 +43,10 @@ a link, so a `file://` value would read the serving host's disk and a `user:toke
 that is rendered into a page and logged.
 
 The Project code is the stable Navigator `projects.code`. It is the Project folder basename in its deployment's selected
-Drive root. That equality is why the slug rules are what they are: lowercase letters, digits, and single hyphens,
-alphanumeric at both ends, at most 80 characters. Drive and macOS are case-insensitive, so uppercase would let one
-folder answer to two codes; one separator keeps the mapping an equality check rather than a normalization. The code does
-**not** name the repository.
+Drive ingest root, and the documents-bucket prefix is `projects/<code>`. That equality is why the slug rules are what they
+are: lowercase letters, digits, and single hyphens, alphanumeric at both ends, at most 80 characters. Drive and macOS are
+case-insensitive, so uppercase would let one folder answer to two codes; one separator keeps the mapping an equality
+check rather than a normalization. The code does **not** name the repository.
 
 `new` is refused as a Project code. `/app/projects/new` is Navigator's matter-open form, so a Project coded `new` would
 collide with a literal route. Which side of a genuine collision wins depends on route registration order, so the code is
@@ -190,6 +191,20 @@ report carries `compared_against_deployment_forge: false`, so an absent warning 
 
 Findings serialize internally tagged — each carries its own fields beside its `kind` and `severity` — so a consumer
 reads what it needs by name rather than parsing a sentence.
+
+### Provisioning the three handles
+
+Opening a Project records its identity, then `store::project_surfaces` creates or adopts the three external surfaces
+that identity names: the documents-bucket prefix `projects/<code>` (a key convention; nothing is written), the Drive
+ingest folder named for the code, and one private source repository named for the code. Each step is idempotent. A
+folder or repository that already exists is adopted. A recorded `repository_url` is left alone, so a Project whose
+source lives on another forge is not moved. Missing Drive or forge configuration skips that surface rather than
+failing the matter open.
+
+`POST /app/api/project-surfaces/{id}` is the admin retry for a failed or legacy row. It carries its own noun rather than
+sitting under `/app/api/projects/`, because that prefix's GET rule admits any authenticated caller up to five segments.
+The CLI equivalent is `navigator projects surfaces reconcile --project <code>`. Project participation is never copied
+onto the forge.
 
 ## The CI gate
 
@@ -445,8 +460,8 @@ nothing has to be translated between the coordinate and the path:
 ~/neon-law/<project-code>
 ```
 
-These are **source** roots. Git never stores legal files, so they must not converge with the Drive mount
-(`NAVIGATOR_PROJECTS_DRIVE_MOUNT`), which is a separate path holding the firm's working files.
+These are **source** roots. Git never stores legal files, so they must not converge with the optional Drive mount
+(`NAVIGATOR_PROJECTS_DRIVE_MOUNT`), which is a workstation view of the ingest dropbox, not the working-file store.
 
 ## Verifying a machine
 
@@ -469,6 +484,15 @@ mount or an absent login, is reported as a warning and does not fail the run. A 
 the report immediately, because every later coordinate would otherwise describe some other Workspace.
 
 It is not `ops doctor`, which diagnoses scheduled-job health in a running Kubernetes namespace.
+
+To create or adopt the three handles after a failed or legacy open:
+
+```bash
+navigator projects surfaces reconcile --project acme
+```
+
+The same pass runs best-effort when a matter opens. This command is the operator retry; it talks to Drive and the forge
+when those services are configured, and skips a surface when they are not.
 
 ## Reconciling repositories against live rows
 

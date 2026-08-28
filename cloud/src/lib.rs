@@ -36,7 +36,7 @@ pub use drive::{
     DriveWorkspaceConfig, FakeDrive, GoogleDrive,
 };
 pub use forge::{
-    FakeForge, ForgeError, ForgeRepository, ForgeService, GitHubForge, GITHUB_API_URL_ENV,
+    FakeForge, ForgeError, ForgeRepository, ForgeService, GitHubForge, GITHUB_API_BASE_ENV,
     GITHUB_TOKEN_ENV, NAVIGATOR_GITHUB_TOKEN_ENV,
 };
 pub use fs::FsStorage;

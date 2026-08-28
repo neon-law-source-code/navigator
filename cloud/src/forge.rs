@@ -27,7 +27,7 @@ pub const NAVIGATOR_GITHUB_TOKEN_ENV: &str = "NAVIGATOR_GITHUB_TOKEN";
 /// [`NAVIGATOR_GITHUB_TOKEN_ENV`] is unset.
 pub const GITHUB_TOKEN_ENV: &str = "GITHUB_TOKEN";
 /// Override the REST API base, for GitHub Enterprise or a test double.
-pub const GITHUB_API_URL_ENV: &str = "NAVIGATOR_GITHUB_API_URL";
+pub const GITHUB_API_BASE_ENV: &str = "NAVIGATOR_GITHUB_API_BASE";
 /// Public GitHub's REST API base.
 pub const DEFAULT_API_BASE: &str = "https://api.github.com";
 const API_VERSION: &str = "2022-11-28";
@@ -223,7 +223,7 @@ impl GitHubForge {
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty())
             .ok_or(ForgeError::MissingConfig(NAVIGATOR_GITHUB_TOKEN_ENV))?;
-        let api_base = get(GITHUB_API_URL_ENV)
+        let api_base = get(GITHUB_API_BASE_ENV)
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty())
             .unwrap_or_else(|| DEFAULT_API_BASE.to_string());
@@ -373,7 +373,7 @@ impl ForgeService for GitHubForge {
 #[cfg(test)]
 mod tests {
     use super::{
-        FakeForge, ForgeService, GitHubForge, GITHUB_API_URL_ENV, GITHUB_TOKEN_ENV,
+        FakeForge, ForgeService, GitHubForge, GITHUB_API_BASE_ENV, GITHUB_TOKEN_ENV,
         NAVIGATOR_GITHUB_TOKEN_ENV,
     };
     use crate::workspace::{NAVIGATOR_GCP_PROJECT_ID, NAVIGATOR_GITHUB_ORG, NAVIGATOR_GIT_HOST};
@@ -439,7 +439,7 @@ mod tests {
             (NAVIGATOR_GITHUB_ORG, "an-organization"),
             (NAVIGATOR_GIT_HOST, "forge.example"),
             (NAVIGATOR_GITHUB_TOKEN_ENV, "test-token"),
-            (GITHUB_API_URL_ENV, server.uri().as_str()),
+            (GITHUB_API_BASE_ENV, server.uri().as_str()),
         ]))
         .expect("configured forge");
         let repo = forge.ensure_repository("acme").await.unwrap();
@@ -476,7 +476,7 @@ mod tests {
             (NAVIGATOR_GCP_PROJECT_ID, "neon-law-stg"),
             (NAVIGATOR_GITHUB_ORG, "an-organization"),
             (GITHUB_TOKEN_ENV, "test-token"),
-            (GITHUB_API_URL_ENV, server.uri().as_str()),
+            (GITHUB_API_BASE_ENV, server.uri().as_str()),
         ]))
         .expect("configured forge");
         let repo = forge.ensure_repository("acme").await.unwrap();
@@ -513,7 +513,7 @@ mod tests {
             (NAVIGATOR_GCP_PROJECT_ID, "neon-law-stg"),
             (NAVIGATOR_GITHUB_ORG, "an-organization"),
             (NAVIGATOR_GITHUB_TOKEN_ENV, "test-token"),
-            (GITHUB_API_URL_ENV, server.uri().as_str()),
+            (GITHUB_API_BASE_ENV, server.uri().as_str()),
         ]))
         .expect("configured forge");
         let repo = forge.ensure_repository("acme").await.unwrap();

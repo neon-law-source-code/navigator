@@ -1118,12 +1118,13 @@ mod firm_copy_tests {
     fn the_navigator_page_removes_the_cto_ciso_offer() {
         let content = super::navigator();
         let text = format!("{} {}", page_text(&content.bands), content.meta_description);
+        let words = || text.split(|character: char| !character.is_ascii_alphanumeric());
         assert!(
-            !text.to_lowercase().contains("cto"),
+            !words().any(|word| word.eq_ignore_ascii_case("cto")),
             "no CTO offer reaches the page: {text}"
         );
         assert!(
-            !text.to_lowercase().contains("ciso"),
+            !words().any(|word| word.eq_ignore_ascii_case("ciso")),
             "no CISO offer reaches the page: {text}"
         );
         // `law-related service` is the RPC 5.7 term of art, and the licence

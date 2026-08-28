@@ -2383,7 +2383,16 @@ async fn render_assembled_document(
     Ok(views::notation::render_filled_in(&template_body, &ctx))
 }
 
-/// Storage-key convention for the closing letter PDF of a notation.
+/// Storage-key convention for the offboarding letter PDF of a notation.
+///
+/// **The `closing-letter` segment is deliberately frozen at the old
+/// spelling — do not rename it to `offboarding-letter`.** Objects are
+/// already stored under this prefix, and an object key is not a symbol:
+/// renaming it here does not move the bytes, it just stops resolving them,
+/// orphaning every offboarding letter already filed. The vocabulary
+/// elsewhere says offboarding (see `docs/glossary.md`); this one string is
+/// a storage address, and addresses only change with a migration that
+/// copies the objects first.
 #[must_use]
 pub fn closing_letter_storage_key(notation_id: Uuid) -> String {
     format!("notations/{notation_id}/closing-letter.pdf")
@@ -2406,13 +2415,25 @@ async fn notation_template_code(
     Some(t.code)
 }
 
-/// Drive the closing-letter workflow for an already-walked closing
+/// Drive the offboarding-letter workflow for an already-walked closing
 /// notation:
 ///
 ///   close_requested → lawyer_review
 ///   approved        → generate_pdf__closing_letter  (render + persist)
 ///   pdf_persisted   → firm_signature__closing_letter
 ///   signed          → END
+///
+/// **The two `__closing_letter` step names are deliberately frozen at the
+/// old spelling — do not rename them to `__offboarding_letter`.** A Restate
+/// step name is part of a durable journal: an invocation already in flight
+/// replays against the names recorded when it started, so renaming one does
+/// not rename history, it strands the invocation mid-workflow. The template
+/// `code` and the spec file moved to `offboarding__letter`; these two
+/// journal keys did not, and they are the reason the spec's `workflow:`
+/// block still reads `closing_letter` under an `offboarding__letter` file.
+/// Nothing branches on the suffix — `workflows::closing::closes_matter`
+/// keys off the `firm_signature__*` *prefix* — so the stale word costs
+/// nothing but a comment like this one.
 ///
 /// The mirror of [`drive_post_questionnaire_workflow`], but the closing
 /// letter is signed by the *firm*, not the client — there is no

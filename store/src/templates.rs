@@ -793,12 +793,12 @@ mod tests {
     #[tokio::test]
     async fn changing_only_the_kind_appends_a_new_version() {
         let db = mem().await;
-        save_version(&db, None, "closing__letter", version("Closing", None))
+        save_version(&db, None, "offboarding__letter", version("Closing", None))
             .await
             .unwrap();
         let mut with_kind = version("Closing", None);
         with_kind.kind = Some("letter".into());
-        let again = save_version(&db, None, "closing__letter", with_kind)
+        let again = save_version(&db, None, "offboarding__letter", with_kind)
             .await
             .unwrap();
         assert!(
@@ -806,7 +806,7 @@ mod tests {
             "declaring a kind on an existing template must cut a new version"
         );
         assert_eq!(
-            resolve(&db, None, "closing__letter")
+            resolve(&db, None, "offboarding__letter")
                 .await
                 .unwrap()
                 .unwrap()

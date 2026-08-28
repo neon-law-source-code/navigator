@@ -1981,14 +1981,15 @@ pub fn template_closes_a_matter(kind: Option<&str>) -> bool {
         .is_some_and(rules::kind::Kind::closes_a_matter)
 }
 
-/// From a matter's engagement/closing facts, the two lifecycle warning flags:
-/// `missing_retainer` (no matter-opening engagement) and `missing_closing_letter`
-/// (a `closed` matter without a closing letter).
+/// From a matter's onboarding/offboarding facts, the two lifecycle warning
+/// flags: `missing_onboarding` (no matter-opening engagement on file) and
+/// `missing_offboarding_letter` (a `closed` matter with no offboarding letter
+/// on file).
 #[must_use]
 pub fn matter_flags(has_engagement: bool, status: &str, has_closing: bool) -> (bool, bool) {
-    let missing_retainer = !has_engagement;
-    let missing_closing_letter = status == "closed" && !has_closing;
-    (missing_retainer, missing_closing_letter)
+    let missing_onboarding = !has_engagement;
+    let missing_offboarding_letter = status == "closed" && !has_closing;
+    (missing_onboarding, missing_offboarding_letter)
 }
 
 /// The lawyer-facing traffic-light summary of a matter's lifecycle: the one
@@ -1996,14 +1997,18 @@ pub fn matter_flags(has_engagement: bool, status: &str, has_closing: bool) -> (b
 /// diligence badges [`matter_flags`] computes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MatterLifecycle {
-    /// Open, but never opened on an onboarding letter — the matter was never
-    /// properly opened.
+    /// Open, with no onboarding notation or classified document on file.
     NeedsOnboarding,
-    /// Open, with its onboarding letter on file — live.
-    Live,
+    /// Open, with an onboarding notation or classified document on file.
+    ///
+    /// Presence, not execution: [`matter_lifecycle_sets`] matches a row by its
+    /// declared kind and reads no signature state, so this state says the
+    /// onboarding paperwork is *filed*, never that it was executed. The label
+    /// and title say so too — see [`MatterLifecycle::label`].
+    OnboardingOnFile,
     /// Closed. A closed matter is always this variant, whether or not it is
     /// missing its offboarding letter — that finer-grained gap stays the
-    /// separate `missing_closing_letter` badge's job, not a fourth colour.
+    /// separate `missing_offboarding_letter` badge's job, not a fourth colour.
     Closed,
 }
 
@@ -2014,7 +2019,7 @@ impl MatterLifecycle {
     pub fn class(self) -> &'static str {
         match self {
             MatterLifecycle::NeedsOnboarding => "matter-lifecycle matter-lifecycle--yellow",
-            MatterLifecycle::Live => "matter-lifecycle matter-lifecycle--green",
+            MatterLifecycle::OnboardingOnFile => "matter-lifecycle matter-lifecycle--green",
             MatterLifecycle::Closed => "matter-lifecycle matter-lifecycle--red",
         }
     }
@@ -2022,36 +2027,64 @@ impl MatterLifecycle {
     /// The visible text label — colour is never the only signal, so this
     /// (not just the class) is what a colour-blind or screen-reader reader
     /// gets.
+    ///
+    /// The green state names a **location, not a status**: "onboarding on
+    /// file" is what [`matter_lifecycle_sets`] actually establishes, since it
+    /// matches a notation or asset row by declared kind and reads no signature
+    /// state. A status word there ("live", "open", "in good standing") would
+    /// assert the matter is properly papered on evidence that only shows a row
+    /// exists. [`MatterLifecycle::title`] carries the limit in full.
     #[must_use]
     pub fn label(self) -> &'static str {
         match self {
             MatterLifecycle::NeedsOnboarding => "needs onboarding",
-            MatterLifecycle::Live => "live",
+            MatterLifecycle::OnboardingOnFile => "onboarding on file",
             MatterLifecycle::Closed => "closed",
+        }
+    }
+
+    /// The hover/assistive title, one per state. Each spells out what the
+    /// indicator did and did not verify, so the short pill label never has to
+    /// carry the caveat alone.
+    #[must_use]
+    pub fn title(self) -> &'static str {
+        match self {
+            MatterLifecycle::NeedsOnboarding => {
+                "No onboarding notation or classified document is on file for this matter."
+            }
+            MatterLifecycle::OnboardingOnFile => {
+                "An onboarding notation or classified document is on file for this matter: \
+                 filed, not verified as executed."
+            }
+            MatterLifecycle::Closed => "This matter is closed.",
         }
     }
 }
 
 /// The lifecycle state a matter row renders, from its `status` and whether
-/// it is missing its onboarding letter. `missing_closing_letter` is taken
+/// it is missing its onboarding letter. `missing_offboarding_letter` is taken
 /// but deliberately does not branch the result: a closed matter is
 /// [`MatterLifecycle::Closed`] whether or not it still owes its offboarding
 /// letter, and that gap keeps surfacing through the existing "no offboarding
 /// letter" badge alongside this indicator, not folded into a fourth colour.
 ///
-/// Deliberately an exhaustive match on `(status == "closed", missing_retainer)`
-/// so the closing-letter parameter's non-effect on the outcome is visible at
+/// Deliberately an exhaustive match on `(status == "closed", missing_onboarding)`
+/// so the offboarding-letter parameter's non-effect on the outcome is visible at
 /// the call site, not just asserted in a doc comment.
 #[must_use]
 pub fn matter_lifecycle(
     status: &str,
-    missing_retainer: bool,
-    missing_closing_letter: bool,
+    missing_onboarding: bool,
+    missing_offboarding_letter: bool,
 ) -> MatterLifecycle {
-    match (status == "closed", missing_retainer, missing_closing_letter) {
+    match (
+        status == "closed",
+        missing_onboarding,
+        missing_offboarding_letter,
+    ) {
         (true, _, _) => MatterLifecycle::Closed,
         (false, true, _) => MatterLifecycle::NeedsOnboarding,
-        (false, false, _) => MatterLifecycle::Live,
+        (false, false, _) => MatterLifecycle::OnboardingOnFile,
     }
 }
 

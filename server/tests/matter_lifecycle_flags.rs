@@ -27,7 +27,7 @@ const SESSION_KEY: &str = "test-session-key-not-for-production";
 // ---- the pure rule ----
 
 #[test]
-fn flags_an_open_matter_with_no_onboarding_as_missing_retainer() {
+fn flags_an_open_matter_with_no_onboarding_as_missing_onboarding() {
     assert_eq!(
         store::projects::matter_flags(false, "open", false),
         (true, false)
@@ -79,10 +79,72 @@ fn an_open_matter_missing_its_onboarding_letter_is_the_yellow_state() {
 }
 
 #[test]
-fn an_open_matter_with_its_onboarding_letter_is_the_green_live_state() {
+fn an_open_matter_with_its_onboarding_letter_is_the_green_on_file_state() {
     assert_eq!(
         store::projects::matter_lifecycle("open", false, false),
-        store::projects::MatterLifecycle::Live
+        store::projects::MatterLifecycle::OnboardingOnFile
+    );
+}
+
+/// The green state names where the paperwork is, not what condition the
+/// representation is in.
+///
+/// `matter_lifecycle_sets` matches a notation or asset row by its declared
+/// kind and reads no signature state — neither query filters on state at all —
+/// so the only fact established is that a row exists. A status word here
+/// ("live", "active", "in good standing") would tell a lawyer scanning the
+/// Projects list that the matter is properly papered on evidence that shows
+/// nothing of the kind, and the yellow state's converse would carry the same
+/// over-claim. Pin the vocabulary so a future edit cannot quietly restore it.
+#[test]
+fn the_green_label_states_a_location_and_never_a_matter_status() {
+    use store::projects::MatterLifecycle;
+
+    assert_eq!(
+        MatterLifecycle::OnboardingOnFile.label(),
+        "onboarding on file"
+    );
+
+    for status_word in [
+        "live",
+        "active",
+        "open",
+        "good standing",
+        "in good standing",
+    ] {
+        assert_ne!(
+            MatterLifecycle::OnboardingOnFile.label(),
+            status_word,
+            "the green pill must name a location, not assert a matter status"
+        );
+    }
+}
+
+/// Every state's title says what the indicator did and did not verify, and the
+/// green one carries the limit the one-line label cannot.
+#[test]
+fn every_lifecycle_state_carries_its_own_title_and_green_states_its_limit() {
+    use store::projects::MatterLifecycle;
+    let states = [
+        MatterLifecycle::NeedsOnboarding,
+        MatterLifecycle::OnboardingOnFile,
+        MatterLifecycle::Closed,
+    ];
+    let titles: Vec<&str> = states.iter().map(|s| s.title()).collect();
+    assert_eq!(
+        titles
+            .iter()
+            .collect::<std::collections::HashSet<_>>()
+            .len(),
+        3,
+        "each state must carry its own title: {titles:?}"
+    );
+    assert!(
+        MatterLifecycle::OnboardingOnFile
+            .title()
+            .contains("not verified as executed"),
+        "the green title must state that filing is not execution: {}",
+        MatterLifecycle::OnboardingOnFile.title()
     );
 }
 
@@ -109,7 +171,7 @@ fn every_lifecycle_state_carries_its_own_class_and_a_distinct_text_label() {
     use store::projects::MatterLifecycle;
     let states = [
         MatterLifecycle::NeedsOnboarding,
-        MatterLifecycle::Live,
+        MatterLifecycle::OnboardingOnFile,
         MatterLifecycle::Closed,
     ];
     let classes: Vec<&str> = states.iter().map(|s| s.class()).collect();
@@ -469,7 +531,7 @@ async fn an_uploaded_engagement_letter_clears_the_badge_on_the_rendered_projects
         .unwrap_or_default()
         .to_string();
     assert!(
-        !row.contains("no retainer"),
+        !row.contains("no onboarding"),
         "an uploaded engagement letter must clear the badge on the rendered list: {row}"
     );
 }
@@ -609,7 +671,7 @@ async fn a_matter_show_page_carries_no_engagement_letter_disclaimer() {
         .code;
 
     let html = get_project(&app, &bare_code, admin_person).await;
-    assert!(!html.contains("no retainer"), "{html}");
+    assert!(!html.contains("no onboarding"), "{html}");
     assert!(!html.contains("has no engagement letter"), "{html}");
     assert!(!html.contains("notation create"), "{html}");
 }
@@ -674,24 +736,32 @@ async fn projects_list_flags_the_lifecycle_gaps_and_nothing_else() {
     // the row must NOT carry.
     let absent = |row: &str, badge: &str| assert!(!row.contains(badge), "{row}");
 
-    // B — bare open matter — is flagged as missing its retainer only.
+    // B — bare open matter — is flagged as missing its onboarding only.
     let b = row_for("Bare open matter");
-    assert!(&b.contains("no retainer"));
+    assert!(&b.contains("no onboarding"));
     absent(&b, "no offboarding letter");
 
-    // C — closed without a letter — is flagged for the closing letter only
-    // (it has its onboarding__estate retainer).
+    // C — closed without a letter — is flagged for the offboarding letter
+    // only (it has its onboarding__estate engagement).
     let c = row_for("Closed no letter");
     assert!(&c.contains("no offboarding letter"));
-    absent(&c, "no retainer");
+    absent(&c, "no onboarding");
 
     // A and D are clean — no badge either way.
     let a = row_for("Has retainer open");
-    absent(&a, "no retainer");
+    absent(&a, "no onboarding");
     absent(&a, "no offboarding letter");
     let d = row_for("Closed with letter");
-    absent(&d, "no retainer");
+    absent(&d, "no onboarding");
     absent(&d, "no offboarding letter");
+
+    // The badge vocabulary is the codebase's, not the conversational one:
+    // the row says "no onboarding", never "no retainer", so the warning
+    // badge and the lifecycle pill beside it speak the same word.
+    assert!(
+        !html.contains("no retainer"),
+        "the warning badge must use the onboarding vocabulary: {html}"
+    );
 }
 
 #[tokio::test]

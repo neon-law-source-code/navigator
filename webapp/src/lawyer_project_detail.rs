@@ -6,7 +6,7 @@
 //! admin keeps the all-project bypass); a lawyer not on the matter, and a
 //! non-lawyer caller, both get `404` (the matter does not exist for them). The
 //! page gathers, server-side of the render: the header (name / code / status /
-//! entity / the two DRIs), the missing-retainer notice, the estate section, the
+//! entity / the two DRIs), the missing-onboarding notice, the estate section, the
 //! forge repository link, the calendar, the participation ledger (with admin
 //! add/edit/remove), the documents table + uploader, and the close-matter
 //! control. The write forms render markup that posts to the existing native

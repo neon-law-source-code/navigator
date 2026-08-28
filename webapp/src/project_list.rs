@@ -5,7 +5,8 @@
 //! matters visible through the lawyer lens (`store::access::visible_projects_as_lawyer`
 //! — admin sees all, lawyer sees participated matters), each row carrying its
 //! resolved entity name and the two matter-lifecycle warning badges
-//! (`store::projects::matter_flags`: missing retainer, missing closing letter).
+//! (`store::projects::matter_flags`: missing onboarding, missing offboarding
+//! letter).
 //! The resolved entity-name column and the badges are computed server-side, so
 //! all four sort columns (`code` / `name` / `status` / `entity_name`) sort in
 //! one in-memory composite comparator. The "Add project" control links to the
@@ -28,10 +29,12 @@ pub struct ProjectRow {
     pub status: String,
     /// The resolved entity (matter owner) name; `?` when the FK does not resolve.
     pub entity_name: String,
-    /// The matter has no matter-opening engagement — surfaced as a warning badge.
-    pub missing_retainer: bool,
-    /// A `closed` matter with no closing letter — surfaced as a warning badge.
-    pub missing_closing_letter: bool,
+    /// The matter has no onboarding notation or classified document on file —
+    /// surfaced as a warning badge.
+    pub missing_onboarding: bool,
+    /// A `closed` matter with no offboarding letter on file — surfaced as a
+    /// warning badge.
+    pub missing_offboarding_letter: bool,
     /// `store::projects::MatterLifecycle::class()` for this row — the
     /// yellow/green/red indicator's CSS class. Computed server-side since
     /// `MatterLifecycle` is not a wasm-safe type.
@@ -40,6 +43,9 @@ pub struct ProjectRow {
     /// label that accompanies the colour, so the state never rests on colour
     /// alone.
     pub lifecycle_label: String,
+    /// `store::projects::MatterLifecycle::title()` for this row — the hover
+    /// and assistive text stating what the indicator did and did not verify.
+    pub lifecycle_title: String,
 }
 
 /// The rendered lawyer projects list: the rows, the active `?sort=`, and the
@@ -114,20 +120,24 @@ fn project_row(
     has_engagement: bool,
     has_closing: bool,
 ) -> ProjectRow {
-    let (missing_retainer, missing_closing_letter) =
+    let (missing_onboarding, missing_offboarding_letter) =
         store::projects::matter_flags(has_engagement, &m.status, has_closing);
-    let lifecycle =
-        store::projects::matter_lifecycle(&m.status, missing_retainer, missing_closing_letter);
+    let lifecycle = store::projects::matter_lifecycle(
+        &m.status,
+        missing_onboarding,
+        missing_offboarding_letter,
+    );
     ProjectRow {
         entity_name,
         id: m.id.to_string(),
         code: m.code,
         name: m.name,
         status: m.status,
-        missing_retainer,
-        missing_closing_letter,
+        missing_onboarding,
+        missing_offboarding_letter,
         lifecycle_class: lifecycle.class().to_string(),
         lifecycle_label: lifecycle.label().to_string(),
+        lifecycle_title: lifecycle.title().to_string(),
     }
 }
 
@@ -135,7 +145,7 @@ fn project_row(
 /// scope the matters through the lawyer lens, resolve each matter's entity name
 /// and lifecycle badges, and sort in memory (one composite comparator so the
 /// first requested `?sort=` field is primary). The lifecycle lookup errors
-/// propagate rather than badging every matter as missing its retainer.
+/// propagate rather than badging every matter as missing its onboarding.
 #[server]
 pub async fn get_project_list() -> Result<ProjectListView, ServerFnError> {
     // A non-lawyer caller (client / clerk) gets the `projects_index` handler's
@@ -310,17 +320,17 @@ pub fn LawyerProjects() -> Element {
                             }
                             td { class: "project-name",
                                 "{row.name}"
-                                if row.missing_retainer {
+                                if row.missing_onboarding {
                                     " "
                                     span { class: "matter-flag",
-                                        title: "This matter has no onboarding notation — it was never opened on a retainer.",
-                                        "no retainer"
+                                        title: "This matter has no onboarding notation or classified document on file.",
+                                        "no onboarding"
                                     }
                                 }
-                                if row.missing_closing_letter {
+                                if row.missing_offboarding_letter {
                                     " "
                                     span { class: "matter-flag",
-                                        title: "This closed matter has no offboarding letter.",
+                                        title: "This closed matter has no offboarding letter on file.",
                                         "no offboarding letter"
                                     }
                                 }
@@ -328,7 +338,7 @@ pub fn LawyerProjects() -> Element {
                             td { class: "project-status",
                                 span {
                                     class: "{row.lifecycle_class}",
-                                    title: "Lifecycle: {row.lifecycle_label}",
+                                    title: "{row.lifecycle_title}",
                                     "{row.lifecycle_label}"
                                 }
                             }

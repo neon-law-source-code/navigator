@@ -336,6 +336,59 @@ pub async fn for_notation(
     many(response)
 }
 
+/// Which of `notation_ids` have at least one drafted instrument — the
+/// batched, **content-free** existence probe the matter-lifecycle
+/// indicator reads.
+///
+/// One round trip for the whole set, never one per notation, because the
+/// caller ([`crate::projects::matter_lifecycle_sets`]) renders a list and
+/// its query budget is per-table.
+///
+/// Projects `notation_id` alone and returns bare ids. That is deliberate,
+/// not an optimization: [`ReviewDocument::body_html`] is a drafted legal
+/// instrument — a will, a trust, a health-care directive — and the caller
+/// needs to know only *whether* one exists. Selecting the body would pull
+/// the most sensitive text the firm holds into a list-page request that
+/// has no use for it.
+///
+/// Every status counts, `draft` included. A draft sitting in attorney
+/// review is an instrument the walk actually produced; whether the
+/// attorney has approved it yet is a different question from whether it
+/// exists.
+///
+/// # Errors
+///
+/// [`ReviewDocumentError::Db`] if the lookup fails.
+pub async fn notations_with_drafts(
+    db: &SurrealDb,
+    notation_ids: &[Uuid],
+) -> Result<std::collections::HashSet<Uuid>, ReviewDocumentError> {
+    #[derive(SurrealValue)]
+    struct NotationIdRow {
+        notation_id: surrealdb::types::RecordId,
+    }
+
+    if notation_ids.is_empty() {
+        return Ok(std::collections::HashSet::new());
+    }
+    let keys: Vec<surrealdb::types::RecordId> = notation_ids
+        .iter()
+        .map(|id| record_id(crate::notations::TABLE, *id))
+        .collect();
+    let mut response = db
+        .query(format!(
+            "SELECT notation_id FROM {TABLE} WHERE notation_id IN $notations"
+        ))
+        .bind(("notations", keys))
+        .await
+        .and_then(surrealdb::IndexedResults::check)?;
+    let rows: Vec<NotationIdRow> = response.take(0)?;
+    Ok(rows
+        .iter()
+        .filter_map(|r| record_uuid(&r.notation_id))
+        .collect())
+}
+
 /// All client-visible review documents for a project — those whose
 /// notation belongs to the project and whose status has been advanced past
 /// `draft`.
@@ -402,11 +455,85 @@ pub async fn set_status(
 #[cfg(test)]
 mod tests {
     use super::{
-        by_id, client_visible_for_project, create, for_notation, set_status, upsert_draft,
-        NewReviewDocument, STATUS_DRAFT, STATUS_PENDING_REVIEW,
+        by_id, client_visible_for_project, create, for_notation, notations_with_drafts, set_status,
+        upsert_draft, NewReviewDocument, STATUS_DRAFT, STATUS_PENDING_REVIEW,
     };
     use crate::surreal::test_support::mem;
     use crate::test_support::seed_notation;
+
+    /// The matter-lifecycle indicator's probe: exactly the notations that
+    /// produced an instrument, in one round trip, and nothing about the
+    /// notations that did not.
+    #[tokio::test]
+    async fn notations_with_drafts_returns_only_the_notations_carrying_one() {
+        let surreal = mem().await;
+        let produced = seed_notation(&surreal).await;
+        let abandoned = seed_notation(&surreal).await;
+
+        upsert_draft(
+            &surreal,
+            &NewReviewDocument {
+                notation_id: produced,
+                kind: "will",
+                title: "Last Will and Testament",
+                body_html: "<p>Synthetic draft body.</p>",
+            },
+        )
+        .await
+        .unwrap();
+
+        let found = notations_with_drafts(&surreal, &[produced, abandoned])
+            .await
+            .unwrap();
+        assert!(
+            found.contains(&produced),
+            "a notation whose walk drafted an instrument must be reported"
+        );
+        assert!(
+            !found.contains(&abandoned),
+            "a notation with no drafted instrument must not be reported — this is what \
+             keeps an abandoned walk from clearing a lifecycle flag"
+        );
+        assert_eq!(found.len(), 1);
+    }
+
+    /// A draft still awaiting attorney approval counts: the walk produced the
+    /// instrument, which is a different question from whether it was approved.
+    #[tokio::test]
+    async fn notations_with_drafts_counts_a_draft_still_in_attorney_review() {
+        let surreal = mem().await;
+        let notation_id = seed_notation(&surreal).await;
+        let id = upsert_draft(
+            &surreal,
+            &NewReviewDocument {
+                notation_id,
+                kind: "trust",
+                title: "Revocable Trust",
+                body_html: "<p>Synthetic draft body.</p>",
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            by_id(&surreal, id).await.unwrap().unwrap().status,
+            STATUS_DRAFT
+        );
+
+        assert!(notations_with_drafts(&surreal, &[notation_id])
+            .await
+            .unwrap()
+            .contains(&notation_id));
+    }
+
+    /// No notations to ask about is not a query.
+    #[tokio::test]
+    async fn notations_with_drafts_on_an_empty_set_asks_nothing() {
+        let surreal = mem().await;
+        assert!(notations_with_drafts(&surreal, &[])
+            .await
+            .unwrap()
+            .is_empty());
+    }
 
     #[tokio::test]
     async fn create_defaults_to_draft_and_is_readable_by_notation() {

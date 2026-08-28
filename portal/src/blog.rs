@@ -203,9 +203,9 @@ mod tests {
     #[test]
     fn thanks_apple_collage_renders_as_a_bootstrap_grid_routed_through_the_asset_seam() {
         // The post leads with the rainbow photo as a big standalone picture,
-        // then closes with a Bootstrap grid (`.row.blog-collage` of sixteen
-        // `.col` tiles) that absorbs the four photos that used to sit
-        // inline in the letter plus a later row of farewell snapshots. Each
+        // then closes with a Bootstrap grid (`.row.blog-collage` of twelve
+        // `.col` tiles) that absorbs the recovered photos supplied by the
+        // author. Each
         // tile is authored as a markdown `![]()`
         // separated by blank lines so pulldown-cmark still parses it — and
         // therefore routes its `src` through the asset seam (`/public` in
@@ -219,12 +219,13 @@ mod tests {
             "collage must render as a Bootstrap row, got: {}",
             post.body_html
         );
-        // Sixteen tiles total: fifteen standard `col-md-4` squares plus the
-        // Apple Park sunset, widened to a full-row `col-md-12` desktop banner.
+        // Twelve tiles total: eleven standard `col-md-4` squares plus the
+        // Apple Park landscape, widened to a full-row `col-md-12` desktop
+        // banner.
         assert_eq!(
             post.body_html.matches("col-6 col-md-4").count(),
-            15,
-            "the grid must hold fifteen standard tiles, got: {}",
+            11,
+            "the grid must hold eleven standard tiles, got: {}",
             post.body_html
         );
         assert!(
@@ -233,10 +234,11 @@ mod tests {
             "the sunset must render as a full-width desktop banner, got: {}",
             post.body_html
         );
-        // Every collage photo — including the four moved in from the letter
-        // and the new Sharks shot — resolves through the asset seam.
+        // Every recovered collage photo resolves through the asset seam.
         for slug in [
-            "collage-1",
+            "collage-3",
+            "collage-4",
+            "collage-5",
             "collage-8",
             "apple-park-team",
             "ethiopian-dinner",
@@ -246,7 +248,6 @@ mod tests {
             "apple-park-sunset",
             "farewell-crew",
             "curry-night",
-            "travels-abroad",
         ] {
             assert!(
                 post.body_html
@@ -290,13 +291,12 @@ mod tests {
     }
 
     #[test]
-    fn going_all_in_on_rust_leads_with_the_gcs_backed_ferris_nlf_art() {
+    fn going_all_in_on_rust_leads_with_the_ferris_training_hero() {
         let ix = load_dir(std::path::Path::new(crate::DEFAULT_BLOG_DIR)).unwrap();
         let post = ix
             .get("going-all-in-on-rust")
             .expect("going-all-in-on-rust post loads");
-        let ferris_src =
-            "src=\"/public/img/going-all-in-on-rust/ferris-rust-logo-nlf-20260705.png\"";
+        let ferris_src = "src=\"/public/img/going-all-in-on-rust/ferris-training-hero.png\"";
         // "Leads with" is an ordering promise, not just presence: the Ferris
         // art must be the FIRST image and sit ahead of the body prose, so a
         // later-inserted image can't quietly displace it as the lead.

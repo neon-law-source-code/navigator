@@ -2141,9 +2141,8 @@ async fn real_thanks_apple_post_is_capped_and_renders_the_photo_collage() {
     // End-to-end over the SHIPPED post file: the loader parses
     // `content/blog/20260619_thanks_apple.md`, the router renders it, and
     // we assert the two things this change wired up — the 65ch reading
-    // measure and the photo collage,
-    // authored as a markdown bullet list of images that resolves through
-    // the asset seam to `/public/img/thanks-apple/collage-N.jpg`.
+    // measure and the photo collage, authored as a Bootstrap grid of images
+    // that resolves through the asset seam to `/public/img/thanks-apple/*.jpg`.
     let mut state = site_state().await;
     state.blog = portal::blog::load_dir(std::path::Path::new(portal::DEFAULT_BLOG_DIR)).unwrap();
     let app = site_router(state);
@@ -2163,17 +2162,21 @@ async fn real_thanks_apple_post_is_capped_and_renders_the_photo_collage() {
         body.contains("class=\"blog-post\"") && body.contains("max-width: 65ch"),
         "post should carry the blog-post class capped at 65ch"
     );
-    // All seven collage photos render, routed through the asset seam.
-    for n in 1..=7 {
-        let src = format!("src=\"/public/img/thanks-apple/collage-{n}.jpg\"");
-        assert!(body.contains(&src), "collage photo {n} missing: {src}");
-    }
-    // The farewell row added later renders through the same seam.
+    // Every recovered collage photo renders through the same seam.
     for slug in [
+        "collage-3",
+        "collage-4",
+        "collage-5",
+        "collage-6",
+        "collage-8",
         "apple-park-sunset",
+        "apple-park-team",
+        "ethiopian-dinner",
+        "team-lunch",
+        "london-tower-bridge",
+        "sharks-game",
         "farewell-crew",
         "curry-night",
-        "travels-abroad",
     ] {
         let src = format!("src=\"/public/img/thanks-apple/{slug}.jpg\"");
         assert!(body.contains(&src), "farewell-row photo missing: {src}");

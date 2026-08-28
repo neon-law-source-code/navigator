@@ -44,14 +44,20 @@ pub const RELEASES_HREF: &str = "https://github.com/neon-law-source-code/navigat
 /// The tap-qualified formula. `neon-law-source-code/navigator` is a **separate
 /// repository** (`homebrew-navigator`), which is why the formula is named with
 /// its tap rather than bare: `brew` resolves the tap on first install.
-pub const HOMEBREW_FORMULA: &str = "neon-law-source-code/navigator/navigator";
+macro_rules! homebrew_formula {
+    () => {
+        "neon-law-source-code/navigator/navigator"
+    };
+}
+
+pub const HOMEBREW_FORMULA: &str = homebrew_formula!();
 
 /// The one command that installs the CLI, and upgrades it in place.
 ///
 /// Homebrew treats a tap-qualified `brew install` of an already-installed
 /// formula as an upgrade, so `/navigator` publishes this line once rather than
 /// a second `brew upgrade` copy of the same formula.
-pub const HOMEBREW_INSTALL_COMMAND: &str = concat!("brew install ", HOMEBREW_FORMULA);
+pub const HOMEBREW_INSTALL_COMMAND: &str = concat!("brew install ", homebrew_formula!());
 
 /// One platform a release publishes an archive for.
 pub struct PublicPlatform {
@@ -235,16 +241,16 @@ mod tests {
         );
     }
 
-    /// The GitOps Homebrew section names the same install command the page
-    /// publishes, so a tap rename cannot leave the doc describing a formula
+    /// `docs/gitops.md`'s Homebrew section names the same install command the
+    /// page publishes, so a tap rename cannot leave the doc describing a formula
     /// nobody can paste.
     #[test]
     fn gitops_names_the_published_install_command() {
         let gitops = include_str!("../../docs/gitops.md");
         let section = gitops
-            .split("### The Homebrew tap")
+            .split("\n### The Homebrew tap\n")
             .nth(1)
-            .and_then(|rest| rest.split("### ").next())
+            .and_then(|rest| rest.split("\n### ").next())
             .expect("gitops.md has a Homebrew tap section");
         assert!(
             section.contains(HOMEBREW_INSTALL_COMMAND),

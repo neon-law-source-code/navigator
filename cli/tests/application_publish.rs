@@ -164,6 +164,59 @@ fn read_argv(log: &Path) -> Vec<String> {
         .collect()
 }
 
+/// Run the "derive the coordinate and verify the built mount" step in a
+/// fixture checkout, and return the `key=value` pairs it wrote to
+/// `$GITHUB_OUTPUT`.
+///
+/// `manifest` is the root `navigator.yaml` content, when the fixture carries
+/// one at all. `repository` is the resolved `repository:` input — the
+/// fallback this step uses only when the manifest is absent or declares no
+/// `project:`. `index_html` is written verbatim as `portal/dist/index.html`,
+/// so a caller controls exactly which mount the "built" bundle claims.
+fn run_derive_step(
+    manifest: Option<&str>,
+    repository: &str,
+    index_html: &str,
+) -> Result<std::collections::HashMap<String, String>, String> {
+    let tmp = tempfile::tempdir().expect("temp dir");
+    let root = tmp.path();
+
+    if let Some(contents) = manifest {
+        fs::write(root.join("navigator.yaml"), contents).expect("write manifest");
+    }
+
+    let dist_dir = root.join("portal/dist");
+    fs::create_dir_all(&dist_dir).expect("create dist dir");
+    fs::write(dist_dir.join("index.html"), index_html).expect("write index.html");
+    fs::write(dist_dir.join("app.js"), "x").expect("write an asset");
+
+    let script_path = root.join("step.sh");
+    fs::write(&script_path, step_script("derive the coordinate")).expect("write step script");
+    let output_path = root.join("github_output.txt");
+    fs::write(&output_path, "").expect("create GITHUB_OUTPUT");
+
+    let output = Command::new("bash")
+        .arg(&script_path)
+        .current_dir(root)
+        .env("REPOSITORY", repository)
+        .env("DIST_DIR", "portal/dist")
+        .env("GITHUB_OUTPUT", &output_path)
+        .output()
+        .expect("run the step under bash");
+
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stdout).to_string()
+            + &String::from_utf8_lossy(&output.stderr));
+    }
+
+    Ok(fs::read_to_string(&output_path)
+        .expect("read GITHUB_OUTPUT")
+        .lines()
+        .filter_map(|line| line.split_once('='))
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect())
+}
+
 /// Split an argv into its `--flags` and its positional operands.
 ///
 /// Asserted on rather than fixed indices because the upload carries quieting
@@ -464,5 +517,75 @@ fn the_action_records_this_as_disclosure_reduction_not_access_control() {
         source.contains("cli/src/devx/gcp/app_publisher.rs"),
         "the action must point at where real access is granted, so a reader \
          needing to change it does not edit the masking instead",
+    );
+}
+
+// ── ENG-290: the manifest is the source of truth for the Project code ─────
+
+/// The manifest wins even when the `repository:` fallback names a different,
+/// otherwise-plausible Project — the settled decision this action now
+/// implements, not merely tolerates.
+#[test]
+fn the_manifests_declared_project_wins_over_the_repository_fallback() {
+    let outputs = run_derive_step(
+        Some("host: www.example.com\nproject: acme\n"),
+        "sample-litigation",
+        "<script type=\"module\" src=\"/app/projects/acme/portal/assets/app.js\"></script>",
+    )
+    .expect("the step succeeds when the manifest matches the built mount");
+
+    assert_eq!(outputs.get("code").map(String::as_str), Some("acme"));
+    assert_eq!(
+        outputs.get("prefix").map(String::as_str),
+        Some("acme/portal")
+    );
+}
+
+/// A checkout with no manifest yet falls back to `repository:`, so a
+/// not-yet-migrated caller keeps publishing exactly as before.
+#[test]
+fn the_repository_input_is_the_fallback_when_no_manifest_is_present() {
+    let outputs = run_derive_step(
+        None,
+        "sample-litigation",
+        "<script type=\"module\" src=\"/app/projects/sample-litigation/portal/assets/app.js\"></script>",
+    )
+    .expect("the step succeeds using the repository fallback");
+
+    assert_eq!(
+        outputs.get("code").map(String::as_str),
+        Some("sample-litigation")
+    );
+}
+
+/// A manifest carrying keys this step does not need — `host:`, the one a
+/// Project repository's own manifest adds — does not block reading `project:`.
+#[test]
+fn an_unknown_manifest_key_does_not_block_the_derived_code() {
+    let outputs = run_derive_step(
+        Some("project: acme\nno_live_row: the matter closed\n"),
+        "sample-litigation",
+        "<script type=\"module\" src=\"/app/projects/acme/portal/assets/app.js\"></script>",
+    )
+    .expect("an unrelated manifest key must not fail the derive step");
+
+    assert_eq!(outputs.get("code").map(String::as_str), Some("acme"));
+}
+
+/// The mount check still refuses a manifest whose declared code does not match
+/// the bundle actually built — the property that keeps a malformed or wrong
+/// declaration from silently publishing under someone else's prefix.
+#[test]
+fn a_manifest_naming_an_unbuilt_mount_is_still_refused() {
+    let error = run_derive_step(
+        Some("project: acme\n"),
+        "acme",
+        "<script type=\"module\" src=\"/app/projects/henderson/portal/assets/app.js\"></script>",
+    )
+    .expect_err("a declared code the build was not mounted under must fail");
+
+    assert!(
+        error.contains("is not mounted at"),
+        "the refusal must name the mount mismatch: {error}"
     );
 }

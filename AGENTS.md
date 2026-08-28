@@ -224,7 +224,7 @@ That is the whole naming rule: the repository name *is* the code, so nothing has
 
 Each client portal is `/app/projects/<code>/portal/`, and every `dev up` / `dev worktree-env up` refreshes all three
 before writing `.devx/env`. The clones and `pnpm` builds happen in temporary directories; each built `dist/` and its
-`navigator.yml` survive in `.devx/sample-projects/<code>/`, and `NAVIGATOR_SAMPLE_PROJECTS_DIR` points `web` at the
+`navigator.yaml` survive in `.devx/sample-projects/<code>/`, and `NAVIGATOR_SAMPLE_PROJECTS_DIR` points `web` at the
 parent. `index.html` publishes last, so a reader mid-refresh keeps a complete prior document until the new assets are
 ready.
 
@@ -235,10 +235,10 @@ The explicit command refreshes the same bundles. Name one matter to rebuild only
 cargo run -p cli -- dev sample-project --project sample-litigation
 ```
 
-Each application declares its own `name:` in `navigator.yml`, and boot validates that code before publishing it under
-the matching matter portal — so a bundle staged under the wrong directory is refused rather than published on another
-matter's portal. The code uses the same `projects::is_valid_code` rule as every Project, so the URL segment is always
-lowercase letters or numbers separated by single hyphens.
+Each application declares its own `project:` in `navigator.yaml`, and boot validates that code before publishing it
+under the matching matter portal — so a bundle staged under the wrong directory is refused rather than published on
+another matter's portal. The code uses the same `projects::is_valid_code` rule as every Project, so the URL segment is
+always lowercase letters or numbers separated by single hyphens.
 
 Whether these matters are seeded at all is `NAVIGATOR_SIMULATED_MATTERS`, which defaults to following
 `NAVIGATOR_ENVIRONMENT`: a `dev` boot carries them, a `production` boot does not. The persistent staging deployment sets

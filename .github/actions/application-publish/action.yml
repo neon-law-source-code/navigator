@@ -18,8 +18,11 @@ description: >-
 # so it names no organization, host, or client. The only things it cannot
 # derive are the three per-deployment coordinates the caller passes as
 # repository *secrets* — the bucket, the Workload Identity provider, and the
-# publisher service account. The Project code is derived from the repository
-# name, exactly as the validate gate derives it — nothing declares its own name.
+# publisher service account. The Project code is read from the repository's own
+# root `navigator.yaml` manifest (`project:`), the same file and key
+# `store::sample_project::MANIFEST_FILE` and `navigator projects drift` read;
+# the `repository:` input falls back to `github.event.repository.name` only
+# when a checkout carries no manifest.
 #
 # ## Why those three are secrets: disclosure reduction, NOT access control
 #
@@ -129,9 +132,10 @@ inputs:
     required: true
   repository:
     description: >-
-      Repository name, which *is* the Project code and the object prefix.
-      Defaults to the current repository's name; pass this only for a
-      differently named local checkout. Nothing else declares the code.
+      Fallback Project code and object prefix, used only when the checkout's
+      root `navigator.yaml` carries no `project:`. The manifest is the source
+      of truth; this input exists for a checkout that does not have one yet.
+      Defaults to the current repository's name.
     required: false
     default: ${{ github.event.repository.name }}
   dist_dir:
@@ -203,12 +207,17 @@ runs:
         # harmless, echoing the values would defeat the step.
         echo "registered log masks for the deployment coordinates"
 
-    # The same coordinate the validate gate derives: the repository name is the
-    # Project code, and the mount is that name plus the literal `portal`. This
-    # action re-derives it rather than reading a manifest, so the object prefix
-    # cannot disagree with the served mount. The slug and reserved-code rules
-    # themselves are the validate gate's job — it ran before this action in the
-    # same job — so this step only re-proves what it is about to upload.
+    # The Project reads its own code from its root `navigator.yaml` manifest —
+    # the same file and `project:` key `store::sample_project::MANIFEST_FILE`
+    # and `navigator projects drift` read. `repository:` (the `inputs.repository`
+    # fallback) is used only when the checkout carries no manifest, which is why
+    # it still defaults to the repository name.
+    #
+    # The manifest's `project:` is not re-validated as a slug here: the mount
+    # check just below is what refuses a wrong or malformed code, because the
+    # object prefix must match the Vite base the portal was actually built
+    # with. A declared code the gate would reject fails there, before this
+    # action ever runs.
     - name: derive the coordinate and verify the built mount
       shell: bash
       env:
@@ -217,15 +226,21 @@ runs:
       run: |
         set -euo pipefail
 
-        code="${REPOSITORY}"
+        code=""
+        if [ -f "navigator.yaml" ]; then
+            code="$(awk -F': *' '/^project:[[:space:]]*/ { print $2; exit }' navigator.yaml \
+                | tr -d '"' | xargs || true)"
+        fi
         if [ -z "${code}" ]; then
-            echo "::error::no repository name to derive the Project code from."
+            code="${REPOSITORY}"
+        fi
+        if [ -z "${code}" ]; then
+            echo "::error::no navigator.yaml project: and no repository name to derive the Project code from."
             exit 1
         fi
 
-        # cloud::workspace::WorkspaceConfig::portal_mount. Nothing is composed
-        # and nothing is parsed: the repository name is the code, `portal` is a
-        # literal, and the trailing slash is the served form.
+        # cloud::workspace::WorkspaceConfig::portal_mount. `portal` is a
+        # literal segment and the trailing slash is the served form.
         base="/app/projects/${code}/portal/"
 
         index="${DIST_DIR}/index.html"

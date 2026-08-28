@@ -150,10 +150,10 @@ Ask the room to identify what the client can see from this page and what the fir
 
 ### Make a sample-project change
 
-The sample repository declares its Navigator Project in `navigator.yml`:
+The sample repository declares its Navigator Project in `navigator.yaml`:
 
 ```yaml
-name: sample-litigation
+project: sample-litigation
 ```
 
 Edit the sample project, run the refresh command, restart `web`, and reload the portal URL. Boot validates the manifest,

@@ -15,7 +15,7 @@
 //! The clone and the build happen in a **temporary directory** that is removed
 //! when the command returns — a build tree is derived, so keeping it in the
 //! worktree would only invite editing the wrong copy. Two things survive into
-//! `.devx/sample-projects/<code>/`: the built `dist/`, and the `navigator.yml`
+//! `.devx/sample-projects/<code>/`: the built `dist/`, and the `navigator.yaml`
 //! that declares which Project the bundle mounts on. Boot re-reads that
 //! manifest rather than trusting the directory it was found in, so the pair
 //! travels together and a bundle staged under the wrong code is refused rather
@@ -606,20 +606,20 @@ mod tests {
         // Present but naming something that is not a Project code.
         std::fs::write(
             dir.path().join(store::sample_project::MANIFEST_FILE),
-            b"name: \"../etc\"\n",
+            b"project: \"../etc\"\n",
         )
         .expect("write");
         declared_project(dir.path()).expect_err("a manifest cannot smuggle a path segment");
 
         std::fs::write(
             dir.path().join(store::sample_project::MANIFEST_FILE),
-            b"name: sample-litigation\n",
+            b"project: sample-litigation\n",
         )
         .expect("write");
         let (manifest, code) = declared_project(dir.path()).expect("a valid manifest");
         assert_eq!(code, "sample-litigation");
         assert_eq!(
-            manifest, "name: sample-litigation\n",
+            manifest, "project: sample-litigation\n",
             "the text is staged verbatim, so it must come back unaltered"
         );
     }

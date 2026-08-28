@@ -4,7 +4,7 @@
 //! `/app/projects/{code}/portal/`. Local development refreshes the real Vite
 //! build of that matter's own repository — `neon-law-staging/sample-litigation`,
 //! `-transactional`, and `-estate` — stages each `dist/` beside the
-//! `navigator.yml` that names its Project, and points [`STAGE_ENV`] at the
+//! `navigator.yaml` that names its Project, and points [`STAGE_ENV`] at the
 //! directory holding all three through generated `.devx/env`.
 //!
 //! Boot re-reads the manifest rather than trusting the staging path, and
@@ -23,14 +23,20 @@
 use std::path::{Path, PathBuf};
 
 /// Names the directory the staged projects sit under — one subdirectory per
-/// Project code, each a `navigator.yml` beside a built `dist/`. Generated
+/// Project code, each a `navigator.yaml` beside a built `dist/`. Generated
 /// local development environments set it before `web` starts.
 pub const STAGE_ENV: &str = "NAVIGATOR_SAMPLE_PROJECTS_DIR";
 
 /// The manifest a project application carries at its root. It names the
 /// Project the bundle belongs to, so the publish prefix is declared by the
 /// application rather than hardcoded here.
-pub const MANIFEST_FILE: &str = "navigator.yml";
+///
+/// The same filename and `project:` key a Project repository declares itself
+/// in (`cli::projects::repository::PROJECT_MANIFEST`) — a bundle's staged
+/// manifest is a copy of that same file, not a distinct schema. Unknown keys,
+/// such as `host:`, are ignored rather than refused: a repository's own
+/// manifest may carry them, and this reader only needs `project:`.
+pub const MANIFEST_FILE: &str = "navigator.yaml";
 
 /// The built-bundle directory inside the staged project.
 pub const DIST_DIR: &str = "dist";
@@ -52,28 +58,33 @@ pub const ENTRY_CACHE_CONTROL: &str = "no-store";
 /// must not land in a shared cache.
 pub const ASSET_CACHE_CONTROL: &str = "private, max-age=31536000, immutable";
 
-/// A project application's `navigator.yml`.
+/// A project application's `navigator.yaml`.
 ///
-/// One field today. It is a manifest rather than a convention over the
+/// One field read here. It is a manifest rather than a convention over the
 /// repository name because the repository name is the application's to choose:
 /// a repository may be named for something other than the Project it mounts on,
 /// and no rule can recover the code from a name that never encoded it. The
 /// sample repositories happen to be named for their codes, which makes the two
 /// agree — by convention, not because anything derives one from the other.
+///
+/// Unknown keys are ignored rather than refused (`#[derive(Deserialize)]`
+/// carries no `deny_unknown_fields`): a Project repository's own manifest also
+/// carries `host:`, and this reader has no business rejecting a key it does
+/// not need.
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct Manifest {
     /// The Project code this bundle belongs to.
-    pub name: String,
+    pub project: String,
 }
 
 /// Why a manifest could not be turned into a publish prefix.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum ManifestError {
-    #[error("navigator.yml is not valid YAML: {0}")]
+    #[error("navigator.yaml is not valid YAML: {0}")]
     Unparsable(String),
-    #[error("navigator.yml names `{0}`, which is not a valid Project code")]
+    #[error("navigator.yaml names `{0}`, which is not a valid Project code")]
     InvalidCode(String),
-    #[error("navigator.yml names Project `{found}`, but this bundle mounts on `{expected}`")]
+    #[error("navigator.yaml names Project `{found}`, but this bundle mounts on `{expected}`")]
     WrongProject { expected: String, found: String },
 }
 
@@ -85,7 +96,7 @@ pub enum ManifestError {
 pub fn project_code_from_manifest(yaml: &str) -> Result<String, ManifestError> {
     let manifest: Manifest =
         serde_yaml::from_str(yaml).map_err(|e| ManifestError::Unparsable(e.to_string()))?;
-    let name = manifest.name.trim().to_string();
+    let name = manifest.project.trim().to_string();
     if !crate::projects::is_valid_code(&name) {
         return Err(ManifestError::InvalidCode(name));
     }
@@ -174,7 +185,7 @@ fn is_entry_document(relative: &Path) -> bool {
 /// without `index.html` is a failed build, and publishing its assets alone
 /// would strand the live bundle.
 ///
-/// `project_code` comes from the bundle's own `navigator.yml`, already
+/// `project_code` comes from the bundle's own `navigator.yaml`, already
 /// validated by [`project_code_from_manifest`].
 pub fn publish_plan(dist: &Path, project_code: &str) -> std::io::Result<Vec<PortalObject>> {
     let prefix = portal_prefix(project_code);
@@ -234,7 +245,7 @@ fn collect_files(root: &Path, dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Re
 /// built bundle to publish.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StagedProject {
-    /// The staged project root, holding `navigator.yml` and `dist/`.
+    /// The staged project root, holding `navigator.yaml` and `dist/`.
     pub root: PathBuf,
     /// The built bundle inside it.
     pub dist: PathBuf,
@@ -446,7 +457,7 @@ mod tests {
         let staged = staged_from("sample-litigation", move |_| Some(built.clone()))
             .expect("a staged project");
         assert_eq!(staged.dist, staged_root.join("dist"));
-        assert_eq!(staged.manifest(), staged_root.join("navigator.yml"));
+        assert_eq!(staged.manifest(), staged_root.join("navigator.yaml"));
     }
 
     /// Each matter resolves its own subdirectory under the one staging root,
@@ -488,7 +499,34 @@ mod tests {
     #[test]
     fn the_manifest_names_the_project_the_bundle_mounts_on() {
         assert_eq!(
-            project_code_from_manifest("name: sample-litigation\n").expect("a code"),
+            project_code_from_manifest("project: sample-litigation\n").expect("a code"),
+            "sample-litigation"
+        );
+    }
+
+    /// The retired `name:` key is not a quiet alias for `project:` — there is
+    /// no serde alias, so a manifest still spelled the old way is exactly as
+    /// unreadable as one carrying neither key. Deserializing into a required
+    /// `project: String` field with nothing to fill it is a missing-field
+    /// parse failure, which `project_code_from_manifest` reports as
+    /// `Unparsable`.
+    #[test]
+    fn the_retired_name_key_is_rejected_rather_than_read() {
+        assert!(matches!(
+            project_code_from_manifest("name: sample-litigation\n"),
+            Err(ManifestError::Unparsable(_))
+        ));
+    }
+
+    /// A manifest may carry keys this reader does not need — `host:`, the one
+    /// a Project repository's own manifest adds — without failing to parse.
+    /// This is what keeps the downstream `DEPLOYMENTS` table's own additions
+    /// from breaking this gate.
+    #[test]
+    fn an_unknown_key_alongside_project_is_ignored() {
+        assert_eq!(
+            project_code_from_manifest("host: www.example.com\nproject: sample-litigation\n")
+                .expect("a code"),
             "sample-litigation"
         );
     }
@@ -510,7 +548,7 @@ mod tests {
         ] {
             assert!(
                 matches!(
-                    project_code_from_manifest(&format!("name: \"{bad}\"\n")),
+                    project_code_from_manifest(&format!("project: \"{bad}\"\n")),
                     Err(ManifestError::InvalidCode(_))
                 ),
                 "`{bad}` must not validate as a Project code"
@@ -521,7 +559,7 @@ mod tests {
     #[test]
     fn unparsable_yaml_is_an_error_rather_than_a_default() {
         assert!(matches!(
-            project_code_from_manifest("name: [this is not a string]\n"),
+            project_code_from_manifest("project: [this is not a string]\n"),
             Err(ManifestError::Unparsable(_))
         ));
     }
@@ -529,7 +567,7 @@ mod tests {
     #[test]
     fn a_bundle_declaring_another_project_is_refused() {
         assert_eq!(
-            project_code_for("name: henderson\n", "sample-litigation"),
+            project_code_for("project: henderson\n", "sample-litigation"),
             Err(ManifestError::WrongProject {
                 expected: "sample-litigation".to_string(),
                 found: "henderson".to_string(),
@@ -537,7 +575,7 @@ mod tests {
             "one matter's application must not land on another matter's portal"
         );
         assert_eq!(
-            project_code_for("name: sample-litigation\n", "sample-litigation").expect("a code"),
+            project_code_for("project: sample-litigation\n", "sample-litigation").expect("a code"),
             "sample-litigation"
         );
     }

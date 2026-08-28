@@ -467,6 +467,13 @@ enum ProjectRepositoryAction {
         #[arg(long)]
         repository: Option<String>,
     },
+    /// Write Navigator's canonical agent-skill catalog into a Project
+    /// repository, from this binary's own compiled-in copies.
+    SyncSkills {
+        /// Repository root. Defaults to the current directory.
+        #[arg(default_value = ".")]
+        dir: PathBuf,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1896,6 +1903,9 @@ fn main() -> ExitCode {
                 } => projects::repository::scaffold(&dir, &project_code, &action_version),
                 ProjectRepositoryAction::Validate { dir, repository } => {
                     projects::repository::validate(&dir, repository.as_deref())
+                }
+                ProjectRepositoryAction::SyncSkills { dir } => {
+                    projects::repository::sync_skills(&dir)
                 }
             },
             ProjectsCmd::Drift {

@@ -225,7 +225,9 @@ description: Why Neon Law chose one language for fast, safe, local-first access-
 ## Every frontmatter key at a glance
 
 The narrative above covers the keys you reach for daily. This table is the complete set the system knows, grouped by
-document kind, so nothing is hidden:
+document kind, so nothing is hidden. The `Checked by` column names which rule catches a missing or malformed key; for
+what each code actually checks, its severity, and whether it autofixes, see the canonical reference at
+[`validate.md`](validate.md).
 
 ### Notation template
 

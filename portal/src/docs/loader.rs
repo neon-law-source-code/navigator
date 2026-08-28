@@ -339,6 +339,7 @@ mod tests {
             "oss-install",
             "public-contributor-safety",
             "retainer-intake",
+            "validate",
         ]);
         assert_eq!(actual, expected);
     }

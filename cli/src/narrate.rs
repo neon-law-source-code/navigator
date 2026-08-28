@@ -24,13 +24,13 @@ const STAGE_JS: &str = include_str!("../../server/public/js/harvard-outline-narr
 #[must_use]
 pub fn run(path: &Path, out: &Path) -> ExitCode {
     if !path.exists() {
-        eprintln!("navigator: narrate: file not found: {}", path.display());
+        eprintln!("navigator: narrate: input file not found");
         return ExitCode::from(2);
     }
     let original = match std::fs::read_to_string(path) {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("navigator: narrate: read {}: {e}", path.display());
+            eprintln!("navigator: narrate: cannot read input: {e}");
             return ExitCode::from(2);
         }
     };
@@ -42,12 +42,12 @@ pub fn run(path: &Path, out: &Path) -> ExitCode {
     );
     let doc = views::harvard_outline::parse(&original);
     if doc.units.is_empty() {
-        eprintln!("navigator: narrate: no outline units in {}", path.display());
+        eprintln!("navigator: narrate: no outline units in input");
         return ExitCode::from(2);
     }
     let html = views::harvard_outline::standalone_html(&doc, STAGE_CSS, STAGE_JS);
     if let Err(e) = std::fs::write(out, html) {
-        eprintln!("navigator: narrate: write {}: {e}", out.display());
+        eprintln!("navigator: narrate: cannot write output: {e}");
         return ExitCode::from(2);
     }
     println!(

@@ -59,6 +59,8 @@ fn narrate_refuses_a_missing_file() {
         .expect("run narrate on missing file");
     assert!(!result.status.success());
     assert!(!out.exists());
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(!stderr.contains("no-such-file.md"), "{stderr}");
 }
 
 #[test]
@@ -76,4 +78,5 @@ fn narrate_refuses_an_empty_body() {
     assert!(!result.status.success());
     let stderr = String::from_utf8_lossy(&result.stderr);
     assert!(stderr.contains("no outline units"), "{stderr}");
+    assert!(!stderr.contains("empty.md"), "{stderr}");
 }

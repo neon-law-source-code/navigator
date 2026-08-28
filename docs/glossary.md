@@ -1007,9 +1007,9 @@ a schema noun** — like [Matter](#matter) and [Engagement / Retainer](#engageme
 says out loud, not a table. There is no `referrals` table: a Matter is the same row as a [Project](#project) in the
 database, and a referred Matter is simply one the firm closes (or never opens) after pointing the client to trial
 counsel. The firm publishes no per-service marketing pages — the home page states the practice (litigation and flat-fee
-transactional work) and quotes each engagement by email; the firm-footer "every legal matter is different, and past results do
-not guarantee a similar result" disclaimer ([`views/src/brand.rs`](../views/src/brand.rs)) covers transactional and
-referred matters alike.
+transactional work) and quotes each engagement by email. The firm-footer disclaimer ("every legal matter is different,
+and past results do not guarantee a similar result") in [`views/src/brand.rs`](../views/src/brand.rs) covers
+transactional and referred matters alike.
 
 ## Relationship Edge
 

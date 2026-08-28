@@ -34,4 +34,4 @@ Feature: Neon Law Nautilus correspondence workflows
   Scenario: A lawsuit leaves the shield and is referred to litigation counsel
     Given an inbound screening email on an active matter saying "You are being sued; a summons in this civil action is enclosed."
     Then it is classified as "LawsuitOrSummons" and routed to "ReferLitigation"
-    And the litigation referral links to "/contact" and is not answered as correspondence
+    And the litigation referral links to "mailto:contact@neonlaw.com" and is not answered as correspondence

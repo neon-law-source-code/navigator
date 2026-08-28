@@ -328,10 +328,11 @@ fn every_classified_corpus_file_declares_a_kind() {
         }
     }
     // A loose floor, not an exact count: it exists so a walker that silently
-    // finds nothing fails loudly. Retiring the twelve service-specific
-    // retainers took the corpus from 51 files to 39.
+    // finds nothing fails loudly. The slim catalog (public forms plus two
+    // sample letters, plus GitHub intake, blog, and workshops) is 21 files
+    // because the nested `templates/github` root is walked twice.
     assert!(
-        checked >= 35,
+        checked >= 21,
         "expected to check the whole corpus, only saw {checked} files",
     );
 }

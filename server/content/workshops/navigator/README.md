@@ -113,14 +113,14 @@ Have each attendee sign in with the role relevant to their work. Keep the browse
 ### The four nouns in one workflow
 
 1. **Project** — Cruller v. Prine, the matter that owns the work.
-2. **Template** — a versioned Markdown blueprint such as `onboarding__retainer`.
+2. **Template** — a versioned Markdown blueprint such as `onboarding__letter`.
 3. **Notation** — one client and one Template bound inside the Project.
 4. **Workflow** — the states and transitions that move a Notation from intake through review and signature.
 
 The shared retainer template is available in the canonical catalog. A lawyer can bind it through the AIDA catalog:
 
 ```text
-aida_create_notation(template_code="onboarding__retainer", project_id=<sample-litigation project id>)
+aida_create_notation(template_code="onboarding__letter", project_id=<sample-litigation project id>)
 ```
 
 The notation begins in its seeded workflow state. The lawyer reviews the generated work, advances the workflow through

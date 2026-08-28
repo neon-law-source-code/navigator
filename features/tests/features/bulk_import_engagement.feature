@@ -20,5 +20,5 @@ Feature: Bulk-import to engagement, end to end
     Then the import succeeds with no errors
     And 2 organizations and 3 contacts are created
     And the contact "gemini@example.com" is linked to their organization
-    When the firm opens the "onboarding__retainer" matter for the imported contact "gemini@example.com"
+    When the firm opens the "onboarding__letter" matter for the imported contact "gemini@example.com"
     Then the matter is bound to the imported contact

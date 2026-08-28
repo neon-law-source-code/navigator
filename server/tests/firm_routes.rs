@@ -1485,11 +1485,9 @@ async fn home_points_at_the_three_practices_from_its_foot() {
 }
 
 #[tokio::test]
-async fn home_opens_on_the_practice_statement_not_a_photograph() {
-    // The page used to open on a landscape with the wordmark set over it.
-    // `resolve_firm_home_content` now sets `hero: None` deliberately: a consumer
-    // deciding whether they can afford a lawyer is served by the first sentence,
-    // not by a picture above it. This pins that decision at the route level.
+async fn home_opens_on_the_new_york_photograph_and_practice_statement() {
+    // The supplied skyline is the public home-page hero. The statement still
+    // follows it and remains the page's only h1.
     let app = site_app().await;
     let body = body_string(anon_get(&app, "/").await).await;
 
@@ -1497,17 +1495,14 @@ async fn home_opens_on_the_practice_statement_not_a_photograph() {
         body.contains(r#"<h1 class="home-statement__heading""#),
         "the statement is the first thing on the page: {body}"
     );
-    for gone in [
-        "<picture",
-        "berkeley-bay",
-        "home-hero__wordmark",
-        "home-hero__scrim",
-    ] {
-        assert!(
-            !body.contains(gone),
-            "the home page no longer ships a hero photograph ({gone}): {body}"
-        );
-    }
+    assert!(
+        body.contains("new-york.png"),
+        "the home page ships the skyline: {body}"
+    );
+    assert!(
+        body.contains("New York City skyline at sunset"),
+        "the hero has accurate alt text: {body}"
+    );
     assert_eq!(
         body.matches("<h1").count(),
         1,
@@ -1717,6 +1712,10 @@ async fn site_host_serves_the_talks_catalog_anonymously() {
     let index = body_string(anon_get(&app, "/presentations").await).await;
     let talk = "href=\"/presentations/rust-in-peace\"";
     assert!(index.contains(talk), "the catalog lists {talk}: {index}");
+    assert!(
+        !index.contains("More talks land here as we give them."),
+        "the talks catalog has no placeholder footnote: {index}"
+    );
 }
 
 /// A talk's hub renders under the firm's brand, and carries the deck
@@ -1970,6 +1969,18 @@ async fn the_three_classes_render_and_land_beside_each_other() {
     ] {
         assert!(index.contains(href), "index should list {href}: {index}");
     }
+    assert!(
+        index.contains("For Lawyers and Clerks"),
+        "the workshop audience label names both tiers: {index}"
+    );
+    assert!(
+        index.contains("For Admins and Owners"),
+        "the operations audience label names both tiers: {index}"
+    );
+    assert!(
+        !index.contains("More workshops land here as we run them."),
+        "the workshops catalog has no placeholder footnote: {index}"
+    );
 
     // The markdown twin serves raw markdown with the right content type — the
     // machine-reader surface every class has.

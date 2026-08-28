@@ -15,13 +15,10 @@ const WORKSHOP_INDEX_TITLE: &str = "Workshops";
 const WORKSHOP_INDEX_LEDE: &str =
     "Workshops are our hands-on classes for lawyers and legal professionals who run Neon Law \
      Navigator. Each one is a working session against the real application.";
-const WORKSHOP_INDEX_FOOTNOTE: &str = "More workshops land here as we run them.";
-
 const PRESENTATION_INDEX_TITLE: &str = "Presentations";
 const PRESENTATION_INDEX_LEDE: &str =
     "Presentations are the talks we give at meetups and conferences. Every code slide is an exact \
      copy of the shipped repository, kept honest by a test that fails the build when one drifts.";
-const PRESENTATION_INDEX_FOOTNOTE: &str = "More talks land here as we give them.";
 
 /// Build the `presentations` index: every material the manifest files under
 /// that category, in manifest order.
@@ -36,7 +33,6 @@ fn presentation_index_content(
         "presentations",
         PRESENTATION_INDEX_TITLE,
         PRESENTATION_INDEX_LEDE,
-        PRESENTATION_INDEX_FOOTNOTE,
     )
 }
 
@@ -51,7 +47,6 @@ fn workshop_index_content(workshops: &WorkshopIndex) -> webapp::catalog_index::C
         "workshops",
         WORKSHOP_INDEX_TITLE,
         WORKSHOP_INDEX_LEDE,
-        WORKSHOP_INDEX_FOOTNOTE,
     )
 }
 
@@ -65,7 +60,6 @@ fn catalog_index_content(
     category: &str,
     title: &str,
     lede: &str,
-    footnote: &str,
 ) -> webapp::catalog_index::CatalogIndexContent {
     webapp::catalog_index::CatalogIndexContent {
         title: title.to_string(),
@@ -82,7 +76,7 @@ fn catalog_index_content(
             })
             .collect(),
         contact_email: views::brand::firm_email().to_string(),
-        footnote: footnote.to_string(),
+        footnote: String::new(),
     }
 }
 
@@ -410,9 +404,9 @@ fn resolve_practice_links() -> Vec<webapp::home::PracticeLink> {
 /// work with a page of its own; it is no longer what this page opens on, and
 /// the copy that used to open this page now opens that one.
 ///
-/// No hero photograph: a person deciding whether they can be heard at all is
-/// served by the first sentence, not by a landscape above it. No price, on any
-/// section — every engagement is quoted through `/contact`.
+/// The home page opens on a New York skyline, supplied as a finished PNG in the
+/// public asset lane. No price, on any section — every engagement is quoted
+/// through `/contact`.
 pub(crate) fn resolve_firm_home_content(
     branding: &views::brand::Branding,
 ) -> webapp::home::HomeContent {
@@ -423,10 +417,14 @@ pub(crate) fn resolve_firm_home_content(
                            the wronged: personal injury, divorce, business divorce, and criminal \
                            investigations."
             .to_string(),
-        // No hero photograph. The page opens on the statement itself: a person
-        // deciding whether they can be heard at all is served by the first
-        // sentence, not by a landscape above it.
-        hero: None,
+        hero: Some(webapp::home::HeroPicture {
+            // This finished PNG is served directly from the public asset lane;
+            // it does not need the responsive-photo build manifest.
+            sources: Vec::new(),
+            fallback_src: views::assets::asset_url("img/new-york/new-york.png"),
+            alt: "New York City skyline at sunset, viewed from above Lower Manhattan.".to_string(),
+            sizes: "100vw".to_string(),
+        }),
         // The firm's tagline, and the whole of the h1. Read at a glance; what
         // it means is the section below it.
         heading: "Everyone deserves to be seen.".to_string(),

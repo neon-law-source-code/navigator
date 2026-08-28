@@ -1,13 +1,19 @@
 //! Lawyer projects list as a Dioxus component (#641 Phase 3, projects cluster) —
 //! the lawyer workbench matter directory.
 //!
-//! The successor to the `projects_index` render. A sortable table of the
-//! matters visible through the lawyer lens (`store::access::visible_projects_as_lawyer`
-//! — admin sees all, lawyer sees participated matters), each row carrying its
-//! resolved entity name and the two matter-lifecycle warning badges
-//! (`store::projects::matter_flags`: missing onboarding, missing offboarding
-//! letter).
-//! The resolved entity-name column and the badges are computed server-side, so
+//! The successor to the `projects_index` render. A sortable table of matters,
+//! each row carrying its resolved entity name and the matter-lifecycle status
+//! pill (`store::projects::matter_lifecycle`, which itself folds in
+//! `store::projects::matter_flags`'s missing-onboarding signal — the pill is
+//! the one place that flag surfaces now; see [`get_project_list`]).
+//!
+//! Owner and Admin read every matter here (`store::projects::all`), not only
+//! their own: this is the administrative *listing* surface
+//! (`webapp::admin_listing::MatterScope::Unscoped` names the same idea
+//! elsewhere), not the matter surface `store::access` gates — that surface
+//! still admits no privileged bypass (ENG-81). A Lawyer without that tier
+//! keeps the scoped read, `store::access::visible_projects_as_lawyer`.
+//! The resolved entity-name column and the pill are computed server-side, so
 //! all four sort columns (`code` / `name` / `status` / `entity_name`) sort in
 //! one in-memory composite comparator. The "Add project" control links to the
 //! `/app/projects/new` create page, which remains an Axum form route.
@@ -29,11 +35,11 @@ pub struct ProjectRow {
     pub status: String,
     /// The resolved entity (matter owner) name; `?` when the FK does not resolve.
     pub entity_name: String,
-    /// The matter has no onboarding notation or classified document on file —
-    /// surfaced as a warning badge.
-    pub missing_onboarding: bool,
     /// A `closed` matter with no offboarding letter on file — surfaced as a
-    /// warning badge.
+    /// warning badge. (The matching "missing onboarding" signal already has a
+    /// home: the `lifecycle_*` fields below fold it into the status pill
+    /// instead of a second badge, since an open matter missing onboarding
+    /// and an open matter needing onboarding were always the same fact.)
     pub missing_offboarding_letter: bool,
     /// `store::projects::MatterLifecycle::class()` for this row — the
     /// yellow/green/red indicator's CSS class. Computed server-side since
@@ -133,7 +139,6 @@ fn project_row(
         code: m.code,
         name: m.name,
         status: m.status,
-        missing_onboarding,
         missing_offboarding_letter,
         lifecycle_class: lifecycle.class().to_string(),
         lifecycle_label: lifecycle.label().to_string(),
@@ -142,10 +147,17 @@ fn project_row(
 }
 
 /// Fetch the lawyer projects list for the current request: refuse non-lawyer,
-/// scope the matters through the lawyer lens, resolve each matter's entity name
-/// and lifecycle badges, and sort in memory (one composite comparator so the
-/// first requested `?sort=` field is primary). The lifecycle lookup errors
-/// propagate rather than badging every matter as missing its onboarding.
+/// resolve each matter's entity name and lifecycle badge, and sort in memory
+/// (one composite comparator so the first requested `?sort=` field is
+/// primary). The lifecycle lookup errors propagate rather than badging every
+/// matter as missing its onboarding.
+///
+/// Owner and Admin read [`store::projects::all`] — every matter in the
+/// deployment — the same way `reconcile_project_repositories_door` does for
+/// its own administrative question: privileged reach is a place you navigate
+/// to, not a silent widening of the matter surface. An ordinary Lawyer still
+/// reads through `store::access::visible_projects_as_lawyer`, which grants no
+/// such bypass.
 #[server]
 pub async fn get_project_list() -> Result<ProjectListView, ServerFnError> {
     // A non-lawyer caller (client / clerk) gets the `projects_index` handler's
@@ -178,7 +190,7 @@ pub async fn get_project_list() -> Result<ProjectListView, ServerFnError> {
     let sort = query.sort.unwrap_or_default();
     let parsed = parse_sort(&sort);
 
-    // The lawyer lens takes a store role for the admin bypass; map the injected
+    // The scoped lawyer-lens read below takes a store role; map the injected
     // wasm-safe tier back to it.
     let store_role = match role {
         ViewerRole::Owner => store::persons::Role::Owner,
@@ -189,9 +201,13 @@ pub async fn get_project_list() -> Result<ProjectListView, ServerFnError> {
     };
 
     let surreal = consume_context::<store::surreal::SurrealDb>();
-    let mut matters = store::access::visible_projects_as_lawyer(&surreal, person_id, store_role)
-        .await
-        .map_err(loader_error)?;
+    let mut matters = if role.is_admin_tier() {
+        store::projects::all(&surreal).await.map_err(loader_error)?
+    } else {
+        store::access::visible_projects_as_lawyer(&surreal, person_id, store_role)
+            .await
+            .map_err(loader_error)?
+    };
 
     let entities = store::entities::all(&surreal).await.map_err(loader_error)?;
     let by_entity = |id: uuid::Uuid| {
@@ -320,13 +336,6 @@ pub fn LawyerProjects() -> Element {
                             }
                             td { class: "project-name",
                                 "{row.name}"
-                                if row.missing_onboarding {
-                                    " "
-                                    span { class: "matter-flag",
-                                        title: "This matter has no onboarding notation or classified document on file.",
-                                        "no onboarding"
-                                    }
-                                }
                                 if row.missing_offboarding_letter {
                                     " "
                                     span { class: "matter-flag",

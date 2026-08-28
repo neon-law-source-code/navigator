@@ -22,6 +22,11 @@
 
   var counter = root.querySelector("[data-harvard-counter]");
   var current = 0;
+  var params = new URLSearchParams(window.location.search);
+  var start = parseInt(params.get("i") || "0", 10);
+  if (!isNaN(start) && start >= 0 && start < units.length) {
+    current = start;
+  }
 
   function paint() {
     units.forEach(function (unit, index) {

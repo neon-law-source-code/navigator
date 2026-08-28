@@ -469,6 +469,12 @@ fn escape_attr(raw: &str) -> String {
         .replace('\'', "&#39;")
 }
 
+/// Synthetic motion-practice body shared by the lawyer stage and CLI tests.
+pub const SAMPLE_MOTION: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/fixtures/sample_motion.md"
+));
+
 #[cfg(test)]
 mod tests {
     use super::{parse, stage_html, DepthOneScheme, UnitKind};
@@ -476,6 +482,10 @@ mod tests {
     const RETAINER: &str = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../templates/neon_law/shared/retainer.md"
+    ));
+    const ENGAGEMENT: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../templates/neon_law/shared/engagement_letter.md"
     ));
 
     #[test]
@@ -561,9 +571,42 @@ mod tests {
     }
 
     #[test]
+    fn the_bundled_engagement_letter_is_a_roman_outline() {
+        let doc = parse(ENGAGEMENT);
+        assert_eq!(doc.title, "Engagement Letter");
+        assert_eq!(doc.scheme, Some(DepthOneScheme::Roman));
+        let markers: Vec<_> = doc
+            .units
+            .iter()
+            .filter(|u| u.kind == UnitKind::Heading)
+            .map(|u| u.marker.as_str())
+            .collect();
+        assert_eq!(
+            markers,
+            vec!["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"]
+        );
+    }
+
+    #[test]
     fn unlabeled_paragraphs_share_the_section_highlight_depth() {
         let doc = parse("## I. One\n\nFirst.\n\nSecond.\n");
         assert_eq!(doc.units.len(), 3);
         assert!(doc.units[1..].iter().all(|u| u.depth == 1 && u.path == "I"));
+    }
+
+    #[test]
+    fn the_sample_motion_is_an_arabic_outline() {
+        let doc = parse(super::SAMPLE_MOTION);
+        assert_eq!(doc.title, "Sample Motion");
+        assert_eq!(doc.scheme, Some(DepthOneScheme::Arabic));
+        let headings: Vec<_> = doc
+            .units
+            .iter()
+            .filter(|u| u.kind == UnitKind::Heading)
+            .map(|u| u.path.as_str())
+            .collect();
+        assert_eq!(headings, vec!["1", "2", "3"]);
+        assert!(doc.units.iter().any(|u| u.path == "2.A" && u.depth == 2));
+        assert!(doc.units.iter().any(|u| u.path == "2.B" && u.depth == 2));
     }
 }

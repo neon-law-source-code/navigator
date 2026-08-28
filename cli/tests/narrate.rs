@@ -6,21 +6,7 @@ use std::process::Command;
 use assert_cmd::cargo::cargo_bin;
 use tempfile::TempDir;
 
-const MOTION: &str = "\
----
-title: Sample Motion
----
-
-## 1. Introduction
-
-The court should deny the request.
-
-## 2. Argument
-
-> **A. Standard of review.** The question is de novo.
->
-> **B. The claim fails.** The record does not support it.
-";
+const MOTION: &str = views::harvard_outline::SAMPLE_MOTION;
 
 fn write(dir: &TempDir, name: &str, body: &str) -> std::path::PathBuf {
     let path = dir.path().join(name);

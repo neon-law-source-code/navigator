@@ -846,18 +846,18 @@ pub fn lawyer_dashboard_router(
 }
 
 /// The Harvard-outline narration stage. A lawyer-only recording surface for
-/// the bundled retainer; drafts on disk go through `navigator template narrate`.
+/// bundled templates; drafts on disk go through `navigator template narrate`.
 pub const LAWYER_OUTLINE_PATH: &str = "/lawyer/outline";
 
-/// The gated Dioxus outline stage. The retainer body is compiled in, so the
-/// page does not read the store — it is a teaching/recording surface, not a
+/// The gated Dioxus outline stage. Bundled template bodies are compiled in, so
+/// the page does not read the store — it is a teaching/recording surface, not a
 /// matter document.
 pub fn harvard_outline_router(
     sessions: crate::session::SessionStore,
     policy: crate::policy::PolicyClient,
     auth: crate::auth::AuthConfig,
 ) -> Router {
-    let injected = webapp::harvard_outline::InjectedOutlineStage(bundled_retainer_outline_stage());
+    let injected = webapp::harvard_outline::InjectedOutlineStage(bundled_outline_library());
     let cfg = ServeConfig::new().context_providers(std::sync::Arc::new(vec![Box::new(move || {
         Box::new(injected.clone()) as Box<dyn std::any::Any>
     })
@@ -882,13 +882,24 @@ pub fn harvard_outline_router(
         .route_layer(from_fn_with_state(auth, crate::auth::require_auth))
 }
 
-fn bundled_retainer_outline_stage() -> webapp::harvard_outline::OutlineStageContent {
+fn bundled_outline_library() -> Vec<webapp::harvard_outline::OutlineStageContent> {
     const RETAINER: &str = include_str!("../../templates/neon_law/shared/retainer.md");
-    let doc = views::harvard_outline::parse(RETAINER);
-    webapp::harvard_outline::OutlineStageContent {
-        title: doc.title.clone(),
-        stage_html: views::harvard_outline::stage_html(&doc),
-    }
+    const ENGAGEMENT: &str = include_str!("../../templates/neon_law/shared/engagement_letter.md");
+    [
+        ("retainer", RETAINER),
+        ("engagement", ENGAGEMENT),
+        ("motion", views::harvard_outline::SAMPLE_MOTION),
+    ]
+    .into_iter()
+    .map(|(slug, src)| {
+        let doc = views::harvard_outline::parse(src);
+        webapp::harvard_outline::OutlineStageContent {
+            slug: slug.to_string(),
+            title: doc.title.clone(),
+            stage_html: views::harvard_outline::stage_html(&doc),
+        }
+    })
+    .collect()
 }
 
 /// The blank government-forms index (#956 Phase 4). The download route under it

@@ -104,7 +104,29 @@
   min-height: 100vh;
 }
 
+.harvard-doc-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+  max-width: 46rem;
+  margin: 0 auto 1rem;
+  padding: 0 1.25rem;
+}
+
+.harvard-doc-switcher .nav-link.is-current {
+  font-weight: 650;
+  color: var(--nav-color-primary);
+}
+
+.harvard-stage-intro {
+  max-width: 46rem;
+  margin: 1rem auto 0.75rem;
+  padding: 0 1.25rem;
+}
+
 body.harvard-stage-recording .lawyer-nav,
-body.harvard-stage-recording .harvard-stage__hint {
+body.harvard-stage-recording .harvard-stage__hint,
+body.harvard-stage-recording .harvard-doc-switcher,
+body.harvard-stage-recording .harvard-stage-intro {
   display: none;
 }

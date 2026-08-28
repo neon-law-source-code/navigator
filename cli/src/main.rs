@@ -2378,13 +2378,16 @@ const SEED_DOCUMENT_CODE: &str = "Y001";
 
 fn seed_model_for_path(path: &std::path::Path) -> Option<anyhow::Result<store::seed::SeedModel>> {
     let parent = path.parent()?;
-    (parent.file_name()? == "seeds").then(|| {
-        let model = path
-            .file_stem()
-            .and_then(std::ffi::OsStr::to_str)
-            .unwrap_or_default();
-        store::seed::SeedModel::parse(model)
-    })
+    if parent.file_name()? != "seeds" {
+        return None;
+    }
+    let model = path.file_stem()?.to_str()?;
+    let parsed = store::seed::SeedModel::parse(model);
+    let is_canonical_catalog = parent
+        .parent()
+        .and_then(std::path::Path::file_name)
+        .is_some_and(|name| name == "store");
+    (!is_canonical_catalog || parsed.is_ok()).then_some(parsed)
 }
 
 /// Validate the direct `seeds/*.yaml` documents that an operator can submit

@@ -406,6 +406,29 @@ fn validate_checks_seed_documents_before_any_deployment_write() {
 }
 
 #[test]
+fn validate_ignores_unsupported_canonical_seed_catalogs() {
+    let dir = TempDir::new().unwrap();
+    write(
+        dir.path(),
+        "store/seeds/Question.yaml",
+        "lookup_fields: []\nrecords: []\n",
+    );
+    write(
+        dir.path(),
+        "store/seeds/Person.yaml",
+        "lookup_fields:\n  - email\nrecords: []\n",
+    );
+    navigator()
+        .arg("validate")
+        .arg(dir.path())
+        .assert()
+        .success()
+        .stdout(str::contains(
+            "Validated 1 seed document(s), found 0 error(s)",
+        ));
+}
+
+#[test]
 fn validate_refuses_invalid_seed_documents() {
     let dir = TempDir::new().unwrap();
     write(

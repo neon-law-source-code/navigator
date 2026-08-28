@@ -821,8 +821,8 @@ through the chain backend. See [`solana-attestation.md`](solana-attestation.md) 
 ## Onboarding
 
 The codebase term for the notation that **opens a matter** — `rules::kind::Kind::Onboarding`, classified by
-[`Kind::opens_a_matter`](../rules/src/kind.rs). The shipped sample is the engagement letter
-(`onboarding__letter`). One kind covers that act of opening the matter.
+[`Kind::opens_a_matter`](../rules/src/kind.rs). The shipped sample is the engagement letter (`onboarding__letter`). One
+kind covers that act of opening the matter.
 
 In conversation and with clients this is the **retainer** or the **engagement letter** — see [Engagement /
 Retainer](#engagement--retainer) for that client-facing shape. The codebase and the workflow runtime speak Onboarding.

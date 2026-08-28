@@ -103,8 +103,8 @@ pub enum InquirySource {
 }
 ```
 
-For v1, every reachable `questionnaire:` Question becomes one `InquiryDraft` with
-`InquirySource::TemplateQuestion`. The live system then tracks coverage against those Inquiries while the existing
+For v1, every reachable `questionnaire:` Question becomes one `InquiryDraft` with `InquirySource::TemplateQuestion`.
+The live system then tracks coverage against those Inquiries while the existing
 Notation workflow remains the authority for document generation, lawyer review, client review, and signing.
 
 ## Local CLI probe
@@ -280,8 +280,8 @@ Conclusions:
   lever. At realistic volume (~20 sittings / month ≈ ~`$28` / month) cost is not a binding constraint on this feature.
 - **If cost ever does bite, the levers are Speech-to-Text-side, not the debounce dial**: a discounted dynamic-batch tier
   (`$0.004` / min) for post-hoc rather than live coverage, or routing coverage through the already-paid Gemini
-  Enterprise seam at ~`$0` marginal inference cost. These are
-  deferred options, not v1 work.
+  Enterprise seam at ~`$0` marginal inference cost. These are deferred
+  options, not v1 work.
 
 ## Speaker attribution
 

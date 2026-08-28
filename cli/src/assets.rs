@@ -1783,7 +1783,7 @@ Inline raw-HTML tile: <div>![Team](img/thanks-apple/team-lunch.jpg)</div>\n";
         let content = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../server/content");
         let refs = content_image_refs(&content).unwrap();
         assert!(
-            refs.contains("img/going-all-in-on-rust/ferris-rust-logo-nlf-20260705.png"),
+            refs.contains("img/going-all-in-on-rust/ferris-training-hero.png"),
             "the Rust post hero must be discovered, got: {refs:?}"
         );
         // The Rust in Peace slide media the publish gate must know to check:

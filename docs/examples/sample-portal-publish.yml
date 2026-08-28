@@ -1,110 +1,146 @@
 # The publish caller for a `neon-law-staging` sample-portal repository.
 #
-# NOT YET APPLIED. This file is the exact content to add as
-# `.github/workflows/publish.yml` in each of `neon-law-staging/sample-litigation`,
-# `neon-law-staging/sample-transactional` and `neon-law-staging/sample-estate`.
-# It lives here, in Navigator, because pushing it is a change to three public
-# repositories and is a separate decision from merging this one. Copy it
-# unchanged — nothing in it is per-repository.
+# APPLIED. This is the pattern actually running today as `.github/workflows/publish.yml`
+# in each of `neon-law-staging/sample-litigation`, `neon-law-staging/sample-transactional`
+# and `neon-law-staging/sample-estate`. It lives here, in Navigator, so a proposed change
+# to the shared pattern is checked against what all three repositories actually run rather
+# than against a plan that predates them.
+#
+# It depends on two checked-in gate scripts that are *not* reproduced in this file, and are
+# not written by `navigator projects repository scaffold` either — they were added to the
+# three sample repositories by hand, the same way this workflow was: `.github/navigator.py`
+# (reads `navigator.yaml` and derives the applications bucket and object prefix) and
+# `.github/no-external-references.py` (the origin gate, run over the built bundle before it
+# uploads). A fourth sample repository needs both copied in alongside this file.
 #
 # ## Why nothing here names the Project
 #
-# `application-publish` derives the object prefix from
-# `github.event.repository.name` and then proves the built bundle is mounted at
-# `/app/projects/<that>/portal/`. The three repositories are now named for the
-# Project codes they mount on, so the derived prefix is already right and no
-# `repository:` override is needed. A `repository:` line here would be a second
-# place the code is declared, and the two could disagree.
+# `application-publish` derives the object prefix from `github.event.repository.name` and
+# then proves the built bundle is mounted at `/app/projects/<that>/portal/`. The three
+# repositories are named for the Project codes they mount on, so the derived prefix is
+# already right and no `repository:` override is needed. A `repository:` line here would be
+# a second place the code is declared, and the two could disagree.
 #
-# `dist_dir: dist` *is* needed: these applications live at the repository root,
-# not under `portal/`, so the build emits `dist/` rather than `portal/dist/`.
+# `dist_dir: dist` *is* needed: these applications live at the repository root, not under
+# `portal/`, so the build emits `dist/` rather than `portal/dist/`.
 #
-# ## Before this can work
+# ## Why the credential coordinates are variables, not secrets
 #
-# Each repository needs three **secrets** (not variables — a variable is printed
-# in full in a public Actions log, and two of these name the deployment's GCP
-# project):
+# This repository is public, so a variable printed in full in the Actions log matters here
+# in a way it would not in a private repository. A Workload Identity provider resource name
+# and a service-account email are public identifiers, though — no service-account key exists
+# — so printing them costs nothing. The trust is enforced entirely on Google's side, by three
+# independent controls:
 #
-#   NAVIGATOR_APPLICATIONS_BUCKET            neon-law-stg-applications
-#   NAVIGATOR_APP_PUBLISHER_WIF_PROVIDER     printed by `navigator ops gcp setup`
-#   NAVIGATOR_APP_PUBLISHER_SERVICE_ACCOUNT  printed by `navigator ops gcp setup`
+#   1. the provider's attribute condition, which requires the OIDC token to carry
+#      `repository == neon-law-staging/<this repository>` AND `ref == refs/heads/main`;
+#   2. the service account's `workloadIdentityUser` binding, which names that one repository
+#      as the only principal that may impersonate it;
+#   3. a bucket IAM condition confining the account's writes to the `<code>/portal/` prefix.
 #
-# And `neon-law-stg` needs the publisher identity those two coordinates name,
-# which it does not have: it carries no `nav-pub-<code>` account for any of these
-# three Projects and no `app-publisher` Workload Identity pool, so nothing there
-# can federate a publish yet.
+# So a fork may read these values, copy this file verbatim, and still publish nothing: its
+# token carries a different `repository` claim. GitHub also refuses to issue `id-token: write`
+# to a fork's pull-request run at all. The two variables are set together:
 #
-# ## Why this is held rather than applied, and what is actually outstanding
+#     gh variable set NAVIGATOR_APP_PUBLISHER_WIF_PROVIDER --body '<provider>'
+#     gh variable set NAVIGATOR_APP_PUBLISHER_SERVICE_ACCOUNT --body '<sa email>'
 #
-# **The `workflow` token scope this needs is available.** Pushing a
-# `.github/workflows/` change used to be blocked on a credential that did not
-# exist; it now does, so this is no longer a tooling gap. Recording that
-# explicitly because the distinction changes who unblocks it.
+# The bucket is deliberately absent from that pair. It comes from `navigator.yaml`, so an
+# unprovisioned repository skips this job for want of a credential, not for want of a
+# destination.
 #
-# What remains is two things, in this order:
+# ## Why there are two triggers and not one
 #
-# 1. **The publisher identity, provisioned in `neon-law-stg`.** Applying this
-#    file first would be actively worse than waiting: every merge to `main` in
-#    three *public* repositories would run a workflow that fails at the
-#    authentication step, so three public repositories would carry red CI
-#    continuously, for no gain — nothing publishes either way until the identity
-#    exists.
-# 2. **A decision to apply it.** Pushing to three public repositories is not a
-#    consequence of merging a Navigator pull request, and should not become one.
+# **Events triggered by `GITHUB_TOKEN` do not create workflow runs.** That is GitHub's
+# recursion guard and it is not optional. `ci`'s auto-merge job squashes with a GitHub App
+# token rather than `GITHUB_TOKEN` precisely so the resulting push to `main` is attributed to
+# the App and does deliver a `push` event. If that ever regresses to `GITHUB_TOKEN`, merges
+# will land on `main` and publish nothing, silently. `workflow_dispatch` is the manual way out
+# of that:
 #
-# Neither is a code change, which is why this file is finished and parked rather
-# than partially written. When both clear, it is a copy into three repositories
-# and nothing else.
-
-name: publish
+#     gh workflow run publish.yml --ref main
+#
+# A publish is an overwrite and never a delete, so a redundant dispatch is safe: the worst it
+# does is upload identical bytes and restamp them.
 
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
-# A superseded publish has nothing left to land, and two publishes racing on the
-# same prefix could interleave their two passes.
 concurrency:
+  # Never two publishes into one prefix. A superseded run has nothing left to upload, but
+  # unlike `ci` it is not cancelled mid-flight: a cancelled publish can leave an index.html
+  # naming assets from two builds.
   group: publish-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read
-  id-token: write # required to mint the OIDC token WIF federates
 
 jobs:
   publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    permissions:
+      contents: read
+      # Required to mint the OIDC token Workload Identity Federation exchanges. No
+      # service-account key exists, so this is the whole of the credential.
+      id-token: write
+
+    # Skips cleanly on a fork, or before the publisher identity is provisioned, rather than
+    # failing red. `publish` is not a required check — `ci` is — so a skip blocks nothing.
+    if: vars.NAVIGATOR_APP_PUBLISHER_WIF_PROVIDER != ''
+
     steps:
       - uses: actions/checkout@v7
+
+      # The destination, derived and printed before anything is built. The bucket is a
+      # function of `host` in navigator.yaml, so this step is where a publish to the wrong
+      # deployment is caught — in the log, by name, above the upload.
+      - id: navigator
+        name: navigator.yaml
+        run: |
+          set -euo pipefail
+          python3 .github/navigator.py --check
+          {
+              echo "bucket=$(python3 .github/navigator.py applications-bucket)"
+              echo "prefix=$(python3 .github/navigator.py prefix)"
+          } >> "${GITHUB_OUTPUT}"
+
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: pnpm
 
+      # No registry configuration and no token, for the same reason as in `ci`: the
+      # component library is a public release tarball URL.
       - run: pnpm install --frozen-lockfile
-      - run: pnpm lint
-      - run: pnpm typecheck
       - run: pnpm build
 
-      # After the build, never before — the bundle and licence gates assert on
-      # real output, so running them first would pass by finding nothing to
-      # check. Same ordering as ci.yml, for the same reason.
-      - run: pnpm test
+      # The origin gate, over the exact bytes about to be uploaded. It runs here as well as
+      # in `ci` because this is the last place an off-origin host can be caught before the
+      # bundle is served.
+      - run: python3 .github/no-external-references.py
 
-      # The one gate: source-only, no legal files, and the built portal is
-      # mounted where Navigator will serve it. It runs before the publish and in
-      # the same job.
-      - uses: neon-law-source-code/navigator/.github/actions/validate@26.8.22-hotfix.23
+      # Two passes, hashed assets first and index.html last, deleting nothing: the
+      # applications bucket is private and shared across every Project, so a publish must
+      # never prune another Project's objects out of the flat namespace. Rollback is a
+      # revert on `main`, republished.
+      #
+      # `dist_dir` is the one input this layout needs: the action defaults to `portal/dist`,
+      # and this repository's portal *is* the root, so it is `dist`. `repository` is left at
+      # its default, which is this repository's name and is also the Project code.
+      #
+      # The org is `neon-law-source-code`, and that is load-bearing rather than cosmetic.
+      # **Actions does not resolve a `uses:` across an org rename** — it reports "Unable to
+      # resolve action. Repository not found", which reads like a deleted action rather than
+      # a moved one. Bump the pinned ref by hand — it cannot be read from a variable, because
+      # `uses:` is resolved before expressions are evaluated.
+      - name: publish to ${{ steps.navigator.outputs.bucket }}/${{ steps.navigator.outputs.prefix }}
+        uses: neon-law-source-code/navigator/.github/actions/application-publish@26.8.23
         with:
-          version: "26.8.22-hotfix.23"
-          project_repository: true
-
-      - uses: neon-law-source-code/navigator/.github/actions/application-publish@26.8.22-hotfix.23
-        with:
-          applications_bucket: ${{ secrets.NAVIGATOR_APPLICATIONS_BUCKET }}
-          workload_identity_provider: ${{ secrets.NAVIGATOR_APP_PUBLISHER_WIF_PROVIDER }}
-          service_account: ${{ secrets.NAVIGATOR_APP_PUBLISHER_SERVICE_ACCOUNT }}
+          applications_bucket: ${{ steps.navigator.outputs.bucket }}
+          workload_identity_provider: ${{ vars.NAVIGATOR_APP_PUBLISHER_WIF_PROVIDER }}
+          service_account: ${{ vars.NAVIGATOR_APP_PUBLISHER_SERVICE_ACCOUNT }}
           dist_dir: dist

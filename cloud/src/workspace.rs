@@ -1,6 +1,6 @@
 //! Deployment-owned Project workspace coordinates.
 //!
-//! A Project's Drive folder and its one source repository are determined by the
+//! A Project's Drive ingest folder and its one source repository are determined by the
 //! deployment serving the Project. The Drive root is a property of the
 //! deployment; the forge organization and host are configuration this module
 //! reads. This module contains no provider client: it is a pure, fail-closed
@@ -205,6 +205,16 @@ pub fn is_valid_slug(value: &str) -> bool {
             .last()
             .is_some_and(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
         && !value.contains("--")
+}
+
+/// The documents-bucket key prefix for one Project.
+///
+/// The prefix *is* the Project code. Navigator does not create a bucket per
+/// Project; working-file keys live under this prefix in the deployment's
+/// private documents bucket.
+#[must_use]
+pub fn documents_prefix(project_code: &str) -> String {
+    format!("projects/{project_code}")
 }
 
 /// The Drive coordinates selected from a deployment-owned workspace map.
@@ -462,9 +472,9 @@ impl WorkspaceConfig {
 #[cfg(test)]
 mod tests {
     use super::{
-        is_navigator_repository, is_valid_slug, DeploymentWorkspace, GoogleWorkspace,
-        WorkspaceConfig, WorkspaceConfigError, WorkspaceCustomer, DEFAULT_GIT_HOST,
-        NAVIGATOR_GCP_PROJECT_ID, NAVIGATOR_GITHUB_ORG, NAVIGATOR_GIT_HOST,
+        documents_prefix, is_navigator_repository, is_valid_slug, DeploymentWorkspace,
+        GoogleWorkspace, WorkspaceConfig, WorkspaceConfigError, WorkspaceCustomer,
+        DEFAULT_GIT_HOST, NAVIGATOR_GCP_PROJECT_ID, NAVIGATOR_GITHUB_ORG, NAVIGATOR_GIT_HOST,
         NAVIGATOR_PROJECTS_DRIVE_MOUNT, NAVIGATOR_REPOSITORY_URL, RESERVED_PROJECT_CODES,
         SLUG_MAX_LEN,
     };
@@ -686,6 +696,11 @@ mod tests {
             workspace.expected_repository_url("sample-litigation"),
             "https://forge.example/an-organization/sample-litigation"
         );
+        assert_eq!(
+            documents_prefix("sample-litigation"),
+            "projects/sample-litigation"
+        );
+        assert_eq!(documents_prefix("acme"), "projects/acme");
     }
 
     /// The default host is composed in exactly as a configured one is, so a

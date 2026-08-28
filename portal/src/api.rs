@@ -112,6 +112,15 @@ fn api_operation_table() -> Vec<(&'static str, &'static str, MethodRouter<ApiSta
             "/app/api/project-repositories",
             get(reconcile_project_repositories_door),
         ),
+        // Own noun, same reason as `project-repositories`: the `projects`
+        // GET rule admits any authenticated caller up to five segments, and
+        // an admin-only reconcile nested there would be policy-reachable by
+        // a client even though the handler refuses one.
+        (
+            "POST",
+            "/app/api/project-surfaces/{id}",
+            post(reconcile_project_surfaces_door),
+        ),
         // Read clusters (#866): the matter-centric reads the portal pages load.
         ("GET", "/app/api/projects", get(list_projects_door)),
         ("GET", "/app/api/projects/{id}", get(get_project_door)),
@@ -684,6 +693,37 @@ async fn reconcile_project_repositories_door(
     Ok((StatusCode::OK, Json(report)).into_response())
 }
 
+/// `POST /app/api/project-surfaces/{id}` — create or adopt the three handles
+/// a Project opens with: the documents-bucket prefix, the Drive ingest
+/// folder, and the source repository.
+///
+/// Admin-tier only. Matter-open already runs the same reconcile best-effort
+/// and does not roll the open back when Drive or the forge is down; this
+/// door is the retry for that pass and for a legacy row that never got one.
+/// Missing Drive or forge configuration skips that surface rather than
+/// failing. A recorded `repository_url` is left alone.
+async fn reconcile_project_surfaces_door(
+    State(state): State<ApiState>,
+    authed: AuthedSession,
+    Path(id): Path<Uuid>,
+) -> Result<Response, ApiError> {
+    if !authed.0.role.is_admin_tier() {
+        return Err(ApiError::Forbidden);
+    }
+    let surfaces = store::project_surfaces::reconcile_from_env(&state.surreal, id)
+        .await
+        .map_err(surface_error)?;
+    Ok((StatusCode::OK, Json(surfaces)).into_response())
+}
+
+fn surface_error(error: store::project_surfaces::SurfaceError) -> ApiError {
+    match error {
+        store::project_surfaces::SurfaceError::NotFound => ApiError::NotFound,
+        store::project_surfaces::SurfaceError::Command(error) => ApiError::Project(error),
+        other => ApiError::Db(other.to_string()),
+    }
+}
+
 /// `GET /app/api/projects` — the matters the caller may see, already scoped.
 async fn list_projects_door(
     State(state): State<ApiState>,
@@ -1021,7 +1061,10 @@ struct OpenProjectRequest {
 /// audit row and designated the accountable lawyer DRI. The command
 /// (`store::projects::open_matter`) runs the conflict check, requires the
 /// attestation on every open, and writes the audit trail; a blocking conflict
-/// (adverse to a current client) is a hard 409 no attestation overrides.
+/// (adverse to a current client) is a hard 409 no attestation overrides. The
+/// Drive ingest folder and source repository are then created or adopted
+/// best-effort: a Drive or forge fault leaves the matter open, and
+/// [`reconcile_project_surfaces_door`] retries.
 async fn open_project(
     State(state): State<ApiState>,
     LawyerSession(session): LawyerSession,
@@ -1041,6 +1084,7 @@ async fn open_project(
         acting_person_id: acting,
     };
     let matter = store::projects::open_matter(&state.surreal, &command).await?;
+    store::project_surfaces::reconcile_after_open(&state.surreal, matter.id).await;
     Ok((StatusCode::CREATED, Json(matter)).into_response())
 }
 

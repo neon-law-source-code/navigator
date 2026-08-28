@@ -415,6 +415,28 @@ enum ProjectsCmd {
         #[arg(long)]
         json: bool,
     },
+    /// Create or adopt the three handles a Project opens with.
+    ///
+    /// The documents-bucket prefix `projects/<code>`, the Drive ingest folder
+    /// named for the code, and one private source repository named for the
+    /// code. Matter-open already runs this pass best-effort; this command is
+    /// the operator retry when Drive or the forge was down, or when a legacy
+    /// row never received one.
+    Surfaces {
+        #[command(subcommand)]
+        action: SurfacesAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum SurfacesAction {
+    /// Create or adopt this Project's Drive ingest folder and source
+    /// repository, and name its documents-bucket prefix.
+    Reconcile {
+        /// Project code, e.g. `acme`.
+        #[arg(long)]
+        project: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1882,6 +1904,11 @@ fn main() -> ExitCode {
                 all,
                 json,
             } => runtime().block_on(projects::drift::run(host.host.as_deref(), &dir, all, json)),
+            ProjectsCmd::Surfaces { action } => match action {
+                SurfacesAction::Reconcile { project } => {
+                    runtime().block_on(projects::surfaces::reconcile(&project))
+                }
+            },
         },
         Command::Template { action } => match action {
             TemplateCmd::Format { file } => format::run(&file),

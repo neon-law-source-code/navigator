@@ -181,10 +181,12 @@ fn db_project_holds_only_the_local_write_side() {
 /// of the product, so the verbs that operate on the Drive folder plus the one
 /// repository a code names sit at the top layer rather than inside `site`.
 ///
-/// `doctor` reads a machine, `repository` operates on a checkout, and `drift`
-/// reconciles the checkouts against the live rows — the split matters, because
-/// `projects doctor` and `projects drift` promise to change nothing and
-/// `repository scaffold` writes files.
+/// `doctor` reads a machine, `repository` operates on a checkout, `drift`
+/// reconciles the checkouts against the live rows, and `surfaces` creates
+/// or adopts the Drive ingest folder and source repository. The split
+/// matters, because `projects doctor` and `projects drift` promise to change
+/// nothing, `repository scaffold` writes files, and `surfaces reconcile`
+/// talks to Drive and the forge.
 ///
 /// The retired `projects application` verbs are asserted gone rather than
 /// merely absent from this list: a Project has one portal, so there is no
@@ -193,11 +195,15 @@ fn db_project_holds_only_the_local_write_side() {
 fn projects_help_lists_the_project_workspace_verbs() {
     assert_eq!(
         command_names(&help(&["projects", "--help"])),
-        vec!["doctor", "repository", "drift", "help"]
+        vec!["doctor", "repository", "drift", "surfaces", "help"]
     );
     assert_eq!(
         command_names(&help(&["projects", "repository", "--help"])),
         vec!["scaffold", "validate", "help"]
+    );
+    assert_eq!(
+        command_names(&help(&["projects", "surfaces", "--help"])),
+        vec!["reconcile", "help"]
     );
 }
 

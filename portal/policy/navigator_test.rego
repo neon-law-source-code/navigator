@@ -693,6 +693,35 @@ test_a_client_reaches_a_projects_subpath_but_not_this_one if {
 	not authz.allow with input as {"path": ["app", "api", "project-repositories"], "method": "GET", "session": client_session}
 }
 
+# ---------- POST /app/api/project-surfaces/{id} (ADMIN tier only — provisions one matter's handles) ----------
+
+test_admin_can_reconcile_project_surfaces if {
+	authz.allow with input as {"path": ["app", "api", "project-surfaces", "p1"], "method": "POST", "session": admin_session}
+}
+
+test_lawyer_denied_project_surfaces if {
+	not authz.allow with input as {"path": ["app", "api", "project-surfaces", "p1"], "method": "POST", "session": lawyer_session}
+}
+
+test_clerk_denied_project_surfaces if {
+	not authz.allow with input as {"path": ["app", "api", "project-surfaces", "p1"], "method": "POST", "session": clerk_session}
+}
+
+test_client_denied_project_surfaces if {
+	not authz.allow with input as {"path": ["app", "api", "project-surfaces", "p1"], "method": "POST", "session": client_session}
+}
+
+test_anonymous_denied_project_surfaces if {
+	not authz.allow with input as {"path": ["app", "api", "project-surfaces", "p1"], "method": "POST", "session": null}
+}
+
+# Same noun-isolation as project-repositories: a GET nested under `projects`
+# is policy-reachable by a client; this POST must not be.
+test_a_client_reaches_a_projects_subpath_but_not_project_surfaces if {
+	authz.allow with input as {"path": ["app", "api", "projects", "reconcile"], "method": "GET", "session": client_session}
+	not authz.allow with input as {"path": ["app", "api", "project-surfaces", "p1"], "method": "POST", "session": client_session}
+}
+
 # ---------- POST /app/api/expunge-requests/{id}/deny (lawyer tier only) ----------
 
 test_lawyer_can_deny_expunge if {

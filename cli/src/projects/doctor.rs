@@ -3,9 +3,9 @@
 //! Verify a machine and a Project workspace *before* Navigator is allowed to
 //! create anything. Every check here reads: no folder is created, no file is
 //! written, no repository is provisioned, and no network call is made. The
-//! command exists so that provisioning (`projects sync --apply`) can assume a
-//! verified machine instead of discovering a misconfiguration halfway through
-//! a partially created Drive tree.
+//! command exists so that provisioning (`projects surfaces reconcile`) can
+//! assume a verified deployment instead of discovering a misconfiguration
+//! halfway through a partially created Drive tree.
 //!
 //! The diagnosis is a pure function of four inputs — an environment lookup, a
 //! filesystem-existence probe, the stored credentials, and a clock — so the
@@ -294,7 +294,7 @@ fn project_checks(drive: Option<&DriveCoordinates>, code: &str, probe: &Probe<'_
                 } else {
                     checks.push(Check::warn(
                         "project folder (local)",
-                        format!("{local} does not exist yet — `projects sync` would create it"),
+                        format!("{local} does not exist yet — an optional workstation view; provisioning does not create this path"),
                     ));
                 }
             }
@@ -689,8 +689,9 @@ mod tests {
         let lookup = env(&pairs);
         let creds = Credentials::default();
 
-        // The mount exists but this Project's folder does not: a warning,
-        // because `projects sync` is exactly what would create it.
+        // The mount exists but this Project's folder does not: a warning.
+        // The local mount is not a provisioning input; `projects surfaces
+        // reconcile` creates the Drive folder through the API, not here.
         let diagnosis = diagnose(&Probe {
             env: &lookup,
             path_exists: &existing(&["/Volumes/Drive"]),

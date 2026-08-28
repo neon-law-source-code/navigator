@@ -883,21 +883,19 @@ pub fn harvard_outline_router(
 }
 
 fn bundled_outline_library() -> Vec<webapp::harvard_outline::OutlineStageContent> {
-    const RETAINER: &str = include_str!("../../templates/neon_law/shared/letter.md");
-    [
-        ("retainer", RETAINER),
-        ("motion", views::harvard_outline::SAMPLE_MOTION),
-    ]
-    .into_iter()
-    .map(|(slug, src)| {
-        let doc = views::harvard_outline::parse(src);
-        webapp::harvard_outline::OutlineStageContent {
-            slug: slug.to_string(),
-            title: doc.title.clone(),
-            stage_html: views::harvard_outline::stage_html(&doc),
-        }
-    })
-    .collect()
+    const ONBOARDING: &str = include_str!("../../templates/neon_law/shared/letter.md");
+    const OFFBOARDING: &str = include_str!("../../templates/neon_law/shared/offboarding_letter.md");
+    [("onboarding", ONBOARDING), ("offboarding", OFFBOARDING)]
+        .into_iter()
+        .map(|(slug, src)| {
+            let doc = views::harvard_outline::parse(src);
+            webapp::harvard_outline::OutlineStageContent {
+                slug: slug.to_string(),
+                title: doc.title.clone(),
+                stage_html: views::harvard_outline::stage_html(&doc),
+            }
+        })
+        .collect()
 }
 
 /// The blank government-forms index (#956 Phase 4). The download route under it

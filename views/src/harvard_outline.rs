@@ -483,6 +483,10 @@ mod tests {
         env!("CARGO_MANIFEST_DIR"),
         "/../templates/neon_law/shared/letter.md"
     ));
+    const OFFBOARDING: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../templates/neon_law/shared/offboarding_letter.md"
+    ));
 
     #[test]
     fn roman_headings_and_lettered_quotes() {
@@ -564,6 +568,25 @@ mod tests {
         assert!(html.contains("data-harvard-path=\"II.A\""));
         assert!(html.contains("harvard-unit--depth-1"));
         assert!(html.contains("harvard-unit--depth-2"));
+    }
+
+    #[test]
+    fn the_bundled_offboarding_letter_is_a_roman_outline() {
+        let doc = parse(OFFBOARDING);
+        assert_eq!(doc.title, "Closing Letter");
+        assert_eq!(doc.scheme, Some(DepthOneScheme::Roman));
+        let markers: Vec<_> = doc
+            .units
+            .iter()
+            .filter(|u| u.kind == UnitKind::Heading)
+            .map(|u| u.marker.as_str())
+            .collect();
+        assert_eq!(markers, vec!["I", "II", "III", "IV", "V", "VI"]);
+        let html = stage_html(&doc);
+        assert!(html.contains("data-harvard-outline"));
+        assert!(html.contains("data-harvard-path=\"I\""));
+        assert!(html.contains("harvard-unit--depth-1"));
+        assert!(html.contains("Representation concluded"));
     }
 
     #[test]

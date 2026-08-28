@@ -1454,6 +1454,30 @@ jobs:
         }
     }
 
+    /// Neither generated workflow ever names Google Drive as a publish
+    /// destination.
+    ///
+    /// ENG-73: object storage is the working-file authority and Drive is a
+    /// per-Project ingest source only — CI writes into the documents or
+    /// applications bucket, never into Drive. A folder ID committed to a
+    /// generated workflow would also be attacker-controlled the same way a
+    /// literal bucket name would be, so this guards the same class of
+    /// mistake `the_generated_workflows_name_no_project` guards for
+    /// organizations. Neither generated workflow requests a Drive OAuth
+    /// scope or writes Drive at all, so `contains("drive")` is exact — no
+    /// legitimate line needs the word.
+    #[test]
+    fn the_generated_workflows_never_target_drive() {
+        for generated in [workflow(FIXTURE_PIN), cd_workflow(FIXTURE_PIN)] {
+            let lowered = generated.to_lowercase();
+            assert!(
+                !lowered.contains("drive"),
+                "a generated workflow names Drive; CI must publish only to \
+                 object storage:\n{generated}"
+            );
+        }
+    }
+
     /// The default pin is empty, or it is a release tag — never a
     /// version-shaped string this build merely happens to carry.
     ///

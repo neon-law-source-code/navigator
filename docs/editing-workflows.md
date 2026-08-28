@@ -141,10 +141,12 @@ latest-per-code wins at render. The walker emails this URL.
 
 **The review gate (non-negotiable).** Any custom content — a clause **or** a client-entered answer — forces the notation
 back through `lawyer_review` before signature. `drive_post_questionnaire_workflow` parks at `lawyer_review` instead of
-auto-approving; the attorney's "approve and send" (`approve_send_post` → `assemble_and_send`) renders the document
-**once**, persists it, and sends *that exact PDF*. The bytes the attorney approved are the bytes that get signed. The
-invariant is locked structurally by `workflows::guardrail::lawyer_review_precedes_signature` (every engagement template
-is tested), and behaviourally by the `mutable_intake_docusign` journey.
+auto-approving; the attorney's approval is now two deliberate steps. `approve_send_post` renders the document **once**
+and persists it, then parks the workflow at `generate_pdf__*` — it does not send. A separate command, `send_post`
+(`navigator retainer send`), confirms that persisted PDF is present and then sends *that exact PDF*, so a real Restate
+worker's render never races the send. The bytes the attorney approved are the bytes that get signed. The invariant is
+locked structurally by `workflows::guardrail::lawyer_review_precedes_signature` (every engagement template is tested),
+and behaviourally by the `mutable_intake_docusign` journey.
 
 `features/tests/mutable_intake_docusign.rs` proves lawyer/client intake, clauses, attorney review, and client-then-firm
 DocuSign delivery of the approved bytes.

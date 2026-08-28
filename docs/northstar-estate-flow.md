@@ -24,7 +24,7 @@ The firm publishes no per-service marketing page for Northstar; the offering is 
 ## Phase A — comment-only review surface (shipped)
 
 A matter (notation) can produce several documents the client must read before signing: a will, a trust, and health and
-financial directives. Each is one `review_documents` row holding the attorney-reviewed draft as HTML, with a `status`
+financial directives. Each is one `review_document` row holding the attorney-reviewed draft as HTML, with a `status`
 that gates client visibility:
 
 - `draft` — generated, not yet attorney-approved. **Hidden from the client** (the human-in-the-loop gate).
@@ -32,9 +32,9 @@ that gates client visibility:
 - `approved` — the client has signed off; ready for signature.
 
 The client reads one draft at `/app/projects/:project_code/review/:doc_id` and leaves comments anchored to a text range.
-The surface is read-only — a comment is the only thing the client writes. Comments live in `document_comments`, each
+The surface is read-only — a comment is the only thing the client writes. Comments live in `document_comment`, each
 carrying a character-offset range (`anchor_start`/`anchor_end`) into the document text, the `quoted_text` it covered,
-the comment `body`, and a `resolved` flag lawyer flip once addressed. Comments anchor to a specific `review_documents`
+the comment `body`, and a `resolved` flag lawyer flip once addressed. Comments anchor to a specific `review_document`
 row, never to the bare notation, so the will's thread and the trust's thread stay separate.
 
 ### Review viewer
@@ -84,12 +84,12 @@ lives at `templates/neon_law/northstar/estate_plan.md` with the mirrored standal
   guardianship nomination, residuary beneficiary, and the health-care and financial agents. System step; the extraction
   is done by an `EstateExtractor` seam (a deterministic stub today, AIDA/Gemini Enterprise later) — not a metered API.
 - `document_drafts__estate --drafts_persisted--> lawyer_review` — the will, trust, and the health and financial
-  directives are rendered from those answers into one `review_documents` row each at `status = draft`. This is a System
+  directives are rendered from those answers into one `review_document` row each at `status = draft`. This is a System
   wait state driven by `web` (which renders the instrument bodies, the same way the retainer renders its document
   web-side), **not** a worker `generate_pdf` PDF dispatch — the artifact is per-instrument review HTML, not a PDF.
 - `lawyer_review --approved--> client_review` (and `--rejected--> END`) — an attorney reviews every generated draft.
   **Required gate**: no client-facing auto-generated legal document without a human in the loop. On approval the
-  attorney advances each `review_documents` row from `draft` to `pending_review`.
+  attorney advances each `review_document` row from `draft` to `pending_review`.
 - `client_review --client_approved--> sent_for_signature__pending` — the client reads and comments on each draft via the
   Phase A surface. The matter waits here until the client approves; their sign-off advances each row to `approved`.
 - `sent_for_signature__pending --signature_received|signature_declined--> END` — approved documents go to the existing
@@ -117,7 +117,7 @@ first and swapped in DocuSign). Status:
   transcript onto `answers` (source `extracted`); a deterministic `StubEstateExtractor` ships now, AIDA/Gemini swaps in
   behind the same trait. A coverage report records which questions the sitting answered.
 - **Shipped** — `document_drafts__estate` renders the will, trust, and the two directives from those answers into one
-  `review_documents` row each at `status = draft`, web-side via `store::review_documents::create`.
+  `review_document` row each at `status = draft`, web-side via `store::review_documents::create`.
 - **Shipped** — the review gates. The attorney releases the drafts (the `release-drafts` route under
   `/lawyer/notations/:id`), which fires `approved` (lawyer_review → client_review) and flips each draft to
   `pending_review`; the client then approves (the `approve-plan` route under `/app/projects/:project_code`), which fires

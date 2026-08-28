@@ -10,8 +10,9 @@ frontmatter of [`templates/neon_law/shared/retainer.md`](../templates/neon_law/s
 
 1. **Questionnaire walker** — one question per request, one [Answer](notation.md#answer) per advance, one
    [Notation Event](glossary.md#notation-event) per transition. Walks the state chain `BEGIN` → `person__client` →
-   `project__engagement` → `custom_single_choice__governing_law` → `END`. The matter's scope and fee terms render from
-   the clauses spliced at `{{custom_clauses}}`, written per client.
+   `person__lawyer_dri` → `project__engagement` → `custom_datetime__engagement_start_date` →
+   `custom_text__engagement_scope` → `custom_text__fee_basis` → `custom_single_choice__governing_law` → `END`. The
+   matter's scope and fee terms render from the clauses spliced at `{{custom_clauses}}`, written per client.
 2. **Post-intake workflow** — fires once the questionnaire reaches `END`. Walks `intake_persisted__client` →
    `lawyer_review` → `generate_pdf__retainer_pdf` → `sent_for_signature__pending` → `END`, driving render, PDF
    persistence, and "sent for signature".
@@ -25,8 +26,13 @@ worker that hosts the object lives in [`workflows-service/`](../workflows-servic
 ```mermaid
 stateDiagram-v2
     [*] --> person__client : _
-    person__client --> project__engagement : _
-    project__engagement --> [*] : _
+    person__client --> person__lawyer_dri : _
+    person__lawyer_dri --> project__engagement : _
+    project__engagement --> custom_datetime__engagement_start_date : _
+    custom_datetime__engagement_start_date --> custom_text__engagement_scope : _
+    custom_text__engagement_scope --> custom_text__fee_basis : _
+    custom_text__fee_basis --> custom_single_choice__governing_law : _
+    custom_single_choice__governing_law --> [*] : _
 ```
 
 The bare `_` condition is the only signal that advances a questionnaire (the canonical "respondent answered"). State
@@ -40,9 +46,12 @@ stateDiagram-v2
     [*] --> intake_persisted__client : intake_submitted
     intake_persisted__client --> lawyer_review : retainer_rendered
     lawyer_review --> generate_pdf__retainer_pdf : approved
+    lawyer_review --> reask__client : changes_requested
     lawyer_review --> [*] : rejected
+    reask__client --> lawyer_review : intake_resubmitted
     generate_pdf__retainer_pdf --> sent_for_signature__pending : pdf_persisted
     sent_for_signature__pending --> [*] : signature_received
+    sent_for_signature__pending --> [*] : signature_declined
 ```
 
 State names use the `<prefix>__<discriminator>` form so [`workflows::step_kind_for`](../workflows/src/step.rs) can pick
@@ -76,19 +85,19 @@ sequenceDiagram
     participant db as SurrealDB
 
     Chrome->>web: POST /lawyer/notations/:id/step
-    web->>pg: INSERT answers (question_id, person_id, value)
+    web->>db: INSERT answers (question_id, person_id, value)
     web->>ingress: POST /notation/:id/questionnaire_signal {condition:"_"}
     ingress->>worker: dispatch handler
     worker->>worker: ctx.get(spec_yaml, state)
     worker->>worker: next_state(...)
     worker->>worker: ctx.set(state, next)
-    worker->>pg: ctx.run("append-event", append_event(...))
+    worker->>db: ctx.run("append-event", append_event(...))
     worker-->>ingress: {next_state:"client_name"}
     ingress-->>web: 200 OK
     web-->>Chrome: 303 → /lawyer/notations/:id/step
 ```
 
-The two `pg` arrows have two different writers: the walker writes [Answers](notation.md#answer) directly; the worker is
+The two `db` arrows have two different writers: the walker writes [Answers](notation.md#answer) directly; the worker is
 the sole writer of [Notation Events](glossary.md#notation-event), inside [`ctx.run`](glossary.md#ctxrun) so a crash +
 replay reuses the cached row id instead of double-inserting.
 
@@ -120,23 +129,39 @@ to the broker's ingress port. When `RESTATE_BROKER_URL` is unset, `web` falls ba
 
 ## The signature seam
 
-[`portal::signature::SignatureProvider`](../portal/src/signature.rs) is a one-method async trait:
+[`portal::signature::SignatureProvider`](../portal/src/signature.rs) is an async trait with three methods:
 
 ```rust
 #[async_trait]
 pub trait SignatureProvider: Send + Sync {
     async fn send_for_signature(
         &self,
-        notation_id: i32,
+        notation_id: Uuid,
         pdf: &[u8],
+        manifest: &SignatureManifest,
     ) -> Result<SignatureRequestId, SignatureError>;
+
+    async fn create_recipient_view(
+        &self,
+        request_id: &SignatureRequestId,
+        view: &RecipientView,
+    ) -> Result<String, SignatureError>;
+
+    async fn fetch_completed_documents(
+        &self,
+        request_id: &SignatureRequestId,
+    ) -> Result<CompletedDocuments, SignatureError>;
 }
 ```
 
-Google Workspace eSignature **has no public API** today (it is a UI-only feature inside Docs / Drive — see Google's own
-docs), so the shipped implementation is `StubSignatureProvider`, which records every call to an internal
-`Mutex<Vec<…>>`. Tests assert on it; dev runs against it. A real DocuSign or Dropbox Sign adapter implements the same
-trait and is plugged in by swapping the `Arc<dyn SignatureProvider>` in [`portal::AppState`](../portal/src/lib.rs).
+`StubSignatureProvider` records every call to an internal `Mutex<Vec<…>>`; tests assert on it, and it is what dev runs
+against when `DOCUSIGN_*` env vars are unset. `DocuSignSignatureProvider`
+([`portal/src/signature.rs`](../portal/src/signature.rs)) is already a live, shipped implementation of the same trait —
+[`portal::hosting`](../portal/src/hosting.rs) selects it automatically whenever the `DOCUSIGN_*` env vars are
+configured, and falls back to the stub only when they are unset. Both use the same `Arc<dyn SignatureProvider>` in
+[`portal::AppState`](../portal/src/lib.rs), consistent with
+[`docs/provider-environment-parity.md`](provider-environment-parity.md)'s description of DocuSign as live per-deployment
+infrastructure rather than a future swap-in.
 
 ## Test coverage
 
@@ -153,4 +178,5 @@ trait and is plugged in by swapping the `Arc<dyn SignatureProvider>` in [`portal
   the broker wire shape per `MachineKind`.
 - **Worker handlers**: `workflows-service/src/notation_service.rs` pins `next_state` against the questionnaire spec; the
   journal helpers live next door in `workflows-service/src/journal.rs`.
-- **HTTP + browser**: `web/tests/browser_e2e.rs` drives the full retainer walk end-to-end via fantoccini + chromedriver.
+- **HTTP + browser**: `server/tests/browser_e2e.rs` drives the full retainer walk end-to-end via fantoccini +
+  chromedriver.

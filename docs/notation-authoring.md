@@ -398,10 +398,11 @@ route advance a signed retainer to END (see External integrations above).
    language preference and `notation_session` renders the base question prompt directly. See
    [`AGENTS.md`](../AGENTS.md).
 5. ~~**Template storage and scoping.**~~ **Shipped.** Template bodies moved from the inline `templates.body` TEXT column
-   to blob storage (`templates.blob_id` → a Blob via `cloud::StorageService`); `templates.project_id` plus two partial
-   unique indexes add project-scoped templates alongside the shared catalog, resolved by `store::templates::resolve`
-   (prefer Project, fall back to shared). The seed + `navigator db catalog-seed` paths ingest bodies into blobs; render
-   paths read them back via `store::templates::body`. See [`notation.md`](notation.md).
+   to `cloud::StorageService` (`templates.asset_id` references an [Asset](glossary.md#asset) holding the bytes);
+   `templates.project_id` plus two partial unique indexes add project-scoped templates alongside the shared catalog,
+   resolved by `store::templates::resolve` (prefer Project, fall back to shared). The seed + `navigator db catalog-seed`
+   paths ingest bodies into Assets; render paths read them back via `store::templates::body`. See
+   [`notation.md`](notation.md).
 
 ## Why this matters — access to justice
 

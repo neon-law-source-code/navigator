@@ -1841,7 +1841,7 @@ fn render_env_for(cfg: &KindConfig, db_name: &str, web_port: u16, root: &Path) -
             ),
         ),
         // One directory holding every staged matter's bundle, each under its
-        // own Project code. Boot re-reads each `navigator.yml` rather than
+        // own Project code. Boot re-reads each `navigator.yaml` rather than
         // trusting the directory name, so a bundle staged under the wrong
         // code is refused instead of published on another matter's portal.
         (

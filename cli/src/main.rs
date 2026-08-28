@@ -800,7 +800,7 @@ enum DevCmd {
     GrantLawyer,
     /// Refresh and stage each sample matter's reference application for the
     /// next local web boot. The checkouts and builds happen in temporary
-    /// directories; each built `dist/` and `navigator.yml` survives under
+    /// directories; each built `dist/` and `navigator.yaml` survives under
     /// `.devx/sample-projects/<code>`, and the generated `.devx/env` points
     /// `web` at the parent. Needs `git` and `pnpm`. Native Rust.
     SampleProject {

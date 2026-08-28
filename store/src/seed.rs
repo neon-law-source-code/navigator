@@ -1317,7 +1317,7 @@ async fn open_sample_matter(
 /// publishes the bundle whose manifest names this matter; the generated
 /// environment points the web process at the staged directories.
 ///
-/// A staged bundle must declare its Project in `navigator.yml`. Publishing a
+/// A staged bundle must declare its Project in `navigator.yaml`. Publishing a
 /// bundle that names another matter would put one client's application on
 /// another client's portal, so a mismatch — like an unbuilt or unparsable
 /// staging directory — leaves the deterministic document in place and is
@@ -3614,8 +3614,8 @@ records:
         let dist = staging.join(matter.code).join("dist");
         std::fs::create_dir_all(&dist).expect("dist");
         std::fs::write(
-            staging.join(matter.code).join("navigator.yml"),
-            format!("name: {}\n", matter.code),
+            staging.join(matter.code).join("navigator.yaml"),
+            format!("project: {}\n", matter.code),
         )
         .expect("manifest");
         std::fs::write(dist.join("index.html"), b"<!doctype html><p>built</p>")
@@ -3667,8 +3667,8 @@ records:
         // The directory is named for the disputes matter; the manifest inside
         // it declares the estate matter.
         std::fs::write(
-            staging.join(matter.code).join("navigator.yml"),
-            format!("name: {}\n", super::SAMPLE_ESTATE_CODE),
+            staging.join(matter.code).join("navigator.yaml"),
+            format!("project: {}\n", super::SAMPLE_ESTATE_CODE),
         )
         .expect("manifest");
         std::fs::write(

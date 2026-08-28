@@ -20,24 +20,34 @@
 //!
 //! # Where the Project code comes from
 //!
-//! [`validate`] takes it from the repository name, and CI has that name as
-//! `github.event.repository.name`. The mount is that name plus the literal
+//! [`validate`] still takes it from the repository name, and CI has that name
+//! as `github.event.repository.name`. The mount is that name plus the literal
 //! `portal`.
 //!
-//! A repository may **also** declare its Project in a root manifest, and that
-//! manifest is part of the layout. So the code is derived in one place and
-//! declared in another, and nothing makes the two agree. Every repository
-//! shipping today aligns them by convention — `neon-law-staging/sample-litigation`
-//! is named for the code it publishes under — but a repository named for
-//! anything else would split them.
-//! `store::sample_project::project_code_for` is what refuses a bundle declaring
-//! a code other than the one it is published under, so a disagreement is
-//! rejected rather than unrepresentable.
+//! A repository also declares its Project in a root manifest — `navigator.yaml`,
+//! `project:` — and that manifest is part of the layout. So the code is
+//! derived in one place and declared in another, and nothing makes the two
+//! agree. Every repository shipping today aligns them by convention —
+//! `neon-law-staging/sample-litigation` is named for the code it publishes
+//! under — but a repository named for anything else would split them.
+//! `store::sample_project::project_code_for` is what refuses a bundle
+//! declaring a code other than the one it is published under, so a
+//! disagreement is rejected rather than unrepresentable.
 //!
-//! Collapsing the two spellings to one file and one key, and deciding whether
-//! the publish action should read the manifest instead of the repository name,
-//! is an open decision. Until it lands both spellings stay allowed roots:
-//! refusing either would fail a repository that is correct as shipped.
+//! `.github/actions/application-publish` reads this same manifest rather than
+//! the repository name — its `repository:` input is now an override for a
+//! checkout without one, not the primary source. [`validate`] here does not
+//! follow suit: it runs inside one repository's own CI with no access to the
+//! live row, so it cannot tell a repository whose manifest is wrong from one
+//! whose name is; `navigator projects drift` (`super::drift`) is where that
+//! disagreement is reported, against the live rows it needs to judge it.
+//!
+//! One filename, one key: the earlier `.yml` spelling and its `name:` key are
+//! retired.
+//! `store::sample_project::MANIFEST_FILE` names the same file for the same
+//! reason a bundle staged locally reads — a Project repository's manifest and
+//! a staged sample bundle's manifest are the same file, not two schemas that
+//! happen to overlap.
 //!
 //! # Exemptions live here, not per repository
 //!
@@ -70,13 +80,15 @@ const TEMPLATE_DIRECTORY: &str = "templates";
 const PORTAL_DIRECTORY: &str = "portal";
 const WORKFLOW: &str = ".github/workflows/gate.yml";
 const CD_WORKFLOW: &str = ".github/workflows/publish.yml";
-/// The manifest a Project repository declares its Project code in.
 /// The manifest a Project repository declares its Project in.
 ///
 /// `pub(super)` rather than private because [`super::drift`] reads the same
 /// file and must not spell it a second time: two constants for one filename is
 /// a rename waiting to leave one of them stale, and the gate that *admits* the
 /// file and the command that *reads* it are exactly the pair that must agree.
+/// The same filename `store::sample_project::MANIFEST_FILE` names — a Project
+/// repository's manifest and a staged sample bundle's manifest are the same
+/// file, read by two different tools, not two schemas that happen to overlap.
 pub(super) const PROJECT_MANIFEST: &str = "navigator.yaml";
 /// Seed-shaped YAML documents for `navigator db seed`, one file per model.
 const SEED_DIRECTORY: &str = "seeds";
@@ -97,13 +109,10 @@ const ALLOWED_ROOTS: &[&str] = &[
     // which is why the pinned validate action had to be pulled from all six
     // Project gates rather than the manifest being removed.
     //
-    // Both spellings are admitted because both are live: the Project
-    // repositories carry `navigator.yaml`, the sample-project bundles carry
-    // `navigator.yml` (`store::sample_project::MANIFEST_FILE`). Collapsing them
-    // to one file and one key is a separate decision; until it lands, refusing
-    // either would fail a repository that is correct as shipped.
+    // One entry, not two: `PROJECT_MANIFEST` and `store::sample_project::MANIFEST_FILE`
+    // name the same file. The retired `.yml` spelling is not admitted; see
+    // `cli/tests/navigator_manifest_retired.rs`.
     PROJECT_MANIFEST,
-    store::sample_project::MANIFEST_FILE,
     PORTAL_DIRECTORY,
     // A seed document names real people and real entities described by this
     // Project's matter — the input to a production write through `navigator
@@ -1215,7 +1224,6 @@ jobs:
     #[test]
     fn the_project_manifest_is_part_of_the_layout() {
         assert!(ALLOWED_ROOTS.contains(&"navigator.yaml"));
-        assert!(ALLOWED_ROOTS.contains(&"navigator.yml"));
     }
 
     /// `seeds/` is where a Project repository's `navigator db seed` documents

@@ -86,9 +86,9 @@ use crate::projects::doctor::Status;
 /// Taken from [`super::repository`] rather than spelled again: two constants for
 /// one filename is a rename waiting to leave one of them stale, and the layout
 /// gate that admits the file and the command that reads it are exactly the pair
-/// that must agree. Distinct from `store::sample_project::MANIFEST_FILE`
-/// (`navigator.yml`, keyed `name:`), which is a bundle's publish manifest and a
-/// different contract.
+/// that must agree. The same file `store::sample_project::MANIFEST_FILE` names —
+/// a staged sample bundle's manifest is a copy of the same `navigator.yaml`,
+/// keyed `project:`, not a different contract.
 use super::repository::PROJECT_MANIFEST as MANIFEST;
 
 /// The manifest key naming the Project this repository belongs to.

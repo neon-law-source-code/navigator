@@ -74,24 +74,29 @@ all that one word, and Navigator never invents it.
 /app/projects/<project-code>/portal/    the client portal this repository publishes
 ```
 
-**The repository name is the code, and today it is what every publish path reads.** `cli/src/projects/repository.rs`
-takes it from the checkout directory, `.github/actions/application-publish` takes it from
-`github.event.repository.name`, and Vite derives its base from the checkout directory too (`basename(resolve(__dirname,
-'..'))`). The gate re-derives it and refuses a name that is not a valid code, so a checkout cloned into a differently
-named directory fails there rather than publishing under the wrong prefix.
+**A repository declares its Project in a root manifest, `navigator.yaml`, keyed `project:`.** That manifest is part of
+the layout (`ALLOWED_ROOTS` in `cli/src/projects/repository.rs`), and it is the one spelling — the earlier `.yml`
+extension, keyed `name:`, is retired, and a checkout still carrying it reads as an unparsable manifest. The same file
+and the same reader serve both a Project repository and a staged sample-project bundle:
+`store::sample_project::MANIFEST_FILE` and `cli/src/projects/repository.rs`'s `PROJECT_MANIFEST` name the identical
+string on purpose, so a rename of one cannot leave the other stale. Unknown keys, such as `host:`, are ignored rather
+than refused, so a downstream deployment table can add its own without breaking this gate.
 
-**A repository may also declare its Project in a root manifest, and that manifest is part of the layout.** Both
-spellings are live and both are allowed roots: Project repositories carry `navigator.yaml`, and a sample-project bundle
-carries `navigator.yml` (`store::sample_project::MANIFEST_FILE`), which `store::sample_project::project_code_for` reads
-and refuses when the declared code is not the one the bundle is being published under.
+**The manifest is what `.github/actions/application-publish` reads.** `cli/src/projects/repository.rs`'s own
+[`validate`] still takes the code from the checkout directory — it runs inside one repository's own CI with no access to
+the live row, so it cannot referee a disagreement between the two, and `navigator projects drift` is where that
+disagreement is reported instead. The publish action is different: it uploads to a bucket prefix, and the prefix a
+Project repository declares for itself is the one that should win. Vite still derives its own build-time base from the
+checkout directory (`basename(resolve(__dirname, '..'))`), so a repository whose manifest names a code other than its
+own directory name only works if its portal was built with a matching override — the downstream mount check on
+`index.html`'s Vite base is what would catch a mismatch either way, so a wrong or malformed code cannot silently
+publish. `application-publish`'s `repository:` input is kept as an override for a checkout that carries no manifest,
+never the primary source.
 
-So the code is derived in one place and declared in another, and nothing makes the two agree. Every repository shipping
-today keeps them aligned by convention: each sample repository is named for the code it mounts on, so
-`neon-law-staging/sample-litigation` publishes as `sample-litigation` and the publish action needs no override. That is
-a naming discipline, not an enforced rule — name a repository anything else and the derived prefix silently stops
-matching the declared code. Collapsing this to one filename, one key, and one reader — and deciding whether
-`application-publish` should read the manifest rather than the repository name — is an open decision, not settled here.
-Until it lands, refusing either spelling would fail a repository that is correct as shipped, so the layout admits both.
+Every repository shipping today keeps the manifest and the directory name aligned by convention: each sample repository
+is named for the code it mounts on, so `neon-law-staging/sample-litigation` publishes as `sample-litigation`. That is a
+naming discipline, not an enforced rule — nothing stops a repository from being named for something else, and the
+manifest is what settles which code wins.
 
 The trailing slash is load-bearing twice: Vite joins asset URLs directly onto the base, and Navigator redirects the bare
 mount to the slashed form.
@@ -265,9 +270,11 @@ derives the pin from a release rather than accepting a version someone typed fro
 The gate proves the bundle; a second composite action publishes it.
 `neon-law-source-code/navigator/.github/actions/application-publish@YY.M.D` runs after the gate, in the same job, and
 uploads `portal/dist/` to `<code>/portal/` in the deployment's private `<deployment>-applications` bucket, which
-Navigator streams object-by-object. Objects land **flat** under that prefix; the action derives `<code>` from
-`github.event.repository.name`, exactly as the gate derives it from the checkout directory, so the object prefix cannot
-disagree with the served mount wherever the repository is hosted.
+Navigator streams object-by-object. Objects land **flat** under that prefix; the action reads `<code>` from the
+repository's own `navigator.yaml` manifest, falling back to `github.event.repository.name` (its `repository:` input)
+only when no manifest is present. The mount check the same step runs against the built `index.html` is what keeps a
+wrong or malformed declared code from silently publishing: the object prefix must match the Vite base the portal was
+actually built with, wherever the repository is hosted.
 
 It carries no organization, host, or client. The three coordinates it cannot derive are passed as repository
 **secrets**:

@@ -59,7 +59,7 @@ struct Attestation { firm: Pubkey, client: Pubkey, sha256: [u8; 32], recorded_at
 The PDA is also the **exactly-once key**: a replayed submit hits "account already in use", which the attestor treats as
 success — the chain itself dedupes, complementing the journaled `ctx.run`.
 
-**3. The workflow edge** — the one-line YAML change in `templates/neon_law/shared/retainer.md`, routing the signature
+**3. The workflow edge** — the one-line YAML change in `templates/neon_law/shared/letter.md`, routing the signature
 into the new step:
 
 ```yaml

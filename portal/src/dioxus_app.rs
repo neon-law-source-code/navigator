@@ -883,11 +883,9 @@ pub fn harvard_outline_router(
 }
 
 fn bundled_outline_library() -> Vec<webapp::harvard_outline::OutlineStageContent> {
-    const RETAINER: &str = include_str!("../../templates/neon_law/shared/retainer.md");
-    const ENGAGEMENT: &str = include_str!("../../templates/neon_law/shared/engagement_letter.md");
+    const RETAINER: &str = include_str!("../../templates/neon_law/shared/letter.md");
     [
         ("retainer", RETAINER),
-        ("engagement", ENGAGEMENT),
         ("motion", views::harvard_outline::SAMPLE_MOTION),
     ]
     .into_iter()

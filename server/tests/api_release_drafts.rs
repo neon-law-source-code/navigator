@@ -28,7 +28,7 @@ use workflows::{InMemoryRuntime, StateMachineRuntime};
 /// and the gate transition — with a retainer, whose workflow
 /// `advance_to_lawyer_review` can drive to `lawyer_review`; the estate-specific
 /// draft-release semantics stay covered by the estate handler's own tests.
-const TEMPLATE_CODE: &str = "onboarding__retainer";
+const TEMPLATE_CODE: &str = "onboarding__letter";
 const KEY: &str = "api-release-drafts-test-key";
 
 struct Harness {

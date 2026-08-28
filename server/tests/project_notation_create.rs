@@ -22,7 +22,7 @@ use tower::ServiceExt;
 use workflows::{InMemoryRuntime, StateMachineRuntime};
 
 /// A corpus template body — guaranteed to validate clean (CI checks it).
-const VALID_TEMPLATE: &str = include_str!("../../templates/neon_law/shared/retainer.md");
+const VALID_TEMPLATE: &str = include_str!("../../templates/neon_law/shared/letter.md");
 
 /// Signing key shared by the app's `SessionStore` and the bearers the tests
 /// mint, so `inject_bearer_session` decodes them.
@@ -239,42 +239,6 @@ async fn an_invalid_repo_template_is_refused_with_422() {
 }
 
 #[tokio::test]
-async fn an_onboarding_opens_a_matter_as_its_first_notation() {
-    let _repo_guard = REPO_ENV_LOCK.lock().await;
-    let (app, surreal) = build_app().await;
-    let project = open_project(&surreal).await;
-    let project_id = project.id;
-    let bearer = lawyer_bearer(&surreal, "acting-lawyer@example.com", Some(project_id)).await;
-
-    // `onboarding__estate` is `kind: onboarding`, not `retainer` — the
-    // intake-driven engagement that opens a bundle of instruments. It opens
-    // a matter just as a retainer does (`rules::kind::Kind::opens_a_matter`),
-    // so the gate must let it through as the first notation. The retainer
-    // walk already creates matters this exact shape; a gate that refused it
-    // here would contradict the door next to it.
-    let resp = post_new(
-        &app,
-        &bearer,
-        &project.code,
-        "onboarding__estate",
-        "libra@example.com",
-    )
-    .await;
-    assert_eq!(
-        resp.status(),
-        StatusCode::SEE_OTHER,
-        "an onboarding engagement opens the matter as its first notation"
-    );
-    assert!(
-        !store::notations::list_by_project(&surreal, project_id)
-            .await
-            .unwrap()
-            .is_empty(),
-        "the onboarding notation was created",
-    );
-}
-
-#[tokio::test]
 async fn first_notation_on_a_matter_must_be_the_engagement_that_opens_it() {
     let _repo_guard = REPO_ENV_LOCK.lock().await;
     let (app, surreal) = build_app().await;
@@ -323,7 +287,7 @@ async fn retainer_opens_as_the_first_notation_from_the_bundled_catalog() {
         &app,
         &bearer,
         &project.code,
-        "onboarding__retainer",
+        "onboarding__letter",
         "libra@example.com",
     )
     .await;

@@ -8,7 +8,7 @@ Neon Law Node is an attorney attestation recorded on-chain: a licensed attorney 
 client provides, and a hash of the signed attestation is written to Solana, binding the firm's wallet, the client's
 wallet, and that hash. Solana is the chain because the workspace is Rust top-to-bottom — Solana programs are written in
 Rust and [Anchor](https://www.anchor-lang.com/) is a framework of Rust macros — so the same workspace speaks to the
-chain natively. The binding engagement letter is `templates/neon_law/shared/retainer.md`.
+chain natively. The binding engagement letter is `templates/neon_law/shared/letter.md`.
 
 ## What is built
 
@@ -36,7 +36,7 @@ The honesty is enforced by code, not copy. `dispatch_onchain_record` sets `statu
 returns a real `RecordedTx`; `NullAttestor` returns `None`, so the row stays `pending` with no transaction. And
 `attestor_from_env` makes the `solana` backend *error at startup* until the real implementation lands — a deployer can
 never silently believe attestations are going on-chain when they are not. This is why the step is deliberately **not yet
-wired into the binding `onboarding__retainer` workflow**: a binding retainer must not route through a step that, in its
+wired into the binding `onboarding__letter` workflow**: a binding retainer must not route through a step that, in its
 current default, records nothing.
 
 ## What is deferred
@@ -101,4 +101,4 @@ contract.
 - Local record: `store::attestations` + the `attestation` table in `store/src/schema/navigator.surql`.
 - Step kind / status table: `workflows::step` and [`docs/notation-authoring.md`](notation-authoring.md) (the `onchain__`
   row).
-- Engagement surface: `templates/neon_law/shared/retainer.md` (the binding engagement letter).
+- Engagement surface: `templates/neon_law/shared/letter.md` (the binding engagement letter).

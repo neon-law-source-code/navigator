@@ -548,7 +548,7 @@ use. What constrains AIDA is authorization, not kind: the actor must be lawyer a
 (`store::projects::can_access_as_lawyer_in_surreal`), and the respondent is always the Project's client-side DRI.
 
 A **Retainer** is the same idea, narrowed: an Engagement whose bound Template is the firm's engagement agreement,
-`onboarding__retainer`. The `portal::retainer_walk` walker, the [`docs/retainer_intake.md`](retainer_intake.md) state
+`onboarding__letter`. The `portal::retainer_walk` walker, the [`docs/retainer_intake.md`](retainer_intake.md) state
 machine, and the firm's "signed retainer" disclaimer all refer to that specific kind of Notation.
 
 The schema noun in both cases is `Notation`. Client-facing copy speaks Engagement and Retainer because clients do; the
@@ -821,16 +821,11 @@ through the chain backend. See [`solana-attestation.md`](solana-attestation.md) 
 ## Onboarding
 
 The codebase term for the notation that **opens a matter** — `rules::kind::Kind::Onboarding`, classified by
-[`Kind::opens_a_matter`](../rules/src/kind.rs). It covers both a single-instrument engagement letter and a
-transcript-/intake-driven engagement that opens a bundle of instruments at once (the estate plan, the fractional-GC
-engagement) — the same act of opening the matter either way. One kind covers both, because no call site distinguishes
-them: every caller asks only whether the matter has its engagement yet.
+[`Kind::opens_a_matter`](../rules/src/kind.rs). The shipped sample is the engagement letter
+(`onboarding__letter`). One kind covers that act of opening the matter.
 
 In conversation and with clients this is the **retainer** or the **engagement letter** — see [Engagement /
-Retainer](#engagement--retainer) for that client-facing shape. The codebase and the workflow runtime speak Onboarding;
-the templates that declare it keep their conversational titles ("Retainer Agreement", "Engagement Letter") and codes
-(`onboarding__retainer`, `onboarding__engagement_letter`) unchanged — only their declared `kind:` collapsed to the one
-value.
+Retainer](#engagement--retainer) for that client-facing shape. The codebase and the workflow runtime speak Onboarding.
 
 ## Participation
 

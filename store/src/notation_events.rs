@@ -359,7 +359,7 @@ mod tests {
         let tmpl = crate::templates::save_version(
             surreal,
             None,
-            &format!("onboarding__retainer-{}", Uuid::now_v7()),
+            &format!("onboarding__letter-{}", Uuid::now_v7()),
             crate::templates::Version {
                 title: "Retainer".into(),
                 respondent_type: "person".into(),

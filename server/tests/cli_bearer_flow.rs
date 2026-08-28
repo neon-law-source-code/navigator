@@ -123,7 +123,7 @@ async fn cli_bearer_opens_retainer_then_approve_parks_and_send_dispatches_once()
                 .header("authorization", &bearer)
                 .header("content-type", "application/x-www-form-urlencoded")
                 .body(Body::from(format!(
-                    "client_email={}&retainer_template_code=onboarding__retainer",
+                    "client_email={}&retainer_template_code=onboarding__letter",
                     enc("nick@shook.family"),
                 )))
                 .unwrap(),

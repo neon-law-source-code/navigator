@@ -158,8 +158,8 @@ async fn seed_estate_notation(h: &Harness) -> (Uuid, Uuid) {
         .unwrap()
         .unwrap()
         .project_id;
-    let yaml = workflows::bundled_spec_yaml("onboarding__estate").expect("estate spec bundled");
-    let spec = workflows::workflow_spec_from_yaml(yaml).expect("estate spec parses");
+    let yaml = workflows::bundled_spec_yaml("onboarding__letter").expect("letter spec bundled");
+    let spec = workflows::workflow_spec_from_yaml(yaml).expect("letter spec parses");
     StateMachineRuntime::start(
         h.runtime.as_ref(),
         MachineKind::Workflow,

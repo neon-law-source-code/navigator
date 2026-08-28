@@ -1,32 +1,9 @@
 Feature: Neon Law Nautilus correspondence workflows
 
-  Nautilus is the $66/month consumer-report screening shield: screening
-  mail — adverse-action notices, forwarded reports, and a consumer
-  reporting agency's reinvestigation results — comes to the firm and goes
-  back out as attorney-signed FCRA dispute letters under the client's
-  rights. The dispute letter is a bundled notation whose questionnaire
-  collects the intake and whose workflow renders the letter, gates it
-  behind attorney review (the `@approve` gate, modeled as a bare
-  `lawyer_review` state), and only then sends it. These scenarios pin the
-  notation's shape, prove the unauthorized-practice-of-law gate holds, and
-  lock down inbound triage and the litigation boundary — so an accidental
-  reshape (dropping the review gate, or wiring an auto-send path) surfaces
-  as a named failing scenario.
-
-  Scenario: FCRA dispute intake walks client → agency → item → error → END
-    Given the bundled template "neon_law/nautilus/fcra_dispute.md"
-    Then the questionnaire transitions, in BEGIN-first order, are:
-      | from                             | to                               |
-      | BEGIN                            | person__client                   |
-      | person__client                   | custom_text__reporting_agency    |
-      | custom_text__reporting_agency    | custom_text__disputed_item       |
-      | custom_text__disputed_item       | custom_text__report_error        |
-      | custom_text__report_error        | END                              |
-
-  Scenario: FCRA dispute letter renders, is attorney-reviewed, then mailed
-    Given the bundled template "neon_law/nautilus/fcra_dispute.md"
-    Then every workflow state resolves to a StepKind
-    And the workflow gates every outbound letter behind attorney review
+  Inbound screening mail — adverse-action notices, forwarded reports, and a
+  consumer reporting agency's reinvestigation results — is classified so a
+  lawsuit leaves the correspondence path. These scenarios lock down inbound
+  triage and the litigation boundary.
 
   Scenario Outline: Inbound triage routes screening mail on an active matter
     Given an inbound screening email on an active matter saying "<text>"

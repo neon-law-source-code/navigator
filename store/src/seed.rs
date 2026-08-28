@@ -215,17 +215,13 @@ mod canonical {
     /// it without a separate `navigator site seed` step. The full
     /// shipped catalog is bundled so a fresh cluster carries every
     /// template without an import pass.
-    pub const TEMPLATE_RETAINER: &str = include_str!("../../templates/neon_law/shared/retainer.md");
-    pub const TEMPLATE_ENGAGEMENT_LETTER: &str =
-        include_str!("../../templates/neon_law/shared/engagement_letter.md");
+    pub const TEMPLATE_LETTER: &str = include_str!("../../templates/neon_law/shared/letter.md");
     pub const TEMPLATE_OFFBOARDING_LETTER: &str =
         include_str!("../../templates/neon_law/shared/offboarding_letter.md");
     pub const TEMPLATE_ANNUAL_REPORT_NV: &str =
         include_str!("../../templates/forms/united_states/nevada/state/nv__annual_report.md");
     pub const TEMPLATE_DISSOLUTION_NV: &str =
         include_str!("../../templates/forms/united_states/nevada/state/nv__dissolution.md");
-    pub const TEMPLATE_LLC_CA: &str =
-        include_str!("../../templates/neon_law/nest/ca__llc_operating_agreement.md");
     pub const TEMPLATE_FORM990: &str =
         include_str!("../../templates/forms/united_states/federal/irs/us__form_990.md");
     pub const TEMPLATE_NONPROFIT_501C3_NV: &str = include_str!(
@@ -237,41 +233,14 @@ mod canonical {
     pub const TEMPLATE_NV_MBT: &str = include_str!(
         "../../templates/forms/united_states/nevada/state/nv__modified_business_tax.md"
     );
-    pub const TEMPLATE_TRUST_NV: &str =
-        include_str!("../../templates/neon_law/northstar/nv__generic_trust.md");
-    pub const TEMPLATE_WILL_SIMPLE: &str =
-        include_str!("../../templates/neon_law/northstar/nv__simple_will.md");
-    pub const TEMPLATE_ESTATE: &str =
-        include_str!("../../templates/neon_law/northstar/estate_plan.md");
-    // Northstar estate instrument stubs — the will, trust, and the two
-    // directives the `document_drafts__estate` step renders from the
-    // sitting's answers into one `review_documents` row each.
-    pub const TEMPLATE_NORTHSTAR_WILL: &str =
-        include_str!("../../templates/neon_law/northstar/nv__will.md");
-    pub const TEMPLATE_NORTHSTAR_TRUST: &str =
-        include_str!("../../templates/neon_law/northstar/nv__trust.md");
-    pub const TEMPLATE_NORTHSTAR_DIRECTIVE_HEALTH: &str =
-        include_str!("../../templates/neon_law/northstar/nv__directive_health.md");
-    pub const TEMPLATE_NORTHSTAR_DIRECTIVE_FINANCIAL: &str =
-        include_str!("../../templates/neon_law/northstar/nv__directive_financial.md");
-    pub const TEMPLATE_NEST_NV: &str =
+    pub const TEMPLATE_LLC_NV: &str =
         include_str!("../../templates/forms/united_states/nevada/state/nv__llc_formation.md");
-    pub const TEMPLATE_NEST_CORP_NV: &str = include_str!(
+    pub const TEMPLATE_CORP_NV: &str = include_str!(
         "../../templates/forms/united_states/nevada/state/nv__profit_corp_formation.md"
     );
-    pub const TEMPLATE_NEST_BUSINESS_TRUST_NV: &str = include_str!(
+    pub const TEMPLATE_BUSINESS_TRUST_NV: &str = include_str!(
         "../../templates/forms/united_states/nevada/state/nv__business_trust_formation.md"
     );
-    pub const TEMPLATE_NEXUS: &str =
-        include_str!("../../templates/neon_law/nexus/fractional_gc.md");
-    pub const TEMPLATE_EMPLOYMENT_W2: &str =
-        include_str!("../../templates/neon_law/nexus/nv__employment_agreement.md");
-    pub const TEMPLATE_CONTRACTOR_1099: &str =
-        include_str!("../../templates/neon_law/nexus/nv__contractor_agreement.md");
-    pub const TEMPLATE_CONTRACT_REVIEW: &str =
-        include_str!("../../templates/neon_law/nexus/contract_review.md");
-    pub const TEMPLATE_NAUTILUS_FCRA: &str =
-        include_str!("../../templates/neon_law/nautilus/fcra_dispute.md");
     pub const TEMPLATE_NATURALIZATION: &str =
         include_str!("../../templates/forms/united_states/federal/uscis/us__naturalization.md");
 }
@@ -293,12 +262,8 @@ pub struct SeededTemplate {
 /// body.
 pub const SEEDED_TEMPLATES: &[SeededTemplate] = &[
     SeededTemplate {
-        label: "neon_law/shared/retainer.md",
-        markdown: canonical::TEMPLATE_RETAINER,
-    },
-    SeededTemplate {
-        label: "neon_law/shared/engagement_letter.md",
-        markdown: canonical::TEMPLATE_ENGAGEMENT_LETTER,
+        label: "neon_law/shared/letter.md",
+        markdown: canonical::TEMPLATE_LETTER,
     },
     SeededTemplate {
         label: "neon_law/shared/offboarding_letter.md",
@@ -311,10 +276,6 @@ pub const SEEDED_TEMPLATES: &[SeededTemplate] = &[
     SeededTemplate {
         label: "forms/united_states/nevada/state/nv__dissolution.md",
         markdown: canonical::TEMPLATE_DISSOLUTION_NV,
-    },
-    SeededTemplate {
-        label: "neon_law/nest/ca__llc_operating_agreement.md",
-        markdown: canonical::TEMPLATE_LLC_CA,
     },
     SeededTemplate {
         label: "forms/united_states/federal/irs/us__form_990.md",
@@ -333,64 +294,16 @@ pub const SEEDED_TEMPLATES: &[SeededTemplate] = &[
         markdown: canonical::TEMPLATE_NV_MBT,
     },
     SeededTemplate {
-        label: "neon_law/northstar/nv__generic_trust.md",
-        markdown: canonical::TEMPLATE_TRUST_NV,
-    },
-    SeededTemplate {
-        label: "neon_law/northstar/nv__simple_will.md",
-        markdown: canonical::TEMPLATE_WILL_SIMPLE,
-    },
-    SeededTemplate {
-        label: "neon_law/northstar/estate_plan.md",
-        markdown: canonical::TEMPLATE_ESTATE,
-    },
-    SeededTemplate {
-        label: "neon_law/northstar/nv__will.md",
-        markdown: canonical::TEMPLATE_NORTHSTAR_WILL,
-    },
-    SeededTemplate {
-        label: "neon_law/northstar/nv__trust.md",
-        markdown: canonical::TEMPLATE_NORTHSTAR_TRUST,
-    },
-    SeededTemplate {
-        label: "neon_law/northstar/nv__directive_health.md",
-        markdown: canonical::TEMPLATE_NORTHSTAR_DIRECTIVE_HEALTH,
-    },
-    SeededTemplate {
-        label: "neon_law/northstar/nv__directive_financial.md",
-        markdown: canonical::TEMPLATE_NORTHSTAR_DIRECTIVE_FINANCIAL,
-    },
-    SeededTemplate {
         label: "forms/united_states/nevada/state/nv__llc_formation.md",
-        markdown: canonical::TEMPLATE_NEST_NV,
+        markdown: canonical::TEMPLATE_LLC_NV,
     },
     SeededTemplate {
         label: "forms/united_states/nevada/state/nv__profit_corp_formation.md",
-        markdown: canonical::TEMPLATE_NEST_CORP_NV,
+        markdown: canonical::TEMPLATE_CORP_NV,
     },
     SeededTemplate {
         label: "forms/united_states/nevada/state/nv__business_trust_formation.md",
-        markdown: canonical::TEMPLATE_NEST_BUSINESS_TRUST_NV,
-    },
-    SeededTemplate {
-        label: "neon_law/nexus/fractional_gc.md",
-        markdown: canonical::TEMPLATE_NEXUS,
-    },
-    SeededTemplate {
-        label: "neon_law/nexus/nv__employment_agreement.md",
-        markdown: canonical::TEMPLATE_EMPLOYMENT_W2,
-    },
-    SeededTemplate {
-        label: "neon_law/nexus/nv__contractor_agreement.md",
-        markdown: canonical::TEMPLATE_CONTRACTOR_1099,
-    },
-    SeededTemplate {
-        label: "neon_law/nexus/contract_review.md",
-        markdown: canonical::TEMPLATE_CONTRACT_REVIEW,
-    },
-    SeededTemplate {
-        label: "neon_law/nautilus/fcra_dispute.md",
-        markdown: canonical::TEMPLATE_NAUTILUS_FCRA,
+        markdown: canonical::TEMPLATE_BUSINESS_TRUST_NV,
     },
     SeededTemplate {
         label: "forms/united_states/federal/uscis/us__naturalization.md",
@@ -2955,17 +2868,14 @@ records:
     fn seeded_template_codes_are_derived_from_the_bundled_catalog() {
         let codes = seeded_template_codes().expect("seeded template codes");
         assert_eq!(codes.len(), SEEDED_TEMPLATES.len());
-        assert!(codes.iter().any(|code| code == "onboarding__retainer"));
-        assert!(codes
-            .iter()
-            .any(|code| code == "onboarding__engagement_letter"));
+        assert!(codes.iter().any(|code| code == "onboarding__letter"));
         assert!(codes.iter().any(|code| code == "offboarding__letter"));
-        assert!(codes.iter().any(|code| code == "northstar__will"));
+        assert!(codes.iter().any(|code| code == "nv__llc_formation"));
         assert!(
             !codes
                 .iter()
-                .any(|code| code.starts_with("onboarding__retainer_")),
-            "the service-specific retainers are retired; one generic retainer remains"
+                .any(|code| code.starts_with("onboarding__letter_")),
+            "project-scoped letter variants are not seeded; one shared engagement letter remains"
         );
     }
 
@@ -3121,16 +3031,12 @@ records:
         // Spot-check templates from across the catalog so a dropped
         // `include_str!` entry is caught, not just the retainer.
         for code in [
-            "onboarding__retainer",
-            "onboarding__engagement_letter",
+            "onboarding__letter",
             "offboarding__letter",
-            "trusts__nevada",
-            "will__simple",
-            "ca__llc_operating_agreement",
+            "nv__llc_formation",
+            "nv__profit_corp_formation",
             "us__form_990",
-            "services__contract_review",
-            "employment__nonprofit_w2",
-            "contractor__nonprofit_1099",
+            "us__naturalization",
         ] {
             assert!(
                 crate::templates::resolve(&surreal, None, code)
@@ -3140,7 +3046,7 @@ records:
                 "expected bundled template `{code}` to be seeded"
             );
         }
-        let tmpl = crate::templates::resolve(&surreal, None, "onboarding__retainer")
+        let tmpl = crate::templates::resolve(&surreal, None, "onboarding__letter")
             .await
             .unwrap()
             .expect("template row");
@@ -3179,7 +3085,7 @@ records:
             .await
             .unwrap()
             .into_iter()
-            .filter(|t| t.code == "onboarding__retainer")
+            .filter(|t| t.code == "onboarding__letter")
             .count();
         assert_eq!(count, 1, "exactly one current retainer template row");
     }
@@ -3218,7 +3124,7 @@ records:
             "{{firm.signature}}",
         ];
 
-        let code = "onboarding__retainer";
+        let code = "onboarding__letter";
         let tmpl = crate::templates::resolve(&surreal, None, code)
             .await
             .unwrap()

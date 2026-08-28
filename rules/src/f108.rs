@@ -50,7 +50,7 @@ mod tests {
 
     #[test]
     fn passes_when_code_is_present() {
-        let f = file("---\ntitle: T\ncode: onboarding__retainer\n---\n");
+        let f = file("---\ntitle: T\ncode: onboarding__letter\n---\n");
         assert!(F108TemplateCodeRequired.lint(&f).is_empty());
     }
 

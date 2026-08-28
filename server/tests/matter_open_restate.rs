@@ -141,7 +141,7 @@ async fn matter_open_starts_its_workflow_through_the_restate_worker() {
     // the #377 bug, reproduced through the door that still fires a workflow
     // at matter open.
     let body = format!(
-        "client_email={}&retainer_template_code=onboarding__estate",
+        "client_email={}&retainer_template_code=onboarding__letter",
         enc(&client_email),
     );
     let resp = post_retainer_walk(&app, body).await;

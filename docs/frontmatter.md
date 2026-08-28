@@ -23,7 +23,7 @@ line of three dashes (`---`). The block holds a few `key: value` lines, like thi
 
 ```yaml
 title: Retainer Agreement
-code: onboarding__retainer
+code: onboarding__letter
 ```
 
 That block is the **frontmatter** (the real file has a `---` line above and below it). Think of it as the caption on a
@@ -85,14 +85,14 @@ into a recording stage; `/lawyer/outline` shows the bundled retainer, engagement
 ## Notation templates — the legal blueprints
 
 A notation template is the document a client eventually signs, plus the questions that fill it in and the path it walks
-to get there. Here is the real frontmatter from the shared retainer, `templates/neon_law/shared/retainer.md` (shown
+to get there. Here is the real frontmatter from the shared retainer, `templates/neon_law/shared/letter.md` (shown
 without its surrounding `---` fences):
 
 ```yaml
 kind: onboarding
 title: Retainer Agreement
 respondent_type: person_and_entity
-code: onboarding__retainer
+code: onboarding__letter
 jurisdiction: NV
 confidential: true
 output: letter
@@ -130,6 +130,7 @@ workflow:
 
 Each key, in plain English:
 
+<<<<<<< HEAD
 - **`kind`** — what this notation is: `letter` (a letter the firm sends on the client's behalf), `filing` (a document
   filed with a government body), `will`, `trust`, `directive` (a health-care or durable financial directive),
   `agreement` (employment, contractor, or LLC operating), `onboarding` (the engagement that opens a matter — a
@@ -137,8 +138,14 @@ Each key, in plain English:
   firm-signed letter that closes a matter), or `memo` (an analytical work product like a contract review). It is
   **required** on every notation template — the declared kind is the sole classifier, so a template without it lints as
   prose — and an unrecognized value is a blocking error.
+=======
+- **`kind`** — what this notation is: `onboarding` (the engagement that opens a matter), `offboarding` (the closing
+  letter), `letter` (a letter the firm sends on the client's behalf), `filing` (a document filed with a government body),
+  `will`, `trust`, `directive`, `agreement`, or `memo`. It is **required** on every notation template — the declared
+  kind is the sole classifier, so a template without it lints as prose — and an unrecognized value is a blocking error.
+>>>>>>> 732a12e (Slim the notation catalog to public forms plus sample letters.)
 - **`title`** — the human name of the document, e.g. `Retainer Agreement`. It cannot be blank.
-- **`code`** — the document's permanent file number, in `snake_case` (e.g. `onboarding__retainer`). It must be unique
+- **`code`** — the document's permanent file number, in `snake_case` (e.g. `onboarding__letter`). It must be unique
   across the whole project, and you do not change it once clients have signed under it. The reason is the record: the
   `code` is how a signed document is traced back to the blueprint it came from, so changing it later would cut the audit
   trail your malpractice carrier may one day need to read.

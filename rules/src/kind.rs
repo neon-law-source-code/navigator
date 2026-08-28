@@ -28,9 +28,9 @@ pub enum Kind {
     /// A document filed with a government body (formation, annual report,
     /// tax return, application).
     Filing,
-    /// A last will and testament (`will__simple`, the Northstar wills).
+    /// A last will and testament.
     Will,
-    /// A trust instrument (`trusts__nevada`, the Northstar trust).
+    /// A trust instrument.
     Trust,
     /// An advance directive — a health-care directive or a durable
     /// financial power of attorney.
@@ -41,11 +41,8 @@ pub enum Kind {
     /// The engagement that opens a matter — a lawyer creates it on the
     /// Project like any other notation (opening the Project does not open
     /// it) and it is the one kind the self-serve doors accept as a
-    /// matter's first notation (see [`Kind::opens_a_matter`]). Covers both
-    /// a single-instrument engagement letter and a transcript- or
-    /// intake-driven onboarding that opens a bundle of instruments at once
-    /// (the estate plan, the fractional-GC engagement) — whether one
-    /// instrument or a bundle, it is the same act of opening the matter.
+    /// matter's first notation (see [`Kind::opens_a_matter`]). The shipped
+    /// sample is the engagement letter.
     Onboarding,
     /// The firm-signed letter that **closes a matter** — the mirror of
     /// [`Kind::Onboarding`] (see [`Kind::closes_a_matter`]). Distinct from
@@ -54,7 +51,7 @@ pub enum Kind {
     /// or any demand or notice letter would silently close it out.
     Offboarding,
     /// An analytical work product the firm delivers — a review memo or
-    /// opinion (`services__contract_review`), not an executed instrument.
+    /// opinion, not an executed instrument.
     Memo,
     /// A dated public event page under `server/content/events/`.
     Event,

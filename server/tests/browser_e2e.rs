@@ -210,7 +210,7 @@ async fn lawyer_walks_the_full_retainer_questionnaire_end_to_end() {
     //   2. POST /step × 7 (one question each) → result page
     //
     // Preconditions (beyond the module's chromedriver + KIND
-    // requirements): the `onboarding__retainer` template must
+    // requirements): the `onboarding__letter` template must
     // be seeded via `navigator site seed templates/`, and
     // `store/seeds/Question.yaml` must be seeded so the two
     // walker question codes are looked up successfully.
@@ -278,7 +278,7 @@ async fn lawyer_walks_the_full_retainer_questionnaire_end_to_end() {
         set_input_script,
         vec![
             serde_json::Value::String("select[name='retainer_template_code']".into()),
-            serde_json::Value::String("onboarding__retainer".into()),
+            serde_json::Value::String("onboarding__letter".into()),
         ],
     )
     .await
@@ -723,83 +723,6 @@ async fn lawyer_creates_a_client_inline_on_the_project_form() {
         modals.as_u64(),
         Some(0),
         "the inline create must not ship a Bootstrap modal any more",
-    );
-
-    c.close().await.unwrap();
-}
-
-#[tokio::test]
-#[allow(clippy::too_many_lines)]
-async fn lawyer_opens_an_estate_matter_and_sees_the_transcript_form() {
-    // Drives the Northstar estate front edge in a real browser:
-    //   1. POST /lawyer/retainers/new with onboarding__estate
-    //   2. land on the matter page (/app/projects/:code), not the walker
-    //   3. the phone-friendly transcript-upload form is present
-    //
-    // Preconditions (beyond chromedriver + KIND): the canonical seed has
-    // run so the `onboarding__estate` template exists. The client-side
-    // approval walk is covered by the in-process integration test
-    // `estate_review_gates.rs` (a WebDriver client-login helper is not
-    // built yet).
-    let Some(c) = new_client_or_skip().await else {
-        return;
-    };
-    login_as_lawyer(&c).await;
-
-    let client_email = format!("estate-{}@example.com", std::process::id());
-
-    c.goto(&format!("{}/lawyer/retainers/new", base_url()))
-        .await
-        .unwrap();
-    c.wait()
-        .at_most(Duration::from_secs(10))
-        .for_element(Locator::Css("input[name='client_email']"))
-        .await
-        .unwrap();
-    let set_input_script = "\
-        const target = document.querySelector(arguments[0]); \
-        target.value = arguments[1]; \
-        target.dispatchEvent(new Event('input', {bubbles: true})); \
-        target.dispatchEvent(new Event('change', {bubbles: true})); \
-        return target.value;";
-    c.execute(
-        set_input_script,
-        vec![
-            serde_json::Value::String("input[name='client_email']".into()),
-            serde_json::Value::String(client_email.clone()),
-        ],
-    )
-    .await
-    .unwrap();
-    c.execute(
-        set_input_script,
-        vec![
-            serde_json::Value::String("select[name='retainer_template_code']".into()),
-            serde_json::Value::String("onboarding__estate".into()),
-        ],
-    )
-    .await
-    .unwrap();
-    c.execute(
-        "document.querySelector('form.admin-form').submit(); return true;",
-        vec![],
-    )
-    .await
-    .unwrap();
-
-    // The estate flow lands on the matter page with the transcript form —
-    // never the questionnaire walker. The matter page is project-scoped:
-    // the lawyer who opened it must be disclosed to it (a
-    // `person_project_roles` lawyer-DRI row) or `can_see_project` 404s them.
-    // `start_post` writes that row as part of creation, so the opener lands
-    // on the transcript form rather than a "Not found" page. The estate
-    // create also starts the workflow machine through Restate in-request, so
-    // allow a generous budget for that cross-pod round-trip.
-    wait_for_text(&c, "File the sitting transcript", Duration::from_secs(15)).await;
-    let url = c.current_url().await.unwrap();
-    assert!(
-        url.path().starts_with("/app/projects/"),
-        "estate creation should land on the matter page, got {url}"
     );
 
     c.close().await.unwrap();

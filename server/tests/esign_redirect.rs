@@ -24,7 +24,7 @@ use store::test_support::mem_surreal;
 use tower::ServiceExt;
 use uuid::Uuid;
 
-const TEMPLATE_CODE: &str = "onboarding__retainer";
+const TEMPLATE_CODE: &str = "onboarding__letter";
 const ENVELOPE_ID: &str = "env-refer-out-1";
 
 /// A composed router over a seeded store, the notation id its client is

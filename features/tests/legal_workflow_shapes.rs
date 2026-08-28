@@ -1,10 +1,9 @@
 //! Cucumber runner for `features/legal_workflow_shapes.feature`.
 //!
-//! Loads each bundled template (LLC, trust, will) from disk and
-//! pins down its questionnaire shape + workflow composition. Complements
-//! `workflows/tests/workflow_integrity.rs`, which enforces generic
-//! invariants; these scenarios are template-specific so a recomposition
-//! shows up as a named failing scenario in the BDD suite.
+//! Loads each remaining bundled template from disk and pins down its
+//! questionnaire shape. Complements `workflows/tests/workflow_integrity.rs`,
+//! which enforces generic invariants; these scenarios are template-specific
+//! so a recomposition shows up as a named failing scenario in the BDD suite.
 
 #![allow(clippy::unused_async)]
 

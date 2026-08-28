@@ -24,7 +24,7 @@ use store::test_support::mem_surreal;
 use tower::ServiceExt;
 use workflows::{InMemoryRuntime, MachineKind, StateMachineRuntime, StateName};
 
-const TEMPLATE_CODE: &str = "onboarding__retainer";
+const TEMPLATE_CODE: &str = "onboarding__letter";
 
 async fn build_app_and_notation() -> (
     axum::Router,
@@ -49,12 +49,12 @@ async fn build_app_and_notation() -> (
     );
     seed::seed_canonical(&surreal, &storage).await.unwrap();
 
-    // seed_canonical inserts the bundled `onboarding__retainer`
+    // seed_canonical inserts the bundled `onboarding__letter`
     // template; reuse the current version instead of double-inserting.
     let tmpl = store::templates::resolve(&surreal, None, TEMPLATE_CODE)
         .await
         .unwrap()
-        .expect("seed pass inserts onboarding__retainer");
+        .expect("seed pass inserts onboarding__letter");
 
     let libra = store::persons::create(
         &surreal,
@@ -405,12 +405,8 @@ async fn start_get_renders_the_minimal_create_form() {
     assert!(html.contains("<select"));
     assert!(html.contains("name=\"retainer_template_code\""));
     assert!(
-        html.contains("onboarding__retainer"),
-        "the onboarding retainer should be a selectable option",
-    );
-    assert!(
-        html.contains("onboarding__estate"),
-        "every seeded onboarding template should be an option",
+        html.contains("onboarding__letter"),
+        "the onboarding letter should be a selectable option",
     );
     // Only onboarding templates open a matter; an offboarding letter is not
     // an option here (it belongs to the close flow).
@@ -436,7 +432,7 @@ async fn start_post_creates_person_project_role_notation_and_redirects_to_step()
     std::env::set_var("NAVIGATOR_GIT_REPO_ROOT", &repo_root);
 
     let surreal = mem_surreal().await;
-    // seed_canonical inserts the bundled onboarding__retainer
+    // seed_canonical inserts the bundled onboarding__letter
     // template — that's what this test will POST against.
     let storage: Arc<dyn cloud::StorageService> = Arc::new(
         cloud::FsStorage::new(std::env::temp_dir().join("navigator-walker-start-storage"))
@@ -1092,7 +1088,7 @@ async fn start_post_rejects_missing_at_in_client_email_with_validation_error() {
                 )
                 .header("content-type", "application/x-www-form-urlencoded")
                 .body(Body::from(
-                    "client_email=not-an-email&retainer_template_code=onboarding__estate",
+                    "client_email=not-an-email&retainer_template_code=onboarding__letter",
                 ))
                 .unwrap(),
         )
@@ -1111,7 +1107,7 @@ async fn start_post_rejects_missing_at_in_client_email_with_validation_error() {
     );
     assert!(loc.contains("client_email=not-an-email"), "{loc}");
     assert!(
-        loc.contains("retainer_template_code=onboarding__estate"),
+        loc.contains("retainer_template_code=onboarding__letter"),
         "{loc}"
     );
 
@@ -1134,7 +1130,7 @@ async fn start_post_rejects_missing_at_in_client_email_with_validation_error() {
     // Nothing has to be retyped: the email is echoed back into the field and
     // the chosen template stays chosen instead of resetting to the default.
     assert!(html.contains("value=\"not-an-email\""), "{html}");
-    assert!(html.contains("onboarding__estate"), "{html}");
+    assert!(html.contains("onboarding__letter"), "{html}");
 }
 
 #[tokio::test]

@@ -6,15 +6,20 @@ graphs, the LSP/CLI validate that structure, and a running Notation binds those 
 projects the Template's declared Questions into an Inquiry Set, listens to a transcript as it develops, and shows which
 items are answered, ambiguous, or still need follow-up.
 
-Northstar estate sittings are the first use case. The model must also fit later litigation prep, depositions, witness
-interviews, intake interviews, and any other transcript-bearing matter session.
+The model fits depositions, witness interviews, intake interviews, and any other transcript-bearing matter session.
 
 ## Feature gating
 
+<<<<<<< HEAD
 Today, the Google Speech-to-Text provider (`cloud/src/speech.rs`) compiles in unconditionally as part of the `cloud`
 crate — there is no Cargo feature gate around it, and the `cli -- template transcribe` probe described below already
 calls it directly. The offline-first lane ([`northstar-estate-flow.md`](northstar-estate-flow.md)) remains the shipped
 default for Northstar; nothing routes live audio into a Northstar sitting yet.
+=======
+Live transcription is **off by default and gated behind a feature flag**. Live coverage is an opt-in adjunct a
+deployment turns on deliberately. The flag has two layers so the speech-to-text and coverage code is not even loaded
+until it is enabled:
+>>>>>>> 732a12e (Slim the notation catalog to public forms plus sample letters.)
 
 A live Northstar/`web` integration is proposed to ship **off by default and gated behind a runtime flag** rather than a
 compile-time one: a per-deployment flag would control whether the live-session routes and UI are exposed, and a
@@ -104,7 +109,7 @@ pub enum InquirySource {
 }
 ```
 
-For Northstar v1, every reachable `questionnaire:` Question becomes one `InquiryDraft` with
+For v1, every reachable `questionnaire:` Question becomes one `InquiryDraft` with
 `InquirySource::TemplateQuestion`. The live system then tracks coverage against those Inquiries while the existing
 Notation workflow remains the authority for document generation, lawyer review, client review, and signing.
 
@@ -114,8 +119,8 @@ The first executable slice is deliberately local and lawyer/developer-facing:
 
 ```bash
 cargo run -p cli -- template transcribe \
-  --template templates/neon_law/northstar/estate_plan.md \
-  --transcript /tmp/northstar-sitting.txt \
+  --template templates/neon_law/shared/letter.md \
+  --transcript /tmp/sitting.txt \
   --pretty
 ```
 
@@ -281,7 +286,7 @@ Conclusions:
   lever. At realistic volume (~20 sittings / month ≈ ~`$28` / month) cost is not a binding constraint on this feature.
 - **If cost ever does bite, the levers are Speech-to-Text-side, not the debounce dial**: a discounted dynamic-batch tier
   (`$0.004` / min) for post-hoc rather than live coverage, or routing coverage through the already-paid Gemini
-  Enterprise seam ([`northstar-estate-flow.md`](northstar-estate-flow.md)) at ~`$0` marginal inference cost. These are
+  Enterprise seam at ~`$0` marginal inference cost. These are
   deferred options, not v1 work.
 
 ## Speaker attribution

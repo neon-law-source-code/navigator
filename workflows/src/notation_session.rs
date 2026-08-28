@@ -1220,7 +1220,7 @@ mod tests {
         // The retainer template body is bundled via include_str!;
         // for tests we only need the row to exist with the
         // matching `code` so the spec lookup hits the bundled YAML.
-        seed_template(surreal, "onboarding__retainer", "Retainer").await;
+        seed_template(surreal, "onboarding__letter", "Retainer").await;
     }
 
     async fn seed_template(surreal: &SurrealDb, code: &str, title: &str) {
@@ -1276,7 +1276,7 @@ mod tests {
             &surreal,
             &runtime,
             None,
-            "onboarding__retainer",
+            "onboarding__letter",
             person_id,
             seed_project(&surreal).await,
             None,
@@ -1323,7 +1323,7 @@ mod tests {
             &surreal,
             &runtime,
             None,
-            "onboarding__retainer",
+            "onboarding__letter",
             person_id,
             seed_project(&surreal).await,
             None,
@@ -1389,7 +1389,7 @@ mod tests {
         use super::create_notation_from_repo;
         // A Project repo carrying its own template blueprint at HEAD (a
         // corpus body, guaranteed to validate clean).
-        const TEMPLATE: &str = include_str!("../../templates/neon_law/shared/retainer.md");
+        const TEMPLATE: &str = include_str!("../../templates/neon_law/shared/letter.md");
 
         let surreal = db().await;
         let storage: Arc<dyn StorageService> = Arc::new(
@@ -1473,7 +1473,7 @@ mod tests {
             &surreal,
             &runtime,
             None,
-            "onboarding__retainer",
+            "onboarding__letter",
             person_id,
             seed_project(&surreal).await,
             None,
@@ -1564,7 +1564,7 @@ mod tests {
         .into_model()
     }
 
-    /// A project-scoped template with a *bundled* code (`onboarding__retainer`,
+    /// A project-scoped template with a *bundled* code (`onboarding__letter`,
     /// whose bundled questionnaire starts at `person__client`) that carries its
     /// own divergent questionnaire blob — that blob's questionnaire must win.
     #[tokio::test]
@@ -1578,7 +1578,7 @@ mod tests {
         let scoped = scoped_template_with_blob(
             &surreal,
             &storage,
-            "onboarding__retainer",
+            "onboarding__letter",
             project_id,
             divergent,
         )
@@ -1610,7 +1610,7 @@ mod tests {
         let scoped = scoped_template_with_blob(
             &surreal,
             &storage,
-            "onboarding__retainer",
+            "onboarding__letter",
             project_id,
             body_only,
         )
@@ -1656,7 +1656,7 @@ mod tests {
         let shared = store::templates::save_version(
             &surreal,
             None,
-            "onboarding__retainer",
+            "onboarding__letter",
             store::templates::Version {
                 title: "Retainer".into(),
                 respondent_type: "person".into(),
@@ -1683,7 +1683,7 @@ mod tests {
         let scoped_no_blob = store::templates::save_version(
             &surreal,
             Some(project_id),
-            "onboarding__retainer",
+            "onboarding__letter",
             store::templates::Version {
                 title: "Retainer".into(),
                 respondent_type: "person".into(),
@@ -1723,7 +1723,7 @@ mod tests {
         scoped_template_with_blob(
             &surreal,
             &storage,
-            "onboarding__retainer",
+            "onboarding__letter",
             project_id,
             divergent,
         )
@@ -1734,7 +1734,7 @@ mod tests {
             &surreal,
             &runtime,
             Some(&storage),
-            "onboarding__retainer",
+            "onboarding__letter",
             person_id,
             project_id,
             None,
@@ -1816,7 +1816,7 @@ mod tests {
             &surreal,
             &runtime,
             None,
-            "onboarding__retainer",
+            "onboarding__letter",
             person_id,
             seed_project(&surreal).await,
             None,
@@ -1857,7 +1857,7 @@ mod tests {
             &surreal,
             &runtime,
             None,
-            "onboarding__retainer",
+            "onboarding__letter",
             person_id,
             seed_project(&surreal).await,
             None,
@@ -1896,7 +1896,7 @@ mod tests {
             &surreal,
             &runtime,
             None,
-            "onboarding__retainer",
+            "onboarding__letter",
             person_id,
             seed_project(&surreal).await,
             None,
@@ -1956,7 +1956,7 @@ mod tests {
             &surreal,
             &runtime,
             None,
-            "onboarding__retainer",
+            "onboarding__letter",
             person_id,
             seed_project(&surreal).await,
             None,
@@ -2014,7 +2014,7 @@ mod tests {
             &surreal,
             &runtime,
             None,
-            "onboarding__retainer",
+            "onboarding__letter",
             person_id,
             seed_project(&surreal).await,
             None,
@@ -2074,7 +2074,7 @@ mod tests {
             &surreal,
             &runtime,
             None,
-            "onboarding__retainer",
+            "onboarding__letter",
             person_id,
             seed_project(&surreal).await,
             None,
@@ -2129,7 +2129,7 @@ mod tests {
             &surreal,
             &runtime,
             None,
-            "onboarding__retainer",
+            "onboarding__letter",
             client_id,
             seed_project(&surreal).await,
             None,
@@ -2173,7 +2173,7 @@ mod tests {
             surreal,
             runtime,
             None,
-            "onboarding__retainer",
+            "onboarding__letter",
             person_id,
             seed_project(surreal).await,
             None,
@@ -2192,7 +2192,7 @@ mod tests {
             surreal,
             runtime,
             None,
-            "onboarding__retainer",
+            "onboarding__letter",
             person_id,
             seed_project(surreal).await,
             None,

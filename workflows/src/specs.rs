@@ -25,25 +25,25 @@ use serde::Deserialize;
 
 use crate::spec::{QuestionnaireSpec, WorkflowSpec, WorkflowSpecError};
 
-/// Raw markdown body for the retainer-intake notation template. Used
+/// Raw markdown body for the engagement-letter notation template. Used
 /// by the rendering layer (`views::notation::render_filled_in`) and
 /// the integrity / coherence tests; the workflow spec itself now
 /// loads from [`RETAINER_INTAKE_SPEC_YAML`].
 pub const RETAINER_INTAKE_TEMPLATE: &str =
-    include_str!("../../templates/neon_law/shared/retainer.md");
+    include_str!("../../templates/neon_law/shared/letter.md");
 
 /// Standalone YAML carrying both `questionnaire:` and `workflow:`
-/// blocks for the retainer intake template.
-pub const RETAINER_INTAKE_SPEC_YAML: &str = include_str!("../specs/onboarding__retainer.yaml");
+/// blocks for the engagement-letter intake template.
+pub const RETAINER_INTAKE_SPEC_YAML: &str = include_str!("../specs/onboarding__letter.yaml");
 
-/// Shared questionnaire/workflow every *product* retainer
-/// (`onboarding__retainer_*`) rides via [`catalog_spec_yaml`]. It differs from
+/// Shared questionnaire/workflow every *project-scoped* engagement letter
+/// (`onboarding__letter_*`) rides via [`catalog_spec_yaml`]. It differs from
 /// the generic intake spec by the `custom_single_choice__governing_law`
-/// question — the fillable governing-law clause every product retainer now
-/// carries (#363). Product retainers vary only in their legal prose, so one
-/// spec covers all of them rather than a per-retainer copy.
+/// question — the fillable governing-law clause every product letter now
+/// carries (#363). Project-scoped letters vary only in their legal prose, so one
+/// spec covers all of them rather than a per-letter copy.
 pub const RETAINER_PRODUCT_SPEC_YAML: &str =
-    include_str!("../specs/onboarding__retainer_product.yaml");
+    include_str!("../specs/onboarding__letter_product.yaml");
 
 /// Welcome-email workflow spec. Lives outside [`BUNDLED_SPEC_YAML`]
 /// because the welcome flow is a notification, not a legal-document
@@ -78,31 +78,7 @@ pub fn workshop_certificate_spec() -> WorkflowSpec {
 /// callers (and `cli scaffold`) can locate the YAML by code without
 /// reaching into the filesystem.
 pub const BUNDLED_SPEC_YAML: &[(&str, &str)] = &[
-    ("onboarding__retainer", RETAINER_INTAKE_SPEC_YAML),
-    (
-        "onboarding__engagement_letter",
-        include_str!("../specs/onboarding__engagement_letter.yaml"),
-    ),
-    (
-        "onboarding__estate",
-        include_str!("../specs/onboarding__estate.yaml"),
-    ),
-    (
-        "northstar__will",
-        include_str!("../specs/northstar__will.yaml"),
-    ),
-    (
-        "northstar__trust",
-        include_str!("../specs/northstar__trust.yaml"),
-    ),
-    (
-        "northstar__directive_health",
-        include_str!("../specs/northstar__directive_health.yaml"),
-    ),
-    (
-        "northstar__directive_financial",
-        include_str!("../specs/northstar__directive_financial.yaml"),
-    ),
+    ("onboarding__letter", RETAINER_INTAKE_SPEC_YAML),
     (
         "nv__llc_formation",
         include_str!("../specs/nv__llc_formation.yaml"),
@@ -116,22 +92,9 @@ pub const BUNDLED_SPEC_YAML: &[(&str, &str)] = &[
         include_str!("../specs/nv__business_trust_formation.yaml"),
     ),
     (
-        "onboarding__nexus",
-        include_str!("../specs/onboarding__nexus.yaml"),
-    ),
-    (
         "offboarding__letter",
         include_str!("../specs/offboarding__letter.yaml"),
     ),
-    (
-        "ca__llc_operating_agreement",
-        include_str!("../specs/ca__llc_operating_agreement.yaml"),
-    ),
-    (
-        "trusts__nevada",
-        include_str!("../specs/trusts__nevada.yaml"),
-    ),
-    ("will__simple", include_str!("../specs/will__simple.yaml")),
     (
         "nv__dissolution",
         include_str!("../specs/nv__dissolution.yaml"),
@@ -154,28 +117,8 @@ pub const BUNDLED_SPEC_YAML: &[(&str, &str)] = &[
         include_str!("../specs/nv__charitable_solicitation_registration.yaml"),
     ),
     (
-        "nautilus__fcra_dispute",
-        include_str!("../specs/nautilus__fcra_dispute.yaml"),
-    ),
-    (
-        "services__contract_review",
-        include_str!("../specs/services__contract_review.yaml"),
-    ),
-    (
         "us__naturalization",
         include_str!("../specs/us__naturalization.yaml"),
-    ),
-    (
-        "employment__nonprofit_w2",
-        include_str!("../specs/employment__nonprofit_w2.yaml"),
-    ),
-    (
-        "contractor__nonprofit_1099",
-        include_str!("../specs/contractor__nonprofit_1099.yaml"),
-    ),
-    (
-        "source_code_preservation_tro__california",
-        include_str!("../specs/source_code_preservation_tro__california.yaml"),
     ),
 ];
 
@@ -193,7 +136,7 @@ pub fn bundled_spec_yaml(code: &str) -> Option<&'static str> {
 /// catalog.
 ///
 /// Most templates have their own standalone YAML in [`BUNDLED_SPEC_YAML`].
-/// A project-scoped retainer variant (`onboarding__retainer_<something>`)
+/// A project-scoped engagement-letter variant (`onboarding__letter_<something>`)
 /// intentionally shares the [`RETAINER_PRODUCT_SPEC_YAML`]
 /// questionnaire/workflow: its legal prose varies per matter, but the intake,
 /// fillable governing-law question, and review/signature path stay the same
@@ -201,7 +144,7 @@ pub fn bundled_spec_yaml(code: &str) -> Option<&'static str> {
 #[must_use]
 pub fn catalog_spec_yaml(code: &str) -> Option<&'static str> {
     bundled_spec_yaml(code).or_else(|| {
-        code.strip_prefix("onboarding__retainer_")
+        code.strip_prefix("onboarding__letter_")
             .map(|_| RETAINER_PRODUCT_SPEC_YAML)
     })
 }
@@ -622,14 +565,12 @@ custom_questions:
     #[test]
     fn seeded_catalog_template_codes_resolve_to_walkable_questionnaires() {
         let codes = store::seed::seeded_template_codes().expect("seeded template codes");
-        // A floor, not a comparison against `BUNDLED_SPEC_YAML`: retiring the
-        // twelve service-specific retainers left `onboarding__retainer_product`
-        // bundled with no seeded template of its own, because it now serves
-        // project-scoped variants rather than a catalog. The loop below is the
-        // real assertion — every seeded code resolves to a walkable spec — and
-        // this only stops it passing vacuously.
+        // A floor, not a comparison against `BUNDLED_SPEC_YAML`: the product-letter
+        // fallback spec is bundled with no seeded template of its own, because it
+        // serves project-scoped variants rather than a catalog row. The loop below
+        // is the real assertion — every seeded code resolves to a walkable spec.
         assert!(
-            codes.len() >= 20,
+            codes.len() >= 10,
             "expected the seeded catalog, got {} codes",
             codes.len()
         );
@@ -655,18 +596,18 @@ custom_questions:
         // template may still be saved under the prefix — that is what this
         // fallback serves.
         assert_eq!(
-            catalog_spec_yaml("onboarding__retainer_transcript"),
+            catalog_spec_yaml("onboarding__letter_transcript"),
             Some(RETAINER_PRODUCT_SPEC_YAML)
         );
         assert_eq!(
-            catalog_spec_yaml("onboarding__retainer_anything"),
+            catalog_spec_yaml("onboarding__letter_anything"),
             Some(RETAINER_PRODUCT_SPEC_YAML)
         );
         assert!(catalog_spec_yaml("does__not_exist").is_none());
-        // The generic retainer resolves to its own registered spec, not the
+        // The generic engagement letter resolves to its own registered spec, not the
         // fallback.
         assert_eq!(
-            catalog_spec_yaml("onboarding__retainer"),
+            catalog_spec_yaml("onboarding__letter"),
             Some(RETAINER_INTAKE_SPEC_YAML)
         );
     }
@@ -689,7 +630,7 @@ custom_questions:
                 .and_then(serde_yaml::Value::as_str)
                 .unwrap_or_else(|| panic!("{} has no code", template.label));
 
-            if !code.starts_with("onboarding__retainer_") || bundled_spec_yaml(code).is_some() {
+            if !code.starts_with("onboarding__letter_") || bundled_spec_yaml(code).is_some() {
                 continue;
             }
 
@@ -718,8 +659,7 @@ custom_questions:
             );
         }
 
-        // The seeded catalog carries no `onboarding__retainer_*` variant now
-        // that the twelve service-specific retainers are retired, so this
+        // The seeded catalog carries no `onboarding__letter_*` variant, so this
         // loop legitimately covers nothing. It stays because the fallback
         // still serves project-scoped variants, and a future seeded one must
         // match the shared spec rather than quietly diverging from it.

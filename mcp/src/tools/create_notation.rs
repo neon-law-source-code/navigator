@@ -62,8 +62,8 @@ pub fn descriptor() -> Value {
                 "template_code": {
                     "type": "string",
                     "description":
-                        "Stable template code, e.g. `onboarding__retainer`, \
-                         `ca__llc_operating_agreement`. Required."
+                        "Stable template code, e.g. `onboarding__letter`, \
+                         `nv__llc_formation`. Required."
                 },
                 "project_id": {
                     "type": "string",
@@ -271,7 +271,7 @@ mod tests {
 
     /// Seed the template these tests open, declaring `kind`.
     ///
-    /// The code stays `onboarding__retainer` because its questionnaire is
+    /// The code stays `onboarding__letter` because its questionnaire is
     /// bundled at compile time (`workflows::specs::BUNDLED_SPEC_YAML`), so
     /// it is what resolves with no project repo and no stored body. `kind`
     /// is the axis under test: a matter's first notation may declare any
@@ -280,7 +280,7 @@ mod tests {
         store::templates::save_version(
             surreal,
             None,
-            "onboarding__retainer",
+            "onboarding__letter",
             store::templates::Version {
                 title: "Retainer".into(),
                 respondent_type: "person".into(),
@@ -439,7 +439,7 @@ mod tests {
             Some(&storage),
             None,
             &json!({
-                "template_code": "onboarding__retainer",
+                "template_code": "onboarding__letter",
                 "project_id": project_id,
             }),
         )
@@ -473,7 +473,7 @@ mod tests {
             Some(&storage),
             None,
             &json!({
-                "template_code": "onboarding__retainer",
+                "template_code": "onboarding__letter",
                 "project_id": project_id,
             }),
         )
@@ -502,7 +502,7 @@ mod tests {
             Some(&storage),
             Some(&principal),
             &json!({
-                "template_code": "onboarding__retainer",
+                "template_code": "onboarding__letter",
                 "project_id": project_id,
             }),
         )
@@ -536,7 +536,7 @@ mod tests {
             &runtime,
             Some(&storage),
             Some(&principal),
-            &json!({ "template_code": "onboarding__retainer", "project_id": project_id }),
+            &json!({ "template_code": "onboarding__letter", "project_id": project_id }),
         )
         .await
         .unwrap_err();
@@ -565,7 +565,7 @@ mod tests {
             Some(&storage),
             Some(&Principal::new("outsider@example.com")),
             &json!({
-                "template_code": "onboarding__retainer",
+                "template_code": "onboarding__letter",
                 "project_id": project_id,
             }),
         )
@@ -594,7 +594,7 @@ mod tests {
             Some(&storage),
             Some(&Principal::new("principal@example.com")),
             &json!({
-                "template_code": "onboarding__retainer",
+                "template_code": "onboarding__letter",
                 "project_id": project_id,
             }),
         )
@@ -614,7 +614,7 @@ mod tests {
             None,
             None,
             &json!({
-                "template_code": "onboarding__retainer",
+                "template_code": "onboarding__letter",
                 "project_id": Uuid::nil(),
             }),
         )
@@ -673,7 +673,7 @@ mod tests {
             None,
             None,
             &json!({
-                "template_code": "onboarding__retainer",
+                "template_code": "onboarding__letter",
                 "project_id": project_id,
             }),
         )
@@ -694,7 +694,7 @@ mod tests {
             &runtime,
             None,
             None,
-            &json!({ "template_code": "onboarding__retainer" }),
+            &json!({ "template_code": "onboarding__letter" }),
         )
         .await
         .unwrap_err();

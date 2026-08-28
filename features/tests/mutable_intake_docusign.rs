@@ -15,7 +15,7 @@ use features::journey::Journey;
 use uuid::Uuid;
 use workflows::{MachineKind, StateMachineRuntime};
 
-const TEMPLATE_CODE: &str = "onboarding__retainer";
+const TEMPLATE_CODE: &str = "onboarding__letter";
 
 #[derive(Default, World)]
 #[world(init = Self::default)]

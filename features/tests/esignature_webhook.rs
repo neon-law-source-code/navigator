@@ -23,7 +23,7 @@ use tower::ServiceExt;
 use uuid::Uuid;
 use workflows::{InMemoryRuntime, MachineKind, StateMachineRuntime};
 
-const TEMPLATE_CODE: &str = "onboarding__retainer";
+const TEMPLATE_CODE: &str = "onboarding__letter";
 const HMAC_KEY: &str = "test-docusign-hmac-key";
 const PARKED: &str = "sent_for_signature__pending";
 
@@ -112,7 +112,7 @@ async fn park_retainer(world: &mut WebhookWorld, envelope_id: String) {
     let tmpl = store::templates::resolve(&features::shared_surreal().await, None, TEMPLATE_CODE)
         .await
         .unwrap()
-        .expect("seed_canonical inserts onboarding__retainer");
+        .expect("seed_canonical inserts onboarding__letter");
     let person = store::test_support::ensure_person(
         &surreal,
         &store::persons::NewPerson::new("Libra", "libra@example.com"),

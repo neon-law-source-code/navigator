@@ -341,17 +341,9 @@ END: {}
         // for the client's binding signature only *after* lawyer_review, so
         // the bytes the attorney approved are the bytes that get signed. A
         // custom clause or a client-entered answer therefore cannot reach
-        // signing unreviewed. (A one-way outbound letter like the Nautilus
-        // FCRA dispute is a different shape — lawyer_review gates the
-        // outbound mailing rather than a signature — so it is covered by
-        // the submission gate instead.)
-        for code in [
-            "onboarding__retainer",
-            "onboarding__estate",
-            "onboarding__retainer_transcript",
-            "onboarding__nexus",
-        ] {
-            // Product retainers (e.g. `onboarding__retainer_nest`) resolve
+        // the bytes the attorney approved are the bytes that get signed.
+        for code in ["onboarding__letter", "onboarding__letter_transcript"] {
+            // Product retainers (e.g. `onboarding__letter_nest`) resolve
             // through the shared product fallback, not a bundled spec — so
             // gate on the *resolved* spec via `catalog_spec_yaml`.
             let yaml = crate::catalog_spec_yaml(code)

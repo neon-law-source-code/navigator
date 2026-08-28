@@ -25,13 +25,12 @@ Every legal template lives under exactly one of three shelves:
 - `templates/forms/` — government form-backed templates. Paths mirror the public assets bucket, so
   `templates/forms/united_states/nevada/state/nv__llc_formation.md` corresponds to
   `gs://<assets-bucket>/forms/united_states/nevada/state/nv__llc_formation.pdf`.
-- `templates/neon_law/` — Neon Law product work: product retainers, engagement letters, product-specific
-  documents, and shared firm documents such as the closing letter.
+- `templates/neon_law/` — the firm's sample engagement letter and closing letter.
 
 Every template declares `jurisdiction:` using a seeded jurisdiction code from `store/seeds/Jurisdiction.yaml`. Form
 templates are stricter: their filename stem, `code`, and `form` binding must match, and that code starts with the
 jurisdiction prefix (`nv__llc_formation`, `us__form_990`, `ca__...`). A retainer may keep a runtime code such as
-`onboarding__retainer` while living at an author-friendly path such as `templates/neon_law/shared/retainer.md`.
+`onboarding__letter` while living at an author-friendly path such as `templates/neon_law/shared/letter.md`.
 
 ## Anatomy of a template file
 
@@ -39,14 +38,14 @@ jurisdiction prefix (`nv__llc_formation`, `us__form_990`, `ca__...`). A retainer
 > and workshop pages — see <frontmatter.md>. This section is the authoring-focused version.
 
 Every template has two parts: YAML frontmatter (the contract) and a markdown body (the document, with
-`{{question_code}}` placeholders). Here is the shared retainer frontmatter from `templates/neon_law/shared/retainer.md`
+`{{question_code}}` placeholders). Here is the shared retainer frontmatter from `templates/neon_law/shared/letter.md`
 (the real file wraps this block in `---` fences, then the prose body follows):
 
 ```yaml
 title: Retainer Agreement
 respondent_type: person_and_entity
 jurisdiction: NV
-code: onboarding__retainer
+code: onboarding__letter
 confidential: true
 questionnaire:            # the intake Q&A — what we ask the client
   BEGIN:                { _: person__client }
@@ -72,7 +71,7 @@ Frontmatter fields:
 - `title` — the human document title (N101 requires it non-empty).
 - `respondent_type` — one of `person`, `entity`, `person_and_entity` (N102).
 - `jurisdiction` — a seeded jurisdiction code (`NV`, `CA`, `US`); required even for product templates.
-- `code` — the stable, unique identifier (`onboarding__retainer`, `nv__llc_formation`); how every surface refers to it.
+- `code` — the stable, unique identifier (`onboarding__letter`, `nv__llc_formation`); how every surface refers to it.
 - `confidential` — an explicit `true`/`false` decision, never defaulted (N105).
 - `origin_url` — forms only; the HTTPS government page where the blank form can be obtained.
 - `form` — forms only; the bundled form code, matching `code` and the filename stem.
@@ -196,7 +195,7 @@ cargo run -p cli --quiet -- validate <path>
 editor and CI can never disagree. Supported editors ship copy-paste configs under [`lsp/`](../lsp) docs: VS Code,
 Neovim, Helix, Emacs, Zed. The authoring loop for a non-engineer legal author:
 
-1. **Type.** Open `templates/neon_law/northstar/nv__simple_will.md` in your editor. Write
+1. **Type.** Open `templates/neon_law/shared/letter.md` in your editor. Write
    legal prose and frontmatter — no proprietary tool, no markup beyond markdown.
 2. **Live diagnostics.** On every keystroke the LSP lints the buffer and shows squiggles: N101 if `title:` is missing,
    N104 if the questionnaire/workflow shape is broken or a questionnaire state is not in the canonical question seed
@@ -257,7 +256,7 @@ implemented and tested, but the on-chain write itself is deferred. The chain is 
 `workflows::attest::Attestor` trait exactly as GCS is isolated behind `cloud::StorageService` — selecting Solana (or a
 second chain) is a new `impl Attestor`, never a workflow edit. The default `NullAttestor` records no transaction, so the
 row stays `pending` and no live retainer can claim an on-chain record that does not exist. The step is therefore not yet
-wired into the binding `onboarding__retainer` workflow; that one-line YAML edge lands together with the `SolanaAttestor`
+wired into the binding `onboarding__letter` workflow; that one-line YAML edge lands together with the `SolanaAttestor`
 (whose open questions — firm key custody, the client wallet, public-chain confidentiality of the hash, and finality —
 are decisions, not code). See `workflows::attest`.
 

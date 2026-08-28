@@ -158,13 +158,9 @@ fn every_bundled_template_has_a_coherent_workflow_and_questionnaire() {
 
         // Skip document-fragment templates: frontmatter-bearing bodies
         // that have no `workflow:` block because they are rendered as
-        // part of *another* matter's workflow rather than driving one of
-        // their own (the Northstar estate instrument stubs under
-        // `templates/neon_law/northstar/`,
-        // rendered by `document_drafts__estate` into `review_documents`).
-        // A fragment is defined by the absence
-        // of a `workflow:` block — the same way `questionnaire:` is
-        // already optional below.
+        // part of another matter's workflow rather than driving one of
+        // their own. A fragment is defined by the absence of a
+        // `workflow:` block.
         if !markdown.contains("workflow:") {
             continue;
         }

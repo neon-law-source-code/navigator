@@ -20,7 +20,7 @@ use store::seed;
 use store::test_support::mem_surreal;
 use tower::ServiceExt;
 
-const TEMPLATE_CODE: &str = "onboarding__retainer";
+const TEMPLATE_CODE: &str = "onboarding__letter";
 const KEY: &str = "api-notation-clauses-test-key";
 
 async fn build_app() -> (axum::Router, store::surreal::SurrealDb) {

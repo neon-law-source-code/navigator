@@ -748,10 +748,10 @@ mod tests {
         let db = mem().await;
         let mut v = version("Retainer", None);
         v.kind = Some("retainer".into());
-        save_version(&db, None, "onboarding__retainer", v)
+        save_version(&db, None, "onboarding__letter", v)
             .await
             .unwrap();
-        let current = resolve(&db, None, "onboarding__retainer")
+        let current = resolve(&db, None, "onboarding__letter")
             .await
             .unwrap()
             .unwrap();
@@ -763,12 +763,12 @@ mod tests {
         let db = mem().await;
         let mut v = version("Retainer", None);
         v.kind = Some("  retainer  ".into());
-        save_version(&db, None, "onboarding__retainer", v)
+        save_version(&db, None, "onboarding__letter", v)
             .await
             .unwrap();
         // Stored trimmed → an exact `== "retainer"` gate matches.
         assert_eq!(
-            resolve(&db, None, "onboarding__retainer")
+            resolve(&db, None, "onboarding__letter")
                 .await
                 .unwrap()
                 .unwrap()

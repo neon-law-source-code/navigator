@@ -12,6 +12,10 @@ use crate::palette;
 
 /// `navigator projects surfaces reconcile --project <code>`.
 pub async fn reconcile(project_code: &str) -> ExitCode {
+    if !store::projects::is_valid_code(project_code) {
+        eprintln!("navigator: invalid project code");
+        return ExitCode::from(2);
+    }
     let surreal = match store::surreal::connect_from_env().await {
         Ok(db) => db,
         Err(error) => {
@@ -26,7 +30,7 @@ pub async fn reconcile(project_code: &str) -> ExitCode {
     let project = match store::projects::find_by_code(&surreal, project_code).await {
         Ok(Some(project)) => project,
         Ok(None) => {
-            eprintln!("navigator: no matter with code {project_code}");
+            eprintln!("navigator: no matter with that code");
             return ExitCode::from(2);
         }
         Err(error) => {
@@ -66,5 +70,28 @@ pub async fn reconcile(project_code: &str) -> ExitCode {
             eprintln!("navigator: surfaces: {error}");
             ExitCode::from(2)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stderr_does_not_echo_the_cli_project_argument() {
+        let src = include_str!("surfaces.rs");
+        let production = src
+            .split("#[cfg(test)]")
+            .next()
+            .expect("production source precedes the test module");
+        assert!(
+            !production.contains("{project_code}"),
+            "echoing the CLI project argument trips CodeQL cleartext-logging because Command also carries Secrets"
+        );
+    }
+
+    #[tokio::test]
+    async fn invalid_code_is_refused_without_connecting() {
+        assert_eq!(reconcile("NOT A CODE").await, ExitCode::from(2));
     }
 }

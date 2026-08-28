@@ -1205,6 +1205,15 @@ enum GithubCmd {
         /// Print the reconciliation plan without writing GitHub.
         #[arg(long)]
         dry_run: bool,
+        /// Exact release tag a confirmed Project repository's reconciled
+        /// `gate.yml`/`publish.yml` pins Navigator's validate action to.
+        /// Defaults to this binary's own version when — and only when — that
+        /// version is one this repository has actually published, the same
+        /// default `projects repository scaffold --action-version` uses.
+        /// Unused, and never validated, against a repository this content
+        /// reconciliation does not apply to.
+        #[arg(long, default_value = published_cli_version())]
+        action_version: String,
     },
 }
 

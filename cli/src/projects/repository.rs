@@ -77,19 +77,30 @@ use crate::devx::github_setup::REQUIRED_CHECK;
 /// The notation blueprints Navigator imports.
 const TEMPLATE_DIRECTORY: &str = "templates";
 /// The client portal's Vite workspace.
-const PORTAL_DIRECTORY: &str = "portal";
-const WORKFLOW: &str = ".github/workflows/gate.yml";
-const CD_WORKFLOW: &str = ".github/workflows/publish.yml";
+///
+/// `pub(crate)` because [`super::super::devx::github_setup`] checks for a
+/// portal the same way `scaffold` gates a portal-specific step: by the
+/// presence of `portal/package.json`, never by a second flag that could
+/// disagree with it.
+pub(crate) const PORTAL_DIRECTORY: &str = "portal";
+/// `pub(crate)` because [`super::super::devx::github_setup`] reconciles the
+/// live file at this path against [`workflow`]'s output, the same template
+/// `scaffold` writes, read back rather than duplicated.
+pub(crate) const WORKFLOW: &str = ".github/workflows/gate.yml";
+/// `pub(crate)` for the same reason as [`WORKFLOW`], but for [`cd_workflow`].
+pub(crate) const CD_WORKFLOW: &str = ".github/workflows/publish.yml";
 /// The manifest a Project repository declares its Project in.
 ///
-/// `pub(super)` rather than private because [`super::drift`] reads the same
-/// file and must not spell it a second time: two constants for one filename is
-/// a rename waiting to leave one of them stale, and the gate that *admits* the
-/// file and the command that *reads* it are exactly the pair that must agree.
-/// The same filename `store::sample_project::MANIFEST_FILE` names — a Project
-/// repository's manifest and a staged sample bundle's manifest are the same
-/// file, read by two different tools, not two schemas that happen to overlap.
-pub(super) const PROJECT_MANIFEST: &str = "navigator.yaml";
+/// `pub(crate)` rather than private because [`super::drift`] and
+/// [`super::super::devx::github_setup`] each read the same file and must not
+/// spell it a second time: two constants for one filename is a rename waiting
+/// to leave one of them stale, and the gate that *admits* the file, the
+/// command that *reads* it locally, and the command that *reads* it live over
+/// the API are exactly the trio that must agree. The same filename
+/// `store::sample_project::MANIFEST_FILE` names, a Project repository's
+/// manifest and a staged sample bundle's manifest are the same file, read by
+/// different tools, not two schemas that happen to overlap.
+pub(crate) const PROJECT_MANIFEST: &str = "navigator.yaml";
 /// Seed-shaped YAML documents for `navigator db seed`, one file per model.
 const SEED_DIRECTORY: &str = "seeds";
 const ALLOWED_ROOTS: &[&str] = &[
@@ -680,9 +691,10 @@ fn is_release_tag(version: &str) -> bool {
 }
 
 /// What `is_release_tag` requires, spelled out once so `scaffold`'s CLI-time
-/// refusal and `validate_workflow`'s CI-time finding describe the one rule in
-/// one sentence rather than two that are free to drift.
-const RELEASE_TAG_SHAPE: &str =
+/// refusal, `validate_workflow`'s CI-time finding, and
+/// [`super::super::devx::github_setup`]'s own refusal describe the one rule in
+/// one sentence rather than three that are free to drift.
+pub(crate) const RELEASE_TAG_SHAPE: &str =
     "an exact release tag, such as YY.M.D or YY.M.D-hotfix.N — never `main` or `latest`";
 
 fn validate_templates(
@@ -916,7 +928,11 @@ fn setup_steps() -> String {
 /// leading whitespace of the next line, which silently reflows YAML into
 /// something that no longer parses — and a generated workflow that does not
 /// parse fails in the Project repository rather than here.
-fn workflow(action_version: &str) -> String {
+///
+/// `pub(crate)` so [`super::super::devx::github_setup`] can reconcile a live
+/// `gate.yml` against this exact output rather than a second template that is
+/// free to drift from it.
+pub(crate) fn workflow(action_version: &str) -> String {
     let setup = setup_steps();
     let install = pnpm_step("Install portal dependencies", "install --frozen-lockfile");
     format!(
@@ -977,7 +993,9 @@ jobs:
 /// secrets, never written as literals: they are this deployment's own, not a
 /// Project's, and a Project repository's own generated workflow must not
 /// carry them.
-fn cd_workflow(action_version: &str) -> String {
+///
+/// `pub(crate)` for the same reason as [`workflow`].
+pub(crate) fn cd_workflow(action_version: &str) -> String {
     let setup = setup_steps();
     let install = pnpm_step("Install portal dependencies", "install --frozen-lockfile");
     format!(

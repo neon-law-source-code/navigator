@@ -39,6 +39,12 @@ use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use reqwest::header;
 use serde::{Deserialize, Serialize};
 
+// Aliased: `reconcile` already binds a local `repository: Repository` for the
+// live `GET /repos/{owner}/{repo}` response, and a second name in the same
+// scope reading identically but meaning something else invites exactly the
+// mistake this avoids.
+use crate::projects::repository as project_repository;
+
 /// The `(host, organization)` pair this command may write governance to.
 ///
 /// This is the whole authorization boundary. `ops github setup` takes neither
@@ -150,6 +156,41 @@ const TAG_RULESET_NAME: &str = "release-tags";
 const REVIEW_RULESET_NAME: &str = "production-review";
 const LABEL_COLOR: &str = "6f42c1";
 const DEFAULT_CODEOWNERS: &str = "* @shicholas\n";
+
+/// Environment key naming the deploy repository — the checkout holding one
+/// deployment's `deployments/` tree — as `owner/name`, exactly the slug
+/// [`RepositoryTarget`] resolves to.
+///
+/// Read from configuration rather than hard-coded, the same reason
+/// `.github/workflows/deploy.yml` carries its own checkout as the `DEPLOY_REPO`
+/// Actions variable rather than a literal (see
+/// `devx::deployments::the_ship_handoff_takes_the_deploy_repository_from_configuration`):
+/// this repository does not name which checkout, on which host, under which
+/// organization, holds any deployment's tree. Optional, because a run that
+/// never targets a deploy repository — Navigator's own CI, a Project
+/// repository's own gate — has nothing to name here.
+const DEPLOY_REPOSITORY_ENV: &str = "NAVIGATOR_GITHUB_DEPLOY_REPO";
+
+/// Whether `slug` is the deploy repository named by [`DEPLOY_REPOSITORY_ENV`].
+///
+/// A deploy repository carries `ci.yml`/`ship.yml`, not the Project shape
+/// [`workflow_template_scope`] verifies with `navigator.yaml` — so it must be
+/// excluded before that verification runs, or every reconcile aimed at it
+/// would fail loudly demanding a manifest it correctly does not have.
+fn is_deploy_repository(slug: &str) -> bool {
+    is_deploy_repository_within(slug, |key| env::var(key).ok())
+}
+
+/// [`is_deploy_repository`] with the environment read injected, on the same
+/// pattern as [`GovernedForge::from_lookup`]: a process-global `env::var` is
+/// not something a test can set without racing every other test reading it in
+/// parallel, so the lookup is a parameter instead.
+fn is_deploy_repository_within<F: Fn(&str) -> Option<String>>(slug: &str, get: F) -> bool {
+    get(DEPLOY_REPOSITORY_ENV)
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .is_some_and(|deploy_repo| deploy_repo.eq_ignore_ascii_case(slug))
+}
 
 /// GitHub's own Actions App, which produces the `ci` check run the `production`
 /// ruleset requires. The **slug** is a property of GitHub's App rather than of
@@ -653,10 +694,28 @@ struct Installation {
 enum Action {
     CreateCodeowners,
     UpdateRepositorySettings,
-    CreateRuleset { name: String },
-    UpdateRuleset { name: String },
-    CreateLabel { name: String },
-    UpdateLabel { name: String },
+    CreateRuleset {
+        name: String,
+    },
+    UpdateRuleset {
+        name: String,
+    },
+    CreateLabel {
+        name: String,
+    },
+    UpdateLabel {
+        name: String,
+    },
+    /// A confirmed Project repository's `gate.yml` or `publish.yml` no longer
+    /// matches [`project_repository::workflow`]/[`project_repository::cd_workflow`]
+    /// at the resolved `action_version`.
+    ///
+    /// Unlike every other variant, [`apply`] never applies this one directly —
+    /// see [`open_workflow_update_pull_request`] for why the write is a
+    /// reviewed pull request rather than a direct commit to `main`.
+    UpdateWorkflow {
+        path: String,
+    },
 }
 
 impl Action {
@@ -668,6 +727,7 @@ impl Action {
             Self::UpdateRuleset { name } => format!("update ruleset {name}"),
             Self::CreateLabel { name } => format!("create label {name}"),
             Self::UpdateLabel { name } => format!("update label {name}"),
+            Self::UpdateWorkflow { path } => format!("open a pull request updating {path}"),
         }
     }
 }
@@ -1275,6 +1335,168 @@ impl GitHubClient {
         Ok(Some(body))
     }
 
+    /// A file's decoded text and blob `sha`, or `None` if absent — the pair
+    /// [`Self::put_file`] needs to update rather than blindly overwrite it.
+    ///
+    /// Unlike [`Self::get_optional_text`], which asks for
+    /// `application/vnd.github.raw+json` and gets raw bytes back, this reads
+    /// the Contents API's default JSON envelope so the blob `sha` travels
+    /// alongside the content in the one request — a second round trip just to
+    /// learn the `sha` a write is about to need would be the same file read
+    /// twice for two different reasons.
+    async fn get_optional_file(&self, path: &str) -> Result<Option<(String, String)>> {
+        #[derive(Deserialize)]
+        struct ContentsFile {
+            sha: String,
+            content: String,
+        }
+        let url = self.url(path);
+        let response = self
+            .http
+            .get(&url)
+            .header(header::ACCEPT, "application/vnd.github+json")
+            .send()
+            .await?;
+        let status = response.status();
+        if status == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        let body = response.text().await.unwrap_or_default();
+        if !status.is_success() {
+            bail!("GitHub GET {url} returned {}: {body}", status.as_u16());
+        }
+        let file: ContentsFile = serde_json::from_str(&body)
+            .with_context(|| format!("decode GitHub response from {url}"))?;
+        // GitHub line-wraps the base64 payload at 60 characters; the standard
+        // decoder rejects the embedded newlines unless they are stripped first.
+        let decoded = BASE64_STANDARD
+            .decode(file.content.replace(['\n', '\r'], ""))
+            .with_context(|| format!("decode base64 content from {url}"))?;
+        let text = String::from_utf8(decoded)
+            .with_context(|| format!("decode file content from {url} as UTF-8"))?;
+        Ok(Some((text, file.sha)))
+    }
+
+    /// The default branch's current tip, to seed a new branch from.
+    async fn default_branch_head_sha(&self, branch: &str) -> Result<String> {
+        #[derive(Deserialize)]
+        struct GitRef {
+            object: GitRefObject,
+        }
+        #[derive(Deserialize)]
+        struct GitRefObject {
+            sha: String,
+        }
+        Ok(self
+            .get_json::<GitRef>(&self.repo_path(&format!("/git/ref/heads/{branch}")))
+            .await?
+            .object
+            .sha)
+    }
+
+    /// Create `refs/heads/{branch}` at `from_sha`. `Ok(true)` when this call
+    /// created it; `Ok(false)` when a still-open pull request from an earlier
+    /// run of this same reconciliation already had, which
+    /// [`open_workflow_update_pull_request`] reads as "nothing new to commit,
+    /// only the pull request might still need opening."
+    async fn create_branch(&self, branch: &str, from_sha: &str) -> Result<bool> {
+        let url = self.url(&self.repo_path("/git/refs"));
+        let response = self
+            .http
+            .post(&url)
+            .json(&serde_json::json!({
+                "ref": format!("refs/heads/{branch}"),
+                "sha": from_sha,
+            }))
+            .send()
+            .await?;
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        if status == reqwest::StatusCode::UNPROCESSABLE_ENTITY
+            && body.contains("Reference already exists")
+        {
+            return Ok(false);
+        }
+        if !status.is_success() {
+            bail!("GitHub POST {url} returned {}: {body}", status.as_u16());
+        }
+        Ok(true)
+    }
+
+    /// Create or update one file on `branch` through the Contents API — one
+    /// commit, authored by this run's token. `sha` is the blob being
+    /// replaced, from [`Self::get_optional_file`]; omit it to create a file
+    /// that does not exist yet on `branch`.
+    async fn put_file(
+        &self,
+        path: &str,
+        branch: &str,
+        message: &str,
+        content: &str,
+        sha: Option<&str>,
+    ) -> Result<()> {
+        let mut body = serde_json::json!({
+            "message": message,
+            "content": BASE64_STANDARD.encode(content),
+            "branch": branch,
+        });
+        if let Some(sha) = sha {
+            body["sha"] = serde_json::Value::String(sha.to_string());
+        }
+        self.put_json(&self.repo_path(&format!("/contents/{path}")), &body)
+            .await
+    }
+
+    /// Open a pull request from `head` into `base`, returning its URL.
+    ///
+    /// A pull request already open for the same `head` is not an error — a
+    /// prior run of this same reconciliation opened it and it has not merged
+    /// yet — so that specific "unprocessable" response reads as success
+    /// rather than propagating.
+    async fn open_pull_request(
+        &self,
+        title: &str,
+        head: &str,
+        base: &str,
+        body: &str,
+    ) -> Result<String> {
+        #[derive(Deserialize)]
+        struct OpenedPullRequest {
+            html_url: String,
+        }
+        let url = self.url(&self.repo_path("/pulls"));
+        let response = self
+            .http
+            .post(&url)
+            .json(&serde_json::json!({
+                "title": title,
+                "head": head,
+                "base": base,
+                "body": body,
+            }))
+            .send()
+            .await?;
+        let status = response.status();
+        let response_body = response.text().await.unwrap_or_default();
+        if status == reqwest::StatusCode::UNPROCESSABLE_ENTITY
+            && response_body.contains("already exists")
+        {
+            return Ok(format!(
+                "(pull request already open for {head} -> {base} on {})",
+                self.repository
+            ));
+        }
+        if !status.is_success() {
+            bail!(
+                "GitHub POST {url} returned {}: {response_body}",
+                status.as_u16()
+            );
+        }
+        let opened: OpenedPullRequest = serde_json::from_str(&response_body)
+            .with_context(|| format!("decode GitHub response from {url}"))?;
+        Ok(opened.html_url)
+    }
+
     async fn put_json(&self, path: &str, body: &impl Serialize) -> Result<()> {
         self.send_json(reqwest::Method::PUT, path, body).await
     }
@@ -1316,8 +1538,190 @@ async fn parse_json<T: for<'de> Deserialize<'de>>(
     serde_json::from_str(&body).with_context(|| format!("decode GitHub response from {url}"))
 }
 
-/// Reconcile GitHub settings for the explicitly named repository.
-pub fn run(target: &RepositoryTarget, dry_run: bool) -> Result<()> {
+/// Whether a live generated-workflow file (`None` when absent entirely)
+/// differs from the exact bytes [`project_repository::workflow`] or
+/// [`project_repository::cd_workflow`] would generate.
+///
+/// A named function rather than an inline comparison so the "no action when
+/// content already matches, an action when the pin differs" contract this
+/// feature promises is something a test can assert directly, with no network
+/// involved.
+fn workflow_drifted(live: Option<&str>, desired: &str) -> bool {
+    live != Some(desired)
+}
+
+/// What, if anything, this run's `gate.yml`/`publish.yml` content
+/// reconciliation applies to.
+///
+/// Distinct from [`RepositoryPolicy`], which governs the API-visible policy
+/// (rulesets, settings, labels) every repository in scope always carries.
+/// This is narrower on purpose: it decides whether the repository has a
+/// generated workflow template to be reconciled *against* at all.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WorkflowTemplateScope {
+    /// Navigator's own repository, the Homebrew tap, or the deploy
+    /// repository — none of them carry `gate.yml`/`publish.yml` in the shape
+    /// [`project_repository::workflow`] generates, so this feature leaves
+    /// them alone exactly as it did before this feature existed.
+    Excluded,
+    /// A confirmed Project repository: `navigator.yaml` was read at its root.
+    /// `has_portal` gates whether `publish.yml` is reconciled too, the same
+    /// way `scaffold` and the generated `gate.yml` itself gate every
+    /// portal-specific step — by whether a portal actually exists.
+    Project { has_portal: bool },
+}
+
+/// Classify `client`'s repository for [`WorkflowTemplateScope`], fetching
+/// `navigator.yaml` over the API rather than assuming a name or a directory
+/// layout.
+///
+/// The fleet's repository *names* do not reliably name their Project code —
+/// one live example is a local checkout named `vaib` for the GitHub repository
+/// `vaib-studio` — so classification asks the one place a Project repository
+/// is required to declare itself
+/// ([`project_repository::PROJECT_MANIFEST`]) rather than guessing from the
+/// slug. A slug in an admitted organization that is none of Navigator, the
+/// tap, or the deploy repository and carries no manifest is not silently
+/// skipped and not silently treated as a Project repository either — both
+/// directions are wrong, so this fails loudly and names the repository.
+///
+/// Navigator and the tap are recognized by `policy` — already `policy_for`'s
+/// answer for the slug — rather than by matching [`NAVIGATOR_SLUG`]/
+/// [`TAP_SLUG`] a second time here; [`NAVIGATOR_POLICY`] and [`TAP_POLICY`]
+/// are each unique to their one repository, so the two checks agree, and this
+/// one is also what lets a test drive both branches through the same
+/// synthetic fixture `reconcile`'s own tests already use. The deploy
+/// repository has no policy of its own to key off yet, so it alone is still
+/// matched by slug, against [`DEPLOY_REPOSITORY_ENV`].
+///
+/// # Errors
+///
+/// When the repository is not Navigator, the tap, or the deploy repository,
+/// and carries no `navigator.yaml` at its root.
+async fn workflow_template_scope(
+    client: &GitHubClient,
+    policy: RepositoryPolicy,
+) -> Result<WorkflowTemplateScope> {
+    if policy == NAVIGATOR_POLICY
+        || policy == TAP_POLICY
+        || is_deploy_repository(&client.repository)
+    {
+        return Ok(WorkflowTemplateScope::Excluded);
+    }
+    let manifest = client
+        .get_optional_text(&client.repo_path(&format!(
+            "/contents/{}",
+            project_repository::PROJECT_MANIFEST
+        )))
+        .await?;
+    if manifest.is_none() {
+        let slug = &client.repository;
+        bail!(
+            "{slug} carries no `{}` at its root, so `ops github setup` cannot confirm it is a \
+             Project repository and will not guess. Add the manifest if {slug} is one, or add it \
+             to {DEPLOY_REPOSITORY_ENV} if it is a deploy repository this feature should leave alone.",
+            project_repository::PROJECT_MANIFEST
+        );
+    }
+    let has_portal = client
+        .exists(&client.repo_path(&format!(
+            "/contents/{}/package.json",
+            project_repository::PORTAL_DIRECTORY
+        )))
+        .await?;
+    Ok(WorkflowTemplateScope::Project { has_portal })
+}
+
+/// `main` everywhere in this workspace, per `docs/gitops.md`; the generated
+/// workflows themselves push and gate against this same literal.
+const DEFAULT_BASE_BRANCH: &str = "main";
+
+/// The branch this reconciliation's generated-workflow updates land on,
+/// named for the pin so repeated runs before the pull request merges commit
+/// onto — and open a pull request for — the same branch instead of stacking a
+/// new one per run.
+fn workflow_update_branch(action_version: &str) -> String {
+    format!("ops-github-setup/workflow-templates-{action_version}")
+}
+
+/// Commit every drifted generated workflow onto one branch and open one pull
+/// request for it, rather than writing `main` directly.
+///
+/// Every other [`Action`] in this module reconciles GitHub-API-visible state
+/// (a ruleset, a label, repository settings) that has no review history of
+/// its own; a diff there simply *is* the desired state. `gate.yml` and
+/// `publish.yml` are different — they are files in the tree, on a repository
+/// whose own ruleset requires a pull request, a passing `ci`, and a code
+/// owner's approval to change `main` at all. Writing them directly would
+/// either be rejected by the very ruleset this command maintains, or — on a
+/// repository where that ruleset briefly is not yet applied — bypass it
+/// outright. Neither is acceptable for a binding artifact this Firm's own
+/// governance requires review of, so this opens the same kind of pull request
+/// a human bumping the pin by hand would.
+///
+/// Idempotent the same way the rest of this module is: [`GitHubClient::create_branch`]
+/// reports whether the branch already existed, and when it did — a prior run
+/// already committed the identical, deterministic template output for this
+/// exact `action_version` — this skips re-committing and only ensures the
+/// pull request is open.
+async fn open_workflow_update_pull_request(
+    client: &GitHubClient,
+    action_version: &str,
+    paths: &[String],
+) -> Result<()> {
+    let branch = workflow_update_branch(action_version);
+    let base_sha = client.default_branch_head_sha(DEFAULT_BASE_BRANCH).await?;
+    let created = client.create_branch(&branch, &base_sha).await?;
+    if created {
+        for path in paths {
+            let desired = if path == project_repository::WORKFLOW {
+                project_repository::workflow(action_version)
+            } else {
+                project_repository::cd_workflow(action_version)
+            };
+            let live = client
+                .get_optional_file(&client.repo_path(&format!("/contents/{path}")))
+                .await?;
+            client
+                .put_file(
+                    path,
+                    &branch,
+                    &format!("chore: pin {path} to {action_version}"),
+                    &desired,
+                    live.map(|(_, sha)| sha).as_deref(),
+                )
+                .await?;
+        }
+    }
+    let url = client
+        .open_pull_request(
+            &format!("chore: pin generated workflows to {action_version}"),
+            &branch,
+            DEFAULT_BASE_BRANCH,
+            &format!(
+                "Reconciles this repository's generated workflow(s) against Navigator's \
+                 `gate.yml`/`publish.yml` template, pinned to `{action_version}` — the exact \
+                 change `navigator ops github setup` computed. This is a normal pull request: it \
+                 still needs the `ci` check and a code owner's approval before it can merge.\n\n\
+                 Updated: {}",
+                paths.join(", ")
+            ),
+        )
+        .await?;
+    eprintln!("==> {url}");
+    Ok(())
+}
+
+/// Reconcile GitHub settings for the explicitly named repository, pinning any
+/// reconciled generated workflow to `action_version`.
+///
+/// `action_version` is resolved the same way
+/// [`project_repository::scaffold`] defaults it — this binary's own confirmed
+/// release, or an explicit override — and is validated only when a
+/// [`WorkflowTemplateScope::Project`] actually needs it; a run aimed at
+/// Navigator, the tap, or the deploy repository carries nothing to pin, and
+/// must not be made to supply one anyway.
+pub fn run(target: &RepositoryTarget, dry_run: bool, action_version: &str) -> Result<()> {
     tracing_subscriber::fmt::try_init().ok();
     let client = GitHubClient::from_env(target)?;
     let policy = target.policy();
@@ -1325,10 +1729,120 @@ pub fn run(target: &RepositoryTarget, dry_run: bool) -> Result<()> {
         .enable_all()
         .build()
         .context("build tokio runtime")?;
-    runtime.block_on(async move { reconcile(policy, &client, dry_run).await })
+    runtime.block_on(async move { reconcile(policy, &client, dry_run, action_version).await })
 }
 
-async fn reconcile(policy: RepositoryPolicy, client: &GitHubClient, dry_run: bool) -> Result<()> {
+/// The read-only half of the workflow-content reconciliation: classify the
+/// repository, and — only for a confirmed [`WorkflowTemplateScope::Project`]
+/// — diff its live `gate.yml` (and `publish.yml`, if it has a portal) against
+/// the desired template, returning the paths that drifted.
+///
+/// Split out of [`reconcile`] itself so that function stays one readable
+/// sequence of "read, plan, report, write" rather than growing a second plan
+/// inline; the validation and diffing here happen before a single [`Action`]
+/// is added, on the same "read before any write" discipline as the
+/// ruleset/label planning above it.
+async fn plan_workflow_updates(
+    client: &GitHubClient,
+    policy: RepositoryPolicy,
+    action_version: &str,
+) -> Result<Vec<String>> {
+    let WorkflowTemplateScope::Project { has_portal } =
+        workflow_template_scope(client, policy).await?
+    else {
+        return Ok(Vec::new());
+    };
+    let action_version = action_version.trim();
+    if !super::registry::is_release_tag(action_version) {
+        let reason = if action_version.is_empty() {
+            "no --action-version was given, and this build cannot confirm its own version is \
+             one this repository has actually published (only a downloaded release binary, or \
+             one built with NAVIGATOR_RELEASE_TAG set, can)"
+        } else {
+            "the given --action-version is not a release tag"
+        };
+        bail!(
+            "{} is a confirmed Project repository, but its generated workflow(s) cannot be \
+             reconciled: {reason}; pass --action-version {}",
+            client.repository,
+            project_repository::RELEASE_TAG_SHAPE,
+        );
+    }
+
+    let mut drifted = Vec::new();
+    let gate_live = client
+        .get_optional_text(
+            &client.repo_path(&format!("/contents/{}", project_repository::WORKFLOW)),
+        )
+        .await?;
+    if workflow_drifted(
+        gate_live.as_deref(),
+        &project_repository::workflow(action_version),
+    ) {
+        drifted.push(project_repository::WORKFLOW.to_string());
+    }
+    if has_portal {
+        let publish_live = client
+            .get_optional_text(
+                &client.repo_path(&format!("/contents/{}", project_repository::CD_WORKFLOW)),
+            )
+            .await?;
+        if workflow_drifted(
+            publish_live.as_deref(),
+            &project_repository::cd_workflow(action_version),
+        ) {
+            drifted.push(project_repository::CD_WORKFLOW.to_string());
+        }
+    }
+    Ok(drifted)
+}
+
+/// Read every desired ruleset's live counterpart, positionally matched to
+/// [`desired_rulesets`]'s own order, along with the live id of each one that
+/// already exists.
+///
+/// Split out of [`reconcile`] purely to keep that function to one readable
+/// sequence; the fail-closed check before each ruleset id is banked
+/// ([`assert_no_required_check_dropped`]) still runs here, before any write,
+/// on the same principle as everything else that reconcile reads first.
+async fn read_live_rulesets(
+    client: &GitHubClient,
+    policy: RepositoryPolicy,
+    actions_app_id: u64,
+    review_bypass_actors: &[serde_json::Value],
+) -> Result<(HashMap<String, u64>, Vec<Option<RulesetPayload>>)> {
+    let summaries: Vec<RulesetSummary> = client.get_json(&client.repo_path("/rulesets")).await?;
+    let mut ruleset_ids = HashMap::new();
+    let mut live_rulesets = Vec::new();
+    for desired in desired_rulesets(policy, actions_app_id, review_bypass_actors) {
+        let Some(summary) = summaries
+            .iter()
+            .find(|summary| summary.name == desired.name)
+        else {
+            live_rulesets.push(None);
+            continue;
+        };
+        ruleset_ids.insert(desired.name.clone(), summary.id);
+        let live: RulesetPayload = client
+            .get_json(&client.repo_path(&format!("/rulesets/{}", summary.id)))
+            .await?;
+        // Before planning, and therefore before any write: an update PUTs the
+        // whole desired payload, so a required check that is live but not
+        // desired would be removed rather than kept.
+        if !ruleset_matches(&desired, &live) {
+            assert_no_required_check_dropped(&desired, &live)?;
+        }
+        live_rulesets.push(Some(live));
+    }
+    Ok((ruleset_ids, live_rulesets))
+}
+
+async fn reconcile(
+    policy: RepositoryPolicy,
+    client: &GitHubClient,
+    dry_run: bool,
+    action_version: &str,
+) -> Result<()> {
     eprintln!("==> reconciling {}", client.repository);
     let repository: Repository = client.get_json(&client.repo_path("")).await?;
 
@@ -1374,35 +1888,14 @@ async fn reconcile(policy: RepositoryPolicy, client: &GitHubClient, dry_run: boo
         assert_app_installation(client).await?;
     }
 
-    let summaries: Vec<RulesetSummary> = client.get_json(&client.repo_path("/rulesets")).await?;
-    let mut ruleset_ids = HashMap::new();
-    let mut live_rulesets = Vec::new();
-    for desired in desired_rulesets(policy, actions_app_id, &review_bypass_actors) {
-        let Some(summary) = summaries
-            .iter()
-            .find(|summary| summary.name == desired.name)
-        else {
-            live_rulesets.push(None);
-            continue;
-        };
-        ruleset_ids.insert(desired.name.clone(), summary.id);
-        let live: RulesetPayload = client
-            .get_json(&client.repo_path(&format!("/rulesets/{}", summary.id)))
-            .await?;
-        // Before planning, and therefore before any write: an update PUTs the
-        // whole desired payload, so a required check that is live but not
-        // desired would be removed rather than kept.
-        if !ruleset_matches(&desired, &live) {
-            assert_no_required_check_dropped(&desired, &live)?;
-        }
-        live_rulesets.push(Some(live));
-    }
+    let (ruleset_ids, live_rulesets) =
+        read_live_rulesets(client, policy, actions_app_id, &review_bypass_actors).await?;
     let labels = if policy.labels.is_empty() {
         Vec::new()
     } else {
         client.get_all_labels().await?
     };
-    let actions = plan_with_codeowners(
+    let mut actions = plan_with_codeowners(
         policy,
         actions_app_id,
         &review_bypass_actors,
@@ -1411,6 +1904,19 @@ async fn reconcile(policy: RepositoryPolicy, client: &GitHubClient, dry_run: boo
             == desired_repository_settings(),
         &live_rulesets,
         &labels,
+    );
+
+    // Read only, exactly like every other half of this reconcile: build the
+    // desired content and compare it against the live file before a single
+    // `Action` is added, so a repository this feature does not (yet) cover
+    // ends the reconcile here rather than midway through the ruleset/label
+    // writes above.
+    let workflow_paths = plan_workflow_updates(client, policy, action_version).await?;
+    actions.extend(
+        workflow_paths
+            .iter()
+            .cloned()
+            .map(|path| Action::UpdateWorkflow { path }),
     );
 
     if actions.is_empty() {
@@ -1427,7 +1933,13 @@ async fn reconcile(policy: RepositoryPolicy, client: &GitHubClient, dry_run: boo
     if dry_run {
         return Ok(());
     }
+    if !workflow_paths.is_empty() {
+        open_workflow_update_pull_request(client, action_version.trim(), &workflow_paths).await?;
+    }
     for action in actions {
+        if matches!(action, Action::UpdateWorkflow { .. }) {
+            continue;
+        }
         apply(
             policy,
             actions_app_id,
@@ -1513,6 +2025,19 @@ async fn apply(
                     }),
                 )
                 .await
+        }
+        // `reconcile` filters every `UpdateWorkflow` out of the plan handed to
+        // this per-action loop and applies them all together through
+        // `open_workflow_update_pull_request` instead — one pull request
+        // covering both files, never a direct write to `main`. Reaching this
+        // arm means that filter was removed without also moving the write it
+        // was protecting, so it fails closed rather than committing straight
+        // to `main` on a gated repository's default branch.
+        Action::UpdateWorkflow { path } => {
+            bail!(
+                "{path} must be applied through open_workflow_update_pull_request, not apply()'s \
+                 direct-write loop"
+            )
         }
     }
 }
@@ -2803,7 +3328,8 @@ mod tests {
             | Action::CreateRuleset { .. }
             | Action::UpdateRuleset { .. }
             | Action::CreateLabel { .. }
-            | Action::UpdateLabel { .. } => false,
+            | Action::UpdateLabel { .. }
+            | Action::UpdateWorkflow { .. } => false,
         };
         for action in [
             Action::UpdateRepositorySettings,
@@ -2811,6 +3337,7 @@ mod tests {
             Action::UpdateRuleset { name: "x".into() },
             Action::CreateLabel { name: "x".into() },
             Action::UpdateLabel { name: "x".into() },
+            Action::UpdateWorkflow { path: "x".into() },
         ] {
             assert!(!writes_visibility(&action), "{action:?}");
         }
@@ -3110,7 +3637,9 @@ mod tests {
                 .mount(&server)
                 .await;
         }
-        reconcile(NAVIGATOR_POLICY, &client, false).await.unwrap();
+        reconcile(NAVIGATOR_POLICY, &client, false, "")
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
@@ -3118,7 +3647,9 @@ mod tests {
         let server = MockServer::start().await;
         let client = test_client(&server);
         mount_reads(&server, &live_ruleset(), Vec::new()).await;
-        reconcile(NAVIGATOR_POLICY, &client, true).await.unwrap();
+        reconcile(NAVIGATOR_POLICY, &client, true, "")
+            .await
+            .unwrap();
         let requests = server.received_requests().await.unwrap();
         assert!(requests
             .iter()
@@ -3174,7 +3705,7 @@ mod tests {
             .mount(&server)
             .await;
 
-        reconcile(TAP_POLICY, &client, false).await.unwrap();
+        reconcile(TAP_POLICY, &client, false, "").await.unwrap();
 
         let requests = server.received_requests().await.unwrap();
         assert!(
@@ -3561,5 +4092,355 @@ mod tests {
         let review = desired_review_ruleset(Vec::new());
         assert!(assert_no_required_check_dropped(&review, &review.clone()).is_ok());
         assert!(required_contexts(&review).is_empty());
+    }
+
+    // ---------------------------------------------------------------------
+    // ENG-378: `gate.yml`/`publish.yml` content reconciliation.
+    // ---------------------------------------------------------------------
+
+    const FIXTURE_ACTION_VERSION: &str = "26.8.23";
+
+    #[test]
+    fn is_deploy_repository_matches_the_configured_slug_case_insensitively() {
+        let lookup = |key: &str| {
+            (key == DEPLOY_REPOSITORY_ENV).then(|| "Neon-Law/Navigator-Deploy".to_string())
+        };
+        assert!(is_deploy_repository_within(
+            "neon-law/navigator-deploy",
+            lookup
+        ));
+        assert!(!is_deploy_repository_within(
+            "neon-law/some-project",
+            lookup
+        ));
+    }
+
+    #[test]
+    fn is_deploy_repository_is_false_when_unconfigured() {
+        assert!(!is_deploy_repository_within(
+            "neon-law/navigator-deploy",
+            |_| None
+        ));
+    }
+
+    #[test]
+    fn workflow_drifted_is_exact_content_equality() {
+        assert!(!workflow_drifted(Some("same"), "same"));
+        assert!(workflow_drifted(Some("same "), "same"));
+        assert!(workflow_drifted(None, "same"));
+    }
+
+    /// Navigator's own repository is recognized by [`NAVIGATOR_POLICY`]
+    /// without ever asking the host anything — no mock is mounted, so a
+    /// stray request would fail this test by having nowhere to land.
+    #[tokio::test]
+    async fn workflow_template_scope_excludes_navigator_with_no_network_calls() {
+        let server = MockServer::start().await;
+        let client = test_client(&server);
+        let scope = workflow_template_scope(&client, NAVIGATOR_POLICY)
+            .await
+            .unwrap();
+        assert_eq!(scope, WorkflowTemplateScope::Excluded);
+        assert!(server.received_requests().await.unwrap().is_empty());
+    }
+
+    /// The tap is excluded the same way, by [`TAP_POLICY`] rather than by
+    /// re-matching its slug.
+    #[tokio::test]
+    async fn workflow_template_scope_excludes_the_tap_with_no_network_calls() {
+        let server = MockServer::start().await;
+        let client = test_client(&server);
+        let scope = workflow_template_scope(&client, TAP_POLICY).await.unwrap();
+        assert_eq!(scope, WorkflowTemplateScope::Excluded);
+        assert!(server.received_requests().await.unwrap().is_empty());
+    }
+
+    /// A repository confirmed by `navigator.yaml`, with no `portal/`.
+    #[tokio::test]
+    async fn workflow_template_scope_confirms_a_project_repository_with_no_portal() {
+        let server = MockServer::start().await;
+        let client = test_client(&server);
+        Mock::given(method("GET"))
+            .and(path("/repos/acme/navigator/contents/navigator.yaml"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("code: acme\n"))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/repos/acme/navigator/contents/portal/package.json"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+        assert_eq!(
+            workflow_template_scope(&client, COMMON_POLICY)
+                .await
+                .unwrap(),
+            WorkflowTemplateScope::Project { has_portal: false }
+        );
+    }
+
+    /// The same repository, but with a portal — `has_portal` flips, which is
+    /// what gates whether `publish.yml` is reconciled at all.
+    #[tokio::test]
+    async fn workflow_template_scope_confirms_a_project_repository_with_a_portal() {
+        let server = MockServer::start().await;
+        let client = test_client(&server);
+        Mock::given(method("GET"))
+            .and(path("/repos/acme/navigator/contents/navigator.yaml"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("code: acme\n"))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/repos/acme/navigator/contents/portal/package.json"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("{}"))
+            .mount(&server)
+            .await;
+        assert_eq!(
+            workflow_template_scope(&client, CLIENT_POLICY)
+                .await
+                .unwrap(),
+            WorkflowTemplateScope::Project { has_portal: true }
+        );
+    }
+
+    /// A repository this command governs (`COMMON_POLICY`/`CLIENT_POLICY`) but
+    /// that is neither Navigator, the tap, nor the deploy repository, and
+    /// carries no manifest, is refused by name rather than silently skipped
+    /// or silently treated as a Project repository.
+    #[tokio::test]
+    async fn workflow_template_scope_refuses_an_unverified_repository() {
+        let server = MockServer::start().await;
+        let client = test_client(&server);
+        Mock::given(method("GET"))
+            .and(path("/repos/acme/navigator/contents/navigator.yaml"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+        let error = workflow_template_scope(&client, COMMON_POLICY)
+            .await
+            .expect_err("a repository with no manifest must not be guessed at");
+        let message = error.to_string();
+        assert!(message.contains("acme/navigator"), "{message}");
+        assert!(message.contains("navigator.yaml"), "{message}");
+    }
+
+    /// A drift-free repository plans no `UpdateWorkflow` action at all — the
+    /// diff-detection half of ENG-378: a matching `gate.yml` and a matching
+    /// `publish.yml` leave `reconcile` with nothing left to open a pull
+    /// request for.
+    #[tokio::test]
+    async fn reconcile_plans_no_workflow_action_when_content_already_matches() {
+        let server = MockServer::start().await;
+        let client = test_client(&server);
+        mount_reads(
+            &server,
+            &desired_branch_ruleset(TEST_ACTIONS_APP_ID, &[]),
+            Vec::new(),
+        )
+        .await;
+        Mock::given(method("GET"))
+            .and(path("/repos/acme/navigator/contents/navigator.yaml"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("code: acme\n"))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/repos/acme/navigator/contents/portal/package.json"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(format!(
+                "/repos/acme/navigator/contents/{}",
+                project_repository::WORKFLOW
+            )))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(project_repository::workflow(FIXTURE_ACTION_VERSION)),
+            )
+            .mount(&server)
+            .await;
+
+        reconcile(COMMON_POLICY, &client, false, FIXTURE_ACTION_VERSION)
+            .await
+            .unwrap();
+
+        let requests = server.received_requests().await.unwrap();
+        assert!(
+            requests
+                .iter()
+                .all(|request| request.method == wiremock::http::Method::GET),
+            "a fully matching repository must write nothing"
+        );
+    }
+
+    /// The other half: a `gate.yml` pinned to a stale version is drift, and
+    /// `reconcile` opens a branch, commits the regenerated file, and opens a
+    /// pull request for it rather than writing `main` directly.
+    #[tokio::test]
+    async fn reconcile_opens_a_pull_request_when_gate_yml_is_pinned_to_a_stale_version() {
+        let server = MockServer::start().await;
+        let client = test_client(&server);
+        mount_reads(
+            &server,
+            &desired_branch_ruleset(TEST_ACTIONS_APP_ID, &[]),
+            Vec::new(),
+        )
+        .await;
+        Mock::given(method("GET"))
+            .and(path("/repos/acme/navigator/contents/navigator.yaml"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("code: acme\n"))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/repos/acme/navigator/contents/portal/package.json"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+        let live_gate_yml = project_repository::workflow("26.7.1");
+        Mock::given(method("GET"))
+            .and(path(format!(
+                "/repos/acme/navigator/contents/{}",
+                project_repository::WORKFLOW
+            )))
+            .and(header("accept", "application/vnd.github.raw+json"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(&live_gate_yml))
+            .mount(&server)
+            .await;
+
+        let branch = workflow_update_branch(FIXTURE_ACTION_VERSION);
+        Mock::given(method("GET"))
+            .and(path("/repos/acme/navigator/git/ref/heads/main"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "object": {"sha": "base-sha"}
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/repos/acme/navigator/git/refs"))
+            .and(body_json(serde_json::json!({
+                "ref": format!("refs/heads/{branch}"),
+                "sha": "base-sha",
+            })))
+            .respond_with(ResponseTemplate::new(201))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(format!(
+                "/repos/acme/navigator/contents/{}",
+                project_repository::WORKFLOW
+            )))
+            .and(header("accept", "application/vnd.github+json"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "sha": "live-blob-sha",
+                "content": BASE64_STANDARD.encode(&live_gate_yml),
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("PUT"))
+            .and(path(format!(
+                "/repos/acme/navigator/contents/{}",
+                project_repository::WORKFLOW
+            )))
+            .and(body_json(serde_json::json!({
+                "message": format!("chore: pin {} to {FIXTURE_ACTION_VERSION}", project_repository::WORKFLOW),
+                "content": BASE64_STANDARD.encode(project_repository::workflow(FIXTURE_ACTION_VERSION)),
+                "branch": branch,
+                "sha": "live-blob-sha",
+            })))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/repos/acme/navigator/pulls"))
+            .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+                "html_url": format!(
+                    "https://{}/acme/navigator/pull/1",
+                    cloud::workspace::DEFAULT_GIT_HOST
+                )
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        reconcile(COMMON_POLICY, &client, false, FIXTURE_ACTION_VERSION)
+            .await
+            .unwrap();
+    }
+
+    /// `dry_run` never opens a branch, commits a file, or opens a pull
+    /// request, even when the plan includes an `UpdateWorkflow` action.
+    #[tokio::test]
+    async fn reconcile_dry_run_never_touches_a_drifted_workflow() {
+        let server = MockServer::start().await;
+        let client = test_client(&server);
+        mount_reads(
+            &server,
+            &desired_branch_ruleset(TEST_ACTIONS_APP_ID, &[]),
+            Vec::new(),
+        )
+        .await;
+        Mock::given(method("GET"))
+            .and(path("/repos/acme/navigator/contents/navigator.yaml"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("code: acme\n"))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/repos/acme/navigator/contents/portal/package.json"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(format!(
+                "/repos/acme/navigator/contents/{}",
+                project_repository::WORKFLOW
+            )))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_string(project_repository::workflow("26.7.1")),
+            )
+            .mount(&server)
+            .await;
+
+        reconcile(COMMON_POLICY, &client, true, FIXTURE_ACTION_VERSION)
+            .await
+            .unwrap();
+
+        let requests = server.received_requests().await.unwrap();
+        assert!(
+            requests
+                .iter()
+                .all(|request| request.method == wiremock::http::Method::GET),
+            "dry run must never write, including opening a branch or a pull request"
+        );
+    }
+
+    /// A confirmed Project repository with no `--action-version` this build
+    /// can vouch for stops the reconcile rather than emitting a gate pinned
+    /// to `main`, `latest`, or empty.
+    #[tokio::test]
+    async fn reconcile_refuses_an_unresolvable_action_version_on_a_project_repository() {
+        let server = MockServer::start().await;
+        let client = test_client(&server);
+        mount_reads(
+            &server,
+            &desired_branch_ruleset(TEST_ACTIONS_APP_ID, &[]),
+            Vec::new(),
+        )
+        .await;
+        Mock::given(method("GET"))
+            .and(path("/repos/acme/navigator/contents/navigator.yaml"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("code: acme\n"))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/repos/acme/navigator/contents/portal/package.json"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+
+        let error = reconcile(COMMON_POLICY, &client, false, "main")
+            .await
+            .expect_err("`main` must never be accepted as an action_version");
+        assert!(error.to_string().contains("release tag"), "{error}");
     }
 }

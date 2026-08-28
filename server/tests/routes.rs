@@ -7429,7 +7429,10 @@ async fn client_portal_shows_the_matter_without_a_service_or_price() {
         body.contains("Formation Client Co."),
         "the matter name renders: {body}"
     );
-    assert!(!body.contains("Other Catalog Label"), "no service label: {body}");
+    assert!(
+        !body.contains("Other Catalog Label"),
+        "no service label: {body}"
+    );
     assert!(!body.contains('$'), "no price anywhere: {body}");
 }
 
@@ -7518,10 +7521,7 @@ async fn client_portal_projects_scopes_and_aggregates_the_signed_in_client_dashb
 
     // The signed-in client's own matter, by name. There is no catalog to
     // resolve a service label or a price from — every matter is bespoke.
-    assert!(
-        body.contains("Sample Matter"),
-        "own matter name: {body}"
-    );
+    assert!(body.contains("Sample Matter"), "own matter name: {body}");
     assert!(
         !body.contains("Catalog Service Label"),
         "no service label: {body}"

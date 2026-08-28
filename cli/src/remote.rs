@@ -1537,13 +1537,7 @@ mod tests {
 
     async fn exercise_notation_commands(host: Option<&str>, server_uri: &str, ids: LawyerRouteIds) {
         assert_eq!(
-            notation_create(
-                host,
-                "memo__contract_review",
-                "libra@example.com",
-                "acme",
-            )
-            .await,
+            notation_create(host, "memo__contract_review", "libra@example.com", "acme",).await,
             ExitCode::SUCCESS
         );
         let client = reqwest::Client::new();

@@ -1300,6 +1300,14 @@ session role before confirming an Answer.
 
 One edge between States, fired by an event (e.g. `retainer_rendered`, `signature_received`).
 
+## Validate
+
+`navigator validate <dir>` (default `.`), the single command that lints every Markdown, YAML, and seed document under a
+directory tree against the Neon Law Navigator rule set — the same engine `navigator-lsp` runs on every keystroke. Errors
+fail the gate; warnings print but pass. `--fix` applies every safe-by-construction autofix in place, then re-validates.
+
+- Reference: [`validate.md`](validate.md)
+
 ## Verification
 
 Evidence that a licensed human checked a citation before it was filed. A **domain record with an audit trail, not

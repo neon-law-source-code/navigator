@@ -179,18 +179,10 @@ matter.
 ## The validation contract
 
 Three rule families guard every template, enforced identically in your editor, in `cli validate`, and in CI — because
-all three call the same `rules` crate. A template that is clean on your laptop is clean in the merge gate.
-
-- **N-family (notation template shape, structural).** N101 title present; N102 valid `respondent_type`; N103 snake_case
-  filename; N104 both machines declare `BEGIN`, reach `END`, questionnaire states resolve to real Question codes, and
-  workflow states resolve to known workflow-step prefixes; N105 `confidential` is an explicit bool; N106 the `workflow:`
-  has a bare `lawyer_review` state (the suffix form `lawyer_review__for_grantor` does **not** satisfy it — the
-  human-review gate must be unconditional); N108 `code` is the stable Template identifier; N110/N111/F110 enforce the
-  `forms/` or `neon_law/` shelf, seeded `jurisdiction`, and jurisdiction-first form codes. N-family rules are
-  diagnostic-only: a human must resolve them, the tool will not auto-rewrite legal structure.
-- **M-family (markdown hygiene, ~50 rules).** Headings, lists, fences, tables, spacing. Most carry a safe autofix.
-- **S101 (line length).** 120 Unicode scalars per line, every `.md`. Frontmatter is linted too; folded YAML scalars let
-  a long value wrap and still pass.
+all three call the same `rules` crate. A template that is clean on your laptop is clean in the merge gate. N-family
+rules are diagnostic-only: a human must resolve them, the tool will not auto-rewrite legal structure. The full code
+table — every rule, its severity, and whether it autofixes — is the canonical reference at [`validate.md`](validate.md);
+this page only covers what those rules mean for a template's shape and body.
 
 Run it before committing any `.md` change:
 

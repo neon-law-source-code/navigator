@@ -380,7 +380,7 @@ releases, and production handoff live in [`docs/gitops.md`](docs/gitops.md).
   to" narration. Git history records the past. See [`docs/rust-programming.md`](docs/rust-programming.md).
 - **Validate with the CLI.** Run `cargo run -p cli --quiet -- validate <dir>` (default `.`) after every change. It walks
   a directory rather than taking a single file path, and covers Markdown, YAML syntax, and `seeds/*.yaml` documents
-  together, not Markdown alone.
+  together, not Markdown alone. See [`docs/validate.md`](docs/validate.md) for the full rule-code reference.
 - **Leave a slide's words alone.** A deck under `server/content/workshops/` is a script someone reads aloud, so carry
   its faces and presenter notes verbatim: reflow, lint, and fix shape, and raise any wording, title, or claim with the
   author rather than editing it. See

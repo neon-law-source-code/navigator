@@ -5,10 +5,10 @@
 //! The lens is a fact about the person, never about the URL they typed — a path
 //! is chosen by the requester, so it can never be an authorization input.
 //!
-//! The matter page has five renderings, keyed on
+//! The matter page has six renderings. Five are keyed on
 //! [`store::access::MatterViewer`] rather than on the tier alone, because the
 //! accountable participant on each side is a different reader from an ordinary
-//! one:
+//! one; the sixth exists only because `matter_viewer` answered `None`:
 //!
 //! | Viewer | Page |
 //! | --- | --- |
@@ -17,6 +17,7 @@
 //! | `Clerk` | name, status, supervising lawyer — nothing else |
 //! | `Lawyer` | the firm workbench |
 //! | `LawyerDri` | the workbench plus the matter-level accountability actions |
+//! | *(no row, Owner/Admin)* | [`MatterViewerKind::AdminUnassigned`] — participation only |
 //!
 //! **The Clerk branch is the load-bearing one.** A Clerk is a supervised
 //! non-lawyer, and `docs/access-model.md` is explicit that they never reach
@@ -29,9 +30,18 @@
 //! always emitted, so a module the firm has not enabled has no row for any
 //! query to return and no section that renders empty.
 //!
-//! A viewer that cannot be resolved renders nothing. The access decision is
-//! made in the same call (`matter_viewer` returns `None`), so there is no
-//! window in which a page renders for a caller who was never admitted.
+//! A viewer that cannot be resolved renders nothing — for every tier except
+//! Owner/Admin. `store::access::matter_viewer` keeps ENG-81's rule
+//! undisturbed: it still answers `None` for an unassigned Owner/Admin exactly
+//! as it does for anyone else, so the matter surface's access decision is
+//! unchanged. What this dispatcher adds is a *sixth rendering* for that one
+//! `None` shape, gated on the tier rather than the ledger: an Owner/Admin
+//! reaches [`crate::admin_unassigned_project_detail::AdminUnassignedProjectDetail`],
+//! a page that discloses only the participation ledger — never a document, a
+//! notation, or any other matter content — so that adding the first
+//! participant to a matter, or reassigning one on a matter nobody put them on,
+//! does not first require being put on it. Every other tier still gets the
+//! committed `404`.
 
 use dioxus::prelude::*;
 
@@ -48,6 +58,10 @@ pub enum MatterViewerKind {
     Clerk,
     Lawyer,
     LawyerDri,
+    /// The matter exists and `matter_viewer` answered `None` (no participation
+    /// row), but the caller is Owner or Admin tier: the participation-only
+    /// page renders instead of the `404` every other tier gets in this shape.
+    AdminUnassigned,
 }
 
 /// Commit the `404` for a caller who is nobody to this matter, so the status
@@ -103,6 +117,15 @@ pub async fn matter_viewer_kind() -> Result<MatterViewerKind, ServerFnError> {
         .await
         .map_err(|e| ServerFnError::new(e.clone()))?;
     Ok(match viewer {
+        // `matter_viewer` itself carries no privileged short-circuit (ENG-81)
+        // — this branch is the dispatcher's own, on top of that unchanged
+        // answer: an Owner/Admin with no row gets the participation-only page
+        // rather than the `404` everyone else gets here. Requiring
+        // `person_id` too keeps the same fail-closed rule `matter_viewer`
+        // itself applies before it ever queries: a session naming no linked
+        // person is not an identified admin to hand a page to, whatever its
+        // tier claims.
+        None if role.is_admin_tier() && person_id.is_some() => MatterViewerKind::AdminUnassigned,
         None => {
             commit_not_found();
             MatterViewerKind::None
@@ -188,6 +211,9 @@ pub fn ProjectDetail() -> Element {
             },
             MatterViewerKind::Clerk => rsx! {
                 crate::clerk::ClerkProjectDetail {}
+            },
+            MatterViewerKind::AdminUnassigned => rsx! {
+                crate::admin_unassigned_project_detail::AdminUnassignedProjectDetail {}
             },
             // Nobody to this matter. The `404` status is committed by the
             // loader; a matter that does not exist and one the caller may not

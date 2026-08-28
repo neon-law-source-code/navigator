@@ -157,10 +157,13 @@ fn decode_session_cookie_pair(cookie: &str) -> portal::SessionData {
 /// An Admin who is actually on `project_id`, as a cookie (and CSRF token).
 ///
 /// Since ENG-81 the matter surface requires a firm-side `person_project_roles`
-/// row of every tier, so a bare `admin_session_cookie()` now 404s on a matter
-/// nobody put that admin on. Tests about *document behavior* want to be past
-/// that gate, not to re-assert it — the gate itself is pinned by
-/// `owner_and_admin_without_participation_are_denied_the_matter`.
+/// row of every tier, so a bare `admin_session_cookie()` (no linked person at
+/// all) still 404s on a matter nobody put that admin on — an Owner/Admin with
+/// a linked person instead gets the narrower participation-only view, but a
+/// session naming no person is not an identified admin to hand even that to.
+/// Tests about *document behavior* want to be past both gates, not to
+/// re-assert them — those are pinned by
+/// `owner_and_admin_without_participation_get_the_participation_only_view`.
 async fn admin_on_project(
     surreal: &store::surreal::SurrealDb,
     project_id: uuid::Uuid,
@@ -16175,14 +16178,15 @@ async fn code_for_project(surreal: &store::surreal::SurrealDb, project_id: uuid:
         .code
 }
 
-/// The guard for the 2026-08-05 authorization decision, and the one assertion
-/// here that would otherwise pass by accident: before this slice, the
-/// `is_admin_tier()` short-circuit handed Owner and Admin every matter without
-/// a participation row. The matter surface has no silent bypass — privileged
-/// reach is a place you navigate to, which is what makes a lens bug
-/// distinguishable from an intended widening.
+/// The guard for the 2026-08-05 authorization decision: before this slice,
+/// the `is_admin_tier()` short-circuit handed Owner and Admin every matter's
+/// full content without a participation row. `store::access::matter_viewer`
+/// still carries no such bypass — this pins that Owner/Admin without a row
+/// get the narrower participation-only rendering (added later) rather than
+/// the workbench: no document upload, only the "Add person" participation
+/// control every tier without full access never gets.
 #[tokio::test]
-async fn owner_and_admin_without_participation_are_denied_the_matter() {
+async fn owner_and_admin_without_participation_get_the_participation_only_view() {
     let (state, surreal) = state_with_engines().await;
     let (project_id, _lawyer, _cookie, _csrf) = lawyer_project_fixture(&surreal).await;
     let project_code = code_for_project(&surreal, project_id).await;
@@ -16201,8 +16205,17 @@ async fn owner_and_admin_without_participation_are_denied_the_matter() {
         .await;
         assert_eq!(
             resp.status(),
-            StatusCode::NOT_FOUND,
-            "{role:?} has no participation row on this matter"
+            StatusCode::OK,
+            "{role:?} has no participation row, so gets the participation-only view, not a 404"
+        );
+        let body = body_string(resp).await;
+        assert!(
+            body.contains("Add person"),
+            "{role:?}: expected the participation-only view: {body}"
+        );
+        assert!(
+            !body.contains("Upload documents"),
+            "{role:?} has no participation row and must not reach the workbench's documents: {body}"
         );
     }
 }

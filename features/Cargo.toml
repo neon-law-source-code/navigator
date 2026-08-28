@@ -110,6 +110,10 @@ name = "portal_projects_detail"
 harness = false
 
 [[test]]
+name = "portal_projects_list"
+harness = false
+
+[[test]]
 name = "portal_invoice_card"
 harness = false
 

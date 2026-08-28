@@ -17,6 +17,7 @@ pub mod admin_landing;
 pub mod admin_listing;
 pub mod admin_listings;
 pub mod admin_people_new;
+pub mod admin_unassigned_project_detail;
 pub mod analytics;
 pub mod app_chrome;
 #[cfg(feature = "server")]

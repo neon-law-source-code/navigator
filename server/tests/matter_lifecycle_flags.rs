@@ -4,8 +4,11 @@
 //! The firm's lifecycle invariant: every matter opens on an onboarding
 //! (`onboarding__*`) notation — the client's retainer — and a *closed*
 //! matter carries an `offboarding__letter`. Neither is schema-enforced, so the
-//! Projects list surfaces the gaps with a warning badge. These tests pin
-//! both the pure rule (`store::projects::matter_flags`) and the rendered list.
+//! Projects list surfaces the gaps: a missing onboarding notation folds into
+//! the lifecycle status pill's "needs onboarding" state (no separate badge
+//! duplicates it), and a missing offboarding letter still carries its own
+//! warning badge. These tests pin both the pure rule
+//! (`store::projects::matter_flags`) and the rendered list.
 
 use std::sync::Arc;
 
@@ -495,7 +498,7 @@ async fn an_asset_of_a_non_opening_kind_does_not_clear_the_engagement_flag() {
 }
 
 #[tokio::test]
-async fn an_uploaded_engagement_letter_clears_the_badge_on_the_rendered_projects_list() {
+async fn an_uploaded_engagement_letter_clears_the_lifecycle_pill_on_the_rendered_projects_list() {
     let (app, surreal) = build_app().await;
     let storage = asset_storage("rendered-list-upload").await;
     let matter = project(&surreal, "Uploaded engagement matter", "open").await;
@@ -531,8 +534,12 @@ async fn an_uploaded_engagement_letter_clears_the_badge_on_the_rendered_projects
         .unwrap_or_default()
         .to_string();
     assert!(
-        !row.contains("no onboarding"),
-        "an uploaded engagement letter must clear the badge on the rendered list: {row}"
+        !row.contains("needs onboarding"),
+        "an uploaded engagement letter must clear the lifecycle pill's onboarding-missing state: {row}"
+    );
+    assert!(
+        row.contains("onboarding on file"),
+        "an uploaded engagement letter must flip the lifecycle pill to onboarding-on-file: {row}"
     );
 }
 
@@ -732,32 +739,34 @@ async fn projects_list_flags_the_lifecycle_gaps_and_nothing_else() {
             .to_string()
     };
 
-    // `absent` reads as the negation of the `contains` checks below: a badge
+    // `absent` reads as the negation of the `contains` checks below: text
     // the row must NOT carry.
     let absent = |row: &str, badge: &str| assert!(!row.contains(badge), "{row}");
 
-    // B — bare open matter — is flagged as missing its onboarding only.
+    // B — bare open matter — is missing its onboarding: the lifecycle pill
+    // says so (there is no second, duplicate "no onboarding" badge next to
+    // the name), and it carries no offboarding-letter badge (it is open).
     let b = row_for("Bare open matter");
-    assert!(&b.contains("no onboarding"));
+    assert!(&b.contains("needs onboarding"));
     absent(&b, "no offboarding letter");
 
     // C — closed without a letter — is flagged for the offboarding letter
-    // only (it has its onboarding__estate engagement).
+    // only (it has its onboarding__estate engagement, so the pill itself
+    // reads "closed" rather than the onboarding-missing state).
     let c = row_for("Closed no letter");
     assert!(&c.contains("no offboarding letter"));
-    absent(&c, "no onboarding");
+    absent(&c, "needs onboarding");
 
-    // A and D are clean — no badge either way.
+    // A and D are clean — no offboarding badge and no "needs onboarding" pill.
     let a = row_for("Has retainer open");
-    absent(&a, "no onboarding");
+    assert!(&a.contains("onboarding on file"));
     absent(&a, "no offboarding letter");
     let d = row_for("Closed with letter");
-    absent(&d, "no onboarding");
+    absent(&d, "needs onboarding");
     absent(&d, "no offboarding letter");
 
-    // The badge vocabulary is the codebase's, not the conversational one:
-    // the row says "no onboarding", never "no retainer", so the warning
-    // badge and the lifecycle pill beside it speak the same word.
+    // The badge vocabulary is the codebase's, not the conversational one: the
+    // row says "needs onboarding"/"no offboarding letter", never "no retainer".
     assert!(
         !html.contains("no retainer"),
         "the warning badge must use the onboarding vocabulary: {html}"

@@ -1,9 +1,11 @@
-//! Cucumber runner for `features/portal_projects_detail.feature`.
+//! Cucumber runner for `features/portal_projects_list.feature`.
 //!
-//! Exercises `GET /app/projects/:code` end-to-end with row-level
-//! scoping via [`store::access::visible_projects`]. The runner shape
-//! mirrors `portal_landing.rs`: forge a session cookie, send the
-//! request, assert on the response.
+//! Exercises `GET /app/projects` — the matter list — proving Owner/Admin
+//! read every matter (`store::projects::all`) while an ordinary Lawyer stays
+//! scoped to their own participation ledger
+//! (`store::access::visible_projects_as_lawyer`). The runner shape mirrors
+//! `portal_projects_detail.rs`: forge a session cookie, send the request,
+//! assert on the response.
 
 // Cucumber's step-attribute macros want `async fn` everywhere.
 #![allow(clippy::unused_async)]
@@ -23,25 +25,24 @@ use workflows::InMemoryRuntime;
 
 #[derive(Default, World)]
 #[world(init = Self::default)]
-struct DetailWorld {
+struct ListWorld {
     app: Option<axum::Router>,
     sessions: Option<SessionStore>,
     persons: HashMap<String, Uuid>,
     projects: HashMap<String, Uuid>,
-    project_codes: HashMap<String, String>,
     last_status: Option<StatusCode>,
     last_body: String,
 }
 
-impl std::fmt::Debug for DetailWorld {
+impl std::fmt::Debug for ListWorld {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("DetailWorld")
+        f.debug_struct("ListWorld")
             .field("last_status", &self.last_status)
             .finish_non_exhaustive()
     }
 }
 
-impl DetailWorld {
+impl ListWorld {
     fn sessions(&self) -> &SessionStore {
         self.sessions.as_ref().expect("sessions not built")
     }
@@ -49,18 +50,12 @@ impl DetailWorld {
     fn app(&self) -> axum::Router {
         self.app.as_ref().expect("app not built").clone()
     }
-
-    fn project_code(&self, name: &str) -> &str {
-        self.project_codes
-            .get(name)
-            .expect("project was seeded earlier")
-    }
 }
 
 #[given("the Neon Law Navigator app is running")]
-async fn build_app(world: &mut DetailWorld) {
+async fn build_app(world: &mut ListWorld) {
     let runtime = Arc::new(InMemoryRuntime::new());
-    let storage = fs_storage("portal-projects-detail").await;
+    let storage = fs_storage("portal-projects-list").await;
     let sessions = SessionStore::new("test-session-key-not-for-production");
     let state = app_state(
         runtime,
@@ -78,7 +73,7 @@ async fn build_app(world: &mut DetailWorld) {
 }
 
 #[given(regex = r#"^a seeded person "([^"]+)" with role "([^"]+)"$"#)]
-async fn seed_person(world: &mut DetailWorld, email: String, role: String) {
+async fn seed_person(world: &mut ListWorld, email: String, role: String) {
     let role = match role.as_str() {
         "owner" => store::persons::Role::Owner,
         "admin" => store::persons::Role::Admin,
@@ -96,60 +91,33 @@ async fn seed_person(world: &mut DetailWorld, email: String, role: String) {
     world.persons.insert(email, inserted.id);
 }
 
-#[given(regex = r#"^a project "([^"]+)" with "([^"]+)" as a participant$"#)]
-async fn seed_project_with_participant(
-    world: &mut DetailWorld,
-    project_name: String,
-    participant_email: String,
-) {
-    let project_id = ensure_project(world, &project_name).await;
-    let person_id = *world
-        .persons
-        .get(&participant_email)
-        .expect("participant person was seeded earlier");
-    store::projects::add_participation(
-        &features::shared_surreal().await,
-        project_id,
-        person_id,
-        "client",
-    )
-    .await
-    .expect("insert SurrealDB person_project_role");
-}
-
 #[given(regex = r#"^a project "([^"]+)" with no participants$"#)]
-async fn seed_project_no_participants(world: &mut DetailWorld, project_name: String) {
-    ensure_project(world, &project_name).await;
-}
-
-async fn ensure_project(world: &mut DetailWorld, project_name: &str) -> Uuid {
-    if let Some(id) = world.projects.get(project_name) {
-        return *id;
-    }
+async fn seed_project_no_participants(world: &mut ListWorld, project_name: String) {
     let surreal = features::shared_surreal().await;
     let code = format!("test-{}", Uuid::now_v7().simple());
     let inserted = store::projects::create(
         &surreal,
         &store::projects::NewProject {
-            code: code.clone(),
-            name: project_name.into(),
+            code,
+            name: project_name.clone(),
             status: "open".into(),
-            entity_id: store::test_support::seed_entity(&features::shared_surreal().await).await,
+            entity_id: store::test_support::seed_entity(&surreal).await,
             ..Default::default()
         },
     )
     .await
     .expect("insert project");
-    world.projects.insert(project_name.to_string(), inserted.id);
-    world.project_codes.insert(project_name.to_string(), code);
-    inserted.id
+    world.projects.insert(project_name, inserted.id);
 }
 
-#[when(regex = r#"^"([^"]+)" opens the detail page for "([^"]+)"$"#)]
-async fn open_detail(world: &mut DetailWorld, email: String, project_name: String) {
+#[when(regex = r#"^"([^"]+)" opens the projects list$"#)]
+async fn open_list(world: &mut ListWorld, email: String) {
     let person_id = *world.persons.get(&email).expect("actor was seeded earlier");
-    let project_code = world.project_code(&project_name);
-    let role = role_for(&features::shared_surreal().await, person_id).await;
+    let role = store::persons::find_by_id(&features::shared_surreal().await, person_id)
+        .await
+        .expect("query person")
+        .expect("person row exists")
+        .role;
     let session = SessionData {
         sub: format!("rauthy-{email}-subject"),
         email: Some(email.clone()),
@@ -169,7 +137,7 @@ async fn open_detail(world: &mut DetailWorld, email: String, project_name: Strin
         .app()
         .oneshot(
             Request::builder()
-                .uri(format!("/app/projects/{project_code}"))
+                .uri("/app/projects")
                 .header("cookie", cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -180,16 +148,8 @@ async fn open_detail(world: &mut DetailWorld, email: String, project_name: Strin
     world.last_body = body_string(resp).await;
 }
 
-async fn role_for(surreal: &store::surreal::SurrealDb, person_id: Uuid) -> store::persons::Role {
-    store::persons::find_by_id(surreal, person_id)
-        .await
-        .expect("query person")
-        .expect("person row exists")
-        .role
-}
-
 #[then(regex = r"^the response status is (\d+)$")]
-async fn status_is(world: &mut DetailWorld, code: u16) {
+async fn status_is(world: &mut ListWorld, code: u16) {
     let actual = world.last_status.expect("no response captured");
     assert_eq!(
         actual.as_u16(),
@@ -201,7 +161,7 @@ async fn status_is(world: &mut DetailWorld, code: u16) {
 }
 
 #[then(regex = r#"^the response body contains "([^"]+)"$"#)]
-async fn body_contains(world: &mut DetailWorld, needle: String) {
+async fn body_contains(world: &mut ListWorld, needle: String) {
     assert!(
         world.last_body.contains(&needle),
         "expected body to contain {needle:?}; body was: {}",
@@ -210,7 +170,7 @@ async fn body_contains(world: &mut DetailWorld, needle: String) {
 }
 
 #[then(regex = r#"^the response body does not contain "([^"]+)"$"#)]
-async fn body_does_not_contain(world: &mut DetailWorld, needle: String) {
+async fn body_does_not_contain(world: &mut ListWorld, needle: String) {
     assert!(
         !world.last_body.contains(&needle),
         "expected body not to contain {needle:?}; body was: {}",
@@ -229,7 +189,7 @@ fn truncated(s: &str) -> String {
 
 #[tokio::main]
 async fn main() {
-    DetailWorld::cucumber()
-        .run_and_exit("tests/features/portal_projects_detail.feature")
+    ListWorld::cucumber()
+        .run_and_exit("tests/features/portal_projects_list.feature")
         .await;
 }

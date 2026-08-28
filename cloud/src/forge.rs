@@ -193,7 +193,7 @@ impl std::fmt::Debug for GitHubForge {
 impl GitHubForge {
     /// Build from an already-resolved organization, token, and API base.
     #[must_use]
-    pub fn new(organization: String, token: String, api_base: String) -> Self {
+    pub fn new(organization: String, token: String, api_base: &str) -> Self {
         Self {
             api_base: api_base.trim_end_matches('/').to_string(),
             organization,
@@ -230,7 +230,7 @@ impl GitHubForge {
         if config.organization.is_empty() {
             return Err(ForgeError::MissingConfig(NAVIGATOR_GITHUB_ORG));
         }
-        Ok(Self::new(config.organization, token, api_base))
+        Ok(Self::new(config.organization, token, &api_base))
     }
 
     fn repos_url(&self, project_code: &str) -> String {

@@ -147,7 +147,7 @@ pub async fn reconcile_after_open(surreal: &SurrealDb, project_id: Uuid) {
 ///
 /// Drive sharing is how Workspace users drop files in. It is not an
 /// authorization decision inside Navigator, and it is not a forge grant —
-/// GitHub collaborator APIs are not called from this module.
+/// GitHub membership APIs are not called from this module.
 async fn grant_drive_ingest_membership<D>(
     surreal: &SurrealDb,
     project_id: Uuid,
@@ -245,12 +245,16 @@ mod tests {
     #[test]
     fn this_module_does_not_read_a_local_drive_mount() {
         let src = include_str!("project_surfaces.rs");
+        let production = src
+            .split("#[cfg(test)]")
+            .next()
+            .expect("production source precedes the test module");
         assert!(
-            !src.contains("NAVIGATOR_PROJECTS_DRIVE_MOUNT"),
+            !production.contains("DRIVE_MOUNT"),
             "provisioning must not take a workstation mount as input"
         );
         assert!(
-            !src.contains("collaborator"),
+            !production.contains("collaborator"),
             "Project participation must not grant forge membership"
         );
     }

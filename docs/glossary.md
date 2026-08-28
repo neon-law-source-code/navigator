@@ -942,8 +942,8 @@ column and neither consults the id — `portal::dioxus_app::project_show_path` w
 renders, and `project_id_from_path` reads one back. A lowercase UUID is itself a well-formed code, so nothing could
 refuse one on sight; what keeps ids out of URLs is the lookup, not the shape of the segment.
 
-The code is **required at matter-open and never derived**: `code` names the matter's Drive ingest folder
-and its object-storage prefix, and that mapping is an equality check, so a code Navigator invented would name no folder.
+The code is **required at matter-open and never derived**: `code` names the matter's Drive ingest folder and its
+object-storage prefix, and that mapping is an equality check, so a code Navigator invented would name no folder.
 (`code_from_name` remains available to fixture and internal callers that are not matter-opens.) Uppercase and
 underscores stay out deliberately: Drive and macOS are case-insensitive, so uppercase would let one folder answer to two
 codes, and a second separator would turn the mapping into a normalization instead of an equality.

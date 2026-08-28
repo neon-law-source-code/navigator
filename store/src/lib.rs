@@ -64,6 +64,7 @@ pub mod persons;
 pub mod playbooks;
 pub mod project_modules;
 pub mod project_reconcile;
+pub mod project_surfaces;
 pub mod projects;
 pub mod question_registry;
 pub mod questions;

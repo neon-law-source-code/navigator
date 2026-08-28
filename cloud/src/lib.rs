@@ -21,6 +21,7 @@ use thiserror::Error;
 
 pub mod audio;
 pub mod drive;
+pub mod forge;
 pub mod fs;
 pub mod gcloud;
 pub mod gcs;
@@ -34,14 +35,18 @@ pub use drive::{
     DriveError, DriveFolder, DriveMember, DriveMemberKind, DriveRole, DriveService, DriveWorkspace,
     DriveWorkspaceConfig, FakeDrive, GoogleDrive,
 };
+pub use forge::{
+    FakeForge, ForgeError, ForgeRepository, ForgeService, GitHubForge, GITHUB_API_URL_ENV,
+    GITHUB_TOKEN_ENV, NAVIGATOR_GITHUB_TOKEN_ENV,
+};
 pub use fs::FsStorage;
 pub use gcs::{GcsStorage, GcsStorageConfig};
 pub use s3::{S3Storage, S3StorageConfig};
 pub use speech::{GoogleSpeechConfig, GoogleSpeechTranscriptProvider, SpeechError};
 pub use workspace::{
-    is_navigator_repository, is_valid_slug, DeploymentWorkspace, DriveCoordinates, GoogleWorkspace,
-    WorkspaceConfig, WorkspaceConfigError, WorkspaceCustomer, DEFAULT_GIT_HOST,
-    NAVIGATOR_GCP_PROJECT_ID, NAVIGATOR_GITHUB_ORG, NAVIGATOR_GIT_HOST,
+    documents_prefix, is_navigator_repository, is_valid_slug, DeploymentWorkspace,
+    DriveCoordinates, GoogleWorkspace, WorkspaceConfig, WorkspaceConfigError, WorkspaceCustomer,
+    DEFAULT_GIT_HOST, NAVIGATOR_GCP_PROJECT_ID, NAVIGATOR_GITHUB_ORG, NAVIGATOR_GIT_HOST,
     NAVIGATOR_PROJECTS_DRIVE_MOUNT, NAVIGATOR_REPOSITORY_URL, PORTAL_MOUNT_SEGMENT,
     RESERVED_PROJECT_CODES, SLUG_MAX_LEN,
 };

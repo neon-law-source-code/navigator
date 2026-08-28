@@ -544,6 +544,21 @@ allow if {
 	is_admin(input.session)
 }
 
+# Create or adopt a Project's Drive ingest folder and source repository:
+# POST /app/api/project-surfaces/{id}. Admin-only, and it carries its own
+# noun rather than sitting under `projects` on purpose — the projects GET
+# rule above admits any authenticated caller up to five segments, so nesting
+# this there would make it policy-reachable by a client. Four segments and
+# POST.
+allow if {
+	input.path[0] == "app"
+	input.path[1] == "api"
+	input.path[2] == "project-surfaces"
+	count(input.path) == 4
+	input.method == "POST"
+	is_admin(input.session)
+}
+
 # Authorize a client document-deletion request: POST
 # /app/api/expunge-requests/{id}/authorize runs the governed expunge, so it is
 # admin-only — the one write on this surface that the lawyer tier alone cannot
@@ -924,8 +939,8 @@ allow if {
 }
 
 # Matter open: POST /app/api/projects opens a new matter — the conflict check,
-# the opening attorney's required conflict attestation, the DRI
-# designations, and repo provisioning. At this firm `lawyer` is an attorney,
+# the opening attorney's required conflict attestation, and the DRI
+# designations. At this firm `lawyer` is an attorney,
 # so this lawyer/admin gate is the "an attorney is opening (and attesting)"
 # check; a client or anonymous caller never reaches the handler. Scoped to
 # POST on the collection path (`/app/api/projects`, length 2), distinct from the

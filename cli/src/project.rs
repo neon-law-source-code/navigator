@@ -26,8 +26,9 @@ pub struct CreatedProject {
 /// use (navigator#355). The CLI is one adapter: it resolves the human-facing
 /// `--entity-name` and `--client-email` to ids and the
 /// firm principal to the attesting attorney, then hands the command the
-/// conflict block, the attestation audit row, both DRI designations, and repo
-/// provisioning in one transaction.
+/// conflict block, the attestation audit row, and both DRI designations.
+/// The Drive ingest folder and source repository are then created or adopted
+/// best-effort; a Drive or forge fault leaves the matter open.
 ///
 /// `attest` is the operator's explicit `--attest` affirmation that the
 /// attorney has checked for and cleared conflicts; the command refuses the
@@ -35,9 +36,9 @@ pub struct CreatedProject {
 /// there is no status argument — lifecycle transitions are their own commands
 /// (navigator#770).
 ///
-/// `code` is required and passed straight through: it names both the matter's
-/// bare repo and its folder in the firm's shared drive, and the command no
-/// longer derives one (#938).
+/// `code` is required and passed straight through: it names the matter's
+/// Drive ingest folder, its documents-bucket prefix, and its source
+/// repository, and the command no longer derives one (#938).
 #[allow(clippy::too_many_arguments)] // the human-facing open flags
 pub async fn create(
     surreal: &store::surreal::SurrealDb,
@@ -99,8 +100,6 @@ pub async fn create(
             description: None,
             attestation: attest,
             acting_person_id: attester,
-            // The CLI is a one-shot local tool with no Restate ingress to fire
-            // the provisioning workflow, so it provisions synchronously.
         },
     )
     .await
@@ -115,6 +114,8 @@ pub async fn create(
         ),
         other => anyhow::Error::new(other),
     })?;
+
+    store::project_surfaces::reconcile_after_open(surreal, created.id).await;
 
     Ok(CreatedProject {
         id: created.id,

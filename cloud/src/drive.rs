@@ -1,8 +1,9 @@
-//! Google Workspace Drive folders for a Project's internal working surface.
+//! Google Workspace Drive folders for a Project's ingest dropbox.
 //!
-//! This module deliberately does not store documents: client-facing artifacts
-//! remain [`crate::StorageService`] assets. A [`DriveService`] only manages the
-//! per-Project working folder and its Workspace permissions. The service is
+//! This module deliberately does not store documents: working files and
+//! client-facing artifacts remain [`crate::StorageService`] assets. A
+//! [`DriveService`] only manages the per-Project ingest folder and its
+//! Workspace permissions so people can drop files in. The service is
 //! constructed for one Workspace at a time, so callers must select the
 //! Project's owning entity before they call it.
 
@@ -220,6 +221,13 @@ impl GoogleDrive {
             google_cloud_token::TokenSourceProvider::token_source(&provider),
             DRIVE_BASE_URL,
         ))
+    }
+
+    /// Construct from `NAVIGATOR_DRIVE_NEON_LAW_*` when a deployment has
+    /// configured the Workspace. Missing configuration is an error the
+    /// caller treats as "skip Drive this pass".
+    pub async fn from_env() -> Result<Self, DriveError> {
+        Self::new(DriveWorkspaceConfig::from_env(DriveWorkspace::NeonLaw)?).await
     }
 
     fn from_parts(

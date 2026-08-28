@@ -490,6 +490,38 @@ pub fn document_with_base(base: &str) -> Value {
             }
           }
         },
+        "/app/api/project-surfaces/{id}": {
+          "post": {
+            "summary": "Create or adopt a Project's Drive ingest folder and source repository (admin)",
+            "description":
+              "Creates or adopts the three handles a Project opens with: the documents-bucket \
+               prefix `projects/<code>` (a key convention; nothing is written), the Drive ingest \
+               folder named for the code, and one private source repository named for the code. \
+               Each step is idempotent — an existing folder or repository is adopted, a recorded \
+               `repository_url` is left alone, and missing Drive or forge configuration skips \
+               that surface. Matter-open already runs this pass best-effort; this door is the \
+               admin retry for a failed or legacy Project. Project participation is never copied \
+               onto the forge. Authorization: admin-tier only (`owner`/`admin`).",
+            "parameters": [
+              { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+            ],
+            "responses": {
+              "200": { "description": "The recorded handles", "content": { "application/json": { "schema": { "type": "object" } } } },
+              "401": { "description": "No authenticated session", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } },
+              "403": { "description": "Authenticated caller is not admin-tier", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } },
+              "404": { "description": "No matter with that id", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } },
+              "500": { "description": "Drive, forge, or the store failed", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } }
+            }
+          }
+        },
         "/app/api/projects": {
           "get": {
             "summary": "List the caller's matters",
@@ -509,8 +541,10 @@ pub fn document_with_base(base: &str) -> Value {
             "x-mcp-tool": "aida_create_project",
             "description":
               "Opens a new matter: it runs the conflict check, requires the opening attorney's \
-               conflict attestation, designates both DRIs, and provisions the matter's repository, \
-               all as one all-or-nothing operation. The client of record must be a pre-existing \
+               conflict attestation, and designates both DRIs. The matter's Drive ingest folder \
+               and source repository are then created or adopted best-effort — a Drive or forge \
+               fault leaves the matter open, and `POST /app/api/project-surfaces/{id}` retries. \
+               The client of record must be a pre-existing \
                `client`-role person (never a firm attorney), and the entity must \
                already exist. `attestation` must be `true` — a matter open with no attestation is \
                refused (`attestation_required`). A **blocking** conflict (adverse to a current \
@@ -541,9 +575,6 @@ pub fn document_with_base(base: &str) -> Value {
               } } },
               "409": { "description": "A blocking conflict (adverse to a current client) or a duplicate project code", "content": { "application/json": {
                 "schema": { "$ref": "#/components/schemas/ApiError" }
-              } } },
-              "502": { "description": "The matter's repository could not be provisioned (the open was rolled back)", "content": { "application/json": {
-                "schema": { "$ref": "#/components/schemas/ApiError" }
               } } }
             }
           }
@@ -569,7 +600,8 @@ pub fn document_with_base(base: &str) -> Value {
             "description":
               "Updates the name, entity, and scope narrative of an existing matter. This is the \
                descriptive update only: it runs no conflict check and provisions no repo (those \
-               belong to the matter-open path), and it does not change the matter's \
+               belong to matter-open and `POST /app/api/project-surfaces/{id}`), and it does not \
+               change the matter's \
                lifecycle `status`/`closed_at` — moving through open/closed/archived is a transition \
                with firm retention semantics, handled by dedicated lifecycle commands, not this \
                edit. **Every field is optional and this is always a patch**: send only the \
@@ -2840,6 +2872,10 @@ mod tests {
         assert!(ops.contains(&("PATCH".to_string(), "/app/api/entities/{id}".to_string())));
         assert!(ops.contains(&("DELETE".to_string(), "/app/api/entities/{id}".to_string())));
         assert!(ops.contains(&("PATCH".to_string(), "/app/api/projects/{id}".to_string())));
+        assert!(ops.contains(&(
+            "POST".to_string(),
+            "/app/api/project-surfaces/{id}".to_string()
+        )));
         assert!(ops.contains(&(
             "POST".to_string(),
             "/app/api/projects/{id}/participants".to_string()

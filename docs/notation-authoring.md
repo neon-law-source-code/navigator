@@ -372,11 +372,11 @@ silently dropped. Hierarchical (kids / dotted `/T`) field names remain out of sc
   other events ack with 200. The engagement terms are attorney-reviewed at `lawyer_review` *before* the document is
   sent, so signature receipt is a ministerial transition with no second human gate. Covered by a `.feature` (happy +
   forgery) and an end-to-end integration test through the real provider against a mocked endpoint.
-- **Google Drive — retained.** Each Project keeps a private Google Drive folder for firm working files, including large
-  documents the firm intends to ingest. Navigator stores that folder as a firm-only Project resource; legal files and
-  client material stay out of the Project repository, which holds only templates and client-portal source. The old
-  direct Drive synchronization workflow and Drive API/CLI surfaces remain removed: retaining the folder does not restore
-  a second document store.
+- **Google Drive — ingest only.** Each Project keeps a private Google Drive folder as a Workspace dropbox so people can
+  drop files in. Navigator stores that folder as `projects.drive_folder_id` and copies dropped files into the documents
+  bucket; Drive is never the serve origin and never a CI publish target. Legal files and client material stay out of the
+  Project repository, which holds only templates and client-portal source. The Drive folder is created or adopted when
+  the Project opens (`store::project_surfaces`); retaining the folder does not make Drive a second document store.
 
 ## Roadmap
 

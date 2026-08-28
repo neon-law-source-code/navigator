@@ -209,12 +209,12 @@ pub async fn call(
             description: None,
             attestation: args.attestation.unwrap_or(false),
             acting_person_id: lawyer_dri,
-            // Synchronous for now; the AIDA door adopts deferred provisioning in
-            // a follow-up (the API door migrates first).
         },
     )
     .await
     .map_err(open_matter_tool_error)?;
+
+    store::project_surfaces::reconcile_after_open(surreal, created.id).await;
 
     let summary = format!(
         "Created project id={} ({}, status={}, entity_id={}).",

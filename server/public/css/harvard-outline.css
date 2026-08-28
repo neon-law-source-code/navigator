@@ -1,0 +1,132 @@
+/* Harvard-outline narration stage.
+ *
+ * Depth-1 units (Roman I / motion 1) share one teal fill when current;
+ * lettered subsections share a related fill. Tokens only — no literal hex. */
+
+.harvard-stage {
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 1.5rem 1.25rem 4rem;
+}
+
+.harvard-stage__chrome {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 0.75rem 0 1rem;
+  background: var(--nav-color-bg);
+  border-bottom: 1px solid var(--nav-color-border);
+  margin-bottom: 1.5rem;
+}
+
+.harvard-stage__title {
+  font-size: 1.25rem;
+  font-weight: 650;
+  margin: 0 0 0.25rem;
+}
+
+.harvard-stage__counter {
+  margin: 0;
+  color: var(--nav-color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.harvard-stage__hint {
+  margin: 0.35rem 0 0;
+  color: var(--nav-color-text-muted);
+  font-size: 0.9rem;
+}
+
+.harvard-doc {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.harvard-unit {
+  position: relative;
+  padding: 0.75rem 1rem 0.75rem 3rem;
+  border-radius: var(--nav-radius);
+  border: 1px solid transparent;
+  scroll-margin-top: 7rem;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.harvard-unit:focus {
+  outline: 2px solid var(--nav-color-primary);
+  outline-offset: 2px;
+}
+
+.harvard-unit.is-current {
+  border-color: var(--nav-color-primary);
+  background: var(--nav-color-surface-subtle);
+}
+
+.harvard-unit--depth-2.is-current,
+.harvard-unit--depth-3.is-current,
+.harvard-unit--depth-4.is-current {
+  background: color-mix(in srgb, var(--nav-color-primary) 12%, var(--nav-color-bg));
+}
+
+.harvard-unit__marker {
+  position: absolute;
+  left: 0.75rem;
+  top: 0.85rem;
+  min-width: 1.5rem;
+  color: var(--nav-color-primary);
+  font-weight: 650;
+}
+
+.harvard-unit h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.harvard-unit p {
+  margin: 0 0 0.5rem;
+}
+
+.harvard-unit p:last-child {
+  margin-bottom: 0;
+}
+
+.harvard-unit--heading {
+  padding-top: 1rem;
+}
+
+.harvard-standalone {
+  margin: 0;
+  background: var(--nav-color-bg);
+  color: var(--nav-color-text);
+  font-family: var(--nav-font-family);
+}
+
+.harvard-standalone.nav-theme {
+  min-height: 100vh;
+}
+
+.harvard-doc-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+  max-width: 46rem;
+  margin: 0 auto 1rem;
+  padding: 0 1.25rem;
+}
+
+.harvard-doc-switcher .nav-link.is-current {
+  font-weight: 650;
+  color: var(--nav-color-primary);
+}
+
+.harvard-stage-intro {
+  max-width: 46rem;
+  margin: 1rem auto 0.75rem;
+  padding: 0 1.25rem;
+}
+
+body.harvard-stage-recording .lawyer-nav,
+body.harvard-stage-recording .harvard-stage__hint,
+body.harvard-stage-recording .harvard-doc-switcher,
+body.harvard-stage-recording .harvard-stage-intro {
+  display: none;
+}

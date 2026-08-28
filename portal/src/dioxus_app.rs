@@ -845,6 +845,63 @@ pub fn lawyer_dashboard_router(
         .route_layer(from_fn_with_state(auth, crate::auth::require_auth))
 }
 
+/// The Harvard-outline narration stage. A lawyer-only recording surface for
+/// bundled templates; drafts on disk go through `navigator template narrate`.
+pub const LAWYER_OUTLINE_PATH: &str = "/lawyer/outline";
+
+/// The gated Dioxus outline stage. Bundled template bodies are compiled in, so
+/// the page does not read the store — it is a teaching/recording surface, not a
+/// matter document.
+pub fn harvard_outline_router(
+    sessions: crate::session::SessionStore,
+    policy: crate::policy::PolicyClient,
+    auth: crate::auth::AuthConfig,
+) -> Router {
+    let injected = webapp::harvard_outline::InjectedOutlineStage(bundled_outline_library());
+    let cfg = ServeConfig::new().context_providers(std::sync::Arc::new(vec![Box::new(move || {
+        Box::new(injected.clone()) as Box<dyn std::any::Any>
+    })
+        as Box<dyn Fn() -> Box<dyn std::any::Any> + Send + Sync>]));
+
+    Router::<FullstackState>::new()
+        .route(
+            LAWYER_OUTLINE_PATH,
+            get(render_handler)
+                .layer(from_fn(inject_viewer_role))
+                .layer(from_fn(inject_app_brand_mark))
+                .layer(from_fn(dioxus_document_head)),
+        )
+        .with_state(FullstackState::new(
+            cfg,
+            webapp::harvard_outline::OutlineStage,
+        ))
+        .route_layer(from_fn_with_state(
+            (sessions, policy),
+            crate::policy::require_policy,
+        ))
+        .route_layer(from_fn_with_state(auth, crate::auth::require_auth))
+}
+
+fn bundled_outline_library() -> Vec<webapp::harvard_outline::OutlineStageContent> {
+    const RETAINER: &str = include_str!("../../templates/neon_law/shared/retainer.md");
+    const ENGAGEMENT: &str = include_str!("../../templates/neon_law/shared/engagement_letter.md");
+    [
+        ("retainer", RETAINER),
+        ("engagement", ENGAGEMENT),
+        ("motion", views::harvard_outline::SAMPLE_MOTION),
+    ]
+    .into_iter()
+    .map(|(slug, src)| {
+        let doc = views::harvard_outline::parse(src);
+        webapp::harvard_outline::OutlineStageContent {
+            slug: slug.to_string(),
+            title: doc.title.clone(),
+            stage_html: views::harvard_outline::stage_html(&doc),
+        }
+    })
+    .collect()
+}
+
 /// The blank government-forms index (#956 Phase 4). The download route under it
 /// (`/app/forms/{file}`) stays Axum-side; axum routes it by its deeper path.
 pub const APP_FORMS_PATH: &str = "/app/forms";

@@ -19,6 +19,7 @@ mod list;
 mod login;
 mod lsp_publish;
 mod mcp_bridge;
+mod narrate;
 mod notices;
 mod palette;
 mod project;
@@ -484,6 +485,19 @@ enum TemplateCmd {
     Format {
         /// File to format in place.
         file: PathBuf,
+    },
+    /// Write a Harvard-outline narration stage from Markdown.
+    ///
+    /// Depth-1 headings numbered `I.` (contracts) or `1.` (motion practice),
+    /// plus `> **A.**` block-quote subsections, become highlightable units.
+    /// Open the HTML in a browser and step with Arrow keys, J/K, or Space
+    /// while recording. `H` hides the hint for a clean frame.
+    Narrate {
+        /// Markdown file to parse (a notation template, or a plain draft).
+        file: PathBuf,
+        /// Where to write the self-contained HTML stage.
+        #[arg(long)]
+        out: PathBuf,
     },
     /// Render a single notation template to a PDF, framed by an output
     /// format (a plain document, a firm `letter` on Neon Law letterhead
@@ -1931,6 +1945,7 @@ fn main() -> ExitCode {
         },
         Command::Template { action } => match action {
             TemplateCmd::Format { file } => format::run(&file),
+            TemplateCmd::Narrate { file, out } => narrate::run(&file, &out),
             TemplateCmd::Render {
                 file,
                 out,

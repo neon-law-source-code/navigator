@@ -626,6 +626,17 @@ Review](#lawyer-review). GitHub is isolated behind the `workflows::github::Issue
 not exist. See [`notation-authoring.md`](notation-authoring.md#changing-the-workflow-composition),
 [`workflows::github`](../workflows/src/github.rs), and [`workflows::step::STEP_PREFIXES`](../workflows/src/step.rs).
 
+## Harvard Outline
+
+The numbering used on motions and contracts so a provision is addressable by path (`I`, `I.A`, `1.B`). Depth-1 headings
+are Roman numerals (`I.`, `II.`) on contracts and engagement letters, or Arabic numerals (`1.`, `2.`) in motion
+practice. Lettered subsections (`A.`, `B.`) are Markdown block quotes. `views::harvard_outline` parses that shape into
+narration units; `navigator template narrate` writes a stage a lawyer can step through while recording, and
+`/lawyer/outline` shows the bundled retainer, engagement letter, and a sample motion on the same stage (`?doc=`).
+
+- Parser: [`views::harvard_outline`](../views/src/harvard_outline.rs)
+- How to author: [`notation-authoring.md`](notation-authoring.md#harvard-outline)
+
 ## Ingestion
 
 One inbound artifact landing on a [Project](#project) — an email attachment, a scanned letter, an upload from a client,

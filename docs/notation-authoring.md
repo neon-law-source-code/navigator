@@ -329,6 +329,16 @@ quotes, inline code, links) before rendering. The command validates the file aga
 validate`, refuses to render a template with any violation, and fills placeholders through the same notation evaluator
 used by preview and final PDF generation.
 
+### Harvard outline
+
+Motions and contracts are walked paragraph by paragraph on a stage so a lawyer can highlight each unit while recording.
+Depth-1 headings take Roman numerals (`## I.`) on contracts and engagement letters, or Arabic numerals (`## 1.`) in
+motion practice; lettered subsections are block quotes (`> **A. Label.** …`). `navigator template narrate <file.md>
+--out <stage.html>` writes a self-contained HTML file; open it in a browser, step with Arrow keys, J/K, or Space, and
+press H to hide the hint. The same stage is at `/lawyer/outline`, which switches among the bundled retainer, engagement
+letter, and a sample motion (`?doc=retainer`, `engagement`, `motion`). This command does not lint the outline and does
+not change PDF numbering.
+
 **Output formats — the letterhead seam.** How the document is dressed is an `OutputFormat` (`pdf::format`): `plain`
 (page geometry + firm typeface), `letter` (the firm letterhead — mark, letterspaced wordmark, a rule across the page,
 and a contact line carrying the firm mailbox and website rather than a street address, with every page numbered), or

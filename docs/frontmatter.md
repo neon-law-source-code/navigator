@@ -132,8 +132,9 @@ Each key, in plain English:
 
 - **`kind`** — what this notation is: `onboarding` (the engagement that opens a matter), `offboarding` (the closing
   letter), `letter` (a letter the firm sends on the client's behalf), `filing` (a document filed with a government
-  body), `will`, `trust`, `directive`, `agreement`, or `memo`. It is **required** on every notation template — the declared
-  kind is the sole classifier, so a template without it lints as prose — and an unrecognized value is a blocking error.
+  body), `will`, `trust`, `directive`, `agreement`, or `memo`. It is **required** on every notation template — the
+  declared kind is the sole classifier, so a template without it lints as prose — and an unrecognized value is a
+  blocking error.
 - **`title`** — the human name of the document, e.g. `Retainer Agreement`. It cannot be blank.
 - **`code`** — the document's permanent file number, in `snake_case` (e.g. `onboarding__letter`). It must be unique
   across the whole project, and you do not change it once clients have signed under it. The reason is the record: the

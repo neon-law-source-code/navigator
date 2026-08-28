@@ -382,6 +382,79 @@ fn validate_rejects_yaml_parse_errors() {
         .stderr(str::contains("YAML parse error"));
 }
 
+#[test]
+fn validate_checks_seed_documents_before_any_deployment_write() {
+    let dir = TempDir::new().unwrap();
+    write(
+        dir.path(),
+        "seeds/Person.yaml",
+        "lookup_fields:\n  - email\nrecords:\n  - email: person@example.com\n    name: Person\n",
+    );
+    write(
+        dir.path(),
+        "seeds/Entity.yaml",
+        "lookup_fields:\n  - name\n  - entity_type_id\nrecords: []\n",
+    );
+    navigator()
+        .arg("validate")
+        .arg(dir.path())
+        .assert()
+        .success()
+        .stdout(str::contains(
+            "Validated 2 seed document(s), found 0 error(s)",
+        ));
+}
+
+#[test]
+fn validate_ignores_unsupported_canonical_seed_catalogs() {
+    let dir = TempDir::new().unwrap();
+    write(
+        dir.path(),
+        "store/seeds/Question.yaml",
+        "lookup_fields: []\nrecords: []\n",
+    );
+    write(
+        dir.path(),
+        "store/seeds/Person.yaml",
+        "lookup_fields:\n  - email\nrecords: []\n",
+    );
+    navigator()
+        .arg("validate")
+        .arg(dir.path())
+        .assert()
+        .success()
+        .stdout(str::contains(
+            "Validated 1 seed document(s), found 0 error(s)",
+        ));
+}
+
+#[test]
+fn validate_refuses_invalid_seed_documents() {
+    let dir = TempDir::new().unwrap();
+    write(
+        dir.path(),
+        "seeds/Person.yaml",
+        "lookup_fields:\n  - email\nrecords:\n  - email: person@example.com\n    display_name: Person\n",
+    );
+    write(
+        dir.path(),
+        "seeds/Notation.yaml",
+        "lookup_fields: []\nrecords: []\n",
+    );
+    navigator()
+        .arg("validate")
+        .arg(dir.path())
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(str::contains("Y001"))
+        .stdout(str::contains("unknown field `display_name`"))
+        .stdout(str::contains("unsupported seed model `Notation`"))
+        .stdout(str::contains(
+            "Validated 2 seed document(s), found 2 error(s)",
+        ));
+}
+
 /// The consumed-mutable-tag guard (navigator#540) fires on every consume
 /// site: a YAML `image:` value, a Containerfile `FROM`, and a workflow
 /// installer step's `version: latest`. Each is a way production could change

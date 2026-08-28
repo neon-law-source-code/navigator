@@ -7,13 +7,11 @@ records:
       name: Professional LLC
       jurisdiction:
         name: Nevada
-        jurisdiction_type: state
   - name: shook.family
     entity_type:
       name: Family Trust
       jurisdiction:
         name: Nevada
-        jurisdiction_type: state
   - name: Nicholas Shook
     entity_type:
       name: Human

@@ -25,10 +25,13 @@ a plain enum. The authority order is `owner > admin > lawyer > clerk > client`.
 ### `owner`
 
 The human accountable for and in control of the deployed system. Owner is the highest tier and inherits every Admin and
-Lawyer capability. It does **not** bypass project-scoping on the matter surface: `/app/projects` and
-`/app/projects/{code}` require a firm-side `person_project_role` row of every tier, Owner included. Only an Owner may
-create, edit, or demote an Owner identity; Admin cannot govern the tier above it. Person deletion remains client-only,
-so no privileged identity is deletable through that command.
+Lawyer capability. `/app/projects/{code}` still requires a firm-side `person_project_role` row before it renders the
+full workbench — Owner included: a matter nobody put them on renders only the participation ledger (add, edit, or remove
+who is assigned), never that matter's documents, notations, or other content. `/app/projects` itself is unscoped for
+Owner — it lists every matter in the deployment, the same administrative-listing shape a reconciliation report already
+reads for its own deployment-wide question — which is what gives the detail page's participation-only carve-out
+somewhere to navigate from. Only an Owner may create, edit, or demote an Owner identity; Admin cannot govern the tier
+above it. Person deletion remains client-only, so no privileged identity is deletable through that command.
 
 ### `client`
 
@@ -78,10 +81,13 @@ DRIs; none of them may be a Clerk.
 ### `admin`
 
 A **licensed lawyer** with system-administration authority — manage the person table, rotate keys, archive projects.
-Admin is a superset of Lawyer. Like Owner it is scoped by the participation ledger on the matter surface: a matter
-nobody has put an Admin on is a matter the Admin does not see. Privileged reach is a surface you navigate to rather than
-an invisible widening of a shared route, which is what makes a lens bug distinguishable from an intended bypass — the
-two are otherwise indistinguishable from a response body. Admin cannot create, edit, or demote an Owner.
+Admin is a superset of Lawyer. Like Owner, a matter nobody has put an Admin on still gates its full content: the
+workbench, documents, and notations at `/app/projects/{code}` stay behind the participation row every tier needs. What
+Admin sees instead of a `404` there is a participation-only rendering — enough to see the matter and staff it, nothing
+it discloses beyond that — and `/app/projects` lists every matter so there is something to navigate to. Privileged reach
+is a surface you navigate to rather than an invisible widening of a shared route, which is what makes a lens bug
+distinguishable from an intended bypass — the two are otherwise indistinguishable from a response body. Admin cannot
+create, edit, or demote an Owner.
 
 ### *anonymous*
 
@@ -159,11 +165,10 @@ training deployment turns this on when trainings open; production keeps it off. 
   `admin@neonlaw.com`, `lawyer@neonlaw.com`, `clerk@neonlaw.com`, and `client@neonlaw.com` (per
   [`AGENTS.md`](../AGENTS.md#authentication-and-lawyer-access)). Four of the five are seeded onto one demo matter,
   *Cruller v. Prine* (project code `sample-litigation`), so each can be exercised on the same project.
-  `admin@neonlaw.com`
-deliberately holds **no** participation on it: one row gates both `/app/projects` and `/app/projects/{code}`, so the
-  fixture Admin demonstrates the ENG-81 decision — an unassigned administrator sees the matter in neither place, and
-  reach is granted at `/app/admin` where it is auditable. `lawyer@neonlaw.com` carries exactly one role, lawyer, not
-  admin.
+  `admin@neonlaw.com` deliberately holds **no** participation on it: the fixture Admin demonstrates the ENG-81 decision
+  — `/app/projects` still lists the matter (Admin's list is unscoped) and `/app/projects/{code}` still gates its content
+  behind the row, rendering only the participation ledger until the fixture Admin grants themself one.
+  `lawyer@neonlaw.com` carries exactly one role, lawyer, not admin.
 
 Email identifies exactly one person regardless of casing. `person.email_lower`, a computed field, carries a unique index
 (`person_email_lower`), and every lookup keyed on email goes through `store::persons::find_by_email_ci`, so an identity

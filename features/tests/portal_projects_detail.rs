@@ -209,6 +209,15 @@ async fn body_contains(world: &mut DetailWorld, needle: String) {
     );
 }
 
+#[then(regex = r#"^the response body does not contain "([^"]+)"$"#)]
+async fn body_does_not_contain(world: &mut DetailWorld, needle: String) {
+    assert!(
+        !world.last_body.contains(&needle),
+        "expected body not to contain {needle:?}; body was: {}",
+        truncated(&world.last_body)
+    );
+}
+
 fn truncated(s: &str) -> String {
     const LIMIT: usize = 400;
     if s.len() <= LIMIT {

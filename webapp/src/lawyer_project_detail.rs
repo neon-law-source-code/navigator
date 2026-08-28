@@ -1,16 +1,20 @@
 //! The lawyer matter-detail workbench (`/app/projects/{code}`) as a Dioxus
 //! component (#641 Phase 3, projects cluster) — the firm-side single-matter view.
 //!
-//! The successor to the `admin::projects_detail_lawyer` render. Lawyer reach
-//! it only through the lawyer lens (`store::access::can_see_project_as_lawyer` —
-//! admin keeps the all-project bypass); a lawyer not on the matter, and a
-//! non-lawyer caller, both get `404` (the matter does not exist for them). The
-//! page gathers, server-side of the render: the header (name / code / status /
-//! entity / the two DRIs), the missing-onboarding notice, the estate section, the
-//! forge repository link, the calendar, the participation ledger (with admin
-//! add/edit/remove), the documents table + uploader, and the close-matter
-//! control. The write forms render markup that posts to the existing native
-//! `/app/projects/{code}/...` handlers; only the rendering moves.
+//! The successor to the `admin::projects_detail_lawyer` render. Reached only
+//! through `store::access::matter_viewer` — a participation row is required of
+//! every tier, Owner and Admin included (ENG-81); a lawyer not on the matter,
+//! and a non-lawyer caller, both get `404` (the matter does not exist for
+//! them). An Owner/Admin who holds no row instead renders
+//! [`crate::admin_unassigned_project_detail::AdminUnassignedProjectDetail`], a
+//! narrower sibling page — see [`crate::matter_surface`]. The page gathers,
+//! server-side of the render: the header (name / code / status / entity / the
+//! two DRIs), the missing-onboarding notice, the estate section, the forge
+//! repository link, the calendar, the participation ledger
+//! ([`ParticipationTable`], with admin add/edit/remove), the documents table +
+//! uploader, and the close-matter control. The write forms render markup that
+//! posts to the existing native `/app/projects/{code}/...` handlers; only the
+//! rendering moves.
 //!
 //! The calendar is [`crate::project_calendar`] scoped to this matter — the same
 //! surface the lawyer workbench carries across every matter, and empty for the
@@ -327,21 +331,7 @@ pub async fn get_lawyer_project_detail() -> Result<LawyerDetailView, ServerFnErr
     )
     .await
     .map_err(server_error)?;
-    let people_by_id: std::collections::HashMap<_, _> = people.iter().map(|p| (p.id, p)).collect();
-    let participations = participation_rows
-        .iter()
-        .filter_map(|row| {
-            people_by_id.get(&row.person_id).map(|p| ParticipationRow {
-                id: row.id.to_string(),
-                person_name: p.name.clone(),
-                person_email: p.email.clone(),
-                person_role: p.role.as_str().to_string(),
-                participation: row.participation.clone(),
-                is_lawyer_dri: row.is_lawyer_dri,
-                is_client_dri: row.is_client_dri,
-            })
-        })
-        .collect();
+    let participations = to_participation_rows(&participation_rows, &people);
 
     let code_for_resources = project.code.clone();
     Ok(LawyerDetailView {
@@ -386,12 +376,66 @@ pub async fn get_lawyer_project_detail() -> Result<LawyerDetailView, ServerFnErr
 /// Commit a `500` and wrap a query error — an unavailable workbench is a server
 /// error, not a `200` with an error body.
 #[cfg(feature = "server")]
-fn server_error(e: impl std::fmt::Display) -> ServerFnError {
+pub(crate) fn server_error(e: impl std::fmt::Display) -> ServerFnError {
     dioxus_fullstack_core::FullstackContext::commit_http_status(
         axum::http::StatusCode::INTERNAL_SERVER_ERROR,
         None,
     );
     ServerFnError::new(e.to_string())
+}
+
+/// Project a matter's raw participation rows and their linked people into the
+/// rendered ledger shape. Pure (no I/O) so a caller that already holds both
+/// batches — [`get_lawyer_project_detail`] fetches them for the DRI names
+/// anyway — pays no second query to build the table too.
+#[cfg(feature = "server")]
+fn to_participation_rows(
+    participation_rows: &[store::projects::PersonProjectRole],
+    people: &[store::persons::Person],
+) -> Vec<ParticipationRow> {
+    let people_by_id: std::collections::HashMap<_, _> = people.iter().map(|p| (p.id, p)).collect();
+    participation_rows
+        .iter()
+        .filter_map(|row| {
+            people_by_id.get(&row.person_id).map(|p| ParticipationRow {
+                id: row.id.to_string(),
+                person_name: p.name.clone(),
+                person_email: p.email.clone(),
+                person_role: p.role.as_str().to_string(),
+                participation: row.participation.clone(),
+                is_lawyer_dri: row.is_lawyer_dri,
+                is_client_dri: row.is_client_dri,
+            })
+        })
+        .collect()
+}
+
+/// The participation ledger for one matter, in the same shape the lawyer
+/// workbench renders — the rows plus the linked people in one batched query,
+/// so the system tier is visible without conflating it with participation.
+///
+/// Shared with [`crate::admin_unassigned_project_detail`], which renders the
+/// same ledger for an Owner/Admin who has no row on the matter: the ledger
+/// itself carries no confidential matter content, so both callers may read it
+/// once each resolves that its own caller may.
+#[cfg(feature = "server")]
+pub(crate) async fn participation_rows_for(
+    surreal: &store::surreal::SurrealDb,
+    project_id: uuid::Uuid,
+) -> Result<Vec<ParticipationRow>, ServerFnError> {
+    let participation_rows = store::projects::participations_for_project(surreal, project_id)
+        .await
+        .map_err(server_error)?;
+    let people = store::persons::find_by_ids(
+        surreal,
+        &participation_rows
+            .iter()
+            .map(|r| r.person_id)
+            .collect::<Vec<_>>(),
+    )
+    .await
+    .map_err(server_error)?;
+    Ok(to_participation_rows(&participation_rows, &people))
 }
 
 /// Commit the `404` the handler returned for a matter the caller cannot see
@@ -540,107 +584,13 @@ pub fn LawyerProjectDetail() -> Element {
                 dir: view.calendar_dir.clone(),
             }
 
-            section { class: "lawyer-detail__section project-participations",
-                div { class: "lawyer-detail__section-head",
-                    h2 { "Matter people" }
-                    if is_admin {
-                        a { class: "nav-btn nav-btn--primary", href: "/app/projects/{view.code}/people/new", "Add person" }
-                    }
-                }
-                p { class: "nav-muted", "Participation records who is assigned to this matter and follows each person's system tier. Adding or removing someone here does not change that tier." }
-                if view.participations.is_empty() {
-                    p { class: "projects-empty", "No people are assigned to this matter yet." }
-                } else {
-                    div { class: "nav-table-wrap",
-                        table { class: "nav-table",
-                            thead {
-                                tr {
-                                    th { scope: "col", "Person" }
-                                    th { scope: "col", "System tier" }
-                                    th { scope: "col", "Participation" }
-                                    th { scope: "col", "Accountability" }
-                                    if is_admin {
-                                        th { scope: "col", class: "nav-table__end", "" }
-                                    }
-                                }
-                            }
-                            tbody {
-                                for row in view.participations.iter() {
-                                    tr {
-                                        td {
-                                            strong { "{row.person_name}" }
-                                            " "
-                                            span { class: "nav-muted", "<" "{row.person_email}" ">" }
-                                        }
-                                        td { span { class: "status-chip", "{row.person_role}" } }
-                                        td { code { "{row.participation}" } }
-                                        // The accountability marker rides the
-                                        // participation row, so the ledger is
-                                        // where it belongs on the page — and so
-                                        // is the control that moves it. Each
-                                        // side is a set, so the control adds and
-                                        // removes rather than reassigning.
-                                        td { class: "matter-dri-cell",
-                                            if row.is_lawyer_dri {
-                                                span { class: "status-chip", "Lawyer DRI" }
-                                            } else if row.is_client_dri {
-                                                span { class: "status-chip", "Client DRI" }
-                                            } else {
-                                                span { class: "nav-muted", "—" }
-                                            }
-                                            {
-                                                // A firm-side row answers to the
-                                                // lawyer rule, a client-side row
-                                                // to the client rule; the tier on
-                                                // the row is what decides which.
-                                                let firm_side = !row.participation.eq("client");
-                                                let may = if firm_side { may_govern_lawyer_side } else { may_govern_client_side };
-                                                let holds = row.is_lawyer_dri || row.is_client_dri;
-                                                rsx! {
-                                                    if may {
-                                                        " "
-                                                        form {
-                                                            class: "lawyer-detail__inline-form",
-                                                            method: "post",
-                                                            action: if holds {
-                                                                format!("/app/projects/{}/people/{}/dri/remove", view.code, row.id)
-                                                            } else {
-                                                                format!("/app/projects/{}/people/{}/dri", view.code, row.id)
-                                                            },
-                                                            input { r#type: "hidden", name: "_csrf", value: "{csrf}" }
-                                                            button {
-                                                                class: "nav-btn nav-btn--secondary matter-dri-toggle",
-                                                                r#type: "submit",
-                                                                if holds { "Remove DRI" } else { "Make DRI" }
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        if is_admin {
-                                            td { class: "nav-table__end",
-                                                a {
-                                                    class: "nav-btn nav-btn--secondary",
-                                                    href: "/app/projects/{view.code}/people/{row.id}/edit",
-                                                    "Edit"
-                                                }
-                                                " "
-                                                form {
-                                                    class: "lawyer-detail__inline-form",
-                                                    method: "post",
-                                                    action: "/app/projects/{view.code}/people/{row.id}/delete",
-                                                    input { r#type: "hidden", name: "_csrf", value: "{csrf}" }
-                                                    button { class: "nav-btn nav-btn--danger", r#type: "submit", "Remove" }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+            ParticipationTable {
+                code: view.code.clone(),
+                csrf: csrf.clone(),
+                participations: view.participations.clone(),
+                is_admin,
+                may_govern_lawyer_side,
+                may_govern_client_side,
             }
 
             section { class: "lawyer-detail__section project-documents",
@@ -727,6 +677,132 @@ pub fn LawyerProjectDetail() -> Element {
                             "This matter has no lawyer DRI. "
                             a { class: "nav-link", href: "/app/projects/{view.code}/people/new", "Designate the accountable lawyer" }
                             "."
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// The matter's "Matter people" ledger table: everyone assigned, their system
+/// tier, the derived participation, and the accountability controls — with
+/// admin add/edit/remove.
+///
+/// Shared by [`LawyerProjectDetail`] (a participant's own workbench) and
+/// [`crate::admin_unassigned_project_detail::AdminUnassignedProjectDetail`]
+/// (an Owner/Admin who holds no row on this matter, and so may still manage
+/// who does). `is_admin` is always `true` for the second caller — only
+/// Owner/Admin reach that page — and `may_govern_lawyer_side` /
+/// `may_govern_client_side` are always `true` there too, mirroring
+/// `store::participation::authorize`'s unconditional Owner/Admin pass.
+#[component]
+pub fn ParticipationTable(
+    code: String,
+    csrf: String,
+    participations: Vec<ParticipationRow>,
+    is_admin: bool,
+    may_govern_lawyer_side: bool,
+    may_govern_client_side: bool,
+) -> Element {
+    rsx! {
+        section { class: "lawyer-detail__section project-participations",
+            div { class: "lawyer-detail__section-head",
+                h2 { "Matter people" }
+                if is_admin {
+                    a { class: "nav-btn nav-btn--primary", href: "/app/projects/{code}/people/new", "Add person" }
+                }
+            }
+            p { class: "nav-muted", "Participation records who is assigned to this matter and follows each person's system tier. Adding or removing someone here does not change that tier." }
+            if participations.is_empty() {
+                p { class: "projects-empty", "No people are assigned to this matter yet." }
+            } else {
+                div { class: "nav-table-wrap",
+                    table { class: "nav-table",
+                        thead {
+                            tr {
+                                th { scope: "col", "Person" }
+                                th { scope: "col", "System tier" }
+                                th { scope: "col", "Participation" }
+                                th { scope: "col", "Accountability" }
+                                if is_admin {
+                                    th { scope: "col", class: "nav-table__end", "" }
+                                }
+                            }
+                        }
+                        tbody {
+                            for row in participations.iter() {
+                                tr {
+                                    td {
+                                        strong { "{row.person_name}" }
+                                        " "
+                                        span { class: "nav-muted", "<" "{row.person_email}" ">" }
+                                    }
+                                    td { span { class: "status-chip", "{row.person_role}" } }
+                                    td { code { "{row.participation}" } }
+                                    // The accountability marker rides the
+                                    // participation row, so the ledger is
+                                    // where it belongs on the page — and so
+                                    // is the control that moves it. Each
+                                    // side is a set, so the control adds and
+                                    // removes rather than reassigning.
+                                    td { class: "matter-dri-cell",
+                                        if row.is_lawyer_dri {
+                                            span { class: "status-chip", "Lawyer DRI" }
+                                        } else if row.is_client_dri {
+                                            span { class: "status-chip", "Client DRI" }
+                                        } else {
+                                            span { class: "nav-muted", "—" }
+                                        }
+                                        {
+                                            // A firm-side row answers to the
+                                            // lawyer rule, a client-side row
+                                            // to the client rule; the tier on
+                                            // the row is what decides which.
+                                            let firm_side = !row.participation.eq("client");
+                                            let may = if firm_side { may_govern_lawyer_side } else { may_govern_client_side };
+                                            let holds = row.is_lawyer_dri || row.is_client_dri;
+                                            rsx! {
+                                                if may {
+                                                    " "
+                                                    form {
+                                                        class: "lawyer-detail__inline-form",
+                                                        method: "post",
+                                                        action: if holds {
+                                                            format!("/app/projects/{code}/people/{}/dri/remove", row.id)
+                                                        } else {
+                                                            format!("/app/projects/{code}/people/{}/dri", row.id)
+                                                        },
+                                                        input { r#type: "hidden", name: "_csrf", value: "{csrf}" }
+                                                        button {
+                                                            class: "nav-btn nav-btn--secondary matter-dri-toggle",
+                                                            r#type: "submit",
+                                                            if holds { "Remove DRI" } else { "Make DRI" }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if is_admin {
+                                        td { class: "nav-table__end",
+                                            a {
+                                                class: "nav-btn nav-btn--secondary",
+                                                href: "/app/projects/{code}/people/{row.id}/edit",
+                                                "Edit"
+                                            }
+                                            " "
+                                            form {
+                                                class: "lawyer-detail__inline-form",
+                                                method: "post",
+                                                action: "/app/projects/{code}/people/{row.id}/delete",
+                                                input { r#type: "hidden", name: "_csrf", value: "{csrf}" }
+                                                button { class: "nav-btn nav-btn--danger", r#type: "submit", "Remove" }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }

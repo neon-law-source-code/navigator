@@ -6,18 +6,41 @@ Feature: /app/projects/:code — single matter detail, scoped to the caller
   project as clients get `200`; callers who cannot get `404`, not
   `403`. Lower tiers don't get to learn that the matter exists.
 
-  Admins keep their bypass on `/lawyer`, not on the client lens the
-  `/app/projects` surface renders. A firm admin who is also a client
-  sees their own client-side matters here.
+  Owner and Admin still carry no privileged bypass on the matter
+  surface itself (ENG-81): `store::access::matter_viewer` answers
+  `None` for them exactly as it would for anyone else with no
+  participation row. What they get instead of the `404` every other
+  tier receives in that shape is a narrower, participation-only
+  rendering — enough to see the matter and manage who is assigned to
+  it, never its documents or other content. A firm admin who is also a
+  client still sees their own client-side matters here as a client.
 
   Background:
     Given the Neon Law Navigator app is running
 
-  Scenario: An admin cannot read an unrelated project through the client lens
+  Scenario: An admin who is not on the matter reaches a participation-only view
     Given a seeded person "nick@neonlaw.com" with role "admin"
     And a project "Atlas LLC" with no participants
     When "nick@neonlaw.com" opens the detail page for "Atlas LLC"
-    Then the response status is 404
+    Then the response status is 200
+    And the response body contains "Atlas LLC"
+    And the response body contains "Add person"
+
+  Scenario: An owner who is not on the matter reaches a participation-only view
+    Given a seeded person "owner@neonlaw.com" with role "owner"
+    And a project "Zenith Capital" with no participants
+    When "owner@neonlaw.com" opens the detail page for "Zenith Capital"
+    Then the response status is 200
+    And the response body contains "Zenith Capital"
+    And the response body contains "Add person"
+
+  Scenario: The participation-only view discloses no matter content
+    Given a seeded person "nick@neonlaw.com" with role "admin"
+    And a project "Vega Holdings" with no participants
+    When "nick@neonlaw.com" opens the detail page for "Vega Holdings"
+    Then the response status is 200
+    And the response body does not contain "Upload documents"
+    And the response body does not contain "Edit project"
 
   Scenario: A lawyer who is a client participant reads the detail page
     Given a seeded person "lawyer@neonlaw.com" with role "lawyer"

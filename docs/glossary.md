@@ -791,11 +791,15 @@ and with clients this is the **closing letter**: the firm-signed letter that con
 seeded as `neon_law/shared/offboarding_letter.md` (`code: offboarding__letter`).
 
 `store::projects::matter_lifecycle_sets` keys the matching lifecycle flag off this classifier — never off the template's
-`code` — so a bespoke closing letter still clears the badge as long as it declares `kind: offboarding`. The Restate step
-names inside that template's `workflow:` block (`generate_pdf__closing_letter`, `firm_signature__closing_letter`) and
-the `closing_letter_storage_key` object-storage prefix are **deliberately frozen** at their old spelling — a Restate
-step name is part of a durable journal, and the storage prefix already has objects filed under it, so renaming either
-would orphan an in-flight invocation or an existing document rather than merely rename a word.
+`code` — so a bespoke closing letter still clears the badge as long as it declares `kind: offboarding`. The
+lawyer-facing lifecycle indicator on the Projects list reads **presence, not execution**: `matter_lifecycle_sets`
+matches a notation or asset row by its declared kind and reads no signature state, so the green pill is labelled
+`onboarding on file` — a location rather than a status. A status word there (`live`, `in good standing`) would assert
+that the matter is properly papered on evidence that only shows a row exists. The Restate step names inside that
+template's `workflow:` block (`generate_pdf__closing_letter`, `firm_signature__closing_letter`) and the
+`closing_letter_storage_key` object-storage prefix are **deliberately frozen** at their old spelling — a Restate step
+name is part of a durable journal, and the storage prefix already has objects filed under it, so renaming either would
+orphan an in-flight invocation or an existing document rather than merely rename a word.
 
 ## On-Chain Record
 
@@ -808,8 +812,8 @@ through the chain backend. See [`solana-attestation.md`](solana-attestation.md) 
 The codebase term for the notation that **opens a matter** — `rules::kind::Kind::Onboarding`, classified by
 [`Kind::opens_a_matter`](../rules/src/kind.rs). It covers both a single-instrument engagement letter and a
 transcript-/intake-driven engagement that opens a bundle of instruments at once (the estate plan, the fractional-GC
-engagement) — the same act of opening the matter either way. `Kind::Retainer` used to name the single-instrument case
-separately; it has been merged into `Kind::Onboarding`, because no call site ever distinguished the two.
+engagement) — the same act of opening the matter either way. One kind covers both, because no call site distinguishes
+them: every caller asks only whether the matter has its engagement yet.
 
 In conversation and with clients this is the **retainer** or the **engagement letter** — see [Engagement /
 Retainer](#engagement--retainer) for that client-facing shape. The codebase and the workflow runtime speak Onboarding;

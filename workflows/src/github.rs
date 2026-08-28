@@ -52,8 +52,8 @@ pub const GITHUB_TOKEN_ENV: &str = "GITHUB_TOKEN";
 /// Naming GitHub Enterprise is a **feature, not stale narration.** Navigator
 /// runs on github.com; this override is how somebody running their own
 /// instance points it at their own tenant. See the same note on
-/// `webapp::source_repository::GITHUB_API_URL_ENV`.
-pub const GITHUB_API_URL_ENV: &str = "NAVIGATOR_GITHUB_API_URL";
+/// `webapp::source_repository::GITHUB_API_BASE_ENV`.
+pub const GITHUB_API_BASE_ENV: &str = "NAVIGATOR_GITHUB_API_BASE";
 
 /// Env var naming the default `owner/repo` when a payload omits one.
 pub const GITHUB_REPO_ENV: &str = "NAVIGATOR_GITHUB_REPO";
@@ -319,6 +319,15 @@ pub fn default_repo_from_env() -> Option<String> {
         .filter(|value| !value.trim().is_empty())
 }
 
+fn api_base_from_lookup<F>(get: F) -> String
+where
+    F: Fn(&str) -> Option<String>,
+{
+    get(GITHUB_API_BASE_ENV)
+        .filter(|url| !url.trim().is_empty())
+        .unwrap_or_else(|| DEFAULT_API_BASE.to_string())
+}
+
 /// Select the opener from the environment: a [`RestIssueOpener`] when a
 /// token is set, otherwise the [`NullIssueOpener`].
 ///
@@ -333,10 +342,7 @@ pub fn issue_opener_from_env() -> Arc<dyn IssueOpener> {
         .filter(|token| !token.trim().is_empty());
     match token {
         Some(token) => {
-            let base = std::env::var(GITHUB_API_URL_ENV)
-                .ok()
-                .filter(|url| !url.trim().is_empty())
-                .unwrap_or_else(|| DEFAULT_API_BASE.to_string());
+            let base = api_base_from_lookup(|key| std::env::var(key).ok());
             Arc::new(RestIssueOpener::new(token, base))
         }
         None => Arc::new(NullIssueOpener),
@@ -346,8 +352,8 @@ pub fn issue_opener_from_env() -> Arc<dyn IssueOpener> {
 #[cfg(test)]
 mod tests {
     use super::{
-        GithubIssuePayload, IssueError, IssueOpener, IssueRequest, NullIssueOpener, OpenedIssue,
-        RestIssueOpener,
+        api_base_from_lookup, GithubIssuePayload, IssueError, IssueOpener, IssueRequest,
+        NullIssueOpener, OpenedIssue, RestIssueOpener, DEFAULT_API_BASE, GITHUB_API_BASE_ENV,
     };
     use wiremock::matchers::{body_json_string, header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -404,6 +410,15 @@ mod tests {
                 "`{bad}` should not resolve to a repository",
             );
         }
+    }
+
+    #[test]
+    fn the_issue_opener_uses_the_shared_github_api_base() {
+        let base = api_base_from_lookup(|key| {
+            (key == GITHUB_API_BASE_ENV).then(|| "https://github.example/api/v3".to_string())
+        });
+        assert_eq!(base, "https://github.example/api/v3");
+        assert_eq!(api_base_from_lookup(|_| None), DEFAULT_API_BASE);
     }
 
     /// The no-token default must reach nothing and claim nothing. If this

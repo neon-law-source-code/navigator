@@ -32,7 +32,7 @@ pub const REPOSITORY_HREF: &str = "https://github.com/neon-law-source-code/navig
 
 #[cfg(feature = "server")]
 pub use live::{
-    refresh, spawn_refresh, star_count, DEFAULT_API_BASE, GITHUB_API_URL_ENV, REFRESH_INTERVAL,
+    refresh, spawn_refresh, star_count, DEFAULT_API_BASE, GITHUB_API_BASE_ENV, REFRESH_INTERVAL,
 };
 
 /// The cache, the fetch, and the background refresh that connects them. Server
@@ -55,7 +55,7 @@ mod live {
     /// their own instance points it at their own tenant, which the licence
     /// invites and the deployment workshop is written for. Deleting it would
     /// remove the self-hosting path, not a false claim about us.
-    pub const GITHUB_API_URL_ENV: &str = "NAVIGATOR_GITHUB_API_URL";
+    pub const GITHUB_API_BASE_ENV: &str = "NAVIGATOR_GITHUB_API_BASE";
 
     /// Public GitHub's REST API base.
     pub const DEFAULT_API_BASE: &str = "https://api.github.com";
@@ -104,7 +104,7 @@ mod live {
         *STARS.write().unwrap_or_else(PoisonError::into_inner) = Some(count);
     }
 
-    /// The REST base to call, given whatever [`GITHUB_API_URL_ENV`] holds.
+    /// The REST base to call, given whatever [`GITHUB_API_BASE_ENV`] holds.
     ///
     /// Takes the configured value rather than reading the environment itself so
     /// the precedence is testable without mutating process state, which under a
@@ -120,7 +120,7 @@ mod live {
 
     /// The repository endpoint to fetch, resolved against the configured base.
     fn repository_url() -> String {
-        let base = api_base_from(std::env::var(GITHUB_API_URL_ENV).ok());
+        let base = api_base_from(std::env::var(GITHUB_API_BASE_ENV).ok());
         format!("{base}/repos/{REPOSITORY_SLUG}")
     }
 

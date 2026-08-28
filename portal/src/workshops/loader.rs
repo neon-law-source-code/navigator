@@ -37,7 +37,7 @@ const NAVIGATOR_MANIFEST: &[ManifestEntry] = &[
         description: "A single hands-on workshop for Lawyer users of the application. \
                       Open the litigation matter, bind the shared retainer template, and inspect \
                       the client portal through the configured AIDA connector.",
-        audience: "For lawyer users",
+        audience: "For Lawyers and Clerks",
         benefit: "You walk out with a litigation matter walkthrough and a \
                   three-minute demo you can run at your firm. You also see the five stored \
                   authorization roles in context: Owner governs the system, Admin manages the \
@@ -53,7 +53,7 @@ const NAVIGATOR_MANIFEST: &[ManifestEntry] = &[
                       grounded steps walk `navigator ops gcp setup` — APIs, VPC, four buckets, \
                       and a GKE Autopilot cluster — with a dry-run that shows every API call \
                       before a packet leaves your laptop.",
-        audience: "For admin users",
+        audience: "For Admins and Owners",
         benefit: "You walk out running the same stack a working law firm runs, on your own \
                   Google Cloud project, for your own community. One command does most of the \
                   work, and a dry-run shows you every step before a packet leaves your laptop. \
@@ -938,7 +938,7 @@ mod tests {
         assert_eq!(materials[0].title, "Using Neon Law Navigator");
         // The audience tag and you-voiced benefit ride the manifest, not
         // the markdown — the overview card is fed from these.
-        assert_eq!(materials[0].audience, "For lawyer users");
+        assert_eq!(materials[0].audience, "For Lawyers and Clerks");
         assert!(
             materials[0].benefit.starts_with("You walk out"),
             "benefit is second-person and leads with the takeaway, got: {}",
@@ -954,7 +954,7 @@ mod tests {
         for (slug, audience, required_benefit_terms) in [
             (
                 "use-the-navigator",
-                "For lawyer users",
+                "For Lawyers and Clerks",
                 [
                     "authorization roles",
                     "Owner",
@@ -967,7 +967,7 @@ mod tests {
             ),
             (
                 "deploy-the-navigator",
-                "For admin users",
+                "For Admins and Owners",
                 ["admin tier", "billing", "secrets", "OIDC"].as_slice(),
             ),
             (

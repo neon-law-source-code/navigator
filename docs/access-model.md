@@ -10,30 +10,30 @@ The two columns:
 
 | Column | Table | Decides |
 | --- | --- | --- |
-| `role` | `persons` | The tier: `owner`, `admin`, `lawyer`, `clerk`, or `client`. Anonymous = no row. |
-| `participation` | `person_project_roles` | Which side of a Project a person is on. Derived from `role`. |
+| `role` | `person` | The tier: `owner`, `admin`, `lawyer`, `clerk`, or `client`. Anonymous = no row. |
+| `participation` | `person_project_role` | Which side of a Project a person is on. Derived from `role`. |
 
 The two columns are independent. A Clerk who is *also* a client of the firm for their own LLC carries the Clerk role on
-the persons row (their firm work) and a `person_project_roles` row on their personal matter with the client
-participation. The system answers "what can this person do" by reading both.
+the person row (their firm work) and a `person_project_role` row on their personal matter with the client participation.
+The system answers "what can this person do" by reading both.
 
 ## The five stored tiers
 
 `person.role` is a `string` field with `ASSERT $value IN ['owner','admin','lawyer','clerk','client']`. Rust models it as
-an `ActiveEnum`. The authority order is `owner > admin > lawyer > clerk > client`.
+a plain enum. The authority order is `owner > admin > lawyer > clerk > client`.
 
 ### `owner`
 
 The human accountable for and in control of the deployed system. Owner is the highest tier and inherits every Admin and
 Lawyer capability. It does **not** bypass project-scoping on the matter surface: `/app/projects` and
-`/app/projects/{code}` require a firm-side `person_project_roles` row of every tier, Owner included. Only an Owner may
+`/app/projects/{code}` require a firm-side `person_project_role` row of every tier, Owner included. Only an Owner may
 create, edit, or demote an Owner identity; Admin cannot govern the tier above it. Person deletion remains client-only,
 so no privileged identity is deletable through that command.
 
 ### `client`
 
 A person the firm represents on at least one matter. The client lens sees only projects where the person is recorded as
-the client-side participant — a `person_project_roles` row whose participation is client-side, which includes the row
+the client-side participant — a `person_project_role` row whose participation is client-side, which includes the row
 carrying the `is_client_dri` accountability marker. Client matter access is portal-native: documents,
 Engagements/Notations, invoices, and reviewed artifacts are rendered through `web` after the Project visibility check.
 Clients do not receive Git clone URLs, Git PATs, branch names, commit SHAs, or direct GCS bucket credentials.
@@ -63,13 +63,10 @@ still names a licensed lawyer DRI), off the moment it is removed.
 /app/team/fonts/gorp-serif.zip`, where the team home's own prefix rules admit every firm tier — a brand asset is not
 lawyer work, and the path now says so.
 
-Mailroom upload and contract-review preparation remain separate, future narrow route-level grants. Each must preserve
-both the Clerk actor and supervising lawyer in provenance; neither turns the Clerk into a legal adviser.
-
 ### `lawyer`
 
 A **licensed lawyer** authorized to perform legal work through Navigator, regardless of employer or email domain. The
-Lawyer lens sees only projects where the lawyer has a firm-side `person_project_roles` participation row.
+Lawyer lens sees only projects where the lawyer has a firm-side `person_project_role` participation row.
 
 Lawyers may also be clients on their own matters, but that is a separate client-lens fact: the matter surface at
 `/app/projects` renders each caller through their own lens, while `/lawyer` shows the matters they work on for the firm.
@@ -80,7 +77,7 @@ DRIs; none of them may be a Clerk.
 
 ### `admin`
 
-A **licensed lawyer** with system-administration authority — manage the persons table, rotate keys, archive projects.
+A **licensed lawyer** with system-administration authority — manage the person table, rotate keys, archive projects.
 Admin is a superset of Lawyer. Like Owner it is scoped by the participation ledger on the matter surface: a matter
 nobody has put an Admin on is a matter the Admin does not see. Privileged reach is a surface you navigate to rather than
 an invisible widening of a shared route, which is what makes a lens bug distinguishable from an intended bypass — the
@@ -88,7 +85,7 @@ two are otherwise indistinguishable from a response body. Admin cannot create, e
 
 ### *anonymous*
 
-No row in `persons` at all. Sees the host's own public pages and the login door, and nothing else. Nearly every page on
+No row in `person` at all. Sees the host's own public pages and the login door, and nothing else. Nearly every page on
 the firm's host is anonymous, including the [presentations](glossary.md#presentation) catalog at `/presentations`, every
 talk beneath it, and the `/workshops` catalog and workshop material.
 
@@ -107,7 +104,9 @@ The anonymous allowlist is explicit, small, and pinned by `portal/tests/router_c
   identity; client documents, exports, and logs have no corresponding anonymous route;
 - the `/health` and `/readyz` probes and the `/version` deploy-identity probe;
 - webhook ingress whose sender authenticates by signature or path secret — SendGrid inbound mail and delivery events,
-  the e-signature completion callback, and the configured GitHub receiver;
+  and the e-signature completion callback. The GitHub webhook receiver is not on this list: it lives on
+  `workflows-service`, a separate host, and `web` answers `404` for it
+  (`portal/tests/router_contract.rs::web_does_not_serve_the_github_webhook_receiver`);
 - the DocuSign consent callback, the provider's return leg of an admin-initiated consent grant;
 - the two contributor reference surfaces, `/design` and the workspace documentation at `/docs` and `/docs/{slug}`. Both
   render their own `200` for a reader with no account rather than answering the login door, and both carry
@@ -126,9 +125,9 @@ standards-based A2A client means handing over the OAuth details out of band.
 application's legal-work and project bypasses must be a lawyer; a non-lawyer operations worker belongs in `clerk` and
 needs only the separate supervised capabilities explicitly granted to that role.
 
-## How a `persons` row is created
+## How a `person` row is created
 
-Signing in with the IdP does not, by itself, create a `persons` row. The OAuth callback resolves the IdP-authenticated
+Signing in with the IdP does not, by itself, create a `person` row. The OAuth callback resolves the IdP-authenticated
 subject against the table (`portal::oauth::resolve_person_from_claims`):
 
 - an existing row (matched on `oidc_subject` or, case-insensitively, `email`) signs in with its stored role;
@@ -140,10 +139,10 @@ subject against the table (`portal::oauth::resolve_person_from_claims`):
 
 `NAVIGATOR_SELF_SIGNUP_ENABLED` is a deployment-wide capability that is **off unless explicitly set** (affirmative
 values: `1`, `true`, `yes`, `on`). Off is byte-for-byte the `403` behavior above. When on, the first login for an
-unknown verified email JIT-creates a `client` with **no `person_project_roles` rows** — an empty portfolio until an
-admin assigns participation. Embedded Rego and the role/participation model are untouched; self-signup only changes
-whether an unknown email becomes a scopeless `client` or a `403`. The bootstrap-Owner carve-out is independent of this
-toggle. A training deployment turns this on when trainings open; production keeps it off. See #738.
+unknown verified email JIT-creates a `client` with **no `person_project_role` rows** — an empty portfolio until an admin
+assigns participation. Embedded Rego and the role/participation model are untouched; self-signup only changes whether an
+unknown email becomes a scopeless `client` or a `403`. The bootstrap-Owner carve-out is independent of this toggle. A
+training deployment turns this on when trainings open; production keeps it off. See #738.
 
 ## Concrete people in the seed data
 
@@ -166,15 +165,15 @@ deliberately holds **no** participation on it: one row gates both `/app/projects
   reach is granted at `/app/admin` where it is auditable. `lawyer@neonlaw.com` carries exactly one role, lawyer, not
   admin.
 
-Email identifies exactly one person regardless of casing. `persons.email` carries a unique index on `lower(email)`
-(`persons_email_lower_key`), and every lookup keyed on email goes through `store::persons::find_by_email_ci`, so an
-identity provider presenting `Attorney@Example.com` resolves to the row stored as `attorney@example.com` and authorizes
-against the same role. Two rows differing only by case cannot exist.
+Email identifies exactly one person regardless of casing. `person.email_lower`, a computed field, carries a unique index
+(`person_email_lower`), and every lookup keyed on email goes through `store::persons::find_by_email_ci`, so an identity
+provider presenting `Attorney@Example.com` resolves to the row stored as `attorney@example.com` and authorizes against
+the same role. Two rows differing only by case cannot exist.
 
 ## Participation
 
-`person_project_roles.participation` records which side of a matter a person is on. It is **derived, never entered**:
-`store::projects::participation_for_role` maps `persons.role` onto it, so the column holds exactly one of `owner`,
+`person_project_role.participation` records which side of a matter a person is on. It is **derived, never entered**:
+`store::projects::participation_for_role` maps `person.role` onto it, so the column holds exactly one of `owner`,
 `admin`, `lawyer`, `clerk`, or `client`, and a `client` is the only value on the client side.
 
 All three write doors go through `store::participation::add_participant` / `update_participant`, and none of them takes
@@ -186,7 +185,7 @@ This is why there is no separate vocabulary. A matter-side word that could disag
 access decision wrong — a `client` recorded as `attorney` is a firm-side row, which is the matter's own client reading
 `/lawyer`. The kinds that used to need their own word are not participants at all:
 
-- **`counterparty`** — an adverse party has no portal access, so it gets no `person_project_roles` row. `counterparty`
+- **`counterparty`** — an adverse party has no portal access, so it gets no `person_project_role` row. `counterparty`
   survives in `PARTICIPATION_CLIENT_SIDE` only so a legacy row keeps reading client-side; promoting an adverse party to
   the firm lens is the one direction that must never happen by omission.
 - **`co_counsel`, `legal_aid_provider`** — outside counsel working the matter is a `lawyer` person. Give them the tier;
@@ -206,8 +205,8 @@ on that predicate, never on the visibility lens.
 
 Every row carries `inserted_at` + `updated_at` (the workspace timestamp convention). Those answer "is this still true
 right now and how stale is the fact." They do **not** answer "was Libra ever an attorney on this matter." If you need
-participation history, append a row to `relationship_logs` — that's what the table exists for
-(`m20260526_create_provenance_tables.rs`).
+participation history, append a row to `relationship_log` — that's what the table exists for
+(`store/src/schema/navigator.surql:486`).
 
 Each person has at most one current participation row for a Project. Changing the participation updates that row; it
 does not create a second, competing assignment.
@@ -225,7 +224,7 @@ an unrelated caller would, from either door.
 ## The directory lens
 
 Owner and Admin need to answer "which matters exist, and who is responsible for each" without being on any of them.
-Membership is not the way to answer it. A `person_project_roles` row grants access to what a matter *contains*, so
+Membership is not the way to answer it. A `person_project_role` row grants access to what a matter *contains*, so
 inviting an Owner onto every matter to give them oversight would hand them every matter's documents, notations, and
 communications as a side effect. Owner and Admin therefore receive **no participation row for oversight**, and the
 matter-surface rules in the Owner and Admin sections above stand exactly as written.
@@ -266,11 +265,11 @@ to. Project membership is the opposite direction: an internal record of *who the
 concepts share the same English word in casual speech ("Libra is disclosed on the Acme matter") but they're different
 columns in different tables answering different questions.
 
-If someone should see a Project's portal files, add or remove the `person_project_roles` row; do not grant them GCS IAM
+If someone should see a Project's portal files, add or remove the `person_project_role` row; do not grant them GCS IAM
 or expose the git repository.
 
 If you find yourself reaching for `disclosures` to decide whether someone can see a project, stop — you want
-`person_project_roles`. See [glossary entry "Disclosure"](glossary.md#disclosure).
+`person_project_role`. See [glossary entry "Disclosure"](glossary.md#disclosure).
 
 ## What an External System Identity is not
 
@@ -284,7 +283,7 @@ That is not a scoping convenience, it is a safety property, and three separate t
 | -- | -- |
 | **Who** — the account id to name in the call | `person_external_identity` |
 | **Credential** — what authenticates the call | firm-level service configuration, managed as secrets |
-| **Authority** — whether the call should be made at all | `persons.role` and the policy above |
+| **Authority** — whether the call should be made at all | `person.role` and the policy above |
 
 Two rules elsewhere in the docs hold *because* the table is inert. A Clerk "never receives lawyer-work, advice, Git,
 MCP, or `/lawyer` authority by inheritance", so a Clerk recorded as GitHub user `12345` gains nothing by being recorded
@@ -349,14 +348,14 @@ Embedded Rego's allow rules in priority order:
    by test.
 4. **The one matter surface** — `/app/projects` and `/app/projects/{code}/...` admit authenticated callers in embedded
    Rego, because the firm/client split is not a distinction the policy can make: it cannot read the participation
-   ledger. The handler makes it, from `persons.role` plus the caller's `person_project_roles` row
+   ledger. The handler makes it, from `person.role` plus the caller's `person_project_role` row
    (`store::access::can_see_project`). A firm tier needs a firm-side row and a client needs a client-side one, so a
    `counterparty` sees the matter through the client lens and never the workbench, and a lawyer-only assignment still
    does not put the matter in a client's list. Owner and Admin are scoped the same way — there is no bypass here. Naming
    a lawyer DRI cannot grant access without a membership row, because `is_lawyer_dri` rides that membership row. The
    lawyer-only writes under this path (matter open/edit/delete, the participation forms, document upload, transcript
    intake) additionally re-check the lawyer tier in their own handlers, preserving the firm-side write boundary.
-5. **API project reads** — `/app/api/projects/:id/...` allow if there is a `person_project_roles` row with
+5. **API project reads** — `/app/api/projects/:id/...` allow if there is a `person_project_role` row with
    `person_id = session.person_id` and `project_id = input.project_id`. Embedded Rego does not check participation;
    action-level distinctions live in the route layer.
 6. **API reads are named per resource** — there is no blanket grant on the `/app/api` prefix. The CRM directory
@@ -394,21 +393,21 @@ The store layer ships lens-specific helpers for the visibility query:
 ```rust
 // store/src/access.rs
 pub async fn visible_projects_as_client(
-    db: &Db,
+    surreal: &SurrealDb,
     person_id: Option<Uuid>,
-) -> Result<Vec<Project>, DbErr>;
+) -> Result<Vec<Project>, String>;
 
 pub async fn visible_projects_as_lawyer(
-    db: &Db,
+    surreal: &SurrealDb,
     person_id: Option<Uuid>,
     role: Role,
-) -> Result<Vec<Project>, DbErr>;
+) -> Result<Vec<Project>, String>;
 
 pub async fn visible_projects_as_clerk(
-    db: &Db,
+    surreal: &SurrealDb,
     person_id: Option<Uuid>,
     role: Role,
-) -> Result<Vec<Project>, DbErr>;
+) -> Result<Vec<Project>, String>;
 ```
 
 Every project-list and project-detail handler funnels through the helper for its route lens. Both DRIs are
@@ -469,8 +468,8 @@ row against the authenticated session. Adopting it (#1093) therefore forced a ch
 
 **Decision: authorization stays above the database.** Every Navigator process signs in to Surreal as root, and every
 table in `store/src/schema/navigator.surql` is defined with an explicit `PERMISSIONS NONE` clause. The tier and scope
-answers stay exactly where the rest of this document puts them: `persons.role`, `person_project_roles.participation`,
-and embedded Rego remain the sole decision point. The two rejected alternatives were mirroring the model into per-table
+answers stay exactly where the rest of this document puts them: `person.role`, `person_project_role.participation`, and
+embedded Rego remain the sole decision point. The two rejected alternatives were mirroring the model into per-table
 `PERMISSIONS FOR select` expressions over a non-root session, and splitting by surface (root for trusted server
 processes, a scoped session for anything closer to a user).
 
@@ -504,14 +503,13 @@ client and entity, and the parties it is looking for are by definition on *other
 firm-wide conflict checking under Model Rule 1.10 means. A traversal scoped to the requesting person's participations
 would be structurally incapable of finding the undisclosed adversity it exists to find.
 
-This was previously implicit in "the handler that calls it is lawyer-only". It is now explicit here, and
 `store::conflicts` carries a test that fails if the answer changes: a proposed client with no participation in the
 existing matter still raises the finding. The containment is unchanged and lives above the store — the check runs only
 on firm-side create paths, and a finding's text reaches a client through nothing.
 
 ## Related
 
-- [`docs/oidc.md`](oidc.md) — Authorization Code + PKCE login flow and how the persons row is upserted.
+- [`docs/oidc.md`](oidc.md) — Authorization Code + PKCE login flow and how the person row is upserted.
 - `portal/policy/navigator.rego` — the embedded Rego. `portal::policy` — the `require_policy` middleware that
   evaluates it in process.
 - [`docs/glossary.md`](glossary.md) — Person, Project, Disclosure, Participation.

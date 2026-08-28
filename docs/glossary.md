@@ -280,9 +280,9 @@ If the handler does **not** wrap a side effect in `ctx.run`, the side effect run
 
 ## Data Export
 
-A snapshot of one or more SurrealDB tables, written to Parquet (and eventually Iceberg metadata) on a dedicated GCS
-bucket, consumed by BigQuery via BigLake external tables. The [`archives`](../archives/) crate owns the writer, exposed
-as the `Archives` Restate workflow hosted by the `workflows-service` worker (all workflows live there). The
+A snapshot of one or more SurrealDB tables, written to Parquet (and Iceberg metadata) on a dedicated GCS bucket,
+consumed by BigQuery via BigLake external tables. The [`archives`](../archives/) crate owns the writer, exposed as the
+`Archives` Restate workflow hosted by the `workflows-service` worker (all workflows live there). The
 [`cron-archives-trigger.yaml`](../examples/deploy/k8s/exports/cron-archives-trigger.yaml) CronJob fires nightly at 02:00
 Pacific to start one invocation; the workflow runs the snapshot (and, when configured, a GCP cost-by-service summary
 written as the `gcp_cost` table) as durable steps, then posts a diagnostic summary (snapshot outcomes, cost summary,
@@ -545,7 +545,7 @@ vocabulary. Later Notations — filings, letters — may be any kind.
 `aida_create_notation` opens the notation through the policy-free `start_notation` primitive, so an attorney driving the
 agent may bind a filing or letter as a matter's first Notation; gating the agent door would forbid the agent's ordinary
 use. What constrains AIDA is authorization, not kind: the actor must be lawyer and in scope for the Project
-(`store::projects::can_access_as_lawyer`), and the respondent is always the Project's client-side DRI.
+(`store::projects::can_access_as_lawyer_in_surreal`), and the respondent is always the Project's client-side DRI.
 
 A **Retainer** is the same idea, narrowed: an Engagement whose bound Template is the firm's engagement agreement,
 `onboarding__retainer`. The `portal::retainer_walk` walker, the [`docs/retainer_intake.md`](retainer_intake.md) state
@@ -1358,13 +1358,14 @@ spec. **The Template declares; Restate runs.**
 
 ## Workflow Runtime
 
-The trait abstraction over the durable executor — [`workflows::WorkflowRuntime`](../workflows/src/runtime.rs). Two
+The trait abstraction over the durable executor — [`workflows::StateMachineRuntime`](../workflows/src/runtime.rs). Two
 implementations ship today:
 
 - **`InMemoryRuntime`** — non-durable, in-process. Used by tests and by `cargo run -p neon` when no
   Restate broker is configured. Reset on each process start.
-- **`RestateRuntime`** — HTTP adapter that talks to a [Restate](#restate) broker. Production target. The web binary
-  picks one at boot and hands it to `AdminState::workflow_runtime`.
+- **`RestateRuntime`** — HTTP adapter that talks to a [Restate](#restate) broker
+  ([`workflows/src/runtime_restate.rs`](../workflows/src/runtime_restate.rs)). Production target. The web binary picks
+  one at boot and hands it to `AdminState::workflow_runtime`.
 
 A Workflow Runtime is started once per Notation (`start(notation_id, spec)`) and advanced by external
 `signal(notation_id, spec, condition)` calls. Every transition is recorded as a [Notation Event](#notation-event) so a
@@ -1389,7 +1390,7 @@ identity, roster, and a durable record of who completed what; the material suppl
 repo-authored. Keeping the two apart is what lets a workshop carry a real roster without the content losing the
 build-time guards that hold it honest against the repository.
 
-Workshops belong to the staging deployment, which carries sample matters by design; the two environments holding real
-people's matters never seed them.
+Workshops belong to the staging deployment, which carries sample matters by design; the one environment holding real
+people's matters never seeds them.
 
 - See also: [Sample Matter Fixture](#sample-matter-fixture) and [`environments.md`](environments.md)

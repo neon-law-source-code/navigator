@@ -1,8 +1,10 @@
 # Gemini Enterprise — Neon Law Navigator MCP server
 
 How to expose Neon Law Navigator's `/mcp` endpoint to **Gemini Enterprise** so the Workspace's LLMs can call its tool
-catalog (today: `aida_create_person`, `aida_show_person`, `aida_list_jurisdictions`) during chat sessions, with no new
-identity provider to operate. All tool names are namespaced under the `aida_` prefix.
+catalog — 11 of the firm's 14 tools are advertised: `aida_create_person`, `aida_show_person`, `aida_list_jurisdictions`,
+`aida_list_entities`, `aida_validate_notation`, `aida_create_project`, `aida_list_projects`, `aida_link_person_project`,
+`aida_list_tools`, `aida_bulk_import`, and `aida_spawn_legal_council` — during chat sessions, with no new identity
+provider to operate. All tool names are namespaced under the `aida_` prefix.
 
 The endpoint serves a **narrower catalog than the firm has**. Three tools — `aida_create_notation`,
 `aida_answer_notation`, and `aida_send_welcome_email` — are supervised acts: they email a client, or create or answer a
@@ -38,7 +40,7 @@ portal::google_oauth::require_google_oauth
    │   validates aud / azp ∈ GOOGLE_OAUTH_CLIENT_IDS allowlist
    │   validates email_verified == true
    │   validates email ends with @GOOGLE_OAUTH_REQUIRED_HD
-   │   populates AuthClaims { sub: email, roles: ["lawyer"] }
+   │   populates AuthClaims { sub: email, role: <resolved from persons, default Client> }
    ▼
 require_policy (embedded Rego)  →  /mcp handler  →  tools/call
 ```
@@ -259,9 +261,9 @@ The data store's actions are automatically available to the default Gemini Enter
 a custom Agent Designer / Agent Engine / Dialogflow / A2A agent**. Confirmed live on 2026-05-23: a prompt to the default
 chat ran `aida_create_person` end-to-end and the row landed in the store.
 
-1. In the data store's **Tools / Actions** tab, click **Reload custom actions**. `aida_create_person`,
-   `aida_show_person`, and `aida_list_jurisdictions` should appear. Toggle them on (Google ships custom actions disabled
-   by default).
+1. In the data store's **Tools / Actions** tab, click **Reload custom actions**. The 11 advertised tools — including
+   `aida_create_person`, `aida_show_person`, and `aida_list_jurisdictions` — should appear. Toggle them on (Google ships
+   custom actions disabled by default).
 2. Open the Gemini Enterprise web app (`vertexaisearch.cloud.google.com/.../r`). Pick the default chat or any of the
    pre-built agents.
 3. Prompt:

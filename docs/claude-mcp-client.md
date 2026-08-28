@@ -112,10 +112,8 @@ Naming one anyway is refused by the bridge without any dispatch, with a result s
 
 Do those three in `/app`, where a human approves in a UI and the approval is recorded against the matter.
 
-Confirmation is the only reason anything is withheld. It was not always: `aida_list_projects` was also held back,
-because the read reached `store::projects::all` with no principal and returned every matter in the deployment — a
-cross-matter disclosure, firm-internal rather than client-facing but a disclosure all the same. Since ENG-216 the read
-answers through the caller's own lens, so there is nothing left to withhold.
+Confirmation is the only reason anything is withheld. `aida_list_projects` is offered because the read answers through
+the caller's own lens, so there is nothing left to withhold.
 
 Which lens depends on the tier, and the two answer different questions, so they return different shapes. The `lens`
 field on the response says which one came back.
@@ -153,8 +151,15 @@ Everything the onboarding chain needs is in the offered set, so this is one conv
    attorney's conflict `attestation`, and refuses without it.
 3. **Who is on it.** `aida_link_person_project` per participant.
 
-The matter's repository is not created by any of this. `projects.repository_url` is a coordinate the row records, and
-nothing on any surface provisions the repository behind it — see the note in ENG-219 and the follow-up issue.
+`aida_create_project` provisions the matter's repository itself, best-effort:
+`store::project_surfaces::reconcile_after_open` runs right after the matter opens and, when forge credentials are
+configured, creates or adopts the GitHub repository named for the code and records its URL on `projects.repository_url`.
+Missing forge configuration skips that step rather than failing the open, so an unconfigured deployment still records
+the coordinate with no repository behind it yet. An operator reconciles later:
+
+```bash
+navigator projects surfaces reconcile --project <code>
+```
 
 ## Limits, stated rather than discovered
 

@@ -44,13 +44,20 @@ pub const RELEASES_HREF: &str = "https://github.com/neon-law-source-code/navigat
 /// The tap-qualified formula. `neon-law-source-code/navigator` is a **separate
 /// repository** (`homebrew-navigator`), which is why the formula is named with
 /// its tap rather than bare: `brew` resolves the tap on first install.
-pub const HOMEBREW_FORMULA: &str = "neon-law-source-code/navigator/navigator";
+macro_rules! homebrew_formula {
+    () => {
+        "neon-law-source-code/navigator/navigator"
+    };
+}
 
-/// The one command that installs the CLI on macOS.
-pub const HOMEBREW_INSTALL_COMMAND: &str = "brew install neon-law-source-code/navigator/navigator";
+pub const HOMEBREW_FORMULA: &str = homebrew_formula!();
 
-/// The command that moves an installed CLI to the current release.
-pub const HOMEBREW_UPGRADE_COMMAND: &str = "brew upgrade neon-law-source-code/navigator/navigator";
+/// The one command that installs the CLI, and upgrades it in place.
+///
+/// Homebrew treats a tap-qualified `brew install` of an already-installed
+/// formula as an upgrade, so `/navigator` publishes this line once rather than
+/// a second `brew upgrade` copy of the same formula.
+pub const HOMEBREW_INSTALL_COMMAND: &str = concat!("brew install ", homebrew_formula!());
 
 /// One platform a release publishes an archive for.
 pub struct PublicPlatform {
@@ -223,12 +230,37 @@ mod tests {
             "the install command installs the tap-qualified formula: {HOMEBREW_INSTALL_COMMAND}"
         );
         assert_eq!(HOMEBREW_FORMULA.split('/').count(), 3, "owner/tap/formula");
-        for command in [HOMEBREW_INSTALL_COMMAND, HOMEBREW_UPGRADE_COMMAND] {
-            assert!(
-                command.starts_with("brew "),
-                "a reader pastes this into a shell: {command}"
-            );
-        }
+        assert!(
+            HOMEBREW_INSTALL_COMMAND.starts_with("brew install "),
+            "a reader pastes this into a shell: {HOMEBREW_INSTALL_COMMAND}"
+        );
+        assert_eq!(
+            HOMEBREW_INSTALL_COMMAND,
+            format!("brew install {HOMEBREW_FORMULA}"),
+            "the published command is derived from the formula, not a second spelling"
+        );
+    }
+
+    /// `docs/gitops.md`'s Homebrew section names the same install command the
+    /// page publishes, so a tap rename cannot leave the doc describing a formula
+    /// nobody can paste.
+    #[test]
+    fn gitops_names_the_published_install_command() {
+        let gitops = include_str!("../../docs/gitops.md");
+        let section = gitops
+            .split("\n### The Homebrew tap\n")
+            .nth(1)
+            .and_then(|rest| rest.split("\n### ").next())
+            .expect("gitops.md has a Homebrew tap section");
+        assert!(
+            section.contains(HOMEBREW_INSTALL_COMMAND),
+            "the tap section must name {HOMEBREW_INSTALL_COMMAND}: {section}"
+        );
+        let install_hits = section.matches(HOMEBREW_INSTALL_COMMAND).count();
+        assert_eq!(
+            install_hits, 1,
+            "one published command, not a second spelling of the same formula: {section}"
+        );
     }
 
     /// With no release stamped, the version is the manifest's — never the

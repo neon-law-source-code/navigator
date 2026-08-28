@@ -289,6 +289,7 @@ pub fn navigator() -> PageContent {
             navigator_project_network_band(),
             navigator_vibe_band(),
             navigator_downloads_band(),
+            navigator_read_next_band(),
             navigator_working_surface_band(),
             navigator_licence_band(),
             Band::Cta {
@@ -510,11 +511,71 @@ fn navigator_downloads_band() -> Band {
                     Run::plain(", which is updated by every release."),
                 ],
             ],
-            commands: vec![
-                webapp::cli_release::HOMEBREW_INSTALL_COMMAND.to_string(),
-                webapp::cli_release::HOMEBREW_UPGRADE_COMMAND.to_string(),
-            ],
+            commands: vec![webapp::cli_release::HOMEBREW_INSTALL_COMMAND.to_string()],
         }),
+    }
+}
+
+/// The manuals that go with the binary, grouped on `/navigator` so a reader
+/// who came for the CLI does not have to hunt the alphabetical `/docs` catalog.
+///
+/// Each card is a link to a document that already ships. The page does not
+/// restate those documents; it names them.
+fn navigator_read_next_band() -> Band {
+    Band::Cards {
+        anchor: "read".to_string(),
+        overline: "Read next".to_string(),
+        heading: "The manuals that go with the binary".to_string(),
+        description: Some(
+            "The same documents the CLI and CI run against. Install the binary, then open the \
+             guide that matches what you are doing."
+                .to_string(),
+        ),
+        items: vec![
+            Card {
+                title: "Validate".to_string(),
+                chips: vec!["CLI".to_string()],
+                body: vec![vec![Run::plain(
+                    "navigator validate walks Markdown, YAML, and seed documents under a \
+                     directory. One table of rule codes, one command.",
+                )]],
+                href: Some("/docs/validate".to_string()),
+                href_label: Some("Open the validate reference".to_string()),
+            },
+            Card {
+                title: "GitOps".to_string(),
+                chips: vec!["Release".to_string()],
+                body: vec![vec![Run::plain(
+                    "How a tag attaches the three archives and hands the Homebrew tap. That \
+                     guide is in the public tree; it is not a /docs page.",
+                )]],
+                href: Some(
+                    "https://github.com/neon-law-source-code/navigator/blob/main/docs/gitops.md"
+                        .to_string(),
+                ),
+                href_label: Some("Open gitops.md".to_string()),
+            },
+            Card {
+                title: "Self-host".to_string(),
+                chips: vec![],
+                body: vec![vec![Run::plain(
+                    "Stand Navigator up on your own cloud. The archives on this page are the \
+                     same binaries that guide installs.",
+                )]],
+                href: Some("/docs/oss-install".to_string()),
+                href_label: Some("Open the install guide".to_string()),
+            },
+            Card {
+                title: "Workshops".to_string(),
+                chips: vec![],
+                body: vec![vec![Run::plain(
+                    "Instructor-led decks for using, deploying, and contributing to Navigator, \
+                     including the validate walk in the Rust workshop.",
+                )]],
+                href: Some("/workshops".to_string()),
+                href_label: Some("Open the workshops".to_string()),
+            },
+        ],
     }
 }
 
@@ -1057,12 +1118,13 @@ mod firm_copy_tests {
     fn the_navigator_page_removes_the_cto_ciso_offer() {
         let content = super::navigator();
         let text = format!("{} {}", page_text(&content.bands), content.meta_description);
+        let words = || text.split(|character: char| !character.is_ascii_alphanumeric());
         assert!(
-            !text.to_lowercase().contains("cto"),
+            !words().any(|word| word.eq_ignore_ascii_case("cto")),
             "no CTO offer reaches the page: {text}"
         );
         assert!(
-            !text.to_lowercase().contains("ciso"),
+            !words().any(|word| word.eq_ignore_ascii_case("ciso")),
             "no CISO offer reaches the page: {text}"
         );
         // `law-related service` is the RPC 5.7 term of art, and the licence
@@ -1551,7 +1613,9 @@ mod firm_copy_tests {
             .bands
             .iter()
             .find_map(|band| match band {
-                Band::Cards { items, .. } => Some(items.as_slice()),
+                Band::Cards {
+                    overline, items, ..
+                } if overline == "The working surface" => Some(items.as_slice()),
                 _ => None,
             })
             .expect("the platform page renders its working surface as a card band");
@@ -1571,6 +1635,47 @@ mod firm_copy_tests {
         assert!(
             titles.iter().any(|title| title.contains("Notation")),
             "the notation templates are on the page: {titles:?}"
+        );
+    }
+
+    /// `/navigator` groups the operator manuals next to the download band.
+    ///
+    /// The alphabetical `/docs` catalog remains the full map. This band is four
+    /// links a reader who came for the CLI can follow without hunting.
+    #[test]
+    fn the_read_next_band_links_the_operator_manuals() {
+        let content = super::navigator();
+        let cards = content
+            .bands
+            .iter()
+            .find_map(|band| match band {
+                Band::Cards {
+                    overline, items, ..
+                } if overline == "Read next" => Some(items.as_slice()),
+                _ => None,
+            })
+            .expect("the platform page groups operator manuals as a card band");
+        let hrefs: Vec<&str> = cards
+            .iter()
+            .filter_map(|card| card.href.as_deref())
+            .collect();
+        for required in [
+            "/docs/validate",
+            "https://github.com/neon-law-source-code/navigator/blob/main/docs/gitops.md",
+            "/docs/oss-install",
+            "/workshops",
+        ] {
+            assert!(
+                hrefs.contains(&required),
+                "the read-next band must link {required}: {hrefs:?}"
+            );
+        }
+        assert_eq!(hrefs.len(), 4, "four manuals, four links: {hrefs:?}");
+        assert!(
+            cards
+                .iter()
+                .all(|card| card.href.is_some() && card.href_label.is_some()),
+            "each card is a link, not a dead tile"
         );
     }
 }

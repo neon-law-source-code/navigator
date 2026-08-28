@@ -1305,19 +1305,33 @@ async fn the_navigator_page_publishes_the_cli_at_the_release_it_runs() {
     );
 
     // The Homebrew route, and the reason it is the recommended one on a Mac.
-    assert!(
-        body.contains("brew install neon-law-source-code/navigator/navigator"),
-        "the tap-qualified install command renders: {body}"
+    let install = webapp::cli_release::HOMEBREW_INSTALL_COMMAND;
+    assert_eq!(
+        body.matches(install).count(),
+        1,
+        "the tap-qualified install command renders once: {body}"
     );
     assert!(
-        body.contains("brew upgrade neon-law-source-code/navigator/navigator"),
-        "the upgrade command renders: {body}"
+        !body.contains("brew upgrade "),
+        "brew upgrades in place, so the page does not publish a second line: {body}"
     );
     assert!(
         body.contains("not yet signed or notarized"),
         "the page says why brew is the macOS route rather than implying the \
          browser download just works: {body}"
     );
+
+    for href in [
+        "/docs/validate",
+        "https://github.com/neon-law-source-code/navigator/blob/main/docs/gitops.md",
+        "/docs/oss-install",
+        "/workshops",
+    ] {
+        assert!(
+            body.contains(&format!(r#"href="{href}""#)),
+            "the read-next band links {href}: {body}"
+        );
+    }
 }
 
 /// The workspace documentation reads for a visitor with no account.

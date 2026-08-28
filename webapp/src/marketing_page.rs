@@ -137,7 +137,8 @@ pub struct Download {
 pub struct PackageInstall {
     pub heading: String,
     pub body: Vec<Paragraph>,
-    /// The commands a reader copies, in the order they would run them.
+    /// The commands a reader copies. Homebrew is one line: `brew install`
+    /// of the tap-qualified formula also upgrades in place.
     pub commands: Vec<String>,
 }
 
@@ -865,10 +866,7 @@ mod tests {
             package: Some(PackageInstall {
                 heading: "Install with Homebrew".to_string(),
                 body: vec![vec![Run::plain("On a Mac this is the route we recommend.")]],
-                commands: vec![
-                    crate::cli_release::HOMEBREW_INSTALL_COMMAND.to_string(),
-                    crate::cli_release::HOMEBREW_UPGRADE_COMMAND.to_string(),
-                ],
+                commands: vec![crate::cli_release::HOMEBREW_INSTALL_COMMAND.to_string()],
             }),
         }
     }
@@ -999,18 +997,22 @@ mod tests {
         );
     }
 
-    /// The Homebrew route renders as commands a reader copies, one per block.
+    /// The Homebrew route renders as one copy-paste command.
     #[test]
-    fn the_homebrew_commands_render_one_per_block() {
+    fn the_homebrew_command_renders_once() {
         let out = downloads_html();
         assert_eq!(
             out.matches(r#"class="fm-package__command""#).count(),
-            2,
-            "install and upgrade select separately: {out}"
+            1,
+            "one install command, because brew upgrades in place: {out}"
         );
         assert!(
-            out.contains("brew install neon-law-source-code/navigator/navigator"),
+            out.contains(crate::cli_release::HOMEBREW_INSTALL_COMMAND),
             "the install command names the tap: {out}"
+        );
+        assert!(
+            !out.contains("brew upgrade "),
+            "a second upgrade line would be a second spelling of the same formula: {out}"
         );
     }
 

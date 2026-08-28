@@ -39,7 +39,7 @@ pub enum EmailConfigError {
 ///   [`DEFAULT_FROM_EMAIL`].
 /// - Any other value (including unset) → [`CapturingEmail`]
 ///   wrapped in [`LoggingEmail`], so dev runs still populate the
-///   audit table (visible via `/lawyer/email-log`).
+///   audit table (visible via `/app/admin/email-log`).
 ///
 /// The crash-loud-on-missing-key behavior here is deliberately
 /// redundant with `portal::config::enforce_deployment_invariants` so that the

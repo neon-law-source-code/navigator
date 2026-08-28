@@ -505,14 +505,14 @@ async fn lawyer_user_can_hit_every_admin_route() {
     // (`oidc_e2e::user_with_db_lawyer_role_can_hit_every_admin_route`)
     // covers, but through a real browser end-to-end. `/lawyer/people` is absent
     // since ENG-304 deleted the browser mirror — the one people surface is
-    // `/admin/people`, which a lawyer is answered 403 at.
+    // `/app/admin/people`, which a lawyer is answered 403 at.
     let routes = [
         "/app/lawyer",
-        "/lawyer/entities",
-        "/lawyer/jurisdictions",
-        "/lawyer/entity-types",
-        "/lawyer/templates",
-        "/lawyer/questions",
+        "/app/admin/entities",
+        "/app/admin/jurisdictions",
+        "/app/admin/entity-types",
+        "/app/admin/templates",
+        "/app/admin/questions",
         "/app/projects",
     ];
 
@@ -552,7 +552,7 @@ async fn lawyer_user_can_hit_every_admin_route() {
 #[tokio::test]
 async fn admin_adds_a_person_through_the_people_form() {
     // Drives the full browser create path end-to-end: the Dioxus "Add person"
-    // form (#641 Phase 3) is a native `POST /admin/people` carrying the session
+    // form (#641 Phase 3) is a native `POST /app/admin/people` carrying the session
     // cookie plus the hidden `_csrf` field, and the handler answers a 303 back to
     // the list where the new row shows. This exercises the whole credential-keyed
     // CSRF path in a real browser — the thing rendering tests can't prove.
@@ -567,7 +567,7 @@ async fn admin_adds_a_person_through_the_people_form() {
     // Unique email per run so re-runs don't trip the uniqueness guard.
     let email = format!("e2e-person-{}@example.com", std::process::id());
 
-    c.goto(&format!("{}/admin/people/new", base_url()))
+    c.goto(&format!("{}/app/admin/people/new", base_url()))
         .await
         .unwrap();
     c.wait()
@@ -613,7 +613,7 @@ async fn admin_adds_a_person_through_the_people_form() {
     let url = c.current_url().await.unwrap();
     assert_eq!(
         url.path(),
-        "/admin/people",
+        "/app/admin/people",
         "a successful create should redirect to the people list, got {url}",
     );
 

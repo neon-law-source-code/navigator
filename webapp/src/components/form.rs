@@ -1009,7 +1009,7 @@ mod tests {
             rsx! {
                 FormCard {
                     title: "Add person".to_string(),
-                    action: "/admin/people".to_string(),
+                    action: "/app/admin/people".to_string(),
                     submit_label: "Create".to_string(),
                     fields: vec![
                         Field::email("Email", "email", "not-an-email")
@@ -1060,7 +1060,7 @@ mod tests {
             rsx! {
                 FormCard {
                     title: "Add person".to_string(),
-                    action: "/admin/people".to_string(),
+                    action: "/app/admin/people".to_string(),
                     submit_label: "Create".to_string(),
                     fields: vec![Field::text("Name", "name", "").error("Name is required.")],
                 }
@@ -1080,7 +1080,7 @@ mod tests {
             rsx! {
                 FormCard {
                     title: "Add person".to_string(),
-                    action: "/admin/people".to_string(),
+                    action: "/app/admin/people".to_string(),
                     submit_label: "Create".to_string(),
                     fields: vec![Field::text("Name", "name", "Ada").help("Legal name.")],
                 }
@@ -1102,7 +1102,7 @@ mod tests {
             rsx! {
                 FormCard {
                     title: "Edit person".to_string(),
-                    action: "/admin/person/1".to_string(),
+                    action: "/app/admin/people/1".to_string(),
                     submit_label: "Save".to_string(),
                     read_only: true,
                     fields: vec![

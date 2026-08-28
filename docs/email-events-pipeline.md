@@ -126,7 +126,7 @@ ORDER BY messages DESC;
 
 ## Non-goals
 
-- **Live dashboards.** The lake is for analytics; the `sent_emails` table (admin `/lawyer/email-log`) stays the
+- **Live dashboards.** The lake is for analytics; the `sent_emails` table (admin `/app/admin/email-log`) stays the
   operational request-side view.
 - **Replacing `sent_emails`.** The store holds the request side; Parquet-on-GCS holds the delivery side; BigQuery joins
   them.

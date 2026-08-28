@@ -14,8 +14,8 @@
 //! 3. Build the real composed router, sharing the test sessions
 //!    store, an in-memory SQLite (with migrations applied), and an
 //!    OAuth config pointed at the IdP mock.
-//! 4. Hit `/auth/login?return_to=/lawyer/entities`, follow the redirect
-//!    back to `/auth/callback`, then hit `/lawyer/entities` with the
+//! 4. Hit `/auth/login?return_to=/app/admin/entities`, follow the redirect
+//!    back to `/auth/callback`, then hit `/app/admin/entities` with the
 //!    resulting session cookie and an `Authorization: Bearer …`
 //!    that satisfies the existing bearer-token middleware.
 //! 5. Assert:
@@ -247,7 +247,7 @@ async fn full_oidc_flow_upserts_person_and_allows_lawyer() {
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
 
     // 1. Drive the OAuth dance.
-    let session_cookie = complete_oauth_flow(&app, &idp, "/lawyer/entities").await;
+    let session_cookie = complete_oauth_flow(&app, &idp, "/app/admin/entities").await;
 
     // 2. The callback should have promoted the pre-seeded row by
     //    stamping the IdP subject. Email + name stay as seeded; the
@@ -263,11 +263,11 @@ async fn full_oidc_flow_upserts_person_and_allows_lawyer() {
     assert_eq!(persons[0].email, "lawyer@neonlaw.com");
     assert_eq!(persons[0].name, "Lawyer");
 
-    // 3. The embedded policy allows Lawyer to view /lawyer/entities.
+    // 3. The embedded policy allows Lawyer to view /app/admin/entities.
     let resp = app
         .oneshot(
             Request::builder()
-                .uri("/lawyer/entities")
+                .uri("/app/admin/entities")
                 .header("cookie", &session_cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -378,13 +378,13 @@ async fn second_login_with_same_subject_does_not_create_duplicate_person() {
 const ADMIN_ROUTES: &[&str] = &[
     "/app/lawyer",
     // `/lawyer/people` is absent since ENG-304 deleted the browser mirror: the
-    // one people surface is the admin console's `/admin/people`, which this
+    // one people surface is the admin console's `/app/admin/people`, which this
     // lawyer-tier walk is answered 403 at by design.
-    "/lawyer/entities",
-    "/lawyer/jurisdictions",
-    "/lawyer/entity-types",
-    "/lawyer/templates",
-    "/lawyer/questions",
+    "/app/admin/entities",
+    "/app/admin/jurisdictions",
+    "/app/admin/entity-types",
+    "/app/admin/templates",
+    "/app/admin/questions",
 ];
 
 /// The matter surface is not an admin route. Every authenticated tier enters

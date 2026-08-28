@@ -6,7 +6,7 @@
 //! shared directory, and `use_server_future` server-side renders the sorted rows
 //! into the HTML — readable before hydration, sort headers as real anchors.
 //!
-//! ENG-304 deleted the `/lawyer/people` mirror, so `/admin/people` is the one
+//! ENG-304 deleted the `/lawyer/people` mirror, so `/app/admin/people` is the one
 //! browser surface this covers, and its gate is `require_admin`.
 
 use std::any::Any;
@@ -77,7 +77,7 @@ async fn render_people_as(
 
     let router: Router = Router::<FullstackState>::new()
         .route(
-            "/admin/people",
+            "/app/admin/people",
             get(render_handler).layer(axum::Extension(role)),
         )
         .with_state(FullstackState::new(cfg, webapp::people::AdminPeople));
@@ -110,8 +110,12 @@ async fn admin_people_component_ssrs_directory_from_the_database() {
     let surreal = store::test_support::mem_surreal().await;
     store::test_support::dri_person(&surreal).await;
 
-    let (status, html) =
-        render_people_as(&surreal, "/admin/people", webapp::people::ViewerRole::Admin).await;
+    let (status, html) = render_people_as(
+        &surreal,
+        "/app/admin/people",
+        webapp::people::ViewerRole::Admin,
+    )
+    .await;
 
     assert_eq!(status, StatusCode::OK);
     assert!(
@@ -125,8 +129,12 @@ async fn admin_people_renders_role_display_labels_not_raw_tokens() {
     let surreal = store::test_support::mem_surreal().await;
     insert_person_with_role(&surreal, "Cleo Clerk", "cleo@test.invalid", Role::Clerk).await;
 
-    let (status, html) =
-        render_people_as(&surreal, "/admin/people", webapp::people::ViewerRole::Admin).await;
+    let (status, html) = render_people_as(
+        &surreal,
+        "/app/admin/people",
+        webapp::people::ViewerRole::Admin,
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
 
     // The role column must show the user-facing label from the contract,
@@ -149,7 +157,7 @@ async fn admin_people_honors_jsonapi_sort_descending_by_name() {
 
     let (status, html) = render_people_as(
         &surreal,
-        "/admin/people?sort=-name",
+        "/app/admin/people?sort=-name",
         webapp::people::ViewerRole::Admin,
     )
     .await;
@@ -163,7 +171,8 @@ async fn admin_people_honors_jsonapi_sort_descending_by_name() {
     );
     // The sort headers are real anchors carrying the toggled ?sort= value.
     assert!(
-        html.contains("/admin/people?sort=name") || html.contains("/admin/people?sort=-name"),
+        html.contains("/app/admin/people?sort=name")
+            || html.contains("/app/admin/people?sort=-name"),
         "sort header must be an anchor with a ?sort= toggle; got: {html}",
     );
 }
@@ -190,7 +199,7 @@ async fn list_admin_people_refuses_a_non_admin_viewer() {
         ("clerk", webapp::people::ViewerRole::Clerk),
         ("lawyer", webapp::people::ViewerRole::Lawyer),
     ] {
-        let (status, html) = render_people_as(&surreal, "/admin/people", role).await;
+        let (status, html) = render_people_as(&surreal, "/app/admin/people", role).await;
 
         assert_eq!(
             status,

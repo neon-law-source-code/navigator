@@ -2,7 +2,7 @@
 //!
 //! Creating an Entity — the blank-name check, the firm-anchor guard, and
 //! the insert itself — lives here so the JSON `POST /app/api/entities`
-//! surface, the `/lawyer/entities` form, and the inline "Add entity" modal
+//! surface, the `/app/admin/entities` form, and the inline "Add entity" modal
 //! on the project form travel one command boundary. The adapters
 //! authorize and render; none of them re-implements the write.
 //!
@@ -196,7 +196,7 @@ pub async fn firm_anchor_exists(
 }
 
 /// Insert one Entity. The single write for every adapter: the JSON
-/// `POST /app/api/entities` command, the standalone `/lawyer/entities` create
+/// `POST /app/api/entities` command, the standalone `/app/admin/entities` create
 /// form, and the inline "Add entity" modal on the project form. Name is
 /// required; the type is validated by [`require_entity_type`] and the
 /// jurisdiction by [`require_jurisdiction`] — the engine does not
@@ -272,7 +272,7 @@ async fn require_entity_type(
 }
 
 /// Update one Entity by id. The single write behind both the JSON
-/// `PATCH /app/api/entities/{id}` command and the `/lawyer/entities/{id}` edit
+/// `PATCH /app/api/entities/{id}` command and the `/app/admin/entities/{id}` edit
 /// form, so neither door can rename the firm anchor or fork it.
 ///
 /// The row is read before the guards run, and between that read and the
@@ -354,7 +354,7 @@ pub async fn update_entity(
 }
 
 /// Delete one Entity by id. The single write behind both the JSON
-/// `DELETE /app/api/entities/{id}` command and the `/lawyer/entities/{id}/delete`
+/// `DELETE /app/api/entities/{id}` command and the `/app/admin/entities/{id}/delete`
 /// button, so neither door can remove the firm anchor.
 ///
 /// Two guards, in order. The anchor guard refuses the protected row. The

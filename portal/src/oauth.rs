@@ -2064,7 +2064,7 @@ pub struct NewSignup {
 ///
 /// If the resolved row belongs to the bootstrap Owner email, the `Owner`
 /// role is force-set on the returned value AND persisted back to the
-/// database — so even an accidental demotion in the `/admin/people`
+/// database — so even an accidental demotion in the `/app/admin/people`
 /// UI heals on the next sign-in.
 ///
 /// Path 3 (bootstrap Owner JIT) is the only path that returns

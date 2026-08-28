@@ -2,10 +2,10 @@
 //! admin cluster) — the person edit form plus its per-record actions.
 //!
 //! The successor to the `admin_person_show` → `person_show_response` render
-//! for the `/admin/person/{id}` surface. It loads the person by its `{id}` path
+//! for the `/app/admin/people/{id}` surface. It loads the person by its `{id}` path
 //! parameter (a not-found state when the id resolves to no row) and renders the
 //! shared [`crate::components::FormCard`] prefilled with the person's name,
-//! email, and role — a native `POST` to `/admin/person/{id}` (the update route
+//! email, and role — a native `POST` to `/app/admin/people/{id}` (the update route
 //! that wraps the person update command; the form `PATCH`ed the REST
 //! `/app/api/people/{id}` over HTMX). Below the form is the actions panel: the
 //! welcome-email action (a native `<details>` disclosure whose confirm button
@@ -97,10 +97,10 @@ struct PersonShowQuery {
 }
 
 /// The list path Cancel and "back to people" target.
-pub const LIST_PATH: &str = "/admin/people";
+pub const LIST_PATH: &str = "/app/admin/people";
 /// The detail path base for the form action and the per-record action routes;
-/// the `{id}` and any action suffix are appended. Singular, unlike the list.
-pub const DETAIL_PATH: &str = "/admin/person";
+/// the `{id}` and any action suffix are appended.
+pub const DETAIL_PATH: &str = "/app/admin/people";
 
 /// Load the person show/edit page for the `{id}` in the request path: read the
 /// injected CSRF token and the query flags, load the person (`fields: None` +
@@ -214,7 +214,7 @@ async fn load_person_show(role: ViewerRole) -> Result<PersonShowView, ServerFnEr
     })
 }
 
-/// Load the person show/edit page (`/admin/person/{id}`): refuse non-admin,
+/// Load the person show/edit page (`/app/admin/people/{id}`): refuse non-admin,
 /// then load through [`load_person_show`].
 #[server]
 pub async fn get_admin_person_show() -> Result<PersonShowView, ServerFnError> {
@@ -284,7 +284,7 @@ fn edit_fields(
     vec![name, email, role, given, family, middle]
 }
 
-/// The person show/edit page (`/admin/person/{id}`).
+/// The person show/edit page (`/app/admin/people/{id}`).
 #[component]
 pub fn AdminPersonShow() -> Element {
     let resource = use_server_future(get_admin_person_show)?;
@@ -350,7 +350,7 @@ fn person_actions(view: &PersonShowView, welcome_recipient: &str) -> Element {
 }
 
 /// Render the resolved person show/edit page: the prefilled edit form posting to
-/// the native `POST /admin/person/{id}` update route, then the per-record
+/// the native `POST /app/admin/people/{id}` update route, then the per-record
 /// actions (welcome email, Xero link, and — for a client — impersonate).
 fn render_person_show(resource: &Resource<Result<PersonShowView, ServerFnError>>) -> Element {
     let view = match &*resource.read() {

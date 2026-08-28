@@ -2,7 +2,7 @@
 //!
 //! Three consumers today: the OAuth callback fires a welcome on a
 //! brand-new `persons` insert (via the workflow worker), the
-//! `/admin/person/{id}` "Send welcome" button re-fires it on demand (direct
+//! `/app/admin/people/{id}` "Send welcome" button re-fires it on demand (direct
 //! send from `web`), and the `workflows-service` worker dispatches
 //! `email_send__welcome` steps in any workflow. Keeping the template +
 //! render in one module means a change to the copy (or the subject)
@@ -113,7 +113,7 @@ pub async fn trigger_welcome(
 /// through the injected [`EmailService`].
 ///
 /// This is the **command** every door goes through — the JSON API route
-/// (`POST /app/api/people/{id}/welcome`), the `/admin/person/{id}` "Send
+/// (`POST /app/api/people/{id}/welcome`), the `/app/admin/people/{id}` "Send
 /// welcome" button, and the `aida_send_welcome_email` MCP tool. It lives
 /// here rather than in `portal` because `mcp` cannot depend on `portal`
 /// (that crate depends on `mcp`), and a command only two of the three

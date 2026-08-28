@@ -1288,12 +1288,12 @@ successful OIDC login with the configured email JIT-creates its `persons` row as
 role if the database has drifted. Its entire Person record is immutable in Navigator so an administrator cannot rename,
 demote, or delete the installation's recovery identity by accident.
 
-After signing in as Owner or Admin, open `/admin/people` to manage the directory and change another Person's system-wide
-role among `owner`, `admin`, `lawyer`, `clerk`, and `client`. Owner appears first because it owns the deployed system.
-Only an Owner can assign or modify Owner. Admin can manage Admin and every lower tier. The bootstrap-Owner row remains
-read-only, and the command boundary rejects a hand-written update or delete as well. The Lawyer workbench does not grant
-role-management power. These values are `persons.role`; Project assignments such as attorney, paralegal, client, and
-co-counsel are Participation records and do not create another authorization tier.
+After signing in as Owner or Admin, open `/app/admin/people` to manage the directory and change another Person's
+system-wide role among `owner`, `admin`, `lawyer`, `clerk`, and `client`. Owner appears first because it owns the
+deployed system. Only an Owner can assign or modify Owner. Admin can manage Admin and every lower tier. The
+bootstrap-Owner row remains read-only, and the command boundary rejects a hand-written update or delete as well. The
+Lawyer workbench does not grant role-management power. These values are `persons.role`; Project assignments such as
+attorney, paralegal, client, and co-counsel are Participation records and do not create another authorization tier.
 
 **We recommend Google.** Verifying that a person is who they claim is real work — risk signals, step-up challenges, and
 hardware-key (passkey / security-key) verification — and Google invests far more in it than we could. A Google-backed

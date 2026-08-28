@@ -529,7 +529,7 @@ async fn send_welcome(
             .into_response(),
         // A send failure is a typed `502`, not a 5xx page: the caller is a
         // machine, and the Dioxus show view surfaces its own `?notice=` flag
-        // from its own native POST to `/admin/person/{id}/welcome`.
+        // from its own native POST to `/app/admin/people/{id}/welcome`.
         Err(PeopleCommandError::SendFailed) => (
             StatusCode::BAD_GATEWAY,
             Json(serde_json::json!({ "error": "send_failed" })),
@@ -946,7 +946,7 @@ async fn list_expunge_requests_door(
 /// anonymous caller with 401 and a `client`/`clerk` one with 403 before the
 /// body is parsed. The write itself — the blank-name check, the firm-anchor
 /// guard, and the insert — belongs to `store::entity_commands::create_entity`,
-/// which the `/lawyer/entities` form and the inline project modal call too, so
+/// which the `/app/admin/entities` form and the inline project modal call too, so
 /// this handler only authorizes and renders.
 async fn create_entity(
     State(state): State<ApiState>,
@@ -1004,7 +1004,7 @@ async fn reconcile_seed(
 /// gate as create. Every field is a full replacement; the firm anchor's
 /// *name* is immutable while its type and jurisdiction stay editable, and a
 /// rename into the anchor's name is refused. Those rules live in
-/// `store::entity_commands::update_entity`, which the `/lawyer/entities/{id}`
+/// `store::entity_commands::update_entity`, which the `/app/admin/entities/{id}`
 /// edit form calls too.
 async fn update_entity(
     State(state): State<ApiState>,

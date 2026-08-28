@@ -218,14 +218,14 @@ async fn callback_round_trip_sets_session_cookie_and_redirects_to_return_to() {
     .await;
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
 
-    // Step 1 — /auth/login?return_to=/lawyer/entities sets the
+    // Step 1 — /auth/login?return_to=/app/admin/entities sets the
     // pre-auth cookie + redirects to the IdP. We extract the state,
     // nonce, and cookie value to replay them in step 2.
     let login = app
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/auth/login?return_to=/lawyer/entities")
+                .uri("/auth/login?return_to=/app/admin/entities")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -277,7 +277,7 @@ async fn callback_round_trip_sets_session_cookie_and_redirects_to_return_to() {
     assert_eq!(cb.status(), StatusCode::SEE_OTHER);
     assert_eq!(
         cb.headers().get("location").unwrap().to_str().unwrap(),
-        "/lawyer/entities"
+        "/app/admin/entities"
     );
 
     // Two Set-Cookie headers: pre-auth expiring + session being set.

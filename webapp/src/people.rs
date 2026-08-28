@@ -25,7 +25,7 @@ pub struct PeopleQuery {
     pub filter_name: Option<String>,
     #[serde(rename = "filter[email]", default)]
     pub filter_email: Option<String>,
-    /// The `?error=` flash the admin surface's `POST /admin/person/{id}/delete`
+    /// The `?error=` flash the admin surface's `POST /app/admin/people/{id}/delete`
     /// sets when the command blocks a delete (the bootstrap Owner, or a non-client
     /// record), redirecting back to the list. Surfaced above the table so the
     /// admin sees why the record survived.
@@ -107,12 +107,11 @@ impl ViewerRole {
 
 /// The list's base path — the sort-link anchors and the "Add person" href hang
 /// off it.
-pub const LIST_PATH: &str = "/admin/people";
+pub const LIST_PATH: &str = "/app/admin/people";
 /// The "Add person" destination.
-pub const NEW_HREF: &str = "/admin/people/new";
+pub const NEW_HREF: &str = "/app/admin/people/new";
 /// The detail path base for the per-row Edit / Delete / Impersonate routes.
-/// Singular, unlike the list.
-pub const DETAIL_PATH: &str = "/admin/person";
+pub const DETAIL_PATH: &str = "/app/admin/people";
 
 /// The rendered people view: the rows, the active sort/filter state the
 /// component needs to build the sort-link anchors, and the viewer's role for
@@ -139,7 +138,7 @@ pub struct PeopleView {
     pub firm_name: String,
 }
 
-/// Fetch the people directory for the **admin console** (`/admin/people`):
+/// Fetch the people directory for the **admin console** (`/app/admin/people`):
 /// refuse non-admin, read the injected CSRF token, and compute each row's
 /// delete/impersonate eligibility (only client records that are not the
 /// bootstrap Owner), so the admin surface renders the per-row action column.
@@ -151,7 +150,7 @@ pub async fn list_admin_people() -> Result<PeopleView, ServerFnError> {
     let sort = query.sort.unwrap_or_default();
     let filter_name = query.filter_name.unwrap_or_default();
     let filter_email = query.filter_email.unwrap_or_default();
-    // The blocked-delete flash the `POST /admin/person/{id}/delete` route sets
+    // The blocked-delete flash the `POST /app/admin/people/{id}/delete` route sets
     // when the command refuses the delete; surfaced above the table.
     let error = query.error.filter(|message| !message.is_empty());
 
@@ -285,7 +284,7 @@ fn encode(value: &str) -> String {
         .collect()
 }
 
-/// The admin console people directory (`/admin/people`) — the same sortable list
+/// The admin console people directory (`/app/admin/people`) — the same sortable list
 /// with a per-row action column (Edit / Delete / Impersonate). Resolves the
 /// admin server function and renders through the shared [`render_people`].
 #[component]

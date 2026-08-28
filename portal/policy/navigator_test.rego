@@ -203,6 +203,28 @@ test_lawyer_denied_on_the_admin_dashboard if {
 	not authz.allow with input as {"path": ["app", "admin"], "method": "GET", "session": lawyer_session}
 }
 
+test_lawyer_reaches_admin_reference_listings if {
+	authz.allow with input as {"path": ["app", "admin", "entities"], "method": "GET", "session": lawyer_session}
+	authz.allow with input as {"path": ["app", "admin", "entity-types"], "method": "GET", "session": lawyer_session}
+	authz.allow with input as {"path": ["app", "admin", "playbooks", "new"], "method": "POST", "session": lawyer_session}
+	authz.allow with input as {"path": ["app", "admin", "people.csv"], "method": "GET", "session": lawyer_session}
+	authz.allow with input as {"path": ["app", "admin", "schedules", "archives", "run"], "method": "POST", "session": lawyer_session}
+}
+
+test_lawyer_denied_on_admin_people_and_analytics if {
+	not authz.allow with input as {"path": ["app", "admin", "people"], "method": "GET", "session": lawyer_session}
+	not authz.allow with input as {"path": ["app", "admin", "people", "new"], "method": "GET", "session": lawyer_session}
+	not authz.allow with input as {"path": ["app", "admin", "analytics"], "method": "GET", "session": lawyer_session}
+}
+
+test_clerk_denied_on_admin_reference_listings if {
+	not authz.allow with input as {"path": ["app", "admin", "entities"], "method": "GET", "session": clerk_session}
+}
+
+test_client_denied_on_admin_reference_listings if {
+	not authz.allow with input as {"path": ["app", "admin", "entities"], "method": "GET", "session": client_session}
+}
+
 test_clerk_denied_on_the_admin_dashboard if {
 	not authz.allow with input as {"path": ["app", "admin"], "method": "GET", "session": clerk_session}
 }

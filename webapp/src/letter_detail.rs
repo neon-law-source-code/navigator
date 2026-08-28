@@ -129,7 +129,7 @@ pub fn LawyerLetterDetail() -> Element {
                 a { class: "nav-link", href: "/lawyer", "Lawyer" }
             }
             if role.is_admin_tier() {
-                a { class: "nav-link", href: "/admin", "Admin" }
+                a { class: "nav-link", href: "/app/admin", "Admin" }
             }
             a { class: "nav-link", href: "/auth/logout", "Sign out" }
         }
@@ -139,7 +139,7 @@ pub fn LawyerLetterDetail() -> Element {
                     document::Title { "{view.firm_name} | Lawyer | Letters | Letter #{view.id}" }
                     header { class: "page-header",
                         h1 { "Letter #{view.id}" }
-                        p { a { href: "/lawyer/letters", "← Back to letters" } }
+                        p { a { href: "/app/admin/letters", "← Back to letters" } }
                     }
                     dl { class: "admin-detail",
                         dt { "Direction" }
@@ -160,7 +160,7 @@ pub fn LawyerLetterDetail() -> Element {
                     document::Title { "{view.firm_name} | Lawyer | Letters | Not found" }
                     h1 { "Letter not found" }
                     p { "No letter exists with id " code { "{view.id}" } "." }
-                    p { a { href: "/lawyer/letters", "← Back to letters" } }
+                    p { a { href: "/app/admin/letters", "← Back to letters" } }
                 },
             }
         }

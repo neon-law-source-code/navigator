@@ -7,7 +7,7 @@
 //! ENG-20). It is a leaf audit table — nothing references it and it
 //! references nothing — so the port could not cascade. Rows are written
 //! by `portal::email`'s `LoggingEmail` decorator and read by
-//! `/lawyer/email-log`.
+//! `/app/admin/email-log`.
 //!
 //! # Append-only
 //!

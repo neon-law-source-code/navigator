@@ -176,26 +176,29 @@ pub fn routes(
     // project-visibility predicate applies.
     let mut r = Router::new();
     // Admin-only people administration: the one browser surface that creates or
-    // edits a Person. Detail/edit use the singular `/admin/person`.
+    // edits a Person. Detail/edit use the singular `/app/admin/people`.
     // embedded Rego policy needs no `/admin` rule — the admin-bypass allows admin and
     // default-deny blocks lawyer; each handler re-checks the admin role.
     r = r
-        // `/admin/people` (the list) and `/admin/people/new` (the create form)
-        // now render through Dioxus (#641 Phase 3, `dioxus_app::admin_people_router`
-        // and `csrf_page_router`); the create form posts to the native
-        // `POST /admin/people` handler below, which axum merges with the Dioxus
-        // list GET on the same path.
-        .route("/admin/people", post(admin_people_create))
-        // `/admin/person/{id}` (+ its `/edit` alias) — the show/edit render now
-        // serves through Dioxus (#641 Phase 3,
-        // `dioxus_app::admin_person_show_router`). Its native-form actions post
-        // here: update (`POST /admin/person/{id}`), welcome-email send, delete,
+        // `/app/admin/people` (the list) and `/app/admin/people/new` (the create
+        // form) render through Dioxus (`dioxus_app::admin_people_router` and
+        // `csrf_page_router`); the create form posts to the native
+        // `POST /app/admin/people` handler below, which axum merges with the
+        // Dioxus list GET on the same path.
+        .route("/app/admin/people", post(admin_people_create))
+        // `/app/admin/people/{id}` (+ its `/edit` alias) — the show/edit render
+        // serves through Dioxus (`dioxus_app::admin_person_show_router`). Its
+        // native-form actions post here: update, welcome-email send, delete,
         // and impersonate. axum merges the Dioxus GET and these POSTs on each path.
-        .route("/admin/person/{id}", post(admin_person_update))
-        .route("/admin/person/{id}/welcome", post(admin_person_welcome))
-        .route("/admin/person/{id}/delete", post(admin_person_delete))
-        .route("/admin/person/{id}/impersonate", post(people_impersonate));
-    r = register_firm_routes(r, "/lawyer");
+        .route("/app/admin/people/{id}", post(admin_person_update))
+        .route("/app/admin/people/{id}/welcome", post(admin_person_welcome))
+        .route("/app/admin/people/{id}/delete", post(admin_person_delete))
+        .route(
+            "/app/admin/people/{id}/impersonate",
+            post(people_impersonate),
+        );
+    r = register_firm_matter_routes(r, "/lawyer");
+    r = register_firm_admin_routes(r, "/app/admin");
     // Firm brand fonts — the licensed GORP Serif desktop family, served as one
     // ZIP from the *private* documents bucket, so a direct object URL can never
     // bypass this gate. The bytes are uploaded out-of-band by
@@ -207,8 +210,8 @@ pub fn routes(
     // `/app/team` the page that offers the card and the object it links share
     // one prefix, so embedded Rego's existing `/app/team` rules admit exactly
     // the four firm tiers here and deny a client, with no rule of its own.
-    // Registered here rather than inside `register_firm_routes` because that
-    // helper's `{prefix}` is `/lawyer`.
+    // Registered here rather than inside `register_firm_matter_routes` because
+    // that helper's `{prefix}` is `/lawyer`.
     r = r.route(
         "/app/team/fonts/gorp-serif.zip",
         get(crate::brand_fonts::download_get),
@@ -273,14 +276,10 @@ fn admin_gate(session: Option<&SessionData>) -> Option<Response> {
     }
 }
 
-/// Register the firm-wide CRUD routes under `{prefix}/...`. Today
-/// this is called once with `/lawyer`; the helper survives as
-/// a single point of edit for the firm CRUD surface.
+/// Register matter-content and conflict-graph writes that still live under
+/// `/lawyer` until later tranches move them.
 #[allow(clippy::too_many_lines)]
-fn register_firm_routes(r: Router<AdminState>, prefix: &str) -> Router<AdminState> {
-    // `GET /lawyer` (the workbench) renders through Dioxus (#956 Phase 4,
-    // `dioxus_app::lawyer_dashboard_router`), so this chain now starts at the
-    // firm brand fonts.
+fn register_firm_matter_routes(r: Router<AdminState>, prefix: &str) -> Router<AdminState> {
     r
         // `GET /lawyer/retainers/new` (the form) renders through Dioxus (#956
         // Phase 4, `dioxus_app::csrf_page_router`); the create posts here, and
@@ -400,48 +399,7 @@ fn register_firm_routes(r: Router<AdminState>, prefix: &str) -> Router<AdminStat
             &format!("{prefix}/expunge-requests/{{id}}/deny"),
             post(crate::expunge_request_route::admin_deny),
         )
-        // Every Person command — create, update, delete, welcome-send — lives on
-        // the REST boundary at `/app/api/people*` (lawyer tier, `LawyerSession`),
-        // and the browser form for one is the admin console's (`/admin/people*`,
-        // Owner/Admin). The firm prefix keeps only this directory export: a
-        // lawyer-tier read with no admin sibling.
-        .route(&format!("{prefix}/people.csv"), get(people_csv))
         .route("/app/impersonation/stop", post(stop_impersonation))
-        // The entities list (GET) now renders through Dioxus (#641 Phase 3,
-        // `dioxus_app::entity_list_router`); `POST` (create) stays here, and axum
-        // merges the two same-path method routes.
-        .route(&format!("{prefix}/entities"), post(entities_create))
-        .route(&format!("{prefix}/entities.csv"), get(entities_csv))
-        // `/lawyer/entities/new` (the create form) now renders through Dioxus
-        // (#641 Phase 3, `dioxus_app::csrf_page_router`); it posts to the
-        // `POST /lawyer/entities` create handler below, which is unchanged.
-        // The edit form (`{prefix}/entities/{id}/edit`) now renders through
-        // Dioxus (#641 Phase 3, `dioxus_app::csrf_page_router`); it posts to this
-        // update handler. The handler is POST-only: on success it persists the
-        // edit and redirects to `/lawyer/entities`. A validation or conflict
-        // outcome re-renders the edit form with the submitted values and an
-        // inline error (409 on a name conflict, 200 on a blank name) — the same
-        // shape the create door holds; an unknown id is a 404 page and a
-        // server-side fault a 500 page.
-        .route(&format!("{prefix}/entities/{{id}}"), post(entities_update))
-        .route(
-            &format!("{prefix}/entities/{{id}}/delete"),
-            post(entities_delete),
-        )
-        // Inbound-contract-review playbooks: a Company's negotiating
-        // positions, the yardstick the deviation analysis measures a
-        // third-party contract against. The three `GET` renders now go through
-        // Dioxus (#956 Phase 4, `dioxus_app::LAWYER_PLAYBOOKS_PATH` and its two
-        // form paths); only the writes stay here, and axum merges each onto the
-        // path its Dioxus `GET` already holds.
-        .route(
-            &format!("{prefix}/playbooks"),
-            post(crate::admin_playbooks::create),
-        )
-        .route(
-            &format!("{prefix}/playbooks/{{id}}"),
-            post(crate::admin_playbooks::update),
-        )
         // Attorney review screen for an inbound contract review: act on
         // each finding, edit the risk summary, then approve (assemble +
         // deliver the memo) or reject. Row-scoped to the matter in the
@@ -464,24 +422,33 @@ fn register_firm_routes(r: Router<AdminState>, prefix: &str) -> Router<AdminStat
             &format!("{prefix}/contract-reviews/{{id}}/reject"),
             post(crate::admin_contract_reviews::reject),
         )
-        // Read-only listings — these tables are seeded by the
-        // workspace (`cli import`, `store/seeds/`) rather than
-        // authored from the web UI.
-        // `/lawyer/entity-types` now renders through Dioxus (#641 Phase 3,
-        // `dioxus_app::entity_types_router`), so the route is retired.
-        // Cron schedules are the single manual-operation surface for every
-        // deployed CronJob. The reference page renders through Dioxus (#956
-        // Phase 4, `dioxus_app::csrf_page_router`); only the manual-run `POST`
-        // stays here, and it redirects back to the page with a `?notice=`.
+}
+
+/// Register firm-administration writes under `{prefix}` (`/app/admin`).
+///
+/// These are the native POST/CSV handlers behind the Tranche A Dioxus pages:
+/// entities, playbooks, schedules, and the people directory export.
+fn register_firm_admin_routes(r: Router<AdminState>, prefix: &str) -> Router<AdminState> {
+    r.route(&format!("{prefix}/people.csv"), get(people_csv))
+        .route(&format!("{prefix}/entities"), post(entities_create))
+        .route(&format!("{prefix}/entities.csv"), get(entities_csv))
+        .route(&format!("{prefix}/entities/{{id}}"), post(entities_update))
+        .route(
+            &format!("{prefix}/entities/{{id}}/delete"),
+            post(entities_delete),
+        )
+        .route(
+            &format!("{prefix}/playbooks"),
+            post(crate::admin_playbooks::create),
+        )
+        .route(
+            &format!("{prefix}/playbooks/{{id}}"),
+            post(crate::admin_playbooks::update),
+        )
         .route(
             &format!("{prefix}/schedules/{{job}}/run"),
             post(crate::cron_schedules::run),
         )
-    // Every read-only lawyer admin surface now renders through Dioxus (#641
-    // Phase 3, `dioxus_app::admin_listing_router`): the single-entity
-    // `render_listing` pages, the join-backed `mailrooms` and `letters` lists,
-    // the paginated `email-log`, and the `letters/{id}` detail page (a single
-    // record keyed by its path param). Their routes are all retired.
 }
 
 /// Register the matter surface under [`APP_PROJECTS_PATH`].
@@ -693,7 +660,7 @@ fn not_found_response() -> Response {
     (StatusCode::NOT_FOUND, webapp::error_pages::not_found()).into_response()
 }
 
-/// `POST /admin/person/{id}/delete` — the native-form person delete behind the
+/// `POST /app/admin/people/{id}/delete` — the native-form person delete behind the
 /// Dioxus admin people list (#641 Phase 3). The row used an `hx-delete` to
 /// the REST `/app/api/people/{id}`; this wraps the same delete command and redirects
 /// (303) back to the list, or back with an `?error=` flash when the command
@@ -709,18 +676,18 @@ async fn admin_person_delete(
     match crate::people_commands::delete_person(&s.surreal, id, s.bootstrap_owner_email.as_deref())
         .await
     {
-        Ok(_) => Redirect::to("/admin/people").into_response(),
+        Ok(_) => Redirect::to("/app/admin/people").into_response(),
         Err(e) => Redirect::to(&format!(
-            "/admin/people?error={}",
+            "/app/admin/people?error={}",
             encode_query_value(&e.user_message())
         ))
         .into_response(),
     }
 }
 
-/// `GET /admin/people/new` — the admin console create form (Cancel returns
-/// to `/admin/people`). Admin-gated.
-/// `POST /admin/people` — the native-form create behind the Dioxus admin
+/// `GET /app/admin/people/new` — the admin console create form (Cancel returns
+/// to `/app/admin/people`). Admin-gated.
+/// `POST /app/admin/people` — the native-form create behind the Dioxus admin
 /// add-person page (#641 Phase 3). Admin-gated; wraps the person create command
 /// and redirects (303) to the list on success, or back to the form with an
 /// `?error=` flash on failure. The form posted to the REST `/app/api/people`
@@ -738,14 +705,14 @@ async fn admin_people_create(
         .is_some_and(|role| !can_assign_role(session.as_deref(), role))
     {
         return Redirect::to(
-            "/admin/people/new?error=You%20cannot%20assign%20a%20system%20role%20above%20your%20own.",
+            "/app/admin/people/new?error=You%20cannot%20assign%20a%20system%20role%20above%20your%20own.",
         )
         .into_response();
     }
     match crate::people_commands::create_person(&surreal, &command).await {
-        Ok(_) => Redirect::to("/admin/people").into_response(),
+        Ok(_) => Redirect::to("/app/admin/people").into_response(),
         Err(e) => Redirect::to(&format!(
-            "/admin/people/new?error={}",
+            "/app/admin/people/new?error={}",
             encode_query_value(&e.user_message())
         ))
         .into_response(),
@@ -794,7 +761,7 @@ pub(crate) fn encode_query_value(value: &str) -> String {
     out
 }
 
-/// `POST /admin/person/{id}` — the native-form person update behind the Dioxus
+/// `POST /app/admin/people/{id}` — the native-form person update behind the Dioxus
 /// admin show/edit page. Wraps the person update command; redirects back to the
 /// show view on success (or with an `?error=` flash on a rejected write). The
 /// form `PATCH`ed the REST `/app/api/people/{id}` over HTMX; this is the same
@@ -816,16 +783,16 @@ async fn admin_person_update(
         may_change_roles: can_change_roles(session.as_deref()),
     };
     match crate::people_commands::update_person(&s.surreal, id, &command, &ctx).await {
-        Ok(_) => Redirect::to(&format!("/admin/person/{id}")).into_response(),
+        Ok(_) => Redirect::to(&format!("/app/admin/people/{id}")).into_response(),
         Err(e) => Redirect::to(&format!(
-            "/admin/person/{id}?error={}",
+            "/app/admin/people/{id}?error={}",
             encode_query_value(&e.user_message())
         ))
         .into_response(),
     }
 }
 
-/// `POST /admin/person/{id}/welcome` — the native-form welcome-email send behind
+/// `POST /app/admin/people/{id}/welcome` — the native-form welcome-email send behind
 /// the Dioxus admin show/edit page. Both outcomes redirect back to the show view
 /// with a `?notice=` flag that floats a toned flash toast; a send failure is
 /// surfaced there, not as a 5xx. The button posted to the REST
@@ -846,7 +813,7 @@ async fn admin_person_welcome(
             Ok(_) => "welcome_sent",
             Err(_) => "welcome_failed",
         };
-    Redirect::to(&format!("/admin/person/{id}?notice={notice}")).into_response()
+    Redirect::to(&format!("/app/admin/people/{id}?notice={notice}")).into_response()
 }
 
 async fn people_impersonate(
@@ -1099,7 +1066,7 @@ async fn stop_impersonation(
         state.sessions.encode(&restored),
         state.secure_cookies,
     ));
-    Redirect::to("/admin").into_response()
+    Redirect::to("/app/admin").into_response()
 }
 
 // ---- Entities ----
@@ -1118,7 +1085,7 @@ async fn entities_create(State(s): State<AdminState>, Form(input): Form<EntityIn
         jurisdiction_id: input.jurisdiction_id,
     };
     match store::entity_commands::create_entity(&s.surreal, &s.bootstrap_company, &command).await {
-        Ok(_) => Redirect::to("/lawyer/entities").into_response(),
+        Ok(_) => Redirect::to("/app/admin/entities").into_response(),
         Err(e) => {
             if let EntityCommandError::Entities(ref err) = e {
                 tracing::warn!(error = %err, "admin: create entity failed");
@@ -1184,7 +1151,7 @@ async fn entities_update(
     match store::entity_commands::update_entity(&s.surreal, id, &s.bootstrap_company, &command)
         .await
     {
-        Ok(_) => Redirect::to("/lawyer/entities").into_response(),
+        Ok(_) => Redirect::to("/app/admin/entities").into_response(),
         Err(EntityCommandError::NotFound) => {
             (StatusCode::NOT_FOUND, webapp::error_pages::not_found()).into_response()
         }
@@ -1204,7 +1171,7 @@ async fn entities_update(
             // the status code (409 on a conflict, 200 on a blank name); a
             // redirect carries one. `/app/api/entities` keeps the per-outcome codes.
             back_to_entity_form(
-                &format!("/lawyer/entities/{id}/edit"),
+                &format!("/app/admin/entities/{id}/edit"),
                 &e.user_message(),
                 Some(&command),
             )
@@ -1218,7 +1185,7 @@ async fn entities_delete(State(s): State<AdminState>, Path(id): Path<Uuid>) -> R
         // which is what the caller wanted, so a double-clicked delete button
         // or a second tab must not report an error. The API renders that same
         // outcome as a 404 — only this browser door treats it as done.
-        Ok(_) | Err(EntityCommandError::NotFound) => delete_response("/lawyer/entities"),
+        Ok(_) | Err(EntityCommandError::NotFound) => delete_response("/app/admin/entities"),
         Err(EntityCommandError::FirmAnchorProtected) => (
             StatusCode::CONFLICT,
             store::entity_commands::FIRM_ANCHOR_PROTECTED_MESSAGE,
@@ -1234,7 +1201,7 @@ async fn entities_delete(State(s): State<AdminState>, Path(id): Path<Uuid>) -> R
         }
         Err(e) => {
             tracing::warn!(entity_id = %id, "entities_delete: refused");
-            delete_refused_response(&e.user_message(), "/lawyer/entities")
+            delete_refused_response(&e.user_message(), "/app/admin/entities")
         }
     }
 }

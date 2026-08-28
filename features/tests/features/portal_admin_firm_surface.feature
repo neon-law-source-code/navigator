@@ -6,19 +6,19 @@ Feature: /lawyer/* — lawyer workbench, Owner/Admin/Lawyer only
   the matter doesn't exist from their perspective.
 
   People is the exception: ENG-304 deleted its `/lawyer` mirror, so the people
-  index answers at `/admin/people`, Owner/Admin only.
+  index answers at `/app/admin/people`, Owner/Admin only.
 
   Background:
     Given the Neon Law Navigator app is running
 
   Scenario: An Owner reads the firm-wide people index
     Given a seeded person "owner@neonlaw.com" with role "owner"
-    When "owner@neonlaw.com" opens /admin/people
+    When "owner@neonlaw.com" opens /app/admin/people
     Then the response status is 200
 
   Scenario: An admin reads the firm-wide people index
     Given a seeded person "nick@neonlaw.com" with role "admin"
-    When "nick@neonlaw.com" opens /admin/people
+    When "nick@neonlaw.com" opens /app/admin/people
     Then the response status is 200
 
   Scenario: An admin impersonates a client from the people index
@@ -53,7 +53,7 @@ Feature: /lawyer/* — lawyer workbench, Owner/Admin/Lawyer only
 
   Scenario: A lawyer reads the firm-wide entities index
     Given a seeded person "lawyer@neonlaw.com" with role "lawyer"
-    When "lawyer@neonlaw.com" opens /lawyer/entities
+    When "lawyer@neonlaw.com" opens /app/admin/entities
     Then the response status is 200
 
   Scenario: A lawyer reads the firm dashboard at /app/lawyer

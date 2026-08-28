@@ -64,7 +64,7 @@ pub const DIOXUS_DEMO_PATH: &str = "/dioxus-demo";
 /// The lawyer entity-types directory — the first admin list page migrated to
 /// Dioxus (#641 Phase 3). Kept at its existing path so the embedded Rego policy (keyed on
 /// the request path) continues to gate it to lawyer/admin.
-pub const LAWYER_ENTITY_TYPES_PATH: &str = "/lawyer/entity-types";
+pub const LAWYER_ENTITY_TYPES_PATH: &str = "/app/admin/entity-types";
 
 /// The living design system. Renders the Dioxus Components — the theme, icons,
 /// cards, and toasts — so the gallery shows the real components the pages use.
@@ -280,7 +280,7 @@ fn is_public_page(html: &str) -> bool {
 /// public pages keep the firm-branded icon selected by
 /// [`webapp::components::SiteHeader`].
 fn is_navigator_page(path: &str) -> bool {
-    ["/navigator", "/app", "/lawyer", "/admin"]
+    ["/navigator", "/app", "/lawyer"]
         .iter()
         .any(|prefix| path == *prefix || path.starts_with(&format!("{prefix}/")))
 }
@@ -454,7 +454,7 @@ fn csp_with_nonce(
 /// Reject a `?sort=` that targets a field the people page does not advertise,
 /// returning `400` before the Dioxus render runs — preserving the JSON:API
 /// `SortSpec::validated` contract (the people page advertises `name` and
-/// `email`). Layered onto the `/admin/people` Dioxus route by
+/// `email`). Layered onto the `/app/admin/people` Dioxus route by
 /// [`admin_people_router`].
 async fn reject_unadvertised_sort(request: Request, next: Next) -> Response {
     use std::collections::{HashMap, HashSet};
@@ -1777,7 +1777,7 @@ pub fn review_router(
 /// Reject a `?sort=` that targets a field the entity-types list does not
 /// advertise (it advertises only `name`), returning `400` before the render
 /// runs — the same JSON:API `SortSpec::validated` contract the people route
-/// applies. Layered onto `/lawyer/entity-types` by [`entity_types_router`].
+/// applies. Layered onto `/app/admin/entity-types` by [`entity_types_router`].
 async fn reject_unadvertised_entity_types_sort(request: Request, next: Next) -> Response {
     use std::collections::{HashMap, HashSet};
 
@@ -1933,22 +1933,22 @@ pub fn contract_review_router(
 }
 
 /// The lawyer "add entity" form path (#641 Phase 3) — a CRUD create form.
-pub const LAWYER_ENTITY_NEW_PATH: &str = "/lawyer/entities/new";
+pub const LAWYER_ENTITY_NEW_PATH: &str = "/app/admin/entities/new";
 /// The admin "add person" form path (#641 Phase 3) — an admin-only CRUD create
 /// form; embedded Rego policy (default-deny + admin-bypass) gates `/admin/*` to admin, and the
 /// page's `#[server]` function re-checks the admin role.
-pub const ADMIN_PEOPLE_NEW_PATH: &str = "/admin/people/new";
+pub const ADMIN_PEOPLE_NEW_PATH: &str = "/app/admin/people/new";
 /// The admin console person show/edit page path (#641 Phase 3) — a CRUD edit
 /// form keyed by the person `{id}`, with a `/edit` alias (see
 /// [`ADMIN_PERSON_EDIT_PATH`]). Both render the same component; it posts to the
-/// native `POST /admin/person/{id}` update route.
-pub const ADMIN_PERSON_PATH: &str = "/admin/person/{id}";
+/// native `POST /app/admin/people/{id}` update route.
+pub const ADMIN_PERSON_PATH: &str = "/app/admin/people/{id}";
 /// The `/edit` alias of [`ADMIN_PERSON_PATH`] — the surface served the
 /// same show/edit render under both, so the Dioxus successor keeps the alias.
-pub const ADMIN_PERSON_EDIT_PATH: &str = "/admin/person/{id}/edit";
+pub const ADMIN_PERSON_EDIT_PATH: &str = "/app/admin/people/{id}/edit";
 /// The lawyer "edit entity" form path (#641 Phase 3) — a CRUD edit form keyed by
-/// the entity `{id}`; it posts to the `POST /lawyer/entities/{id}` update handler.
-pub const LAWYER_ENTITY_EDIT_PATH: &str = "/lawyer/entities/{id}/edit";
+/// the entity `{id}`; it posts to the `POST /app/admin/entities/{id}` update handler.
+pub const LAWYER_ENTITY_EDIT_PATH: &str = "/app/admin/entities/{id}/edit";
 /// The "start a retainer walk" form path (#956 Phase 4) — the lawyer on-ramp that
 /// opens a matter. `POST /lawyer/retainers/new` (the create) stays on the
 /// `retainer_walk` handler; axum merges the two same-path method routes.
@@ -2004,7 +2004,7 @@ where
 
 /// The lawyer cron-schedules page path (#956 Phase 4) — the declared `CronJob`
 /// reference plus a per-row "Run now" form. `POST
-/// /lawyer/schedules/{job}/run` stays on `cron_schedules`, which already
+/// /app/admin/schedules/{job}/run` stays on `cron_schedules`, which already
 /// redirects back here with a `?notice=` flash.
 pub const LAWYER_SCHEDULES_PATH: &str = webapp::schedules::SCHEDULES_PATH;
 
@@ -2026,7 +2026,7 @@ pub const ADMIN_MATTER_DIRECTORY_SORT: &[&str] = webapp::matter_directory::MATTE
 /// Build the gated Dioxus router for the admin person show/edit page (#641
 /// Phase 3): the same [`csrf_page_router`] as the other CRUD forms, mounted at
 /// both [`ADMIN_PERSON_PATH`] and its `/edit` alias so the surface's two
-/// URLs keep resolving. `POST /admin/person/{id}` (update), `.../welcome`, and
+/// URLs keep resolving. `POST /app/admin/people/{id}` (update), `.../welcome`, and
 /// `.../impersonate` stay on the admin router; axum merges the same-path
 /// methods.
 ///
@@ -2063,9 +2063,9 @@ pub fn admin_person_show_router(
 }
 
 /// The lawyer entities list path (#641 Phase 3) — a sortable list with per-row
-/// edit/delete actions. `POST /lawyer/entities` (create) stays on the admin
+/// edit/delete actions. `POST /app/admin/entities` (create) stays on the admin
 /// router; axum merges the two same-path method routes.
-pub const LAWYER_ENTITIES_PATH: &str = "/lawyer/entities";
+pub const LAWYER_ENTITIES_PATH: &str = "/app/admin/entities";
 
 /// Reject a `?sort=` the entities list does not advertise (it advertises `name`,
 /// `entity_type`, `jurisdiction`), returning `400` before the render — the same
@@ -2130,9 +2130,9 @@ pub fn entity_list_router(
 }
 
 /// The admin console people list path (#641 Phase 3) — the sortable directory
-/// with a per-row action column. `POST /admin/people` (create) stays on the
+/// with a per-row action column. `POST /app/admin/people` (create) stays on the
 /// admin router; axum merges the same-path methods.
-pub const ADMIN_PEOPLE_PATH: &str = "/admin/people";
+pub const ADMIN_PEOPLE_PATH: &str = "/app/admin/people";
 
 /// The gated Dioxus admin console people list (#641 Phase 3). The admin sibling
 /// of the lawyer [`people_router`], adding the per-row Edit/Delete/Impersonate
@@ -2178,9 +2178,9 @@ pub fn admin_people_router(
 
 /// Path constants for the generic read-only admin listings (#641 Phase 3). Each
 /// mounts through [`admin_listing_router`].
-pub const LAWYER_JURISDICTIONS_PATH: &str = "/lawyer/jurisdictions";
+pub const LAWYER_JURISDICTIONS_PATH: &str = "/app/admin/jurisdictions";
 /// See [`LAWYER_JURISDICTIONS_PATH`].
-pub const LAWYER_GIT_REPOSITORIES_PATH: &str = "/lawyer/git-repositories";
+pub const LAWYER_GIT_REPOSITORIES_PATH: &str = "/app/admin/git-repositories";
 /// See [`LAWYER_JURISDICTIONS_PATH`].
 pub const LAWYER_PERSON_ENTITY_ROLES_PATH: &str = "/lawyer/person-entity-roles";
 /// See [`LAWYER_JURISDICTIONS_PATH`].
@@ -2188,7 +2188,7 @@ pub const LAWYER_NOTATIONS_PATH: &str = "/lawyer/notations";
 /// See [`LAWYER_JURISDICTIONS_PATH`].
 pub const LAWYER_ANSWERS_PATH: &str = "/lawyer/answers";
 /// See [`LAWYER_JURISDICTIONS_PATH`].
-pub const LAWYER_ADDRESSES_PATH: &str = "/lawyer/addresses";
+pub const LAWYER_ADDRESSES_PATH: &str = "/app/admin/addresses";
 /// See [`LAWYER_JURISDICTIONS_PATH`].
 pub const LAWYER_ASSETS_PATH: &str = "/lawyer/assets";
 /// See [`LAWYER_JURISDICTIONS_PATH`].
@@ -2198,11 +2198,11 @@ pub const LAWYER_DISCLOSURES_PATH: &str = "/lawyer/disclosures";
 /// See [`LAWYER_JURISDICTIONS_PATH`].
 pub const LAWYER_RELATIONSHIP_LOGS_PATH: &str = "/lawyer/relationship-logs";
 /// See [`LAWYER_JURISDICTIONS_PATH`].
-pub const LAWYER_MAILROOMS_PATH: &str = "/lawyer/mailrooms";
+pub const LAWYER_MAILROOMS_PATH: &str = "/app/admin/mailrooms";
 /// See [`LAWYER_JURISDICTIONS_PATH`].
-pub const LAWYER_LETTERS_PATH: &str = "/lawyer/letters";
+pub const LAWYER_LETTERS_PATH: &str = "/app/admin/letters";
 /// See [`LAWYER_JURISDICTIONS_PATH`]. Paginated via `?page=`.
-pub const LAWYER_EMAIL_LOG_PATH: &str = "/lawyer/email-log";
+pub const LAWYER_EMAIL_LOG_PATH: &str = "/app/admin/email-log";
 /// The letter-detail page — a single record keyed by the `{id}` path param, not
 /// a listing, but mounted through the same gated-component factory.
 pub const LAWYER_LETTER_DETAIL_PATH: &str = "/lawyer/letters/{id}";
@@ -2290,22 +2290,22 @@ async fn reject_unadvertised_listing_sort(
 /// The lawyer playbooks listing path (#956 Phase 4) — a Company's negotiating
 /// positions, sortable by company then playbook name. The `POST` on this same
 /// path (the create) stays on `admin_playbooks`; axum merges the two.
-pub const LAWYER_PLAYBOOKS_PATH: &str = "/lawyer/playbooks";
+pub const LAWYER_PLAYBOOKS_PATH: &str = "/app/admin/playbooks";
 /// The `?sort=` keys [`LAWYER_PLAYBOOKS_PATH`] advertises — the two sortable
 /// headers. Anything else is a `400` before the render.
 pub const LAWYER_PLAYBOOKS_SORT: &[&str] = &["entity", "name"];
 /// The "add playbook" form path (#956 Phase 4). A refused create redirects back
 /// here with `?error=` and the rejected submission.
-pub const LAWYER_PLAYBOOK_NEW_PATH: &str = "/lawyer/playbooks/new";
+pub const LAWYER_PLAYBOOK_NEW_PATH: &str = "/app/admin/playbooks/new";
 /// The "edit playbook positions" form path (#956 Phase 4). A refused update
 /// redirects back here with `?error=` and the rejected positions text; `POST
-/// /lawyer/playbooks/{id}` (the update) stays on `admin_playbooks`.
-pub const LAWYER_PLAYBOOK_EDIT_PATH: &str = "/lawyer/playbooks/{id}/edit";
+/// /app/admin/playbooks/{id}` (the update) stays on `admin_playbooks`.
+pub const LAWYER_PLAYBOOK_EDIT_PATH: &str = "/app/admin/playbooks/{id}/edit";
 
 /// The lawyer templates catalog path (#956 Phase 4) — read-only and sortable.
-pub const LAWYER_TEMPLATES_PATH: &str = "/lawyer/templates";
+pub const LAWYER_TEMPLATES_PATH: &str = "/app/admin/templates";
 /// The lawyer questions directory path (#956 Phase 4) — read-only and sortable.
-pub const LAWYER_QUESTIONS_PATH: &str = "/lawyer/questions";
+pub const LAWYER_QUESTIONS_PATH: &str = "/app/admin/questions";
 
 /// A read-only admin listing whose headers sort: [`admin_listing_router`] plus
 /// the `400`-on-unadvertised-sort pre-handler, so a header can never link to a
@@ -3399,7 +3399,7 @@ mod tests {
 
     fn guarded_router() -> Router {
         Router::new()
-            .route("/admin/people", get(|| async { "ok" }))
+            .route("/app/admin/people", get(|| async { "ok" }))
             .layer(from_fn(reject_unadvertised_sort))
     }
 
@@ -3408,7 +3408,7 @@ mod tests {
         let response = guarded_router()
             .oneshot(
                 Request::builder()
-                    .uri("/admin/people?sort=ssn")
+                    .uri("/app/admin/people?sort=ssn")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -3420,9 +3420,9 @@ mod tests {
     #[tokio::test]
     async fn allows_an_advertised_sort_field() {
         for uri in [
-            "/admin/people?sort=name",
-            "/admin/people?sort=-email",
-            "/admin/people",
+            "/app/admin/people?sort=name",
+            "/app/admin/people?sort=-email",
+            "/app/admin/people",
         ] {
             let response = guarded_router()
                 .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
@@ -3634,7 +3634,8 @@ mod tests {
         assert!(renders_app_footer("/app/team"));
         assert!(!renders_app_footer("/blog"));
         assert!(!renders_app_footer("/docs"));
-        assert!(!renders_app_footer("/lawyer/entity-types"));
+        assert!(renders_app_footer("/app/admin/entity-types"));
+        assert!(!renders_app_footer("/lawyer/notations"));
         assert!(!renders_app_footer("/app"));
     }
 
@@ -3915,8 +3916,8 @@ mod tests {
             "/navigator",
             "/app",
             "/app/projects",
-            "/lawyer/entities",
-            "/admin/people",
+            "/app/admin/entities",
+            "/app/admin/people",
         ] {
             assert!(is_navigator_page(path), "Navigator path: {path}");
         }
@@ -3965,6 +3966,12 @@ mod tests {
             (
                 "/app/projects/sample-litigation",
                 "Navigator | Projects | Sample Litigation",
+            ),
+            ("/app/admin", "Navigator | Admin"),
+            ("/app/admin/people", "Navigator | Admin | People"),
+            (
+                "/app/admin/jurisdictions",
+                "Navigator | Admin | Jurisdictions",
             ),
         ];
 

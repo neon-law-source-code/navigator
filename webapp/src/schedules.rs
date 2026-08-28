@@ -10,7 +10,7 @@
 //! Kubernetes API access). Keep [`CRON_JOBS`] in sync when a `CronJob` is
 //! added; see `docs/cronjobs.md`.
 //!
-//! `POST /lawyer/schedules/{job}/run` stays on the `portal::cron_schedules`
+//! `POST /app/admin/schedules/{job}/run` stays on the `portal::cron_schedules`
 //! handler and already follows post/redirect/get: it redirects back here with
 //! `?notice=queued:{slug}` (or `not_queued`), which renders as a toast.
 
@@ -21,7 +21,7 @@ use crate::components::{Column, DataTable, SortState, Toast, ToastTone};
 use crate::people::ViewerRole;
 
 /// The page's own path, and the base the "Run now" forms post under.
-pub const SCHEDULES_PATH: &str = "/lawyer/schedules";
+pub const SCHEDULES_PATH: &str = "/app/admin/schedules";
 
 /// One scheduled job, as the page needs it.
 pub struct CronJobEntry {
@@ -225,7 +225,7 @@ fn schedules_body(view: &SchedulesView) -> Element {
                 a { class: "nav-link", href: "/lawyer", "Lawyer" }
             }
             if view.role.is_admin_tier() {
-                a { class: "nav-link", href: "/admin", "Admin" }
+                a { class: "nav-link", href: "/app/admin", "Admin" }
             }
             a { class: "nav-link", href: "/auth/logout", "Sign out" }
         }
@@ -295,7 +295,7 @@ mod tests {
         assert!(html.contains("02:00 PST"), "{html}");
         // The manual trigger renders as a CSRF-protected POST form.
         assert!(
-            html.contains("action=\"/lawyer/schedules/archives/run\""),
+            html.contains("action=\"/app/admin/schedules/archives/run\""),
             "{html}"
         );
         assert!(html.contains("name=\"_csrf\""), "{html}");
@@ -326,7 +326,7 @@ mod tests {
         let html = dioxus_ssr::render_element(schedules_body(&view()));
         assert!(html.contains("Invoice reconciliation"), "{html}");
         assert!(
-            html.contains("action=\"/lawyer/schedules/reconcile-invoices/run\""),
+            html.contains("action=\"/app/admin/schedules/reconcile-invoices/run\""),
             "{html}"
         );
     }
@@ -373,7 +373,7 @@ mod tests {
             assert!(!job.slug.is_empty(), "{} missing slug", job.name);
             assert_eq!(
                 job.manual_run(),
-                format!("/lawyer/schedules/{}/run", job.slug)
+                format!("/app/admin/schedules/{}/run", job.slug)
             );
         }
     }

@@ -10,7 +10,7 @@
 //!
 //! Rows are written by `cli import` out of template frontmatter and by the
 //! canonical seed, and read by every questionnaire surface — the lawyer
-//! walker, the client magic link, and the `/lawyer/questions` transparency
+//! walker, the client magic link, and the `/app/admin/questions` transparency
 //! listing.
 //!
 //! # Engine facts this module is shaped around

@@ -227,7 +227,7 @@ pub fn LawyerEntityList() -> Element {
         main { id: "entities", class: "nav-theme",
             header { class: "page-header",
                 h1 { "Entities" }
-                p { a { class: "nav-btn nav-btn--primary", href: "/lawyer/entities/new", "Add entity" } }
+                p { a { class: "nav-btn nav-btn--primary", href: "/app/admin/entities/new", "Add entity" } }
             }
             if let Some(error) = error.as_ref() {
                 p { class: "nav-form-error", role: "alert", "{error}" }
@@ -235,26 +235,26 @@ pub fn LawyerEntityList() -> Element {
             if is_empty {
                 p { class: "entities-empty",
                     "No entities yet. "
-                    a { href: "/lawyer/entities/new", "Add the first." }
+                    a { href: "/app/admin/entities/new", "Add the first." }
                 }
             } else {
                 DataTable {
                     columns,
                     sort,
-                    base_path: "/lawyer/entities".to_string(),
+                    base_path: "/app/admin/entities".to_string(),
                     for row in view.rows.iter() {
                         tr { class: "entity-row",
                             td { class: "entity-name", "{row.name}" }
                             td { class: "entity-type", "{row.entity_type}" }
                             td { class: "entity-jurisdiction", "{row.jurisdiction}" }
                             td { class: "entity-actions",
-                                a { class: "nav-link", href: "/lawyer/entities/{row.id}/edit", "Edit" }
+                                a { class: "nav-link", href: "/app/admin/entities/{row.id}/edit", "Edit" }
                                 if row.can_delete {
                                     " "
                                     form {
                                         class: "d-inline",
                                         method: "post",
-                                        action: "/lawyer/entities/{row.id}/delete",
+                                        action: "/app/admin/entities/{row.id}/delete",
                                         input { r#type: "hidden", name: "_csrf", value: "{csrf}" }
                                         button {
                                             class: "nav-btn nav-btn--danger",

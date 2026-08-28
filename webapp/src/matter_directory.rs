@@ -12,7 +12,7 @@
 //! a blank one.
 //!
 //! The path is deliberately `/app/admin/projects` while its two siblings still
-//! sit at `/admin/people` and `/admin/analytics`: new admin surfaces are born
+//! sit at `/app/admin/people` and `/app/admin/analytics`: new admin surfaces are born
 //! under `/app/admin`, and the older two move on their own schedule.
 
 use dioxus::prelude::*;

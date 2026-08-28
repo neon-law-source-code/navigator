@@ -1,7 +1,7 @@
 //! `aida_send_welcome_email` MCP tool.
 //!
 //! Re-fires the firm's welcome email at an existing person — the same
-//! "Welcome to Neon Law" message the `/admin/person/{id}` "Send welcome"
+//! "Welcome to Neon Law" message the `/app/admin/people/{id}` "Send welcome"
 //! button and `POST /app/api/people/{id}/welcome` send.
 //!
 //! All three go through **one command**,

@@ -40,7 +40,7 @@ const MANUAL_JOBS: &[ManualJob] = &[
     },
 ];
 
-/// `POST /lawyer/schedules/:job/run` — queue one known CronJob workflow.
+/// `POST /app/admin/schedules/:job/run` — queue one known CronJob workflow.
 pub async fn run(Path(slug): Path<String>) -> Response {
     let broker = restate_broker_url();
     let token = std::env::var("RESTATE_AUTH_TOKEN").ok();
@@ -74,7 +74,7 @@ async fn run_configured(slug: &str, broker: Option<&str>, token: Option<&str>) -
 }
 
 fn redirect_with_notice(slug: &str, outcome: &str) -> Response {
-    Redirect::to(&format!("/lawyer/schedules?notice={outcome}:{slug}")).into_response()
+    Redirect::to(&format!("/app/admin/schedules?notice={outcome}:{slug}")).into_response()
 }
 
 async fn trigger(
@@ -171,7 +171,7 @@ mod tests {
         assert_eq!(response.status(), StatusCode::SEE_OTHER);
         assert_eq!(
             location(&response),
-            "/lawyer/schedules?notice=not_queued:archives"
+            "/app/admin/schedules?notice=not_queued:archives"
         );
 
         let server = MockServer::start().await;
@@ -189,7 +189,7 @@ mod tests {
         assert_eq!(response.status(), StatusCode::SEE_OTHER);
         assert_eq!(
             location(&response),
-            "/lawyer/schedules?notice=queued:billing-canary"
+            "/app/admin/schedules?notice=queued:billing-canary"
         );
 
         let rejecting_server = MockServer::start().await;
@@ -203,7 +203,7 @@ mod tests {
         assert_eq!(response.status(), StatusCode::SEE_OTHER);
         assert_eq!(
             location(&response),
-            "/lawyer/schedules?notice=not_queued:billing-digest"
+            "/app/admin/schedules?notice=not_queued:billing-digest"
         );
 
         assert_eq!(

@@ -33,10 +33,10 @@ pub const PROJECTS_PER_PAGE: usize = 5;
 /// CRUD admin pages — full list / new / edit / delete surfaces.
 const CRUD_PAGES: &[(&str, &str)] = &[
     // People is absent on purpose: the one browser surface that creates or edits
-    // a Person is the admin console's `/admin/people`, which this workbench's
+    // a Person is the admin console's `/app/admin/people`, which this workbench's
     // audience does not all reach. A lawyer's Person commands go through
     // `POST /app/api/people`.
-    ("/lawyer/entities", "Entities"),
+    ("/app/admin/entities", "Entities"),
     ("/app/projects", "Projects"),
 ];
 
@@ -46,19 +46,19 @@ const CRUD_PAGES: &[(&str, &str)] = &[
 /// seeded by the workspace (`navigator db import`, `store/seeds/`) rather than
 /// authored from the web UI.
 const LISTING_PAGES: &[(&str, &str)] = &[
-    ("/lawyer/entity-types", "Entity types"),
-    ("/lawyer/templates", "Templates"),
-    ("/lawyer/questions", "Questions"),
+    ("/app/admin/entity-types", "Entity types"),
+    ("/app/admin/templates", "Templates"),
+    ("/app/admin/questions", "Questions"),
     ("/lawyer/notations", "Notations"),
     ("/lawyer/answers", "Answers"),
-    ("/lawyer/addresses", "Addresses"),
-    ("/lawyer/mailrooms", "Mailrooms"),
-    ("/lawyer/letters", "Letters"),
+    ("/app/admin/addresses", "Addresses"),
+    ("/app/admin/mailrooms", "Mailrooms"),
+    ("/app/admin/letters", "Letters"),
     ("/lawyer/assets", "Assets"),
     ("/lawyer/person-entity-roles", "Person ↔ entity roles"),
     ("/lawyer/person-project-roles", "Person ↔ project roles"),
-    ("/lawyer/jurisdictions", "Jurisdictions"),
-    ("/lawyer/git-repositories", "Git repositories"),
+    ("/app/admin/jurisdictions", "Jurisdictions"),
+    ("/app/admin/git-repositories", "Git repositories"),
     ("/lawyer/disclosures", "Disclosures"),
     ("/lawyer/relationship-logs", "Relationship logs"),
 ];
@@ -467,9 +467,9 @@ fn DashboardDetails(role: ViewerRole) -> Element {
                         // Visitor analytics is admin-only; a lawyer must
                         // not be offered a link the route will refuse.
                         if role.is_admin_tier() {
-                            li { a { href: "/admin/analytics", "Visitor analytics" } }
+                            li { a { href: "/app/admin/analytics", "Visitor analytics" } }
                         }
-                        li { a { href: "/lawyer/schedules", "Cron schedules" } }
+                        li { a { href: "/app/admin/schedules", "Cron schedules" } }
                     }
                     h3 { class: "admin-details__heading", "JSON API" }
                     ul {
@@ -612,15 +612,15 @@ mod tests {
     #[test]
     fn visitor_analytics_is_offered_to_an_admin_and_withheld_from_lawyer() {
         let lawyer = dioxus_ssr::render_element(lawyer_dashboard_body(&view()));
-        assert!(!lawyer.contains("/admin/analytics"), "{lawyer}");
+        assert!(!lawyer.contains("/app/admin/analytics"), "{lawyer}");
         // Every lawyer still gets the non-admin operations links.
-        assert!(lawyer.contains("/lawyer/schedules"), "{lawyer}");
+        assert!(lawyer.contains("/app/admin/schedules"), "{lawyer}");
 
         let admin = dioxus_ssr::render_element(lawyer_dashboard_body(&DashboardView {
             role: ViewerRole::Admin,
             ..view()
         }));
-        assert!(admin.contains("/admin/analytics"), "{admin}");
+        assert!(admin.contains("/app/admin/analytics"), "{admin}");
     }
 
     /// The navbar the workbench renders is the shared `/app` row: the workbench
@@ -670,7 +670,7 @@ mod tests {
     /// The billing and cap-table listings are gone — the Firm bills through
     /// Xero and keeps cap tables in Carta — and their routes are unmounted. So
     /// is the people index: ENG-304 deleted the `/lawyer/people` mirror, and the
-    /// one people surface now answers at `/admin/people`, which this workbench's
+    /// one people surface now answers at `/app/admin/people`, which this workbench's
     /// lawyer-tier audience is refused at.
     ///
     /// A nav entry outliving its route is a link straight to a 404, and

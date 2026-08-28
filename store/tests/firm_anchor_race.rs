@@ -72,7 +72,7 @@ async fn anchor_rows(db: &SurrealDb) -> usize {
 }
 
 /// The whole create door, raced — `entity_commands::create_entity`, which
-/// is what the `/lawyer/entities` form and `POST /app/api/entities` both
+/// is what the `/app/admin/entities` form and `POST /app/api/entities` both
 /// call.
 ///
 /// This one is not redundant with the store-level race below it. The fork

@@ -49,7 +49,7 @@ Every workflow is kicked off in exactly one of three ways. All three land on the
 | --- | --- | --- | --- |
 | **Event-driven** | `web`, on a user action | retainer intake; Drive sync | `portal::retainer_walk` |
 | **Scheduled** | a Kubernetes `CronJob` | Archives; canary | `archives`/`billing-workflows` |
-| **Manual** | a Cron schedules button | `POST /lawyer/schedules/:job/run` | `portal::cron_schedules` |
+| **Manual** | a Cron schedules button | `POST /app/admin/schedules/:job/run` | `portal::cron_schedules` |
 
 The submit shape is identical in all three: `POST {ingress}/{Service}/{key}/run` (append `/send` for one-way), with the
 optional bearer. The shared helper is `workflows::start_workflow`.

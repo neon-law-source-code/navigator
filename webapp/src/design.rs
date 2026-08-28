@@ -540,7 +540,7 @@ fn NavigatorChromeShowcase() -> Element {
                             destinations: vec![
                                 NavigatorDestination::new("Portal", "/app/projects", false),
                                 NavigatorDestination::new("Lawyer", "/app/lawyer", true),
-                                NavigatorDestination::new("Admin", "/admin", false),
+                                NavigatorDestination::new("Admin", "/app/admin", false),
                             ],
                         }
                     },

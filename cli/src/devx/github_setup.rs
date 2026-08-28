@@ -4354,7 +4354,10 @@ mod tests {
         Mock::given(method("POST"))
             .and(path("/repos/acme/navigator/pulls"))
             .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
-                "html_url": "https://github.com/acme/navigator/pull/1"
+                "html_url": format!(
+                    "https://{}/acme/navigator/pull/1",
+                    cloud::workspace::DEFAULT_GIT_HOST
+                )
             })))
             .expect(1)
             .mount(&server)

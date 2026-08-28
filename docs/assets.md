@@ -28,6 +28,10 @@ its final `server/public/img/<slug>/<name>` path, then use `assets upload` to pu
 `build` and `upload` are the publish path for responsive photos, run by whoever curates the gallery. For a finished PNG
 hero, only `upload` is needed. `pull` is the restore path every developer runs. `verify` is the pre-ship guardrail.
 
+When restoring a public photo from a local library, copy it to the ignored final path only after confirming it is
+firm-owned or rights-cleared and removing EXIF metadata such as GPS coordinates, device identifiers, and capture times.
+The local source stays outside Git; the Markdown reference, filename, and accurate alt text are the durable record.
+
 An unfiltered `build` walks the whole manifest and needs every photo's source JPEG on disk, which is not the shape of
 adding one photo. `--only <slug>` (repeatable) narrows the run to the slugs you name. An unknown slug fails and lists
 the manifest rather than reporting a successful build of nothing.

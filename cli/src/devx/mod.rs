@@ -813,7 +813,12 @@ pub fn dispatch(command: crate::Command) -> Result<()> {
         crate::Command::Ops(crate::OpsCmd::Github(crate::GithubCmd::Setup {
             repository,
             dry_run,
-        })) => github_setup::run(&RepositoryTarget::resolve(repository)?, dry_run),
+            action_version,
+        })) => github_setup::run(
+            &RepositoryTarget::resolve(repository)?,
+            dry_run,
+            &action_version,
+        ),
         crate::Command::Ops(crate::OpsCmd::Gcp(GcpCmd::Setup {
             project_id,
             public_base_url,

@@ -102,6 +102,45 @@ human writes its default branch and a machine has already proved each commit bef
 command at the tap it is a no-op on rulesets — nothing is created, and because the command emits no `DeleteRuleset`,
 nothing a human deliberately adds is taken away either.
 
+#### Reconciling generated workflow content
+
+Every Project repository's `.github/workflows/gate.yml` — and `.github/workflows/publish.yml`, if it carries a `portal/`
+— pins Navigator's validate action to an exact release tag, the same way [`scaffold`'s generated
+gate](project-repositories.md#scaffolding-a-repository) does. Before this, moving that pin forward across the fleet
+after a release meant hand-editing it in every one of the 19+ Project repositories that carry it — a manual, unreviewed
+in spirit, per-repository chore.
+
+`ops github setup` now reconciles that content too, using the exact same templates `scaffold` writes
+(`cli/src/projects/repository.rs`'s `workflow`/`cd_workflow`) rather than a second copy that could drift from them. It
+first has to know whether the target repository is one this applies to at all:
+
+- `neon-law-source-code/navigator` and the Homebrew tap carry no generated `gate.yml`/`publish.yml` in this shape, so
+  this half of the reconcile is a no-op for both, same as before this feature existed.
+- The deploy repository — named by the optional `NAVIGATOR_GITHUB_DEPLOY_REPO` environment variable, never a literal in
+  source, the same reason `.github/workflows/deploy.yml` carries its own checkout as the `DEPLOY_REPO` Actions variable
+  rather than typing it — carries `ci.yml`/`ship.yml`, not the Project shape, and is excluded the same way.
+- Everything else this command is authorized to reconcile is verified, not assumed: it fetches `navigator.yaml` from the
+  repository's root over the API. A repository the fleet's own name does not reliably identify — one live example is a
+  local checkout named `vaib` for the GitHub repository `vaib-studio` — earns no exception; a repository admitted by the
+  `(host, organization)` boundary that carries neither an explicit deploy-repository exemption nor a manifest fails the
+  reconcile loudly, naming the repository, rather than being silently skipped or silently treated as a Project
+  repository either way.
+
+The pin defaults the same way `scaffold --action-version` does — this binary's own confirmed release, refusing `main`,
+`latest`, or an unconfirmed local build — and accepts the same `--action-version` override.
+
+**A drifted file becomes a pull request, never a direct commit to `main`.** Every other reconciled artifact in this
+command — a ruleset, a label, repository settings — is API-visible state with no review history of its own, so writing
+the desired payload directly *is* the reconciliation. A workflow file is different: it is a tracked file on a repository
+whose own ruleset already requires a pull request, a passing `ci`, and a code owner's approval to change `main` at all,
+so writing it directly would either be rejected by the very ruleset this command maintains or, on a repository where
+that ruleset is not yet applied, bypass it outright — for a binding legal-services practice, that is not an acceptable
+trade for one fewer manual step. So when `gate.yml` or `publish.yml` (or both) drift, the command opens a branch off
+`main`, commits the regenerated file(s) there, and opens an ordinary pull request back into `main` — the same shape a
+human bumping the pin by hand opens today, gated the same way. Re-running before that pull request merges is idempotent:
+the branch is named for the exact pin, so a second run finds it already holding the identical, deterministic template
+output and only makes sure the pull request is still open, rather than stacking a duplicate.
+
 Run a dry run before applying drift, then rerun without it:
 
 ```bash

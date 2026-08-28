@@ -400,11 +400,15 @@ hold one sample portal, named for the Project code it mounts on. Because the rep
 derived prefix is already correct and no `repository:` override is needed. `dist_dir: dist` is set because these
 applications live at the repository root, so the build emits `dist/` rather than `portal/dist/`.
 
-The caller workflow for them is `docs/examples/sample-portal-publish.yml`, ready to copy unchanged into each repository
-as `.github/workflows/publish.yml`. **It is not yet applied.** The credential needed to push a `.github/workflows/`
-change is available, so that is no longer what blocks it; what blocks it is that `neon-law-stg` carries no publisher
-identity yet, and applying the workflow before it does would leave three public repositories with a workflow that fails
-at authentication on every merge to `main`.
+The caller workflow for them is `docs/examples/sample-portal-publish.yml`, copied into each repository as
+`.github/workflows/publish.yml`. **It is applied and live**: `neon-law-stg` carries a `nav-pub-<code>` publisher
+identity for each of the three, and every `publish` run since it went in on 2026-08-26 has completed successfully. The
+two credential coordinates are read from repository *variables*, not secrets — a Workload Identity provider resource
+name and a service-account email are public identifiers with no key behind them, so GitHub's per-repository OIDC
+condition and the bucket's IAM prefix condition are the actual trust boundary, not the secrecy of these two strings. The
+bucket and object prefix are not passed in at all; each repository derives them from its own `navigator.yaml` through a
+checked-in `.github/navigator.py`, which also backs the origin gate (`.github/no-external-references.py`) run in the
+same job.
 
 **Upload order is load-bearing, and the never-delete rule is what distinguishes a private, shared applications bucket
 from a public marketing site.** The action uploads in two passes — everything except `index.html` first, then

@@ -28,14 +28,15 @@ Durable execution is split across two crates so the rest of the workspace never 
 | Tested via | `wiremock` (exact HTTP shape) | `cargo test -p workflows-service` |
 
 One worker pod hosts every service — new workflows bind onto the worker endpoint, never a new pod. Today that worker
-serves two virtual objects — `notation` (questionnaire + workflow timelines on one journal) and `devx-pr`
-(per-pull-request notifications) — and the durable workflows `Archives`, `Heartbeat`, `BillingCanary`, `BillingDigest`,
-  `ReconcileInvoices`, and `DevxIssueTriage`. The exact set is the single source
-of truth in `workflows_service::registry`, whose tests assert every workflow name is PascalCase (template filenames
-follow the separate snake_case convention `N103` enforces) and that the registry never drifts from the worker's actual
-`.bind(...)` calls. The DevX Slack-notice services `DevxIssueTriage` and `devx-pr` are no exception: they bind into this
-same worker — one worker, every service. They own the engineering Slack notifier and alone read `SLACK_WEBHOOK_URL`. In
-the reference deploy the worker runs behind `workflows.your-domain.example`.
+serves three virtual objects — `notation` (questionnaire + workflow timelines on one journal), `devx-pr`
+(per-pull-request notifications), and `devx-guardrails` (the GitHub-automation guardrail state) — and the durable
+workflows `Archives`, `BillingCanary`, `BillingDigest`, `ReconcileInvoices`, `Heartbeat`, `GitHubAutomationHeartbeat`,
+and `DevxIssueTriage`. The exact set is the single source of truth in `workflows_service::registry`, whose tests assert
+every workflow name is PascalCase (template filenames follow the separate snake_case convention `N103` enforces) and
+that the registry never drifts from the worker's actual `.bind(...)` calls. The DevX Slack-notice services
+`DevxIssueTriage` and `devx-pr` are no exception: they bind into this same worker — one worker, every service. They own
+the engineering Slack notifier and alone read `SLACK_WEBHOOK_URL`. In the reference deploy the worker runs behind
+`workflows.your-domain.example`.
 
 The runtime is chosen by `RESTATE_BROKER_URL`: unset means in-process / in-memory, so KIND works with zero config; set
 means the `RestateRuntime` adapter posts to the broker over HTTP. The same selection is used in `portal::main` and the
@@ -233,7 +234,7 @@ can't silently recur; when you fix a new one, add its guard in the same PR.
 
 - **Every workspace member is in every workspace-building Containerfile.** Add a crate → add `COPY <crate> <crate>` to
   `images/Containerfile.{trigger,workflows-service,web}`. Guarded by
-  `every_workspace_member_is_copied_into_each_workspace_image` in `cli::devx`.
+  `every_workspace_staging_containerfile_copies_every_member` in `cli/tests/containerfile_docs_copy.rs`.
 - **Registered workflow names are PascalCase** and the registry matches `main.rs`'s `.bind(...)` calls — guarded by the
   `workflows_service::registry` tests (template filenames follow the separate snake_case convention `N103` enforces).
 - **Trigger CronJobs carry `activeDeadlineSeconds` + `startingDeadlineSeconds`** so a stuck Job can't wedge `Forbid`,
@@ -242,10 +243,10 @@ can't silently recur; when you fix a new one, add its guard in the same PR.
   to the store its own `NAVIGATOR_SURREAL_*` names — `navigator` in that cluster. Both `dev up` and `dev worktree-env`
   put host `web` on the worker's database ([AGENTS.md](../AGENTS.md#default-worktree-loop)), so every Restate-backed
   flow (the retainer walk, contract review) reaches the worker. Point host `web` at any other database and a Notation it
-  commits is invisible to the worker, and the flow 500s with `journal: RecordNotFound`. A `cli::devx::restate_db` guard
-  exposes that mismatch through `worktree-env status` and `ops doctor` before any browser run; the `web` crate's
-  `matter_open_restate` regression proves the flow reaches the matter when the databases agree, and the `restate_db` and
-  `doctor` unit tests prove that a mismatch is reported, never silent.
+  commits is invisible to the worker, and the flow 500s with `journal: RecordNotFound`. The `matter_open_restate`
+  regression in `server/tests/` proves the flow reaches the matter when the databases agree. There is currently no
+  automated guard comparing host `web`'s and the worker's databases at `worktree-env status` or `ops doctor` time; a
+  mismatch surfaces only as the `journal: RecordNotFound` 500 above.
 - **Debugging stays identifier-and-status only — never client content** (the standing no-content rule; see
   [observability](observability.md)).
 

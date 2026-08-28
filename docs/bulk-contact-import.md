@@ -16,8 +16,7 @@ Parse, validate, and apply live in the [`import`](../import) crate — the same 
 [`rules`](../rules) and are shared by `cli validate`, `navigator-lsp`, and `web`. Three thin surfaces call the one
 engine:
 
-- **`cli import-contacts <file>`** — operator-run batch import (and `--dry-run` for validation only).
-  **`aida_bulk_import`** — the AIDA MCP tool; hands the engine a whole document. Lawyer/admin only. **`web` upload
+- **`aida_bulk_import`** — the AIDA MCP tool; hands the engine a whole document. Lawyer/admin only. **`web` upload
   route** — *(fast-follow)* the same engine behind a browser upload page.
 
 No surface re-implements the logic. Adding the web page later is wiring, not new behavior.
@@ -71,9 +70,8 @@ be added without breaking callers.
 
 ## Idempotency
 
-Every write is find-or-create, so an import is always safe to re-run. Since ENG-120 the whole import is single-engine —
-every table it touches lives in SurrealDB — and the link's dedupe is enforced by an index rather than by a hand-rolled
-read:
+Every write is find-or-create, so an import is always safe to re-run. Every table the import touches lives in SurrealDB,
+and the link's dedupe is enforced by an index rather than by a hand-rolled read:
 
 | Row | Dedupe key |
 | --- | --- |

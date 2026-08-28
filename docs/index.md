@@ -88,7 +88,6 @@ when a file exists under `docs/` with no entry here, so this list cannot decay t
 - [`surreal-archives.md`](surreal-archives.md) — SurrealDB operational archives.
 - [`iceberg-archive.md`](iceberg-archive.md) — the Iceberg archive design.
 - [`email-events-pipeline.md`](email-events-pipeline.md) — the email delivery event stream into BigQuery.
-- [`live-inquiry-coverage.md`](live-inquiry-coverage.md) — live inquiry session coverage.
 
 ## Worked demos
 
@@ -96,8 +95,10 @@ when a file exists under `docs/` with no entry here, so this list cannot decay t
 - [`nautilus-design.md`](nautilus-design.md) — Neon Law Nautilus screening-shield design.
 - [`nautilus-workflows.md`](nautilus-workflows.md) — Nautilus screening-dispute workflows.
 - [`northstar-estate-flow.md`](northstar-estate-flow.md) — the Northstar estate-plan flow.
+- [`live-inquiry-coverage.md`](live-inquiry-coverage.md) — proposed live transcript coverage during a matter session.
 - [`solana-attestation.md`](solana-attestation.md) — on-chain attestation on Solana.
 
 ## Editor integration
 
-- [`lsp/README.md`](lsp/README.md) — `navigator-lsp` editor setup for VS Code, Neovim, Helix, Emacs, and Zed.
+- [`lsp/README.md`](lsp/README.md) — `navigator-lsp`, the Language Server Protocol backend for Navigator's Markdown and
+  Notation diagnostics.

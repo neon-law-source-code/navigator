@@ -11,24 +11,17 @@ interviews, intake interviews, and any other transcript-bearing matter session.
 
 ## Feature gating
 
-Live transcription is **off by default and gated behind a feature flag**. The offline-first lane
-([`northstar-estate-flow.md`](northstar-estate-flow.md)) remains the shipped default; live coverage is an opt-in adjunct
-a deployment turns on deliberately. The flag has two layers so the speech-to-text and coverage code is not even loaded
-until it is enabled:
+Today, the Google Speech-to-Text provider (`cloud/src/speech.rs`) compiles in unconditionally as part of the `cloud`
+crate — there is no Cargo feature gate around it, and the `cli -- template transcribe` probe described below already
+calls it directly. The offline-first lane ([`northstar-estate-flow.md`](northstar-estate-flow.md)) remains the shipped
+default for Northstar; nothing routes live audio into a Northstar sitting yet.
 
-- **Compile-time (Cargo feature `live-transcription`).** The Google Speech-to-Text / Vertex provider implementations,
-  their SDK dependencies, and the WebSocket session handler compile in only under this feature. A default build of `web`
-  carries none of that code or its credentials surface. This is also what keeps the workspace's GCP-isolation invariant
-  intact: the provider implementations live in the `cloud` crate behind the feature, and `web` depends only on the
-  `LiveTranscriptProvider` / `InquiryCoverageProvider` traits, never the GCP SDK directly
-  ([`docs/multi-cloud.md`](multi-cloud.md)).
-- **Runtime flag.** Even in a binary built with the feature, a per-deployment flag controls whether the routes and UI
-  are exposed. A deployment that has not turned it on behaves exactly as today — offline upload only.
-
-Because the flag also gates whether the feature exists at all, it cleanly resolves the product tension: nothing about a
-default Northstar sitting changes ("the sitting's gravity is the product, not a laptop running captions") unless a
-deployment explicitly opts into live coverage, and live coverage is a lawyer-side tool — most naturally a deposition,
-witness, or intake interview — rather than captions running during a solemn estate sitting.
+A live Northstar/`web` integration is proposed to ship **off by default and gated behind a runtime flag** rather than a
+compile-time one: a per-deployment flag would control whether the live-session routes and UI are exposed, and a
+deployment that has not turned it on would behave exactly as today — offline upload only. Because the runtime flag would
+be the only gate, nothing about a default Northstar sitting changes ("the sitting's gravity is the product, not a laptop
+running captions") unless a deployment explicitly opts into live coverage, and live coverage is a lawyer-side tool —
+most naturally a deposition, witness, or intake interview — rather than captions running during a solemn estate sitting.
 
 ## Language scope
 
@@ -206,6 +199,19 @@ confirmed notation `Answer`.
 Speech-to-text is enough for transcription, but not for coverage. The app needs one seam for transcript capture and a
 separate seam for coverage inference.
 
+Today, `live_inquiry::TranscriptProvider` (`live-inquiry/src/lib.rs`) is the one seam that exists, and it covers only
+whole-file transcription for the CLI probe:
+
+```rust
+#[async_trait::async_trait]
+pub trait TranscriptProvider: Send + Sync {
+    async fn transcribe_file(&self, audio: &Path) -> anyhow::Result<Vec<TranscriptSegment>>;
+}
+```
+
+A live `web` integration would need a streaming counterpart plus a separate coverage-inference seam, neither of which
+exists yet. The proposed shape:
+
 ```rust
 #[async_trait::async_trait]
 pub trait LiveTranscriptProvider: Send + Sync {
@@ -223,9 +229,8 @@ pub trait InquiryCoverageProvider: Send + Sync {
 ```
 
 For v1, prefer Google Cloud Speech-to-Text v2 for speech-to-text and a Gemini/Vertex-backed `InquiryCoverageProvider`
-for coverage. These provider implementations live in the `cloud` crate behind the `live-transcription` Cargo feature
-(see [Feature gating](#feature-gating)); `web` holds only the traits and the handler. Browser code should not talk to
-provider credentials directly:
+for coverage. These provider implementations would live in the `cloud` crate (see [Feature gating](#feature-gating));
+`web` would hold only the traits and the handler. Browser code should not talk to provider credentials directly:
 
 ```text
 Browser WebSocket
@@ -398,9 +403,8 @@ surfaces.
 
 ## Acceptance criteria for the first implementation
 
-- The whole feature is off unless the `live-transcription` Cargo feature is built **and** the runtime flag is enabled; a
-  default build of `web` carries none of the provider code or credentials surface.
-- With the flag off, Northstar behaves exactly as today — offline upload only.
+- The live `web` integration is off unless its proposed runtime flag is enabled; with the flag off, Northstar behaves
+  exactly as today — offline upload only.
 - Lawyers can start a Live Inquiry Session from a Northstar Project.
 - The session is seeded by normalizing the estate Template questionnaire; no new Template grammar is required for v1.
 - Transcript, coverage, and Inquiry prompts are English only for v1.

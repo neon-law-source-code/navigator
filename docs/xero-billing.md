@@ -96,7 +96,7 @@ organisation (a paid $5/mo single-org app), and put those credentials in the pro
 
 ## Running the live test (grounding)
 
-The live test in [`web/tests/xero_sandbox.rs`](../server/tests/xero_sandbox.rs) mints a real client-credentials token
+The live test in [`server/tests/xero_sandbox.rs`](../server/tests/xero_sandbox.rs) mints a real client-credentials token
 against the demo-company connection and drives `ensure_contact` twice with the same unique name — the first call
 **creates** the contact, the second must **find** it and return the *same* `ContactID`. This is the only test that
 catches a regression in our understanding of Xero's API (a wrong `where` predicate, a bad scope, a rejected payload). It

@@ -75,24 +75,20 @@ project; every deployment's `config.toml` selects the `production` runtime and c
 
 ### The image hub
 
-[`environments.md`](environments.md) splits four projects into one image hub and three runtime projects containing three
-isolated deployments. The hub (`ghcr`) holds the Artifact Registry every deployment pulls from, the CI pusher service
-account, and the GitHub Workload Identity pool. Nothing runs there.
+`navigator ops gcp hub setup --project-id <hub>` and `navigator ops gcp setup --images-project-id <hub>` still exist and
+still run: the hub provisions a GAR repository, the `navigator-ci-pusher` service account, and a GitHub Workload
+Identity pool, and an environment can still take cross-project `roles/artifactregistry.reader` on it. None of that
+governs what this repository actually publishes or pulls. CI pushes every image straight to GHCR with the run's own
+`GITHUB_TOKEN`, and `navigator ops ship` renders `ghcr.io/<owner>` into every `image:` line — the Artifact Registry hub
+sits unused on that path. Treat the hub machinery as live-but-unused legacy tooling rather than a second lane to
+reconcile: it survives because `artifact_registry.rs` also hosts WIF helpers that `marketing.rs`, `app_publisher.rs`,
+`kms.rs`, and `secret_manager.rs` genuinely use, not because a release depends on it. See
+[`gitops.md`](gitops.md#keyless-pushes-to-ghcr) for the full accounting.
 
-`navigator ops gcp hub setup --project-id ghcr` provisions exactly that and nothing else. It has no flag that reaches
-buckets, GKE, or IAP — those live on the environment provisioner, and the hub's own `HubSetupConfig` cannot express
-them. Run `--dry-run` first; its ten-call recorded plan is the regression proof for that boundary.
-
-An environment then takes pull rights on the hub with `navigator ops gcp setup --images-project-id ghcr`. That grants
-the environment's workload service account `roles/artifactregistry.reader` on the hub repository and skips the
-per-environment registry, CI pusher, and Workload Identity pool entirely. Omitting the flag keeps the single-project
-shape, where the registry sits alongside the workloads that pull from it — the right default for a fork running one
-project.
-
-`NAVIGATOR_IMAGE_REGISTRY` is what makes `navigator ops ship` resolve image references, and `NAVIGATOR_GCP_PROJECT_ID`
-keeps naming the project that holds the GKE cluster and buckets. The images live on GHCR rather than in any GCP project,
-so the two are independent and neither can be mistaken for the other — which is the whole reason the Artifact Registry
-hub, its per-deployment reader grants, and its Workload Identity pool retired.
+`NAVIGATOR_IMAGE_REGISTRY` overrides the `ghcr.io/neon-law-source-code` default that `navigator ops ship` resolves image
+references against, and `NAVIGATOR_GCP_PROJECT_ID` keeps naming the project that holds the GKE cluster and buckets. The
+images live on GHCR rather than in any GCP project, so the two are independent and neither can be mistaken for the
+other.
 
 A tenant guard refuses either command aimed at the other's project before the first GCP call: the hub never receives
 buckets or GKE, and an environment never hosts the shared registry. An unrecorded project ID is always allowed, so a
@@ -111,7 +107,7 @@ and wiremock coverage at one narrow seam.
 When touching `cli/src/devx/gcp/`, keep four things correct:
 
 - `GcpService::default_base_url()` in `cli/src/devx/gcp/client.rs`. Each per-step endpoint path in `services.rs`,
-  `network.rs`, `buckets.rs`, and `run.rs`. The JSON request body shape. The long-running-operation polling path passed
+  `network.rs`, `buckets.rs`, and `gke.rs`. The JSON request body shape. The long-running-operation polling path passed
   to `lro::wait`. Compute operation names are bare IDs and must be polled below the matching project/global or
   project/region collection, and report `status: DONE`, while Google long-running operations report `done: true`.
 
@@ -143,10 +139,11 @@ Code reaches production through PRs and dated images:
 2. After the version PR merges, an operator tags that merged `main` commit with `YY.M.D` or
    `YY.M.D-hotfix.N`, which starts `deploy.yml`. The workflow fetches `origin/main` and rejects a tag on an unmerged
    side branch before it publishes anything.
-3. The deploy workflow builds and publishes the service images to GHCR: the brand server image and
-   `navigator-workflows-service`.
-4. The same run rolls GKE onto that tag — `neon-law-stg` first, then production once staging is green — and reports
-   both to `#navigator`. No operator step; the `ops ship` command below remains for a roll outside a release run.
+3. The deploy workflow builds and publishes the service images to GHCR: the brand server image,
+   `navigator-workflows-service`, and `navigator-gateway`.
+4. The same run proves those images in KIND and pushes them to GHCR, then posts ship instructions to `#navigator`. It
+   rolls nothing itself: every rollout is a deliberate operator act, run from the operator's own machine with `navigator
+   ops ship --deployment <row> --deployments-dir . --tag YY.M.D`.
 
 `navigator ops ship --deployment <name> --tag YY.M.D` is the self-contained reconcile: every coordinate comes from
 `deployments/<name>/config.toml`, so a stale shell cannot select the wrong deployment. It prints the resolved
@@ -247,10 +244,6 @@ gives every maintainer and LLM the same documentation surface.
 
 Good next steps for the website:
 
-- Add a `/docs` hub that lists every `DocsIndex::docs()` entry instead of requiring users to know a slug. Include a
-  short "For agents" section there linking to [`agent-decision-councils.md`](agent-decision-councils.md), this page,
-  [`access-model.md`](access-model.md), [`glossary.md`](glossary.md), and
-  [`AGENTS.md`](../AGENTS.md#local-kind-development).
 - Keep top-level docs concise and push long command transcripts into examples such as
   [`deploy/gke-ship-example.md`](deploy/gke-ship-example.md).
 - Keep public docs as the source of truth. If an invariant matters, lift it into `docs/`.

@@ -12,14 +12,15 @@ Use these canonical language references when behavior matters:
 
 - `rust-toolchain.toml` and workspace `Cargo.toml` define the toolchain, edition, lints, and formatting.
 - `unsafe_code = "forbid"`; clippy pedantic warnings run with `-D warnings`.
-- Tokio, Axum, and SurrealDB are the runtime stack. Only `workflows-service` consumes Restate SDK; other crates
-  submit through `workflows`.
+- Tokio, Axum, and SurrealDB are the runtime stack. `workflows-service`, `archives`, `billing-workflows`, and
+  `github_webhooks` each consume Restate SDK directly; `workflows` carries no `restate-sdk` dependency itself.
 
 ## Error handling
 
-- Libraries use typed `thiserror` enums. Binaries use contextual `anyhow::Result<T>` at the boundary. HTTP handlers use
-  the workspace `AppError` / `IntoResponse` pattern. Avoid `Box<dyn Error>` in public signatures and `unwrap`/`expect`
-  outside tests or `main` unless a one-line message proves a local invariant.
+- Libraries use typed `thiserror` enums. Binaries use contextual `anyhow::Result<T>` at the boundary. HTTP handlers each
+  define their own typed error implementing `IntoResponse` (e.g. `ApiError` in `portal/src/api.rs`, `WebhookError` in
+  `portal/src/esignature_webhook.rs`). Avoid `Box<dyn Error>` in public signatures and `unwrap`/`expect` outside tests
+  or `main` unless a one-line message proves a local invariant.
 
 ## Types and modules
 

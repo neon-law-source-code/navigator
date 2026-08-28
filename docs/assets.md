@@ -141,10 +141,10 @@ after its roll — that is the only check that looks at what a browser would act
 
 ```bash
 cargo run -p cli -- ops assets verify --base-url https://staging.neonlaw.com/assets
-cargo run -p cli -- ops assets verify --base-url https://www.neonlaw.com/assets
+cargo run -p cli -- ops assets verify --base-url https://<production>/assets
 ```
 
-`verify` probes the same key set `orphan` treats as reachable — every markdown `](img/…)` reference, every
+`verify` probes the same key set `orphans` treats as reachable — every markdown `](img/…)` reference, every
 `views::assets::GALLERY` variant, and both licensed GORP faces — and exits `2` naming whatever the origin does not
 serve.
 
@@ -159,13 +159,19 @@ against `NAVIGATOR_ASSET_BASE_URL`, exactly as a browser would), and exits non-z
 NAVIGATOR_ASSET_BASE_URL=https://storage.googleapis.com/<project>-assets cargo run -p cli -- ops assets verify
 ```
 
-Run it after `assets upload`, before you ship. The `deploy` workflow's `build` job verifies the public origin with
-`assets verify --base-url "$PUBLIC_ASSET_ORIGIN"`, then runs `assets stub-referenced --out server/public` before baking
-the ephemeral `navigator-web` image used by KIND. Those placeholder files carry the same paths as the verified GCS
-objects, but not the real photo bytes. After `dev e2e`, the KIND integration job runs `assets verify` twice: first
-against the public origin (the production publication gate), then against `http://localhost:8080/public` (the local
-serve gate for the stubbed KIND image). A release blocks until both pass. Locally, run the same gate against a host-side
-server:
+Run it after `assets upload`, before you ship. The `deploy` workflow's `build` job runs `assets stub-referenced` before
+baking the ephemeral `navigator-web` image used by KIND, writing placeholders under `server/public`; those placeholder
+files carry the same paths as the real objects, but not the real photo bytes. After `dev e2e`, the KIND `integration`
+job runs `assets verify` against the local host — the serve gate proving the stubbed KIND image serves every referenced
+path:
+
+```bash
+navigator ops assets verify --base-url http://localhost:8080/public
+```
+
+No public origin is probed in CI: publication of the real bytes is the operator upload lane described above, plus the
+live site's `/assets` proxy. A release blocks until that local gate passes. Locally, run the same gate against a
+host-side server:
 
 ```bash
 navigator ops assets verify --base-url http://localhost:<web-port>/public
@@ -223,7 +229,7 @@ The published bytes are world-readable at the deployment's own origin, so a deve
 them with no auth at all:
 
 ```bash
-cargo run -p cli -- ops assets fetch-referenced --base-url https://www.neonlaw.com/assets
+cargo run -p cli -- ops assets fetch-referenced --base-url https://staging.neonlaw.com/assets
 ```
 
 **This covers content images only, and that difference bites.** `fetch-referenced` scans `server/content` Markdown for
@@ -237,10 +243,10 @@ are the ones `views::assets` generates:
 mkdir -p server/public/img/berkeley-bay
 for w in 400 800 1200; do for ext in avif webp jpg; do
   curl -fsS -o "server/public/img/berkeley-bay/berkeley-bay-${w}w.${ext}" \
-    "https://www.neonlaw.com/assets/img/berkeley-bay/berkeley-bay-${w}w.${ext}"
+    "https://staging.neonlaw.com/assets/img/berkeley-bay/berkeley-bay-${w}w.${ext}"
 done; done
 ```
 
 If you are _curating_ the gallery (adding or replacing a responsive photo), use `build` from the source JPEGs and then
-`upload` instead — see the public-image-assets section of `cli/README.md`. If you are adding a blog hero PNG, put it
-under `server/public/img/<slug>/`, verify it locally, then run `assets upload`.
+`upload` instead — see [The four commands](#the-four-commands) above. If you are adding a blog hero PNG, put it under
+`server/public/img/<slug>/`, verify it locally, then run `assets upload`.

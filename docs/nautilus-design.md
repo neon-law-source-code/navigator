@@ -165,18 +165,9 @@ The Client Council's findings are requirements for the surfaces the workflows bu
 
 ## Build sequence
 
-Nautilus engagements are `projects` matters opened by `onboarding__` and closed by `offboarding__letter`. The workflows
-ride the existing `workflows-service` Restate worker — one worker, no per-workflow pod — and the existing inbound-email
-engine and `@approve` gate. Build order, each as one PR:
-
-1. **01 — Intake & consumer-report dispute** (`fcra_dispute`, § 1681i; 30-day reinvestigation timer).
-2. **02 — Inbound triage** — classify each inbound `.eml` (adverse-action notice, forwarded report, agency
-   reinvestigation result) against active matters; the deadline-tracking spine.
-3. **03 — Reinvestigation review** — the agency's § 1681i response (corrected/deleted vs verified-unchanged), surfaced
-   to the client and queued for attorney review of the next step.
-4. **04 — Furnisher dispute** (`furnisher_dispute`, § 1681s-2(b)) — the escalation when the agency verifies an item the
-   furnisher's records do not support.
-5. **05 — Referral** (lawsuit/summons or viable FCRA damages claim → litigation referral).
+[`docs/nautilus-workflows.md`](nautilus-workflows.md) is the engineering build index and carries the current, accurate
+build status for the five numbered workflows — this doc is the compliance contract they build against, not the status
+tracker.
 
 See [`docs/glossary.md`](glossary.md) for the Person / Entity / role vocabulary these workflows use, and the
 [`agent-workflows.md`](agent-workflows.md) for the feature-first recipe each PR follows.

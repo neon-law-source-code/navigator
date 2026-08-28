@@ -387,20 +387,28 @@ and signed Navigator session own the impersonation state.
 ## Verified end-to-end
 
 `server/tests/oidc_e2e.rs` exercises the entire pipeline against a mocked OIDC provider and the compiled production
-policy. Six tests:
+policy. Ten tests:
 
 1. `full_oidc_flow_upserts_person_and_allows_lawyer` — happy path; person row created with email + name from the
    id_token.
 2. `embedded_policy_denies_client_admin_route_with_403` — the compiled policy denies a Client-tier caller with 403.
 3. `second_login_with_same_subject_does_not_create_duplicate_person` — re-running the login doesn't insert a second row.
-4. `user_with_db_lawyer_role_can_hit_every_admin_route` — pre-seeds `role = lawyer` in the DB, logs in (promoting the
+4. `a_client_reaches_the_matter_surface_the_admin_routes_deny_them` — a Client-tier login reaches `/app/projects` with
+   200; scoping happens in the handler, not at the route gate.
+5. `user_with_db_lawyer_role_can_hit_every_admin_route` — pre-seeds `role = lawyer` in the DB, logs in (promoting the
    row), hits six app routes (`/app/lawyer`, `/app/admin/entities`, `/app/admin/jurisdictions`,
    `/app/admin/entity-types`, `/app/admin/templates`, `/app/admin/questions`) using the production policy. The people
    index is absent because it answers at `/app/admin/people`, Owner/Admin only.
-5. `user_with_empty_db_roles_is_denied_even_when_token_would_have_granted` — fresh user, default `role = client`; every
-   `/lawyer/*` route returns 403.
-6. `db_role_revocation_takes_effect_on_next_login` — a lawyer user starts with lawyer, succeeds; row is updated to `role
+6. `user_with_client_role_is_denied_from_admin_routes` — a pre-seeded Client-tier login still reads `role = client`
+   after callback, and every admin route returns 403.
+7. `db_role_revocation_takes_effect_on_next_login` — a lawyer user starts with lawyer, succeeds; row is updated to `role
    = 'client'`; next login produces a session that fails the embedded Rego check.
+8. `callback_returns_403_html_when_email_is_not_pre_seeded` — an id_token for an email with no `persons` row renders
+   the styled sign-in-specific 403 page and creates no row; sign-up is operator-mediated.
+9. `callback_jit_creates_bootstrap_owner_with_owner_role_when_absent` — the configured bootstrap-Owner email JIT-creates
+   its `persons` row with `role = owner` on first login to a fresh deployment.
+10. `bootstrap_owner_role_heals_back_after_being_cleared` — the bootstrap-Owner row is pre-seeded as `client`, and the
+    next sign-in restores `role = owner`.
 
 Run them with:
 

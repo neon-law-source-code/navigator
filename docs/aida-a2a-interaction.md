@@ -90,7 +90,7 @@ behaves identically regardless of envelope — no external client behavior to ve
 `no` authorize or decline; a free-form sentence matches neither and re-prompts, so there is no natural-language command
 surface: the action needs only a `yes`, and only a `yes` is read.
 
-The engineering council reviewed this. The findings, and the line between what we control and what we do not:
+The line between what we control and what we do not:
 
 - **We cannot remove the gate for client-facing acts.** Sending email, assembling and routing a document to DocuSign,
   and other outbound or irreversible actions must keep exactly one human authorization. That is the supervision line the
@@ -105,9 +105,8 @@ The engineering council reviewed this. The findings, and the line between what w
   exempt list is fail-closed: a tool nobody classified requires confirmation, so a new writer cannot skip the gate by
   omission.
 
-  **Read the scope carefully, because it is narrower than the proposal it came from.** The split governs the
-  `metadata.skill` path *only*, which had no pause at all before it — so it added supervision where there was none and
-  removed none anywhere. The router loop still gates every side-effecting tool through
+  The split governs the `metadata.skill` path *only*, which had no pause at all before it — so it added supervision
+  where there was none and removed none anywhere. The router loop still gates every side-effecting tool through
   [`tools::is_side_effecting`](../mcp/src/tools/mod.rs), unchanged. Loosening *that* path is still a legal-council
   decision that has not been taken.
 - **What we do not control: whether the client renders a button.** A2A 0.3 has no standardized "quick-reply button"
@@ -117,9 +116,9 @@ The engineering council reviewed this. The findings, and the line between what w
   free-form prompt — so there is no live-client behavior left to verify before relying on this in production.
 
 The consensus action: keep the gate, advertise the structured yes/no choice, and accept only the exact `yes`/`no` token
-in either envelope. The internal-vs-client-facing split has since landed on the named-skill path, where it only ever
-tightened the boundary. Applying it to the router loop — the change that would actually drop an existing prompt —
-remains a legal-council item.
+in either envelope. The router loop pauses on every side-effecting tool. The named-skill path is narrower: it
+additionally exempts four CRM writers from confirmation — `aida_create_person`, `aida_create_project`,
+`aida_link_person_project`, and `aida_bulk_import` (see [`CONFIRMATION_EXEMPT_TOOLS`](../mcp/src/tools/mod.rs)).
 
 ## Error propagation
 
@@ -135,15 +134,14 @@ Gemini Enterprise renders the **text** Part and effectively drops the structured
 
 [`import::apply`](../import/src/apply.rs) returns `Ok(report)` even when structural validation rejects the payload (then
 `organizations`/`people` are empty) or an individual row fails — the reasons live in `report.diagnostics` and each
-`RowOutcome.detail`. The tool used to render only the tally:
+`RowOutcome.detail`. Rendering only the tally would be a silent non-result:
 
 ```text
 Bulk import: 0 created, 0 updated, 0 unchanged, 0 failed.
 ```
 
-That is the silent non-result the user hit. The fix folds the reasons into the **text** Part via
-[`ImportReport::problem_lines`](../import/src/apply.rs), so [`aida_bulk_import`](../mcp/src/tools/aida_bulk_import.rs)
-now returns:
+It folds the reasons into the **text** Part via [`ImportReport::problem_lines`](../import/src/apply.rs), so
+[`aida_bulk_import`](../mcp/src/tools/aida_bulk_import.rs) returns:
 
 ```text
 Bulk import: 0 created, 0 updated, 0 unchanged, 0 failed.

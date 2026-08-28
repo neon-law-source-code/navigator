@@ -39,9 +39,9 @@ wrong, the editor underlines it — the same way a word processor underlines a m
 
 You say what a file is by **declaring it**: a `kind:` key names the file's kind outright, and that declaration is the
 *only* classifier — the system never guesses the kind from a file's structure or its path. Its value is one of a small,
-fixed vocabulary. Most values name notation-template kinds — `retainer`, `letter`, `filing`, `will`, `trust`,
-`directive`, `agreement`, `onboarding`, `memo` — some name content pages — `post`, `workshop` — and one, `github`, names
-the engineering intake notations. A further ten name **matter dashboards**, the page types an attorney composes.
+fixed vocabulary. Most values name notation-template kinds — `letter`, `filing`, `will`, `trust`, `directive`,
+`agreement`, `onboarding`, `offboarding`, `memo` — some name content pages — `post`, `workshop` — and one, `github`,
+names the engineering intake notations. A further ten name **matter dashboards**, the page types an attorney composes.
 Anything else is a blocking error (`S103`). The vocabulary grows as the firm's practice areas do.
 
 A file that declares no `kind:` is ordinary prose, held only to general writing rules. Because classification is
@@ -49,10 +49,11 @@ declaration-only, a file that carries notation *structure* — a `questionnaire:
 `kind:` is a blocking error (`S104`): it would otherwise lint silently as prose and skip its whole rule family. Each
 kind and the keys it must carry:
 
-- **Notation template** — one of the notation kinds (`retainer`, `letter`, `filing`, `will`, `trust`, `directive`,
-  `agreement`, `onboarding`, `memo`). A complete one carries **both** the `questionnaire:` and `workflow:` machines plus
-  `title`, `code`, `respondent_type`, `jurisdiction`, and `confidential`, and the missing ones are flagged. Lives under
-  `templates/forms/` or `templates/neon_law/`; a `templates/` file with no `kind:` is just prose until it declares one.
+- **Notation template** — one of the notation kinds (`letter`, `filing`, `will`, `trust`, `directive`, `agreement`,
+  `onboarding`, `offboarding`, `memo`). A complete one carries **both** the `questionnaire:` and `workflow:` machines
+  plus `title`, `code`, `respondent_type`, `jurisdiction`, and `confidential`, and the missing ones are flagged. Lives
+  under `templates/forms/` or `templates/neon_law/`; a `templates/` file with no `kind:` is just prose until it declares
+  one.
 - **Blog post** — `kind: post`. Lives under `server/content/blog/`. Needs `title` and `description`, in a file named
   `YYYYMMDD_slug.md`.
 - **Workshop page** — `kind: workshop`. Lives under `server/content/workshops/`. Needs `title` and `description`.
@@ -83,33 +84,54 @@ to get there. Here is the real frontmatter from the shared retainer, `templates/
 without its surrounding `---` fences):
 
 ```yaml
+kind: onboarding
 title: Retainer Agreement
 respondent_type: person_and_entity
 code: onboarding__retainer
 jurisdiction: NV
 confidential: true
+output: letter
+prompts:
+  client_name: What is the client's full legal name?
+  project_name: What is the project name for this engagement?
+  lawyer_dri: Which lawyer is directly responsible for this engagement?
+audiences:
+  client_name: client
+  project_name: lawyer
+  governing_law: lawyer
+  lawyer_dri: lawyer
+  engagement_start_date: lawyer
+  engagement_scope: lawyer
+  fee_basis: lawyer
 questionnaire:
-  BEGIN:               { _: person__client }
-  person__client:      { _: project__engagement }
-  project__engagement: { _: END }
+  BEGIN:                                     { _: person__client }
+  person__client:                            { _: person__lawyer_dri }
+  person__lawyer_dri:                        { _: project__engagement }
+  project__engagement:                       { _: custom_datetime__engagement_start_date }
+  custom_datetime__engagement_start_date:    { _: custom_text__engagement_scope }
+  custom_text__engagement_scope:             { _: custom_text__fee_basis }
+  custom_text__fee_basis:                    { _: custom_single_choice__governing_law }
+  custom_single_choice__governing_law:       { _: END }
   END: {}
 workflow:
-  BEGIN:                       { intake_submitted: intake_persisted__client }
-  intake_persisted__client:    { retainer_rendered: lawyer_review }
-  lawyer_review:                { approved: generate_pdf__retainer_pdf, rejected: END }
-  generate_pdf__retainer_pdf: { pdf_persisted: sent_for_signature__pending }
-  sent_for_signature__pending: { signature_received: END, signature_declined: END }
+  BEGIN:                        { intake_submitted: intake_persisted__client }
+  intake_persisted__client:     { retainer_rendered: lawyer_review }
+  lawyer_review:                 { approved: generate_pdf__retainer_pdf, changes_requested: reask__client, rejected: END }
+  reask__client:                 { intake_resubmitted: lawyer_review }
+  generate_pdf__retainer_pdf:  { pdf_persisted: sent_for_signature__pending }
+  sent_for_signature__pending:  { signature_received: END, signature_declined: END }
   END: {}
 ```
 
 Each key, in plain English:
 
-- **`kind`** — what this notation is: `retainer` (the engagement agreement that opens a matter), `letter` (a letter the
-  firm sends on the client's behalf), `filing` (a document filed with a government body), `will`, `trust`, `directive`
-  (a health-care or durable financial directive), `agreement` (employment, contractor, or LLC operating), `onboarding`
-  (a multi-instrument intake bundle such as the estate plan), or `memo` (an analytical work product like a contract
-  review). It is **required** on every notation template — the declared kind is the sole classifier, so a template
-  without it lints as prose — and an unrecognized value is a blocking error.
+- **`kind`** — what this notation is: `letter` (a letter the firm sends on the client's behalf), `filing` (a document
+  filed with a government body), `will`, `trust`, `directive` (a health-care or durable financial directive),
+  `agreement` (employment, contractor, or LLC operating), `onboarding` (the engagement that opens a matter — a
+  single-instrument engagement letter or a multi-instrument intake bundle such as the estate plan), `offboarding` (the
+  firm-signed letter that closes a matter), or `memo` (an analytical work product like a contract review). It is
+  **required** on every notation template — the declared kind is the sole classifier, so a template without it lints as
+  prose — and an unrecognized value is a blocking error.
 - **`title`** — the human name of the document, e.g. `Retainer Agreement`. It cannot be blank.
 - **`code`** — the document's permanent file number, in `snake_case` (e.g. `onboarding__retainer`). It must be unique
   across the whole project, and you do not change it once clients have signed under it. The reason is the record: the
@@ -186,8 +208,8 @@ profile** — what comes out and how it is dressed:
   them. Conversely a typeset profile (`letter`, `agreement`, or no `output:` at all) must **not** carry a `form:` key.
 
 `letter`, `agreement`, and `form` are the values the checker accepts today (N109); leaving the key off gives you the
-plain page. As we add court-specific layouts (pleading paper), each becomes one more named value here — so `output`
-stays the one place a template says what it should look like.
+plain page. `output` is the one place a template says what it should look like, and the vocabulary is open to more named
+values as new layouts are named (a court-specific pleading-paper layout, for instance).
 
 ### Government form templates carry two extra keys
 
@@ -196,6 +218,7 @@ A template backed by an official government form (under `templates/forms/`) decl
 `templates/forms/united_states/nevada/state/nv__llc_formation.md`:
 
 ```yaml
+kind: filing
 title: Neon Law Nest — Nevada Entity Formation
 respondent_type: person_and_entity
 code: nv__llc_formation
@@ -233,7 +256,7 @@ what each code actually checks, its severity, and whether it autofixes, see the 
 
 | Key | Required | Values | Checked by |
 | --- | --- | --- | --- |
-| `kind` | yes | a notation kind (`retainer` … `memo`, the nine listed above) | S103, S104 |
+| `kind` | yes | a notation kind (`letter` … `memo`, the nine listed above) | S103, S104 |
 | `title` | yes | any non-empty text | N101 |
 | `code` | yes | unique `snake_case` | N108 |
 | `respondent_type` | yes | `person`, `entity`, `person_and_entity` | N102 |

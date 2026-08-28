@@ -18,10 +18,10 @@ vendor falls back to the in-process stub, so a fresh checkout boots and self-tes
 
 ## One attachment per deployment
 
-The four-deployment topology uses four separately revocable attachments: one demo attachment for staging and three
-production attachments for live sites. An attachment consists of the DocuSign account, app/integration key, impersonated
-user, RSA keypair, consent grant, REST and OAuth hosts, Connect configuration, HMAC key, and Navigator webhook path
-secret.
+Today's two-deployment topology (see [`environments.md`](environments.md)) uses two separately revocable attachments:
+one demo attachment for staging and one production attachment for the production deployment. An attachment consists of
+the DocuSign account, app/integration key, impersonated user, RSA keypair, consent grant, REST and OAuth hosts, Connect
+configuration, HMAC key, and Navigator webhook path secret.
 
 DocuSign Go-Live copies an approved integration key into production rather than moving it. That permits an app identity
 to exist in both tiers, but it does not make the two tiers one credential boundary. Configuration is not copied
@@ -74,10 +74,10 @@ is a template + spec, not a new handler — the spec just needs the retainer's s
 Signed templates today:
 
 - **`onboarding__retainer`** — the firm's engagement agreement; client signs, firm countersigns.
-- **`nv__trust`** — the Nevada revocable trust instrument; the settlor signs as `client`, the attorney countersigns as
-  `firm`. The trust instrument is valid e-signed (NRS 163.008 — no witnesses or notary required), but any deed funding
-  **real property** into the trust must be notarized and recorded as a separate step; the template states this caveat
-  and the deed is **not** e-signed here.
+- **`northstar__trust`** — the Nevada revocable trust instrument; the settlor signs as `client`, the attorney
+  countersigns as `firm`. The trust instrument is valid e-signed (NRS 163.008 — no witnesses or notary required), but
+  any deed funding **real property** into the trust must be notarized and recorded as a separate step; the template
+  states this caveat and the deed is **not** e-signed here.
 
 Deliberately **not** e-signed: `will__simple` (Nevada wills need two attesting witnesses + a notarized self-proving
 affidavit, NRS 133.040/133.050, or the NRS 133.085 qualified-custodian path) keeps its in-person `testator_signature` →
@@ -166,9 +166,9 @@ downloading the executed documents, and capturing a real Connect completion/decl
 
 ## Client delivery: captive vs emailed
 
-Each notation carries a `delivery` column (`m20260708_add_delivery_to_notations`) that selects, per matter, how the
-client recipient is addressed when the single send path builds the signature manifest. The firm always countersigns
-second (`routingOrder` 2) as a non-captive recipient — it receives the usual emailed link — regardless of `delivery`.
+Each notation carries a `delivery` column (`store/src/schema/navigator.surql`) that selects, per matter, how the client
+recipient is addressed when the single send path builds the signature manifest. The firm always countersigns second
+(`routingOrder` 2) as a non-captive recipient — it receives the usual emailed link — regardless of `delivery`.
 
 - **`embedded`** (the default; the standalone retainer walk) — the client is a **captive** recipient: the manifest sets
   `client_user_id` (derived from the notation), so DocuSign suppresses the signing email. Because no email goes out, a
@@ -203,12 +203,12 @@ archives the signed PDF + Certificate of Completion to object storage (best-effo
 
 ## Production cutover (Phase 2)
 
-Each production deployment needs a production-capable eSignature account and an integration approved or promoted through
-Go-Live. Configuration does not copy; set up and prove each production attachment separately:
+The production deployment needs a production-capable eSignature account and an integration approved or promoted through
+Go-Live. Configuration does not copy; set up and prove the production attachment separately from demo:
 
 1. **Promote + prod auth.** Complete Go-Live, then on `account.docusign.com` add a **production RSA keypair**
-   and **grant consent** for that attachment's production user. The OAuth host becomes `account.docusign.com`; discover
-   the account's assigned REST base from `/oauth/userinfo`.
+   and **grant consent** for the production attachment's production user. The OAuth host becomes `account.docusign.com`;
+   discover the account's assigned REST base from `/oauth/userinfo`.
 2. **Production secrets (`deployments/<name>/secrets.enc.yaml` → Secret Manager → projected Secret).** The identifiers
    (`DOCUSIGN_INTEGRATION_KEY`, `DOCUSIGN_USER_ID`, `DOCUSIGN_ACCOUNT_ID`, `DOCUSIGN_BASE_URL`, `DOCUSIGN_OAUTH_BASE`)
    accompany that row's `DOCUSIGN_PRIVATE_KEY` and `DOCUSIGN_HMAC_KEY`. Use the `ship` pre-deploy Secret check.

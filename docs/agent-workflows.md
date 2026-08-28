@@ -82,6 +82,11 @@ When a dirty tree is ready to land:
      --ignore-filename-regex '(cli/src/devx/(browser_e2e|chrome|e2e|garage|orchestrate|staging)|features/src/webdriver)\.rs$'
    ```
 
+   This local number reads below CI's real number, so treat it as a differential sign check, not proof against the
+   floor: it skips doctests, which CI covers with a separate `cargo test --workspace --doc` step, and it excludes the
+   `features` crate's cucumber suites, which CI runs with `cargo test -p features` and folds into the same coverage
+   counters.
+
    The floor covers the whole workspace, not the diff, and may pass uncovered additions. Give each handler, route, and
    branch a non-gated router test against an embedded store; use browser e2e only as live proof. Explain genuinely
    unreachable lines in the PR. See [`test-database.md`](test-database.md).

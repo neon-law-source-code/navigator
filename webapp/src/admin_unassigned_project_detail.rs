@@ -96,10 +96,19 @@ pub async fn get_admin_unassigned_project_detail() -> Result<AdminUnassignedView
         .unwrap_or_default();
     let logo = crate::app_chrome::app_logo_from_context().await;
     let firm_name = crate::app_chrome::firm_name_from_context().await;
+    let person_id = dioxus_fullstack_core::FullstackContext::extract::<
+        axum::Extension<crate::portal_project_list::PersonId>,
+        _,
+    >()
+    .await
+    .ok()
+    .and_then(|axum::Extension(pid)| pid.0);
     // Admin-tier only, hidden rather than refused — the same rule
     // `crate::project_participation` already applies to every write this page
-    // links to.
-    if !role.is_admin_tier() {
+    // links to. `person_id` too, mirroring the fail-closed rule
+    // `store::access::matter_viewer` applies before it ever queries: a
+    // session naming no linked person is not an identified admin.
+    if !role.is_admin_tier() || person_id.is_none() {
         return Ok(not_found(role, logo, firm_name));
     }
     let csrf_token = dioxus_fullstack_core::FullstackContext::extract::<

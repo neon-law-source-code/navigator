@@ -120,8 +120,12 @@ pub async fn matter_viewer_kind() -> Result<MatterViewerKind, ServerFnError> {
         // `matter_viewer` itself carries no privileged short-circuit (ENG-81)
         // — this branch is the dispatcher's own, on top of that unchanged
         // answer: an Owner/Admin with no row gets the participation-only page
-        // rather than the `404` everyone else gets here.
-        None if role.is_admin_tier() => MatterViewerKind::AdminUnassigned,
+        // rather than the `404` everyone else gets here. Requiring
+        // `person_id` too keeps the same fail-closed rule `matter_viewer`
+        // itself applies before it ever queries: a session naming no linked
+        // person is not an identified admin to hand a page to, whatever its
+        // tier claims.
+        None if role.is_admin_tier() && person_id.is_some() => MatterViewerKind::AdminUnassigned,
         None => {
             commit_not_found();
             MatterViewerKind::None

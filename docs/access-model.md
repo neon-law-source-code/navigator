@@ -83,11 +83,11 @@ DRIs; none of them may be a Clerk.
 A **licensed lawyer** with system-administration authority — manage the person table, rotate keys, archive projects.
 Admin is a superset of Lawyer. Like Owner, a matter nobody has put an Admin on still gates its full content: the
 workbench, documents, and notations at `/app/projects/{code}` stay behind the participation row every tier needs. What
-Admin sees instead of a `404` there is a participation-only rendering — enough to see the matter and staff it, nothing
-it discloses beyond that — and `/app/projects` lists every matter so there is something to navigate to. Privileged reach
-is a surface you navigate to rather than an invisible widening of a shared route, which is what makes a lens bug
-distinguishable from an intended bypass — the two are otherwise indistinguishable from a response body. Admin cannot
-create, edit, or demote an Owner.
+Admin sees instead of a `404` there is a participation-only rendering — enough to see the matter and manage who is
+assigned to it, nothing it discloses beyond that — and `/app/projects` lists every matter so there is something to
+navigate to. Privileged reach is a surface you navigate to rather than an invisible widening of a shared route, which is
+what makes a lens bug distinguishable from an intended bypass — the two are otherwise indistinguishable from a response
+body. Admin cannot create, edit, or demote an Owner.
 
 ### *anonymous*
 

@@ -496,6 +496,24 @@ pub fn sign_entra_id_token(
 /// login's pre-auth nonce, or [`IdTokenVerifier::verify`] rejects it.
 #[must_use]
 pub fn sign_id_token(aud: &str, nonce: &str, sub: &str, email: &str, name: &str) -> String {
+    sign_id_token_with_kid(aud, nonce, sub, email, name, TEST_OIDC_KID)
+}
+
+/// [`sign_id_token`] with an explicit `kid`, rather than the fixed
+/// [`TEST_OIDC_KID`] every verifier under test is pinned to. Exists so a
+/// test can mint a token whose `kid` a verifier's cached JWKS will never
+/// recognise — e.g. to exercise [`IdTokenVerifier`]'s refetch-on-unknown-
+/// `kid` path without needing a signing key that actually matches what a
+/// mock JWKS endpoint serves.
+#[must_use]
+pub fn sign_id_token_with_kid(
+    aud: &str,
+    nonce: &str,
+    sub: &str,
+    email: &str,
+    name: &str,
+    kid: &str,
+) -> String {
     let claims = TestIdTokenClaims {
         sub,
         email,
@@ -506,7 +524,7 @@ pub fn sign_id_token(aud: &str, nonce: &str, sub: &str, email: &str, name: &str)
         exp: crate::session::now_unix_secs() + 300,
     };
     let mut header = Header::new(Algorithm::RS256);
-    header.kid = Some(TEST_OIDC_KID.to_string());
+    header.kid = Some(kid.to_string());
     let key = EncodingKey::from_rsa_pem(TEST_OIDC_PRIV_PEM.as_bytes())
         .expect("test OIDC private key parses");
     encode(&header, &claims, &key).expect("sign test id_token")

@@ -19,7 +19,9 @@
 //! endpoints come from `<issuer>/.well-known/openid-configuration`
 //! so we don't hard-code provider-specific URLs.
 
+use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 use axum::extract::{Query, State};
@@ -31,6 +33,7 @@ use base64::Engine;
 use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use tokio::sync::{Mutex as AsyncMutex, RwLock as AsyncRwLock};
 use tower_cookies::{cookie::SameSite, Cookie, Cookies};
 
 use store::persons::Role;
@@ -227,11 +230,12 @@ struct OAuthConfigInner {
     authorization_endpoint: String,
     token_endpoint: String,
     end_session_endpoint: Option<String>,
-    /// RS256 id_token verifier, built at boot from the IdP's published
-    /// JWKS and pinned to the discovered `issuer` + our `client_id`
-    /// audience. `None` only on the hand-built test config; production
-    /// always carries one and [`callback`] refuses to mint a session
-    /// without it.
+    /// RS256 id_token verifier, built from the IdP's published JWKS and
+    /// pinned to the discovered `issuer` + our `client_id` audience. Not a
+    /// fixed key set fetched once at boot — see [`IdTokenVerifier`] for how
+    /// it keeps itself current across a provider's key rotation. `None`
+    /// only on the hand-built test config; production always carries one
+    /// and [`callback`] refuses to mint a session without it.
     id_token_verifier: Option<Arc<IdTokenVerifier>>,
 }
 
@@ -372,7 +376,7 @@ impl OAuthConfig {
                 authorization_endpoint: doc.authorization_endpoint,
                 token_endpoint: doc.token_endpoint,
                 end_session_endpoint: doc.end_session_endpoint,
-                id_token_verifier: Some(Arc::new(verifier)),
+                id_token_verifier: Some(verifier),
             }),
         }))
     }
@@ -477,7 +481,7 @@ impl OAuthConfig {
                 authorization_endpoint: doc.authorization_endpoint,
                 token_endpoint: doc.token_endpoint,
                 end_session_endpoint: doc.end_session_endpoint,
-                id_token_verifier: Some(Arc::new(verifier)),
+                id_token_verifier: Some(verifier),
             }),
         }))
     }
@@ -1280,6 +1284,17 @@ pub enum IdTokenError {
     Nonce,
 }
 
+/// How often the background task re-fetches the full JWKS, independent of
+/// whether any unrecognised `kid` has been seen. Hourly is Microsoft's own
+/// documented suggestion for signing-key-rollover handling. See ENG-326.
+const JWKS_REFRESH_INTERVAL: Duration = Duration::from_hours(1);
+
+/// Minimum time between JWKS refetches triggered by an unrecognised `kid`.
+/// Without this floor, a flood of tokens carrying garbage `kid`s — forged or
+/// simply stale — would turn every one of them into an outbound request
+/// against the provider's JWKS endpoint. See ENG-326.
+const JWKS_REFETCH_FLOOR: Duration = Duration::from_mins(5);
+
 /// RS256 id_token verifier built from an IdP's published JWKS and
 /// pinned to the expected issuer and audience (our `client_id`).
 ///
@@ -1288,9 +1303,37 @@ pub enum IdTokenError {
 /// the relying party to verify the id_token's signature, `iss`, `aud`,
 /// and `exp`, and to bind it to the login via `nonce`. This type is the
 /// one place that happens for the browser flow.
+///
+/// The JWKS is not fixed at construction: a provider rotates its signing
+/// key on its own schedule (Microsoft explicitly reserves the right to do
+/// so with no notice), so a verifier built once at boot and never updated
+/// 401s every sign-in from the moment of rotation until the process
+/// restarts. [`Self::from_jwks_url`] instead returns a self-refreshing
+/// `Arc`: a background task re-fetches the full key set every
+/// [`JWKS_REFRESH_INTERVAL`], and [`Self::verify`] refetches immediately
+/// (floored by [`JWKS_REFETCH_FLOOR`]) the moment it sees a `kid` it
+/// doesn't recognise. See ENG-326.
 pub struct IdTokenVerifier {
-    /// `(kid, key)` pairs from the JWKS document.
-    keys: Vec<(String, DecodingKey)>,
+    /// Per-`kid` decoding keys, replaced wholesale under one write lock on
+    /// every refresh. A map rather than the historical flat list so a
+    /// lookup is by `kid` directly rather than a linear scan.
+    keys: AsyncRwLock<HashMap<String, DecodingKey>>,
+    /// Where [`Self::refresh_keys`] re-fetches from. `None` only for a
+    /// verifier built from a fixed key set ([`Self::from_keys`], used
+    /// exclusively by tests) — there is nowhere to refetch from, so an
+    /// unrecognised `kid` there is a hard reject exactly as before this
+    /// type learned to refresh itself.
+    jwks_url: Option<String>,
+    /// When the last **on-demand** (unrecognised-`kid`) refetch completed.
+    /// `None` means no on-demand refetch has happened yet in this
+    /// verifier's lifetime, so the very first one is never held back by
+    /// [`JWKS_REFETCH_FLOOR`] — that floor governs the spacing *between*
+    /// on-demand refetches, not the delay since the boot fetch. Held across
+    /// the refetch itself (a `tokio::sync::Mutex` guard may span an
+    /// `.await`), so concurrent callers hitting the same unrecognised `kid`
+    /// serialize on one fetch instead of each independently deciding to
+    /// refetch.
+    last_kid_refetch: AsyncMutex<Option<Instant>>,
     validation: Validation,
     /// How `iss` is checked. [`IssuerPolicy::Exact`] delegates to
     /// `validation`; [`IssuerPolicy::EntraTenants`] is enforced in
@@ -1302,7 +1345,11 @@ pub struct IdTokenVerifier {
 impl IdTokenVerifier {
     /// Build a verifier from `(kid, key)` pairs already in hand, pinned
     /// to `issuer` and `audience`. `from_jwks_document` is the production
-    /// caller; tests use it directly with a locally-held signing key.
+    /// caller; tests use it directly with a locally-held signing key. No
+    /// `jwks_url` is attached, so this verifier never refetches — an
+    /// unrecognised `kid` is a hard reject, matching production before
+    /// ENG-326 (and exactly what a unit test with no mock JWKS endpoint
+    /// needs).
     #[must_use]
     pub fn from_keys(
         keys: Vec<(String, DecodingKey)>,
@@ -1324,20 +1371,37 @@ impl IdTokenVerifier {
         validation.set_audience(&[audience]);
         validation.validate_exp = true;
         Self {
-            keys,
+            keys: AsyncRwLock::new(keys.into_iter().collect()),
+            jwks_url: None,
+            last_kid_refetch: AsyncMutex::new(None),
             validation,
             issuer_policy,
         }
     }
 
-    /// Build a verifier from an already-fetched JWKS document.
+    /// Build a verifier from an already-fetched JWKS document. Like
+    /// [`Self::from_keys`], carries no `jwks_url` — [`Self::from_jwks_url`]
+    /// is the production path that attaches one.
     pub fn from_jwks_document(
         doc: &JwksDocument,
         issuer: &str,
         audience: &str,
         issuer_policy: IssuerPolicy,
     ) -> Result<Self, AuthSetupError> {
-        let mut keys = Vec::new();
+        let keys = Self::keys_from_document(doc)?;
+        Ok(Self::from_keys(
+            keys.into_iter().collect(),
+            issuer,
+            audience,
+            issuer_policy,
+        ))
+    }
+
+    /// Parse a JWKS document into `kid` → key, skipping non-RSA entries.
+    fn keys_from_document(
+        doc: &JwksDocument,
+    ) -> Result<HashMap<String, DecodingKey>, AuthSetupError> {
+        let mut keys = HashMap::new();
         for k in &doc.keys {
             if k.kty != "RSA" {
                 continue;
@@ -1347,16 +1411,52 @@ impl IdTokenVerifier {
             };
             let key = DecodingKey::from_rsa_components(n, e)
                 .map_err(|e| AuthSetupError::Key(e.to_string()))?;
-            keys.push((k.kid.clone().unwrap_or_default(), key));
+            keys.insert(k.kid.clone().unwrap_or_default(), key);
         }
         if keys.is_empty() {
             return Err(AuthSetupError::Empty);
         }
-        Ok(Self::from_keys(keys, issuer, audience, issuer_policy))
+        Ok(keys)
     }
 
-    /// Fetch the JWKS at `url` and build the verifier.
+    /// Fetch the JWKS at `url` and return a self-refreshing verifier: the
+    /// returned `Arc` owns a background task that re-fetches the full key
+    /// set every [`JWKS_REFRESH_INTERVAL`], on top of the immediate,
+    /// floored refetch [`Self::verify`] performs on an unrecognised `kid`.
+    /// The task runs for the life of the process — this is boot
+    /// configuration, not a value with a shorter-lived owner.
     pub async fn from_jwks_url(
+        url: &str,
+        issuer: &str,
+        audience: &str,
+        issuer_policy: IssuerPolicy,
+    ) -> Result<Arc<Self>, AuthSetupError> {
+        let verifier = Arc::new(Self::fetch_and_build(url, issuer, audience, issuer_policy).await?);
+
+        let background = Arc::clone(&verifier);
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(JWKS_REFRESH_INTERVAL);
+            // `interval.tick()` fires immediately on its first call; the
+            // keys we just fetched above are already current, so consume
+            // that tick without doing any work.
+            interval.tick().await;
+            loop {
+                interval.tick().await;
+                background.refresh_keys().await;
+            }
+        });
+
+        Ok(verifier)
+    }
+
+    /// Fetch the JWKS at `url` and build the verifier with it attached as
+    /// [`Self::jwks_url`], but without spawning the background refresh task
+    /// [`Self::from_jwks_url`] wraps this with. A private seam so a test
+    /// exercising only the on-demand [`Self::refetch_on_unknown_kid`] path
+    /// doesn't also start a task that outlives the test's own process —
+    /// `cargo nextest` runs each test as its own process and flags one
+    /// that keeps running as "leaky".
+    async fn fetch_and_build(
         url: &str,
         issuer: &str,
         audience: &str,
@@ -1368,7 +1468,87 @@ impl IdTokenVerifier {
             .json()
             .await
             .map_err(|e| AuthSetupError::Parse(e.to_string()))?;
-        Self::from_jwks_document(&doc, issuer, audience, issuer_policy)
+        let mut verifier = Self::from_jwks_document(&doc, issuer, audience, issuer_policy)?;
+        verifier.jwks_url = Some(url.to_string());
+        Ok(verifier)
+    }
+
+    /// Re-fetch the full JWKS from [`Self::jwks_url`] and replace the
+    /// cached keys wholesale. A fetch failure is logged and otherwise
+    /// swallowed: keeping the existing (possibly stale) cache is strictly
+    /// better than clearing it, since a transient outage at the provider's
+    /// JWKS endpoint must not itself lock out sign-in. A `None` `jwks_url`
+    /// (test-only [`Self::from_keys`]) makes this a no-op.
+    async fn refresh_keys(&self) {
+        let Some(url) = self.jwks_url.as_deref() else {
+            return;
+        };
+        match Self::fetch_keys(url).await {
+            Ok(fresh) => {
+                let kid_count = fresh.len();
+                *self.keys.write().await = fresh;
+                tracing::info!(kid_count, "oauth: JWKS keys refreshed");
+            }
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    url,
+                    "oauth: JWKS refresh failed; keeping the previously cached keys",
+                );
+            }
+        }
+    }
+
+    async fn fetch_keys(url: &str) -> Result<HashMap<String, DecodingKey>, AuthSetupError> {
+        let doc: JwksDocument = reqwest::get(url)
+            .await
+            .map_err(|e| AuthSetupError::Fetch(e.to_string()))?
+            .json()
+            .await
+            .map_err(|e| AuthSetupError::Parse(e.to_string()))?;
+        Self::keys_from_document(&doc)
+    }
+
+    /// The decoding key for `kid`, refetching once — subject to
+    /// [`JWKS_REFETCH_FLOOR`] — if it's missing from the cache. `None` only
+    /// when `kid` is still unresolved after that refetch (or after a
+    /// refetch withheld by the floor).
+    async fn resolve_key(&self, kid: &str) -> Option<DecodingKey> {
+        if let Some(key) = self.keys.read().await.get(kid).cloned() {
+            return Some(key);
+        }
+        self.refetch_on_unknown_kid(kid).await;
+        self.keys.read().await.get(kid).cloned()
+    }
+
+    /// On an unrecognised `kid`, refetch the JWKS immediately unless an
+    /// on-demand refetch already happened within [`JWKS_REFETCH_FLOOR`] —
+    /// the algorithm Microsoft documents for signing-key-rollover handling.
+    /// A `None` `jwks_url` (test-only [`Self::from_keys`]) makes this a
+    /// no-op: there is nowhere to refetch from.
+    async fn refetch_on_unknown_kid(&self, kid: &str) {
+        if self.jwks_url.is_none() {
+            return;
+        }
+        // Held across the fetch itself: a second caller arriving for the
+        // same rotation event waits here rather than independently
+        // deciding — under the floor — to skip, or — over the floor — to
+        // fire a second redundant fetch.
+        let mut last = self.last_kid_refetch.lock().await;
+        if let Some(last_at) = *last {
+            let since = last_at.elapsed();
+            if since < JWKS_REFETCH_FLOOR {
+                tracing::info!(
+                    kid,
+                    since_last_refetch_secs = since.as_secs(),
+                    "oauth: unrecognised kid within the refetch floor; not refetching",
+                );
+                return;
+            }
+        }
+        tracing::info!(kid, "oauth: unrecognised kid; refetching JWKS immediately");
+        self.refresh_keys().await;
+        *last = Some(Instant::now());
     }
 
     /// Enforce [`IssuerPolicy::EntraTenants`] against decoded claims.
@@ -1432,16 +1612,36 @@ impl IdTokenVerifier {
     /// Verify `token` and bind it to `expected_nonce`. Returns the
     /// identity claims only when signature, issuer, audience, expiry,
     /// and nonce all check out.
-    fn verify(&self, token: &str, expected_nonce: &str) -> Result<IdTokenClaims, IdTokenError> {
+    ///
+    /// Async because an unrecognised `kid` refetches the JWKS
+    /// ([`Self::refetch_on_unknown_kid`]) before giving up — a provider key
+    /// rotation must not need a process restart to stop 401ing every
+    /// sign-in. See ENG-326.
+    async fn verify(
+        &self,
+        token: &str,
+        expected_nonce: &str,
+    ) -> Result<IdTokenClaims, IdTokenError> {
         let header = decode_header(token).map_err(|_| IdTokenError::Header)?;
         let kid = header.kid.ok_or(IdTokenError::Header)?;
-        let key = self
-            .keys
-            .iter()
-            .find(|(k, _)| *k == kid)
-            .map(|(_, k)| k)
-            .ok_or(IdTokenError::UnknownKid)?;
-        let claims = decode::<IdTokenClaims>(token, key, &self.validation)
+
+        let Some(key) = self.resolve_key(&kid).await else {
+            // Distinct from the ordinary `oidc.id_token.rejected` audit line
+            // every `IdTokenError` gets in `verify_id_token`: this one fires
+            // only when a `kid` is still unresolved immediately after a
+            // refetch (or a refetch was withheld by the floor), which is the
+            // shape a stuck or unpropagated key rotation takes — worth a
+            // grep of its own rather than reading as one more generic 401.
+            tracing::error!(
+                target: "audit",
+                event = "oauth.jwks.unknown_kid",
+                kid,
+                "oauth: id_token kid not found in JWKS even after a refetch",
+            );
+            return Err(IdTokenError::UnknownKid);
+        };
+
+        let claims = decode::<IdTokenClaims>(token, &key, &self.validation)
             .map_err(|e| IdTokenError::Validation(e.to_string()))?
             .claims;
         // Multi-tenant Entra only: `iss` and `tid` together, since neither is
@@ -1496,7 +1696,7 @@ async fn callback(
         Ok(token) => token,
         Err(e) => return render(e),
     };
-    let claims = match verify_id_token(cfg, token, &pre.nonce) {
+    let claims = match verify_id_token(cfg, token, &pre.nonce).await {
         Ok(claims) => claims,
         Err(e) => return render(e),
     };
@@ -1613,7 +1813,7 @@ fn oauth_error_fields(body: &str) -> (Option<&str>, Option<&str>) {
 /// and nonce. Verification is mandatory — a missing verifier is a deploy
 /// misconfiguration, not a reason to trust the token unverified. Emits
 /// the audit events for both outcomes.
-fn verify_id_token(
+async fn verify_id_token(
     cfg: &OAuthConfig,
     token: TokenResponse,
     nonce: &str,
@@ -1630,7 +1830,7 @@ fn verify_id_token(
     let Some(id_token) = token.id_token else {
         return Err((StatusCode::BAD_GATEWAY, "no id_token returned"));
     };
-    match verifier.verify(&id_token, nonce) {
+    match verifier.verify(&id_token, nonce).await {
         Ok(claims) => {
             tracing::info!(
                 target: "audit",
@@ -2079,11 +2279,11 @@ mod tests {
         decode_unverified_payload, default_return_to, login_notice, oauth_error_fields,
         pkce_challenge, pkce_verifier, post_login_landing, resolve_existing_after_race,
         resolve_person_from_claims, self_signup_enabled, session_cookie, urlencode, IdTokenClaims,
-        IdTokenError, IdentityPasswordConfig, IssuerPolicy, NoticeText, OAuthConfig, PreAuth,
-        ProviderId, ResolveError,
+        IdTokenError, IdTokenVerifier, IdentityPasswordConfig, IssuerPolicy, NoticeText,
+        OAuthConfig, PreAuth, ProviderId, ResolveError,
     };
-    use crate::session::{now_unix_secs, DEFAULT_SESSION_TTL_SECS};
-    use crate::test_support::{oidc_verifier, sign_id_token};
+    use crate::session::{now_unix_secs, random_token_32, DEFAULT_SESSION_TTL_SECS};
+    use crate::test_support::{oidc_verifier, sign_id_token, sign_id_token_with_kid};
 
     /// The failure that took `www.neonlaw.com` down on 2026-08-10: a new OAuth
     /// client ID paired with the previous client's secret, which Google answers
@@ -2750,10 +2950,10 @@ mod tests {
         }
     }
 
-    #[test]
-    fn id_token_verifier_accepts_a_valid_signed_token() {
+    #[tokio::test]
+    async fn id_token_verifier_accepts_a_valid_signed_token() {
         let verifier = oidc_verifier("client123");
-        let nonce = test_nonce("valid");
+        let nonce = test_nonce();
         let token = sign_id_token(
             "client123",
             &nonce,
@@ -2761,53 +2961,124 @@ mod tests {
             "libra@example.com",
             "Libra",
         );
-        let claims = verifier.verify(&token, &nonce).expect("valid token");
+        let claims = verifier.verify(&token, &nonce).await.expect("valid token");
         assert_eq!(claims.sub, "rauthy-libra-subject");
         assert_eq!(claims.email.as_deref(), Some("libra@example.com"));
     }
 
-    #[test]
-    fn id_token_verifier_rejects_a_nonce_mismatch() {
+    #[tokio::test]
+    async fn id_token_verifier_rejects_a_nonce_mismatch() {
         let verifier = oidc_verifier("client123");
-        let token_nonce = test_nonce("token");
-        let expected_nonce = test_nonce("expected");
+        let token_nonce = test_nonce();
+        let expected_nonce = test_nonce();
         let token = sign_id_token("client123", &token_nonce, "s", "e@x.com", "N");
         // A token whose nonce doesn't match the login's pre-auth nonce is
         // a replay/injection and must be refused.
-        let err = verifier.verify(&token, &expected_nonce).unwrap_err();
+        let err = verifier.verify(&token, &expected_nonce).await.unwrap_err();
         assert!(matches!(err, IdTokenError::Nonce));
     }
 
-    #[test]
-    fn id_token_verifier_rejects_a_token_minted_for_another_audience() {
+    #[tokio::test]
+    async fn id_token_verifier_rejects_a_token_minted_for_another_audience() {
         let verifier = oidc_verifier("client123");
-        let nonce = test_nonce("audience");
+        let nonce = test_nonce();
         // Signed for a *different* client of the same IdP — the
         // token-confusion attack. Audience pinning rejects it.
         let token = sign_id_token("other-client", &nonce, "s", "e@x.com", "N");
-        let err = verifier.verify(&token, &nonce).unwrap_err();
+        let err = verifier.verify(&token, &nonce).await.unwrap_err();
         assert!(matches!(err, IdTokenError::Validation(_)));
     }
 
-    #[test]
-    fn id_token_verifier_rejects_garbage_and_unsigned_tokens() {
+    #[tokio::test]
+    async fn id_token_verifier_rejects_garbage_and_unsigned_tokens() {
         let verifier = oidc_verifier("client123");
-        assert!(verifier.verify("not-a-jwt", "n").is_err());
+        assert!(verifier.verify("not-a-jwt", "n").await.is_err());
         // Unsigned "alg:none"-style token: header.payload with no usable
         // kid / signature → rejected before any claim is trusted.
         let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD
             .encode(br#"{"sub":"x","nonce":"n","iss":"https://idp.test","aud":"client123"}"#);
         let unsigned = format!("aGVhZGVy.{payload}.");
-        assert!(verifier.verify(&unsigned, "n").is_err());
+        assert!(verifier.verify(&unsigned, "n").await.is_err());
     }
 
-    /// A unique, synthetic nonce for a unit test.
-    ///
-    /// Production nonces come from [`random_token`]. Adding the process ID
-    /// keeps test data distinct from a reusable cryptographic value and makes
-    /// that boundary apparent to CodeQL.
-    fn test_nonce(label: &str) -> String {
-        format!("{label}-{}", std::process::id())
+    /// ENG-326: a provider key rotation must not need a restart. An
+    /// unrecognised `kid` refetches the JWKS immediately, but a flood of
+    /// tokens carrying the same unrecognised `kid` must not turn into a
+    /// flood of requests against the provider — at most one refetch per
+    /// [`super::JWKS_REFETCH_FLOOR`].
+    #[tokio::test]
+    async fn unknown_kid_refetches_at_most_once_per_floor_interval() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        // A fixed, valid RSA key under a `kid` the test tokens never carry —
+        // the point of this test is counting fetches, not a successful
+        // verification. Sourced from RFC 7517 §A.1, reused from the
+        // `auth::tests` JWKS fixtures.
+        Mock::given(method("GET"))
+            .and(path("/jwks"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "keys": [{
+                    "kid": "provider-key-1",
+                    "kty": "RSA",
+                    "n": "0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtVT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhMstn64tZ_2W-5JsGY4Hc5n9yBXArwl93lqt7_RN5w6Cf0h4QyQ5v-65YGjQR0_FDW2QvzqY368QQMicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n91CbOpbISD08qNLyrdkt-bFTWhAI4vMQFh6WeZu0fM4lFd2NcRwr3XPksINHaQ-G_xBniIqbw0Ls1jF44-csFCur-kEgU8awapJzKnqDKgw",
+                    "e": "AQAB",
+                    "alg": "RS256",
+                }],
+            })))
+            .mount(&server)
+            .await;
+
+        // `fetch_and_build`, not `from_jwks_url`: the latter spawns a
+        // background task that outlives this test's process and gets
+        // flagged "leaky" by nextest. This test only needs the on-demand
+        // refetch-on-unknown-kid path, which doesn't depend on that task.
+        let jwks_url = format!("{}/jwks", server.uri());
+        let verifier = IdTokenVerifier::fetch_and_build(
+            &jwks_url,
+            "https://idp.test",
+            "client123",
+            IssuerPolicy::Exact,
+        )
+        .await
+        .expect("mock JWKS fetches");
+
+        let fetch_count = || async {
+            server
+                .received_requests()
+                .await
+                .expect("request recording is on by default")
+                .iter()
+                .filter(|r| r.url.path() == "/jwks")
+                .count()
+        };
+        assert_eq!(fetch_count().await, 1, "the boot fetch");
+
+        // Every one of these tokens carries a `kid` the mock JWKS never
+        // serves, so every call takes the unknown-kid path.
+        let nonce = test_nonce();
+        let token =
+            sign_id_token_with_kid("client123", &nonce, "s", "e@x.com", "N", "rotated-away-kid");
+
+        let err = verifier.verify(&token, &nonce).await.unwrap_err();
+        assert!(matches!(err, IdTokenError::UnknownKid));
+        assert_eq!(fetch_count().await, 2, "first unknown kid refetches once");
+
+        for _ in 0..3 {
+            let err = verifier.verify(&token, &nonce).await.unwrap_err();
+            assert!(matches!(err, IdTokenError::UnknownKid));
+        }
+        assert_eq!(
+            fetch_count().await,
+            2,
+            "repeated unknown kids within the floor trigger no further refetch",
+        );
+    }
+
+    /// Generate a unique nonce for a unit test using the production path.
+    fn test_nonce() -> String {
+        random_token_32()
     }
 
     #[test]

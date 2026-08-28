@@ -2492,8 +2492,12 @@ struct UploadDocumentRequest {
 /// `POST /app/api/projects/{id}/documents` — file a document into a matter, the
 /// REST mirror of the lawyer upload control. Both converge on
 /// `matter_documents::record_document`. Lawyer-tier only and matter-scoped
-/// (out-of-scope → 404). `201` with the new document id; a blank filename or
-/// undecodable base64 is `400`.
+/// (out-of-scope → 404). `201` with the new document id; a blank filename,
+/// undecodable base64, or a `kind` the asset lane does not accept is `400`.
+///
+/// That last one is why this door carries [`ApiError::Ingest`] rather than collapsing
+/// every ingest failure into a 500: the lawyer form constrains `kind` to a `<select>`
+/// and so cannot produce a bad value, but this door is reachable without the form.
 async fn upload_document_door(
     State(state): State<ApiState>,
     lawyer: LawyerSession,
@@ -2579,10 +2583,7 @@ async fn upload_document_door(
         &bytes,
     )
     .await
-    .map_err(|e| {
-        tracing::error!(error = %e, project_id = %id, "api document upload failed");
-        ApiError::Db("the document could not be filed".into())
-    })?;
+    .map_err(ApiError::Ingest)?;
     Ok((
         StatusCode::CREATED,
         Json(serde_json::json!({ "document_id": ingested.asset_id })),
@@ -3063,6 +3064,11 @@ pub enum ApiError {
     Db(String),
     /// A read or write against the Surreal-backed `notations` store failed.
     Notation(store::notations::NotationError),
+    /// Filing a document into a matter failed. Carried as the store's own
+    /// error rather than a string so the door can tell a caller's bad `kind`
+    /// (a 400) from a database or storage fault (a 500) by matching the
+    /// variant — never by matching the message text.
+    Ingest(store::documents::IngestError),
 }
 
 impl From<store::persons::PersonError> for ApiError {
@@ -3303,6 +3309,12 @@ impl From<String> for ApiError {
 impl From<store::notations::NotationError> for ApiError {
     fn from(e: store::notations::NotationError) -> Self {
         Self::Notation(e)
+    }
+}
+
+impl From<store::documents::IngestError> for ApiError {
+    fn from(e: store::documents::IngestError) -> Self {
+        Self::Ingest(e)
     }
 }
 
@@ -3889,8 +3901,43 @@ impl IntoResponse for ApiError {
                 )
                     .into_response()
             }
+            // The one caller-reachable ingest failure: the `kind` sent is not
+            // an asset-lane classification. Every other `IngestError` variant
+            // is a database, storage, or write-invariant fault, so only this
+            // one is matched and the rest fall through to 500 below — a
+            // catch-all 400 here would report a storage outage as the
+            // caller's mistake.
+            Self::Ingest(store::documents::IngestError::InvalidKind(kind)) => bad_request(
+                "invalid_kind",
+                &format!(
+                    "`{kind}` is not a document kind. Accepted values are: {}.",
+                    accepted_asset_kinds().join(", ")
+                ),
+            ),
+            Self::Ingest(e) => {
+                tracing::error!(error = %e, "api: document ingest error");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": "internal" })),
+                )
+                    .into_response()
+            }
         }
     }
+}
+
+/// Every `kind` [`store::documents::ingest_bytes`] accepts, in the order
+/// [`rules::kind::Kind::ALL`] declares them.
+///
+/// Derived from the same predicate the ingest boundary enforces
+/// (`valid_for(Lane::Asset)`) rather than written out here, so the list a
+/// rejected caller is shown cannot drift from the list actually accepted.
+fn accepted_asset_kinds() -> Vec<&'static str> {
+    rules::kind::Kind::ALL
+        .iter()
+        .filter(|k| k.valid_for(rules::kind::Lane::Asset))
+        .map(|k| k.as_str())
+        .collect()
 }
 
 #[cfg(test)]

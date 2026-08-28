@@ -2953,7 +2953,7 @@ mod tests {
     #[tokio::test]
     async fn id_token_verifier_accepts_a_valid_signed_token() {
         let verifier = oidc_verifier("client123");
-        let nonce = test_nonce("valid");
+        let nonce = test_nonce();
         let token = sign_id_token(
             "client123",
             &nonce,
@@ -2969,8 +2969,8 @@ mod tests {
     #[tokio::test]
     async fn id_token_verifier_rejects_a_nonce_mismatch() {
         let verifier = oidc_verifier("client123");
-        let token_nonce = test_nonce("token");
-        let expected_nonce = test_nonce("expected");
+        let token_nonce = test_nonce();
+        let expected_nonce = test_nonce();
         let token = sign_id_token("client123", &token_nonce, "s", "e@x.com", "N");
         // A token whose nonce doesn't match the login's pre-auth nonce is
         // a replay/injection and must be refused.
@@ -2981,7 +2981,7 @@ mod tests {
     #[tokio::test]
     async fn id_token_verifier_rejects_a_token_minted_for_another_audience() {
         let verifier = oidc_verifier("client123");
-        let nonce = test_nonce("audience");
+        let nonce = test_nonce();
         // Signed for a *different* client of the same IdP — the
         // token-confusion attack. Audience pinning rejects it.
         let token = sign_id_token("other-client", &nonce, "s", "e@x.com", "N");
@@ -3057,7 +3057,7 @@ mod tests {
 
         // Every one of these tokens carries a `kid` the mock JWKS never
         // serves, so every call takes the unknown-kid path.
-        let nonce = test_nonce("rotation");
+        let nonce = test_nonce();
         let token =
             sign_id_token_with_kid("client123", &nonce, "s", "e@x.com", "N", "rotated-away-kid");
 
@@ -3076,13 +3076,9 @@ mod tests {
         );
     }
 
-    /// A unique, synthetic nonce for a unit test.
-    ///
-    /// Production nonces come from [`random_token`]. Adding the process ID
-    /// keeps test data distinct from a reusable cryptographic value and makes
-    /// that boundary apparent to CodeQL.
-    fn test_nonce(label: &str) -> String {
-        format!("{label}-{}", std::process::id())
+    /// Generate a unique nonce for a unit test using the production path.
+    fn test_nonce() -> String {
+        random_token_32()
     }
 
     #[test]

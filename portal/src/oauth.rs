@@ -2282,7 +2282,7 @@ mod tests {
         IdTokenError, IdTokenVerifier, IdentityPasswordConfig, IssuerPolicy, NoticeText,
         OAuthConfig, PreAuth, ProviderId, ResolveError,
     };
-    use crate::session::{now_unix_secs, DEFAULT_SESSION_TTL_SECS};
+    use crate::session::{now_unix_secs, random_token_32, DEFAULT_SESSION_TTL_SECS};
     use crate::test_support::{oidc_verifier, sign_id_token, sign_id_token_with_kid};
 
     /// The failure that took `www.neonlaw.com` down on 2026-08-10: a new OAuth

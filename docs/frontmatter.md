@@ -77,6 +77,11 @@ above a `---` thematic break and its presenter notes below. Every deck begins wi
 an `## Wrap Up` chapter; the public overview and light table group sections by those chapter headings while playback
 keeps one stable section order.
 
+Legal motions and contracts use a **Harvard outline**, not the workshop chapter/slide tree. Depth-1 headings are Roman
+(`## I. Title`) on contracts and engagement letters, or Arabic (`## 1. Title`) in motion practice. Lettered subsections
+are block quotes (`> **A. Label.** …`) so the PDF conversion indents them. `navigator template narrate` turns that body
+into a recording stage; `/lawyer/outline` shows the bundled retainer.
+
 ## Notation templates — the legal blueprints
 
 A notation template is the document a client eventually signs, plus the questions that fill it in and the path it walks

@@ -43,3 +43,40 @@ fn openapi_operations_match_registered_api_routes() {
         documented.difference(&registered).collect::<Vec<_>>(),
     );
 }
+
+/// The `kind` enum documented on `POST /app/api/projects/{id}/documents` must be
+/// exactly the vocabulary `store::documents::ingest_bytes` accepts.
+///
+/// The document lists the values by hand, which is the readable form for a
+/// generated client but the drifting one: widen or narrow
+/// `rules::kind::Kind::valid_for(Lane::Asset)` and the published constraint
+/// silently starts describing a rule that no longer exists. A caller reading
+/// the document would then be told a value is accepted that the door refuses
+/// with a 400 — worse than the undescribed bare string it replaced, because it
+/// looks authoritative.
+#[test]
+fn the_documented_document_kinds_are_the_kinds_ingest_accepts() {
+    let accepted: Vec<String> = rules::kind::Kind::ALL
+        .iter()
+        .filter(|k| k.valid_for(rules::kind::Lane::Asset))
+        .map(|k| k.as_str().to_string())
+        .collect();
+
+    let doc = portal::openapi::document();
+    let documented: Vec<String> = doc["paths"]["/app/api/projects/{id}/documents"]["post"]
+        ["requestBody"]["content"]["application/json"]["schema"]["properties"]["kind"]["enum"]
+        .as_array()
+        .expect("`kind` declares an enum of accepted values")
+        .iter()
+        .map(|v| {
+            v.as_str()
+                .expect("each accepted kind is a string")
+                .to_string()
+        })
+        .collect();
+
+    assert_eq!(
+        documented, accepted,
+        "OpenAPI drift: the `kind` values documented on the document-upload operation must be          exactly the asset-lane kinds `ingest_bytes` accepts, in the same order"
+    );
+}

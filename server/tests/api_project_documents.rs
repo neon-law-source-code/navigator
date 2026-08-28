@@ -6,7 +6,8 @@
 //! lawyer upload control, so this focuses on what the REST adapter adds: it takes
 //! the bytes base64-encoded (not multipart), lawyer-tier only (client 403, anon
 //! 401), the matter-scope gate (a non-participant lawyer is 404), undecodable
-//! base64 is 400, and a filed document actually lands.
+//! base64 is 400, a `kind` outside the asset lane is 400 (not the 500 it used to be),
+//! and a filed document actually lands.
 
 use std::sync::Arc;
 
@@ -169,4 +170,122 @@ async fn undecodable_base64_is_400() {
     )
     .await;
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+/// A `kind` the asset lane does not accept is the **caller's** error, so it is a
+/// 400 carrying `invalid_kind` — not the 500 that `ApiError::Db` used to produce
+/// by collapsing every ingest failure into "the database failed".
+///
+/// `review_queue_workbench` is the sharp case rather than gibberish: it is a real
+/// `rules::kind::Kind`, valid in the Template lane, and refused only here. A door
+/// that parsed the value without checking the lane would let it through.
+#[tokio::test]
+async fn a_kind_outside_the_asset_lane_is_400_naming_the_accepted_values() {
+    let fx = build_fixture().await;
+    let mut body = doc_body();
+    body["kind"] = serde_json::json!("review_queue_workbench");
+    let resp = upload(&fx, Some(&fx.lawyer), body).await;
+
+    assert_eq!(
+        resp.status(),
+        StatusCode::BAD_REQUEST,
+        "an unaccepted kind is the caller's mistake, not a server fault"
+    );
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(
+        json["error"].as_str(),
+        Some("invalid_kind"),
+        "the body carries the machine-readable error identifier"
+    );
+
+    // The message has to let an integrator fix the request without reading our
+    // source: it names what they sent and what would have been accepted.
+    let message = json["message"].as_str().expect("a message is present");
+    assert!(
+        message.contains("review_queue_workbench"),
+        "the message names the rejected value, got: {message}"
+    );
+    for accepted in [
+        "onboarding",
+        "unclassified",
+        "certificate_of_naturalization",
+    ] {
+        assert!(
+            message.contains(accepted),
+            "the message lists the accepted kind `{accepted}`, got: {message}"
+        );
+    }
+
+    // The refusal is real: the store wrote nothing.
+    assert!(
+        store::assets::for_project(&fx.surreal, fx.project_id)
+            .await
+            .unwrap()
+            .is_empty(),
+        "a refused kind files no document"
+    );
+}
+
+/// A value that is not a `Kind` at all is refused the same way — the door does
+/// not silently coerce it to `unclassified`.
+#[tokio::test]
+async fn an_unknown_kind_is_400() {
+    let fx = build_fixture().await;
+    let mut body = doc_body();
+    body["kind"] = serde_json::json!("not-a-kind");
+    let resp = upload(&fx, Some(&fx.lawyer), body).await;
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(json["error"].as_str(), Some("invalid_kind"));
+}
+
+/// The other half of the classification, and the one that would catch an
+/// over-eager 400: every kind the asset lane accepts still files a document.
+/// Driven from `rules::kind` itself, so widening the lane cannot leave this
+/// test asserting a stale vocabulary.
+#[tokio::test]
+async fn every_accepted_kind_still_files_a_document() {
+    let fx = build_fixture().await;
+    for kind in rules::kind::Kind::ALL
+        .iter()
+        .filter(|k| k.valid_for(rules::kind::Lane::Asset))
+    {
+        let mut body = doc_body();
+        body["kind"] = serde_json::json!(kind.as_str());
+        // Distinct bytes per kind so each is a fresh ingest rather than a dedup.
+        body["content_base64"] = serde_json::json!(base64_of(kind.as_str()));
+        let resp = upload(&fx, Some(&fx.lawyer), body).await;
+        assert_eq!(
+            resp.status(),
+            StatusCode::CREATED,
+            "`{}` is an asset-lane kind and must be accepted",
+            kind.as_str()
+        );
+    }
+}
+
+/// Minimal base64 encoder for the fixture bytes — the test needs distinct
+/// content per kind, not a dependency.
+fn base64_of(text: &str) -> String {
+    const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let bytes = text.as_bytes();
+    let mut out = String::new();
+    for chunk in bytes.chunks(3) {
+        let b = [
+            chunk[0],
+            *chunk.get(1).unwrap_or(&0),
+            *chunk.get(2).unwrap_or(&0),
+        ];
+        let n = (u32::from(b[0]) << 16) | (u32::from(b[1]) << 8) | u32::from(b[2]);
+        for i in 0..4 {
+            if i <= chunk.len() {
+                out.push(ALPHABET[((n >> (18 - 6 * i)) & 0x3F) as usize] as char);
+            } else {
+                out.push('=');
+            }
+        }
+    }
+    out
 }

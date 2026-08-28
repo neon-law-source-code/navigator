@@ -1875,8 +1875,9 @@ pub fn document_with_base(base: &str) -> Value {
                converging on the same command. The browser uploads via multipart; this door takes \
                the bytes base64-encoded. `201 Created` with the new document id. Authorization: \
                lawyer or admin, and the caller must participate in the matter (out-of-scope → 404). \
-               A blank filename or undecodable base64 is `400`. `visibility` defaults to internal \
-               work product; pass `\"client\"` to make it client-visible.",
+               A blank filename, undecodable base64, or a `kind` outside the accepted set is \
+               `400`. `visibility` defaults to internal work product; pass `\"client\"` \
+               to make it client-visible.",
             "parameters": [
               { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
             ],
@@ -1890,7 +1891,12 @@ pub fn document_with_base(base: &str) -> Value {
                     "filename": { "type": "string" },
                     "content_base64": { "type": "string", "description": "Base64-encoded file bytes" },
                     "content_type": { "type": "string" },
-                    "kind": { "type": "string" },
+                    "kind": {
+                      "type": "string",
+                      "description": "Document classification. A value outside this set is refused with `400 invalid_kind`, whose message names the accepted values; it is never silently coerced. Omitted or blank defaults to `unclassified`.",
+                      "default": "unclassified",
+                      "enum": ["letter", "filing", "will", "trust", "directive", "agreement", "onboarding", "offboarding", "memo", "transcript", "inbound_contract", "certificate_of_naturalization", "unclassified"]
+                    },
                     "visibility": { "type": "string", "enum": ["client", "internal"] },
                     "description": { "type": "string" }
                   }
@@ -1901,11 +1907,11 @@ pub fn document_with_base(base: &str) -> Value {
               "201": { "description": "The document was filed", "content": { "application/json": {
                 "schema": { "type": "object", "required": ["document_id"], "properties": { "document_id": { "type": "string", "format": "uuid" } } }
               } } },
-              "400": { "description": "Blank filename or undecodable base64", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+              "400": { "description": "Blank filename, undecodable base64, or an unaccepted `kind` (error `invalid_kind`, whose message names the accepted values)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
               "401": { "description": "No authenticated session", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
               "403": { "description": "Authenticated caller is not Lawyer/admin", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
               "404": { "description": "No such matter, or out of scope", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
-              "500": { "description": "The document could not be filed", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } }
+              "500": { "description": "The document could not be filed — a storage or database fault, never a rejected field", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } }
             }
           }
         },

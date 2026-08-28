@@ -127,6 +127,7 @@ fn template_help_lists_the_notation_authoring_workbench() {
         command_names(&output),
         vec![
             "format",
+            "narrate",
             "render",
             "scaffold",
             "transcribe",

@@ -60,6 +60,7 @@ pub mod error_pages;
 pub mod expunge_document;
 pub mod expunge_requests;
 pub mod gov_forms;
+pub mod harvard_outline;
 pub mod home;
 pub mod html_escape;
 pub mod intake_review;

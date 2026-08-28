@@ -135,9 +135,13 @@ fn regorus_matches_every_checked_in_policy_decision() {
     //   the named reference resources, and is denied Person CRUD, analytics,
     //   Clerk, and client on those same paths.
     // 379 + 4 = 383.
+    //
+    // + 2 for the Harvard-outline narration stage at `/lawyer/outline`: Lawyer
+    //   is admitted by the `/lawyer/*` prefix, Clerk is denied.
+    // 383 + 2 = 385.
     assert_eq!(
         test_names.len(),
-        383,
+        385,
         "the policy decision inventory changed; review every new or removed rule"
     );
 

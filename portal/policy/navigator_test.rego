@@ -128,6 +128,14 @@ test_lawyer_reaches_lawyer_people if {
 	authz.allow with input as {"path": ["lawyer", "people"], "method": "GET", "session": lawyer_session}
 }
 
+test_lawyer_reaches_the_outline_stage if {
+	authz.allow with input as {"path": ["lawyer", "outline"], "method": "GET", "session": lawyer_session}
+}
+
+test_clerk_denied_on_the_outline_stage if {
+	not authz.allow with input as {"path": ["lawyer", "outline"], "method": "GET", "session": clerk_session}
+}
+
 test_admin_reaches_lawyer_people if {
 	authz.allow with input as {"path": ["lawyer", "people"], "method": "GET", "session": admin_session}
 }

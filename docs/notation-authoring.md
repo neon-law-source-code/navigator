@@ -193,8 +193,8 @@ cargo run -p cli --quiet -- validate <path>
 
 `navigator-lsp` is a single Rust binary speaking LSP over stdio. It shares the exact rules engine the CLI uses, so the
 editor and CI can never disagree. Supported editors ship copy-paste configs under
-[`lsp/`](https://github.com/neon-law-source-code/navigator/tree/main/lsp) docs: VS Code, Neovim, Helix, Emacs, Zed.
-The authoring loop for a non-engineer legal author:
+[`lsp/`](https://github.com/neon-law-source-code/navigator/tree/main/lsp) docs: VS Code, Neovim, Helix, Emacs, Zed. The
+authoring loop for a non-engineer legal author:
 
 1. **Type.** Open `templates/neon_law/shared/letter.md` in your editor. Write
    legal prose and frontmatter — no proprietary tool, no markup beyond markdown.

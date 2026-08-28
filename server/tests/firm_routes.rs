@@ -146,7 +146,7 @@ async fn site_host_serves_the_firm_surface_and_host_documents() {
         "/fractional-gc",
         "/navigator",
         "/blog",
-        "/contact",
+        "/notations",
         "/privacy",
         "/terms",
         "/robots.txt",
@@ -215,7 +215,9 @@ async fn the_fractional_cto_page_leads_with_the_offering_and_prices_through_cont
         "the hero carries a lead: {body}"
     );
     assert!(
-        body.contains(r#"class="nav-btn nav-btn--primary fm-hero__cta" href="/contact""#),
+        body.contains(
+            r#"class="nav-btn nav-btn--primary fm-hero__cta" href="mailto:contact@neonlaw.com""#
+        ),
         "the hero carries one call to action: {body}"
     );
     // The prose names Navigator from inside a sentence rather than repeating
@@ -255,7 +257,7 @@ async fn the_practice_pages_wear_the_same_header() {
             r#"class="fm-hero__line""#,
             r#"class="fm-word fm-word--accent""#,
             r#"class="fm-hero__lead""#,
-            r#"class="nav-btn nav-btn--primary fm-hero__cta" href="/contact""#,
+            r#"class="nav-btn nav-btn--primary fm-hero__cta" href="mailto:contact@neonlaw.com""#,
         ] {
             assert!(
                 body.contains(part),
@@ -833,9 +835,9 @@ async fn the_footer_carries_the_pages_the_header_does_not() {
     // `/privacy` and `/terms` ride the row on the same footing as the rest.
     const ROW: [&str; 8] = [
         "/blog",
-        "/contact",
         "/docs",
         "/navigator",
+        "/notations",
         "/presentations",
         "/privacy",
         "/terms",
@@ -1052,7 +1054,7 @@ async fn no_firm_page_publishes_a_fee() {
     for unpriced in [
         "/",
         "/services",
-        "/contact",
+        "/notations",
         "/litigation",
         "/fractional-gc",
         "/navigator",
@@ -1526,7 +1528,7 @@ async fn home_renders_the_statement_and_the_practice_prose() {
     for rendered in [
         r#"class="home-statement__heading""#,
         r#"class="home-statement__lead""#,
-        r#"class="nav-btn nav-btn--primary home-statement__cta" href="/contact""#,
+        r#"class="nav-btn nav-btn--primary home-statement__cta" href="mailto:contact@neonlaw.com""#,
     ] {
         assert!(body.contains(rendered), "{rendered} renders: {body}");
     }
@@ -1675,7 +1677,6 @@ async fn an_unpublished_path_answers_not_found() {
         "/education",
         "/attorneys",
         "/mission",
-        "/notations",
         "/transparency",
         "/legal-aid",
     ] {
@@ -2403,92 +2404,49 @@ async fn blog_kebab_slug_is_served_without_redirect() {
     assert_eq!(resp.status(), StatusCode::OK);
 }
 
-// ---- Contact surface (firm-owned, Dioxus SSR port #730 PR6) ----
+// ---- Notations catalog (same hero as workshops and presentations) ----
 
 #[tokio::test]
-async fn contact_page_lists_the_firm_channel_and_shares_the_card() {
-    // The Dioxus contact port renders the firm's contact channels and the
-    // brand-prefixed head + share card the `PageLayout` emitted.
+async fn notations_page_uses_the_catalog_hero_and_links_the_letters_and_forms() {
     let app = site_app().await;
-    let resp = anon_get(&app, "/contact").await;
+    let resp = anon_get(&app, "/notations").await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
     assert!(
-        body.contains("<title>Neon Law | Contact</title>"),
+        body.contains("<title>Neon Law | Notations</title>"),
         "brand-prefixed document title: {body}"
     );
     assert!(
-        body.contains(r#"<meta content="Neon Law | Contact" property="og:title"/>"#),
-        "Open Graph share title"
+        body.contains(r#"class="catalog-hero""#),
+        "catalog hero: {body}"
     );
-    // The firm channel resolves as a mailto link, and the inbox is the only
-    // way in: the page publishes no self-serve calendar booking.
-    assert!(body.contains("mailto:"), "at least one mailto channel");
+    assert!(body.contains(">Notations<"), "page heading: {body}");
     assert!(
-        !body.contains("calendar.app.google"),
-        "no self-serve booking link: {body}"
+        body.contains("neon_law/shared/letter.md"),
+        "onboarding letter: {body}"
+    );
+    assert!(
+        body.contains("neon_law/shared/offboarding_letter.md"),
+        "offboarding letter: {body}"
+    );
+    assert!(
+        body.contains("forms/united_states/nevada/state/nv__llc_formation.md"),
+        "LLC formation form: {body}"
+    );
+    assert!(
+        body.contains("forms/united_states/federal/irs/us__form_990.md"),
+        "Form 990: {body}"
     );
     assert!(body.contains("site-header"), "public header chrome");
     assert!(body.contains("site-footer__legal"), "public legal footer");
-    assert!(
-        body.contains("<html lang=\"en\">"),
-        "English document language"
-    );
 }
 
 #[tokio::test]
-async fn contact_returns_contact_page_html() {
-    let app = site_router(site_state().await);
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .uri("/contact")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body = body_string(resp).await;
-    assert!(body.contains("<title>Neon Law | Contact</title>"));
-    // The published address, which is `contact@` rather than the `support@`
-    // mailbox the mail pipeline sends from and threads inbound replies on.
-    assert!(body.contains("mailto:contact@neonlaw.com"));
-    // The contact CTA is the firm's own inbox, and no other organization's
-    // address appears as an invitation to make contact.
-    assert!(
-        body.contains(r#"href="mailto:contact@neonlaw.com""#),
-        "the contact CTA reaches the firm: {body}"
-    );
-    assert!(
-        !body.contains("neonlaw.org"),
-        "no retired organization's address appears on the contact page: {body}"
-    );
-    // The firm's voice line, written for a reader and dialable as digits.
-    assert!(body.contains("+1 510 800 2080"), "firm phone: {body}");
-    assert!(
-        body.contains(r#"href="tel:+15108002080""#),
-        "tel link: {body}"
-    );
-    // The source repository is not a contact channel. Asserted on the page's
-    // own article rather than on the whole document, because the shared footer
-    // below it now links the repository on every page — the repo name and its
-    // star count in the legal strip, not a way to reach the firm.
-    //
-    // The narrowing preserves exactly what this assertion was protecting: a
-    // reader looking for how to contact the firm must find the inbox and the
-    // voice line, and must never be pointed at an issue tracker instead. A
-    // whole-document check can no longer express that, because it would now
-    // fail on site chrome that makes no contact claim at all.
-    let page = body
-        .split(r#"<article class="contact-page""#)
-        .nth(1)
-        .and_then(|rest| rest.split("</article>").next())
-        .expect("the contact page's own content renders");
-    assert!(
-        !page.contains("github.com"),
-        "the repository is not offered as a way to reach the firm: {page}"
-    );
+async fn contact_page_is_gone() {
+    let app = site_app().await;
+    let resp = anon_get(&app, "/contact").await;
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    assert!(resp.headers().get("location").is_none());
 }
 
 /// The shared footer publishes the source repository on every public page, on
@@ -2505,7 +2463,7 @@ async fn contact_returns_contact_page_html() {
 #[tokio::test]
 async fn every_public_page_links_the_source_repository() {
     let app = site_router(site_state().await);
-    for uri in ["/", "/contact", "/navigator"] {
+    for uri in ["/", "/notations", "/navigator"] {
         let resp = app
             .clone()
             .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
@@ -2635,18 +2593,18 @@ async fn a_mounted_brand_bundle_rebrands_the_firm_home() {
         "the statement names no firm, so a rebrand cannot leak one: {html}"
     );
 
-    // The contact page renders the bundle's support email.
-    let contact = app
+    // The public catalog and footer render the bundle's support email.
+    let notations = app
         .oneshot(
             Request::builder()
-                .uri("/contact")
+                .uri("/notations")
                 .body(Body::empty())
                 .unwrap(),
         )
         .await
         .unwrap();
-    assert_eq!(contact.status(), StatusCode::OK);
-    assert!(body_string(contact).await.contains("help@acme.example"));
+    assert_eq!(notations.status(), StatusCode::OK);
+    assert!(body_string(notations).await.contains("help@acme.example"));
 }
 
 /// The footer closes on the platform line, publishing neither organization's

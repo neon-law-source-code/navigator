@@ -714,7 +714,7 @@ fn PricingShowcase() -> Element {
                 "Registered-agent setup".to_string(),
             ],
             cta_label: "Start a matter".to_string(),
-            cta_href: "/contact".to_string(),
+            cta_href: "mailto:contact@neonlaw.com".to_string(),
             featured_label: Some("$1,000, once".to_string()),
         },
         PricingCard {
@@ -798,7 +798,7 @@ fn PublicShellShowcase() -> Element {
                                 SiteNavLink::new("Services", "/#services"),
                                 SiteNavLink::new("Blog", "/blog"),
                                 SiteNavLink::new("Team", "/team").current(),
-                                SiteNavLink::new("Contact", "/contact"),
+                                SiteNavLink::new("Notations", "/notations"),
                             ],
                             // The gallery is the one page carrying two headers,
                             // so this one holds its own disclosure state rather
@@ -988,7 +988,7 @@ fn SiteHeaderShowcase() -> Element {
                     SiteNavLink::new("Blog", "/blog"),
                     SiteNavLink::new("Design", "/design").current(),
                     SiteNavLink::new("Team", "/team"),
-                    SiteNavLink::new("Contact", "/contact"),
+                    SiteNavLink::new("Notations", "/notations"),
                 ],
                 utility: vec![SiteNavLink::new("Portal", "/app/projects")],
             }
@@ -1028,9 +1028,9 @@ fn SiteFooterShowcase() -> Element {
                 // the two-column layout at all.
                 nav: [
                     ("Blog", "/blog"),
-                    ("Contact", "/contact"),
                     ("Docs", "/docs"),
                     ("Navigator", "/navigator"),
+                    ("Notations", "/notations"),
                     ("Presentations", "/presentations"),
                     ("Privacy", "/privacy"),
                     ("Terms", "/terms"),

@@ -183,7 +183,7 @@ pub fn fractional_cto() -> PageContent {
                     beside them."
             .to_string(),
         hero_cta: Some(HeroCta {
-            href: "/contact".to_string(),
+            href: "mailto:contact@neonlaw.com".to_string(),
             label: "Contact us".to_string(),
         }),
         skin: webapp::marketing_page::PageSkin::Practice,
@@ -625,7 +625,7 @@ fn navigator_working_surface_band() -> Band {
                     "The projects, the people on them, the documents, and the questionnaires \
                      still open — the shared view a firm and its co-counsel read the matter from.",
                 )]],
-                href: Some("/contact".to_string()),
+                href: Some("mailto:contact@neonlaw.com".to_string()),
                 href_label: Some("Ask us for a walkthrough".to_string()),
             },
         ],
@@ -709,7 +709,10 @@ fn navigator_licence_band() -> Band {
                     "Every licence is scoped and quoted in conversation, and legal aid and \
                      nonprofit deployments should ask. ",
                 ),
-                Run::link("Ask us what yours would involve", "/contact"),
+                Run::link(
+                    "Ask us what yours would involve",
+                    "mailto:contact@neonlaw.com",
+                ),
                 Run::plain("."),
             ],
         ],
@@ -751,7 +754,7 @@ pub fn legal_services() -> PageContent {
                     quoted before any work begins."
             .to_string(),
         hero_cta: Some(HeroCta {
-            href: "/contact".to_string(),
+            href: "mailto:contact@neonlaw.com".to_string(),
             label: "Contact us".to_string(),
         }),
         skin: webapp::marketing_page::PageSkin::Practice,
@@ -1394,8 +1397,10 @@ mod firm_copy_tests {
 
         let routes = band_hrefs(std::slice::from_ref(navigator_licence_band(&content)));
         assert!(
-            routes.iter().any(|href| href == "/contact"),
-            "the licence *band* must route to `/contact`, where a licence is \
+            routes
+                .iter()
+                .any(|href| href == "mailto:contact@neonlaw.com"),
+            "the licence band must route to the firm inbox, where a licence is \
              scoped and quoted like every other engagement; it routes to \
              {routes:?}"
         );

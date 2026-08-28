@@ -157,7 +157,7 @@ async fn the_index_advertises_the_firms_pages() {
         "/litigation",
         "/fractional-gc",
         "/navigator",
-        "/contact",
+        "/notations",
         "/blog",
         "/presentations",
     ] {

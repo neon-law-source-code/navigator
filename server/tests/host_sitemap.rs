@@ -177,7 +177,7 @@ async fn the_sitemap_advertises_the_firms_pages() {
         "/litigation",
         "/fractional-gc",
         "/navigator",
-        "/contact",
+        "/notations",
         "/blog",
         "/presentations",
     ] {

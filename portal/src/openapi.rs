@@ -94,7 +94,7 @@ pub fn document() -> Value {
 #[must_use]
 #[allow(clippy::too_many_lines)]
 pub fn document_with_base(base: &str) -> Value {
-    let contact_url = format!("{base}/contact");
+    let contact_url = base.to_string();
     json!({
       "openapi": "3.1.0",
       "info": {
@@ -2990,10 +2990,7 @@ mod tests {
     fn document_with_base_threads_host_into_servers_and_contact() {
         let d = document_with_base("https://www.neonlaw.com");
         assert_eq!(d["servers"][0]["url"], "https://www.neonlaw.com");
-        assert_eq!(
-            d["info"]["contact"]["url"],
-            "https://www.neonlaw.com/contact"
-        );
+        assert_eq!(d["info"]["contact"]["url"], "https://www.neonlaw.com");
     }
 
     #[test]

@@ -283,7 +283,7 @@ fn ErrorPage(props: ErrorPageProps) -> Element {
                 }
                 p {
                     if kind == Kind::SignInNotProvisioned {
-                        a { class: "nav-btn nav-btn--primary", href: "/contact", "Contact us" }
+                        a { class: "nav-btn nav-btn--primary", href: "mailto:contact@neonlaw.com", "Contact us" }
                     }
                     a { class: "nav-btn nav-btn--secondary", href: "/", "Return home" }
                 }

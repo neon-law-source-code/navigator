@@ -368,7 +368,7 @@ pub struct LitigationReferral {
 pub fn litigation_referral(reason: impl Into<String>) -> LitigationReferral {
     LitigationReferral {
         reason: reason.into(),
-        counsel_link: "/contact",
+        counsel_link: "mailto:contact@neonlaw.com",
         answered_as_correspondence: false,
     }
 }
@@ -545,7 +545,7 @@ mod tests {
         let class = classify("Summons", "You are being sued in civil action.");
         assert_eq!(route(class), TriageRoute::ReferLitigation);
         let referral = litigation_referral("a summons was served");
-        assert_eq!(referral.counsel_link, "/contact");
+        assert_eq!(referral.counsel_link, "mailto:contact@neonlaw.com");
         assert!(!referral.answered_as_correspondence);
     }
 

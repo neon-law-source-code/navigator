@@ -1,10 +1,10 @@
-//! `/workshops` and `/presentations` — the firm's two material indexes.
+//! `/workshops`, `/presentations`, and `/notations` — the firm's material indexes.
 //!
-//! One page shape serves both categories. The heading, the lede, and the list
+//! One page shape serves every category. The heading, the lede, and the list
 //! are injected per request by the portal pre-layer, so the category is a
 //! content decision rather than a second component: a reader arriving at
-//! `/workshops` and a reader arriving at `/presentations` see the same page
-//! rendered from different material.
+//! `/workshops`, `/presentations`, or `/notations` sees the same page rendered
+//! from different material.
 
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -266,5 +266,42 @@ mod tests {
             out.contains("support@example.org") && out.contains("mailto:support@example.org"),
             "the empty state must offer the inbox: {out}"
         );
+    }
+
+    #[test]
+    fn notations_catalog_links_the_letters_and_a_form() {
+        fn app() -> Element {
+            let content = CatalogIndexContent {
+                title: "Notations".to_string(),
+                lede: "One markdown file is the template, questionnaire, and workflow.".to_string(),
+                materials: vec![
+                    CatalogMaterial {
+                        href: "https://github.com/neon-law-source-code/navigator/blob/main/templates/neon_law/shared/letter.md".to_string(),
+                        eyebrow: "Letter".to_string(),
+                        title: "Retainer Agreement".to_string(),
+                        summary: "Opens a matter.".to_string(),
+                    },
+                    CatalogMaterial {
+                        href: "https://github.com/neon-law-source-code/navigator/blob/main/templates/forms/united_states/nevada/state/nv__llc_formation.md".to_string(),
+                        eyebrow: "Form · Nevada".to_string(),
+                        title: "Nevada LLC Formation".to_string(),
+                        summary: "Articles of organization.".to_string(),
+                    },
+                ],
+                contact_email: "support@example.org".to_string(),
+                footnote: String::new(),
+            };
+            rsx! {
+                CatalogIndexPage { chrome: PublicChrome::default(), content }
+            }
+        }
+        let out = ssr(app);
+        assert!(out.contains("catalog-hero"), "catalog hero: {out}");
+        assert!(out.contains("Retainer Agreement"), "letter title: {out}");
+        assert!(
+            out.contains("neon_law/shared/letter.md"),
+            "letter href: {out}"
+        );
+        assert!(out.contains("nv__llc_formation.md"), "form href: {out}");
     }
 }

@@ -80,6 +80,117 @@ fn catalog_index_content(
     }
 }
 
+const NOTATIONS_INDEX_TITLE: &str = "Notations";
+const NOTATIONS_INDEX_LEDE: &str =
+    "A notation is one markdown file: the template a client signs, the questionnaire that fills \
+     it in, and the workflow that carries it from intake through attorney review to signature, \
+     filing, or closing. Navigator ships the sample letters that open and close a matter, and \
+     the government forms the firm files.";
+const NOTATIONS_INDEX_FOOTNOTE: &str =
+    "Letters are the firm's confidential work product. Blank government PDFs belong to the \
+     issuing agency; the catalog cards and workflows beside them are the firm's.";
+const NOTATIONS_BLOB_BASE: &str =
+    "https://github.com/neon-law-source-code/navigator/blob/main/templates/";
+
+fn notation_card(
+    eyebrow: &str,
+    title: &str,
+    path: &str,
+    summary: &str,
+) -> webapp::catalog_index::CatalogMaterial {
+    webapp::catalog_index::CatalogMaterial {
+        href: format!("{NOTATIONS_BLOB_BASE}{path}"),
+        eyebrow: eyebrow.to_string(),
+        title: title.to_string(),
+        summary: summary.to_string(),
+    }
+}
+
+/// The public `/notations` catalog: the sample engagement letters and every
+/// government form in `templates/forms/`.
+fn notations_index_content() -> webapp::catalog_index::CatalogIndexContent {
+    webapp::catalog_index::CatalogIndexContent {
+        title: NOTATIONS_INDEX_TITLE.to_string(),
+        lede: NOTATIONS_INDEX_LEDE.to_string(),
+        materials: vec![
+            notation_card(
+                "Letter",
+                "Retainer Agreement",
+                "neon_law/shared/letter.md",
+                "The sample engagement that opens a matter (`onboarding__letter`).",
+            ),
+            notation_card(
+                "Letter",
+                "Closing Letter",
+                "neon_law/shared/offboarding_letter.md",
+                "The sample letter that closes a matter (`offboarding__letter`).",
+            ),
+            notation_card(
+                "Form · Federal",
+                "IRS Form 990",
+                "forms/united_states/federal/irs/us__form_990.md",
+                "Return of Organization Exempt From Income Tax.",
+            ),
+            notation_card(
+                "Form · Federal",
+                "Application for Naturalization (N-400)",
+                "forms/united_states/federal/uscis/us__naturalization.md",
+                "Intake summary for Form N-400.",
+            ),
+            notation_card(
+                "Form · Nevada",
+                "Nevada LLC Formation",
+                "forms/united_states/nevada/state/nv__llc_formation.md",
+                "Articles of organization for a Nevada limited-liability company.",
+            ),
+            notation_card(
+                "Form · Nevada",
+                "Nevada Profit Corporation Formation",
+                "forms/united_states/nevada/state/nv__profit_corp_formation.md",
+                "Articles of incorporation for a Nevada profit corporation.",
+            ),
+            notation_card(
+                "Form · Nevada",
+                "Nevada Business Trust Formation",
+                "forms/united_states/nevada/state/nv__business_trust_formation.md",
+                "Certificate of business trust for Nevada.",
+            ),
+            notation_card(
+                "Form · Nevada",
+                "Nevada Nonprofit Articles of Incorporation (501(c)(3))",
+                "forms/united_states/nevada/state/nv__nonprofit_501c3_formation.md",
+                "Articles that form a Nevada nonprofit seeking 501(c)(3) status.",
+            ),
+            notation_card(
+                "Form · Nevada",
+                "Nevada Annual List",
+                "forms/united_states/nevada/state/nv__annual_report.md",
+                "Annual list of managers, members, and registered agent.",
+            ),
+            notation_card(
+                "Form · Nevada",
+                "Nevada LLC Articles of Dissolution",
+                "forms/united_states/nevada/state/nv__dissolution.md",
+                "The filing that dissolves a Nevada LLC.",
+            ),
+            notation_card(
+                "Form · Nevada",
+                "Nevada Modified Business Tax Return",
+                "forms/united_states/nevada/state/nv__modified_business_tax.md",
+                "Nevada Modified Business Tax return.",
+            ),
+            notation_card(
+                "Form · Nevada",
+                "Nevada Charitable Solicitation Registration",
+                "forms/united_states/nevada/state/nv__charitable_solicitation_registration.md",
+                "Registration before soliciting donations in Nevada.",
+            ),
+        ],
+        contact_email: views::brand::firm_email().to_string(),
+        footnote: NOTATIONS_INDEX_FOOTNOTE.to_string(),
+    }
+}
+
 /// The firm host's public Dioxus SSR pages, as raw routers for
 /// [`portal::bootstrap`]'s `host_dioxus` argument. `bootstrap` wraps each in
 /// the anonymous-access session boundary and the shared layer stack, exactly as
@@ -129,37 +240,34 @@ pub fn firm_public_dioxus_routers(state: &AppState) -> Vec<Router> {
         dioxus_app::blog_index_router(blog_posts),
         dioxus_app::blog_post_router(blog_post_set),
     ];
-    // The firm `/contact` page, content resolved from the
-    // mounted brand bundle. Resolve the branding from `state.brand_bundle`
-    // (mirroring `bootstrap`) rather than the
-    // ambient `current()`: this content is baked at router-build time, before
-    // any request scopes branding, so a white-label deploy's contact addresses
-    // must come from the bundle directly and not the process/default fallback.
-    let contact_branding = state
+    // Resolve the branding from `state.brand_bundle` (mirroring `bootstrap`)
+    // rather than the ambient `current()`: this content is baked at
+    // router-build time, before any request scopes branding.
+    let branding = state
         .brand_bundle
         .as_ref()
         .map_or(&views::brand::DEFAULT_BRANDING, |bundle| {
             views::brand::Branding::from_manifest(&bundle.manifest)
         });
-    routers.push(dioxus_app::contact_router(
-        "/contact",
-        resolve_firm_contact_content(contact_branding),
+    routers.push(dioxus_app::catalog_index_router(
+        dioxus_app::NOTATIONS_INDEX_PATH,
+        notations_index_content(),
     ));
     // The home page (`/`): a static statement of the practice, no per-request
     // data.
     routers.push(dioxus_app::home_router(
         "/",
-        resolve_firm_home_content(contact_branding),
+        resolve_firm_home_content(branding),
     ));
     // The practice pages the home page's cards lead into. Static copy like the
     // home page's, resolved here so the `<title>` names the mounted brand.
     routers.push(dioxus_app::litigation_router(
         "/litigation",
-        resolve_litigation_content(contact_branding),
+        resolve_litigation_content(branding),
     ));
     routers.push(dioxus_app::transactional_router(
         "/fractional-gc",
-        resolve_transactional_content(contact_branding),
+        resolve_transactional_content(branding),
     ));
     // The platform page. It carries a commercial offer, so it sits with the
     // firm's own pages.
@@ -220,42 +328,6 @@ pub fn firm_public_dioxus_routers(state: &AppState) -> Vec<Router> {
 /// Kept in `web` so the `views` crate stays free of `chrono`.
 fn format_blog_date(date: chrono::NaiveDate) -> String {
     date.format("%B %-d, %Y").to_string()
-}
-
-/// Resolve the firm `/contact` content from the mounted `branding`'s addresses
-/// — the wasm-safe [`webapp::contact_page::ContactContent`] the Dioxus contact
-/// router injects. Takes the resolved `branding` explicitly because the content
-/// is baked at router-build time, before per-request branding scope.
-fn resolve_firm_contact_content(
-    branding: &views::brand::Branding,
-) -> webapp::contact_page::ContactContent {
-    let firm_name = branding.firm.site_name;
-
-    let page_title = "Contact";
-    webapp::contact_page::ContactContent {
-        head_title: format!("{firm_name} | {page_title}"),
-        meta_description: format!(
-            "Reach {firm_name} for estate planning, corporate formation, litigation, and ongoing \
-             legal services."
-        ),
-        page_title: page_title.to_string(),
-        firm_heading: firm_name.to_string(),
-        // No figure here. No page on this host posts a rate — every engagement
-        // is quoted through this page — so a consultation fee would be the first
-        // posted number on a surface whose whole purpose is to start a
-        // conversation before anything is priced. The page promises the quote,
-        // not its amount.
-        firm_intro: format!(
-            "Email {firm_name} with a short description of the matter — estate planning, \
-             corporate formation, ongoing services. We respond within one business day with a \
-             flat-fee quote and a calendar link. The first appointment is 30 minutes with a \
-             licensed attorney."
-        ),
-        email_label: "Email".to_string(),
-        phone_label: "Phone".to_string(),
-        firm_email: branding.firm_email.to_string(),
-        firm_phone: branding.firm_phone.to_string(),
-    }
 }
 
 /// One plain run of practice prose.
@@ -432,7 +504,7 @@ pub(crate) fn resolve_firm_home_content(
                wronged and handed no form to put it on. We move fast and judiciously, because \
                being heard late is its own injury."
             .to_string(),
-        contact_href: "/contact".to_string(),
+        contact_href: format!("mailto:{}", branding.firm_email),
         contact_label: "Contact us".to_string(),
         service: Some(resolve_service_section()),
         practices_heading: "Our complementary practice".to_string(),
@@ -553,7 +625,7 @@ pub(crate) fn resolve_litigation_content(
                you to a resolution sooner. That is not the right approach for every case. It \
                could be the right one for yours."
             .to_string(),
-        cta_href: "/contact".to_string(),
+        cta_href: format!("mailto:{}", branding.firm_email),
         cta_label: "Contact us".to_string(),
         // The practice in the firm's own two paragraphs, as filed. The company
         // side first, then the individuals — and the fee arrangement in each,
@@ -768,7 +840,7 @@ pub(crate) fn resolve_transactional_content(
         lead: "Company counsel on one flat monthly fee, working at the pace your sales cycle \
                already runs at. A redline comes back in one business day."
             .to_string(),
-        cta_href: "/contact".to_string(),
+        cta_href: format!("mailto:{}", branding.firm_email),
         cta_label: "Contact us".to_string(),
         virtues: transactional_virtues(),
         msa_term: "MSA — master services agreement".to_string(),

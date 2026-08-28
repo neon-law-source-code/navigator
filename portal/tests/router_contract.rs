@@ -114,7 +114,7 @@ const CONTRACT: &[(&str, Access)] = &[
     ("/sitemap.xml", Access::HostPublic),
     ("/llms.txt", Access::HostPublic),
     ("/blog", Access::HostPublic),
-    ("/contact", Access::HostPublic),
+    ("/notations", Access::HostPublic),
     // The explicit anonymous allowlist.
     ("/health", Access::PublicIngress),
     ("/readyz", Access::PublicIngress),

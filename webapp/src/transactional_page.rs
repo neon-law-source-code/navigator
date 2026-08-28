@@ -324,7 +324,7 @@ mod tests {
                 },
             ],
             lead: "Company counsel that runs inside your sales cycle.".to_string(),
-            cta_href: "/contact".to_string(),
+            cta_href: "mailto:contact@neonlaw.com".to_string(),
             cta_label: "Contact us".to_string(),
             virtues: vec![Virtue {
                 word: "Accurate".to_string(),
@@ -384,7 +384,7 @@ mod tests {
             "Accurate. carries the firm's colour: {out}"
         );
         assert!(
-            out.contains(r#"href="/contact""#),
+            out.contains(r#"href="mailto:contact@neonlaw.com""#),
             "the CTA routes to contact"
         );
     }

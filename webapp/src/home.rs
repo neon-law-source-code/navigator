@@ -317,7 +317,7 @@ mod tests {
                         }),
                         heading: "AI enablement for law firms".to_string(),
                         lead: "Our clients are law firms.".to_string(),
-                        contact_href: "/contact".to_string(),
+                        contact_href: "mailto:contact@neonlaw.com".to_string(),
                         contact_label: "Contact us".to_string(),
                         practices_heading: "The rest of what we do".to_string(),
                         practices: vec![PracticeLink {
@@ -369,7 +369,10 @@ mod tests {
             "the practice statement: {out}"
         );
         assert!(out.contains("Our clients are law firms."), "lead");
-        assert!(out.contains(r#"href="/contact""#), "CTA links to /contact");
+        assert!(
+            out.contains(r#"href="mailto:contact@neonlaw.com""#),
+            "CTA links to the firm inbox"
+        );
         assert!(out.contains("Contact us"), "CTA label");
     }
 

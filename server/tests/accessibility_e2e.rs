@@ -771,7 +771,7 @@ async fn public_navigation_images_and_collage_dialog_are_accessible() {
         .unwrap();
     c.wait()
         .at_most(Duration::from_secs(10))
-        .for_url(&url::Url::parse(&format!("{site_base_url}/contact")).unwrap())
+        .for_url(&url::Url::parse(&format!("{site_base_url}/notations")).unwrap())
         .await
         .expect("the home call to action navigates to the contact route");
 

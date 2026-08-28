@@ -316,7 +316,7 @@ mod tests {
                 },
             ],
             lead: "We do as much as we can, as early as we can.".to_string(),
-            cta_href: "/contact".to_string(),
+            cta_href: "mailto:contact@neonlaw.com".to_string(),
             cta_label: "Contact us".to_string(),
             body: vec![
                 vec![plain(
@@ -387,7 +387,7 @@ mod tests {
             "the eyebrow names both sides: {out}"
         );
         assert!(
-            out.contains(r#"href="/contact""#),
+            out.contains(r#"href="mailto:contact@neonlaw.com""#),
             "the CTA routes to contact"
         );
     }

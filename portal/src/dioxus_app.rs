@@ -1741,7 +1741,7 @@ pub const TERMS_PATH: &str = "/terms";
 
 /// A gated-nothing Dioxus router for one legal document (#956 Phase 4). Public,
 /// so it carries the public-utility injection (the auth-aware header group) on
-/// top of the nonce CSP — the same shape as [`contact_router`]. The
+/// top of the nonce CSP — the same shape as [`catalog_index_router`]. The
 /// rendered body is resolved once at construction and injected, so the render
 /// never parses markdown.
 pub fn legal_page_router(path: &'static str, content: webapp::legal_page::LegalContent) -> Router {
@@ -2634,7 +2634,7 @@ async fn inject_template_entry(mut req: Request, next: Next) -> Response {
         frontmatter: template.frontmatter().to_string(),
         download_href: template.download_path(),
         // A serious prospect routes into the firm's contact path.
-        start_matter_href: "/contact".to_string(),
+        start_matter_href: format!("mailto:{}", views::brand::firm_email()),
     };
     req.extensions_mut()
         .insert(webapp::template_gallery::InjectedTemplateDetail(content));
@@ -2698,10 +2698,10 @@ pub const FIRM_FRACTIONAL_CTO_PATH: &str = "/fractional-cto";
 /// not a `/services/*` catalog.
 pub const FIRM_SERVICES_PATH: &str = "/services";
 
-/// One category index — [`WORKSHOP_INDEX_PATH`] or
-/// [`PRESENTATION_INDEX_PATH`].
+/// One category index — [`WORKSHOP_INDEX_PATH`], [`PRESENTATION_INDEX_PATH`],
+/// or [`NOTATIONS_INDEX_PATH`].
 ///
-/// Both mounts are public.
+/// The mounts are public.
 ///
 /// The catalog is fixed at construction, but the index is still built by a
 /// pre-layer rather than baked in, because the two mounts differ only by the
@@ -3019,6 +3019,8 @@ pub const PRESENTATION_PATHS: MaterialPaths = MaterialPaths {
 pub const WORKSHOP_INDEX_PATH: &str = "/workshops";
 /// The public index of the talks.
 pub const PRESENTATION_INDEX_PATH: &str = "/presentations";
+/// The public catalog of shipped notations.
+pub const NOTATIONS_INDEX_PATH: &str = "/notations";
 /// A workshop's hub.
 pub const WORKSHOP_MATERIAL_PATH: &str = "/workshops/{slug}";
 /// A presentation's hub.
@@ -3321,34 +3323,6 @@ pub fn transactional_router(
         .with_state(FullstackState::new(
             cfg,
             webapp::transactional_page::TransactionalPageEntry,
-        ))
-}
-
-/// The firm `/contact` page (#641 / #730 PR6), served through the Dioxus SSR
-/// port. Content-backed like the service pages: the caller
-/// (the firm's public Dioxus pages) resolves the [`ContactContent`] from the
-/// mounted branding and injects it through `ServeConfig::context_providers`, and
-/// `webapp::contact_page::contact_page_view` reads it back. `path` is the route
-/// the page mounts at. Public and firm-scoped.
-///
-/// [`ContactContent`]: webapp::contact_page::ContactContent
-pub fn contact_router(path: &str, content: webapp::contact_page::ContactContent) -> Router {
-    let injected = webapp::contact_page::InjectedContact(content);
-    let cfg = ServeConfig::new().context_providers(std::sync::Arc::new(vec![Box::new(move || {
-        Box::new(injected.clone()) as Box<dyn std::any::Any>
-    })
-        as Box<dyn Fn() -> Box<dyn std::any::Any> + Send + Sync>]));
-
-    Router::<FullstackState>::new()
-        .route(
-            path,
-            get(render_handler)
-                .layer(from_fn(dioxus_document_head))
-                .layer(from_fn(inject_public_utility)),
-        )
-        .with_state(FullstackState::new(
-            cfg,
-            webapp::contact_page::ContactPageEntry,
         ))
 }
 

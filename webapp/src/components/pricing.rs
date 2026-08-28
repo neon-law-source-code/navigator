@@ -152,11 +152,14 @@ mod tests {
     fn on_site_cta_stays_a_plain_link() {
         fn app() -> Element {
             let mut card = sample();
-            card.cta_href = "/contact".to_string();
+            card.cta_href = "mailto:contact@neonlaw.com".to_string();
             rsx! { PricingSection { cards: vec![card], cols_lg: 1 } }
         }
         let html = ssr(app);
-        assert!(html.contains(r#"href="/contact""#), "{html}");
+        assert!(
+            html.contains(r#"href="mailto:contact@neonlaw.com""#),
+            "{html}"
+        );
         assert!(!html.contains(r#"target="_blank""#), "{html}");
         // On-site CTAs stay plain: no off-site arrow cue.
         assert!(!html.contains("M8.636 3.5"), "no external arrow: {html}");

@@ -1407,7 +1407,6 @@ async fn the_firm_holds_the_root_and_nothing_else_answers_there() {
         "/mission",
         "/education",
         "/attorneys",
-        "/notations",
         "/transparency",
     ] {
         let resp = app
@@ -1498,7 +1497,7 @@ async fn the_firm_marketing_surface_serves_at_the_site_root() {
         empty_state().await,
         std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
     );
-    for uri in ["/blog", "/contact"] {
+    for uri in ["/blog", "/notations"] {
         let resp = app
             .clone()
             .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
@@ -2171,7 +2170,7 @@ async fn sitemap_xml_lists_public_routes_from_loaded_indexes() {
     }
     // The firm's pages ARE advertised — one host, one sitemap. What must not
     // appear is a firm page filed beneath `/foundation`.
-    for firm_page in ["/blog", "/litigation", "/contact"] {
+    for firm_page in ["/blog", "/litigation", "/notations"] {
         assert!(
             body.contains(&format!("<loc>https://www.neonlaw.com{firm_page}</loc>")),
             "sitemap must advertise the firm page {firm_page}: {body}"
@@ -2506,7 +2505,7 @@ async fn llms_txt_indexes_the_markdown_corpus_with_absolute_urls() {
     for page in [
         "https://www.example.com/)",
         "https://www.example.com/services)",
-        "https://www.example.com/contact)",
+        "https://www.example.com/notations)",
     ] {
         assert!(
             body.contains(page),
@@ -7836,7 +7835,7 @@ async fn canonical_host_redirects_when_host_mismatches() {
     let resp = app
         .oneshot(
             Request::builder()
-                .uri("/contact")
+                .uri("/notations")
                 .header("host", "www.neonlaw.org")
                 .body(Body::empty())
                 .unwrap(),
@@ -7849,7 +7848,7 @@ async fn canonical_host_redirects_when_host_mismatches() {
         .get("location")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
-    assert_eq!(location, "https://neonlaw.org/contact");
+    assert_eq!(location, "https://neonlaw.org/notations");
 }
 
 #[tokio::test]

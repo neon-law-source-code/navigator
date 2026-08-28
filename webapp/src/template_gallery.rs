@@ -342,7 +342,7 @@ mod tests {
                 download_href: "/templates/united-states/federal/irs/taxation/\
                                 form990-annual-report/download"
                     .to_string(),
-                start_matter_href: "/contact".to_string(),
+                start_matter_href: "mailto:contact@neonlaw.com".to_string(),
             },
         }))
     }
@@ -399,7 +399,10 @@ mod tests {
     fn the_detail_page_ends_with_the_start_a_matter_call_to_action() {
         let out = detail_html();
         assert!(out.contains("Start a matter"), "CTA label: {out}");
-        assert!(out.contains(r#"href="/contact""#), "CTA href: {out}");
+        assert!(
+            out.contains(r#"href="mailto:contact@neonlaw.com""#),
+            "CTA href: {out}"
+        );
     }
 
     #[test]

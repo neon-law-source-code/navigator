@@ -396,9 +396,19 @@ pub const SEEDED_TEMPLATES: &[SeededTemplate] = &[
 /// YAML in `store/seeds/` has the same outer shape.
 #[derive(Debug, Deserialize)]
 struct Records<T> {
-    #[serde(default)]
-    lookup_fields: Vec<String>,
     #[serde(default = "Vec::new")]
+    records: Vec<T>,
+}
+
+/// The strict envelope accepted by `navigator db seed`.
+///
+/// Canonical seed files use [`Records`] because they carry several different
+/// shapes. Operator-supplied seed documents have one closed contract, so the
+/// parser rejects missing or unknown envelope keys before a write can start.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SeedRecords<T> {
+    lookup_fields: Vec<String>,
     records: Vec<T>,
 }
 
@@ -468,10 +478,59 @@ pub async fn reconcile_yaml(
     firm_anchor: &str,
     overwrite: bool,
 ) -> anyhow::Result<ReconcileReport> {
+    validate_yaml(model, yaml)?;
     match model {
         SeedModel::Person => reconcile_people(surreal, yaml, overwrite).await,
         SeedModel::Entity => reconcile_entities(surreal, yaml, firm_anchor, overwrite).await,
     }
+}
+
+/// Validate a seed document without connecting to a deployment.
+///
+/// This is the same parser the authenticated reconciliation path uses, so a
+/// document accepted by `navigator validate` cannot fail later because the
+/// two paths disagree about its shape.
+pub fn validate_yaml(model: SeedModel, yaml: &str) -> anyhow::Result<()> {
+    match model {
+        SeedModel::Person => {
+            let records = parse_seed::<PersonRec>(yaml, model, &["email"])?;
+            require_unique(
+                model,
+                "email",
+                records
+                    .iter()
+                    .map(|record| record.email.to_ascii_lowercase()),
+            )
+        }
+        SeedModel::Entity => {
+            let records = parse_seed::<EntityRec>(yaml, model, &["name", "entity_type_id"])?;
+            require_unique(
+                model,
+                "name and entity_type.name",
+                records.iter().map(|record| {
+                    format!(
+                        "{}\u{0}{}",
+                        record.name.to_ascii_lowercase(),
+                        record.entity_type.name.to_ascii_lowercase()
+                    )
+                }),
+            )
+        }
+    }
+}
+
+fn require_unique(
+    model: SeedModel,
+    field: &str,
+    values: impl IntoIterator<Item = String>,
+) -> anyhow::Result<()> {
+    let mut seen = std::collections::BTreeSet::new();
+    for value in values {
+        if !seen.insert(value) {
+            anyhow::bail!("{} seed contains duplicate {field}", model.term());
+        }
+    }
+    Ok(())
 }
 
 fn parse_seed<T>(
@@ -482,7 +541,7 @@ fn parse_seed<T>(
 where
     T: for<'de> Deserialize<'de>,
 {
-    let parsed: Records<T> = serde_yaml::from_str(yaml)
+    let parsed: SeedRecords<T> = serde_yaml::from_str(yaml)
         .map_err(|error| anyhow::anyhow!("parse {} seed: {error}", model.term()))?;
     let supplied: Vec<&str> = parsed.lookup_fields.iter().map(String::as_str).collect();
     if supplied != expected_lookup_fields {
@@ -1888,12 +1947,14 @@ async fn seed_entity_types(surreal: &SurrealDb, report: &mut SeedReport) -> anyh
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct EntityRec {
     name: String,
     entity_type: EntityTypeRef,
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct EntityTypeRef {
     name: String,
     #[serde(default)]
@@ -1901,6 +1962,7 @@ struct EntityTypeRef {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct JurisdictionRef {
     name: String,
 }
@@ -1987,6 +2049,7 @@ async fn seed_entities(
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct PersonRec {
     email: String,
     name: String,
@@ -2488,7 +2551,7 @@ async fn seed_person_project_roles(
 mod tests {
     use super::{
         normalized_body_bytes, reconcile_yaml, seed_canonical, seeded_template_codes,
-        split_template, SeedModel, TemplateFrontmatter, SEEDED_TEMPLATES,
+        split_template, validate_yaml, SeedModel, TemplateFrontmatter, SEEDED_TEMPLATES,
     };
     use crate::jurisdictions;
     use crate::persons::{self, Role};
@@ -2568,6 +2631,44 @@ records:
                 .name,
             "Updated Name"
         );
+    }
+
+    #[test]
+    fn seed_document_validation_uses_the_reconciliation_shape() {
+        let valid = r"
+lookup_fields:
+  - email
+records:
+  - email: operator@example.com
+    name: Operator
+";
+        validate_yaml(SeedModel::Person, valid).expect("valid person seed");
+
+        let unknown_field = r"
+lookup_fields:
+  - email
+records:
+  - email: operator@example.com
+    display_name: Operator
+";
+        assert!(validate_yaml(SeedModel::Person, unknown_field)
+            .unwrap_err()
+            .to_string()
+            .contains("unknown field `display_name`"));
+
+        let duplicate = r"
+lookup_fields:
+  - email
+records:
+  - email: operator@example.com
+    name: One
+  - email: OPERATOR@example.com
+    name: Two
+";
+        assert!(validate_yaml(SeedModel::Person, duplicate)
+            .unwrap_err()
+            .to_string()
+            .contains("duplicate email"));
     }
 
     /// The firm's own Entity is the one seeded row that takes

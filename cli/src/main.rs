@@ -2373,6 +2373,59 @@ fn yaml_pass(dir: &std::path::Path) -> std::io::Result<usize> {
     Ok(errors)
 }
 
+/// `Y001` — a `seeds/*.yaml` document must be accepted by `navigator db seed`.
+const SEED_DOCUMENT_CODE: &str = "Y001";
+
+fn seed_model_for_path(path: &std::path::Path) -> Option<anyhow::Result<store::seed::SeedModel>> {
+    let parent = path.parent()?;
+    (parent.file_name()? == "seeds").then(|| {
+        let model = path
+            .file_stem()
+            .and_then(std::ffi::OsStr::to_str)
+            .unwrap_or_default();
+        store::seed::SeedModel::parse(model)
+    })
+}
+
+/// Validate the direct `seeds/*.yaml` documents that an operator can submit
+/// through `navigator db seed`. The store owns the parser; this pass only
+/// discovers the files and reports its refusal with the validation lint code.
+fn seed_document_pass(dir: &std::path::Path) -> std::io::Result<usize> {
+    let mut files_scanned = 0usize;
+    let mut errors = 0usize;
+    for entry in walkdir::WalkDir::new(dir)
+        .into_iter()
+        .filter_entry(|entry| {
+            let name = entry.file_name().to_string_lossy();
+            !entry.file_type().is_dir()
+                || (name != ".git" && name != "target" && name != ".worktrees")
+        })
+    {
+        let entry = entry.map_err(std::io::Error::other)?;
+        let path = entry.path();
+        if !entry.file_type().is_file() || !is_yaml_path(path) {
+            continue;
+        }
+        let Some(model) = seed_model_for_path(path) else {
+            continue;
+        };
+        files_scanned += 1;
+        let raw = std::fs::read_to_string(path)?;
+        let validation = model.and_then(|model| store::seed::validate_yaml(model, &raw));
+        if let Err(error) = validation {
+            print_violation(
+                &path.display().to_string(),
+                1,
+                SEED_DOCUMENT_CODE,
+                &error.to_string(),
+            );
+            errors += 1;
+        }
+    }
+    println!("Validated {files_scanned} seed document(s), found {errors} error(s)");
+    Ok(errors)
+}
+
 /// True for a Containerfile/Dockerfile by filename, whose `FROM` lines this
 /// guard scans the same way it scans YAML `image:` values.
 fn is_containerfile_path(path: &std::path::Path) -> bool {
@@ -2555,13 +2608,13 @@ fn mutable_tag_pass(dir: &std::path::Path) -> std::io::Result<usize> {
     Ok(findings)
 }
 
-/// The two standalone passes `validate` runs over the raw tree after the
-/// markdown lint — YAML parse errors and consumed mutable tags — returning
-/// `(yaml_errors, mutable_tags)`. Either being nonzero fails the gate.
-fn standalone_tree_passes(dir: &std::path::Path) -> std::io::Result<(usize, usize)> {
+/// The standalone passes `validate` runs over the raw tree after the markdown
+/// lint — YAML syntax, seed-document shape, and consumed mutable tags.
+fn standalone_tree_passes(dir: &std::path::Path) -> std::io::Result<(usize, usize, usize)> {
     let yaml_errors = yaml_pass(dir)?;
+    let seed_errors = seed_document_pass(dir)?;
     let mutable_tags = mutable_tag_pass(dir)?;
-    Ok((yaml_errors, mutable_tags))
+    Ok((yaml_errors, seed_errors, mutable_tags))
 }
 
 /// The question codes N104 validates against: the stored catalog when
@@ -2673,9 +2726,9 @@ async fn run_validate(
         ))
     );
 
-    // Standalone raw-tree passes over the same walk: YAML parse errors, and
-    // consumed mutable image/binary tags (navigator#540).
-    let (yaml_errors, mutable_tags) = match standalone_tree_passes(dir) {
+    // Standalone raw-tree passes over the same walk: YAML parse errors, seed
+    // document shape, and consumed mutable image/binary tags (navigator#540).
+    let (yaml_errors, seed_errors, mutable_tags) = match standalone_tree_passes(dir) {
         Ok(counts) => counts,
         Err(e) => {
             eprintln!("navigator: {e}");
@@ -2683,11 +2736,11 @@ async fn run_validate(
         }
     };
 
-    // Fail the gate on Error-severity markdown violations, a YAML parse error,
-    // or a consumed mutable tag. Warning-severity
+    // Fail the gate on Error-severity markdown violations, malformed YAML or
+    // seed documents, or a consumed mutable tag. Warning-severity
     // advisories (e.g. a step that's allowed but not built yet) are printed
     // but do not fail.
-    if error_count > 0 || yaml_errors > 0 || mutable_tags > 0 {
+    if error_count > 0 || yaml_errors > 0 || seed_errors > 0 || mutable_tags > 0 {
         ExitCode::from(1)
     } else {
         ExitCode::SUCCESS

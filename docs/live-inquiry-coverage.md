@@ -103,9 +103,9 @@ pub enum InquirySource {
 }
 ```
 
-For v1, every reachable `questionnaire:` Question becomes one `InquiryDraft` with `InquirySource::TemplateQuestion`.
-The live system then tracks coverage against those Inquiries while the existing
-Notation workflow remains the authority for document generation, lawyer review, client review, and signing.
+For v1, every reachable `questionnaire:` Question becomes one `InquiryDraft` with `InquirySource::TemplateQuestion`. The
+live system then tracks coverage against those Inquiries while the existing Notation workflow remains the authority for
+document generation, lawyer review, client review, and signing.
 
 ## Local CLI probe
 
@@ -324,8 +324,8 @@ questionnaire:
     _: executor_name
 ```
 
-Each questionnaire `Question` becomes an Inquiry for the live sitting. The Inquiry Set is Project-scoped
-when lawyers customize it for one client, and workspace-shared when it is the default for a Template.
+Each questionnaire `Question` becomes an Inquiry for the live sitting. The Inquiry Set is Project-scoped when
+lawyers customize it for one client, and workspace-shared when it is the default for a Template.
 
 A later Template extension can make the mapping explicit without replacing the questionnaire:
 

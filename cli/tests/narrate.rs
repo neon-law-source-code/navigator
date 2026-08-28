@@ -56,7 +56,10 @@ fn narrate_writes_a_stage_with_arabic_and_lettered_units() {
         "{html}"
     );
     assert!(html.contains("Arrow keys"), "{html}");
-    assert!(html.contains("URLSearchParams"), "start-index query: {html}");
+    assert!(
+        html.contains("URLSearchParams"),
+        "start-index query: {html}"
+    );
 }
 
 #[test]

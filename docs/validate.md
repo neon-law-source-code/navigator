@@ -7,8 +7,7 @@ publish: true
 `navigator validate <dir>` (default `.`) is the single command every editor, CI gate, and this repository's own
 `AGENTS.md` point at. This page is its canonical reference: what it runs, both flags, the error/warning split, and one
 row per rule code. `cli/tests/validate_docs_coverage.rs` fails the build when a code exists in `rules/src/` or
-`cli/src/main.rs` with no entry here, so this table cannot go stale the way it did before — 54 of 84 codes had no
-documentation anywhere, and two of the missing ones shipped in the same week this page was written.
+`cli/src/main.rs` with no entry here, so this table cannot go stale.
 
 ## Usage
 

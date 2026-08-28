@@ -65,8 +65,8 @@ Notes:
   speaks to Mercury — our only integration boundary is the Xero API.
 - **Google Cloud is several spec-compliant touchpoints, not one SDK.** Object storage goes through the `cloud`
   crate's `StorageService` trait (GCS in prod, Garage in dev); the store is SurrealDB over `NAVIGATOR_SURREAL_ENDPOINT`
-  (Surreal Cloud in prod); OIDC is Google Identity validated against `GOOGLE_OAUTH_*`; the per-Project archive is Drive
-  REST v3. See [`cloud/README.md`](../cloud/README.md) for the full resource map.
+  (Surreal Cloud in prod); OIDC is Google Identity validated against `GOOGLE_OAUTH_*`; Drive REST v3 is import-only,
+  never a live store or archive. See [`cloud/README.md`](../cloud/README.md) for the full resource map.
 - **Vertex AI is pluggable.** The router is the `portal::agent_router::AgentRouter` trait — `GeminiRouter` (Vertex AI)
   in prod, `NullRouter` in KIND. Swapping to another LLM means a new `impl`, not a new vendor account.
 

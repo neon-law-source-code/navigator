@@ -12,34 +12,6 @@ pin of the canonical blank. The repository path is still the storage contract: t
 `templates/forms/united_states/nevada/state/nv__llc_formation.sha256` pins the bucket object at
 `forms/united_states/nevada/state/nv__llc_formation.pdf`.
 
-## The Published Offer
-
-The firm advertises this pipeline publicly at `/forms`, and that page is the **only** place on the firm site that posts
-a price. Everywhere else an engagement is quoted through `/contact`, because the work is fluid and a posted number would
-fit nobody. Two things make the exception hold, and both are load-bearing rather than stylistic:
-
-- **The scope does not move.** The offer is exactly two Nevada formations — `nv__llc_formation` and
-  `nv__profit_corp_formation`. Both are re-authored blanks with fixed `.fields` manifests, so every filing asks the same
-  questions and fills the same boxes. Nothing about a client's situation is priced into the number.
-- **The fee boundary ships with the fee.** The published figure is the *attorney* fee. Nevada's own formation fees are
-  several times larger, are set and collected by the Secretary of State, and the firm neither marks them up nor takes a
-  share. A page that printed the attorney fee alone would be a misleading fee communication under Rule 7.1 — so the
-  separation appears in the tagline, in its own band, and on each card, and is pinned by tests in three places.
-
-Deliberately outside the offer: `nv__business_trust_formation` (vendored and re-authored, but a trust is drafting rather
-than a form), `nv__nonprofit_501c3_formation` (an exemption application and governance choices), foreign qualification,
-and any formation where the owners have not yet agreed. Those route to a conversation and are quoted as real work.
-
-The engagement is limited-scope under Rule 1.2(c): the firm prepares, reviews, and files the formation documents, and
-the representation ends when they are filed. It does not extend to entity selection, equity splits, operating
-agreements, or tax treatment. A `$50` filing is still representation — it opens a matter, runs conflicts, and passes
-`lawyer_review` before anything reaches a government office.
-
-The copy and its guards live in the `neon` crate's `copy::forms`; the route table entry is `dioxus_app::FIRM_FORMS_PATH`
-and the page renders through `firm_marketing_page_router`. The site-wide rule — that this is the *only* page on the firm
-host publishing a figure of any kind — is pinned by
-`server/tests/neon_routes.rs::forms_is_the_only_firm_page_that_publishes_a_price`.
-
 ## Pipeline
 
 ```text
@@ -146,7 +118,7 @@ The fill map is not trusted, it is **checked**. Since the question consolidation
 `<type>__<role>` — `entity__company`, `person__registered_agent`, `people__managing_members`,
 `custom_single_choice__management_structure` — where `<type>` is one of the canonical seeded question codes in
 `store/seeds/Question.yaml`. A field map's answer sources are those same states (directly or by `__role` suffix, exactly
-as `fieldmap::answer_for` resolves an answer). So a map that fills a real filing must reference only questions the
+as `forms::resolve_reauthored` resolves an answer). So a map that fills a real filing must reference only questions the
 questionnaire actually asks, of types the workspace actually seeds.
 
 `forms/tests/question_code_contract.rs` is the guard, run offline in `cargo test` with no PDF or network:
@@ -171,7 +143,7 @@ bytes with a Rust AcroForm writer would otherwise produce a visually blank filin
 
 The current USCIS N-400 blank is a hybrid static-XFA / AcroForm PDF. The vendored proof uses the USCIS download for the
 January 20, 2025 edition and pins the source bytes at
-`8b33868ba071e261bf5e8d87d9667860d1f6d2c4de76101eb1e674404a82d909`. Stripping the static XFA packet preserves 440
+`2615c6425e0b8e79d8958921ce1567bdae8a531e32caf5d006a1e30f167db8a0`. Stripping the static XFA packet preserves 440
 AcroForm fields and 440 widgets; the re-authored `us__naturalization` blank carries 432 final field names, including 11
 mapped questionnaire states and the remaining fields in `unmapped__` for later adjudication. The mapped set is the
 first-pass eight (identity, eligibility, residence, marital, contact) plus the applicant's **structured legal name**:

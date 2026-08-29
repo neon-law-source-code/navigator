@@ -959,7 +959,7 @@ async fn create_entity(
     Ok((StatusCode::CREATED, Json(created)).into_response())
 }
 
-/// The authenticated command behind `navigator db seed`. The CLI sends the
+/// The authenticated command behind `navigator site import`. The CLI sends the
 /// seed document verbatim; parsing, natural-key lookup, and writes happen in
 /// the typed store registry rather than in a client with database credentials.
 #[derive(Debug, Deserialize)]

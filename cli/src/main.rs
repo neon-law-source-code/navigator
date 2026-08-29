@@ -13,7 +13,9 @@ mod erd;
 mod format;
 mod forms_sync;
 mod github;
+#[allow(dead_code)]
 mod import;
+#[allow(dead_code)]
 mod intake;
 mod list;
 mod login;
@@ -28,6 +30,7 @@ mod release;
 mod release_check;
 mod release_default_tag;
 mod release_version;
+#[allow(dead_code)]
 mod remote;
 mod scaffold;
 mod sendgrid_openapi;
@@ -210,6 +213,18 @@ fn concise_help(mut command: clap::Command) -> clap::Command {
         let original = std::mem::replace(subcommand, clap::Command::new("placeholder"));
         *subcommand = concise_help(original);
     }
+    let mut names = command
+        .get_subcommands()
+        .map(|subcommand| subcommand.get_name().to_owned())
+        .collect::<Vec<_>>();
+    names.sort_by_key(|name| (name == "help", name.clone()));
+    command = command.mut_subcommands(|subcommand| {
+        let order = names
+            .iter()
+            .position(|name| name == subcommand.get_name())
+            .unwrap_or(names.len());
+        subcommand.display_order(order)
+    });
     command
 }
 
@@ -272,8 +287,7 @@ enum Command {
     // ─────────────── Authoring a notation locally ───────────────
     // The notation author's workbench: everything here runs offline (or
     // against a local store), no live site required.
-    /// Validate every Markdown, event, and YAML file under `<dir>`
-    /// (default `.`) against the Neon Law Navigator rule set.
+    /// Validate Markdown and YAML files in `<dir>` (default `.`).
     Validate {
         /// Directory to walk.
         #[arg(default_value = ".")]
@@ -287,15 +301,6 @@ enum Command {
         /// `navigator-lsp` `source.fixAll` action ships in editors.
         #[arg(long)]
         fix: bool,
-        /// Load the stored question-code registry so N104 can reject
-        /// codes outside it, instead of validating against the
-        /// compiled-in canonical set. The registry lives in
-        /// `SurrealDB`, so the codes are read from the
-        /// `NAVIGATOR_SURREAL_*` connection. An unreachable store
-        /// warns and falls back to the canonical set rather than
-        /// failing the lint.
-        #[arg(long)]
-        question_codes_from_store: bool,
     },
     /// The notation author's offline workbench for everything under
     /// `templates/`.
@@ -307,40 +312,19 @@ enum Command {
     // ─────────────── Local database ───────────────
     // Load and inspect a local store — the notation registry and the
     // firm's own reference data.
-    /// Seed, inspect, and introspect Navigator data.
+    /// Deprecated: use the site and local authoring commands instead.
+    #[command(
+        long_about = "Deprecated: use `navigator site seed` or the local authoring commands instead."
+    )]
     Db {
         #[command(subcommand)]
         action: DbCmd,
     },
 
-    /// Authenticate to a live Navigator deployment and store its short-lived
-    /// bearer token. Commands that mutate deployment data use this login
-    /// rather than database credentials.
-    Login {
-        /// Host to authenticate to, e.g. `staging.neonlaw.com`.
-        #[arg(long)]
-        host: String,
-        /// Print the login URL without opening it.
-        #[arg(long)]
-        no_browser: bool,
-    },
-
-    /// Drive a running deployment with the bearer token `navigator login` stores.
+    /// Drive a running deployment with the bearer token `navigator site login` stores.
     Site {
         #[command(subcommand)]
         action: SiteCmd,
-    },
-
-    // ─────────────── The Project workspace ───────────────
-    // Project is the organizing noun of the product: one `projects.code`
-    // names a Drive folder and one source repository. These verbs operate on
-    // that pair, so they sit at the top layer rather than inside `site` — they
-    // resolve deployment-owned coordinates and inspect the operator's own
-    // machine, not just a live site's bearer token.
-    /// Inspect the Drive folder and the repository one Project code names.
-    Projects {
-        #[command(subcommand)]
-        action: ProjectsCmd,
     },
 
     // ─────────────── Operator ───────────────
@@ -354,6 +338,21 @@ enum Command {
 
 #[derive(Subcommand)]
 enum ProjectsCmd {
+    /// List the live site's Projects as a table or JSON.
+    List {
+        #[command(flatten)]
+        host: HostOpt,
+        /// Emit JSON instead of a table.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Open an existing Project workbench on the live site.
+    Open {
+        /// Project code, resolved only against Projects visible to the login.
+        project_code: String,
+        #[command(flatten)]
+        host: HostOpt,
+    },
     /// Verify this machine and a Project workspace before Navigator creates
     /// anything: the active deployment, its Google Workspace, Shared Drive
     /// and Projects root, an optional local Drive mount, the stored site
@@ -599,34 +598,6 @@ enum TemplateCmd {
 
 #[derive(Subcommand)]
 enum DbCmd {
-    /// Seed the workspace-owned template and question catalog from
-    /// clean files under `<dir>`.
-    ///
-    /// Each clean markdown file becomes a workspace-shared `templates`
-    /// row (`project_id = NULL`); every code in its `questionnaire:`
-    /// and `workflow:` maps becomes a catalog `questions` row when not
-    /// already known. It never creates a Project or client-facing
-    /// Notation. Partial-seed contract: clean files may seed while
-    /// files with error-level rule violations are reported and skipped;
-    /// any skipped error-level file makes this command exit nonzero.
-    CatalogSeed {
-        /// Directory to walk.
-        dir: PathBuf,
-    },
-    /// Reconcile a seed-shaped YAML document through the logged-in deployment.
-    /// Existing lookup matches are left unchanged unless `--overwrite` is set.
-    Seed {
-        /// Singular glossary term and Surreal table, such as `person` or
-        /// `entity`.
-        model_name: String,
-        /// YAML document using the standard `lookup_fields` / `records` shape.
-        seed_file: PathBuf,
-        /// Replace every field represented in each matching seed record.
-        #[arg(long)]
-        overwrite: bool,
-        #[command(flatten)]
-        host: HostOpt,
-    },
     /// List rows from the store, after running the full canonical seed
     /// pass. The seed is idempotent so re-running list against an
     /// already-populated database is safe.
@@ -660,6 +631,19 @@ enum DbCmd {
 
 #[derive(Subcommand)]
 enum SiteCmd {
+    /// Import a seed-shaped YAML document through the logged-in deployment.
+    Import {
+        /// Singular glossary term and Surreal table, such as `person` or
+        /// `entity`.
+        model_name: String,
+        /// YAML document using the standard `lookup_fields` / `records` shape.
+        seed_file: PathBuf,
+        /// Replace every field represented in each matching seed record.
+        #[arg(long)]
+        overwrite: bool,
+        #[command(flatten)]
+        host: HostOpt,
+    },
     /// Authenticate to a live Neon Law Navigator site via a browser-loopback
     /// flow and store a short-lived (1h) bearer token at
     /// `~/.navigator.json` (mode `0600`).
@@ -673,6 +657,11 @@ enum SiteCmd {
         /// sessions and automated loopback-flow tests.
         #[arg(long)]
         no_browser: bool,
+    },
+    /// Seed the workspace-owned template and question catalog from clean files.
+    Seed {
+        /// Directory to walk.
+        dir: PathBuf,
     },
     /// Forget the stored token for a host (or the sole logged-in host).
     Logout {
@@ -710,27 +699,12 @@ enum SiteCmd {
     /// Read-side operations against a live site's matters.
     Projects {
         #[command(subcommand)]
-        action: ProjectsAction,
-    },
-    /// Answer a notation's intake questionnaire from the terminal.
-    Intake {
-        #[command(subcommand)]
-        action: IntakeAction,
+        action: ProjectsCmd,
     },
     /// Inspect or drive a notation's workflow on a live site.
     Notation {
         #[command(subcommand)]
         action: NotationAction,
-    },
-    /// Drive a retainer notation on a live site.
-    Retainer {
-        #[command(subcommand)]
-        action: RetainerAction,
-    },
-    /// Open an existing matter workbench on a live site.
-    Project {
-        #[command(subcommand)]
-        action: ProjectAction,
     },
 }
 
@@ -1029,8 +1003,7 @@ enum OpsCmd {
     /// records are no-ops.
     #[command(subcommand)]
     Dns(DnsCmd),
-    /// White-label bundle. `rebrand build` creates a mountable bundle and
-    /// `rebrand verify` validates one. See `navigator.example.yaml`.
+    /// Deprecated: use the white-label bundle workflow documented in `navigator.example.yaml`.
     #[command(subcommand)]
     Rebrand(BrandCmd),
     /// Stand up the `OTel` Collector seam in prod and wire the binaries to
@@ -1066,7 +1039,7 @@ enum OpsCmd {
         action: AssetsAction,
     },
     /// The version the `cut-release` skill should hand to `--tag` on
-    /// `ops release-version` when the operator names none: today's UTC date
+    /// `ops release version` when the operator names none: today's UTC date
     /// under the `YY.M.D` convention, unless a release already exists that
     /// makes today's date no improvement over what is already published.
     ///
@@ -1078,7 +1051,7 @@ enum OpsCmd {
     /// Exits 0 either way: "nothing to cut today" is the ordinary answer on
     /// most days, not a failure.
     ///
-    /// This changes nothing about `ops release-version`, which still requires
+    /// This changes nothing about `ops release version`, which still requires
     /// `--tag` and still derives nothing — see its own doc for why. This
     /// command only answers the narrower question of what today's date would
     /// even be called and whether it is worth asking for; naming the release
@@ -1092,57 +1065,9 @@ enum OpsCmd {
         #[arg(long)]
         no_fetch: bool,
     },
-    /// Write `--tag` into `[workspace.package].version` so the commit a release
-    /// tags carries the version its Git tag names. Every crate inherits it
-    /// (`version.workspace = true`) and `navigator --version` reports it. Run
-    /// this on a release branch, land it on `main` through a PR, then tag the
-    /// merged commit; `deploy.yml`'s `release-version` job fails a tag whose
-    /// source version does not match, so tag and source cannot drift. The
-    /// version is REQUIRED and nothing derives it: naming a release is an
-    /// operator decision, and a derived name is only ever a fact about when the
-    /// command ran. The shape is validated the way `deploy.yml` validates it —
-    /// `YY.M.D` with unpadded components, optionally suffixed `-hotfix.N` — so a
-    /// name the release would refuse fails here, before a tag exists. A hotfix
-    /// hangs off TOMORROW's date because semver ranks a prerelease below its own
-    /// base, so `26.8.17-hotfix.17` would sort as older than the `26.8.17` it
-    /// fixes.
-    ReleaseVersion {
-        /// Release version to write, e.g. `26.8.20` or `26.8.21-hotfix.3`.
-        #[arg(long)]
-        tag: String,
-        /// The workspace manifest to rewrite.
-        #[arg(long, default_value = "Cargo.toml")]
-        manifest_path: PathBuf,
-        /// Write the manifest but create no commit — commit and tag it yourself.
-        #[arg(long)]
-        no_commit: bool,
-    },
-    /// Decide whether `[workspace.package].version` names a release that has not
-    /// happened yet, by comparing it against every release tag in the
-    /// repository. This is the release trigger: `deploy.yml` runs it on every
-    /// push to `main`, and a publishable answer is what makes that push build,
-    /// prove, tag, and publish. Ordering is semver's, so a version equal to the
-    /// newest tag publishes nothing (the ordinary state of `main`) and a version
-    /// BELOW it fails — a manifest naming an already-superseded version is a bad
-    /// bump or a rebase that resurrected an old one. `ci.yml` runs it on every
-    /// pull request for exactly that reason: it is the only check that sees a bad
-    /// bump while the bump is still free to change.
-    ReleaseCheck {
-        /// The workspace manifest whose version is the candidate release.
-        #[arg(long, default_value = "Cargo.toml")]
-        manifest_path: PathBuf,
-        /// Git checkout whose tags are the record of what has been released.
-        #[arg(long, default_value = ".")]
-        repo: PathBuf,
-        /// Compare against the tags already in this clone instead of fetching
-        /// from `origin` first. Offline, and only as current as the clone.
-        #[arg(long)]
-        no_fetch: bool,
-        /// Append `tag`, `publishable`, and `prerelease` to `$GITHUB_OUTPUT` for
-        /// the workflow jobs that gate on them.
-        #[arg(long)]
-        github_output: bool,
-    },
+    /// Release versioning and release preflight checks.
+    #[command(subcommand)]
+    Release(ReleaseCmd),
     /// Regenerate `THIRD-PARTY-NOTICES.txt` from `Cargo.lock` — the licence
     /// texts the downloadable binary must carry, deduplicated so each distinct
     /// text appears once with the crates that use it. Every permissive licence
@@ -1159,6 +1084,37 @@ enum OpsCmd {
         /// of rewriting it. The drift gate for CI.
         #[arg(long)]
         check: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum ReleaseCmd {
+    /// Decide whether the workspace version is a new release.
+    Check {
+        /// The workspace manifest whose version is the candidate release.
+        #[arg(long, default_value = "Cargo.toml")]
+        manifest_path: PathBuf,
+        /// Git checkout whose tags are the record of what has been released.
+        #[arg(long, default_value = ".")]
+        repo: PathBuf,
+        /// Compare against tags already in this clone instead of fetching.
+        #[arg(long)]
+        no_fetch: bool,
+        /// Append release fields to `$GITHUB_OUTPUT` for workflow jobs.
+        #[arg(long)]
+        github_output: bool,
+    },
+    /// Write a release version into the workspace manifest.
+    Version {
+        /// Release version to write, e.g. `26.8.20` or `26.8.21-hotfix.3`.
+        #[arg(long)]
+        tag: String,
+        /// The workspace manifest to rewrite.
+        #[arg(long, default_value = "Cargo.toml")]
+        manifest_path: PathBuf,
+        /// Write the manifest but create no commit.
+        #[arg(long)]
+        no_commit: bool,
     },
 }
 
@@ -1545,126 +1501,9 @@ struct HostOpt {
 }
 
 #[derive(Subcommand)]
-enum ProjectsAction {
-    /// List the live site's projects as a table (or `--json`), parsed
-    /// from `GET /app/projects.csv`.
-    List {
-        #[command(flatten)]
-        host: HostOpt,
-        /// Emit JSON instead of a table.
-        #[arg(long)]
-        json: bool,
-    },
-}
-
-#[derive(Subcommand)]
-enum RetainerAction {
-    /// Approve a notation parked at `lawyer_review` (`POST …/approve-send`).
-    /// Renders + parks: the worker durably renders + persists the retainer
-    /// PDF and the workflow waits at `generate_pdf__retainer_pdf`. No
-    /// envelope is sent — run `retainer send` for that.
-    Approve {
-        /// Notation UUID printed by `notation create`.
-        notation_id: uuid::Uuid,
-        #[command(flatten)]
-        host: HostOpt,
-    },
-    /// Dispatch the rendered document for signature (`POST …/send`). On
-    /// prod this emits exactly one real envelope — a deliberate,
-    /// authenticated human command. Refuses with a retry hint (HTTP 409)
-    /// when the worker hasn't rendered the PDF yet.
-    Send {
-        /// Notation UUID printed by `notation create`.
-        notation_id: uuid::Uuid,
-        #[command(flatten)]
-        host: HostOpt,
-    },
-    /// Add / edit / list the per-matter custom clauses spliced into the
-    /// retainer at `{{custom_clauses}}` — the same paragraphs the admin
-    /// clause editor manages, before the `lawyer_review` approval.
-    Clause {
-        #[command(subcommand)]
-        action: ClauseAction,
-    },
-}
-
-#[derive(Subcommand)]
-enum ClauseAction {
-    /// List a notation's custom clauses (`GET …/clauses?format=json`).
-    List {
-        /// Notation UUID.
-        notation_id: uuid::Uuid,
-        #[command(flatten)]
-        host: HostOpt,
-        /// Emit the raw JSON body.
-        #[arg(long)]
-        json: bool,
-    },
-    /// Append a clause (`POST …/clauses`).
-    Add {
-        /// Notation UUID.
-        notation_id: uuid::Uuid,
-        /// The clause prose (markdown).
-        #[arg(long)]
-        body: String,
-        #[command(flatten)]
-        host: HostOpt,
-    },
-    /// Replace a clause's body (`POST …/clauses/:cid/edit`).
-    Edit {
-        /// Notation UUID.
-        notation_id: uuid::Uuid,
-        /// Clause UUID printed by `clause list`.
-        clause_id: uuid::Uuid,
-        /// The new clause prose (markdown).
-        #[arg(long)]
-        body: String,
-        #[command(flatten)]
-        host: HostOpt,
-    },
-}
-
-#[derive(Subcommand)]
-enum IntakeAction {
-    /// Walk a notation's questionnaire one question at a time over the
-    /// same `/lawyer/notations/:id/step` route the browser uses,
-    /// reading each question's metadata from its `?format=json` branch.
-    /// Interactive by default; pass `--answer` / `--select` / `--person`
-    /// to script it non-interactively (scalar answers consumed in order;
-    /// picker selections supplied as `question_code=value`; people rows
-    /// fed to the first `people_list` question).
-    Answer {
-        /// Notation UUID printed by `notation create`.
-        notation_id: uuid::Uuid,
-        #[command(flatten)]
-        host: HostOpt,
-        /// A scalar answer (string/date/radio). Repeatable; consumed in
-        /// the order the questionnaire asks. Omit for an interactive walk.
-        #[arg(long = "answer")]
-        answers: Vec<String>,
-        /// A record/reference picker selection as `question_code=value`.
-        /// Repeatable; `value` is either a 1-based list number or the
-        /// selected row UUID.
-        #[arg(long = "select")]
-        selections: Vec<String>,
-        /// A `people_list` row as `name=…,street=…,city=…,state=…,zip=…`.
-        /// Repeatable — one per person. Values may not contain a comma;
-        /// use the interactive walk for addresses that do.
-        #[arg(long = "person")]
-        persons: Vec<String>,
-        /// A transcript file to pre-fill the walk from. Runs batch coverage
-        /// server-side first: covered questions are seeded as proposed
-        /// answers (never auto-accepted) the walk then offers as
-        /// Enter-to-accept defaults; uncovered questions still prompt.
-        #[arg(long = "transcript")]
-        transcript: Option<std::path::PathBuf>,
-    },
-}
-
-#[derive(Subcommand)]
 enum NotationAction {
     /// Create a questionnaire-driven notation on an existing matter and
-    /// leave its questionnaire ready to walk with `intake answer`.
+    /// leave its questionnaire ready for the site intake flow.
     ///
     /// Every notation hangs on an already-existing Project, so `--project`
     /// (the matter code) is required — open the matter first with
@@ -1800,18 +1639,6 @@ enum DbProjectAction {
 }
 
 #[derive(Subcommand)]
-enum ProjectAction {
-    /// Open an existing matter workbench on a live site. The code resolves
-    /// only against projects visible to the stored bearer token.
-    Open {
-        /// Matter code, e.g. `shook-estate`.
-        project_code: String,
-        #[command(flatten)]
-        host: HostOpt,
-    },
-}
-
-#[derive(Subcommand)]
 enum ListSubject {
     /// List every row in the `questions` table.
     Questions,
@@ -1869,11 +1696,7 @@ fn main() -> ExitCode {
         return ExitCode::from(2);
     };
     match cli_command {
-        Command::Validate {
-            dir,
-            fix,
-            question_codes_from_store,
-        } => runtime().block_on(run_validate(&dir, fix, question_codes_from_store)),
+        Command::Validate { dir, fix } => run_validate(&dir, fix),
         // The docs reference helpers need no cluster, so they are handled
         // here rather than routed into the KIND dispatcher with the rest
         // of `dev`.
@@ -1881,9 +1704,16 @@ fn main() -> ExitCode {
             DocsAction::List => docs::list(),
             DocsAction::Glossary { term } => docs::glossary(term.as_deref()),
         },
-        Command::Db { action } => match action {
-            DbCmd::CatalogSeed { dir } => runtime().block_on(run_catalog_seed(&dir)),
-            DbCmd::Seed {
+        Command::Db { action } => {
+            eprintln!("navigator: `db` is deprecated; use `navigator site seed` or local authoring commands");
+            match action {
+                DbCmd::List { subject } => runtime().block_on(run_list(subject)),
+                DbCmd::Project { action } => runtime().block_on(run_db_project(action)),
+                DbCmd::Erd { format } => runtime().block_on(run_erd(format)),
+            }
+        }
+        Command::Site { action } => match action {
+            SiteCmd::Import {
                 model_name,
                 seed_file,
                 overwrite,
@@ -1894,54 +1724,15 @@ fn main() -> ExitCode {
                 &seed_file,
                 overwrite,
             )),
-            DbCmd::List { subject } => runtime().block_on(run_list(subject)),
-            DbCmd::Project { action } => runtime().block_on(run_db_project(action)),
-            DbCmd::Erd { format } => runtime().block_on(run_erd(format)),
-        },
-        Command::Login { host, no_browser } => {
-            runtime().block_on(login::run_login(&host, no_browser))
-        }
-        Command::Site { action } => match action {
             SiteCmd::Login { host, no_browser } => {
                 runtime().block_on(login::run_login(&host, no_browser))
             }
+            SiteCmd::Seed { dir } => runtime().block_on(run_catalog_seed(&dir)),
             SiteCmd::Logout { host } => login::run_logout(host.as_deref()),
             SiteCmd::Whoami { host } => login::run_whoami(host.as_deref()),
             SiteCmd::Mcp { host } => runtime().block_on(mcp_bridge::run(host.as_deref())),
             SiteCmd::Projects { action } => runtime().block_on(run_projects(action)),
-            SiteCmd::Retainer { action } => runtime().block_on(run_retainer(action)),
-            SiteCmd::Intake { action } => runtime().block_on(run_intake(action)),
             SiteCmd::Notation { action } => runtime().block_on(run_notation(action)),
-            SiteCmd::Project { action } => runtime().block_on(run_project(action)),
-        },
-        Command::Projects { action } => match action {
-            ProjectsCmd::Doctor { host, project } => {
-                projects::doctor::run(host.host.as_deref(), project.as_deref())
-            }
-            ProjectsCmd::Repository { action } => match action {
-                ProjectRepositoryAction::Scaffold {
-                    project_code,
-                    dir,
-                    action_version,
-                } => projects::repository::scaffold(&dir, &project_code, &action_version),
-                ProjectRepositoryAction::Validate { dir, repository } => {
-                    projects::repository::validate(&dir, repository.as_deref())
-                }
-                ProjectRepositoryAction::SyncSkills { dir } => {
-                    projects::repository::sync_skills(&dir)
-                }
-            },
-            ProjectsCmd::Drift {
-                host,
-                dir,
-                all,
-                json,
-            } => runtime().block_on(projects::drift::run(host.host.as_deref(), &dir, all, json)),
-            ProjectsCmd::Surfaces { action } => match action {
-                SurfacesAction::Reconcile { project } => {
-                    runtime().block_on(projects::surfaces::reconcile(&project))
-                }
-            },
         },
         Command::Template { action } => match action {
             TemplateCmd::Format { file } => format::run(&file),
@@ -2028,25 +1819,24 @@ fn main() -> ExitCode {
             action @ (OpsCmd::Lsp { .. }
             | OpsCmd::Assets { .. }
             | OpsCmd::ReleaseDefaultTag { .. }
-            | OpsCmd::ReleaseCheck { .. }
-            | OpsCmd::ReleaseVersion { .. }
+            | OpsCmd::Release { .. }
             | OpsCmd::Notices { .. }),
         ) => match action {
             OpsCmd::Notices { out, check } => notices::run(&out, check),
             OpsCmd::ReleaseDefaultTag { repo, no_fetch } => {
                 release_default_tag::run(chrono::Utc::now(), &repo, !no_fetch)
             }
-            OpsCmd::ReleaseVersion {
+            OpsCmd::Release(ReleaseCmd::Version {
                 tag,
                 manifest_path,
                 no_commit,
-            } => release_version::run(&manifest_path, &tag, no_commit),
-            OpsCmd::ReleaseCheck {
+            }) => release_version::run(&manifest_path, &tag, no_commit),
+            OpsCmd::Release(ReleaseCmd::Check {
                 manifest_path,
                 repo,
                 no_fetch,
                 github_output,
-            } => release_check::run(&manifest_path, &repo, !no_fetch, github_output),
+            }) => release_check::run(&manifest_path, &repo, !no_fetch, github_output),
             OpsCmd::Lsp { action } => match action {
                 LspAction::Publish { dir, bucket } => lsp_publish::run_publish(&dir, bucket),
             },
@@ -2079,6 +1869,10 @@ fn main() -> ExitCode {
             },
             _ => unreachable!("guarded by the outer pattern"),
         },
+        Command::Ops(OpsCmd::Rebrand(action)) => {
+            eprintln!("navigator: `ops rebrand` is deprecated");
+            devx_result(devx::dispatch(Command::Ops(OpsCmd::Rebrand(action))))
+        }
         // Local reversible loops and prod/cloud operations route through the
         // same handler that owns the cluster and operator behavior.
         c @ (Command::Dev(_) | Command::Ops(_)) => devx_result(devx::dispatch(c)),
@@ -2206,16 +2000,6 @@ async fn run_db_project(action: DbProjectAction) -> ExitCode {
     }
 }
 
-/// Drive the live-site half of the `projects` table: open an existing matter
-/// workbench through the stored bearer token.
-async fn run_project(action: ProjectAction) -> ExitCode {
-    match action {
-        ProjectAction::Open { project_code, host } => {
-            remote::matter_open(host.host.as_deref(), &project_code).await
-        }
-    }
-}
-
 // One flag per argument the matter-open command needs; `--code` is among
 // them (#938). A struct here would only rename the same list.
 async fn run_project_create(
@@ -2270,67 +2054,35 @@ async fn run_project_create(
     }
 }
 
-async fn run_projects(action: ProjectsAction) -> ExitCode {
+async fn run_projects(action: ProjectsCmd) -> ExitCode {
     match action {
-        ProjectsAction::List { host, json } => {
-            remote::projects_list(host.host.as_deref(), json).await
+        ProjectsCmd::List { host, json } => remote::projects_list(host.host.as_deref(), json).await,
+        ProjectsCmd::Open { project_code, host } => {
+            remote::matter_open(host.host.as_deref(), &project_code).await
         }
-    }
-}
-
-async fn run_retainer(action: RetainerAction) -> ExitCode {
-    match action {
-        RetainerAction::Approve { notation_id, host } => {
-            remote::retainer_approve(host.host.as_deref(), notation_id).await
+        ProjectsCmd::Doctor { host, project } => {
+            projects::doctor::run(host.host.as_deref(), project.as_deref())
         }
-        RetainerAction::Send { notation_id, host } => {
-            remote::retainer_send(host.host.as_deref(), notation_id).await
-        }
-        RetainerAction::Clause { action } => run_clause(action).await,
-    }
-}
-
-async fn run_clause(action: ClauseAction) -> ExitCode {
-    match action {
-        ClauseAction::List {
-            notation_id,
+        ProjectsCmd::Repository { action } => match action {
+            ProjectRepositoryAction::Scaffold {
+                project_code,
+                dir,
+                action_version,
+            } => projects::repository::scaffold(&dir, &project_code, &action_version),
+            ProjectRepositoryAction::Validate { dir, repository } => {
+                projects::repository::validate(&dir, repository.as_deref())
+            }
+            ProjectRepositoryAction::SyncSkills { dir } => projects::repository::sync_skills(&dir),
+        },
+        ProjectsCmd::Drift {
             host,
+            dir,
+            all,
             json,
-        } => remote::clause_list(host.host.as_deref(), notation_id, json).await,
-        ClauseAction::Add {
-            notation_id,
-            body,
-            host,
-        } => remote::clause_add(host.host.as_deref(), notation_id, &body).await,
-        ClauseAction::Edit {
-            notation_id,
-            clause_id,
-            body,
-            host,
-        } => remote::clause_edit(host.host.as_deref(), notation_id, clause_id, &body).await,
-    }
-}
-
-async fn run_intake(action: IntakeAction) -> ExitCode {
-    match action {
-        IntakeAction::Answer {
-            notation_id,
-            host,
-            answers,
-            selections,
-            persons,
-            transcript,
-        } => {
-            remote::intake_answer(
-                host.host.as_deref(),
-                notation_id,
-                answers,
-                selections,
-                persons,
-                transcript.as_deref(),
-            )
-            .await
-        }
+        } => projects::drift::run(host.host.as_deref(), &dir, all, json).await,
+        ProjectsCmd::Surfaces { action } => match action {
+            SurfacesAction::Reconcile { project } => projects::surfaces::reconcile(&project).await,
+        },
     }
 }
 
@@ -2434,7 +2186,7 @@ fn yaml_pass(dir: &std::path::Path) -> std::io::Result<usize> {
     Ok(errors)
 }
 
-/// `Y001` — a `seeds/*.yaml` document must be accepted by `navigator db seed`.
+/// `Y001` — a `seeds/*.yaml` document must be accepted by `navigator site import`.
 const SEED_DOCUMENT_CODE: &str = "Y001";
 
 fn seed_model_for_path(path: &std::path::Path) -> Option<anyhow::Result<store::seed::SeedModel>> {
@@ -2452,7 +2204,7 @@ fn seed_model_for_path(path: &std::path::Path) -> Option<anyhow::Result<store::s
 }
 
 /// Validate the direct `seeds/*.yaml` documents that an operator can submit
-/// through `navigator db seed`. The store owns the parser; this pass only
+/// through `navigator site import`. The store owns the parser; this pass only
 /// discovers the files and reports its refusal with the validation lint code.
 fn seed_document_pass(dir: &std::path::Path) -> std::io::Result<usize> {
     let mut files_scanned = 0usize;
@@ -2681,51 +2433,8 @@ fn standalone_tree_passes(dir: &std::path::Path) -> std::io::Result<(usize, usiz
     Ok((yaml_errors, seed_errors, mutable_tags))
 }
 
-/// The question codes N104 validates against: the stored catalog when
-/// `--question-codes-from-store` opts in, the compiled-in canonical set
-/// otherwise.
-///
-/// An unreachable store warns and falls back rather than failing the run.
-/// The stored catalog is the canonical set *plus* the codes `cli import`
-/// registered out of template frontmatter (see
-/// [`import::load_question_codes`]), so the fallback lands exactly where an
-/// unflagged run lands — a supported mode, not a degraded one. Exiting 2
-/// instead would block a Markdown lint on a database the lint does not
-/// otherwise need, which is the worse failure of the two.
-async fn question_codes_for_validate(from_store: bool) -> Vec<String> {
-    if !from_store {
-        return rules::canonical_question_codes();
-    }
-    match stored_question_codes().await {
-        Ok(codes) => codes,
-        Err(e) => {
-            eprintln!(
-                "navigator: {e}\nnavigator: validating against the canonical question codes instead"
-            );
-            rules::canonical_question_codes()
-        }
-    }
-}
-
-/// Read the stored catalog, naming the connection a caller has to set when
-/// it is not reachable.
-async fn stored_question_codes() -> anyhow::Result<Vec<String>> {
-    let surreal = store::surreal::connect_from_env().await.map_err(|e| {
-        anyhow::anyhow!(
-            "read the stored question codes: {e}\n\
-             navigator: set NAVIGATOR_SURREAL_ENDPOINT, NAVIGATOR_SURREAL_NAMESPACE, \
-             and NAVIGATOR_SURREAL_DATABASE to use --question-codes-from-store"
-        )
-    })?;
-    import::load_question_codes(&surreal).await
-}
-
-async fn run_validate(
-    dir: &std::path::Path,
-    fix: bool,
-    question_codes_from_store: bool,
-) -> ExitCode {
-    let question_codes = question_codes_for_validate(question_codes_from_store).await;
+fn run_validate(dir: &std::path::Path, fix: bool) -> ExitCode {
+    let question_codes = rules::canonical_question_codes();
     if fix {
         let fix_report = match fix_directory(dir, &rules::DefaultFileFilter::default(), |file| {
             rules::navigator_classified_rules_with_codes(file, &question_codes)
@@ -2845,7 +2554,7 @@ fn run_render(
     // (Error-severity) violations. Use the same DB-free classified rule
     // set as `validate`. Yellow advisories (e.g. N112, "step allowed but
     // not built yet" — which every lawyer_review gate earns) are printed
-    // but must not block rendering, mirroring `validate` / `catalog-seed`.
+    // but must not block rendering, mirroring `validate` / `site seed`.
     let source = rules::SourceFile {
         path: file.to_path_buf(),
         contents: contents.clone(),
@@ -3042,7 +2751,7 @@ fn fix_directory(
 
 /// Render a single rule violation: path/line in dim cyan-700, rule
 /// code in cyan-500, message in default. Shared by validate and
-/// catalog-seed so both subcommands have the same look.
+/// site seed so both subcommands have the same look.
 /// Split a violation list into `(error_count, warning_count)` by each
 /// code's [`rules::Severity`]. Used for the `validate` summary line so
 /// blocking errors and "not built yet" advisories are tallied apart.
@@ -3078,7 +2787,7 @@ async fn run_catalog_seed(dir: &std::path::Path) -> ExitCode {
     let report = match import::import_directory(&surreal, &storage, dir).await {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("navigator: catalog-seed: {e}");
+            eprintln!("navigator: site seed: {e}");
             return ExitCode::from(2);
         }
     };

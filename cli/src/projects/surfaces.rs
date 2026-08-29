@@ -1,4 +1,4 @@
-//! `navigator projects surfaces` — create or adopt a Project's three handles.
+//! `navigator site projects surfaces` — create or adopt a Project's three handles.
 //!
 //! Opening a Project records its identity. This command then creates or
 //! adopts the documents-bucket prefix, the Drive ingest folder, and the
@@ -10,7 +10,7 @@ use std::process::ExitCode;
 
 use crate::palette;
 
-/// `navigator projects surfaces reconcile --project <code>`.
+/// `navigator site projects surfaces reconcile --project <code>`.
 pub async fn reconcile(project_code: &str) -> ExitCode {
     if !store::projects::is_valid_code(project_code) {
         eprintln!("navigator: invalid project code");

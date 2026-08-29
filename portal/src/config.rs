@@ -97,7 +97,7 @@ pub fn enforce_deployment_invariants<F: Fn(&str) -> Option<String>>(
         }
     }
     // The HMAC key that signs every browser session cookie AND every
-    // `navigator login` CLI bearer. If unset, `portal::SessionStore` falls
+    // `navigator site login` CLI bearer. If unset, `portal::SessionStore` falls
     // back to a random key minted fresh on each boot (see `main.rs`), so
     // every pod restart / rollout silently invalidates every active
     // session and forces all users to sign in again. Must also carry the

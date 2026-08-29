@@ -212,7 +212,7 @@ mod canonical {
     /// Bundled notation templates. Each entry is `(path, full_md)`
     /// where `path` exists only as a label in the seed report.
     /// Adding a template here lets the cluster carry
-    /// it without a separate `navigator catalog-seed` step. The full
+    /// it without a separate `navigator site seed` step. The full
     /// shipped catalog is bundled so a fresh cluster carries every
     /// template without an import pass.
     pub const TEMPLATE_RETAINER: &str = include_str!("../../templates/neon_law/shared/retainer.md");
@@ -400,7 +400,7 @@ struct Records<T> {
     records: Vec<T>,
 }
 
-/// The strict envelope accepted by `navigator db seed`.
+/// The strict envelope accepted by `navigator site import`.
 ///
 /// Canonical seed files use [`Records`] because they carry several different
 /// shapes. Operator-supplied seed documents have one closed contract, so the
@@ -434,7 +434,7 @@ pub enum SeedModel {
 
 impl SeedModel {
     /// Resolve the singular glossary term and Surreal table name supplied by
-    /// `navigator db seed`.
+    /// `navigator site import`.
     pub fn parse(value: &str) -> anyhow::Result<Self> {
         match value.trim().to_ascii_lowercase().as_str() {
             "person" => Ok(Self::Person),

@@ -225,9 +225,9 @@ fn the_decision_job_narrates_once_and_only_for_a_real_release() {
         .position(|step| {
             step.get("run")
                 .and_then(Value::as_str)
-                .is_some_and(|run| run.contains("ops release-check"))
+                .is_some_and(|run| run.contains("ops release check"))
         })
-        .expect("release-version must run `ops release-check`");
+        .expect("release-version must run `ops release check`");
     let post = steps
         .iter()
         .position(|step| uses(step) == PROGRESS_ACTION)

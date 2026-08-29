@@ -136,7 +136,7 @@ fn deploy_workflow_references_no_workflow_inputs() {
 /// publishable version. `a_hotfix_is_dispatched_to_the_tap` holds that half.
 ///
 /// Which versions ARE prereleases is no longer a spelling rule this workflow
-/// knows. `ops release-check` reports `prerelease` from `Version::pre`, so any
+/// knows. `ops release check` reports `prerelease` from `Version::pre`, so any
 /// semver prerelease — `-hotfix.3`, `-rc.1` — is flagged, and the workflow reads
 /// the answer instead of matching a suffix.
 #[test]
@@ -223,8 +223,8 @@ fn the_release_decision_is_one_rust_guard_over_the_manifest() {
         .join("\n");
 
     assert!(
-        script.contains("ops release-check --github-output"),
-        "release-version must decide the release by running `ops release-check`, which reads \
+        script.contains("ops release check --github-output"),
+        "release-version must decide the release by running `ops release check`, which reads \
          `[workspace.package].version` and compares it against the release tags"
     );
 
@@ -890,10 +890,10 @@ fn build_exports_an_actions_cache_scope_only_where_publish_service_reads_it() {
 /// removing the compile.
 ///
 /// **The bootstrap caveat is real and accepted.** The checker is release N-1's,
-/// so a change to `ops release-check` itself governs from the release AFTER the
+/// so a change to `ops release check` itself governs from the release AFTER the
 /// one that lands it. That is tolerable because the binary carries the rule
 /// while the run supplies the data — the manifest and the tags are both read
-/// fresh — and because `ci.yml` runs the in-tree `ops release-check` on every
+/// fresh — and because `ci.yml` runs the in-tree `ops release check` on every
 /// pull request, so a change to the rule is proved on the branch that makes it.
 #[test]
 fn the_release_decision_runs_a_published_binary_rather_than_a_compile() {
@@ -906,8 +906,8 @@ fn the_release_decision_runs_a_published_binary_rather_than_a_compile() {
          compiling the CLI to answer a yes/no question is ~8 minutes of latency on every merge"
     );
     assert!(
-        job.contains("navigator ops release-check --github-output"),
-        "the downloaded binary must answer the question through the same `ops release-check` \
+        job.contains("navigator ops release check --github-output"),
+        "the downloaded binary must answer the question through the same `ops release check` \
          command, so the release rule lives in one place"
     );
 }
@@ -946,7 +946,7 @@ fn an_unavailable_checker_falls_back_to_building_from_source() {
     let job = release_version_job(&workflow);
 
     assert!(
-        job.contains("cargo run --locked -p cli --quiet -- ops release-check --github-output"),
+        job.contains("cargo run --locked -p cli --quiet -- ops release check --github-output"),
         "`release-version` must keep the in-tree fallback: a download that failed must compile \
          the checker, never answer the release question by default"
     );

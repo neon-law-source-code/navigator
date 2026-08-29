@@ -1,4 +1,4 @@
-//! `navigator projects drift` — reconcile Project *repositories* against the
+//! `navigator site projects drift` — reconcile Project *repositories* against the
 //! live Project rows.
 //!
 //! One `projects.code` names both a repository and a row, and nothing makes the
@@ -610,7 +610,7 @@ fn as_json(report: &Report, scan_root: &str) -> serde_json::Value {
     })
 }
 
-/// `navigator projects drift [--host h] [--dir d] [--all] [--json]`.
+/// `navigator site projects drift [--host h] [--dir d] [--all] [--json]`.
 ///
 /// Read-only on both sides: it reads manifests off the local disk and lists the
 /// live Project codes over a bearer token. Nothing is created, patched, or

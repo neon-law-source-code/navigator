@@ -207,7 +207,7 @@ pub fn standing(
 ///
 /// This is a NAME, not a validity claim. It is `pub(crate)` because
 /// [`crate::release_default_tag`] is the only caller with a clock to give it
-/// — an operator names a release explicitly, through `ops release-version
+/// — an operator names a release explicitly, through `ops release version
 /// --tag`, and that command never reads one. See [`default_tag`] for where
 /// this fits.
 pub(crate) fn today_tag(now: DateTime<Utc>) -> String {

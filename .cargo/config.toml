@@ -1,0 +1,5 @@
+# The embedded SurrealDB client tears down a Tokio runtime during async test
+# cleanup. Four concurrent libtest workers is the highest safe parallelism for
+# that teardown; CI uses the same limit for the workspace test lane.
+[env]
+RUST_TEST_THREADS = "4"

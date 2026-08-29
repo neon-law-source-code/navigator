@@ -40,7 +40,7 @@ reqwest.workspace = true
 repos.workspace = true
 rgb.workspace = true
 rules.workspace = true
-# `ops release-check` and `ops release-version` decide what a release version is
+# `ops release check` and `ops release version` decide what a release version is
 # and whether it is newer than the last one, and `devx::registry` picks the
 # newest published image tag. All three are semver questions, so all three ask
 # the semver crate rather than a grammar written here.

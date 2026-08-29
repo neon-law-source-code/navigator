@@ -6,7 +6,7 @@ name: deploy
 # reports it. In strict order:
 #
 #   0. release-version — DECIDE whether this commit is a release, by running
-#      `navigator ops release-check`. It reads `[workspace.package].version` and
+#      `navigator ops release check`. It reads `[workspace.package].version` and
 #      compares it against every release tag in the repository, using semver's
 #      own ordering. Three answers, and the middle one is the ordinary case:
 #
@@ -269,11 +269,11 @@ jobs:
       # quota — the contention that starved the gate's Rust cache before.
       #
       # THE BOOTSTRAP CAVEAT, accepted deliberately: the checker is release
-      # N-1's, so a change to `ops release-check` itself governs from the
+      # N-1's, so a change to `ops release check` itself governs from the
       # release AFTER the one that lands it. That is tolerable because the
       # decision is a comparison of the manifest against the tags, both of which
       # this run supplies — the binary carries the rule, not the data. `ci.yml`
-      # runs the in-tree `ops release-check` on every pull request, so a change
+      # runs the in-tree `ops release check` on every pull request, so a change
       # to the rule is still proved on the branch that makes it.
       #
       # `/releases/latest` is NOT used: it excludes prereleases, every release
@@ -327,7 +327,7 @@ jobs:
         with:
           toolchain: 1.98.0
       # THE WHOLE RELEASE DECISION, in one step so the job has one place to read
-      # its outputs from. `ops release-check` reads
+      # its outputs from. `ops release check` reads
       # `[workspace.package].version`, lists every release tag, and compares them
       # with semver's own ordering — see `cli/src/release_check.rs` for why the
       # tags are the anchor rather than the previous commit's manifest.
@@ -366,9 +366,9 @@ jobs:
           fi
 
           if [ "${CHECKER_READY}" = "true" ]; then
-              navigator ops release-check --github-output
+              navigator ops release check --github-output
           else
-              cargo run --locked -p cli --quiet -- ops release-check --github-output
+              cargo run --locked -p cli --quiet -- ops release check --github-output
           fi
       # THE FIRST LINE #navigator SEES, and it comes after the decision rather
       # than before it. Every merge to `main` starts this workflow, so a post

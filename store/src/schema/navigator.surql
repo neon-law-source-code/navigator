@@ -497,7 +497,7 @@ DEFINE INDEX OVERWRITE relationship_log_inserted_at ON relationship_log FIELDS i
 
 -- `git_repositories`: provenance for repositories that carried imported
 -- notation content. Rows come from the canonical seed; `navigator
--- catalog-seed` seeds from a local directory and never writes here.
+-- site seed` seeds from a local directory and never writes here.
 -- `remote_hash` (a SHA-256 of `git remote get-url origin`) carries the
 -- Postgres unique across.
 DEFINE TABLE IF NOT EXISTS git_repository SCHEMAFULL PERMISSIONS NONE;

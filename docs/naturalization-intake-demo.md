@@ -1,7 +1,7 @@
-# Walk the naturalization intake locally — `us__naturalization` with the CLI
+# Create a naturalization notation locally — `us__naturalization`
 
-This local demo opens a USCIS Form N-400 matter, answers intake through `navigator`, records lawyer approval, and
-downloads the rendered form. All services run in KIND.
+This local demo opens a USCIS Form N-400 notation, then hands questionnaire intake to the authenticated site. All
+services run in KIND.
 
 `templates/forms/united_states/federal/uscis/us__naturalization.md` defines ten questions and parks at
 [`lawyer_review`](glossary.md#lawyer-review) before generating the vendored N-400 AcroForm. The blank lives in the
@@ -50,18 +50,18 @@ Load the environment `dev up` wrote, then import the template catalog and pre-se
 
 ```bash
 set -a; source .devx/env; set +a
-cargo run --release -p cli --quiet -- db catalog-seed templates
+cargo run --release -p cli --quiet -- site seed templates
 cargo run --release -p cli --quiet -- dev grant-lawyer
 ```
 
-`catalog-seed` validates and idempotently seeds clean templates and referenced question codes; any skipped error-level
-file makes it exit nonzero. `Seeded 0 workspace-shared template(s)` is valid. Run `grant-lawyer` **before** login so the
+`site seed` validates and idempotently seeds clean templates and referenced question codes; any skipped error-level file
+makes it exit nonzero. `Seeded 0 workspace-shared template(s)` is valid. Run `grant-lawyer` **before** login so the
 session carries the seeded role.
 
 ## 4. Sign in
 
 ```bash
-cargo run --release -p cli --quiet -- login --host http://localhost:3001
+cargo run --release -p cli --quiet -- site login --host http://localhost:3001
 ```
 
 Sign in through local Rauthy as `lawyer@neonlaw.com` / `password`. The CLI stores its short-lived loopback token in
@@ -82,48 +82,12 @@ cargo run --release -p cli --quiet -- site notation create us__naturalization \
 
 Copy the printed notation UUID. Use only synthetic or reserved-domain email addresses.
 
-## 6. Walk the questionnaire
+## 6. Continue intake in the site
 
-```bash
-cargo run --release -p cli --quiet -- site intake answer <notation-id>
-```
-
-Typed prompts cover two `YYYY-MM-DD` dates, phone, eligibility and marital choices, days abroad, and moral-character
-disclosure. Client, birth country, and citizenship country are pick-lists over matter people and seeded jurisdictions.
-Enter the printed row number or id; the answer stores the canonical id. See the [Using the Navigator
-workshop](/workshops/use-the-navigator), which requires a signed-in firm-side account.
-
-To script the same walk non-interactively, pass a `--select <question>=<row>` for each of the three pick-lists (the row
-is the list number the walk prints, or the row's id) and one `--answer` per typed question, all in questionnaire order:
-
-```bash
-cargo run --release -p cli --quiet -- site intake answer <notation-id> \
-  --select person__client=2 \
-  --select country__of_birth=114 \
-  --select country__of_citizenship=114 \
-  --answer "1990-04-12" \
-  --answer "2019-03-01" \
-  --answer "702-555-0100" \
-  --answer "five_year" \
-  --answer "married" \
-  --answer "45" \
-  --answer "no"
-```
-
-Rows are sorted alphabetically; the example selects the applicant and Mexico. Read row numbers from an interactive walk
-because seed differences can change them. The final answer persists intake and advances to `lawyer_review`.
-
-### Answer from a transcript instead
-
-If the applicant's answers are already on record — a recorded intake call, an email thread — hand the walk a plain-text
-transcript and it pre-fills what it can:
-
-```bash
-cargo run --release -p cli --quiet -- site intake answer <notation-id> --transcript /tmp/n400-intake.txt
-```
-
-The offline coverage engine offers transcript proposals as Enter-to-accept defaults. Nothing is auto-accepted; confirm
-or correct each proposal, and answer uncovered questions normally. Confirmed proposals become ordinary answer rows.
+Open the authenticated project intake page at `http://localhost:3001/app/projects/<project-code>/intake/<notation-id>`.
+The site presents the questionnaire's typed and pick-list questions, records each answer, and advances the notation to
+`lawyer_review` when complete. See the [Using the Navigator workshop](/workshops/use-the-navigator), which requires a
+signed-in firm-side account.
 
 ## 7. Review as lawyer: approve and download
 
@@ -149,7 +113,7 @@ set -a; source .devx/env; set +a
 cargo run -p cli -- dev worker-reload
 ```
 
-The command rebuilds, loads, and waits for the RestateDeployment. Then retry `intake answer`.
+The command rebuilds, loads, and waits for the RestateDeployment. Then retry the site intake page.
 
 ## Cleaning up
 

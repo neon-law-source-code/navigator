@@ -40,7 +40,7 @@ fn action_source() -> String {
 fn one_action_carries_both_halves_of_a_project_repositorys_gate() {
     let source = action_source();
     assert!(
-        source.contains("navigator projects repository validate"),
+        source.contains("navigator site projects repository validate"),
         "the action must run the Project repository validator",
     );
     assert!(

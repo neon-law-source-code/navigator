@@ -466,7 +466,7 @@ jobs:
       # ordinary PR and only have anything to say when a bump is involved.
       #
       - name: is the workspace version a releasable one
-        run: "${CARGO_TARGET_DIR:-target}/debug/navigator ops release-check"
+        run: "${CARGO_TARGET_DIR:-target}/debug/navigator ops release check"
       # `ops notices --check` is here now. It could not be while `notices_for`
       # read "this crate's source is absent" and "this crate ships no licence
       # file" as the same empty result: `Cargo.lock` is deliberately
@@ -502,7 +502,7 @@ jobs:
       # builds with `--locked` in four places. A bump that carried only
       # `Cargo.toml` would fail those builds AFTER the release tag exists, which
       # is the one failure in the pipeline that cannot be re-run away.
-      # `ops release-version` refreshes both files together; this is the check
+      # `ops release version` refreshes both files together; this is the check
       # that proves it happened.
       - name: does Cargo.lock agree with the manifest
         run: cargo metadata --locked --no-deps --format-version 1 > /dev/null

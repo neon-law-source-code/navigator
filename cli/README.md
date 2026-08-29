@@ -14,3 +14,45 @@ staging is a lifecycle target, not an application environment.
 Run `navigator --help` for the current command surface. Use [AGENTS.md](../AGENTS.md) for the local development loop,
 [agent workflows](../docs/agent-workflows.md) for repository work, and [cloud operations](../docs/cloud-operations.md)
 for deployment procedures.
+
+## Common workflows
+
+Log in to a deployment once; the CLI stores the short-lived bearer token locally:
+
+```bash
+navigator site login --host staging.neonlaw.com
+```
+
+List Projects visible to that login, then open one by its Project code:
+
+```bash
+navigator site projects list
+navigator site projects open <project-code>
+```
+
+To discover the repository and Drive coordinates derived from a Project, run the read-only Project check with its code:
+
+```bash
+navigator site projects doctor --project <project-code>
+```
+
+Validate a folder locally. The command walks Markdown and YAML files below the directory; omit the directory to use the
+current folder:
+
+```bash
+navigator validate <dir>
+navigator validate
+```
+
+Create a notation on an existing Project through the logged-in site:
+
+```bash
+navigator site notation create <template-code> \
+  --project <project-code> \
+  --client-email <client@example.com>
+```
+
+You do not need a site to work locally. Use `navigator validate`, the `navigator template` authoring commands, and the
+KIND-backed `navigator dev` loop. The legacy `navigator db` group remains only as a deprecated local store interface;
+seed a local catalog with `navigator site seed` when that command's local store and storage environment are available,
+or import deployment data with `navigator site import` after logging in.

@@ -919,7 +919,7 @@ pub fn bootstrap(
     // at /lawyer/notations/{id}/step. Its pre-layer resolves the step from the
     // questionnaire runtime (which needs `workflows`, so it cannot happen in
     // `webapp`) and keeps answering the `?format=json` surface the
-    // `navigator intake answer` CLI walks.
+    // site intake walks.
     let dioxus_walker_step = dioxus_app::walker_step_router(
         admin_state.clone(),
         state.sessions.clone(),

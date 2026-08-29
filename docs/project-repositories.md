@@ -84,7 +84,7 @@ than refused, so a downstream deployment table can add its own without breaking 
 
 **The manifest is what `.github/actions/application-publish` reads.** `cli/src/projects/repository.rs`'s own
 [`validate`] still takes the code from the checkout directory — it runs inside one repository's own CI with no access to
-the live row, so it cannot referee a disagreement between the two, and `navigator projects drift` is where that
+the live row, so it cannot referee a disagreement between the two, and `navigator site projects drift` is where that
 disagreement is reported instead. The publish action is different: it uploads to a bucket prefix, and the prefix a
 Project repository declares for itself is the one that should win. Vite still derives its own build-time base from the
 checkout directory (`basename(resolve(__dirname, '..'))`), so a repository whose manifest names a code other than its
@@ -208,8 +208,8 @@ the matter open.
 
 `POST /app/api/project-surfaces/{id}` is the admin retry for a failed or legacy row. It carries its own noun rather than
 sitting under `/app/api/projects/`, because that prefix's GET rule admits any authenticated caller up to five segments.
-The CLI equivalent is `navigator projects surfaces reconcile --project <code>`. Project participation is never copied
-onto the forge.
+CLI: `navigator site projects surfaces reconcile --project <code>`; Project participation is never copied onto the
+forge.
 
 ## The CI gate
 
@@ -230,7 +230,7 @@ name, which is the Project code, plus a literal segment. A forge host never appe
 repository may move between forges without touching the gate. `cli/tests/project_gate.rs` pins the shell against the
 Rust definitions it transcribes, because bash cannot call Rust.
 
-`navigator projects repository scaffold` generates the fuller shape every Project repository converged on by hand before
+`navigator site projects repository scaffold` generates the shape every Project repository converged on by hand before
 this generator caught up: three feeder jobs — `lint`, `verify` (typecheck, test, build), and `notation` (the snippet
 above) — fanned into one required check. Each feeder job runs unconditionally and no-ops over a half this repository
 does not carry: every portal-specific step carries a run-time `hashFiles('portal/package.json') != ''` condition,
@@ -311,9 +311,9 @@ provider's `attributeCondition` must never be rewritten by hand: one CEL express
 Navigator's own `navigator-ci-pusher` deploy identity included, so a clause appended carelessly breaks Navigator's
 deploys an hour later and somewhere else.
 
-The thin caller workflow lives in the Project repository, not here — `navigator projects repository scaffold` writes it
-as `.github/workflows/publish.yml`, so a scaffolded repository never hand-copies it. It grants `id-token: write`,
-installs with a locked dependency graph, lints, typechecks, tests, and builds with the derived Vite base, runs the gate,
+The thin caller workflow lives in the Project repository. `navigator site projects repository scaffold` writes
+`.github/workflows/publish.yml`, so a scaffolded repository never hand-copies it. It grants `id-token: write`, installs
+with a locked dependency graph, lints, typechecks, tests, and builds with the derived Vite base, runs the gate, then
 then publishes:
 
 ```yaml
@@ -464,8 +464,8 @@ cannot push to `ux/core`.
 ## Scaffolding a repository
 
 ```bash
-navigator projects repository scaffold <project-code> --dir . --action-version YY.M.D
-navigator projects repository validate .
+navigator site projects repository scaffold <project-code> --dir . --action-version YY.M.D
+navigator site projects repository validate .
 ```
 
 `scaffold` is idempotent and leaves existing files alone. It writes the repository shell and the templates half — the
@@ -505,12 +505,12 @@ These are **source** roots. Git never stores legal files, so they must not conve
 
 ## Verifying a machine
 
-`navigator projects doctor` reports whether this machine and one Project workspace actually satisfy the map above,
+`navigator site projects doctor` reports whether this machine and one Project workspace actually satisfy the map above,
 before anything is created:
 
 ```bash
-navigator projects doctor
-navigator projects doctor --project acme
+navigator site projects doctor
+navigator site projects doctor --project acme
 ```
 
 It resolves the active deployment from `NAVIGATOR_GCP_PROJECT_ID`, then reports that deployment's Google Workspace,
@@ -528,7 +528,7 @@ It is not `ops doctor`, which diagnoses scheduled-job health in a running Kubern
 To create or adopt the three handles after a failed or legacy open:
 
 ```bash
-navigator projects surfaces reconcile --project acme
+navigator site projects surfaces reconcile --project acme
 ```
 
 The same pass runs best-effort when a matter opens. This command is the operator retry; it talks to Drive and the forge
@@ -545,7 +545,7 @@ Reconciliation is therefore two halves, in two places, because the two questions
 | Question | Answered by | Needs |
 | --- | --- | --- |
 | Does this row agree with the repository it records? | [the reconciliation door][door] | One row and a rule |
-| Does this repository's declared code name a live row? | `navigator projects drift` | The checkouts on a machine |
+| Does this repository's declared code name a live row? | `navigator site projects drift` | The checkouts on a machine |
 
 [door]: #reconciling-the-rows-against-what-they-record
 
@@ -554,8 +554,8 @@ so a row whose URL names a different repository is drift with no checkout involv
 a machine holding the clones knows what repositories exist. This section is the second half.
 
 ```bash
-navigator projects drift --dir ~/<organization>
-navigator projects drift --dir ~/<organization> --all --json
+navigator site projects drift --dir ~/<organization>
+navigator site projects drift --dir ~/<organization> --all --json
 ```
 
 It reads every checkout directly under `--dir` — the [local checkout root](#local-checkouts) — and takes the live

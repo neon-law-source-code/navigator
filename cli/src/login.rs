@@ -1,4 +1,4 @@
-//! `navigator login` — the browser-loopback OAuth
+//! `navigator site login` — the browser-loopback OAuth
 //! that lands a short-lived (1h) bearer token on disk, after which the
 //! CLI drives the firm's matter flow against the live site.
 //!
@@ -30,7 +30,7 @@ struct WhoAmI {
     exp: i64,
 }
 
-/// `navigator login --host <h>` — run the loopback browser flow and
+/// `navigator site login --host <h>` — run the loopback browser flow and
 /// persist the resulting token, host-keyed, at `0o600`.
 pub async fn run_login(host: &str, no_browser: bool) -> ExitCode {
     match login_inner(host, no_browser).await {
@@ -39,7 +39,7 @@ pub async fn run_login(host: &str, no_browser: bool) -> ExitCode {
             ExitCode::SUCCESS
         }
         Err(e) => {
-            eprintln!("navigator login: {e:#}");
+            eprintln!("navigator site login: {e:#}");
             ExitCode::from(2)
         }
     }

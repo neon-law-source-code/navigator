@@ -171,7 +171,7 @@ unless a job in it actually reports as `ci`.
 
 It accepts either `.github/workflows/ci.yml` or `.github/workflows/gate.yml`, and looks for them in that order. Two
 spellings are live at once and both are correct: a repository the Firm has always administered carries `ci.yml`, while a
-Project repository written by `navigator projects repository scaffold` carries `gate.yml`. What they share is the
+Project repository written by `navigator site projects repository scaffold` carries `gate.yml`. What they share is the
 invariant the gate is actually matched by — a job whose check run is named `ci` — so the filename is free to differ. A
 repository carrying neither file is refused, and so is one whose workflow exists but ends in some other job name; those
 are different problems with different fixes, so they are different errors.
@@ -397,7 +397,7 @@ Reading the version out of the merged manifest answers all four by construction:
 | PROVENANCE — the tag's commit is reachable from `main` | a push to `main` **is** the provenance |
 
 What survives is the one question none of them asked, and it is now the whole gate: **is this version newer than every
-version already published?** `navigator ops release-check` reads the manifest, lists every release tag, and compares
+version already published?** `navigator ops release check` reads the manifest, lists every release tag, and compares
 them with semver's own ordering. Three answers:
 
 | Answer | What happens |
@@ -408,13 +408,13 @@ them with semver's own ordering. Three answers:
 
 **`release-version` runs a published `navigator`, not one it compiles.** Answering a yes/no question by building the CLI
 cost ~8 minutes of latency on every merge to `main`, at the very front of the train where nothing else can start. The
-job downloads the newest release that carries a Linux CLI archive, and runs `ops release-check` with it. `ci.yml` still
+job downloads the newest release that carries a Linux CLI archive, and runs `ops release check` with it. `ci.yml` still
 runs the in-tree command on every pull request, so the rule is proved on the branch that changes it.
 
-Two consequences worth stating rather than discovering. **The checker is release N-1's**, so a change to `ops
-release-check` itself governs from the release after the one that lands it — tolerable because the binary carries the
-rule while the run supplies the data, reading this commit's manifest and the current tag list. And **the binary is
-deliberately unpinned**, the one exception to [Pin every consumed image, binary, and
+Two consequences worth stating rather than discovering. **The checker is release N-1's**, so a change to `ops release
+check` itself governs from the release after the one that lands it — tolerable because the binary carries the rule while
+the run supplies the data, reading this commit's manifest and the current tag list. And **the binary is deliberately
+unpinned**, the one exception to [Pin every consumed image, binary, and
 action](#pin-every-consumed-image-binary-and-action): a checker that had to be pinned would freeze at one version and
 need a manual bump to ever move. `/releases/latest` is *not* how it is found — that endpoint excludes prereleases and
 every release here is one, so it answers 404; the job enumerates releases and takes the newest carrying the archive. A
@@ -480,7 +480,7 @@ pushed ahead of it. The tag job sits between `integration` and every publisher, 
   the same name over itself. There is nothing to un-publish, because nothing was deployed.
 - **A wrong source** spends that version for good. Bump past it and merge again.
 
-`release-check` reports a version whose tag already names *this very commit* as publishable, so re-running the whole
+`release check` reports a version whose tag already names *this very commit* as publishable, so re-running the whole
 workflow republishes rather than skipping every job and reporting success for having done nothing.
 
 ### Releasing twice in one day
@@ -495,7 +495,7 @@ release the same day, and both are just "a bigger number":
 
 Both sort strictly above `26.8.22`, so both are admissible. What is **refused** is a prerelease of a version already
 released — `26.8.22-hotfix.1` after `26.8.22` — because semver ranks it below the release it would be fixing, and every
-consumer resolving those two versions would read the fix as the older one. `ops release-check` says so by name rather
+consumer resolving those two versions would read the fix as the older one. `ops release check` says so by name rather
 than letting it publish.
 
 ### Why a hotfix prerelease ranks below its date
@@ -510,17 +510,17 @@ the matching normal version:
 
 After `26.8.22` is published, a same-day cut must bump the **core** — `26.8.23` or `26.8.23-hotfix.1`. A fourth numeric
 component (`26.8.22.1`) is not a version Cargo can parse, and build metadata (`26.8.22+hotfix.1`) cannot name an image
-tag, so neither is an escape. `ops release-check` refuses the older spelling as a regression before the pipeline spends
+tag, so neither is an escape. `ops release check` refuses the older spelling as a regression before the pipeline spends
 a tag.
 
 `N` in `-hotfix.N` is an unpadded nonnegative integer and it is the operator's to choose: a uniqueness-and-ordering
 discriminator, never an hour. The padding is not cosmetic — semver forbids a leading zero in a numeric prerelease
-identifier, so `hotfix.08` is not a version. Nothing derives `N`; `ops release-version` writes the name it is given.
+identifier, so `hotfix.08` is not a version. Nothing derives `N`; `ops release version` writes the name it is given.
 
 Write the version the same way as any other release, then land it:
 
 ```bash
-cargo run -p cli -- ops release-version --tag 26.8.23-hotfix.1
+cargo run -p cli -- ops release version --tag 26.8.23-hotfix.1
 ```
 
 **A prerelease does not become the default download.** Exactly one thing behaves differently from an ordinary release,
@@ -532,7 +532,7 @@ because a prerelease must not present itself as the latest version to someone br
 | GitHub Release | latest | flagged `--prerelease` |
 | Homebrew tap | bumped | bumped |
 
-Which versions count as prereleases is no longer a spelling rule the workflow knows: `release-check` reports it from
+Which versions count as prereleases is no longer a spelling rule the workflow knows: `release check` reports it from
 `Version::pre`, so `-hotfix.3` and `-rc.1` are both flagged.
 
 **The tap follows every publishable version, prerelease included.** It holds exactly one version and every `brew
@@ -551,7 +551,7 @@ scheme whenever the new tag does not sort strictly above. Every bump is an upgra
 A prerelease is still a full release in every way that matters to a deploy: it proves the workspace in KIND, publishes
 every image, and hands the operator the same `ops ship` command.
 
-**The bump carries `Cargo.lock` too.** `navigator ops release-version --tag <version>` writes
+**The bump carries `Cargo.lock` too.** `navigator ops release version --tag <version>` writes
 `[workspace.package].version` — the value every crate inherits through `version.workspace = true` and `cli/build.rs`
 bakes into `navigator --version` — and refreshes `Cargo.lock` in the same commit. Every workspace crate is pinned there
 as well, and the archive jobs build with `--locked`, which refuses a lock the manifest has moved past. `ci.yml` runs
@@ -560,7 +560,7 @@ as well, and the archive jobs build with `--locked`, which refuses a lock the ma
 `--tag` is required, because naming a release is the operator's decision and a derived name is only ever a fact about
 when the command ran. That commit lands through an ordinary PR — `main` takes no direct commits.
 
-**The release preflight is a required check now, not a habit.** On every pull request `ci.yml` runs `ops release-check`,
+**The release preflight is a required check now, not a habit.** On every pull request `ci.yml` runs `ops release check`,
 `ops notices --check`, and the `--locked` lock check. All three lived only in the `cut-release` preflight script, run on
 the operator's machine, skippable by forgetting; the merge is what publishes now, so the pull request is the last point
 at which any of them is still free to fix.
@@ -682,7 +682,7 @@ What remains, and what each does not cover:
   webhook, the GitHub run conclusion is the signal.
 - `kind-ci/**` proves a release-workflow change on demand: push a `kind-ci/<topic>` branch to run the KIND integration
   job alone, creating no tag, publishing nothing and shipping nothing. On demand, not on a schedule.
-- `ci.yml` proves the Rust workspace on every PR, plus the three release preflight checks — `ops release-check`,
+- `ci.yml` proves the Rust workspace on every PR, plus the three release preflight checks — `ops release check`,
   `ops notices --check`, and `cargo metadata --locked`. It still says nothing about images, KIND, or shipping.
 
 Two consequences to plan around rather than discover:
@@ -712,7 +712,7 @@ Three lanes, cheapest first.
    This is [The manual deploy](#the-manual-deploy). `ship` builds nothing, refuses a tag absent from the registry, and
    `--dry-run` rehearses it first.
 3. **Fix forward the same day with a `-hotfix.N` tag.** If the source is wrong, land the fix on `main`, bump it with
-   `ops release-version`, passing the `-hotfix.N` name you chose as `--tag`, and tag the merged commit. See [Releasing
+   `ops release version`, passing the `-hotfix.N` name you chose as `--tag`, and tag the merged commit. See [Releasing
    twice in one day](#releasing-twice-in-one-day) for the shape and for the two surfaces a hotfix deliberately does not
    touch.
 

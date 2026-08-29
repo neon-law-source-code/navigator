@@ -7,7 +7,7 @@
 # than against a plan that predates them.
 #
 # It depends on two checked-in gate scripts that are *not* reproduced in this file, and are
-# not written by `navigator projects repository scaffold` either — they were added to the
+# not written by `navigator site projects repository scaffold` either — they were added to the
 # three sample repositories by hand, the same way this workflow was: `.github/navigator.py`
 # (reads `navigator.yaml` and derives the applications bucket and object prefix) and
 # `.github/no-external-references.py` (the origin gate, run over the built bundle before it

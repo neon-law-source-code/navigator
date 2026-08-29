@@ -10,7 +10,7 @@
 //! we look up by code before inserting and skip whenever a matching row
 //! already exists.
 //!
-//! The CLI calls this from the `catalog-seed` subcommand and integration tests;
+//! The CLI calls this from the `site seed` subcommand and integration tests;
 //! the fixture repository lives at `templates/<category>/<name>.md`.
 
 use std::collections::BTreeMap;
@@ -34,7 +34,7 @@ pub async fn load_question_codes(
     Ok(codes.into_iter().collect())
 }
 
-/// Outcome of a single catalog-seed run: how many templates and questions
+/// Outcome of a single site-seed run: how many templates and questions
 /// were created, plus any rule violations keyed by path.
 #[derive(Debug, Default)]
 pub struct ImportReport {

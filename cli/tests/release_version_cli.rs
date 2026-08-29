@@ -1,4 +1,4 @@
-//! `navigator ops release-version` end-to-end: the command rewrites the one
+//! `navigator ops release version` end-to-end: the command rewrites the one
 //! workspace-version line and leaves everything else — dependency pins
 //! especially — untouched. `--no-commit` keeps these hermetic: no git repo is
 //! required and nothing is committed, so the assertion is purely on the file the
@@ -31,7 +31,8 @@ fn writes_the_explicit_version_and_preserves_dependency_pins() {
 
     run(&[
         "ops",
-        "release-version",
+        "release",
+        "version",
         "--tag",
         "26.8.14",
         "--no-commit",
@@ -63,7 +64,8 @@ fn an_empty_tag_is_rejected() {
 
     run(&[
         "ops",
-        "release-version",
+        "release",
+        "version",
         "--tag",
         "   ",
         "--no-commit",
@@ -95,7 +97,8 @@ fn a_hotfix_version_is_written_verbatim() {
 
     run(&[
         "ops",
-        "release-version",
+        "release",
+        "version",
         "--tag",
         "26.8.18-hotfix.37",
         "--no-commit",
@@ -126,7 +129,8 @@ fn omitting_the_tag_is_a_usage_error() {
 
     run(&[
         "ops",
-        "release-version",
+        "release",
+        "version",
         "--no-commit",
         "--manifest-path",
         manifest.to_str().unwrap(),
@@ -162,7 +166,8 @@ fn a_malformed_version_is_refused_before_the_manifest_is_touched() {
 
         run(&[
             "ops",
-            "release-version",
+            "release",
+            "version",
             "--tag",
             bad,
             "--no-commit",
@@ -188,7 +193,8 @@ fn a_manifest_without_a_workspace_version_fails_loudly() {
 
     run(&[
         "ops",
-        "release-version",
+        "release",
+        "version",
         "--tag",
         "26.8.14",
         "--no-commit",
@@ -283,7 +289,8 @@ fn the_lockfile_agrees_with_the_manifest_it_wrote() {
 
     run(&[
         "ops",
-        "release-version",
+        "release",
+        "version",
         "--tag",
         "26.8.14",
         "--no-commit",
@@ -333,7 +340,8 @@ fn a_rerun_repairs_a_lock_left_behind_by_an_earlier_bump() {
 
     run(&[
         "ops",
-        "release-version",
+        "release",
+        "version",
         "--tag",
         "26.8.14",
         "--no-commit",
@@ -367,7 +375,8 @@ fn any_semver_prerelease_is_written_verbatim() {
 
         run(&[
             "ops",
-            "release-version",
+            "release",
+            "version",
             "--tag",
             good,
             "--no-commit",

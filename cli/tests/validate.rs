@@ -164,14 +164,7 @@ fn validate_now_scans_readme_and_claude_as_prose() {
         .stdout(str::contains("Scanned 3 file(s)"));
 }
 
-/// The stored question registry is opt-in through a flag, and the flag has
-/// no environment fallback. Binding the opt-in to an environment variable —
-/// as `--database-url` did — turns a lint into a store dependency for anyone
-/// who happens to have that variable set. `DATABASE_URL` is the probe
-/// precisely because it is retired: nothing in the workspace reads it, yet a
-/// developer machine or CI job can still be exporting a leftover one, and a
-/// retired variable must not be what decides whether `validate` needs a
-/// database.
+/// Validate remains independent of database environment variables.
 #[test]
 fn validate_ignores_an_exported_database_url() {
     let dir = TempDir::new().unwrap();
@@ -190,12 +183,9 @@ fn validate_ignores_an_exported_database_url() {
         ));
 }
 
-/// Opting in without a reachable store warns and validates against the
-/// canonical codes. A linter must not exit 2 because a database is absent:
-/// the canonical set is what an unflagged run already uses, so the fallback
-/// is a supported mode rather than a degraded one.
+/// The removed store-backed flag is rejected so validation stays local.
 #[test]
-fn question_codes_from_store_falls_back_when_no_store_is_configured() {
+fn question_codes_from_store_flag_is_removed() {
     let dir = TempDir::new().unwrap();
     write(dir.path(), "Notes.md", "Plain body line.\n");
     navigator()
@@ -206,11 +196,10 @@ fn question_codes_from_store_falls_back_when_no_store_is_configured() {
         .env_remove("NAVIGATOR_SURREAL_NAMESPACE")
         .env_remove("NAVIGATOR_SURREAL_DATABASE")
         .assert()
-        .success()
-        .stderr(str::contains("NAVIGATOR_SURREAL_ENDPOINT"))
-        .stderr(str::contains("canonical question codes"))
-        .stdout(str::contains(
-            "Scanned 1 file(s), found 0 error(s), 0 warning(s)",
+        .failure()
+        .code(2)
+        .stderr(str::contains(
+            "unexpected argument '--question-codes-from-store'",
         ));
 }
 

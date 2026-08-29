@@ -1,4 +1,4 @@
-//! `navigator ops release-check` — decide whether the version in
+//! `navigator ops release check` — decide whether the version in
 //! `[workspace.package].version` is a release that has not happened yet.
 //!
 //! This is the whole release trigger. A release is cut by bumping the workspace
@@ -62,7 +62,7 @@ impl Outcome {
     }
 }
 
-/// Entry point for `ops release-check`.
+/// Entry point for `ops release check`.
 pub fn run(manifest_path: &Path, repo: &Path, fetch: bool, github_output: bool) -> ExitCode {
     let outcome = match check(manifest_path, repo, fetch) {
         Ok(outcome) => outcome,

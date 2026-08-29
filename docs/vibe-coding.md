@@ -118,12 +118,12 @@ Grounding a Project-application issue means reading, in this order:
 5. The Project's own coordinates, which are derived rather than registered:
 
 ```bash
-navigator projects doctor --project <project-code>
+navigator site projects doctor --project <project-code>
 ```
 
 There is nothing to register. A Project has one repository, named for its code, and one portal, mounted at that name
-plus the literal `portal`. `navigator projects doctor` reports both coordinates; whether the repository exists yet is a
-separate question, and a coordinate that names nothing is a legitimate state rather than an error.
+plus the literal `portal`. `navigator site projects doctor` reports both coordinates; whether the repository exists yet
+is a separate question, and a coordinate that names nothing is a legitimate state rather than an error.
 
 Triage ends at a plan comment on the Linear issue. Implementation is a separate action that starts in its own worktree.
 
@@ -169,9 +169,9 @@ a marketing page, anything at a Navigator route — the React is a prototype and
 ## What is not built yet
 
 This loop is honest about its own seams. Today the repository shape, the scaffold, the CI gate, and the route ship: one
-repository per Project code holds `templates/` and `portal/` side by side, `navigator projects repository` scaffolds and
-validates it, `.github/actions/validate` is the one gate, `navigator projects doctor` verifies a machine, and Navigator
-routes `/app/projects/{code}/portal` through Project participation authorization.
+Each Project repository holds `templates/` and `portal/` side by side. `navigator site projects repository` scaffolds
+and validates it; `.github/actions/validate` is the one gate, `navigator site projects doctor` verifies a machine, and
+Navigator routes `/app/projects/{code}/portal` through Project participation authorization.
 
 The CI publish wiring now exists: `.github/actions/application-publish` uploads a built bundle to `<code>/portal/` in
 the deployment's private applications bucket — see

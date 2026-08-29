@@ -4,10 +4,10 @@ publish: true
 
 # Validate
 
-`navigator validate <dir>` (default `.`) is the single command every editor, CI gate, and this repository's own
-`AGENTS.md` point at. This page is its canonical reference: what it runs, both flags, the error/warning split, and one
-row per rule code. `cli/tests/validate_docs_coverage.rs` fails the build when a code exists in `rules/src/` or
-`cli/src/main.rs` with no entry here, so this table cannot go stale.
+`navigator validate <dir>` (default `.`) is the single command every editor, CI gate, and this repository's `AGENTS.md`
+point at. This page is its canonical reference: what it runs, its flag, the error/warning split, and one row per rule
+code. `cli/tests/validate_docs_coverage.rs` fails the build when a code exists in `rules/src/` or `cli/src/main.rs` with
+no entry here, so this table cannot go stale.
 
 ## Usage
 
@@ -21,7 +21,7 @@ just that subtree.
 
 ## What it runs
 
-Six things happen on a normal invocation, in this order:
+Five normal validation passes happen in this order:
 
 1. **The classified rule engine** (`rules::ClassifiedRuleEngine::lint_directory`) walks every `.md` file, classifies
    each one by its declared `kind:` (notation template, event, blog post, workshop, GitHub notation, matter dashboard,
@@ -33,25 +33,21 @@ Six things happen on a normal invocation, in this order:
    code — it is a raw syntax check, not a lint — and it is not limited to notation templates or seed documents; any
    malformed YAML anywhere under `dir` fails it.
 4. **A seed-document pass** (rule `Y001`) additionally validates every YAML file whose parent directory is literally
-   named `seeds/` against `store::seed::validate_yaml`, the same shape check `navigator db seed` enforces at write time.
-   A seed document names real people and entities for a production write, so this pass exists to catch a malformed seed
-   before it ever reaches `db seed`.
+   named `seeds/` against `store::seed::validate_yaml`, the same shape check `navigator site import` enforces at write
+   time. A seed document names real people and entities for a production write, so this pass exists to catch a malformed
+   seed before it ever reaches `site import`.
 5. **A consumed mutable-tag pass** walks YAML files and Containerfiles/Dockerfiles for an image or binary reference
    pinned to a mutable tag (`latest`, a branch name) rather than a digest or release version, and fails on each one
    found. This has no rule code either.
-6. **`--fix`**, when passed, replaces steps 1–5 entirely: it applies every rule's safe-by-construction autofix across
-   the tree, prints the file it changed, re-lints, and prints whatever the autofix could not resolve. This is the same
-   fix the `navigator-lsp` `source.fixAll` editor action ships.
+When `--fix` is passed, it replaces those five passes entirely: it applies every rule's safe-by-construction autofix
+across the tree, prints the file it changed, re-lints, and prints whatever the autofix could not resolve. This is the
+same fix the `navigator-lsp` `source.fixAll` editor action ships.
 
 ## Flags
 
 - **`--fix`** — apply every autofixable rule's fix in place (see the Autofix column below), then re-validate and report
   what remains. Exits `0` only if no violation remains after fixing; a remaining violation is always one a human has to
   resolve, never a bug in the fixer.
-- **`--question-codes-from-store`** — validate `N104`'s questionnaire-state references against the question-code
-  registry stored in SurrealDB (via `NAVIGATOR_SURREAL_*`) instead of the compiled-in canonical set from
-  `store/seeds/Question.yaml`. An unreachable store prints a warning and falls back to the canonical set rather than
-  failing the run — a database outage should never block a Markdown lint that does not otherwise need one.
 
 ## Errors versus warnings
 
@@ -184,4 +180,4 @@ human decision; every other code needs a person to resolve it.
 
 | Code | Severity | Rule | Autofix |
 | --- | --- | --- | --- |
-| `Y001` | Error | A `seeds/*.yaml` document must be accepted by `navigator db seed`. | No |
+| `Y001` | Error | A `seeds/*.yaml` document must be accepted by `navigator site import`. | No |

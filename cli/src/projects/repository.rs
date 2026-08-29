@@ -39,7 +39,7 @@
 //! checkout without one, not the primary source. [`validate`] here does not
 //! follow suit: it runs inside one repository's own CI with no access to the
 //! live row, so it cannot tell a repository whose manifest is wrong from one
-//! whose name is; `navigator projects drift` (`super::drift`) is where that
+//! whose name is; `navigator site projects drift` (`super::drift`) is where that
 //! disagreement is reported, against the live rows it needs to judge it.
 //!
 //! One filename, one key: the earlier `.yml` spelling and its `name:` key are
@@ -101,7 +101,7 @@ pub(crate) const CD_WORKFLOW: &str = ".github/workflows/publish.yml";
 /// manifest and a staged sample bundle's manifest are the same file, read by
 /// different tools, not two schemas that happen to overlap.
 pub(crate) const PROJECT_MANIFEST: &str = "navigator.yaml";
-/// Seed-shaped YAML documents for `navigator db seed`, one file per model.
+/// Seed-shaped YAML documents for `navigator site import`, one file per model.
 const SEED_DIRECTORY: &str = "seeds";
 const ALLOWED_ROOTS: &[&str] = &[
     ".github",
@@ -127,7 +127,7 @@ const ALLOWED_ROOTS: &[&str] = &[
     PORTAL_DIRECTORY,
     // A seed document names real people and real entities described by this
     // Project's matter — the input to a production write through `navigator
-    // db seed`, not test scaffolding. That is the one distinction `fixtures/`
+    // site import`, not test scaffolding. That is the one distinction `fixtures/`
     // cannot carry, which is why seed documents get their own root rather
     // than filing under it: one file per model, using the standard
     // `lookup_fields` / `records` shape, and nothing generated.
@@ -244,7 +244,9 @@ pub fn scaffold(root: &Path, project_code: &str, action_version: &str) -> ExitCo
                  binary, or one built with `NAVIGATOR_RELEASE_TAG` set, can); pass {RELEASE_TAG_SHAPE}"
             );
         } else {
-            eprintln!("navigator: invalid validate-action version `{action_version}`; use {RELEASE_TAG_SHAPE}");
+            eprintln!(
+                "navigator: invalid validate-action version `{action_version}`; use {RELEASE_TAG_SHAPE}"
+            );
         }
         return ExitCode::from(2);
     }
@@ -280,10 +282,9 @@ pub fn scaffold(root: &Path, project_code: &str, action_version: &str) -> ExitCo
         println!("created   {}", path.display());
     }
 
-    println!(
-        "\nValidate with: navigator projects repository validate {}",
-        root.display()
-    );
+    // Do not interpolate the CLI root here: `Command` also carries `Secrets`,
+    // and CodeQL treats any printed Command field as cleartext logging.
+    println!("\nValidate with: navigator site projects repository validate .");
     ExitCode::SUCCESS
 }
 
@@ -523,7 +524,7 @@ fn validate_skills(root: &Path, errors: &mut Vec<Finding>) {
                 &path,
                 format!(
                     "synced skill `{name}` has drifted from the canonical copy; \
-                     run `navigator projects repository sync-skills`"
+                     run `navigator site projects repository sync-skills`"
                 ),
             )),
             Err(_) => {}
@@ -807,7 +808,7 @@ fn readme(project_code: &str) -> String {
          that commit SHA and the template body's content hash as provenance.\n\n\
          Do not commit client uploads, answers, generated documents, secrets, dependencies, or build\n\
          output. Legal files live in Drive and in Navigator's assets, never in Git.\n\n\
-         Run `navigator projects repository validate .` before opening a pull request.\n"
+         Run `navigator site projects repository validate .` before opening a pull request.\n"
     )
 }
 
@@ -886,7 +887,9 @@ const IF_PORTAL_PRESENT: &str = "hashFiles('portal/package.json') != ''";
 /// that genuinely needs a different one remains free to hand-edit the
 /// generated file, the same way it is already free to add anything else.
 fn pnpm_step(name: &str, script: &str) -> String {
-    format!("      - name: {name}\n        if: {IF_PORTAL_PRESENT}\n        run: pnpm --dir portal {script}\n")
+    format!(
+        "      - name: {name}\n        if: {IF_PORTAL_PRESENT}\n        run: pnpm --dir portal {script}\n"
+    )
 }
 
 fn setup_steps() -> String {
@@ -918,7 +921,7 @@ fn setup_steps() -> String {
 /// # The pin is an argument, not a literal
 ///
 /// `[scaffold]` refuses to call this with anything [`is_release_tag`] rejects,
-/// the way `ops release-version` refuses a malformed `--tag`: a gate emitted
+/// the way `ops release version` refuses a malformed `--tag`: a gate emitted
 /// at `main`, at `latest`, or at a version this repository has not published
 /// is a gate the Project cannot run, so the choice belongs to the operator
 /// (or to `main.rs`'s `published_cli_version`, when this binary can vouch for
@@ -1069,6 +1072,23 @@ mod tests {
         let mut errors: Vec<Finding> = Vec::new();
         validate_layout(root, &mut errors);
         errors.into_iter().map(|error| error.message).collect()
+    }
+
+    #[test]
+    fn scaffold_validate_hint_does_not_echo_the_cli_root() {
+        let src = include_str!("repository.rs");
+        let production = src
+            .split("#[cfg(test)]")
+            .next()
+            .expect("production source precedes the test module");
+        assert!(
+            production.contains("Validate with: navigator site projects repository validate ."),
+            "the post-scaffold hint must name the validate command"
+        );
+        assert!(
+            !production.contains("repository validate {}"),
+            "echoing the CLI root trips CodeQL cleartext-logging because Command also carries Secrets"
+        );
     }
 
     #[test]
@@ -1244,7 +1264,7 @@ jobs:
         assert!(ALLOWED_ROOTS.contains(&"navigator.yaml"));
     }
 
-    /// `seeds/` is where a Project repository's `navigator db seed` documents
+    /// `seeds/` is where a Project repository's `navigator site import` documents
     /// belong. Refusing it left nowhere in the layout for real actors a
     /// matter names, and `fixtures/` is the wrong root: a fixture is invented
     /// or firm-owned, while a seed document is the input to a production

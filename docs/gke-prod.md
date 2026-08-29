@@ -130,10 +130,10 @@ PR merged to main
       (no images built — the PR flow is lean by design)
 
 A person bumps the version and lands it — the merge is the publish
-  └─→ navigator ops release-version --tag <version>   (Cargo.toml + Cargo.lock, commits)
+  └─→ navigator ops release version --tag <version>   (Cargo.toml + Cargo.lock, commits)
   └─→ PR, merge. Nothing else is required: no tag is pushed by hand
   └─→ .github/workflows/deploy.yml runs, holding no cloud credential
-                  ├─ ops release-check: is this version newer than every release tag?
+                  ├─ ops release check: is this version newer than every release tag?
                   │    (equal → the run ends here, which is almost every merge)
                   ├─ KIND integration suite (e2e + interop + browser)
                   ├─ create the immutable YY.M.D tag at the merged commit
@@ -187,7 +187,7 @@ deferred roll cannot age a running tag off the shelf — the ten most recent ver
 long the gap between releases. See [GitOps](gitops.md#image-retention).
 
 A release version is whatever `semver` parses, and `YY.M.D` — optionally with a prerelease such as `-hotfix.N` — is the
-convention. The one rule `deploy.yml` enforces is ORDERING: `ops release-check` refuses a version that is not newer than
+convention. The one rule `deploy.yml` enforces is ORDERING: `ops release check` refuses a version that is not newer than
 every release tag already published. Nothing checks the calendar, because a bump is authored days before it merges; and
 nothing checks provenance, because a push to `main` is the only thing that publishes. The legacy four-component
 `YY.M.D.H` form is retired: Cargo cannot parse it as a version, so no release has been able to carry it since the tag

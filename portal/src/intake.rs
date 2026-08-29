@@ -60,7 +60,7 @@ pub(crate) async fn jurisdiction_option_names(
 }
 
 /// One selectable existing row for a record/reference question — the
-/// `{id, name}` a DB-backed picker offers and the `navigator intake answer`
+/// `{id, name}` a DB-backed picker offers to the site intake flow.
 /// CLI walker numbers into a pick-list. `id` is what a picker selection
 /// posts back (over the free-typed `value`), so the stored answer carries
 /// the row it selected, not just its display string.

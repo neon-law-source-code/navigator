@@ -20,7 +20,7 @@ description: >-
 # repository *secrets* — the bucket, the Workload Identity provider, and the
 # publisher service account. The Project code is read from the repository's own
 # root `navigator.yaml` manifest (`project:`), the same file and key
-# `store::sample_project::MANIFEST_FILE` and `navigator projects drift` read;
+# `store::sample_project::MANIFEST_FILE` and `navigator site projects drift` read;
 # the `repository:` input falls back to `github.event.repository.name` only
 # when a checkout carries no manifest.
 #
@@ -209,7 +209,7 @@ runs:
 
     # The Project reads its own code from its root `navigator.yaml` manifest —
     # the same file and `project:` key `store::sample_project::MANIFEST_FILE`
-    # and `navigator projects drift` read. `repository:` (the `inputs.repository`
+    # and `navigator site projects drift` read. `repository:` (the `inputs.repository`
     # fallback) is used only when the checkout carries no manifest, which is why
     # it still defaults to the repository name.
     #

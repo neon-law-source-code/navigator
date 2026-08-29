@@ -1,9 +1,9 @@
 //! `navigator ops release-default-tag` — the version the `cut-release` skill
-//! should hand to `ops release-version --tag` when the operator names none:
+//! should hand to `ops release version --tag` when the operator names none:
 //! today's UTC date under the `YY.M.D` convention, unless a release already
 //! exists that makes today's date no improvement.
 //!
-//! `ops release-version` itself still derives nothing and still requires
+//! `ops release version` itself still derives nothing and still requires
 //! `--tag` — see its module doc for why, and `docs/gitops.md` for the
 //! `deploy.yml` incident that made it a rule. This command does not change
 //! that: it answers a narrower, upstream question — "what would today's date

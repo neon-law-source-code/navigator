@@ -41,7 +41,7 @@ inputs:
   tag:
     description: >-
       The release version this run is publishing, read out of
-      `[workspace.package].version` by `ops release-check`. Empty only if a
+      `[workspace.package].version` by `ops release check`. Empty only if a
       caller posts before that answer exists.
     required: false
     default: ""

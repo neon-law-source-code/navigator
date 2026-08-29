@@ -1038,9 +1038,8 @@ jobs:
 #[cfg(test)]
 mod tests {
     use super::{
-        ALLOWED_ROOTS, CD_WORKFLOW, Finding, REQUIRED_CHECK, WORKFLOW, cd_workflow,
-        example_template, is_release_tag, repository_name, scaffold, validate_layout,
-        validate_workflow, workflow,
+        cd_workflow, example_template, is_release_tag, repository_name, scaffold, validate_layout,
+        validate_workflow, workflow, Finding, ALLOWED_ROOTS, CD_WORKFLOW, REQUIRED_CHECK, WORKFLOW,
     };
     use std::path::Path;
 

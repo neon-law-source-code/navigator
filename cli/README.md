@@ -45,8 +45,8 @@ navigator validate
 ```
 
 Create a notation on an existing Project through the logged-in site. Each Project keeps one onboarding notation and one
-offboarding notation; later work uses other kinds. The shared catalog codes are `onboarding__retainer` or
-`onboarding__engagement_letter` to open, and `offboarding__letter` to close:
+offboarding notation; later work uses other kinds. The shared catalog codes are `onboarding__engagement_letter` to open,
+and `offboarding__letter` to close:
 
 ```bash
 navigator site notation create onboarding__engagement_letter \

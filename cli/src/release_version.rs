@@ -129,10 +129,9 @@ pub fn run(manifest_path: &Path, version: &str, no_commit: bool) -> ExitCode {
     let manifest = match std::fs::read_to_string(manifest_path) {
         Ok(text) => text,
         Err(error) => {
-            eprintln!(
-                "navigator: release version: read {}: {error}",
-                manifest_path.display()
-            );
+            // Do not interpolate the CLI path: `Command` also carries `Secrets`,
+            // and CodeQL treats any printed Command field as cleartext logging.
+            eprintln!("navigator: release version: could not read the workspace manifest: {error}");
             return ExitCode::from(2);
         }
     };
@@ -151,10 +150,7 @@ pub fn run(manifest_path: &Path, version: &str, no_commit: bool) -> ExitCode {
             manifest_path.display()
         );
     } else if let Err(error) = std::fs::write(manifest_path, &rewritten) {
-        eprintln!(
-            "navigator: release version: write {}: {error}",
-            manifest_path.display()
-        );
+        eprintln!("navigator: release version: could not write the workspace manifest: {error}");
         return ExitCode::from(2);
     } else {
         println!(
@@ -290,6 +286,31 @@ fn commit_bump(version: &str, lock_present: bool) -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::{set_workspace_version, validate_release_version};
+
+    #[test]
+    fn read_and_write_failures_do_not_echo_the_cli_manifest_path() {
+        let src = include_str!("release_version.rs");
+        let production = src
+            .split("#[cfg(test)]")
+            .next()
+            .expect("production source precedes the test module");
+        assert!(
+            production.contains("could not read the workspace manifest"),
+            "a missing manifest must still explain the failure"
+        );
+        assert!(
+            production.contains("could not write the workspace manifest"),
+            "a write failure must still explain the failure"
+        );
+        assert!(
+            !production.contains("release version: read {}"),
+            "echoing the CLI manifest path trips CodeQL cleartext-logging because Command also carries Secrets"
+        );
+        assert!(
+            !production.contains("release version: write {}"),
+            "echoing the CLI manifest path trips CodeQL cleartext-logging because Command also carries Secrets"
+        );
+    }
 
     /// The convention is accepted, and so is every other shape semver admits.
     ///

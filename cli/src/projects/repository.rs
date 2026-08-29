@@ -244,7 +244,9 @@ pub fn scaffold(root: &Path, project_code: &str, action_version: &str) -> ExitCo
                  binary, or one built with `NAVIGATOR_RELEASE_TAG` set, can); pass {RELEASE_TAG_SHAPE}"
             );
         } else {
-            eprintln!("navigator: invalid validate-action version `{action_version}`; use {RELEASE_TAG_SHAPE}");
+            eprintln!(
+                "navigator: invalid validate-action version `{action_version}`; use {RELEASE_TAG_SHAPE}"
+            );
         }
         return ExitCode::from(2);
     }
@@ -280,10 +282,9 @@ pub fn scaffold(root: &Path, project_code: &str, action_version: &str) -> ExitCo
         println!("created   {}", path.display());
     }
 
-    println!(
-        "\nValidate with: navigator site projects repository validate {}",
-        root.display()
-    );
+    // Do not interpolate the CLI root here: `Command` also carries `Secrets`,
+    // and CodeQL treats any printed Command field as cleartext logging.
+    println!("\nValidate with: navigator site projects repository validate .");
     ExitCode::SUCCESS
 }
 
@@ -886,7 +887,9 @@ const IF_PORTAL_PRESENT: &str = "hashFiles('portal/package.json') != ''";
 /// that genuinely needs a different one remains free to hand-edit the
 /// generated file, the same way it is already free to add anything else.
 fn pnpm_step(name: &str, script: &str) -> String {
-    format!("      - name: {name}\n        if: {IF_PORTAL_PRESENT}\n        run: pnpm --dir portal {script}\n")
+    format!(
+        "      - name: {name}\n        if: {IF_PORTAL_PRESENT}\n        run: pnpm --dir portal {script}\n"
+    )
 }
 
 fn setup_steps() -> String {
@@ -1035,8 +1038,9 @@ jobs:
 #[cfg(test)]
 mod tests {
     use super::{
-        cd_workflow, example_template, is_release_tag, repository_name, scaffold, validate_layout,
-        validate_workflow, workflow, Finding, ALLOWED_ROOTS, CD_WORKFLOW, REQUIRED_CHECK, WORKFLOW,
+        ALLOWED_ROOTS, CD_WORKFLOW, Finding, REQUIRED_CHECK, WORKFLOW, cd_workflow,
+        example_template, is_release_tag, repository_name, scaffold, validate_layout,
+        validate_workflow, workflow,
     };
     use std::path::Path;
 
@@ -1069,6 +1073,23 @@ mod tests {
         let mut errors: Vec<Finding> = Vec::new();
         validate_layout(root, &mut errors);
         errors.into_iter().map(|error| error.message).collect()
+    }
+
+    #[test]
+    fn scaffold_validate_hint_does_not_echo_the_cli_root() {
+        let src = include_str!("repository.rs");
+        let production = src
+            .split("#[cfg(test)]")
+            .next()
+            .expect("production source precedes the test module");
+        assert!(
+            production.contains("Validate with: navigator site projects repository validate ."),
+            "the post-scaffold hint must name the validate command"
+        );
+        assert!(
+            !production.contains("repository validate {}"),
+            "echoing the CLI root trips CodeQL cleartext-logging because Command also carries Secrets"
+        );
     }
 
     #[test]

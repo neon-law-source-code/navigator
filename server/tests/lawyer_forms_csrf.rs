@@ -16,8 +16,7 @@
 //! Coverage note: the pages below are the form pages reachable with only
 //! the canonical seed and an admin session. Form pages that need a richer
 //! fixture (a parked notation, an in-flight contract review) assert their
-//! own `_csrf` in their focused suites — e.g. the multipart transcript
-//! form in `estate_matter_admin_ui`, the entity forms in `routes`.
+//! own `_csrf` in their focused suites — e.g. the entity forms in `routes`.
 
 use std::sync::Arc;
 

@@ -168,11 +168,6 @@ fn api_operation_table() -> Vec<(&'static str, &'static str, MethodRouter<ApiSta
         ("POST", "/app/api/projects/{id}/close", post(close_matter)),
         (
             "POST",
-            "/app/api/projects/{id}/approve-plan",
-            post(approve_plan_door),
-        ),
-        (
-            "POST",
             "/app/api/projects/{id}/conversation/messages",
             post(post_conversation_message_door),
         ),
@@ -248,11 +243,6 @@ fn api_operation_table() -> Vec<(&'static str, &'static str, MethodRouter<ApiSta
         ),
         (
             "POST",
-            "/app/api/notations/{id}/release-drafts",
-            post(release_notation_drafts),
-        ),
-        (
-            "POST",
             "/app/api/documents/{id}/deletion-requests",
             post(create_deletion_request),
         ),
@@ -266,11 +256,6 @@ fn api_operation_table() -> Vec<(&'static str, &'static str, MethodRouter<ApiSta
             "POST",
             "/app/api/projects/{id}/documents",
             post(upload_document_door),
-        ),
-        (
-            "POST",
-            "/app/api/projects/{id}/notations/{nid}/transcript",
-            post(estate_transcript_door),
         ),
         (
             "PATCH",
@@ -1380,41 +1365,6 @@ async fn close_matter(
     }
 }
 
-/// `POST /app/api/projects/{id}/approve-plan` — the client approves their
-/// released estate plan, the REST mirror of the client approve control. Both
-/// converge on `estate::approve_estate_plan`. Client-writable: any authenticated
-/// caller reaches it (embedded Rego), and the command enforces client-lens
-/// matter access — a caller who is not this matter's client, a matter with no
-/// plan awaiting approval, or a session with no linked Person all collapse to a
-/// non-disclosing 404. `204 No Content` on success.
-async fn approve_plan_door(
-    State(state): State<ApiState>,
-    authed: AuthedSession,
-    Path(id): Path<Uuid>,
-) -> Result<Response, ApiError> {
-    let Some(person_id) = authed.0.person_id else {
-        return Err(ApiError::NotFound);
-    };
-    match crate::estate::approve_estate_plan(
-        &state.surreal,
-        state.workflow_runtime.as_ref(),
-        person_id,
-        id,
-    )
-    .await
-    {
-        Ok(()) => Ok(StatusCode::NO_CONTENT.into_response()),
-        Err(
-            crate::estate::ApproveEstatePlanError::NotAuthorized
-            | crate::estate::ApproveEstatePlanError::NothingToApprove,
-        ) => Err(ApiError::NotFound),
-        Err(e) => {
-            tracing::error!(error = %e, project_id = %id, "api approve-plan: failed");
-            Err(ApiError::Db("the estate plan could not be approved".into()))
-        }
-    }
-}
-
 /// Request body for `POST /app/api/projects/{id}/conversation/messages` — the
 /// message body and, for the lawyer lens only, whether it is an internal note.
 #[derive(Deserialize)]
@@ -2075,46 +2025,6 @@ async fn add_review_comment(
         .into_response())
 }
 
-/// `POST /app/api/notations/{id}/release-drafts` — the attorney gate for an estate
-/// matter: at `lawyer_review`, advance the notation to `client_review` and flip
-/// every generated draft instrument to `pending_review`, which is what makes it
-/// visible to the client on the review surface. No auto-generated client
-/// document leaves `draft` without this human step. Lawyer-tier only (embedded Rego policy) *and*
-/// matter-scoped (admin bypasses); an out-of-scope or unknown notation is 404.
-/// A notation not at the lawyer-review gate cannot release drafts (409). This
-/// drives the same command (`crate::estate::release_drafts`) as the lawyer form.
-async fn release_notation_drafts(
-    State(state): State<ApiState>,
-    lawyer: LawyerSession,
-    Path(id): Path<Uuid>,
-) -> Result<Response, ApiError> {
-    let notation = store::notations::find_by_id(&state.surreal, id)
-        .await?
-        .ok_or(ApiError::NotFound)?;
-    let in_scope = store::access::can_see_project_as_lawyer(
-        &state.surreal,
-        lawyer.0.person_id,
-        lawyer.0.role,
-        notation.project_id,
-    )
-    .await
-    .unwrap_or(false);
-    if !in_scope {
-        return Err(ApiError::NotFound);
-    }
-
-    let next =
-        crate::estate::release_drafts(&state.surreal, state.workflow_runtime.as_ref(), id).await?;
-    Ok((
-        StatusCode::OK,
-        Json(NotationLifecycleResponse {
-            notation_id: id,
-            state: next.as_str().to_string(),
-        }),
-    )
-        .into_response())
-}
-
 /// Success body for `POST /app/api/documents/{id}/deletion-requests` — the pending
 /// expunge request, and whether it already existed (idempotent re-ask).
 #[derive(Serialize)]
@@ -2591,79 +2501,6 @@ async fn upload_document_door(
         .into_response())
 }
 
-/// Request body for `POST /app/api/projects/{id}/notations/{nid}/transcript` —
-/// the transcript text to file into an estate matter.
-#[derive(Deserialize)]
-struct EstateTranscriptRequest {
-    #[serde(default)]
-    transcript_text: String,
-}
-
-/// `POST /app/api/projects/{id}/notations/{nid}/transcript` — file a recorded
-/// sitting's transcript into an estate matter and drive the estate pipeline, the
-/// REST mirror of the estate transcript upload. The browser uploads a file; the
-/// REST door takes the transcript as text and builds the same intake payload.
-/// Both converge on `transcript_intake::file_estate_transcript`. Lawyer-tier only
-/// and matter-scoped; the notation must belong to the matter (out-of-scope or
-/// mismatched → 404). `204` on success; an empty transcript is `400`.
-async fn estate_transcript_door(
-    State(state): State<ApiState>,
-    lawyer: LawyerSession,
-    Path((project_id, notation_id)): Path<(Uuid, Uuid)>,
-    JsonOrForm(input): JsonOrForm<EstateTranscriptRequest>,
-) -> Result<Response, ApiError> {
-    let in_scope = store::access::can_see_project_as_lawyer(
-        &state.surreal,
-        lawyer.0.person_id,
-        lawyer.0.role,
-        project_id,
-    )
-    .await
-    .unwrap_or(false);
-    if !in_scope {
-        return Err(ApiError::NotFound);
-    }
-    let notation = store::notations::find_by_id(&state.surreal, notation_id)
-        .await?
-        .ok_or(ApiError::NotFound)?;
-    if notation.project_id != project_id {
-        return Err(ApiError::NotFound);
-    }
-    let text = input.transcript_text.trim();
-    if text.is_empty() {
-        return Ok(bad_request(
-            "transcript_required",
-            "A transcript is required.",
-        ));
-    }
-    // Build the Text intake payload the multipart upload's file path produces.
-    let payload = workflows::IntakePayload {
-        kind: "transcript".to_string(),
-        filename: "transcript.txt".to_string(),
-        artifact: workflows::IntakeArtifact::Text {
-            text: text.to_string(),
-        },
-    };
-    let value = serde_json::to_string(&payload).map_err(|e| {
-        tracing::error!(error = %e, %notation_id, "api estate transcript: serialize payload");
-        ApiError::Db("the transcript payload could not be serialized".into())
-    })?;
-    crate::transcript_intake::file_estate_transcript(
-        &state.surreal,
-        &state.storage,
-        state.workflow_runtime.as_ref(),
-        notation_id,
-        &value,
-        text,
-    )
-    .await
-    .map_err(|e| {
-        tracing::error!(error = %e, %notation_id, "api estate transcript: failed");
-        ApiError::Db("the transcript could not be filed".into())
-    })?;
-    Ok(StatusCode::NO_CONTENT.into_response())
-}
-
 /// Map a contract-review action outcome onto an API response: `204` on success,
 /// `404` for a missing/out-of-scope review or finding, `409` off-gate, `422`
 /// when approval is blocked by unacted findings, `500` on a store/runtime fault.
@@ -3056,9 +2893,6 @@ pub enum ApiError {
     /// A retainer workflow drive (approve or send-for-signature) failed.
     NotationWorkflow(crate::retainer_walk::WorkflowDriveError),
     ReviewComment(crate::review::ReviewCommentError),
-    /// The estate release-drafts workflow signal failed — almost always
-    /// because the notation is not at the `lawyer_review` gate.
-    ReleaseDrafts(workflows::WorkflowRuntimeError),
     RequestDeletion(crate::expunge_request_route::RequestDeletionError),
     ContractReview(crate::contract_review_walk::ContractReviewError),
     Db(String),
@@ -3142,12 +2976,6 @@ impl From<crate::retainer_walk::WorkflowDriveError> for ApiError {
 impl From<crate::review::ReviewCommentError> for ApiError {
     fn from(e: crate::review::ReviewCommentError) -> Self {
         Self::ReviewComment(e)
-    }
-}
-
-impl From<workflows::WorkflowRuntimeError> for ApiError {
-    fn from(e: workflows::WorkflowRuntimeError) -> Self {
-        Self::ReleaseDrafts(e)
     }
 }
 
@@ -3679,21 +3507,6 @@ impl IntoResponse for ApiError {
             }
             // --- approve / send a notation (fire the workflow transition) ---
             Self::NotationWorkflow(e) => workflow_drive_error(e),
-            // --- release an estate notation's drafts to client review ---
-            // The signal fails when the notation has no `approved` edge — it is
-            // not at the lawyer-review gate — so this is a state conflict the
-            // caller resolves by opening the matter to that gate first.
-            Self::ReleaseDrafts(e) => {
-                tracing::info!(error = %e, "api: release-drafts signal refused");
-                (
-                    StatusCode::CONFLICT,
-                    Json(serde_json::json!({
-                        "error": "not_at_review_gate",
-                        "message": "This notation is not at the lawyer-review gate; drafts can only be released from there."
-                    })),
-                )
-                    .into_response()
-            }
             // --- upload a contract for playbook review ---
             // The client Entity has no playbook to measure the contract against
             // — a caller-actionable precondition, so 422 with the store's own

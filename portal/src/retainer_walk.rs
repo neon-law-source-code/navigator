@@ -371,40 +371,6 @@ pub async fn start_post(
         return (StatusCode::INTERNAL_SERVER_ERROR, "internal").into_response();
     }
 
-    // Transcript-driven onboarding (estate) has no questionnaire
-    // to walk before intake — the recorded sitting's transcript fills the
-    // answers via extraction. Detect it by the `transcript_uploaded` edge
-    // out of `BEGIN` (data-driven, never a hard-coded template code), start
-    // the workflow machine so the transcript-upload surface has a live
-    // timeline to signal, and land lawyer on the matter page where that form
-    // lives. Questionnaire-first onboarding (the retainer) keeps the walker
-    // redirect below.
-    if let Some(spec) = workflows::catalog_spec_yaml(code)
-        .and_then(|yaml| workflows::workflow_spec_from_yaml(yaml).ok())
-    {
-        let transcript_driven = spec.transitions_from(&StateName::begin()).is_some_and(|t| {
-            t.lookup(crate::transcript_intake::TRANSCRIPT_UPLOADED)
-                .is_some()
-        });
-        if transcript_driven {
-            if let Err(e) = StateMachineRuntime::start(
-                state.workflow_runtime.as_ref(),
-                MachineKind::Workflow,
-                notation_id,
-                &spec,
-            )
-            .await
-            {
-                tracing::error!(error = %e, %notation_id, "start_post: estate workflow start failed");
-                return (StatusCode::INTERNAL_SERVER_ERROR, "internal").into_response();
-            }
-            return Redirect::to(
-                &crate::dioxus_app::project_show_path(&state.surreal, project_id).await,
-            )
-            .into_response();
-        }
-    }
-
     Redirect::to(&format!("/lawyer/notations/{notation_id}/step")).into_response()
 }
 

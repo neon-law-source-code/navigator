@@ -716,35 +716,6 @@ pub fn document_with_base(base: &str) -> Value {
             }
           }
         },
-        "/app/api/projects/{id}/approve-plan": {
-          "post": {
-            "summary": "Approve a released estate plan (client)",
-            "description":
-              "The client approves their released estate plan: fires the `client_approved` \
-               transition and marks every released draft approved — the REST mirror of the client \
-               approve control, converging on the same command. `204 No Content` on success. This \
-               is a client-writable door: any authenticated caller reaches the policy layer, and the \
-               command enforces client-lens matter access. A caller who is not this matter's client, \
-               a matter with no plan awaiting the client's approval, or a session with no linked \
-               Person all return a non-disclosing 404.",
-            "parameters": [
-              { "name": "id", "in": "path", "required": true,
-                "schema": { "type": "string", "format": "uuid" } }
-            ],
-            "responses": {
-              "204": { "description": "The estate plan was approved" },
-              "401": { "description": "No authenticated session", "content": { "application/json": {
-                "schema": { "$ref": "#/components/schemas/ApiError" }
-              } } },
-              "404": { "description": "No plan awaiting this client's approval on that matter", "content": { "application/json": {
-                "schema": { "$ref": "#/components/schemas/ApiError" }
-              } } },
-              "500": { "description": "The estate plan could not be approved", "content": { "application/json": {
-                "schema": { "$ref": "#/components/schemas/ApiError" }
-              } } }
-            }
-          }
-        },
         "/app/api/projects/{id}/conversation": {
           "get": {
             "summary": "Read a matter's conversation",
@@ -1403,42 +1374,6 @@ pub fn document_with_base(base: &str) -> Value {
             }
           }
         },
-        "/app/api/notations/{id}/release-drafts": {
-          "post": {
-            "summary": "Release an estate notation's drafts to client review",
-            "description":
-              "The attorney gate for an estate matter: at `lawyer_review`, advance the notation to \
-               `client_review` and flip every generated draft instrument to `pending_review`, which \
-               is what makes it visible to the client on the review surface. No auto-generated \
-               client-facing legal document leaves `draft` without this human step. Returns the \
-               notation's workflow state after the gate. Same command the lawyer form drives. \
-               Authorization: the caller's `persons.role` must be `lawyer` or `admin` \
-               (anonymous, `client`, and non-lawyer `clerk` callers are rejected), and the caller \
-               must additionally participate in the notation's matter — an out-of-scope or unknown \
-               notation returns 404 (`admin` bypasses the scope check).",
-            "parameters": [
-              { "name": "id", "in": "path", "required": true,
-                "schema": { "type": "string", "format": "uuid" } }
-            ],
-            "responses": {
-              "200": { "description": "The notation's workflow state after releasing drafts", "content": { "application/json": {
-                "schema": { "$ref": "#/components/schemas/NotationLifecycleResponse" }
-              } } },
-              "401": { "description": "No authenticated session", "content": { "application/json": {
-                "schema": { "$ref": "#/components/schemas/ApiError" }
-              } } },
-              "403": { "description": "Authenticated caller is not Lawyer/admin", "content": { "application/json": {
-                "schema": { "$ref": "#/components/schemas/ApiError" }
-              } } },
-              "404": { "description": "No such notation, or it is outside the caller's scope", "content": { "application/json": {
-                "schema": { "$ref": "#/components/schemas/ApiError" }
-              } } },
-              "409": { "description": "The notation is not at the lawyer-review gate; drafts cannot be released", "content": { "application/json": {
-                "schema": { "$ref": "#/components/schemas/ApiError" }
-              } } }
-            }
-          }
-        },
         "/app/api/review-documents/{id}/comments": {
           "post": {
             "summary": "Add an anchored comment to a review document",
@@ -1951,36 +1886,6 @@ pub fn document_with_base(base: &str) -> Value {
               "404": { "description": "No such notation, or out of scope", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
               "422": { "description": "The template has no questionnaire", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
               "500": { "description": "The coverage pass failed", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } }
-            }
-          }
-        },
-        "/app/api/projects/{id}/notations/{nid}/transcript": {
-          "post": {
-            "summary": "File an estate matter's sitting transcript",
-            "description":
-              "Files a recorded sitting's transcript into an estate matter and drives the estate \
-               pipeline (extract → drafts → lawyer review) — the REST mirror of the estate \
-               transcript upload, converging on the same command. The browser uploads a file; this \
-               door takes the transcript as text. `204 No Content` on success. Authorization: lawyer \
-               or admin, and the caller must participate in the matter; the notation must belong to \
-               the matter (out-of-scope or mismatched → 404). An empty transcript is `400`.",
-            "parameters": [
-              { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
-              { "name": "nid", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
-            ],
-            "requestBody": {
-              "required": true,
-              "content": { "application/json": {
-                "schema": { "type": "object", "required": ["transcript_text"], "properties": { "transcript_text": { "type": "string" } } }
-              } }
-            },
-            "responses": {
-              "204": { "description": "The transcript was filed and the pipeline driven" },
-              "400": { "description": "Empty transcript", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
-              "401": { "description": "No authenticated session", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
-              "403": { "description": "Authenticated caller is not Lawyer/admin", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
-              "404": { "description": "No such matter/notation, mismatched, or out of scope", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
-              "500": { "description": "The transcript could not be filed", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } }
             }
           }
         },
@@ -2941,10 +2846,6 @@ mod tests {
         assert!(ops.contains(&(
             "POST".to_string(),
             "/app/api/projects/{id}/contract-review".to_string()
-        )));
-        assert!(ops.contains(&(
-            "POST".to_string(),
-            "/app/api/notations/{id}/release-drafts".to_string()
         )));
         assert!(ops.contains(&(
             "POST".to_string(),

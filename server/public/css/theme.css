@@ -2338,10 +2338,6 @@ a.nav-link:hover {
   margin: 1rem 0;
 }
 
-.portal-detail__approve {
-  margin-top: 1rem;
-}
-
 /* A summary card (service, invoice). --split lays the label block and the
  * trailing price/badge on opposite ends. */
 .portal-card {
@@ -2535,12 +2531,6 @@ a.nav-link:hover {
 
 .project-resources__configure {
   margin: 0.75rem 0 0;
-}
-
-/* The estate workflow-state token, shown next to "Workflow state:". */
-.estate-state {
-  font-variant: small-caps;
-  letter-spacing: 0.02em;
 }
 
 /* Matter conversation page (/app/projects/{id}/conversation). The

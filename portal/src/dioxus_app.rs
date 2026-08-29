@@ -960,55 +960,12 @@ pub fn app_forms_router(
 /// routes the deeper paths.
 pub const PROJECT_DETAIL_PATH: &str = "/app/projects/{project_code}";
 
-/// Compute the estate "Approve my plan" decision for the matter in the request
-/// path and inject it as [`webapp::portal_project_detail::ShowApprovePlan`]. The
-/// decision is estate/`workflows`-specific — a transcript-driven notation parked
-/// at `client_review` with every released draft still awaiting the client — and
-/// lives in `crate::estate`, which `webapp` cannot see, so the portal router
-/// resolves it here and injects the plain boolean the Dioxus page renders. A
-/// missing project code or any read failure yields `false` (the control hides);
-/// the `#[server]` loader is the authority on visibility and the 404.
-async fn inject_show_approve_plan(
-    axum::extract::State(surreal): axum::extract::State<store::surreal::SurrealDb>,
-    mut req: Request,
-    next: Next,
-) -> Response {
-    let path = req.uri().path().to_string();
-    let show = match project_id_from_path(&surreal, &path).await {
-        Some(id) => show_approve_plan(&surreal, id).await,
-        None => false,
-    };
-    req.extensions_mut()
-        .insert(webapp::portal_project_detail::ShowApprovePlan(show));
-    next.run(req).await
-}
-
-/// The estate "Approve my plan" predicate the `portal::projects::detail`
-/// computed inline: a transcript-driven notation is parked at `client_review`
-/// and every released review draft is still awaiting the client (none approved
-/// yet — approve once).
-async fn show_approve_plan(surreal: &store::surreal::SurrealDb, project_id: uuid::Uuid) -> bool {
-    let awaiting_client = crate::estate::transcript_driven_notation(surreal, project_id)
-        .await
-        .is_some_and(|n| n.state == "client_review");
-    if !awaiting_client {
-        return false;
-    }
-    let review_docs = store::review_documents::client_visible_for_project(surreal, project_id)
-        .await
-        .unwrap_or_default();
-    !review_docs.is_empty()
-        && review_docs
-            .iter()
-            .all(|d| d.status == store::review_documents::STATUS_PENDING_REVIEW)
-}
-
 /// The gated Dioxus client portal matter-detail page (#641 Phase 3). Like
 /// [`projects_router`] but for a single matter: it carries the matter id
-/// in the path, injects the CSRF token (the approve-plan form) and the estate
-/// approve-plan decision, and provides the object-store handle into the render
-/// context (the loader probes which of each notation's PDFs exist), on top of
-/// the auth + embedded Rego policy gate, person-id scoping, and nonce CSP.
+/// in the path, injects the CSRF token and provides the object-store handle
+/// into the render context (the loader probes which of each notation's PDFs
+/// exist), on top of the auth + embedded Rego policy gate, person-id scoping,
+/// and nonce CSP.
 pub fn project_detail_router(
     surreal: store::surreal::SurrealDb,
     storage: std::sync::Arc<dyn cloud::StorageService>,
@@ -1016,8 +973,6 @@ pub fn project_detail_router(
     policy: crate::policy::PolicyClient,
     auth: crate::auth::AuthConfig,
 ) -> Router {
-    let detail_stores = surreal.clone();
-    let estate_stores = surreal.clone();
     let repository_surreal = surreal.clone();
     // Both lenses render from this one mount, so it provides the union of what
     // either needs. `storage` is the client view's; the firm view ignores it.
@@ -1040,12 +995,10 @@ pub fn project_detail_router(
                 .layer(from_fn(inject_person_id))
                 .layer(from_fn(inject_csrf_token))
                 .layer(from_fn(inject_impersonation))
-                .layer(from_fn_with_state(detail_stores, inject_show_approve_plan))
                 .layer(from_fn_with_state(
                     repository_surreal,
                     inject_project_repository_pointer,
                 ))
-                .layer(from_fn_with_state(estate_stores, inject_lawyer_estate))
                 .layer(from_fn(dioxus_document_head)),
         )
         .with_state(FullstackState::new(
@@ -1120,49 +1073,6 @@ async fn project_repository_pointer(
         .await
         .ok()??
         .repository_url
-}
-
-/// Compute the transcript-driven estate view (if any) for the matter and inject
-/// it as [`webapp::lawyer_project_detail::LawyerEstate`]. The detection is
-/// `workflows`/estate-coupled and lives in `crate::estate`, which `webapp`
-/// cannot see, so the portal router resolves it here.
-async fn inject_lawyer_estate(
-    axum::extract::State(surreal): axum::extract::State<store::surreal::SurrealDb>,
-    mut req: Request,
-    next: Next,
-) -> Response {
-    let path = req.uri().path().to_string();
-    let estate = match project_id_from_path(&surreal, &path).await {
-        Some(id) => lawyer_estate(&surreal, id).await,
-        None => None,
-    };
-    req.extensions_mut()
-        .insert(webapp::lawyer_project_detail::LawyerEstate(estate));
-    next.run(req).await
-}
-
-async fn lawyer_estate(
-    surreal: &store::surreal::SurrealDb,
-    project_id: uuid::Uuid,
-) -> Option<webapp::lawyer_project_detail::EstateData> {
-    let (notation_id, state) = crate::estate::transcript_driven_notation(surreal, project_id)
-        .await
-        .map(|n| (n.id, n.state))?;
-    let drafts = store::review_documents::for_notation(surreal, notation_id)
-        .await
-        .unwrap_or_default()
-        .into_iter()
-        .map(|d| webapp::lawyer_project_detail::EstateDraft {
-            title: d.title,
-            kind: d.kind,
-            status: d.status,
-        })
-        .collect();
-    Some(webapp::lawyer_project_detail::EstateData {
-        notation_id: notation_id.to_string(),
-        state,
-        drafts,
-    })
 }
 
 /// The lawyer matter-open form path (#956 Phase 4) — `Add project`, plus the two
@@ -1346,8 +1256,8 @@ pub const PORTAL_INTAKE_PATH: &str = "/app/projects/{project_code}/intake/{notat
 ///
 /// Resolving a step means calling `workflows::notation_session`, which `webapp`
 /// does not depend on, so the work happens here and only the wasm-safe result
-/// crosses — the same seam [`inject_show_approve_plan`] uses. This layer also
-/// owns the refusal: an unknown or unauthorised notation gets the `404` here
+/// crosses — the same seam [`inject_project_repository_pointer`] uses. This
+/// layer also owns the refusal: an unknown or unauthorised notation gets the `404` here
 /// (never a `403`, which would confirm the matter exists) and never reaches the
 /// render.
 async fn inject_client_intake(

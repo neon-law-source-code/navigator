@@ -9,13 +9,14 @@
 //! the Notation `web` has just committed. Against separate databases the step
 //! raises `RecordNotFound` and the matter-open path returns a 500.
 //!
-//! The on-ramp is the engagement letter walk (`POST /lawyer/retainers/new`
-//! with `onboarding__letter`), which starts its workflow in the create request
-//! itself — the same "commit a Notation, then
-//! journal it through the worker" shape that exhibits #377. `POST
-//! /app/projects` no longer fires a workflow at all (opening a matter and
-//! opening its retainer are two steps; see the glossary's Engagement /
-//! Retainer entry), so it can no longer carry this guard.
+//! The on-ramp was the engagement letter walk (`POST /lawyer/retainers/new`
+//! with `onboarding__letter`) — **this is now stale**: that door no longer
+//! starts a workflow inside the create request (see the `KNOWN GAP` comment
+//! in the test body below), so this suite does not currently exercise #377's
+//! "commit a Notation, then journal it through the worker" shape through any
+//! route. `POST /app/projects` never fired a workflow at all (opening a
+//! matter and opening its retainer are two steps; see the glossary's
+//! Engagement / Retainer entry), so it cannot carry this guard either.
 //!
 //! This test exercises the **real** `RestateRuntime` against the in-cluster
 //! worker, with host `web` pointed at the **same** shared `navigator` database
@@ -134,12 +135,16 @@ async fn matter_open_starts_its_workflow_through_the_restate_worker() {
     let suffix = uuid::Uuid::now_v7();
     let client_email = format!("libra-{suffix}@example.com");
 
-    // The estate retainer is transcript-driven, so `start_post` starts its
-    // workflow inside this request: web commits the Notation, then the
-    // worker journals `append-event` against its own database. If the two
-    // disagree, that journal step raises `RecordNotFound` → 500. This is
-    // the #377 bug, reproduced through the door that still fires a workflow
-    // at matter open.
+    // KNOWN GAP (flagged for follow-up, not fixed here): `start_post` no
+    // longer starts a workflow machine inside this request for any surviving
+    // template — the transcript-driven on-ramp this test relied on was
+    // removed along with `portal::estate`, and `onboarding__letter` was
+    // never transcript-driven to begin with. This assertion needs a
+    // different on-ramp (a door that still commits a Notation and
+    // synchronously starts its workflow) to actually reproduce #377; today
+    // it cannot fail this way through this route. This lane has no CI
+    // coverage (no workflow sets `RESTATE_BROKER_URL`), so the gap is latent
+    // rather than red.
     let body = format!(
         "client_email={}&retainer_template_code=onboarding__letter",
         enc(&client_email),
@@ -184,6 +189,6 @@ async fn matter_open_starts_its_workflow_through_the_restate_worker() {
         .unwrap()
         .into_iter()
         .next()
-        .expect("the estate retainer notation was created");
+        .expect("the retainer notation was created");
     assert_eq!(notation.state, "BEGIN");
 }

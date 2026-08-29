@@ -19,8 +19,8 @@
 //! Analysis runs here, not in `workflows-service`, because the LLM seam
 //! lives in `web` only — KIND and the tests use the deterministic
 //! [`StubContractReviewer`](crate::contract_review::StubContractReviewer).
-//! The shape mirrors [`crate::estate::drive_estate_pipeline`]: file the
-//! provided artifact, then web drives the post-intake transitions.
+//! `web` drives the post-intake transitions once the provided artifact is
+//! filed.
 //!
 //! Authorization: the upload route is row-scoped to the Project (a
 //! non-participant gets `404`, never `403`); the admin review surface lives
@@ -183,7 +183,7 @@ pub async fn upload(
 /// `lawyer_review`. Returns the new `contract_reviews` row id.
 ///
 /// Public so the integration tests can drive the pipeline without crafting
-/// a multipart HTTP request (mirrors [`crate::estate::drive_estate_pipeline`]).
+/// a multipart HTTP request.
 ///
 /// # Errors
 ///

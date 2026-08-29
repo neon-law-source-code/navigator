@@ -1,13 +1,12 @@
 #![allow(clippy::doc_markdown)]
-//! Integration tests for the transcript REST doors:
-//! `POST /app/api/notations/{id}/transcript` (batch coverage) and
-//! `POST /app/api/projects/{id}/notations/{nid}/transcript` (estate intake).
+//! Integration tests for the transcript REST door:
+//! `POST /app/api/notations/{id}/transcript` (batch coverage).
 //!
-//! The write engines (`retainer_walk::record_transcript_coverage` and
-//! `transcript_intake::file_estate_transcript`) are shared with the lawyer/CLI
-//! forms, so this focuses on what the REST adapters add: they take the transcript
-//! as JSON text (not multipart), lawyer-tier only (client 403, anon 401),
-//! matter-scope (out-of-scope 404), and the live coverage run.
+//! The write engine (`retainer_walk::record_transcript_coverage`) is shared
+//! with the lawyer form, so this focuses on what the REST adapter adds: it
+//! takes the transcript as JSON text (not multipart), lawyer-tier only
+//! (client 403, anon 401), matter-scope (out-of-scope 404), and the live
+//! coverage run.
 
 use std::sync::Arc;
 
@@ -20,7 +19,7 @@ use store::persons::Role;
 use store::test_support::mem_surreal;
 use tower::ServiceExt;
 use uuid::Uuid;
-use workflows::{DispatchingRuntime, InMemoryRuntime, MachineKind, StateMachineRuntime};
+use workflows::{DispatchingRuntime, InMemoryRuntime, StateMachineRuntime};
 
 const KEY: &str = "api-transcript-test-key";
 
@@ -46,7 +45,6 @@ struct Harness {
     app: axum::Router,
     surreal: store::surreal::SurrealDb,
     storage: Arc<dyn cloud::StorageService>,
-    runtime: Arc<dyn StateMachineRuntime>,
     admin: String,
     client: String,
     outsider: String,
@@ -103,7 +101,6 @@ async fn harness() -> Harness {
         app: server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR)),
         surreal,
         storage,
-        runtime,
         admin: bearer(None, Role::Admin),
         client: bearer(Some(client.id), Role::Client),
         outsider: bearer(Some(outsider.id), Role::Lawyer),
@@ -147,28 +144,6 @@ async fn seed_coverage_notation(h: &Harness) -> Uuid {
     .await
     .unwrap()
     .id
-}
-
-/// An estate notation with its workflow started at BEGIN — for the intake door,
-/// whose `transcript_uploaded` signal needs a running machine.
-async fn seed_estate_notation(h: &Harness) -> (Uuid, Uuid) {
-    let notation_id = store::test_support::seed_notation(&h.surreal).await;
-    let project_id = store::notations::find_by_id(&h.surreal, notation_id)
-        .await
-        .unwrap()
-        .unwrap()
-        .project_id;
-    let yaml = workflows::bundled_spec_yaml("onboarding__letter").expect("letter spec bundled");
-    let spec = workflows::workflow_spec_from_yaml(yaml).expect("letter spec parses");
-    StateMachineRuntime::start(
-        h.runtime.as_ref(),
-        MachineKind::Workflow,
-        notation_id,
-        &spec,
-    )
-    .await
-    .expect("start estate workflow");
-    (project_id, notation_id)
 }
 
 async fn seed_project(h: &Harness) -> Uuid {
@@ -262,36 +237,4 @@ async fn coverage_with_an_empty_transcript_is_400() {
     )
     .await;
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
-}
-
-#[tokio::test]
-async fn estate_intake_rejects_the_unauthorized_and_mismatches() {
-    let h = harness().await;
-    let (project_id, notation_id) = seed_estate_notation(&h).await;
-    let uri = format!("/app/api/projects/{project_id}/notations/{notation_id}/transcript");
-    let body = serde_json::json!({ "transcript_text": "Consent given." });
-
-    assert_eq!(
-        post(&h, &uri, Some(&h.client), body.clone()).await.status(),
-        StatusCode::FORBIDDEN
-    );
-    assert_eq!(
-        post(&h, &uri, None, body.clone()).await.status(),
-        StatusCode::UNAUTHORIZED
-    );
-    assert_eq!(
-        post(&h, &uri, Some(&h.outsider), body.clone())
-            .await
-            .status(),
-        StatusCode::NOT_FOUND
-    );
-
-    // A notation that does not belong to the named project → 404.
-    let other_project = seed_project(&h).await;
-    let mismatched =
-        format!("/app/api/projects/{other_project}/notations/{notation_id}/transcript");
-    assert_eq!(
-        post(&h, &mismatched, Some(&h.admin), body).await.status(),
-        StatusCode::NOT_FOUND
-    );
 }

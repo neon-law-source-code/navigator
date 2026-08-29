@@ -457,9 +457,9 @@ async fn a_walk_that_produced_its_instruments_clears_the_flags_with_no_asset_pre
     // The regression neither the asset fold nor the artifact predicate may
     // introduce: a matter opened and closed purely through the questionnaire
     // walk, with no uploaded asset at all, still clears — so long as the walk
-    // actually produced something. The intake-driven estate onboarding files
-    // its instruments as `review_documents` rows rather than one rendered
-    // letter, so the asset lane cannot see them and this lane must.
+    // actually produced something. A walk that drafts its instruments files
+    // them as `review_documents` rows rather than one rendered letter, so the
+    // asset lane cannot see them and this lane must.
     let (_app, surreal) = build_app().await;
     let person = store::persons::create(
         &surreal,
@@ -706,10 +706,9 @@ async fn notation(
     .id
 }
 
-/// The instrument an intake-driven walk actually produces: one drafted
-/// `review_documents` row on the notation, the way `portal::estate` files the
-/// estate instruments it renders. This — not the notation row — is what makes
-/// the walk evidence that the matter was papered.
+/// The instrument a walk that drafts its instruments actually produces: one
+/// drafted `review_documents` row on the notation. This — not the notation
+/// row — is what makes the walk evidence that the matter was papered.
 async fn drafted_instrument(surreal: &store::surreal::SurrealDb, notation_id: Uuid, kind: &str) {
     store::review_documents::upsert_draft(
         surreal,

@@ -9,7 +9,7 @@
 //! [`crate::admin_unassigned_project_detail::AdminUnassignedProjectDetail`], a
 //! narrower sibling page — see [`crate::matter_surface`]. The page gathers,
 //! server-side of the render: the header (name / code / status / entity / the
-//! two DRIs), the missing-onboarding notice, the estate section, the forge
+//! two DRIs), the missing-onboarding notice, the forge
 //! repository link, the calendar, the participation ledger
 //! ([`ParticipationTable`], with admin add/edit/remove), the documents table +
 //! uploader, and the close-matter control. The write forms render markup that
@@ -20,11 +20,10 @@
 //! surface the lawyer workbench carries across every matter, and empty for the
 //! same reason (#350).
 //!
-//! Two seams `webapp` cannot cross itself, injected by the portal router the same
+//! One seam `webapp` cannot cross itself, injected by the portal router the same
 //! wasm-safe way as [`ViewerRole`] / [`crate::csrf::CsrfToken`]:
 //! [`ProjectRepositoryPointer`] (this matter's one deployment-configured
-//! repository URL) and [`LawyerEstate`] (the estate/`workflows`-coupled notation
-//! view).
+//! repository URL).
 
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -44,28 +43,6 @@ use crate::people::ViewerRole;
 /// outcome rather than a degraded one.
 #[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct ProjectRepositoryPointer(pub Option<String>);
-
-/// One generated estate draft, in a wasm-safe shape.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
-pub struct EstateDraft {
-    pub title: String,
-    pub kind: String,
-    pub status: String,
-}
-
-/// The transcript-driven estate notation for this matter, when it is one. The
-/// detection (`crate::estate::transcript_driven_notation`) is `workflows`-coupled
-/// and lives in `portal`, so the portal router computes this and injects it.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
-pub struct EstateData {
-    pub notation_id: String,
-    pub state: String,
-    pub drafts: Vec<EstateDraft>,
-}
-
-/// The injected estate view: `Some` only for a transcript-driven estate matter.
-#[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub struct LawyerEstate(pub Option<EstateData>);
 
 /// One document row (filename + id for the download link).
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -118,7 +95,6 @@ pub struct LawyerDetailView {
     pub resources: crate::project_resources::ProjectResourcesView,
     pub xero_invoice_url: Option<String>,
     pub repository_url: Option<String>,
-    pub estate: Option<EstateData>,
     pub participations: Vec<ParticipationRow>,
     pub documents: Vec<LawyerDocRow>,
     /// The upload form's Kind select, as `(value, label)` pairs — every
@@ -222,11 +198,6 @@ pub async fn get_lawyer_project_detail() -> Result<LawyerDetailView, ServerFnErr
         .await
         .map(|axum::Extension(pointer)| pointer)
         .unwrap_or_default();
-    let LawyerEstate(estate) =
-        dioxus_fullstack_core::FullstackContext::extract::<axum::Extension<LawyerEstate>, _>()
-            .await
-            .map(|axum::Extension(estate)| estate)
-            .unwrap_or_default();
     let person_id = dioxus_fullstack_core::FullstackContext::extract::<
         axum::Extension<crate::portal_project_list::PersonId>,
         _,
@@ -361,7 +332,6 @@ pub async fn get_lawyer_project_detail() -> Result<LawyerDetailView, ServerFnErr
         },
         xero_invoice_url,
         repository_url,
-        estate,
         participations,
         documents,
         asset_kind_choices: asset_kind_choices(),
@@ -538,10 +508,6 @@ pub fn LawyerProjectDetail() -> Element {
                 }
             }
 
-            if let Some(estate) = view.estate.as_ref() {
-                EstateSection { project_code: view.code.clone(), estate: estate.clone(), csrf_token: csrf.clone() }
-            }
-
             crate::project_resources::ProjectResourcesPanel { view: view.resources.clone() }
 
             if view.xero_invoice_url.is_some() || view.repository_url.is_some() {
@@ -616,8 +582,8 @@ pub fn LawyerProjectDetail() -> Element {
                 // form via this field's id and replays the native submit as
                 // an XHR so it can render `upload.loaded` / `upload.total`
                 // as they arrive — a plain `Field::file(...)` id defaults to
-                // its `name` ("file"), which the Estate transcript uploader
-                // below also uses, so this needs its own id to stay unique.
+                // its `name` ("file"), so this needs its own id to stay
+                // unique against any other file field on the page.
                 document::Script { src: "/public/js/upload-progress.js", defer: true }
                 FormCard {
                     title: "Upload documents".to_string(),
@@ -804,65 +770,6 @@ pub fn ParticipationTable(
                                 }
                             }
                         }
-                    }
-                }
-            }
-        }
-    }
-}
-
-/// The estate section: the workflow state and the stage-appropriate
-/// control — the transcript uploader at `BEGIN`, the generated drafts and a
-/// release control at `lawyer_review`, a waiting note at `client_review`.
-#[component]
-fn EstateSection(project_code: String, estate: EstateData, csrf_token: String) -> Element {
-    rsx! {
-        section { class: "lawyer-detail__section project-estate",
-            h2 { "Estate plan" }
-            p { "Workflow state: " strong { class: "estate-state", "{estate.state}" } }
-            if estate.state == "BEGIN" {
-                p { class: "nav-muted", "The sitting is recorded offline and transcribed. File it here in whichever form you have — you can do this from a phone. Paste the transcript text, upload a transcript file, or paste a link to the recording." }
-                FormCard {
-                    title: "File the sitting transcript".to_string(),
-                    action: "/app/projects/{project_code}/notations/{estate.notation_id}/transcript",
-                    submit_label: "File transcript".to_string(),
-                    heading: Heading::H2,
-                    multipart: true,
-                    csrf_token: Some(csrf_token.clone()),
-                    fields: vec![
-                        Field::textarea("Paste the transcript", "transcript_text", "", 8).help("Paste the transcribed sitting here."),
-                        Field::file("…or upload a transcript file", "file"),
-                        Field::text("…or paste a link to the recording", "link", "").placeholder("https://…").help("A link to the recording or transcript."),
-                    ],
-                }
-            } else {
-                if estate.drafts.is_empty() {
-                    p { class: "nav-muted", "The transcript has been filed. The drafts are being prepared from the sitting." }
-                } else {
-                    h3 { "Generated drafts" }
-                    div { class: "portal-agreements",
-                        for draft in estate.drafts.iter() {
-                            div { class: "portal-agreement",
-                                span {
-                                    "{draft.title}"
-                                    span { class: "status-chip", " {draft.kind}" }
-                                }
-                                span { class: "status-chip", "{draft.status}" }
-                            }
-                        }
-                    }
-                    if estate.state == "lawyer_review" {
-                        p { class: "nav-muted", "Releasing advances the matter to client review and makes each draft readable on the client's review surface. Nothing reaches the client until you do this." }
-                        FormCard {
-                            title: "Approve & release drafts to the client".to_string(),
-                            action: "/lawyer/notations/{estate.notation_id}/release-drafts",
-                            submit_label: "Release drafts to client".to_string(),
-                            heading: Heading::H2,
-                            csrf_token: Some(csrf_token.clone()),
-                            fields: vec![],
-                        }
-                    } else if estate.state == "client_review" {
-                        p { class: "nav-muted", "Released to the client. Waiting for the client to read each draft and approve the plan." }
                     }
                 }
             }

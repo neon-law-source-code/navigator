@@ -1512,7 +1512,8 @@ enum NotationAction {
     /// notation opens pinned to it
     /// (`POST /app/projects/<id>/notations/new`).
     Create {
-        /// Template code, e.g. `onboarding__retainer` or `nv__llc_formation`.
+        /// Template code, e.g. `onboarding__engagement_letter`,
+        /// `offboarding__letter`, or `nv__llc_formation`.
         template_code: String,
         #[command(flatten)]
         host: HostOpt,

@@ -139,11 +139,27 @@ Onboarding is the engagement that opens the matter — the retainer agreement or
 firm-signed closing letter that ends the representation. Opening the Project does not create either notation; a lawyer
 binds them like any other template. The self-serve doors refuse any other kind as the matter's first notation.
 
+The CLI seeds both letters into the shared catalog. This workshop binds the retainer through AIDA; the engagement letter
+is the other shared onboarding. Close the matter with the offboarding letter. Do not bind two onboardings on one
+Project:
+
+```bash
+navigator db list templates
+navigator site notation create onboarding__engagement_letter \
+  --project sample-litigation \
+  --client-email client@neonlaw.com
+navigator site notation create offboarding__letter \
+  --project sample-litigation \
+  --client-email client@neonlaw.com
+```
+
 ---
 
 Name the pair on Cruller v. Prine. Binding `onboarding__retainer` is the onboarding. The shared closing letter
 (`offboarding__letter`) is the offboarding. The Projects-list badge reads presence — `onboarding on file` — not
-execution. A bespoke letter still counts if it declares `kind: onboarding` or `kind: offboarding`.
+execution. A bespoke letter still counts if it declares `kind: onboarding` or `kind: offboarding`. List the seeded
+catalog and point at the three lifecycle codes: `onboarding__retainer`, `onboarding__engagement_letter`, and
+`offboarding__letter`.
 
 ### The other notations on a matter
 

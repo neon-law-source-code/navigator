@@ -157,7 +157,7 @@ async fn list_templates_prints_imported_titles() {
     let stdout = String::from_utf8_lossy(&out.stdout);
     for needle in [
         "onboarding__letter",
-        "Engagement Letter",
+        "Onboarding Letter",
         "offboarding__letter",
         "Closing Letter",
         "nv__llc_formation",

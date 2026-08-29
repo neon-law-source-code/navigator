@@ -417,6 +417,35 @@ bucket and object prefix are not passed in at all; each repository derives them 
 checked-in `.github/navigator.py`, which also backs the origin gate (`.github/no-external-references.py`) run in the
 same job.
 
+**The origin gate is a copied file, so its parsing rule is written down rather than left to the copy.** Neither script
+is written by `navigator projects repository scaffold`; both were added by hand, and a new Project repository gets them
+by copying. Copy from one of the three sample repositories above, which hold only synthetic source and carry the
+corrected parser — not from an arbitrary Project repository, where the copy may predate the correction.
+
+`navigator.py` parses `navigator.yaml` with a small hand-written parser, deliberately not a YAML library: a gate whose
+job is to be able to say no cannot depend on `pip install` succeeding. Inside `allowed_hosts` and `allowed_prefixes`, a
+`key: value` line **splits on the first `": "` and never on the first `":"`**. That is YAML's own rule, and it is the
+only reading under which a URL can be a key.
+
+Splitting on a bare `":"` makes the key of `https://example.test/x: reason` the string `https`. The gate's only consumer
+of that map tests `full.startswith(prefix)`, so a bare scheme is a prefix of every `https://` reference in the bundle
+and nothing is ever reported. **The gate does not go red or crash — it prints `no external references: N built file(s)
+reference no host but our own` and exits 0**, which is an affirmative claim that the bundle is clean and therefore ends
+the investigation rather than starting one.
+
+Two properties make this worth pinning rather than simply fixing:
+
+- **`allowed_hosts` escapes by luck, not by design.** A hostname has no colon before its `": "`, so the wrong split
+  happens to yield the right key. A host written with a port re-enters the defect through the door that looks safe.
+- **The gate's failure message solicits the entry that disables it.** A violation prints "add it to `allowed_hosts` or
+  `allowed_prefixes` in navigator.yaml with the reason". Under the bare-colon split, a single entry naming one host
+  suppresses reporting for *every* host, so the documented remedy for a failure is the action that turns the control off
+  — and the check goes green, which reads as the problem being solved. The failure mode gets worse the more carefully an
+  engineer follows the tool's own guidance.
+
+A copy of `navigator.py` should therefore carry the parser's cases and a `--test` entry point that runs them, so the
+rule is enforced in the repository that depends on it rather than remembered.
+
 **Upload order is load-bearing, and the never-delete rule is what distinguishes a private, shared applications bucket
 from a public marketing site.** The action uploads in two passes — everything except `index.html` first, then
 `index.html` last — so that by the time any HTML naming a new hashed filename is readable, that file already exists.

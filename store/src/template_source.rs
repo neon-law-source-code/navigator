@@ -242,7 +242,7 @@ mod tests {
     /// validated clean in CI, so an existing corpus body is a stable valid
     /// fixture. Its `lawyer_review → generate_pdf` shape satisfies N116.
     const VALID_TEMPLATE: &str =
-        include_str!("../../templates/neon_law/shared/engagement_letter.md");
+        include_str!("../../templates/neon_law/shared/onboarding_letter.md");
 
     async fn fs_storage() -> Arc<dyn StorageService> {
         Arc::new(

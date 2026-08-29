@@ -221,7 +221,7 @@ async fn any_matter_closes_and_none_of_them_raises_money() {
         },
         Matter {
             what: "an engagement letter",
-            originating_template: Some("onboarding__engagement_letter"),
+            originating_template: Some("onboarding__letter"),
         },
         Matter {
             what: "an LLC formation",

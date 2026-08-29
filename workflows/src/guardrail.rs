@@ -343,10 +343,10 @@ END: {}
         // custom clause or a client-entered answer therefore cannot reach
         // the bytes the attorney approved are the bytes that get signed.
         for code in [
-            "onboarding__engagement_letter",
-            "onboarding__engagement_letter_transcript",
+            "onboarding__letter",
+            "onboarding__letter_transcript",
         ] {
-            // Product retainers (e.g. `onboarding__engagement_letter_nest`) resolve
+            // Product retainers (e.g. `onboarding__letter_nest`) resolve
             // through the shared product fallback, not a bundled spec — so
             // gate on the *resolved* spec via `catalog_spec_yaml`.
             let yaml = crate::catalog_spec_yaml(code)

@@ -99,11 +99,11 @@ async fn seed_client(world: &mut EmailWorld, name: String, email: String) {
     let template = store::templates::resolve(
         &features::shared_surreal().await,
         None,
-        "onboarding__engagement_letter",
+        "onboarding__letter",
     )
     .await
     .unwrap()
-    .expect("onboarding__engagement_letter seeded");
+    .expect("onboarding__letter seeded");
     let notation_id = store::notations::create(
         &journey.surreal,
         &store::notations::NewNotation::new(template.id, person.id, project_id, "BEGIN"),

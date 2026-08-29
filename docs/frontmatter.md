@@ -22,8 +22,8 @@ Most files in Neon Law Navigator are plain text, and many of them begin with a s
 line of three dashes (`---`). The block holds a few `key: value` lines, like this:
 
 ```yaml
-title: Retainer Agreement
-code: onboarding__engagement_letter
+title: Onboarding Letter
+code: onboarding__letter
 ```
 
 That block is the **frontmatter** (the real file has a `---` line above and below it). Think of it as the caption on a
@@ -78,21 +78,21 @@ an `## Wrap Up` chapter; the public overview and light table group sections by t
 keeps one stable section order.
 
 Legal motions and contracts use a **Harvard outline**, not the workshop chapter/slide tree. Depth-1 headings are Roman
-(`## I. Title`) on contracts and engagement letters, or Arabic (`## 1. Title`) in motion practice. Lettered subsections
+(`## I. Title`) on contracts and onboarding letters, or Arabic (`## 1. Title`) in motion practice. Lettered subsections
 are block quotes (`> **A. Label.** …`) so the PDF conversion indents them. `navigator template narrate` turns that body
 into a recording stage; `/lawyer/outline` shows the bundled onboarding and offboarding letters (`?doc=`).
 
 ## Notation templates — the legal blueprints
 
 A notation template is the document a client eventually signs, plus the questions that fill it in and the path it walks
-to get there. Here is the real frontmatter from the shared retainer, `templates/neon_law/shared/engagement_letter.md`
+to get there. Here is the real frontmatter from the shared onboarding letter, `templates/neon_law/shared/onboarding_letter.md`
 (shown without its surrounding `---` fences):
 
 ```yaml
 kind: onboarding
-title: Engagement Letter
+title: Onboarding Letter
 respondent_type: person_and_entity
-code: onboarding__engagement_letter
+code: onboarding__letter
 jurisdiction: NV
 confidential: true
 output: letter
@@ -146,13 +146,13 @@ workflow:
 
 Each key, in plain English:
 
-- **`kind`** — what this notation is: `onboarding` (the engagement that opens a matter), `offboarding` (the closing
+- **`kind`** — what this notation is: `onboarding` (the letter that opens a matter), `offboarding` (the closing
   letter), `letter` (a letter the firm sends on the client's behalf), `filing` (a document filed with a government
   body), `will`, `trust`, `directive`, `agreement`, or `memo`. It is **required** on every notation template — the
   declared kind is the sole classifier, so a template without it lints as prose — and an unrecognized value is a
   blocking error.
-- **`title`** — the human name of the document, e.g. `Retainer Agreement`. It cannot be blank.
-- **`code`** — the document's permanent file number, in `snake_case` (e.g. `onboarding__engagement_letter`). It must be
+- **`title`** — the human name of the document, e.g. `Onboarding Letter`. It cannot be blank.
+- **`code`** — the document's permanent file number, in `snake_case` (e.g. `onboarding__letter`). It must be
   unique across the whole project, and you do not change it once clients have signed under it. The reason is the record:
   the `code` is how a signed document is traced back to the blueprint it came from, so changing it later would cut the
   audit trail your malpractice carrier may one day need to read.

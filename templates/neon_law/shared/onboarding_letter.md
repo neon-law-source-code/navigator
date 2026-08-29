@@ -1,8 +1,8 @@
 ---
 kind: onboarding
-title: Engagement Letter
+title: Onboarding Letter
 respondent_type: person_and_entity
-code: onboarding__engagement_letter
+code: onboarding__letter
 jurisdiction: NV
 confidential: true
 output: letter
@@ -83,7 +83,7 @@ Re: Engagement to Provide Legal Services — {{project__engagement.name}}
 
 Dear {{person__client.name}}:
 
-Thank you for engaging the Firm. This letter (the "Engagement Letter") sets out the terms on which the Firm will
+Thank you for engaging the Firm. This letter (the "Onboarding Letter") sets out the terms on which the Firm will
 represent {{entity.name}} (the "Client" or "you") in the matter described below. This
 says what we are doing now, who is accountable on each side, how you reach us, how we bill, and how we resolve a
 disagreement if one arises. Everything particular to your matter is agreed in writing as we go, and each of those

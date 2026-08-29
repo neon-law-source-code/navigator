@@ -479,9 +479,9 @@ pub const SAMPLE_MOTION: &str = include_str!(concat!(
 mod tests {
     use super::{parse, stage_html, DepthOneScheme, UnitKind};
 
-    const RETAINER: &str = include_str!(concat!(
+    const ONBOARDING: &str = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../templates/neon_law/shared/engagement_letter.md"
+        "/../templates/neon_law/shared/onboarding_letter.md"
     ));
     const OFFBOARDING: &str = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -546,9 +546,9 @@ mod tests {
     }
 
     #[test]
-    fn the_bundled_retainer_is_a_roman_outline() {
-        let doc = parse(RETAINER);
-        assert_eq!(doc.title, "Engagement Letter");
+    fn the_bundled_onboarding_letter_is_a_roman_outline() {
+        let doc = parse(ONBOARDING);
+        assert_eq!(doc.title, "Onboarding Letter");
         assert_eq!(doc.scheme, Some(DepthOneScheme::Roman));
         let markers: Vec<_> = doc
             .units

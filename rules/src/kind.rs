@@ -42,7 +42,7 @@ pub enum Kind {
     /// Project like any other notation (opening the Project does not open
     /// it) and it is the one kind the self-serve doors accept as a
     /// matter's first notation (see [`Kind::opens_a_matter`]). The shipped
-    /// sample is the engagement letter.
+    /// sample is the onboarding letter.
     Onboarding,
     /// The firm-signed letter that **closes a matter** — the mirror of
     /// [`Kind::Onboarding`] (see [`Kind::closes_a_matter`]). Distinct from

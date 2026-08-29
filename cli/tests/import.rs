@@ -115,14 +115,14 @@ async fn catalog_seed_creates_only_shared_templates_and_question_catalog_rows() 
         "catalog seeding must create only workspace-shared templates"
     );
     let codes: Vec<&str> = templates.iter().map(|t| t.code.as_str()).collect();
-    assert!(codes.contains(&"onboarding__engagement_letter"));
+    assert!(codes.contains(&"onboarding__letter"));
     // The version now routes through `save_version`, which is the only
     // path that actually carries `kind` through — pin that it does
     // (issue #780).
     let letter = templates
         .iter()
-        .find(|t| t.code == "onboarding__engagement_letter")
-        .expect("onboarding__engagement_letter seeded");
+        .find(|t| t.code == "onboarding__letter")
+        .expect("onboarding__letter seeded");
     assert_eq!(letter.kind.as_deref(), Some("onboarding"));
     assert!(letter.is_current);
     assert!(codes.contains(&"nv__dissolution"));

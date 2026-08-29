@@ -50,12 +50,12 @@ form: nv__llc_formation
 `origin_url` is the government page where the blank can be obtained. Git records the exact bytes we vendored; the URL
 records where those bytes came from.
 
-`neon_law/` holds the firm's sample engagement and closing letters:
+`neon_law/` holds the firm's sample onboarding and closing letters:
 
 ```text
 templates/neon_law/
 └── shared/
-    ├── letter.md
+    ├── onboarding_letter.md
     └── offboarding_letter.md
 ```
 
@@ -98,7 +98,7 @@ The `navigator validate` command enforces these with the N-family notation rules
    `CA`, or `US`. A `github/` notation declares none — it is engineering intake, not legal work.
 3. **Form codes are jurisdiction-first**: `nv__llc_formation`, `us__form_990`. The filename stem, `code`, and `form`
    binding match.
-4. **Shared firm codes are role-first**: `onboarding__engagement_letter`, `offboarding__letter`.
+4. **Shared firm codes are role-first**: `onboarding__letter`, `offboarding__letter`.
 5. **Every path segment is lowercase `snake_case`**.
 
 Run it before committing:

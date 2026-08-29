@@ -215,7 +215,8 @@ mod canonical {
     /// it without a separate `navigator site seed` step. The full
     /// shipped catalog is bundled so a fresh cluster carries every
     /// template without an import pass.
-    pub const TEMPLATE_LETTER: &str = include_str!("../../templates/neon_law/shared/letter.md");
+    pub const TEMPLATE_ENGAGEMENT_LETTER: &str =
+        include_str!("../../templates/neon_law/shared/engagement_letter.md");
     pub const TEMPLATE_OFFBOARDING_LETTER: &str =
         include_str!("../../templates/neon_law/shared/offboarding_letter.md");
     pub const TEMPLATE_ANNUAL_REPORT_NV: &str =
@@ -262,8 +263,8 @@ pub struct SeededTemplate {
 /// body.
 pub const SEEDED_TEMPLATES: &[SeededTemplate] = &[
     SeededTemplate {
-        label: "neon_law/shared/letter.md",
-        markdown: canonical::TEMPLATE_LETTER,
+        label: "neon_law/shared/engagement_letter.md",
+        markdown: canonical::TEMPLATE_ENGAGEMENT_LETTER,
     },
     SeededTemplate {
         label: "neon_law/shared/offboarding_letter.md",
@@ -2868,13 +2869,15 @@ records:
     fn seeded_template_codes_are_derived_from_the_bundled_catalog() {
         let codes = seeded_template_codes().expect("seeded template codes");
         assert_eq!(codes.len(), SEEDED_TEMPLATES.len());
-        assert!(codes.iter().any(|code| code == "onboarding__letter"));
+        assert!(codes
+            .iter()
+            .any(|code| code == "onboarding__engagement_letter"));
         assert!(codes.iter().any(|code| code == "offboarding__letter"));
         assert!(codes.iter().any(|code| code == "nv__llc_formation"));
         assert!(
             !codes
                 .iter()
-                .any(|code| code.starts_with("onboarding__letter_")),
+                .any(|code| code.starts_with("onboarding__engagement_letter_")),
             "project-scoped letter variants are not seeded; one shared engagement letter remains"
         );
     }
@@ -3031,7 +3034,7 @@ records:
         // Spot-check templates from across the catalog so a dropped
         // `include_str!` entry is caught, not just the retainer.
         for code in [
-            "onboarding__letter",
+            "onboarding__engagement_letter",
             "offboarding__letter",
             "nv__llc_formation",
             "nv__profit_corp_formation",
@@ -3046,7 +3049,7 @@ records:
                 "expected bundled template `{code}` to be seeded"
             );
         }
-        let tmpl = crate::templates::resolve(&surreal, None, "onboarding__letter")
+        let tmpl = crate::templates::resolve(&surreal, None, "onboarding__engagement_letter")
             .await
             .unwrap()
             .expect("template row");
@@ -3085,7 +3088,7 @@ records:
             .await
             .unwrap()
             .into_iter()
-            .filter(|t| t.code == "onboarding__letter")
+            .filter(|t| t.code == "onboarding__engagement_letter")
             .count();
         assert_eq!(count, 1, "exactly one current retainer template row");
     }
@@ -3123,7 +3126,7 @@ records:
             "{{firm.signature}}",
         ];
 
-        let code = "onboarding__letter";
+        let code = "onboarding__engagement_letter";
         let tmpl = crate::templates::resolve(&surreal, None, code)
             .await
             .unwrap()

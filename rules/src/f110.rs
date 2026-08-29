@@ -173,7 +173,7 @@ mod tests {
     #[test]
     fn accepts_a_product_template_with_jurisdiction() {
         let v = F110JurisdictionPath.lint(&at(
-            "templates/neon_law/shared/letter.md",
+            "templates/neon_law/shared/engagement_letter.md",
             "title: T\ncode: nest__retainer\njurisdiction: NV",
         ));
         assert!(v.is_empty(), "{v:?}");
@@ -211,7 +211,7 @@ mod tests {
     #[test]
     fn flags_missing_jurisdiction() {
         let v = F110JurisdictionPath.lint(&at(
-            "templates/neon_law/shared/letter.md",
+            "templates/neon_law/shared/engagement_letter.md",
             "title: T\ncode: nest__retainer",
         ));
         assert_eq!(v[0].code, "N110");
@@ -230,7 +230,7 @@ mod tests {
     #[test]
     fn flags_unknown_jurisdiction() {
         let v = F110JurisdictionPath.lint(&at(
-            "templates/neon_law/shared/letter.md",
+            "templates/neon_law/shared/engagement_letter.md",
             "title: T\ncode: nest__retainer\njurisdiction: TX",
         ));
         assert_eq!(v[0].code, "N110");
@@ -262,7 +262,7 @@ mod tests {
     #[test]
     fn flags_missing_frontmatter() {
         let v = F110JurisdictionPath.lint(&SourceFile {
-            path: PathBuf::from("templates/neon_law/shared/letter.md"),
+            path: PathBuf::from("templates/neon_law/shared/engagement_letter.md"),
             contents: "no frontmatter here\n".to_string(),
         });
         assert_eq!(v[0].code, "N110");

@@ -276,7 +276,7 @@ mod tests {
                 lede: "One markdown file is the template, questionnaire, and workflow.".to_string(),
                 materials: vec![
                     CatalogMaterial {
-                        href: "https://github.com/neon-law-source-code/navigator/blob/main/templates/neon_law/shared/letter.md".to_string(),
+                        href: "https://github.com/neon-law-source-code/navigator/blob/main/templates/neon_law/shared/engagement_letter.md".to_string(),
                         eyebrow: "Letter".to_string(),
                         title: "Retainer Agreement".to_string(),
                         summary: "Opens a matter.".to_string(),
@@ -299,7 +299,7 @@ mod tests {
         assert!(out.contains("catalog-hero"), "catalog hero: {out}");
         assert!(out.contains("Retainer Agreement"), "letter title: {out}");
         assert!(
-            out.contains("neon_law/shared/letter.md"),
+            out.contains("neon_law/shared/engagement_letter.md"),
             "letter href: {out}"
         );
         assert!(out.contains("nv__llc_formation.md"), "form href: {out}");

@@ -426,7 +426,7 @@ async fn record_nautilus_triage_deadlines_for_message(
     // Whether an inbound message on this matter should raise statutory
     // deadlines is a *capability* question, so it reads the module ledger
     // rather than the notation's template code. It used to key on the
-    // retired `onboarding__letter_nautilus` retainer, which made the
+    // retired `onboarding__engagement_letter_nautilus` retainer, which made the
     // capability a property of which engagement agreement was signed —
     // exactly the product-shaped inference `project_modules` replaced.
     if !store::project_modules::is_enabled(
@@ -1891,7 +1891,7 @@ mod tests {
         let tmpl = store::templates::save_version(
             surreal,
             None,
-            "onboarding__letter",
+            "onboarding__engagement_letter",
             store::templates::Version {
                 title: "Retainer Agreement".into(),
                 respondent_type: "person".into(),

@@ -73,7 +73,7 @@ is a template + spec, not a new handler — the spec just needs the retainer's s
 
 Signed templates today:
 
-- **`onboarding__letter`** — the firm's engagement agreement; client signs, firm countersigns.
+- **`onboarding__engagement_letter`** — the firm's engagement agreement; client signs, firm countersigns.
 
 `offboarding__letter` is firm correspondence (firm signature only).
 

@@ -204,7 +204,7 @@ mod tests {
         store::templates::save_version(
             surreal,
             None,
-            "onboarding__letter",
+            "onboarding__engagement_letter",
             store::templates::Version {
                 title: "Retainer".into(),
                 respondent_type: "person".into(),
@@ -349,7 +349,7 @@ mod tests {
             Some(&storage),
             None,
             &json!({
-                "template_code": "onboarding__letter",
+                "template_code": "onboarding__engagement_letter",
                 "project_id": project_id,
             }),
         )

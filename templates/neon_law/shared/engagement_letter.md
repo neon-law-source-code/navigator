@@ -2,7 +2,7 @@
 kind: onboarding
 title: Engagement Letter
 respondent_type: person_and_entity
-code: onboarding__letter
+code: onboarding__engagement_letter
 jurisdiction: NV
 confidential: true
 output: letter

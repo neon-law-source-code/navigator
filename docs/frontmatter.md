@@ -23,7 +23,7 @@ line of three dashes (`---`). The block holds a few `key: value` lines, like thi
 
 ```yaml
 title: Retainer Agreement
-code: onboarding__letter
+code: onboarding__engagement_letter
 ```
 
 That block is the **frontmatter** (the real file has a `---` line above and below it). Think of it as the caption on a
@@ -85,14 +85,14 @@ into a recording stage; `/lawyer/outline` shows the bundled onboarding and offbo
 ## Notation templates — the legal blueprints
 
 A notation template is the document a client eventually signs, plus the questions that fill it in and the path it walks
-to get there. Here is the real frontmatter from the shared retainer, `templates/neon_law/shared/letter.md` (shown
-without its surrounding `---` fences):
+to get there. Here is the real frontmatter from the shared retainer, `templates/neon_law/shared/engagement_letter.md`
+(shown without its surrounding `---` fences):
 
 ```yaml
 kind: onboarding
 title: Engagement Letter
 respondent_type: person_and_entity
-code: onboarding__letter
+code: onboarding__engagement_letter
 jurisdiction: NV
 confidential: true
 output: letter
@@ -152,10 +152,10 @@ Each key, in plain English:
   declared kind is the sole classifier, so a template without it lints as prose — and an unrecognized value is a
   blocking error.
 - **`title`** — the human name of the document, e.g. `Retainer Agreement`. It cannot be blank.
-- **`code`** — the document's permanent file number, in `snake_case` (e.g. `onboarding__letter`). It must be unique
-  across the whole project, and you do not change it once clients have signed under it. The reason is the record: the
-  `code` is how a signed document is traced back to the blueprint it came from, so changing it later would cut the audit
-  trail your malpractice carrier may one day need to read.
+- **`code`** — the document's permanent file number, in `snake_case` (e.g. `onboarding__engagement_letter`). It must be
+  unique across the whole project, and you do not change it once clients have signed under it. The reason is the record:
+  the `code` is how a signed document is traced back to the blueprint it came from, so changing it later would cut the
+  audit trail your malpractice carrier may one day need to read.
 - **`respondent_type`** — who signs: `person`, `entity`, or `person_and_entity`. Nothing else is accepted.
 - **`jurisdiction`** — the state whose law governs: `NV`, `CA`, or `US`.
 - **`confidential`** — `true` or `false`. There is no default; you state it on purpose, every time, because the system

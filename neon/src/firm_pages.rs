@@ -116,8 +116,8 @@ fn notations_index_content() -> webapp::catalog_index::CatalogIndexContent {
             notation_card(
                 "Letter",
                 "Retainer Agreement",
-                "neon_law/shared/letter.md",
-                "The sample engagement that opens a matter (`onboarding__letter`).",
+                "neon_law/shared/engagement_letter.md",
+                "The sample engagement that opens a matter (`onboarding__engagement_letter`).",
             ),
             notation_card(
                 "Letter",

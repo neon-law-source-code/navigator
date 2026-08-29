@@ -25,7 +25,7 @@ use workflows::{InMemoryRuntime, StateMachineRuntime};
 
 /// A seeded catalog retainer — has a post-questionnaire workflow spec, so
 /// `advance_to_lawyer_review` can drive a fresh notation to the gate.
-const TEMPLATE_CODE: &str = "onboarding__letter";
+const TEMPLATE_CODE: &str = "onboarding__engagement_letter";
 const KEY: &str = "api-notation-approve-test-key";
 
 struct Harness {
@@ -99,7 +99,7 @@ async fn seed_lawyer_review_notation(h: &Harness, project_id: uuid::Uuid) -> uui
     let tmpl = store::templates::resolve(&h.surreal, None, TEMPLATE_CODE)
         .await
         .unwrap()
-        .expect("seed_canonical inserts onboarding__letter");
+        .expect("seed_canonical inserts onboarding__engagement_letter");
     let notation_id = store::notations::create(
         &h.surreal,
         &store::notations::NewNotation::new(tmpl.id, client.id, project_id, "BEGIN"),

@@ -22,7 +22,7 @@ use store::test_support::mem_surreal;
 use tower::ServiceExt;
 use workflows::{InMemoryRuntime, StateMachineRuntime};
 
-const VALID_TEMPLATE: &str = include_str!("../../templates/neon_law/shared/letter.md");
+const VALID_TEMPLATE: &str = include_str!("../../templates/neon_law/shared/engagement_letter.md");
 const KEY: &str = "api-notation-intake-test-key";
 const CLIENT_EMAIL: &str = "libra@example.com";
 

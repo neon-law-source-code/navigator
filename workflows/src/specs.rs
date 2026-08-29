@@ -30,20 +30,21 @@ use crate::spec::{QuestionnaireSpec, WorkflowSpec, WorkflowSpecError};
 /// the integrity / coherence tests; the workflow spec itself now
 /// loads from [`RETAINER_INTAKE_SPEC_YAML`].
 pub const RETAINER_INTAKE_TEMPLATE: &str =
-    include_str!("../../templates/neon_law/shared/letter.md");
+    include_str!("../../templates/neon_law/shared/engagement_letter.md");
 
 /// Standalone YAML carrying both `questionnaire:` and `workflow:`
 /// blocks for the engagement-letter intake template.
-pub const RETAINER_INTAKE_SPEC_YAML: &str = include_str!("../specs/onboarding__letter.yaml");
+pub const RETAINER_INTAKE_SPEC_YAML: &str =
+    include_str!("../specs/onboarding__engagement_letter.yaml");
 
 /// Shared questionnaire/workflow every *project-scoped* engagement letter
-/// (`onboarding__letter_*`) rides via [`catalog_spec_yaml`]. It differs from
+/// (`onboarding__engagement_letter_*`) rides via [`catalog_spec_yaml`]. It differs from
 /// the generic intake spec by the `custom_single_choice__governing_law`
 /// question — the fillable governing-law clause every product letter now
 /// carries (#363). Project-scoped letters vary only in their legal prose, so one
 /// spec covers all of them rather than a per-letter copy.
 pub const RETAINER_PRODUCT_SPEC_YAML: &str =
-    include_str!("../specs/onboarding__letter_product.yaml");
+    include_str!("../specs/onboarding__engagement_letter_product.yaml");
 
 /// Welcome-email workflow spec. Lives outside [`BUNDLED_SPEC_YAML`]
 /// because the welcome flow is a notification, not a legal-document
@@ -78,7 +79,7 @@ pub fn workshop_certificate_spec() -> WorkflowSpec {
 /// callers (and `cli scaffold`) can locate the YAML by code without
 /// reaching into the filesystem.
 pub const BUNDLED_SPEC_YAML: &[(&str, &str)] = &[
-    ("onboarding__letter", RETAINER_INTAKE_SPEC_YAML),
+    ("onboarding__engagement_letter", RETAINER_INTAKE_SPEC_YAML),
     (
         "nv__llc_formation",
         include_str!("../specs/nv__llc_formation.yaml"),
@@ -140,7 +141,7 @@ pub fn bundled_spec_yaml(code: &str) -> Option<&'static str> {
 /// catalog.
 ///
 /// Most templates have their own standalone YAML in [`BUNDLED_SPEC_YAML`].
-/// A project-scoped engagement-letter variant (`onboarding__letter_<something>`)
+/// A project-scoped engagement-letter variant (`onboarding__engagement_letter_<something>`)
 /// intentionally shares the [`RETAINER_PRODUCT_SPEC_YAML`]
 /// questionnaire/workflow: its legal prose varies per matter, but the intake,
 /// fillable governing-law question, and review/signature path stay the same
@@ -148,7 +149,7 @@ pub fn bundled_spec_yaml(code: &str) -> Option<&'static str> {
 #[must_use]
 pub fn catalog_spec_yaml(code: &str) -> Option<&'static str> {
     bundled_spec_yaml(code).or_else(|| {
-        code.strip_prefix("onboarding__letter_")
+        code.strip_prefix("onboarding__engagement_letter_")
             .map(|_| RETAINER_PRODUCT_SPEC_YAML)
     })
 }
@@ -602,18 +603,18 @@ custom_questions:
         // template may still be saved under the prefix — that is what this
         // fallback serves.
         assert_eq!(
-            catalog_spec_yaml("onboarding__letter_transcript"),
+            catalog_spec_yaml("onboarding__engagement_letter_transcript"),
             Some(RETAINER_PRODUCT_SPEC_YAML)
         );
         assert_eq!(
-            catalog_spec_yaml("onboarding__letter_anything"),
+            catalog_spec_yaml("onboarding__engagement_letter_anything"),
             Some(RETAINER_PRODUCT_SPEC_YAML)
         );
         assert!(catalog_spec_yaml("does__not_exist").is_none());
         // The generic engagement letter resolves to its own registered spec, not the
         // fallback.
         assert_eq!(
-            catalog_spec_yaml("onboarding__letter"),
+            catalog_spec_yaml("onboarding__engagement_letter"),
             Some(RETAINER_INTAKE_SPEC_YAML)
         );
     }
@@ -636,7 +637,9 @@ custom_questions:
                 .and_then(serde_yaml::Value::as_str)
                 .unwrap_or_else(|| panic!("{} has no code", template.label));
 
-            if !code.starts_with("onboarding__letter_") || bundled_spec_yaml(code).is_some() {
+            if !code.starts_with("onboarding__engagement_letter_")
+                || bundled_spec_yaml(code).is_some()
+            {
                 continue;
             }
 
@@ -665,7 +668,7 @@ custom_questions:
             );
         }
 
-        // The seeded catalog carries no `onboarding__letter_*` variant, so this
+        // The seeded catalog carries no `onboarding__engagement_letter_*` variant, so this
         // loop legitimately covers nothing. It stays because the fallback
         // still serves project-scoped variants, and a future seeded one must
         // match the shared spec rather than quietly diverging from it.

@@ -10,7 +10,7 @@ Feature: Workshop "Using the Neon Law Navigator to Rapidly Solve Legal Outcomes"
 
     Project   — Cruller v. Prine (code: sample-litigation)
     Client    — the seeded client account
-    Template  — onboarding__letter (the shared engagement letter)
+    Template  — onboarding__engagement_letter (the shared engagement letter)
 
   The attorney is the actor in every When step; Neon Law Navigator is the
   instrument. Scorpio's load-bearing trust claim — the retainer is not

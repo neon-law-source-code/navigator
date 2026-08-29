@@ -25,7 +25,7 @@ use workflows::{InMemoryRuntime, StateMachineRuntime};
 /// A corpus template body — guaranteed to validate clean (CI checks it) and to
 /// open a matter as its first notation (its kind opens a matter regardless of
 /// the code it is committed under, exactly as `project_notation_create.rs` relies on).
-const VALID_TEMPLATE: &str = include_str!("../../templates/neon_law/shared/letter.md");
+const VALID_TEMPLATE: &str = include_str!("../../templates/neon_law/shared/engagement_letter.md");
 
 /// Signing key shared by the app's `SessionStore` and the bearers the tests mint.
 const KEY: &str = "api-project-notations-test-key";

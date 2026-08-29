@@ -98,7 +98,7 @@ The `navigator validate` command enforces these with the N-family notation rules
    `CA`, or `US`. A `github/` notation declares none — it is engineering intake, not legal work.
 3. **Form codes are jurisdiction-first**: `nv__llc_formation`, `us__form_990`. The filename stem, `code`, and `form`
    binding match.
-4. **Shared firm codes are role-first**: `onboarding__letter`, `offboarding__letter`.
+4. **Shared firm codes are role-first**: `onboarding__engagement_letter`, `offboarding__letter`.
 5. **Every path segment is lowercase `snake_case`**.
 
 Run it before committing:

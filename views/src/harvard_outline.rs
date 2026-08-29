@@ -481,7 +481,7 @@ mod tests {
 
     const RETAINER: &str = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../templates/neon_law/shared/letter.md"
+        "/../templates/neon_law/shared/engagement_letter.md"
     ));
     const OFFBOARDING: &str = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),

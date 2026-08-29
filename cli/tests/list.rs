@@ -156,7 +156,7 @@ async fn list_templates_prints_imported_titles() {
     assert!(out.status.success());
     let stdout = String::from_utf8_lossy(&out.stdout);
     for needle in [
-        "onboarding__letter",
+        "onboarding__engagement_letter",
         "Engagement Letter",
         "offboarding__letter",
         "Closing Letter",
@@ -244,7 +244,7 @@ async fn list_entities_includes_seeded_org_names() {
 async fn list_templates_against_a_seed_only_db_shows_the_bundled_retainer() {
     // The canonical seed pass now bundles the retainer notation
     // template (see `store::seed::seed_templates`), so a fresh
-    // seed-only DB carries exactly one row — `onboarding__letter`.
+    // seed-only DB carries exactly one row — `onboarding__engagement_letter`.
     let Some(store) = store::test_support::server_surreal(
         "test_cli_list_templates_against_a_seed_only_db_shows_the_bundled_retainer",
     )
@@ -260,7 +260,7 @@ async fn list_templates_against_a_seed_only_db_shows_the_bundled_retainer() {
     assert!(out.status.success(), "fresh-DB list must still succeed");
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
-        stdout.contains("onboarding__letter"),
+        stdout.contains("onboarding__engagement_letter"),
         "expected the seeded retainer template; got:\n{stdout}",
     );
     assert!(stdout.contains("Engagement Letter"));

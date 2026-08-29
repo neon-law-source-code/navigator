@@ -15,7 +15,7 @@ use features::journey::{answer_body, client, Journey};
 use uuid::Uuid;
 use workflows::{bundled_spec_yaml, prompt_overrides_from_yaml};
 
-const TEMPLATE_CODE: &str = "onboarding__letter";
+const TEMPLATE_CODE: &str = "onboarding__engagement_letter";
 
 #[derive(Default, World)]
 #[world(init = Self::default)]

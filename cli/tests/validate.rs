@@ -99,7 +99,7 @@ fn validate_treats_templates_path_without_machine_as_markdown() {
 #[test]
 fn validate_rejects_the_retired_public_template_shelf() {
     let dir = TempDir::new().unwrap();
-    let source = workspace_root().join("templates/neon_law/shared/letter.md");
+    let source = workspace_root().join("templates/neon_law/shared/engagement_letter.md");
     let retired = dir.path().join("templates/open_source/retainer.md");
     fs::create_dir_all(retired.parent().unwrap()).unwrap();
     fs::copy(source, &retired).unwrap();

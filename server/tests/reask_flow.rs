@@ -76,7 +76,7 @@ async fn lawyer_sends_a_retainer_back_for_changes_and_it_loops_to_review() {
     set_input(
         &c,
         "select[name='retainer_template_code']",
-        "onboarding__letter",
+        "onboarding__engagement_letter",
     )
     .await;
     submit(&c, "form.admin-form").await;

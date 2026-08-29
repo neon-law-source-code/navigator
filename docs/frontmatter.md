@@ -85,8 +85,8 @@ into a recording stage; `/lawyer/outline` shows the bundled onboarding and offbo
 ## Notation templates — the legal blueprints
 
 A notation template is the document a client eventually signs, plus the questions that fill it in and the path it walks
-to get there. Here is the real frontmatter from the shared onboarding letter, `templates/neon_law/shared/onboarding_letter.md`
-(shown without its surrounding `---` fences):
+to get there. Here is the real frontmatter from the shared onboarding letter,
+`templates/neon_law/shared/onboarding_letter.md` (shown without its surrounding `---` fences):
 
 ```yaml
 kind: onboarding

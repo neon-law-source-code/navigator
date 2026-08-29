@@ -30,8 +30,7 @@ Every legal template lives under exactly one of three shelves:
 Every template declares `jurisdiction:` using a seeded jurisdiction code from `store/seeds/Jurisdiction.yaml`. Form
 templates are stricter: their filename stem, `code`, and `form` binding must match, and that code starts with the
 jurisdiction prefix (`nv__llc_formation`, `us__form_990`, `ca__...`). A retainer may keep a runtime code such as
-`onboarding__letter` while living at an author-friendly path such as
-`templates/neon_law/shared/onboarding_letter.md`.
+`onboarding__letter` while living at an author-friendly path such as `templates/neon_law/shared/onboarding_letter.md`.
 
 ## Anatomy of a template file
 
@@ -262,9 +261,9 @@ implemented and tested, but the on-chain write itself is deferred. The chain is 
 `workflows::attest::Attestor` trait exactly as GCS is isolated behind `cloud::StorageService` — selecting Solana (or a
 second chain) is a new `impl Attestor`, never a workflow edit. The default `NullAttestor` records no transaction, so the
 row stays `pending` and no live retainer can claim an on-chain record that does not exist. The step is therefore not yet
-wired into the binding `onboarding__letter` workflow; that one-line YAML edge lands together with the
-`SolanaAttestor` (whose open questions — firm key custody, the client wallet, public-chain confidentiality of the hash,
-and finality — are decisions, not code). See `workflows::attest`.
+wired into the binding `onboarding__letter` workflow; that one-line YAML edge lands together with `SolanaAttestor`
+(whose open questions — firm key custody, the client wallet, public-chain confidentiality of the hash, and finality —
+are decisions, not code). See `workflows::attest`.
 
 `github_issue__*` is the one step in the registry that is not a legal act. It belongs to the engineering intake shelf
 (`templates/github/`), so it is the only worker step that does not sit behind `lawyer_review` — nothing it does binds a

@@ -36,8 +36,8 @@ The honesty is enforced by code, not copy. `dispatch_onchain_record` sets `statu
 returns a real `RecordedTx`; `NullAttestor` returns `None`, so the row stays `pending` with no transaction. And
 `attestor_from_env` makes the `solana` backend *error at startup* until the real implementation lands — a deployer can
 never silently believe attestations are going on-chain when they are not. This is why the step is deliberately **not yet
-wired into the binding `onboarding__letter` workflow**: a binding retainer must not route through a step
-that, in its current default, records nothing.
+wired into the binding `onboarding__letter` workflow**: a binding retainer must not route through a step that, in its
+current default, records nothing.
 
 ## What is deferred
 

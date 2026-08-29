@@ -67,8 +67,8 @@ Nesting them under a real `metadata:` key would be a breaking parser change touc
   `list`, the admin surface) and resolved only under that Project;
   [`store::templates::resolve`](../store/src/templates.rs) prefers the caller's Project, falling back to the shared row.
   Two partial unique indexes on `code` enforce the rule. The shared index keeps workspace-shared codes globally unique
-  (`nv__llc_formation`, `onboarding__letter`); the per-Project index on `project_id` and `code` lets each
-  Project reuse short codes (`amendment`, `consent`) without colliding with another Project's.
+  (`nv__llc_formation`, `onboarding__letter`); the per-Project index on `project_id` and `code` lets each Project reuse
+  short codes (`amendment`, `consent`) without colliding with another Project's.
 
 > **Jurisdiction.** Every Template declares a `jurisdiction:` code that resolves to
   [`store/seeds/Jurisdiction.yaml`](../store/seeds/Jurisdiction.yaml). Government form templates also encode the

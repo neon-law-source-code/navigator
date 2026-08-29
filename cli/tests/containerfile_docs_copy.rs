@@ -705,3 +705,71 @@ fn images_that_copy_cli_also_copy_the_root_files_it_embeds() {
         offenders.join("\n  ")
     );
 }
+
+/// `cli/src/projects/repository.rs` embeds the Project-repository review
+/// councils with `include_str!("../../../.agents/skills/council/SKILL.md")`
+/// (and its `legal-council`/`client-council` siblings) from the canonical
+/// skill catalog, which lives outside the `cli` crate directory. Any
+/// Containerfile that actually builds the `cli` binary without also staging
+/// `.agents` fails `cargo build` at `couldn't read
+/// .../.agents/skills/council/SKILL.md` — deploy run 33231322469 failed on
+/// exactly this in `Containerfile.trigger` and `Containerfile.runner`, while
+/// no PR check builds an image and so stayed green.
+///
+/// Every Containerfile stages the whole workspace (`COPY cli cli` included)
+/// to satisfy Cargo's manifest resolution, so `copies_crate(body, "cli")`
+/// alone cannot tell which images actually *compile* `cli`'s sources versus
+/// which merely need its `Cargo.toml` present as a workspace member. The
+/// `k8s`/`examples` COPY pair is the already-established, correctly-scoped
+/// signal for that: `cli` embeds both with `include_dir!` (see the comment
+/// above `COPY k8s k8s` in `Containerfile.trigger`), and only the two images
+/// that build the `cli` binary — `Containerfile.trigger` and
+/// `Containerfile.runner` — stage them.
+#[test]
+fn every_containerfile_that_builds_cli_also_copies_dot_agents() {
+    let repository_rs =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/projects/repository.rs");
+    let repo_body = fs::read_to_string(&repository_rs)
+        .unwrap_or_else(|e| panic!("read {}: {e}", repository_rs.display()));
+    assert!(
+        repo_body.contains("include_str!(\"../../../.agents/skills/council/SKILL.md\")"),
+        "{} no longer embeds the council skill; if that is deliberate, drop this guard",
+        repository_rs.display()
+    );
+
+    let dir = images_dir();
+    let entries = fs::read_dir(&dir).unwrap_or_else(|e| panic!("read {}: {e}", dir.display()));
+
+    let mut checked = 0;
+    let mut offenders = Vec::new();
+    for entry in entries {
+        let path = entry.expect("dir entry").path();
+        let name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or_default()
+            .to_string();
+        if !name.starts_with("Containerfile") {
+            continue;
+        }
+        let body =
+            fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        if copies_crate(&body, "k8s") && copies_crate(&body, "examples") {
+            checked += 1;
+            if !copies_crate(&body, ".agents") {
+                offenders.push(name);
+            }
+        }
+    }
+
+    assert!(
+        checked > 0,
+        "no Containerfiles copy both `k8s` and `examples` — this guard has lost its subject"
+    );
+    assert!(
+        offenders.is_empty(),
+        "these Containerfiles build `cli` but not `.agents`, so the build fails on its \
+         include_str! of `.agents/skills/*/SKILL.md`; add `COPY .agents .agents`: \
+         {offenders:?}"
+    );
+}

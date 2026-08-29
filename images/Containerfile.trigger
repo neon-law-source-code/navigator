@@ -84,6 +84,10 @@ COPY docs              docs
 # missing directory). Containerfile.runner already stages both trees.
 COPY k8s               k8s
 COPY examples          examples
+# The Project-repository skill sync in cli/src/projects/repository.rs
+# embeds the review-council skills with include_str! from the canonical
+# `.agents/skills/` catalog, so that tree must be staged too.
+COPY .agents            .agents
 
 RUN cargo build --release --target x86_64-unknown-linux-musl -p "${CRATE}" --bin "${BIN}" \
     && cp "target/x86_64-unknown-linux-musl/release/${BIN}" /trigger-bin

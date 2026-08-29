@@ -471,7 +471,7 @@ Imbue markdown with a ton of rules. Incremental progress.
 
 ```bash
 navigator validate --help
-Validate every Markdown, event, and YAML file under `<dir>` (default `.`) against the Neon Law Navigator rule set
+Validate Markdown and YAML files in `<dir>` (default `.`).
 
 Usage: navigator validate [OPTIONS] [DIR]
 
@@ -479,9 +479,8 @@ Arguments:
   [DIR]  Directory to walk [default: .]
 
 Options:
-      --fix                        Apply every safe-by-construction rule autofix (whitespace, ATX heading spacing, blockquote spacing) to the files in place, then re-validate. Diagnostic-only rules (N-family notation-template, M024 duplicate headings, M026 trailing punctuation) are still reported but not auto-fixed.
-      --question-codes-from-store  Load the stored question-code registry so N104 can reject codes outside it, instead of validating against the compiled-in canonical set. The registry lives in `SurrealDB`, so the codes are read from the `NAVIGATOR_SURREAL_*` connection. An unreachable store warns and falls back to the canonical set rather than failing the lint
-  -h, --help                       Print help
+      --fix   Apply every safe-by-construction rule autofix (whitespace, ATX heading spacing, blockquote.
+  -h, --help  Print help
 ```
 
 ---

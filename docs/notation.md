@@ -57,10 +57,10 @@ Nesting them under a real `metadata:` key would be a breaking parser change touc
 
 > **Storage.** The markdown body lives in [`cloud::StorageService`](../cloud/) like every other artifact: the
   `templates.body` TEXT column is gone; `templates.asset_id` references an [Asset](glossary.md#asset) holding the bytes.
-  Read the body via [`store::templates::body`](../store/src/templates.rs); the seed and `navigator db catalog-seed`
-  paths ingest it (sha-dedup). `catalog-seed` creates only workspace-shared rows (`project_id IS NULL`) and question
-  catalog rows; it never creates a Project or a client-facing Notation. The Project's archive folder plays no role —
-  Templates are workspace-scoped code-like assets governed by git, not by the per-Project archive.
+  Read via [`store::templates::body`](../store/src/templates.rs); the seed and `navigator site seed` paths ingest it
+  (sha-dedup). `site seed` creates only workspace-shared rows (`project_id IS NULL`) and question catalog rows; it never
+  creates a Project or a client-facing Notation. Templates are workspace-scoped code-like assets governed by git, not by
+  the per-Project archive.
 
 > **Workspace-shared vs project-scoped.** A Template is workspace-shared (`templates.project_id IS NULL`, the public
   catalog default) or scoped to a single Project. Project-scoped rows are hidden from the public Template list (cli

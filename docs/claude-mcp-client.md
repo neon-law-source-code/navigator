@@ -47,7 +47,7 @@ and execute.
 ### 1. Log in to the deployment
 
 ```bash
-navigator login --host www.neonlaw.com
+navigator site login --host www.neonlaw.com
 ```
 
 Browser-loopback flow; the token lands at `~/.navigator.json`, mode `0600`, and lasts one hour. The account must resolve
@@ -158,7 +158,7 @@ Missing forge configuration skips that step rather than failing the open, so an 
 the coordinate with no repository behind it yet. An operator reconciles later:
 
 ```bash
-navigator projects surfaces reconcile --project <code>
+navigator site projects surfaces reconcile --project <code>
 ```
 
 ## Limits, stated rather than discovered
@@ -166,8 +166,8 @@ navigator projects surfaces reconcile --project <code>
 - **stdio is per-laptop.** This serves Claude Code and Claude Desktop. It does not serve claude.ai on the web or mobile,
   which would need OAuth protected-resource metadata and dynamic client registration.
 - **The token lasts one hour** (`CLI_SESSION_TTL_SECS`). When it ages out, calls come back as a tool error. Run
-  `navigator login` again and retry — the credential is read from disk per call, so a re-login lands without restarting
-  the server or the client.
+  `navigator site login` again; the credential is read from disk per call, so re-login lands without restarting the
+  server or the client.
 - **Registering before logging in is fine.** The server starts, lists its tools, and explains the missing login on the
   first call. It does not refuse to start: a stdio server that exits has no way to tell the client why, so the client
   would show a dead entry and no reason.

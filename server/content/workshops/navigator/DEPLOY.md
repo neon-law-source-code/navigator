@@ -1967,34 +1967,37 @@ from the CLI using the matter code:
 navigator site login --host www.your-domain.example    # opens the browser → ~8h token, stored 0600 (~/.navigator.json)
 navigator site whoami                                  # "you@example.com (admin) — expires in 7h52m"
 navigator site projects list                           # GET /app/projects.csv → table (or --json)
-navigator site project open estate-of-doe              # opens the existing matter workbench if visible
+navigator site projects open estate-of-doe              # opens the existing matter workbench if visible
 navigator site notation create onboarding__retainer \
   --project estate-of-doe --client-email jane@example.com
-navigator site retainer approve <notation-id>          # renders + parks the retainer PDF (no envelope yet)
+navigator site notation approve <notation-id>          # renders + parks the retainer PDF (no envelope yet)
 navigator site notation status <notation-id>           # state + signature request id + document_ready
-navigator site retainer send <notation-id>             # dispatches one real envelope (409 until document_ready)
-navigator site retainer send <notation-id>             # idempotent — reuses the same envelope, no second send
 navigator site logout
 ```
 
 Use that same sequence to **verify a fresh install end to end** — it is the smallest real exercise of the durable
 pipeline after the lawyer UI has opened the matter. Point the client email at an inbox you control (never a third party
-— `send` transmits a binding engagement letter), and walk the three assertions: `retainer approve` should leave the
-notation parked at `generate_pdf__retainer_pdf`; `notation status` should flip to `document_ready:true` once the worker
-has rendered and persisted `document.pdf` (cross-check that the rendered object actually landed in your private
-documents bucket with `gcloud storage ls gs://your-project-id-documents/notations/<notation-id>/`); and `retainer send`
-should report `sent_for_signature__pending` with a signature request id, then reuse that same envelope on a second run.
-When you sign or decline, the inbound webhook should log a HMAC-verified `esignature webhook: signature event` in the
-`navigator-web` pod. Decline or void the test envelope afterward so no live engagement lingers against a real inbox.
+— the notation workflow transmits a binding engagement letter), and walk the three assertions: `notation approve` should
+leave the notation parked at `generate_pdf__retainer_pdf`; `notation status` should flip to `document_ready:true` once
+the worker has rendered and persisted `document.pdf` (cross-check that the rendered object actually landed in your
+private documents bucket):
+
+```text
+gcloud storage ls gs://your-project-id-documents/notations/<notation-id>/
+```
+
+Signature dispatch is handled by the site's notation workflow after the document is ready. When you sign or decline, the
+inbound webhook should log a HMAC-verified `esignature webhook: signature event` in the `navigator-web` pod. Decline or
+void the test envelope afterward so no live engagement lingers against a real inbox.
 
 After a single `login`, `--host` is optional — the one stored host is used — so the later commands stay short. Every
 command is a thin client over a route `web` already serves, sent with `Authorization: Bearer <token>`: your instance
 resolves that token back into your session and runs the same handler the browser does, so the `lawyer_review` gate, the
-role check, and the `authored_by` provenance all hold unchanged. The send is a durable two-step: `retainer approve`
-renders + parks the PDF on the worker, and the separate `retainer send` dispatches the envelope only after confirming
-the PDF landed (`document_ready:true`), returning a `409` with a JSON reason — never an opaque 500 — until then. Sending
-a retainer for signature stays a deliberate authenticated human command (`retainer send`) — it is never exposed as an
-agent-routable tool. The full per-subcommand reference is the `cli` crate's `README.md` in the source tree.
+role check, and the `authored_by` provenance all hold unchanged. The send is a durable two-step: `notation approve`
+renders + parks the PDF on the worker, and the notation workflow dispatches the envelope only after confirming the PDF
+landed (`document_ready:true`). Sending a retainer for signature stays a deliberate authenticated human action — it is
+never exposed as an agent-routable tool. The full per-subcommand reference is the `cli` crate's `README.md` in the
+source tree.
 
 ### Make it yours — white-label under your own brand
 
@@ -2003,8 +2006,8 @@ forking source by describing the organization once in a private `navigator.yaml`
 
 ```bash
 cp navigator.example.yaml navigator.yaml   # then edit: names, emails, domain, logos
-cargo run -p cli -- ops rebrand build --out .devx/brand-bundle
-cargo run -p cli -- ops rebrand verify --dir .devx/brand-bundle
+cargo run -p cli -- ops rebrand build --out .devx/brand-bundle   # deprecated compatibility command
+cargo run -p cli -- ops rebrand verify --dir .devx/brand-bundle   # deprecated compatibility command
 set -a; source .devx/env; set +a                # object storage and the rest of the runtime env
 NAVIGATOR_CUSTOM_BRANDING=.devx/brand-bundle cargo run -p neon
 ```

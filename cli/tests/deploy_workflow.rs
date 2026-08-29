@@ -598,6 +598,69 @@ fn the_public_host_image_builds_on_the_blacksmith_four_vcpu_runner() {
     }
 }
 
+/// `publish-service` recompiles the same Containerfile the `build` job does,
+/// so it needs the same machine and the same clock.
+///
+/// The two jobs feed `images/Containerfile.neon` different inputs — `build`
+/// stubs `server/public` for the KIND gate — so `publish-service` cannot read
+/// `build`'s cache and always compiles the workspace cold. That is the whole
+/// reason its `neon-server` leg carries no `ci_cache_scope`. A cold compile is
+/// exactly the work the four-vCPU guard above exists for, and this leg was left
+/// on the free two-vCPU `ubuntu-latest` machine anyway: run 33256595378 built
+/// the identical image in 21m0s under `build` and 44m17s here, then died 37
+/// seconds into the alias step on a 45-minute cap. It had been landing inside
+/// that cap by seconds for a month — 44m35s, 44m56s, 44m12s — so the cap was
+/// not detecting a wedge, it was rationing a build.
+///
+/// Both halves are asserted together because either alone leaves the release
+/// one slow minute from losing its `navigator-web` alias.
+#[test]
+fn the_public_host_image_publishes_on_the_same_runner_and_clock_as_it_builds() {
+    let workflow: serde_yaml::Value =
+        serde_yaml::from_str(&deploy_workflow()).expect("deploy.yml parses as YAML");
+    let build = &workflow["jobs"]["build"];
+    let publish = &workflow["jobs"]["publish-service"];
+
+    let matrix = publish["strategy"]["matrix"]["include"]
+        .as_sequence()
+        .expect("the publish-service job must declare an include matrix");
+    let leg = matrix
+        .iter()
+        .find(|leg| leg["image"].as_str() == Some("neon-server"))
+        .expect("the publish-service matrix must include neon-server");
+    assert_eq!(
+        leg["runner"].as_str(),
+        Some("blacksmith-4vcpu-ubuntu-2404"),
+        "publish-service compiles neon-server cold from the same Containerfile `build` does, so \
+         it must hold the same four-vCPU Blacksmith runner rather than a free two-vCPU machine"
+    );
+
+    for leg in matrix
+        .iter()
+        .filter(|leg| leg["image"].as_str() != Some("neon-server"))
+    {
+        assert_eq!(
+            leg["runner"].as_str(),
+            Some("ubuntu-latest"),
+            "{:?} reads a warm cache and must not hold a metered runner",
+            leg["image"].as_str().unwrap_or("?")
+        );
+    }
+
+    let build_timeout = build["timeout-minutes"]
+        .as_u64()
+        .expect("the build job must declare timeout-minutes");
+    let publish_timeout = publish["timeout-minutes"]
+        .as_u64()
+        .expect("the publish-service job must declare timeout-minutes");
+    assert!(
+        publish_timeout >= build_timeout,
+        "publish-service compiles what build compiles and then pushes it, so its \
+         {publish_timeout}-minute cap must not sit below build's {build_timeout}-minute one — a \
+         cap a successful build routinely finishes inside by seconds detects no wedge"
+    );
+}
+
 /// `navigator-web` is a TAG on the image `neon-server`'s leg builds, never a
 /// second build of it.
 ///

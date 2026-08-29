@@ -1566,10 +1566,24 @@ jobs:
       contents: read
       packages: write
     # Cold image build + registry push; cap it so a stuck registry/build can't
-    # hang the release indefinitely. A warm rebuild reads the `build` stage's
-    # cache and is far cheaper, so 45m leaves wide headroom while still
-    # catching a genuinely wedged build.
-    timeout-minutes: 45
+    # hang the release indefinitely.
+    #
+    # 90 and not 45, matching `build`. The 45 assumed a warm rebuild reading the
+    # `build` stage's cache, and the `neon-server` leg is the one leg that can
+    # never be warm — it carries no `ci_cache_scope` on purpose (see its matrix
+    # note), so it compiles the whole workspace cold every release. That made 45
+    # a ration rather than a wedge detector. The four releases before
+    # 26.8.30-rc.1 landed at 44m35s, 42m49s, 44m56s, and 44m12s — one of them
+    # four seconds inside the cap — and then run 33256595378 took 45m23s and was
+    # killed 37 seconds into the alias step BELOW, after the build had already
+    # succeeded and pushed. So `navigator-web:26.8.30-rc.1` was never created,
+    # `navigator-web:latest` kept resolving to the previous release's manifest,
+    # and the `test "${src}" = "${dst}"` guard that exists to catch exactly that
+    # never got to run.
+    #
+    # A cap this leg finishes inside by seconds detects nothing. Give it the
+    # same room `build` has and let the runner below make it fast.
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -1587,10 +1601,24 @@ jobs:
           # 21-minute large-runner bill every night. `alias` instead points the
           # extra repository at the manifest this leg just pushed, so the two
           # tags are identical by construction rather than by coincidence.
+          #
+          # Four vCPU, for the reason `build`'s leg has it: this compiles the
+          # full Rust and Dioxus application, and it does so COLD. Run
+          # 33256595378 built the identical image from the identical
+          # Containerfile in 21m0s under `build` on the Blacksmith machine and
+          # 44m17s here on the free two-vCPU `ubuntu-latest` one. `build` was
+          # moved off `ubuntu-latest` for this exact failure (run 32185875546);
+          # this leg was left behind. The cheaper runner was not buying a
+          # cheaper release, it was buying a release that died on the clock.
+          #
+          # Blacksmith bills linearly in cores, so the metered time is roughly
+          # unchanged while the wall clock halves. Every other leg here reads a
+          # warm cache in under three minutes and stays on `ubuntu-latest`,
+          # which is free on a public repository.
           - image: neon-server
             dockerfile: images/Containerfile.neon
             alias: navigator-web
-            runner: ubuntu-latest
+            runner: blacksmith-4vcpu-ubuntu-2404
           # `ci_cache_scope` names the `build`-stage Actions cache this leg may
           # additionally read, so a tag run compiles these crates once instead
           # of twice. Set it only where the two jobs feed the builder stage

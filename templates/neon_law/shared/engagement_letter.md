@@ -7,18 +7,17 @@ jurisdiction: NV
 confidential: true
 output: letter
 prompts:
-  client: Who is the Client's directly responsible individual, the one person the Firm takes instructions from?
+  client_dri: Who is the Client's directly responsible individual, the one person the Firm takes instructions from?
   lawyer_dri: Which lawyer is directly responsible for this engagement?
 custom_questions:
   engagement_scope:
     prompt: >-
-      In a sentence or two, what is the minimum scope of this engagement — the work the Firm is committing to
-      right now? Everything else is added later in writing.
+      In a sentence or two, what is the minimum scope of this engagement.
   engagement_start_date:
     prompt: When does this engagement begin?
   governing_law:
     prompt: >-
-      Which state's law governs this engagement? Nevada by default; choose California or Washington only if
+      Which state's law governs this engagement? Nevada by default; choose other state we practice in if
       the Client is located there.
     choices:
       nevada: Nevada
@@ -26,8 +25,8 @@ custom_questions:
       washington: Washington
 questionnaire:
   BEGIN:
-    _: entity__company
-  entity__company:
+    _: entity
+  entity:
     _: address__principal_office
   address__principal_office:
     _: person__client
@@ -65,7 +64,7 @@ workflow:
 
 {{custom_datetime__engagement_start_date}}
 
-{{entity__company.name}}\
+{{entity.name}}\
 {{address__principal_office}}
 
 Attn: {{person__client.name}}
@@ -75,7 +74,7 @@ Re: Engagement to Provide Legal Services — {{project__engagement.name}}
 Dear {{person__client.name}}:
 
 Thank you for engaging the Firm. This letter (the "Engagement Letter") sets out the terms on which the Firm will
-represent {{entity__company.name}} (the "Client" or "you") in the matter described below. It is deliberately short. It
+represent {{entity.name}} (the "Client" or "you") in the matter described below. This
 says what we are doing now, who is accountable on each side, how you reach us, how we bill, and how we resolve a
 disagreement if one arises. Everything particular to your matter is agreed in writing as we go, and each of those
 writings sits on top of this letter rather than replacing it.
@@ -84,7 +83,7 @@ If these terms are acceptable, please sign below and return a copy.
 
 ## I. Client and scope of the engagement
 
-For this engagement the Firm's client is {{entity__company.name}}. Unless the Firm agrees in a separate signed writing,
+For this engagement the Firm's client is {{entity.name}}. Unless the Firm agrees in a separate signed writing,
 this engagement does not make any affiliate, stockholder, investor, officer, director, employee, or other related person
 or entity a client of the Firm.
 
@@ -97,18 +96,27 @@ the Firm and the Client later agree to in writing. Work outside it — a new mat
 requires a separate written engagement or a written amendment to this one signed by both of us. We would rather add
 scope in a two-line email exchange than have you assume we are already handling something we are not.
 
+This letter serves the Matter whether it is transactional or litigation. **Where the Matter is transactional**, the
+scope covers the drafting, negotiation, review, and counseling the description above calls for. **Where the Matter is a
+dispute**, the scope covers the ordinary work of prosecuting or defending it as described above — strategy, pleadings,
+discovery, ordinary motion practice, settlement negotiation, and coordination with any co-counsel or vendors the Client
+authorizes — and the fee writing described in Section II states which litigation events, such as an evidentiary-hearing
+day or a trial day, carry their own fee.
+
 Unless separately agreed in writing, this engagement does not include tax, accounting, financial, investment, valuation,
 insurance-coverage, or public-relations advice, and does not extend to a matter unrelated to the Matter described above.
 
 ## II. Fees, costs, and invoices
 
 Fees for this engagement are set in a writing the Firm and the Client agree to — a flat monthly fee, an hourly rate, a
-contingency, or a combination — and that writing controls the fee. **The Firm will not begin work before that writing is
-signed**, so you always know the basis on which you are being charged before anything is billed. Where a fee is
-contingent on a recovery, the rate is not set by law and is negotiable between the Firm and the Client, and the
-contingency is written out in its own signed fee agreement stating the percentage, how the fee is calculated, and how
-litigation costs affect what you ultimately owe. Advance fees are handled under the applicable client-trust rules, and
-any unearned portion is refundable if the representation ends or the agreed services are not completed.
+contingency, per-day fees for named litigation events such as an evidentiary hearing or a trial day, or a combination —
+and that writing controls the fee. **The Firm will not begin work before that writing is signed**, so you always know
+the basis on which you are being charged before anything is billed. Where a fee is contingent on a recovery, the rate is
+not set by law and is negotiable between the Firm and the Client, and the contingency is written out in its own signed
+fee agreement stating the percentage, how the recovery is defined and the fee calculated — including how consideration
+received other than in cash is handled — and how litigation costs affect what you ultimately owe. Advance fees are
+handled under the applicable client-trust rules, and any unearned portion is refundable if the representation ends or
+the agreed services are not completed.
 
 > **A. Costs.** Fees do not include filing fees, expert fees, mediator fees, court reporter and transcript costs,
 > e-discovery and vendor costs, travel expenses, or other third-party costs. Those are passed through at cost and are
@@ -187,21 +195,27 @@ you acknowledge that our lawyers share matter information among themselves for t
 ## VI. What we each do
 
 You agree to provide accurate and complete information, respond to reasonable requests, and make the decisions the
-representation needs. The Client agrees to pay fees and authorized expenses when due. The Firm's advice depends on the
-information available to it when the advice is given.
+representation needs. Where the Matter is in litigation or a dispute is reasonably anticipated, you also agree to
+preserve potentially relevant documents and information, and to appear for depositions and other proceedings the Matter
+requires. The Client agrees to pay fees and authorized expenses when due. The Firm's advice depends on the information
+available to it when the advice is given.
 
 The Firm has not made and cannot make any promise, assurance, or guarantee about the outcome of any matter, negotiation,
 proceeding, settlement, or business objective.
 
 ## VII. Confidentiality, your file, and technology
 
-The Firm maintains your confidences as law and the applicable professional rules require.
+The Firm maintains your confidences as law and the applicable professional rules require. That duty does not vary with
+the kind of Matter: what you tell us in a negotiation is held as closely as what you tell us in a dispute.
 
-The Firm may use artificial-intelligence and other technology tools in providing legal services, subject to its
-professional obligations, attorney supervision, and commercially reasonable security and confidentiality safeguards. The
-Firm remains responsible for the accuracy, confidentiality, and professional review of its work. Your consent to that
-use waives no privilege and does not release the Firm from responsibility for selecting, configuring, supervising, or
-using the technology.
+The Firm may use secure cloud, document-management, research, communication, automation, and artificial-intelligence
+tools in providing legal services, subject to its professional obligations, attorney supervision, and commercially
+reasonable security and confidentiality safeguards. Where a technology vendor offers the option, the Firm selects
+settings that do not permit your information to be used to train the vendor's public or generally available models. No
+AI output substitutes for counsel's professional judgment: a lawyer reviews material AI-assisted work before it is
+relied on for legal advice, a filing, or a substantive external communication. The Firm remains responsible for the
+accuracy, confidentiality, and professional review of its work. Your consent to that use waives no privilege and does
+not release the Firm from responsibility for selecting, configuring, supervising, or using the technology.
 
 The Firm keeps your complete matter file — every document, signed agreement, and the privileged correspondence we
 exchange with you — for ten years after your matter closes. You may request a copy at any point in that period. After

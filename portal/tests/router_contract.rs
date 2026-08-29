@@ -60,6 +60,7 @@ const CONTRACT: &[(&str, Access)] = &[
     // `portal/tests/project_portal_route.rs`.
     ("/app/projects/some-code/portal", Access::ProtectedHuman),
     ("/app/lawyer", Access::ProtectedHuman),
+    ("/app/outline", Access::ProtectedHuman),
     ("/app/admin", Access::ProtectedHuman),
     // The Owner/Admin matter directory (ENG-221). Listed beside the desk root
     // rather than inferred from it: which authenticated tiers reach it is the

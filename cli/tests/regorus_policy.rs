@@ -136,12 +136,17 @@ fn regorus_matches_every_checked_in_policy_decision() {
     //   Clerk, and client on those same paths.
     // 379 + 4 = 383.
     //
-    // + 3 for the Harvard-outline narration stage at `/app/outline`: Lawyer
-    //   is admitted, while Clerk and Client are denied.
-    // 383 + 3 = 386.
+    // − 2 for unmounting the Harvard-outline stage at `/lawyer/outline`.
+    // 383 remains the last listing-and-prefix inventory before the `/app`
+    // outline catalog.
+    //
+    // + 5 for `/app/outline` (Lawyer admitted, Clerk/client/anonymous denied)
+    // and the matter-bound outline path under `/app/projects` (client admitted
+    // by the ENG-81 prefix; the handler hides it from a Clerk).
+    // 383 + 5 = 388.
     assert_eq!(
         test_names.len(),
-        386,
+        388,
         "the policy decision inventory changed; review every new or removed rule"
     );
 

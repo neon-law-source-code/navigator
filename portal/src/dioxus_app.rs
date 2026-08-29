@@ -845,9 +845,15 @@ pub fn lawyer_dashboard_router(
         .route_layer(from_fn_with_state(auth, crate::auth::require_auth))
 }
 
-/// The Harvard-outline narration stage. A lawyer-only recording surface for
-/// bundled templates; drafts on disk go through `navigator template narrate`.
+/// The bundled Harvard-outline catalog. Lawyer-tier recording surface for
+/// templates compiled in at boot; drafts on disk go through
+/// `navigator template narrate`. Mounted under `/app` so the page wears the
+/// authenticated navbar and footer.
 pub const APP_OUTLINE_PATH: &str = "/app/outline";
+
+/// One notation's Harvard outline on its matter. Anyone on the matter except
+/// Clerk may read it; the handler, not this path, makes that split.
+pub const NOTATION_OUTLINE_PATH: &str = "/app/projects/{project_code}/{notation_id}/outline";
 
 /// The gated Dioxus outline stage. Bundled template bodies are compiled in, so
 /// the page does not read the store — it is a teaching/recording surface, not a
@@ -874,6 +880,42 @@ pub fn harvard_outline_router(
         .with_state(FullstackState::new(
             cfg,
             webapp::harvard_outline::OutlineStage,
+        ))
+        .route_layer(from_fn_with_state(
+            (sessions, policy),
+            crate::policy::require_policy,
+        ))
+        .route_layer(from_fn_with_state(auth, crate::auth::require_auth))
+}
+
+/// The gated Dioxus notation outline. Person-scoped like a filed document:
+/// the loader runs `matter_viewer` and hides the letter from a Clerk.
+pub fn notation_outline_router(
+    surreal: store::surreal::SurrealDb,
+    storage: std::sync::Arc<dyn cloud::StorageService>,
+    sessions: crate::session::SessionStore,
+    policy: crate::policy::PolicyClient,
+    auth: crate::auth::AuthConfig,
+) -> Router {
+    let cfg = ServeConfig::new().context_providers(std::sync::Arc::new(vec![
+        Box::new(move || Box::new(surreal.clone()) as Box<dyn std::any::Any>)
+            as Box<dyn Fn() -> Box<dyn std::any::Any> + Send + Sync>,
+        Box::new(move || Box::new(storage.clone()) as Box<dyn std::any::Any>)
+            as Box<dyn Fn() -> Box<dyn std::any::Any> + Send + Sync>,
+    ]));
+
+    Router::<FullstackState>::new()
+        .route(
+            NOTATION_OUTLINE_PATH,
+            get(render_handler)
+                .layer(from_fn(inject_viewer_role))
+                .layer(from_fn(inject_app_brand_mark))
+                .layer(from_fn(inject_person_id))
+                .layer(from_fn(dioxus_document_head)),
+        )
+        .with_state(FullstackState::new(
+            cfg,
+            webapp::notation_outline::NotationOutline,
         ))
         .route_layer(from_fn_with_state(
             (sessions, policy),

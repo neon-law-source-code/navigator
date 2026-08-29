@@ -632,7 +632,8 @@ The numbering used on motions and contracts so a provision is addressable by pat
 are Roman numerals (`I.`, `II.`) on contracts and onboarding letters, or Arabic numerals (`1.`, `2.`) in motion
 practice. Lettered subsections (`A.`, `B.`) are Markdown block quotes. `views::harvard_outline` parses that shape into
 narration units; `navigator template narrate` writes a stage a lawyer can step through while recording, and
-`/app/outline` shows the bundled onboarding and offboarding letters on the same stage (`?doc=`).
+`/app/outline` shows the bundled onboarding and offboarding letters on the same stage (`?doc=`). A notation the firm
+has given a client is the same stage at `/app/projects/{code}/{notation_id}/outline`.
 
 - Parser: [`views::harvard_outline`](../views/src/harvard_outline.rs)
 - How to author: [`notation-authoring.md`](notation-authoring.md#harvard-outline)

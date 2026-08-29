@@ -1268,6 +1268,13 @@ pub fn bootstrap(
         state.policy.clone(),
         state.auth.clone(),
     );
+    let dioxus_notation_outline = dioxus_app::notation_outline_router(
+        state.surreal.clone(),
+        state.storage.clone(),
+        state.sessions.clone(),
+        state.policy.clone(),
+        state.auth.clone(),
+    );
     let dioxus_playbooks = dioxus_app::sortable_admin_listing_router(
         dioxus_app::LAWYER_PLAYBOOKS_PATH,
         webapp::playbooks::LawyerPlaybookList,
@@ -1616,6 +1623,7 @@ pub fn bootstrap(
         // replacing the dashboard.
         dioxus_lawyer_dashboard,
         dioxus_harvard_outline,
+        dioxus_notation_outline,
         dioxus_playbooks,
         dioxus_playbook_new,
         dioxus_playbook_edit,

@@ -9,6 +9,13 @@
 //! duplicates it), and a missing offboarding letter still carries its own
 //! warning badge. These tests pin both the pure rule
 //! (`store::projects::matter_flags`) and the rendered list.
+//!
+//! **An artifact clears a flag; a walk never does.** A notation row means
+//! somebody opened a questionnaire walk, not that it produced anything, so the
+//! flag clears only on a classified `assets` row or on a walk that actually
+//! rendered its instruments. The tests below keep those two apart
+//! deliberately: `notation()` opens a walk and leaves it at `BEGIN`,
+//! `walk_that_produced_an_instrument()` runs it far enough to file a draft.
 
 use std::sync::Arc;
 
@@ -92,9 +99,9 @@ fn an_open_matter_with_its_onboarding_letter_is_the_green_on_file_state() {
 /// The green state names where the paperwork is, not what condition the
 /// representation is in.
 ///
-/// `matter_lifecycle_sets` matches a notation or asset row by its declared
-/// kind and reads no signature state — neither query filters on state at all —
-/// so the only fact established is that a row exists. A status word here
+/// `matter_lifecycle_sets` matches an artifact by its declared kind and reads
+/// no signature state, so the only fact established is that the paperwork
+/// exists — never that anyone executed it. A status word here
 /// ("live", "active", "in good standing") would tell a lawyer scanning the
 /// Projects list that the matter is properly papered on evidence that shows
 /// nothing of the kind, and the yellow state's converse would carry the same
@@ -343,12 +350,16 @@ async fn a_matter_closed_on_a_bespoke_offboarding_code_still_clears_the_flag() {
     .unwrap()
     .into_model();
 
-    store::notations::create(
+    let notation_id = store::notations::create(
         &surreal,
         &store::notations::NewNotation::new(bespoke.id, person.id, matter, "BEGIN"),
     )
     .await
-    .unwrap();
+    .unwrap()
+    .id;
+    // The classifier, not the walk's progress, is what this test pins — so give
+    // the walk its produced instrument and leave only the `kind` question open.
+    drafted_instrument(&surreal, notation_id, "offboarding_letter").await;
 
     let projects = vec![store::projects::find_by_id(&surreal, matter)
         .await
@@ -442,10 +453,13 @@ async fn an_uploaded_offboarding_asset_clears_the_closing_flag_with_no_notation_
 }
 
 #[tokio::test]
-async fn a_notation_alone_still_clears_the_flags_with_no_asset_present() {
-    // The regression the asset fold must not introduce: a matter opened and
-    // closed purely through the questionnaire walk, with no uploaded asset
-    // at all, must clear exactly as it did before this fold existed.
+async fn a_walk_that_produced_its_instruments_clears_the_flags_with_no_asset_present() {
+    // The regression neither the asset fold nor the artifact predicate may
+    // introduce: a matter opened and closed purely through the questionnaire
+    // walk, with no uploaded asset at all, still clears — so long as the walk
+    // actually produced something. The intake-driven estate onboarding files
+    // its instruments as `review_documents` rows rather than one rendered
+    // letter, so the asset lane cannot see them and this lane must.
     let (_app, surreal) = build_app().await;
     let person = store::persons::create(
         &surreal,
@@ -454,17 +468,98 @@ async fn a_notation_alone_still_clears_the_flags_with_no_asset_present() {
     .await
     .unwrap();
     let matter = project(&surreal, "Notation-only matter", "closed").await;
-    notation(&surreal, matter, person.id, "onboarding__retainer").await;
-    notation(&surreal, matter, person.id, "offboarding__letter").await;
+    walk_that_produced_an_instrument(&surreal, matter, person.id, "onboarding__retainer").await;
+    walk_that_produced_an_instrument(&surreal, matter, person.id, "offboarding__letter").await;
 
     let (has_engagement, has_closing) = lifecycle_sets_for(&surreal, matter).await;
     assert!(
         has_engagement,
-        "a matter-opening notation must still clear the engagement flag"
+        "a matter-opening walk that produced its instrument must clear the engagement flag"
     );
     assert!(
         has_closing,
-        "a matter-closing notation must still clear the closing flag"
+        "a matter-closing walk that produced its instrument must clear the closing flag"
+    );
+}
+
+/// **The defect.** An onboarding walk opened and abandoned at `BEGIN` produced
+/// no document, signed nothing, and filed nothing — so it must not clear the
+/// engagement flag.
+///
+/// This was a silent false positive: the matter read as papered, and nothing
+/// else on the screen contradicted it, because the document that would have
+/// contradicted it did not exist. A lawyer scanning for matters that still
+/// needed an engagement letter could not see this one.
+///
+/// Asserted on the flag values, never on the absence of a rendered string, so
+/// a rename cannot leave this passing vacuously.
+#[tokio::test]
+async fn an_onboarding_walk_abandoned_at_begin_does_not_clear_the_engagement_flag() {
+    let (_app, surreal) = build_app().await;
+    let person = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::new("Abandoned", "abandoned@example.com"),
+    )
+    .await
+    .unwrap();
+    let matter = project(&surreal, "Abandoned onboarding walk", "open").await;
+    notation(&surreal, matter, person.id, "onboarding__retainer").await;
+
+    let (has_engagement, has_closing) = lifecycle_sets_for(&surreal, matter).await;
+    assert!(
+        !has_engagement,
+        "an onboarding walk abandoned at BEGIN produced no document, so it must not clear \
+         the engagement flag — a never-papered matter reporting as papered is the defect"
+    );
+    assert!(
+        !has_closing,
+        "an abandoned onboarding walk must not clear the closing flag either"
+    );
+}
+
+/// The mirror on the closing side: an offboarding walk opened and dropped
+/// leaves the closed matter still owing its letter.
+#[tokio::test]
+async fn an_offboarding_walk_abandoned_at_begin_does_not_clear_the_closing_flag() {
+    let (_app, surreal) = build_app().await;
+    let person = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::new("Dropped", "dropped@example.com"),
+    )
+    .await
+    .unwrap();
+    let matter = project(&surreal, "Abandoned offboarding walk", "closed").await;
+    notation(&surreal, matter, person.id, "offboarding__letter").await;
+
+    let (_, has_closing) = lifecycle_sets_for(&surreal, matter).await;
+    assert!(
+        !has_closing,
+        "an offboarding walk abandoned at BEGIN produced no letter, so the closed matter \
+         must still report the gap"
+    );
+}
+
+/// An abandoned walk does **not** re-break the upload lane. A matter whose
+/// walk was dropped but whose signed letter was uploaded and classified still
+/// clears — the fix narrows what a *walk* proves, never what an upload proves.
+#[tokio::test]
+async fn an_upload_still_clears_the_flag_on_a_matter_whose_walk_was_abandoned() {
+    let (_app, surreal) = build_app().await;
+    let storage = asset_storage("abandoned-walk-plus-upload").await;
+    let person = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::new("Both", "both@example.com"),
+    )
+    .await
+    .unwrap();
+    let matter = project(&surreal, "Abandoned walk with upload", "open").await;
+    notation(&surreal, matter, person.id, "onboarding__retainer").await;
+    upload(&surreal, &storage, matter, "engagement.pdf", "onboarding").await;
+
+    let (has_engagement, _) = lifecycle_sets_for(&surreal, matter).await;
+    assert!(
+        has_engagement,
+        "a classified upload must clear the engagement flag regardless of the walk's state"
     );
 }
 
@@ -589,12 +684,15 @@ async fn project(surreal: &store::surreal::SurrealDb, name: &str, status: &str) 
     .id
 }
 
+/// An onboarding or offboarding walk **opened and left at `BEGIN`** — the
+/// shape that used to turn a matter green on its own. Returns the notation id
+/// so a caller can go on to give the walk an artifact.
 async fn notation(
     surreal: &store::surreal::SurrealDb,
     project_id: Uuid,
     person_id: Uuid,
     template_code: &str,
-) {
+) -> Uuid {
     let tmpl = store::templates::resolve(surreal, None, template_code)
         .await
         .unwrap()
@@ -604,7 +702,38 @@ async fn notation(
         &store::notations::NewNotation::new(tmpl.id, person_id, project_id, "BEGIN"),
     )
     .await
+    .unwrap()
+    .id
+}
+
+/// The instrument an intake-driven walk actually produces: one drafted
+/// `review_documents` row on the notation, the way `portal::estate` files the
+/// estate instruments it renders. This — not the notation row — is what makes
+/// the walk evidence that the matter was papered.
+async fn drafted_instrument(surreal: &store::surreal::SurrealDb, notation_id: Uuid, kind: &str) {
+    store::review_documents::upsert_draft(
+        surreal,
+        &store::review_documents::NewReviewDocument {
+            notation_id,
+            kind,
+            title: "Synthetic instrument",
+            body_html: "<p>Synthetic draft body.</p>",
+        },
+    )
+    .await
     .unwrap();
+}
+
+/// A walk that ran far enough to produce an instrument — the notation plus the
+/// draft it rendered.
+async fn walk_that_produced_an_instrument(
+    surreal: &store::surreal::SurrealDb,
+    project_id: Uuid,
+    person_id: Uuid,
+    template_code: &str,
+) {
+    let id = notation(surreal, project_id, person_id, template_code).await;
+    drafted_instrument(surreal, id, "will").await;
 }
 
 async fn body_string(resp: axum::http::Response<Body>) -> String {
@@ -693,18 +822,18 @@ async fn projects_list_flags_the_lifecycle_gaps_and_nothing_else() {
     .await
     .unwrap();
 
-    // A: open, has its retainer → clean.
+    // A: open, onboarding walk produced its instrument → clean.
     let a = project(&surreal, "Has retainer open", "open").await;
-    notation(&surreal, a, person.id, "onboarding__retainer").await;
-    // B: open, no onboarding notation → missing retainer.
+    walk_that_produced_an_instrument(&surreal, a, person.id, "onboarding__retainer").await;
+    // B: open, no onboarding walk at all → missing retainer.
     let b = project(&surreal, "Bare open matter", "open").await;
-    // C: closed, has its retainer but no offboarding letter → missing offboarding letter.
+    // C: closed, onboarded but no offboarding letter → missing offboarding letter.
     let c = project(&surreal, "Closed no letter", "closed").await;
-    notation(&surreal, c, person.id, "onboarding__estate").await;
-    // D: closed, has both → clean.
+    walk_that_produced_an_instrument(&surreal, c, person.id, "onboarding__estate").await;
+    // D: closed, both walks produced their instruments → clean.
     let d = project(&surreal, "Closed with letter", "closed").await;
-    notation(&surreal, d, person.id, "onboarding__retainer").await;
-    notation(&surreal, d, person.id, "offboarding__letter").await;
+    walk_that_produced_an_instrument(&surreal, d, person.id, "onboarding__retainer").await;
+    walk_that_produced_an_instrument(&surreal, d, person.id, "offboarding__letter").await;
 
     // The matters list is participation-scoped for every tier since ENG-81,
     // so the acting admin is put on each seeded matter rather than relying on
@@ -783,15 +912,19 @@ async fn projects_list_renders_each_lifecycle_state_with_its_own_class() {
     .await
     .unwrap();
 
-    // Yellow: open, no onboarding notation.
+    // Yellow: open, no onboarding walk at all.
     let yellow = project(&surreal, "Yellow lifecycle matter", "open").await;
-    // Green: open, with its onboarding notation.
+    // Yellow too: open, onboarding walk opened and abandoned at BEGIN. This row
+    // is the defect's user-facing face — it used to render green.
+    let abandoned = project(&surreal, "Abandoned lifecycle matter", "open").await;
+    notation(&surreal, abandoned, person.id, "onboarding__retainer").await;
+    // Green: open, onboarding walk produced its instrument.
     let green = project(&surreal, "Green lifecycle matter", "open").await;
-    notation(&surreal, green, person.id, "onboarding__retainer").await;
+    walk_that_produced_an_instrument(&surreal, green, person.id, "onboarding__retainer").await;
     // Red: closed.
     let red = project(&surreal, "Red lifecycle matter", "closed").await;
 
-    let admin_person = participating_admin(&surreal, &[yellow, green, red]).await;
+    let admin_person = participating_admin(&surreal, &[yellow, abandoned, green, red]).await;
     let mut admin = SessionData::fresh("admin-sub", Role::Admin);
     admin.person_id = Some(admin_person);
     let cookie = format!(
@@ -822,8 +955,14 @@ async fn projects_list_renders_each_lifecycle_state_with_its_own_class() {
         "an open matter missing its onboarding letter must render the yellow class"
     );
     assert!(
+        row_for("Abandoned lifecycle matter").contains("matter-lifecycle--yellow"),
+        "an open matter whose onboarding walk was abandoned at BEGIN produced no document, \
+         so it must render the yellow class — asserted on the class, never on the absence \
+         of a string, so a rename cannot leave this passing vacuously"
+    );
+    assert!(
         row_for("Green lifecycle matter").contains("matter-lifecycle--green"),
-        "an open matter with its onboarding letter must render the green class"
+        "an open matter whose onboarding walk produced its instrument must render green"
     );
     assert!(
         row_for("Red lifecycle matter").contains("matter-lifecycle--red"),

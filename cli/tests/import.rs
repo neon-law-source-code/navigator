@@ -128,6 +128,7 @@ async fn catalog_seed_creates_only_shared_templates_and_question_catalog_rows() 
     assert!(codes.contains(&"ca__llc_operating_agreement"));
     assert!(codes.contains(&"will__simple"));
     assert!(codes.contains(&"onboarding__retainer"));
+    assert!(codes.contains(&"onboarding__engagement_letter"));
     assert!(codes.contains(&"nv__dissolution"));
     assert!(codes.contains(&"nv__annual_report"));
     assert!(codes.contains(&"nv__modified_business_tax"));

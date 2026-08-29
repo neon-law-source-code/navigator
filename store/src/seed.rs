@@ -216,6 +216,8 @@ mod canonical {
     /// shipped catalog is bundled so a fresh cluster carries every
     /// template without an import pass.
     pub const TEMPLATE_RETAINER: &str = include_str!("../../templates/neon_law/shared/retainer.md");
+    pub const TEMPLATE_ENGAGEMENT_LETTER: &str =
+        include_str!("../../templates/neon_law/shared/engagement_letter.md");
     pub const TEMPLATE_OFFBOARDING_LETTER: &str =
         include_str!("../../templates/neon_law/shared/offboarding_letter.md");
     pub const TEMPLATE_ANNUAL_REPORT_NV: &str =
@@ -293,6 +295,10 @@ pub const SEEDED_TEMPLATES: &[SeededTemplate] = &[
     SeededTemplate {
         label: "neon_law/shared/retainer.md",
         markdown: canonical::TEMPLATE_RETAINER,
+    },
+    SeededTemplate {
+        label: "neon_law/shared/engagement_letter.md",
+        markdown: canonical::TEMPLATE_ENGAGEMENT_LETTER,
     },
     SeededTemplate {
         label: "neon_law/shared/offboarding_letter.md",
@@ -2950,6 +2956,10 @@ records:
         let codes = seeded_template_codes().expect("seeded template codes");
         assert_eq!(codes.len(), SEEDED_TEMPLATES.len());
         assert!(codes.iter().any(|code| code == "onboarding__retainer"));
+        assert!(codes
+            .iter()
+            .any(|code| code == "onboarding__engagement_letter"));
+        assert!(codes.iter().any(|code| code == "offboarding__letter"));
         assert!(codes.iter().any(|code| code == "northstar__will"));
         assert!(
             !codes
@@ -3112,6 +3122,7 @@ records:
         // `include_str!` entry is caught, not just the retainer.
         for code in [
             "onboarding__retainer",
+            "onboarding__engagement_letter",
             "offboarding__letter",
             "trusts__nevada",
             "will__simple",

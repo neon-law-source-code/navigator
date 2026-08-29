@@ -80,6 +80,10 @@ pub fn workshop_certificate_spec() -> WorkflowSpec {
 pub const BUNDLED_SPEC_YAML: &[(&str, &str)] = &[
     ("onboarding__retainer", RETAINER_INTAKE_SPEC_YAML),
     (
+        "onboarding__engagement_letter",
+        include_str!("../specs/onboarding__engagement_letter.yaml"),
+    ),
+    (
         "onboarding__estate",
         include_str!("../specs/onboarding__estate.yaml"),
     ),

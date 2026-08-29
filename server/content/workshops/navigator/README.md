@@ -18,7 +18,7 @@ project list has something in it. The exercises stay on one matter on purpose; t
 
 ### Learning objectives
 
-- **Remember** — identify Project, Template, Notation, and Workflow in the workspace glossary.
+- **Remember** — identify Project, Template, Notation, Workflow, and the unique onboarding / offboarding pair.
 - **Understand** — connect each noun to the database row that makes the workflow durable and inspectable.
 - **Apply** — open the litigation matter, bind the shared retainer template, and view the client portal application.
 - **Analyze** — inspect the notation state and the matter's participation-scoped views.
@@ -129,6 +129,60 @@ the configured transitions, and the resulting documents remain tied to that Proj
 ---
 
 Trace one notation from its template through its workflow state. Relate each step back to the same Project.
+
+### One onboarding, one offboarding
+
+Every Project has **one** onboarding notation and **one** offboarding notation. Those two kinds are unique on the
+matter: a second retainer is not a second engagement, and a demand letter is not a closing letter.
+
+Onboarding is the engagement that opens the matter — the retainer agreement or the engagement letter. Offboarding is the
+firm-signed closing letter that ends the representation. Opening the Project does not create either notation; a lawyer
+binds them like any other template. The self-serve doors refuse any other kind as the matter's first notation.
+
+The CLI seeds both letters into the shared catalog. This workshop binds the retainer through AIDA; the engagement letter
+is the other shared onboarding. Close the matter with the offboarding letter. Do not bind two onboardings on one
+Project:
+
+```bash
+navigator db list templates
+navigator site notation create onboarding__engagement_letter \
+  --project sample-litigation \
+  --client-email client@neonlaw.com
+navigator site notation create offboarding__letter \
+  --project sample-litigation \
+  --client-email client@neonlaw.com
+```
+
+---
+
+Name the pair on Cruller v. Prine. Binding `onboarding__retainer` is the onboarding. The shared closing letter
+(`offboarding__letter`) is the offboarding. The Projects-list badge reads presence — `onboarding on file` — not
+execution. A bespoke letter still counts if it declares `kind: onboarding` or `kind: offboarding`. List the seeded
+catalog and point at the three lifecycle codes: `onboarding__retainer`, `onboarding__engagement_letter`, and
+`offboarding__letter`.
+
+### The other notations on a matter
+
+After the engagement is on file, the matter accumulates the work itself. Those later notations are not unique. A
+litigation matter may carry many letters and filings. An estate matter may carry a will, a trust, and directives. A
+review matter may carry a memo.
+
+The vocabulary is one closed enum, `Kind`, in `rules/src/kind.rs`. A template declares `kind:` in its frontmatter.
+Generated PDFs and lawyer uploads reuse the same strings on the asset lane. The notation kinds you add after onboarding:
+
+- `letter` — a letter the firm sends on the client's behalf (demand, notice, settlement)
+- `filing` — a document filed with a government body
+- `will`, `trust`, `directive` — estate instruments
+- `agreement` — a private agreement with a third party
+- `memo` — an analytical work product, not an executed instrument
+
+Filed uploads that are not templates use `transcript`, `inbound_contract`, `certificate_of_naturalization`, or
+`unclassified`. Content pages (`post`, `workshop`, `event`) and matter dashboards are not notations on the Project.
+
+---
+
+Walk the list against this litigation matter. The retainer is onboarding. A later demand letter is `letter` and may be
+one of several. Do not treat `letter` as offboarding.
 
 ### Inspect the client portal
 

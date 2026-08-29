@@ -136,12 +136,12 @@ fn regorus_matches_every_checked_in_policy_decision() {
     //   Clerk, and client on those same paths.
     // 379 + 4 = 383.
     //
-    // + 2 for the Harvard-outline narration stage at `/lawyer/outline`: Lawyer
-    //   is admitted by the `/lawyer/*` prefix, Clerk is denied.
-    // 383 + 2 = 385.
+    // + 3 for the Harvard-outline narration stage at `/app/outline`: Lawyer
+    //   is admitted, while Clerk and Client are denied.
+    // 383 + 3 = 386.
     assert_eq!(
         test_names.len(),
-        385,
+        386,
         "the policy decision inventory changed; review every new or removed rule"
     );
 

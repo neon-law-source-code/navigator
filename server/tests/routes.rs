@@ -16603,6 +16603,20 @@ async fn the_moved_admin_listings_are_not_served_at_the_old_paths() {
     }
 }
 
+/// The Harvard-outline teaching stage moved into the authenticated `/app`
+/// namespace without changing its lawyer-tier audience.
+#[tokio::test]
+async fn the_outline_stage_uses_the_app_namespace() {
+    let (state, _surreal) = state_with_engines().await;
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+
+    let current = get_with_role(app.clone(), "/app/outline", store::persons::Role::Lawyer).await;
+    assert_eq!(current.status(), StatusCode::OK);
+
+    let retired = get_with_role(app, "/lawyer/outline", store::persons::Role::Lawyer).await;
+    assert_eq!(retired.status(), StatusCode::NOT_FOUND);
+}
+
 /// A code that names no matter is refused everywhere below `/app/projects/`.
 ///
 /// Every route in this namespace resolves its `{project_code}` segment at the

@@ -1,4 +1,4 @@
-//! `/lawyer/outline` — Harvard-outline narration stage for a firm template.
+//! `/app/outline` — Harvard-outline narration stage for a firm template.
 //!
 //! The lawyer workbench's recording surface: bundled documents already in
 //! Harvard form, rendered as highlightable units. `?doc=` selects among them
@@ -145,7 +145,7 @@ fn outline_stage_body(view: &OutlineStageView) -> Element {
                 for link in library {
                     a {
                         class: if link.slug == current_slug { "nav-link is-current" } else { "nav-link" },
-                        href: "/lawyer/outline?doc={link.slug}",
+                        href: "/app/outline?doc={link.slug}",
                         aria_current: if link.slug == current_slug { Some("page") } else { None },
                         "{link.title}"
                     }
@@ -194,8 +194,8 @@ mod tests {
         assert!(html.contains("Scope of the engagement"), "{html}");
         assert!(html.contains("navigator template narrate"), "{html}");
         assert!(html.contains("Press H to hide"), "{html}");
-        assert!(html.contains("/lawyer/outline?doc=onboarding"), "{html}");
-        assert!(html.contains("/lawyer/outline?doc=offboarding"), "{html}");
+        assert!(html.contains("/app/outline?doc=onboarding"), "{html}");
+        assert!(html.contains("/app/outline?doc=offboarding"), "{html}");
         assert!(html.contains("aria-label=\"Bundled outlines\""), "{html}");
     }
 

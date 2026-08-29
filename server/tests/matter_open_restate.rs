@@ -1,29 +1,42 @@
 #![allow(clippy::doc_markdown)]
-//! Restate-backed regression for #377: opening a matter whose first
-//! notation starts a workflow must land on the matter, not a 500.
+//! Restate-backed regression for #377: a door that commits a Notation and
+//! then synchronously starts + drives its Restate workflow in the same
+//! request must not 500.
 //!
-//! The other matter-open coverage (`matter_open_retainer`) drives the flow
-//! through the in-process `InMemoryRuntime`, which cannot exhibit the bug this
-//! guards: it needs host `web` and the in-cluster `workflows-service` worker
-//! to share one store, so that the worker's `append-event` journal step finds
-//! the Notation `web` has just committed. Against separate databases the step
-//! raises `RecordNotFound` and the matter-open path returns a 500.
+//! The other contract-review coverage (`contract_review_pipeline`) drives
+//! the same pipeline through the in-process `DispatchingRuntime`, which
+//! cannot exhibit the bug this guards: it needs host `web` and the
+//! in-cluster `workflows-service` worker to share one store, so that the
+//! worker's `append-event` journal step finds the Notation `web` has just
+//! committed. Against separate databases the step raises `RecordNotFound`
+//! and the pipeline call returns a runtime error instead of landing at
+//! `lawyer_review`.
 //!
-//! The on-ramp was the engagement letter walk (`POST /lawyer/retainers/new`
-//! with `onboarding__letter`) — **this is now stale**: that door no longer
-//! starts a workflow inside the create request (see the `KNOWN GAP` comment
-//! in the test body below), so this suite does not currently exercise #377's
-//! "commit a Notation, then journal it through the worker" shape through any
-//! route. `POST /app/projects` never fired a workflow at all (opening a
-//! matter and opening its retainer are two steps; see the glossary's
-//! Engagement / Retainer entry), so it cannot carry this guard either.
+//! The on-ramp used to be the estate retainer walk (`POST
+//! /lawyer/retainers/new` with `onboarding__estate`): that door was
+//! transcript-driven, so `start_post` started its workflow inside the create
+//! request itself. `portal::estate` and the transcript-intake pipeline were
+//! removed as dead code (no surviving template has a `transcript_uploaded`
+//! edge out of `BEGIN`), and `start_post` no longer starts a workflow for
+//! any template — every retainer walk now hands off to the stepwise
+//! questionnaire walker instead. The inbound contract-review pipeline
+//! ([`portal::contract_review_walk::drive_contract_review`]) is the
+//! surviving door with the same shape: it creates the Notation, then in the
+//! same call fires `StateMachineRuntime::start` and three signals
+//! (`contract_uploaded`, `intake_filed`, `analysis_ready`) against the just-
+//! committed row — exactly the "commit a Notation, then journal it through
+//! the worker" sequence #377 needs. It is also the one other
+//! `StateMachineRuntime::start` call site (besides the two
+//! `retainer_walk.rs` sites, `advance_to_lawyer_review` and
+//! `drive_closing_workflow`) that opens and starts a workflow for a Notation
+//! in one call rather than across two separate requests.
 //!
 //! This test exercises the **real** `RestateRuntime` against the in-cluster
-//! worker, with host `web` pointed at the **same** shared `navigator` database
-//! the worker is pinned to (the `dev up` topology). It is the agreement half
-//! of the guard: the `worktree-env status` / `ops doctor` check
-//! (`cli::devx::restate_db`) warns when they disagree; this proves the flow
-//! works when they agree.
+//! worker, with host `web` pointed at the **same** shared `navigator`
+//! database the worker is pinned to (the `dev up` topology). It is the
+//! agreement half of the guard: the `worktree-env status` / `ops doctor`
+//! check (`cli::devx::restate_db`) warns when they disagree; this proves the
+//! flow works when they agree.
 //!
 //! ## Harness (skips cleanly without it — CI stays green)
 //!
@@ -37,13 +50,13 @@
 //! With `NAV_REQUIRE_HARNESS=1` a missing broker is a hard failure (CI
 //! can't self-skip green); unset, it skips.
 
-use std::path::Path;
 use std::sync::Arc;
 
-use axum::body::Body;
-use axum::http::{Request, StatusCode};
-use tower::ServiceExt;
-use workflows::StateMachineRuntime;
+use uuid::Uuid;
+
+use portal::contract_review_walk::{drive_contract_review, ReviewDeps};
+use store::playbooks::{NewPlaybook, Position};
+use workflows::{IntakeArtifact, RestateRuntime};
 
 /// The Restate ingress URL when the KIND harness is up, or `None` (with a skip
 /// note) when it isn't — unless `NAV_REQUIRE_HARNESS=1`, which turns a missing
@@ -72,123 +85,145 @@ fn require_harness() -> bool {
     std::env::var("NAV_REQUIRE_HARNESS").is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true"))
 }
 
-fn admin_bearer() -> String {
-    let sessions = portal::SessionStore::new(portal::test_support::TEST_SESSION_KEY);
-    let mut session = portal::SessionData::fresh("admin@neonlaw.com", store::persons::Role::Admin);
-    session.source = portal::session::SessionSource::Cli;
-    format!("Bearer {}", sessions.encode(&session))
+/// A fixed, deterministic playbook — the deviation analysis needs one on
+/// file for the contract's Entity before it will run.
+fn sample_positions() -> Vec<Position> {
+    vec![Position {
+        topic: "Limitation of liability".into(),
+        preferred: "Mutual cap at 12 months' fees".into(),
+        fallback: "Cap at 2x fees paid".into(),
+        walkaway: "Uncapped liability".into(),
+        severity: store::playbooks::SEVERITY_HIGH.into(),
+    }]
 }
 
-/// URL-encode the couple of characters these form values carry.
-fn enc(s: &str) -> String {
-    s.replace(' ', "%20").replace('@', "%40")
-}
-
-async fn post_retainer_walk(app: &axum::Router, body: String) -> axum::http::Response<Body> {
-    app.clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/lawyer/retainers/new")
-                .header("authorization", admin_bearer())
-                .header("content-type", "application/x-www-form-urlencoded")
-                .body(Body::from(body))
-                .unwrap(),
-        )
-        .await
-        .unwrap()
+/// Seed a fresh Entity + Project + client Person against the shared store,
+/// returning `(project_id, person_id, entity_id)`. A fresh suffix each run
+/// keeps the pipeline independent of prior state in the reused staging
+/// database.
+async fn seed_matter(surreal: &store::surreal::SurrealDb) -> (Uuid, Uuid, Uuid) {
+    let suffix = Uuid::now_v7();
+    let entity_id = store::test_support::seed_entity(surreal).await;
+    let project_id = store::projects::create(
+        surreal,
+        &store::projects::NewProject {
+            code: format!("contract-review-restate-{suffix}"),
+            name: "Contract review (Restate regression)".into(),
+            status: "open".into(),
+            entity_id,
+            ..Default::default()
+        },
+    )
+    .await
+    .expect("create project")
+    .id;
+    let person_id = store::persons::create(
+        surreal,
+        &store::persons::NewPerson::new("Libra", format!("libra-{suffix}@example.com")),
+    )
+    .await
+    .expect("create client person")
+    .id;
+    (project_id, person_id, entity_id)
 }
 
 #[tokio::test]
-async fn matter_open_starts_its_workflow_through_the_restate_worker() {
+async fn contract_review_starts_its_workflow_through_the_restate_worker() {
     let Some(broker) = restate_broker_or_skip() else {
         return;
     };
     std::env::set_var("RESTATE_BROKER_URL", &broker);
 
-    // Matter open hard-depends on repo provisioning; give it a scratch root.
-    let repo_root = std::env::temp_dir().join(format!(
-        "navigator-matter-open-restate-repos-{}",
-        uuid::Uuid::now_v7()
-    ));
-    std::fs::create_dir_all(&repo_root).unwrap();
-    std::env::set_var("NAVIGATOR_GIT_REPO_ROOT", &repo_root);
-
-    // The real Restate runtime for both timelines — the worker owns the
-    // `notation_events` journal, reached through the port-forwarded ingress.
-    let runtime: Arc<dyn StateMachineRuntime> = Arc::new(workflows::RestateRuntime::from_env());
+    // The real Restate runtime — the worker owns the `notation_events`
+    // journal, reached through the port-forwarded ingress.
+    let runtime = RestateRuntime::from_env();
     // The env-named person store, the same one the running `web` reads —
     // this lane drives the deployed Restate broker, not an in-process
     // fixture, so both stores have to be the deployment's.
     let surreal = store::surreal::connect_from_env()
         .await
         .expect("connect to the deployed person store");
-    let mut state = portal::test_support::app_state(surreal.clone()).await;
-    store::seed::seed_canonical(&surreal, &state.storage)
-        .await
-        .expect("seed the reset staging database");
-    state.workflow_runtime = runtime.clone();
-    state.questionnaire_runtime = runtime;
-    let app = server::neon_router(state, Path::new(portal::DEFAULT_PUBLIC_DIR));
-
-    // A fresh client each run keeps the walk independent of prior state.
-    let suffix = uuid::Uuid::now_v7();
-    let client_email = format!("libra-{suffix}@example.com");
-
-    // KNOWN GAP (flagged for follow-up, not fixed here): `start_post` no
-    // longer starts a workflow machine inside this request for any surviving
-    // template — the transcript-driven on-ramp this test relied on was
-    // removed along with `portal::estate`, and `onboarding__letter` was
-    // never transcript-driven to begin with. This assertion needs a
-    // different on-ramp (a door that still commits a Notation and
-    // synchronously starts its workflow) to actually reproduce #377; today
-    // it cannot fail this way through this route. This lane has no CI
-    // coverage (no workflow sets `RESTATE_BROKER_URL`), so the gap is latent
-    // rather than red.
-    let body = format!(
-        "client_email={}&retainer_template_code=onboarding__letter",
-        enc(&client_email),
+    let storage: Arc<dyn cloud::StorageService> = Arc::new(
+        cloud::FsStorage::new(std::env::temp_dir().join("navigator-matter-open-restate-storage"))
+            .await
+            .expect("scratch storage"),
     );
-    let resp = post_retainer_walk(&app, body).await;
-    let status = resp.status();
-    let loc = resp
-        .headers()
-        .get("location")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or_default()
-        .to_string();
+    let contract_reviewer: Arc<dyn portal::contract_review::ContractReviewer> =
+        Arc::new(portal::contract_review::StubContractReviewer);
 
-    // The exact #377 failure: a 500 here means the worker journaled against a
-    // database that does not hold the Notation web just committed.
-    assert_ne!(
-        status,
-        StatusCode::INTERNAL_SERVER_ERROR,
-        "matter-open 500'd — web and the workflows-service worker are not on the same database \
-         (the #377 RecordNotFound bug)"
-    );
-    assert_eq!(
-        status,
-        StatusCode::SEE_OTHER,
-        "matter-open should redirect to the matter"
-    );
-    assert!(
-        loc.starts_with("/app/projects/"),
-        "expected a redirect to /app/projects/:code, got {loc:?}"
+    let (project_id, person_id, entity_id) = seed_matter(&surreal).await;
+    // `save_version` is a versioned upsert (retries past a concurrent
+    // writer), so re-seeding this global template against the shared
+    // staging database on every run is safe.
+    store::templates::save_version(
+        &surreal,
+        None,
+        "memo__contract_review",
+        store::templates::Version {
+            title: "Inbound Contract Review".into(),
+            respondent_type: "person_and_entity".into(),
+            asset_id: None,
+            form_code: None,
+            kind: None,
+            source_commit_sha: None,
+        },
+    )
+    .await
+    .expect("seed the contract-review template");
+    let positions = sample_positions();
+    store::playbooks::create(
+        &surreal,
+        &NewPlaybook {
+            entity_id,
+            name: "Restate regression playbook",
+            positions: &positions,
+        },
+    )
+    .await
+    .expect("create playbook");
+
+    let deps = ReviewDeps {
+        surreal: &surreal,
+        workflow_runtime: &runtime,
+        storage: &storage,
+        contract_reviewer: contract_reviewer.as_ref(),
+    };
+
+    // The exact #377 shape: `drive_contract_review` creates the Notation,
+    // then in this same call starts its workflow and fires three signals
+    // against it. If web and the worker disagree on database, the worker's
+    // `append-event` journal step can't find the Notation web just
+    // committed and raises `RecordNotFound` — surfaced here as a
+    // `ContractReviewError::Runtime`.
+    let review_id = drive_contract_review(
+        &deps,
+        project_id,
+        person_id,
+        "vendor-msa.txt",
+        "MASTER SERVICES AGREEMENT\nLiability is uncapped.",
+        IntakeArtifact::Text {
+            text: "MASTER SERVICES AGREEMENT\nLiability is uncapped.".into(),
+        },
+    )
+    .await
+    .expect(
+        "contract review pipeline should complete — a runtime error here means web and the \
+         workflows-service worker are not on the same database (the #377 RecordNotFound bug)",
     );
 
-    // The workflow really started: the Notation exists on the new matter,
-    // journaled through the worker rather than merely inserted by web.
-    let project_code = loc.trim_start_matches("/app/projects/").to_string();
-    let project_id = store::projects::find_by_code(&surreal, &project_code)
+    // The workflow really ran through the worker: the review row exists and
+    // the notation reached the attorney gate.
+    let review = store::contract_reviews::by_id(&surreal, review_id)
         .await
         .unwrap()
-        .expect("redirect carries a project code")
-        .id;
+        .expect("review row exists");
+    assert_eq!(review.status, store::contract_reviews::STATUS_ANALYZED);
+
     let notation = store::notations::list_by_project(&surreal, project_id)
         .await
         .unwrap()
         .into_iter()
         .next()
-        .expect("the retainer notation was created");
-    assert_eq!(notation.state, "BEGIN");
+        .expect("the contract-review notation was created");
+    assert_eq!(notation.state, "lawyer_review");
 }

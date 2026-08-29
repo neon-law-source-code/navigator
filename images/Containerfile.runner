@@ -128,6 +128,10 @@ COPY billing-workflows billing-workflows
 COPY docs              docs
 COPY k8s               k8s
 COPY examples          examples
+# The Project-repository skill sync in cli/src/projects/repository.rs
+# embeds the review-council skills with include_str! from the canonical
+# `.agents/skills/` catalog, so that tree must be staged too.
+COPY .agents            .agents
 
 # The controller replaces this checkout with the immutable requested ref for
 # each task. Baking the CLI and workspace crates here therefore warms the

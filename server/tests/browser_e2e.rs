@@ -211,7 +211,7 @@ async fn lawyer_walks_the_full_retainer_questionnaire_end_to_end() {
     //
     // Preconditions (beyond the module's chromedriver + KIND
     // requirements): the `onboarding__retainer` template must
-    // be seeded via `navigator catalog-seed templates/`, and
+    // be seeded via `navigator site seed templates/`, and
     // `store/seeds/Question.yaml` must be seeded so the two
     // walker question codes are looked up successfully.
     let Some(c) = new_client_or_skip().await else {

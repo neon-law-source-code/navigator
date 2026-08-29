@@ -20,7 +20,7 @@ description: >-
 #
 # Set `project_repository: true` and this becomes the whole gate for a Project's
 # one repository, holding both kinds of source. It runs
-# `navigator projects repository validate`, which covers whichever halves are
+# `navigator site projects repository validate`, which covers whichever halves are
 # present, and then verifies the built portal is mounted where Navigator will
 # serve it.
 #
@@ -189,12 +189,12 @@ runs:
         set -euo pipefail
         case "${PROJECT_REPOSITORY}" in
             true)
-                navigator projects repository validate "${DIR}" --repository "${REPOSITORY}"
+                navigator site projects repository validate "${DIR}" --repository "${REPOSITORY}"
                 ;;
             false)
                 case "${QUESTION_CODES_FROM_STORE}" in
                     true)
-                        navigator validate "${DIR}" --question-codes-from-store
+                        navigator validate "${DIR}"
                         ;;
                     false)
                         navigator validate "${DIR}"

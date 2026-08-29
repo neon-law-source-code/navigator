@@ -11,8 +11,6 @@
 //! | `projects list` | `GET /app/projects.csv` |
 //! | `project open`   | `GET /app/projects/:code` |
 //! | `notation create`  | `POST /app/projects/{project_code}/notations/new` |
-//! | `retainer approve` | `POST /lawyer/notations/:id/approve-send` |
-//! | `retainer send`    | `POST /lawyer/notations/:id/send` |
 //! | `notation status`  | `GET /lawyer/notations/:id/review?format=json` |
 
 use std::collections::VecDeque;
@@ -35,16 +33,16 @@ pub(crate) fn resolve(host: Option<&str>) -> Result<(String, String)> {
     let base = resolve_base(host, &creds)?;
     let cred: &HostCredential = creds
         .get(&base)
-        .ok_or_else(|| anyhow!("not logged in to {base} — run `navigator login --host …`"))?;
+        .ok_or_else(|| anyhow!("not logged in to {base} — run `navigator site login --host …`"))?;
     if cred.is_expired(now_secs()) {
         return Err(anyhow!(
-            "the stored token for {base} has expired — run `navigator login --host {base}`"
+            "the stored token for {base} has expired — run `navigator site login --host {base}`"
         ));
     }
     Ok((base, cred.token.clone()))
 }
 
-/// `navigator db seed <model> <file> [--overwrite]` — submit one standard
+/// `navigator site import <model> <file> [--overwrite]` — submit one standard
 /// seed YAML document to the logged-in deployment. The CLI deliberately reads
 /// no `SurrealDB` environment: authentication, authorization, lookup, and the
 /// typed write boundary all belong to the server.
@@ -110,7 +108,7 @@ pub async fn projects_list(host: Option<&str>, json: bool) -> ExitCode {
     .await
 }
 
-/// `navigator site project open <project-code>` — resolve a visible matter by
+/// Legacy project-open client — resolve a visible matter by
 /// code, then verify the same bearer can load its lawyer workbench.
 pub async fn matter_open(host: Option<&str>, project_code: &str) -> ExitCode {
     run(async {
@@ -151,7 +149,7 @@ pub async fn matter_open(host: Option<&str>, project_code: &str) -> ExitCode {
 /// Project id, then posts to the project-scoped create route
 /// (`POST /app/projects/<project-code>/notations/new`). The template is read
 /// from the Project's git repo when authored there, else from the bundled
-/// firm catalog. Leaves the questionnaire ready to walk with `intake answer`.
+/// firm catalog. Leaves the questionnaire ready for the site intake flow.
 pub async fn notation_create(
     host: Option<&str>,
     template: &str,
@@ -204,7 +202,7 @@ pub async fn notation_create(
         println!(
             "{}",
             palette::dim(format!(
-                "answer it from the terminal with: navigator site intake answer {notation_id}"
+                "continue this notation in the live site; notation id: {notation_id}"
             )),
         );
         Ok(())
@@ -212,7 +210,7 @@ pub async fn notation_create(
     .await
 }
 
-/// `navigator site intake answer <id>` — walk the notation's questionnaire one
+/// Legacy intake client — walk the notation's questionnaire one
 /// question at a time over the same `/lawyer/notations/:id/step`
 /// route the browser POSTs, reading each question's metadata from the
 /// `?format=json` branch. Interactive by default (prompts at the
@@ -511,7 +509,7 @@ pub async fn notation_document(host: Option<&str>, notation_id: Uuid, out: &Path
     .await
 }
 
-/// `navigator site retainer approve <id>` — POST approve-send. This renders +
+/// Legacy retainer client — POST approve-send. This renders +
 /// parks: the worker durably renders + persists the retainer PDF and the
 /// workflow waits at `generate_pdf__retainer_pdf`. It does NOT send — the
 /// binding envelope goes out only on the separate `retainer send`, after
@@ -551,7 +549,7 @@ pub async fn retainer_approve(host: Option<&str>, notation_id: Uuid) -> ExitCode
         println!(
             "{}",
             palette::dim(format!(
-                "dispatch the envelope with: navigator site retainer send {notation_id}"
+                "dispatch the envelope from the live site for notation {notation_id}"
             )),
         );
         Ok(())
@@ -559,7 +557,7 @@ pub async fn retainer_approve(host: Option<&str>, notation_id: Uuid) -> ExitCode
     .await
 }
 
-/// `navigator site retainer send <id>` — POST the deliberate send. On prod this
+/// Legacy retainer client — POST the deliberate send. On prod this
 /// emits exactly one real envelope, so it is a deliberate authenticated
 /// human command (never an LLM-routable tool). Honors the readiness gate:
 /// a `409` means the worker hasn't rendered the PDF yet — print the
@@ -585,7 +583,7 @@ pub async fn retainer_send(host: Option<&str>, notation_id: Uuid) -> ExitCode {
             let reason = json_reason(&body).unwrap_or_else(|| "document not ready yet".to_string());
             return Err(anyhow!(
                 "not ready to send: {reason}\n\
-                 retry: navigator site retainer send {notation_id}"
+                 retry from the live site for notation {notation_id}"
             ));
         }
         if !status.is_success() {
@@ -608,7 +606,7 @@ pub async fn retainer_send(host: Option<&str>, notation_id: Uuid) -> ExitCode {
     .await
 }
 
-/// `navigator site retainer clause list <id>` — print the notation's custom
+/// Legacy retainer client — print the notation's custom
 /// clauses from the clause editor's `?format=json` branch.
 pub async fn clause_list(host: Option<&str>, notation_id: Uuid, json: bool) -> ExitCode {
     run(async {
@@ -661,7 +659,7 @@ pub async fn clause_list(host: Option<&str>, notation_id: Uuid, json: bool) -> E
     .await
 }
 
-/// `navigator site retainer clause add <id> --body …` — append one clause.
+/// Legacy retainer client — append one clause.
 pub async fn clause_add(host: Option<&str>, notation_id: Uuid, body: &str) -> ExitCode {
     run(async {
         let (base, token) = resolve(host)?;
@@ -677,7 +675,7 @@ pub async fn clause_add(host: Option<&str>, notation_id: Uuid, body: &str) -> Ex
     .await
 }
 
-/// `navigator site retainer clause edit <id> <cid> --body …` — replace a body.
+/// Legacy retainer client — replace a body.
 pub async fn clause_edit(
     host: Option<&str>,
     notation_id: Uuid,

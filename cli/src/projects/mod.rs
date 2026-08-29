@@ -1,4 +1,4 @@
-//! `navigator projects` — the Project workspace group.
+//! `navigator site projects` — the Project workspace group.
 //!
 //! Project is the organizing noun of the whole product: a matter's Drive
 //! ingest folder and its one source repository are both addressed by one

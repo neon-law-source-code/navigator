@@ -76,15 +76,7 @@ fn top_level_help_keeps_orchestration_nested_under_groups() {
             // These, and nothing else. Each names what it owns, so the top
             // layer IS the mental model rather than two dozen flat rows an
             // operator has to scan.
-            "validate", // the one externally consumed command; it never moves
-            "template", // the notation author's offline workbench
-            "db",       // deployment data command boundary
-            "login",    // browser loopback for the bearer db seed uses
-            "site",     // a running deployment, via the stored bearer token
-            "projects", // the Drive folder + the one repository a code names
-            "dev",      // the local KIND loop plus the reference helpers
-            "ops",      // operator blast radius
-            "help",
+            "db", "dev", "ops", "site", "template", "validate", "help",
         ]
     );
 
@@ -104,12 +96,13 @@ fn top_level_help_keeps_orchestration_nested_under_groups() {
         .all(|name| !name.starts_with("start-")));
     assert!(!output.contains("  ship"));
     assert!(!output.contains("  deploy"));
-    assert!(!command_names(&output).contains(&"import"));
+    assert!(!command_names(&output).contains(&"login"));
+    assert!(!command_names(&output).contains(&"projects"));
 }
 
 #[test]
 fn catalog_seed_help_uses_a_headline() {
-    let output = unwrapped(&help(&["db", "catalog-seed", "--help"]));
+    let output = unwrapped(&help(&["site", "seed", "--help"]));
 
     assert!(
         output.contains("Seed the workspace-owned template and question catalog from clean files.")
@@ -127,12 +120,12 @@ fn template_help_lists_the_notation_authoring_workbench() {
         command_names(&output),
         vec![
             "format",
+            "forms",
+            "github",
             "narrate",
             "render",
             "scaffold",
             "transcribe",
-            "forms",
-            "github",
             "help",
         ]
     );
@@ -148,24 +141,23 @@ fn db_help_lists_the_direct_store_operations() {
 
     assert_eq!(
         command_names(&output),
-        vec!["catalog-seed", "seed", "list", "project", "erd", "help",]
+        vec!["erd", "list", "project", "help",]
     );
 }
 
 #[test]
-fn db_seed_help_requires_the_seed_model_and_file() {
+fn site_import_help_requires_the_seed_model_and_file() {
     Command::cargo_bin("navigator")
         .unwrap()
-        .args(["db", "seed", "--help"])
+        .args(["site", "import", "--help"])
         .assert()
         .success()
         .stdout(str::contains("<MODEL_NAME> <SEED_FILE>"))
         .stdout(str::contains("--overwrite"));
 }
 
-/// `db project` is write-side and local; `site project open` drives a running
-/// deployment through the stored bearer token. Same noun, two groups, because
-/// they are two different kinds of command.
+/// `db project` is write-side and local; `site projects open` drives a running
+/// deployment through the stored bearer token.
 #[test]
 fn db_project_holds_only_the_local_write_side() {
     assert_eq!(
@@ -173,14 +165,22 @@ fn db_project_holds_only_the_local_write_side() {
         vec!["create", "help"]
     );
     assert_eq!(
-        command_names(&help(&["site", "project", "--help"])),
-        vec!["open", "help"]
+        command_names(&help(&["site", "projects", "--help"])),
+        vec![
+            "doctor",
+            "drift",
+            "list",
+            "open",
+            "repository",
+            "surfaces",
+            "help"
+        ]
     );
 }
 
-/// `projects` is the seventh top-level group: Project is the organizing noun
-/// of the product, so the verbs that operate on the Drive folder plus the one
-/// repository a code names sit at the top layer rather than inside `site`.
+/// `site projects` is the Project workspace group: the verbs that operate on
+/// the Drive folder plus the one repository a code names live with the site's
+/// project list and workbench.
 ///
 /// `doctor` reads a machine, `repository` operates on a checkout, `drift`
 /// reconciles the checkouts against the live rows, and `surfaces` creates
@@ -195,15 +195,23 @@ fn db_project_holds_only_the_local_write_side() {
 #[test]
 fn projects_help_lists_the_project_workspace_verbs() {
     assert_eq!(
-        command_names(&help(&["projects", "--help"])),
-        vec!["doctor", "repository", "drift", "surfaces", "help"]
+        command_names(&help(&["site", "projects", "--help"])),
+        vec![
+            "doctor",
+            "drift",
+            "list",
+            "open",
+            "repository",
+            "surfaces",
+            "help"
+        ]
     );
     assert_eq!(
-        command_names(&help(&["projects", "repository", "--help"])),
-        vec!["scaffold", "validate", "sync-skills", "help"]
+        command_names(&help(&["site", "projects", "repository", "--help"])),
+        vec!["scaffold", "sync-skills", "validate", "help"]
     );
     assert_eq!(
-        command_names(&help(&["projects", "surfaces", "--help"])),
+        command_names(&help(&["site", "projects", "surfaces", "--help"])),
         vec!["reconcile", "help"]
     );
 }
@@ -214,7 +222,7 @@ fn projects_help_lists_the_project_workspace_verbs() {
 /// leave an operator guessing which one they want.
 #[test]
 fn the_two_doctors_keep_distinct_headlines() {
-    let projects = unwrapped(&help(&["projects", "doctor", "--help"]));
+    let projects = unwrapped(&help(&["site", "projects", "doctor", "--help"]));
     assert!(
         projects.contains("Verify this machine and a Project workspace before Navigator creates."),
         "projects doctor headline: {projects}"
@@ -233,7 +241,7 @@ fn the_two_doctors_keep_distinct_headlines() {
 fn dev_docs_keeps_only_the_reference_helpers() {
     assert_eq!(
         command_names(&help(&["dev", "docs", "--help"])),
-        vec!["list", "glossary", "help"]
+        vec!["glossary", "list", "help"]
     );
 }
 
@@ -244,29 +252,27 @@ fn dev_help_lists_local_loop_members() {
     assert_eq!(
         command_names(&output),
         vec![
-            "install",
-            "up",
-            "down",
-            "env",
-            "status",
-            "worker-reload",
+            "browser-e2e",
             "build-webapp",
-            "staging",
-            "kind",
-            "worktree-env",
             "deploy",
-            "undeploy",
+            "docs",
+            "down",
             "e2e",
+            "env",
             "garage-bootstrap",
             "grant-lawyer",
-            "sample-project",
-            "browser-e2e",
-            "logs",
+            "install",
+            "kind",
             "kustomize",
+            "logs",
+            "sample-project",
             "sendgrid-openapi",
-            // The developer/agent reference helpers, left after `erd` moved
-            // to `db`. No cluster, no database.
-            "docs",
+            "staging",
+            "status",
+            "undeploy",
+            "up",
+            "worker-reload",
+            "worktree-env",
             "help",
         ]
     );
@@ -381,7 +387,7 @@ fn worktree_env_help_lists_its_lifecycle_and_the_reclaim_command() {
 
     assert_eq!(
         command_names(&output),
-        vec!["up", "down", "status", "sweep", "help"]
+        vec!["down", "status", "sweep", "up", "help"]
     );
 }
 
@@ -429,10 +435,7 @@ fn site_help_lists_the_live_deployment_members() {
 
     assert_eq!(
         command_names(&output),
-        vec![
-            "login", "logout", "whoami", "mcp", "projects", "intake", "notation", "retainer",
-            "project", "help",
-        ]
+        vec!["import", "login", "logout", "mcp", "notation", "projects", "seed", "whoami", "help",]
     );
 }
 
@@ -453,38 +456,22 @@ fn ops_help_lists_operator_members() {
     assert_eq!(
         command_names(&output),
         vec![
+            "assets",
+            "deployments",
+            "dns",
+            "doctor",
+            "gcp",
             "github",
+            "lsp",
+            "notices",
+            "observability",
+            "rebrand",
+            "release",
+            "release-default-tag",
+            "restate",
+            "secrets",
             "ship",
             "surreal-archive",
-            "deployments",
-            "secrets",
-            "gcp",
-            "restate",
-            "doctor",
-            "dns",
-            "rebrand",
-            "observability",
-            // Operator blast radius that is not cluster lifecycle: the two
-            // distribution pipelines and the release-packaging steps that
-            // regenerate the licence notices and stamp the release version into
-            // the manifest.
-            //
-            // `release-version` writes `[workspace.package].version`, which is
-            // the act that cuts a release; `release-check` is what decides
-            // whether a given commit's version IS one, and `deploy.yml` runs it
-            // on every push to `main`. Together they replaced the pushed tag:
-            // `release-provenance` proved a tag came from `main`, which a push to
-            // `main` now asserts by construction. `release-default-tag` sits
-            // upstream of `release-version`: it answers "what would today's
-            // date even be called, and is it worth asking for" so the
-            // `cut-release` skill has a name to hand `--tag`, without
-            // `release-version` itself deriving one.
-            "lsp",
-            "assets",
-            "release-default-tag",
-            "release-version",
-            "release-check",
-            "notices",
             "help",
         ]
     );
@@ -499,8 +486,7 @@ fn ops_gcp_help_lists_the_hub_alongside_the_environment_provisioner() {
         vec![
             // The two provisioners, widest blast radius first: an environment,
             // then the shared registry.
-            "setup", "hub", // Post-provisioning operations.
-            "iap", "help",
+            "hub", "iap", "setup", "help",
         ]
     );
 }

@@ -30,7 +30,14 @@ const FIXTURE_PIN: &str = "26.8.23";
 
 fn scaffold(dir: &Path, project_code: &str) -> assert_cmd::assert::Assert {
     navigator()
-        .args(["projects", "repository", "scaffold", project_code, "--dir"])
+        .args([
+            "site",
+            "projects",
+            "repository",
+            "scaffold",
+            project_code,
+            "--dir",
+        ])
         .arg(dir)
         .args(["--action-version", FIXTURE_PIN])
         .assert()
@@ -38,7 +45,7 @@ fn scaffold(dir: &Path, project_code: &str) -> assert_cmd::assert::Assert {
 
 fn validate(dir: &Path, repository: &str) -> assert_cmd::assert::Assert {
     navigator()
-        .args(["projects", "repository", "validate"])
+        .args(["site", "projects", "repository", "validate"])
         .arg(dir)
         .args(["--repository", repository])
         .assert()
@@ -209,7 +216,7 @@ fn the_template_repository_command_is_gone() {
 
 fn sync_skills(dir: &Path) -> assert_cmd::assert::Assert {
     navigator()
-        .args(["projects", "repository", "sync-skills"])
+        .args(["site", "projects", "repository", "sync-skills"])
         .arg(dir)
         .assert()
 }

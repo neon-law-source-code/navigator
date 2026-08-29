@@ -7,7 +7,7 @@
 //! `git_repositories` moved with its slice of #1093 (ENG-20). It is a
 //! leaf provenance table — nothing references it and it references
 //! nothing — so the port could not cascade. Rows come from the
-//! canonical seed; `navigator catalog-seed` seeds from a local
+//! canonical seed; `navigator site seed` seeds from a local
 //! directory and never writes here.
 //!
 //! The unique `git_repository_remote_hash` index is what enforces one row

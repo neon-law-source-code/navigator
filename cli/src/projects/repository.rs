@@ -39,7 +39,7 @@
 //! checkout without one, not the primary source. [`validate`] here does not
 //! follow suit: it runs inside one repository's own CI with no access to the
 //! live row, so it cannot tell a repository whose manifest is wrong from one
-//! whose name is; `navigator projects drift` (`super::drift`) is where that
+//! whose name is; `navigator site projects drift` (`super::drift`) is where that
 //! disagreement is reported, against the live rows it needs to judge it.
 //!
 //! One filename, one key: the earlier `.yml` spelling and its `name:` key are
@@ -101,7 +101,7 @@ pub(crate) const CD_WORKFLOW: &str = ".github/workflows/publish.yml";
 /// manifest and a staged sample bundle's manifest are the same file, read by
 /// different tools, not two schemas that happen to overlap.
 pub(crate) const PROJECT_MANIFEST: &str = "navigator.yaml";
-/// Seed-shaped YAML documents for `navigator db seed`, one file per model.
+/// Seed-shaped YAML documents for `navigator site import`, one file per model.
 const SEED_DIRECTORY: &str = "seeds";
 const ALLOWED_ROOTS: &[&str] = &[
     ".github",
@@ -127,7 +127,7 @@ const ALLOWED_ROOTS: &[&str] = &[
     PORTAL_DIRECTORY,
     // A seed document names real people and real entities described by this
     // Project's matter — the input to a production write through `navigator
-    // db seed`, not test scaffolding. That is the one distinction `fixtures/`
+    // site import`, not test scaffolding. That is the one distinction `fixtures/`
     // cannot carry, which is why seed documents get their own root rather
     // than filing under it: one file per model, using the standard
     // `lookup_fields` / `records` shape, and nothing generated.
@@ -281,7 +281,7 @@ pub fn scaffold(root: &Path, project_code: &str, action_version: &str) -> ExitCo
     }
 
     println!(
-        "\nValidate with: navigator projects repository validate {}",
+        "\nValidate with: navigator site projects repository validate {}",
         root.display()
     );
     ExitCode::SUCCESS
@@ -523,7 +523,7 @@ fn validate_skills(root: &Path, errors: &mut Vec<Finding>) {
                 &path,
                 format!(
                     "synced skill `{name}` has drifted from the canonical copy; \
-                     run `navigator projects repository sync-skills`"
+                     run `navigator site projects repository sync-skills`"
                 ),
             )),
             Err(_) => {}
@@ -807,7 +807,7 @@ fn readme(project_code: &str) -> String {
          that commit SHA and the template body's content hash as provenance.\n\n\
          Do not commit client uploads, answers, generated documents, secrets, dependencies, or build\n\
          output. Legal files live in Drive and in Navigator's assets, never in Git.\n\n\
-         Run `navigator projects repository validate .` before opening a pull request.\n"
+         Run `navigator site projects repository validate .` before opening a pull request.\n"
     )
 }
 
@@ -918,7 +918,7 @@ fn setup_steps() -> String {
 /// # The pin is an argument, not a literal
 ///
 /// `[scaffold]` refuses to call this with anything [`is_release_tag`] rejects,
-/// the way `ops release-version` refuses a malformed `--tag`: a gate emitted
+/// the way `ops release version` refuses a malformed `--tag`: a gate emitted
 /// at `main`, at `latest`, or at a version this repository has not published
 /// is a gate the Project cannot run, so the choice belongs to the operator
 /// (or to `main.rs`'s `published_cli_version`, when this binary can vouch for
@@ -1244,7 +1244,7 @@ jobs:
         assert!(ALLOWED_ROOTS.contains(&"navigator.yaml"));
     }
 
-    /// `seeds/` is where a Project repository's `navigator db seed` documents
+    /// `seeds/` is where a Project repository's `navigator site import` documents
     /// belong. Refusing it left nowhere in the layout for real actors a
     /// matter names, and `fixtures/` is the wrong root: a fixture is invented
     /// or firm-owned, while a seed document is the input to a production

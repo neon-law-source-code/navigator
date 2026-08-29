@@ -23,7 +23,7 @@ fn repo_root() -> PathBuf {
 }
 
 /// A throwaway object-storage root shared by every subprocess this binary
-/// spawns. `catalog-seed` and `list` open storage before they touch the database,
+/// spawns. `site seed` and `db list` open storage before they touch the database,
 /// and `cloud`'s selector fails closed on an unset `NAVIGATOR_STORAGE_BACKEND`
 /// (#618) — so each invocation names a backend. These tests assert on database
 /// rows and never on stored objects, so one scratch root is enough, and
@@ -69,13 +69,13 @@ fn navigator_with(store: &ServerSurreal) -> Command {
 /// store, or the list would read a catalog the seed never wrote.
 fn populated_store(store: &ServerSurreal) {
     let out = navigator_with(store)
-        .args(["db", "catalog-seed"])
+        .args(["site", "seed"])
         .arg(repo_root().join("templates"))
         .output()
-        .expect("run navigator db catalog-seed");
+        .expect("run navigator site seed");
     assert!(
         out.status.success(),
-        "catalog-seed failed: stdout=\n{}\nstderr=\n{}",
+        "site seed failed: stdout=\n{}\nstderr=\n{}",
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr),
     );

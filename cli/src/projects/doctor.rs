@@ -1,4 +1,4 @@
-//! `navigator projects doctor` — read-only Project workspace diagnostics.
+//! `navigator site projects doctor` — read-only Project workspace diagnostics.
 //!
 //! Verify a machine and a Project workspace *before* Navigator is allowed to
 //! create anything. Every check here reads: no folder is created, no file is
@@ -347,7 +347,7 @@ fn report(diagnosis: &Diagnosis) -> ExitCode {
     }
 }
 
-/// `navigator projects doctor [--host h] [--project code]`.
+/// `navigator site projects doctor [--host h] [--project code]`.
 ///
 /// Reads the live environment, the real filesystem, and the stored
 /// credentials. Writes nothing, and makes no network or database call: the

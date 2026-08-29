@@ -7,7 +7,7 @@
 //! its release with no environment set — the runtime `NAVIGATOR_RELEASE_TAG`
 //! override in `main.rs` still wins when present. On a plain local build the
 //! tag is unset and we fall back to the workspace crate version: `0.1.0`
-//! between releases, or the release tag `navigator ops release-version` stamped
+//! between releases, or the release tag `navigator ops release version` stamped
 //! into the tagged commit, so a build of released source reports its release
 //! even with no env var set.
 //!

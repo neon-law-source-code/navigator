@@ -789,7 +789,7 @@ async fn prior_answer_row(
 /// The Dioxus route's pre-layer calls this and either injects the result or
 /// returns the `Response` this hands back instead of rendering:
 ///
-/// - `?format=json` — the narrow machine surface the `navigator intake answer`
+/// - `?format=json` — the narrow machine surface the site intake flow
 ///   CLI walks. HTML scraping is brittle, so it stays a branch on this path.
 /// - the questionnaire is complete — a redirect to `/lawyer`.
 /// - the notation is gone — a `404`; a runtime failure — a `500`.
@@ -900,7 +900,7 @@ pub(crate) async fn resolve_walker_step(
 }
 
 /// Render the current questionnaire step as the JSON body the `navigator
-/// intake answer` CLI command walks: either the next question (code,
+/// site intake flow walks: either the next question (code,
 /// prompt, `answer_type`, any `radio` choices, and — for a record/reference
 /// question — the DB-backed `candidates` the CLI numbers into a pick-list)
 /// or `complete: true` once the machine reaches END. A `people_list`

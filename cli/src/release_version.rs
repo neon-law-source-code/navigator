@@ -1,9 +1,9 @@
-//! `navigator ops release-version` — write the release version the operator
+//! `navigator ops release version` — write the release version the operator
 //! names into `[workspace.package].version`, which is the act that cuts a
 //! release.
 //!
 //! THIS COMMAND IS THE RELEASE TRIGGER, one step removed. `deploy.yml` runs
-//! `ops release-check` on every push to `main`; when the workspace version is
+//! `ops release check` on every push to `main`; when the workspace version is
 //! newer than every version already tagged, that push builds, proves, tags, and
 //! publishes. So bumping this value and landing it is the whole of cutting a
 //! release — there is no tag to push afterwards, and no clock decides anything.
@@ -106,7 +106,7 @@ fn set_workspace_version(manifest: &str, version: &str) -> Result<String, String
     Ok(out)
 }
 
-/// Entry point for `ops release-version`.
+/// Entry point for `ops release version`.
 ///
 /// Writes the version the operator named, refreshes `Cargo.lock` to match, and
 /// unless `no_commit` commits both on the current branch so the operator can
@@ -118,11 +118,11 @@ fn set_workspace_version(manifest: &str, version: &str) -> Result<String, String
 pub fn run(manifest_path: &Path, version: &str, no_commit: bool) -> ExitCode {
     let version = version.trim().to_string();
     if version.is_empty() {
-        eprintln!("navigator: release-version: --tag must not be empty");
+        eprintln!("navigator: release version: --tag must not be empty");
         return ExitCode::from(2);
     }
     if let Err(error) = validate_release_version(&version) {
-        eprintln!("navigator: release-version: {error}");
+        eprintln!("navigator: release version: {error}");
         return ExitCode::from(2);
     }
 
@@ -130,7 +130,7 @@ pub fn run(manifest_path: &Path, version: &str, no_commit: bool) -> ExitCode {
         Ok(text) => text,
         Err(error) => {
             eprintln!(
-                "navigator: release-version: read {}: {error}",
+                "navigator: release version: read {}: {error}",
                 manifest_path.display()
             );
             return ExitCode::from(2);
@@ -140,7 +140,7 @@ pub fn run(manifest_path: &Path, version: &str, no_commit: bool) -> ExitCode {
     let rewritten = match set_workspace_version(&manifest, &version) {
         Ok(text) => text,
         Err(error) => {
-            eprintln!("navigator: release-version: {error}");
+            eprintln!("navigator: release version: {error}");
             return ExitCode::from(2);
         }
     };
@@ -152,7 +152,7 @@ pub fn run(manifest_path: &Path, version: &str, no_commit: bool) -> ExitCode {
         );
     } else if let Err(error) = std::fs::write(manifest_path, &rewritten) {
         eprintln!(
-            "navigator: release-version: write {}: {error}",
+            "navigator: release version: write {}: {error}",
             manifest_path.display()
         );
         return ExitCode::from(2);

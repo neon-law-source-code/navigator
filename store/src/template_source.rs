@@ -11,7 +11,7 @@
 //!   at HEAD and pin the commit SHA it was read from.
 //! - [`rules`] — validate with the same rule set `navigator validate` runs,
 //!   and **refuse on any blocking (Error-severity) violation**. Unlike the
-//!   `navigator catalog-seed` batch seeder, which *skips* a bad file, a notation
+//!   `navigator site seed` batch seeder, which *skips* a bad file, a notation
 //!   must never open from an invalid template, so `create` fails loudly.
 //! - [`crate::templates::save_version`] — append an immutable, project-scoped
 //!   version (retiring the prior one only when the bytes changed), pinned by

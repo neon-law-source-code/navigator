@@ -1,4 +1,4 @@
-//! Pure helpers for `navigator site intake answer` — parsing the
+//! Pure helpers for the retired terminal intake flow — parsing the
 //! `--person 'name=…,street=…'` flag and assembling the `people_list`
 //! widget's `p{row}_{part}` form fields. The HTTP orchestration (walking
 //! the server's `?format=json` steps and posting answers) lives in

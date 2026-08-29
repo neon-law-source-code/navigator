@@ -89,7 +89,7 @@ pub struct SessionData {
     /// Per-session CSRF token, embedded in every admin form.
     pub csrf_token: String,
     /// Which front door minted this session. `Browser` for the OIDC /
-    /// password cookie flow, `Cli` for a `navigator login` bearer token.
+    /// password cookie flow, `Cli` for a `navigator site login` bearer token.
     #[serde(default)]
     pub source: SessionSource,
     /// Slug of the OIDC provider that authenticated this session

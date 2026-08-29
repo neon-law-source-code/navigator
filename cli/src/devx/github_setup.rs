@@ -231,7 +231,7 @@ const NAVIGATOR_CODEQL_INTEGRATION_ID: u64 = 57789;
 ///
 /// Two spellings are live at once, and both are correct. A repository the Firm
 /// has always administered carries `ci.yml`; a Project repository written by
-/// `navigator projects repository scaffold` carries `gate.yml`. What they share
+/// `navigator site projects repository scaffold` carries `gate.yml`. What they share
 /// is the invariant that actually matters — a job whose check run is named
 /// `ci` — so the gate accepts either filename and refuses only when neither
 /// file exists or neither defines the job.
@@ -3844,7 +3844,7 @@ mod tests {
 
     #[tokio::test]
     async fn required_check_job_accepts_the_scaffolded_gate_workflow() {
-        // A Project repository written by `navigator projects repository
+        // A Project repository written by `navigator site projects repository
         // scaffold` has no ci.yml at all. Before both spellings were accepted
         // this read as "the repository has no CI" and refused to govern it.
         let server = MockServer::start().await;

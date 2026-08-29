@@ -56,14 +56,6 @@ Nick
 
 </div><div class="col-6 col-md-4">
 
-![My Austin teammates](img/thanks-apple/collage-1.jpg)
-
-</div><div class="col-6 col-md-4">
-
-![Friends from Singapore](img/thanks-apple/collage-2.jpg)
-
-</div><div class="col-6 col-md-4">
-
 ![Stay Curious!](img/thanks-apple/collage-3.jpg)
 
 </div><div class="col-6 col-md-4">
@@ -76,10 +68,6 @@ Nick
 
 </div><div class="col-6 col-md-4">
 
-![Friends in Austin](img/thanks-apple/collage-7.jpg)
-
-</div><div class="col-6 col-md-4">
-
 ![Brothers for life](img/thanks-apple/collage-8.jpg)
 
 </div><div class="col-6 col-md-4">
@@ -89,10 +77,6 @@ Nick
 </div><div class="col-6 col-md-4">
 
 ![London dinner before Hamilton](img/thanks-apple/curry-night.jpg)
-
-</div><div class="col-6 col-md-4">
-
-![Erlangen with Wolfgang](img/thanks-apple/travels-abroad.jpg)
 
 </div><div class="col-6 col-md-4">
 

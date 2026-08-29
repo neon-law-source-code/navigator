@@ -4,7 +4,7 @@ title: Going All-In on Rust
 description: Why a general practice firm builds its own tools in one language for litigation and transactional work.
 ---
 
-![Rust in Peace; less engineer, more lawyer.](img/going-all-in-on-rust/ferris-rust-logo-nlf-20260705.png)
+![Ferris trains at sunrise on stone steps.](img/going-all-in-on-rust/ferris-training-hero.png)
 
 _Nick is a partner at Neon Law._
 

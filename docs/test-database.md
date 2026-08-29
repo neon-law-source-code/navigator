@@ -1,7 +1,8 @@
 # Test database — one engine per test, inside the test process
 
-> **`cargo test` needs no database, no container, and no configuration.** Each test opens its own embedded,
-> memory-backed SurrealDB and applies the schema to it.
+> **`cargo test` needs no external database or container.** Each test opens its own embedded, memory-backed SurrealDB
+> and applies the schema to it. The checked-in `.cargo/config.toml` caps ordinary libtest at four workers because the
+> embedded client is not safe to tear down at higher concurrency.
 
 The local KIND lifecycle resets staging by deleting its guarded namespace, never by truncating tables; old workflow
 journals cannot survive.
@@ -12,8 +13,8 @@ journals cannot survive.
 schema applied. No container, no port, no shared server, nothing to reclaim: the database dies with the test's own
 memory, so two tests cannot collide and the whole suite runs in parallel with no isolation machinery.
 
-That is the whole contract. There is no environment variable to set, no server to start, and nothing left behind on disk
-when a run ends.
+That is the whole contract. There is no external environment variable to set, no server to start, and nothing left
+behind on disk when a run ends.
 
 ## The one exception — a test that spawns `navigator`
 

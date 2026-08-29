@@ -157,7 +157,7 @@ async fn list_templates_prints_imported_titles() {
     let stdout = String::from_utf8_lossy(&out.stdout);
     for needle in [
         "onboarding__letter",
-        "Retainer Agreement",
+        "Engagement Letter",
         "offboarding__letter",
         "Closing Letter",
         "nv__llc_formation",
@@ -263,5 +263,5 @@ async fn list_templates_against_a_seed_only_db_shows_the_bundled_retainer() {
         stdout.contains("onboarding__letter"),
         "expected the seeded retainer template; got:\n{stdout}",
     );
-    assert!(stdout.contains("Retainer Agreement"));
+    assert!(stdout.contains("Engagement Letter"));
 }

@@ -548,7 +548,7 @@ mod tests {
     #[test]
     fn the_bundled_retainer_is_a_roman_outline() {
         let doc = parse(RETAINER);
-        assert_eq!(doc.title, "Retainer Agreement");
+        assert_eq!(doc.title, "Engagement Letter");
         assert_eq!(doc.scheme, Some(DepthOneScheme::Roman));
         let markers: Vec<_> = doc
             .units
@@ -558,7 +558,7 @@ mod tests {
             .collect();
         assert_eq!(
             markers,
-            vec!["I", "II", "III", "IV", "V", "VI", "VII", "VIII"]
+            vec!["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"]
         );
         assert!(doc.units.iter().any(|u| u.path == "II.A" && u.depth == 2));
         assert!(doc.units.iter().any(|u| u.path == "III.B" && u.depth == 2));

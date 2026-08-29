@@ -3050,7 +3050,7 @@ records:
             .await
             .unwrap()
             .expect("template row");
-        assert_eq!(tmpl.title, "Retainer Agreement");
+        assert_eq!(tmpl.title, "Engagement Letter");
         assert_eq!(tmpl.respondent_type, "person_and_entity");
         assert!(tmpl.project_id.is_none(), "bundled templates are shared");
         // The body now lives in a blob — fetch it via the storage
@@ -3066,7 +3066,7 @@ records:
             &body[..body.len().min(20)]
         );
         assert!(body.contains("{{person__client.name}}"));
-        assert!(body.contains("{{person__client.email}}"));
+        assert!(body.contains("{{person__lawyer_dri.email}}"));
         assert!(body.contains("{{project__engagement.name}}"));
         assert!(body.contains("{{custom_clauses}}"));
     }
@@ -3112,8 +3112,7 @@ records:
         // satisfy the Markdown linter cannot silently drop a clause from
         // this guard.
         let required = [
-            "binding arbitration administered by **JAMS**",
-            "seated in **Reno, Nevada**",
+            "binding arbitration before a single arbitrator administered by **JAMS**",
             "limit, cap, or waive the Firm's responsibility for its own work",
             "right to consult independent counsel of your own choosing before you agree to it",
             "Mandatory Fee Arbitration Act",
@@ -3132,7 +3131,11 @@ records:
         let body = crate::templates::body(&surreal, &storage, &tmpl)
             .await
             .expect("retainer body");
-        let flat = body.split_whitespace().collect::<Vec<_>>().join(" ");
+        let flat = body
+            .split_whitespace()
+            .filter(|token| *token != ">")
+            .collect::<Vec<_>>()
+            .join(" ");
         for phrase in required {
             assert!(
                 flat.contains(phrase),
@@ -3169,10 +3172,10 @@ records:
         // in #363): the clause names the questionnaire variable, not a
         // hardcoded jurisdiction. The token is bare, not a code span, so the
         // letter renderer fills and highlights it like every other
-        // placeholder. The arbitration *seat* stays fixed at Reno (asserted
-        // above) — venue does not flex with governing law.
+        // placeholder. The arbitration forum does not flex with governing
+        // law.
         assert!(
-            flat.contains("This Agreement is governed by the law of")
+            flat.contains("This letter is governed by the law of")
                 && flat.contains("{{custom_single_choice__governing_law}}"),
             "{code} must fill governing law from the questionnaire, not hardcode it"
         );

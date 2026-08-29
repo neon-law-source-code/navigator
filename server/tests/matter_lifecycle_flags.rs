@@ -468,8 +468,7 @@ async fn a_walk_that_produced_its_instruments_clears_the_flags_with_no_asset_pre
     .await
     .unwrap();
     let matter = project(&surreal, "Notation-only matter", "closed").await;
-    walk_that_produced_an_instrument(&surreal, matter, person.id, "onboarding__letter")
-        .await;
+    walk_that_produced_an_instrument(&surreal, matter, person.id, "onboarding__letter").await;
     walk_that_produced_an_instrument(&surreal, matter, person.id, "offboarding__letter").await;
 
     let (has_engagement, has_closing) = lifecycle_sets_for(&surreal, matter).await;
@@ -917,17 +916,10 @@ async fn projects_list_renders_each_lifecycle_state_with_its_own_class() {
     // Yellow too: open, onboarding walk opened and abandoned at BEGIN. This row
     // is the defect's user-facing face — it used to render green.
     let abandoned = project(&surreal, "Abandoned lifecycle matter", "open").await;
-    notation(
-        &surreal,
-        abandoned,
-        person.id,
-        "onboarding__letter",
-    )
-    .await;
+    notation(&surreal, abandoned, person.id, "onboarding__letter").await;
     // Green: open, onboarding walk produced its instrument.
     let green = project(&surreal, "Green lifecycle matter", "open").await;
-    walk_that_produced_an_instrument(&surreal, green, person.id, "onboarding__letter")
-        .await;
+    walk_that_produced_an_instrument(&surreal, green, person.id, "onboarding__letter").await;
     // Red: closed.
     let red = project(&surreal, "Red lifecycle matter", "closed").await;
 

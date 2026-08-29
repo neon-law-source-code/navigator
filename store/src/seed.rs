@@ -3088,7 +3088,10 @@ records:
             .into_iter()
             .filter(|t| t.code == "onboarding__letter")
             .count();
-        assert_eq!(count, 1, "exactly one current onboarding letter template row");
+        assert_eq!(
+            count, 1,
+            "exactly one current onboarding letter template row"
+        );
     }
 
     /// The firm's one engagement agreement carries the three load-bearing

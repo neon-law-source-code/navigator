@@ -225,10 +225,7 @@ mod tests {
     /// client; nothing narrows the list to a matter's service.
     #[test]
     fn the_picker_offers_every_onboarding_template_and_refuses_none() {
-        let codes = [
-            "onboarding__letter",
-            "onboarding__letter_transcript",
-        ];
+        let codes = ["onboarding__letter", "onboarding__letter_transcript"];
         let mut view = view(None);
         view.templates = codes
             .iter()

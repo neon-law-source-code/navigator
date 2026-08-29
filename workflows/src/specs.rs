@@ -636,9 +636,7 @@ custom_questions:
                 .and_then(serde_yaml::Value::as_str)
                 .unwrap_or_else(|| panic!("{} has no code", template.label));
 
-            if !code.starts_with("onboarding__letter_")
-                || bundled_spec_yaml(code).is_some()
-            {
+            if !code.starts_with("onboarding__letter_") || bundled_spec_yaml(code).is_some() {
                 continue;
             }
 

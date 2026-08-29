@@ -12,9 +12,7 @@
 //! - the matter's notations (retainer, etc.) with a download link per PDF that
 //!   exists in the object store (`store::notations` keys, probed through the
 //!   injected storage handle);
-//! - the client-readable review drafts and the estate "Approve my plan" control
-//!   (whether to show it is decided by the portal router, which can reach the
-//!   estate/`workflows` logic `webapp` cannot, and injected as [`ShowApprovePlan`]);
+//! - the client-readable review drafts;
 //! - the matter's documents.
 
 use dioxus::prelude::*;
@@ -22,15 +20,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::people::ViewerRole;
 use crate::portal_project_list::PersonId;
-
-/// Whether to render the estate "Approve my plan" control. The decision is
-/// estate/`workflows`-specific (a transcript-driven notation parked at
-/// `client_review` with every released draft still awaiting the client), which
-/// lives in `portal` — a crate `webapp` cannot see. The portal router computes
-/// it per request and injects it here, the same wasm-safe way [`ViewerRole`] /
-/// [`PersonId`] / [`crate::csrf::CsrfToken`] are injected.
-#[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub struct ShowApprovePlan(pub bool);
 
 /// The matter's invoice, read from the local Xero mirror. The Xero invoice id is
 /// deliberately not carried — only the client-facing amount and status.
@@ -79,11 +68,6 @@ pub struct ProjectDetailView {
     pub notations: Vec<NotationRow>,
     pub documents: Vec<String>,
     pub review_docs: Vec<ReviewDocRow>,
-    pub show_approve_plan: bool,
-    /// `true` only for the client-side participant carrying the accountability
-    /// marker. The page is otherwise identical for every client on the matter;
-    /// this gates the one control that is theirs alone to fire.
-    pub is_dri: bool,
     /// The matter's collaboration resources, filtered to a client's audience:
     /// the shared Slack channel, the shared Notion page, and the portal. The
     /// firm's three private resources are never built for this view, so no
@@ -177,13 +161,6 @@ pub async fn get_project_detail() -> Result<ProjectDetailView, ServerFnError> {
         .await
         .map(|axum::Extension(impersonation)| impersonation)
         .unwrap_or_default();
-    // The estate "Approve my plan" decision is computed by the portal router
-    // (it can reach the `workflows`/estate logic `webapp` cannot) and injected.
-    let ShowApprovePlan(show_approve_plan) =
-        dioxus_fullstack_core::FullstackContext::extract::<axum::Extension<ShowApprovePlan>, _>()
-            .await
-            .map(|axum::Extension(flag)| flag)
-            .unwrap_or_default();
     let person_id = person_id.and_then(|raw| raw.parse::<uuid::Uuid>().ok());
 
     let surreal = consume_context::<store::surreal::SurrealDb>();
@@ -199,19 +176,6 @@ pub async fn get_project_detail() -> Result<ProjectDetailView, ServerFnError> {
     // Row-visibility runs before the row load, so an unauthorised caller never
     // even pulls the matter name into the response — the same 404 a missing id
     // would produce (never 403). A read error is a 500.
-    // Resolve the viewer's relationship to the matter, so the accountable
-    // client cannot be confused with an ordinary one.
-    let store_role = match role {
-        ViewerRole::Owner => store::persons::Role::Owner,
-        ViewerRole::Admin => store::persons::Role::Admin,
-        ViewerRole::Lawyer => store::persons::Role::Lawyer,
-        ViewerRole::Clerk => store::persons::Role::Clerk,
-        ViewerRole::Client => store::persons::Role::Client,
-    };
-    let viewer = store::access::matter_viewer(&surreal, person_id, store_role, id)
-        .await
-        .map_err(server_error)?;
-    let is_dri = viewer == Some(store::access::MatterViewer::ClientDri);
     let visible = store::projects::can_access_as_client_in_surreal(&surreal, person_id, id)
         .await
         .map_err(server_error)?;
@@ -284,8 +248,6 @@ pub async fn get_project_detail() -> Result<ProjectDetailView, ServerFnError> {
         notations: notation_rows,
         documents,
         review_docs: review_rows,
-        show_approve_plan,
-        is_dri,
         resources,
         csrf_token,
         role,
@@ -543,21 +505,6 @@ pub fn ClientProjectDetail() -> Element {
                                     }
                                 }
                             }
-                        }
-                    }
-                    // Approving the plan is the accountable client's act, so
-                    // only the client DRI is offered it. Every other client on
-                    // the matter reads the identical page without this control.
-                    if view.show_approve_plan && view.is_dri {
-                        form {
-                            class: "portal-detail__approve",
-                            method: "post",
-                            action: "/app/projects/{view.code}/approve-plan",
-                            input { r#type: "hidden", name: "_csrf", value: "{view.csrf_token}" }
-                            p { class: "nav-muted",
-                                "When you have read each document and you are ready, approve your plan. It then goes to signing."
-                            }
-                            button { class: "nav-btn nav-btn--primary", r#type: "submit", "Approve my plan" }
                         }
                     }
                 }

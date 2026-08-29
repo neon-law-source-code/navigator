@@ -1,32 +1,26 @@
 //! Integration test for the inbound contract-review workflow.
 //!
-//! The spec lives in the frontmatter of `templates/neon_law/nexus/contract_review.md`
-//! (mirrored by `workflows/specs/services__contract_review.yaml`, checked by
-//! `spec_coherence`). The first test pins the parsed state-machine shape; the
-//! second drives a notation through the happy path on the in-memory runtime
-//! (upload → analysis → attorney approval → memo → END); the third confirms
-//! the attorney can reject at `lawyer_review` and short-circuit to END.
+//! The product-neutral spec lives in
+//! `workflows/specs/memo__contract_review.yaml`. The first test pins the parsed
+//! state-machine shape; the second drives a notation through the happy path on
+//! the in-memory runtime (upload → analysis → attorney approval → memo → END);
+//! the third confirms the attorney can reject at `lawyer_review` and
+//! short-circuit to END.
 
 use uuid::Uuid;
 use workflows::{
-    workflow_spec_from_template, InMemoryRuntime, MachineKind, StateMachineRuntime, StateName,
+    workflow_spec_from_yaml, InMemoryRuntime, MachineKind, StateMachineRuntime, StateName,
     WorkflowSpec,
 };
 
-const TEMPLATE_PATH: &str = concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../templates/neon_law/nexus/contract_review.md",
-);
+const SPEC: &str = include_str!("../specs/memo__contract_review.yaml");
 
 const KIND: MachineKind = MachineKind::Workflow;
 const ID1: Uuid = Uuid::from_u128(201);
 const ID2: Uuid = Uuid::from_u128(202);
 
 fn load_spec() -> WorkflowSpec {
-    let markdown = std::fs::read_to_string(TEMPLATE_PATH)
-        .unwrap_or_else(|e| panic!("read {TEMPLATE_PATH}: {e}"));
-    workflow_spec_from_template(&markdown)
-        .expect("contract_review.md workflow frontmatter must parse")
+    workflow_spec_from_yaml(SPEC).expect("memo__contract_review workflow spec must parse")
 }
 
 #[test]

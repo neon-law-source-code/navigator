@@ -529,7 +529,7 @@ mod tests {
         crate::templates::save_version(
             surreal,
             None,
-            &format!("onboarding__estate-{}", Uuid::now_v7()),
+            &format!("sitting__transcript-{}", Uuid::now_v7()),
             crate::templates::Version {
                 title: "Estate".into(),
                 respondent_type: "person".into(),

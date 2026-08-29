@@ -1,6 +1,6 @@
 ---
 kind: filing
-title: Neon Law Nest — Nevada Profit Corporation Formation
+title: Nevada Profit Corporation Formation
 respondent_type: person_and_entity
 code: nv__profit_corp_formation
 jurisdiction: NV

@@ -23,7 +23,7 @@ line of three dashes (`---`). The block holds a few `key: value` lines, like thi
 
 ```yaml
 title: Retainer Agreement
-code: onboarding__retainer
+code: onboarding__engagement_letter
 ```
 
 That block is the **frontmatter** (the real file has a `---` line above and below it). Think of it as the caption on a
@@ -80,24 +80,24 @@ keeps one stable section order.
 Legal motions and contracts use a **Harvard outline**, not the workshop chapter/slide tree. Depth-1 headings are Roman
 (`## I. Title`) on contracts and engagement letters, or Arabic (`## 1. Title`) in motion practice. Lettered subsections
 are block quotes (`> **A. Label.** …`) so the PDF conversion indents them. `navigator template narrate` turns that body
-into a recording stage; `/lawyer/outline` shows the bundled retainer, engagement letter, and a sample motion (`?doc=`).
+into a recording stage; `/lawyer/outline` shows the bundled onboarding and offboarding letters (`?doc=`).
 
 ## Notation templates — the legal blueprints
 
 A notation template is the document a client eventually signs, plus the questions that fill it in and the path it walks
-to get there. Here is the real frontmatter from the shared retainer, `templates/neon_law/shared/retainer.md` (shown
-without its surrounding `---` fences):
+to get there. Here is the real frontmatter from the shared retainer, `templates/neon_law/shared/engagement_letter.md`
+(shown without its surrounding `---` fences):
 
 ```yaml
 kind: onboarding
-title: Retainer Agreement
+title: Engagement Letter
 respondent_type: person_and_entity
-code: onboarding__retainer
+code: onboarding__engagement_letter
 jurisdiction: NV
 confidential: true
 output: letter
 prompts:
-  client_name: What is the client's full legal name?
+  client_name: Who is the Client's directly responsible individual, the one person the Firm takes instructions from?
   project_name: What is the project name for this engagement?
   lawyer_dri: Which lawyer is directly responsible for this engagement?
 audiences:
@@ -107,15 +107,31 @@ audiences:
   lawyer_dri: lawyer
   engagement_start_date: lawyer
   engagement_scope: lawyer
-  fee_basis: lawyer
+  entity: lawyer
+  principal_office: lawyer
+custom_questions:
+  engagement_scope:
+    prompt: >-
+      In a sentence or two, what is the minimum scope of this engagement.
+  engagement_start_date:
+    prompt: When does this engagement begin?
+  governing_law:
+    prompt: >-
+      Which state's law governs this engagement? Nevada by default; choose other state we practice in if
+      the Client is located there.
+    choices:
+      nevada: Nevada
+      california: California
+      washington: Washington
 questionnaire:
-  BEGIN:                                     { _: person__client }
+  BEGIN:                                     { _: entity }
+  entity:                                    { _: address__principal_office }
+  address__principal_office:                 { _: person__client }
   person__client:                            { _: person__lawyer_dri }
   person__lawyer_dri:                        { _: project__engagement }
   project__engagement:                       { _: custom_datetime__engagement_start_date }
   custom_datetime__engagement_start_date:    { _: custom_text__engagement_scope }
-  custom_text__engagement_scope:             { _: custom_text__fee_basis }
-  custom_text__fee_basis:                    { _: custom_single_choice__governing_law }
+  custom_text__engagement_scope:             { _: custom_single_choice__governing_law }
   custom_single_choice__governing_law:       { _: END }
   END: {}
 workflow:
@@ -130,18 +146,16 @@ workflow:
 
 Each key, in plain English:
 
-- **`kind`** — what this notation is: `letter` (a letter the firm sends on the client's behalf), `filing` (a document
-  filed with a government body), `will`, `trust`, `directive` (a health-care or durable financial directive),
-  `agreement` (employment, contractor, or LLC operating), `onboarding` (the engagement that opens a matter — a
-  single-instrument engagement letter or a multi-instrument intake bundle such as the estate plan), `offboarding` (the
-  firm-signed letter that closes a matter), or `memo` (an analytical work product like a contract review). It is
-  **required** on every notation template — the declared kind is the sole classifier, so a template without it lints as
-  prose — and an unrecognized value is a blocking error.
+- **`kind`** — what this notation is: `onboarding` (the engagement that opens a matter), `offboarding` (the closing
+  letter), `letter` (a letter the firm sends on the client's behalf), `filing` (a document filed with a government
+  body), `will`, `trust`, `directive`, `agreement`, or `memo`. It is **required** on every notation template — the
+  declared kind is the sole classifier, so a template without it lints as prose — and an unrecognized value is a
+  blocking error.
 - **`title`** — the human name of the document, e.g. `Retainer Agreement`. It cannot be blank.
-- **`code`** — the document's permanent file number, in `snake_case` (e.g. `onboarding__retainer`). It must be unique
-  across the whole project, and you do not change it once clients have signed under it. The reason is the record: the
-  `code` is how a signed document is traced back to the blueprint it came from, so changing it later would cut the audit
-  trail your malpractice carrier may one day need to read.
+- **`code`** — the document's permanent file number, in `snake_case` (e.g. `onboarding__engagement_letter`). It must be
+  unique across the whole project, and you do not change it once clients have signed under it. The reason is the record:
+  the `code` is how a signed document is traced back to the blueprint it came from, so changing it later would cut the
+  audit trail your malpractice carrier may one day need to read.
 - **`respondent_type`** — who signs: `person`, `entity`, or `person_and_entity`. Nothing else is accepted.
 - **`jurisdiction`** — the state whose law governs: `NV`, `CA`, or `US`.
 - **`confidential`** — `true` or `false`. There is no default; you state it on purpose, every time, because the system
@@ -224,7 +238,7 @@ A template backed by an official government form (under `templates/forms/`) decl
 
 ```yaml
 kind: filing
-title: Neon Law Nest — Nevada Entity Formation
+title: Nevada LLC Formation
 respondent_type: person_and_entity
 code: nv__llc_formation
 jurisdiction: NV

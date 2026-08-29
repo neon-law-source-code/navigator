@@ -481,11 +481,11 @@ mod tests {
 
     const RETAINER: &str = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../templates/neon_law/shared/retainer.md"
-    ));
-    const ENGAGEMENT: &str = include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
         "/../templates/neon_law/shared/engagement_letter.md"
+    ));
+    const OFFBOARDING: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../templates/neon_law/shared/offboarding_letter.md"
     ));
 
     #[test]
@@ -548,31 +548,6 @@ mod tests {
     #[test]
     fn the_bundled_retainer_is_a_roman_outline() {
         let doc = parse(RETAINER);
-        assert_eq!(doc.title, "Retainer Agreement");
-        assert_eq!(doc.scheme, Some(DepthOneScheme::Roman));
-        let markers: Vec<_> = doc
-            .units
-            .iter()
-            .filter(|u| u.kind == UnitKind::Heading)
-            .map(|u| u.marker.as_str())
-            .collect();
-        assert_eq!(
-            markers,
-            vec!["I", "II", "III", "IV", "V", "VI", "VII", "VIII"]
-        );
-        assert!(doc.units.iter().any(|u| u.path == "II.A" && u.depth == 2));
-        assert!(doc.units.iter().any(|u| u.path == "III.B" && u.depth == 2));
-        let html = stage_html(&doc);
-        assert!(html.contains("data-harvard-outline"));
-        assert!(html.contains("data-harvard-path=\"I\""));
-        assert!(html.contains("data-harvard-path=\"II.A\""));
-        assert!(html.contains("harvard-unit--depth-1"));
-        assert!(html.contains("harvard-unit--depth-2"));
-    }
-
-    #[test]
-    fn the_bundled_engagement_letter_is_a_roman_outline() {
-        let doc = parse(ENGAGEMENT);
         assert_eq!(doc.title, "Engagement Letter");
         assert_eq!(doc.scheme, Some(DepthOneScheme::Roman));
         let markers: Vec<_> = doc
@@ -585,6 +560,33 @@ mod tests {
             markers,
             vec!["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"]
         );
+        assert!(doc.units.iter().any(|u| u.path == "II.A" && u.depth == 2));
+        assert!(doc.units.iter().any(|u| u.path == "III.B" && u.depth == 2));
+        let html = stage_html(&doc);
+        assert!(html.contains("data-harvard-outline"));
+        assert!(html.contains("data-harvard-path=\"I\""));
+        assert!(html.contains("data-harvard-path=\"II.A\""));
+        assert!(html.contains("harvard-unit--depth-1"));
+        assert!(html.contains("harvard-unit--depth-2"));
+    }
+
+    #[test]
+    fn the_bundled_offboarding_letter_is_a_roman_outline() {
+        let doc = parse(OFFBOARDING);
+        assert_eq!(doc.title, "Closing Letter");
+        assert_eq!(doc.scheme, Some(DepthOneScheme::Roman));
+        let markers: Vec<_> = doc
+            .units
+            .iter()
+            .filter(|u| u.kind == UnitKind::Heading)
+            .map(|u| u.marker.as_str())
+            .collect();
+        assert_eq!(markers, vec!["I", "II", "III", "IV", "V", "VI"]);
+        let html = stage_html(&doc);
+        assert!(html.contains("data-harvard-outline"));
+        assert!(html.contains("data-harvard-path=\"I\""));
+        assert!(html.contains("harvard-unit--depth-1"));
+        assert!(html.contains("Representation concluded"));
     }
 
     #[test]

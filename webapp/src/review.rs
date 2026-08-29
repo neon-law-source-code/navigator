@@ -1,6 +1,6 @@
 //! The comment-only client document-review page
 //! (`/app/projects/{project_code}/review/{doc_id}`) as a Dioxus component (#641 Phase
-//! 3) — Northstar Phase A.
+//! 3).
 //!
 //! A client reads one attorney-reviewed draft (a will, a trust, a directive) and
 //! leaves comments anchored to a text range; the surface is read-only, a comment
@@ -10,11 +10,11 @@
 //! `draft` — the human-in-the-loop gate).
 //!
 //! The comment/selection/highlight behaviour is a first-party custom element,
-//! `<northstar-review>`, upgraded by an external same-origin script
-//! (`/public/js/northstar-review.js`, allowed by `script-src 'self'`, no nonce).
+//! `<document-review>`, upgraded by an external same-origin script
+//! (`/public/js/document-review.js`, allowed by `script-src 'self'`, no nonce).
 //! The sanitized draft body is injected as raw HTML (`dangerous_inner_html`), and
 //! the comment thread is handed to the element as a JSON data attribute. The
-//! layout CSS lives in the theme stylesheet (`.northstar-review-page`).
+//! layout CSS lives in the theme stylesheet (`.document-review-page`).
 
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -148,7 +148,7 @@ fn server_error(e: impl std::fmt::Display) -> ServerFnError {
 }
 
 /// The comment-only client document-review page, server-side rendered. The
-/// document is readable before hydration; the `northstar-review` custom element
+/// document is readable before hydration; the `document-review` custom element
 /// upgrades it (text selection, comment sidebar, range highlights) once its
 /// same-origin script loads.
 #[component]
@@ -185,9 +185,9 @@ pub fn Review() -> Element {
         // The first-party custom-element script — same-origin, so `script-src
         // 'self'` allows it with no nonce; `defer` so it runs after the element
         // and its document body are in the DOM.
-        document::Script { src: "/public/js/northstar-review.js", defer: true }
+        document::Script { src: "/public/js/document-review.js", defer: true }
 
-        main { id: "review", class: "nav-theme northstar-review-page",
+        main { id: "review", class: "nav-theme document-review-page",
             nav { class: "portal-detail__back",
                 a { class: "nav-link", href: "/app/projects/{view.project_code}", "← Back to your matter" }
             }
@@ -202,7 +202,7 @@ pub fn Review() -> Element {
                     "Read your document below. Select any text to leave a comment — you can't edit the document here, only comment. Nothing is final until you've had your say."
                 }
             }
-            northstar-review {
+            document-review {
                 "data-create-url": "{comments_url}",
                 "data-comments": "{view.comments_json}",
                 "data-csrf": "{view.csrf_token}",

@@ -87,7 +87,7 @@ async fn template_detail_has_frontmatter_disclaimer_and_start_a_matter_cta() {
     assert!(body.contains("does not create an attorney"));
     // A download must not be a dead end.
     assert!(&body.contains("Start a matter"));
-    assert!(body.contains("href=\"/contact\""));
+    assert!(body.contains("href=\"mailto:contact@neonlaw.com\""));
     // And the raw-download link — kebab-cased, like every asset URL.
     assert!(body.contains("/templates/forms/united-states/federal/irs/us--form-990/download"));
 }

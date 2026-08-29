@@ -15,7 +15,7 @@ use features::journey::{answer_body, client, Journey};
 use uuid::Uuid;
 use workflows::{bundled_spec_yaml, prompt_overrides_from_yaml};
 
-const TEMPLATE_CODE: &str = "onboarding__retainer";
+const TEMPLATE_CODE: &str = "onboarding__engagement_letter";
 
 #[derive(Default, World)]
 #[world(init = Self::default)]
@@ -96,23 +96,42 @@ async fn open_matter(world: &mut IntakeWorld, email: String) {
     world.journey = Some(journey);
 }
 
-#[given(regex = r#"^a lawyer pre-filled the client's name as "([^"]+)"$"#)]
-async fn lawyer_prefill(world: &mut IntakeWorld, value: String) {
-    // The walker's first question is person__client; lawyer answering it
-    // records a lawyer-sourced answer the client will later confirm.
+/// Answer whatever question the questionnaire is currently asking, as the
+/// lawyer — the shared mechanic behind every "a lawyer entered/pre-filled
+/// …" step below. The walker's `POST /step` always answers the current
+/// question, so the order these steps appear in a scenario is the order
+/// they answer the questionnaire's states.
+async fn lawyer_answers_current_question(world: &IntakeWorld, value: &str) {
     let path = format!(
         "/lawyer/notations/{}/step",
         world.notation_id.expect("notation"),
     );
-    let resp = world
-        .journey()
-        .lawyer_post(&path, answer_body(&value))
-        .await;
+    let resp = world.journey().lawyer_post(&path, answer_body(value)).await;
     assert!(
         resp.status.is_success() || resp.status.is_redirection(),
-        "lawyer pre-fill returned {}",
+        "lawyer answer returned {}",
         resp.status,
     );
+}
+
+#[given(regex = r#"^a lawyer entered the entity name as "([^"]+)"$"#)]
+async fn lawyer_entity_prefill(world: &mut IntakeWorld, value: String) {
+    // The walker's first question is entity.
+    lawyer_answers_current_question(world, &value).await;
+}
+
+#[given(regex = r#"^a lawyer entered the entity's principal office as "([^"]+)"$"#)]
+async fn lawyer_address_prefill(world: &mut IntakeWorld, value: String) {
+    // The walker's second question is address__principal_office.
+    lawyer_answers_current_question(world, &value).await;
+}
+
+#[given(regex = r#"^a lawyer pre-filled the client's name as "([^"]+)"$"#)]
+async fn lawyer_prefill(world: &mut IntakeWorld, value: String) {
+    // The walker's third question (after entity and its principal office)
+    // is person__client; lawyer answering it records a lawyer-sourced
+    // answer the client will later confirm.
+    lawyer_answers_current_question(world, &value).await;
 }
 
 #[when("the client opens their intake")]

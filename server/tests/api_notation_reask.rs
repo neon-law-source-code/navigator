@@ -23,7 +23,7 @@ use tower::ServiceExt;
 use uuid::Uuid;
 use workflows::{DispatchingRuntime, InMemoryRuntime, StateMachineRuntime};
 
-const TEMPLATE_CODE: &str = "onboarding__retainer";
+const TEMPLATE_CODE: &str = "onboarding__engagement_letter";
 
 struct Fixture {
     app: axum::Router,
@@ -59,7 +59,7 @@ async fn build_fixture() -> Fixture {
     let tmpl = store::templates::resolve(&surreal, None, TEMPLATE_CODE)
         .await
         .unwrap()
-        .expect("seed inserts onboarding__retainer");
+        .expect("seed inserts onboarding__engagement_letter");
     let client_person = store::persons::create(
         &surreal,
         &store::persons::NewPerson::with_role("Libra", "libra@example.com", Role::Client),
@@ -127,16 +127,17 @@ async fn build_fixture() -> Fixture {
     }
 }
 
-/// Drive the seven-question retainer intake to the `lawyer_review` gate over
+/// Drive the eight-question retainer intake to the `lawyer_review` gate over
 /// the lawyer walk, mirroring `reask_handler.rs`.
 async fn walk_to_lawyer_review(fx: &Fixture) {
     for value in [
+        "Libra%20Holdings%20LLC",
+        "500%20Innovation%20Way%20Reno%20NV%2089501",
         "Libra",
         "Firm%20Principal",
         "Estate%20plan",
         "2026-09-01",
         "Draft%20and%20file%20the%20matter%20documents.",
-        "450%20per%20hour",
         "nevada",
     ] {
         let resp = fx

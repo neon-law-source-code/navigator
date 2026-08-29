@@ -21,10 +21,10 @@ use store::test_support::mem_surreal;
 use tower::ServiceExt;
 use workflows::{InMemoryRuntime, StateMachineRuntime};
 
-const TEMPLATE_CODE: &str = "onboarding__retainer";
+const TEMPLATE_CODE: &str = "onboarding__engagement_letter";
 
 /// Build the router over a real test database with the bundled
-/// `onboarding__retainer` seeded, plus one notation at BEGIN. The workflow
+/// `onboarding__engagement_letter` seeded, plus one notation at BEGIN. The workflow
 /// and questionnaire share one `InMemoryRuntime` — the same in-process
 /// topology the walker tests use.
 async fn build_app_and_notation() -> (axum::Router, store::surreal::SurrealDb, uuid::Uuid) {
@@ -41,7 +41,7 @@ async fn build_app_and_notation() -> (axum::Router, store::surreal::SurrealDb, u
     let tmpl = store::templates::resolve(&surreal, None, TEMPLATE_CODE)
         .await
         .unwrap()
-        .expect("seed pass inserts onboarding__retainer");
+        .expect("seed pass inserts onboarding__engagement_letter");
 
     let libra = store::persons::create(
         &surreal,
@@ -142,7 +142,7 @@ async fn post_form(
         .unwrap()
 }
 
-/// Walk the three-question retainer intake to the `lawyer_review` gate — the
+/// Walk the eight-question retainer intake to the `lawyer_review` gate — the
 /// state from which changes can be requested. Mirrors the walker tests: the
 /// final answer parks the matter at review rather than rendering.
 async fn walk_to_lawyer_review(
@@ -151,12 +151,13 @@ async fn walk_to_lawyer_review(
     surreal: &store::surreal::SurrealDb,
 ) {
     for value in [
+        "Libra%20Holdings%20LLC",
+        "500%20Innovation%20Way%20Reno%20NV%2089501",
         "Libra",
         "Firm%20Principal",
         "Estate%20plan",
         "2026-09-01",
         "Draft%20and%20file%20the%20matter%20documents.",
-        "450%20per%20hour",
         "nevada",
     ] {
         let resp = app

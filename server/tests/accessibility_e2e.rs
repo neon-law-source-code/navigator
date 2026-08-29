@@ -763,17 +763,19 @@ async fn public_navigation_images_and_collage_dialog_are_accessible() {
     };
 
     assert_public_shell(&c).await;
-    c.find(Locator::Css("a.home-statement__cta"))
+    let cta = c
+        .find(Locator::Css("a.home-statement__cta"))
         .await
-        .expect("the home page has its contact call to action")
-        .click()
+        .expect("the home page has its contact call to action");
+    let href = cta
+        .attr("href")
         .await
-        .unwrap();
-    c.wait()
-        .at_most(Duration::from_secs(10))
-        .for_url(&url::Url::parse(&format!("{site_base_url}/contact")).unwrap())
-        .await
-        .expect("the home call to action navigates to the contact route");
+        .expect("the home call to action has an href")
+        .expect("the home call to action has an href");
+    assert!(
+        href.starts_with("mailto:"),
+        "the home call to action writes the firm inbox, not a retired /contact page: {href}"
+    );
 
     c.goto(&format!("{site_base_url}/blog/thanks-apple"))
         .await

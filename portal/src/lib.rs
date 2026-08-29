@@ -110,7 +110,6 @@ pub mod email_events;
 pub mod email_threads;
 pub mod esign_view;
 pub mod esignature_webhook;
-pub mod estate;
 pub mod expunge;
 pub mod expunge_request_route;
 pub mod expunge_route;
@@ -149,7 +148,6 @@ pub mod tenant;
 /// compiled so both the integration tests and the `features` crate can
 /// use it; see the module docs.
 pub mod test_support;
-pub mod transcript_intake;
 pub mod visitor_analytics;
 pub mod webhook_auth;
 pub mod welcome;
@@ -1351,13 +1349,13 @@ pub fn bootstrap(
     );
     // ENG-81: the single matter renders through Dioxus at GET /app/projects/{code}
     // — one mount for every tier. The firm gets the workbench (header + DRIs +
-    // missing-retainer notice + estate section + forge repo link + participation
-    // ledger + document uploader + close-matter control); a client gets service,
+    // missing-retainer notice + forge repo link + participation ledger +
+    // document uploader + close-matter control); a client gets service,
     // invoice, notations with per-PDF download links, documents, and the
-    // review/approve-plan surface. The object-store handle lets the client
-    // loader probe which of each notation's PDFs exist, and the forge URL and
-    // estate views are injected for the firm loader. The POST (edit-save) and
-    // every mutation route stay on Axum; axum merges the same-path methods.
+    // review surface. The object-store handle lets the client loader probe
+    // which of each notation's PDFs exist, and the forge URL is injected for
+    // the firm loader. The POST (edit-save) and every mutation route stay on
+    // Axum; axum merges the same-path methods.
     // One Project's client portal at `/app/projects/{code}/portal`, a distinct
     // path shape from the matter show page above it.
     let project_portal = project_portal::router(
@@ -1409,7 +1407,7 @@ pub fn bootstrap(
     );
     // #641 Phase 3: the comment-only client document-review page renders through
     // Dioxus at /app/projects/{project_code}/review/{doc_id}; the comment data API
-    // (`…/comments` GET/POST, driven by the northstar-review custom element)
+    // (`…/comments` GET/POST, driven by the document-review custom element)
     // stays on the Axum data API.
     let dioxus_review = dioxus_app::review_router(
         state.surreal.clone(),

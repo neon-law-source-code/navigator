@@ -77,7 +77,7 @@ pub async fn create_project_notation(
 
     // Matter-scoped: creation is not merely lawyer-tier, it is bound to the
     // matter. The acting lawyer must participate in this project (admin
-    // bypasses), the same rule the estate review routes enforce. A miss maps
+    // bypasses), the same rule the contract-review routes enforce. A miss maps
     // to "not found" so neither door discloses a project outside the caller's
     // scope.
     let in_scope = store::access::can_see_project_as_lawyer(

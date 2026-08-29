@@ -371,40 +371,6 @@ pub async fn start_post(
         return (StatusCode::INTERNAL_SERVER_ERROR, "internal").into_response();
     }
 
-    // Transcript-driven onboarding (Northstar estate) has no questionnaire
-    // to walk before intake — the recorded sitting's transcript fills the
-    // answers via extraction. Detect it by the `transcript_uploaded` edge
-    // out of `BEGIN` (data-driven, never a hard-coded template code), start
-    // the workflow machine so the transcript-upload surface has a live
-    // timeline to signal, and land lawyer on the matter page where that form
-    // lives. Questionnaire-first onboarding (the retainer) keeps the walker
-    // redirect below.
-    if let Some(spec) = workflows::catalog_spec_yaml(code)
-        .and_then(|yaml| workflows::workflow_spec_from_yaml(yaml).ok())
-    {
-        let transcript_driven = spec.transitions_from(&StateName::begin()).is_some_and(|t| {
-            t.lookup(crate::transcript_intake::TRANSCRIPT_UPLOADED)
-                .is_some()
-        });
-        if transcript_driven {
-            if let Err(e) = StateMachineRuntime::start(
-                state.workflow_runtime.as_ref(),
-                MachineKind::Workflow,
-                notation_id,
-                &spec,
-            )
-            .await
-            {
-                tracing::error!(error = %e, %notation_id, "start_post: estate workflow start failed");
-                return (StatusCode::INTERNAL_SERVER_ERROR, "internal").into_response();
-            }
-            return Redirect::to(
-                &crate::dioxus_app::project_show_path(&state.surreal, project_id).await,
-            )
-            .into_response();
-        }
-    }
-
     Redirect::to(&format!("/lawyer/notations/{notation_id}/step")).into_response()
 }
 
@@ -2955,23 +2921,21 @@ mod tests {
 
     #[test]
     fn progress_for_begin_is_step_1() {
-        // Seven questions: client identity, firm DRI, engagement name,
-        // engagement start date, engagement scope, fee basis, governing law
-        // (N120 grounded the four bare placeholders the retainer body used
-        // to leave undeclared).
+        // Eight questions: entity, principal office, client identity, firm
+        // DRI, engagement name, engagement start date, engagement scope,
+        // governing law (N120 grounded the four bare placeholders the
+        // retainer body used to leave undeclared).
         let spec = retainer_intake_questionnaire();
-        assert_eq!(progress_for(&spec, &StateName::begin()), (1, 7));
+        assert_eq!(progress_for(&spec, &StateName::begin()), (1, 8));
     }
 
     #[test]
     fn progress_for_client_state_is_step_2() {
-        // After answering the client identity question, the next question is
-        // the firm DRI — the walker should display "step 2 of 7."
+        // After answering the entity question, the next question is the
+        // entity's principal office — the walker should display "step 2 of
+        // 8."
         let spec = retainer_intake_questionnaire();
-        assert_eq!(
-            progress_for(&spec, &StateName::from("person__client")),
-            (2, 7)
-        );
+        assert_eq!(progress_for(&spec, &StateName::from("entity")), (2, 8));
     }
 
     #[test]
@@ -2982,7 +2946,7 @@ mod tests {
                 &spec,
                 &StateName::from("custom_single_choice__governing_law")
             ),
-            (7, 7)
+            (8, 8)
         );
     }
 

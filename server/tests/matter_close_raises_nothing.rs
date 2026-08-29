@@ -187,9 +187,8 @@ async fn any_matter_closes_and_none_of_them_raises_money() {
             .await
             .unwrap(),
     );
-    // The canonical seed brings the `offboarding__letter` template, the
-    // originating templates below, and the whole product catalog — so a
-    // priced `northstar` row really is present and still buys nothing.
+    // The canonical seed brings the `offboarding__letter` template and the
+    // originating templates below.
     seed::seed_canonical(&surreal, &storage).await.unwrap();
 
     // A dispatching runtime backed by the store so the firm-signature
@@ -221,12 +220,12 @@ async fn any_matter_closes_and_none_of_them_raises_money() {
             originating_template: None,
         },
         Matter {
-            what: "estate work",
-            originating_template: Some("onboarding__estate"),
+            what: "an engagement letter",
+            originating_template: Some("onboarding__engagement_letter"),
         },
         Matter {
-            what: "a consumer-report engagement",
-            originating_template: Some("nautilus__fcra_dispute"),
+            what: "an LLC formation",
+            originating_template: Some("nv__llc_formation"),
         },
     ];
 

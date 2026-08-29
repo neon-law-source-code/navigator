@@ -2119,11 +2119,9 @@ pub fn matter_lifecycle(
 ///
 /// A notation's `state` is *not* the fix, and this is the subtle part. The
 /// state records where the walk is standing, never what it has produced, and
-/// the two candidate "honest" states are both entered *before* their artifact
-/// exists: the retainer walk parks *at* `generate_pdf__*` and the worker
-/// renders afterwards, and `portal::estate` sets `document_drafts__estate`
-/// *first* and persists the drafts second. So this reads the artifacts
-/// themselves.
+/// the retainer walk's own "honest" state is entered *before* its artifact
+/// exists: it parks *at* `generate_pdf__*` and the worker renders the PDF
+/// afterwards. So this reads the artifacts themselves.
 ///
 /// # The two artifact lanes
 ///
@@ -2131,12 +2129,11 @@ pub fn matter_lifecycle(
 /// **asset lane** under the pinned template's declared `kind`
 /// (`workflows::document::dispatch_generate_pdf`), so the asset query already
 /// sees every generated engagement and offboarding letter at no extra cost.
-/// A walk that drafts its instruments instead — the intake-driven estate
-/// onboarding, whose instruments are `will`/`trust`/`directive_*` rows rather
-/// than one letter — files into **`review_documents`**, which the asset lane
-/// cannot see. That lane is keyed off the *notation's* opening or closing
-/// kind, never the draft row's own kind, because the drafts of an onboarding
-/// walk are the instruments it opens the matter with, not copies of it.
+/// A walk that drafts its instruments instead files into
+/// **`review_documents`**, which the asset lane cannot see. That lane is
+/// keyed off the *notation's* opening or closing kind, never the draft row's
+/// own kind, because the drafts of an onboarding walk are the instruments it
+/// opens the matter with, not copies of it.
 ///
 /// **This answers "is it on file", not "is it executed".** An asset row
 /// carries no signature state, and an upload commonly arrives from DocuSign

@@ -5,6 +5,7 @@ respondent_type: person_and_entity
 code: offboarding__letter
 jurisdiction: NV
 confidential: true
+output: letter
 prompts:
   client_name: What is the client's full legal name?
   project_name: What is the project name for this engagement?
@@ -50,20 +51,50 @@ workflow:
   END: {}
 ---
 
-This letter confirms that Neon Law (the "Firm") has completed its work for `{{person__client.name}}` (the "Client")
-on the matter referred to as `{{project__engagement.name}}`, and that the Firm's representation of the Client on this
-matter is now concluded.
+{{person__client.name}}
 
-Summary of the work completed: `{{custom_text__matter_summary}}`.
+Re: Closing Letter — {{project__engagement.name}}
 
-Fee status at closing: `{{custom_single_choice__fee_status}}`. The Client remains responsible only for fees and expenses
-already incurred and invoiced on this matter; closing the matter itself adds no further charge.
+Dear {{person__client.name}}:
 
-The Client's file will be handled as follows: `{{custom_text__file_retention}}`. The Client may request a copy of the
-file during the retention period at no additional cost.
+This Closing Letter confirms that Neon Law (the "Firm") has completed its work for {{person__client.name}} (the
+"Client") on the matter referred to as {{project__engagement.name}}.
 
-Next steps that belong to the Client: `{{custom_text__next_obligation}}`. The Firm will take no further action on this
+## I. Representation concluded
+
+The Firm's representation of the Client on this matter is now concluded. The Firm will take no further action on this
 matter. Should a new need arise, the Client is welcome to open a new matter with the Firm at any time.
+
+## II. Work completed
+
+Summary of the work completed:
+
+> {{custom_text__matter_summary}}
+
+## III. Fees at closing
+
+Fee status at closing:
+
+> {{custom_single_choice__fee_status}}
+
+The Client remains responsible only for fees and expenses already incurred and invoiced on this matter. Closing the
+matter itself adds no further charge.
+
+## IV. Your file
+
+The Client's file will be handled as follows:
+
+> {{custom_text__file_retention}}
+
+The Client may request a copy of the file during the retention period at no additional cost.
+
+## V. What remains yours to do
+
+Next steps that belong to the Client:
+
+> {{custom_text__next_obligation}}
+
+## VI. Closing
 
 It has been our privilege to do this work alongside you. This letter is signed on behalf of the Firm by the Neon Law
 lawyer of record for the matter.

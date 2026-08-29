@@ -1,30 +1,20 @@
 //! Cucumber runner for `features/nautilus_workflows.feature`.
 //!
-//! Locks down the shape of the Neon Law Nautilus consumer-report dispute
-//! notation (`nautilus__fcra_dispute`) and proves the unauthorized-
-//! practice-of-law gate: no `generate_pdf__*` fill state reaches an
-//! outbound submission state without passing the bare `lawyer_review` gate
-//! (the `@approve` attorney-approval step). Complements
-//! `workflows/tests/workflow_integrity.rs` (generic invariants) and
-//! `spec_coherence.rs` (frontmatter ↔ standalone YAML parity); these
-//! scenarios pin the Nautilus-specific transitions, the inbound-triage
-//! classification, and the litigation boundary.
+//! Pins inbound screening-mail triage and the litigation boundary so a lawsuit
+//! is referred out rather than answered as correspondence.
 
 #![allow(clippy::unused_async)]
 #![allow(clippy::missing_fields_in_debug)]
 
-use cucumber::{gherkin::Step, given, then, World};
-use features::template_shapes::{templates_root, walk_chain};
+use cucumber::{given, then, World};
 use workflows::{
-    classify, classify_fcra_result, lawyer_review_gates_filing, litigation_referral,
-    questionnaire_spec_from_template, route, step_kind_for, triage, FcraDisputeResult,
-    ScreeningMailClass, StateName, TriageRoute, WorkflowSpec,
+    classify, classify_fcra_result, litigation_referral, route, triage, FcraDisputeResult,
+    ScreeningMailClass, TriageRoute,
 };
 
 #[derive(Default, World)]
 #[world(init = Self::default)]
 struct NautilusWorld {
-    markdown: Option<String>,
     inbound_text: Option<String>,
     has_active_matter: bool,
     reinvestigation_text: Option<String>,
@@ -33,7 +23,6 @@ struct NautilusWorld {
 impl std::fmt::Debug for NautilusWorld {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("NautilusWorld")
-            .field("has_markdown", &self.markdown.is_some())
             .field("has_inbound_text", &self.inbound_text.is_some())
             .field("has_active_matter", &self.has_active_matter)
             .finish()
@@ -63,47 +52,6 @@ fn route_name(route: TriageRoute) -> &'static str {
         TriageRoute::OpenDispute => "OpenDispute",
         TriageRoute::ReinvestigationReview => "ReinvestigationReview",
         TriageRoute::LawyerReview => "LawyerReview",
-    }
-}
-
-#[given(regex = r#"^the bundled template "([^"]+)"$"#)]
-async fn load_template(world: &mut NautilusWorld, relpath: String) {
-    let path = templates_root().join(&relpath);
-    world.markdown = Some(
-        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display())),
-    );
-}
-
-#[then("the questionnaire transitions, in BEGIN-first order, are:")]
-async fn assert_questionnaire_chain(world: &mut NautilusWorld, step: &Step) {
-    let md = world.markdown.as_ref().expect("template loaded");
-    let q = questionnaire_spec_from_template(md).expect("questionnaire frontmatter parses");
-    assert_chain_matches(q.inner(), step);
-}
-
-#[then("every workflow state resolves to a StepKind")]
-async fn assert_step_kinds_resolve(world: &mut NautilusWorld) {
-    let md = world.markdown.as_ref().expect("template loaded");
-    let w = workflows::workflow_spec_from_template(md).expect("workflow frontmatter parses");
-    for state in w.states.keys() {
-        if state.as_str() == StateName::END {
-            continue;
-        }
-        assert!(
-            step_kind_for(state).is_some(),
-            "state `{}` has no StepKind (prefix `{}` is unrouted)",
-            state.as_str(),
-            state.prefix(),
-        );
-    }
-}
-
-#[then("the workflow gates every outbound letter behind attorney review")]
-async fn assert_review_gate(world: &mut NautilusWorld) {
-    let md = world.markdown.as_ref().expect("template loaded");
-    let w = workflows::workflow_spec_from_template(md).expect("workflow frontmatter parses");
-    if let Err(violations) = lawyer_review_gates_filing(&w) {
-        panic!("an outbound letter can be sent without attorney review: {violations:?}");
     }
 }
 
@@ -167,27 +115,6 @@ async fn assert_referral(_world: &mut NautilusWorld, link: String) {
         !referral.answered_as_correspondence,
         "a referred lawsuit must never be answered as correspondence"
     );
-}
-
-fn assert_chain_matches(spec: &WorkflowSpec, step: &Step) {
-    let table = step.table.as_ref().expect("scenario has a data table");
-    let expected: Vec<(&str, &str)> = table
-        .rows
-        .iter()
-        .skip(1)
-        .map(|row| {
-            (
-                row.first().expect("from cell").as_str(),
-                row.get(1).expect("to cell").as_str(),
-            )
-        })
-        .collect();
-    let chain = walk_chain(spec);
-    let actual: Vec<(&str, &str)> = chain
-        .iter()
-        .map(|(f, t)| (f.as_str(), t.as_str()))
-        .collect();
-    assert_eq!(actual, expected, "transition chain mismatch");
 }
 
 #[tokio::main]

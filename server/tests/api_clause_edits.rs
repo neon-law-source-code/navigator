@@ -19,7 +19,7 @@ use store::seed;
 use store::test_support::mem_surreal;
 use tower::ServiceExt;
 
-const TEMPLATE_CODE: &str = "onboarding__retainer";
+const TEMPLATE_CODE: &str = "onboarding__engagement_letter";
 const KEY: &str = "api-clause-edits-test-key";
 
 async fn build_app() -> (axum::Router, store::surreal::SurrealDb) {

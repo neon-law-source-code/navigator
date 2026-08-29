@@ -99,7 +99,7 @@ fn validate_treats_templates_path_without_machine_as_markdown() {
 #[test]
 fn validate_rejects_the_retired_public_template_shelf() {
     let dir = TempDir::new().unwrap();
-    let source = workspace_root().join("templates/neon_law/shared/retainer.md");
+    let source = workspace_root().join("templates/neon_law/shared/engagement_letter.md");
     let retired = dir.path().join("templates/open_source/retainer.md");
     fs::create_dir_all(retired.parent().unwrap()).unwrap();
     fs::copy(source, &retired).unwrap();
@@ -121,7 +121,7 @@ fn validate_default_treats_code_only_frontmatter_as_markdown() {
     write(
         dir.path(),
         "server/content/marketing/service.md",
-        "---\ntitle: Service\ncode: northstar\n---\n\nBody.\n",
+        "---\ntitle: Service\ncode: sample\n---\n\nBody.\n",
     );
     navigator()
         .args(["validate"])
@@ -328,10 +328,11 @@ fn every_classified_corpus_file_declares_a_kind() {
         }
     }
     // A loose floor, not an exact count: it exists so a walker that silently
-    // finds nothing fails loudly. Retiring the twelve service-specific
-    // retainers took the corpus from 51 files to 39.
+    // finds nothing fails loudly. The slim catalog (public forms plus two
+    // sample letters, plus GitHub intake, blog, and workshops) is 21 files
+    // because the nested `templates/github` root is walked twice.
     assert!(
-        checked >= 35,
+        checked >= 21,
         "expected to check the whole corpus, only saw {checked} files",
     );
 }

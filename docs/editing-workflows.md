@@ -48,7 +48,7 @@ A questionnaire that reuses only seeded codes needs no other change. New codes a
 
 The Markdown body renders to HTML and through `pdf::render` to Typst. Two gotchas:
 
-- **No `#` headings.** `#` starts code mode in Typst markup; use bold runs and prose, as the trust and Nest bodies do.
+- **No `#` headings.** `#` starts code mode in Typst markup; use bold runs and prose, as letter and form bodies do.
 - **Escape `$`.** A bare `$` opens math mode; write `\$5,000` so it renders as a literal dollar in both the HTML and
   the PDF.
 
@@ -109,7 +109,7 @@ Run the cheap structural tests first, then the journey that exercises the flow e
 
 ```bash
 cargo test -p workflows --test workflow_integrity --test spec_coherence
-cargo test -p features --test <journey>          # e.g. nest_formation, northstar_estate
+cargo test -p features --test <journey>          # e.g. nest_formation, legal_workflow_shapes
 cargo run -p cli --quiet -- validate templates/forms/united_states/nevada/state/nv__llc_formation.md
 ```
 

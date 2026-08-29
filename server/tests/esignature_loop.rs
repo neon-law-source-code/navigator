@@ -33,7 +33,7 @@ use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 use workflows::{InMemoryRuntime, MachineKind, StateMachineRuntime};
 
-const TEMPLATE_CODE: &str = "onboarding__retainer";
+const TEMPLATE_CODE: &str = "onboarding__engagement_letter";
 const HMAC_KEY: &str = "loop-test-hmac-key";
 const ENVELOPE_ID: &str = "env-loop-1";
 
@@ -103,7 +103,7 @@ async fn full_signature_loop_reaches_end_through_real_provider_and_webhook() {
     let tmpl = store::templates::resolve(&surreal, None, TEMPLATE_CODE)
         .await
         .unwrap()
-        .expect("seed inserts onboarding__retainer");
+        .expect("seed inserts onboarding__engagement_letter");
     let libra = store::persons::create(
         &surreal,
         &store::persons::NewPerson::new("Libra", "libra@example.com"),
@@ -160,12 +160,13 @@ async fn full_signature_loop_reaches_end_through_real_provider_and_webhook() {
     // 2. Walk the full questionnaire — the final POST drives the
     //    workflow through the real provider's send_for_signature.
     for value in [
+        "Libra Holdings LLC",
+        "500 Innovation Way Reno NV 89501",
         "Libra",
         "Firm Principal",
         "Estate plan",
         "2026-09-01",
         "Draft and file the matter documents.",
-        "450 per hour",
         "nevada",
     ] {
         let resp = app

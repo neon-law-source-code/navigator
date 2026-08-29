@@ -2,7 +2,7 @@
 //!
 //! The lawyer workbench's recording surface: bundled documents already in
 //! Harvard form, rendered as highlightable units. `?doc=` selects among them
-//! (retainer, engagement letter, sample motion). Keyboard and click handling
+//! (onboarding letter, offboarding letter). Keyboard and click handling
 //! live in `harvard-outline-narrate.js`, so the page works without the wasm
 //! hydration bundle. Arbitrary drafts stay on the operator's machine via
 //! `navigator template narrate`.
@@ -163,23 +163,19 @@ mod tests {
     fn view() -> OutlineStageView {
         OutlineStageView {
             firm_name: "Example Law".to_string(),
-            current_slug: "retainer".to_string(),
+            current_slug: "onboarding".to_string(),
             library: vec![
                 OutlineDocLink {
-                    slug: "retainer".to_string(),
+                    slug: "onboarding".to_string(),
                     title: "Retainer Agreement".to_string(),
                 },
                 OutlineDocLink {
-                    slug: "engagement".to_string(),
-                    title: "Engagement Letter".to_string(),
-                },
-                OutlineDocLink {
-                    slug: "motion".to_string(),
-                    title: "Sample Motion".to_string(),
+                    slug: "offboarding".to_string(),
+                    title: "Closing Letter".to_string(),
                 },
             ],
             content: OutlineStageContent {
-                slug: "retainer".to_string(),
+                slug: "onboarding".to_string(),
                 title: "Retainer Agreement".to_string(),
                 stage_html: "<article class=\"harvard-stage\" data-harvard-outline>\
                     <section class=\"harvard-unit harvard-unit--depth-1\" data-harvard-path=\"I\">\
@@ -198,8 +194,8 @@ mod tests {
         assert!(html.contains("Scope of the engagement"), "{html}");
         assert!(html.contains("navigator template narrate"), "{html}");
         assert!(html.contains("Press H to hide"), "{html}");
-        assert!(html.contains("/lawyer/outline?doc=retainer"), "{html}");
-        assert!(html.contains("/lawyer/outline?doc=motion"), "{html}");
+        assert!(html.contains("/lawyer/outline?doc=onboarding"), "{html}");
+        assert!(html.contains("/lawyer/outline?doc=offboarding"), "{html}");
         assert!(html.contains("aria-label=\"Bundled outlines\""), "{html}");
     }
 
@@ -207,27 +203,27 @@ mod tests {
     fn select_stage_defaults_and_matches_slug() {
         let library = vec![
             OutlineStageContent {
-                slug: "retainer".into(),
+                slug: "onboarding".into(),
                 title: "Retainer".into(),
                 stage_html: "r".into(),
             },
             OutlineStageContent {
-                slug: "motion".into(),
-                title: "Motion".into(),
-                stage_html: "m".into(),
+                slug: "offboarding".into(),
+                title: "Closing Letter".into(),
+                stage_html: "c".into(),
             },
         ];
         assert_eq!(
             select_stage(&library, None).map(|d| d.slug.as_str()),
-            Some("retainer")
+            Some("onboarding")
         );
         assert_eq!(
-            select_stage(&library, Some("motion")).map(|d| d.slug.as_str()),
-            Some("motion")
+            select_stage(&library, Some("offboarding")).map(|d| d.slug.as_str()),
+            Some("offboarding")
         );
         assert_eq!(
             select_stage(&library, Some("nope")).map(|d| d.slug.as_str()),
-            Some("retainer")
+            Some("onboarding")
         );
         assert!(select_stage(&[], Some("retainer")).is_none());
     }

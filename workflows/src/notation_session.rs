@@ -1220,7 +1220,7 @@ mod tests {
         // The retainer template body is bundled via include_str!;
         // for tests we only need the row to exist with the
         // matching `code` so the spec lookup hits the bundled YAML.
-        seed_template(surreal, "onboarding__retainer", "Retainer").await;
+        seed_template(surreal, "onboarding__engagement_letter", "Retainer").await;
     }
 
     async fn seed_template(surreal: &SurrealDb, code: &str, title: &str) {
@@ -1251,6 +1251,9 @@ mod tests {
     }
 
     async fn seed_retainer_questions(surreal: &SurrealDb) {
+        // The retainer's leading entity / principal-office questions.
+        seed_question(surreal, "entity").await;
+        seed_question(surreal, "address").await;
         seed_question(surreal, "person").await;
         seed_question(surreal, "project").await;
         seed_question(surreal, "custom_text").await;
@@ -1259,6 +1262,11 @@ mod tests {
         // The retainer's governing-law question (ENG-145).
         seed_question(surreal, "custom_single_choice").await;
     }
+
+    /// The plausible entity/address values the retainer walk tests answer
+    /// its two leading questions with.
+    const TEST_ENTITY_NAME: &str = "Northstar Ventures LLC";
+    const TEST_ENTITY_ADDRESS: &str = "100 Innovation Way, Reno, NV 89501";
 
     async fn seed_retainer_questions_with_audiences(surreal: &SurrealDb) {
         seed_retainer_questions(surreal).await;
@@ -1276,7 +1284,7 @@ mod tests {
             &surreal,
             &runtime,
             None,
-            "onboarding__retainer",
+            "onboarding__engagement_letter",
             person_id,
             seed_project(&surreal).await,
             None,
@@ -1293,12 +1301,12 @@ mod tests {
         assert_eq!(row.entity_id, None);
         assert_eq!(row.state, "BEGIN");
 
-        // First question per retainer questionnaire is person__client.
+        // First question per retainer questionnaire is entity.
         match outcome.next {
             NextStep::NeedsAnswer {
                 question: QuestionDescriptor { code, .. },
             } => {
-                assert_eq!(code, "person__client");
+                assert_eq!(code, "entity");
             }
             NextStep::QuestionnaireComplete => {
                 panic!("expected NeedsAnswer, got QuestionnaireComplete")
@@ -1323,7 +1331,7 @@ mod tests {
             &surreal,
             &runtime,
             None,
-            "onboarding__retainer",
+            "onboarding__engagement_letter",
             person_id,
             seed_project(&surreal).await,
             None,
@@ -1389,7 +1397,7 @@ mod tests {
         use super::create_notation_from_repo;
         // A Project repo carrying its own template blueprint at HEAD (a
         // corpus body, guaranteed to validate clean).
-        const TEMPLATE: &str = include_str!("../../templates/neon_law/shared/retainer.md");
+        const TEMPLATE: &str = include_str!("../../templates/neon_law/shared/engagement_letter.md");
 
         let surreal = db().await;
         let storage: Arc<dyn StorageService> = Arc::new(
@@ -1473,7 +1481,7 @@ mod tests {
             &surreal,
             &runtime,
             None,
-            "onboarding__retainer",
+            "onboarding__engagement_letter",
             person_id,
             seed_project(&surreal).await,
             None,
@@ -1494,7 +1502,7 @@ mod tests {
 
         // Overwrite the snapshot with a *different* questionnaire that starts
         // at project__engagement. The template's bundled spec still
-        // starts at person__client, so if resolution re-read the
+        // starts at entity, so if resolution re-read the
         // template it would ask that; reading the frozen snapshot asks
         // project__engagement.
         let alt = QuestionnaireDefinition {
@@ -1564,8 +1572,8 @@ mod tests {
         .into_model()
     }
 
-    /// A project-scoped template with a *bundled* code (`onboarding__retainer`,
-    /// whose bundled questionnaire starts at `person__client`) that carries its
+    /// A project-scoped template with a *bundled* code (`onboarding__engagement_letter`,
+    /// whose bundled questionnaire starts at `entity`) that carries its
     /// own divergent questionnaire blob — that blob's questionnaire must win.
     #[tokio::test]
     async fn scoped_template_blob_questionnaire_wins_over_bundled_yaml() {
@@ -1578,7 +1586,7 @@ mod tests {
         let scoped = scoped_template_with_blob(
             &surreal,
             &storage,
-            "onboarding__retainer",
+            "onboarding__engagement_letter",
             project_id,
             divergent,
         )
@@ -1610,7 +1618,7 @@ mod tests {
         let scoped = scoped_template_with_blob(
             &surreal,
             &storage,
-            "onboarding__retainer",
+            "onboarding__engagement_letter",
             project_id,
             body_only,
         )
@@ -1622,12 +1630,13 @@ mod tests {
         assert_eq!(
             ordered_question_codes(&definition.spec),
             vec![
+                "entity".to_string(),
+                "address__principal_office".to_string(),
                 "person__client".to_string(),
                 "person__lawyer_dri".to_string(),
                 "project__engagement".to_string(),
                 "custom_datetime__engagement_start_date".to_string(),
                 "custom_text__engagement_scope".to_string(),
-                "custom_text__fee_basis".to_string(),
                 "custom_single_choice__governing_law".to_string(),
             ],
             "a scoped body-only override keeps the bundled questionnaire"
@@ -1643,12 +1652,13 @@ mod tests {
         let storage = fs_storage().await;
         let project_id = seed_project(&surreal).await;
         let bundled_chain = vec![
+            "entity".to_string(),
+            "address__principal_office".to_string(),
             "person__client".to_string(),
             "person__lawyer_dri".to_string(),
             "project__engagement".to_string(),
             "custom_datetime__engagement_start_date".to_string(),
             "custom_text__engagement_scope".to_string(),
-            "custom_text__fee_basis".to_string(),
             "custom_single_choice__governing_law".to_string(),
         ];
 
@@ -1656,7 +1666,7 @@ mod tests {
         let shared = store::templates::save_version(
             &surreal,
             None,
-            "onboarding__retainer",
+            "onboarding__engagement_letter",
             store::templates::Version {
                 title: "Retainer".into(),
                 respondent_type: "person".into(),
@@ -1683,7 +1693,7 @@ mod tests {
         let scoped_no_blob = store::templates::save_version(
             &surreal,
             Some(project_id),
-            "onboarding__retainer",
+            "onboarding__engagement_letter",
             store::templates::Version {
                 title: "Retainer".into(),
                 respondent_type: "person".into(),
@@ -1723,7 +1733,7 @@ mod tests {
         scoped_template_with_blob(
             &surreal,
             &storage,
-            "onboarding__retainer",
+            "onboarding__engagement_letter",
             project_id,
             divergent,
         )
@@ -1734,7 +1744,7 @@ mod tests {
             &surreal,
             &runtime,
             Some(&storage),
-            "onboarding__retainer",
+            "onboarding__engagement_letter",
             person_id,
             project_id,
             None,
@@ -1816,7 +1826,7 @@ mod tests {
             &surreal,
             &runtime,
             None,
-            "onboarding__retainer",
+            "onboarding__engagement_letter",
             person_id,
             seed_project(&surreal).await,
             None,
@@ -1825,6 +1835,28 @@ mod tests {
         .unwrap();
         let id = started.notation_id;
 
+        answer_step(
+            &surreal,
+            &runtime,
+            None,
+            id,
+            "entity",
+            TEST_ENTITY_NAME,
+            AnswerAuthor::lawyer(None),
+        )
+        .await
+        .unwrap();
+        answer_step(
+            &surreal,
+            &runtime,
+            None,
+            id,
+            "address__principal_office",
+            TEST_ENTITY_ADDRESS,
+            AnswerAuthor::lawyer(None),
+        )
+        .await
+        .unwrap();
         let next = answer_step(
             &surreal,
             &runtime,
@@ -1857,7 +1889,7 @@ mod tests {
             &surreal,
             &runtime,
             None,
-            "onboarding__retainer",
+            "onboarding__engagement_letter",
             person_id,
             seed_project(&surreal).await,
             None,
@@ -1878,7 +1910,7 @@ mod tests {
         .unwrap_err();
         match err {
             NotationSessionError::QuestionMismatch { expected, got } => {
-                assert_eq!(expected, "person__client");
+                assert_eq!(expected, "entity");
                 assert_eq!(got, "project__engagement");
             }
             other => panic!("expected QuestionMismatch, got {other:?}"),
@@ -1896,7 +1928,7 @@ mod tests {
             &surreal,
             &runtime,
             None,
-            "onboarding__retainer",
+            "onboarding__engagement_letter",
             person_id,
             seed_project(&surreal).await,
             None,
@@ -1906,6 +1938,8 @@ mod tests {
         let id = started.notation_id;
 
         let walk = [
+            ("entity", TEST_ENTITY_NAME),
+            ("address__principal_office", TEST_ENTITY_ADDRESS),
             ("person__client", "Libra"),
             ("person__lawyer_dri", "Firm Principal"),
             ("project__engagement", "Apollo"),
@@ -1914,7 +1948,6 @@ mod tests {
                 "custom_text__engagement_scope",
                 "Draft and file the Apollo formation documents.",
             ),
-            ("custom_text__fee_basis", "$450 per hour"),
             ("custom_single_choice__governing_law", "nevada"),
         ];
         let mut last = NextStep::QuestionnaireComplete;
@@ -1956,7 +1989,7 @@ mod tests {
             &surreal,
             &runtime,
             None,
-            "onboarding__retainer",
+            "onboarding__engagement_letter",
             person_id,
             seed_project(&surreal).await,
             None,
@@ -1965,6 +1998,8 @@ mod tests {
         .unwrap();
         let id = started.notation_id;
         for (code, value) in [
+            ("entity", TEST_ENTITY_NAME),
+            ("address__principal_office", TEST_ENTITY_ADDRESS),
             ("person__client", "Libra"),
             ("person__lawyer_dri", "Firm Principal"),
             ("project__engagement", "Apollo"),
@@ -1973,7 +2008,6 @@ mod tests {
                 "custom_text__engagement_scope",
                 "Draft and file the Apollo formation documents.",
             ),
-            ("custom_text__fee_basis", "$450 per hour"),
             ("custom_single_choice__governing_law", "nevada"),
         ] {
             answer_step(
@@ -2014,7 +2048,7 @@ mod tests {
             &surreal,
             &runtime,
             None,
-            "onboarding__retainer",
+            "onboarding__engagement_letter",
             person_id,
             seed_project(&surreal).await,
             None,
@@ -2022,7 +2056,49 @@ mod tests {
         .await
         .unwrap();
         let id = started.notation_id;
-        // Before any answer: should be person__client.
+        // Before any answer: should be entity.
+        match current_step(&surreal, &runtime, None, id).await.unwrap() {
+            NextStep::NeedsAnswer { question } => {
+                assert_eq!(question.code, "entity");
+            }
+            NextStep::QuestionnaireComplete => {
+                panic!("expected NeedsAnswer(entity), got QuestionnaireComplete");
+            }
+        }
+        answer_step(
+            &surreal,
+            &runtime,
+            None,
+            id,
+            "entity",
+            TEST_ENTITY_NAME,
+            AnswerAuthor::lawyer(None),
+        )
+        .await
+        .unwrap();
+        // After entity: should be address__principal_office.
+        match current_step(&surreal, &runtime, None, id).await.unwrap() {
+            NextStep::NeedsAnswer { question } => {
+                assert_eq!(question.code, "address__principal_office");
+            }
+            NextStep::QuestionnaireComplete => {
+                panic!(
+                    "expected NeedsAnswer(address__principal_office), got QuestionnaireComplete"
+                );
+            }
+        }
+        answer_step(
+            &surreal,
+            &runtime,
+            None,
+            id,
+            "address__principal_office",
+            TEST_ENTITY_ADDRESS,
+            AnswerAuthor::lawyer(None),
+        )
+        .await
+        .unwrap();
+        // After address: should be person__client.
         match current_step(&surreal, &runtime, None, id).await.unwrap() {
             NextStep::NeedsAnswer { question } => {
                 assert_eq!(question.code, "person__client");
@@ -2074,10 +2150,34 @@ mod tests {
             &surreal,
             &runtime,
             None,
-            "onboarding__retainer",
+            "onboarding__engagement_letter",
             person_id,
             seed_project(&surreal).await,
             None,
+        )
+        .await
+        .unwrap();
+        // The questionnaire now leads with entity and address; walk those
+        // first so the runtime is positioned at person__client.
+        answer_step(
+            &surreal,
+            &runtime,
+            None,
+            started.notation_id,
+            "entity",
+            TEST_ENTITY_NAME,
+            AnswerAuthor::lawyer(None),
+        )
+        .await
+        .unwrap();
+        answer_step(
+            &surreal,
+            &runtime,
+            None,
+            started.notation_id,
+            "address__principal_office",
+            TEST_ENTITY_ADDRESS,
+            AnswerAuthor::lawyer(None),
         )
         .await
         .unwrap();
@@ -2129,10 +2229,34 @@ mod tests {
             &surreal,
             &runtime,
             None,
-            "onboarding__retainer",
+            "onboarding__engagement_letter",
             client_id,
             seed_project(&surreal).await,
             None,
+        )
+        .await
+        .unwrap();
+        // The questionnaire now leads with entity and address; walk those
+        // first so the runtime is positioned at person__client.
+        answer_step(
+            &surreal,
+            &runtime,
+            None,
+            started.notation_id,
+            "entity",
+            TEST_ENTITY_NAME,
+            AnswerAuthor::lawyer(Some(lawyer_id)),
+        )
+        .await
+        .unwrap();
+        answer_step(
+            &surreal,
+            &runtime,
+            None,
+            started.notation_id,
+            "address__principal_office",
+            TEST_ENTITY_ADDRESS,
+            AnswerAuthor::lawyer(Some(lawyer_id)),
         )
         .await
         .unwrap();
@@ -2173,7 +2297,7 @@ mod tests {
             surreal,
             runtime,
             None,
-            "onboarding__retainer",
+            "onboarding__engagement_letter",
             person_id,
             seed_project(surreal).await,
             None,
@@ -2192,7 +2316,7 @@ mod tests {
             surreal,
             runtime,
             None,
-            "onboarding__retainer",
+            "onboarding__engagement_letter",
             person_id,
             seed_project(surreal).await,
             None,
@@ -2283,7 +2407,9 @@ mod tests {
         let runtime = InMemoryRuntime::new();
         let (id, person) = start_audienced_retainer(&surreal, &runtime).await;
 
-        // Only the client-facing person question is offered.
+        // Only the client-facing person question is offered — entity and
+        // address__principal_office are lawyer-only (the Firm resolves the
+        // client entity and its address at matter-open, not the client).
         let step = client_intake_step(&surreal, None, id).await.unwrap();
         let ClientIntakeStep::NeedsAnswer {
             question,
@@ -2300,8 +2426,8 @@ mod tests {
         record_client_answer(&surreal, None, id, "person__client", "Libra", person)
             .await
             .unwrap();
-        // The lawyer-only project / product-description states are never
-        // offered to the client.
+        // The lawyer-only entity / address / project / product-description
+        // states are never offered to the client.
         assert!(matches!(
             client_intake_step(&surreal, None, id).await.unwrap(),
             ClientIntakeStep::Complete { total: 1 }
@@ -2342,7 +2468,30 @@ mod tests {
         let runtime = InMemoryRuntime::new();
         let (id, person) = start_audienced_retainer(&surreal, &runtime).await;
 
-        // Lawyer fills client_name on the client's behalf first.
+        // Lawyer walks the two leading questions first, then fills
+        // client_name on the client's behalf.
+        answer_step(
+            &surreal,
+            &runtime,
+            None,
+            id,
+            "entity",
+            TEST_ENTITY_NAME,
+            AnswerAuthor::lawyer(None),
+        )
+        .await
+        .unwrap();
+        answer_step(
+            &surreal,
+            &runtime,
+            None,
+            id,
+            "address__principal_office",
+            TEST_ENTITY_ADDRESS,
+            AnswerAuthor::lawyer(None),
+        )
+        .await
+        .unwrap();
         answer_step(
             &surreal,
             &runtime,

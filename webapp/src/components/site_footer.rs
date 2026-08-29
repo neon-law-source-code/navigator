@@ -571,9 +571,9 @@ mod tests {
     /// header does not carry, alphabetized by label.
     const FOOTER_ROW: [(&str, &str); 8] = [
         ("Blog", "/blog"),
-        ("Contact", "/contact"),
         ("Docs", "/docs"),
         ("Navigator", "/navigator"),
+        ("Notations", "/notations"),
         ("Presentations", "/presentations"),
         ("Privacy", "/privacy"),
         ("Terms", "/terms"),

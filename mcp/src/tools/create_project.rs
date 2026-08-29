@@ -726,7 +726,7 @@ mod tests {
                 "entity_id": eid,
                 "client_dri_person_id": cid,
                 "attestation": true,
-                "product_code": "northstar"
+                "product_code": "retired-product"
             }),
         )
         .await

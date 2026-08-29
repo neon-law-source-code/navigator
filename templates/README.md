@@ -50,16 +50,13 @@ form: nv__llc_formation
 `origin_url` is the government page where the blank can be obtained. Git records the exact bytes we vendored; the URL
 records where those bytes came from.
 
-`neon_law/` holds firm-authored product templates and trademarked Neon Law work product. Each product gets its own
-folder, and shared firm documents live under `shared/`:
+`neon_law/` holds the firm's sample engagement and closing letters:
 
 ```text
 templates/neon_law/
-├── nautilus/retainer.md
-├── nest/retainer.md
-├── nexus/retainer.md
-├── northstar/retainer.md
-└── shared/offboarding_letter.md
+└── shared/
+    ├── letter.md
+    └── offboarding_letter.md
 ```
 
 These files are the Firm's confidential work product, and the marks are reserved. **NEON LAW** is a registered trademark
@@ -101,8 +98,7 @@ The `navigator validate` command enforces these with the N-family notation rules
    `CA`, or `US`. A `github/` notation declares none — it is engineering intake, not legal work.
 3. **Form codes are jurisdiction-first**: `nv__llc_formation`, `us__form_990`. The filename stem, `code`, and `form`
    binding match.
-4. **Product codes are product-first**: `nest__retainer`, `northstar__offboarding_letter`, or the existing workflow code
-   while a compatibility migration is still in flight.
+4. **Shared firm codes are role-first**: `onboarding__engagement_letter`, `offboarding__letter`.
 5. **Every path segment is lowercase `snake_case`**.
 
 Run it before committing:

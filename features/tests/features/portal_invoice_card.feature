@@ -7,8 +7,7 @@ Feature: /app/projects/:code — the client's invoice card reads the Xero mirror
   `ReconcileInvoices`
   workflow folds Xero's payment state onto the mirror; this feature
   grounds the read side — what the client actually sees before and
-  after that fold. The sibling create-on-close path is grounded in
-  northstar_estate.feature; the reconcile arithmetic in
+  after that fold. The reconcile arithmetic lives in
   billing-workflows reconcile.rs.
 
   Background:

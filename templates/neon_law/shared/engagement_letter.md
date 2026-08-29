@@ -7,8 +7,18 @@ jurisdiction: NV
 confidential: true
 output: letter
 prompts:
-  client_dri: Who is the Client's directly responsible individual, the one person the Firm takes instructions from?
+  client_name: Who is the Client's directly responsible individual, the one person the Firm takes instructions from?
+  project_name: What is the project name for this engagement?
   lawyer_dri: Which lawyer is directly responsible for this engagement?
+audiences:
+  client_name: client
+  project_name: lawyer
+  governing_law: lawyer
+  lawyer_dri: lawyer
+  engagement_start_date: lawyer
+  engagement_scope: lawyer
+  entity: lawyer
+  principal_office: lawyer
 custom_questions:
   engagement_scope:
     prompt: >-
@@ -105,6 +115,8 @@ day or a trial day, carry their own fee.
 
 Unless separately agreed in writing, this engagement does not include tax, accounting, financial, investment, valuation,
 insurance-coverage, or public-relations advice, and does not extend to a matter unrelated to the Matter described above.
+
+{{custom_clauses}}
 
 ## II. Fees, costs, and invoices
 

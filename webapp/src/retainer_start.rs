@@ -136,7 +136,7 @@ fn start_body(view: &RetainerStartView) -> Element {
     // picker so lawyers choose by title rather than typing a code. Default the
     // selection to the generic retainer.
     let selected = if view.retainer_template_code.is_empty() {
-        "onboarding__retainer".to_string()
+        "onboarding__engagement_letter".to_string()
     } else {
         view.retainer_template_code.clone()
     };
@@ -203,18 +203,12 @@ mod tests {
     fn view(error: Option<&str>) -> RetainerStartView {
         RetainerStartView {
             firm_name: "Neon Law".to_string(),
-            templates: vec![
-                TemplateChoice {
-                    code: "onboarding__retainer".to_string(),
-                    label: "Retainer — onboarding__retainer".to_string(),
-                },
-                TemplateChoice {
-                    code: "onboarding__estate".to_string(),
-                    label: "Estate — onboarding__estate".to_string(),
-                },
-            ],
+            templates: vec![TemplateChoice {
+                code: "onboarding__engagement_letter".to_string(),
+                label: "Retainer Agreement — onboarding__engagement_letter".to_string(),
+            }],
             client_email: "libra@example.com".to_string(),
-            retainer_template_code: "onboarding__estate".to_string(),
+            retainer_template_code: "onboarding__engagement_letter".to_string(),
             csrf_token: "tok".to_string(),
             role: ViewerRole::Lawyer,
             error: error.map(str::to_string),
@@ -232,10 +226,8 @@ mod tests {
     #[test]
     fn the_picker_offers_every_onboarding_template_and_refuses_none() {
         let codes = [
-            "onboarding__retainer",
-            "onboarding__estate",
-            "onboarding__nexus",
-            "onboarding__versioned_retainer",
+            "onboarding__engagement_letter",
+            "onboarding__engagement_letter_transcript",
         ];
         let mut view = view(None);
         view.templates = codes
@@ -247,7 +239,7 @@ mod tests {
             .collect();
         // Selecting one that shares no service with the others must still
         // render — the old product/retainer pairing rule is gone.
-        view.retainer_template_code = "onboarding__nexus".to_string();
+        view.retainer_template_code = "onboarding__engagement_letter_transcript".to_string();
 
         let html = render_start(&view);
         for code in codes {
@@ -286,9 +278,9 @@ mod tests {
         assert!(html.contains("value=\"libra@example.com\""), "{html}");
         // The echoed template stays selected, not the default.
         let selected_at = html.find("selected").expect("a chosen option: {html}");
-        let estate_at = html
-            .find("onboarding__estate")
+        let letter_at = html
+            .find("onboarding__engagement_letter")
             .expect("the echoed option renders");
-        assert!(estate_at < selected_at, "{html}");
+        assert!(letter_at < selected_at, "{html}");
     }
 }

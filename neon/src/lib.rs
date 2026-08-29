@@ -38,7 +38,7 @@ pub const PUBLIC_PATHS: &[&str] = &[
     "/litigation",
     "/fractional-gc",
     "/navigator",
-    "/contact",
+    "/notations",
     "/blog",
     "/blog/{slug}",
     // The talks catalog and every talk beneath it. Anonymous like the rest of
@@ -87,7 +87,7 @@ pub fn sitemap_paths(state: &AppState) -> std::collections::BTreeSet<String> {
         "/litigation",
         "/fractional-gc",
         "/navigator",
-        "/contact",
+        "/notations",
         "/blog",
         "/workshops",
         "/presentations",
@@ -221,9 +221,9 @@ fn indexed_pages(mark: &str) -> Vec<portal::LlmsTxtLink> {
             "Posts from the firm on litigation, company counsel, and building legal software.",
         ),
         page(
-            "Contact",
-            "/contact",
-            "How to reach the firm about a matter, and what to include in the first email.",
+            "Notations",
+            "/notations",
+            "The firm's sample engagement letters and the government forms Navigator files.",
         ),
     ]
 }

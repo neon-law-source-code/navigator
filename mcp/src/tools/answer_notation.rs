@@ -204,7 +204,7 @@ mod tests {
         store::templates::save_version(
             surreal,
             None,
-            "onboarding__retainer",
+            "onboarding__engagement_letter",
             store::templates::Version {
                 title: "Retainer".into(),
                 respondent_type: "person".into(),
@@ -213,6 +213,19 @@ mod tests {
                 kind: Some("onboarding".into()),
                 source_commit_sha: None,
             },
+        )
+        .await
+        .unwrap();
+        // The retainer's leading entity / principal-office questions.
+        store::questions::create(
+            surreal,
+            &store::questions::NewQuestion::new("entity", "Which entity?", "entity"),
+        )
+        .await
+        .unwrap();
+        store::questions::create(
+            surreal,
+            &store::questions::NewQuestion::new("address", "What is the address?", "address"),
         )
         .await
         .unwrap();
@@ -336,7 +349,7 @@ mod tests {
             Some(&storage),
             None,
             &json!({
-                "template_code": "onboarding__retainer",
+                "template_code": "onboarding__engagement_letter",
                 "project_id": project_id,
             }),
         )
@@ -372,7 +385,7 @@ mod tests {
         seed(&surreal).await;
         let runtime = InMemoryRuntime::new();
         let (id, code) = start_retainer(&surreal, &runtime).await;
-        assert_eq!(code, "person__client");
+        assert_eq!(code, "entity");
 
         let out = call(
             &surreal,
@@ -381,7 +394,7 @@ mod tests {
             &json!({
                 "notation_id": id,
                 "question_code": code,
-                "value": "Libra",
+                "value": "Northstar Ventures LLC",
             }),
         )
         .await
@@ -389,7 +402,7 @@ mod tests {
         assert_eq!(out["structuredContent"]["status"], "needs_answer");
         assert_eq!(
             out["structuredContent"]["next_question"]["code"],
-            "person__lawyer_dri"
+            "address__principal_office"
         );
     }
 
@@ -399,12 +412,17 @@ mod tests {
         seed(&surreal).await;
         let runtime = InMemoryRuntime::new();
         let (id, mut code) = start_retainer(&surreal, &runtime).await;
-        // The retainer walk asks the client, the firm DRI, the engagement
-        // name, the engagement's start date/scope/fee basis (N120 grounded
-        // these against the questionnaire), and which state's law governs
-        // (ENG-145 moved the governing-law question onto the firm's one
-        // engagement agreement).
+        // The retainer walk asks the entity and its principal office, the
+        // client, the firm DRI, the engagement name, the engagement's start
+        // date/scope (N120 grounded these against the questionnaire), and
+        // which state's law governs (ENG-145 moved the governing-law
+        // question onto the firm's one engagement agreement).
         let values = [
+            ("entity", "Northstar Ventures LLC"),
+            (
+                "address__principal_office",
+                "100 Innovation Way, Reno, NV 89501",
+            ),
             ("person__client", "Libra"),
             ("person__lawyer_dri", "Firm Principal"),
             ("project__engagement", "Apollo"),
@@ -413,7 +431,6 @@ mod tests {
                 "custom_text__engagement_scope",
                 "Draft and file the Apollo formation documents.",
             ),
-            ("custom_text__fee_basis", "$450 per hour"),
             ("custom_single_choice__governing_law", "nevada"),
         ];
         let mut last: Value = Value::Null;
@@ -463,9 +480,7 @@ mod tests {
         .unwrap_err();
         match err {
             ToolError::InvalidArguments(m) => {
-                assert!(
-                    m.contains("person__client") && m.contains("custom_text__settlement_terms")
-                );
+                assert!(m.contains("entity") && m.contains("custom_text__settlement_terms"));
             }
             other => panic!("expected InvalidArguments, got {other:?}"),
         }

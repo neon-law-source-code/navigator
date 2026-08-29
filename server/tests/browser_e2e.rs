@@ -207,37 +207,45 @@ async fn lawyer_walks_the_full_retainer_questionnaire_end_to_end() {
     // Drives every leg of the stepwise retainer flow in a real
     // browser:
     //   1. POST /lawyer/retainers/new          → /step
-    //   2. POST /step × 7 (one question each) → result page
+    //   2. POST /step × 8 (one question each) → result page
     //
     // Preconditions (beyond the module's chromedriver + KIND
-    // requirements): the `onboarding__retainer` template must
+    // requirements): the `onboarding__engagement_letter` template must
     // be seeded via `navigator site seed templates/`, and
-    // `store/seeds/Question.yaml` must be seeded so the two
-    // walker question codes are looked up successfully.
+    // `store/seeds/Question.yaml` must be seeded so the record-backed
+    // walker question codes (`entity`, `address`, `person`, `project`) are
+    // looked up successfully.
     let Some(c) = new_client_or_skip().await else {
         return;
     };
     login_as_lawyer(&c).await;
 
-    // The seven answers we'll submit, in walker order (person__client →
-    // person__lawyer_dri → project__engagement →
-    // custom_datetime__engagement_start_date → custom_text__engagement_scope →
-    // custom_text__fee_basis → custom_single_choice__governing_law). The values
-    // are unique enough that we can fish them back out of the rendered result
-    // page.
+    // The eight answers we'll submit, in walker order (entity →
+    // address__principal_office → person__client → person__lawyer_dri →
+    // project__engagement → custom_datetime__engagement_start_date →
+    // custom_text__engagement_scope → custom_single_choice__governing_law). The
+    // values are unique enough that we can fish them back out of the rendered
+    // result page.
     // `custom_datetime__engagement_start_date` renders a native
     // `<input type="datetime-local">` (its `Question.answer_type` is the
     // generic `datetime`, not `custom_datetime`) — the value must be a full
     // `YYYY-MM-DDTHH:MM` string, or the browser's own value setter silently
     // blanks an incomplete one before the form ever submits it.
+    // `entity` and `address__principal_office` fall through
+    // `question_fields`'s default arm to the same plain `<input name="value">`
+    // as `person__client`/`project__engagement` (no dedicated `answer_type`
+    // branch exists for either), so the generic
+    // `input[name="value"], textarea[name="value"]` selector below drives them
+    // too.
     let client_email = format!("walk-{}@example.com", std::process::id());
     let answers = [
+        "Aurora Ridge Holdings LLC",
+        "742 Meridian Ave, Reno, NV 89502",
         "Libra",
         "Firm Principal",
         "Estate Plan — Libra",
         "2026-09-01T00:00",
         "Draft and file the matter documents.",
-        "450 per hour",
         "Nevada",
     ];
 
@@ -278,7 +286,7 @@ async fn lawyer_walks_the_full_retainer_questionnaire_end_to_end() {
         set_input_script,
         vec![
             serde_json::Value::String("select[name='retainer_template_code']".into()),
-            serde_json::Value::String("onboarding__retainer".into()),
+            serde_json::Value::String("onboarding__engagement_letter".into()),
         ],
     )
     .await
@@ -310,11 +318,11 @@ async fn lawyer_walks_the_full_retainer_questionnaire_end_to_end() {
         tokio::time::sleep(Duration::from_millis(200)).await;
     };
 
-    // --- Steps 1–7: walk the questionnaire -------------------
+    // --- Steps 1–8: walk the questionnaire -------------------
     for (i, value) in answers.iter().enumerate() {
-        // Each step renders "step N of 7" — wait for the right
+        // Each step renders "step N of 8" — wait for the right
         // one to be sure we're looking at the form we expect.
-        wait_for_text(&c, &format!("step {} of 7", i + 1), Duration::from_secs(10)).await;
+        wait_for_text(&c, &format!("step {} of 8", i + 1), Duration::from_secs(10)).await;
 
         // Set the answer value via JS (chromedriver send_keys is
         // unreliable on freshly-rendered forms).
@@ -429,16 +437,16 @@ async fn lawyer_walks_the_full_retainer_questionnaire_end_to_end() {
         .expect("read notation_event from surreal");
     events.retain(|e| e.machine_kind == store::notation_events::MACHINE_QUESTIONNAIRE);
 
-    // Eight rows: BEGIN → person__client → person__lawyer_dri →
-    // project__engagement → custom_datetime__engagement_start_date →
-    // custom_text__engagement_scope → custom_text__fee_basis →
+    // Nine rows: BEGIN → entity → address__principal_office → person__client →
+    // person__lawyer_dri → project__engagement →
+    // custom_datetime__engagement_start_date → custom_text__engagement_scope →
     // custom_single_choice__governing_law → END. The walker signals the worker
-    // once per question (seven times) and once more for the trailer-to-END in
+    // once per question (eight times) and once more for the trailer-to-END in
     // the last POST.
     assert_eq!(
         events.len(),
-        8,
-        "expected 8 questionnaire transitions for notation {notation_id}, got {events:?}",
+        9,
+        "expected 9 questionnaire transitions for notation {notation_id}, got {events:?}",
     );
     let states: Vec<(&str, &str, &str)> = events
         .iter()
@@ -453,7 +461,9 @@ async fn lawyer_walks_the_full_retainer_questionnaire_end_to_end() {
     assert_eq!(
         states,
         vec![
-            ("BEGIN", "person__client", "_"),
+            ("BEGIN", "entity", "_"),
+            ("entity", "address__principal_office", "_"),
+            ("address__principal_office", "person__client", "_"),
             ("person__client", "person__lawyer_dri", "_"),
             ("person__lawyer_dri", "project__engagement", "_"),
             (
@@ -468,11 +478,6 @@ async fn lawyer_walks_the_full_retainer_questionnaire_end_to_end() {
             ),
             (
                 "custom_text__engagement_scope",
-                "custom_text__fee_basis",
-                "_"
-            ),
-            (
-                "custom_text__fee_basis",
                 "custom_single_choice__governing_law",
                 "_"
             ),
@@ -481,7 +486,7 @@ async fn lawyer_walks_the_full_retainer_questionnaire_end_to_end() {
         "questionnaire walked the wrong path",
     );
     // Payload assertions: the walker now threads the respondent's
-    // answer through the signal so each of the seven answered
+    // answer through the signal so each of the eight answered
     // transitions carries `{"answer_value": "..."}`. The trailing
     // `custom_single_choice__governing_law → END` row has no answer and stays
     // NULL. Build the expected JSON via the same `answer_payload`
@@ -723,83 +728,6 @@ async fn lawyer_creates_a_client_inline_on_the_project_form() {
         modals.as_u64(),
         Some(0),
         "the inline create must not ship a Bootstrap modal any more",
-    );
-
-    c.close().await.unwrap();
-}
-
-#[tokio::test]
-#[allow(clippy::too_many_lines)]
-async fn lawyer_opens_an_estate_matter_and_sees_the_transcript_form() {
-    // Drives the Northstar estate front edge in a real browser:
-    //   1. POST /lawyer/retainers/new with onboarding__estate
-    //   2. land on the matter page (/app/projects/:code), not the walker
-    //   3. the phone-friendly transcript-upload form is present
-    //
-    // Preconditions (beyond chromedriver + KIND): the canonical seed has
-    // run so the `onboarding__estate` template exists. The client-side
-    // approval walk is covered by the in-process integration test
-    // `estate_review_gates.rs` (a WebDriver client-login helper is not
-    // built yet).
-    let Some(c) = new_client_or_skip().await else {
-        return;
-    };
-    login_as_lawyer(&c).await;
-
-    let client_email = format!("estate-{}@example.com", std::process::id());
-
-    c.goto(&format!("{}/lawyer/retainers/new", base_url()))
-        .await
-        .unwrap();
-    c.wait()
-        .at_most(Duration::from_secs(10))
-        .for_element(Locator::Css("input[name='client_email']"))
-        .await
-        .unwrap();
-    let set_input_script = "\
-        const target = document.querySelector(arguments[0]); \
-        target.value = arguments[1]; \
-        target.dispatchEvent(new Event('input', {bubbles: true})); \
-        target.dispatchEvent(new Event('change', {bubbles: true})); \
-        return target.value;";
-    c.execute(
-        set_input_script,
-        vec![
-            serde_json::Value::String("input[name='client_email']".into()),
-            serde_json::Value::String(client_email.clone()),
-        ],
-    )
-    .await
-    .unwrap();
-    c.execute(
-        set_input_script,
-        vec![
-            serde_json::Value::String("select[name='retainer_template_code']".into()),
-            serde_json::Value::String("onboarding__estate".into()),
-        ],
-    )
-    .await
-    .unwrap();
-    c.execute(
-        "document.querySelector('form.admin-form').submit(); return true;",
-        vec![],
-    )
-    .await
-    .unwrap();
-
-    // The estate flow lands on the matter page with the transcript form —
-    // never the questionnaire walker. The matter page is project-scoped:
-    // the lawyer who opened it must be disclosed to it (a
-    // `person_project_roles` lawyer-DRI row) or `can_see_project` 404s them.
-    // `start_post` writes that row as part of creation, so the opener lands
-    // on the transcript form rather than a "Not found" page. The estate
-    // create also starts the workflow machine through Restate in-request, so
-    // allow a generous budget for that cross-pod round-trip.
-    wait_for_text(&c, "File the sitting transcript", Duration::from_secs(15)).await;
-    let url = c.current_url().await.unwrap();
-    assert!(
-        url.path().starts_with("/app/projects/"),
-        "estate creation should land on the matter page, got {url}"
     );
 
     c.close().await.unwrap();

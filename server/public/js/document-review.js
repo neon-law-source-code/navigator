@@ -1,4 +1,4 @@
-// northstar-review — first-party custom element for the Northstar
+// document-review — first-party custom element for the
 // comment-only document review surface (Phase A).
 //
 // It upgrades a server-rendered, read-only document into a
@@ -16,20 +16,20 @@
 //
 // Expected markup (rendered by webapp::review):
 //
-//   <northstar-review
+//   <document-review
 //     data-create-url="/app/projects/:code/review/:doc/comments"
 //     data-comments='[…json…]'
 //     data-csrf="…">
 //     <article class="nr-document">…document html…</article>
 //     <aside class="nr-sidebar"></aside>
-//   </northstar-review>
+//   </document-review>
 
 (function () {
   "use strict";
 
   const HIGHLIGHT_NAME = "nr-comment";
 
-  class NorthstarReview extends HTMLElement {
+  class DocumentReview extends HTMLElement {
     connectedCallback() {
       if (this._wired) return;
       this._wired = true;
@@ -246,7 +246,7 @@
     return s.length > n ? s.slice(0, n - 1) + "…" : s;
   }
 
-  if (!customElements.get("northstar-review")) {
-    customElements.define("northstar-review", NorthstarReview);
+  if (!customElements.get("document-review")) {
+    customElements.define("document-review", DocumentReview);
   }
 })();

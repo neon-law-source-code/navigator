@@ -21,7 +21,7 @@ pub enum StepKind {
     LawyerReview,
     /// `client_review*` — the client (respondent) reads an
     /// attorney-approved draft and approves it, the mirror of
-    /// [`LawyerReview`]. The canonical case is the Northstar estate plan:
+    /// [`LawyerReview`]. The canonical case is the estate plan:
     /// after `lawyer_review` advances each generated instrument to
     /// `pending_review`, the client comments on and approves the drafts
     /// through the Phase A review surface, and that approval drives the
@@ -71,7 +71,7 @@ pub enum StepKind {
     /// threaded through the signal `value` (phone-friendly: text paste,
     /// file, or link), so the side effect is the worker's persist — like
     /// `generate_pdf`, the actor class is System. The slug names the
-    /// instance (`document_intake__transcript` is the Northstar estate
+    /// instance (`document_intake__transcript` is the estate
     /// sitting's transcript); the step kind stays generic so future
     /// intakes reuse one state machine.
     DocumentIntake,
@@ -166,7 +166,7 @@ pub const STEP_PREFIXES: &[(&str, StepKind)] = &[
     // answers, then loops back to review — no side effect, no dead end.
     ("reask", StepKind::Reask),
     ("notarization", StepKind::Notarization),
-    // Northstar estate pipeline. The recorded sitting is transcribed
+    // Estate pipeline. The recorded sitting is transcribed
     // *offline* — AIDA on the already-paid Google Gemini Enterprise turns
     // the recording into a transcript at ~$0 marginal cost — and the
     // transcript is then *uploaded* through the reusable document-intake
@@ -385,7 +385,7 @@ mod tests {
 
     #[test]
     fn estate_pipeline_prefixes_resolve_to_their_step_kinds() {
-        // The Northstar estate flow adds three states the runtime must
+        // The estate flow adds three states the runtime must
         // route: `client_review` (the respondent-driven approval mirror
         // of `lawyer_review`), the reusable `document_intake__transcript`
         // step (the uploaded transcript is filed into the matter), and

@@ -183,7 +183,7 @@ const FIRM_NAV: &[NavLink] = &[
 /// software has already decided to run it.
 ///
 /// Privacy and Terms sit in this row on the same footing as the Blog and
-/// Contact, not in a smaller strip beneath it. They are the two documents a
+/// Notations, not in a smaller strip beneath it. They are the two documents a
 /// reader is entitled to find without hunting, and the legal strip below
 /// already carries the copyright, the bar disclosure, and the advertising
 /// disclaimer — a second, quieter row of legal links there would read as fine
@@ -199,9 +199,9 @@ const FIRM_NAV: &[NavLink] = &[
 /// remaining half links the reader to where the header logo already goes.
 const FIRM_FOOTER_NAV: &[NavLink] = &[
     NavLink::leaf("Blog", "/blog"),
-    NavLink::leaf("Contact", "/contact"),
     NavLink::leaf("Docs", "/docs"),
     NavLink::leaf("Navigator", "/navigator"),
+    NavLink::leaf("Notations", "/notations"),
     NavLink::leaf("Presentations", "/presentations"),
     NavLink::leaf("Privacy", "/privacy"),
     NavLink::leaf("Terms", "/terms"),
@@ -760,7 +760,7 @@ pub fn firm_trademark() -> (&'static str, &'static str, &'static str) {
 }
 
 /// The public pages the footer links rather than the header — Navigator, Blog,
-/// Contact, and the rest. See [`FIRM_FOOTER_NAV`].
+/// Notations, and the rest. See [`FIRM_FOOTER_NAV`].
 ///
 /// Not brand-scoped: a white-label deploy renames the wordmark and re-points the
 /// addresses, but these routes are Navigator's own public surface and are the
@@ -1278,8 +1278,8 @@ mod tests {
         );
     }
 
-    /// Blog, Contact, Docs, Navigator, Neon Law, Presentations, Privacy, Terms,
-    /// and Workshops are the routes the header does not carry, ordered
+    /// Blog, Docs, Navigator, Notations, Presentations, Privacy, Terms, and
+    /// Workshops are the routes the header does not carry, ordered
     /// alphabetically by label. They are still linked from every public page — a
     /// route in neither row is stranded, which is the failure this pairs with
     /// the test above to catch.
@@ -1301,9 +1301,9 @@ mod tests {
             footer,
             [
                 "Blog",
-                "Contact",
                 "Docs",
                 "Navigator",
+                "Notations",
                 "Presentations",
                 "Privacy",
                 "Terms",
@@ -1329,7 +1329,7 @@ mod tests {
                 "{label} is linked once, from the footer"
             );
         }
-        for retired in ["Team", "Foundation", "Firm"] {
+        for retired in ["Team", "Foundation", "Firm", "Contact"] {
             assert!(
                 !header.contains(&retired) && !footer.contains(&retired),
                 "{retired} names a retired or redundant entry that neither row may link",
@@ -1358,6 +1358,7 @@ mod tests {
                 "/team",
                 "/mission",
                 "/attorneys",
+                "/contact",
             ] {
                 assert!(
                     !link.href.starts_with(retired),

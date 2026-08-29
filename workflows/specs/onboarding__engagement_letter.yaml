@@ -19,8 +19,18 @@ questionnaire:
     _: END
   END: {}
 prompts:
-  client_dri: Who is the Client's directly responsible individual, the one person the Firm takes instructions from?
+  client_name: Who is the Client's directly responsible individual, the one person the Firm takes instructions from?
+  project_name: What is the project name for this engagement?
   lawyer_dri: Which lawyer is directly responsible for this engagement?
+audiences:
+  client_name: client
+  project_name: lawyer
+  governing_law: lawyer
+  lawyer_dri: lawyer
+  engagement_start_date: lawyer
+  engagement_scope: lawyer
+  entity: lawyer
+  principal_office: lawyer
 custom_questions:
   engagement_scope:
     prompt: >-

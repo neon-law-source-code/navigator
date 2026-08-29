@@ -321,7 +321,7 @@ mod tests {
                    slug: services\n\
                    description: \"d\"\n\
                    ---\n\n\
-                   - <i class=\"bi bi-star-fill\" aria-hidden=\"true\"></i> **Northstar**";
+                   - <i class=\"bi bi-star-fill\" aria-hidden=\"true\"></i> **Services**";
         let doc = parse(raw, "services").expect("parses");
         assert!(
             doc.body_html

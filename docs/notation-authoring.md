@@ -25,13 +25,13 @@ Every legal template lives under exactly one of three shelves:
 - `templates/forms/` — government form-backed templates. Paths mirror the public assets bucket, so
   `templates/forms/united_states/nevada/state/nv__llc_formation.md` corresponds to
   `gs://<assets-bucket>/forms/united_states/nevada/state/nv__llc_formation.pdf`.
-- `templates/neon_law/` — Neon Law product work: product retainers, engagement letters, product-specific
-  documents, and shared firm documents such as the closing letter.
+- `templates/neon_law/` — the firm's sample engagement letter and closing letter.
 
 Every template declares `jurisdiction:` using a seeded jurisdiction code from `store/seeds/Jurisdiction.yaml`. Form
 templates are stricter: their filename stem, `code`, and `form` binding must match, and that code starts with the
 jurisdiction prefix (`nv__llc_formation`, `us__form_990`, `ca__...`). A retainer may keep a runtime code such as
-`onboarding__retainer` while living at an author-friendly path such as `templates/neon_law/shared/retainer.md`.
+`onboarding__engagement_letter` while living at an author-friendly path such as
+`templates/neon_law/shared/engagement_letter.md`.
 
 ## Anatomy of a template file
 
@@ -39,19 +39,22 @@ jurisdiction prefix (`nv__llc_formation`, `us__form_990`, `ca__...`). A retainer
 > and workshop pages — see <frontmatter.md>. This section is the authoring-focused version.
 
 Every template has two parts: YAML frontmatter (the contract) and a markdown body (the document, with
-`{{question_code}}` placeholders). Here is the shared retainer frontmatter from `templates/neon_law/shared/retainer.md`
-(the real file wraps this block in `---` fences, then the prose body follows):
+`{{question_code}}` placeholders). Here is the shared retainer frontmatter from
+`templates/neon_law/shared/engagement_letter.md` (the real file wraps this block in `---` fences, then the prose body
+follows):
 
 ```yaml
-title: Retainer Agreement
+title: Engagement Letter
 respondent_type: person_and_entity
 jurisdiction: NV
-code: onboarding__retainer
+code: onboarding__engagement_letter
 confidential: true
 questionnaire:            # the intake Q&A — what we ask the client
-  BEGIN:                { _: person__client }
-  person__client:       { _: project__engagement }
-  project__engagement:  { _: END }
+  BEGIN:                      { _: entity }
+  entity:                     { _: address__principal_office }
+  address__principal_office:  { _: person__client }
+  person__client:             { _: project__engagement }
+  project__engagement:        { _: END }
   END: {}
 workflow:                 # what happens after intake — render, review, sign
   BEGIN:                       { intake_submitted: intake_persisted__client }
@@ -72,7 +75,8 @@ Frontmatter fields:
 - `title` — the human document title (N101 requires it non-empty).
 - `respondent_type` — one of `person`, `entity`, `person_and_entity` (N102).
 - `jurisdiction` — a seeded jurisdiction code (`NV`, `CA`, `US`); required even for product templates.
-- `code` — the stable, unique identifier (`onboarding__retainer`, `nv__llc_formation`); how every surface refers to it.
+- `code` — the stable, unique identifier (`onboarding__engagement_letter`, `nv__llc_formation`); how every surface
+  refers to it.
 - `confidential` — an explicit `true`/`false` decision, never defaulted (N105).
 - `origin_url` — forms only; the HTTPS government page where the blank form can be obtained.
 - `form` — forms only; the bundled form code, matching `code` and the filename stem.
@@ -91,10 +95,10 @@ full history of a matter is replayable for audit.
 ## The typed question grammar
 
 A questionnaire state name is `<type>__<role>` — a **question type** and the **role** it plays in this matter, e.g.
-`person__trustor`, `entity__company`, `address__for_company`. The `<type>` half is a closed set (the registry in
-[`store::question_registry`](../store/src/question_registry.rs)); `N113` rejects a typed state whose `<type>` is not
-registered. The `<role>` suffix is free naming that keeps two answers of one type distinct — `entity__company` and
-`entity__subsidiary` are two separate entities, not one.
+`person__trustor`, `entity__company`, `address__for_company`. The `<type>` half is a closed set (the
+[`store::question_registry`](https://github.com/neon-law-source-code/navigator/blob/main/store/src/question_registry.rs)
+registry); `N113` rejects a typed state whose `<type>` is not registered. The `<role>` suffix is free naming that keeps
+two answers of one type distinct — `entity__company` and `entity__subsidiary` are two separate entities, not one.
 
 Every type is one of three kinds:
 
@@ -193,10 +197,11 @@ cargo run -p cli --quiet -- validate <path>
 ## Authoring in markdown with the LSP
 
 `navigator-lsp` is a single Rust binary speaking LSP over stdio. It shares the exact rules engine the CLI uses, so the
-editor and CI can never disagree. Supported editors ship copy-paste configs under [`lsp/`](../lsp) docs: VS Code,
-Neovim, Helix, Emacs, Zed. The authoring loop for a non-engineer legal author:
+editor and CI can never disagree. Supported editors ship copy-paste configs under
+[`lsp/`](https://github.com/neon-law-source-code/navigator/tree/main/lsp) docs: VS Code, Neovim, Helix, Emacs, Zed. The
+authoring loop for a non-engineer legal author:
 
-1. **Type.** Open `templates/neon_law/northstar/nv__simple_will.md` in your editor. Write
+1. **Type.** Open `templates/neon_law/shared/engagement_letter.md` in your editor. Write
    legal prose and frontmatter — no proprietary tool, no markup beyond markdown.
 2. **Live diagnostics.** On every keystroke the LSP lints the buffer and shows squiggles: N101 if `title:` is missing,
    N104 if the questionnaire/workflow shape is broken or a questionnaire state is not in the canonical question seed
@@ -232,9 +237,9 @@ today:
 | `client_review` | State-only | Respondent approves attorney-reviewed drafts on the Phase A review surface. |
 | `reask__*` | State-only | Re-collects flagged answers after `changes_requested`, then loops back to `lawyer_review`. |
 | `document_intake__<slug>` | Implemented | Worker files a provided artifact (text/file/link) via `ingest_bytes`. |
-| `extract__*` | Seam | Northstar: estate inputs mined from the transcript by AIDA/Gemini; advanced on completion. |
+| `extract__*` | Seam | Estate inputs mined from the transcript by AIDA/Gemini; advanced on completion. |
 | `analysis__*` | Seam | Contract review: web (Vertex Gemini) flags playbook deviations; System wait state. |
-| `document_drafts__*` | Implemented | Northstar: web renders drafts into review_documents rows (System wait state). |
+| `document_drafts__*` | Implemented | Web renders drafts into review_documents rows (System wait state). |
 | `generate_pdf__retainer_pdf` | Implemented | Worker-dispatched: render + storage persist wrapped in `ctx.run`. |
 | `sent_for_signature__pending` | Implemented | Wait state; e-signature webhook signals `signature_received` → END. |
 | `notarization`, `_signature` | State-only | Trust/will signing states; a human act, no worker side effect. |
@@ -257,9 +262,9 @@ implemented and tested, but the on-chain write itself is deferred. The chain is 
 `workflows::attest::Attestor` trait exactly as GCS is isolated behind `cloud::StorageService` — selecting Solana (or a
 second chain) is a new `impl Attestor`, never a workflow edit. The default `NullAttestor` records no transaction, so the
 row stays `pending` and no live retainer can claim an on-chain record that does not exist. The step is therefore not yet
-wired into the binding `onboarding__retainer` workflow; that one-line YAML edge lands together with the `SolanaAttestor`
-(whose open questions — firm key custody, the client wallet, public-chain confidentiality of the hash, and finality —
-are decisions, not code). See `workflows::attest`.
+wired into the binding `onboarding__engagement_letter` workflow; that one-line YAML edge lands together with the
+`SolanaAttestor` (whose open questions — firm key custody, the client wallet, public-chain confidentiality of the hash,
+and finality — are decisions, not code). See `workflows::attest`.
 
 `github_issue__*` is the one step in the registry that is not a legal act. It belongs to the engineering intake shelf
 (`templates/github/`), so it is the only worker step that does not sit behind `lawyer_review` — nothing it does binds a
@@ -335,9 +340,9 @@ Motions and contracts are walked paragraph by paragraph on a stage so a lawyer c
 Depth-1 headings take Roman numerals (`## I.`) on contracts and engagement letters, or Arabic numerals (`## 1.`) in
 motion practice; lettered subsections are block quotes (`> **A. Label.** …`). `navigator template narrate <file.md>
 --out <stage.html>` writes a self-contained HTML file; open it in a browser, step with Arrow keys, J/K, or Space, and
-press H to hide the hint. The same stage is at `/lawyer/outline`, which switches among the bundled retainer, engagement
-letter, and a sample motion (`?doc=retainer`, `engagement`, `motion`). This command does not lint the outline and does
-not change PDF numbering.
+press H to hide the hint. The same stage is at `/lawyer/outline`, which switches among the bundled onboarding letter and
+offboarding letter (`?doc=onboarding`, `offboarding`). This command does not lint the outline and does not change PDF
+numbering.
 
 **Output formats — the letterhead seam.** How the document is dressed is an `OutputFormat` (`pdf::format`): `plain`
 (page geometry + firm typeface), `letter` (the firm letterhead — mark, letterspaced wordmark, a rule across the page,

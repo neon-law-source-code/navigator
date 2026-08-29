@@ -109,7 +109,7 @@ async fn list_questions_prints_every_canonical_code() {
         "custom_text",
         "custom_single_choice",
         "lawyer_review",
-        "testator_signature", // only added by the notation import (will workflow state)
+        "generate_pdf",
     ] {
         assert!(
             stdout.contains(code),
@@ -156,12 +156,12 @@ async fn list_templates_prints_imported_titles() {
     assert!(out.status.success());
     let stdout = String::from_utf8_lossy(&out.stdout);
     for needle in [
-        "trusts__nevada",
-        "Nevada Trust",
-        "ca__llc_operating_agreement",
-        "California LLC Operating Agreement",
-        "will__simple",
-        "Simple Last Will and Testament",
+        "onboarding__engagement_letter",
+        "Engagement Letter",
+        "offboarding__letter",
+        "Closing Letter",
+        "nv__llc_formation",
+        "us__naturalization",
     ] {
         assert!(
             stdout.contains(needle),
@@ -241,12 +241,12 @@ async fn list_entities_includes_seeded_org_names() {
 }
 
 #[tokio::test]
-async fn list_templates_against_a_seed_only_db_shows_the_bundled_lifecycle_letters() {
-    // The canonical seed pass bundles the shared lifecycle letters
-    // (see `store::seed::seed_templates`): one onboarding retainer, one
-    // onboarding engagement letter, and one offboarding closing letter.
+async fn list_templates_against_a_seed_only_db_shows_the_bundled_retainer() {
+    // The canonical seed pass now bundles the retainer notation
+    // template (see `store::seed::seed_templates`), so a fresh
+    // seed-only DB carries exactly one row — `onboarding__engagement_letter`.
     let Some(store) = store::test_support::server_surreal(
-        "test_cli_list_templates_against_a_seed_only_db_shows_the_bundled_lifecycle_letters",
+        "test_cli_list_templates_against_a_seed_only_db_shows_the_bundled_retainer",
     )
     .await
     else {
@@ -259,18 +259,9 @@ async fn list_templates_against_a_seed_only_db_shows_the_bundled_lifecycle_lette
         .expect("run navigator db list templates");
     assert!(out.status.success(), "fresh-DB list must still succeed");
     let stdout = String::from_utf8_lossy(&out.stdout);
-    for (code, title) in [
-        ("onboarding__retainer", "Retainer Agreement"),
-        ("onboarding__engagement_letter", "Engagement Letter"),
-        ("offboarding__letter", "Closing Letter"),
-    ] {
-        assert!(
-            stdout.contains(code),
-            "expected seeded template `{code}`; got:\n{stdout}",
-        );
-        assert!(
-            stdout.contains(title),
-            "expected seeded title `{title}`; got:\n{stdout}",
-        );
-    }
+    assert!(
+        stdout.contains("onboarding__engagement_letter"),
+        "expected the seeded retainer template; got:\n{stdout}",
+    );
+    assert!(stdout.contains("Engagement Letter"));
 }

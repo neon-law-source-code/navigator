@@ -58,14 +58,6 @@ name = "mutable_intake_docusign"
 harness = false
 
 [[test]]
-name = "trust_esignature"
-harness = false
-
-[[test]]
-name = "estate_intake"
-harness = false
-
-[[test]]
 name = "nautilus_workflows"
 harness = false
 
@@ -162,27 +154,11 @@ name = "entity_formation"
 harness = false
 
 [[test]]
-name = "nautilus_screening_shield"
-harness = false
-
-[[test]]
 name = "bulk_import_engagement"
 harness = false
 
 [[test]]
 name = "inbound_email_round_trip"
-harness = false
-
-[[test]]
-name = "nexus_fractional_gc"
-harness = false
-
-[[test]]
-name = "northstar_estate"
-harness = false
-
-[[test]]
-name = "source_code_preservation_tro"
 harness = false
 
 [lints]

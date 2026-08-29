@@ -548,8 +548,8 @@ use. What constrains AIDA is authorization, not kind: the actor must be lawyer a
 (`store::projects::can_access_as_lawyer_in_surreal`), and the respondent is always the Project's client-side DRI.
 
 A **Retainer** is the same idea, narrowed: an Engagement whose bound Template is the firm's engagement agreement,
-`onboarding__retainer`. The `portal::retainer_walk` walker, the [`docs/retainer_intake.md`](retainer_intake.md) state
-machine, and the firm's "signed retainer" disclaimer all refer to that specific kind of Notation.
+`onboarding__engagement_letter`. The `portal::retainer_walk` walker, the [`docs/retainer_intake.md`](retainer_intake.md)
+state machine, and the firm's "signed retainer" disclaimer all refer to that specific kind of Notation.
 
 The schema noun in both cases is `Notation`. Client-facing copy speaks Engagement and Retainer because clients do; the
 database and the workflow runtime speak Notation.
@@ -632,7 +632,7 @@ The numbering used on motions and contracts so a provision is addressable by pat
 are Roman numerals (`I.`, `II.`) on contracts and engagement letters, or Arabic numerals (`1.`, `2.`) in motion
 practice. Lettered subsections (`A.`, `B.`) are Markdown block quotes. `views::harvard_outline` parses that shape into
 narration units; `navigator template narrate` writes a stage a lawyer can step through while recording, and
-`/lawyer/outline` shows the bundled retainer, engagement letter, and a sample motion on the same stage (`?doc=`).
+`/lawyer/outline` shows the bundled onboarding and offboarding letters on the same stage (`?doc=`).
 
 - Parser: [`views::harvard_outline`](../views/src/harvard_outline.rs)
 - How to author: [`notation-authoring.md`](notation-authoring.md#harvard-outline)
@@ -708,7 +708,7 @@ One physical piece of mail, incoming or outgoing, scoped to a Mailroom.
 
 ## Live Inquiry Session
 
-One Project-scoped, transcript-bearing event — for example a Northstar sitting, deposition, witness interview, or client
+One Project-scoped, transcript-bearing event — for example an estate sitting, deposition, witness interview, or client
 intake call — evaluated against an [Inquiry](#inquiry) Set while the transcript develops. Transcript segments persist
 immediately, speaker labels are provisional until mapped to a [Person](#person), and Coverage Findings remain proposed
 until a lawyer confirms them.
@@ -821,16 +821,11 @@ through the chain backend. See [`solana-attestation.md`](solana-attestation.md) 
 ## Onboarding
 
 The codebase term for the notation that **opens a matter** — `rules::kind::Kind::Onboarding`, classified by
-[`Kind::opens_a_matter`](../rules/src/kind.rs). It covers both a single-instrument engagement letter and a
-transcript-/intake-driven engagement that opens a bundle of instruments at once (the estate plan, the fractional-GC
-engagement) — the same act of opening the matter either way. One kind covers both, because no call site distinguishes
-them: every caller asks only whether the matter has its engagement yet.
+[`Kind::opens_a_matter`](../rules/src/kind.rs). The shipped sample is the engagement letter
+(`onboarding__engagement_letter`). One kind covers that act of opening the matter.
 
 In conversation and with clients this is the **retainer** or the **engagement letter** — see [Engagement /
-Retainer](#engagement--retainer) for that client-facing shape. The codebase and the workflow runtime speak Onboarding;
-the templates that declare it keep their conversational titles ("Retainer Agreement", "Engagement Letter") and codes
-(`onboarding__retainer`, `onboarding__engagement_letter`) unchanged — only their declared `kind:` collapsed to the one
-value.
+Retainer](#engagement--retainer) for that client-facing shape. The codebase and the workflow runtime speak Onboarding.
 
 ## Participation
 
@@ -1012,9 +1007,9 @@ a schema noun** — like [Matter](#matter) and [Engagement / Retainer](#engageme
 says out loud, not a table. There is no `referrals` table: a Matter is the same row as a [Project](#project) in the
 database, and a referred Matter is simply one the firm closes (or never opens) after pointing the client to trial
 counsel. The firm publishes no per-service marketing pages — the home page states the practice (litigation and flat-fee
-transactional work) and prices through `/contact`; the firm-footer "every legal matter is different, and past results do
-not guarantee a similar result" disclaimer ([`views/src/brand.rs`](../views/src/brand.rs)) covers transactional and
-referred matters alike.
+transactional work) and quotes each engagement by email. The firm-footer disclaimer ("every legal matter is different,
+and past results do not guarantee a similar result") in [`views/src/brand.rs`](../views/src/brand.rs) covers
+transactional and referred matters alike.
 
 ## Relationship Edge
 

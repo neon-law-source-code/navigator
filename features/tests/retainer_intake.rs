@@ -21,7 +21,7 @@ use tower::ServiceExt;
 use uuid::Uuid;
 use workflows::{InMemoryRuntime, MachineKind, StateMachineRuntime, StateName};
 
-const TEMPLATE_CODE: &str = "onboarding__retainer";
+const TEMPLATE_CODE: &str = "onboarding__engagement_letter";
 
 #[derive(Default, World)]
 #[world(init = Self::default)]
@@ -90,7 +90,7 @@ async fn seed_notation(world: &mut RetainerWorld, name: String, email: String) {
     let tmpl = store::templates::resolve(&features::shared_surreal().await, None, TEMPLATE_CODE)
         .await
         .unwrap()
-        .expect("seed_canonical inserts onboarding__retainer");
+        .expect("seed_canonical inserts onboarding__engagement_letter");
     let person =
         store::test_support::ensure_person(&surreal, &store::persons::NewPerson::new(name, email))
             .await;

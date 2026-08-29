@@ -90,8 +90,8 @@ async fn seed_review_at_lawyer_review(h: &Harness) -> (Uuid, Uuid) {
     let project_id = store::projects::create(
         &h.surreal,
         &store::projects::NewProject {
-            code: format!("nexus-engagement-{}", Uuid::now_v7()),
-            name: "Nexus engagement".into(),
+            code: format!("contract-review-{}", Uuid::now_v7()),
+            name: "Contract review".into(),
             status: "open".into(),
             entity_id,
             ..Default::default()
@@ -113,7 +113,7 @@ async fn seed_review_at_lawyer_review(h: &Harness) -> (Uuid, Uuid) {
     let _ = store::templates::save_version(
         &h.surreal,
         None,
-        "services__contract_review",
+        "memo__contract_review",
         store::templates::Version {
             title: "Inbound Contract Review".into(),
             respondent_type: "person_and_entity".into(),

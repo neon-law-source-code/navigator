@@ -332,7 +332,7 @@ pub async fn supervised_projects(
 /// It deliberately does *not* delegate the firm arm to
 /// [`can_see_project_as_lawyer`], which still carries the documented
 /// project-scoping bypass for the surfaces this slice did not move (`/app/api/*`,
-/// the notation walker, estate, contract reviews). Those are ENG-83's to
+/// the notation walker, contract reviews). Those are ENG-83's to
 /// collapse. Until then the two functions differ for exactly one input —
 /// an Owner or Admin with no row — so reach for this one on the matter
 /// surface and that one everywhere else.
@@ -366,7 +366,7 @@ pub async fn can_see_project_as_client(
 /// Owner/Admin project-scoping bypass still applied.
 ///
 /// This is the gate for the firm surfaces ENG-81 has **not** collapsed yet —
-/// `/app/api/*`, the notation walker, estate, and contract reviews. It keeps the
+/// `/app/api/*`, the notation walker, and contract reviews. It keeps the
 /// behavior documented in `docs/access-model.md` so this slice does not quietly
 /// re-authorize surfaces outside its scope. The matter surface uses
 /// [`can_see_project`] instead, which has no bypass.

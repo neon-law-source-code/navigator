@@ -1,5 +1,5 @@
 //! `/app/projects/{project_code}/review/:doc_id` — the comment-only client
-//! review surface (Northstar Phase A).
+//! review surface.
 //!
 //! A client reads one attorney-reviewed draft (a will, a trust, a
 //! directive) and leaves comments anchored to a text range. The surface

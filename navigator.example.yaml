@@ -40,7 +40,7 @@ brand:
   support_domain: "acme.example"
   # support_email: "hello@acme.example"
 
-  # The firm's published voice line, shown on `/contact`. Omit to keep the
+  # The firm's published voice line, shown in the public footer. Omit to keep the
   # built-in number.
   firm_phone: "+1 555 010 0100"
 

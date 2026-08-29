@@ -44,8 +44,8 @@ fn neon_law_templates() -> Vec<PathBuf> {
 fn every_neon_law_template_compiles_through_typst() {
     let templates = neon_law_templates();
     assert!(
-        templates.len() >= 12,
-        "expected the full product template set, found {}",
+        templates.len() >= 2,
+        "expected the sample onboarding and offboarding letters, found {}",
         templates.len()
     );
     for path in templates {

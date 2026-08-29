@@ -1537,13 +1537,7 @@ mod tests {
 
     async fn exercise_notation_commands(host: Option<&str>, server_uri: &str, ids: LawyerRouteIds) {
         assert_eq!(
-            notation_create(
-                host,
-                "services__contract_review",
-                "libra@example.com",
-                "acme",
-            )
-            .await,
+            notation_create(host, "memo__contract_review", "libra@example.com", "acme",).await,
             ExitCode::SUCCESS
         );
         let client = reqwest::Client::new();
@@ -1762,7 +1756,7 @@ mod tests {
     #[test]
     fn coverage_summary_deserializes_covered_and_gaps() {
         let summary: CoverageSummary = serde_json::from_value(serde_json::json!({
-            "template_code": "onboarding__estate",
+            "template_code": "sitting__transcript",
             "covered": [{"code": "custom_yes_no__recording_consent", "proposed_answer": "Yes"}],
             "uncovered": ["custom_text__note"],
         }))

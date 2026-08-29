@@ -204,7 +204,7 @@ mod tests {
                         SiteNavLink::new("Services", "/#services"),
                         SiteNavLink::new("Blog", "/blog").current(),
                         SiteNavLink::new("Team", "/team"),
-                        SiteNavLink::new("Contact", "/contact"),
+                        SiteNavLink::new("Notations", "/notations"),
                     ],
                 }
             }
@@ -246,9 +246,9 @@ mod tests {
         let services = out.find("Services").expect("Services present");
         let blog = out.find("Blog").expect("Blog present");
         let team = out.find("Team").expect("Team present");
-        let contact = out.find("Contact").expect("Contact present");
+        let notations = out.find("Notations").expect("Notations present");
         assert!(
-            services < blog && blog < team && team < contact,
+            services < blog && blog < team && team < notations,
             "in order: {out}"
         );
     }

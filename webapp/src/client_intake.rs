@@ -12,8 +12,9 @@
 //! depend on `workflows`. The portal router's pre-layer resolves it — along with
 //! the matter-visibility check, the flow label and the seeded country options —
 //! and injects the wasm-safe [`InjectedIntake`] this page reads back, the same
-//! seam the estate "Approve my plan" decision uses. The pre-layer owns the 404,
-//! so an unauthorised or unknown notation never reaches the render.
+//! seam [`crate::lawyer_project_detail::ProjectRepositoryPointer`] uses. The
+//! pre-layer owns the 404, so an unauthorised or unknown notation never
+//! reaches the render.
 
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};

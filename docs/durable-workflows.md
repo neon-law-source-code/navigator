@@ -252,8 +252,7 @@ can't silently recur; when you fix a new one, add its guard in the same PR.
 
 ## See also
 
-- The *what* of each individual workflow: [notation](notation.md), [retainer intake](retainer_intake.md),
-  [Nautilus workflows](nautilus-workflows.md).
+- The *what* of each individual workflow: [notation](notation.md), [retainer intake](retainer_intake.md).
 - Scheduling any periodic job (the CronJob pattern, both flavors): [Scheduled jobs](cronjobs.md). Deploy and secret
   mechanics: [GKE production](gke-prod.md), [deployment secrets](deployment-secrets.md). Crate entry points:
   [`workflows/README.md`](../workflows/README.md) and [`workflows-service/README.md`](../workflows-service/README.md).

@@ -412,8 +412,8 @@ job downloads the newest release that carries a Linux CLI archive, and runs `ops
 runs the in-tree command on every pull request, so the rule is proved on the branch that changes it.
 
 Two consequences worth stating rather than discovering. **The checker is release N-1's**, so a change to `ops release
-check` itself governs from the release after the one that lands it — tolerable because the binary carries the
-rule while the run supplies the data, reading this commit's manifest and the current tag list. And **the binary is
+check` itself governs from the release after the one that lands it — tolerable because the binary carries the rule
+while the run supplies the data, reading this commit's manifest and the current tag list. And **the binary is
 deliberately unpinned**, the one exception to [Pin every consumed image, binary, and
 action](#pin-every-consumed-image-binary-and-action): a checker that had to be pinned would freeze at one version and
 need a manual bump to ever move. `/releases/latest` is *not* how it is found — that endpoint excludes prereleases and

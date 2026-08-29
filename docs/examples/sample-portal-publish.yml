@@ -13,6 +13,40 @@
 # `.github/no-external-references.py` (the origin gate, run over the built bundle before it
 # uploads). A fourth sample repository needs both copied in alongside this file.
 #
+# **Copy them from one of the three sample repositories named above, not from an arbitrary
+# Project repository.** Those three are public, hold only synthetic source, and carry the
+# corrected `navigator.yaml` parser described below. Copying from a repository that predates
+# that correction reproduces a defect whose symptom is silence.
+#
+# ## The one parsing rule the origin gate depends on
+#
+# `navigator.py` reads `navigator.yaml` with a small hand-written parser rather than a YAML
+# library, because a gate that has to be able to say no cannot depend on `pip install`. In
+# that parser, a `key: value` line inside `allowed_hosts` or `allowed_prefixes` **must split
+# on the first `": "`, not the first `":"`** — which is YAML's own rule, and the only reading
+# under which a URL can be a key.
+#
+# Splitting on a bare `":"` turns `https://example.test/x: reason` into the key `https`. The
+# gate's only consumer of that map tests `full.startswith(prefix)`, so a bare scheme matches
+# every `https://` reference in the bundle and the gate reports nothing at all. It does not
+# fail open quietly: it prints `no external references: N built file(s) reference no host but
+# our own` and exits 0, which is an affirmative statement that the bundle is clean.
+#
+# Two properties make that worse than an ordinary parser bug, and both are why the rule is
+# written down here rather than left to the copy:
+#
+#   1. `allowed_hosts` is unaffected only by luck. A hostname carries no colon before its
+#      `": "`, so the wrong split happens to produce the right key. A host written with a
+#      port re-enters the defect through the door that looks safe.
+#   2. **The gate's own failure message tells an engineer to add an allowlist entry** — "add
+#      it to `allowed_hosts` or `allowed_prefixes` in navigator.yaml with the reason". Under
+#      the wrong split, one entry for an unrelated host silences the gate against every other
+#      host too. The documented remedy for a failure is the action that disables the control,
+#      and the check then goes green.
+#
+# A copy of `navigator.py` should carry the parser's own cases and a `--test` entry point
+# that pins them, so the rule survives the next person who simplifies the split.
+#
 # ## Why nothing here names the Project
 #
 # `application-publish` derives the object prefix from `github.event.repository.name` and

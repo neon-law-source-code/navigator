@@ -160,12 +160,13 @@ async fn full_signature_loop_reaches_end_through_real_provider_and_webhook() {
     // 2. Walk the full questionnaire — the final POST drives the
     //    workflow through the real provider's send_for_signature.
     for value in [
+        "Libra Holdings LLC",
+        "500 Innovation Way Reno NV 89501",
         "Libra",
         "Firm Principal",
         "Estate plan",
         "2026-09-01",
         "Draft and file the matter documents.",
-        "450 per hour",
         "nevada",
     ] {
         let resp = app

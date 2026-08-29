@@ -9,10 +9,11 @@ frontmatter of [`templates/neon_law/shared/letter.md`](../templates/neon_law/sha
 [`portal::retainer_walk`](../portal/src/retainer_walk.rs) module:
 
 1. **Questionnaire walker** — one question per request, one [Answer](notation.md#answer) per advance, one
-   [Notation Event](glossary.md#notation-event) per transition. Walks the state chain `BEGIN` → `person__client` →
-   `person__lawyer_dri` → `project__engagement` → `custom_datetime__engagement_start_date` →
-   `custom_text__engagement_scope` → `custom_text__fee_basis` → `custom_single_choice__governing_law` → `END`. The
-   matter's scope and fee terms render from the clauses spliced at `{{custom_clauses}}`, written per client.
+   [Notation Event](glossary.md#notation-event) per transition. Walks the state chain `BEGIN` → `entity` →
+   `address__principal_office` → `person__client` → `person__lawyer_dri` → `project__engagement` →
+   `custom_datetime__engagement_start_date` → `custom_text__engagement_scope` → `custom_single_choice__governing_law` →
+   `END` — eight questions in all. The matter's scope renders from the clause spliced at `{{custom_clauses}}`, written
+   per client; fees are set in a separate signed fee writing rather than asked here.
 2. **Post-intake workflow** — fires once the questionnaire reaches `END`. Walks `intake_persisted__client` →
    `lawyer_review` → `generate_pdf__retainer_pdf` → `sent_for_signature__pending` → `END`, driving render, PDF
    persistence, and "sent for signature".
@@ -25,19 +26,21 @@ worker that hosts the object lives in [`workflows-service/`](../workflows-servic
 
 ```mermaid
 stateDiagram-v2
-    [*] --> person__client : _
+    [*] --> entity : _
+    entity --> address__principal_office : _
+    address__principal_office --> person__client : _
     person__client --> person__lawyer_dri : _
     person__lawyer_dri --> project__engagement : _
     project__engagement --> custom_datetime__engagement_start_date : _
     custom_datetime__engagement_start_date --> custom_text__engagement_scope : _
-    custom_text__engagement_scope --> custom_text__fee_basis : _
-    custom_text__fee_basis --> custom_single_choice__governing_law : _
+    custom_text__engagement_scope --> custom_single_choice__governing_law : _
     custom_single_choice__governing_law --> [*] : _
 ```
 
 The bare `_` condition is the only signal that advances a questionnaire (the canonical "respondent answered"). State
-names use the typed `<type>__<role>` grammar, so the retainer asks for a Person and a Project instead of duplicating
-their fields as custom text.
+names use the typed `<type>__<role>` grammar, so the retainer asks for an Entity, an Address, a Person, and a Project
+instead of duplicating their fields as custom text. `entity` carries no role suffix because the questionnaire asks for
+only one entity — the Client itself.
 
 ## Post-intake workflow
 

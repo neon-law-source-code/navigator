@@ -127,16 +127,17 @@ async fn build_fixture() -> Fixture {
     }
 }
 
-/// Drive the seven-question retainer intake to the `lawyer_review` gate over
+/// Drive the eight-question retainer intake to the `lawyer_review` gate over
 /// the lawyer walk, mirroring `reask_handler.rs`.
 async fn walk_to_lawyer_review(fx: &Fixture) {
     for value in [
+        "Libra%20Holdings%20LLC",
+        "500%20Innovation%20Way%20Reno%20NV%2089501",
         "Libra",
         "Firm%20Principal",
         "Estate%20plan",
         "2026-09-01",
         "Draft%20and%20file%20the%20matter%20documents.",
-        "450%20per%20hour",
         "nevada",
     ] {
         let resp = fx

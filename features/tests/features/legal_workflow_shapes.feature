@@ -12,17 +12,18 @@ Feature: Bundled-template questionnaire composition
   `END:` excised must fail to parse with `MissingEnd`, so the parser's
   guardrails stay load-bearing.
 
-  Scenario: Engagement letter questionnaire walks client → lawyer → project → terms → END
+  Scenario: Engagement letter questionnaire walks entity → office → client → lawyer → project → terms → END
     Given the bundled template "neon_law/shared/letter.md"
     Then the questionnaire transitions, in BEGIN-first order, are:
       | from                                    | to                                      |
-      | BEGIN                                   | person__client                          |
+      | BEGIN                                   | entity                                  |
+      | entity                                  | address__principal_office               |
+      | address__principal_office               | person__client                          |
       | person__client                          | person__lawyer_dri                      |
       | person__lawyer_dri                      | project__engagement                     |
       | project__engagement                     | custom_datetime__engagement_start_date  |
       | custom_datetime__engagement_start_date  | custom_text__engagement_scope           |
-      | custom_text__engagement_scope           | custom_text__fee_basis                  |
-      | custom_text__fee_basis                  | custom_single_choice__governing_law     |
+      | custom_text__engagement_scope           | custom_single_choice__governing_law     |
       | custom_single_choice__governing_law     | END                                     |
 
   Scenario: Engagement letter template with END stripped fails to parse

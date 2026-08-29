@@ -28,11 +28,21 @@ Feature: AIDA walks a notation to END under a lawyer's authorization
     Then AIDA pauses for authorization to "Create Notation"
     When the firm authorizes the pending action
     Then the task completes with status "needs_answer"
+    And the next question is "entity"
+
+    When the LLM names the answer_notation skill with code "entity" value "Northstar Ventures LLC"
+    Then AIDA pauses for authorization to "Answer Notation"
+    When the firm authorizes the pending action
+    Then the task completes with status "needs_answer"
+    And the next question is "address__principal_office"
+
+    When the LLM names the answer_notation skill with code "address__principal_office" value "100 Innovation Way, Reno, NV 89501"
+    And the firm authorizes the pending action
+    Then the task completes with status "needs_answer"
     And the next question is "person__client"
 
     When the LLM names the answer_notation skill with code "person__client" value "Libra"
-    Then AIDA pauses for authorization to "Answer Notation"
-    When the firm authorizes the pending action
+    And the firm authorizes the pending action
     Then the task completes with status "needs_answer"
     And the next question is "person__lawyer_dri"
 
@@ -54,11 +64,6 @@ Feature: AIDA walks a notation to END under a lawyer's authorization
     When the LLM names the answer_notation skill with code "custom_text__engagement_scope" value "Draft and file the Apollo formation documents."
     And the firm authorizes the pending action
     Then the task completes with status "needs_answer"
-    And the next question is "custom_text__fee_basis"
-
-    When the LLM names the answer_notation skill with code "custom_text__fee_basis" value "$450 per hour"
-    And the firm authorizes the pending action
-    Then the task completes with status "needs_answer"
     And the next question is "custom_single_choice__governing_law"
 
     When the LLM names the answer_notation skill with code "custom_single_choice__governing_law" value "nevada"
@@ -73,7 +78,7 @@ Feature: AIDA walks a notation to END under a lawyer's authorization
 
     When the LLM names the answer_notation skill with code "custom_text__settlement_terms" value "Apollo"
     And the firm authorizes the pending action
-    Then the task fails mentioning "person__client"
+    Then the task fails mentioning "entity"
 
   Scenario: The same act named on /mcp is refused instead of run
     When the LLM calls aida_create_notation for "onboarding__letter" on that matter over /mcp

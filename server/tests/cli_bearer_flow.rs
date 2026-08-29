@@ -143,17 +143,19 @@ async fn cli_bearer_opens_retainer_then_approve_parks_and_send_dispatches_once()
         .parse()
         .expect("redirect carries the notation id");
 
-    // Walk the retainer questionnaire (client name, firm DRI, engagement
-    // name, engagement start date, engagement scope, fee basis, then the
-    // governing-law choice) — the last answer drives the workflow to the
-    // `lawyer_review` gate, which is where this test's subject begins.
+    // Walk the retainer questionnaire (entity, principal office, client
+    // name, firm DRI, engagement name, engagement start date, engagement
+    // scope, then the governing-law choice) — the last answer drives the
+    // workflow to the `lawyer_review` gate, which is where this test's
+    // subject begins.
     for value in [
+        "Shook Holdings LLC",
+        "500 Innovation Way Reno NV 89501",
         "Nick Shook",
         "Firm Principal",
         "Shook estate",
         "2026-09-01",
         "Draft and file the matter documents.",
-        "450 per hour",
         "nevada",
     ] {
         let step = app

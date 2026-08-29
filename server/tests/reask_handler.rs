@@ -142,7 +142,7 @@ async fn post_form(
         .unwrap()
 }
 
-/// Walk the three-question retainer intake to the `lawyer_review` gate — the
+/// Walk the eight-question retainer intake to the `lawyer_review` gate — the
 /// state from which changes can be requested. Mirrors the walker tests: the
 /// final answer parks the matter at review rather than rendering.
 async fn walk_to_lawyer_review(
@@ -151,12 +151,13 @@ async fn walk_to_lawyer_review(
     surreal: &store::surreal::SurrealDb,
 ) {
     for value in [
+        "Libra%20Holdings%20LLC",
+        "500%20Innovation%20Way%20Reno%20NV%2089501",
         "Libra",
         "Firm%20Principal",
         "Estate%20plan",
         "2026-09-01",
         "Draft%20and%20file%20the%20matter%20documents.",
-        "450%20per%20hour",
         "nevada",
     ] {
         let resp = app

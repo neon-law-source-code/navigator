@@ -292,6 +292,19 @@ mod tests {
         )
         .await
         .unwrap();
+        // The retainer's leading entity / principal-office questions.
+        store::questions::create(
+            surreal,
+            &store::questions::NewQuestion::new("entity", "Which entity?", "entity"),
+        )
+        .await
+        .unwrap();
+        store::questions::create(
+            surreal,
+            &store::questions::NewQuestion::new("address", "What is the address?", "address"),
+        )
+        .await
+        .unwrap();
         store::questions::create(
             surreal,
             &store::questions::NewQuestion::new("person", "Who is the person?", "person"),
@@ -448,10 +461,7 @@ mod tests {
 
         assert_eq!(out["structuredContent"]["status"], "needs_answer");
         assert!(out["structuredContent"]["notation_id"].is_string());
-        assert_eq!(
-            out["structuredContent"]["next_question"]["code"],
-            "person__client"
-        );
+        assert_eq!(out["structuredContent"]["next_question"]["code"], "entity");
     }
 
     #[tokio::test]

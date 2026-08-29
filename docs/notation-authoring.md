@@ -42,15 +42,17 @@ Every template has two parts: YAML frontmatter (the contract) and a markdown bod
 (the real file wraps this block in `---` fences, then the prose body follows):
 
 ```yaml
-title: Retainer Agreement
+title: Engagement Letter
 respondent_type: person_and_entity
 jurisdiction: NV
 code: onboarding__letter
 confidential: true
 questionnaire:            # the intake Q&A — what we ask the client
-  BEGIN:                { _: person__client }
-  person__client:       { _: project__engagement }
-  project__engagement:  { _: END }
+  BEGIN:                      { _: entity }
+  entity:                     { _: address__principal_office }
+  address__principal_office:  { _: person__client }
+  person__client:             { _: project__engagement }
+  project__engagement:        { _: END }
   END: {}
 workflow:                 # what happens after intake — render, review, sign
   BEGIN:                       { intake_submitted: intake_persisted__client }

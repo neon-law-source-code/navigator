@@ -19,12 +19,13 @@ Feature: Mutable two-sided intake assembles and sends through DocuSign
     And lawyers add the custom clause "This engagement is governed by Nevada law."
     And lawyers finish the intake walk:
       | value                                |
+      | Libra Holdings LLC                   |
+      | 500 Innovation Way Reno NV 89501     |
       | Libra Prime                          |
       | Firm Principal                       |
       | Estate Plan                          |
       | 2026-09-01                           |
       | Draft and file the matter documents. |
-      | 450 per hour                         |
       | nevada                               |
     Then the matter is awaiting attorney review
     And the matter has no signature request yet

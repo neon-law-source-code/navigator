@@ -139,9 +139,9 @@ async fn step_get_at_begin_renders_the_first_question() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let html = body_string(resp).await;
-    // First question after BEGIN is the client record.
-    assert!(html.contains("person__client"), "html: {html}");
-    assert!(html.contains("step 1 of 7"));
+    // First question after BEGIN is the entity record.
+    assert!(html.contains("entity"), "html: {html}");
+    assert!(html.contains("step 1 of 8"));
     assert!(html.contains(format!("/lawyer/notations/{nid}/step").as_str()));
 }
 
@@ -175,7 +175,7 @@ async fn step_get_prefill_is_scoped_to_current_notation() {
             notation.person_id,
             store::answers::primitive("Other matter client"),
         )
-        .in_notation(other_notation.id, "person__client")
+        .in_notation(other_notation.id, "entity")
         .authored_by(store::answers::SOURCE_LAWYER, None),
     )
     .await
@@ -196,7 +196,7 @@ async fn step_get_prefill_is_scoped_to_current_notation() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let html = body_string(resp).await;
-    assert!(html.contains("person__client"), "html: {html}");
+    assert!(html.contains("entity"), "html: {html}");
     assert!(
         !html.contains("Other matter client"),
         "stale answer from another notation leaked into prefill: {html}"
@@ -218,7 +218,10 @@ async fn step_post_writes_answer_signals_runtime_and_redirects_to_next_question(
                     portal::test_support::lawyer_bearer_header(),
                 )
                 .header("content-type", "application/x-www-form-urlencoded")
-                .body(Body::from("value=Libra"))
+                .body(Body::from(format!(
+                    "value={}",
+                    urlencoding("Libra Holdings LLC")
+                )))
                 .unwrap(),
         )
         .await
@@ -234,7 +237,7 @@ async fn step_post_writes_answer_signals_runtime_and_redirects_to_next_question(
     assert_eq!(location, format!("/lawyer/notations/{nid}/step"));
 
     // The runtime saw exactly one transition on the questionnaire
-    // timeline: BEGIN → client_name via `_`. The walker no longer
+    // timeline: BEGIN → entity via `_`. The walker no longer
     // writes `notation_events` itself — in production the
     // workflows-service worker journals these via `ctx.run`; in this
     // test the in-memory runtime records them in `Vec<WorkflowEvent>`.
@@ -242,7 +245,7 @@ async fn step_post_writes_answer_signals_runtime_and_redirects_to_next_question(
         StateMachineRuntime::events(runtime.as_ref(), MachineKind::Questionnaire, nid).await;
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].from, StateName::begin());
-    assert_eq!(events[0].to.as_str(), "person__client");
+    assert_eq!(events[0].to.as_str(), "entity");
     assert_eq!(events[0].condition, "_");
 
     // Answer row landed: `answers` is application data, written by
@@ -252,15 +255,15 @@ async fn step_post_writes_answer_signals_runtime_and_redirects_to_next_question(
     assert_eq!(our_answers.len(), 1);
     assert_eq!(
         store::answers::display_value(&our_answers[0].value),
-        "Libra"
+        "Libra Holdings LLC"
     );
     assert_eq!(
         our_answers[0].state_name.as_deref(),
-        Some("person__client"),
+        Some("entity"),
         "the walked state name is recorded on the answer"
     );
 
-    // Next GET asks the lawyer-side firm-DRI question.
+    // Next GET asks for the entity's principal office address.
     let resp = app
         .oneshot(
             Request::builder()
@@ -276,8 +279,8 @@ async fn step_post_writes_answer_signals_runtime_and_redirects_to_next_question(
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let html = body_string(resp).await;
-    assert!(html.contains("person__lawyer_dri"));
-    assert!(html.contains("step 2 of 7"));
+    assert!(html.contains("address__principal_office"));
+    assert!(html.contains("step 2 of 8"));
 }
 
 #[tokio::test]
@@ -308,15 +311,16 @@ async fn step_post_for_unknown_notation_returns_404() {
 async fn walking_the_full_questionnaire_records_all_transitions_through_end() {
     let (app, _surreal, nid, runtime) = build_app_and_notation().await;
 
-    // Walk all seven questions. The last POST drives the workflow; every
+    // Walk all eight questions. The last POST drives the workflow; every
     // answer redirects (303) — the last onto the review screen.
     for value in [
+        "Libra Holdings LLC",
+        "500 Innovation Way Reno NV 89501",
         "Libra",
         "Firm Principal",
         "Estate plan",
         "2026-09-01",
         "Draft and file the matter documents.",
-        "450 per hour",
         "nevada",
     ] {
         let resp = app
@@ -338,17 +342,17 @@ async fn walking_the_full_questionnaire_records_all_transitions_through_end() {
         assert_eq!(resp.status(), StatusCode::SEE_OTHER, "value={value}");
     }
 
-    // Runtime: BEGIN → client → firm DRI → project → start date → scope →
-    // fee basis → governing law → END = 8 events on the questionnaire
-    // timeline. The walker no longer writes `notation_events` —
-    // in production the workflows-service worker does, via
+    // Runtime: BEGIN → entity → principal office → client → firm DRI →
+    // project → start date → scope → governing law → END = 9 events on the
+    // questionnaire timeline. The walker no longer writes `notation_events`
+    // — in production the workflows-service worker does, via
     // `ctx.run`; here, the InMemoryRuntime is the source of truth.
     let events =
         StateMachineRuntime::events(runtime.as_ref(), MachineKind::Questionnaire, nid).await;
     assert_eq!(
         events.len(),
-        8,
-        "expected 8 questionnaire transitions, got {events:?}"
+        9,
+        "expected 9 questionnaire transitions, got {events:?}"
     );
     assert_eq!(events.last().unwrap().to, StateName::end());
 
@@ -375,7 +379,7 @@ async fn walking_the_full_questionnaire_records_all_transitions_through_end() {
 }
 
 /// Tiny URL-encoder for the test bodies — only escapes the
-/// characters the seven retainer answers actually contain.
+/// characters the retainer answers actually contain.
 fn urlencoding(s: &str) -> String {
     s.replace(' ', "%20").replace('@', "%40")
 }
@@ -1137,14 +1141,15 @@ async fn start_post_rejects_missing_at_in_client_email_with_validation_error() {
 async fn final_post_drives_workflow_and_renders_result_with_substituted_template() {
     let (app, surreal, nid, _runtime) = build_app_and_notation().await;
 
-    // Walk all seven questions.
+    // Walk all eight questions.
     for value in [
+        "Libra Holdings LLC",
+        "500 Innovation Way Reno NV 89501",
         "Libra",
         "Firm Principal",
         "Estate plan",
         "2026-09-01",
         "Draft and file the matter documents.",
-        "450 per hour",
         "nevada",
     ] {
         let resp = app

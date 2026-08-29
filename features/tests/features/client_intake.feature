@@ -12,7 +12,9 @@ Feature: Client self-serve intake (the magic link)
     Given a retainer matter opened for "Libra" <libra@example.com>
 
   Scenario: The client confirms a lawyer-prefilled answer and finishes their part
-    Given a lawyer pre-filled the client's name as "Lawyer-typed Libra"
+    Given a lawyer entered the entity name as "Northstar Ventures LLC"
+    And a lawyer entered the entity's principal office as "100 Innovation Way, Reno, NV 89501"
+    And a lawyer pre-filled the client's name as "Lawyer-typed Libra"
     When the client opens their intake
     Then the intake asks the "person__client" question
     And the intake is pre-filled with "Lawyer-typed Libra"

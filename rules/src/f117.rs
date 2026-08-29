@@ -46,13 +46,6 @@ pub const ALLOWED_CUSTOM_TEXT_ROLES: &[&str] = &[
     // entity, its address, both DRIs, the project, the start date, the
     // governing law), which is what leaves this one field free.
     "engagement_scope",
-    // How the Firm is paid on this engagement, in the words of the writing
-    // the parties actually signed: "$12,500 per month", "$450 per hour
-    // against the rate sheet", "30% of net recovery". It carries an amount,
-    // a unit, and a basis at once, and the registry has no shape that holds
-    // all three — and it must never be blank, because a retainer whose fee
-    // clause is empty is not an agreement about anything.
-    "fee_basis",
     "file_retention",         // closing letter: how the file is handled
     "fundraising_activities", // narrative program description
     "matter_summary",         // closing letter: work performed

@@ -334,6 +334,7 @@ mod tests {
             // door and the footer links it, so leaving it opt-out made the one
             // page every reader lands on first a 404.
             "index",
+            "marketing-copy",
             "notation",
             "notation-authoring",
             "oss-install",

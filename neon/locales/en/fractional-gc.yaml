@@ -1,0 +1,97 @@
+head_title: "{site_name} | Fractional General Counsel"
+meta_description: >-
+  Company counsel on a flat monthly fee — cap table, employee agreements, and
+  state tax filings, with a one-business-day redline turnaround.
+eyebrow: Fractional General Counsel
+heading:
+  text: Accurate. Efficient. Speedy.
+  accent_words: 1
+lead: >-
+  Company counsel on one flat monthly fee, working at the pace your sales cycle
+  already runs at. A redline comes back in one business day.
+cta_label: Contact us
+virtues:
+  - word: Accurate
+    body: >-
+      A licensed attorney reads and signs off on every document. The cap table
+      reconciles to the signed instruments, and the agreements say what the deal
+      actually is.
+  - word: Efficient
+    body: >-
+      One flat monthly fee covers the recurring work, so a routine question
+      costs nothing to ask and the answer arrives the day you asked it.
+  - word: Speedy
+    body: >-
+      Turnarounds are published rather than negotiated deal by deal: one
+      business day on a redline, same business day on an NDA.
+msa_term: MSA — master services agreement
+msa_definition: >-
+  The one contract that sets the terms between you and a customer once: payment,
+  liability, IP ownership, confidentiality, term, and termination. Every later
+  deal becomes a short order form that points back at it instead of a fresh
+  negotiation, which is why getting the MSA right is what makes the next ten
+  deals quick.
+fee_heading: One flat monthly fee
+fee_body: >-
+  One amount, the same in a quiet month as in a loud one, billed monthly. We
+  quote it for your company rather than posting a number here, and it is fixed
+  in the engagement letter before the first month runs.
+included_heading: What the monthly fee covers
+included:
+  - name: Cap table management
+    body: >-
+      The ledger stays current as options are granted, exercised, and forfeited
+      — reconciled against the signed instruments and the board consents, not
+      against the spreadsheet.
+  - name: Employee and contractor agreements
+    body: >-
+      Offer letters, IP assignment, confidentiality, contractor agreements, and
+      the option-grant paperwork that has to match what the board actually
+      approved.
+  - name: Basic taxes and state filings
+    body: >-
+      Nevada Commerce Tax and Modified Business Tax filings, the annual list,
+      and the registered-agent and state calendar that keeps the entity in good
+      standing.
+  - name: Corporate housekeeping
+    body: >-
+      Board and stockholder consents, the minute book, and the corporate record
+      a diligence request is going to ask for on two days' notice.
+  - name: Counsel on call
+    body: >-
+      The questions that would otherwise wait for a scheduled call. Ask them the
+      day you have them; the answer is inside the monthly fee.
+cycle_heading: It runs inside your sales cycle
+cycle_body: >-
+  Legal is a step inside the stage your rep is already in, not a stage that
+  comes after the deal. Published turnarounds are what make that forecastable.
+cycle:
+  - stage: Discovery call
+    legal_step: Mutual NDA out the same business day, from your paper or ours.
+  - stage: Evaluation
+    legal_step: >-
+      Pilot or trial agreement, with the security and data terms your buyer's
+      review is about to ask for already in it.
+  - stage: Negotiation
+    legal_step: >-
+      Standard MSA drafted or redlined in one business day; counterparty paper
+      reviewed against the fallback positions we set with you in advance.
+  - stage: Close
+    legal_step: >-
+      Order form, signature routing, and the executed set filed where diligence
+      will look for it a year from now.
+separate_heading: Priced separately
+separate_body: >-
+  Two kinds of work sit outside the retainer, because neither is recurring and
+  neither can be quoted by the month.
+separate:
+  - name: Financings
+    body: >-
+      Priced rounds, SAFEs, convertible notes, and the closing set that goes
+      with them. Quoted per round once we have seen the term sheet.
+  - name: Litigation
+    body: >-
+      Disputes, demands, and class actions, on either side of the caption.
+      Quoted per phase after a case assessment.
+    href: /litigation
+    link_label: The litigation practice

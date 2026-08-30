@@ -17,6 +17,7 @@
 // composition entry points below, so the site's copy is not API.
 mod firm_copy;
 mod firm_pages;
+mod locales;
 
 use portal::hosting::{Brand, BrandSeed, PublicRouter};
 use portal::AppState;

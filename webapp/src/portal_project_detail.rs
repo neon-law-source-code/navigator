@@ -426,6 +426,11 @@ pub fn ClientProjectDetail() -> Element {
                                     span { class: "status-chip", " {n.status}" }
                                 }
                                 span { class: "portal-agreement__links",
+                                    a {
+                                        class: "nav-btn nav-btn--secondary",
+                                        href: "{crate::notation_outline::notation_outline_href(&view.code, &n.id)}",
+                                        "Outline"
+                                    }
                                     if n.rendered_ready {
                                         a {
                                             class: "nav-btn nav-btn--secondary",

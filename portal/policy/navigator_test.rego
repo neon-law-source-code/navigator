@@ -128,16 +128,24 @@ test_lawyer_reaches_lawyer_people if {
 	authz.allow with input as {"path": ["lawyer", "people"], "method": "GET", "session": lawyer_session}
 }
 
-test_lawyer_reaches_the_outline_stage if {
+test_lawyer_reaches_the_app_outline_stage if {
 	authz.allow with input as {"path": ["app", "outline"], "method": "GET", "session": lawyer_session}
 }
 
-test_clerk_denied_on_the_outline_stage if {
+test_clerk_denied_on_the_app_outline_stage if {
 	not authz.allow with input as {"path": ["app", "outline"], "method": "GET", "session": clerk_session}
 }
 
-test_client_denied_on_the_outline_stage if {
+test_client_denied_on_the_app_outline_stage if {
 	not authz.allow with input as {"path": ["app", "outline"], "method": "GET", "session": client_session}
+}
+
+test_anonymous_denied_on_the_app_outline_stage if {
+	not authz.allow with input as {"path": ["app", "outline"], "method": "GET", "session": null}
+}
+
+test_client_reaches_a_project_notation_outline if {
+	authz.allow with input as {"path": ["app", "projects", "p1", "n1", "outline"], "method": "GET", "session": client_session}
 }
 
 test_admin_reaches_lawyer_people if {

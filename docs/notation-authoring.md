@@ -340,8 +340,8 @@ Depth-1 headings take Roman numerals (`## I.`) on contracts and onboarding lette
 motion practice; lettered subsections are block quotes (`> **A. Label.** …`). `navigator template narrate <file.md>
 --out <stage.html>` writes a self-contained HTML file; open it in a browser, step with Arrow keys, J/K, or Space, and
 press H to hide the hint. The same stage is at `/app/outline`, which switches among the bundled onboarding letter and
-offboarding letter (`?doc=onboarding`, `offboarding`). This command does not lint the outline and does not change PDF
-numbering.
+offboarding letter (`?doc=onboarding`, `offboarding`). A notation on a matter — the letter given to a client — is
+`/app/projects/{code}/{notation_id}/outline`. This command does not lint the outline and does not change PDF numbering.
 
 **Output formats — the letterhead seam.** How the document is dressed is an `OutputFormat` (`pdf::format`): `plain`
 (page geometry + firm typeface), `letter` (the firm letterhead — mark, letterspaced wordmark, a rule across the page,

@@ -1,4 +1,4 @@
-//! `/app/outline` — Harvard-outline narration stage for a firm template.
+//! `/app/outline` — Harvard-outline narration stage for bundled firm templates.
 //!
 //! The lawyer workbench's recording surface: bundled documents already in
 //! Harvard form, rendered as highlightable units. `?doc=` selects among them
@@ -6,6 +6,9 @@
 //! live in `harvard-outline-narrate.js`, so the page works without the wasm
 //! hydration bundle. Arbitrary drafts stay on the operator's machine via
 //! `navigator template narrate`.
+//!
+//! A notation the firm has given a client lives at
+//! [`crate::notation_outline`] (`/app/projects/{code}/{notation_id}/outline`).
 
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -50,6 +53,11 @@ pub struct OutlineStageView {
     pub current_slug: String,
     pub library: Vec<OutlineDocLink>,
     pub content: OutlineStageContent,
+    pub role: crate::people::ViewerRole,
+    /// The deploy's brand mark for the navbar. `None` when the mounted brand
+    /// configures none.
+    #[serde(default)]
+    pub logo: Option<crate::components::AppLogo>,
 }
 
 /// Pick the requested document, or the first one when `doc` is missing or unknown.
@@ -72,7 +80,7 @@ pub fn select_stage<'a>(
 /// Resolve the injected stage and the viewer chrome.
 #[server]
 pub async fn outline_stage_view() -> Result<OutlineStageView, ServerFnError> {
-    let _role = crate::admin_listing::require_lawyer().await?;
+    let role = crate::admin_listing::require_lawyer().await?;
     let query = dioxus_fullstack_core::FullstackContext::extract::<
         axum::extract::Query<OutlineStageQuery>,
         _,
@@ -96,6 +104,8 @@ pub async fn outline_stage_view() -> Result<OutlineStageView, ServerFnError> {
             })
             .collect(),
         content,
+        role,
+        logo: crate::app_chrome::app_logo_from_context().await,
     })
 }
 
@@ -124,15 +134,15 @@ fn outline_stage_body(view: &OutlineStageView) -> Element {
     let stage_html = view.content.stage_html.clone();
     let current_slug = view.current_slug.clone();
     let library = view.library.clone();
+    let role = view.role;
     rsx! {
         document::Title { "{view.firm_name} | Lawyer | Outline stage | {title}" }
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
         document::Stylesheet { href: HARVARD_OUTLINE_STYLESHEET_HREF }
         document::Script { src: HARVARD_OUTLINE_SCRIPT_HREF, defer: true }
-        nav { class: "lawyer-nav",
-            a { class: "nav-link", href: "/app/lawyer", "Workbench" }
-            a { class: "nav-link", href: "/app/projects", "Projects" }
-            a { class: "nav-link", href: "/auth/logout", "Sign out" }
+        crate::components::AppNavbar {
+            destinations: crate::app_chrome::app_destinations(role),
+            logo: view.logo.clone(),
         }
         main { id: "harvard-outline", class: "nav-theme",
             p { class: "harvard-stage-intro nav-muted",
@@ -163,6 +173,7 @@ mod tests {
     fn view() -> OutlineStageView {
         OutlineStageView {
             firm_name: "Example Law".to_string(),
+            role: crate::people::ViewerRole::Lawyer,
             current_slug: "onboarding".to_string(),
             library: vec![
                 OutlineDocLink {
@@ -182,6 +193,7 @@ mod tests {
                     <h2>Scope of the engagement</h2></section></article>"
                     .to_string(),
             },
+            logo: None,
         }
     }
 
@@ -197,6 +209,7 @@ mod tests {
         assert!(html.contains("/app/outline?doc=onboarding"), "{html}");
         assert!(html.contains("/app/outline?doc=offboarding"), "{html}");
         assert!(html.contains("aria-label=\"Bundled outlines\""), "{html}");
+        assert!(html.contains("aria-label=\"Application\""), "{html}");
     }
 
     #[test]

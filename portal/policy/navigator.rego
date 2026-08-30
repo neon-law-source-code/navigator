@@ -72,8 +72,10 @@ allow if {
     is_lawyer(input.session)
 }
 
-# /app/outline is the firm-only Harvard-outline teaching stage. It is a
-# compiled recording surface, not firm-record administration or matter content.
+# /app/outline is the bundled Harvard-outline recording stage. Lawyer-tier
+# only. A notation the firm has given a client is a different page
+# (`/app/projects/{code}/{notation_id}/outline`) and rides the matter-surface
+# rule above; this catalog is firm teaching material, not a client's letter.
 allow if {
     input.path == ["app", "outline"]
     is_lawyer(input.session)

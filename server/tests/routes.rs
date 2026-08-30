@@ -1690,6 +1690,7 @@ async fn anonymous_access_to_the_shared_navigator_surface_lands_at_the_login_doo
     for path in [
         "/app/projects",
         "/app/lawyer",
+        "/app/outline",
         "/app/admin",
         "/app/team",
         "/app/docs",

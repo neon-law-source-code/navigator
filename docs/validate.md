@@ -21,7 +21,7 @@ just that subtree.
 
 ## What it runs
 
-Five normal validation passes happen in this order:
+Six normal validation passes happen in this order:
 
 1. **The classified rule engine** (`rules::ClassifiedRuleEngine::lint_directory`) walks every `.md` file, classifies
    each one by its declared `kind:` (notation template, event, blog post, workshop, GitHub notation, matter dashboard,
@@ -36,10 +36,14 @@ Five normal validation passes happen in this order:
    named `seeds/` against `store::seed::validate_yaml`, the same shape check `navigator site import` enforces at write
    time. A seed document names real people and entities for a production write, so this pass exists to catch a malformed
    seed before it ever reaches `site import`.
-5. **A consumed mutable-tag pass** walks YAML files and Containerfiles/Dockerfiles for an image or binary reference
+5. **A locale-catalog pass** (rule `Y002`) additionally validates every YAML file under a `locales/<locale>/` directory
+   against the typed marketing-copy schema in `views::locales`. The site publishes English only: a directory other than
+   `en`, an unknown page stem, or a document that does not deserialize as the page it names fails the gate. This is what
+   lets a copy-only edit stay a YAML change without landing a catalog the brand crate cannot load.
+6. **A consumed mutable-tag pass** walks YAML files and Containerfiles/Dockerfiles for an image or binary reference
    pinned to a mutable tag (`latest`, a branch name) rather than a digest or release version, and fails on each one
    found. This has no rule code either.
-When `--fix` is passed, it replaces those five passes entirely: it applies every rule's safe-by-construction autofix
+When `--fix` is passed, it replaces those six passes entirely: it applies every rule's safe-by-construction autofix
 across the tree, prints the file it changed, re-lints, and prints whatever the autofix could not resolve. This is the
 same fix the `navigator-lsp` `source.fixAll` editor action ships.
 
@@ -52,16 +56,16 @@ same fix the `navigator-lsp` `source.fixAll` editor action ships.
 ## Errors versus warnings
 
 A rule's severity is either `Error` or `Warning`. An Error-severity violation, a YAML parse failure, a seed-document
-failure, or a consumed mutable tag all fail the gate (exit code `1`). A Warning-severity violation prints alongside
-everything else but never fails the run — it is a heads-up, not a blocker. Only two codes are `Warning`: `N112` (a
-workflow step is allowed but its automation is not built yet) and `M061` (a link that renders correctly on GitHub but
-would 404 on the published site). Every other code, including `Y001`, is `Error`.
+failure, a locale-catalog failure, or a consumed mutable tag all fail the gate (exit code `1`). A Warning-severity
+violation prints alongside everything else but never fails the run — it is a heads-up, not a blocker. Only two codes are
+`Warning`: `N112` (a workflow step is allowed but its automation is not built yet) and `M061` (a link that renders
+correctly on GitHub but would 404 on the published site). Every other code, including `Y001` and `Y002`, is `Error`.
 
 ## Rule codes
 
-Every code below is defined in `rules/src/`, except `Y001`, which lives in `cli/src/main.rs` because the seed-document
-pass runs outside the `rules` crate entirely. "Autofix" means `--fix` rewrites the file for that violation without a
-human decision; every other code needs a person to resolve it.
+Every code below is defined in `rules/src/`, except `Y001` and `Y002`, which live in `cli/src/main.rs` because the
+seed-document and locale-catalog passes run outside the `rules` crate entirely. "Autofix" means `--fix` rewrites the
+file for that violation without a human decision; every other code needs a person to resolve it.
 
 ### S-family — cross-cutting structure
 
@@ -176,8 +180,9 @@ human decision; every other code needs a person to resolve it.
 | `M060` | Error | Table column styles must be consistent. | No |
 | `M061` | **Warning** | A published doc must not link into a repository file the website does not render. | No |
 
-### Y-family — seed documents
+### Y-family — YAML documents
 
 | Code | Severity | Rule | Autofix |
 | --- | --- | --- | --- |
 | `Y001` | Error | A `seeds/*.yaml` document must be accepted by `navigator site import`. | No |
+| `Y002` | Error | A `locales/<locale>/<page>.yaml` catalog must be English and deserialize as that page. | No |

@@ -352,21 +352,27 @@ gh pr view <n> --json statusCheckRollup \
 
 ### PR flow — `ci.yml`
 
-`ci.yml` runs for PRs to `main`, never pushes. The `rust` job carries the quality gate: formatting, the repository-wide
-`navigator` content validation pass, `cargo clippy` with warnings denied, and `cargo test --workspace`. It runs on
-`blacksmith-4vcpu-ubuntu-2404`, and every other job on the pull-request path stays on stock `ubuntu-latest`, which is
-free for a public repository. Four vCPU is a measured choice rather than a default: Blacksmith bills linearly in cores,
-more than half of this job is test execution bounded by `--test-threads 4` rather than by cores, and the workflow's own
-header comment carries the two-arm measurement and the arithmetic. The Rust tests need no database service — each opens
-its own embedded engine. `ci.yml` is the only workflow that runs on `pull_request`, and it carries no KIND, Docker, or
-browser coverage — that proof happens on the release train (and locally, see below), never on a PR. The workflow is the
-source of truth for commands, caches, and pinned tool versions.
+`ci.yml` runs for PRs to `main`, never pushes. The `validate` job always runs: it builds the `navigator` CLI and walks
+the tree with `navigator validate` (Markdown, YAML syntax, seed documents, locale catalogs, consumed mutable tags). The
+`rust` job carries the rest of the quality gate — formatting, `cargo clippy` with warnings denied, and
+`cargo test --workspace` — and runs only when the PR touches Rust sources or the files that job is the proof for
+(`.rs`, `.surql`, `.feature`, Cargo manifests, the toolchain, nextest config, or `ci.yml` itself). A locale or Markdown
+edit therefore still validates and does not spend a Blacksmith runner on the workspace suite.
+
+The rust job runs on `blacksmith-4vcpu-ubuntu-2404`, and every other job on the pull-request path stays on stock
+`ubuntu-latest`, which is free for a public repository. Four vCPU is a measured choice rather than a default: Blacksmith
+bills linearly in cores, more than half of this job is test execution bounded by `--test-threads 4` rather than by
+cores, and the workflow's own header comment carries the two-arm measurement and the arithmetic. The Rust tests need no
+database service — each opens its own embedded engine. `ci.yml` is the only workflow that runs on `pull_request`, and it
+carries no KIND, Docker, or browser coverage — that proof happens on the release train (and locally, see below), never
+on a PR. The workflow is the source of truth for commands, caches, and pinned tool versions.
 
 The `ci` job is the required status check — see [One required check, named `ci`
-everywhere](#one-required-check-named-ci-everywhere). It runs nothing, `needs:` the `rust` job, and fails unless it
-succeeded. It tests the dependency's result explicitly rather than relying on a bare `needs:`, because a skipped
-required check is not a red one: GitHub reports no result at all, so the gate would quietly stop blocking exactly when
-the job it guards had failed.
+everywhere](#one-required-check-named-ci-everywhere). It runs nothing, `needs:` the classify, validate, and rust jobs,
+and fails unless classify and validate succeeded and rust succeeded or was skipped. It tests each dependency's result
+explicitly rather than relying on a bare `needs:`, because a skipped required check is not a red one: GitHub reports no
+result at all, so the gate would quietly stop blocking exactly when the job it guards had failed. A skipped rust job is
+the one skip it treats as success, so a copy-only PR still posts `ci`.
 
 `deploy.yml` no longer has a `pull_request` trigger. It previously ran its KIND integration job against UI-scoped PRs so
 Dioxus/browser changes got production-shaped proof before merge; that coupled every PR to the release workflow's script
@@ -682,8 +688,9 @@ What remains, and what each does not cover:
   webhook, the GitHub run conclusion is the signal.
 - `kind-ci/**` proves a release-workflow change on demand: push a `kind-ci/<topic>` branch to run the KIND integration
   job alone, creating no tag, publishing nothing and shipping nothing. On demand, not on a schedule.
-- `ci.yml` proves the Rust workspace on every PR, plus the three release preflight checks — `ops release check`,
-  `ops notices --check`, and `cargo metadata --locked`. It still says nothing about images, KIND, or shipping.
+- `ci.yml` always validates YAML and Markdown. It proves the Rust workspace, plus the three release preflight checks —
+  `ops release check`, `ops notices --check`, and `cargo metadata --locked` — when the PR touches Rust. It still says
+  nothing about images, KIND, or shipping.
 
 Two consequences to plan around rather than discover:
 

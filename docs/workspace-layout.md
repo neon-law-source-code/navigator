@@ -27,9 +27,10 @@ Dioxus renders every page:
 `neon` serves the firm at `www.neonlaw.com`. The binary serves exactly one face, so no runtime flag can point a
 deployment at another entity's public surface.
 
-A brand crate owns that face outright: its marketing copy, its page compositions, and its path table all live in the
-crate whose binary publishes them. `portal` owns everything underneath — the authenticated application, the JSON API,
-the anonymous protocol ingress, and the Dioxus router constructors a brand composes. The line is the domain:
+A brand crate owns that face outright: its marketing copy (the English catalog under `locales/en/`), its page
+compositions, and its path table all live in the crate whose binary publishes them. See
+[`marketing-copy.md`](marketing-copy.md). `portal` owns everything underneath — the authenticated application, the JSON
+API, the anonymous protocol ingress, and the Dioxus router constructors a brand composes. The line is the domain:
 `cli/tests/brand_crate_dependencies.rs` lets a brand name `portal`, `views`, `webapp`, and `telemetry`, and fails the
 build if one reaches for `store`, `workflows`, or the auth machinery. A page that needs a gate wraps itself in
 `portal::gated` rather than composing an authorization layer of its own.

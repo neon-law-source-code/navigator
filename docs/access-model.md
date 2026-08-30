@@ -331,13 +331,13 @@ Embedded Rego's allow rules in priority order:
    still gets a `404`. The trust call is that these tiers imply a fiduciary duty audited elsewhere (Drive activity, DB
    write logs). Operational surfaces such as `/app/admin`, `/app/admin/analytics`, and `/app/admin/people` enforce the
    Owner/Admin tier in their handlers, so the broader `/lawyer/*` lawyer-tier gate cannot expose them.
-2. **Lawyer-tier surfaces** — `/app/admin/entity-types`, `/app/admin/templates`, and the other firm-internal pages gate
-   on `session.role` being `"owner"`, `"admin"`, or `"lawyer"`. `"clerk"` is intentionally absent. The people directory
-   is **not** among them: its browser surface is `/app/admin/people`, Owner/Admin only, since ENG-304 deleted the
-   `/lawyer` mirror. The Person *commands* stay lawyer-tier at `POST/PATCH/DELETE /app/api/people*`, so what a lawyer
-   lost is the form, not the capability. That tier check is the whole gate only for firm *reference* data. A `/lawyer`
-   listing that reads **matter content** — `/lawyer/answers`, `/lawyer/assets`, `/lawyer/relationship-logs` —
-   additionally scopes its rows to the caller's participation ledger through
+2. **Lawyer-tier surfaces** — `/app/outline`, `/app/admin/entity-types`, `/app/admin/templates`, and other firm-
+   internal pages gate on `session.role` being `"owner"`, `"admin"`, or `"lawyer"`. `"clerk"` is intentionally absent.
+   The people directory is **not** among them: its browser surface is `/app/admin/people`, Owner/Admin only, since
+   ENG-304 deleted the `/lawyer` mirror. The Person *commands* stay lawyer-tier at `POST/PATCH/DELETE /app/api/people*`,
+   so what a lawyer lost is the form, not the capability. That tier check is the whole gate only for firm *reference*
+   data. A `/lawyer` listing that reads **matter content** — `/lawyer/answers`, `/lawyer/assets`,
+   `/lawyer/relationship-logs` — additionally scopes its rows to the caller's participation ledger through
    `webapp::admin_listing::require_lawyer_in_matters`, so a lawyer holding no row reads nothing there, and a row
    carrying no project link is absent from a scoped read rather than admitted. Owner and Admin keep the unscoped read.
    Two listings stay firm-wide on purpose: `/lawyer/disclosures` and `/lawyer/person-entity-roles` feed

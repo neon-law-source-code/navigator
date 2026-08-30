@@ -80,7 +80,7 @@ keeps one stable section order.
 Legal motions and contracts use a **Harvard outline**, not the workshop chapter/slide tree. Depth-1 headings are Roman
 (`## I. Title`) on contracts and onboarding letters, or Arabic (`## 1. Title`) in motion practice. Lettered subsections
 are block quotes (`> **A. Label.** …`) so the PDF conversion indents them. `navigator template narrate` turns that body
-into a recording stage; `/lawyer/outline` shows the bundled onboarding and offboarding letters (`?doc=`).
+into a recording stage; `/app/outline` shows the bundled onboarding and offboarding letters (`?doc=`).
 
 ## Notation templates — the legal blueprints
 

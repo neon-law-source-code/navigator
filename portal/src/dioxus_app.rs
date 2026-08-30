@@ -847,7 +847,7 @@ pub fn lawyer_dashboard_router(
 
 /// The Harvard-outline narration stage. A lawyer-only recording surface for
 /// bundled templates; drafts on disk go through `navigator template narrate`.
-pub const LAWYER_OUTLINE_PATH: &str = "/lawyer/outline";
+pub const APP_OUTLINE_PATH: &str = "/app/outline";
 
 /// The gated Dioxus outline stage. Bundled template bodies are compiled in, so
 /// the page does not read the store — it is a teaching/recording surface, not a
@@ -865,7 +865,7 @@ pub fn harvard_outline_router(
 
     Router::<FullstackState>::new()
         .route(
-            LAWYER_OUTLINE_PATH,
+            APP_OUTLINE_PATH,
             get(render_handler)
                 .layer(from_fn(inject_viewer_role))
                 .layer(from_fn(inject_app_brand_mark))

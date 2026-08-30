@@ -72,6 +72,13 @@ allow if {
     is_lawyer(input.session)
 }
 
+# /app/outline is the firm-only Harvard-outline teaching stage. It is a
+# compiled recording surface, not firm-record administration or matter content.
+allow if {
+    input.path == ["app", "outline"]
+    is_lawyer(input.session)
+}
+
 # /app/docs is the workspace documentation inside the application. It admits
 # every tier that operates Navigator — Lawyer and Clerk by the two rules
 # below, Owner and Admin through the route bypass at the top of this policy.

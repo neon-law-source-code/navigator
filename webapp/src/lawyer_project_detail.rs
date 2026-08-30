@@ -144,7 +144,12 @@ fn asset_kind_choices() -> Vec<(String, String)> {
     rules::kind::Kind::ALL
         .iter()
         .filter(|k| k.valid_for(rules::kind::Lane::Asset))
-        .map(|k| (k.as_str().to_string(), k.describe().to_string()))
+        .map(|k| {
+            (
+                k.as_str().to_string(),
+                format!("{} ({})", k.describe(), k.as_str()),
+            )
+        })
         .collect()
 }
 
@@ -604,7 +609,10 @@ pub fn LawyerProjectDetail() -> Element {
                                 .collect(),
                             Some("unclassified".to_string()),
                         )
-                        .help("Defaults to unclassified. Applies to every file in this batch."),
+                        .required()
+                        .help(
+                            "Required. The stored enum is in parentheses. Applies to every file in this batch.",
+                        ),
                         Field::text("Description", "description", "")
                             .placeholder("Letter from Acme Bank dated 2026-05-23")
                             .help("Optional. Applies to every file in this batch."),

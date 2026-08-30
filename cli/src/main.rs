@@ -644,6 +644,11 @@ enum SiteCmd {
         #[command(flatten)]
         host: HostOpt,
     },
+    /// File a document into a matter on a live site.
+    Document {
+        #[command(subcommand)]
+        action: DocumentAction,
+    },
     /// Authenticate to a live Neon Law Navigator site via a browser-loopback
     /// flow and store a short-lived (1h) bearer token at
     /// `~/.navigator.json` (mode `0600`).
@@ -1501,6 +1506,35 @@ struct HostOpt {
 }
 
 #[derive(Subcommand)]
+enum DocumentAction {
+    /// File a local document into a matter (`POST /app/api/projects/{id}/documents`).
+    #[command(after_long_help = DOCUMENT_UPLOAD_KIND_HELP)]
+    Upload {
+        #[command(flatten)]
+        host: HostOpt,
+        /// Matter code (human-facing) to file into. Resolved against the
+        /// matters this login can see.
+        #[arg(long)]
+        project: String,
+        /// Path to the file to upload.
+        #[arg(long)]
+        file: PathBuf,
+        /// Required asset-lane kind. An invalid value prints the accepted enum.
+        #[arg(long, value_parser = parse_asset_kind)]
+        kind: String,
+        /// `client` makes the document client-visible; default is `internal`.
+        #[arg(long, value_parser = parse_document_visibility)]
+        visibility: Option<String>,
+        /// Optional description stored with the document.
+        #[arg(long)]
+        description: Option<String>,
+        /// MIME type. Defaults to `application/octet-stream`.
+        #[arg(long)]
+        content_type: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
 enum NotationAction {
     /// Create a questionnaire-driven notation on an existing matter and
     /// leave its questionnaire ready for the site intake flow.
@@ -1732,6 +1766,7 @@ fn main() -> ExitCode {
             SiteCmd::Logout { host } => login::run_logout(host.as_deref()),
             SiteCmd::Whoami { host } => login::run_whoami(host.as_deref()),
             SiteCmd::Mcp { host } => runtime().block_on(mcp_bridge::run(host.as_deref())),
+            SiteCmd::Document { action } => runtime().block_on(run_document(action)),
             SiteCmd::Projects { action } => runtime().block_on(run_projects(action)),
             SiteCmd::Notation { action } => runtime().block_on(run_notation(action)),
         },
@@ -2138,6 +2173,31 @@ async fn run_notation(action: NotationAction) -> ExitCode {
     }
 }
 
+async fn run_document(action: DocumentAction) -> ExitCode {
+    match action {
+        DocumentAction::Upload {
+            host,
+            project,
+            file,
+            kind,
+            visibility,
+            description,
+            content_type,
+        } => {
+            remote::document_upload(
+                host.host.as_deref(),
+                &project,
+                &file,
+                &kind,
+                visibility.as_deref(),
+                description.as_deref(),
+                content_type.as_deref(),
+            )
+            .await
+        }
+    }
+}
+
 fn is_yaml_path(path: &std::path::Path) -> bool {
     path.extension()
         .and_then(std::ffi::OsStr::to_str)
@@ -2532,6 +2592,30 @@ fn parse_answer(raw: &str) -> Result<(String, String), String> {
     }
     Ok((code.to_string(), value.to_string()))
 }
+
+fn parse_asset_kind(value: &str) -> Result<String, String> {
+    let accepted: Vec<&str> = rules::kind::Kind::ALL
+        .iter()
+        .filter(|k| k.valid_for(rules::kind::Lane::Asset))
+        .map(|k| k.as_str())
+        .collect();
+    match rules::kind::Kind::parse(value).filter(|k| k.valid_for(rules::kind::Lane::Asset)) {
+        Some(k) => Ok(k.as_str().to_string()),
+        None => Err(format!(
+            "`{value}` is not a document kind. Accepted values are: {}.",
+            accepted.join(", ")
+        )),
+    }
+}
+
+fn parse_document_visibility(value: &str) -> Result<String, String> {
+    match value {
+        "client" | "internal" => Ok(value.to_string()),
+        _ => Err("visibility must be `client` or `internal`".into()),
+    }
+}
+
+const DOCUMENT_UPLOAD_KIND_HELP: &str = "Accepted --kind values: letter, filing, will, trust, directive, agreement, onboarding, offboarding, memo, transcript, inbound_contract, certificate_of_naturalization, unclassified.";
 
 /// Render one notation template to a PDF. Validates the file against the
 /// notation rule set, resolves the output format (CLI override →

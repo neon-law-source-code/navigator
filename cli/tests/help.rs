@@ -435,8 +435,83 @@ fn site_help_lists_the_live_deployment_members() {
 
     assert_eq!(
         command_names(&output),
-        vec!["import", "login", "logout", "mcp", "notation", "projects", "seed", "whoami", "help",]
+        vec![
+            "document", "import", "login", "logout", "mcp", "notation", "projects", "seed",
+            "whoami", "help",
+        ]
     );
+}
+
+#[test]
+fn site_document_upload_help_requires_kind() {
+    let output = unwrapped(&help(&["site", "document", "upload", "--help"]));
+    assert!(
+        output.contains("--kind <KIND>"),
+        "usage must require --kind, got: {output}"
+    );
+    assert!(
+        !output.contains("[--kind"),
+        "kind must not be an optional flag, got: {output}"
+    );
+    for kind in rules::kind::Kind::ALL
+        .iter()
+        .filter(|k| k.valid_for(rules::kind::Lane::Asset))
+    {
+        assert!(
+            output.contains(kind.as_str()),
+            "long help must name asset-lane kind `{}`, got: {output}",
+            kind.as_str()
+        );
+    }
+}
+
+#[test]
+fn site_document_upload_refuses_a_missing_kind() {
+    Command::cargo_bin("navigator")
+        .unwrap()
+        .args([
+            "site",
+            "document",
+            "upload",
+            "--project",
+            "acme",
+            "--file",
+            "note.txt",
+        ])
+        .assert()
+        .failure()
+        .stderr(str::contains("--kind"));
+}
+
+#[test]
+fn site_document_upload_refuses_a_template_lane_kind() {
+    let output = Command::cargo_bin("navigator")
+        .unwrap()
+        .args([
+            "site",
+            "document",
+            "upload",
+            "--project",
+            "acme",
+            "--file",
+            "note.txt",
+            "--kind",
+            "review_queue_workbench",
+        ])
+        .output()
+        .expect("run navigator");
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    for kind in rules::kind::Kind::ALL
+        .iter()
+        .filter(|k| k.valid_for(rules::kind::Lane::Asset))
+    {
+        assert!(
+            stderr.contains(kind.as_str()),
+            "kind error must name asset-lane kind `{}`, got: {stderr}",
+            kind.as_str()
+        );
+    }
 }
 
 #[test]

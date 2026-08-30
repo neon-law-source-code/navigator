@@ -2392,6 +2392,8 @@ struct UploadDocumentRequest {
     /// Base64-encoded file bytes.
     content_base64: String,
     content_type: Option<String>,
+    /// Required asset-lane classification. Omitted or blank is `400
+    /// kind_required`; a value outside the lane is `400 invalid_kind`.
     kind: Option<String>,
     /// `"client"` makes the document client-visible; anything else (the default)
     /// files it as internal work product.
@@ -2403,7 +2405,8 @@ struct UploadDocumentRequest {
 /// REST mirror of the lawyer upload control. Both converge on
 /// `matter_documents::record_document`. Lawyer-tier only and matter-scoped
 /// (out-of-scope → 404). `201` with the new document id; a blank filename,
-/// undecodable base64, or a `kind` the asset lane does not accept is `400`.
+/// a missing or blank `kind`, undecodable base64, or a `kind` the asset lane
+/// does not accept is `400`.
 ///
 /// That last one is why this door carries [`ApiError::Ingest`] rather than collapsing
 /// every ingest failure into a 500: the lawyer form constrains `kind` to a `<select>`
@@ -2429,6 +2432,20 @@ async fn upload_document_door(
     if filename.is_empty() {
         return Ok(bad_request("filename_required", "A filename is required."));
     }
+    let kind = input
+        .kind
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    let Some(kind) = kind else {
+        return Ok(bad_request(
+            "kind_required",
+            &format!(
+                "A document kind is required. Accepted values are: {}.",
+                accepted_asset_kinds().join(", ")
+            ),
+        ));
+    };
     let bytes = {
         use base64::Engine as _;
         match base64::engine::general_purpose::STANDARD.decode(input.content_base64.as_bytes()) {
@@ -2462,12 +2479,7 @@ async fn upload_document_door(
         project_id: id,
         source: store::documents::source::UPLOAD,
         filename,
-        kind: input
-            .kind
-            .as_deref()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .unwrap_or("unclassified"),
+        kind,
         content_type: input
             .content_type
             .as_deref()

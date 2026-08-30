@@ -456,7 +456,10 @@ Deadlines module answers what is due.
 ## Document
 
 A matter document — a project-scoped [Asset](#asset) carrying the metadata callers see (`filename`, `kind`, `source`,
-`received_at`) alongside the byte pointer.
+`received_at`) alongside the byte pointer. `kind` is a closed asset-lane classification from
+[`rules::kind::Kind`](../rules/src/kind.rs) (`valid_for(Lane::Asset)`). `POST /app/api/projects/{id}/documents` and
+`navigator site document upload` require it; omitted or blank is `400 kind_required`. Inbound email attachments still
+file as `unclassified`.
 
 > **Source of truth = the assets row.** When the application generates or proxies a document (a rendered retainer PDF, a
   raw inbound email body), the bytes land in object storage via [`cloud::StorageService`](../cloud/) and the `assets`

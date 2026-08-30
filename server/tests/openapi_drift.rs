@@ -79,4 +79,21 @@ fn the_documented_document_kinds_are_the_kinds_ingest_accepts() {
         documented, accepted,
         "OpenAPI drift: the `kind` values documented on the document-upload operation must be          exactly the asset-lane kinds `ingest_bytes` accepts, in the same order"
     );
+
+    let schema = &doc["paths"]["/app/api/projects/{id}/documents"]["post"]["requestBody"]
+        ["content"]["application/json"]["schema"];
+    let required: Vec<&str> = schema["required"]
+        .as_array()
+        .expect("`kind` is named in the operation's required list")
+        .iter()
+        .filter_map(|v| v.as_str())
+        .collect();
+    assert!(
+        required.contains(&"kind"),
+        "OpenAPI drift: `kind` must be required on document upload, got {required:?}"
+    );
+    assert!(
+        schema["properties"]["kind"].get("default").is_none(),
+        "OpenAPI drift: required `kind` must not advertise a default"
+    );
 }

@@ -26,6 +26,9 @@ own persistence logic.
   with the bearer from `navigator site login` to `POST /app/api/seed`. The deployment resolves the glossary model and
   validates its `lookup_fields`, then performs lookup/create there; `--overwrite` changes only fields represented in the
   seed model. The CLI never reads database credentials.
+- **Document upload.** `navigator site document upload --project <code> --file <path> --kind <kind>` reads the file
+  locally and sends it with the same bearer to `POST /app/api/projects/{id}/documents`. `--kind` is required and must be
+  an asset-lane value — the same enum OpenAPI publishes on that operation. The CLI never writes the store itself.
 - **MCP.** A tool in `mcp/src/tools/` translates its arguments into a shared command. The `mcp` crate cannot depend on
   `portal`, so it converges at the `store` / `workflows` layer — e.g. `aida_link_person_project` calls
   `store::participation::add_participant` / `update_participant`, the same commands the participation `/app/api` door

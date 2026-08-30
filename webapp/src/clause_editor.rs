@@ -288,7 +288,9 @@ mod tests {
         let html = render(&view(&[]));
         assert!(html.contains("No custom clauses yet."), "{html}");
         assert!(
-            html.contains(&format!("action=\"/app/lawyer/notations/{NOTATION}/clauses\"")),
+            html.contains(&format!(
+                "action=\"/app/lawyer/notations/{NOTATION}/clauses\""
+            )),
             "{html}"
         );
         assert_forms_accessible(&html, "clause_editor (empty)");
@@ -300,8 +302,9 @@ mod tests {
             "11111111-1111-1111-1111-111111111111",
             "First para.",
         )]));
-        let base =
-            format!("/app/lawyer/notations/{NOTATION}/clauses/11111111-1111-1111-1111-111111111111");
+        let base = format!(
+            "/app/lawyer/notations/{NOTATION}/clauses/11111111-1111-1111-1111-111111111111"
+        );
         for suffix in ["/edit", "/move", "/delete"] {
             assert!(
                 html.contains(&format!("action=\"{base}{suffix}\"")),

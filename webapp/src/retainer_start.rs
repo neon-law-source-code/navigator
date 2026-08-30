@@ -261,7 +261,10 @@ mod tests {
         assert!(html.contains("name=\"client_email\""), "{html}");
         assert!(html.contains("name=\"retainer_template_code\""), "{html}");
         assert!(html.contains("admin-form"), "{html}");
-        assert!(html.contains("action=\"/app/lawyer/retainers/new\""), "{html}");
+        assert!(
+            html.contains("action=\"/app/lawyer/retainers/new\""),
+            "{html}"
+        );
         assert_forms_accessible(&html, "retainer_start::LawyerRetainerStart");
     }
 

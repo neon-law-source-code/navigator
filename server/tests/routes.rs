@@ -10903,7 +10903,8 @@ async fn conflict_graph_listings_stay_firm_wide_for_an_unparticipating_lawyer() 
     );
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
 
-    let disclosures = rendered_body_with_cookie(app.clone(), "/app/lawyer/disclosures", &cookie).await;
+    let disclosures =
+        rendered_body_with_cookie(app.clone(), "/app/lawyer/disclosures", &cookie).await;
     assert!(
         disclosures.contains("Adverse party overlap on another matter"),
         "a lawyer on no matters must still see every disclosure — Model Rule 1.10 \

@@ -298,7 +298,9 @@ mod tests {
             "{html}"
         );
         assert!(
-            html.contains(&format!("href=\"/app/lawyer/notations/{NOTATION}/clauses\"")),
+            html.contains(&format!(
+                "href=\"/app/lawyer/notations/{NOTATION}/clauses\""
+            )),
             "{html}"
         );
         // The hand-off is a write, so it carries the session CSRF token.

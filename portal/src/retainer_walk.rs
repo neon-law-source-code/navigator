@@ -2109,7 +2109,9 @@ pub async fn request_changes_post(
     )
     .await
     {
-        Ok(()) => Redirect::to(&format!("/app/lawyer/notations/{notation_id}/reask")).into_response(),
+        Ok(()) => {
+            Redirect::to(&format!("/app/lawyer/notations/{notation_id}/reask")).into_response()
+        }
         Err(RequestChangesError::NotationNotFound) => {
             (StatusCode::NOT_FOUND, "notation not found").into_response()
         }
@@ -2301,7 +2303,9 @@ pub async fn reask_post(
     )
     .await
     {
-        Ok(()) => Redirect::to(&format!("/app/lawyer/notations/{notation_id}/review")).into_response(),
+        Ok(()) => {
+            Redirect::to(&format!("/app/lawyer/notations/{notation_id}/review")).into_response()
+        }
         Err(ResubmitReaskError::NotationNotFound) => {
             (StatusCode::NOT_FOUND, "notation not found").into_response()
         }

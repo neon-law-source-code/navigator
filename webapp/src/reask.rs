@@ -205,7 +205,9 @@ mod tests {
             None,
         ));
         assert!(
-            html.contains(&format!("action=\"/app/lawyer/notations/{NOTATION}/reask\"")),
+            html.contains(&format!(
+                "action=\"/app/lawyer/notations/{NOTATION}/reask\""
+            )),
             "{html}"
         );
         // `a:{code}` is what `store::reask` gates the write against.

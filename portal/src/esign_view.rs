@@ -167,7 +167,7 @@ mod tests {
         for hostile in [
             "http://demo.docusign.net/signing/abc", // plaintext downgrade
             "//evil.example/signing",               // protocol-relative
-            "/app/lawyer/notations",                    // relative, back into Navigator
+            "/app/lawyer/notations",                // relative, back into Navigator
             "javascript:alert(1)",                  // executes in the page
             "data:text/html,<script>alert(1)</script>", // ditto
             "not a url at all",

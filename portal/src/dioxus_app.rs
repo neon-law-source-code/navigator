@@ -798,8 +798,8 @@ pub fn projects_router(
         .route_layer(from_fn_with_state(auth, crate::auth::require_auth))
 }
 
-/// The firm dashboard. Moved off `/app/lawyer` onto `/app/lawyer` with the rest of
-/// the collapse; the tier gate is the handler's, not the prefix's. Its
+/// The firm dashboard at `/app/lawyer`. The tier gate is the handler's, not
+/// the prefix's. Its
 /// `?sort=`/`?dir=`/`?status=`/`?page=` query is deliberately lenient (an
 /// unrecognised value falls back to the default), so unlike the sortable
 /// listings this route carries no `400` pre-handler.

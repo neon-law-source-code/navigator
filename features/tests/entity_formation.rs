@@ -139,7 +139,10 @@ async fn attorney_approves_and_sends(world: &mut FormationWorld) {
     for action in ["approve-send", "send"] {
         let resp = world
             .journey()
-            .lawyer_post(&format!("/app/lawyer/notations/{id}/{action}"), String::new())
+            .lawyer_post(
+                &format!("/app/lawyer/notations/{id}/{action}"),
+                String::new(),
+            )
             .await;
         assert!(
             resp.status.is_success() || resp.status.is_redirection(),

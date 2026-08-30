@@ -90,10 +90,22 @@ pub const LAWYER_LISTINGS: &[(&str, &str, Disclosure)] = &[
     ),
     // A notation names its matter but discloses only template/person/state —
     // no client answer, no document, no prose.
-    ("list_notations", "/app/lawyer/notations", Disclosure::Reference),
+    (
+        "list_notations",
+        "/app/lawyer/notations",
+        Disclosure::Reference,
+    ),
     // Matter content, scoped to the caller's participation ledger.
-    ("list_answers", "/app/lawyer/answers", Disclosure::MatterContent),
-    ("list_assets", "/app/lawyer/assets", Disclosure::MatterContent),
+    (
+        "list_answers",
+        "/app/lawyer/answers",
+        Disclosure::MatterContent,
+    ),
+    (
+        "list_assets",
+        "/app/lawyer/assets",
+        Disclosure::MatterContent,
+    ),
     (
         "list_relationship_logs",
         "/app/lawyer/relationship-logs",

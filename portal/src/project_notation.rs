@@ -247,9 +247,11 @@ pub async fn project_notation_new_post(
     )
     .await
     {
-        Ok(outcome) => {
-            Redirect::to(&format!("/app/lawyer/notations/{}/step", outcome.notation_id)).into_response()
-        }
+        Ok(outcome) => Redirect::to(&format!(
+            "/app/lawyer/notations/{}/step",
+            outcome.notation_id
+        ))
+        .into_response(),
         Err(e) => e.into_lawyer_response(),
     }
 }

@@ -250,7 +250,10 @@ async fn admin_post_expunges_and_shows_the_audit_row() {
     assert_eq!(row.note.as_deref(), Some("docket 24-CV-1"));
     assert_eq!(
         location,
-        format!("/app/lawyer/documents/{}/expunge?record={}", f.doc_id, row.id)
+        format!(
+            "/app/lawyer/documents/{}/expunge?record={}",
+            f.doc_id, row.id
+        )
     );
 
     // ...and the result state renders it.
@@ -310,7 +313,10 @@ async fn unknown_category_is_rejected_without_expunging() {
         .unwrap()
         .to_string();
     assert!(
-        location.starts_with(&format!("/app/lawyer/documents/{}/expunge?error=", f.doc_id)),
+        location.starts_with(&format!(
+            "/app/lawyer/documents/{}/expunge?error=",
+            f.doc_id
+        )),
         "location: {location}"
     );
     let form_again = f

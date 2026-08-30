@@ -213,7 +213,10 @@ async fn reask_loop_parks_at_reask_then_returns_to_review() {
     )
     .await;
     assert_eq!(resp.status(), StatusCode::SEE_OTHER);
-    assert_eq!(location(&resp), format!("/app/lawyer/notations/{nid}/reask"));
+    assert_eq!(
+        location(&resp),
+        format!("/app/lawyer/notations/{nid}/reask")
+    );
     assert_eq!(
         notation_state(&surreal, nid).await,
         "reask__client",
@@ -244,7 +247,10 @@ async fn reask_loop_parks_at_reask_then_returns_to_review() {
     )
     .await;
     assert_eq!(resp.status(), StatusCode::SEE_OTHER);
-    assert_eq!(location(&resp), format!("/app/lawyer/notations/{nid}/review"));
+    assert_eq!(
+        location(&resp),
+        format!("/app/lawyer/notations/{nid}/review")
+    );
     assert_eq!(
         notation_state(&surreal, nid).await,
         "lawyer_review",
@@ -318,7 +324,10 @@ async fn reask_get_for_unknown_notation_returns_404() {
     let (app, _surreal, _nid) = build_app_and_notation().await;
     let resp = get(
         &app,
-        &format!("/app/lawyer/notations/{}/reask", uuid::Uuid::from_u128(9999)),
+        &format!(
+            "/app/lawyer/notations/{}/reask",
+            uuid::Uuid::from_u128(9999)
+        ),
     )
     .await;
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
@@ -331,7 +340,10 @@ async fn reask_get_when_not_parked_redirects_to_review() {
     let (app, _surreal, nid) = build_app_and_notation().await;
     let resp = get(&app, &format!("/app/lawyer/notations/{nid}/reask")).await;
     assert_eq!(resp.status(), StatusCode::SEE_OTHER);
-    assert_eq!(location(&resp), format!("/app/lawyer/notations/{nid}/review"));
+    assert_eq!(
+        location(&resp),
+        format!("/app/lawyer/notations/{nid}/review")
+    );
 }
 
 #[tokio::test]
@@ -339,7 +351,10 @@ async fn reask_post_for_unknown_notation_returns_404() {
     let (app, _surreal, _nid) = build_app_and_notation().await;
     let resp = post_form(
         &app,
-        &format!("/app/lawyer/notations/{}/reask", uuid::Uuid::from_u128(9999)),
+        &format!(
+            "/app/lawyer/notations/{}/reask",
+            uuid::Uuid::from_u128(9999)
+        ),
         "a:person__client=Libra+Jones",
     )
     .await;

@@ -991,7 +991,9 @@ async fn post_transcript_coverage(
     let transcript = std::fs::read_to_string(path)
         .with_context(|| format!("read transcript {}", path.display()))?;
     let resp = client
-        .post(format!("{base}/app/lawyer/notations/{notation_id}/transcript"))
+        .post(format!(
+            "{base}/app/lawyer/notations/{notation_id}/transcript"
+        ))
         .bearer_auth(token)
         .form(&[("transcript", transcript.as_str())])
         .send()
@@ -1664,7 +1666,10 @@ mod tests {
             .mount(server)
             .await;
         Mock::given(method("POST"))
-            .and(path(format!("/app/lawyer/notations/{}/reask", ids.notation)))
+            .and(path(format!(
+                "/app/lawyer/notations/{}/reask",
+                ids.notation
+            )))
             .respond_with(ResponseTemplate::new(303).append_header(
                 "location",
                 format!("/app/lawyer/notations/{}/review", ids.notation),
@@ -1672,12 +1677,18 @@ mod tests {
             .mount(server)
             .await;
         Mock::given(method("GET"))
-            .and(path(format!("/app/lawyer/notations/{}/clauses", ids.notation)))
+            .and(path(format!(
+                "/app/lawyer/notations/{}/clauses",
+                ids.notation
+            )))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([])))
             .mount(server)
             .await;
         Mock::given(method("POST"))
-            .and(path(format!("/app/lawyer/notations/{}/clauses", ids.notation)))
+            .and(path(format!(
+                "/app/lawyer/notations/{}/clauses",
+                ids.notation
+            )))
             .respond_with(ResponseTemplate::new(200))
             .mount(server)
             .await;
@@ -1690,7 +1701,10 @@ mod tests {
             .mount(server)
             .await;
         Mock::given(method("GET"))
-            .and(path(format!("/app/lawyer/notations/{}/review", ids.notation)))
+            .and(path(format!(
+                "/app/lawyer/notations/{}/review",
+                ids.notation
+            )))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "state": "lawyer_review",
                 "delivery": "embedded",

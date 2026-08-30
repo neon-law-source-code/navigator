@@ -378,7 +378,9 @@ mod tests {
         let html = render(&view("generate_pdf__retainer_pdf", Some("stub-42-1")));
         for action in ["approve-send", "send"] {
             assert!(
-                !html.contains(&format!("action=\"/app/lawyer/notations/{NOTATION}/{action}\"")),
+                !html.contains(&format!(
+                    "action=\"/app/lawyer/notations/{NOTATION}/{action}\""
+                )),
                 "a dispatched notation must not offer {action}: {html}"
             );
         }

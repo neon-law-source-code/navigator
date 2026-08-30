@@ -443,19 +443,16 @@ fn site_help_lists_the_live_deployment_members() {
 }
 
 #[test]
-fn site_document_upload_help_requires_kind_and_lists_the_asset_lane() {
+fn site_document_upload_help_requires_kind() {
     let output = unwrapped(&help(&["site", "document", "upload", "--help"]));
-    assert!(output.contains("--kind"));
-    for kind in rules::kind::Kind::ALL
-        .iter()
-        .filter(|k| k.valid_for(rules::kind::Lane::Asset))
-    {
-        assert!(
-            output.contains(kind.as_str()),
-            "upload help must name asset-lane kind `{}`",
-            kind.as_str()
-        );
-    }
+    assert!(
+        output.contains("--kind <KIND>"),
+        "usage must require --kind, got: {output}"
+    );
+    assert!(
+        !output.contains("[--kind"),
+        "kind must not be an optional flag, got: {output}"
+    );
 }
 
 #[test]
@@ -478,7 +475,7 @@ fn site_document_upload_refuses_a_missing_kind() {
 
 #[test]
 fn site_document_upload_refuses_a_template_lane_kind() {
-    Command::cargo_bin("navigator")
+    let output = Command::cargo_bin("navigator")
         .unwrap()
         .args([
             "site",
@@ -491,9 +488,20 @@ fn site_document_upload_refuses_a_template_lane_kind() {
             "--kind",
             "review_queue_workbench",
         ])
-        .assert()
-        .failure()
-        .stderr(str::contains("unclassified"));
+        .output()
+        .expect("run navigator");
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    for kind in rules::kind::Kind::ALL
+        .iter()
+        .filter(|k| k.valid_for(rules::kind::Lane::Asset))
+    {
+        assert!(
+            stderr.contains(kind.as_str()),
+            "kind error must name asset-lane kind `{}`, got: {stderr}",
+            kind.as_str()
+        );
+    }
 }
 
 #[test]

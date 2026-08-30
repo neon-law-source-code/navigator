@@ -43,7 +43,8 @@ Clients do not receive Git clone URLs, Git PATs, branch names, commit SHAs, or d
 
 ### `clerk`
 
-A supervised **non-lawyer** firm worker. Clerk enters only the dedicated `/clerk` coordination surface, never `/app/lawyer`,
+A supervised **non-lawyer** firm worker. Clerk enters only the dedicated `/clerk` coordination
+surface, never `/app/lawyer`,
 MCP, A2A, Git, person administration, legal drafting, approval, or advice. `/clerk` is read-only and lists only Projects
 where the Clerk has firm-side participation and one of the matter's `is_lawyer_dri` rows names a licensed `lawyer`,
 `admin`, or `owner` lawyer. It shows the matter's name, status, supervising lawyer, and a link to the Project's client
@@ -62,7 +63,8 @@ through `POST` / `DELETE /app/api/projects/{id}/participants[/{role_id}]` — se
 There is no separate visibility flag: the participation row *is* the toggle, on while the row exists (and the matter
 still names a licensed lawyer DRI), off the moment it is removed.
 
-"Never `/app/lawyer`" now holds without exception. The firm brand fonts, the one object that used to need one, moved to `GET
+"Never `/app/lawyer`" now holds without exception. The firm brand fonts, the one object that used
+to need one, moved to `GET`
 /app/team/fonts/gorp-serif.zip`, where the team home's own prefix rules admit every firm tier — a brand asset is not
 lawyer work, and the path now says so.
 
@@ -72,7 +74,8 @@ A **licensed lawyer** authorized to perform legal work through Navigator, regard
 Lawyer lens sees only projects where the lawyer has a firm-side `person_project_role` participation row.
 
 Lawyers may also be clients on their own matters, but that is a separate client-lens fact: the matter surface at
-`/app/projects` renders each caller through their own lens, while `/app/lawyer` shows the matters they work on for the firm.
+`/app/projects` renders each caller through their own lens, while `/app/lawyer` shows the matters
+they work on for the firm.
 
 Designating the lawyer as a lawyer DRI is not a separate access grant: the `is_lawyer_dri` marker rides that same
 participation row, so a DRI is a matter person by construction. A matter's `is_lawyer_dri` rows are its disclosed lawyer
@@ -96,7 +99,8 @@ the firm's host is anonymous, including the [presentations](glossary.md#presenta
 talk beneath it, and the `/workshops` catalog and workshop material.
 
 Every shared Navigator surface — `/app`, the JSON API, `/templates/*`, `/app/api`, and
-`/app/api/openapi.json` — composes behind one router-level boundary, `portal::auth::require_session`. An anonymous
+`/app/api/openapi.json` — composes behind one router-level boundary,
+`portal::auth::require_session`. An anonymous
 browser is sent to `/auth/login?return_to=…`; an anonymous machine caller gets a `401` with a structured
 `{"error":"unauthenticated"}` document. Default-deny is therefore a property of router composition, not of a Rego rule
 that would have to redeploy in lockstep with the binary. Embedded Rego still runs behind boundary and decides *which*
@@ -291,7 +295,8 @@ That is not a scoping convenience, it is a safety property, and three separate t
 | **Authority** — whether the call should be made at all | `person.role` and the policy above |
 
 Two rules elsewhere in the docs hold *because* the table is inert. A Clerk "never receives lawyer-work, advice, Git,
-MCP, or `/app/lawyer` authority by inheritance", so a Clerk recorded as GitHub user `12345` gains nothing by being recorded
+MCP, or `/app/lawyer` authority by inheritance", so a Clerk recorded as GitHub user `12345` gains
+nothing by being recorded
 as such. And Project participation never grants source-forge access ([`project-repositories`](project-repositories.md)),
 so this table must not become the back door that reverses it. The rule is per-system rather than per-role: a `client`
 Person holding a `google` identity for Drive sharing is legitimate, and that same Person is still never provisioned into
@@ -334,7 +339,8 @@ Embedded Rego's allow rules in priority order:
 2. **Lawyer-tier surfaces** — `/app/outline`, `/app/admin/entity-types`, `/app/admin/templates`, and other firm-
    internal pages gate on `session.role` being `"owner"`, `"admin"`, or `"lawyer"`. `"clerk"` is intentionally absent.
    The people directory is **not** among them: its browser surface is `/app/admin/people`, Owner/Admin only, since
-   ENG-304 deleted the `/app/lawyer` mirror. The Person *commands* stay lawyer-tier at `POST/PATCH/DELETE /app/api/people*`,
+   ENG-304 deleted the `/app/lawyer` mirror. The Person *commands* stay lawyer-tier at
+   `POST/PATCH/DELETE /app/api/people*`,
    so what a lawyer lost is the form, not the capability. That tier check is the whole gate only for firm *reference*
    data. A `/app/lawyer` listing that reads **matter content** — `/app/lawyer/answers`, `/app/lawyer/assets`,
    `/app/lawyer/relationship-logs` — additionally scopes its rows to the caller's participation ledger through

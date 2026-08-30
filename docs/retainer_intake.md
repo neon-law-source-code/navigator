@@ -76,8 +76,8 @@ Every state-changing request carries a CSRF token; auth is enforced by the `requ
 
 ## One POST through the stack
 
-What a single `POST /app/lawyer/notations/:id/step` looks like when `RESTATE_BROKER_URL` is set (the in-cluster `restate`
-Service in KIND, or the GKE-managed broker in production):
+What a single `POST /app/lawyer/notations/:id/step` looks like when `RESTATE_BROKER_URL` is set (the in-cluster
+`restate` Service in KIND, or the GKE-managed broker in production):
 
 ```mermaid
 sequenceDiagram

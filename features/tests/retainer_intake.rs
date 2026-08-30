@@ -1,7 +1,7 @@
 //! Cucumber runner for `features/retainer_intake.feature`.
 //!
-//! Drives the admin retainer walker (`/lawyer/retainers/...` +
-//! `/lawyer/notations/:id/step`) against an in-memory runtime,
+//! Drives the admin retainer walker (`/app/lawyer/retainers/...` +
+//! `/app/lawyer/notations/:id/step`) against an in-memory runtime,
 //! mirroring `web/tests/retainer_walk_handler.rs` but expressed in
 //! Gherkin.
 
@@ -168,7 +168,7 @@ async fn lawyer_walks_all(world: &mut RetainerWorld, step: &Step) {
     for row in table.rows.iter().skip(1) {
         let value = row.first().expect("each row carries one cell").as_str();
         let body = format!("value={}", form_encode(value));
-        let uri = world.substitute("/lawyer/notations/:id/step");
+        let uri = world.substitute("/app/lawyer/notations/:id/step");
         let resp = world
             .app()
             .oneshot(
@@ -279,9 +279,9 @@ async fn assert_answer_row(world: &mut RetainerWorld, value: String) {
     assert_eq!(rows.len(), 1, "expected one answer row for {value:?}");
 }
 
-#[then("a GET to /lawyer/notations/:id/step now redirects to /app/lawyer")]
+#[then("a GET to /app/lawyer/notations/:id/step now redirects to /app/lawyer")]
 async fn assert_post_end_redirect(world: &mut RetainerWorld) {
-    let uri = world.substitute("/lawyer/notations/:id/step");
+    let uri = world.substitute("/app/lawyer/notations/:id/step");
     let resp = world
         .app()
         .oneshot(

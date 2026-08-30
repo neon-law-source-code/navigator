@@ -2,7 +2,7 @@
 //!
 //! Neon Law serves the firm brand surface and the host legal/crawler documents,
 //! and the shared Navigator boundary still closes the authenticated surface. The state carries `PolicyClient::passthrough`, so
-//! a `/lawyer` redirect proves the boundary is router composition, not policy.
+//! a `/app/lawyer` redirect proves the boundary is router composition, not policy.
 
 use axum::{
     body::Body,

@@ -1,4 +1,4 @@
-//! `/lawyer/notations/:id/documents/:doc_id` and
+//! `/app/lawyer/notations/:id/documents/:doc_id` and
 //! `/app/notations/:id/documents/:doc_id` — issue a 302 to a
 //! short-lived signed URL on the storage backend so the browser
 //! downloads the blob directly, or stream the bytes through the app
@@ -48,7 +48,7 @@ const DOC_ID_SIGNED: &str = "signed";
 /// Slug for the e-signature Certificate of Completion.
 const DOC_ID_CERTIFICATE: &str = "certificate";
 
-/// `GET /lawyer/notations/:id/documents/:doc_id` or
+/// `GET /app/lawyer/notations/:id/documents/:doc_id` or
 /// `GET /app/notations/:id/documents/:doc_id`.
 pub async fn download(
     State(state): State<AdminState>,

@@ -152,10 +152,10 @@ fn review_body(view: &IntakeReviewView) -> Element {
     let data = &view.data;
     let phase = Phase::of(&data.workflow_state, data.signature_request_id.as_deref());
     let notation_id = data.notation_id.clone();
-    let approve_send = format!("/lawyer/notations/{notation_id}/approve-send");
-    let send = format!("/lawyer/notations/{notation_id}/send");
-    let request_changes = format!("/lawyer/notations/{notation_id}/request-changes");
-    let reask = format!("/lawyer/notations/{notation_id}/reask");
+    let approve_send = format!("/app/lawyer/notations/{notation_id}/approve-send");
+    let send = format!("/app/lawyer/notations/{notation_id}/send");
+    let request_changes = format!("/app/lawyer/notations/{notation_id}/request-changes");
+    let reask = format!("/app/lawyer/notations/{notation_id}/reask");
     let role = view.role;
     let csrf = view.csrf_token.clone();
     let signature = data.signature_request_id.clone().unwrap_or("—".to_string());
@@ -168,7 +168,7 @@ fn review_body(view: &IntakeReviewView) -> Element {
         nav { class: "lawyer-nav",
             a { class: "nav-link", href: "/app/projects", "Portal" }
             if role.is_lawyer_tier() {
-                a { class: "nav-link", href: "/lawyer", "Lawyer" }
+                a { class: "nav-link", href: "/app/lawyer", "Lawyer" }
             }
             if role.is_admin_tier() {
                 a { class: "nav-link", href: "/app/admin", "Admin" }
@@ -233,7 +233,7 @@ fn review_body(view: &IntakeReviewView) -> Element {
             // emitted as HTML rather than escaped into visible tags.
             div { dangerous_inner_html: "{data.rendered_html}" }
             p {
-                a { href: "/lawyer/retainers/intake", "Start another intake" }
+                a { href: "/app/lawyer/retainers/new", "Start another intake" }
             }
         }
     }
@@ -335,7 +335,7 @@ mod tests {
         assert!(html.contains("Awaiting attorney review"), "{html}");
         assert!(
             html.contains(&format!(
-                "action=\"/lawyer/notations/{NOTATION}/approve-send\""
+                "action=\"/app/lawyer/notations/{NOTATION}/approve-send\""
             )),
             "{html}"
         );
@@ -345,7 +345,7 @@ mod tests {
         assert!(html.contains("name=\"note\""), "{html}");
         // Nothing dispatches an envelope from this phase.
         assert!(
-            !html.contains(&format!("action=\"/lawyer/notations/{NOTATION}/send\"")),
+            !html.contains(&format!("action=\"/app/lawyer/notations/{NOTATION}/send\"")),
             "an unapproved notation must not offer send: {html}"
         );
     }
@@ -358,13 +358,13 @@ mod tests {
             "{html}"
         );
         assert!(
-            html.contains(&format!("action=\"/lawyer/notations/{NOTATION}/send\"")),
+            html.contains(&format!("action=\"/app/lawyer/notations/{NOTATION}/send\"")),
             "{html}"
         );
         // Approval already happened; it is not offered twice.
         assert!(
             !html.contains(&format!(
-                "action=\"/lawyer/notations/{NOTATION}/approve-send\""
+                "action=\"/app/lawyer/notations/{NOTATION}/approve-send\""
             )),
             "{html}"
         );
@@ -378,7 +378,7 @@ mod tests {
         let html = render(&view("generate_pdf__retainer_pdf", Some("stub-42-1")));
         for action in ["approve-send", "send"] {
             assert!(
-                !html.contains(&format!("action=\"/lawyer/notations/{NOTATION}/{action}\"")),
+                !html.contains(&format!("action=\"/app/lawyer/notations/{NOTATION}/{action}\"")),
                 "a dispatched notation must not offer {action}: {html}"
             );
         }
@@ -389,12 +389,12 @@ mod tests {
         let html = render(&view("reask__client", None));
         assert!(html.contains("Sent back for changes"), "{html}");
         assert!(
-            html.contains(&format!("href=\"/lawyer/notations/{NOTATION}/reask\"")),
+            html.contains(&format!("href=\"/app/lawyer/notations/{NOTATION}/reask\"")),
             "{html}"
         );
         assert!(
             !html.contains(&format!(
-                "action=\"/lawyer/notations/{NOTATION}/approve-send\""
+                "action=\"/app/lawyer/notations/{NOTATION}/approve-send\""
             )),
             "{html}"
         );

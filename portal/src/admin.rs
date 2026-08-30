@@ -93,7 +93,7 @@ pub struct AdminState {
     pub signature_provider: Arc<dyn SignatureProvider>,
     /// Parsed questionnaire spec from the bundled retainer
     /// template. Drives the per-step walker at
-    /// `/lawyer/notations/{id}/step`.
+    /// `/app/lawyer/notations/{id}/step`.
     pub retainer_intake_questionnaire: workflows::QuestionnaireSpec,
     /// Same `Arc` as `workflow_runtime` — kept as a separate field so
     /// the questionnaire walker reads from a name that matches the
@@ -171,7 +171,7 @@ pub fn routes(
     sessions: crate::SessionStore,
     policy: crate::policy::PolicyClient,
 ) -> Router {
-    // `/app/*` renders each caller's own lens. `/lawyer/*` is the firm lens.
+    // `/app/*` renders each caller's own lens. `/app/lawyer/*` is the firm lens.
     // A person may be eligible for both; the URL prefix decides which
     // project-visibility predicate applies.
     let mut r = Router::new();
@@ -197,21 +197,21 @@ pub fn routes(
             "/app/admin/people/{id}/impersonate",
             post(people_impersonate),
         );
-    r = register_firm_matter_routes(r, "/lawyer");
+    r = register_firm_matter_routes(r, "/app/lawyer");
     r = register_firm_admin_routes(r, "/app/admin");
     // Firm brand fonts — the licensed GORP Serif desktop family, served as one
     // ZIP from the *private* documents bucket, so a direct object URL can never
     // bypass this gate. The bytes are uploaded out-of-band by
     // `navigator ops assets fonts upload-desktop`.
     //
-    // Not under `/lawyer`: a brand asset is not lawyer work, and every firm
-    // tier — Clerk included — may fetch it. Sitting under `/lawyer` made Clerk
-    // an exact-path exception to "Clerk never enters /lawyer". Under
+    // Not under `/app/lawyer`: a brand asset is not lawyer work, and every firm
+    // tier — Clerk included — may fetch it. Sitting under `/app/lawyer` made Clerk
+    // an exact-path exception to "Clerk never enters /app/lawyer". Under
     // `/app/team` the page that offers the card and the object it links share
     // one prefix, so embedded Rego's existing `/app/team` rules admit exactly
     // the four firm tiers here and deny a client, with no rule of its own.
     // Registered here rather than inside `register_firm_matter_routes` because
-    // that helper's `{prefix}` is `/lawyer`.
+    // that helper's `{prefix}` is `/app/lawyer`.
     r = r.route(
         "/app/team/fonts/gorp-serif.zip",
         get(crate::brand_fonts::download_get),
@@ -276,12 +276,12 @@ fn admin_gate(session: Option<&SessionData>) -> Option<Response> {
     }
 }
 
-/// Register matter-content and conflict-graph writes that still live under
-/// `/lawyer` until later tranches move them.
+/// Register matter-content and conflict-graph writes under `{prefix}`
+/// (`/app/lawyer`).
 #[allow(clippy::too_many_lines)]
 fn register_firm_matter_routes(r: Router<AdminState>, prefix: &str) -> Router<AdminState> {
     r
-        // `GET /lawyer/retainers/new` (the form) renders through Dioxus (#956
+        // `GET /app/lawyer/retainers/new` (the form) renders through Dioxus (#956
         // Phase 4, `dioxus_app::csrf_page_router`); the create posts here, and
         // axum merges the two same-path method routes.
         .route(
@@ -457,7 +457,7 @@ fn register_firm_admin_routes(r: Router<AdminState>, prefix: &str) -> Router<Adm
 /// Row scoping is uniform — every tier, Owner and Admin included, needs a
 /// participation row on the matter. The lawyer-only writes below additionally
 /// require the lawyer tier in their own handlers, which is what replaces the
-/// outer `/lawyer/*` policy rule those paths used to sit behind.
+/// outer `/app/lawyer/*` policy rule those paths used to sit behind.
 fn register_project_routes(r: Router<AdminState>) -> Router<AdminState> {
     let prefix = APP_PROJECTS_PATH;
     // `{prefix}` (the list), `{prefix}/{code}` (the matter workbench), the forms,

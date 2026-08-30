@@ -118,9 +118,9 @@ pub fn WalkerStep() -> Element {
 /// without standing up the server function.
 fn step_body(view: &WalkerStepView) -> Element {
     let step = &view.step;
-    let action = format!("/lawyer/notations/{}/step", step.notation_id);
-    let send_intake = format!("/lawyer/notations/{}/send-intake", step.notation_id);
-    let clauses = format!("/lawyer/notations/{}/clauses", step.notation_id);
+    let action = format!("/app/lawyer/notations/{}/step", step.notation_id);
+    let send_intake = format!("/app/lawyer/notations/{}/send-intake", step.notation_id);
+    let clauses = format!("/app/lawyer/notations/{}/clauses", step.notation_id);
     let title = format!(
         "{} — step {} of {}",
         step.flow_label, step.position, step.total
@@ -161,7 +161,7 @@ fn step_body(view: &WalkerStepView) -> Element {
         nav { class: "lawyer-nav",
             a { class: "nav-link", href: "/app/projects", "Portal" }
             if role.is_lawyer_tier() {
-                a { class: "nav-link", href: "/lawyer", "Lawyer" }
+                a { class: "nav-link", href: "/app/lawyer", "Lawyer" }
             }
             if role.is_admin_tier() {
                 a { class: "nav-link", href: "/app/admin", "Admin" }
@@ -179,7 +179,7 @@ fn step_body(view: &WalkerStepView) -> Element {
                 fields,
             }
             p {
-                a { href: "/lawyer", "Save and exit" }
+                a { href: "/app/lawyer", "Save and exit" }
             }
             // Hand off to the client: they answer the client-facing questions
             // themselves, pre-filled with anything entered here, and both
@@ -236,7 +236,7 @@ mod tests {
     fn the_step_names_its_question_progress_and_post_target() {
         let html = render(&view("string", "", &[]));
         assert!(
-            html.contains(&format!("action=\"/lawyer/notations/{NOTATION}/step\"")),
+            html.contains(&format!("action=\"/app/lawyer/notations/{NOTATION}/step\"")),
             "{html}"
         );
         assert!(html.contains("client_email"), "{html}");
@@ -293,12 +293,12 @@ mod tests {
         let html = render(&view("string", "", &[]));
         assert!(
             html.contains(&format!(
-                "action=\"/lawyer/notations/{NOTATION}/send-intake\""
+                "action=\"/app/lawyer/notations/{NOTATION}/send-intake\""
             )),
             "{html}"
         );
         assert!(
-            html.contains(&format!("href=\"/lawyer/notations/{NOTATION}/clauses\"")),
+            html.contains(&format!("href=\"/app/lawyer/notations/{NOTATION}/clauses\"")),
             "{html}"
         );
         // The hand-off is a write, so it carries the session CSRF token.

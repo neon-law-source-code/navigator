@@ -1,6 +1,6 @@
 //! Admin governed-expunge mutation (git-repos surfaces Task 1).
 //!
-//! `POST /lawyer/documents/:doc_id/expunge` drives [`crate::expunge::expunge`]
+//! `POST /app/lawyer/documents/:doc_id/expunge` drives [`crate::expunge::expunge`]
 //! for the chosen document, then redirects (post/redirect/get) back to the
 //! Dioxus surface at the same path: `?record=` carries the audit-row id the
 //! result state renders, `?error=` a rejected submit. The confirmation screen
@@ -65,7 +65,7 @@ async fn load_doc(state: &AdminState, doc_id: Uuid) -> Option<store::assets::Ass
 /// Redirect back to the Dioxus confirmation screen carrying an `?error=` flash.
 fn back_with_error(doc_id: Uuid, message: &str) -> Response {
     Redirect::to(&format!(
-        "/lawyer/documents/{doc_id}/expunge?error={}",
+        "/app/lawyer/documents/{doc_id}/expunge?error={}",
         crate::admin::encode_query_value(message)
     ))
     .into_response()
@@ -78,7 +78,7 @@ pub struct ExpungeForm {
     note: String,
 }
 
-/// `POST /lawyer/documents/:doc_id/expunge`.
+/// `POST /app/lawyer/documents/:doc_id/expunge`.
 pub async fn run(
     State(state): State<AdminState>,
     Path(doc_id): Path<Uuid>,
@@ -131,7 +131,7 @@ pub async fn run(
         // Dioxus surface renders the result state from that row. A refresh
         // re-reads the audit record instead of re-posting the expunge.
         Ok(record_id) => Redirect::to(&format!(
-            "/lawyer/documents/{doc_id}/expunge?record={record_id}"
+            "/app/lawyer/documents/{doc_id}/expunge?record={record_id}"
         ))
         .into_response(),
         // The primitive's own admin gate — should be unreachable behind

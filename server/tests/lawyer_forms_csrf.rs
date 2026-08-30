@@ -2,7 +2,7 @@
 //! Regression guard: every lawyer form page renders the session CSRF token.
 //!
 //! `portal::csrf::require_csrf` runs in `CsrfMode::Form` on every mutating
-//! `/lawyer/*` route, so a cookie-authenticated form POST that carries no
+//! `/app/lawyer/*` route, so a cookie-authenticated form POST that carries no
 //! valid `_csrf` is a 403. That makes a form which renders *without* the
 //! hidden `_csrf` input a latent bug: a real lawyer user submits it in a
 //! browser and gets a 403, even though the page looked fine. That is

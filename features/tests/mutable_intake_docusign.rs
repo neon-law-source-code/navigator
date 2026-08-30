@@ -61,12 +61,12 @@ async fn open_matter(world: &mut MutableWorld, email: String) {
         "client_email={}&retainer_template_code={TEMPLATE_CODE}",
         features::form_encode(&email),
     );
-    let resp = journey.lawyer_post("/lawyer/retainers/new", body).await;
+    let resp = journey.lawyer_post("/app/lawyer/retainers/new", body).await;
     let location = resp
         .location
         .unwrap_or_else(|| panic!("matter-open did not redirect (status {})", resp.status));
     let id = location
-        .strip_prefix("/lawyer/notations/")
+        .strip_prefix("/app/lawyer/notations/")
         .and_then(|s| s.strip_suffix("/step"))
         .unwrap_or_else(|| panic!("unexpected redirect target: {location}"));
     let notation_id = Uuid::parse_str(id).expect("notation id is a UUID");
@@ -117,7 +117,7 @@ async fn client_answers_part(world: &mut MutableWorld, step: &Step) {
 
 #[when(regex = r#"^lawyers add the custom clause "([^"]+)"$"#)]
 async fn lawyer_add_clause(world: &mut MutableWorld, clause: String) {
-    let path = format!("/lawyer/notations/{}/clauses", world.notation_id());
+    let path = format!("/app/lawyer/notations/{}/clauses", world.notation_id());
     let resp = world
         .journey()
         .lawyer_post(&path, format!("body={}", features::form_encode(&clause)))
@@ -132,7 +132,7 @@ async fn lawyer_add_clause(world: &mut MutableWorld, clause: String) {
 #[when("lawyers finish the intake walk:")]
 async fn lawyer_finish_walk(world: &mut MutableWorld, step: &Step) {
     let table = step.table.as_ref().expect("scenario has a data table");
-    let path = format!("/lawyer/notations/{}/step", world.notation_id());
+    let path = format!("/app/lawyer/notations/{}/step", world.notation_id());
     let mut last_body = String::new();
     for row in table.rows.iter().skip(1) {
         let value = row.first().expect("each row carries one cell").as_str();
@@ -183,7 +183,7 @@ async fn attorney_approves(world: &mut MutableWorld) {
     let approve = world
         .journey()
         .lawyer_post(
-            &format!("/lawyer/notations/{id}/approve-send"),
+            &format!("/app/lawyer/notations/{id}/approve-send"),
             String::new(),
         )
         .await;
@@ -195,7 +195,7 @@ async fn attorney_approves(world: &mut MutableWorld) {
     );
     let send = world
         .journey()
-        .lawyer_post(&format!("/lawyer/notations/{id}/send"), String::new())
+        .lawyer_post(&format!("/app/lawyer/notations/{id}/send"), String::new())
         .await;
     assert!(
         send.status.is_success() || send.status.is_redirection(),
@@ -208,7 +208,7 @@ async fn attorney_approves(world: &mut MutableWorld) {
     // the document rather than an empty redirect body.
     world.last_body = world
         .journey()
-        .lawyer_get(&format!("/lawyer/notations/{id}/review"))
+        .lawyer_get(&format!("/app/lawyer/notations/{id}/review"))
         .await
         .body;
 }

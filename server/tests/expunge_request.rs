@@ -227,7 +227,7 @@ async fn client_requests_then_admin_authorizes_and_document_is_scrubbed() {
     assert!(pending.is_some(), "a pending request should exist");
 
     // Admin sees it in the queue.
-    let queue = get(&f, "/lawyer/expunge-requests".into(), &f.admin_cookie).await;
+    let queue = get(&f, "/app/lawyer/expunge-requests".into(), &f.admin_cookie).await;
     assert_eq!(queue.status(), StatusCode::OK);
     let html = body_string(queue).await;
     assert!(html.contains("old-draft.pdf"));
@@ -248,7 +248,7 @@ async fn client_requests_then_admin_authorizes_and_document_is_scrubbed() {
     let request_id = pending.unwrap().id;
     let resp = post(
         &f,
-        format!("/lawyer/expunge-requests/{request_id}/authorize"),
+        format!("/app/lawyer/expunge-requests/{request_id}/authorize"),
         &f.admin_cookie,
         format!("_csrf={}", f.admin_csrf),
     )
@@ -306,7 +306,7 @@ async fn non_admin_cannot_authorize() {
     // The client tries to authorize → 404 (admin-only), nothing deleted.
     let resp = post(
         &f,
-        format!("/lawyer/expunge-requests/{request_id}/authorize"),
+        format!("/app/lawyer/expunge-requests/{request_id}/authorize"),
         &f.client_cookie,
         format!("_csrf={}", f.client_csrf),
     )

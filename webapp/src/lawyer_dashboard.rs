@@ -1,4 +1,4 @@
-//! The lawyer workbench at `/lawyer` as a Dioxus component (#956 Phase 4) — the
+//! The lawyer workbench at `/app/lawyer` as a Dioxus component (#956 Phase 4) — the
 //! project-first landing page every signed-in lawyer reaches first.
 //!
 //! The successor to the `views::pages::admin::dashboard`. It carries three
@@ -49,19 +49,19 @@ const LISTING_PAGES: &[(&str, &str)] = &[
     ("/app/admin/entity-types", "Entity types"),
     ("/app/admin/templates", "Templates"),
     ("/app/admin/questions", "Questions"),
-    ("/lawyer/notations", "Notations"),
+    ("/app/lawyer/notations", "Notations"),
     ("/app/outline", "Outline stage"),
-    ("/lawyer/answers", "Answers"),
+    ("/app/lawyer/answers", "Answers"),
     ("/app/admin/addresses", "Addresses"),
     ("/app/admin/mailrooms", "Mailrooms"),
     ("/app/admin/letters", "Letters"),
-    ("/lawyer/assets", "Assets"),
-    ("/lawyer/person-entity-roles", "Person ↔ entity roles"),
-    ("/lawyer/person-project-roles", "Person ↔ project roles"),
+    ("/app/lawyer/assets", "Assets"),
+    ("/app/lawyer/person-entity-roles", "Person ↔ entity roles"),
+    ("/app/lawyer/person-project-roles", "Person ↔ project roles"),
     ("/app/admin/jurisdictions", "Jurisdictions"),
     ("/app/admin/git-repositories", "Git repositories"),
-    ("/lawyer/disclosures", "Disclosures"),
-    ("/lawyer/relationship-logs", "Relationship logs"),
+    ("/app/lawyer/disclosures", "Disclosures"),
+    ("/app/lawyer/relationship-logs", "Relationship logs"),
 ];
 
 const API_ENDPOINTS: &[(&str, &str)] = &[
@@ -670,7 +670,7 @@ mod tests {
 
     /// The billing and cap-table listings are gone — the Firm bills through
     /// Xero and keeps cap tables in Carta — and their routes are unmounted. So
-    /// is the people index: ENG-304 deleted the `/lawyer/people` mirror, and the
+    /// is the people index: ENG-304 deleted the `/app/lawyer/people` mirror, and the
     /// one people surface now answers at `/app/admin/people`, which this workbench's
     /// lawyer-tier audience is refused at.
     ///
@@ -682,16 +682,16 @@ mod tests {
     fn the_removed_listings_are_not_advertised() {
         let html = dioxus_ssr::render_element(lawyer_dashboard_body(&view()));
         for href in [
-            "/lawyer/entity-billing-profiles",
-            "/lawyer/invoices",
-            "/lawyer/invoice-line-items",
+            "/app/lawyer/entity-billing-profiles",
+            "/app/lawyer/invoices",
+            "/app/lawyer/invoice-line-items",
             "/cap-table",
-            "/lawyer/people",
+            "/app/lawyer/people",
         ] {
             assert!(!html.contains(href), "{href} is still linked: {html}");
         }
         // A surviving listing anchors the assertion: the nav renders, so the
         // absences above are removals rather than an empty page.
-        assert!(html.contains("/lawyer/disclosures"), "{html}");
+        assert!(html.contains("/app/lawyer/disclosures"), "{html}");
     }
 }

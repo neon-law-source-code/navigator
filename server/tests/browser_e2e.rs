@@ -42,7 +42,7 @@ use features::webdriver::{
 };
 use uuid::Uuid;
 
-/// Extract the notation id from a `/lawyer/notations/:id/step` path.
+/// Extract the notation id from a `/app/lawyer/notations/:id/step` path.
 fn notation_id_from_step_path(path: &str) -> Option<Uuid> {
     let segments: Vec<&str> = path.trim_start_matches('/').split('/').collect();
     match segments.as_slice() {
@@ -56,7 +56,7 @@ fn notation_id_from_step_path_accepts_lawyer_step_path() {
     let id = Uuid::parse_str("018f42d4-bf4a-73fe-9f7f-8a6c51f0c6b0").unwrap();
 
     assert_eq!(
-        notation_id_from_step_path("/lawyer/notations/018f42d4-bf4a-73fe-9f7f-8a6c51f0c6b0/step"),
+        notation_id_from_step_path("/app/lawyer/notations/018f42d4-bf4a-73fe-9f7f-8a6c51f0c6b0/step"),
         Some(id)
     );
 }
@@ -206,7 +206,7 @@ async fn stock_local_personas_reach_the_litigation_matter_through_their_own_lens
 async fn lawyer_walks_the_full_retainer_questionnaire_end_to_end() {
     // Drives every leg of the stepwise retainer flow in a real
     // browser:
-    //   1. POST /lawyer/retainers/new          → /step
+    //   1. POST /app/lawyer/retainers/new          → /step
     //   2. POST /step × 8 (one question each) → result page
     //
     // Preconditions (beyond the module's chromedriver + KIND
@@ -250,7 +250,7 @@ async fn lawyer_walks_the_full_retainer_questionnaire_end_to_end() {
     ];
 
     // --- Step 0: create the Notation -------------------------
-    c.goto(&format!("{}/lawyer/retainers/new", base_url()))
+    c.goto(&format!("{}/app/lawyer/retainers/new", base_url()))
         .await
         .unwrap();
     c.wait()
@@ -300,7 +300,7 @@ async fn lawyer_walks_the_full_retainer_questionnaire_end_to_end() {
     .await
     .unwrap();
 
-    // POST /retainers/new redirects to /lawyer/notations/:id/step.
+    // POST /retainers/new redirects to /app/lawyer/notations/:id/step.
     // Capture the id while we're here — we'll use it after the
     // walk to read the journal directly and confirm exactly
     // eight `notation_event` rows landed on the
@@ -313,7 +313,7 @@ async fn lawyer_walks_the_full_retainer_questionnaire_end_to_end() {
         }
         assert!(
             started.elapsed() <= Duration::from_secs(10),
-            "never landed on /lawyer/notations/:id/step; last URL was {url}",
+            "never landed on /app/lawyer/notations/:id/step; last URL was {url}",
         );
         tokio::time::sleep(Duration::from_millis(200)).await;
     };
@@ -368,7 +368,7 @@ async fn lawyer_walks_the_full_retainer_questionnaire_end_to_end() {
     // clause routes the notation back through review, so it has to land before
     // the approve rather than after it.
     c.goto(&format!(
-        "{}/lawyer/notations/{notation_id}/clauses",
+        "{}/app/lawyer/notations/{notation_id}/clauses",
         base_url()
     ))
     .await
@@ -394,7 +394,7 @@ async fn lawyer_walks_the_full_retainer_questionnaire_end_to_end() {
     // screen, which now offers approve with a non-empty fee clause.
     wait_for_text_reloading(
         &c,
-        &format!("{}/lawyer/notations/{notation_id}/review", base_url()),
+        &format!("{}/app/lawyer/notations/{notation_id}/review", base_url()),
         "Awaiting attorney review",
         Duration::from_secs(20),
     )
@@ -508,7 +508,7 @@ async fn lawyer_walks_the_full_retainer_questionnaire_end_to_end() {
 async fn lawyer_user_can_hit_every_admin_route() {
     // Walks the same admin routes the in-process test
     // (`oidc_e2e::user_with_db_lawyer_role_can_hit_every_admin_route`)
-    // covers, but through a real browser end-to-end. `/lawyer/people` is absent
+    // covers, but through a real browser end-to-end. `/app/lawyer/people` is absent
     // since ENG-304 deleted the browser mirror — the one people surface is
     // `/app/admin/people`, which a lawyer is answered 403 at.
     let routes = [
@@ -562,7 +562,7 @@ async fn admin_adds_a_person_through_the_people_form() {
     // the list where the new row shows. This exercises the whole credential-keyed
     // CSRF path in a real browser — the thing rendering tests can't prove.
     //
-    // Admin, not Lawyer: ENG-304 deleted the `/lawyer/people` mirror, so this is
+    // Admin, not Lawyer: ENG-304 deleted the `/app/lawyer/people` mirror, so this is
     // the only browser form that creates a Person.
     let Some(c) = new_client_or_skip().await else {
         return;

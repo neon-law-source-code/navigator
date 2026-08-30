@@ -4,15 +4,15 @@
 //!
 //! Routes:
 //!
-//! - `GET /lawyer/retainers/new` — the small "start a walk" form
+//! - `GET /app/lawyer/retainers/new` — the small "start a walk" form
 //!   (template code + client email).
-//! - `POST /lawyer/retainers/new` — find-or-insert the Person,
+//! - `POST /app/lawyer/retainers/new` — find-or-insert the Person,
 //!   insert Project + role + Notation in one txn, redirect to
-//!   `/lawyer/notations/:id/step`.
-//! - `GET /lawyer/notations/:id/step` — render the current
+//!   `/app/lawyer/notations/:id/step`.
+//! - `GET /app/lawyer/notations/:id/step` — render the current
 //!   question (read from the journal + spec) or redirect when the
 //!   questionnaire reaches END.
-//! - `POST /lawyer/notations/:id/step` — write the respondent's
+//! - `POST /app/lawyer/notations/:id/step` — write the respondent's
 //!   answer (`answers` row + journal entry), signal the runtime,
 //!   and either redirect for the next question or — on END —
 //!   drive the post-intake workflow.
@@ -49,7 +49,7 @@ pub(crate) async fn resolve_lawyer_actor(
         return Some(id);
     }
     // No session-linked Person. In production this is unreachable: every
-    // `/lawyer/*` route is gated on an authenticated, DB-linked lawyer Person
+    // `/app/lawyer/*` route is gated on an authenticated, DB-linked lawyer Person
     // (the `persons.role` authz tier), so a real lawyer action always carries
     // its own `person_id`. Only the local dev auth-bypass (a session with no
     // linked Person) reaches here. Fall back to the seeded firm principal —
@@ -105,7 +105,7 @@ async fn signal_workflow(
     }
 }
 
-/// POST body for `/lawyer/retainers/new`. Two fields — everything
+/// POST body for `/app/lawyer/retainers/new`. Two fields — everything
 /// else the walker collects.
 #[derive(Debug, Clone, Deserialize)]
 pub struct StartWalkBody {
@@ -117,7 +117,7 @@ pub struct StartWalkBody {
 /// reason as `?error=` and the submitted values echoed, so nothing is retyped.
 ///
 /// The form used to re-render inline from this `POST`. It now renders through
-/// Dioxus at `GET /lawyer/retainers/new`, which reads exactly these three query
+/// Dioxus at `GET /app/lawyer/retainers/new`, which reads exactly these three query
 /// parameters back (#956 Phase 4).
 fn refuse_start(body: &StartWalkBody, error: &str) -> Response {
     let mut query = String::new();
@@ -128,7 +128,7 @@ fn refuse_start(body: &StartWalkBody, error: &str) -> Response {
         "retainer_template_code",
         body.retainer_template_code.trim(),
     );
-    Redirect::to(&format!("/lawyer/retainers/new?{query}")).into_response()
+    Redirect::to(&format!("/app/lawyer/retainers/new?{query}")).into_response()
 }
 
 /// Remove a pending self-serve intake when the open will not complete.
@@ -167,7 +167,7 @@ async fn discard_pending_intake_project(
         .map_err(|error| error.to_string())
 }
 
-/// POST `/lawyer/retainers/new` — create the four rows the
+/// POST `/app/lawyer/retainers/new` — create the four rows the
 /// retainer lifecycle needs, then redirect to the walker.
 #[allow(clippy::too_many_lines)]
 pub async fn start_post(
@@ -371,7 +371,7 @@ pub async fn start_post(
         return (StatusCode::INTERNAL_SERVER_ERROR, "internal").into_response();
     }
 
-    Redirect::to(&format!("/lawyer/notations/{notation_id}/step")).into_response()
+    Redirect::to(&format!("/app/lawyer/notations/{notation_id}/step")).into_response()
 }
 
 /// The client Person + Notation a retainer-type matter hangs off of,
@@ -593,7 +593,7 @@ pub async fn close_matter_post(
     };
     match open_closing_notation(&state.surreal, &state.storage, project_id).await {
         Ok(notation_id) => {
-            Redirect::to(&format!("/lawyer/notations/{notation_id}/step")).into_response()
+            Redirect::to(&format!("/app/lawyer/notations/{notation_id}/step")).into_response()
         }
         Err(CloseMatterError::MatterNotFound) => {
             (StatusCode::NOT_FOUND, "matter not found").into_response()
@@ -610,7 +610,7 @@ pub async fn close_matter_post(
     }
 }
 
-/// POST `/lawyer/notations/:id/send-intake` — hand the matter's
+/// POST `/app/lawyer/notations/:id/send-intake` — hand the matter's
 /// client their self-serve intake link.
 ///
 /// The client signs into the portal and answers the client-facing
@@ -708,7 +708,7 @@ pub async fn send_intake_post(
     AxumPath(notation_id): AxumPath<Uuid>,
 ) -> Response {
     match send_intake(&state.surreal, state.email.as_ref(), notation_id).await {
-        Ok(_) => Redirect::to(&format!("/lawyer/notations/{notation_id}/step")).into_response(),
+        Ok(_) => Redirect::to(&format!("/app/lawyer/notations/{notation_id}/step")).into_response(),
         Err(SendIntakeError::NotationNotFound(_)) => {
             (StatusCode::NOT_FOUND, "notation not found").into_response()
         }
@@ -749,7 +749,7 @@ async fn prior_answer_row(
         .flatten()
 }
 
-/// Resolve the current walker step for `GET /lawyer/notations/:id/step`, in the
+/// Resolve the current walker step for `GET /app/lawyer/notations/:id/step`, in the
 /// wasm-safe shape the Dioxus page renders (#956 Phase 4).
 ///
 /// The Dioxus route's pre-layer calls this and either injects the result or
@@ -757,7 +757,7 @@ async fn prior_answer_row(
 ///
 /// - `?format=json` — the narrow machine surface the site intake flow
 ///   CLI walks. HTML scraping is brittle, so it stays a branch on this path.
-/// - the questionnaire is complete — a redirect to `/lawyer`.
+/// - the questionnaire is complete — a redirect to `/app/lawyer`.
 /// - the notation is gone — a `404`; a runtime failure — a `500`.
 pub(crate) async fn resolve_walker_step(
     state: &AdminState,
@@ -951,7 +951,7 @@ async fn step_json(
     }
 }
 
-/// POST `/lawyer/notations/:id/step` — capture one answer and
+/// POST `/app/lawyer/notations/:id/step` — capture one answer and
 /// advance the questionnaire.
 ///
 /// The runtime is the sole writer of `notation_events`: in
@@ -1012,7 +1012,7 @@ async fn resolved_scalar_answer(
     {
         Ok(crate::intake::ReferenceResolution::Resolved { value, id }) => Ok((value, id)),
         Ok(crate::intake::ReferenceResolution::Rejected(_)) => {
-            Err(Redirect::to(&format!("/lawyer/notations/{notation_id}/step")).into_response())
+            Err(Redirect::to(&format!("/app/lawyer/notations/{notation_id}/step")).into_response())
         }
         Err(e) => {
             tracing::error!(error = %e, %notation_id, "walker: resolve_reference_answer failed");
@@ -1087,7 +1087,7 @@ pub async fn step_post(
         NextStep::NeedsAnswer { .. } => {
             // Round-trip back to GET so the user sees the next
             // question.
-            Redirect::to(&format!("/lawyer/notations/{notation_id}/step")).into_response()
+            Redirect::to(&format!("/app/lawyer/notations/{notation_id}/step")).into_response()
         }
         NextStep::QuestionnaireComplete => {
             // The lawyer completing the walk owns every workflow
@@ -1141,7 +1141,7 @@ pub async fn step_post(
     }
 }
 
-/// POST `/lawyer/notations/:id/transcript` — the batch **transcript input mode**
+/// POST `/app/lawyer/notations/:id/transcript` — the batch **transcript input mode**
 /// of the intake walk. Runs `live_inquiry` coverage over the notation's
 /// template and the uploaded transcript (form field `transcript`), persists
 /// each covered inquiry as a proposed answer (`source = extracted`) via
@@ -1756,7 +1756,7 @@ pub(crate) async fn dispatch_signature(
     Ok((s, id))
 }
 
-/// POST `/lawyer/notations/:id/approve-send` — the attorney
+/// POST `/app/lawyer/notations/:id/approve-send` — the attorney
 /// approves a notation parked at `lawyer_review` (it carried custom
 /// content). This now renders + parks only: it fires `approved` so the
 /// worker durably renders + persists the reviewed bytes and the workflow
@@ -1829,7 +1829,7 @@ pub async fn approve_send_post(
     }
 }
 
-/// POST `/lawyer/notations/:id/send` — dispatch the rendered
+/// POST `/app/lawyer/notations/:id/send` — dispatch the rendered
 /// document for signature. The deliberate, authenticated "send" half of
 /// the pipeline, reached from the browser's "Send for signature" button
 /// and the `navigator retainer send` CLI command.
@@ -1897,7 +1897,7 @@ pub async fn send_post(
     }
 }
 
-/// Resolve the notation review screen for `GET /lawyer/notations/:id/review`, in
+/// Resolve the notation review screen for `GET /app/lawyer/notations/:id/review`, in
 /// the wasm-safe shape the Dioxus page renders (#956 Phase 4).
 ///
 /// The Dioxus route's pre-layer calls this and either injects the result or
@@ -1976,7 +1976,7 @@ pub(crate) async fn resolve_intake_review(
 /// redirect here instead (post/redirect/get). A refresh after dispatching an
 /// envelope therefore re-reads the screen rather than re-posting the send.
 pub(crate) fn back_to_review(notation_id: Uuid) -> Response {
-    Redirect::to(&format!("/lawyer/notations/{notation_id}/review")).into_response()
+    Redirect::to(&format!("/app/lawyer/notations/{notation_id}/review")).into_response()
 }
 
 /// The notation's questionnaire questions as `(state_code, label)` — the
@@ -2008,14 +2008,14 @@ async fn questionnaire_questions(state: &AdminState, notation_id: Uuid) -> Vec<(
     out
 }
 
-/// POST `/lawyer/notations/:id/request-changes` — the "send back for
+/// POST `/app/lawyer/notations/:id/request-changes` — the "send back for
 /// changes" half of `lawyer_review`. Records the flagged question codes +
 /// reviewer note on the attributed journal ([`store::reask`]) and routes
 /// the workflow `changes_requested -> reask__client`, so a rejected review
 /// re-collects the wrong answers instead of dead-ending. `rejected -> END`
 /// stays the separate, deliberate "decline the matter" path.
 /// Why sending a notation back for changes failed. Shared by the lawyer
-/// `/lawyer/notations/{id}/request-changes` form and the
+/// `/app/lawyer/notations/{id}/request-changes` form and the
 /// `/app/api/notations/{id}/request-changes` door.
 #[derive(Debug)]
 pub enum RequestChangesError {
@@ -2109,7 +2109,7 @@ pub async fn request_changes_post(
     )
     .await
     {
-        Ok(()) => Redirect::to(&format!("/lawyer/notations/{notation_id}/reask")).into_response(),
+        Ok(()) => Redirect::to(&format!("/app/lawyer/notations/{notation_id}/reask")).into_response(),
         Err(RequestChangesError::NotationNotFound) => {
             (StatusCode::NOT_FOUND, "notation not found").into_response()
         }
@@ -2131,7 +2131,7 @@ pub async fn request_changes_post(
 }
 
 /// Resolve the lawyer-on-behalf re-ask surface for `GET
-/// /lawyer/notations/:id/reask`, in the wasm-safe shape the Dioxus page renders
+/// /app/lawyer/notations/:id/reask`, in the wasm-safe shape the Dioxus page renders
 /// (#956 Phase 4).
 ///
 /// The Dioxus route's pre-layer calls this and either injects the result or
@@ -2182,13 +2182,13 @@ pub(crate) async fn resolve_reask(
     })
 }
 
-/// POST `/lawyer/notations/:id/reask` — save the re-collected answers (lawyer
+/// POST `/app/lawyer/notations/:id/reask` — save the re-collected answers (lawyer
 /// on the client's behalf) and resubmit for review. Each `a:<code>` field
 /// carries one re-answer; the write is gated to the flagged set by the
 /// shared engine. After saving, fires `intake_resubmitted -> lawyer_review`
 /// so the matter returns to the attorney rather than dead-ending.
 /// Why resubmitting a re-collected notation failed. Shared by the lawyer
-/// `/lawyer/notations/{id}/reask` form and the `/app/api/notations/{id}/reask`
+/// `/app/lawyer/notations/{id}/reask` form and the `/app/api/notations/{id}/reask`
 /// door.
 #[derive(Debug)]
 pub enum ResubmitReaskError {
@@ -2301,7 +2301,7 @@ pub async fn reask_post(
     )
     .await
     {
-        Ok(()) => Redirect::to(&format!("/lawyer/notations/{notation_id}/review")).into_response(),
+        Ok(()) => Redirect::to(&format!("/app/lawyer/notations/{notation_id}/review")).into_response(),
         Err(ResubmitReaskError::NotationNotFound) => {
             (StatusCode::NOT_FOUND, "notation not found").into_response()
         }

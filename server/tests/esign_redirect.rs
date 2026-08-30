@@ -1,4 +1,4 @@
-//! Integration tests for `GET /lawyer/notations/{id}/sign` — the door to the
+//! Integration tests for `GET /app/lawyer/notations/{id}/sign` — the door to the
 //! signing ceremony.
 //!
 //! Navigator does not host the ceremony: the route mints a single-use
@@ -92,7 +92,7 @@ async fn get_sign(app: &axum::Router, notation_id: Uuid) -> axum::http::Response
     app.clone()
         .oneshot(
             Request::builder()
-                .uri(format!("/lawyer/notations/{notation_id}/sign"))
+                .uri(format!("/app/lawyer/notations/{notation_id}/sign"))
                 .header(
                     "authorization",
                     portal::test_support::lawyer_bearer_header(),

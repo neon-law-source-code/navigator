@@ -3,7 +3,7 @@
 //! The credential a browser auto-attaches cross-site is the session
 //! cookie, so that — not the request body's shape — is what a CSRF
 //! defense has to guard. This middleware runs on every state-changing
-//! request under `/app/*`, `/lawyer/*`, and the mutating `/app/api/*`
+//! request under `/app/*` and the mutating `/app/api/*`
 //! routes:
 //!
 //!   - **No session cookie** → pass through. This is the bearer
@@ -61,7 +61,7 @@ pub enum CsrfMode {
     /// closes the cookie-authenticated-JSON hole — a JSON body with no
     /// token no longer slips through on content type.
     Strict,
-    /// The classic `/app` and `/lawyer` form surfaces. Enforce the
+    /// The classic `/app` form surfaces. Enforce the
     /// token on the `X-CSRF-Token` header and the `_csrf` form field, and
     /// pass a bodyless HTMX `DELETE` (which carries neither) through
     /// unchanged. A `multipart/form-data` upload also passes through here

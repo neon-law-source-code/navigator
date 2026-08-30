@@ -1,4 +1,4 @@
-//! `/lawyer/notations/:id/clauses` — the admin clause editor.
+//! `/app/lawyer/notations/:id/clauses` — the admin clause editor.
 //!
 //! Lawyers add, edit, reorder, and remove the custom paragraphs spliced
 //! into a single notation's assembled document (at the template body's
@@ -33,10 +33,10 @@ async fn flow_label(state: &AdminState, notation_id: Uuid) -> Option<String> {
 }
 
 fn redirect_to_clauses(notation_id: Uuid) -> Response {
-    Redirect::to(&format!("/lawyer/notations/{notation_id}/clauses")).into_response()
+    Redirect::to(&format!("/app/lawyer/notations/{notation_id}/clauses")).into_response()
 }
 
-/// `GET /lawyer/notations/:id/clauses?format=json` — the thin JSON surface the
+/// `GET /app/lawyer/notations/:id/clauses?format=json` — the thin JSON surface the
 /// `navigator retainer clause list` CLI consumes (the same `format=json`
 /// convention as the notation review route).
 ///
@@ -78,7 +78,7 @@ pub struct ClauseBody {
     pub body: String,
 }
 
-/// `POST /lawyer/notations/:id/clauses` — append one clause.
+/// `POST /app/lawyer/notations/:id/clauses` — append one clause.
 pub async fn clause_add(
     State(state): State<AdminState>,
     Path(notation_id): Path<Uuid>,
@@ -98,7 +98,7 @@ pub async fn clause_add(
     redirect_to_clauses(notation_id)
 }
 
-/// `POST /lawyer/notations/:id/clauses/:cid/edit` — replace a
+/// `POST /app/lawyer/notations/:id/clauses/:cid/edit` — replace a
 /// clause's body.
 pub async fn clause_edit(
     State(state): State<AdminState>,
@@ -116,7 +116,7 @@ pub async fn clause_edit(
     redirect_to_clauses(notation_id)
 }
 
-/// `POST /lawyer/notations/:id/clauses/:cid/delete`.
+/// `POST /app/lawyer/notations/:id/clauses/:cid/delete`.
 pub async fn clause_delete(
     State(state): State<AdminState>,
     Path((notation_id, clause_id)): Path<(Uuid, Uuid)>,
@@ -134,7 +134,7 @@ pub struct MoveBody {
     pub direction: String,
 }
 
-/// `POST /lawyer/notations/:id/clauses/:cid/move` — swap a clause
+/// `POST /app/lawyer/notations/:id/clauses/:cid/move` — swap a clause
 /// with its neighbour (`direction=up|down`).
 pub async fn clause_move(
     State(state): State<AdminState>,

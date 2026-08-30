@@ -486,7 +486,7 @@ pub async fn exists_with_value(
     Ok(one(response)?.is_some())
 }
 
-/// Every answer, oldest first — the `/lawyer/answers` transparency listing.
+/// Every answer, oldest first — the `/app/lawyer/answers` transparency listing.
 ///
 /// # Errors
 ///

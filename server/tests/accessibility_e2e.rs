@@ -205,7 +205,7 @@ fn audit_urls(declared: &[&str]) -> Vec<String> {
         .collect()
 }
 
-/// One representative of each portal/lawyer page archetype.
+/// One representative of each portal/app/lawyer page archetype.
 ///
 /// Sampled rather than enumerated, per the scoping note above: `/app/admin/entities`
 /// and `/app/admin/addresses` are the same listing component over different rows,
@@ -241,14 +241,14 @@ const PORTAL_ARCHETYPE_ROUTES: &[&str] = &[
 const LAWYER_FORM_ROUTES: &[&str] = &[
     "/app/admin/entities/new",
     "/app/projects/new",
-    "/lawyer/retainers/new",
+    "/app/lawyer/retainers/new",
     // Beyond the four this suite has gated since #120: the playbook create
     // form, which is the only one carrying a textarea.
     //
     // `/app/admin/people/new` is not here for the same reason `/app/admin` is not
     // an archetype: it is admin-only, and the fixture is `lawyer`, so auditing
     // it would silently audit the 403 instead of the form. Since ENG-304 deleted
-    // the `/lawyer/people/new` mirror, that is the whole people-form surface, so
+    // the `/app/lawyer/people/new` mirror, that is the whole people-form surface, so
     // this suite no longer audits one — the four below share the same
     // `FormCard`, and the component is audited at `/design`.
     "/app/admin/playbooks/new",

@@ -68,7 +68,7 @@ pub enum ViewerRole {
 }
 
 impl ViewerRole {
-    /// The lawyer tiers that reach the `/lawyer` workspace.
+    /// The lawyer tiers that reach the `/app/lawyer` workspace.
     /// mirroring `store::persons::Role::is_lawyer_tier`.
     #[must_use]
     pub fn is_lawyer_tier(self) -> bool {

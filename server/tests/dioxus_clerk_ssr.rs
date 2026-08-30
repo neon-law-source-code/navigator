@@ -236,7 +236,7 @@ async fn clerk_list_ssrs_supervised_matters_and_names_the_supervisor() {
     // is a card on the shared `/app/team` home rather than a list item here.
     // The route still admits a Clerk; only the link moved.
     assert!(
-        !html.contains("/lawyer/fonts/gorp-serif.zip"),
+        !html.contains("/app/lawyer/fonts/gorp-serif.zip"),
         "the brand-font download lives on `/app/team`, not the matter list: {html}",
     );
 }
@@ -261,7 +261,7 @@ async fn clerk_list_empty_state_explains_how_a_matter_appears() {
         "the empty state must explain how a matter appears: {html}",
     );
     assert!(
-        !html.contains("/lawyer/fonts/gorp-serif.zip"),
+        !html.contains("/app/lawyer/fonts/gorp-serif.zip"),
         "the empty list carries no brand-asset section either: {html}",
     );
 }

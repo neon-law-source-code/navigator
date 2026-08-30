@@ -142,7 +142,7 @@ async fn nest_walker_json_step_and_document_download_drive_the_formation() {
     let resp = post(
         &app,
         &bearer,
-        "/lawyer/retainers/new",
+        "/app/lawyer/retainers/new",
         format!(
             "client_email={}&retainer_template_code=nv__llc_formation",
             enc("libra@example.com"),
@@ -161,11 +161,11 @@ async fn nest_walker_json_step_and_document_download_drive_the_formation() {
         .unwrap()
         .to_string();
     let notation_id = location
-        .strip_prefix("/lawyer/notations/")
+        .strip_prefix("/app/lawyer/notations/")
         .and_then(|s| s.strip_suffix("/step"))
         .expect("redirect names the notation's step")
         .to_string();
-    let step_uri = format!("/lawyer/notations/{notation_id}/step");
+    let step_uri = format!("/app/lawyer/notations/{notation_id}/step");
 
     // The first JSON step is `person__client`, not complete.
     let first: Value = serde_json::from_str(
@@ -238,7 +238,7 @@ async fn nest_walker_json_step_and_document_download_drive_the_formation() {
     let review_status = |app: &axum::Router, bearer: &str| {
         let app = app.clone();
         let bearer = bearer.to_string();
-        let uri = format!("/lawyer/notations/{notation_id}/review?format=json");
+        let uri = format!("/app/lawyer/notations/{notation_id}/review?format=json");
         async move {
             serde_json::from_str::<Value>(&body_string(get(&app, &bearer, &uri).await).await)
                 .unwrap()
@@ -253,7 +253,7 @@ async fn nest_walker_json_step_and_document_download_drive_the_formation() {
     let resp = post(
         &app,
         &bearer,
-        &format!("/lawyer/notations/{notation_id}/approve-send"),
+        &format!("/app/lawyer/notations/{notation_id}/approve-send"),
         String::new(),
     )
     .await;
@@ -278,7 +278,7 @@ async fn nest_walker_json_step_and_document_download_drive_the_formation() {
     let resp = post(
         &app,
         &bearer,
-        &format!("/lawyer/notations/{notation_id}/send"),
+        &format!("/app/lawyer/notations/{notation_id}/send"),
         String::new(),
     )
     .await;
@@ -294,7 +294,7 @@ async fn nest_walker_json_step_and_document_download_drive_the_formation() {
     let resp = get(
         &app,
         &bearer,
-        &format!("/lawyer/notations/{notation_id}/documents/document"),
+        &format!("/app/lawyer/notations/{notation_id}/documents/document"),
     )
     .await;
     assert_eq!(resp.status(), StatusCode::OK, "document download succeeds");

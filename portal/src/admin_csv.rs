@@ -1,4 +1,4 @@
-//! CSV export helpers for `/lawyer/*.csv` and `/app/projects.csv` endpoints.
+//! CSV export helpers for `/app/admin/*.csv` and `/app/projects.csv` endpoints.
 //!
 //! Writes RFC 4180 — fields are wrapped in `"` only when they
 //! contain `,`, `"`, `\n`, or `\r`; internal `"` is doubled. Rows

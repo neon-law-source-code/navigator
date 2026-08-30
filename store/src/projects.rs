@@ -2639,7 +2639,7 @@ mod surreal_read_tests {
     }
 
     /// The lens is admin-tier only. A `lawyer` caller gets nothing from
-    /// it — the firm-wide directory is not a wider `/lawyer` read.
+    /// it — the firm-wide directory is not a wider `/app/lawyer` read.
     #[tokio::test]
     async fn the_directory_is_closed_to_every_tier_below_admin() {
         let surreal = mem_surreal().await;

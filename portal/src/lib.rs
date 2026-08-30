@@ -716,8 +716,8 @@ async fn public_asset(State(state): State<AppState>, AxumPath(key): AxumPath<Str
 /// the notation gallery with its raw markdown. They
 /// are Navigator tools, not a brand's public pages, so they compose behind
 /// [`session_boundary`]. A host that wants a public excerpt republishes it as
-/// its own page. The rest of composition 2 — `/lawyer`, `/admin`,
-/// `/app`, the JSON API, the API documentation, and the Dioxus pages — has
+/// its own page. The rest of composition 2 — `/app`,
+/// the JSON API, the API documentation, and the Dioxus pages — has
 /// its own router state and joins the boundary in [`bootstrap`].
 fn shared_human_routes() -> Router<AppState> {
     Router::new().route("/app/api/templates/{*path}", get(api_template_raw))
@@ -768,7 +768,7 @@ pub fn bootstrap(
     // AFTER `inject_bearer_session` has resolved any bearer credential):
     // a cookie-authenticated JSON write must carry a valid CSRF token,
     // while a bearer write stays exempt — the same credential-keyed rule
-    // the `/app` and `/lawyer` form routers apply. Without it a
+    // the `/app` and `/app/lawyer` form routers apply. Without it a
     // cookie-authenticated `hx-post` of JSON to a mutating `/app/api/*` route
     // would bypass CSRF entirely.
     let api = session_boundary(
@@ -857,7 +857,7 @@ pub fn bootstrap(
         state.auth.clone(),
     );
     // #956 Phase 4: the per-notation clause editor renders through Dioxus at
-    // /lawyer/notations/{id}/clauses. Its pre-layer keeps answering the
+    // /app/lawyer/notations/{id}/clauses. Its pre-layer keeps answering the
     // `?format=json` list the `navigator retainer clause list` CLI reads; every
     // mutation stays on the handlers below, which already redirect back here.
     let dioxus_clause_editor = dioxus_app::clause_editor_router(
@@ -914,7 +914,7 @@ pub fn bootstrap(
         });
     let dioxus_template_entry = dioxus_app::template_entry_router();
     // #956 Phase 4: the lawyer questionnaire walker step renders through Dioxus
-    // at /lawyer/notations/{id}/step. Its pre-layer resolves the step from the
+    // at /app/lawyer/notations/{id}/step. Its pre-layer resolves the step from the
     // questionnaire runtime (which needs `workflows`, so it cannot happen in
     // `webapp`) and keeps answering the `?format=json` surface the
     // site intake walks.
@@ -925,7 +925,7 @@ pub fn bootstrap(
         state.auth.clone(),
     );
     // #956 Phase 4: the notation review-and-send screen renders through Dioxus
-    // at /lawyer/notations/{id}/review. Its pre-layer assembles the document
+    // at /app/lawyer/notations/{id}/review. Its pre-layer assembles the document
     // (which needs `workflows` and storage, so it cannot happen in `webapp`)
     // and keeps answering the `?format=json` status surface the
     // `navigator notation status` CLI reads. Approve / send / request-changes
@@ -937,7 +937,7 @@ pub fn bootstrap(
         state.auth.clone(),
     );
     // #956 Phase 4: the lawyer re-ask screen renders through Dioxus at
-    // /lawyer/notations/{id}/reask. Its pre-layer resolves the flagged set and
+    // /app/lawyer/notations/{id}/reask. Its pre-layer resolves the flagged set and
     // owns both the 404 and the bounce to review when nothing is parked; the
     // save POST stays on the handler below.
     let dioxus_reask = dioxus_app::reask_router(
@@ -1184,7 +1184,7 @@ pub fn bootstrap(
         state.auth.clone(),
     );
     // #956 Phase 4: the admin governed-expunge confirmation + result renders
-    // through Dioxus at `/lawyer/documents/{doc_id}/expunge`. Its form posts to
+    // through Dioxus at `/app/lawyer/documents/{doc_id}/expunge`. Its form posts to
     // the unchanged `POST` handler, which redirects back here with `?record=`
     // or `?error=`; the loader is admin-only and 404s every other tier.
     let dioxus_expunge_document = dioxus_app::csrf_page_router(
@@ -1196,7 +1196,7 @@ pub fn bootstrap(
         state.auth.clone(),
     );
     // #956 Phase 4: the attorney contract-review screen renders through Dioxus
-    // at `/lawyer/contract-reviews/{id}`. Its per-finding, summary, approve, and
+    // at `/app/lawyer/contract-reviews/{id}`. Its per-finding, summary, approve, and
     // reject forms post to the unchanged handlers on deeper paths.
     let dioxus_contract_review = dioxus_app::contract_review_router(
         state.surreal.clone(),
@@ -1217,7 +1217,7 @@ pub fn bootstrap(
     );
     // #956 Phase 4: the "start a retainer walk" form — the lawyer on-ramp that
     // opens a matter — renders through Dioxus. It posts to the unchanged
-    // `POST /lawyer/retainers/new`, which now redirects a refusal back here with
+    // `POST /app/lawyer/retainers/new`, which now redirects a refusal back here with
     // an `?error=` flash instead of re-rendering the form itself.
     let dioxus_retainer_start = dioxus_app::csrf_page_router(
         dioxus_app::LAWYER_RETAINER_NEW_PATH,
@@ -1253,7 +1253,7 @@ pub fn bootstrap(
     // stay on `admin_playbooks`; axum merges the same-path methods. Both now
     // redirect a refusal back to the form with an `?error=` flash and the
     // rejected positions text instead of re-rendering inline.
-    // #956 Phase 4: the lawyer workbench at `/lawyer` renders through Dioxus —
+    // #956 Phase 4: the lawyer workbench at `/app/lawyer` renders through Dioxus —
     // the project KPI overview, the calendar placeholder, and the
     // administrative directory. Person-scoped like the lawyer projects list, so
     // the counts and the matter list are the caller's workload.
@@ -1610,7 +1610,7 @@ pub fn bootstrap(
         dioxus_contract_review,
         dioxus_entity_new,
         // The "start a retainer walk" form (#956 Phase 4) renders through
-        // Dioxus at `/lawyer/retainers/new`; the `POST` on the same path stays
+        // Dioxus at `/app/lawyer/retainers/new`; the `POST` on the same path stays
         // on the existing handler, which axum merges with this GET.
         dioxus_retainer_start,
         dioxus_entity_edit,
@@ -1619,7 +1619,7 @@ pub fn bootstrap(
         // through Dioxus at `/app/admin/playbooks`, `/app/admin/playbooks/new`, and
         // `/app/admin/playbooks/{id}/edit`; the two write `POST`s stay on
         // `admin_playbooks`, which axum merges onto the same paths.
-        // The lawyer workbench (#956 Phase 4) renders through Dioxus at `/lawyer`,
+        // The lawyer workbench (#956 Phase 4) renders through Dioxus at `/app/lawyer`,
         // replacing the dashboard.
         dioxus_lawyer_dashboard,
         dioxus_harvard_outline,
@@ -1662,19 +1662,19 @@ pub fn bootstrap(
         // Dioxus at `/app/projects/{project_code}/intake/{notation_id}`.
         dioxus_client_intake,
         // The lawyer walker step (#956 Phase 4) renders through Dioxus at
-        // `/lawyer/notations/{id}/step`.
+        // `/app/lawyer/notations/{id}/step`.
         dioxus_walker_step,
         // The notation review-and-send screen (#956 Phase 4) renders through
-        // Dioxus at `/lawyer/notations/{id}/review`.
+        // Dioxus at `/app/lawyer/notations/{id}/review`.
         dioxus_intake_review,
         // The lawyer re-ask screen (#956 Phase 4) renders through Dioxus at
-        // `/lawyer/notations/{id}/reask`.
+        // `/app/lawyer/notations/{id}/reask`.
         dioxus_reask,
         dioxus_admin_people_new,
         dioxus_admin_person_show,
         // The supervised Clerk surface (#956 Phase 4) renders through Dioxus at
         // The per-notation clause editor (#956 Phase 4) renders through Dioxus
-        // at `/lawyer/notations/{id}/clauses`.
+        // at `/app/lawyer/notations/{id}/clauses`.
         dioxus_clause_editor,
         dioxus_app_docs_index,
         dioxus_app_doc,
@@ -2081,7 +2081,6 @@ pub const RESERVED_PATH_PREFIXES: &[&str] = &[
     "/public",
     "/dioxus-demo",
     "/app",
-    "/lawyer",
     "/auth",
     "/mcp",
     "/docs",
@@ -2502,7 +2501,6 @@ const CRAWLER_DISALLOW_BLOCK: &str = "\
 User-agent: *
 Disallow: /app
 Disallow: /admin
-Disallow: /lawyer
 Disallow: /auth
 Disallow: /mcp
 Disallow: /docs

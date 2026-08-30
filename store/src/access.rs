@@ -194,7 +194,7 @@ pub async fn visible_projects(
 ///
 /// This is intentionally narrower than "has any participation row":
 /// firm-side participation such as `attorney` or `paralegal` belongs to
-/// `/lawyer`, not the client lens.
+/// `/app/lawyer`, not the client lens.
 pub async fn visible_projects_as_client(
     surreal: &SurrealDb,
     person_id: Option<Uuid>,
@@ -665,7 +665,7 @@ mod tests {
 
     /// The firm lens is the complement of the client-side set, not an
     /// allowlist — so participation kinds the firm has not coined yet still
-    /// reach `/lawyer`. Closing this vocabulary would silently drop each new
+    /// reach `/app/lawyer`. Closing this vocabulary would silently drop each new
     /// kind out of the firm lens the day it was coined.
     #[tokio::test]
     async fn firm_side_visibility_survives_an_unforeseen_participation_kind() {

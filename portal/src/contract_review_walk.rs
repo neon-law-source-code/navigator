@@ -24,7 +24,7 @@
 //!
 //! Authorization: the upload route is row-scoped to the Project (a
 //! non-participant gets `404`, never `403`); the admin review surface lives
-//! under `/lawyer/*` and is gated by embedded Rego policy's `lawyer_tier` rule.
+//! under `/app/lawyer/*` and is gated by embedded Rego policy's `lawyer_tier` rule.
 
 use std::sync::Arc;
 
@@ -164,7 +164,7 @@ pub async fn upload(
     .await
     {
         Ok(review_id) => {
-            Redirect::to(&format!("/lawyer/contract-reviews/{review_id}")).into_response()
+            Redirect::to(&format!("/app/lawyer/contract-reviews/{review_id}")).into_response()
         }
         Err(ContractReviewError::NoPlaybook) => (
             StatusCode::UNPROCESSABLE_ENTITY,

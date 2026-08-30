@@ -204,7 +204,7 @@ async fn dioxus_document_head(req: Request, next: Next) -> Response {
     };
 
     // The widget rides public pages only, while the authenticated `/app` and
-    // `/lawyer` surfaces render `NavigatorShell` and are left alone, so the
+    // `/app/lawyer` surfaces render `NavigatorShell` and are left alone, so the
     // pages that display a client's matter keep the strict same-origin policy.
     let chat = CHATWOOT.as_ref().filter(|_| is_public_page(&html));
     let html = match chat {
@@ -280,7 +280,7 @@ fn is_public_page(html: &str) -> bool {
 /// public pages keep the firm-branded icon selected by
 /// [`webapp::components::SiteHeader`].
 fn is_navigator_page(path: &str) -> bool {
-    ["/navigator", "/app", "/lawyer"]
+    ["/navigator", "/app"]
         .iter()
         .any(|prefix| path == *prefix || path.starts_with(&format!("{prefix}/")))
 }
@@ -798,7 +798,7 @@ pub fn projects_router(
         .route_layer(from_fn_with_state(auth, crate::auth::require_auth))
 }
 
-/// The firm dashboard. Moved off `/lawyer` onto `/app/lawyer` with the rest of
+/// The firm dashboard. Moved off `/app/lawyer` onto `/app/lawyer` with the rest of
 /// the collapse; the tier gate is the handler's, not the prefix's. Its
 /// `?sort=`/`?dir=`/`?status=`/`?page=` query is deliberately lenient (an
 /// unrecognised value falls back to the default), so unlike the sortable
@@ -1388,7 +1388,7 @@ pub fn client_intake_router(
 /// spliced into one matter's assembled document. Every mutation (`POST` on this
 /// path and on `…/{cid}/edit|move|delete`) stays on the existing handlers, which
 /// already redirect back here.
-pub const LAWYER_CLAUSES_PATH: &str = "/lawyer/notations/{id}/clauses";
+pub const LAWYER_CLAUSES_PATH: &str = "/app/lawyer/notations/{id}/clauses";
 
 /// Answer `?format=json` on the clause-editor path before the render runs.
 ///
@@ -1416,7 +1416,7 @@ async fn clause_editor_json_or_render(
     }
 }
 
-/// Parse the notation id out of `/lawyer/notations/{id}/<leaf>`. These layers run
+/// Parse the notation id out of `/app/lawyer/notations/{id}/<leaf>`. These layers run
 /// before the route's own path extraction, so they read the segment themselves.
 fn notation_id_from_path(req: &Request) -> Option<uuid::Uuid> {
     req.uri()
@@ -1468,7 +1468,7 @@ pub fn clause_editor_router(
 /// The lawyer questionnaire walker path (#956 Phase 4) — one question at a time
 /// on a notation. The answer `POST` on the same path stays on the existing
 /// handler, which already redirects; axum merges the two method routes.
-pub const LAWYER_WALKER_STEP_PATH: &str = "/lawyer/notations/{id}/step";
+pub const LAWYER_WALKER_STEP_PATH: &str = "/app/lawyer/notations/{id}/step";
 
 /// Resolve the current walker step and inject it as
 /// [`webapp::walker_step::InjectedWalkerStep`].
@@ -1542,7 +1542,7 @@ pub fn walker_step_router(
 /// the assembled document and decides. Every action on it (`approve-send`,
 /// `send`, `request-changes`) stays a `POST` on its own path and redirects back
 /// here.
-pub const LAWYER_INTAKE_REVIEW_PATH: &str = "/lawyer/notations/{id}/review";
+pub const LAWYER_INTAKE_REVIEW_PATH: &str = "/app/lawyer/notations/{id}/review";
 
 /// Resolve the review screen and inject it as
 /// [`webapp::intake_review::InjectedIntakeReview`].
@@ -1618,7 +1618,7 @@ pub fn intake_review_router(
 /// The lawyer-on-behalf re-ask path (#956 Phase 4) — re-collect the answers a
 /// review flagged. The save `POST` on the same path stays on the existing
 /// handler, which already redirects; axum merges the two method routes.
-pub const LAWYER_REASK_PATH: &str = "/lawyer/notations/{id}/reask";
+pub const LAWYER_REASK_PATH: &str = "/app/lawyer/notations/{id}/reask";
 
 /// Resolve the re-ask screen and inject it as [`webapp::reask::InjectedReask`].
 ///
@@ -1844,7 +1844,7 @@ pub fn entity_types_router(
 
 /// The lawyer expunge-request queue path (#641 Phase 3) — the read view; the
 /// authorize/deny mutations keep their own `POST` routes.
-pub const LAWYER_EXPUNGE_QUEUE_PATH: &str = "/lawyer/expunge-requests";
+pub const LAWYER_EXPUNGE_QUEUE_PATH: &str = "/app/lawyer/expunge-requests";
 
 /// The gated Dioxus lawyer expunge-request queue (#641 Phase 3) — the first
 /// row-action page. Its rows post to the existing authorize/deny handlers
@@ -1889,12 +1889,12 @@ pub fn expunge_queue_router(
 /// form and, after the `POST` redirects back with `?record=`, the audit-row
 /// result. The `POST` itself stays on the admin router; axum merges the
 /// same-path methods.
-pub const LAWYER_DOCUMENT_EXPUNGE_PATH: &str = "/lawyer/documents/{doc_id}/expunge";
+pub const LAWYER_DOCUMENT_EXPUNGE_PATH: &str = "/app/lawyer/documents/{doc_id}/expunge";
 
 /// The attorney contract-review path (#956 Phase 4) — the read screen. Its four
 /// mutations (`…/findings/{idx}`, `…/summary`, `…/approve`, `…/reject`) stay on
 /// the admin router; axum routes them by their deeper paths.
-pub const LAWYER_CONTRACT_REVIEW_PATH: &str = "/lawyer/contract-reviews/{id}";
+pub const LAWYER_CONTRACT_REVIEW_PATH: &str = "/app/lawyer/contract-reviews/{id}";
 
 /// The gated Dioxus attorney contract-review screen (#956 Phase 4). Like
 /// [`csrf_page_router`] — its findings, summary, approve, and reject forms are
@@ -1954,9 +1954,9 @@ pub const ADMIN_PERSON_EDIT_PATH: &str = "/app/admin/people/{id}/edit";
 /// the entity `{id}`; it posts to the `POST /app/admin/entities/{id}` update handler.
 pub const LAWYER_ENTITY_EDIT_PATH: &str = "/app/admin/entities/{id}/edit";
 /// The "start a retainer walk" form path (#956 Phase 4) — the lawyer on-ramp that
-/// opens a matter. `POST /lawyer/retainers/new` (the create) stays on the
+/// opens a matter. `POST /app/lawyer/retainers/new` (the create) stays on the
 /// `retainer_walk` handler; axum merges the two same-path method routes.
-pub const LAWYER_RETAINER_NEW_PATH: &str = "/lawyer/retainers/new";
+pub const LAWYER_RETAINER_NEW_PATH: &str = "/app/lawyer/retainers/new";
 
 /// Build a gated Dioxus router for a CRUD page that renders `POST` forms (#641
 /// Phase 3): like [`admin_listing_router`] but with the extra `inject_csrf_token`
@@ -2186,21 +2186,21 @@ pub const LAWYER_JURISDICTIONS_PATH: &str = "/app/admin/jurisdictions";
 /// See [`LAWYER_JURISDICTIONS_PATH`].
 pub const LAWYER_GIT_REPOSITORIES_PATH: &str = "/app/admin/git-repositories";
 /// See [`LAWYER_JURISDICTIONS_PATH`].
-pub const LAWYER_PERSON_ENTITY_ROLES_PATH: &str = "/lawyer/person-entity-roles";
+pub const LAWYER_PERSON_ENTITY_ROLES_PATH: &str = "/app/lawyer/person-entity-roles";
 /// See [`LAWYER_JURISDICTIONS_PATH`].
-pub const LAWYER_NOTATIONS_PATH: &str = "/lawyer/notations";
+pub const LAWYER_NOTATIONS_PATH: &str = "/app/lawyer/notations";
 /// See [`LAWYER_JURISDICTIONS_PATH`].
-pub const LAWYER_ANSWERS_PATH: &str = "/lawyer/answers";
+pub const LAWYER_ANSWERS_PATH: &str = "/app/lawyer/answers";
 /// See [`LAWYER_JURISDICTIONS_PATH`].
 pub const LAWYER_ADDRESSES_PATH: &str = "/app/admin/addresses";
 /// See [`LAWYER_JURISDICTIONS_PATH`].
-pub const LAWYER_ASSETS_PATH: &str = "/lawyer/assets";
+pub const LAWYER_ASSETS_PATH: &str = "/app/lawyer/assets";
 /// See [`LAWYER_JURISDICTIONS_PATH`].
-pub const LAWYER_PERSON_PROJECT_ROLES_PATH: &str = "/lawyer/person-project-roles";
+pub const LAWYER_PERSON_PROJECT_ROLES_PATH: &str = "/app/lawyer/person-project-roles";
 /// See [`LAWYER_JURISDICTIONS_PATH`].
-pub const LAWYER_DISCLOSURES_PATH: &str = "/lawyer/disclosures";
+pub const LAWYER_DISCLOSURES_PATH: &str = "/app/lawyer/disclosures";
 /// See [`LAWYER_JURISDICTIONS_PATH`].
-pub const LAWYER_RELATIONSHIP_LOGS_PATH: &str = "/lawyer/relationship-logs";
+pub const LAWYER_RELATIONSHIP_LOGS_PATH: &str = "/app/lawyer/relationship-logs";
 /// See [`LAWYER_JURISDICTIONS_PATH`].
 pub const LAWYER_MAILROOMS_PATH: &str = "/app/admin/mailrooms";
 /// See [`LAWYER_JURISDICTIONS_PATH`].
@@ -2209,7 +2209,7 @@ pub const LAWYER_LETTERS_PATH: &str = "/app/admin/letters";
 pub const LAWYER_EMAIL_LOG_PATH: &str = "/app/admin/email-log";
 /// The letter-detail page — a single record keyed by the `{id}` path param, not
 /// a listing, but mounted through the same gated-component factory.
-pub const LAWYER_LETTER_DETAIL_PATH: &str = "/lawyer/letters/{id}";
+pub const LAWYER_LETTER_DETAIL_PATH: &str = "/app/lawyer/letters/{id}";
 /// The `/admin` console hub — a link table, not a listing, but it needs exactly
 /// the same auth + policy + viewer-role stack, so it mounts through the same
 /// gated-component factory. Its component re-checks for admin.
@@ -3613,7 +3613,7 @@ mod tests {
         assert!(!renders_app_footer("/blog"));
         assert!(!renders_app_footer("/docs"));
         assert!(renders_app_footer("/app/admin/entity-types"));
-        assert!(!renders_app_footer("/lawyer/notations"));
+        assert!(renders_app_footer("/app/lawyer/notations"));
         assert!(!renders_app_footer("/app"));
     }
 
@@ -3873,7 +3873,7 @@ mod tests {
     ///
     /// Both roots carry `nav-theme`, in opposite order, which is exactly the
     /// substring match this must not be: a looser test would put a support-chat
-    /// bubble on every `/app` and `/lawyer` page and widen those pages' CSP to
+    /// bubble on every `/app` and `/app/lawyer` page and widen those pages' CSP to
     /// a third-party origin. Both literals are the rendered roots asserted by
     /// the shells' own component tests.
     #[test]

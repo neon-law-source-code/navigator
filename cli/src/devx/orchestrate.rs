@@ -959,7 +959,7 @@ fn print_chrome_summary(cfg: &KindConfig) {
     eprintln!("Walk the retainer in Chrome:");
     eprintln!("  http://localhost:{web}                    — navigator home");
     eprintln!("  http://localhost:{web}/auth/login  — OIDC flow");
-    eprintln!("  http://localhost:{web}/lawyer/retainers/new — start a stepwise walk");
+    eprintln!("  http://localhost:{web}/app/lawyer/retainers/new — start a stepwise walk");
     eprintln!();
     eprintln!("Inspect the workflow journal directly from the host:");
     eprintln!();

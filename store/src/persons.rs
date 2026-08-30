@@ -101,7 +101,7 @@ pub enum Role {
     /// not an employment, email-domain, or source-forge membership grant.
     Lawyer,
     /// A supervised non-lawyer firm worker. This role is intentionally
-    /// outside the lawyer tier and receives no `/lawyer`, MCP, Git, or
+    /// outside the lawyer tier and receives no `/app/lawyer`, MCP, Git, or
     /// legal-work authority merely by existing. Narrow Clerk project work
     /// must name its own route and supervision boundary.
     Clerk,
@@ -172,7 +172,7 @@ impl Role {
     }
 
     /// `true` for `Lawyer`, `Admin`, and `Owner` — the lawyer tiers that gate
-    /// `/lawyer/*` legal work. Clerk is deliberately excluded: its
+    /// `/app/lawyer/*` legal work. Clerk is deliberately excluded: its
     /// non-lawyer work must be granted by a separate, supervised capability.
     #[must_use]
     pub fn is_lawyer_tier(self) -> bool {

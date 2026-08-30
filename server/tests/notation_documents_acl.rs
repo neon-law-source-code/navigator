@@ -157,7 +157,7 @@ async fn notation_pdfs_are_gated_by_project_participation_and_listed_on_the_proj
 
     let doc_uri = format!("/app/notations/{notation_id}/documents/retainer");
     let signed_uri = format!("/app/notations/{notation_id}/documents/signed");
-    let lawyer_doc_uri = format!("/lawyer/notations/{notation_id}/documents/retainer");
+    let lawyer_doc_uri = format!("/app/lawyer/notations/{notation_id}/documents/retainer");
 
     // (1) The spouse (participant, NOT the owner) can download both PDFs.
     let spouse_cookie = cookie_for(&f.sessions, Role::Client, Some(spouse));

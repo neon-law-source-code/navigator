@@ -79,7 +79,7 @@ async fn open_matter(world: &mut FormationWorld, code: String) {
     );
     let resp = world
         .journey()
-        .lawyer_post("/lawyer/retainers/new", body)
+        .lawyer_post("/app/lawyer/retainers/new", body)
         .await;
     let location = resp.location.unwrap_or_else(|| {
         panic!(
@@ -88,7 +88,7 @@ async fn open_matter(world: &mut FormationWorld, code: String) {
         )
     });
     let id = location
-        .strip_prefix("/lawyer/notations/")
+        .strip_prefix("/app/lawyer/notations/")
         .and_then(|s| s.strip_suffix("/step"))
         .unwrap_or_else(|| panic!("unexpected redirect target: {location}"));
     world.notation_id = Some(Uuid::parse_str(id).expect("notation id in redirect is a UUID"));
@@ -97,7 +97,7 @@ async fn open_matter(world: &mut FormationWorld, code: String) {
 #[when("the founder answers the formation questionnaire:")]
 async fn answer_questionnaire(world: &mut FormationWorld, step: &Step) {
     let table = step.table.as_ref().expect("scenario has a data table");
-    let path = format!("/lawyer/notations/{}/step", world.notation_id());
+    let path = format!("/app/lawyer/notations/{}/step", world.notation_id());
     // First row is the `value` header; skip it.
     for row in table.rows.iter().skip(1) {
         let value = row.first().expect("each row carries one cell").as_str();
@@ -139,7 +139,7 @@ async fn attorney_approves_and_sends(world: &mut FormationWorld) {
     for action in ["approve-send", "send"] {
         let resp = world
             .journey()
-            .lawyer_post(&format!("/lawyer/notations/{id}/{action}"), String::new())
+            .lawyer_post(&format!("/app/lawyer/notations/{id}/{action}"), String::new())
             .await;
         assert!(
             resp.status.is_success() || resp.status.is_redirection(),

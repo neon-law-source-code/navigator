@@ -104,7 +104,7 @@ async fn open_matter(world: &mut NaturalizationWorld, code: String) {
     );
     let resp = world
         .journey()
-        .lawyer_post("/lawyer/retainers/new", body)
+        .lawyer_post("/app/lawyer/retainers/new", body)
         .await;
     let location = resp.location.unwrap_or_else(|| {
         panic!(
@@ -112,9 +112,9 @@ async fn open_matter(world: &mut NaturalizationWorld, code: String) {
             resp.status
         )
     });
-    // `/lawyer/notations/<uuid>/step`
+    // `/app/lawyer/notations/<uuid>/step`
     let id = location
-        .strip_prefix("/lawyer/notations/")
+        .strip_prefix("/app/lawyer/notations/")
         .and_then(|s| s.strip_suffix("/step"))
         .unwrap_or_else(|| panic!("unexpected redirect target: {location}"));
     world.notation_id = Some(Uuid::parse_str(id).expect("notation id in redirect is a UUID"));
@@ -123,7 +123,7 @@ async fn open_matter(world: &mut NaturalizationWorld, code: String) {
 #[when("the applicant answers the naturalization questionnaire:")]
 async fn answer_questionnaire(world: &mut NaturalizationWorld, step: &Step) {
     let table = step.table.as_ref().expect("scenario has a data table");
-    let path = format!("/lawyer/notations/{}/step", world.notation_id());
+    let path = format!("/app/lawyer/notations/{}/step", world.notation_id());
     // First row is the `value` header; skip it. Every N-400 intake answer
     // is a scalar (string / date / radio choice / yes_no), so each posts as
     // the step form's single `value` field.
@@ -149,7 +149,7 @@ async fn attorney_approves_and_sends(world: &mut NaturalizationWorld) {
     for action in ["approve-send", "send"] {
         let resp = world
             .journey()
-            .lawyer_post(&format!("/lawyer/notations/{id}/{action}"), String::new())
+            .lawyer_post(&format!("/app/lawyer/notations/{id}/{action}"), String::new())
             .await;
         assert!(
             resp.status.is_success() || resp.status.is_redirection(),

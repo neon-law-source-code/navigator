@@ -514,7 +514,7 @@ pub async fn kinds_by_projects(
         .collect())
 }
 
-/// Every asset, newest first — the `/lawyer/assets` transparency listing.
+/// Every asset, newest first — the `/app/lawyer/assets` transparency listing.
 ///
 /// Unbounded. That is a real
 /// cost on a large deployment and the reason this is not a hot path: it is

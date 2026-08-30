@@ -12,7 +12,7 @@
 //!      parks the PDF at `generate_pdf__retainer_pdf` (no envelope yet);
 //!      the separate `send` then dispatches exactly one envelope. A `send`
 //!      attempted before the PDF is rendered returns `409`.
-//!   2. `GET /lawyer/notations/:id/review?format=json` returns the
+//!   2. `GET /app/lawyer/notations/:id/review?format=json` returns the
 //!      workflow state, signature request id, and `document_ready` (the
 //!      `notation status` command's contract).
 //!   3. An **expired** session bearer is rejected (the matter-open POST
@@ -119,7 +119,7 @@ async fn cli_bearer_opens_retainer_then_approve_parks_and_send_dispatches_once()
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/lawyer/retainers/new")
+                .uri("/app/lawyer/retainers/new")
                 .header("authorization", &bearer)
                 .header("content-type", "application/x-www-form-urlencoded")
                 .body(Body::from(format!(
@@ -138,7 +138,7 @@ async fn cli_bearer_opens_retainer_then_approve_parks_and_send_dispatches_once()
         .unwrap_or_default()
         .to_string();
     let notation_id: uuid::Uuid = loc
-        .trim_start_matches("/lawyer/notations/")
+        .trim_start_matches("/app/lawyer/notations/")
         .trim_end_matches("/step")
         .parse()
         .expect("redirect carries the notation id");
@@ -163,7 +163,7 @@ async fn cli_bearer_opens_retainer_then_approve_parks_and_send_dispatches_once()
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(format!("/lawyer/notations/{notation_id}/step"))
+                    .uri(format!("/app/lawyer/notations/{notation_id}/step"))
                     .header("authorization", &bearer)
                     .header("content-type", "application/x-www-form-urlencoded")
                     .body(Body::from(format!("value={}", enc(value))))
@@ -215,7 +215,7 @@ async fn cli_bearer_opens_retainer_then_approve_parks_and_send_dispatches_once()
                     .oneshot(
                         Request::builder()
                             .uri(format!(
-                                "/lawyer/notations/{notation_id}/review?format=json"
+                                "/app/lawyer/notations/{notation_id}/review?format=json"
                             ))
                             .header("authorization", &bearer)
                             .body(Body::empty())
@@ -257,7 +257,7 @@ async fn cli_bearer_opens_retainer_then_approve_parks_and_send_dispatches_once()
     // `send` BEFORE the PDF is rendered → 409 with a JSON reason, and no
     // envelope goes out. The readiness gate is what stops a send against a
     // worker that hasn't (or can't) render.
-    let early_send = post(format!("/lawyer/notations/{notation_id}/send")).await;
+    let early_send = post(format!("/app/lawyer/notations/{notation_id}/send")).await;
     assert_eq!(early_send.status(), StatusCode::CONFLICT);
     let early_json: serde_json::Value =
         serde_json::from_str(&body_string(early_send).await).unwrap();
@@ -281,7 +281,7 @@ async fn cli_bearer_opens_retainer_then_approve_parks_and_send_dispatches_once()
     // in-process DispatchingRuntime renders + persists the PDF inline, so
     // the workflow waits at the document step with the PDF present — but
     // NO envelope has gone out yet.
-    let approve = post(format!("/lawyer/notations/{notation_id}/approve-send")).await;
+    let approve = post(format!("/app/lawyer/notations/{notation_id}/approve-send")).await;
     // Approve and send are post/redirect/get onto the review screen since it
     // moved to Dioxus — a refresh re-reads it instead of re-posting.
     assert_eq!(approve.status(), StatusCode::SEE_OTHER);
@@ -310,7 +310,7 @@ async fn cli_bearer_opens_retainer_then_approve_parks_and_send_dispatches_once()
 
     // The deliberate send → exactly one envelope, lands at
     // sent_for_signature__pending.
-    let send = post(format!("/lawyer/notations/{notation_id}/send")).await;
+    let send = post(format!("/app/lawyer/notations/{notation_id}/send")).await;
     assert_eq!(send.status(), StatusCode::SEE_OTHER);
     assert_eq!(stub.calls().len(), 1, "exactly one envelope should be sent");
     let row = store::notations::find_by_id(&surreal, notation_id)
@@ -332,7 +332,7 @@ async fn cli_bearer_opens_retainer_then_approve_parks_and_send_dispatches_once()
 
     // `send` again is idempotent: it reuses the existing envelope, fires
     // no second send.
-    let resend = post(format!("/lawyer/notations/{notation_id}/send")).await;
+    let resend = post(format!("/app/lawyer/notations/{notation_id}/send")).await;
     assert_eq!(resend.status(), StatusCode::SEE_OTHER);
     assert_eq!(stub.calls().len(), 1, "resend must not double-send");
 }

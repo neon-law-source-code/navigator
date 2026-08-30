@@ -102,8 +102,8 @@ pub fn Reask() -> Element {
 /// without standing up the server function.
 fn reask_body(view: &ReaskView) -> Element {
     let data = &view.data;
-    let action = format!("/lawyer/notations/{}/reask", data.notation_id);
-    let review = format!("/lawyer/notations/{}/review", data.notation_id);
+    let action = format!("/app/lawyer/notations/{}/reask", data.notation_id);
+    let review = format!("/app/lawyer/notations/{}/review", data.notation_id);
     let role = view.role;
     let is_empty = data.flagged.is_empty();
     // One required text input per flagged question, posting under `a:{code}` —
@@ -124,7 +124,7 @@ fn reask_body(view: &ReaskView) -> Element {
         nav { class: "lawyer-nav",
             a { class: "nav-link", href: "/app/projects", "Portal" }
             if role.is_lawyer_tier() {
-                a { class: "nav-link", href: "/lawyer", "Lawyer" }
+                a { class: "nav-link", href: "/app/lawyer", "Lawyer" }
             }
             if role.is_admin_tier() {
                 a { class: "nav-link", href: "/app/admin", "Admin" }
@@ -205,7 +205,7 @@ mod tests {
             None,
         ));
         assert!(
-            html.contains(&format!("action=\"/lawyer/notations/{NOTATION}/reask\"")),
+            html.contains(&format!("action=\"/app/lawyer/notations/{NOTATION}/reask\"")),
             "{html}"
         );
         // `a:{code}` is what `store::reask` gates the write against.
@@ -244,7 +244,7 @@ mod tests {
         assert!(!html.contains("<form"), "{html}");
         // The way back is still there.
         assert!(
-            html.contains(&format!("href=\"/lawyer/notations/{NOTATION}/review\"")),
+            html.contains(&format!("href=\"/app/lawyer/notations/{NOTATION}/review\"")),
             "{html}"
         );
     }

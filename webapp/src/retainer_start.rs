@@ -4,7 +4,7 @@
 //! The successor to the `views::pages::admin::retainers::start_walk`. It
 //! lists the seeded `onboarding__*` templates as the picker's options, reads the
 //! session CSRF token, and renders the shared [`crate::components::FormCard`] as
-//! a native `POST` to `/lawyer/retainers/new` — the existing create handler,
+//! a native `POST` to `/app/lawyer/retainers/new` — the existing create handler,
 //! unchanged.
 //!
 //! A refused start (a client email with no `@`, no template chosen, an unknown
@@ -104,7 +104,7 @@ pub async fn get_retainer_start_form() -> Result<RetainerStartView, ServerFnErro
 }
 
 /// The lawyer "start a retainer walk" form. Server-side rendered as a native
-/// `POST` form to `/lawyer/retainers/new` carrying the CSRF token, so it works
+/// `POST` form to `/app/lawyer/retainers/new` carrying the CSRF token, so it works
 /// without JavaScript.
 #[component]
 pub fn LawyerRetainerStart() -> Element {
@@ -165,7 +165,7 @@ fn start_body(view: &RetainerStartView) -> Element {
         nav { class: "lawyer-nav",
             a { class: "nav-link", href: "/app/projects", "Portal" }
             if role.is_lawyer_tier() {
-                a { class: "nav-link", href: "/lawyer", "Lawyer" }
+                a { class: "nav-link", href: "/app/lawyer", "Lawyer" }
             }
             if role.is_admin_tier() {
                 a { class: "nav-link", href: "/app/admin", "Admin" }
@@ -185,12 +185,12 @@ fn start_body(view: &RetainerStartView) -> Element {
             }
             FormCard {
                 title: "New retainer".to_string(),
-                action: "/lawyer/retainers/new".to_string(),
+                action: "/app/lawyer/retainers/new".to_string(),
                 submit_label: "Start walk".to_string(),
                 csrf_token: Some(view.csrf_token.clone()),
                 fields,
             }
-            p { a { href: "/lawyer", "← Cancel" } }
+            p { a { href: "/app/lawyer", "← Cancel" } }
         }
     }
 }
@@ -261,7 +261,7 @@ mod tests {
         assert!(html.contains("name=\"client_email\""), "{html}");
         assert!(html.contains("name=\"retainer_template_code\""), "{html}");
         assert!(html.contains("admin-form"), "{html}");
-        assert!(html.contains("action=\"/lawyer/retainers/new\""), "{html}");
+        assert!(html.contains("action=\"/app/lawyer/retainers/new\""), "{html}");
         assert_forms_accessible(&html, "retainer_start::LawyerRetainerStart");
     }
 

@@ -168,7 +168,7 @@ async fn step_json(app: &axum::Router, nid: uuid::Uuid) -> serde_json::Value {
         .clone()
         .oneshot(
             Request::builder()
-                .uri(format!("/lawyer/notations/{nid}/step?format=json"))
+                .uri(format!("/app/lawyer/notations/{nid}/step?format=json"))
                 .header(
                     "authorization",
                     portal::test_support::lawyer_bearer_header(),
@@ -216,7 +216,7 @@ async fn step_post(app: &axum::Router, nid: uuid::Uuid, body: String) -> StatusC
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/lawyer/notations/{nid}/step"))
+                .uri(format!("/app/lawyer/notations/{nid}/step"))
                 .header(
                     "authorization",
                     portal::test_support::lawyer_bearer_header(),

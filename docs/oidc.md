@@ -157,7 +157,7 @@ stateDiagram-v2
     ClaimsDecoded --> UpsertPerson: find_or_create persons row
     UpsertPerson --> RoleLoaded: row.role read back
     RoleLoaded --> SessionWritten: session.role = row.role
-    SessionWritten --> AdminRequest: subsequent GET /lawyer/*
+    SessionWritten --> AdminRequest: subsequent GET /app/lawyer/*
     AdminRequest --> PolicyEval: POST embedded Rego /v1/data/navigator/authz/allow
     PolicyEval --> Allow: result == true
     PolicyEval --> Deny: result == false

@@ -101,8 +101,8 @@ pub fn LawyerGitRepositories() -> Element {
 /// (person, entity, role).
 ///
 /// **Firm-wide on purpose, for the whole lawyer tier including a lawyer on no
-/// matters.** Do not scope this for consistency with `/lawyer/answers` and
-/// `/lawyer/assets`. `entity_role` is one of the two edges
+/// matters.** Do not scope this for consistency with `/app/lawyer/answers` and
+/// `/app/lawyer/assets`. `entity_role` is one of the two edges
 /// `store::conflicts::check_new_matter` traverses (`<->entity_role` and
 /// `<->relationship`), and ABA Model Rule 1.10 imputes one lawyer's conflict to
 /// the entire firm — a conflict that surfaces through a matter the checker is
@@ -381,8 +381,8 @@ pub fn LawyerPersonProjectRoles() -> Element {
 /// Lawyer disclosures directory — **firm-wide on purpose, for the whole lawyer
 /// tier including a lawyer on no matters.**
 ///
-/// Do not scope this for consistency with `/lawyer/answers` and
-/// `/lawyer/assets`. The disclosures table feeds
+/// Do not scope this for consistency with `/app/lawyer/answers` and
+/// `/app/lawyer/assets`. The disclosures table feeds
 /// `store::conflicts::check_new_matter`, and ABA Model Rule 1.10 imputes one
 /// lawyer's conflict to the entire firm — so a lawyer running a conflict check
 /// must be able to see a conflict arising out of a matter they are not on.
@@ -426,7 +426,7 @@ pub fn LawyerDisclosures() -> Element {
 /// This one is not a conflict-graph input, and that is what decides it.
 /// `store::relationship_logs` says the trail is one-sided and "the conflict
 /// traversal never reads it", so the Model Rule 1.10 imputation that keeps
-/// `/lawyer/disclosures` and `/lawyer/person-entity-roles` firm-wide has
+/// `/app/lawyer/disclosures` and `/app/lawyer/person-entity-roles` firm-wide has
 /// nothing to say here. What the trail *does* hold is per-matter: every live
 /// writer — `store::projects`, `store::project_modules`, and
 /// `store::participation` — stamps `subject_type = "project"` with the matter's

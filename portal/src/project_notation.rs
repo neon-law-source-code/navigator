@@ -11,7 +11,7 @@
 //! function the CLI's `notation create --project` drives over HTTP, so both
 //! surfaces auto-save the template the same way with no separate `import`
 //! step. Creation is lawyer-only *and* matter-scoped: the route lives under
-//! `/lawyer` and additionally requires the acting lawyer to participate
+//! `/app/lawyer` and additionally requires the acting lawyer to participate
 //! in the target project (`access::can_see_project`; admin bypasses), so a
 //! lawyer session cannot open a notation in a matter outside its scope.
 //! `lawyer_review` remains the gate before any binding step (enforced
@@ -228,7 +228,7 @@ pub async fn project_notation_new_post(
         return (StatusCode::NOT_FOUND, "matter not found").into_response();
     };
 
-    // The route lives under `/lawyer`, so the tier is already enforced; the
+    // The route lives under `/app/lawyer`, so the tier is already enforced; the
     // command re-checks matter scope from the session. No session → no scope.
     let (acting_person_id, acting_role) = match session.as_deref() {
         Some(s) => (s.person_id, s.role),
@@ -248,7 +248,7 @@ pub async fn project_notation_new_post(
     .await
     {
         Ok(outcome) => {
-            Redirect::to(&format!("/lawyer/notations/{}/step", outcome.notation_id)).into_response()
+            Redirect::to(&format!("/app/lawyer/notations/{}/step", outcome.notation_id)).into_response()
         }
         Err(e) => e.into_lawyer_response(),
     }

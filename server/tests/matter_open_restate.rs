@@ -13,7 +13,7 @@
 //! `lawyer_review`.
 //!
 //! The on-ramp used to be the estate retainer walk (`POST
-//! /lawyer/retainers/new` with `onboarding__estate`): that door was
+//! /app/lawyer/retainers/new` with `onboarding__estate`): that door was
 //! transcript-driven, so `start_post` started its workflow inside the create
 //! request itself. `portal::estate` and the transcript-intake pipeline were
 //! removed as dead code (no surviving template has a `transcript_uploaded`

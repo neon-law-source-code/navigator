@@ -155,7 +155,7 @@ mod tests {
                     brand_href: "/app/projects".to_string(),
                     destinations: vec![
                         NavigatorDestination::new("Portal", "/app/projects", false),
-                        NavigatorDestination::new("Lawyer", "/lawyer", true),
+                        NavigatorDestination::new("Lawyer", "/app/lawyer", true),
                     ],
                 }
             }
@@ -164,7 +164,7 @@ mod tests {
         let html = ssr(app);
         assert!(html.contains(r#"aria-label="Navigator""#), "{html}");
         assert!(html.contains(r#"href="/app/projects""#), "{html}");
-        assert!(html.contains(r#"href="/lawyer""#), "{html}");
+        assert!(html.contains(r#"href="/app/lawyer""#), "{html}");
         assert!(html.contains(r#"aria-current="page""#), "{html}");
         assert_eq!(html.matches(r#"aria-current="page""#).count(), 1, "{html}");
         assert!(!html.contains(r#"aria-current="false""#), "{html}");
@@ -228,7 +228,7 @@ mod tests {
     /// `portal::dioxus_app` decides where the support-chat widget goes by
     /// looking for the public shell's root class in the rendered document, and
     /// both roots carry `nav-theme`. If this shell ever rendered the public
-    /// marker, every `/app` and `/lawyer` page would grow a support bubble and
+    /// marker, every `/app` and `/app/lawyer` page would grow a support bubble and
     /// have its CSP widened to a third-party origin — on the surfaces that
     /// display a client's matter.
     #[test]

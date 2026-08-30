@@ -1,6 +1,6 @@
 //! Cucumber runner for `features/closing_letter.feature`.
 //!
-//! Drives the admin walker (`/lawyer/notations/:id/step`) over an
+//! Drives the admin walker (`/app/lawyer/notations/:id/step`) over an
 //! `offboarding__letter` notation. The walker is generic over the bound
 //! template's questionnaire, so this mirrors `retainer_intake.rs` with
 //! the offboarding template's six-question walk — the firm-signed bookend
@@ -133,7 +133,7 @@ async fn lawyer_walks_all(world: &mut ClosingWorld, step: &Step) {
     for row in table.rows.iter().skip(1) {
         let value = row.first().expect("each row carries one cell").as_str();
         let body = format!("value={}", form_encode(value));
-        let uri = world.substitute("/lawyer/notations/:id/step");
+        let uri = world.substitute("/app/lawyer/notations/:id/step");
         let resp = world
             .app()
             .oneshot(

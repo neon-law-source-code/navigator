@@ -1,5 +1,5 @@
 //! Attorney review surface for an inbound contract review —
-//! `/lawyer/contract-reviews/:id`.
+//! `/app/lawyer/contract-reviews/:id`.
 //!
 //! After the web-side analysis ([`crate::contract_review_walk`]) opens a
 //! `contract_reviews` row of machine-proposed findings, the matter parks at
@@ -20,7 +20,7 @@
 //!   `generate_pdf__review_memo` → `memo_rendered` → `END`;
 //! - **rejects** — `lawyer_review --rejected--> END`, no memo.
 //!
-//! Authorization: the route lives under `/lawyer/*`, so embedded Rego's
+//! Authorization: the route lives under `/app/lawyer/*`, so embedded Rego's
 //! `lawyer_tier` rule gates it; the handlers add a per-matter row scope (a
 //! client role, or a lawyer not disclosed to the project, gets `404`).
 
@@ -197,7 +197,7 @@ pub async fn save_review_finding(
     Ok(())
 }
 
-/// `POST /lawyer/contract-reviews/:id/findings/:idx` — save the edits
+/// `POST /app/lawyer/contract-reviews/:id/findings/:idx` — save the edits
 /// to one finding and record the accept / reject decision.
 pub async fn save_finding(
     State(state): State<AdminState>,
@@ -254,7 +254,7 @@ pub async fn save_review_summary(
     Ok(())
 }
 
-/// `POST /lawyer/contract-reviews/:id/summary` — edit the risk summary.
+/// `POST /app/lawyer/contract-reviews/:id/summary` — edit the risk summary.
 pub async fn save_summary(
     State(state): State<AdminState>,
     Path(review_id): Path<Uuid>,
@@ -311,7 +311,7 @@ pub async fn approve_review(
     Ok(())
 }
 
-/// `POST /lawyer/contract-reviews/:id/approve` — assemble + deliver the
+/// `POST /app/lawyer/contract-reviews/:id/approve` — assemble + deliver the
 /// memo and approve.
 pub async fn approve(
     State(state): State<AdminState>,
@@ -334,7 +334,7 @@ pub async fn approve(
         Ok(()) | Err(ReviewActionError::NotOpen) => redirect_to(review_id),
         Err(ReviewActionError::NotFoundOrScoped) => not_found(),
         Err(ReviewActionError::FindingsUnacted) => Redirect::to(&format!(
-            "/lawyer/contract-reviews/{review_id}?error={}",
+            "/app/lawyer/contract-reviews/{review_id}?error={}",
             crate::admin::encode_query_value(
                 "Every finding must be accepted or rejected before the memo can be approved."
             )
@@ -375,7 +375,7 @@ pub async fn reject_review(
     Ok(())
 }
 
-/// `POST /lawyer/contract-reviews/:id/reject` — reject without a memo.
+/// `POST /app/lawyer/contract-reviews/:id/reject` — reject without a memo.
 pub async fn reject(
     State(state): State<AdminState>,
     Path(review_id): Path<Uuid>,
@@ -595,7 +595,7 @@ async fn record_finding_decision(
 // --- small helpers ---------------------------------------------------------
 
 fn redirect_to(review_id: Uuid) -> Response {
-    Redirect::to(&format!("/lawyer/contract-reviews/{review_id}")).into_response()
+    Redirect::to(&format!("/app/lawyer/contract-reviews/{review_id}")).into_response()
 }
 
 fn non_empty(s: &str) -> Option<String> {

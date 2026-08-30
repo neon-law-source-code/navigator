@@ -166,7 +166,7 @@ recipient is addressed when the single send path builds the signature manifest. 
 
 - **`embedded`** (the default; the standalone retainer walk) — the client is a **captive** recipient: the manifest sets
   `client_user_id` (derived from the notation), so DocuSign suppresses the signing email. Because no email goes out, a
-  recipient-view URL is the only door. `GET /lawyer/notations/:id/sign`
+  recipient-view URL is the only door. `GET /app/lawyer/notations/:id/sign`
   ([`portal::esign_view`](https://github.com/neon-law-source-code/navigator/blob/main/portal/src/esign_view.rs)) mints
   one via `SignatureProvider::create_recipient_view`, which POSTs `envelopes/{id}/views/recipient` and matches the
   recipient on the email, userName, and clientUserId triple. It **redirects the browser to it**. The ceremony runs on

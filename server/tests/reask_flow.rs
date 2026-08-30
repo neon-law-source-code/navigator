@@ -64,7 +64,7 @@ async fn lawyer_sends_a_retainer_back_for_changes_and_it_loops_to_review() {
 
     // --- Create the retainer notation + walk intake to lawyer_review ----
     let client_email = format!("reask-{}@example.com", std::process::id());
-    c.goto(&format!("{}/lawyer/retainers/new", base_url()))
+    c.goto(&format!("{}/app/lawyer/retainers/new", base_url()))
         .await
         .unwrap();
     c.wait()

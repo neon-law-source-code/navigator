@@ -1,5 +1,5 @@
 //! Attorney review screen for an inbound contract review as a Dioxus component
-//! (#956 Phase 4) — `/lawyer/contract-reviews/{id}`.
+//! (#956 Phase 4) — `/app/lawyer/contract-reviews/{id}`.
 //!
 //! The successor to the `views::pages::admin::contract_reviews` render. It
 //! shows the machine-proposed findings for per-finding attorney action. There is
@@ -14,7 +14,7 @@
 //!
 //! # Authorization
 //!
-//! Unchanged from the handler: the route lives under `/lawyer/*`, so embedded Rego policy's
+//! Unchanged from the handler: the route lives under `/app/lawyer/*`, so embedded Rego policy's
 //! `lawyer_tier` rule gates it, and the loader adds the per-matter row scope —
 //! a client role, or a lawyer not disclosed to the project, gets the same
 //! `404` (admin bypasses the project scope inside
@@ -293,7 +293,7 @@ fn status_tone(status: &str) -> &'static str {
 /// The risk-summary card — an editable textarea on an open review, plain prose
 /// once the review is closed.
 fn risk_summary_card(view: &ContractReviewView) -> Element {
-    let action = format!("/lawyer/contract-reviews/{}/summary", view.review_id);
+    let action = format!("/app/lawyer/contract-reviews/{}/summary", view.review_id);
     let fields = vec![crate::components::Field::textarea(
         "Risk summary",
         "risk_summary",
@@ -339,7 +339,7 @@ fn decision_badge(finding: &FindingRow) -> Element {
 /// own edit form with the explicit Accept and Reject submits.
 fn finding_card(view: &ContractReviewView, finding: &FindingRow) -> Element {
     let action = format!(
-        "/lawyer/contract-reviews/{}/findings/{}",
+        "/app/lawyer/contract-reviews/{}/findings/{}",
         view.review_id, finding.index
     );
     let severity_options = ["low", "medium", "high"];
@@ -449,8 +449,8 @@ fn severity_label(severity: &str) -> &'static str {
 /// The approve / reject decision bar. Approve is disabled until every finding
 /// carries a recorded decision.
 fn decision_bar(view: &ContractReviewView) -> Element {
-    let approve = format!("/lawyer/contract-reviews/{}/approve", view.review_id);
-    let reject = format!("/lawyer/contract-reviews/{}/reject", view.review_id);
+    let approve = format!("/app/lawyer/contract-reviews/{}/approve", view.review_id);
+    let reject = format!("/app/lawyer/contract-reviews/{}/reject", view.review_id);
     rsx! {
         div { class: "contract-review-actions",
             form {
@@ -545,7 +545,7 @@ pub fn LawyerContractReview() -> Element {
         nav { class: "lawyer-nav",
             a { class: "nav-link", href: "/app/projects", "Portal" }
             if role.is_lawyer_tier() {
-                a { class: "nav-link", href: "/lawyer", "Lawyer" }
+                a { class: "nav-link", href: "/app/lawyer", "Lawyer" }
             }
             if role.is_admin_tier() {
                 a { class: "nav-link", href: "/app/admin", "Admin" }
@@ -616,7 +616,7 @@ mod tests {
         assert!(html.contains(r#"value="reject""#), "{html}");
         assert!(
             html.contains(&format!(
-                r#"action="/lawyer/contract-reviews/{RID}/findings/0""#
+                r#"action="/app/lawyer/contract-reviews/{RID}/findings/0""#
             )),
             "{html}"
         );

@@ -136,7 +136,7 @@ fn regorus_matches_every_checked_in_policy_decision() {
     //   Clerk, and client on those same paths.
     // 379 + 4 = 383.
     //
-    // − 2 for unmounting the Harvard-outline stage at `/lawyer/outline`.
+    // − 2 for unmounting the Harvard-outline stage at `/app/lawyer/outline`.
     // 383 remains the last listing-and-prefix inventory before the `/app`
     // outline catalog.
     //

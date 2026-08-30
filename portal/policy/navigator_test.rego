@@ -96,9 +96,9 @@ test_old_portal_projects_path_is_not_allowed if {
 	not authz.allow with input as {"path": ["portal", "projects"], "method": "GET", "session": client_session}
 }
 
-test_old_lawyer_projects_path_is_still_a_lawyer_path if {
-	# `/lawyer/*` still exists for the surfaces this slice did not move, so this
-	# asserts the client denial rather than a blanket 404.
+test_old_lawyer_prefix_is_not_allowed if {
+	not authz.allow with input as {"path": ["lawyer"], "method": "GET", "session": lawyer_session}
+	not authz.allow with input as {"path": ["lawyer", "notations"], "method": "GET", "session": lawyer_session}
 	not authz.allow with input as {"path": ["lawyer", "projects"], "method": "GET", "session": client_session}
 }
 
@@ -122,10 +122,10 @@ test_anonymous_denied_on_app_notations if {
 	not authz.allow with input as {"path": ["app", "notations", "n1", "documents", "d1"], "method": "GET", "session": null}
 }
 
-# ---------- /lawyer/* (lawyer tier only) ----------
+# ---------- /app/lawyer/* (lawyer tier only) ----------
 
-test_lawyer_reaches_lawyer_people if {
-	authz.allow with input as {"path": ["lawyer", "people"], "method": "GET", "session": lawyer_session}
+test_lawyer_reaches_lawyer_notations if {
+	authz.allow with input as {"path": ["app", "lawyer", "notations"], "method": "GET", "session": lawyer_session}
 }
 
 test_lawyer_reaches_the_app_outline_stage if {
@@ -148,24 +148,24 @@ test_client_reaches_a_project_notation_outline if {
 	authz.allow with input as {"path": ["app", "projects", "p1", "n1", "outline"], "method": "GET", "session": client_session}
 }
 
-test_admin_reaches_lawyer_people if {
-	authz.allow with input as {"path": ["lawyer", "people"], "method": "GET", "session": admin_session}
+test_admin_reaches_lawyer_notations if {
+	authz.allow with input as {"path": ["app", "lawyer", "notations"], "method": "GET", "session": admin_session}
 }
 
-test_owner_reaches_lawyer_people if {
-	authz.allow with input as {"path": ["lawyer", "people"], "method": "GET", "session": owner_session}
+test_owner_reaches_lawyer_notations if {
+	authz.allow with input as {"path": ["app", "lawyer", "notations"], "method": "GET", "session": owner_session}
 }
 
-test_client_denied_on_lawyer_people if {
-	not authz.allow with input as {"path": ["lawyer", "people"], "method": "GET", "session": client_session}
+test_client_denied_on_lawyer_notations if {
+	not authz.allow with input as {"path": ["app", "lawyer", "notations"], "method": "GET", "session": client_session}
 }
 
-test_clerk_denied_on_lawyer_people if {
-	not authz.allow with input as {"path": ["lawyer", "people"], "method": "GET", "session": clerk_session}
+test_clerk_denied_on_lawyer_notations if {
+	not authz.allow with input as {"path": ["app", "lawyer", "notations"], "method": "GET", "session": clerk_session}
 }
 
-test_anonymous_denied_on_lawyer if {
-	not authz.allow with input as {"path": ["lawyer"], "method": "GET", "session": null}
+test_anonymous_denied_on_app_lawyer if {
+	not authz.allow with input as {"path": ["app", "lawyer"], "method": "GET", "session": null}
 }
 
 # The brand-font download rides the /app/team prefix rules above rather than a
@@ -195,11 +195,10 @@ test_anonymous_denied_on_font_download if {
 	not authz.allow with input as {"path": ["app", "team", "fonts", "gorp-serif.zip"], "method": "GET", "session": null}
 }
 
-# The download moved off /lawyer, and with it the exact-path exception that
-# used to admit a Clerk there. Clerk is now denied every /lawyer path.
+# Clerk is denied every /app/lawyer path, including the workbench listings.
 test_clerk_denied_on_every_lawyer_path if {
-	not authz.allow with input as {"path": ["lawyer", "fonts", "gorp-serif.zip"], "method": "GET", "session": clerk_session}
-	not authz.allow with input as {"path": ["lawyer", "people"], "method": "GET", "session": clerk_session}
+	not authz.allow with input as {"path": ["app", "lawyer", "notations"], "method": "GET", "session": clerk_session}
+	not authz.allow with input as {"path": ["app", "lawyer", "disclosures"], "method": "GET", "session": clerk_session}
 }
 
 # ---------- /app/lawyer and /app/admin (the two dashboards) ----------
@@ -364,7 +363,7 @@ test_workshop_certificate_grant_is_exact if {
 	not authz.allow with input as {"path": ["presentations", "rust-in-peace", "certificate"], "method": "POST", "session": lawyer_session}
 }
 
-# The firm surface lives at /lawyer; the old /portal/admin prefix carries
+# The firm surface lives at /app/lawyer; the old /portal/admin prefix carries
 # no lawyer allow rule. A lawyer GET there must NOT be allowed (the routes
 # are gone, but if one ever returned the policy must not silently
 # re-open it). Admin still passes via the bypass — that is the bypass

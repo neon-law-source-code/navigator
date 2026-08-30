@@ -153,7 +153,7 @@ async fn open_matter(world: &mut BulkWorld, code: String, email: String) {
     );
     let resp = world
         .journey()
-        .lawyer_post("/lawyer/retainers/new", body)
+        .lawyer_post("/app/lawyer/retainers/new", body)
         .await;
     let location = resp.location.unwrap_or_else(|| {
         panic!(
@@ -162,7 +162,7 @@ async fn open_matter(world: &mut BulkWorld, code: String, email: String) {
         )
     });
     let id = location
-        .strip_prefix("/lawyer/notations/")
+        .strip_prefix("/app/lawyer/notations/")
         .and_then(|s| s.strip_suffix("/step"))
         .unwrap_or_else(|| panic!("unexpected redirect target: {location}"));
     world.notation_id = Some(Uuid::parse_str(id).expect("notation id is a UUID"));

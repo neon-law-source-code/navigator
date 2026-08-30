@@ -1,12 +1,11 @@
-Feature: /lawyer/* — lawyer workbench, Owner/Admin/Lawyer only
+Feature: /app — one authenticated namespace, Owner/Admin/Lawyer only on the workbench
 
-  Every firm-wide CRUD route (entities, templates, …) answers at `/lawyer/*`.
-  Authorization is the lawyer `lawyer_tier` only, via embedded Rego policy.
-  Client and Clerk tiers get a redirect-to-login from embedded Rego policy —
-  the matter doesn't exist from their perspective.
+  Firm-administration listings answer at `/app/admin/*`. The lawyer workbench
+  and remaining legal-work walks answer at `/app/lawyer/*`. Authorization is
+  the lawyer `lawyer_tier` only, via embedded Rego policy. Client and Clerk
+  tiers do not reach those surfaces.
 
-  People is the exception: ENG-304 deleted its `/lawyer` mirror, so the people
-  index answers at `/app/admin/people`, Owner/Admin only.
+  People is Owner/Admin only at `/app/admin/people`.
 
   Background:
     Given the Neon Law Navigator app is running
@@ -87,8 +86,13 @@ Feature: /lawyer/* — lawyer workbench, Owner/Admin/Lawyer only
     When "clerk@neonlaw.com" opens /clerk
     Then the response status is 404
 
-  # The client-blocked-from-/lawyer scenario is enforced by embedded Rego policy's
-  # `/lawyer` lawyer_tier rule
-  # in production; the BDD app runs with `PolicyClient::passthrough`
-  # so every request reaches the handler. Verify that flow against a
-  # live KIND cluster instead — covered by the smoke test in PR 4.
+  Scenario: The retired lawyer namespace is gone
+    Given a seeded person "lawyer@neonlaw.com" with role "lawyer"
+    When "lawyer@neonlaw.com" opens /lawyer
+    Then the response status is 404
+    When "lawyer@neonlaw.com" opens /lawyer/notations
+    Then the response status is 404
+
+  # The client-blocked-from-/app/lawyer scenario is enforced by embedded Rego
+  # policy's `/app/lawyer` lawyer_tier rule in production; the BDD app runs
+  # with `PolicyClient::passthrough` so every request reaches the handler.

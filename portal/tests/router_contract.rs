@@ -272,6 +272,26 @@ async fn github_stars_is_not_routed() {
     );
 }
 
+/// The dedicated `/lawyer` prefix is gone. Workbench pages live under
+/// `/app/lawyer`, and a leftover reserved prefix would keep a brand host
+/// from publishing that name after nothing mounts there.
+#[tokio::test]
+async fn the_retired_lawyer_prefix_is_not_served() {
+    let app = portal::router(contract_state().await);
+
+    for path in ["/lawyer", "/lawyer/notations", "/lawyer/retainers/new"] {
+        assert_eq!(
+            anonymous_get(&app, path).await.status(),
+            StatusCode::NOT_FOUND,
+            "{path} must not keep a mount after the prefix retired"
+        );
+    }
+    assert!(
+        !portal::RESERVED_PATH_PREFIXES.contains(&"/lawyer"),
+        "a retired prefix must not stay reserved against a host"
+    );
+}
+
 #[tokio::test]
 async fn private_bucket_assets_are_served_anonymously_with_bounded_caching() {
     let app = portal::router(contract_state().await);

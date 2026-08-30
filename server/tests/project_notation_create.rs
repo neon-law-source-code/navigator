@@ -146,7 +146,7 @@ async fn creates_a_project_scoped_notation_from_the_repo_template() {
         .unwrap_or_default()
         .to_string();
     assert!(
-        location.starts_with("/lawyer/notations/") && location.ends_with("/step"),
+        location.starts_with("/app/lawyer/notations/") && location.ends_with("/step"),
         "redirect to the step page, got `{location}`"
     );
 

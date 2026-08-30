@@ -142,7 +142,7 @@ async fn walk_the_close(app: &Router, project_code: &str, what: &str) {
         .get("location")
         .and_then(|v| v.to_str().ok())
         .unwrap_or_else(|| panic!("{what}: close must redirect"))
-        .trim_start_matches("/lawyer/notations/")
+        .trim_start_matches("/app/lawyer/notations/")
         .trim_end_matches("/step")
         .parse()
         .unwrap_or_else(|e| panic!("{what}: redirect carries a notation id: {e}"));
@@ -153,7 +153,7 @@ async fn walk_the_close(app: &Router, project_code: &str, what: &str) {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(format!("/lawyer/notations/{closing_id}/step"))
+                    .uri(format!("/app/lawyer/notations/{closing_id}/step"))
                     .header(
                         "authorization",
                         portal::test_support::lawyer_bearer_header(),

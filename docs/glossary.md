@@ -1152,7 +1152,7 @@ person holds exactly one:
   in what the lawyer may *do* on a visible Project (edit, sign, file) and in supervising Clerk work.
 - **Clerk** — a supervised non-lawyer firm worker. Clerk's dedicated `/clerk` surface is read-only and shows only
   firm-assigned Projects with a disclosed licensed-lawyer `lawyer_dri`; it never receives lawyer-work, advice, Git, MCP,
-  or `/lawyer` authority by inheritance.
+  or `/app/lawyer` authority by inheritance.
 - **Client** — a person the firm represents on at least one matter. Sees only Projects with a matching
   `person_project_roles` row.
 - **Anonymous** — not signed in; no `persons` row at all. The public visitor, who sees only public pages.

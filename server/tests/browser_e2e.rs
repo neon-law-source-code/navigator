@@ -46,7 +46,7 @@ use uuid::Uuid;
 fn notation_id_from_step_path(path: &str) -> Option<Uuid> {
     let segments: Vec<&str> = path.trim_start_matches('/').split('/').collect();
     match segments.as_slice() {
-        ["lawyer", "notations", id, "step"] => Uuid::parse_str(id).ok(),
+        ["app", "lawyer", "notations", id, "step"] => Uuid::parse_str(id).ok(),
         _ => None,
     }
 }
@@ -56,7 +56,9 @@ fn notation_id_from_step_path_accepts_lawyer_step_path() {
     let id = Uuid::parse_str("018f42d4-bf4a-73fe-9f7f-8a6c51f0c6b0").unwrap();
 
     assert_eq!(
-        notation_id_from_step_path("/app/lawyer/notations/018f42d4-bf4a-73fe-9f7f-8a6c51f0c6b0/step"),
+        notation_id_from_step_path(
+            "/app/lawyer/notations/018f42d4-bf4a-73fe-9f7f-8a6c51f0c6b0/step"
+        ),
         Some(id)
     );
 }

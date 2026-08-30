@@ -10,6 +10,7 @@
 //! | --- | --- |
 //! | `projects list` | `GET /app/projects.csv` |
 //! | `project open`   | `GET /app/projects/:code` |
+//! | `document upload` | `POST /app/api/projects/{id}/documents` |
 //! | `notation create`  | `POST /app/projects/{project_code}/notations/new` |
 //! | `notation status`  | `GET /lawyer/notations/:id/review?format=json` |
 
@@ -19,7 +20,9 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use anyhow::{anyhow, Context, Result};
+use base64::Engine as _;
 use comfy_table::{presets::UTF8_FULL, Cell, ContentArrangement, Table};
+use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::credentials::{self, default_credentials_path, HostCredential};
@@ -71,6 +74,87 @@ pub async fn seed(host: Option<&str>, model: &str, file: &Path, overwrite: bool)
             ));
         }
         println!("{body}");
+        Ok(())
+    })
+    .await
+}
+
+#[derive(Debug, Deserialize)]
+struct VisibleProject {
+    id: Uuid,
+    code: String,
+}
+
+/// `navigator site document upload --project <code> --file … --kind …`
+/// — file a local document into a matter through the REST door
+/// (`POST /app/api/projects/{id}/documents`). `--kind` is required and must
+/// be an asset-lane classification; the CLI does not default it.
+pub async fn document_upload(
+    host: Option<&str>,
+    project_code: &str,
+    file: &Path,
+    kind: &str,
+    visibility: Option<&str>,
+    description: Option<&str>,
+    content_type: Option<&str>,
+) -> ExitCode {
+    run(async {
+        let bytes = std::fs::read(file).with_context(|| format!("read {}", file.display()))?;
+        let filename = file
+            .file_name()
+            .and_then(|n| n.to_str())
+            .filter(|n| !n.is_empty())
+            .ok_or_else(|| anyhow!("file path has no filename"))?;
+        let (base, token) = resolve(host)?;
+        let client = reqwest::Client::new();
+        let list = client
+            .get(format!("{base}/app/api/projects"))
+            .bearer_auth(&token)
+            .send()
+            .await
+            .context("GET /app/api/projects")?;
+        let list_status = list.status();
+        let list_body = list.text().await.unwrap_or_default();
+        if !list_status.is_success() {
+            return Err(anyhow!(
+                "list projects failed: {list_status}: {}",
+                first_line(&list_body)
+            ));
+        }
+        let projects: Vec<VisibleProject> =
+            serde_json::from_str(&list_body).context("parse GET /app/api/projects")?;
+        let project = projects
+            .iter()
+            .find(|p| p.code == project_code)
+            .ok_or_else(|| anyhow!("no visible matter with code `{project_code}`"))?;
+        let content_base64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+        let mut body = serde_json::json!({
+            "filename": filename,
+            "content_base64": content_base64,
+            "content_type": content_type.unwrap_or("application/octet-stream"),
+            "kind": kind,
+            "visibility": visibility.unwrap_or("internal"),
+        });
+        if let Some(description) = description.map(str::trim).filter(|s| !s.is_empty()) {
+            body["description"] = serde_json::Value::String(description.to_string());
+        }
+        let url = format!("{base}/app/api/projects/{}/documents", project.id);
+        let response = client
+            .post(&url)
+            .bearer_auth(&token)
+            .json(&body)
+            .send()
+            .await
+            .with_context(|| format!("POST {url}"))?;
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        if status.as_u16() != 201 {
+            return Err(anyhow!(
+                "document upload failed: {status}: {}",
+                first_line(&text)
+            ));
+        }
+        println!("{text}");
         Ok(())
     })
     .await
@@ -1344,16 +1428,16 @@ mod tests {
 
     use super::{
         candidate_by_name, canonical_choice_value, clause_add, clause_edit, clause_list,
-        ensure_no_unused_selections, fetch_status, matter_open, notation_approve, notation_create,
-        notation_document, notation_request_changes, notation_status, notation_update,
-        parse_scripted_selection, picker_selection_fields, projects_list, retainer_approve,
-        retainer_send, scripted_picker_selection_fields, select_candidate, CoverageSummary,
-        StepQuestion, StepResponse,
+        document_upload, ensure_no_unused_selections, fetch_status, matter_open, notation_approve,
+        notation_create, notation_document, notation_request_changes, notation_status,
+        notation_update, parse_scripted_selection, picker_selection_fields, projects_list,
+        retainer_approve, retainer_send, scripted_picker_selection_fields, select_candidate,
+        CoverageSummary, StepQuestion, StepResponse,
     };
     use super::{fetch_step, first_line, json_reason, parse_csv, server_error};
     use crate::credentials::{self, Credentials, HostCredential};
     use uuid::Uuid;
-    use wiremock::matchers::{method, path};
+    use wiremock::matchers::{body_json, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     static CREDENTIALS_ENV_LOCK: LazyLock<tokio::sync::Mutex<()>> =
@@ -1425,6 +1509,92 @@ mod tests {
         assert!(
             err.to_string().contains("expired"),
             "expected an expired-token error, got: {err}"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn document_upload_posts_the_required_kind() {
+        let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+        let server = MockServer::start().await;
+        let server_uri = server.uri();
+        let _env = CredentialsEnv::new(&server_uri);
+        let project_id = Uuid::now_v7();
+        let document_id = Uuid::now_v7();
+
+        Mock::given(method("GET"))
+            .and(path("/app/api/projects"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"id": project_id, "code": "acme"}
+            ])))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path(format!("/app/api/projects/{project_id}/documents")))
+            .and(body_json(serde_json::json!({
+                "filename": "note.txt",
+                "content_base64": "dGVzdCBkb2N1bWVudA==",
+                "content_type": "text/plain",
+                "kind": "unclassified",
+                "visibility": "internal"
+            })))
+            .respond_with(
+                ResponseTemplate::new(201)
+                    .set_body_json(serde_json::json!({ "document_id": document_id })),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let dir = tempfile::tempdir().unwrap();
+        let named = dir.path().join("note.txt");
+        std::fs::write(&named, b"test document").unwrap();
+
+        assert_eq!(
+            document_upload(
+                Some(server_uri.as_str()),
+                "acme",
+                &named,
+                "unclassified",
+                None,
+                None,
+                Some("text/plain"),
+            )
+            .await,
+            ExitCode::SUCCESS
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn document_upload_refuses_an_unknown_matter_code() {
+        let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+        let server = MockServer::start().await;
+        let server_uri = server.uri();
+        let _env = CredentialsEnv::new(&server_uri);
+
+        Mock::given(method("GET"))
+            .and(path("/app/api/projects"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"id": Uuid::now_v7(), "code": "acme"}
+            ])))
+            .mount(&server)
+            .await;
+
+        let dir = tempfile::tempdir().unwrap();
+        let named = dir.path().join("note.txt");
+        std::fs::write(&named, b"test document").unwrap();
+
+        assert_eq!(
+            document_upload(
+                Some(server_uri.as_str()),
+                "not-a-matter",
+                &named,
+                "unclassified",
+                None,
+                None,
+                None,
+            )
+            .await,
+            ExitCode::from(2)
         );
     }
 

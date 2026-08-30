@@ -435,8 +435,65 @@ fn site_help_lists_the_live_deployment_members() {
 
     assert_eq!(
         command_names(&output),
-        vec!["import", "login", "logout", "mcp", "notation", "projects", "seed", "whoami", "help",]
+        vec![
+            "document", "import", "login", "logout", "mcp", "notation", "projects", "seed",
+            "whoami", "help",
+        ]
     );
+}
+
+#[test]
+fn site_document_upload_help_requires_kind_and_lists_the_asset_lane() {
+    let output = unwrapped(&help(&["site", "document", "upload", "--help"]));
+    assert!(output.contains("--kind"));
+    for kind in rules::kind::Kind::ALL
+        .iter()
+        .filter(|k| k.valid_for(rules::kind::Lane::Asset))
+    {
+        assert!(
+            output.contains(kind.as_str()),
+            "upload help must name asset-lane kind `{}`",
+            kind.as_str()
+        );
+    }
+}
+
+#[test]
+fn site_document_upload_refuses_a_missing_kind() {
+    Command::cargo_bin("navigator")
+        .unwrap()
+        .args([
+            "site",
+            "document",
+            "upload",
+            "--project",
+            "acme",
+            "--file",
+            "note.txt",
+        ])
+        .assert()
+        .failure()
+        .stderr(str::contains("--kind"));
+}
+
+#[test]
+fn site_document_upload_refuses_a_template_lane_kind() {
+    Command::cargo_bin("navigator")
+        .unwrap()
+        .args([
+            "site",
+            "document",
+            "upload",
+            "--project",
+            "acme",
+            "--file",
+            "note.txt",
+            "--kind",
+            "review_queue_workbench",
+        ])
+        .assert()
+        .failure()
+        .stderr(str::contains("unclassified"));
 }
 
 #[test]

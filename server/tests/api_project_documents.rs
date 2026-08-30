@@ -5,9 +5,9 @@
 //! The write engine (`matter_documents::record_document`) is shared with the
 //! lawyer upload control, so this focuses on what the REST adapter adds: it takes
 //! the bytes base64-encoded (not multipart), lawyer-tier only (client 403, anon
-//! 401), the matter-scope gate (a non-participant lawyer is 404), undecodable
-//! base64 is 400, a `kind` outside the asset lane is 400 (not the 500 it used to be),
-//! and a filed document actually lands.
+//! 401), the matter-scope gate (a non-participant lawyer is 404), a missing `kind`
+//! is 400, undecodable base64 is 400, a `kind` outside the asset lane is 400 (not
+//! the 500 it used to be), and a filed document actually lands.
 
 use std::sync::Arc;
 
@@ -119,7 +119,8 @@ fn doc_body() -> serde_json::Value {
     serde_json::json!({
         "filename": "note.txt",
         "content_base64": "dGVzdCBkb2N1bWVudA==",
-        "content_type": "text/plain"
+        "content_type": "text/plain",
+        "kind": "unclassified"
     })
 }
 
@@ -166,7 +167,11 @@ async fn undecodable_base64_is_400() {
     let resp = upload(
         &fx,
         Some(&fx.lawyer),
-        serde_json::json!({ "filename": "note.txt", "content_base64": "!!! not base64 !!!" }),
+        serde_json::json!({
+            "filename": "note.txt",
+            "content_base64": "!!! not base64 !!!",
+            "kind": "unclassified"
+        }),
     )
     .await;
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
@@ -225,6 +230,52 @@ async fn a_kind_outside_the_asset_lane_is_400_naming_the_accepted_values() {
             .is_empty(),
         "a refused kind files no document"
     );
+}
+
+/// Omitting `kind` is the caller's error, not a silent `unclassified` default.
+/// The message names the accepted asset-lane values so an integrator can fix
+/// the request without reading source.
+#[tokio::test]
+async fn a_missing_kind_is_400_naming_the_accepted_values() {
+    let fx = build_fixture().await;
+    let mut body = doc_body();
+    body.as_object_mut().unwrap().remove("kind");
+    let resp = upload(&fx, Some(&fx.lawyer), body).await;
+
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(json["error"].as_str(), Some("kind_required"));
+    let message = json["message"].as_str().expect("a message is present");
+    for accepted in [
+        "onboarding",
+        "unclassified",
+        "certificate_of_naturalization",
+    ] {
+        assert!(
+            message.contains(accepted),
+            "the message lists the accepted kind `{accepted}`, got: {message}"
+        );
+    }
+    assert!(
+        store::assets::for_project(&fx.surreal, fx.project_id)
+            .await
+            .unwrap()
+            .is_empty(),
+        "a missing kind files no document"
+    );
+}
+
+#[tokio::test]
+async fn a_blank_kind_is_400() {
+    let fx = build_fixture().await;
+    let mut body = doc_body();
+    body["kind"] = serde_json::json!("  ");
+    let resp = upload(&fx, Some(&fx.lawyer), body).await;
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(json["error"].as_str(), Some("kind_required"));
 }
 
 /// A value that is not a `Kind` at all is refused the same way — the door does

@@ -453,6 +453,16 @@ fn site_document_upload_help_requires_kind() {
         !output.contains("[--kind"),
         "kind must not be an optional flag, got: {output}"
     );
+    for kind in rules::kind::Kind::ALL
+        .iter()
+        .filter(|k| k.valid_for(rules::kind::Lane::Asset))
+    {
+        assert!(
+            output.contains(kind.as_str()),
+            "long help must name asset-lane kind `{}`, got: {output}",
+            kind.as_str()
+        );
+    }
 }
 
 #[test]

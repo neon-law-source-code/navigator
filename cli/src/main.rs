@@ -1508,11 +1508,7 @@ struct HostOpt {
 #[derive(Subcommand)]
 enum DocumentAction {
     /// File a local document into a matter (`POST /app/api/projects/{id}/documents`).
-    ///
-    /// `--kind` is required. Accepted asset-lane values: `letter`, `filing`,
-    /// `will`, `trust`, `directive`, `agreement`, `onboarding`, `offboarding`,
-    /// `memo`, `transcript`, `inbound_contract`,
-    /// `certificate_of_naturalization`, `unclassified`.
+    #[command(after_long_help = DOCUMENT_UPLOAD_KIND_HELP)]
     Upload {
         #[command(flatten)]
         host: HostOpt,
@@ -1523,10 +1519,7 @@ enum DocumentAction {
         /// Path to the file to upload.
         #[arg(long)]
         file: PathBuf,
-        /// Asset-lane document kind (`letter`, `filing`, `will`, `trust`,
-        /// `directive`, `agreement`, `onboarding`, `offboarding`, `memo`,
-        /// `transcript`, `inbound_contract`, `certificate_of_naturalization`,
-        /// `unclassified`). Required — there is no default.
+        /// Required asset-lane kind. An invalid value prints the accepted enum.
         #[arg(long, value_parser = parse_asset_kind)]
         kind: String,
         /// `client` makes the document client-visible; default is `internal`.
@@ -2621,6 +2614,8 @@ fn parse_document_visibility(value: &str) -> Result<String, String> {
         _ => Err("visibility must be `client` or `internal`".into()),
     }
 }
+
+const DOCUMENT_UPLOAD_KIND_HELP: &str = "Accepted --kind values: letter, filing, will, trust, directive, agreement, onboarding, offboarding, memo, transcript, inbound_contract, certificate_of_naturalization, unclassified.";
 
 /// Render one notation template to a PDF. Validates the file against the
 /// notation rule set, resolves the output format (CLI override →

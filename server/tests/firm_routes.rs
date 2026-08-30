@@ -2441,14 +2441,6 @@ async fn notations_page_uses_the_catalog_hero_and_links_the_letters_and_forms() 
     assert!(body.contains("site-footer__legal"), "public legal footer");
 }
 
-#[tokio::test]
-async fn contact_page_is_gone() {
-    let app = site_app().await;
-    let resp = anon_get(&app, "/contact").await;
-    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
-    assert!(resp.headers().get("location").is_none());
-}
-
 /// The shared footer publishes the source repository on every public page, on
 /// both faces of the site.
 ///

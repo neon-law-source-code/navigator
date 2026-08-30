@@ -284,8 +284,9 @@ pub fn firm_public_dioxus_routers(state: &AppState) -> Vec<Router> {
     ));
     // The Legal Services page. Like the platform page above it is a marketing
     // page, not a `/services/*` catalog entry: one page describing the routine,
-    // one-time work, quoted through `/contact` and publishing no price. It is
-    // where the firm's government-form filing work lives.
+    // one-time work, quoted through `mailto:contact@neonlaw.com` and
+    // publishing no price. It is where the firm's government-form filing work
+    // lives.
     routers.push(dioxus_app::marketing_page_router(
         dioxus_app::FIRM_SERVICES_PATH,
         firm_copy::legal_services(),
@@ -370,7 +371,8 @@ fn link(text: &str, href: &str) -> webapp::home::CopyRun {
 /// than plain strings.
 ///
 /// No fee arrangement and no amount: `no_firm_page_publishes_a_fee` covers this
-/// page like the rest, and every engagement is quoted through `/contact`.
+/// page like the rest, and every engagement is quoted through
+/// `mailto:contact@neonlaw.com`.
 fn resolve_service_section() -> webapp::home::ServiceSection {
     webapp::home::ServiceSection {
         heading: "We are by your side through tough times.".to_string(),
@@ -478,7 +480,7 @@ fn resolve_practice_links() -> Vec<webapp::home::PracticeLink> {
 ///
 /// The home page opens on a New York skyline, supplied as a finished PNG in the
 /// public asset lane. No price, on any section — every engagement is quoted
-/// through `/contact`.
+/// through `mailto:contact@neonlaw.com`.
 pub(crate) fn resolve_firm_home_content(
     branding: &views::brand::Branding,
 ) -> webapp::home::HomeContent {
@@ -820,8 +822,8 @@ fn transactional_separate_work() -> Vec<webapp::transactional_page::SeparateWork
 /// the retainer.
 ///
 /// Brand-safe like [`resolve_firm_home_content`]. The page names how the flat
-/// monthly fee works and sends the figure itself to `/contact`; it publishes no
-/// amount.
+/// monthly fee works and sends the figure itself to
+/// `mailto:contact@neonlaw.com`; it publishes no amount.
 pub(crate) fn resolve_transactional_content(
     branding: &views::brand::Branding,
 ) -> webapp::transactional_page::TransactionalContent {

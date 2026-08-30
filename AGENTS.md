@@ -200,9 +200,8 @@ cargo run -p cli -- dev grant-lawyer
 `grant-lawyer` targets the environment-owned `navigator` database that every local loop shares, so it seeds the same
 rows the running `web` reads. Then open the `NAV_BASE_URL` from `.devx/env`, follow `/auth/login`, and sign in through
 Rauthy — a firm tier lands on the `/app/team` home, a client on `/app/projects`. Do not hand-write session cookies.
-`/app/*` requires authentication; `/app/lawyer/*` also requires the database role `lawyer` or
-`admin`. The session carries
-the role, so re-login after any role change, including one made from `/app/admin/people/{id}`.
+`/app/*` requires authentication; `/app/lawyer/*` also requires the database role `lawyer` or `admin`. The session
+carries the role, so re-login after any role change, including one made from `/app/admin/people/{id}`.
 
 `GET /auth/logout` clears the app session and, when the provider published an `end_session_endpoint`, bounces the
 browser through it (RP-initiated OIDC logout) so Rauthy drops its own SSO session too — the next `/auth/login` then

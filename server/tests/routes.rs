@@ -7225,7 +7225,7 @@ async fn the_signed_in_nav_offers_the_role_appropriate_app_workspaces() {
     // viewer's tier through `webapp::app_chrome::app_destinations`.
     //
     // The three per-role desks the chrome used to name are still gone as
-    // *prefixes* — `/app/lawyer`, `/admin`, `/clerk` advertised "which surface am I
+    // *prefixes* — `/lawyer`, `/admin`, `/clerk` advertised "which surface am I
     // allowed on" and drifted from the routes, which is what the collapse onto
     // `/app` fixed. What came back is narrower: the two `/app` workspaces that
     // really are separate pages, offered only to the tiers whose handlers open
@@ -7280,7 +7280,7 @@ async fn the_signed_in_nav_offers_the_role_appropriate_app_workspaces() {
             expected.push("/app/team");
         }
         // Whatever this tier did not earn, plus the retired prefixes.
-        let mut unexpected = vec!["/app/lawyer", "/admin", "/clerk"];
+        let mut unexpected = vec!["/lawyer", "/admin", "/clerk"];
         if !is_firm {
             unexpected.push("/app/team");
         }
@@ -7304,12 +7304,12 @@ async fn lawyer_pages_preserve_lawyer_tier_nav_links() {
         (
             store::persons::Role::Lawyer,
             vec!["/app/projects", "/auth/logout"],
-            vec!["/app/lawyer", "/admin", "/auth/login"],
+            vec!["/lawyer", "/admin", "/auth/login"],
         ),
         (
             store::persons::Role::Admin,
             vec!["/app/projects", "/auth/logout"],
-            vec!["/app/lawyer", "/auth/login"],
+            vec!["/lawyer", "/auth/login"],
         ),
     ];
 

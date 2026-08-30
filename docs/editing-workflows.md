@@ -84,8 +84,8 @@ Feature files prove composition; Rust tests prove routing, payloads, side effect
 
 ### Two ways a workflow is driven
 
-**Walker-driven (signed templates).** The admin walker at `/app/lawyer/notations/:id/step` auto-drives this exact
-shape on questionnaire completion:
+**Walker-driven (signed templates).** The admin walker at `/app/lawyer/notations/:id/step` auto-drives this exact shape
+on questionnaire completion:
 
 ```text
 intake_submitted → intake_persisted__<respondent> → <doc>_rendered → lawyer_review →

@@ -43,14 +43,13 @@ Clients do not receive Git clone URLs, Git PATs, branch names, commit SHAs, or d
 
 ### `clerk`
 
-A supervised **non-lawyer** firm worker. Clerk enters only the dedicated `/clerk` coordination
-surface, never `/app/lawyer`,
-MCP, A2A, Git, person administration, legal drafting, approval, or advice. `/clerk` is read-only and lists only Projects
-where the Clerk has firm-side participation and one of the matter's `is_lawyer_dri` rows names a licensed `lawyer`,
-`admin`, or `owner` lawyer. It shows the matter's name, status, supervising lawyer, and a link to the Project's client
-portal—but no firm documents, legal work, or write control on this surface. The portal is participation-gated
-identically for every viewer (`store::access::can_see_project`, which is `matter_viewer(...).is_some()`), so admitting a
-Clerk to it grants nothing the matter page's own visibility does not.
+A supervised **non-lawyer** firm worker. Clerk enters only the dedicated `/clerk` coordination surface, never
+`/app/lawyer`, MCP, A2A, Git, person administration, legal drafting, approval, or advice. `/clerk` is read-only and
+lists only Projects where the Clerk has firm-side participation and one of the matter's `is_lawyer_dri` rows names a
+licensed `lawyer`, `admin`, or `owner` lawyer. It shows the matter's name, status, supervising lawyer, and a link to the
+Project's client portal—but no firm documents, legal work, or write control on this surface. The portal is
+participation-gated identically for every viewer (`store::access::can_see_project`, which is
+`matter_viewer(...).is_some()`), so admitting a Clerk to it grants nothing the matter page's own visibility does not.
 
 On an assigned matter, the `View as Client` control starts the established client-lens session for that matter's client
 DRI and takes the Clerk to the client rendering. The impersonation banner names the effective client and provides the
@@ -63,10 +62,9 @@ through `POST` / `DELETE /app/api/projects/{id}/participants[/{role_id}]` — se
 There is no separate visibility flag: the participation row *is* the toggle, on while the row exists (and the matter
 still names a licensed lawyer DRI), off the moment it is removed.
 
-"Never `/app/lawyer`" now holds without exception. The firm brand fonts, the one object that used
-to need one, moved to `GET`
-/app/team/fonts/gorp-serif.zip`, where the team home's own prefix rules admit every firm tier — a brand asset is not
-lawyer work, and the path now says so.
+"Never `/app/lawyer`" now holds without exception. The firm brand fonts, the one object that used to need one, moved to
+`GET /app/team/fonts/gorp-serif.zip`, where the team home's own prefix rules admit every firm tier — a brand asset is
+not lawyer work, and the path now says so.
 
 ### `lawyer`
 
@@ -74,8 +72,8 @@ A **licensed lawyer** authorized to perform legal work through Navigator, regard
 Lawyer lens sees only projects where the lawyer has a firm-side `person_project_role` participation row.
 
 Lawyers may also be clients on their own matters, but that is a separate client-lens fact: the matter surface at
-`/app/projects` renders each caller through their own lens, while `/app/lawyer` shows the matters
-they work on for the firm.
+`/app/projects` renders each caller through their own lens, while `/app/lawyer` shows the matters they work on for the
+firm.
 
 Designating the lawyer as a lawyer DRI is not a separate access grant: the `is_lawyer_dri` marker rides that same
 participation row, so a DRI is a matter person by construction. A matter's `is_lawyer_dri` rows are its disclosed lawyer
@@ -98,13 +96,11 @@ No row in `person` at all. Sees the host's own public pages and the login door, 
 the firm's host is anonymous, including the [presentations](glossary.md#presentation) catalog at `/presentations`, every
 talk beneath it, and the `/workshops` catalog and workshop material.
 
-Every shared Navigator surface — `/app`, the JSON API, `/templates/*`, `/app/api`, and
-`/app/api/openapi.json` — composes behind one router-level boundary,
-`portal::auth::require_session`. An anonymous
-browser is sent to `/auth/login?return_to=…`; an anonymous machine caller gets a `401` with a structured
-`{"error":"unauthenticated"}` document. Default-deny is therefore a property of router composition, not of a Rego rule
-that would have to redeploy in lockstep with the binary. Embedded Rego still runs behind boundary and decides *which*
-authenticated caller may proceed.
+Every shared Navigator surface — `/app`, the JSON API, `/templates/*`, `/app/api`, and `/app/api/openapi.json` —
+composes behind one router-level boundary, `portal::auth::require_session`. An anonymous browser is sent to
+`/auth/login?return_to=…`; an anonymous machine caller gets a `401` with a structured `{"error":"unauthenticated"}`
+document. Default-deny is therefore a property of router composition, not of a Rego rule that would have to redeploy in
+lockstep with the binary. Embedded Rego still runs behind boundary and decides *which* authenticated caller may proceed.
 
 The anonymous allowlist is explicit, small, and pinned by `portal/tests/router_contract.rs`:
 
@@ -295,13 +291,12 @@ That is not a scoping convenience, it is a safety property, and three separate t
 | **Authority** — whether the call should be made at all | `person.role` and the policy above |
 
 Two rules elsewhere in the docs hold *because* the table is inert. A Clerk "never receives lawyer-work, advice, Git,
-MCP, or `/app/lawyer` authority by inheritance", so a Clerk recorded as GitHub user `12345` gains
-nothing by being recorded
-as such. And Project participation never grants source-forge access ([`project-repositories`](project-repositories.md)),
-so this table must not become the back door that reverses it. The rule is per-system rather than per-role: a `client`
-Person holding a `google` identity for Drive sharing is legitimate, and that same Person is still never provisioned into
-the source forge. The schema therefore carries no blanket role constraint — enforcement belongs where provisioning
-happens.
+MCP, or `/app/lawyer` authority by inheritance", so a Clerk recorded as GitHub user `12345` gains nothing by being
+recorded as such. And Project participation never grants source-forge access
+([`project-repositories`](project-repositories.md)), so this table must not become the back door that reverses it. The
+rule is per-system rather than per-role: a `client` Person holding a `google` identity for Drive sharing is legitimate,
+and that same Person is still never provisioned into the source forge. The schema therefore carries no blanket role
+constraint — enforcement belongs where provisioning happens.
 
 Provisioning may *resolve* a Person to an account through this table; the decision to provision anything comes from role
 and policy. `cli/tests/external_identity_is_inert.rs` asserts the separation against every authorization surface by
@@ -339,19 +334,19 @@ Embedded Rego's allow rules in priority order:
 2. **Lawyer-tier surfaces** — `/app/outline`, `/app/admin/entity-types`, `/app/admin/templates`, and other firm-
    internal pages gate on `session.role` being `"owner"`, `"admin"`, or `"lawyer"`. `"clerk"` is intentionally absent.
    The people directory is **not** among them: its browser surface is `/app/admin/people`, Owner/Admin only, since
-   ENG-304 deleted the `/app/lawyer` mirror. The Person *commands* stay lawyer-tier at
-   `POST/PATCH/DELETE /app/api/people*`,
-   so what a lawyer lost is the form, not the capability. That tier check is the whole gate only for firm *reference*
-   data. A `/app/lawyer` listing that reads **matter content** — `/app/lawyer/answers`, `/app/lawyer/assets`,
-   `/app/lawyer/relationship-logs` — additionally scopes its rows to the caller's participation ledger through
-   `webapp::admin_listing::require_lawyer_in_matters`, so a lawyer holding no row reads nothing there, and a row
-   carrying no project link is absent from a scoped read rather than admitted. Owner and Admin keep the unscoped read.
-   Two listings stay firm-wide on purpose: `/app/lawyer/disclosures` and `/app/lawyer/person-entity-roles` feed
-   `store::conflicts::check_new_matter`, and ABA Model Rule 1.10 imputes a conflict firm-wide, so a lawyer must be able
-   to see one arising out of a matter they are not on — scoping either would narrow the conflict check to the checker's
-   own caseload. `/app/admin/letters` and `/app/admin/email-log` are Owner/Admin only: `letter` and `sent_email` carry
-   no project link to scope by, so the admin gate is the interim close until one exists. Which class each listing
-   belongs to is written down once, in `webapp::admin_listing::LAWYER_LISTINGS`.
+   ENG-304 deleted the `/app/lawyer` mirror. The Person *commands* stay lawyer-tier at `POST/PATCH/DELETE
+   /app/api/people*`, so what a lawyer lost is the form, not the capability. That tier check is the whole gate only for
+   firm *reference* data. A `/app/lawyer` listing that reads **matter content** — `/app/lawyer/answers`,
+   `/app/lawyer/assets`, `/app/lawyer/relationship-logs` — additionally scopes its rows to the caller's participation
+   ledger through `webapp::admin_listing::require_lawyer_in_matters`, so a lawyer holding no row reads nothing there,
+   and a row carrying no project link is absent from a scoped read rather than admitted. Owner and Admin keep the
+   unscoped read. Two listings stay firm-wide on purpose: `/app/lawyer/disclosures` and
+   `/app/lawyer/person-entity-roles` feed `store::conflicts::check_new_matter`, and ABA Model Rule 1.10 imputes a
+   conflict firm-wide, so a lawyer must be able to see one arising out of a matter they are not on — scoping either
+   would narrow the conflict check to the checker's own caseload. `/app/admin/letters` and `/app/admin/email-log` are
+   Owner/Admin only: `letter` and `sent_email` carry no project link to scope by, so the admin gate is the interim close
+   until one exists. Which class each listing belongs to is written down once, in
+   `webapp::admin_listing::LAWYER_LISTINGS`.
 3. **Clerk supervised lens** — a Clerk enters `/app/projects` with everyone else, and
    `store::access::matter_viewer` resolves them to `MatterViewer::Clerk` only when they hold a firm-side row and the
    matter has a flagged lawyer DRI who currently holds the lawyer tier. That variant renders the matter name, status,

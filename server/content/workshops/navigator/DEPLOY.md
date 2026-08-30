@@ -1267,9 +1267,8 @@ anonymous public visitor:
 - `admin` — a licensed lawyer with installation-wide administration authority. Admin cannot manage an Owner.
 - `lawyer` — a **licensed lawyer** working assigned matters and supervising any Clerk capability the application grants.
 - `clerk` — a supervised **non-lawyer** worker. Clerk's `/clerk` surface is a read-only list of firm-assigned Projects
-  whose disclosed `is_lawyer_dri` row is a lawyer. Clerk has no legal-advice, approval, Git, MCP, or
-  `/app/lawyer` authority by inheritance; upload and preparation work still need their own narrow, supervised
-  routes.
+  whose disclosed `is_lawyer_dri` row is a lawyer. Clerk has no legal-advice, approval, Git, MCP, or `/app/lawyer`
+  authority by inheritance; upload and preparation work still need their own narrow, supervised routes.
 - `client` — represented people using the portal for their own matters.
 
 Owner is the deployer's role because this class touches billing, secrets, OIDC, release state, and every Project. The

@@ -276,6 +276,14 @@ jobs:
       # runs the in-tree `ops release check` on every pull request, so a change
       # to the rule is still proved on the branch that makes it.
       #
+      # A change to the COMMAND'S SHAPE (not just its rule) is the sharper case:
+      # release N-1's binary may not even parse `ops release check` — a CLI
+      # hierarchy refactor can rename or renest it mid-cycle, same as any other
+      # subcommand. The probe below catches that before trusting the binary,
+      # and reports `ready=false` so the fallback below compiles the current
+      # shape from source instead of handing the job an "unrecognized
+      # subcommand" crash.
+      #
       # `/releases/latest` is NOT used: it excludes prereleases, every release
       # here is one (`YY.M.D-hotfix.N` carries a semver pre-release segment),
       # and it answers 404. Take the newest release that actually carries the
@@ -314,6 +322,11 @@ jobs:
           install -m 0755 "${tmp}/navigator" "${RUNNER_TEMP}/navigator-bin/navigator"
           echo "${RUNNER_TEMP}/navigator-bin" >> "${GITHUB_PATH}"
           echo "navigator ${tag} installed: $("${RUNNER_TEMP}/navigator-bin/navigator" --version)"
+          if ! "${RUNNER_TEMP}/navigator-bin/navigator" ops release check --help >/dev/null 2>&1; then
+              echo "::notice::navigator ${tag} does not recognize this commit's 'ops release check' invocation; building the checker from source"
+              echo "ready=false" >> "$GITHUB_OUTPUT"
+              exit 0
+          fi
           echo "ready=true" >> "$GITHUB_OUTPUT"
       # THE FALLBACK, and the reason this job still knows how to compile. A
       # release lost because the release API blipped is the exact failure this

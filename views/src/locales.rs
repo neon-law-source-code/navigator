@@ -355,8 +355,8 @@ pub fn locale_yaml_parts(path: &Path) -> Option<(&str, &str)> {
     }
     let stem = path.file_stem()?.to_str()?;
     let locale_dir = path.parent()?;
-    let locales_dir = locale_dir.parent()?;
-    if locales_dir.file_name()?.to_str()? != "locales" {
+    let catalog_root = locale_dir.parent()?;
+    if catalog_root.file_name()?.to_str()? != "locales" {
         return None;
     }
     let locale = locale_dir.file_name()?.to_str()?;

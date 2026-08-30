@@ -354,10 +354,10 @@ gh pr view <n> --json statusCheckRollup \
 
 `ci.yml` runs for PRs to `main`, never pushes. The `validate` job always runs: it builds the `navigator` CLI and walks
 the tree with `navigator validate` (Markdown, YAML syntax, seed documents, locale catalogs, consumed mutable tags). The
-`rust` job carries the rest of the quality gate — formatting, `cargo clippy` with warnings denied, and
-`cargo test --workspace` — and runs only when the PR touches Rust sources or the files that job is the proof for
-(`.rs`, `.surql`, `.feature`, Cargo manifests, the toolchain, nextest config, or `ci.yml` itself). A locale or Markdown
-edit therefore still validates and does not spend a Blacksmith runner on the workspace suite.
+`rust` job runs formatting, clippy with warnings denied, and `cargo test --workspace`. It runs only when the PR touches
+Rust sources or the files that job is the proof for (`.rs`, `.surql`, `.feature`, Cargo manifests, the toolchain,
+nextest config, or `ci.yml` itself). A locale or Markdown edit therefore still validates and does not spend a Blacksmith
+runner on the workspace suite.
 
 The rust job runs on `blacksmith-4vcpu-ubuntu-2404`, and every other job on the pull-request path stays on stock
 `ubuntu-latest`, which is free for a public repository. Four vCPU is a measured choice rather than a default: Blacksmith

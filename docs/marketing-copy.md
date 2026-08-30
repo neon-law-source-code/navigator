@@ -4,10 +4,10 @@ publish: true
 
 # Marketing copy
 
-The firm's public home and practice pages publish English only. The words live in
-`neon/locales/en/*.yaml`. Editing them is a YAML change: the Rust loaders interpolate `{site_name}` and
-`{firm_email}`, fill runtime fields a catalog cannot know (hero asset URLs, CLI download archives, `mailto:` hrefs), and
-inject the page types the Dioxus routers already take.
+The firm's public home and practice pages publish English only. The words live in `neon/locales/en/*.yaml`. Editing them
+is a YAML change: the Rust loaders interpolate `{site_name}` and `{firm_email}`, fill runtime fields a catalog cannot
+know (hero asset URLs, CLI download archives, `mailto:` hrefs), and inject the page types the Dioxus routers already
+take.
 
 There is no translated surface. A second locale directory is a validate error (`Y002`), not a language switch.
 

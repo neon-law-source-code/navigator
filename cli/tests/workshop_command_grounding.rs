@@ -339,3 +339,185 @@ fn deployment_workshop_separates_the_live_bucket_checkpoint_from_the_single_buck
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// Template-code grounding
+// ---------------------------------------------------------------------------
+//
+// The `--help` grounding above pins command *syntax*: clap short-circuits on
+// `--help` before it validates a positional, so
+// `navigator site notation create onboarding__retainer --help` parses happily
+// long after that code has left the catalog. It did — #229 folded
+// `onboarding__retainer` into `onboarding__engagement_letter` and three decks
+// went on teaching the dead code with every test green.
+//
+// These two guards close that gap by resolving the code itself against
+// `store::seed::seeded_template_codes()`, the same frontmatter parse the
+// seeder uses, so the decks cannot drift from the shipped catalog again.
+//
+// Scope is deliberate: a template code is checked where it must *resolve* —
+// inside a `navigator site notation create` invocation, and as the `code:` key
+// of a notation-frontmatter sample. Prose that merely names a code in
+// backticks is not checked, because `AGENTS.md` ("Leave a slide's words
+// alone") makes a deck's wording the author's call, and a guard over prose
+// would turn a wording judgment into a CI failure.
+
+/// Every deck under the workshops directory, discovered rather than listed, so
+/// a new deck is covered the day it lands. `cli/README.md` teaches the same
+/// commands and is checked alongside them.
+fn template_code_docs() -> Vec<String> {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("server/content/workshops/navigator");
+    let mut docs: Vec<String> = std::fs::read_dir(&dir)
+        .unwrap_or_else(|e| panic!("read {} — {e}", dir.display()))
+        .map(|entry| entry.expect("read workshops dir entry").path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "md"))
+        .map(|path| format!("server/content/workshops/navigator/{}", file_name(&path)))
+        .collect();
+    docs.push("cli/README.md".to_string());
+    docs.sort();
+    assert!(
+        docs.len() > 1,
+        "found no workshop decks — the workshops directory moved or changed shape",
+    );
+    docs
+}
+
+fn file_name(path: &Path) -> String {
+    path.file_name()
+        .expect("deck path has a file name")
+        .to_string_lossy()
+        .into_owned()
+}
+
+/// The codes in the shipped catalog, parsed from the seeded templates'
+/// frontmatter.
+fn seeded_codes() -> Vec<String> {
+    store::seed::seeded_template_codes().expect("parse seeded template frontmatter")
+}
+
+/// Render the catalog for a failure message.
+fn catalog(codes: &[String]) -> String {
+    codes
+        .iter()
+        .map(|code| format!("  - {code}"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+#[test]
+fn every_documented_notation_create_names_a_seeded_template_code() {
+    let codes = seeded_codes();
+    let mut checked = 0_usize;
+    let mut failures = Vec::new();
+
+    for doc in template_code_docs() {
+        for command in navigator_commands(&repo_file(&doc)) {
+            let tokens = tokenize(&command);
+            // `site notation create <CODE> …`
+            let code = match tokens.as_slice() {
+                [site, notation, create, code, ..]
+                    if site == "site" && notation == "notation" && create == "create" =>
+                {
+                    code
+                }
+                _ => continue,
+            };
+            if code == PLACEHOLDER || code.starts_with('-') {
+                continue;
+            }
+            checked += 1;
+            if !codes.iter().any(|seeded| seeded == code) {
+                failures.push(format!(
+                    "{doc}: `navigator site notation create {code}` names a template code \
+                     that is not in the seeded catalog",
+                ));
+            }
+        }
+    }
+
+    assert!(
+        checked > 0,
+        "extracted no `notation create` commands — the extractor or the docs changed shape",
+    );
+    assert!(
+        failures.is_empty(),
+        "{} documented notation-create command(s) name an unseeded template code:\n\n{}\n\nseeded catalog:\n{}",
+        failures.len(),
+        failures.join("\n"),
+        catalog(&codes),
+    );
+}
+
+#[test]
+fn every_documented_frontmatter_sample_names_a_seeded_template_code() {
+    let codes = seeded_codes();
+    let mut checked = 0_usize;
+    let mut failures = Vec::new();
+
+    for doc in template_code_docs() {
+        for (code, line) in frontmatter_sample_codes(&repo_file(&doc)) {
+            checked += 1;
+            if !codes.iter().any(|seeded| seeded == &code) {
+                failures.push(format!(
+                    "{doc}:{line}: frontmatter sample declares `code: {code}`, \
+                     which is not in the seeded catalog",
+                ));
+            }
+        }
+    }
+
+    assert!(
+        checked > 0,
+        "extracted no frontmatter samples — the extractor or the docs changed shape",
+    );
+    assert!(
+        failures.is_empty(),
+        "{} documented frontmatter sample(s) name an unseeded template code:\n\n{}\n\nseeded catalog:\n{}",
+        failures.len(),
+        failures.join("\n"),
+        catalog(&codes),
+    );
+}
+
+/// Every `code:` key declared inside a fenced ` ```yaml ` block that is a
+/// notation-template frontmatter sample, with its 1-based line number.
+///
+/// A block qualifies only when it also carries one of the frontmatter keys
+/// that mark a notation template (`respondent_type:`, `questionnaire:`,
+/// `workflow:`). Unrelated YAML in a deck — a manifest, a config excerpt —
+/// may legitimately hold its own `code:` and must not be resolved against the
+/// notation catalog.
+fn frontmatter_sample_codes(md: &str) -> Vec<(String, usize)> {
+    const MARKERS: &[&str] = &["respondent_type:", "questionnaire:", "workflow:"];
+    let mut found = Vec::new();
+    let lines: Vec<&str> = md.lines().collect();
+    let mut i = 0;
+    while i < lines.len() {
+        if lines[i].trim() != "```yaml" {
+            i += 1;
+            continue;
+        }
+        let start = i + 1;
+        let mut end = start;
+        while end < lines.len() && !lines[end].trim().starts_with("```") {
+            end += 1;
+        }
+        let block = &lines[start..end];
+        let is_frontmatter = block.iter().any(|line| {
+            MARKERS
+                .iter()
+                .any(|marker| line.trim_start().starts_with(marker))
+        });
+        if is_frontmatter {
+            for (offset, line) in block.iter().enumerate() {
+                if let Some(value) = line.strip_prefix("code:") {
+                    found.push((value.trim().to_string(), start + offset + 1));
+                }
+            }
+        }
+        i = end + 1;
+    }
+    found
+}

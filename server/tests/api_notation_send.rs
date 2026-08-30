@@ -23,7 +23,7 @@ use store::test_support::mem_surreal;
 use tower::ServiceExt;
 use workflows::{DispatchingRuntime, InMemoryRuntime, StateMachineRuntime};
 
-const TEMPLATE_CODE: &str = "onboarding__engagement_letter";
+const TEMPLATE_CODE: &str = "onboarding__letter";
 const KEY: &str = "api-notation-send-test-key";
 /// The fee terms a lawyer writes into the engagement agreement's
 /// custom-clause slot before it can be sent for signature.
@@ -121,7 +121,7 @@ async fn seed_lawyer_review_notation(h: &Harness, project_id: uuid::Uuid) -> uui
     let tmpl = store::templates::resolve(&h.surreal, None, TEMPLATE_CODE)
         .await
         .unwrap()
-        .expect("seed_canonical inserts onboarding__engagement_letter");
+        .expect("seed_canonical inserts onboarding__letter");
     let notation_id = store::notations::create(
         &h.surreal,
         &store::notations::NewNotation::new(tmpl.id, client.id, project_id, "BEGIN"),

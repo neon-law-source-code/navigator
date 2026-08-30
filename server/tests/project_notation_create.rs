@@ -22,7 +22,7 @@ use tower::ServiceExt;
 use workflows::{InMemoryRuntime, StateMachineRuntime};
 
 /// A corpus template body — guaranteed to validate clean (CI checks it).
-const VALID_TEMPLATE: &str = include_str!("../../templates/neon_law/shared/engagement_letter.md");
+const VALID_TEMPLATE: &str = include_str!("../../templates/neon_law/shared/onboarding_letter.md");
 
 /// Signing key shared by the app's `SessionStore` and the bearers the tests
 /// mint, so `inject_bearer_session` decodes them.
@@ -287,7 +287,7 @@ async fn retainer_opens_as_the_first_notation_from_the_bundled_catalog() {
         &app,
         &bearer,
         &project.code,
-        "onboarding__engagement_letter",
+        "onboarding__letter",
         "libra@example.com",
     )
     .await;

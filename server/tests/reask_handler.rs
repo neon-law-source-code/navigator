@@ -21,10 +21,10 @@ use store::test_support::mem_surreal;
 use tower::ServiceExt;
 use workflows::{InMemoryRuntime, StateMachineRuntime};
 
-const TEMPLATE_CODE: &str = "onboarding__engagement_letter";
+const TEMPLATE_CODE: &str = "onboarding__letter";
 
 /// Build the router over a real test database with the bundled
-/// `onboarding__engagement_letter` seeded, plus one notation at BEGIN. The workflow
+/// `onboarding__letter` seeded, plus one notation at BEGIN. The workflow
 /// and questionnaire share one `InMemoryRuntime` — the same in-process
 /// topology the walker tests use.
 async fn build_app_and_notation() -> (axum::Router, store::surreal::SurrealDb, uuid::Uuid) {
@@ -41,7 +41,7 @@ async fn build_app_and_notation() -> (axum::Router, store::surreal::SurrealDb, u
     let tmpl = store::templates::resolve(&surreal, None, TEMPLATE_CODE)
         .await
         .unwrap()
-        .expect("seed pass inserts onboarding__engagement_letter");
+        .expect("seed pass inserts onboarding__letter");
 
     let libra = store::persons::create(
         &surreal,

@@ -156,8 +156,8 @@ async fn list_templates_prints_imported_titles() {
     assert!(out.status.success());
     let stdout = String::from_utf8_lossy(&out.stdout);
     for needle in [
-        "onboarding__engagement_letter",
-        "Engagement Letter",
+        "onboarding__letter",
+        "Onboarding Letter",
         "offboarding__letter",
         "Closing Letter",
         "nv__llc_formation",
@@ -241,10 +241,10 @@ async fn list_entities_includes_seeded_org_names() {
 }
 
 #[tokio::test]
-async fn list_templates_against_a_seed_only_db_shows_the_bundled_retainer() {
-    // The canonical seed pass now bundles the retainer notation
-    // template (see `store::seed::seed_templates`), so a fresh
-    // seed-only DB carries exactly one row — `onboarding__engagement_letter`.
+async fn list_templates_against_a_seed_only_db_shows_the_bundled_lifecycle_letters() {
+    // The canonical seed pass bundles the shared lifecycle letters
+    // (see `store::seed::seed_templates`): one onboarding letter and
+    // one offboarding closing letter.
     let Some(store) = store::test_support::server_surreal(
         "test_cli_list_templates_against_a_seed_only_db_shows_the_bundled_retainer",
     )
@@ -259,9 +259,17 @@ async fn list_templates_against_a_seed_only_db_shows_the_bundled_retainer() {
         .expect("run navigator db list templates");
     assert!(out.status.success(), "fresh-DB list must still succeed");
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(
-        stdout.contains("onboarding__engagement_letter"),
-        "expected the seeded retainer template; got:\n{stdout}",
-    );
-    assert!(stdout.contains("Engagement Letter"));
+    for (code, title) in [
+        ("onboarding__letter", "Onboarding Letter"),
+        ("offboarding__letter", "Closing Letter"),
+    ] {
+        assert!(
+            stdout.contains(code),
+            "expected seeded template `{code}`; got:\n{stdout}",
+        );
+        assert!(
+            stdout.contains(title),
+            "expected seeded title `{title}`; got:\n{stdout}",
+        );
+    }
 }

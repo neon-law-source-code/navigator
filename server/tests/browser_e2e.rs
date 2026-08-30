@@ -210,7 +210,7 @@ async fn lawyer_walks_the_full_retainer_questionnaire_end_to_end() {
     //   2. POST /step × 8 (one question each) → result page
     //
     // Preconditions (beyond the module's chromedriver + KIND
-    // requirements): the `onboarding__engagement_letter` template must
+    // requirements): the `onboarding__letter` template must
     // be seeded via `navigator site seed templates/`, and
     // `store/seeds/Question.yaml` must be seeded so the record-backed
     // walker question codes (`entity`, `address`, `person`, `project`) are
@@ -286,7 +286,7 @@ async fn lawyer_walks_the_full_retainer_questionnaire_end_to_end() {
         set_input_script,
         vec![
             serde_json::Value::String("select[name='retainer_template_code']".into()),
-            serde_json::Value::String("onboarding__engagement_letter".into()),
+            serde_json::Value::String("onboarding__letter".into()),
         ],
     )
     .await

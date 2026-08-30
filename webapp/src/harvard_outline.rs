@@ -167,7 +167,7 @@ mod tests {
             library: vec![
                 OutlineDocLink {
                     slug: "onboarding".to_string(),
-                    title: "Retainer Agreement".to_string(),
+                    title: "Onboarding Letter".to_string(),
                 },
                 OutlineDocLink {
                     slug: "offboarding".to_string(),
@@ -176,7 +176,7 @@ mod tests {
             ],
             content: OutlineStageContent {
                 slug: "onboarding".to_string(),
-                title: "Retainer Agreement".to_string(),
+                title: "Onboarding Letter".to_string(),
                 stage_html: "<article class=\"harvard-stage\" data-harvard-outline>\
                     <section class=\"harvard-unit harvard-unit--depth-1\" data-harvard-path=\"I\">\
                     <h2>Scope of the engagement</h2></section></article>"

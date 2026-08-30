@@ -35,7 +35,7 @@ use workflows::InMemoryRuntime;
 /// Stable code for the workshop's retainer template. Used by the
 /// `create_notation` skill to look up the template row inserted
 /// in the Background.
-const RETAINER_TEMPLATE_CODE: &str = "onboarding__engagement_letter";
+const RETAINER_TEMPLATE_CODE: &str = "onboarding__letter";
 
 #[derive(Default, World)]
 #[world(init = Self::default)]

@@ -136,7 +136,7 @@ fn start_body(view: &RetainerStartView) -> Element {
     // picker so lawyers choose by title rather than typing a code. Default the
     // selection to the generic retainer.
     let selected = if view.retainer_template_code.is_empty() {
-        "onboarding__engagement_letter".to_string()
+        "onboarding__letter".to_string()
     } else {
         view.retainer_template_code.clone()
     };
@@ -204,11 +204,11 @@ mod tests {
         RetainerStartView {
             firm_name: "Neon Law".to_string(),
             templates: vec![TemplateChoice {
-                code: "onboarding__engagement_letter".to_string(),
-                label: "Retainer Agreement — onboarding__engagement_letter".to_string(),
+                code: "onboarding__letter".to_string(),
+                label: "Onboarding Letter — onboarding__letter".to_string(),
             }],
             client_email: "libra@example.com".to_string(),
-            retainer_template_code: "onboarding__engagement_letter".to_string(),
+            retainer_template_code: "onboarding__letter".to_string(),
             csrf_token: "tok".to_string(),
             role: ViewerRole::Lawyer,
             error: error.map(str::to_string),
@@ -225,10 +225,7 @@ mod tests {
     /// client; nothing narrows the list to a matter's service.
     #[test]
     fn the_picker_offers_every_onboarding_template_and_refuses_none() {
-        let codes = [
-            "onboarding__engagement_letter",
-            "onboarding__engagement_letter_transcript",
-        ];
+        let codes = ["onboarding__letter", "onboarding__letter_transcript"];
         let mut view = view(None);
         view.templates = codes
             .iter()
@@ -239,7 +236,7 @@ mod tests {
             .collect();
         // Selecting one that shares no service with the others must still
         // render — the old product/retainer pairing rule is gone.
-        view.retainer_template_code = "onboarding__engagement_letter_transcript".to_string();
+        view.retainer_template_code = "onboarding__letter_transcript".to_string();
 
         let html = render_start(&view);
         for code in codes {
@@ -279,7 +276,7 @@ mod tests {
         // The echoed template stays selected, not the default.
         let selected_at = html.find("selected").expect("a chosen option: {html}");
         let letter_at = html
-            .find("onboarding__engagement_letter")
+            .find("onboarding__letter")
             .expect("the echoed option renders");
         assert!(letter_at < selected_at, "{html}");
     }

@@ -113,14 +113,14 @@ Have each attendee sign in with the role relevant to their work. Keep the browse
 ### The four nouns in one workflow
 
 1. **Project** — Cruller v. Prine, the matter that owns the work.
-2. **Template** — a versioned Markdown blueprint such as `onboarding__engagement_letter`.
+2. **Template** — a versioned Markdown blueprint such as `onboarding__letter`.
 3. **Notation** — one client and one Template bound inside the Project.
 4. **Workflow** — the states and transitions that move a Notation from intake through review and signature.
 
 The shared retainer template is available in the canonical catalog. A lawyer can bind it through the AIDA catalog:
 
 ```text
-aida_create_notation(template_code="onboarding__engagement_letter", project_id=<sample-litigation project id>)
+aida_create_notation(template_code="onboarding__letter", project_id=<sample-litigation project id>)
 ```
 
 The notation begins in its seeded workflow state. The lawyer reviews the generated work, advances the workflow through
@@ -135,17 +135,17 @@ Trace one notation from its template through its workflow state. Relate each ste
 Every Project has **one** onboarding notation and **one** offboarding notation. Those two kinds are unique on the
 matter: a second retainer is not a second engagement, and a demand letter is not a closing letter.
 
-Onboarding is the engagement that opens the matter — the retainer agreement or the engagement letter. Offboarding is the
-firm-signed closing letter that ends the representation. Opening the Project does not create either notation; a lawyer
-binds them like any other template. The self-serve doors refuse any other kind as the matter's first notation.
+Onboarding is the letter that opens the matter. Offboarding is the firm-signed closing letter that ends the
+representation. Those two shared catalog codes are `onboarding__letter` and `offboarding__letter`. Opening the Project
+does not create either notation; a lawyer binds them like any other template. The self-serve doors refuse any other kind
+as the matter's first notation.
 
-The CLI seeds both letters into the shared catalog. This workshop binds the retainer through AIDA; the engagement letter
-is the other shared onboarding. Close the matter with the offboarding letter. Do not bind two onboardings on one
-Project:
+The CLI seeds both letters. This workshop still binds the retainer through AIDA as one onboarding walk. Close the matter
+with the offboarding letter. Do not bind two onboardings on one Project:
 
 ```bash
 navigator db list templates
-navigator site notation create onboarding__engagement_letter \
+navigator site notation create onboarding__letter \
   --project sample-litigation \
   --client-email client@neonlaw.com
 navigator site notation create offboarding__letter \
@@ -155,11 +155,9 @@ navigator site notation create offboarding__letter \
 
 ---
 
-Name the pair on Cruller v. Prine. Binding `onboarding__retainer` is the onboarding. The shared closing letter
-(`offboarding__letter`) is the offboarding. The Projects-list badge reads presence — `onboarding on file` — not
-execution. A bespoke letter still counts if it declares `kind: onboarding` or `kind: offboarding`. List the seeded
-catalog and point at the three lifecycle codes: `onboarding__retainer`, `onboarding__engagement_letter`, and
-`offboarding__letter`.
+Name the pair on Cruller v. Prine. The onboarding letter is `onboarding__letter`. The closing letter is
+`offboarding__letter`. The Projects-list badge reads presence — `onboarding on file` — not execution. A bespoke letter
+still counts if it declares `kind: onboarding` or `kind: offboarding`.
 
 ### The other notations on a matter
 

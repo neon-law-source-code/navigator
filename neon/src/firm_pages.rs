@@ -115,9 +115,9 @@ fn notations_index_content() -> webapp::catalog_index::CatalogIndexContent {
         materials: vec![
             notation_card(
                 "Letter",
-                "Retainer Agreement",
-                "neon_law/shared/engagement_letter.md",
-                "The sample engagement that opens a matter (`onboarding__engagement_letter`).",
+                "Onboarding Letter",
+                "neon_law/shared/onboarding_letter.md",
+                "The sample letter that opens a matter (`onboarding__letter`).",
             ),
             notation_card(
                 "Letter",

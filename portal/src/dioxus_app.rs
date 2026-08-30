@@ -883,7 +883,7 @@ pub fn harvard_outline_router(
 }
 
 fn bundled_outline_library() -> Vec<webapp::harvard_outline::OutlineStageContent> {
-    const ONBOARDING: &str = include_str!("../../templates/neon_law/shared/engagement_letter.md");
+    const ONBOARDING: &str = include_str!("../../templates/neon_law/shared/onboarding_letter.md");
     const OFFBOARDING: &str = include_str!("../../templates/neon_law/shared/offboarding_letter.md");
     [("onboarding", ONBOARDING), ("offboarding", OFFBOARDING)]
         .into_iter()

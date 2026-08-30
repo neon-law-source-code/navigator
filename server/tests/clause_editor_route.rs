@@ -24,7 +24,7 @@ use store::seed;
 use store::test_support::mem_surreal;
 use tower::ServiceExt;
 
-const TEMPLATE_CODE: &str = "onboarding__engagement_letter";
+const TEMPLATE_CODE: &str = "onboarding__letter";
 const KEY: &str = "clause-editor-route-test-key";
 
 struct Fixture {

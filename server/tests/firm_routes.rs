@@ -2422,7 +2422,7 @@ async fn notations_page_uses_the_catalog_hero_and_links_the_letters_and_forms() 
     );
     assert!(body.contains(">Notations<"), "page heading: {body}");
     assert!(
-        body.contains("neon_law/shared/engagement_letter.md"),
+        body.contains("neon_law/shared/onboarding_letter.md"),
         "onboarding letter: {body}"
     );
     assert!(

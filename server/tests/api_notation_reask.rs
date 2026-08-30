@@ -23,7 +23,7 @@ use tower::ServiceExt;
 use uuid::Uuid;
 use workflows::{DispatchingRuntime, InMemoryRuntime, StateMachineRuntime};
 
-const TEMPLATE_CODE: &str = "onboarding__engagement_letter";
+const TEMPLATE_CODE: &str = "onboarding__letter";
 
 struct Fixture {
     app: axum::Router,
@@ -59,7 +59,7 @@ async fn build_fixture() -> Fixture {
     let tmpl = store::templates::resolve(&surreal, None, TEMPLATE_CODE)
         .await
         .unwrap()
-        .expect("seed inserts onboarding__engagement_letter");
+        .expect("seed inserts onboarding__letter");
     let client_person = store::persons::create(
         &surreal,
         &store::persons::NewPerson::with_role("Libra", "libra@example.com", Role::Client),

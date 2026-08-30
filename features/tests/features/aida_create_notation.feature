@@ -24,7 +24,7 @@ Feature: AIDA walks a notation to END under a lawyer's authorization
     And an open matter whose client is "libra@example.com"
 
   Scenario: A full retainer walk over A2A advances the questionnaire to END
-    When the LLM names the create_notation skill for "onboarding__engagement_letter" on that matter
+    When the LLM names the create_notation skill for "onboarding__letter" on that matter
     Then AIDA pauses for authorization to "Create Notation"
     When the firm authorizes the pending action
     Then the task completes with status "needs_answer"
@@ -72,7 +72,7 @@ Feature: AIDA walks a notation to END under a lawyer's authorization
     And the notation has reached the questionnaire END state
 
   Scenario: Answering with the wrong question code is rejected as invalid arguments
-    When the LLM names the create_notation skill for "onboarding__engagement_letter" on that matter
+    When the LLM names the create_notation skill for "onboarding__letter" on that matter
     And the firm authorizes the pending action
     Then the task completes with status "needs_answer"
 
@@ -81,6 +81,6 @@ Feature: AIDA walks a notation to END under a lawyer's authorization
     Then the task fails mentioning "entity"
 
   Scenario: The same act named on /mcp is refused instead of run
-    When the LLM calls aida_create_notation for "onboarding__engagement_letter" on that matter over /mcp
+    When the LLM calls aida_create_notation for "onboarding__letter" on that matter over /mcp
     Then the MCP result refuses the act and routes the caller to the Navigator app
     And no notation exists on that matter

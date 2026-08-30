@@ -52,7 +52,7 @@ async fn build_fixture() -> Fixture {
     let tmpl = store::templates::save_version(
         &surreal,
         None,
-        "onboarding__engagement_letter",
+        "onboarding__letter",
         store::templates::Version {
             title: "Retainer".into(),
             respondent_type: "person_and_entity".into(),

@@ -864,7 +864,7 @@ mod db_tests {
         let tmpl = crate::templates::save_version(
             surreal,
             None,
-            &format!("onboarding__engagement_letter_{tag}"),
+            &format!("onboarding__letter_{tag}"),
             crate::templates::Version {
                 title: "Retainer".into(),
                 respondent_type: "person_and_entity".into(),

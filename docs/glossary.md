@@ -547,9 +547,9 @@ agent may bind a filing or letter as a matter's first Notation; gating the agent
 use. What constrains AIDA is authorization, not kind: the actor must be lawyer and in scope for the Project
 (`store::projects::can_access_as_lawyer_in_surreal`), and the respondent is always the Project's client-side DRI.
 
-A **Retainer** is the same idea, narrowed: an Engagement whose bound Template is the firm's engagement agreement,
-`onboarding__engagement_letter`. The `portal::retainer_walk` walker, the [`docs/retainer_intake.md`](retainer_intake.md)
-state machine, and the firm's "signed retainer" disclaimer all refer to that specific kind of Notation.
+A **Retainer** is the same idea, narrowed: an Engagement whose bound Template is the firm's onboarding letter,
+`onboarding__letter`. The `portal::retainer_walk` walker, the [`docs/retainer_intake.md`](retainer_intake.md) state
+machine, and the firm's "signed retainer" disclaimer all refer to that specific kind of Notation.
 
 The schema noun in both cases is `Notation`. Client-facing copy speaks Engagement and Retainer because clients do; the
 database and the workflow runtime speak Notation.
@@ -629,7 +629,7 @@ not exist. See [`notation-authoring.md`](notation-authoring.md#changing-the-work
 ## Harvard Outline
 
 The numbering used on motions and contracts so a provision is addressable by path (`I`, `I.A`, `1.B`). Depth-1 headings
-are Roman numerals (`I.`, `II.`) on contracts and engagement letters, or Arabic numerals (`1.`, `2.`) in motion
+are Roman numerals (`I.`, `II.`) on contracts and onboarding letters, or Arabic numerals (`1.`, `2.`) in motion
 practice. Lettered subsections (`A.`, `B.`) are Markdown block quotes. `views::harvard_outline` parses that shape into
 narration units; `navigator template narrate` writes a stage a lawyer can step through while recording, and
 `/lawyer/outline` shows the bundled onboarding and offboarding letters on the same stage (`?doc=`).
@@ -821,11 +821,11 @@ through the chain backend. See [`solana-attestation.md`](solana-attestation.md) 
 ## Onboarding
 
 The codebase term for the notation that **opens a matter** — `rules::kind::Kind::Onboarding`, classified by
-[`Kind::opens_a_matter`](../rules/src/kind.rs). The shipped sample is the engagement letter
-(`onboarding__engagement_letter`). One kind covers that act of opening the matter.
+[`Kind::opens_a_matter`](../rules/src/kind.rs). The shipped sample is the onboarding letter (`onboarding__letter`). One
+kind covers that act of opening the matter.
 
-In conversation and with clients this is the **retainer** or the **engagement letter** — see [Engagement /
-Retainer](#engagement--retainer) for that client-facing shape. The codebase and the workflow runtime speak Onboarding.
+In conversation and with clients this is the **onboarding letter** — see [Engagement / Retainer](#engagement--retainer)
+for that client-facing shape. The codebase and the workflow runtime speak Onboarding.
 
 ## Participation
 

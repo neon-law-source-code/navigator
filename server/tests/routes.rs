@@ -7561,6 +7561,18 @@ async fn client_project_detail_shows_no_service_panel_and_no_price() {
         !body.contains(&format!("Matter id: <code>{project_id}</code>")),
         "client detail should not surface internal matter ids: {body}",
     );
+    assert!(
+        !body.contains(">Conversation<"),
+        "the matter page has no conversation door: {body}",
+    );
+    assert!(
+        !body.contains("Documents to review will appear here"),
+        "an empty review list does not explain itself: {body}",
+    );
+    assert!(
+        body.contains("Your documents"),
+        "the matter page always lists documents: {body}",
+    );
 }
 
 #[tokio::test]
@@ -7608,6 +7620,14 @@ async fn client_project_detail_links_the_documents_zip() {
     assert!(body.contains(&format!(
         "href=\"/app/projects/{project_code}/documents.zip\""
     )));
+    assert!(
+        !body.contains(">Conversation<"),
+        "the matter page has no conversation door: {body}",
+    );
+    assert!(
+        body.contains("welcome-letter.pdf"),
+        "the client-visible filename is listed: {body}",
+    );
 }
 
 // QUARANTINED, not retired. This test failed once in CI's `cargo test

@@ -1096,9 +1096,8 @@ async fn the_llms_index_publishes_no_fee() {
 /// The platform page is the firm's, and it makes one invitation.
 ///
 /// The firm builds Navigator, and the page invites the reader to co-counsel a
-/// pro bono case with the firm. Three things must survive on the rendered page:
-/// the co-counsel invitation, the client-serving purpose the firm states
-/// outright, and the absence of any published rate.
+/// pro bono case with the firm. Two things must survive on the rendered page:
+/// the co-counsel invitation, and the absence of any published rate.
 #[tokio::test]
 async fn the_navigator_page_invites_pro_bono_co_counsel_and_publishes_no_rate() {
     let app = site_app().await;
@@ -1106,13 +1105,6 @@ async fn the_navigator_page_invites_pro_bono_co_counsel_and_publishes_no_rate() 
     assert!(
         body.contains("Co-Counsel a Pro Bono Case with Us"),
         "the only invitation is pro bono co-counsel: {body}"
-    );
-    assert!(
-        body.contains(
-            "serving clients as expeditiously, precisely, accurately, and in alignment with their \
-             interests"
-        ),
-        "the client-serving purpose is stated outright: {body}"
     );
     // The co-counsel invitation prefills the email subject, so the mailto the
     // page renders carries it through the recipient's client.

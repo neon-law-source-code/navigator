@@ -7,15 +7,10 @@ meta_description: >-
 title: Neon Law Navigator
 hero_mark: helm
 tagline: >-
-  Vibe coding for lawyers. Lawyering is storytelling, and a story is written in
-  passes.
+  Agentic lawyering designed to scale and mise-en-place argument prep and
+  human judgment.
 skin: marketing
 bands:
-  - kind: statement
-    heading: Why we build it
-    lead: >-
-      We build Navigator for the purpose of serving clients as expeditiously,
-      precisely, accurately, and in alignment with their interests.
   - kind: project_network
     anchor: connected-project
     overline: One connected Project

@@ -235,15 +235,13 @@ mod firm_copy_tests {
     fn the_navigator_page_invites_pro_bono_co_counsel() {
         let content = super::navigator();
         let text = format!("{} {}", page_text(&content.bands), content.meta_description);
+        assert_eq!(
+            content.tagline,
+            "Agentic lawyering designed to scale and mise-en-place argument prep and human judgment."
+        );
         assert!(
             text.contains("Co-Counsel a Pro Bono Case with Us"),
             "the only invitation is pro bono co-counsel: {text}"
-        );
-        assert!(
-            text.contains(
-                "serving clients as expeditiously, precisely, accurately, and in alignment with their interests"
-            ),
-            "the client-serving purpose is stated outright: {text}"
         );
         assert!(
             !text.to_lowercase().contains("fractional"),

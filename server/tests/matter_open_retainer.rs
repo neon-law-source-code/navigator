@@ -8,7 +8,7 @@
 //! Opening a matter opens the **matter, and only the matter**: the Project,
 //! its participation ledger, and its service. The retainer is a separate,
 //! deliberate step (`navigator notation create <retainer_code> --project
-//! <code>`, or the lawyer retainer walk at `/lawyer/retainers/new`), so these
+//! <code>`, or the lawyer retainer walk at `/app/lawyer/retainers/new`), so these
 //! tests assert this door creates *zero* notations and sends nothing. The
 //! retainer lifecycle that follows — walk → `lawyer_review` → approve → send
 //! exactly one envelope — is covered at its own door by
@@ -311,7 +311,7 @@ async fn matter_open_creates_the_matter_and_no_notation() {
         .unwrap()
         .expect("the matter itself is created");
 
-    // Lands on the matter, never on `/lawyer/notations/:id/review`.
+    // Lands on the matter, never on `/app/lawyer/notations/:id/review`.
     let location = resp
         .headers()
         .get("location")

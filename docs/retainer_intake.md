@@ -64,20 +64,20 @@ the right actor class (system / lawyer / respondent) per state.
 
 Four routes, all under [`portal::retainer_walk`](../portal/src/retainer_walk.rs):
 
-- `GET /lawyer/retainers/new` — render the "start a walk" form.
-- `POST /lawyer/retainers/new` — find-or-insert person, then insert project + role + notation in one
-  transaction; redirect to `/lawyer/notations/:id/step`.
-- `GET /lawyer/notations/:id/step` — render the current question, or redirect once the questionnaire reaches
+- `GET /app/lawyer/retainers/new` — render the "start a walk" form.
+- `POST /app/lawyer/retainers/new` — find-or-insert person, then insert project + role + notation in one
+  transaction; redirect to `/app/lawyer/notations/:id/step`.
+- `GET /app/lawyer/notations/:id/step` — render the current question, or redirect once the questionnaire reaches
   `END`.
-- `POST /lawyer/notations/:id/step` — persist the answer, signal the runtime, advance the walker — or, on
+- `POST /app/lawyer/notations/:id/step` — persist the answer, signal the runtime, advance the walker — or, on
   `END`, drive the post-intake workflow (render → send for signature).
 
 Every state-changing request carries a CSRF token; auth is enforced by the `require_auth` layer on the admin router.
 
 ## One POST through the stack
 
-What a single `POST /lawyer/notations/:id/step` looks like when `RESTATE_BROKER_URL` is set (the in-cluster `restate`
-Service in KIND, or the GKE-managed broker in production):
+What a single `POST /app/lawyer/notations/:id/step` looks like when `RESTATE_BROKER_URL` is set (the in-cluster
+`restate` Service in KIND, or the GKE-managed broker in production):
 
 ```mermaid
 sequenceDiagram
@@ -87,7 +87,7 @@ sequenceDiagram
     participant worker as workflows-service
     participant db as SurrealDB
 
-    Chrome->>web: POST /lawyer/notations/:id/step
+    Chrome->>web: POST /app/lawyer/notations/:id/step
     web->>db: INSERT answers (question_id, person_id, value)
     web->>ingress: POST /notation/:id/questionnaire_signal {condition:"_"}
     ingress->>worker: dispatch handler
@@ -97,7 +97,7 @@ sequenceDiagram
     worker->>db: ctx.run("append-event", append_event(...))
     worker-->>ingress: {next_state:"client_name"}
     ingress-->>web: 200 OK
-    web-->>Chrome: 303 → /lawyer/notations/:id/step
+    web-->>Chrome: 303 → /app/lawyer/notations/:id/step
 ```
 
 The two `db` arrows have two different writers: the walker writes [Answers](notation.md#answer) directly; the worker is

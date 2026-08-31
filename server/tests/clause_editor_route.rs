@@ -1,5 +1,5 @@
 #![allow(clippy::doc_markdown)]
-//! Integration tests for `GET /lawyer/notations/{id}/clauses` — the lawyer clause
+//! Integration tests for `GET /app/lawyer/notations/{id}/clauses` — the lawyer clause
 //! editor, migrated to Dioxus in #956 Phase 4.
 //!
 //! One path serves two surfaces, and axum cannot register two `GET` handlers on
@@ -129,7 +129,7 @@ impl Fixture {
     }
 
     fn path(&self) -> String {
-        format!("/lawyer/notations/{}/clauses", self.notation_id)
+        format!("/app/lawyer/notations/{}/clauses", self.notation_id)
     }
 }
 
@@ -208,7 +208,7 @@ async fn the_json_surface_the_cli_reads_still_answers_on_the_same_path() {
 async fn an_unknown_notation_is_404_on_both_surfaces() {
     let f = build().await;
     let missing = uuid::Uuid::now_v7();
-    let path = format!("/lawyer/notations/{missing}/clauses");
+    let path = format!("/app/lawyer/notations/{missing}/clauses");
 
     let (status, _) = f.get(&path).await;
     assert_eq!(status, StatusCode::NOT_FOUND, "the HTML editor");

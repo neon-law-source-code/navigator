@@ -139,7 +139,7 @@ async fn a_missing_bucket_object_is_a_loud_502() {
     assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
 }
 
-/// The route moved off `/lawyer` so that a Clerk — the narrowest tier the team
+/// The route moved off `/app/lawyer` so that a Clerk — the narrowest tier the team
 /// home renders for — reaches it through the page's own prefix rather than an
 /// exact-path exception. This proves the wiring answers a Clerk session; the
 /// tier gate itself is the Rego suite's, since this harness runs the policy in
@@ -166,7 +166,7 @@ async fn a_clerk_session_reaches_the_download_at_the_team_path() {
     assert_eq!(bytes.as_ref(), STAGED_ZIP);
 }
 
-/// The old `/lawyer` path is gone, not aliased. A stale bookmark must 404
+/// The old `/app/lawyer` path is gone, not aliased. A stale bookmark must 404
 /// rather than quietly keep working — otherwise the exact-path Clerk exception
 /// this move retired would still be reachable.
 #[tokio::test]
@@ -178,7 +178,7 @@ async fn the_retired_lawyer_path_is_not_served() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/lawyer/fonts/gorp-serif.zip")
+                .uri("/app/lawyer/fonts/gorp-serif.zip")
                 .header("cookie", lawyer_cookie(&f.sessions))
                 .body(Body::empty())
                 .unwrap(),

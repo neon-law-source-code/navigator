@@ -127,8 +127,8 @@ pub fn ClauseEditor() -> Element {
 /// The loaded editor. Split from the component so the tests render a fixed view
 /// without standing up the server function.
 fn editor_body(view: &ClauseEditorView) -> Element {
-    let base = format!("/lawyer/notations/{}/clauses", view.notation_id);
-    let back = format!("/lawyer/notations/{}/step", view.notation_id);
+    let base = format!("/app/lawyer/notations/{}/clauses", view.notation_id);
+    let back = format!("/app/lawyer/notations/{}/step", view.notation_id);
     let page_title = format!(
         "{} | Lawyer | Notations | {} | Custom clauses",
         view.firm_name, view.flow_label
@@ -143,7 +143,7 @@ fn editor_body(view: &ClauseEditorView) -> Element {
         nav { class: "lawyer-nav",
             a { class: "nav-link", href: "/app/projects", "Portal" }
             if role.is_lawyer_tier() {
-                a { class: "nav-link", href: "/lawyer", "Lawyer" }
+                a { class: "nav-link", href: "/app/lawyer", "Lawyer" }
             }
             if role.is_admin_tier() {
                 a { class: "nav-link", href: "/app/admin", "Admin" }
@@ -288,7 +288,9 @@ mod tests {
         let html = render(&view(&[]));
         assert!(html.contains("No custom clauses yet."), "{html}");
         assert!(
-            html.contains(&format!("action=\"/lawyer/notations/{NOTATION}/clauses\"")),
+            html.contains(&format!(
+                "action=\"/app/lawyer/notations/{NOTATION}/clauses\""
+            )),
             "{html}"
         );
         assert_forms_accessible(&html, "clause_editor (empty)");
@@ -300,8 +302,9 @@ mod tests {
             "11111111-1111-1111-1111-111111111111",
             "First para.",
         )]));
-        let base =
-            format!("/lawyer/notations/{NOTATION}/clauses/11111111-1111-1111-1111-111111111111");
+        let base = format!(
+            "/app/lawyer/notations/{NOTATION}/clauses/11111111-1111-1111-1111-111111111111"
+        );
         for suffix in ["/edit", "/move", "/delete"] {
             assert!(
                 html.contains(&format!("action=\"{base}{suffix}\"")),

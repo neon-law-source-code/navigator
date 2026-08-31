@@ -190,7 +190,7 @@ fn analytics_body(view: &AnalyticsView) -> Element {
         nav { class: "lawyer-nav",
             a { class: "nav-link", href: "/app/projects", "Portal" }
             if view.role.is_lawyer_tier() {
-                a { class: "nav-link", href: "/lawyer", "Lawyer" }
+                a { class: "nav-link", href: "/app/lawyer", "Lawyer" }
             }
             if view.role.is_admin_tier() {
                 a { class: "nav-link", href: "/app/admin", "Admin" }

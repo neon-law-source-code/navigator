@@ -29,7 +29,7 @@ pub fn BackBreadcrumb(href: String, label: String) -> Element {
 #[allow(non_snake_case)]
 pub fn LawyerPortalBreadcrumb() -> Element {
     rsx! {
-        BackBreadcrumb { href: "/lawyer".to_string(), label: "Lawyer portal".to_string() }
+        BackBreadcrumb { href: "/app/lawyer".to_string(), label: "Lawyer portal".to_string() }
     }
 }
 
@@ -64,7 +64,7 @@ mod tests {
             rsx! { LawyerPortalBreadcrumb {} }
         }
         let html = ssr(app);
-        assert!(html.contains(r#"href="/lawyer""#), "{html}");
+        assert!(html.contains(r#"href="/app/lawyer""#), "{html}");
         assert!(html.contains("Lawyer portal"), "{html}");
     }
 }

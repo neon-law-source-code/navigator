@@ -10,7 +10,7 @@
 //!   client UI honestly shows "deletion requested" until an attorney
 //!   acts — never "deleted" before the bytes are actually gone.
 //! - **Lawyer/admin (authorize → execute).** `GET
-//!   /lawyer/expunge-requests` is the review queue; `POST
+//!   /app/lawyer/expunge-requests` is the review queue; `POST
 //!   .../:id/authorize` runs the admin-gated [`crate::expunge::expunge`]
 //!   (category `client_request`) and links the audit row; `POST
 //!   .../:id/deny` resolves it without deleting.
@@ -179,7 +179,7 @@ pub async fn client_request(
         }
     }
 }
-/// `POST /lawyer/expunge-requests/:id/authorize` — **admin only**:
+/// `POST /app/lawyer/expunge-requests/:id/authorize` — **admin only**:
 /// run the governed expunge for the requested document, then mark the
 /// request authorized and link the audit row.
 /// Why resolving a client expunge request failed. Shared by the lawyer queue
@@ -281,7 +281,7 @@ pub async fn admin_authorize(
     match authorize_expunge_request(&state.surreal, &state.storage, request_id, authorizer).await {
         // Already resolved — back to the queue rather than re-running.
         Ok(()) | Err(ExpungeRequestActionError::AlreadyResolved) => {
-            Redirect::to("/lawyer/expunge-requests").into_response()
+            Redirect::to("/app/lawyer/expunge-requests").into_response()
         }
         Err(ExpungeRequestActionError::NotFound) => not_found(),
         Err(e) => {
@@ -291,7 +291,7 @@ pub async fn admin_authorize(
     }
 }
 
-/// `POST /lawyer/expunge-requests/:id/deny` — lawyer or admin
+/// `POST /app/lawyer/expunge-requests/:id/deny` — lawyer or admin
 /// resolve a request without deleting anything.
 pub async fn admin_deny(
     State(state): State<AdminState>,
@@ -305,7 +305,7 @@ pub async fn admin_deny(
         return (StatusCode::FORBIDDEN, "No linked person on the session.").into_response();
     };
     match deny_expunge_request(&state.surreal, request_id, resolver).await {
-        Ok(()) => Redirect::to("/lawyer/expunge-requests").into_response(),
+        Ok(()) => Redirect::to("/app/lawyer/expunge-requests").into_response(),
         Err(ExpungeRequestActionError::NotFound) => not_found(),
         Err(e) => {
             tracing::error!(error = %e, %request_id, "deny expunge request failed");

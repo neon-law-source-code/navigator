@@ -174,7 +174,7 @@ async fn full_signature_loop_reaches_end_through_real_provider_and_webhook() {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(format!("/lawyer/notations/{nid}/step"))
+                    .uri(format!("/app/lawyer/notations/{nid}/step"))
                     .header(
                         "authorization",
                         portal::test_support::lawyer_bearer_header(),
@@ -213,7 +213,7 @@ async fn full_signature_loop_reaches_end_through_real_provider_and_webhook() {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(format!("/lawyer/notations/{nid}/{action}"))
+                    .uri(format!("/app/lawyer/notations/{nid}/{action}"))
                     .header(
                         "authorization",
                         portal::test_support::lawyer_bearer_header(),
@@ -229,7 +229,7 @@ async fn full_signature_loop_reaches_end_through_real_provider_and_webhook() {
         assert_eq!(resp.status(), StatusCode::SEE_OTHER, "{action} status");
         assert_eq!(
             resp.headers().get("location").and_then(|v| v.to_str().ok()),
-            Some(format!("/lawyer/notations/{nid}/review").as_str()),
+            Some(format!("/app/lawyer/notations/{nid}/review").as_str()),
             "{action} redirect target",
         );
     }

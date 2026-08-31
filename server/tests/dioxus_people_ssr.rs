@@ -6,7 +6,7 @@
 //! shared directory, and `use_server_future` server-side renders the sorted rows
 //! into the HTML — readable before hydration, sort headers as real anchors.
 //!
-//! ENG-304 deleted the `/lawyer/people` mirror, so `/app/admin/people` is the one
+//! ENG-304 deleted the `/app/lawyer/people` mirror, so `/app/admin/people` is the one
 //! browser surface this covers, and its gate is `require_admin`.
 
 use std::any::Any;
@@ -188,7 +188,7 @@ async fn list_admin_people_refuses_a_non_admin_viewer() {
     // own authority, so the directory never reaches a non-admin caller.
     //
     // `Lawyer` is the interesting tier here rather than `Client`: since ENG-304
-    // deleted the `/lawyer/people` mirror, a lawyer has no browser surface onto
+    // deleted the `/app/lawyer/people` mirror, a lawyer has no browser surface onto
     // the directory at all, and `require_admin` is what makes that true.
     //
     // `require_admin` commits a real `403` rather than answering `200` with an

@@ -12,7 +12,7 @@
 //! | `project open`   | `GET /app/projects/:code` |
 //! | `document upload` | `POST /app/api/projects/{id}/documents` |
 //! | `notation create`  | `POST /app/projects/{project_code}/notations/new` |
-//! | `notation status`  | `GET /lawyer/notations/:id/review?format=json` |
+//! | `notation status`  | `GET /app/lawyer/notations/:id/review?format=json` |
 
 use std::collections::VecDeque;
 use std::io::{BufRead, Write};
@@ -276,7 +276,7 @@ pub async fn notation_create(
             .unwrap_or_default()
             .to_string();
         let notation_id = location
-            .trim_start_matches("/lawyer/notations/")
+            .trim_start_matches("/app/lawyer/notations/")
             .trim_end_matches("/step");
         println!(
             "{} {}",
@@ -295,7 +295,7 @@ pub async fn notation_create(
 }
 
 /// Legacy intake client — walk the notation's questionnaire one
-/// question at a time over the same `/lawyer/notations/:id/step`
+/// question at a time over the same `/app/lawyer/notations/:id/step`
 /// route the browser POSTs, reading each question's metadata from the
 /// `?format=json` branch. Interactive by default (prompts at the
 /// terminal); non-interactive when `--answer` / `--select` / `--person`
@@ -384,7 +384,7 @@ pub async fn intake_answer(
                 };
 
             let resp = client
-                .post(format!("{base}/lawyer/notations/{notation_id}/step"))
+                .post(format!("{base}/app/lawyer/notations/{notation_id}/step"))
                 .bearer_auth(&token)
                 .form(&fields)
                 .send()
@@ -421,7 +421,7 @@ pub async fn notation_approve(host: Option<&str>, notation_id: Uuid) -> ExitCode
         let (base, token) = resolve(host)?;
         let resp = reqwest::Client::new()
             .post(format!(
-                "{base}/lawyer/notations/{notation_id}/approve-send"
+                "{base}/app/lawyer/notations/{notation_id}/approve-send"
             ))
             .bearer_auth(&token)
             // `Content-Length: 0` for the same LB gotcha as `retainer approve`.
@@ -478,7 +478,7 @@ pub async fn notation_request_changes(
         }
         let resp = no_redirect_client()?
             .post(format!(
-                "{base}/lawyer/notations/{notation_id}/request-changes"
+                "{base}/app/lawyer/notations/{notation_id}/request-changes"
             ))
             .bearer_auth(&token)
             .form(&form)
@@ -530,7 +530,7 @@ pub async fn notation_update(
         }
         let (base, token) = resolve(host)?;
         let resp = no_redirect_client()?
-            .post(format!("{base}/lawyer/notations/{notation_id}/reask"))
+            .post(format!("{base}/app/lawyer/notations/{notation_id}/reask"))
             .bearer_auth(&token)
             .form(&form)
             .send()
@@ -564,7 +564,7 @@ pub async fn notation_document(host: Option<&str>, notation_id: Uuid, out: &Path
         // the FsStorage dev backend streams 200 through the app.
         let resp = reqwest::Client::new()
             .get(format!(
-                "{base}/lawyer/notations/{notation_id}/documents/document"
+                "{base}/app/lawyer/notations/{notation_id}/documents/document"
             ))
             .bearer_auth(&token)
             .send()
@@ -603,7 +603,7 @@ pub async fn retainer_approve(host: Option<&str>, notation_id: Uuid) -> ExitCode
         let (base, token) = resolve(host)?;
         let resp = reqwest::Client::new()
             .post(format!(
-                "{base}/lawyer/notations/{notation_id}/approve-send"
+                "{base}/app/lawyer/notations/{notation_id}/approve-send"
             ))
             .bearer_auth(&token)
             // Force `Content-Length: 0`. The handler takes no form fields,
@@ -652,7 +652,7 @@ pub async fn retainer_send(host: Option<&str>, notation_id: Uuid) -> ExitCode {
         let (base, token) = resolve(host)?;
         // `Content-Length: 0` for the same LB gotcha as `retainer approve`.
         let resp = reqwest::Client::new()
-            .post(format!("{base}/lawyer/notations/{notation_id}/send"))
+            .post(format!("{base}/app/lawyer/notations/{notation_id}/send"))
             .bearer_auth(&token)
             .header(reqwest::header::CONTENT_LENGTH, "0")
             .body(Vec::<u8>::new())
@@ -697,7 +697,7 @@ pub async fn clause_list(host: Option<&str>, notation_id: Uuid, json: bool) -> E
         let (base, token) = resolve(host)?;
         let resp = reqwest::Client::new()
             .get(format!(
-                "{base}/lawyer/notations/{notation_id}/clauses?format=json"
+                "{base}/app/lawyer/notations/{notation_id}/clauses?format=json"
             ))
             .bearer_auth(&token)
             .send()
@@ -748,7 +748,7 @@ pub async fn clause_add(host: Option<&str>, notation_id: Uuid, body: &str) -> Ex
     run(async {
         let (base, token) = resolve(host)?;
         let resp = reqwest::Client::new()
-            .post(format!("{base}/lawyer/notations/{notation_id}/clauses"))
+            .post(format!("{base}/app/lawyer/notations/{notation_id}/clauses"))
             .bearer_auth(&token)
             .form(&[("body", body)])
             .send()
@@ -770,7 +770,7 @@ pub async fn clause_edit(
         let (base, token) = resolve(host)?;
         let resp = reqwest::Client::new()
             .post(format!(
-                "{base}/lawyer/notations/{notation_id}/clauses/{clause_id}/edit"
+                "{base}/app/lawyer/notations/{notation_id}/clauses/{clause_id}/edit"
             ))
             .bearer_auth(&token)
             .form(&[("body", body)])
@@ -944,7 +944,7 @@ async fn fetch_step(
 ) -> Result<StepResponse> {
     let resp = client
         .get(format!(
-            "{base}/lawyer/notations/{notation_id}/step?format=json"
+            "{base}/app/lawyer/notations/{notation_id}/step?format=json"
         ))
         .bearer_auth(token)
         .send()
@@ -991,7 +991,9 @@ async fn post_transcript_coverage(
     let transcript = std::fs::read_to_string(path)
         .with_context(|| format!("read transcript {}", path.display()))?;
     let resp = client
-        .post(format!("{base}/lawyer/notations/{notation_id}/transcript"))
+        .post(format!(
+            "{base}/app/lawyer/notations/{notation_id}/transcript"
+        ))
         .bearer_auth(token)
         .form(&[("transcript", transcript.as_str())])
         .send()
@@ -1285,7 +1287,7 @@ fn read_people_list(question: &StepQuestion) -> Result<Vec<(String, String)>> {
 async fn fetch_status(base: &str, token: &str, notation_id: Uuid) -> Result<NotationStatus> {
     let resp = reqwest::Client::new()
         .get(format!(
-            "{base}/lawyer/notations/{notation_id}/review?format=json"
+            "{base}/app/lawyer/notations/{notation_id}/review?format=json"
         ))
         .bearer_auth(token)
         .send()
@@ -1620,12 +1622,12 @@ mod tests {
             .and(path("/app/projects/acme/notations/new"))
             .respond_with(ResponseTemplate::new(303).append_header(
                 "location",
-                format!("/lawyer/notations/{}/step", ids.notation),
+                format!("/app/lawyer/notations/{}/step", ids.notation),
             ))
             .mount(server)
             .await;
         Mock::given(method("GET"))
-            .and(path(format!("/lawyer/notations/{}/step", ids.notation)))
+            .and(path(format!("/app/lawyer/notations/{}/step", ids.notation)))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "question": {"code": "q1", "prompt": "Question one", "answer_type": "text"}
             })))
@@ -1633,7 +1635,7 @@ mod tests {
             .await;
         Mock::given(method("POST"))
             .and(path(format!(
-                "/lawyer/notations/{}/approve-send",
+                "/app/lawyer/notations/{}/approve-send",
                 ids.notation
             )))
             .respond_with(ResponseTemplate::new(200))
@@ -1641,56 +1643,68 @@ mod tests {
             .await;
         Mock::given(method("GET"))
             .and(path(format!(
-                "/lawyer/notations/{}/documents/document",
+                "/app/lawyer/notations/{}/documents/document",
                 ids.notation
             )))
             .respond_with(ResponseTemplate::new(200).set_body_bytes(b"pdf bytes".to_vec()))
             .mount(server)
             .await;
         Mock::given(method("POST"))
-            .and(path(format!("/lawyer/notations/{}/send", ids.notation)))
+            .and(path(format!("/app/lawyer/notations/{}/send", ids.notation)))
             .respond_with(ResponseTemplate::new(200))
             .mount(server)
             .await;
         Mock::given(method("POST"))
             .and(path(format!(
-                "/lawyer/notations/{}/request-changes",
+                "/app/lawyer/notations/{}/request-changes",
                 ids.notation
             )))
             .respond_with(ResponseTemplate::new(303).append_header(
                 "location",
-                format!("/lawyer/notations/{}/reask", ids.notation),
+                format!("/app/lawyer/notations/{}/reask", ids.notation),
             ))
             .mount(server)
             .await;
         Mock::given(method("POST"))
-            .and(path(format!("/lawyer/notations/{}/reask", ids.notation)))
+            .and(path(format!(
+                "/app/lawyer/notations/{}/reask",
+                ids.notation
+            )))
             .respond_with(ResponseTemplate::new(303).append_header(
                 "location",
-                format!("/lawyer/notations/{}/review", ids.notation),
+                format!("/app/lawyer/notations/{}/review", ids.notation),
             ))
             .mount(server)
             .await;
         Mock::given(method("GET"))
-            .and(path(format!("/lawyer/notations/{}/clauses", ids.notation)))
+            .and(path(format!(
+                "/app/lawyer/notations/{}/clauses",
+                ids.notation
+            )))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([])))
             .mount(server)
             .await;
         Mock::given(method("POST"))
-            .and(path(format!("/lawyer/notations/{}/clauses", ids.notation)))
+            .and(path(format!(
+                "/app/lawyer/notations/{}/clauses",
+                ids.notation
+            )))
             .respond_with(ResponseTemplate::new(200))
             .mount(server)
             .await;
         Mock::given(method("POST"))
             .and(path(format!(
-                "/lawyer/notations/{}/clauses/{}/edit",
+                "/app/lawyer/notations/{}/clauses/{}/edit",
                 ids.notation, ids.clause
             )))
             .respond_with(ResponseTemplate::new(200))
             .mount(server)
             .await;
         Mock::given(method("GET"))
-            .and(path(format!("/lawyer/notations/{}/review", ids.notation)))
+            .and(path(format!(
+                "/app/lawyer/notations/{}/review",
+                ids.notation
+            )))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "state": "lawyer_review",
                 "delivery": "embedded",
@@ -2120,7 +2134,7 @@ mod tests {
         let notation = Uuid::now_v7();
 
         Mock::given(method("POST"))
-            .and(path(format!("/lawyer/notations/{notation}/send")))
+            .and(path(format!("/app/lawyer/notations/{notation}/send")))
             .respond_with(ResponseTemplate::new(409).set_body_string(
                 r#"{"error":"not ready","reason":"the retainer packet has not rendered"}"#,
             ))
@@ -2146,7 +2160,7 @@ mod tests {
         let notation = Uuid::now_v7();
 
         Mock::given(method("POST"))
-            .and(path(format!("/lawyer/notations/{notation}/send")))
+            .and(path(format!("/app/lawyer/notations/{notation}/send")))
             .respond_with(ResponseTemplate::new(409).set_body_string("<html>gateway noise</html>"))
             .expect(1)
             .mount(&server)
@@ -2169,7 +2183,7 @@ mod tests {
         let notation = Uuid::now_v7();
 
         Mock::given(method("POST"))
-            .and(path(format!("/lawyer/notations/{notation}/send")))
+            .and(path(format!("/app/lawyer/notations/{notation}/send")))
             .respond_with(
                 ResponseTemplate::new(500)
                     .set_body_string(r#"{"reason":"the signature provider refused"}"#),

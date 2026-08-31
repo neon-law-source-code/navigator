@@ -1074,7 +1074,7 @@ async fn only_owner_can_create_an_owner_identity() {
     assert_eq!(row.role, store::persons::Role::Owner);
 }
 
-/// ENG-304 deleted the `/lawyer/people` browser mirror, so `POST /app/api/people`
+/// ENG-304 deleted the `/app/lawyer/people` browser mirror, so `POST /app/api/people`
 /// is the only Person create a lawyer can reach. The role coercion the deleted
 /// form carried has to hold there: a **lawyer** caller's submitted role is
 /// coerced to `client`, so a lawyer can't POST `role=admin` past the boundary.
@@ -1219,7 +1219,7 @@ async fn admin_person_delete_via_native_form_removes_client_but_blocks_lawyer() 
     );
 }
 
-/// ENG-304: the `/lawyer/people` browser mirror is gone. Every one of its four
+/// ENG-304: the `/app/lawyer/people` browser mirror is gone. Every one of its four
 /// page paths answers the router's not-found for a lawyer-tier session — not a
 /// `403`, which would say "this exists and you may not have it". The three
 /// native `POST`s behind them are gone too.
@@ -1245,10 +1245,10 @@ async fn lawyer_people_mirror_paths_are_gone() {
 
     let id = person.id;
     for path in [
-        "/lawyer/people".to_string(),
-        "/lawyer/people/new".to_string(),
-        format!("/lawyer/people/{id}"),
-        format!("/lawyer/people/{id}/edit"),
+        "/app/lawyer/people".to_string(),
+        "/app/lawyer/people/new".to_string(),
+        format!("/app/lawyer/people/{id}"),
+        format!("/app/lawyer/people/{id}/edit"),
     ] {
         for role in [
             store::persons::Role::Lawyer,
@@ -1267,9 +1267,9 @@ async fn lawyer_people_mirror_paths_are_gone() {
     // The native mutation routes behind those pages went with them.
     let (cookie, csrf) = session_cookie_and_csrf_for_role(store::persons::Role::Lawyer);
     for path in [
-        "/lawyer/people".to_string(),
-        format!("/lawyer/people/{id}"),
-        format!("/lawyer/people/{id}/welcome"),
+        "/app/lawyer/people".to_string(),
+        format!("/app/lawyer/people/{id}"),
+        format!("/app/lawyer/people/{id}/welcome"),
     ] {
         let resp = app
             .clone()
@@ -1675,7 +1675,7 @@ async fn anonymous_access_to_the_shared_navigator_surface_lands_at_the_login_doo
     // redirect here is one whose protection depends on a policy bundle
     // rather than on router composition.
     //
-    // `/lawyer` and `/admin` are listed as bare roots deliberately: each has
+    // `/app/lawyer` and `/admin` are listed as bare roots deliberately: each has
     // its own dashboard handler, so protection there cannot be inferred from
     // a gated descendant.
     let mut state = empty_state().await;
@@ -1997,7 +1997,6 @@ async fn robots_txt_advertises_sitemap_and_blocks_private_surfaces() {
     let body = body_string(resp).await;
     assert!(body.contains("User-agent: *"));
     assert!(body.contains("Disallow: /app"));
-    assert!(body.contains("Disallow: /lawyer"));
     assert!(body.contains("Disallow: /admin"));
     assert!(body.contains("Sitemap: https://www.neonlaw.com/sitemap.xml"));
     // `/docs` and `/templates` sit behind the session boundary (#732), so the
@@ -2021,6 +2020,9 @@ async fn robots_txt_advertises_sitemap_and_blocks_private_surfaces() {
         // The `/portal` landing folded into `/app`, so the crawler policy must
         // not keep pointing at a path nothing serves.
         "Disallow: /portal",
+        // `/lawyer` folded into `/app/lawyer`. `Disallow: /app` covers the
+        // workbench; a leftover top-level line names a path nothing serves.
+        "Disallow: /lawyer",
         // The classes are public and the sitemap advertises them. Forbidding
         // what the same host advertises is a contradiction a crawler settles
         // by not fetching the page, so this line must not come back.
@@ -6033,7 +6035,7 @@ async fn visitor_analytics_counts_public_routes_and_excludes_private_surfaces() 
     assert_eq!(public.status(), StatusCode::OK);
 
     for uri in [
-        "/lawyer",
+        "/app/lawyer",
         "/admin",
         "/app/api/aida.json",
         "/mcp",
@@ -9980,7 +9982,7 @@ async fn admin_person_entity_roles_is_read_only_listing() {
 
     let resp = get_with_role(
         app,
-        "/lawyer/person-entity-roles",
+        "/app/lawyer/person-entity-roles",
         store::persons::Role::Lawyer,
     )
     .await;
@@ -9990,8 +9992,8 @@ async fn admin_person_entity_roles_is_read_only_listing() {
     assert!(body.contains("owner"));
     assert!(body.contains("Person") && body.contains("Entity") && body.contains("Role"));
     // No CRUD affordances.
-    assert!(!body.contains("/lawyer/person-entity-roles/new"));
-    assert!(!body.contains("action=\"/lawyer/person-entity-roles"));
+    assert!(!body.contains("/app/lawyer/person-entity-roles/new"));
+    assert!(!body.contains("action=\"/app/lawyer/person-entity-roles"));
 }
 
 #[tokio::test]
@@ -10014,13 +10016,13 @@ async fn admin_generic_listings_all_mount_and_render_their_heading() {
     // `matter_content_listings_are_scoped_to_participation`; this test is only
     // about the mount.
     for (path, heading) in [
-        ("/lawyer/notations", "Notations"),
-        ("/lawyer/answers", "Answers"),
+        ("/app/lawyer/notations", "Notations"),
+        ("/app/lawyer/answers", "Answers"),
         ("/app/admin/addresses", "Addresses"),
-        ("/lawyer/assets", "Assets"),
-        ("/lawyer/person-project-roles", "Person-project roles"),
-        ("/lawyer/disclosures", "Disclosures"),
-        ("/lawyer/relationship-logs", "Relationship logs"),
+        ("/app/lawyer/assets", "Assets"),
+        ("/app/lawyer/person-project-roles", "Person-project roles"),
+        ("/app/lawyer/disclosures", "Disclosures"),
+        ("/app/lawyer/relationship-logs", "Relationship logs"),
         ("/app/admin/mailrooms", "Mailrooms"),
         ("/app/admin/letters", "Letters"),
         ("/app/admin/email-log", "Email log"),
@@ -10082,7 +10084,7 @@ async fn admin_letter_detail_renders_the_record_from_its_path_id() {
     // The letter-detail page is the first migrated detail view: its `#[server]`
     // function reads the `{id}` path parameter. Seed an address → mailroom →
     // letter chain and assert the record's fields and the resolved mailroom
-    // name/address render at `/lawyer/letters/{id}` — proving the path param flows
+    // name/address render at `/app/lawyer/letters/{id}` — proving the path param flows
     // through to the server function.
     let (state, surreal) = state_with_engines().await;
     let address = store::addresses::create(
@@ -10117,7 +10119,7 @@ async fn admin_letter_detail_renders_the_record_from_its_path_id() {
 
     let resp = get_with_role(
         app,
-        &format!("/lawyer/letters/{}", letter.id),
+        &format!("/app/lawyer/letters/{}", letter.id),
         store::persons::Role::Lawyer,
     )
     .await;
@@ -10431,7 +10433,7 @@ async fn admin_generic_listings_render_row_cells_from_the_database() {
     // Each listing's projection must map its columns to the rendered cells.
     for (path, cells) in [
         (
-            "/lawyer/notations",
+            "/app/lawyer/notations",
             vec![
                 notation_template.id.to_string(),
                 notation_person.id.to_string(),
@@ -10439,7 +10441,7 @@ async fn admin_generic_listings_render_row_cells_from_the_database() {
             ],
         ),
         (
-            "/lawyer/answers",
+            "/app/lawyer/answers",
             vec![
                 answer_question.id.to_string(),
                 answer_person.id.to_string(),
@@ -10447,7 +10449,7 @@ async fn admin_generic_listings_render_row_cells_from_the_database() {
             ],
         ),
         (
-            "/lawyer/assets",
+            "/app/lawyer/assets",
             // Content-addressed: the fixture files these bytes through the
             // real ingest seam, so the key and the digest are derived rather
             // than hand-written.
@@ -10461,7 +10463,7 @@ async fn admin_generic_listings_render_row_cells_from_the_database() {
             ],
         ),
         (
-            "/lawyer/person-project-roles",
+            "/app/lawyer/person-project-roles",
             vec![
                 ppr_person.id.to_string(),
                 ppr_project.id.to_string(),
@@ -10469,7 +10471,7 @@ async fn admin_generic_listings_render_row_cells_from_the_database() {
             ],
         ),
         (
-            "/lawyer/disclosures",
+            "/app/lawyer/disclosures",
             vec![
                 disclosure_entity.to_string(),
                 "conflict_check".to_string(),
@@ -10477,7 +10479,7 @@ async fn admin_generic_listings_render_row_cells_from_the_database() {
             ],
         ),
         (
-            "/lawyer/relationship-logs",
+            "/app/lawyer/relationship-logs",
             vec![
                 rl_actor.id.to_string(),
                 rl_subject_id.to_string(),
@@ -10724,9 +10726,9 @@ async fn seed_matter_content(surreal: &store::surreal::SurrealDb) -> MatterConte
 /// The three matter-content listing paths, aligned to the fixture's cell
 /// vectors: assets, answers, relationship-logs.
 const MATTER_CONTENT_PATHS: [&str; 3] = [
-    "/lawyer/assets",
-    "/lawyer/answers",
-    "/lawyer/relationship-logs",
+    "/app/lawyer/assets",
+    "/app/lawyer/answers",
+    "/app/lawyer/relationship-logs",
 ];
 
 /// GET `uri` with `cookie`, assert it rendered, and return the body — the
@@ -10846,7 +10848,7 @@ async fn matter_content_listings_stay_unscoped_for_the_admin_tier() {
     }
 }
 
-/// ENG-303: `/lawyer/disclosures` and `/lawyer/person-entity-roles` stay
+/// ENG-303: `/app/lawyer/disclosures` and `/app/lawyer/person-entity-roles` stay
 /// firm-wide for a lawyer on no matters, because Model Rule 1.10 imputes a
 /// conflict firm-wide and both feed `store::conflicts::check_new_matter`.
 ///
@@ -10901,13 +10903,14 @@ async fn conflict_graph_listings_stay_firm_wide_for_an_unparticipating_lawyer() 
     );
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
 
-    let disclosures = rendered_body_with_cookie(app.clone(), "/lawyer/disclosures", &cookie).await;
+    let disclosures =
+        rendered_body_with_cookie(app.clone(), "/app/lawyer/disclosures", &cookie).await;
     assert!(
         disclosures.contains("Adverse party overlap on another matter"),
         "a lawyer on no matters must still see every disclosure — Model Rule 1.10 \
          imputes conflicts firm-wide; got: {disclosures}",
     );
-    let ties = rendered_body_with_cookie(app, "/lawyer/person-entity-roles", &cookie).await;
+    let ties = rendered_body_with_cookie(app, "/app/lawyer/person-entity-roles", &cookie).await;
     assert!(
         ties.contains(&tied_person.id.to_string()),
         "a lawyer on no matters must still see every entity_role tie — it is an edge \
@@ -12243,7 +12246,7 @@ fn build_inbound_multipart_partial(fields: &[(&str, &str)]) -> (String, Vec<u8>)
 ///
 /// Asserted as lawyer — the role that could reach every one of these before —
 /// so a `404` proves the route is unmounted rather than merely gated. A
-/// surviving listing (`/lawyer/disclosures`) anchors the test: it shares the
+/// surviving listing (`/app/lawyer/disclosures`) anchors the test: it shares the
 /// same `admin_listing_router` factory, so its `200` shows the factory still
 /// mounts and the four `404`s are removals, not a broken router.
 #[tokio::test]
@@ -12253,9 +12256,9 @@ async fn the_removed_billing_and_cap_table_lawyer_paths_no_longer_resolve() {
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
 
     for path in [
-        "/lawyer/entity-billing-profiles".to_string(),
-        "/lawyer/invoices".to_string(),
-        "/lawyer/invoice-line-items".to_string(),
+        "/app/lawyer/entity-billing-profiles".to_string(),
+        "/app/lawyer/invoices".to_string(),
+        "/app/lawyer/invoice-line-items".to_string(),
         format!("/app/admin/entities/{entity}/cap-table"),
     ] {
         let resp = get_with_role(app.clone(), &path, store::persons::Role::Lawyer).await;
@@ -12267,7 +12270,7 @@ async fn the_removed_billing_and_cap_table_lawyer_paths_no_longer_resolve() {
         );
     }
 
-    let resp = get_with_role(app, "/lawyer/disclosures", store::persons::Role::Lawyer).await;
+    let resp = get_with_role(app, "/app/lawyer/disclosures", store::persons::Role::Lawyer).await;
     assert_eq!(
         resp.status(),
         StatusCode::OK,
@@ -12280,13 +12283,13 @@ async fn admin_letter_detail_404s_when_id_missing() {
     let (state, _surreal) = state_with_engines().await;
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
     let id = uuid::Uuid::from_u128(9999);
-    // `/lawyer/letters/{id}` now renders through the Dioxus detail page, which is
+    // `/app/lawyer/letters/{id}` now renders through the Dioxus detail page, which is
     // lawyer-gated, so it is exercised as lawyer. An unknown id renders a friendly
     // "not found" page rather than 404'ing — the route still resolves so the auth
     // layer + nav chrome are correct for the visitor.
     let resp = get_with_role(
         app,
-        &format!("/lawyer/letters/{id}"),
+        &format!("/app/lawyer/letters/{id}"),
         store::persons::Role::Lawyer,
     )
     .await;
@@ -13525,7 +13528,7 @@ async fn project_document_download_404s_when_document_missing() {
 
 #[tokio::test]
 async fn project_document_download_sends_the_anonymous_browser_to_login() {
-    // The download route lives under `/lawyer`, so the session boundary (#732)
+    // The download route lives under `/app/lawyer`, so the session boundary (#732)
     // redirects an anonymous browser to the login door before the handler
     // runs. That is a stronger privacy guarantee than the old bare 404: the
     // request never reaches the code that could observe whether the document
@@ -13932,8 +13935,8 @@ async fn wants_json_path_classifier() {
     assert!(portal::wants_json("/mcp/foo"));
     assert!(portal::wants_json("/app/api/openapi.json"));
     assert!(!portal::wants_json("/"));
-    assert!(!portal::wants_json("/lawyer"));
-    assert!(!portal::wants_json("/lawyer/people"));
+    assert!(!portal::wants_json("/app/lawyer"));
+    assert!(!portal::wants_json("/app/lawyer/people"));
     assert!(!portal::wants_json("/blog/anything"));
     // `/api-something` (no trailing slash, no exact match) is NOT
     // an api route — leading-substring matches would catch real
@@ -14089,7 +14092,7 @@ async fn admin_person_edit_page_locks_the_bootstrap_owner_role() {
 /// drops such a write, so the form must not invite it.
 ///
 /// ENG-304 removed the surface's own `may_change_roles` flag with the
-/// `/lawyer/people` mirror — `require_admin` now guarantees every caller here
+/// `/app/lawyer/people` mirror — `require_admin` now guarantees every caller here
 /// may set roles at all. Authority rank and the pinned bootstrap Owner are the
 /// two locks that survive, and this covers the first.
 #[tokio::test]
@@ -16556,9 +16559,9 @@ async fn the_retired_project_prefixes_are_not_served() {
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
 
     for uri in [
-        format!("/lawyer/projects/{project_id}"),
+        format!("/app/lawyer/projects/{project_id}"),
         format!("/portal/projects/{project_id}"),
-        "/lawyer/projects".to_string(),
+        "/app/lawyer/projects".to_string(),
         "/portal/projects".to_string(),
         // The retired `/portal` landing itself: folded into `/app`, served by
         // nothing now, and deliberately without a redirect shim.
@@ -16574,7 +16577,7 @@ async fn the_retired_project_prefixes_are_not_served() {
     }
 }
 
-/// Firm-administration listings and Person CRUD left `/lawyer` and `/admin`
+/// Firm-administration listings and Person CRUD left `/app/lawyer` and `/admin`
 /// without a redirect layer. Deep links in sent email 404.
 #[tokio::test]
 async fn the_moved_admin_listings_are_not_served_at_the_old_paths() {
@@ -16583,14 +16586,14 @@ async fn the_moved_admin_listings_are_not_served_at_the_old_paths() {
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
 
     for uri in [
-        "/lawyer/entities",
-        "/lawyer/entities/new",
-        "/lawyer/entity-types",
-        "/lawyer/playbooks",
-        "/lawyer/schedules",
-        "/lawyer/letters",
-        "/lawyer/email-log",
-        "/lawyer/people.csv",
+        "/app/lawyer/entities",
+        "/app/lawyer/entities/new",
+        "/app/lawyer/entity-types",
+        "/app/lawyer/playbooks",
+        "/app/lawyer/schedules",
+        "/app/lawyer/letters",
+        "/app/lawyer/email-log",
+        "/app/lawyer/people.csv",
         "/admin/people",
         "/admin/people/new",
         "/admin/analytics",
@@ -16614,7 +16617,7 @@ async fn the_outline_stage_uses_the_app_namespace() {
     let current = get_with_role(app.clone(), "/app/outline", store::persons::Role::Lawyer).await;
     assert_eq!(current.status(), StatusCode::OK);
 
-    let retired = get_with_role(app, "/lawyer/outline", store::persons::Role::Lawyer).await;
+    let retired = get_with_role(app, "/app/lawyer/outline", store::persons::Role::Lawyer).await;
     assert_eq!(retired.status(), StatusCode::NOT_FOUND);
 }
 

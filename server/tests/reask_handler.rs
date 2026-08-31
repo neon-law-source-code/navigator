@@ -165,7 +165,7 @@ async fn walk_to_lawyer_review(
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(format!("/lawyer/notations/{nid}/step"))
+                    .uri(format!("/app/lawyer/notations/{nid}/step"))
                     .header(
                         "authorization",
                         portal::test_support::lawyer_bearer_header(),
@@ -208,12 +208,15 @@ async fn reask_loop_parks_at_reask_then_returns_to_review() {
     // The lawyer sends the client back for changes on person__client with a note.
     let resp = post_form(
         &app,
-        &format!("/lawyer/notations/{nid}/request-changes"),
+        &format!("/app/lawyer/notations/{nid}/request-changes"),
         "q:person__client=on&note=Confirm+the+client%27s+legal+name",
     )
     .await;
     assert_eq!(resp.status(), StatusCode::SEE_OTHER);
-    assert_eq!(location(&resp), format!("/lawyer/notations/{nid}/reask"));
+    assert_eq!(
+        location(&resp),
+        format!("/app/lawyer/notations/{nid}/reask")
+    );
     assert_eq!(
         notation_state(&surreal, nid).await,
         "reask__client",
@@ -221,7 +224,7 @@ async fn reask_loop_parks_at_reask_then_returns_to_review() {
     );
 
     // The re-ask surface renders the flagged question and the reviewer note.
-    let resp = get(&app, &format!("/lawyer/notations/{nid}/reask")).await;
+    let resp = get(&app, &format!("/app/lawyer/notations/{nid}/reask")).await;
     assert_eq!(resp.status(), StatusCode::OK);
     let html = body_string(resp).await;
     assert!(
@@ -239,12 +242,15 @@ async fn reask_loop_parks_at_reask_then_returns_to_review() {
     // Re-collect the flagged answer and resubmit — back to lawyer_review.
     let resp = post_form(
         &app,
-        &format!("/lawyer/notations/{nid}/reask"),
+        &format!("/app/lawyer/notations/{nid}/reask"),
         "a:person__client=Libra+Jones",
     )
     .await;
     assert_eq!(resp.status(), StatusCode::SEE_OTHER);
-    assert_eq!(location(&resp), format!("/lawyer/notations/{nid}/review"));
+    assert_eq!(
+        location(&resp),
+        format!("/app/lawyer/notations/{nid}/review")
+    );
     assert_eq!(
         notation_state(&surreal, nid).await,
         "lawyer_review",
@@ -272,7 +278,7 @@ async fn request_changes_for_unknown_notation_returns_404() {
     let resp = post_form(
         &app,
         &format!(
-            "/lawyer/notations/{}/request-changes",
+            "/app/lawyer/notations/{}/request-changes",
             uuid::Uuid::from_u128(9999)
         ),
         "q:person__client=on",
@@ -287,7 +293,7 @@ async fn request_changes_when_not_in_review_returns_409() {
     let (app, _surreal, nid) = build_app_and_notation().await;
     let resp = post_form(
         &app,
-        &format!("/lawyer/notations/{nid}/request-changes"),
+        &format!("/app/lawyer/notations/{nid}/request-changes"),
         "q:person__client=on",
     )
     .await;
@@ -301,7 +307,7 @@ async fn request_changes_without_any_flags_returns_400() {
     // A note but no flagged answers: there is nothing to re-collect.
     let resp = post_form(
         &app,
-        &format!("/lawyer/notations/{nid}/request-changes"),
+        &format!("/app/lawyer/notations/{nid}/request-changes"),
         "note=please+fix+something",
     )
     .await;
@@ -318,7 +324,10 @@ async fn reask_get_for_unknown_notation_returns_404() {
     let (app, _surreal, _nid) = build_app_and_notation().await;
     let resp = get(
         &app,
-        &format!("/lawyer/notations/{}/reask", uuid::Uuid::from_u128(9999)),
+        &format!(
+            "/app/lawyer/notations/{}/reask",
+            uuid::Uuid::from_u128(9999)
+        ),
     )
     .await;
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
@@ -329,9 +338,12 @@ async fn reask_get_when_not_parked_redirects_to_review() {
     // Nothing parked for re-collection (still at BEGIN): lawyers are sent to
     // the review page rather than an empty re-ask form.
     let (app, _surreal, nid) = build_app_and_notation().await;
-    let resp = get(&app, &format!("/lawyer/notations/{nid}/reask")).await;
+    let resp = get(&app, &format!("/app/lawyer/notations/{nid}/reask")).await;
     assert_eq!(resp.status(), StatusCode::SEE_OTHER);
-    assert_eq!(location(&resp), format!("/lawyer/notations/{nid}/review"));
+    assert_eq!(
+        location(&resp),
+        format!("/app/lawyer/notations/{nid}/review")
+    );
 }
 
 #[tokio::test]
@@ -339,7 +351,10 @@ async fn reask_post_for_unknown_notation_returns_404() {
     let (app, _surreal, _nid) = build_app_and_notation().await;
     let resp = post_form(
         &app,
-        &format!("/lawyer/notations/{}/reask", uuid::Uuid::from_u128(9999)),
+        &format!(
+            "/app/lawyer/notations/{}/reask",
+            uuid::Uuid::from_u128(9999)
+        ),
         "a:person__client=Libra+Jones",
     )
     .await;
@@ -352,7 +367,7 @@ async fn reask_post_when_not_parked_returns_409() {
     let (app, _surreal, nid) = build_app_and_notation().await;
     let resp = post_form(
         &app,
-        &format!("/lawyer/notations/{nid}/reask"),
+        &format!("/app/lawyer/notations/{nid}/reask"),
         "a:person__client=Libra+Jones",
     )
     .await;
@@ -369,14 +384,14 @@ async fn reask_post_rolls_back_and_400s_when_an_answer_cannot_be_saved() {
     walk_to_lawyer_review(&app, nid, &surreal).await;
     let resp = post_form(
         &app,
-        &format!("/lawyer/notations/{nid}/request-changes"),
+        &format!("/app/lawyer/notations/{nid}/request-changes"),
         "q:zzz_stale_code=on",
     )
     .await;
     assert_eq!(resp.status(), StatusCode::SEE_OTHER);
 
     // The re-ask surface renders, falling back to the bare code as its label.
-    let resp = get(&app, &format!("/lawyer/notations/{nid}/reask")).await;
+    let resp = get(&app, &format!("/app/lawyer/notations/{nid}/reask")).await;
     assert_eq!(resp.status(), StatusCode::OK);
     let html = body_string(resp).await;
     assert!(
@@ -388,7 +403,7 @@ async fn reask_post_rolls_back_and_400s_when_an_answer_cannot_be_saved() {
     // the write is refused whole, the matter stays parked.
     let resp = post_form(
         &app,
-        &format!("/lawyer/notations/{nid}/reask"),
+        &format!("/app/lawyer/notations/{nid}/reask"),
         "a:zzz_stale_code=whatever",
     )
     .await;
@@ -407,7 +422,7 @@ async fn reask_post_with_a_blank_flagged_answer_returns_400() {
     // Park the matter at reask__client with person__client flagged.
     let resp = post_form(
         &app,
-        &format!("/lawyer/notations/{nid}/request-changes"),
+        &format!("/app/lawyer/notations/{nid}/request-changes"),
         "q:person__client=on",
     )
     .await;
@@ -415,7 +430,7 @@ async fn reask_post_with_a_blank_flagged_answer_returns_400() {
 
     // Resubmit without re-collecting the flagged answer: refused whole, so
     // the wrong value never slips back into review.
-    let resp = post_form(&app, &format!("/lawyer/notations/{nid}/reask"), "").await;
+    let resp = post_form(&app, &format!("/app/lawyer/notations/{nid}/reask"), "").await;
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     assert_eq!(
         notation_state(&surreal, nid).await,

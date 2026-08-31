@@ -194,7 +194,7 @@ async fn attorney_accepts_finding_and_approves_delivering_the_memo() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!("/lawyer/contract-reviews/{review_id}"))
+                .uri(format!("/app/lawyer/contract-reviews/{review_id}"))
                 .header("authorization", format!("Bearer {}", h.admin_bearer))
                 .body(Body::empty())
                 .unwrap(),
@@ -207,7 +207,7 @@ async fn attorney_accepts_finding_and_approves_delivering_the_memo() {
     // at lawyer_review).
     let resp = post(
         &h,
-        &format!("/lawyer/contract-reviews/{review_id}/approve"),
+        &format!("/app/lawyer/contract-reviews/{review_id}/approve"),
         "",
     )
     .await;
@@ -221,7 +221,7 @@ async fn attorney_accepts_finding_and_approves_delivering_the_memo() {
         .unwrap()
         .to_string();
     assert!(
-        location.starts_with(&format!("/lawyer/contract-reviews/{review_id}?error=")),
+        location.starts_with(&format!("/app/lawyer/contract-reviews/{review_id}?error=")),
         "location: {location}"
     );
     let notation_row = notation_for_project(&h.surreal, project_id).await;
@@ -230,7 +230,7 @@ async fn attorney_accepts_finding_and_approves_delivering_the_memo() {
     // Accept the one finding.
     let resp = post(
         &h,
-        &format!("/lawyer/contract-reviews/{review_id}/findings/0"),
+        &format!("/app/lawyer/contract-reviews/{review_id}/findings/0"),
         "decision=accept&severity=high&suggested_redline=Add+a+mutual+cap.&attorney_note=Push+this.",
     )
     .await;
@@ -239,7 +239,7 @@ async fn attorney_accepts_finding_and_approves_delivering_the_memo() {
     // Now approve — assembles + delivers the memo, drives to END.
     let resp = post(
         &h,
-        &format!("/lawyer/contract-reviews/{review_id}/approve"),
+        &format!("/app/lawyer/contract-reviews/{review_id}/approve"),
         "",
     )
     .await;
@@ -291,7 +291,7 @@ async fn rejecting_the_review_ends_without_a_memo() {
 
     let resp = post(
         &h,
-        &format!("/lawyer/contract-reviews/{review_id}/reject"),
+        &format!("/app/lawyer/contract-reviews/{review_id}/reject"),
         "",
     )
     .await;

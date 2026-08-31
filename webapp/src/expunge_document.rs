@@ -1,5 +1,5 @@
 //! Admin governed-expunge document surface as a Dioxus component (#956 Phase 4)
-//! — `/lawyer/documents/{doc_id}/expunge`.
+//! — `/app/lawyer/documents/{doc_id}/expunge`.
 //!
 //! The successor to the `views::pages::admin::expunge` pair. One route,
 //! two states:
@@ -10,7 +10,7 @@
 //!   the `POST` handler answers with, showing the audit-row id that survives the
 //!   expunge.
 //!
-//! The mutation stays on its existing `POST /lawyer/documents/{doc_id}/expunge`
+//! The mutation stays on its existing `POST /app/lawyer/documents/{doc_id}/expunge`
 //! handler, reached through the shared [`FormCard`]'s native form carrying the
 //! session CSRF token — no JavaScript. A rejected submit redirects back here
 //! with `?error=`, surfaced above the form.
@@ -19,7 +19,7 @@
 //!
 //! Admin-only, and hidden rather than refused: a lawyer or client caller gets the
 //! same `404` the handler returned, so the route's existence is not
-//! disclosed. That is the tier check on top of the `/lawyer/*` embedded Rego policy gate the route
+//! disclosed. That is the tier check on top of the `/app/lawyer/*` embedded Rego policy gate the route
 //! already carries; the expunge primitive re-checks the authorizer itself.
 //!
 //! The reads run the same `store` calls the handler made. There is no
@@ -236,7 +236,7 @@ fn expunge_nav(role: ViewerRole) -> Element {
         nav { class: "lawyer-nav",
             a { class: "nav-link", href: "/app/projects", "Portal" }
             if role.is_lawyer_tier() {
-                a { class: "nav-link", href: "/lawyer", "Lawyer" }
+                a { class: "nav-link", href: "/app/lawyer", "Lawyer" }
             }
             if role.is_admin_tier() {
                 a { class: "nav-link", href: "/app/admin", "Admin" }
@@ -250,7 +250,7 @@ fn expunge_nav(role: ViewerRole) -> Element {
 /// storage key, and the native `POST` that runs the expunge.
 fn confirm_body(view: &ExpungeDocumentView, target: &ExpungeTarget) -> Element {
     let project_href = format!("/app/projects/{}", target.project_id);
-    let action = format!("/lawyer/documents/{}/expunge", view.doc_id);
+    let action = format!("/app/lawyer/documents/{}/expunge", view.doc_id);
     let mut options = vec![Choice::new("", "Choose a category…")];
     options.extend(
         target
@@ -421,7 +421,7 @@ mod tests {
         assert!(html.contains("existing clones"), "{html}");
         assert!(
             html.contains(
-                r#"action="/lawyer/documents/00000000-0000-0000-0000-000000000007/expunge""#
+                r#"action="/app/lawyer/documents/00000000-0000-0000-0000-000000000007/expunge""#
             ),
             "{html}"
         );

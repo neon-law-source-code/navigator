@@ -12,7 +12,7 @@ Feature: Closing letter walk
     And a closing notation for "Libra" <libra@example.com> at BEGIN
 
   Scenario: First GET renders the first question
-    When the lawyer visits /lawyer/notations/:id/step
+    When the lawyer visits /app/lawyer/notations/:id/step
     Then the response status is 200
     And the page asks the "person__client" question
     And the page shows "What is the client's full legal name?"

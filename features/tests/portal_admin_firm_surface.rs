@@ -1,9 +1,9 @@
 //! Cucumber runner for `features/portal_admin_firm_surface.feature`.
 //!
-//! Verifies that the firm-wide CRUD routes answer at `/lawyer/*` for the
-//! Owner/Admin/Lawyer tier. embedded Rego policy is `passthrough` in this
-//! suite — the client-blocked scenario lives in a live-KIND smoke
-//! test, not here.
+//! Verifies firm-administration listings at `/app/admin/*` and the lawyer
+//! workbench at `/app/lawyer/*` for Owner/Admin/Lawyer. embedded Rego policy
+//! is `passthrough` in this suite — the client-blocked scenario lives in a
+//! live-KIND smoke test, not here.
 
 // Cucumber's step-attribute macros want `async fn` everywhere.
 #![allow(clippy::unused_async)]

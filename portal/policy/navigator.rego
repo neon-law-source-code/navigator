@@ -50,7 +50,7 @@ allow if {
 # flagged lawyer DRI currently holds the lawyer tier, and that variant renders
 # the name/status/supervisor page — never documents or legal work.
 #
-# This is deliberately weaker than the `/lawyer/*` rule these paths used to sit
+# This is deliberately weaker than the `/app/lawyer/*` rule these paths used to sit
 # behind. The lawyer-only writes underneath — matter open/edit/delete, the
 # participation forms, document upload, transcript intake — each re-check the
 # lawyer tier in their own handler, which is what carries that guard now. A
@@ -62,13 +62,15 @@ allow if {
     is_authenticated(input.session)
 }
 
-# /app/lawyer is the firm dashboard. Owner and Admin reach it through the
-# route bypass above; this rule is what admits Lawyer. Clerk and client
-# are denied here, which is what keeps the CRUD directory on that page away
-# from a supervised non-lawyer — the page lists administrative sub-surfaces,
-# and a Clerk has no business being offered them.
+# /app/lawyer is the lawyer workbench: the firm dashboard and every
+# remaining lawyer-tier listing and walk that used to sit under a
+# separate `/lawyer` prefix. Owner and Admin reach it through the
+# route bypass above; this prefix rule is what admits Lawyer. Clerk
+# and client are denied here, which keeps the CRUD directory and
+# legal-work surfaces away from a supervised non-lawyer.
 allow if {
-    input.path == ["app", "lawyer"]
+    input.path[0] == "app"
+    input.path[1] == "lawyer"
     is_lawyer(input.session)
 }
 
@@ -131,8 +133,8 @@ allow if {
 # `/app/team/fonts/gorp-serif.zip`, the licensed GORP Serif desktop family the
 # home offers as a card. That download is a firm brand asset, not lawyer work,
 # and its audience is exactly this page's: all four firm tiers, no client. It
-# used to sit under `/lawyer`, where admitting a Clerk needed an exact-path
-# exception to "Clerk never enters /lawyer"; here it needs no rule of its own.
+# used to sit under `/app/lawyer`, where admitting a Clerk needed an exact-path
+# exception to "Clerk never enters /app/lawyer"; here it needs no rule of its own.
 #
 allow if {
     input.path[0] == "app"
@@ -153,11 +155,11 @@ allow if {
 # rather than a rule, because a prefix `is_lawyer` grant for `/app/admin` would
 # silently widen the hub and the matter directory to Lawyer.
 #
-# Firm-administration listings that a Lawyer already reached under `/lawyer`
+# Firm-administration listings that a Lawyer already reached under `/app/lawyer`
 # now live as named resources under `/app/admin`. The grant is the resource
 # segment, not the prefix, so `/app/admin/people` and `/app/admin/projects`
 # stay Owner/Admin. Letters and the email log are in the set so admission
-# matches the old `/lawyer` prefix; their handlers still require the admin
+# matches the old `/app/lawyer` prefix; their handlers still require the admin
 # tier.
 admin_lawyer_resources := {
 	"letters",
@@ -202,16 +204,6 @@ allow if {
     input.path[0] == "app"
     input.path[1] == "forms"
     is_authenticated(input.session)
-}
-
-# /lawyer/* is the canonical lawyer workbench and firm-wide CRUD
-# surface. Lawyer and admin only — enforced here so a missing
-# handler-layer check never silently downgrades to
-# "authenticated wins." The path prefix is deliberately ready for
-# an outer Tailscale login requirement.
-allow if {
-    input.path[0] == "lawyer"
-    is_lawyer(input.session)
 }
 
 # Workshop reads are public and never reach this policy. Claiming a completion

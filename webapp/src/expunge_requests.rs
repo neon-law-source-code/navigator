@@ -128,7 +128,7 @@ pub fn LawyerExpungeQueue() -> Element {
         nav { class: "lawyer-nav",
             a { class: "nav-link", href: "/app/projects", "Portal" }
             if role.is_lawyer_tier() {
-                a { class: "nav-link", href: "/lawyer", "Lawyer" }
+                a { class: "nav-link", href: "/app/lawyer", "Lawyer" }
             }
             if role.is_admin_tier() {
                 a { class: "nav-link", href: "/app/admin", "Admin" }
@@ -175,7 +175,7 @@ pub fn LawyerExpungeQueue() -> Element {
                                         form {
                                             class: "d-inline",
                                             method: "post",
-                                            action: "/lawyer/expunge-requests/{row.id}/authorize",
+                                            action: "/app/lawyer/expunge-requests/{row.id}/authorize",
                                             input { r#type: "hidden", name: "_csrf", value: "{csrf}" }
                                             button {
                                                 class: "nav-btn nav-btn--danger",
@@ -188,7 +188,7 @@ pub fn LawyerExpungeQueue() -> Element {
                                     form {
                                         class: "d-inline",
                                         method: "post",
-                                        action: "/lawyer/expunge-requests/{row.id}/deny",
+                                        action: "/app/lawyer/expunge-requests/{row.id}/deny",
                                         input { r#type: "hidden", name: "_csrf", value: "{csrf}" }
                                         button {
                                             class: "nav-btn nav-btn--secondary",

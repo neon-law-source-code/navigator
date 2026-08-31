@@ -2,11 +2,11 @@
 //! Integration tests for the stepwise retainer walker.
 //!
 //! Covers the full lifecycle:
-//!   1. `POST /lawyer/retainers/new` creates Person + Project +
+//!   1. `POST /app/lawyer/retainers/new` creates Person + Project +
 //!      role + Notation and redirects to `/step`.
-//!   2. `GET /lawyer/notations/:id/step` renders the current
+//!   2. `GET /app/lawyer/notations/:id/step` renders the current
 //!      question (read from the runtime + spec).
-//!   3. `POST /lawyer/notations/:id/step` writes the Answer row and
+//!   3. `POST /app/lawyer/notations/:id/step` writes the Answer row and
 //!      signals the runtime (the runtime — InMemoryRuntime in tests,
 //!      the workflows-service worker in production — owns
 //!      `notation_events`).
@@ -127,7 +127,7 @@ async fn step_get_at_begin_renders_the_first_question() {
     let resp = app
         .oneshot(
             Request::builder()
-                .uri(format!("/lawyer/notations/{nid}/step"))
+                .uri(format!("/app/lawyer/notations/{nid}/step"))
                 .header(
                     "authorization",
                     portal::test_support::lawyer_bearer_header(),
@@ -142,7 +142,7 @@ async fn step_get_at_begin_renders_the_first_question() {
     // First question after BEGIN is the entity record.
     assert!(html.contains("entity"), "html: {html}");
     assert!(html.contains("step 1 of 8"));
-    assert!(html.contains(format!("/lawyer/notations/{nid}/step").as_str()));
+    assert!(html.contains(format!("/app/lawyer/notations/{nid}/step").as_str()));
 }
 
 #[tokio::test]
@@ -184,7 +184,7 @@ async fn step_get_prefill_is_scoped_to_current_notation() {
     let resp = app
         .oneshot(
             Request::builder()
-                .uri(format!("/lawyer/notations/{nid}/step"))
+                .uri(format!("/app/lawyer/notations/{nid}/step"))
                 .header(
                     "authorization",
                     portal::test_support::lawyer_bearer_header(),
@@ -212,7 +212,7 @@ async fn step_post_writes_answer_signals_runtime_and_redirects_to_next_question(
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/lawyer/notations/{nid}/step"))
+                .uri(format!("/app/lawyer/notations/{nid}/step"))
                 .header(
                     "authorization",
                     portal::test_support::lawyer_bearer_header(),
@@ -234,7 +234,7 @@ async fn step_post_writes_answer_signals_runtime_and_redirects_to_next_question(
         .and_then(|v| v.to_str().ok())
         .unwrap_or_default()
         .to_string();
-    assert_eq!(location, format!("/lawyer/notations/{nid}/step"));
+    assert_eq!(location, format!("/app/lawyer/notations/{nid}/step"));
 
     // The runtime saw exactly one transition on the questionnaire
     // timeline: BEGIN → entity via `_`. The walker no longer
@@ -267,7 +267,7 @@ async fn step_post_writes_answer_signals_runtime_and_redirects_to_next_question(
     let resp = app
         .oneshot(
             Request::builder()
-                .uri(format!("/lawyer/notations/{nid}/step"))
+                .uri(format!("/app/lawyer/notations/{nid}/step"))
                 .header(
                     "authorization",
                     portal::test_support::lawyer_bearer_header(),
@@ -291,7 +291,7 @@ async fn step_post_for_unknown_notation_returns_404() {
             Request::builder()
                 .method("POST")
                 .uri(format!(
-                    "/lawyer/notations/{}/step",
+                    "/app/lawyer/notations/{}/step",
                     uuid::Uuid::from_u128(9999)
                 ))
                 .header(
@@ -328,7 +328,7 @@ async fn walking_the_full_questionnaire_records_all_transitions_through_end() {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(format!("/lawyer/notations/{nid}/step"))
+                    .uri(format!("/app/lawyer/notations/{nid}/step"))
                     .header(
                         "authorization",
                         portal::test_support::lawyer_bearer_header(),
@@ -356,12 +356,12 @@ async fn walking_the_full_questionnaire_records_all_transitions_through_end() {
     );
     assert_eq!(events.last().unwrap().to, StateName::end());
 
-    // GET after END redirects to /lawyer (workflow already
+    // GET after END redirects to /app/lawyer (workflow already
     // finished synchronously in the previous POST).
     let resp = app
         .oneshot(
             Request::builder()
-                .uri(format!("/lawyer/notations/{nid}/step"))
+                .uri(format!("/app/lawyer/notations/{nid}/step"))
                 .header(
                     "authorization",
                     portal::test_support::lawyer_bearer_header(),
@@ -390,7 +390,7 @@ async fn start_get_renders_the_minimal_create_form() {
     let resp = app
         .oneshot(
             Request::builder()
-                .uri("/lawyer/retainers/new")
+                .uri("/app/lawyer/retainers/new")
                 .header(
                     "authorization",
                     portal::test_support::lawyer_bearer_header(),
@@ -402,7 +402,7 @@ async fn start_get_renders_the_minimal_create_form() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let html = body_string(resp).await;
-    assert!(html.contains("action=\"/lawyer/retainers/new\""));
+    assert!(html.contains("action=\"/app/lawyer/retainers/new\""));
     assert!(html.contains("name=\"client_email\""));
     // The template picker is a dropdown of the onboarding family, not a
     // free-text code field — so lawyers pick the product, not type a code.
@@ -457,7 +457,7 @@ async fn start_post_creates_person_project_role_notation_and_redirects_to_step()
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/lawyer/retainers/new")
+                .uri("/app/lawyer/retainers/new")
                 .header(
                     "authorization",
                     portal::test_support::lawyer_bearer_header(),
@@ -479,7 +479,7 @@ async fn start_post_creates_person_project_role_notation_and_redirects_to_step()
         .unwrap_or_default()
         .to_string();
     assert!(
-        loc.starts_with("/lawyer/notations/"),
+        loc.starts_with("/app/lawyer/notations/"),
         "redirect was {loc:?}"
     );
     assert!(loc.ends_with("/step"));
@@ -610,7 +610,7 @@ async fn start_post_refuses_a_self_serve_intake_adverse_to_a_current_client() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/lawyer/retainers/new")
+                .uri("/app/lawyer/retainers/new")
                 .header(
                     "authorization",
                     portal::test_support::lawyer_bearer_header(),
@@ -635,7 +635,7 @@ async fn start_post_refuses_a_self_serve_intake_adverse_to_a_current_client() {
         .unwrap_or_default()
         .to_string();
     assert!(
-        loc.starts_with("/lawyer/retainers/new?"),
+        loc.starts_with("/app/lawyer/retainers/new?"),
         "redirect was {loc}"
     );
     let resp = app
@@ -790,7 +790,7 @@ questionnaire:
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/lawyer/retainers/new")
+                .uri("/app/lawyer/retainers/new")
                 .header("authorization", portal::test_support::lawyer_bearer_header())
                 .header("content-type", "application/x-www-form-urlencoded")
                 .body(Body::from(
@@ -807,7 +807,7 @@ questionnaire:
         .and_then(|v| v.to_str().ok())
         .unwrap();
     let notation_id: uuid::Uuid = loc
-        .trim_start_matches("/lawyer/notations/")
+        .trim_start_matches("/app/lawyer/notations/")
         .trim_end_matches("/step")
         .parse()
         .expect("redirect carries the notation id");
@@ -915,7 +915,7 @@ async fn close_matter_post_starts_a_closing_walk_for_an_existing_matter() {
         .unwrap_or_default()
         .to_string();
     assert!(
-        loc.starts_with("/lawyer/notations/") && loc.ends_with("/step"),
+        loc.starts_with("/app/lawyer/notations/") && loc.ends_with("/step"),
         "redirect was {loc:?}"
     );
 
@@ -1009,15 +1009,15 @@ async fn close_walk_renders_firm_signed_letter_and_closes_the_matter() {
         .and_then(|v| v.to_str().ok())
         .unwrap()
         .to_string();
-    // /lawyer/notations/<uuid>/step
+    // /app/lawyer/notations/<uuid>/step
     let nid: uuid::Uuid = loc
-        .trim_start_matches("/lawyer/notations/")
+        .trim_start_matches("/app/lawyer/notations/")
         .trim_end_matches("/step")
         .parse()
         .expect("redirect carries the notation id");
 
     // Walk the six closing questions; the final POST drives the closing
-    // workflow to END and redirects to /lawyer.
+    // workflow to END and redirects to /app/lawyer.
     let answers = [
         "Libra",
         "Estate plan",
@@ -1032,7 +1032,7 @@ async fn close_walk_renders_firm_signed_letter_and_closes_the_matter() {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(format!("/lawyer/notations/{nid}/step"))
+                    .uri(format!("/app/lawyer/notations/{nid}/step"))
                     .header(
                         "authorization",
                         portal::test_support::lawyer_bearer_header(),
@@ -1075,7 +1075,7 @@ async fn close_walk_renders_firm_signed_letter_and_closes_the_matter() {
 
 #[tokio::test]
 async fn start_post_rejects_missing_at_in_client_email_with_validation_error() {
-    // The form renders through Dioxus at `GET /lawyer/retainers/new`, so a
+    // The form renders through Dioxus at `GET /app/lawyer/retainers/new`, so a
     // rejected `POST` no longer re-renders it inline. It redirects back
     // (post/redirect/get) carrying the reason and what was typed, and the form
     // reads all three back out of the query.
@@ -1085,7 +1085,7 @@ async fn start_post_rejects_missing_at_in_client_email_with_validation_error() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/lawyer/retainers/new")
+                .uri("/app/lawyer/retainers/new")
                 .header(
                     "authorization",
                     portal::test_support::lawyer_bearer_header(),
@@ -1106,7 +1106,7 @@ async fn start_post_rejects_missing_at_in_client_email_with_validation_error() {
         .unwrap_or_default()
         .to_string();
     assert!(
-        loc.starts_with("/lawyer/retainers/new?"),
+        loc.starts_with("/app/lawyer/retainers/new?"),
         "redirect was {loc}"
     );
     assert!(loc.contains("client_email=not-an-email"), "{loc}");
@@ -1157,7 +1157,7 @@ async fn final_post_drives_workflow_and_renders_result_with_substituted_template
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(format!("/lawyer/notations/{nid}/step"))
+                    .uri(format!("/app/lawyer/notations/{nid}/step"))
                     .header(
                         "authorization",
                         portal::test_support::lawyer_bearer_header(),
@@ -1172,9 +1172,9 @@ async fn final_post_drives_workflow_and_renders_result_with_substituted_template
         // The last answer lands on the review screen rather than rendering it
         // inline; every earlier one goes to the next question.
         let expected = if value == "nevada" {
-            format!("/lawyer/notations/{nid}/review")
+            format!("/app/lawyer/notations/{nid}/review")
         } else {
-            format!("/lawyer/notations/{nid}/step")
+            format!("/app/lawyer/notations/{nid}/step")
         };
         assert_eq!(
             resp.headers().get("location").and_then(|v| v.to_str().ok()),
@@ -1188,7 +1188,7 @@ async fn final_post_drives_workflow_and_renders_result_with_substituted_template
         .clone()
         .oneshot(
             Request::builder()
-                .uri(format!("/lawyer/notations/{nid}/review"))
+                .uri(format!("/app/lawyer/notations/{nid}/review"))
                 .header(
                     "authorization",
                     portal::test_support::lawyer_bearer_header(),
@@ -1207,7 +1207,7 @@ async fn final_post_drives_workflow_and_renders_result_with_substituted_template
     // a signature envelope.
     assert!(html.contains("lawyer_review"), "html: {html}");
     assert!(
-        html.contains(&format!("/lawyer/notations/{nid}/approve-send")),
+        html.contains(&format!("/app/lawyer/notations/{nid}/approve-send")),
         "parked review must offer the approve action: {html}"
     );
     assert!(

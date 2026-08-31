@@ -1,4 +1,4 @@
-//! The door to the signing ceremony: `GET /lawyer/notations/:id/sign`.
+//! The door to the signing ceremony: `GET /app/lawyer/notations/:id/sign`.
 //!
 //! After the retainer is sent for signature the client is a **captive**
 //! DocuSign recipient (see [`crate::retainer_walk::client_user_id`]) —
@@ -34,7 +34,7 @@ use crate::admin::AdminState;
 use crate::retainer_walk::client_user_id;
 use crate::signature::RecipientView;
 
-/// `GET /lawyer/notations/:id/sign` — mint a single-use recipient-view URL for
+/// `GET /app/lawyer/notations/:id/sign` — mint a single-use recipient-view URL for
 /// the notation's captive client and send the browser to DocuSign.
 pub async fn sign_get(
     State(state): State<AdminState>,
@@ -79,7 +79,7 @@ pub async fn sign_get(
     // signer who comes back, not a mechanism: the executed state arrives on
     // `crate::esignature_webhook` whether this redirect is ever followed or
     // not.
-    let return_url = format!("/lawyer/notations/{notation_id}/step");
+    let return_url = format!("/app/lawyer/notations/{notation_id}/step");
     let view = RecipientView {
         return_url,
         email: client.email,
@@ -167,7 +167,7 @@ mod tests {
         for hostile in [
             "http://demo.docusign.net/signing/abc", // plaintext downgrade
             "//evil.example/signing",               // protocol-relative
-            "/lawyer/notations",                    // relative, back into Navigator
+            "/app/lawyer/notations",                // relative, back into Navigator
             "javascript:alert(1)",                  // executes in the page
             "data:text/html,<script>alert(1)</script>", // ditto
             "not a url at all",

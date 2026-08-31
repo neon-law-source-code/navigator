@@ -85,29 +85,41 @@ pub const LAWYER_LISTINGS: &[(&str, &str, Disclosure)] = &[
     // Who is on which matter is the ledger itself, not a matter's content.
     (
         "list_person_project_roles",
-        "/lawyer/person-project-roles",
+        "/app/lawyer/person-project-roles",
         Disclosure::Reference,
     ),
     // A notation names its matter but discloses only template/person/state —
     // no client answer, no document, no prose.
-    ("list_notations", "/lawyer/notations", Disclosure::Reference),
+    (
+        "list_notations",
+        "/app/lawyer/notations",
+        Disclosure::Reference,
+    ),
     // Matter content, scoped to the caller's participation ledger.
-    ("list_answers", "/lawyer/answers", Disclosure::MatterContent),
-    ("list_assets", "/lawyer/assets", Disclosure::MatterContent),
+    (
+        "list_answers",
+        "/app/lawyer/answers",
+        Disclosure::MatterContent,
+    ),
+    (
+        "list_assets",
+        "/app/lawyer/assets",
+        Disclosure::MatterContent,
+    ),
     (
         "list_relationship_logs",
-        "/lawyer/relationship-logs",
+        "/app/lawyer/relationship-logs",
         Disclosure::MatterContent,
     ),
     // Conflict-graph inputs — firm-wide on purpose. See `Disclosure::ConflictGraph`.
     (
         "list_disclosures",
-        "/lawyer/disclosures",
+        "/app/lawyer/disclosures",
         Disclosure::ConflictGraph,
     ),
     (
         "list_person_entity_roles",
-        "/lawyer/person-entity-roles",
+        "/app/lawyer/person-entity-roles",
         Disclosure::ConflictGraph,
     ),
     // No project link on `letter` or `sent_email` to scope by.

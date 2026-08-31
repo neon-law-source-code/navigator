@@ -146,7 +146,7 @@ async fn walk_to_lawyer_review(fx: &Fixture) {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(format!("/lawyer/notations/{}/step", fx.notation_id))
+                    .uri(format!("/app/lawyer/notations/{}/step", fx.notation_id))
                     .header("authorization", &fx.acting)
                     .header("content-type", "application/x-www-form-urlencoded")
                     .body(Body::from(format!("value={value}")))

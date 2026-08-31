@@ -10,7 +10,7 @@
 //! That is not a scoping convenience, it is the safety property. Two rules in
 //! the docs hold only because this table is inert:
 //!
-//! - a Clerk "never receives lawyer-work, advice, Git, MCP, or `/lawyer`
+//! - a Clerk "never receives lawyer-work, advice, Git, MCP, or `/app/lawyer`
 //!   authority by inheritance" ([`docs/glossary.md`](../../docs/glossary.md)),
 //!   so a Clerk who *is* GitHub user `12345` gains nothing by being recorded as
 //!   such; and

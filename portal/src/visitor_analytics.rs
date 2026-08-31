@@ -179,7 +179,6 @@ fn is_excluded_route(route: &str) -> bool {
         || route == "/version"
         || route.starts_with("/app")
         || route.starts_with("/admin")
-        || route.starts_with("/lawyer")
         || route.starts_with("/auth")
         || route.starts_with("/mcp")
         || route.starts_with("/webhook")
@@ -672,7 +671,7 @@ mod tests {
         assert!(should_count_route(&Method::HEAD, "/notations"));
         assert!(!should_count_route(&Method::POST, "/contact"));
         assert!(!should_count_route(&Method::GET, "/admin"));
-        assert!(!should_count_route(&Method::GET, "/lawyer"));
+        assert!(!should_count_route(&Method::GET, "/app/lawyer"));
         assert!(!should_count_route(&Method::GET, "/app/projects"));
         assert!(!should_count_route(&Method::GET, "/app/forms"));
         assert!(!should_count_route(&Method::GET, "/app/api/aida.json"));

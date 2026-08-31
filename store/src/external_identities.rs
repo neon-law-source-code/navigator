@@ -24,7 +24,7 @@
 //! identity is neither. A row saying a Clerk is GitHub user `12345`
 //! must never be the reason that Clerk can read a repository — the
 //! glossary rule that a Clerk "never receives lawyer-work, advice, Git,
-//! MCP, or `/lawyer` authority by inheritance" holds precisely because
+//! MCP, or `/app/lawyer` authority by inheritance" holds precisely because
 //! this table is inert, and `cli/tests/external_identity_is_inert.rs`
 //! asserts that against the authorization surfaces by name rather than
 //! leaving it to be remembered.
@@ -821,7 +821,7 @@ mod tests {
     }
 
     /// The glossary rule, held as behaviour: a Clerk "never receives
-    /// lawyer-work, advice, Git, MCP, or `/lawyer` authority by
+    /// lawyer-work, advice, Git, MCP, or `/app/lawyer` authority by
     /// inheritance." Recording that a Clerk *is* a GitHub user is a
     /// record of who they are; it is not a grant, and every authority
     /// answer is the same before and after the row exists.

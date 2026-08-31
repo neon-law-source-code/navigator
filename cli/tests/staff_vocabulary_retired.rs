@@ -2,7 +2,7 @@
 //!
 //! At this firm the tier that performs legal work is a lawyer, so the word is
 //! `lawyer` everywhere it names that tier: `persons.role`, the `Role` enum, the
-//! OPA `lawyer_tier` set, the `/lawyer/*` workbench, `person_project_role`'s
+//! OPA `lawyer_tier` set, the `/app/lawyer/*` workbench, `person_project_role`'s
 //! `is_lawyer_dri`, the `lawyer_review` workflow state, the `question.audience`
 //! and `answer.source` vocabularies, the email `awaiting_lawyer` /
 //! `to_lawyer` / `from_lawyer` values, `navigator dev grant-lawyer`, and the

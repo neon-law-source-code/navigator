@@ -35,7 +35,7 @@ pub const TEST_SESSION_KEY: &str = "test-session-key-not-for-production";
 ///
 /// It is the real CLI credential, not a stand-in: the `navigator` CLI presents
 /// the same HMAC-signed [`crate::SessionData`] blob the browser holds in its
-/// cookie, so a test that drives `/lawyer` or `/app` with this header takes
+/// cookie, so a test that drives `/app/lawyer` or `/app` with this header takes
 /// the identical path through the session boundary, embedded Rego policy, and the handlers that
 /// production does. Signed with [`TEST_SESSION_KEY`], which
 /// [`app_state`] hands to the router's [`crate::SessionStore`].
@@ -50,7 +50,7 @@ pub fn bearer_header(role: store::persons::Role) -> String {
 }
 
 /// [`bearer_header`] for the firm lens — the common case for a test that
-/// drives the `/lawyer` surface over the CLI credential.
+/// drives the `/app/lawyer` surface over the CLI credential.
 #[doc(hidden)]
 #[must_use]
 pub fn lawyer_bearer_header() -> String {

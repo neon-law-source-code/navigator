@@ -248,7 +248,7 @@ pub async fn get_clerk_project() -> Result<ClerkProjectDetailView, ServerFnError
 
 /// The Clerk nav chrome. One destination now that the supervised surface is a
 /// rendering of `/app/projects` rather than its own namespace.
-/// A Clerk is not Lawyer, so no `/lawyer` or `/admin` link is offered —
+/// A Clerk is not Lawyer, so no `/app/lawyer` or `/admin` link is offered —
 /// the `PageLayout` drew the same three links for this tier.
 fn clerk_nav() -> Element {
     rsx! {

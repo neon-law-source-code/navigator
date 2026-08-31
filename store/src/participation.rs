@@ -17,7 +17,7 @@
 //! lawyer form, `POST /app/api/projects/{id}/participants`, and
 //! `aida_link_person_project` — all take a person and nothing else. A word that
 //! disagreed with the tier used to be typeable, and a `client` recorded as
-//! `attorney` is a firm-side row: the matter's own client reading `/lawyer`.
+//! `attorney` is a firm-side row: the matter's own client reading `/app/lawyer`.
 
 use uuid::Uuid;
 

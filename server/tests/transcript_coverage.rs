@@ -1,6 +1,6 @@
 #![allow(clippy::doc_markdown)]
 //! Integration tests for the questionnaire walk's **transcript input mode** —
-//! PR 3 of #349. `POST /lawyer/notations/:id/transcript` runs `live_inquiry`
+//! PR 3 of #349. `POST /app/lawyer/notations/:id/transcript` runs `live_inquiry`
 //! batch coverage over the notation's template and the uploaded transcript,
 //! persists each covered inquiry as a proposed answer (`source = extracted`),
 //! and returns a JSON coverage summary. It never advances the questionnaire:
@@ -150,7 +150,7 @@ async fn post_transcript(
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/lawyer/notations/{nid}/transcript"))
+                .uri(format!("/app/lawyer/notations/{nid}/transcript"))
                 .header(
                     "authorization",
                     portal::test_support::lawyer_bearer_header(),
@@ -188,7 +188,7 @@ async fn step_json(app: &axum::Router, nid: uuid::Uuid) -> serde_json::Value {
         .clone()
         .oneshot(
             Request::builder()
-                .uri(format!("/lawyer/notations/{nid}/step?format=json"))
+                .uri(format!("/app/lawyer/notations/{nid}/step?format=json"))
                 .header(
                     "authorization",
                     portal::test_support::lawyer_bearer_header(),
@@ -208,7 +208,7 @@ async fn step_post(app: &axum::Router, nid: uuid::Uuid, body: String) -> StatusC
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/lawyer/notations/{nid}/step"))
+                .uri(format!("/app/lawyer/notations/{nid}/step"))
                 .header(
                     "authorization",
                     portal::test_support::lawyer_bearer_header(),
@@ -325,7 +325,7 @@ async fn post_status(app: &axum::Router, nid: uuid::Uuid, body: &str) -> StatusC
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/lawyer/notations/{nid}/transcript"))
+                .uri(format!("/app/lawyer/notations/{nid}/transcript"))
                 .header(
                     "authorization",
                     portal::test_support::lawyer_bearer_header(),

@@ -318,7 +318,7 @@ async fn gallery_renders_navigation_links_as_plain_anchors() {
     );
     assert!(html.contains(r#"aria-label="Breadcrumb""#), "{html}");
     // The lawyer variant is the second breadcrumb preview.
-    assert!(html.contains(r#"href="/lawyer""#), "{html}");
+    assert!(html.contains(r#"href="/app/lawyer""#), "{html}");
     assert!(html.contains("Lawyer portal"), "{html}");
     // Off-site link: new tab + OWASP rel + the box-arrow-up-right glyph.
     assert!(html.contains(r#"target="_blank""#), "{html}");

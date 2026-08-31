@@ -14,7 +14,7 @@
 //! Authorization is embedded Rego policy's: the object sits under the team
 //! home's own `/app/team` prefix, whose rules admit all four firm tiers —
 //! Owner, Admin, Lawyer, and Clerk — and deny a client. A brand asset is not
-//! lawyer work, so it needs neither the `/lawyer` prefix nor the exact-path
+//! lawyer work, so it needs neither the `/app/lawyer` prefix nor the exact-path
 //! Clerk exception that prefix used to force. `require_auth` rejects anonymous
 //! callers first, so no handler-layer role check is needed here. A missing
 //! object is a loud `502`, never a fallback.

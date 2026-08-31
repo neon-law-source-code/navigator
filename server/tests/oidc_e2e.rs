@@ -377,7 +377,7 @@ async fn second_login_with_same_subject_does_not_create_duplicate_person() {
 
 const ADMIN_ROUTES: &[&str] = &[
     "/app/lawyer",
-    // `/lawyer/people` is absent since ENG-304 deleted the browser mirror: the
+    // `/app/lawyer/people` is absent since ENG-304 deleted the browser mirror: the
     // one people surface is the admin console's `/app/admin/people`, which this
     // lawyer-tier walk is answered 403 at by design.
     "/app/admin/entities",
@@ -669,7 +669,7 @@ async fn callback_returns_403_html_when_email_is_not_pre_seeded() {
     .await;
     let app = server::neon_router(s, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
 
-    let resp = callback_response(&app, &idp, "/lawyer").await;
+    let resp = callback_response(&app, &idp, "/app/lawyer").await;
     assert_eq!(resp.status(), StatusCode::FORBIDDEN);
     let body = resp.into_body().collect().await.unwrap().to_bytes();
     let html = String::from_utf8_lossy(&body);

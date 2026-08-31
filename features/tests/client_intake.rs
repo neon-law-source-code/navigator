@@ -63,13 +63,13 @@ async fn open_matter(world: &mut IntakeWorld, email: String) {
         "client_email={}&retainer_template_code={TEMPLATE_CODE}",
         features::form_encode(&email),
     );
-    let resp = journey.lawyer_post("/lawyer/retainers/new", body).await;
+    let resp = journey.lawyer_post("/app/lawyer/retainers/new", body).await;
     let location = resp
         .location
         .unwrap_or_else(|| panic!("matter-open did not redirect (status {})", resp.status));
-    // `/lawyer/notations/<uuid>/step`
+    // `/app/lawyer/notations/<uuid>/step`
     let id = location
-        .strip_prefix("/lawyer/notations/")
+        .strip_prefix("/app/lawyer/notations/")
         .and_then(|s| s.strip_suffix("/step"))
         .unwrap_or_else(|| panic!("unexpected redirect target: {location}"));
     let notation_id = Uuid::parse_str(id).expect("notation id in redirect is a UUID");
@@ -103,7 +103,7 @@ async fn open_matter(world: &mut IntakeWorld, email: String) {
 /// they answer the questionnaire's states.
 async fn lawyer_answers_current_question(world: &IntakeWorld, value: &str) {
     let path = format!(
-        "/lawyer/notations/{}/step",
+        "/app/lawyer/notations/{}/step",
         world.notation_id.expect("notation"),
     );
     let resp = world.journey().lawyer_post(&path, answer_body(value)).await;

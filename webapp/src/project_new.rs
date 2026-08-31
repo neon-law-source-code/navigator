@@ -240,13 +240,11 @@ fn open_matter_form(view: &ProjectNewView) -> Element {
             .placeholder("fractional-gc")
             .help(
                 "Lowercase letters, digits, and single hyphens, starting and ending with a letter \
-                 or digit — no uppercase, no underscores, no spaces. This is the matter's public \
-                 name everywhere: `fractional-gc` makes the matter's page \
-                 /app/projects/fractional-gc and the client's portal \
-                 /app/projects/fractional-gc/portal/, and the same word is the lawyer-only \
-                 repository name and the matter's folder in the firm's shared drive. Those must \
-                 match exactly, so it is never generated for you — and no edit form changes it \
-                 later.",
+                 or digit — no uppercase, no underscores, no spaces. Navigator appends a short \
+                 generated suffix to what you type here, so `fractional-gc` becomes something like \
+                 `fractional-gc-a1b2c3d4` — the matter's page, the client's portal, and the \
+                 lawyer-only repository name all become that exact word, chosen once and never \
+                 changed. No edit form changes it later.",
             ),
         Field::select(
             "Entity",
@@ -381,6 +379,11 @@ fn new_client_form(view: &ProjectNewView) -> Element {
 fn new_body(view: &ProjectNewView) -> Element {
     rsx! {
         document::Title { "{view.firm_name} | Lawyer | Projects | Add project" }
+        // First-party, same-origin, so `script-src 'self'` allows it with no
+        // nonce. Live-validates the `#code` field's shape as the lawyer types
+        // — the code is immutable and never re-typed, so catching a shape
+        // mistake before submit beats learning about it from a redirect.
+        document::Script { src: "/public/js/project-code-live-validate.js", defer: true }
         header { class: "page-header",
             h1 { "Add project" }
             p { a { href: "/app/projects", "← Back to projects" } }
@@ -511,13 +514,11 @@ mod tests {
 
     /// The one field a lawyer cannot take back tells them what it is for.
     ///
-    /// The code is required at matter-open, never derived, and no edit form
-    /// changes it later — and it is simultaneously the matter's URL, its
-    /// repository name, and its shared-drive folder name, which have to match
-    /// exactly. So the rule and the consequence both belong on the field
-    /// itself: a lawyer who learns the shape from a rejected submission has
-    /// already had to guess, and one who learns the URL later has already given
-    /// a client a link.
+    /// The code is required at matter-open, immutable, and no edit form
+    /// changes it later — so the rule and the consequence both belong on the
+    /// field itself: a lawyer who learns the shape from a rejected submission
+    /// has already had to guess, and one who learns the generated suffix
+    /// later has already given a client a link.
     #[test]
     fn the_code_field_states_its_shape_and_what_the_code_becomes() {
         let html = render(&view(ProjectNewQuery::default()));
@@ -525,18 +526,13 @@ mod tests {
         for shape in ["Lowercase letters", "single hyphens", "no underscores"] {
             assert!(html.contains(shape), "the code's shape is unstated: {html}");
         }
-        for url in [
-            "/app/projects/fractional-gc",
-            "/app/projects/fractional-gc/portal/",
-        ] {
-            assert!(
-                html.contains(url),
-                "the field does not say the code is the matter's URL: {html}"
-            );
-        }
         assert!(
-            html.contains("shared drive"),
-            "the field does not say the code names the Drive folder: {html}"
+            html.contains("generated suffix"),
+            "the field does not say Navigator appends a generated suffix: {html}"
+        );
+        assert!(
+            html.contains("chosen once and never changed"),
+            "the field does not say the resulting code is immutable: {html}"
         );
     }
 

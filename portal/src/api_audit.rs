@@ -102,6 +102,7 @@ mod tests {
             source: crate::session::SessionSource::Browser,
             provider: None,
             impersonation: None,
+            scope: None,
         }
     }
 

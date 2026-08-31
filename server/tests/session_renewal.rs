@@ -34,6 +34,7 @@ fn browser_session(exp: i64) -> SessionData {
         source: SessionSource::Browser,
         provider: None,
         impersonation: None,
+        scope: None,
     }
 }
 

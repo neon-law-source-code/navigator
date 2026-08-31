@@ -160,6 +160,7 @@ async fn open_detail(world: &mut DetailWorld, email: String, project_name: Strin
         source: portal::session::SessionSource::Browser,
         provider: None,
         impersonation: None,
+        scope: None,
     };
     let cookie = format!(
         "{SESSION_COOKIE_NAME}={}",

@@ -20,6 +20,7 @@ use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use store::persons::Role;
+use store::seed::SeedModel;
 
 /// HTTP cookie name carrying the signed session payload.
 pub const SESSION_COOKIE_NAME: &str = "navigator_session";
@@ -44,6 +45,21 @@ pub enum SessionSource {
     #[default]
     Browser,
     Cli,
+}
+
+/// Restricts a session to one endpoint, a closed set of seed models, and one
+/// project's records. Minted only for a CI-obtained token (ENG-345); every
+/// interactive login leaves [`SessionData::scope`] `None`, meaning
+/// unrestricted — the session may do everything its `role` allows, exactly
+/// as before this field existed. See ENG-344.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SeedScope {
+    /// The one route this session may reach, e.g. `/app/api/seed`.
+    pub endpoint: String,
+    /// The seed models this session may reconcile.
+    pub models: Vec<SeedModel>,
+    /// The `project.code` this session's writes are confined to.
+    pub project_code: String,
 }
 
 /// Original admin actor retained while the session acts as a client.
@@ -109,6 +125,11 @@ pub struct SessionData {
     /// for restoring the admin session.
     #[serde(default)]
     pub impersonation: Option<Impersonation>,
+    /// A CI-minted session's write scope (ENG-344/ENG-345). `None` for every
+    /// interactive login and every session minted before this field existed —
+    /// an unrestricted session, same as today.
+    #[serde(default)]
+    pub scope: Option<SeedScope>,
 }
 
 impl SessionData {
@@ -131,6 +152,7 @@ impl SessionData {
             source: SessionSource::Browser,
             provider: None,
             impersonation: None,
+            scope: None,
         }
     }
 }

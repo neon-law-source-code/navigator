@@ -328,7 +328,7 @@ pub fn document_with_base(base: &str) -> Value {
         "/app/api/seed": {
           "post": {
             "summary": "Reconcile a seed document",
-            "description": "Applies one YAML document in Navigator's standard `lookup_fields` / `records` seed format. The model is a supported singular glossary term. Existing lookup matches are unchanged by default; `overwrite` replaces the fields represented in the seed record. Authorization: Lawyer tier only.",
+            "description": "Applies one YAML document in Navigator's standard `lookup_fields` / `records` seed format. The model is a supported singular glossary term. Existing lookup matches are unchanged by default; `overwrite` replaces the fields represented in the seed record. Authorization: Lawyer tier only. A session minted with a project scope (a CI-obtained token) is further restricted to its own endpoint, models, and project — a write outside that scope is refused as `403 scope_violation`, distinguishable from an ordinary role failure.",
             "requestBody": {
               "required": true,
               "content": { "application/json": {
@@ -340,7 +340,7 @@ pub fn document_with_base(base: &str) -> Value {
                 "schema": { "$ref": "#/components/schemas/SeedReport" }
               } } },
               "401": { "description": "No authenticated session" },
-              "403": { "description": "Authenticated caller is not Lawyer/admin" },
+              "403": { "description": "Authenticated caller is not Lawyer/admin, or a project-scoped session wrote outside its endpoint, model, or project scope (`error: scope_violation`)" },
               "422": { "description": "Unsupported model or invalid seed document" }
             }
           }

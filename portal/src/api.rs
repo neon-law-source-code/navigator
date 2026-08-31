@@ -955,33 +955,78 @@ struct SeedRequest {
     overwrite: bool,
 }
 
+/// This route's own address, matched against a scoped session's
+/// [`crate::session::SeedScope::endpoint`]. A session scoped to a different
+/// endpoint string is refused before the body is even parsed further.
+const SEED_ENDPOINT: &str = "/app/api/seed";
+
 async fn reconcile_seed(
     State(state): State<ApiState>,
-    _lawyer: LawyerSession,
+    LawyerSession(session): LawyerSession,
     Json(input): Json<SeedRequest>,
 ) -> Response {
     let outcome = async {
         let model = store::seed::SeedModel::parse(&input.model)?;
+        if let Some(scope) = &session.scope {
+            if scope.endpoint != SEED_ENDPOINT {
+                return Err(anyhow::Error::new(
+                    store::seed::ScopeViolation::EndpointNotScoped,
+                ));
+            }
+            if !scope.models.contains(&model) {
+                return Err(anyhow::Error::new(
+                    store::seed::ScopeViolation::ModelNotScoped(model.term()),
+                ));
+            }
+        }
         store::seed::reconcile_yaml(
             &state.surreal,
             model,
             &input.yaml,
             &state.bootstrap_company,
             input.overwrite,
+            &store::seed::ReconcileActor {
+                bootstrap_owner_email: state.bootstrap_owner_email.as_deref(),
+                actor_role: session.role,
+                may_change_roles: may_change_roles(&session),
+                project_scope: session
+                    .scope
+                    .as_ref()
+                    .map(|scope| scope.project_code.as_str()),
+            },
         )
         .await
     }
     .await;
     match outcome {
         Ok(report) => (StatusCode::OK, Json(report)).into_response(),
-        Err(error) => (
-            StatusCode::UNPROCESSABLE_ENTITY,
-            Json(serde_json::json!({
-                "error": "invalid_seed",
-                "message": error.to_string(),
-            })),
-        )
-            .into_response(),
+        Err(error) => {
+            // A scope refusal is distinguishable from an ordinary malformed
+            // or invalid seed document — a 403 the audit trail can tell
+            // apart from a 422, per ENG-344.
+            if error
+                .downcast_ref::<store::seed::ScopeViolation>()
+                .is_some()
+            {
+                (
+                    StatusCode::FORBIDDEN,
+                    Json(serde_json::json!({
+                        "error": "scope_violation",
+                        "message": error.to_string(),
+                    })),
+                )
+                    .into_response()
+            } else {
+                (
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    Json(serde_json::json!({
+                        "error": "invalid_seed",
+                        "message": error.to_string(),
+                    })),
+                )
+                    .into_response()
+            }
+        }
     }
 }
 

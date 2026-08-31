@@ -27,6 +27,11 @@ pub const NAVIGATOR_GITHUB_TOKEN_ENV: &str = "NAVIGATOR_GITHUB_TOKEN";
 /// [`NAVIGATOR_GITHUB_TOKEN_ENV`] is unset.
 pub const GITHUB_TOKEN_ENV: &str = "GITHUB_TOKEN";
 /// Override the REST API base, for GitHub Enterprise or a test double.
+///
+/// Naming GitHub Enterprise is a **feature, not stale narration.** Navigator
+/// runs on github.com; this override is how somebody running their own
+/// instance points it at their own tenant. See the same note on
+/// `webapp::source_repository::GITHUB_API_BASE_ENV`.
 pub const GITHUB_API_BASE_ENV: &str = "NAVIGATOR_GITHUB_API_BASE";
 /// Public GitHub's REST API base.
 pub const DEFAULT_API_BASE: &str = "https://api.github.com";

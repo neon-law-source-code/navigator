@@ -26,12 +26,8 @@
      Every pairing below therefore clears WCAG AA for normal text. The 500
      stop is the tightest at 4.90:1 — it clears the 4.5:1 floor with little
      headroom, so a surface that needs more should step down to 600 rather
-     than lighten 500.
-
-     These are the values the Foundation's own layer already shipped and the
-     browser accessibility gate already audited in both schemes, which is why
-     promoting them to the shared layer is a re-tone rather than a new
-     palette. */
+     than lighten 500. The browser accessibility gate audits these pairings in
+     both schemes. */
   --nav-teal-400: #4dd4e6;
   --nav-teal-500: #007c91;
   --nav-teal-600: #006b7d;

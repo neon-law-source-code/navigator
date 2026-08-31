@@ -1152,11 +1152,13 @@ fn the_chain_of_title_is_recorded_and_nothing_contradicts_it() {
     /// exact formatting the tree actually used. A guard whose pattern is
     /// defeated by bold text is a guard that would have passed through the
     /// entire period this was wrong.
-    const CONTRADICTIONS: [&str; 4] = [
+    const CONTRADICTIONS: [&str; 6] = [
         "copyright the neon law foundation",
         "copyright neon law foundation",
         "neon law foundation, which produces it; the firm operates it",
         "neon law foundation produces the software and holds the copyright",
+        "neon law foundation produces the neon law navigator source code and holds the copyright",
+        "the code is open source: the software is dual-licensed",
     ];
 
     // ---- The chain is recorded, with reasoning rather than an assertion. ----
@@ -1182,7 +1184,10 @@ fn the_chain_of_title_is_recorded_and_nothing_contradicts_it() {
     // ---- Nothing in the tree says otherwise. ----
     let mut offenders = Vec::new();
 
-    for path in markdown_documents() {
+    for path in markdown_documents()
+        .into_iter()
+        .chain(license_txt_documents())
+    {
         let rel = path
             .strip_prefix(repo_root())
             .unwrap_or(&path)
@@ -1365,7 +1370,18 @@ fn trademark_notices_name_the_firm_as_the_registrant() {
 /// Every Markdown document in the tree, so a claim about the grant is guarded
 /// wherever someone writes it rather than only in the terms files.
 fn markdown_documents() -> Vec<PathBuf> {
-    fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
+    walk_repo_files(|name| name.ends_with(".md"))
+}
+
+/// Bundled notices named `LICENSE.txt`. Root [`LICENSE`] is the BUSL text and
+/// is gated separately; these files sit beside assets, so a copyright claim
+/// here would slip a Markdown-only walk.
+fn license_txt_documents() -> Vec<PathBuf> {
+    walk_repo_files(|name| name.eq_ignore_ascii_case("LICENSE.txt"))
+}
+
+fn walk_repo_files(keep: impl Fn(&str) -> bool) -> Vec<PathBuf> {
+    fn walk(dir: &Path, out: &mut Vec<PathBuf>, keep: &impl Fn(&str) -> bool) {
         let Ok(entries) = fs::read_dir(dir) else {
             return;
         };
@@ -1375,15 +1391,15 @@ fn markdown_documents() -> Vec<PathBuf> {
             let name = name.to_string_lossy();
             if path.is_dir() {
                 if !is_skipped_dir(name.as_ref()) {
-                    walk(&path, out);
+                    walk(&path, out, keep);
                 }
-            } else if name.ends_with(".md") {
+            } else if keep(name.as_ref()) {
                 out.push(path);
             }
         }
     }
     let mut out = Vec::new();
-    walk(&repo_root(), &mut out);
+    walk(&repo_root(), &mut out, &keep);
     out.sort();
     out
 }

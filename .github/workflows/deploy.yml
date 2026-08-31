@@ -1875,10 +1875,18 @@ jobs:
           done
           # Prove the alias resolves to the same manifest the source tag does,
           # so a silent no-op cannot ship a stale `navigator-web` to prod.
-          src="$(docker buildx imagetools inspect --format '{{ .Manifest.Digest }}' \
-              "${registry}/${{ matrix.image }}:${{ needs.release-version.outputs.tag }}")"
-          dst="$(docker buildx imagetools inspect --format '{{ .Manifest.Digest }}' \
-              "${registry}/${{ matrix.alias }}:${{ needs.release-version.outputs.tag }}")"
+          # Compare raw manifest bytes rather than `--format`: the buildx
+          # version `setup-buildx-action` currently installs (v0.23.0)
+          # silently drops `--format` and falls back to the full default text
+          # whenever the target is an image index with more than one entry,
+          # which every image here is, since a default provenance attestation
+          # adds a second manifest. That made `src` and `dst` both the whole
+          # text block -- always unequal, because each names its own
+          # repository -- so this check failed on every run.
+          src="$(docker buildx imagetools inspect --raw \
+              "${registry}/${{ matrix.image }}:${{ needs.release-version.outputs.tag }}" | sha256sum)"
+          dst="$(docker buildx imagetools inspect --raw \
+              "${registry}/${{ matrix.alias }}:${{ needs.release-version.outputs.tag }}" | sha256sum)"
           echo "${{ matrix.image }} -> ${src}"
           echo "${{ matrix.alias }} -> ${dst}"
           test "${src}" = "${dst}"

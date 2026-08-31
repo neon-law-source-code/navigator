@@ -1377,7 +1377,7 @@ fn trademark_notices_name_the_firm_as_the_registrant() {
 /// Every Markdown document in the tree, so a claim about the grant is guarded
 /// wherever someone writes it rather than only in the terms files.
 fn markdown_documents() -> Vec<PathBuf> {
-    walk_repo_files(|name| name.ends_with(".md"))
+    walk_repo_files(|name| name.to_ascii_lowercase().ends_with(".md"))
 }
 
 /// Bundled notices named `LICENSE.txt`. Root [`LICENSE`] is the BUSL text and

@@ -71,10 +71,15 @@ async fn opening_a_matter_writes_the_project_two_participations_and_the_attestat
     // The stored code is the supplied stem plus a generated 8-letter suffix
     // (`store::projects::code_from_name`), not the stem verbatim — see
     // `project_code_generation.rs` for the suffix-generation contract itself.
+    //
+    // The code is not echoed into the assertion message: CodeQL's
+    // rust/cleartext-logging query taints the whole `Project` value through
+    // `record_uuid(...)` (used to build `id`/`entity_id`), so interpolating
+    // any of its fields into a panic message trips the required CodeQL check
+    // (see 738bec0 for the established precedent).
     assert!(
         project.code.starts_with("nest-formation-") && project.code.len() == 23,
-        "expected `nest-formation-` plus an 8-letter suffix, got {:?}",
-        project.code
+        "expected the stored code to be the `nest-formation-` stem plus an 8-letter suffix"
     );
 
     // Both participations: the attesting attorney as lawyer DRI, the client

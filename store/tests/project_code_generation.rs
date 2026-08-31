@@ -71,23 +71,24 @@ async fn open_matter_appends_a_generated_suffix_to_the_supplied_stem() {
     .await
     .expect("open the matter");
 
+    // The code is not echoed into the panic message: CodeQL's
+    // rust/cleartext-logging query taints the whole `Project` value through
+    // `record_uuid(...)` (used to build `id`/`entity_id`), so interpolating
+    // any of its fields into a panic message trips the required CodeQL check
+    // (see 738bec0 for the established precedent).
     let suffix = project
         .code
         .strip_prefix("acme-holdings-")
         .unwrap_or_else(|| {
-            panic!(
-                "expected the `acme-holdings-` stem to survive: {}",
-                project.code
-            )
+            panic!("expected the stored code to start with the `acme-holdings-` stem")
         });
-    assert_eq!(
-        suffix.len(),
-        8,
-        "suffix should be exactly 8 characters: {suffix:?}"
-    );
+    // Neither assertion echoes `suffix` itself: it is a substring of
+    // `project.code`, which CodeQL's rust/cleartext-logging query taints via
+    // `record_uuid(...)` (see the comment above).
+    assert_eq!(suffix.len(), 8, "suffix should be exactly 8 characters");
     assert!(
         suffix.bytes().all(|b| b.is_ascii_lowercase()),
-        "suffix should be lowercase ASCII letters only: {suffix:?}"
+        "suffix should be lowercase ASCII letters only"
     );
 }
 

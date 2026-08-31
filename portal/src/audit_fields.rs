@@ -12,6 +12,31 @@
 //! absent from that `allowed_keys` list is silently deleted on the export
 //! path, so a sanitizer that produced a differently-named field would trade a
 //! leak for a blank.
+//!
+//! # Why there is no payload digest here
+//!
+//! There is deliberately no helper that hashes a tool-call payload to record
+//! *what* a caller passed. The agent-action authorization records carry no
+//! arguments, argument keys, digest, or count — see `a2a::audit_authorization`
+//! and `docs/aida-a2a-interaction.md` — and a digest is the wrong primitive to
+//! reopen that with.
+//!
+//! A digest looks content-free and is not. An unsalted hash is deterministic by
+//! construction, which is the property that makes it verifiable at all, and a
+//! deterministic hash over a *knowable* input space is recovered by enumerating
+//! that space. The arguments behind the confirmation gate are keyed by project
+//! codes that appear in portal URLs and by firm addresses published on the
+//! website, so the space is small and public: the reversal is cheap, and it is
+//! cheapest exactly where the payload is most sensitive.
+//!
+//! Substring assertions do not detect this. A `sha256` renders as 64 characters
+//! of `[0-9a-f]`, so "the digest does not contain the address" holds for every
+//! possible input and says nothing about whether the address can be recovered.
+//!
+//! If the trail ever needs to name the call, the answer is an identifier into a
+//! governed store rather than a hash of the payload. `a2a::PendingConfirmations`
+//! is process-local and so cannot be that store. The export contract for these
+//! records is tracked separately.
 
 /// Render a person's id for an audit field, or `none`.
 ///

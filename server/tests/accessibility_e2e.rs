@@ -774,7 +774,7 @@ async fn public_navigation_images_and_collage_dialog_are_accessible() {
         .expect("the home call to action has an href");
     assert!(
         href.starts_with("mailto:"),
-        "the home call to action writes the firm inbox, not a retired /contact page: {href}"
+        "the home call to action writes the firm inbox directly: {href}"
     );
 
     c.goto(&format!("{site_base_url}/blog/thanks-apple"))

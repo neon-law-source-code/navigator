@@ -190,17 +190,33 @@ const FIRM_NAV: &[NavLink] = &[
 /// print about fine print. Their bodies already serve at `/privacy` and
 /// `/terms`; this is the link that reaches them.
 ///
-/// Eight entries, and the count is part of the design: the footer lays them out
-/// as two columns of four on a wide viewport and one list of eight on a narrow
-/// one, so a ninth would leave a column uneven.
+/// Contact is a page of its own, not only the `mailto:` CTAs the practice
+/// pages quote through: a reader who scrolled to the bottom of the site
+/// looking for "how do I reach them" gets a page naming the firm's inbox and
+/// voice line rather than having to find a CTA on some other page first.
+///
+/// Navigator UX is the one entry here that is not this site's own route. It
+/// is the platform's design showcase, published from its own repository
+/// (`neon-law-source-code/navigator-ux`) rather than served by this binary, so
+/// its href is the showcase's absolute URL rather than a path. Everything else
+/// in this row stays internal — see `every_footer_link_is_internal_or_the_ux_showcase`.
+///
+/// Ten entries, and the count is part of the design: the footer lays them out
+/// as two even columns of five on a wide viewport and one list of ten on a
+/// narrow one, so an eleventh would leave a column uneven.
 ///
 /// A "Firm" entry pointing at `/` is deliberately absent. It was one half of a
 /// cross-link pair with the nonprofit's home, and with that page retired the
 /// remaining half links the reader to where the header logo already goes.
 const FIRM_FOOTER_NAV: &[NavLink] = &[
     NavLink::leaf("Blog", "/blog"),
+    NavLink::leaf("Contact", "/contact"),
     NavLink::leaf("Docs", "/docs"),
     NavLink::leaf("Navigator", "/navigator"),
+    NavLink::leaf(
+        "Navigator UX",
+        "https://neon-law-source-code.github.io/navigator-ux/?showcase=home",
+    ),
     NavLink::leaf("Notations", "/notations"),
     NavLink::leaf("Presentations", "/presentations"),
     NavLink::leaf("Privacy", "/privacy"),
@@ -1278,11 +1294,11 @@ mod tests {
         );
     }
 
-    /// Blog, Docs, Navigator, Notations, Presentations, Privacy, Terms, and
-    /// Workshops are the routes the header does not carry, ordered
-    /// alphabetically by label. They are still linked from every public page — a
-    /// route in neither row is stranded, which is the failure this pairs with
-    /// the test above to catch.
+    /// Blog, Contact, Docs, Navigator, Navigator UX, Notations, Presentations,
+    /// Privacy, Terms, and Workshops are the routes the header does not carry,
+    /// ordered alphabetically by label. They are still linked from every public
+    /// page — a route in neither row is stranded, which is the failure this
+    /// pairs with the test above to catch.
     ///
     /// Workshops joined the row when the classes became public, and Docs when
     /// the workspace documentation did. While either was gated the chrome
@@ -1301,8 +1317,10 @@ mod tests {
             footer,
             [
                 "Blog",
+                "Contact",
                 "Docs",
                 "Navigator",
+                "Navigator UX",
                 "Notations",
                 "Presentations",
                 "Privacy",
@@ -1312,8 +1330,8 @@ mod tests {
         );
         assert_eq!(
             footer.len(),
-            8,
-            "the footer lays the row out as two columns of four: {footer:?}"
+            10,
+            "the footer lays the row out as two even columns of five: {footer:?}"
         );
         let mut sorted = footer.clone();
         sorted.sort_unstable();
@@ -1329,7 +1347,7 @@ mod tests {
                 "{label} is linked once, from the footer"
             );
         }
-        for retired in ["Team", "Foundation", "Firm", "Contact"] {
+        for retired in ["Team", "Foundation", "Firm"] {
             assert!(
                 !header.contains(&retired) && !footer.contains(&retired),
                 "{retired} names a retired or redundant entry that neither row may link",
@@ -1338,9 +1356,31 @@ mod tests {
         assert!(
             super::firm_footer_nav()
                 .iter()
-                .all(|link| link.href.starts_with('/') && !link.is_dropdown()),
-            "every footer link is a flat internal leaf"
+                .all(|link| !link.is_dropdown()),
+            "every footer link is a flat leaf"
         );
+    }
+
+    /// Every footer link is this site's own route, with the one deliberate
+    /// exception: Navigator UX names the design showcase published from its own
+    /// repository, so it links out rather than to a path this binary serves.
+    #[test]
+    fn every_footer_link_is_internal_or_the_ux_showcase() {
+        for link in super::firm_footer_nav() {
+            if link.label == "Navigator UX" {
+                assert_eq!(
+                    link.href, "https://neon-law-source-code.github.io/navigator-ux/?showcase=home",
+                    "the showcase's own published URL"
+                );
+            } else {
+                assert!(
+                    link.href.starts_with('/'),
+                    "{} links off-site: {}",
+                    link.label,
+                    link.href
+                );
+            }
+        }
     }
 
     /// No row links a retired URL.
@@ -1358,7 +1398,6 @@ mod tests {
                 "/team",
                 "/mission",
                 "/attorneys",
-                "/contact",
             ] {
                 assert!(
                     !link.href.starts_with(retired),
@@ -1370,6 +1409,17 @@ mod tests {
             assert_ne!(link.label, "Legal aid centers");
             assert_ne!(link.label, "Foundation");
         }
+    }
+
+    /// The firm's contact page is linked from the footer, at its own name.
+    #[test]
+    fn contact_is_a_firm_footer_leaf_at_its_own_name() {
+        let contact = super::firm_footer_nav()
+            .iter()
+            .find(|n| n.label == "Contact")
+            .expect("Contact leaf present");
+        assert!(!contact.is_dropdown());
+        assert_eq!(contact.href, "/contact");
     }
 
     /// The talks catalog is linked from the firm's footer, at its own name.

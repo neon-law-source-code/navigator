@@ -147,6 +147,7 @@ async fn site_host_serves_the_firm_surface_and_host_documents() {
         "/navigator",
         "/blog",
         "/notations",
+        "/contact",
         "/privacy",
         "/terms",
         "/robots.txt",
@@ -822,7 +823,7 @@ async fn the_firm_nav_leads_with_the_lead_offering_then_the_practices() {
 
 #[tokio::test]
 async fn the_footer_carries_the_pages_the_header_does_not() {
-    // All eight routes are one click away from every public page. Checked on
+    // All ten routes are one click away from every public page. Checked on
     // `/litigation` rather than `/`, because the footer is shared chrome and a
     // page that is not the home page proves it renders everywhere.
     //
@@ -833,10 +834,14 @@ async fn the_footer_carries_the_pages_the_header_does_not() {
     // only by typing the URL.
     //
     // `/privacy` and `/terms` ride the row on the same footing as the rest.
-    const ROW: [&str; 8] = [
+    // Navigator UX is the one entry that links off-site, to the platform's
+    // design showcase, rather than to a path this host serves.
+    const ROW: [&str; 10] = [
         "/blog",
+        "/contact",
         "/docs",
         "/navigator",
+        "https://neon-law-source-code.github.io/navigator-ux/?showcase=home",
         "/notations",
         "/presentations",
         "/privacy",
@@ -1055,6 +1060,7 @@ async fn no_firm_page_publishes_a_fee() {
         "/",
         "/services",
         "/notations",
+        "/contact",
         "/litigation",
         "/fractional-gc",
         "/navigator",
@@ -2441,6 +2447,53 @@ async fn notations_page_uses_the_catalog_hero_and_links_the_letters_and_forms() 
     assert!(body.contains("site-footer__legal"), "public legal footer");
 }
 
+// ---- Contact surface (firm-owned, Dioxus SSR port #641 / #730 PR6) ----
+
+#[tokio::test]
+async fn contact_page_lists_the_firm_channel_and_shares_the_card() {
+    // The Dioxus contact port renders the firm's contact channels and the
+    // social-share card the head declares.
+    let app = site_app().await;
+    let resp = anon_get(&app, "/contact").await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_string(resp).await;
+    assert!(
+        body.contains("<title>Neon Law | Contact</title>"),
+        "brand-prefixed document title: {body}"
+    );
+    assert!(
+        body.contains(r#"<meta content="Neon Law | Contact" property="og:title"/>"#),
+        "the share card carries the page title: {body}"
+    );
+    assert!(body.contains("site-header"), "public header chrome");
+    assert!(body.contains("site-footer__legal"), "public legal footer");
+}
+
+#[tokio::test]
+async fn contact_returns_contact_page_html() {
+    let app = site_app().await;
+    let body = body_string(anon_get(&app, "/contact").await).await;
+    assert!(body.contains("<title>Neon Law | Contact</title>"));
+    // The published address, which is `contact@` rather than the `support@`
+    // mailbox some other CTAs write to.
+    assert!(body.contains("mailto:contact@neonlaw.com"));
+    assert!(
+        body.contains(r#"href="mailto:contact@neonlaw.com""#),
+        "the contact CTA reaches the firm: {body}"
+    );
+    // The page's own content, not just chrome that happens to mention contact
+    // — a reader looking for how to reach the firm must find the inbox inside
+    // the page article itself.
+    let article = body
+        .split(r#"<article class="contact-page""#)
+        .nth(1)
+        .expect("the contact page's own content renders");
+    assert!(
+        article.contains("mailto:contact@neonlaw.com"),
+        "the contact channel sits inside the page's own article: {article}"
+    );
+}
+
 /// The shared footer publishes the source repository on every public page, on
 /// both faces of the site.
 ///
@@ -2587,6 +2640,7 @@ async fn a_mounted_brand_bundle_rebrands_the_firm_home() {
 
     // The public catalog and footer render the bundle's support email.
     let notations = app
+        .clone()
         .oneshot(
             Request::builder()
                 .uri("/notations")
@@ -2597,6 +2651,19 @@ async fn a_mounted_brand_bundle_rebrands_the_firm_home() {
         .unwrap();
     assert_eq!(notations.status(), StatusCode::OK);
     assert!(body_string(notations).await.contains("help@acme.example"));
+
+    // The contact page renders the bundle's support email.
+    let contact = app
+        .oneshot(
+            Request::builder()
+                .uri("/contact")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(contact.status(), StatusCode::OK);
+    assert!(body_string(contact).await.contains("help@acme.example"));
 }
 
 /// The footer closes on the platform line, publishing neither organization's

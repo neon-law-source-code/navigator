@@ -3274,6 +3274,34 @@ pub fn transactional_router(
         ))
 }
 
+/// The firm `/contact` page (#641 / #730 PR6), served through the Dioxus SSR
+/// port. Content-backed like the service pages: the caller
+/// (the firm's public Dioxus pages) resolves the [`ContactContent`] from the
+/// mounted branding and injects it through `ServeConfig::context_providers`, and
+/// `webapp::contact_page::contact_page_view` reads it back. `path` is the route
+/// the page mounts at. Public and firm-scoped.
+///
+/// [`ContactContent`]: webapp::contact_page::ContactContent
+pub fn contact_router(path: &str, content: webapp::contact_page::ContactContent) -> Router {
+    let injected = webapp::contact_page::InjectedContact(content);
+    let cfg = ServeConfig::new().context_providers(std::sync::Arc::new(vec![Box::new(move || {
+        Box::new(injected.clone()) as Box<dyn std::any::Any>
+    })
+        as Box<dyn Fn() -> Box<dyn std::any::Any> + Send + Sync>]));
+
+    Router::<FullstackState>::new()
+        .route(
+            path,
+            get(render_handler)
+                .layer(from_fn(dioxus_document_head))
+                .layer(from_fn(inject_public_utility)),
+        )
+        .with_state(FullstackState::new(
+            cfg,
+            webapp::contact_page::ContactPageEntry,
+        ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

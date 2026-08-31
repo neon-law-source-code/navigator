@@ -1458,7 +1458,7 @@ async fn the_firm_marketing_surface_serves_at_the_site_root() {
         empty_state().await,
         std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
     );
-    for uri in ["/blog", "/notations"] {
+    for uri in ["/blog", "/notations", "/contact"] {
         let resp = app
             .clone()
             .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())

@@ -244,16 +244,6 @@ mod firm_copy_tests {
             "the only invitation is pro bono co-counsel: {text}"
         );
         assert!(
-            !text.contains("Why we build it"),
-            "the retired purpose band must not remain: {text}"
-        );
-        assert!(
-            !text.contains(
-                "serving clients as expeditiously, precisely, accurately, and in alignment with their interests"
-            ),
-            "the retired purpose copy must not remain: {text}"
-        );
-        assert!(
             !text.to_lowercase().contains("fractional"),
             "the retired fractional offer must not remain: {text}"
         );

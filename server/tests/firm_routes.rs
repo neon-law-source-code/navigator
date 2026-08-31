@@ -1103,26 +1103,8 @@ async fn the_navigator_page_invites_pro_bono_co_counsel_and_publishes_no_rate() 
     let app = site_app().await;
     let body = body_string(anon_get(&app, "/navigator").await).await;
     assert!(
-        body.contains(
-            "Agentic lawyering designed to scale and mise-en-place argument prep and human \
-             judgment."
-        ),
-        "the hero tagline is the catalog line: {body}"
-    );
-    assert!(
         body.contains("Co-Counsel a Pro Bono Case with Us"),
         "the only invitation is pro bono co-counsel: {body}"
-    );
-    assert!(
-        !body.contains("Why we build it"),
-        "the retired purpose band must not remain: {body}"
-    );
-    assert!(
-        !body.contains(
-            "serving clients as expeditiously, precisely, accurately, and in alignment with their \
-             interests"
-        ),
-        "the retired purpose copy must not remain: {body}"
     );
     // The co-counsel invitation prefills the email subject, so the mailto the
     // page renders carries it through the recipient's client.

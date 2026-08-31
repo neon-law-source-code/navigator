@@ -364,6 +364,7 @@ pub fn ClientProjectDetail() -> Element {
     };
 
     let has_documents = !view.documents.is_empty();
+    let has_review_docs = !view.review_docs.is_empty();
 
     rsx! {
         document::Title { "{view.name}" }
@@ -375,26 +376,21 @@ pub fn ClientProjectDetail() -> Element {
         }
         main { id: "portal-project", class: "nav-theme portal-detail",
             nav { class: "portal-detail__back",
-                a { class: "nav-link", href: "/app/projects", "← Your services" }
+                a { class: "nav-link", href: "/app/projects", "← Your Projects" }
             }
             h1 { "{view.name}" }
             p { span { class: "status-chip", "{view.status}" } }
 
             crate::project_resources::ProjectResourcesPanel { view: view.resources.clone() }
 
-            p { class: "portal-detail__actions",
-                if has_documents {
+            if has_documents {
+                p { class: "portal-detail__actions",
                     a {
                         class: "nav-btn nav-btn--secondary",
                         href: "/app/projects/{view.code}/documents.zip",
                         role: "button",
                         "Download all my documents"
                     }
-                }
-                a {
-                    class: "nav-btn nav-btn--secondary",
-                    href: "/app/projects/{view.code}/conversation",
-                    "Conversation"
                 }
             }
 
@@ -459,29 +455,23 @@ pub fn ClientProjectDetail() -> Element {
                 }
             }
 
-            if has_documents {
-                section { class: "portal-detail__section",
-                    h2 { "Your documents" }
-                    div { class: "nav-table-wrap",
-                        table { class: "nav-table",
-                            thead {
-                                tr { th { scope: "col", "Document" } }
-                            }
-                            tbody {
-                                for filename in view.documents.iter() {
-                                    tr { td { "{filename}" } }
-                                }
+            section { class: "portal-detail__section",
+                h2 { "Your documents" }
+                div { class: "nav-table-wrap",
+                    table { class: "nav-table",
+                        thead {
+                            tr { th { scope: "col", "Document" } }
+                        }
+                        tbody {
+                            for filename in view.documents.iter() {
+                                tr { td { "{filename}" } }
                             }
                         }
                     }
                 }
             }
 
-            if view.review_docs.is_empty() {
-                p { class: "nav-muted",
-                    "Documents to review will appear here once your attorney has prepared them."
-                }
-            } else {
+            if has_review_docs {
                 section { class: "portal-detail__section",
                     h2 { "Documents to review" }
                     div { class: "nav-table-wrap",

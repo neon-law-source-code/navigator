@@ -650,65 +650,23 @@ async fn app_projects_renders_the_client_dashboard() {
 
     for marker in [
         r#"id="portal-projects""#,
-        ">Your services<",
+        ">Your Projects<",
         r#"class="portal-kpis""#,
-        ">Engagements<",
+        ">Open<",
+        ">Closed<",
     ] {
         assert!(
             projects.contains(marker),
             "/app/projects must render the client dashboard ({marker}): {projects}",
         );
     }
-}
-
-/// The dashboard blurb names the firm the client actually hired, resolved from
-/// the request-scoped branding rather than written into the copy.
-///
-/// Both halves matter. The default deploy must name the firm — the sentence
-/// used to name a nonprofit, which is not the entity a portal client engaged. A
-/// mounted white-label bundle must name *its* firm, which is the
-/// failure a `views::brand` read inside the server function would produce: that
-/// task does not inherit the brand `task_local`, so it would silently publish
-/// this firm's name in someone else's portal.
-#[tokio::test]
-async fn the_services_blurb_names_the_deploys_own_firm() {
-    let app = server::neon_router(
-        empty_state().await,
-        std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
-    );
-    let body =
-        body_string(get_with_role(app, "/app/projects", store::persons::Role::Client).await).await;
     assert!(
-        body.contains("Each card is one engagement with Neon Law:"),
-        "{body}",
+        !projects.contains(">Engagements<"),
+        "the list has no Engagements heading: {projects}",
     );
     assert!(
-        !body.contains(&format!(
-            "engagement with the {}",
-            ["Neon", "Law", "Foundation"].join(" ")
-        )),
-        "the nonprofit is not who a portal client hired: {body}",
-    );
-
-    let bundle_dir = tempfile::tempdir().unwrap();
-    std::fs::write(
-        bundle_dir.path().join("navigator.yaml"),
-        "version: 1\nbrand:\n  firm: Acme Law\n",
-    )
-    .unwrap();
-    let bundle = views::brand_bundle::BrandBundle::load(bundle_dir.path()).unwrap();
-    let mut state = empty_state().await;
-    state.brand_bundle = Some(bundle);
-    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
-    let body =
-        body_string(get_with_role(app, "/app/projects", store::persons::Role::Client).await).await;
-    assert!(
-        body.contains("Each card is one engagement with Acme Law:"),
-        "{body}",
-    );
-    assert!(
-        !body.contains("engagement with Neon Law"),
-        "a white-label portal must not name this firm: {body}",
+        !projects.contains("Each card is one engagement"),
+        "the dashboard has no engagement blurb: {projects}",
     );
 }
 
@@ -7384,8 +7342,8 @@ async fn client_portal_lists_single_project_with_kpi_cards() {
 
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
-    assert!(body.contains("Your services"), "{body}");
-    assert!(body.contains("Engagements"), "{body}");
+    assert!(body.contains("Your Projects"), "{body}");
+    assert!(!body.contains(">Engagements<"), "{body}");
     assert!(
         body.contains(&format!("/app/projects/{project_code}")),
         "the project code keys the detail link: {body}"
@@ -7395,9 +7353,13 @@ async fn client_portal_lists_single_project_with_kpi_cards() {
     // label, no price, and no Services tile.
     assert!(!body.contains("Catalog Service Label"), "{body}");
     assert!(!body.contains('$'), "no price on the dashboard: {body}");
-    for label in ["Open", "Documents", "Closed"] {
+    for label in ["Open", "Closed"] {
         assert!(body.contains(label), "missing KPI label {label}: {body}");
     }
+    assert!(
+        !body.contains(">Documents<"),
+        "no Documents KPI tile: {body}"
+    );
     assert!(!body.contains("Services"), "no Services KPI tile: {body}");
     assert!(
         !body.contains("/app/projects/new"),
@@ -7460,7 +7422,7 @@ async fn client_direct_projects_url_uses_portal_list_not_admin_table() {
 
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
-    assert!(body.contains("Your services"), "{body}");
+    assert!(body.contains("Your Projects"), "{body}");
     assert!(body.contains("Sample Matter"), "{body}");
     assert!(
         body.contains(&format!("/app/projects/{project_code}")),
@@ -7480,34 +7442,15 @@ async fn client_direct_projects_url_uses_portal_list_not_admin_table() {
 }
 
 /// The Dioxus `/app/projects` dashboard exercised end to end: person
-/// scoping (only the signed-in client's matters), KPI aggregation (the
-/// batched document count plus the in-memory status/service counts), and
-/// product-label + price resolution. The route-shape assertion above does not
-/// run these paths together, so a regression that empties the board, drops the
-/// resolved service label, or leaks another client's matter would pass it but
-/// fails here.
+/// scoping (only the signed-in client's matters) and KPI aggregation (the
+/// in-memory open/closed counts). The route-shape assertion above does not
+/// run these paths together, so a regression that empties the board or leaks
+/// another client's matter would pass it but fails here.
 #[tokio::test]
 async fn client_portal_projects_scopes_and_aggregates_the_signed_in_client_dashboard() {
     let (state, surreal) = state_with_engines().await;
 
-    // The signed-in client's own open sample matter, plus two filed documents
-    // so the Documents KPI is a distinctive, non-trivial count.
-    let (project_id, project_code, cookie) = client_project_fixture(&state.surreal).await;
-    for filename in ["homer-v-flanders-i.pdf", "homer-v-flanders-ii.pdf"] {
-        let args = store::documents::IngestArgs {
-            project_id,
-            source: "upload",
-            filename,
-            kind: "unclassified",
-            content_type: "application/pdf",
-            description: None,
-            secondary_storage_key: None,
-            visibility: store::documents::visibility::CLIENT,
-        };
-        store::documents::ingest_bytes(&state.surreal, &state.storage, &args, b"filed")
-            .await
-            .unwrap();
-    }
+    let (_project_id, project_code, cookie) = client_project_fixture(&state.surreal).await;
 
     // A different client's matter must never surface on this client's board.
     let (_other_project_id, other_code, _other_cookie) = client_project_fixture_for_product(
@@ -7554,12 +7497,12 @@ async fn client_portal_projects_scopes_and_aggregates_the_signed_in_client_dashb
     // KPI aggregation. Each tile renders its value div immediately before its
     // label div, so stripping tags and hydration comments from the KPI section
     // leaves the visible text as `<value><label>…` per tile. Asserting the
-    // value/label pairing verifies the in-memory status/service counts and the
-    // batched document count together, robustly against Dioxus's SSR hydration
-    // markup (which a bare-digit match could otherwise mistake for a node id).
+    // value/label pairing verifies the in-memory open/closed counts, robustly
+    // against Dioxus's SSR hydration markup (which a bare-digit match could
+    // otherwise mistake for a node id).
     let kpi_start = body.find("portal-kpis").expect("KPI section renders");
     let kpi_end = body[kpi_start..]
-        .find("Engagements")
+        .find("portal-projects")
         .map_or(body.len(), |offset| kpi_start + offset);
     let mut kpi_text = String::new();
     // The slice begins inside the opening `<div class="portal-kpis"` tag, so
@@ -7573,10 +7516,9 @@ async fn client_portal_projects_scopes_and_aggregates_the_signed_in_client_dashb
             _ => {}
         }
     }
-    // Open 1 (the single open matter), Documents 2 (the two filed documents,
-    // via the batched asset count), Closed 0 (nothing closed). There is no
-    // Services tile: a matter correlates to no catalog row.
-    for (value, label) in [(1, "Open"), (2, "Documents"), (0, "Closed")] {
+    // Open 1 (the single open matter), Closed 0 (nothing closed). There is no
+    // Documents or Services tile.
+    for (value, label) in [(1, "Open"), (0, "Closed")] {
         assert!(
             kpi_text.contains(&format!("{value}{label}")),
             "KPI `{label}` should aggregate to {value}: {kpi_text}",
@@ -7618,6 +7560,18 @@ async fn client_project_detail_shows_no_service_panel_and_no_price() {
     assert!(
         !body.contains(&format!("Matter id: <code>{project_id}</code>")),
         "client detail should not surface internal matter ids: {body}",
+    );
+    assert!(
+        !body.contains(">Conversation<"),
+        "the matter page has no conversation door: {body}",
+    );
+    assert!(
+        !body.contains("Documents to review will appear here"),
+        "an empty review list does not explain itself: {body}",
+    );
+    assert!(
+        body.contains("Your documents"),
+        "the matter page always lists documents: {body}",
     );
 }
 
@@ -7666,6 +7620,14 @@ async fn client_project_detail_links_the_documents_zip() {
     assert!(body.contains(&format!(
         "href=\"/app/projects/{project_code}/documents.zip\""
     )));
+    assert!(
+        !body.contains(">Conversation<"),
+        "the matter page has no conversation door: {body}",
+    );
+    assert!(
+        body.contains("welcome-letter.pdf"),
+        "the client-visible filename is listed: {body}",
+    );
 }
 
 // QUARANTINED, not retired. This test failed once in CI's `cargo test

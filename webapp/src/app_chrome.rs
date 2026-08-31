@@ -126,7 +126,7 @@ pub async fn app_logo_from_context() -> Option<AppLogo> {
 }
 
 /// Resolve the firm name `/app` copy names for the current request — the name a
-/// client reads in "each card is one engagement with …".
+/// client reads in the portal document title.
 ///
 /// Same seam and same reason as [`app_logo_from_context`]: the pre-layer
 /// resolved it while the brand `task_local` was live, so a white-label deploy's

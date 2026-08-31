@@ -34,6 +34,7 @@ Feature: Public routing across the one face the site serves
     Examples:
       | path           |
       | /notations     |
+      | /contact       |
       | /litigation    |
       | /fractional-gc |
       | /services      |
@@ -49,7 +50,6 @@ Feature: Public routing across the one face the site serves
       | /foundation/mission      |
       | /foundation/transparency |
       | /mission                 |
-      | /contact                 |
       | /transparency            |
       | /education               |
       | /does-not-exist          |

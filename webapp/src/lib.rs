@@ -30,6 +30,7 @@ pub mod clerk;
 pub mod cli_release;
 pub mod client_intake;
 pub mod components;
+pub mod contact_page;
 pub mod contract_review;
 pub mod conversation;
 pub mod csrf;

@@ -218,8 +218,8 @@ pub(crate) fn tel_href(phone: &str) -> String {
 ///   component with no destination should get rather than an `<a href="">`
 ///   that reloads whatever page it is sitting on.
 /// - `nav`: the public routes the header does not carry, rendered as one list
-///   the stylesheet lays out in two columns of four on a wide viewport and one
-///   column of eight on a narrow one. Empty renders no row.
+///   the stylesheet lays out in two columns of five on a wide viewport and one
+///   column of ten on a narrow one. Empty renders no row.
 ///
 /// The whole footer is width-constrained to the same 72rem column the
 /// [`crate::components::SiteHeader`] nav uses, so its content lines up with
@@ -567,12 +567,18 @@ mod tests {
     }
 
     /// The link row a deploy hands this component, mirroring what
-    /// `views::brand::firm_footer_nav` publishes: the eight public routes the
-    /// header does not carry, alphabetized by label.
-    const FOOTER_ROW: [(&str, &str); 8] = [
+    /// `views::brand::firm_footer_nav` publishes: the ten public routes the
+    /// header does not carry, alphabetized by label. Navigator UX is the one
+    /// entry that links off-site, to the platform's design showcase.
+    const FOOTER_ROW: [(&str, &str); 10] = [
         ("Blog", "/blog"),
+        ("Contact", "/contact"),
         ("Docs", "/docs"),
         ("Navigator", "/navigator"),
+        (
+            "Navigator UX",
+            "https://neon-law-source-code.github.io/navigator-ux/?showcase=home",
+        ),
         ("Notations", "/notations"),
         ("Presentations", "/presentations"),
         ("Privacy", "/privacy"),

@@ -254,6 +254,12 @@ pub fn firm_public_dioxus_routers(state: &AppState) -> Vec<Router> {
         dioxus_app::NOTATIONS_INDEX_PATH,
         notations_index_content(),
     ));
+    // The firm `/contact` page, content resolved from the same mounted brand
+    // bundle as the pages around it.
+    routers.push(dioxus_app::contact_router(
+        "/contact",
+        resolve_firm_contact_content(branding),
+    ));
     // The home page (`/`): a static statement of the practice, no per-request
     // data.
     routers.push(dioxus_app::home_router(
@@ -330,6 +336,42 @@ pub fn firm_public_dioxus_routers(state: &AppState) -> Vec<Router> {
 /// Kept in `web` so the `views` crate stays free of `chrono`.
 fn format_blog_date(date: chrono::NaiveDate) -> String {
     date.format("%B %-d, %Y").to_string()
+}
+
+/// Resolve the firm `/contact` content from the mounted `branding`'s addresses
+/// — the wasm-safe [`webapp::contact_page::ContactContent`] the Dioxus contact
+/// router injects. Takes the resolved `branding` explicitly because the content
+/// is baked at router-build time, before per-request branding scope.
+fn resolve_firm_contact_content(
+    branding: &views::brand::Branding,
+) -> webapp::contact_page::ContactContent {
+    let firm_name = branding.firm.site_name;
+
+    let page_title = "Contact";
+    webapp::contact_page::ContactContent {
+        head_title: format!("{firm_name} | {page_title}"),
+        meta_description: format!(
+            "Reach {firm_name} for estate planning, corporate formation, litigation, and ongoing \
+             legal services."
+        ),
+        page_title: page_title.to_string(),
+        firm_heading: firm_name.to_string(),
+        // No figure here. No page on this host posts a rate — every engagement
+        // is quoted through this page — so a consultation fee would be the first
+        // posted number on a surface whose whole purpose is to start a
+        // conversation before anything is priced. The page promises the quote,
+        // not its amount.
+        firm_intro: format!(
+            "Email {firm_name} with a short description of the matter — estate planning, \
+             corporate formation, ongoing services. We respond within one business day with a \
+             flat-fee quote and a calendar link. The first appointment is 30 minutes with a \
+             licensed attorney."
+        ),
+        email_label: "Email".to_string(),
+        phone_label: "Phone".to_string(),
+        firm_email: branding.firm_email.to_string(),
+        firm_phone: branding.firm_phone.to_string(),
+    }
 }
 
 /// Resolve the firm home page's static copy from the mounted `branding` — the

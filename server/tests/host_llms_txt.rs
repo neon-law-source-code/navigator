@@ -158,6 +158,7 @@ async fn the_index_advertises_the_firms_pages() {
         "/fractional-gc",
         "/navigator",
         "/notations",
+        "/contact",
         "/blog",
         "/presentations",
     ] {

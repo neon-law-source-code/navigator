@@ -1022,14 +1022,19 @@ fn SiteFooterShowcase() -> Element {
                 offices: demo_offices(),
                 attorneys: demo_attorneys(),
                 // The routes the header no longer carries, at the full length
-                // the site publishes them: eight links, which the stylesheet
-                // lays out as two columns of four. A gallery driving three
-                // would document a row that never renders and would not show
-                // the two-column layout at all.
+                // the site publishes them: ten links, which the stylesheet
+                // lays out as two even columns of five. A gallery driving
+                // three would document a row that never renders and would not
+                // show the two-column layout at all.
                 nav: [
                     ("Blog", "/blog"),
+                    ("Contact", "/contact"),
                     ("Docs", "/docs"),
                     ("Navigator", "/navigator"),
+                    (
+                        "Navigator UX",
+                        "https://neon-law-source-code.github.io/navigator-ux/?showcase=home",
+                    ),
                     ("Notations", "/notations"),
                     ("Presentations", "/presentations"),
                     ("Privacy", "/privacy"),

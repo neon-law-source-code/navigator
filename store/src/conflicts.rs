@@ -258,6 +258,52 @@ pub struct ConflictGraph {
     entity_disclosures: HashMap<Uuid, Vec<String>>,
 }
 
+/// Whether the firm has actually screened this person for conflicts.
+///
+/// The predicate is [`build_graph`]'s own definition of a person the firm
+/// serves — a `person_project_role` carrying `is_client_dri` on a matter
+/// that is not archived — asked about one person instead of all of them.
+/// Two callers, one meaning: a party this returns `true` for is a party
+/// the conflict graph already reasons over.
+///
+/// # Why not "does a `person` row exist"
+///
+/// Because a row is an identity, not a decision. Rows are minted by
+/// `find_or_create` on the intake walk, by bulk import, by an OIDC first
+/// sign-in and by seeding, none of which imply anyone ran a check. The
+/// intake walk falsifies the shortcut outright: it writes the person
+/// *before* it calls [`check_new_matter`], and when the check refuses the
+/// intake the compensation removes the participation and the matter but
+/// leaves the person — so mere presence is at its least trustworthy on
+/// exactly the population the screen exists to catch.
+///
+/// The client-DRI marker does not have that problem. It is written by
+/// `projects::designate_dri_in_surreal` only after the check has returned
+/// without blocking, so it sits downstream of the screen by control flow
+/// rather than beside it by coincidence.
+///
+/// Reads only, like the rest of this module.
+///
+/// # Errors
+///
+/// Returns a message if the participation or matter lookups fail.
+pub async fn is_screened_client(surreal: &SurrealDb, person_id: Uuid) -> Result<bool, String> {
+    for role in crate::projects::participations_for_person(surreal, person_id)
+        .await
+        .map_err(|error| format!("load conflict-screen participations: {error}"))?
+        .into_iter()
+        .filter(|role| role.is_client_dri)
+    {
+        let matter = crate::projects::find_by_id(surreal, role.project_id)
+            .await
+            .map_err(|error| format!("load conflict-screen matter: {error}"))?;
+        if matter.is_some_and(|matter| matter.status != "archived") {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 /// Load the lookups a conflict check tests its reachable set against.
 ///
 /// The edges are not loaded here: the traversal reads them itself, one
@@ -718,7 +764,7 @@ pub async fn check_new_matter(
 
 #[cfg(test)]
 mod tests {
-    use super::{check_new_matter, Reason, Severity};
+    use super::{check_new_matter, is_screened_client, Reason, Severity};
     use crate::entity_roles;
     use crate::persons::{self, NewPerson};
     use crate::relationships::{
@@ -1156,6 +1202,78 @@ mod tests {
                 report.summary_lines()
             );
         }
+    }
+
+    /// The three states a `person` row can be in, and the one that counts.
+    /// A bare row is what a refused intake leaves behind; a participation
+    /// with no client-DRI marker is what an errored conflict traversal
+    /// leaves. Neither is a screen — only the marker written after the
+    /// check is.
+    #[tokio::test]
+    async fn only_the_client_dri_marker_reads_as_a_screen() {
+        let surreal = mem().await;
+
+        // A row and nothing else — a refused intake's residue.
+        let refused = person_named(&surreal, "Refused Intake").await;
+        assert!(
+            !is_screened_client(&surreal, refused).await.unwrap(),
+            "a bare person row is an identity, not a screen"
+        );
+
+        // A participation on an open matter, but no marker — the state an
+        // errored traversal leaves, since designation happens after it.
+        let unscreened = person_named(&surreal, "Undesignated Participant").await;
+        let matter = crate::projects::create(
+            &surreal,
+            &crate::projects::NewProject {
+                code: format!("pending-matter-{}", Uuid::now_v7()),
+                name: "Pending matter".into(),
+                status: "open".into(),
+                entity_id: seed_entity(&surreal).await,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        crate::projects::add_participation(&surreal, matter.id, unscreened, "client")
+            .await
+            .unwrap();
+        assert!(
+            !is_screened_client(&surreal, unscreened).await.unwrap(),
+            "a participation without the client-DRI marker is not a screen"
+        );
+
+        // The marker, written only after a non-blocking check.
+        let screened = person_named(&surreal, "Client Of Record").await;
+        open_project(&surreal, seed_entity(&surreal).await, screened).await;
+        assert!(
+            is_screened_client(&surreal, screened).await.unwrap(),
+            "a client of record on a live matter is screened"
+        );
+    }
+
+    /// Archiving the matter withdraws the screen, exactly as it withdraws
+    /// the person from [`build_graph`]'s client set.
+    #[tokio::test]
+    async fn an_archived_matter_no_longer_reads_as_a_screen() {
+        let surreal = mem().await;
+        let person = person_named(&surreal, "Former Client").await;
+        open_project(&surreal, seed_entity(&surreal).await, person).await;
+        assert!(is_screened_client(&surreal, person).await.unwrap());
+
+        for matter in crate::projects::all(&surreal).await.unwrap() {
+            crate::projects::transition_project(
+                &surreal,
+                matter.id,
+                crate::projects::Transition::Archive,
+            )
+            .await
+            .unwrap();
+        }
+        assert!(
+            !is_screened_client(&surreal, person).await.unwrap(),
+            "an archived matter leaves the conflict graph, and the screen with it"
+        );
     }
 
     /// The traversal runs against the deployment's own store now, so

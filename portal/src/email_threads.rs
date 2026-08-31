@@ -252,9 +252,10 @@ async fn open_first_contact(
     // Auto-route: a known client who has exactly one open matter threads
     // straight onto it — no manual `@link` needed for the common case. An
     // unknown sender or an ambiguous (multi-matter) client stays unlinked and
-    // is triaged by a lawyer. This never weakens the conflict gate: a sender we
-    // can auto-link already has a `persons` row, so they were never a
-    // prospect.
+    // is triaged by a lawyer. This never weakens the conflict gate, but not
+    // because a `persons` row exists — that proves nothing on its own. It is
+    // that auto-linking requires an *open matter*, which the intake only
+    // reaches after its conflict check returned without blocking.
     let notation_id = match person_id {
         Some(pid) => store::projects::sole_open_matter_for_person(surreal, pid).await?,
         None => None,
@@ -295,10 +296,14 @@ async fn open_first_contact(
 
     let mut notes: Vec<String> = Vec::new();
     // Firm-wide imputed-conflicts gate (RPC 1.10): a first contact from a
-    // sender with no matched `persons` row is a prospective client. Prompt
+    // sender the firm has not screened is a prospective client. Prompt the
     // lawyer to run the conflict check before the first substantive relay —
     // the relay itself is held until `@cleared` (see `handle_lawyer_reply`).
-    if person_id.is_none() {
+    //
+    // "Screened" is `store::conflicts::is_screened_client`, never "a
+    // `persons` row resolved". A row is an identity; the question here is
+    // whether a decision was taken about that identity.
+    if !is_screened(surreal, person_id).await? {
         notes.push(format!(
             "⚠ Prospective client — {} is not yet in the system. {CONFLICT_CHECK_INSTRUCTION}",
             external_name.as_deref().unwrap_or(&external_email)
@@ -942,11 +947,18 @@ async fn handle_lawyer_reply(
         // Firm-wide imputed-conflicts gate (RPC 1.10): the first substantive
         // relay to a prospective client is held until lawyers have run the
         // conflict check and released it with `@cleared`. A prospective
-        // client is an external party with neither a matched `persons` row
-        // nor a linked matter (`notation_id`) — anyone past intake is already
-        // through this gate. The check is a gate in the loop, never a
-        // courtesy after the fact.
-        let is_prospect = conversation.person_id.is_none() && conversation.notation_id.is_none();
+        // client is an external party the firm has neither screened
+        // (`store::conflicts::is_screened_client`) nor threaded onto a matter
+        // (`notation_id`). The check is a gate in the loop, never a courtesy
+        // after the fact.
+        //
+        // The screen is asked of the conflict graph rather than of the
+        // `persons` table, because a row is an identity and not a decision.
+        // Reading presence as clearance inverted this gate on the one
+        // population it exists for: a refused intake leaves its person row
+        // behind, so the firm's own refusal was what marked someone cleared.
+        let is_prospect = !is_screened(surreal, conversation.person_id).await?
+            && conversation.notation_id.is_none();
         if is_prospect && !is_conflict_cleared(surreal, conversation.id).await? {
             hold_relay_for_conflict_check(ctx, &conversation, token).await?;
         } else {
@@ -1063,6 +1075,23 @@ async fn person_lookup(
     email: &str,
 ) -> Result<Option<store::persons::Person>, store::persons::PersonError> {
     store::persons::find_by_email_ci(surreal, email).await
+}
+
+/// Has the firm run a conflict check on this external party?
+///
+/// `None` — no `persons` row resolved for the address at all — is the
+/// clear case: nobody can have screened someone the directory has never
+/// heard of. A resolved row is the case that needs asking, and the answer
+/// comes from `store::conflicts`, which owns the definition of a party the
+/// firm serves. This lane must not invent a second one.
+async fn is_screened(
+    surreal: &store::surreal::SurrealDb,
+    person_id: Option<uuid::Uuid>,
+) -> Result<bool, String> {
+    match person_id {
+        None => Ok(false),
+        Some(id) => store::conflicts::is_screened_client(surreal, id).await,
+    }
 }
 
 /// Execute `@link <notation_id>`: validate the id, confirm the matter
@@ -1591,15 +1620,90 @@ mod tests {
         .id
     }
 
-    /// Seed a known client so a conversation with this external party opens
-    /// with a `person_id` — past the prospective-client conflict gate.
+    /// Seed a client of record so a conversation with this external party
+    /// opens past the prospective-client conflict gate: a person, an open
+    /// matter, and the client-DRI marker the intake writes once its conflict
+    /// check has returned without blocking. A bare `person` row is not
+    /// enough and must not be — see
+    /// [`tests::a_bare_person_row_does_not_clear_the_relay_gate`].
     async fn seed_client(surreal: &store::surreal::SurrealDb, email: &str) {
+        let person_id = seed_orphan_person(surreal, email).await;
+        let project_id = seed_open_matter(surreal).await;
+        store::projects::designate_dri_in_surreal(
+            surreal,
+            project_id,
+            person_id,
+            store::projects::DriSide::Client,
+        )
+        .await
+        .expect("designate client of record");
+    }
+
+    /// The residue a refused intake leaves: a `person` row for the address
+    /// and nothing that references it. `discard_pending_intake_project`
+    /// removes the participations, the notation and the project; the person
+    /// and the entity stay.
+    async fn seed_orphan_person(surreal: &store::surreal::SurrealDb, email: &str) -> uuid::Uuid {
         store::persons::create(
             surreal,
             &store::persons::NewPerson::with_role("Pisces", email, store::persons::Role::Client),
         )
         .await
-        .expect("seed client person");
+        .expect("seed orphan person")
+        .id
+    }
+
+    /// A person on an open matter whose client-DRI marker was never written
+    /// — the state `start_post` leaves when the conflict traversal itself
+    /// errors, after `add_participation` and before the designation.
+    async fn seed_unscreened_participant(surreal: &store::surreal::SurrealDb, email: &str) {
+        let person_id = seed_orphan_person(surreal, email).await;
+        let project_id = seed_open_matter(surreal).await;
+        store::projects::add_participation(surreal, project_id, person_id, "client")
+            .await
+            .expect("seed participation");
+    }
+
+    /// An open Project hung off a throwaway `Human` entity.
+    async fn seed_open_matter(surreal: &store::surreal::SurrealDb) -> uuid::Uuid {
+        let entity_type_id = store::entity_types::find_or_create(surreal, "Human")
+            .await
+            .expect("entity type")
+            .id;
+        let jurisdiction_id = store::jurisdictions::find_or_create(
+            surreal,
+            &store::jurisdictions::NewJurisdiction::new("United States", "US", "country"),
+        )
+        .await
+        .expect("jurisdiction")
+        .id;
+        let entity_id = store::entities::create(
+            surreal,
+            &store::entities::NewEntity {
+                name: "Sample Client".into(),
+                entity_type_id,
+                jurisdiction_id,
+                phone: None,
+                url: None,
+                firm_anchor_key: None,
+            },
+        )
+        .await
+        .expect("seed entity")
+        .id;
+        store::projects::create(
+            surreal,
+            &store::projects::NewProject {
+                code: format!("sample-matter-{}", uuid::Uuid::now_v7().simple()),
+                name: "Sample matter".into(),
+                status: "open".into(),
+                entity_id,
+                description: None,
+            },
+        )
+        .await
+        .expect("seed project")
+        .id
     }
 
     #[tokio::test]
@@ -2613,6 +2717,124 @@ mod tests {
             sent.iter()
                 .any(|m| m.to == "nick+aida@neonlaw.com" && m.body.contains("NOT relayed")),
             "lawyer prompted to run the conflict check before the relay"
+        );
+    }
+
+    /// A refused intake leaves a bare `person` row behind — the project,
+    /// the participations and the notation are undone by
+    /// `retainer_walk::discard_pending_intake_project`, the person is not.
+    /// That row must not read as evidence that anyone screened them: the
+    /// firm's own act of refusing someone cannot be what marks them
+    /// cleared. Nobody has run a conflict check here, so the relay holds.
+    #[tokio::test]
+    async fn a_bare_person_row_does_not_clear_the_relay_gate() {
+        let surreal = mem_surreal().await;
+        seed_lawyer(&surreal, "nick@neonlaw.com").await;
+        // Exactly what a refused intake leaves: a person, and nothing else.
+        seed_orphan_person(&surreal, "pisces@example.com").await;
+        let cap = CapturingEmail::new();
+        let rt = RecordingRuntime::default();
+        let cfg = cfg();
+
+        thread_inbound(
+            &surreal,
+            &storage().await,
+            &cap,
+            &rt,
+            &cfg,
+            &inbound(
+                "Pisces <pisces@example.com>",
+                "test@parse.neonlaw.com",
+                "New matter",
+                "Help?",
+            ),
+            "inbound/1.eml",
+        )
+        .await
+        .unwrap();
+        let token_addr = cap.captured()[0].reply_to.clone().unwrap();
+
+        thread_inbound(
+            &surreal,
+            &storage().await,
+            &cap,
+            &rt,
+            &cfg,
+            &inbound(
+                "Nick <nick@neonlaw.com>",
+                &format!("\"Support\" <{token_addr}>"),
+                "Re: New matter",
+                "Sure, happy to help.",
+            ),
+            "inbound/2.eml",
+        )
+        .await
+        .unwrap();
+
+        let sent = cap.captured();
+        assert!(
+            sent.iter().all(|m| m.to != "pisces@example.com"),
+            "a refused intake's leftover person row must not release the relay"
+        );
+        assert!(
+            sent.iter()
+                .any(|m| m.to == "nick+aida@neonlaw.com" && m.body.contains("NOT relayed")),
+            "lawyer still prompted to run the conflict check"
+        );
+    }
+
+    /// The second path to the same residue: `start_post` runs the conflict
+    /// traversal before it designates the client DRI, so a store failure in
+    /// the traversal returns with the participation row already written and
+    /// no DRI marker on it. A participation alone is not a screen either —
+    /// the DRI designation is the write ordered *after* the check.
+    #[tokio::test]
+    async fn a_participation_without_the_client_dri_marker_does_not_clear_the_gate() {
+        let surreal = mem_surreal().await;
+        seed_lawyer(&surreal, "nick@neonlaw.com").await;
+        seed_unscreened_participant(&surreal, "pisces@example.com").await;
+        let cap = CapturingEmail::new();
+        let rt = RecordingRuntime::default();
+        let cfg = cfg();
+
+        thread_inbound(
+            &surreal,
+            &storage().await,
+            &cap,
+            &rt,
+            &cfg,
+            &inbound(
+                "Pisces <pisces@example.com>",
+                "test@parse.neonlaw.com",
+                "New matter",
+                "Help?",
+            ),
+            "inbound/1.eml",
+        )
+        .await
+        .unwrap();
+        let token_addr = cap.captured()[0].reply_to.clone().unwrap();
+
+        thread_inbound(
+            &surreal,
+            &storage().await,
+            &cap,
+            &rt,
+            &cfg,
+            &inbound(
+                "Nick <nick@neonlaw.com>",
+                &format!("\"Support\" <{token_addr}>"),
+                "Re: New matter",
+                "Sure, happy to help.",
+            ),
+            "inbound/2.eml",
+        )
+        .await
+        .unwrap();
+
+        assert!(
+            cap.captured().iter().all(|m| m.to != "pisces@example.com"),
+            "an un-designated participation must not release the relay"
         );
     }
 

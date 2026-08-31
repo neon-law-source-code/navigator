@@ -233,7 +233,7 @@ fn sync_skills_writes_the_canonical_catalog_and_validate_accepts_it() {
         .success()
         .stdout(str::contains("synced"));
 
-    for skill in ["council", "legal-council", "client-council"] {
+    for skill in ["council", "legal-council", "client-council", "stay-in-repo"] {
         let path = dir
             .path()
             .join(".claude/skills")

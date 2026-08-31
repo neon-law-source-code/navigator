@@ -182,7 +182,9 @@ const VITE_LOCKFILES: &[&str] = &[
 /// to keep true in every repository that carries it. A Project's portal is
 /// client-facing legal copy — an engagement summary, a documents tab, a
 /// matter timeline — so the two review councils that critique exactly that,
-/// plus the general engineering council, are the initial set.
+/// plus the general engineering council, are the initial set. `stay-in-repo`
+/// joins them as the shared scope rule every Project repository's `CLAUDE.md`
+/// used to hand-write on its own, three times, in three different voices.
 const SYNCED_SKILLS: &[(&str, &str)] = &[
     (
         "council",
@@ -195,6 +197,10 @@ const SYNCED_SKILLS: &[(&str, &str)] = &[
     (
         "client-council",
         include_str!("../../../.agents/skills/client-council/SKILL.md"),
+    ),
+    (
+        "stay-in-repo",
+        include_str!("../../../.agents/skills/stay-in-repo/SKILL.md"),
     ),
 ];
 

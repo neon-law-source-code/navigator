@@ -1,12 +1,12 @@
 //! The client portal projects list (`/app/projects`) as a Dioxus component
-//! (#641 Phase 3, portal cluster) — the read-only "Your services" dashboard.
+//! (#641 Phase 3, portal cluster) — the read-only "Your Projects" dashboard.
 //!
 //! The successor to the `portal::project_list_response`. It scopes the
 //! signed-in client's matters through `store::access::visible_projects_as_client`
 //! (the visibility layer relocated to `store` in #733 so a `#[server]` function
-//! can reach it), aggregates the KPI summary and per-project service labels, and
-//! renders the dashboard cards. Read-only — the client clicks a card to the
-//! project detail page; there are no forms.
+//! can reach it), aggregates the open/closed KPI summary, and renders the
+//! dashboard cards. Read-only — the client clicks a card to the project detail
+//! page; there are no forms.
 
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -31,12 +31,11 @@ pub struct ClientProjectRow {
     pub status: String,
 }
 
-/// The dashboard KPI summary.
+/// The dashboard KPI summary: open vs closed matters.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct ClientProjectsSummary {
     pub open_projects: usize,
     pub closed_projects: usize,
-    pub document_count: usize,
 }
 
 /// The rendered client projects dashboard.
@@ -53,9 +52,8 @@ pub struct ClientProjectsView {
     /// configures none.
     #[serde(default)]
     pub logo: Option<crate::components::AppLogo>,
-    /// The firm the dashboard's blurb names — the deploy's own firm, resolved
-    /// from the request-scoped branding rather than written into the copy, so a
-    /// white-label portal tells its clients who they actually hired.
+    /// The deploy's own firm, for the document title. Resolved from
+    /// request-scoped branding so a white-label portal names its operator.
     #[serde(default)]
     pub firm_name: String,
 }
@@ -90,12 +88,6 @@ pub async fn list_client_projects() -> Result<ClientProjectsView, ServerFnError>
         .await
         .map_err(|e| ServerFnError::new(e.clone()))?;
 
-    // KPI summary (mirrors `project_summary`): document count is a batched
-    // asset query; the rest are in-memory counts.
-    let project_ids: Vec<uuid::Uuid> = projects.iter().map(|p| p.id).collect();
-    let document_count = store::assets::count_for_projects(&surreal, &project_ids)
-        .await
-        .unwrap_or(0);
     let summary = ClientProjectsSummary {
         open_projects: projects
             .iter()
@@ -105,7 +97,6 @@ pub async fn list_client_projects() -> Result<ClientProjectsView, ServerFnError>
             .iter()
             .filter(|p| p.status.eq_ignore_ascii_case("closed"))
             .count(),
-        document_count,
     };
 
     let rows = projects
@@ -138,7 +129,7 @@ pub fn ClientProjects() -> Element {
         Some(Ok(view)) => view.clone(),
         Some(Err(_)) => {
             return rsx! {
-                main { id: "portal-projects", p { "Failed to load your services." } }
+                main { id: "portal-projects", p { "Failed to load your projects." } }
             }
         }
         None => {
@@ -159,18 +150,13 @@ pub fn ClientProjects() -> Element {
             logo: view.logo.clone(),
         }
         main { id: "portal-projects", class: "nav-theme",
-            h1 { "Your services" }
-            p { class: "nav-muted",
-                "Each card is one engagement with {view.firm_name}: what you hired us for, where it stands, and where to go next."
-            }
+            h1 { "Your Projects" }
             div { class: "portal-kpis",
                 {kpi_card("Open", view.summary.open_projects, "Currently active")}
-                {kpi_card("Documents", view.summary.document_count, "Filed across your engagements")}
-                {kpi_card("Closed", view.summary.closed_projects, "Completed engagements")}
+                {kpi_card("Closed", view.summary.closed_projects, "Completed")}
             }
-            h2 { "Engagements" }
             if is_empty {
-                p { class: "portal-empty", "You have no active engagements yet." }
+                p { class: "portal-empty", "You have no projects yet." }
             }
             div { class: "portal-projects",
                 for row in view.rows.iter().cloned() {

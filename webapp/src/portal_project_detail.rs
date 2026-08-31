@@ -375,7 +375,7 @@ pub fn ClientProjectDetail() -> Element {
         }
         main { id: "portal-project", class: "nav-theme portal-detail",
             nav { class: "portal-detail__back",
-                a { class: "nav-link", href: "/app/projects", "← Your services" }
+                a { class: "nav-link", href: "/app/projects", "← Your Projects" }
             }
             h1 { "{view.name}" }
             p { span { class: "status-chip", "{view.status}" } }

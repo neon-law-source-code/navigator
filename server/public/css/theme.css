@@ -2158,7 +2158,7 @@ a.nav-link:hover {
   padding: 1rem 0;
 }
 
-/* Client portal projects dashboard: KPI tiles + engagement cards. */
+/* Client portal projects dashboard: KPI tiles + project cards. */
 .portal-kpis {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));

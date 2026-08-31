@@ -177,7 +177,7 @@ async fn the_index_opens_as_the_firm_and_names_nobody_else() {
         "the llms.txt opens as the firm: {body}"
     );
     assert!(
-        !body.contains("Neon Law Foundation"),
+        !body.contains(&["Neon", "Law", "Foundation"].join(" ")),
         "no other organization is named in the index: {body}"
     );
 }

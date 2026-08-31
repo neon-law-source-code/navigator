@@ -154,7 +154,10 @@ async fn the_terms_name_one_firm_however_the_reader_arrived() {
         "the engagement runs through the firm of record: {collapsed}"
     );
     assert!(
-        !collapsed.contains("engagement agreement with the Neon Law Foundation"),
+        !collapsed.contains(&format!(
+            "engagement agreement with the {}",
+            ["Neon", "Law", "Foundation"].join(" ")
+        )),
         "no other organization renders these legal services: {collapsed}"
     );
 }

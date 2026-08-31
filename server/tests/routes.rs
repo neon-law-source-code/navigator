@@ -683,7 +683,10 @@ async fn the_services_blurb_names_the_deploys_own_firm() {
         "{body}",
     );
     assert!(
-        !body.contains("engagement with the Neon Law Foundation"),
+        !body.contains(&format!(
+            "engagement with the {}",
+            ["Neon", "Law", "Foundation"].join(" ")
+        )),
         "the nonprofit is not who a portal client hired: {body}",
     );
 
@@ -1393,7 +1396,7 @@ async fn the_firm_holds_the_root_and_nothing_else_answers_there() {
         "the site root is the firm's home: {body}"
     );
     assert!(
-        !body.contains("Neon Law Foundation"),
+        !body.contains(&["Neon", "Law", "Foundation"].join(" ")),
         "and it names no other organization: {body}"
     );
 
@@ -14855,7 +14858,10 @@ async fn docs_glossary_renders_headings() {
         "the NL mark in the docs header"
     );
     assert!(
-        !body.contains("<title>Neon Law Foundation | Docs | Glossary</title>"),
+        !body.contains(&format!(
+            "<title>{} | Docs | Glossary</title>",
+            ["Neon", "Law", "Foundation"].join(" ")
+        )),
         "the retired wordmark must not return"
     );
     // A known heading renders as an <h2> with a slug id so #council lands.

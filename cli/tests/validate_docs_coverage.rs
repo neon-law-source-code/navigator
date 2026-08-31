@@ -13,6 +13,7 @@ use std::fs;
 /// `Y001` is the seed-document pass's rule code. It lives in `cli/src/main.rs`, not the `rules`
 /// crate, because the pass it guards runs outside `ClassifiedRuleEngine` entirely.
 const SEED_DOCUMENT_CODE: &str = "Y001";
+const LOCALE_DOCUMENT_CODE: &str = "Y002";
 
 fn all_shipped_codes() -> BTreeSet<&'static str> {
     let mut codes = BTreeSet::new();
@@ -34,6 +35,7 @@ fn all_shipped_codes() -> BTreeSet<&'static str> {
     // rule-set above carries it.
     codes.insert("N111");
     codes.insert(SEED_DOCUMENT_CODE);
+    codes.insert(LOCALE_DOCUMENT_CODE);
     codes
 }
 
@@ -58,6 +60,6 @@ fn every_shipped_code_has_an_entry_in_validate_docs() {
 /// Pin the exhaustive count so a rule addition or removal is a visible diff here, not a silent
 /// change to how many codes the doc is supposed to cover.
 #[test]
-fn the_shipped_code_count_is_eighty_four() {
-    assert_eq!(all_shipped_codes().len(), 84);
+fn the_shipped_code_count_is_eighty_five() {
+    assert_eq!(all_shipped_codes().len(), 85);
 }

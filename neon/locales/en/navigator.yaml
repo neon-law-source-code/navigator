@@ -1,0 +1,231 @@
+head_title: "Neon Law Navigator — {site_name}"
+meta_description: >-
+  Neon Law Navigator is the legal project platform the law firms we serve work
+  on — vibe coding for lawyers, where every pass at a document is a change you
+  can read. Source-available under BUSL-1.1, free for everything but running it
+  for your own clients.
+title: Neon Law Navigator
+hero_mark: helm
+tagline: >-
+  Vibe coding for lawyers. Lawyering is storytelling, and a story is written in
+  passes.
+skin: marketing
+bands:
+  - kind: statement
+    heading: Why we build it
+    lead: >-
+      We build Navigator for the purpose of serving clients as expeditiously,
+      precisely, accurately, and in alignment with their interests.
+  - kind: project_network
+    anchor: connected-project
+    overline: One connected Project
+    heading: Navigator is the center of the work.
+    description: >-
+      A Project can include one or more cases, companies, filings, and more so
+      long as it's related to the best interest of our clients.
+    left:
+      - label: Internal Slack
+        detail: Firm-only Project conversation.
+      - label: Internal Notion
+        detail: Firm working notes and knowledge.
+      - label: GitHub
+        detail: Per-project versioned text including notation templates and client portal.
+      - label: Client portal
+        detail: A vibe-coded Project application for the client experience.
+    right:
+      - label: Shared Slack
+        detail: Client collaboration when the Project uses it.
+      - label: Per-Project Inbox
+        detail: Project email intake and conversation.
+      - label: Google Drive folder
+        detail: Large document intake
+      - label: Shared Notion
+        detail: Client collaboration when the Project uses it.
+    mcp_tools:
+      - Court Listener
+      - Descrybe
+      - Exa
+      - Midpage
+    agentic_coding_tools:
+      - Antigravity
+      - Claude Code
+      - Codex
+      - Cursor
+    saas_tools:
+      - Chatwoot
+      - Descript
+      - DocuSign
+      - Google Workspace
+      - Highlight
+      - Linear
+      - Mercury
+      - Restate
+      - SurrealDB
+      - Twilio
+      - Xero
+  - kind: statement
+    heading: Vibe coding is modern storytelling
+    lead: Vibe coding is modern storytelling.
+    body:
+      - - text: >-
+            A brief, a contract, a filing: none of them arrives in one pass. You
+            draft, you read it back, you change what is not yet true, and you
+            keep the version you meant. Vibe coding is that same loop with VCS
+            or version control, that makes your inferences token-efficient.
+            Navigator is built with the premise that it’s more efficient to use
+            Claude Code and Codex rather than a chat window.
+      - - text: >-
+            Lawyers already know about markdown thanks to LLMs, and we think
+            that writing code is now just as approachable. We invite you to join
+            us for a 
+        - text: workshop
+          href: /workshops
+        - text: " or check out our "
+        - text: source code
+          href: https://github.com/neon-law-source-code/navigator
+        - text: " to learn more."
+  - kind: downloads
+    anchor: download
+    overline: Download
+    heading: Run Navigator yourself
+    description: >-
+      Navigator is source-available under the Business Source License 1.1 — free
+      to read, build, and use outside production. The command-line tool is how
+      you drive it: pick your platform, or install it with Homebrew.
+    archive_label: every release
+    package:
+      heading: Install with Homebrew
+      body:
+        - - text: "On a Mac this is the route we recommend. The released binary is "
+          - text: not yet signed or notarized
+            emphasis: true
+          - text: >-
+              , and macOS refuses a binary downloaded through a browser; Homebrew
+              fetches the same bytes without that mark, so they run. Homebrew
+              also works on Linux.
+        - - text: "The formula lives in our own tap, "
+          - text: neon-law-source-code/homebrew-navigator
+            href: https://github.com/neon-law-source-code/homebrew-navigator
+          - text: ", which is updated by every release."
+  - kind: cards
+    anchor: read
+    overline: Read next
+    heading: The manuals that go with the binary
+    description: >-
+      The same documents the CLI and CI run against. Install the binary, then
+      open the guide that matches what you are doing.
+    items:
+      - title: Validate
+        chips:
+          - CLI
+        body:
+          - - text: >-
+                navigator validate walks Markdown, YAML, and seed documents under
+                a directory. One table of rule codes, one command.
+        href: /docs/validate
+        href_label: Open the validate reference
+      - title: GitOps
+        chips:
+          - Release
+        body:
+          - - text: >-
+                How a tag attaches the three archives and hands the Homebrew tap.
+                That guide is in the public tree; it is not a /docs page.
+        href: https://github.com/neon-law-source-code/navigator/blob/main/docs/gitops.md
+        href_label: Open gitops.md
+      - title: Self-host
+        body:
+          - - text: >-
+                Stand Navigator up on your own cloud. The archives on this page
+                are the same binaries that guide installs.
+        href: /docs/oss-install
+        href_label: Open the install guide
+      - title: Workshops
+        body:
+          - - text: >-
+                Instructor-led decks for using, deploying, and contributing to
+                Navigator, including the validate walk in the Rust workshop.
+        href: /workshops
+        href_label: Open the workshops
+  - kind: cards
+    anchor: surface
+    overline: The working surface
+    heading: What a firm works with
+    description: >-
+      One platform, three things a lawyer touches. Every engagement is quoted
+      through the contact page.
+    items:
+      - title: AIDA and its tools
+        chips:
+          - MCP
+          - A2A
+        body:
+          - - text: >-
+                One catalog of tools over open protocols, so the agent a lawyer
+                already works in can read a matter, answer a questionnaire, or
+                open a project without leaving the editor.
+      - title: Notation templates
+        chips:
+          - Typst
+        body:
+          - - text: >-
+                The documents a matter produces are templates with the answers
+                filled in, so what the firm files is the template it reviewed
+                rather than a fresh draft each time.
+      - title: The matter dashboard
+        body:
+          - - text: >-
+                The projects, the people on them, the documents, and the
+                questionnaires still open — the shared view a firm and its
+                co-counsel read the matter from.
+        href: "mailto:{firm_email}"
+        href_label: Ask us for a walkthrough
+  - kind: statement
+    heading: The licence, and the one thing we sell around it
+    lead: Read it, build it, fork it. Nobody needs our permission for any of that.
+    body:
+      - - text: >-
+            Navigator is source-available under the Business Source License 1.1,
+            over the whole tree — the code, the tooling, and the drafted legal
+            prose. Read it, build it, run the tests, stand it up on your own
+            machine, fork it, change it, teach from it. There is no permission
+            to ask for and nobody to ask.
+      - - text: "The one thing we sell is "
+        - text: running it for other people
+          emphasis: true
+        - text: >-
+            — operating a portal, a matter, or a filing pipeline that somebody
+            relies on. That is production use, and the licence does not grant
+            it, so a firm delivering legal services on Navigator takes a
+            commercial licence from us first. Everything short of that is
+            already yours.
+      - - text: "This does not last. "
+        - text: Every version becomes AGPL-3.0-only four years after we publish it
+          emphasis: true
+        - text: >-
+            — per version, on its own clock, written into the licence that copy
+            already carries rather than promised separately. When a version
+            converts, the restriction ends for it permanently and anyone may run
+            it in production. Copies we distributed under the AGPL before this
+            licence stay AGPL forever; a licence already granted cannot be
+            withdrawn.
+      - - text: >-
+            Licensing software is a law-related service rather than legal
+            representation. Taking a licence from us does not make us your
+            counsel, and the protections of the attorney-client relationship —
+            privilege and confidentiality among them — do not attach to it. An
+            attorney-client relationship with the firm begins only with a signed
+            retainer.
+      - - text: >-
+            Every licence is scoped and quoted in conversation, and legal aid
+            and nonprofit deployments should ask. 
+        - text: Ask us what yours would involve
+          href: "mailto:{firm_email}"
+        - text: "."
+  - kind: cta
+    heading: Co-Counsel a Pro Bono Case with Us
+    body: >-
+      To see how vibe coding can help you tell more persuasive stories, we
+      invite you to help make the world a better place and explore AI together.
+    email: "{firm_email}"
+    email_subject: Co-Counseling for Good with AI

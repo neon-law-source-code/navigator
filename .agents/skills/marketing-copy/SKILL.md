@@ -5,8 +5,10 @@ description: Write verified, attorney-advertising-safe public marketing copy.
 
 # Marketing copy
 
-Read the relevant rendering source, [`docs/agent-decision-councils.md`](../../../docs/agent-decision-councils.md), and
-[`docs/public-contributor-safety.md`](../../../docs/public-contributor-safety.md).
+Read [`docs/marketing-copy.md`](../../../docs/marketing-copy.md), the page's file under `neon/locales/en/`,
+[`docs/agent-decision-councils.md`](../../../docs/agent-decision-councils.md), and
+[`docs/public-contributor-safety.md`](../../../docs/public-contributor-safety.md). Firm marketing copy is edited in
+those YAML files, not in the Rust loaders.
 
 - Use plain, specific claims about the firm and its work; avoid comparisons, superlatives, guarantees, and unsupported
   outcome or certification claims.

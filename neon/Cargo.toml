@@ -32,6 +32,8 @@ axum.workspace = true
 # `views` crate stays free of `chrono`, so the formatting lives here.
 chrono.workspace = true
 portal.workspace = true
+serde.workspace = true
+serde_yaml.workspace = true
 tokio.workspace = true
 views.workspace = true
 webapp.workspace = true

@@ -46,10 +46,11 @@ rejects the broken-stub form in a temporary fixture.
   through Dioxus; generated PDFs use Typst and transactional email uses string templates. There is no Node or pnpm
   workspace. See [`docs/workspace-layout.md`](docs/workspace-layout.md).
 - **English only.** Code, comments, `/docs`, portal UI, emails, and legal template bodies are English, and no page
-  publishes a translated surface. Copy is written directly in the Rust module that renders it; there is no copy catalog
-  or key lookup. A visitor is free to machine-translate marketing copy, but a translated legal *questionnaire* is a
-  different risk: Spanish intake would be a questionnaire-level decision with attorney review, never a side effect of
-  loosening this invariant.
+  publishes a translated surface. Firm marketing copy for the public home and practice pages lives in
+  `neon/locales/en/*.yaml`; the site still publishes that English catalog only. Other copy is written directly in the
+  Rust module that renders it. A visitor is free to machine-translate marketing copy, but a translated legal
+  *questionnaire* is a different risk: Spanish intake would be a questionnaire-level decision with attorney review,
+  never a side effect of loosening this invariant.
 - **No client data in the repository.** Shipped data contains only firm-owned or synthetic identities. Non-firm email
   addresses use reserved example domains, and phone numbers do not ship. The workspace test suite enforces this on every
   PR. See [`docs/agent-workflows.md`](docs/agent-workflows.md#no-client-data-in-the-repo).

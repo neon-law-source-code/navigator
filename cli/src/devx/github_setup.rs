@@ -3066,6 +3066,43 @@ mod tests {
         );
     }
 
+    /// A copy-only PR still has to validate YAML and Markdown, and must not
+    /// spend the workspace test runner. The required `ci` job stays posted
+    /// either way: it treats a skipped rust job as success.
+    #[test]
+    fn this_repository_skips_the_rust_suite_when_the_pr_touches_no_rust() {
+        let workflow = include_str!("../../../.github/workflows/ci.yml");
+        let parsed: serde_yaml::Value =
+            serde_yaml::from_str(workflow).expect("ci.yml parses as YAML");
+        let jobs = parsed["jobs"].as_mapping().expect("ci.yml declares jobs");
+
+        assert!(
+            jobs.contains_key(serde_yaml::Value::String("validate".into())),
+            "ci.yml must keep a validate job so a copy-only PR still runs navigator validate"
+        );
+        assert_eq!(
+            parsed["jobs"]["rust"]["if"].as_str(),
+            Some("needs.changes.outputs.rust == 'true'"),
+            "the rust job must stay gated on the classify step, not a workflow-level paths filter"
+        );
+        let ci_needs = parsed["jobs"]["ci"]["needs"]
+            .as_sequence()
+            .expect("the ci job needs its gates");
+        let needed: Vec<&str> = ci_needs.iter().filter_map(|value| value.as_str()).collect();
+        for job in ["changes", "validate", "rust"] {
+            assert!(
+                needed.contains(&job),
+                "the required ci job must need `{job}` so a skip or failure is visible; needed {needed:?}"
+            );
+        }
+        assert!(
+            workflow.contains(
+                "[ \"${RUST_RESULT}\" != \"success\" ] && [ \"${RUST_RESULT}\" != \"skipped\" ]"
+            ),
+            "the required ci job must accept a skipped rust job when the PR touches no Rust"
+        );
+    }
+
     /// A job reports under its `name:` when it sets one, and under its key
     /// otherwise — the same rule GitHub applies when it names the check run.
     #[test]

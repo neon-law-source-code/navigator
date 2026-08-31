@@ -1,0 +1,128 @@
+head_title: "Legal Services — {site_name}"
+meta_description: >-
+  Flat-fee legal services from Neon Law: wills, trusts, name changes,
+  formations, trademarks, and tenant defense, each on a fixed fee and reviewed
+  by a licensed attorney.
+title: Legal Services
+hero_mark: gavel
+tagline: Once-Billed Legal Services
+hero_lines:
+  - text: Once-Billed
+    accent_words: 1
+  - text: Legal Services
+    accent_words: 0
+hero_lead: >-
+  The routine matters a person or a company walks in with, each scoped and
+  quoted before any work begins.
+hero_cta:
+  href: "mailto:{firm_email}"
+  label: Contact us
+skin: practice
+bands:
+  - kind: statement
+    heading: Who this is for
+    lead: ""
+    body:
+      - - text: >-
+            These fees are for one-time matters. Business filings are already
+            included in our
+        - text: fractional GC
+          href: /fractional-gc
+        - text: " projects, and a dispute is "
+        - text: litigation
+          href: /litigation
+        - text: ", which we quote per engagement."
+  - kind: cards
+    anchor: fees
+    overline: Flat fees
+    heading: The work we do at a flat fee
+    description: >-
+      Each of these is a fixed-fee matter: one scope, one price, agreed before
+      we start. Where a government body charges its own fee we pass it through
+      at cost — we do not mark it up, and we cannot control it. Email us for the
+      fee on the matter you need.
+    items:
+      - title: Simple will
+        body:
+          - - text: >-
+                One will, drafted from your answers and reviewed by a licensed
+                attorney, through signing and witnessing.
+      - title: Estate package
+        body:
+          - - text: >-
+                A will, a financial power of attorney, and a healthcare
+                directive, drafted together so they agree with one another.
+      - title: Revocable living trust
+        body:
+          - - text: >-
+                The trust, a pour-over will, and the deed transferring one
+                Nevada property into it. Further properties are quoted.
+      - title: Uncontested name change
+        body:
+          - - text: >-
+                The petition, the publication notice, and the hearing. Court
+                filing and publication costs are billed at cost.
+      - title: Demand letter
+        body:
+          - - text: >-
+                One letter over the firm's signature, after we read what you
+                have. It is not a retainer to litigate if the letter does not
+                work.
+      - title: Tenant eviction defense
+        body:
+          - - text: >-
+                The answer and one hearing in a Nevada summary eviction. An
+                appeal or a contested trial is a separate engagement.
+      - title: LLC formation
+        body:
+          - - text: >-
+                Articles, an operating agreement, the EIN, and the initial state
+                filing. The Secretary of State sets its own fee.
+      - title: Nonprofit formation and 501(c)(3)
+        body:
+          - - text: >-
+                Articles, bylaws, a conflict-of-interest policy, and the Form
+                1023 application. The IRS sets its own user fee.
+      - title: Trademark application
+        body:
+          - - text: >-
+                A clearance search and one class of one application, through
+                filing. The USPTO sets its own per-class fee.
+      - title: Nevada annual report
+        body:
+          - - text: >-
+                The annual list and the state business licence renewal for one
+                entity. The state sets its own fee.
+      - title: Mutual NDA review
+        body:
+          - - text: >-
+                One agreement read and redlined, with a short note on what we
+                changed and why.
+  - kind: steps
+    anchor: how
+    overline: How it works
+    heading: Our process is designed with speed in mind
+    description: >-
+      Create an account, answer some questions, upload your documentation, and
+      we will turn around and file what you need expeditiously.
+    items:
+      - title: Create an account
+        body:
+          - - text: Set up your account so everything about your matter lives in one place.
+      - title: Answer some questions
+        body:
+          - - text: A short questionnaire, scoped to what your filing actually needs.
+      - title: Upload your documentation
+        body:
+          - - text: Add the documents your matter calls for; we tell you which ones.
+      - title: We file what you need, expeditiously
+        body:
+          - - text: A licensed attorney reviews it, then we file it and send you
+            - text: " the confirmation when it comes back."
+  - kind: cta
+    heading: Ready to get started?
+    body: >-
+      Tell us which matter you need and we will send you the flat fee for it
+      before any work begins. Email the firm to start.
+    email: "{firm_email}"
+    email_subject: Legal Services

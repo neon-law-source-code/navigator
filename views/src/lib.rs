@@ -10,6 +10,7 @@ pub mod brand;
 pub mod brand_bundle;
 pub mod components;
 pub mod harvard_outline;
+pub mod locales;
 pub mod lsp;
 pub mod markdown;
 pub mod notation;

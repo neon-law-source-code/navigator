@@ -445,6 +445,80 @@ fn validate_refuses_invalid_seed_documents() {
         ));
 }
 
+#[test]
+fn validate_accepts_a_typed_english_locale_catalog() {
+    let dir = TempDir::new().unwrap();
+    write(
+        dir.path(),
+        "locales/en/home.yaml",
+        "head_title: \"{site_name} | Home\"\n\
+         meta_description: Everyone deserves to be seen.\n\
+         heading: Everyone deserves to be seen.\n\
+         lead: We fight for people.\n\
+         contact_label: Contact us\n",
+    );
+    navigator()
+        .arg("validate")
+        .arg(dir.path())
+        .assert()
+        .success()
+        .stdout(str::contains(
+            "Validated 1 locale catalog(s), found 0 error(s)",
+        ));
+}
+
+#[test]
+fn validate_refuses_an_incomplete_locale_catalog() {
+    let dir = TempDir::new().unwrap();
+    write(dir.path(), "locales/en/home.yaml", "heading: Hello\n");
+    navigator()
+        .arg("validate")
+        .arg(dir.path())
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(str::contains("Y002"))
+        .stdout(str::contains(
+            "Validated 1 locale catalog(s), found 1 error(s)",
+        ));
+}
+
+#[test]
+fn validate_refuses_a_locale_directory_other_than_english() {
+    let dir = TempDir::new().unwrap();
+    write(
+        dir.path(),
+        "locales/xx/home.yaml",
+        "head_title: \"{site_name} | Home\"\n\
+         meta_description: Everyone deserves to be seen.\n\
+         heading: Everyone deserves to be seen.\n\
+         lead: We fight for people.\n\
+         contact_label: Contact us\n",
+    );
+    navigator()
+        .arg("validate")
+        .arg(dir.path())
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(str::contains("Y002"))
+        .stdout(str::contains("only `en` is allowed"));
+}
+
+#[test]
+fn validate_refuses_an_unknown_locale_page_stem() {
+    let dir = TempDir::new().unwrap();
+    write(dir.path(), "locales/en/about.yaml", "title: About\n");
+    navigator()
+        .arg("validate")
+        .arg(dir.path())
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(str::contains("Y002"))
+        .stdout(str::contains("unknown locale page `about`"));
+}
+
 /// The consumed-mutable-tag guard (navigator#540) fires on every consume
 /// site: a YAML `image:` value, a Containerfile `FROM`, and a workflow
 /// installer step's `version: latest`. Each is a way production could change

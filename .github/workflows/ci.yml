@@ -1,10 +1,11 @@
 name: ci
 
-# The PR flow (see docs/gitops.md "CI/CD workflows"). Lean on purpose: fmt + clippy +
-# the whole workspace test suite, plus repository-wide YAML and Markdown validation
-# passes through the Neon Law Navigator CLI. That one test pass also carries the
-# coverage floor: it runs under `cargo llvm-cov` instrumentation, so coverage is
-# a byproduct of the existing gate and NOT a second test run.
+# The PR flow (see docs/gitops.md "CI/CD workflows"). Lean on purpose: the
+# `validate` job always runs `navigator validate` over YAML and Markdown. The
+# `rust` job — fmt + clippy + the whole workspace test suite, which also
+# carries the coverage floor under `cargo llvm-cov` — runs only when the PR
+# touches Rust or the files that job is the proof for. Coverage is a byproduct
+# of that existing gate and NOT a second test run.
 # Integration (KIND), docker image builds, browser tests, and the deploy
 # Slack report all live in the release flow (`deploy.yml`), which runs when a
 # person pushes a `YY.M.D` tag.
@@ -145,8 +146,71 @@ permissions:
   contents: read
 
 jobs:
+  # Classify the PR so a copy-only or docs-only change does not spend a
+  # Blacksmith runner on the workspace test suite. Fail OPEN: if the diff
+  # cannot be computed the answer is "run rust". A scope test that silently
+  # declines to run is the same hole the wasm-scope step exists to close.
+  #
+  # Do NOT replace this with a workflow-level `paths:` filter. That would skip
+  # the whole workflow, including the required `ci` check, and GitHub would
+  # wait forever on a context nothing posts.
+  changes:
+    name: classify the pull request
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      rust: ${{ steps.scope.outputs.rust }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+      - name: does this PR touch Rust
+        id: scope
+        run: |
+          set -uo pipefail
+          if ! changed="$(git diff --name-only HEAD^ HEAD 2>/dev/null)" || [ -z "${changed}" ]; then
+              echo "could not read the PR diff — running the Rust suite anyway"
+              echo "rust=true" >> "${GITHUB_OUTPUT}"
+              exit 0
+          fi
+          echo "changed files:"
+          echo "${changed}" | sed 's/^/  /'
+          if echo "${changed}" | grep -qE \
+              '\.(rs|surql|feature)$|(^|/)Cargo\.(toml|lock)$|(^|/)rust-toolchain\.toml$|^\.cargo/|^\.config/nextest\.toml$|^\.github/workflows/ci\.yml$|^features/'; then
+              echo "-> in scope: running cargo test (workspace)"
+              echo "rust=true" >> "${GITHUB_OUTPUT}"
+          else
+              echo "-> out of scope: no Rust sources in this PR"
+              echo "rust=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+  # Always run. A locale or Markdown edit still has to pass `navigator
+  # validate`; that is the cheap gate that lets the rust job stay skipped.
+  validate:
+    name: validate content
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.98.0
+      - name: cache the Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: validate-cli
+      - name: build navigator CLI
+        run: cargo build -p cli --quiet
+      - name: validate content tree with navigator
+        run: "${CARGO_TARGET_DIR:-target}/debug/navigator validate ."
+
   rust:
     name: cargo test (workspace)
+    needs: [changes]
+    if: needs.changes.outputs.rust == 'true'
     # `neon-law-medium` does not exist in the `neon-law-source-code` org. That
     # label was a GitHub-hosted larger runner on the previous org, and a label
     # with no runner behind it does not fail the job — it queues it forever, so
@@ -800,26 +864,39 @@ jobs:
   # A plain dependency would let this job be *skipped* when `rust` fails, and a
   # skipped required check is not a red one — GitHub reports no result, so the
   # gate would quietly stop blocking exactly when it matters. Testing the
-  # result makes every non-success outcome, including `cancelled` and
-  # `skipped`, a failure of this job.
+  # result makes every non-success outcome, including `cancelled`, a failure of
+  # this job. `rust` may be `skipped` when the PR touches no Rust files; that
+  # is success so long as `validate` succeeded.
   #
   # `enable-automerge` is deliberately not a dependency: it is conditional, it
   # does not run on forks, and whether auto-merge got armed is not a statement
   # about whether the code is good.
   ci:
     name: ci
-    needs: [rust]
+    needs: [changes, validate, rust]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: report the gate result
         env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          VALIDATE_RESULT: ${{ needs.validate.result }}
           RUST_RESULT: ${{ needs.rust.result }}
         run: |
           set -euo pipefail
+          echo "classify the pull request: ${CHANGES_RESULT}"
+          echo "validate content: ${VALIDATE_RESULT}"
           echo "cargo test (workspace): ${RUST_RESULT}"
-          if [ "${RUST_RESULT}" != "success" ]; then
+          if [ "${CHANGES_RESULT}" != "success" ]; then
+              echo "::error::the merge gate is red — classify the pull request reported ${CHANGES_RESULT}"
+              exit 1
+          fi
+          if [ "${VALIDATE_RESULT}" != "success" ]; then
+              echo "::error::the merge gate is red — validate content reported ${VALIDATE_RESULT}"
+              exit 1
+          fi
+          if [ "${RUST_RESULT}" != "success" ] && [ "${RUST_RESULT}" != "skipped" ]; then
               echo "::error::the merge gate is red — cargo test (workspace) reported ${RUST_RESULT}"
               exit 1
           fi

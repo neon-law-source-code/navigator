@@ -2250,6 +2250,9 @@ fn yaml_pass(dir: &std::path::Path) -> std::io::Result<usize> {
 /// `Y001` — a `seeds/*.yaml` document must be accepted by `navigator site import`.
 const SEED_DOCUMENT_CODE: &str = "Y001";
 
+/// `Y002` — a `locales/<locale>/<page>.yaml` catalog must deserialize as that page.
+const LOCALE_DOCUMENT_CODE: &str = "Y002";
+
 fn seed_model_for_path(path: &std::path::Path) -> Option<anyhow::Result<store::seed::SeedModel>> {
     let parent = path.parent()?;
     if parent.file_name()? != "seeds" {
@@ -2300,6 +2303,55 @@ fn seed_document_pass(dir: &std::path::Path) -> std::io::Result<usize> {
         }
     }
     println!("Validated {files_scanned} seed document(s), found {errors} error(s)");
+    Ok(errors)
+}
+
+/// Validate every brand locale catalog: `locales/<locale>/<page>.yaml`.
+///
+/// The site publishes English only. An unknown page stem or a locale directory
+/// other than [`views::locales::DEFAULT_LOCALE`] is an error, and a known page
+/// must deserialize as its typed catalog so a copy-only edit cannot land a
+/// document the brand crate cannot load.
+fn locale_document_pass(dir: &std::path::Path) -> std::io::Result<usize> {
+    let mut files_scanned = 0usize;
+    let mut errors = 0usize;
+    for entry in walkdir::WalkDir::new(dir)
+        .into_iter()
+        .filter_entry(|entry| {
+            let name = entry.file_name().to_string_lossy();
+            !entry.file_type().is_dir()
+                || (name != ".git" && name != "target" && name != ".worktrees")
+        })
+    {
+        let entry = entry.map_err(std::io::Error::other)?;
+        let path = entry.path();
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let Some((locale, stem)) = views::locales::locale_yaml_parts(path) else {
+            continue;
+        };
+        files_scanned += 1;
+        if locale != views::locales::DEFAULT_LOCALE {
+            print_violation(
+                &path.display().to_string(),
+                1,
+                LOCALE_DOCUMENT_CODE,
+                &format!(
+                    "locale directory `{locale}` is not published; only `{}` is allowed",
+                    views::locales::DEFAULT_LOCALE
+                ),
+            );
+            errors += 1;
+            continue;
+        }
+        let raw = std::fs::read_to_string(path)?;
+        if let Err(error) = views::locales::parse_locale_file(stem, &raw) {
+            print_violation(&path.display().to_string(), 1, LOCALE_DOCUMENT_CODE, &error);
+            errors += 1;
+        }
+    }
+    println!("Validated {files_scanned} locale catalog(s), found {errors} error(s)");
     Ok(errors)
 }
 
@@ -2486,12 +2538,14 @@ fn mutable_tag_pass(dir: &std::path::Path) -> std::io::Result<usize> {
 }
 
 /// The standalone passes `validate` runs over the raw tree after the markdown
-/// lint — YAML syntax, seed-document shape, and consumed mutable tags.
-fn standalone_tree_passes(dir: &std::path::Path) -> std::io::Result<(usize, usize, usize)> {
+/// lint — YAML syntax, seed-document shape, locale catalogs, and consumed
+/// mutable tags.
+fn standalone_tree_passes(dir: &std::path::Path) -> std::io::Result<(usize, usize, usize, usize)> {
     let yaml_errors = yaml_pass(dir)?;
     let seed_errors = seed_document_pass(dir)?;
+    let locale_errors = locale_document_pass(dir)?;
     let mutable_tags = mutable_tag_pass(dir)?;
-    Ok((yaml_errors, seed_errors, mutable_tags))
+    Ok((yaml_errors, seed_errors, locale_errors, mutable_tags))
 }
 
 fn run_validate(dir: &std::path::Path, fix: bool) -> ExitCode {
@@ -2561,8 +2615,10 @@ fn run_validate(dir: &std::path::Path, fix: bool) -> ExitCode {
     );
 
     // Standalone raw-tree passes over the same walk: YAML parse errors, seed
-    // document shape, and consumed mutable image/binary tags (navigator#540).
-    let (yaml_errors, seed_errors, mutable_tags) = match standalone_tree_passes(dir) {
+    // document shape, locale catalogs, and consumed mutable image/binary tags
+    // (navigator#540).
+    let (yaml_errors, seed_errors, locale_errors, mutable_tags) = match standalone_tree_passes(dir)
+    {
         Ok(counts) => counts,
         Err(e) => {
             eprintln!("navigator: {e}");
@@ -2570,11 +2626,16 @@ fn run_validate(dir: &std::path::Path, fix: bool) -> ExitCode {
         }
     };
 
-    // Fail the gate on Error-severity markdown violations, malformed YAML or
-    // seed documents, or a consumed mutable tag. Warning-severity
-    // advisories (e.g. a step that's allowed but not built yet) are printed
-    // but do not fail.
-    if error_count > 0 || yaml_errors > 0 || seed_errors > 0 || mutable_tags > 0 {
+    // Fail the gate on Error-severity markdown violations, malformed YAML,
+    // seed documents, locale catalogs, or a consumed mutable tag.
+    // Warning-severity advisories (e.g. a step that's allowed but not built
+    // yet) are printed but do not fail.
+    if error_count > 0
+        || yaml_errors > 0
+        || seed_errors > 0
+        || locale_errors > 0
+        || mutable_tags > 0
+    {
         ExitCode::from(1)
     } else {
         ExitCode::SUCCESS

@@ -7,10 +7,11 @@
 //! once ([`Band`]) and letting each page order them is what keeps a new page a
 //! data change rather than a new component tree.
 //!
-//! Copy lives in the Rust that renders it, per the workspace's English-only
-//! rule: there is no catalog and no key lookup. The portal router resolves each
-//! page's content at router-build time and injects it, so no page here resolves
-//! per-request data.
+//! Firm marketing copy lives in the brand crate's English catalog
+//! (`neon/locales/en/*.yaml`). This module renders the injected page data; it
+//! does not look up keys itself. The portal router resolves each page's content
+//! at router-build time and injects it, so no page here resolves per-request
+//! data.
 
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};

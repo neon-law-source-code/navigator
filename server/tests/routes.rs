@@ -670,48 +670,6 @@ async fn app_projects_renders_the_client_dashboard() {
     );
 }
 
-/// The client dashboard title names the firm the client actually hired, resolved
-/// from the request-scoped branding rather than written into the copy.
-///
-/// Both halves matter. The default deploy must name the firm — the sentence
-/// used to name a nonprofit, which is not the entity a portal client engaged. A
-/// mounted white-label bundle must name *its* firm, which is the
-/// failure a `views::brand` read inside the server function would produce: that
-/// task does not inherit the brand `task_local`, so it would silently publish
-/// this firm's name in someone else's portal.
-#[tokio::test]
-async fn the_projects_dashboard_title_names_the_deploys_own_firm() {
-    let app = server::neon_router(
-        empty_state().await,
-        std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
-    );
-    let body =
-        body_string(get_with_role(app, "/app/projects", store::persons::Role::Client).await).await;
-    assert!(body.contains("<title>Neon Law | Portal</title>"), "{body}",);
-    assert!(
-        !body.contains(&["Neon", "Law", "Foundation"].join(" ")),
-        "the nonprofit is not who a portal client hired: {body}",
-    );
-
-    let bundle_dir = tempfile::tempdir().unwrap();
-    std::fs::write(
-        bundle_dir.path().join("navigator.yaml"),
-        "version: 1\nbrand:\n  firm: Acme Law\n",
-    )
-    .unwrap();
-    let bundle = views::brand_bundle::BrandBundle::load(bundle_dir.path()).unwrap();
-    let mut state = empty_state().await;
-    state.brand_bundle = Some(bundle);
-    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
-    let body =
-        body_string(get_with_role(app, "/app/projects", store::persons::Role::Client).await).await;
-    assert!(body.contains("<title>Acme Law | Portal</title>"), "{body}",);
-    assert!(
-        !body.contains("<title>Neon Law | Portal</title>"),
-        "a white-label portal must not name this firm: {body}",
-    );
-}
-
 /// Every `/app` page's `<title>` begins with Navigator. Other protected routes
 /// retain the mounted firm's mark. The tab is the most-rendered piece of
 /// navigation on the site, so an application page must not expose its internal

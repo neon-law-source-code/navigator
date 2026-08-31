@@ -801,6 +801,23 @@ async fn handle_lawyer_reply(
     // notation (the production lawyer-review gate) and still relay any
     // accompanying prose. A successful `@link` updates this local model so a
     // same-message `@approve` and the relay gate below both see the new link.
+    // Is the `From:` header cryptographically authentic? The lawyer-tier
+    // `persons` lookup above trusts that header to name the sender, and a
+    // header is free to write. DKIM is what makes it evidence: requiring a
+    // `pass` for the sender's OWN domain is the alignment check that turns
+    // "claims to be Nick" into "was signed by neonlaw.com".
+    //
+    // This is deliberately not `cfg.verify_dkim_domain` — that option pins
+    // replies to one firm domain and is unset in every deployment manifest in
+    // the tree, so keying the command channel to it would leave the channel
+    // open by default. This check needs no configuration and is therefore on
+    // everywhere. Where the option IS set, the stricter gate above has already
+    // returned, so the two compose.
+    let sender_domain = extract_addr(&inbound.from)
+        .rsplit_once('@')
+        .map_or_else(String::new, |(_, domain)| domain.to_string());
+    let sender_authenticated = dkim_passes_for_domain(&inbound.dkim, &sender_domain);
+
     let mut conversation = conversation.clone();
     let mut suppress_relay = false;
     for command in &parsed.commands {
@@ -819,6 +836,24 @@ async fn handle_lawyer_reply(
                 }
             }
             Command::Signal { condition, value } => {
+                // An attorney signature must name its signer. `approved`
+                // leaves `lawyer_review` for `generate_pdf__*` and then
+                // `sent_for_signature__pending`, so a signal is the one
+                // command that may never run on sender-trust alone: a `From:`
+                // header is forgeable, and the thread token is a bearer
+                // credential that travels in cleartext on every notification
+                // the cockpit receives. When the deployment names no domain
+                // to verify against, we cannot establish who signed — and an
+                // ingress that cannot name the signer must refuse to sign.
+                //
+                // Refusing is the recoverable direction: a genuine approval
+                // can be re-made from `/app/lawyer/*`, which authenticates
+                // the attorney by session. Accepting a forged one is not
+                // recoverable, because the letter has already gone out.
+                if !sender_authenticated {
+                    refuse_unauthenticated_signal(ctx, &conversation, token, condition).await?;
+                    continue;
+                }
                 fire_signal(
                     ctx,
                     &conversation,
@@ -853,6 +888,39 @@ async fn handle_lawyer_reply(
             relay_to_external(ctx, &conversation, token, &parsed.relay_body).await?;
         }
     }
+    Ok(())
+}
+
+/// Refuse a workflow signal whose sender could not be cryptographically
+/// authenticated, and tell the cockpit it was refused.
+///
+/// A silently dropped approval is the same class of defect as a silently
+/// accepted one: in both cases a letter's status does not match what the
+/// attorney believes they did. So the refusal is journaled as a `system` hop
+/// and mailed back — never relayed to the client.
+async fn refuse_unauthenticated_signal(
+    ctx: &ThreadCtx<'_>,
+    conversation: &conv::EmailConversation,
+    token: &str,
+    condition: &str,
+) -> Result<(), ThreadError> {
+    tracing::error!(
+        conversation_id = %conversation.id,
+        condition,
+        "refusing a workflow signal from an unauthenticated sender"
+    );
+    send_and_journal(
+        ctx,
+        conversation.id,
+        token,
+        DIRECTION_SYSTEM,
+        ctx.cfg.lawyer_notify_email.as_str(),
+        &format!("[refused] {}", conversation.subject),
+        &format!(
+            "Your @{condition} command was NOT executed: this reply's sender could not be              cryptographically authenticated (no DKIM pass for the sending domain). Approve              from the portal instead, where the session names the attorney."
+        ),
+    )
+    .await?;
     Ok(())
 }
 
@@ -1469,14 +1537,25 @@ mod tests {
         }
     }
 
+    /// A fixture inbound message. `dkim` defaults to a **pass for the
+    /// sender's own domain**, because that is what SendGrid Inbound Parse
+    /// actually posts for genuine mail — the field is always populated. A
+    /// test that means to model a forgery overrides `msg.dkim` explicitly.
+    /// An empty verdict is not a neutral default: the command channel
+    /// requires positive proof the `From:` header is authentic, so a blank
+    /// field would silently turn every fixture into an unauthenticated
+    /// sender.
     fn inbound(from: &str, to: &str, subject: &str, text: &str) -> InboundEmail {
+        let sender_domain = super::extract_addr(from)
+            .rsplit_once('@')
+            .map_or_else(String::new, |(_, domain)| domain.to_string());
         InboundEmail {
             from: from.into(),
             to: to.into(),
             subject: subject.into(),
             text: text.into(),
             raw: Vec::new(),
-            dkim: String::new(),
+            dkim: format!("{{@{sender_domain} : pass}}"),
             attachments: Vec::new(),
             quarantined_attachments: Vec::new(),
             message_id: None,
@@ -2110,6 +2189,69 @@ mod tests {
         assert_eq!(sent.len(), 1);
         assert_eq!(sent[0].to, "pisces@example.com");
         assert_eq!(sent[0].body, "Looks good.");
+    }
+
+    /// The approval gate must refuse a signature it cannot authenticate.
+    ///
+    /// `@approve` is an attorney-signature step: from `lawyer_review` it
+    /// fires `approved`, which releases the draft into `generate_pdf__*` and
+    /// then `sent_for_signature__pending`. Fourteen shipped specs carry that
+    /// state, including `onboarding__letter`, `nv__llc_formation`, and
+    /// `us__naturalization`.
+    ///
+    /// The two tests above prove the DKIM fence works *when configured*.
+    /// This one pins the posture deployments actually run:
+    /// `NAVIGATOR_DKIM_REQUIRE_DOMAIN` is set in no manifest in the tree, so
+    /// `verify_dkim_domain` is `None` and the fence is never consulted. In
+    /// that posture the only things standing between an outsider and an
+    /// attorney signature are a `From:` header - trivially forged - and a
+    /// token that travels in cleartext on every notification the cockpit
+    /// receives.
+    ///
+    /// So the invariant is not "DKIM is checked when we asked for it" but
+    /// "an unauthenticated sender never signs." A deployment that cannot
+    /// verify the signer must refuse the signature, not assume it.
+    #[tokio::test]
+    async fn approval_gate_refuses_a_signature_it_cannot_authenticate() {
+        let surreal = mem_surreal().await;
+        let notation_id = store::test_support::seed_notation(&surreal).await;
+        seed_lawyer(&surreal, "nick@neonlaw.com").await;
+        let cap = CapturingEmail::new();
+        let rt = RecordingRuntime::default();
+
+        let token = "0000000000000000000000000000000e";
+        seed_linked_conversation(&surreal, token, notation_id).await;
+
+        // An outsider with a leaked token, forging the firm's own address.
+        // The DKIM verdict is an explicit *fail* for the firm domain: the
+        // message carries positive evidence of forgery, not merely an
+        // absence of proof.
+        let mut msg = inbound(
+            "Nick <nick@neonlaw.com>",
+            &format!("c{token}@parse.neonlaw.com"),
+            "Re: Estate plan",
+            "Looks good.
+@approve",
+        );
+        msg.dkim = "{@neonlaw.com : fail}".into();
+
+        // `cfg()` - not `cfg_dkim()`. This is the shipped configuration.
+        thread_inbound(
+            &surreal,
+            &storage().await,
+            &cap,
+            &rt,
+            &cfg(),
+            &msg,
+            "inbound/forged-unenforced.eml",
+        )
+        .await
+        .unwrap();
+
+        assert!(
+            rt.signals.lock().unwrap().is_empty(),
+            "an unauthenticated sender signed a legal instrument: the approval              gate fired `approved` on a message whose DKIM verdict is a fail              for the firm domain, because the deployment sets no              NAVIGATOR_DKIM_REQUIRE_DOMAIN"
+        );
     }
 
     /// Open a support conversation with no linked matter — the prod state

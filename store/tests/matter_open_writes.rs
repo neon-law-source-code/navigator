@@ -68,7 +68,14 @@ async fn opening_a_matter_writes_the_project_two_participations_and_the_attestat
     .await
     .expect("open the matter");
 
-    assert_eq!(project.code, "nest-formation");
+    // The stored code is the supplied stem plus a generated 8-letter suffix
+    // (`store::projects::code_from_name`), not the stem verbatim — see
+    // `project_code_generation.rs` for the suffix-generation contract itself.
+    assert!(
+        project.code.starts_with("nest-formation-") && project.code.len() == 23,
+        "expected `nest-formation-` plus an 8-letter suffix, got {:?}",
+        project.code
+    );
 
     // Both participations: the attesting attorney as lawyer DRI, the client
     // as client DRI.

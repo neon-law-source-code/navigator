@@ -171,8 +171,7 @@ pub const PORTAL_MOUNT_SEGMENT: &str = "portal";
 /// being a convention.
 pub const RESERVED_PROJECT_CODES: &[&str] = &["navigator", "new"];
 
-/// Whether a value is safe as a URL segment, a repository name, and a folder
-/// name in the firm's shared drive.
+/// Whether a value is safe as a URL segment and a repository name.
 ///
 /// Lowercase letters, digits, and single hyphens; alphanumeric at both ends.
 /// This is the single definition of that shape. `store::projects::is_valid_code`
@@ -181,11 +180,11 @@ pub const RESERVED_PROJECT_CODES: &[&str] = &["navigator", "new"];
 /// as identical.
 ///
 /// Two restrictions are deliberate rather than incidental, because a matter's
-/// code *is* its shared-drive folder name (#938) and the mapping is an equality
+/// code *is* its repository's directory name and the mapping is an equality
 /// check, not a normalization:
 ///
-/// - **Lowercase only.** Google Drive and macOS are case-insensitive, so
-///   allowing uppercase would let one folder answer to two distinct codes.
+/// - **Lowercase only.** A checkout and macOS are case-insensitive, so
+///   allowing uppercase would let one directory answer to two distinct codes.
 /// - **Hyphens, not underscores.** One separator. A second would force a
 ///   normalization step in both directions and the mapping would stop being an
 ///   equality check.

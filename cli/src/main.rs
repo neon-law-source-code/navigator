@@ -1640,10 +1640,10 @@ enum DbProjectAction {
         /// Human-readable matter name, e.g. `"Shook Estate"`.
         #[arg(long)]
         name: String,
-        /// The matter code, e.g. `shook-estate`. Required: it names the
-        /// matter's bare git repo *and* its folder in the firm's shared
-        /// drive, and the two must match exactly (#938), so it is never
-        /// derived. Lowercase letters, digits, and single hyphens.
+        /// The stem of the matter's code, e.g. `shook-estate`. Required —
+        /// lowercase letters, digits, and single hyphens. Not the stored
+        /// code: Navigator appends a short generated suffix, since a code is
+        /// chosen once at matter-open and never changes.
         #[arg(long)]
         code: String,
         /// Exact `entities.name` of the legal organization this
@@ -2036,8 +2036,8 @@ async fn run_db_project(action: DbProjectAction) -> ExitCode {
     }
 }
 
-// One flag per argument the matter-open command needs; `--code` is among
-// them (#938). A struct here would only rename the same list.
+// One flag per argument the matter-open command needs. A struct here would
+// only rename the same list.
 async fn run_project_create(
     name: &str,
     code: &str,

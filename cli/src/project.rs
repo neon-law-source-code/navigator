@@ -36,9 +36,10 @@ pub struct CreatedProject {
 /// there is no status argument — lifecycle transitions are their own commands
 /// (navigator#770).
 ///
-/// `code` is required and passed straight through: it names the matter's
-/// Drive ingest folder, its documents-bucket prefix, and its source
-/// repository, and the command no longer derives one (#938).
+/// `code` is the stem of the matter's code, required. It is not the stored
+/// code: `open_matter` appends a short generated suffix so the stem alone can
+/// never collide with another matter's — a code is chosen once, at
+/// matter-open, and never changes (`docs/glossary.md#project`).
 #[allow(clippy::too_many_arguments)] // the human-facing open flags
 pub async fn create(
     surreal: &store::surreal::SurrealDb,

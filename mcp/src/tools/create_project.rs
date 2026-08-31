@@ -35,13 +35,14 @@ pub fn descriptor() -> Value {
                 },
                 "code": {
                     "type": "string",
-                    "description": "The matter code (e.g. `sison-mutual-release`). Required and never \
-                                    derived: it names the matter's git repository AND its folder in \
-                                    the firm's shared drive, and the two must match exactly. \
-                                    Lowercase letters, digits, and single hyphens; must start and \
-                                    end with a letter or digit; at most 80 characters. Ask the \
-                                    requesting attorney for the code rather than inventing one — a \
-                                    guessed code points the matter at a folder that does not exist."
+                    "description": "The stem of the matter code (e.g. `sison-mutual-release`) — the \
+                                    base of its eventual git repository name. Required. Lowercase \
+                                    letters, digits, and single hyphens; must start and end with a \
+                                    letter or digit; at most 80 characters. This is not the stored \
+                                    code: Navigator appends a short generated suffix so the stem \
+                                    alone can never collide with another matter's, since a code is \
+                                    chosen once at matter-open and never changes. Ask the requesting \
+                                    attorney for their preferred stem rather than inventing one."
                 },
                 "attestation": {
                     "type": "boolean",
@@ -81,8 +82,8 @@ pub fn descriptor() -> Value {
 #[serde(deny_unknown_fields)]
 struct Args {
     name: String,
-    /// The matter code. Required — see the descriptor: it is also the
-    /// shared-drive folder name, so AIDA cannot derive one (#938).
+    /// The stem of the matter code. Required — see the descriptor: this is
+    /// not the stored code, which gets a generated suffix appended.
     #[serde(default)]
     code: Option<String>,
     #[serde(default)]
@@ -106,21 +107,16 @@ pub async fn call(
         return Err(ToolError::InvalidArguments("name must not be empty".into()));
     }
 
-    // The code is required and passed through verbatim. It names the matter's
-    // shared-drive folder as well as its repo (#938), so an AIDA-invented code
-    // would open a matter whose working files are unreachable — refuse instead.
+    // The stem is required and passed through to `open_matter`, which appends
+    // a generated suffix — an AIDA-invented stem is fine (unlike an invented
+    // final code once was), but ask the attorney for their preferred one when
+    // it is available, per the descriptor.
     let code = args
         .code
         .as_deref()
         .map(str::trim)
         .filter(|c| !c.is_empty())
-        .ok_or_else(|| {
-            ToolError::InvalidArguments(
-                "code is required — it is also the matter's shared-drive folder name, so it \
-                 cannot be derived; ask the requesting attorney for it"
-                    .into(),
-            )
-        })?
+        .ok_or_else(|| ToolError::InvalidArguments("code is required".into()))?
         .to_string();
 
     // A matter always opens against a pre-existing entity (projects.entity_id
@@ -355,8 +351,8 @@ mod tests {
         let required = d["inputSchema"]["required"].as_array().unwrap();
         let names: Vec<&str> = required.iter().filter_map(|v| v.as_str()).collect();
         // `code` is required on the schema, not just in `call`: AIDA must be
-        // told to ask for it rather than discovering the refusal by trying an
-        // open. It is the matter's shared-drive folder name (#938).
+        // told to ask for a stem rather than discovering the refusal by
+        // trying an open.
         assert_eq!(
             names,
             vec![

@@ -446,21 +446,15 @@ pub(crate) fn resolve_firm_home_content(
 /// page's prose does.
 ///
 /// **Every mechanism named is one the workspace can be opened to prove.** The
-/// durable event-driven engine lives in `workflows-service`; the inbound triage
-/// that classifies a filing or a letter onto a live matter is `nautilus`'s
-/// `LAWSUIT_MARKERS`, and "match that record literally" is the honest verb for
-/// it, because it tests literal markers rather than searching semantically;
-/// `DeadlineKind` calendars a window from the statute that sets it, which is
-/// why the sentence says "a statutory deadline" rather than "every deadline";
-/// the graph is the `relationship` relation plus the append-only
-/// `relationship_log`; and the filing kinds are `store::cases::EntryKind`.
+/// durable event-driven engine lives in `workflows-service`; the graph is the
+/// `relationship` relation plus the append-only `relationship_log`; and the
+/// filing kinds are `store::cases::EntryKind`.
 ///
 /// **Four claims were drafted for this page and cut for want of an
 /// implementation**: semantic case-law search and the vendors behind it, regex
-/// over the record (the matcher is literal substring), fact extraction, and a
-/// per-pleading template library (the tree carries one litigation template, a
-/// TRO). A vendor name or a capability on this page is a claim that the
-/// workspace carries it, and
+/// over the record, fact extraction, and a per-pleading template library (the
+/// tree carries one litigation template, a TRO). A vendor name or a capability
+/// on this page is a claim that the workspace carries it, and
 /// `litigation_claims_only_capabilities_the_workspace_carries` is the guard
 /// that keeps the claim checkable. Describe the step; name the tool only once a
 /// module in this tree calls it.

@@ -499,27 +499,26 @@ async fn litigation_publishes_no_em_dash() {
 ///
 /// Each needle below is a capability the copy asserts, matched to the module
 /// that implements it. The guard is the *pairing*: if a future edit deletes the
-/// inbound triage or the deadline calculator, this test fails and the sentence
-/// on the public page has to come down with it, rather than quietly becoming
-/// marketing for something the firm no longer runs.
+/// engine or the graph, this test fails and the sentence on the public page has
+/// to come down with it, rather than quietly becoming marketing for something
+/// the firm no longer runs.
 #[tokio::test]
 async fn litigation_claims_only_capabilities_the_workspace_carries() {
-    let nautilus = include_str!("../../workflows/src/nautilus.rs");
+    let engine = include_str!("../../workflows-service/src/main.rs");
     assert!(
-        nautilus.contains("LAWSUIT_MARKERS"),
-        "the copy says a new filing starts the work it implies; the inbound \
-         classifier that recognizes one must still exist"
+        engine.contains("Endpoint::builder"),
+        "the copy says event-driven workflows start the work an event implies; \
+         the Restate worker that runs them must still exist"
     );
+    let relationships = include_str!("../../store/src/relationship_logs.rs");
     assert!(
-        nautilus.contains("DeadlineKind"),
-        "the copy says the deadline is calendared against the rule that sets \
-         it; the deadline calculator must still exist"
+        relationships.contains("relationship_log"),
+        "the copy says the matter is a graph whose relationships are logged as \
+         the case moves; that log must still exist"
     );
 
     let app = site_app().await;
     let body = body_string(anon_get(&app, "/litigation").await).await;
-    // The two events the classifier above actually recognizes on a live matter
-    // are the two the copy leads with.
     assert!(
         body.contains("a new court docket filing"),
         "the grounded court-filing event renders: {body}"
@@ -537,10 +536,8 @@ async fn litigation_claims_only_capabilities_the_workspace_carries() {
     // Each was true of how the firm works and false of what this workspace
     // implements, which is the exact gap this test exists to hold: there is no
     // embedding or vector index anywhere in the tree, so no semantic search and
-    // no vendor behind one; the `regex` crate is a dev-dependency only and the
-    // inbound matcher is `hay.contains(n)` over literal markers, so the page
-    // says "literally" rather than "regex"; there is no fact-extraction module;
-    // and `templates/` carries exactly one litigation template (a TRO), so a
+    // no vendor behind one; there is no fact-extraction module; and
+    // `templates/` carries exactly one litigation template (a TRO), so a
     // per-pleading library must not be advertised.
     for unbuilt in [
         "scrapers we run",
@@ -554,6 +551,7 @@ async fn litigation_claims_only_capabilities_the_workspace_carries() {
         "extract the facts",
         "motion to dismiss",
         "service of summons",
+        "statutory deadline",
     ] {
         assert!(
             !body.to_lowercase().contains(unbuilt),

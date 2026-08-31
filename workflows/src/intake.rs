@@ -19,8 +19,7 @@
 //! - **executed e-sign PDF** — the signed instrument filed back into the
 //!   matter repo (folds the existing matter-document write onto one
 //!   path).
-//! - future: ID scans, evidence uploads, adverse-action notices and
-//!   screening reports (Nautilus inbound).
+//! - future: ID scans and evidence uploads.
 //!
 //! ## Phone-friendly capture
 //!

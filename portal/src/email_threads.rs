@@ -38,12 +38,10 @@ use store::email_conversations::{
     DIRECTION_FROM_EXTERNAL, DIRECTION_FROM_LAWYER, DIRECTION_SYSTEM, DIRECTION_TO_EXTERNAL,
     DIRECTION_TO_LAWYER, STATUS_AWAITING_CLIENT, STATUS_AWAITING_LAWYER, STATUS_CLOSED,
 };
-use store::statutory_deadlines::{self, NewStatutoryDeadline};
 
 use crate::email::{Attachment, EmailService, OutboundEmail, SendReceipt, DEFAULT_FROM_EMAIL};
 use crate::inbound_email::{InboundAttachment, InboundEmail};
 
-const NAUTILUS_TRIAGE_SOURCE: &str = "nautilus_inbound_triage";
 const SENDGRID_MAX_MESSAGE_BYTES: usize = 30_000_000;
 
 /// Runtime config for the threading layer, read from the environment.
@@ -290,10 +288,6 @@ async fn open_first_contact(
     )
     .await?;
 
-    if let Some(id) = notation_id {
-        record_nautilus_triage_deadlines(ctx, id, inbound, body).await?;
-    }
-
     let mut notes: Vec<String> = Vec::new();
     // Firm-wide imputed-conflicts gate (RPC 1.10): a first contact from a
     // sender the firm has not screened is a prospective client. Prompt the
@@ -394,107 +388,6 @@ async fn sync_conversation_to_spine(
                 asset_id: None,
                 occurred_at: &m.inserted_at.to_rfc3339(),
             },
-        )
-        .await?;
-    }
-    Ok(())
-}
-
-/// Run Nautilus inbound triage for a thread linked to a Nautilus retainer and
-/// record any statutory windows it opens on the matter.
-async fn record_nautilus_triage_deadlines(
-    ctx: &ThreadCtx<'_>,
-    notation_id: uuid::Uuid,
-    inbound: &InboundEmail,
-    body: &str,
-) -> Result<(), ThreadError> {
-    record_nautilus_triage_deadlines_for_message(
-        ctx,
-        notation_id,
-        &inbound.subject,
-        body,
-        inbound_received_on(inbound),
-    )
-    .await
-}
-
-async fn record_nautilus_triage_deadlines_for_message(
-    ctx: &ThreadCtx<'_>,
-    notation_id: uuid::Uuid,
-    subject: &str,
-    body: &str,
-    received_on: chrono::NaiveDate,
-) -> Result<(), ThreadError> {
-    let Some(notation) = store::notations::find_by_id(ctx.surreal, notation_id).await? else {
-        return Ok(());
-    };
-    // Whether an inbound message on this matter should raise statutory
-    // deadlines is a *capability* question, so it reads the module ledger
-    // rather than the notation's template code. It used to key on the
-    // retired `onboarding__letter_nautilus` retainer, which made the
-    // capability a property of which engagement agreement was signed —
-    // exactly the product-shaped inference `project_modules` replaced.
-    if !store::project_modules::is_enabled(
-        ctx.surreal,
-        notation.project_id,
-        store::project_modules::Module::Deadlines,
-    )
-    .await
-    .map_err(|error| ThreadError::Db(error.to_string()))?
-    {
-        return Ok(());
-    }
-
-    let decision = workflows::triage(true, subject, body, received_on);
-    let rows: Vec<NewStatutoryDeadline<'_>> = decision
-        .deadlines
-        .iter()
-        .map(|deadline| NewStatutoryDeadline {
-            project_id: notation.project_id,
-            kind: deadline.storage_kind(),
-            trigger_on: deadline.trigger_on,
-            due_on: deadline.due_on,
-            statute: deadline.statute,
-            source: NAUTILUS_TRIAGE_SOURCE,
-        })
-        .collect();
-    if rows.is_empty() {
-        return Ok(());
-    }
-    statutory_deadlines::record_all(ctx.surreal, &rows)
-        .await
-        .map_err(|error| ThreadError::Runtime(format!("record statutory deadlines: {error}")))?;
-    tracing::info!(
-        %notation_id,
-        project_id = %notation.project_id,
-        class = ?decision.class,
-        route = ?decision.route,
-        deadlines = rows.len(),
-        "nautilus inbound triage recorded statutory deadlines"
-    );
-    Ok(())
-}
-
-async fn backfill_nautilus_triage_deadlines_for_thread(
-    ctx: &ThreadCtx<'_>,
-    conversation_id: uuid::Uuid,
-    notation_id: uuid::Uuid,
-) -> Result<(), ThreadError> {
-    for message in conv::messages(ctx.surreal, conversation_id).await? {
-        if message.direction != DIRECTION_FROM_EXTERNAL {
-            continue;
-        }
-        let received_on = chrono::DateTime::parse_from_rfc3339(&message.inserted_at.to_rfc3339())
-            .map_or_else(
-                |_| chrono::Utc::now().date_naive(),
-                |stamp| stamp.date_naive(),
-            );
-        record_nautilus_triage_deadlines_for_message(
-            ctx,
-            notation_id,
-            &message.subject,
-            &message.body_text,
-            received_on,
         )
         .await?;
     }
@@ -678,9 +571,6 @@ async fn continue_thread(
             },
         )
         .await?;
-        if let Some(id) = conversation.notation_id {
-            record_nautilus_triage_deadlines(ctx, id, inbound, body).await?;
-        }
         // File any attachments as documents on the linked matter and fold a
         // review request into the lawyer notification.
         let attachments_note =
@@ -926,8 +816,6 @@ async fn handle_lawyer_reply(
             Command::Link { notation_id } => {
                 if let Some(linked) = link_notation(ctx, &conversation, notation_id, token).await? {
                     conversation.notation_id = Some(linked);
-                    backfill_nautilus_triage_deadlines_for_thread(ctx, conversation.id, linked)
-                        .await?;
                 }
             }
             Command::Signal { condition, value } => {
@@ -1291,21 +1179,6 @@ fn extract_body(inbound: &InboundEmail) -> String {
         .parse(&inbound.raw)
         .and_then(|m| m.body_text(0).map(std::borrow::Cow::into_owned))
         .unwrap_or_default()
-}
-
-fn inbound_received_on(inbound: &InboundEmail) -> chrono::NaiveDate {
-    mail_parser::MessageParser::default()
-        .parse(&inbound.raw)
-        .and_then(|message| {
-            message.date().and_then(|date| {
-                chrono::NaiveDate::from_ymd_opt(
-                    i32::from(date.year),
-                    u32::from(date.month),
-                    u32::from(date.day),
-                )
-            })
-        })
-        .unwrap_or_else(|| chrono::Utc::now().date_naive())
 }
 
 /// An unguessable 32-hex-char thread token (16 random bytes).
@@ -1987,62 +1860,6 @@ mod tests {
             .project_id
     }
 
-    /// A matter with the Deadlines module enabled, on the firm's one
-    /// engagement agreement — the shape inbound triage now keys on.
-    async fn seed_nautilus_notation(
-        surreal: &store::surreal::SurrealDb,
-    ) -> (uuid::Uuid, uuid::Uuid) {
-        let tmpl = store::templates::save_version(
-            surreal,
-            None,
-            "onboarding__letter",
-            store::templates::Version {
-                title: "Retainer Agreement".into(),
-                respondent_type: "person".into(),
-                asset_id: None,
-                form_code: None,
-                kind: None,
-                source_commit_sha: None,
-            },
-        )
-        .await
-        .unwrap()
-        .into_model();
-        let person = store::persons::create(
-            surreal,
-            &store::persons::NewPerson::new("Pisces", "pisces@example.com"),
-        )
-        .await
-        .unwrap();
-        let project = store::projects::create(
-            surreal,
-            &store::projects::NewProject {
-                code: format!("nautilus-screening-{}", uuid::Uuid::now_v7()),
-                name: "Nautilus screening-shield".into(),
-                status: "open".into(),
-                entity_id: store::test_support::seed_entity(surreal).await,
-                ..Default::default()
-            },
-        )
-        .await
-        .unwrap();
-        store::project_modules::enable(
-            surreal,
-            project.id,
-            store::project_modules::Module::Deadlines,
-            None,
-        )
-        .await
-        .unwrap();
-        let notation = store::notations::create(
-            surreal,
-            &store::notations::NewNotation::new(tmpl.id, person.id, project.id, "BEGIN"),
-        )
-        .await
-        .unwrap();
-        (notation.id, project.id)
-    }
-
     #[tokio::test]
     async fn email_exchange_mirrors_into_the_linked_matters_spine() {
         use store::communications::{channel, direction, for_project};
@@ -2169,137 +1986,6 @@ mod tests {
         assert_eq!(thread.len(), 1);
         assert_eq!(thread[0].channel, channel::EMAIL_INBOUND);
         assert_eq!(thread[0].body, "Hello, one more thing.");
-    }
-
-    #[tokio::test]
-    async fn first_contact_on_nautilus_matter_records_statutory_deadlines() {
-        let surreal = mem_surreal().await;
-        let (_notation_id, project_id) = seed_nautilus_notation(&surreal).await;
-        let cap = CapturingEmail::new();
-        let mut msg = inbound(
-            "Pisces <pisces@example.com>",
-            "support@parse.neonlaw.com",
-            "Your rental application",
-            "We denied your application based on information in your consumer report.",
-        );
-        msg.raw = concat!(
-            "Date: Wed, 3 Jun 2026 12:34:00 -0700\r\n",
-            "From: Pisces <pisces@example.com>\r\n",
-            "To: support@parse.neonlaw.com\r\n",
-            "Subject: Your rental application\r\n",
-            "\r\n",
-            "We denied your application based on information in your consumer report.\r\n"
-        )
-        .as_bytes()
-        .to_vec();
-
-        thread_inbound(
-            &surreal,
-            &storage().await,
-            &cap,
-            &RecordingRuntime::default(),
-            &cfg(),
-            &msg,
-            "inbound/pisces-adverse-action.eml",
-        )
-        .await
-        .unwrap();
-
-        let rows = store::statutory_deadlines::by_project(&surreal, project_id)
-            .await
-            .unwrap();
-        assert_eq!(rows.len(), 2, "Nautilus triage must persist both clocks");
-        let trigger_on = chrono::NaiveDate::from_ymd_opt(2026, 6, 3).unwrap();
-        assert!(
-            rows.iter().any(|row| row.kind == "fcra_reinvestigation"
-                && row.statute == "15 U.S.C. § 1681i(a)(1)"
-                && row.trigger_on == trigger_on
-                && row.due_on == chrono::NaiveDate::from_ymd_opt(2026, 7, 3).unwrap()
-                && row.source == super::NAUTILUS_TRIAGE_SOURCE),
-            "missing durable reinvestigation deadline: {rows:?}",
-        );
-        assert!(
-            rows.iter()
-                .any(|row| row.kind == "adverse_action_free_report"
-                    && row.statute == "15 U.S.C. § 1681j(b)"
-                    && row.trigger_on == trigger_on
-                    && row.due_on == chrono::NaiveDate::from_ymd_opt(2026, 8, 2).unwrap()
-                    && row.source == super::NAUTILUS_TRIAGE_SOURCE),
-            "missing durable free-report deadline: {rows:?}",
-        );
-    }
-
-    #[tokio::test]
-    async fn link_to_nautilus_matter_backfills_statutory_deadlines() {
-        let surreal = mem_surreal().await;
-        let (notation_id, project_id) = seed_nautilus_notation(&surreal).await;
-        seed_lawyer(&surreal, "nick@neonlaw.com").await;
-        let cap = CapturingEmail::new();
-        let rt = RecordingRuntime::default();
-
-        let token = "00000000000000000000000000000fc1";
-        seed_unlinked_conversation(&surreal, token).await;
-
-        thread_inbound(
-            &surreal,
-            &storage().await,
-            &cap,
-            &rt,
-            &cfg(),
-            &inbound(
-                "Pisces <pisces@example.com>",
-                &format!("c{token}@parse.neonlaw.com"),
-                "Your rental application",
-                "We denied your application based on information in your consumer report.",
-            ),
-            "inbound/pisces-adverse-action-before-link.eml",
-        )
-        .await
-        .unwrap();
-        assert!(
-            store::statutory_deadlines::by_project(&surreal, project_id)
-                .await
-                .unwrap()
-                .is_empty(),
-            "unlinked inbound mail cannot write matter deadlines yet",
-        );
-
-        thread_inbound(
-            &surreal,
-            &storage().await,
-            &cap,
-            &rt,
-            &cfg(),
-            &inbound(
-                "Nick <nick@neonlaw.com>",
-                &format!("c{token}@parse.neonlaw.com"),
-                "Re: Your rental application",
-                &format!("@link {notation_id}"),
-            ),
-            "inbound/link-nautilus.eml",
-        )
-        .await
-        .unwrap();
-
-        let rows = store::statutory_deadlines::by_project(&surreal, project_id)
-            .await
-            .unwrap();
-        assert_eq!(
-            rows.len(),
-            2,
-            "linking a reviewed Nautilus thread must backfill both clocks"
-        );
-        assert!(
-            rows.iter().any(|row| row.kind == "fcra_reinvestigation"
-                && row.source == super::NAUTILUS_TRIAGE_SOURCE),
-            "missing reinvestigation deadline after @link: {rows:?}",
-        );
-        assert!(
-            rows.iter()
-                .any(|row| row.kind == "adverse_action_free_report"
-                    && row.source == super::NAUTILUS_TRIAGE_SOURCE),
-            "missing free-report deadline after @link: {rows:?}",
-        );
     }
 
     async fn for_project_helper(

@@ -79,10 +79,8 @@ description: >-
 #
 # The tokens these repositories mint are issued by
 # `https://token.actions.githubusercontent.com` — github.com's own OIDC issuer.
-# The earlier wording here described it as an enterprise's own subdomain, which
-# was true while these repositories lived on GitHub Enterprise and is not now.
-# `cli/src/devx/gcp/artifact_registry.rs` `GITHUB_OIDC_ISSUER` has always been
-# this value, so only the description was wrong.
+# `cli/src/devx/gcp/artifact_registry.rs` `GITHUB_OIDC_ISSUER` carries that same
+# value, and it is the issuer a provider must trust for the exchange to succeed.
 #
 # Which issuer is trusted is a property of the `workload_identity_provider`
 # resource the caller passes, not a parameter this action sets.

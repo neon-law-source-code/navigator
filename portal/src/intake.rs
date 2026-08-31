@@ -37,6 +37,56 @@ fn is_past_intake(state: &str) -> bool {
     state.starts_with("sent_for_signature") || state == workflows::StateName::END
 }
 
+/// Find the first notation on a client-visible matter whose client-facing
+/// questionnaire still needs an answer. The matter visibility check is kept
+/// here beside the intake route's authoritative check; the matter page only
+/// receives a link after the same client-side participation predicate passes.
+pub(crate) async fn pending_client_intake_for_project(
+    surreal: &store::surreal::SurrealDb,
+    storage: &std::sync::Arc<dyn cloud::StorageService>,
+    session: &SessionData,
+    project_id: Uuid,
+) -> Result<Option<Uuid>, String> {
+    if session.role != store::persons::Role::Client || session.person_id.is_none() {
+        return Ok(None);
+    }
+    let visible =
+        store::projects::can_access_as_client_in_surreal(surreal, session.person_id, project_id)
+            .await
+            .map_err(|e| e.to_string())?;
+    if !visible {
+        return Ok(None);
+    }
+
+    let notations = store::notations::list_by_project(surreal, project_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    for notation in notations {
+        if is_past_intake(&notation.state) {
+            continue;
+        }
+        let step = match notation_session::client_intake_step(surreal, Some(storage), notation.id)
+            .await
+        {
+            // A matter can carry a document-only notation. It has no
+            // client-facing questionnaire to continue, but that should not
+            // make the matter page itself unavailable.
+            Err(
+                workflows::notation_session::NotationSessionError::TemplateHasNoQuestionnaire(_)
+                | workflows::notation_session::NotationSessionError::QuestionNotSeeded(_),
+            ) => {
+                continue;
+            }
+            Err(error) => return Err(error.to_string()),
+            Ok(step) => step,
+        };
+        if matches!(step, ClientIntakeStep::NeedsAnswer { .. }) {
+            return Ok(Some(notation.id));
+        }
+    }
+    Ok(None)
+}
+
 /// Seeded jurisdiction names a question's select offers, per the
 /// registry's `jurisdiction_type_filter` (today: `country` questions).
 /// Empty for every other `answer_type`, so callers can pass it

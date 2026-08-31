@@ -21,6 +21,12 @@ use serde::{Deserialize, Serialize};
 use crate::people::ViewerRole;
 use crate::portal_project_list::PersonId;
 
+/// The pending client-intake notation resolved by the portal request layer.
+/// The resolver lives in `portal`, which owns the workflow dependency; this
+/// wasm-safe extension carries only the link target into the Dioxus server fn.
+#[derive(Clone, Default)]
+pub struct PendingClientIntake(pub Option<String>);
+
 /// The matter's invoice, read from the local Xero mirror. The Xero invoice id is
 /// deliberately not carried — only the client-facing amount and status.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
@@ -85,6 +91,10 @@ pub struct ProjectDetailView {
     /// configures none.
     #[serde(default)]
     pub logo: Option<crate::components::AppLogo>,
+    /// The one client-facing intake continuation for this matter, when the
+    /// current client-facing workflow still needs an answer.
+    #[serde(default)]
+    pub pending_intake: Option<String>,
 }
 
 /// Client-friendly status for a notation, derived from its workflow state and
@@ -161,6 +171,13 @@ pub async fn get_project_detail() -> Result<ProjectDetailView, ServerFnError> {
         .await
         .map(|axum::Extension(impersonation)| impersonation)
         .unwrap_or_default();
+    let pending_intake = dioxus_fullstack_core::FullstackContext::extract::<
+        axum::Extension<PendingClientIntake>,
+        _,
+    >()
+    .await
+    .map(|axum::Extension(intake)| intake.0)
+    .unwrap_or_default();
     let person_id = person_id.and_then(|raw| raw.parse::<uuid::Uuid>().ok());
 
     let surreal = consume_context::<store::surreal::SurrealDb>();
@@ -253,6 +270,7 @@ pub async fn get_project_detail() -> Result<ProjectDetailView, ServerFnError> {
         role,
         impersonation,
         logo,
+        pending_intake,
     })
 }
 
@@ -407,6 +425,17 @@ pub fn ClientProjectDetail() -> Element {
                         } else {
                             span { class: "status-chip status-chip--due", "Due" }
                         }
+                    }
+                }
+            }
+
+            if let Some(notation_id) = view.pending_intake.as_ref() {
+                p { class: "portal-detail__actions",
+                    a {
+                        class: "nav-btn nav-btn--primary",
+                        href: "/app/projects/{view.code}/intake/{notation_id}",
+                        role: "button",
+                        "Continue intake"
                     }
                 }
             }

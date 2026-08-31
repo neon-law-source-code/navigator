@@ -518,6 +518,44 @@ async fn inject_person_id(mut req: Request, next: Next) -> Response {
     next.run(req).await
 }
 
+/// Resolve the client-facing intake continuation before the matter page's
+/// Dioxus server function runs. `webapp` deliberately has no workflow
+/// dependency, so the portal owns this request-layer seam and passes only the
+/// wasm-safe notation id across it.
+async fn inject_pending_client_intake(
+    axum::extract::State((surreal, storage)): axum::extract::State<(
+        store::surreal::SurrealDb,
+        std::sync::Arc<dyn cloud::StorageService>,
+    )>,
+    mut req: Request,
+    next: Next,
+) -> Response {
+    let pending = match req.extensions().get::<crate::session::SessionData>() {
+        Some(session) if session.role == store::persons::Role::Client => {
+            match project_id_from_path(&surreal, req.uri().path()).await {
+                Some(project_id) => {
+                    crate::intake::pending_client_intake_for_project(
+                        &surreal, &storage, session, project_id,
+                    )
+                    .await
+                }
+                None => Ok(None),
+            }
+        }
+        _ => Ok(None),
+    };
+    let pending = match pending {
+        Ok(pending) => pending.map(|id| id.to_string()),
+        Err(error) => {
+            tracing::error!(error = %error, "portal: resolving pending client intake failed");
+            return (StatusCode::INTERNAL_SERVER_ERROR, "internal").into_response();
+        }
+    };
+    req.extensions_mut()
+        .insert(webapp::portal_project_detail::PendingClientIntake(pending));
+    next.run(req).await
+}
+
 /// Inject the session's impersonation state as the wasm-safe
 /// [`webapp::components::ImpersonationView`] request extension, so a Dioxus page
 /// can render the banner that says who the viewer is acting as and offer the way
@@ -1016,6 +1054,7 @@ pub fn project_detail_router(
     auth: crate::auth::AuthConfig,
 ) -> Router {
     let repository_surreal = surreal.clone();
+    let pending_intake_state = (surreal.clone(), storage.clone());
     // Both lenses render from this one mount, so it provides the union of what
     // either needs. `storage` is the client view's; the firm view ignores it.
     let cfg = ServeConfig::new().context_providers(std::sync::Arc::new(vec![
@@ -1037,6 +1076,10 @@ pub fn project_detail_router(
                 .layer(from_fn(inject_person_id))
                 .layer(from_fn(inject_csrf_token))
                 .layer(from_fn(inject_impersonation))
+                .layer(from_fn_with_state(
+                    pending_intake_state,
+                    inject_pending_client_intake,
+                ))
                 .layer(from_fn_with_state(
                     repository_surreal,
                     inject_project_repository_pointer,

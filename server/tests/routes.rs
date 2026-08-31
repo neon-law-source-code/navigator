@@ -7576,6 +7576,101 @@ async fn client_project_detail_shows_no_service_panel_and_no_price() {
 }
 
 #[tokio::test]
+async fn client_project_detail_links_only_to_pending_intake() {
+    let (state, surreal) = state_with_engines().await;
+    let (project_id, project_code, cookie) = client_project_fixture(&surreal).await;
+    let client_id = test_sessions()
+        .decode(cookie.trim_start_matches("navigator_session="))
+        .and_then(|session| session.person_id)
+        .expect("fixture cookie carries the client person id");
+
+    // Use the shipped questionnaire shape so the resolver exercises the same
+    // client-facing state machine as the intake page: `person__client` is the
+    // one question the client must answer.
+    store::templates::save_version(
+        &surreal,
+        None,
+        "onboarding__letter",
+        store::templates::Version {
+            title: "Client intake agreement".into(),
+            respondent_type: "person".into(),
+            asset_id: None,
+            form_code: None,
+            kind: None,
+            source_commit_sha: None,
+        },
+    )
+    .await
+    .unwrap();
+    for code in [
+        "entity",
+        "address",
+        "person",
+        "project",
+        "custom_text",
+        "custom_datetime",
+        "custom_single_choice",
+    ] {
+        store::questions::create(
+            &surreal,
+            &store::questions::NewQuestion::new(code, format!("Prompt for {code}"), "string"),
+        )
+        .await
+        .unwrap();
+    }
+    let notation = workflows::notation_session::start_notation(
+        &surreal,
+        &workflows::InMemoryRuntime::new(),
+        None,
+        "onboarding__letter",
+        client_id,
+        project_id,
+        None,
+    )
+    .await
+    .unwrap();
+
+    let app = server::neon_router(
+        state.clone(),
+        std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
+    );
+    let resp = get_with_cookie(app, &format!("/app/projects/{project_code}"), &cookie).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_string(resp).await;
+    assert!(
+        body.contains(&format!(
+            "href=\"/app/projects/{project_code}/intake/{}\"",
+            notation.notation_id
+        )),
+        "pending intake link should point to the notation: {body}"
+    );
+    assert!(
+        body.contains(">Continue intake<"),
+        "link label renders: {body}"
+    );
+
+    workflows::notation_session::record_client_answer(
+        &surreal,
+        None,
+        notation.notation_id,
+        "person__client",
+        "Portal Client",
+        client_id,
+    )
+    .await
+    .unwrap();
+
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+    let resp = get_with_cookie(app, &format!("/app/projects/{project_code}"), &cookie).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_string(resp).await;
+    assert!(
+        !body.contains("Continue intake"),
+        "completed intake has no continuation link: {body}"
+    );
+}
+
+#[tokio::test]
 async fn client_project_detail_links_the_documents_zip() {
     let (state, surreal) = state_with_engines().await;
     let (project_id, project_code, cookie) = client_project_fixture_for_product(

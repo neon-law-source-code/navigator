@@ -204,6 +204,73 @@ async fn stock_local_personas_reach_the_litigation_matter_through_their_own_lens
 }
 
 #[tokio::test]
+async fn client_can_continue_pending_intake_from_the_matter_page() {
+    let Some(c) = new_client_or_skip().await else {
+        return;
+    };
+    let surreal = store::surreal::connect_from_env()
+        .await
+        .expect("connect to the port-forwarded SurrealDB");
+    let client = store::persons::find_by_email_ci(&surreal, "client@neonlaw.com")
+        .await
+        .expect("look up the browser-harness client person")
+        .expect("the browser harness requires the seeded client");
+    let template = store::templates::resolve(&surreal, None, "onboarding__letter")
+        .await
+        .expect("look up the shipped onboarding template")
+        .expect("the browser harness requires the shipped onboarding template");
+    let unique = Uuid::now_v7();
+    let project = store::projects::create(
+        &surreal,
+        &store::projects::NewProject {
+            code: format!("client-intake-{unique}"),
+            name: format!("Client Intake {unique}"),
+            status: "open".into(),
+            entity_id: store::test_support::seed_entity(&surreal).await,
+            ..Default::default()
+        },
+    )
+    .await
+    .expect("seed the synthetic client-intake matter");
+    store::projects::add_participation(&surreal, project.id, client.id, "client")
+        .await
+        .expect("scope the seeded client onto the synthetic matter");
+    store::notations::create(
+        &surreal,
+        &store::notations::NewNotation::new(
+            template.id,
+            client.id,
+            project.id,
+            workflows::StateName::BEGIN,
+        ),
+    )
+    .await
+    .expect("seed the pending client intake");
+
+    login_as_client(&c).await;
+    c.goto(&format!("{}/app/projects/{}", base_url(), project.code))
+        .await
+        .expect("open the synthetic matter page");
+    wait_for_text(&c, "Continue intake", Duration::from_secs(20)).await;
+    let link = c
+        .find(Locator::Css("a[href*='/intake/']"))
+        .await
+        .expect("the matter page renders the intake continuation");
+    assert_eq!(link.text().await.unwrap(), "Continue intake");
+
+    if std::env::var("NAV_ENG_402_SHOTS").as_deref() == Ok("1") {
+        let dir = std::path::Path::new("/tmp/navigator-screenshots");
+        std::fs::create_dir_all(dir).expect("create screenshot directory");
+        std::fs::write(
+            dir.join("eng-402-client-intake.png"),
+            c.screenshot().await.expect("capture matter page"),
+        )
+        .expect("write matter-page screenshot");
+    }
+    c.close().await.unwrap();
+}
+
+#[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn lawyer_walks_the_full_retainer_questionnaire_end_to_end() {
     // Drives every leg of the stepwise retainer flow in a real

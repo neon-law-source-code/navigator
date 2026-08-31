@@ -131,13 +131,19 @@ fn flat_lower(body: &str) -> String {
 
 /// [`flat_lower`], with Markdown emphasis markers removed as well.
 ///
-/// A phrase match against Markdown reads `**Neon Law Foundation**` and
-/// `Neon Law Foundation` as different strings, so a claim written in bold slips
-/// past a matcher built for plain prose — and the claims most worth catching are
-/// the emphasized ones, because emphasis is what a writer reaches for on the
-/// sentence they think matters.
+/// A phrase match against Markdown reads the retired nonprofit's name in
+/// bold as a different string from the same words without markers, so a
+/// claim written in bold slips past a matcher built for plain prose — and the
+/// claims most worth catching are the emphasized ones, because emphasis is
+/// what a writer reaches for on the sentence they think matters.
 fn unemphasized(body: &str) -> String {
     flat_lower(body).replace(['*', '_'], "")
+}
+
+/// The retired nonprofit's display name, joined at runtime so this file does
+/// not contain the contiguous phrase a tree-wide sweep rejects.
+fn retired_org_name() -> String {
+    ["Neon", "Law", "Foundation"].join(" ")
 }
 
 /// The prose surrounding a match — 200 characters either side, snapped out to
@@ -1143,20 +1149,22 @@ fn the_chain_of_title_is_recorded_and_nothing_contradicts_it() {
     /// Where the chain is written down.
     const RECORD: &str = "docs/licensing.md";
 
-    /// Ways a document says the Foundation owns the copyright.
-    ///
-    /// Matched against prose with its whitespace collapsed, its case folded,
-    /// **and its emphasis markers stripped**. That last one is not a nicety: the
-    /// stale claim was written `copyright the **Neon Law Foundation**` in
-    /// several files, so a matcher that reads asterisks as characters misses the
-    /// exact formatting the tree actually used. A guard whose pattern is
-    /// defeated by bold text is a guard that would have passed through the
-    /// entire period this was wrong.
-    const CONTRADICTIONS: [&str; 4] = [
-        "copyright the neon law foundation",
-        "copyright neon law foundation",
-        "neon law foundation, which produces it; the firm operates it",
-        "neon law foundation produces the software and holds the copyright",
+    // Ways a document says the retired nonprofit owns the copyright.
+    //
+    // Matched against prose with its whitespace collapsed, its case folded,
+    // and its emphasis markers stripped. That last one is not a nicety: the
+    // stale claim was written with the name in bold, so a matcher that reads
+    // asterisks as characters misses the exact formatting the tree actually
+    // used. A guard whose pattern is defeated by bold text is a guard that
+    // would have passed through the entire period this was wrong.
+    let org = retired_org_name().to_lowercase();
+    let contradictions = [
+        format!("copyright the {org}"),
+        format!("copyright {org}"),
+        format!("{org}, which produces it; the firm operates it"),
+        format!("{org} produces the software and holds the copyright"),
+        format!("{org} produces the neon law navigator source code and holds the copyright"),
+        "the code is open source: the software is dual-licensed".to_string(),
     ];
 
     // ---- The chain is recorded, with reasoning rather than an assertion. ----
@@ -1182,15 +1190,19 @@ fn the_chain_of_title_is_recorded_and_nothing_contradicts_it() {
     // ---- Nothing in the tree says otherwise. ----
     let mut offenders = Vec::new();
 
-    for path in markdown_documents() {
+    for path in markdown_documents()
+        .into_iter()
+        .chain(license_txt_documents())
+    {
         let rel = path
             .strip_prefix(repo_root())
             .unwrap_or(&path)
             .to_string_lossy()
             .replace("../", "");
         let flat = unemphasized(&fs::read_to_string(&path).unwrap_or_default());
-        let stale: Vec<&str> = CONTRADICTIONS
-            .into_iter()
+        let stale: Vec<&str> = contradictions
+            .iter()
+            .map(String::as_str)
             .filter(|claim| flat.contains(claim))
             .collect();
 
@@ -1365,7 +1377,18 @@ fn trademark_notices_name_the_firm_as_the_registrant() {
 /// Every Markdown document in the tree, so a claim about the grant is guarded
 /// wherever someone writes it rather than only in the terms files.
 fn markdown_documents() -> Vec<PathBuf> {
-    fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
+    walk_repo_files(|name| name.to_ascii_lowercase().ends_with(".md"))
+}
+
+/// Bundled notices named `LICENSE.txt`. Root [`LICENSE`] is the BUSL text and
+/// is gated separately; these files sit beside assets, so a copyright claim
+/// here would slip a Markdown-only walk.
+fn license_txt_documents() -> Vec<PathBuf> {
+    walk_repo_files(|name| name.eq_ignore_ascii_case("LICENSE.txt"))
+}
+
+fn walk_repo_files(keep: impl Fn(&str) -> bool) -> Vec<PathBuf> {
+    fn walk(dir: &Path, out: &mut Vec<PathBuf>, keep: &impl Fn(&str) -> bool) {
         let Ok(entries) = fs::read_dir(dir) else {
             return;
         };
@@ -1375,15 +1398,15 @@ fn markdown_documents() -> Vec<PathBuf> {
             let name = name.to_string_lossy();
             if path.is_dir() {
                 if !is_skipped_dir(name.as_ref()) {
-                    walk(&path, out);
+                    walk(&path, out, keep);
                 }
-            } else if name.ends_with(".md") {
+            } else if keep(name.as_ref()) {
                 out.push(path);
             }
         }
     }
     let mut out = Vec::new();
-    walk(&repo_root(), &mut out);
+    walk(&repo_root(), &mut out, &keep);
     out.sort();
     out
 }
@@ -1577,13 +1600,13 @@ fn the_internal_assignment_names_the_firm_that_engaged_the_author() {
                  party the agreements name: …{claim}…"
             ));
         }
-        if claim.contains(&format!("{ANCHOR} the Neon Law Foundation"))
+        if claim.contains(&format!("{ANCHOR} the {}", retired_org_name()))
             || claim.contains(&format!("{ANCHOR} the Foundation"))
         {
             offenders.push(format!(
-                "assigns to the Foundation, which holds no such agreement — \
-                 the employment and contractor agreements are `{REGISTRANT}`'s: \
-                 …{claim}…"
+                "assigns to the retired nonprofit, which holds no such \
+                 agreement — the employment and contractor agreements are \
+                 `{REGISTRANT}`'s: …{claim}…"
             ));
         }
     }
@@ -1592,6 +1615,34 @@ fn the_internal_assignment_names_the_firm_that_engaged_the_author() {
         offenders.is_empty(),
         "the practice engages its personnel and contractors through \
          `{REGISTRANT}`, so that is the assignee:\n  {}",
+        offenders.join("\n  ")
+    );
+}
+
+/// No tracked file contains the retired nonprofit's display name as a
+/// contiguous phrase — product copy, comments, and tests all assemble it at
+/// runtime if they need to match against a served page.
+#[test]
+fn no_file_contains_the_retired_org_display_name() {
+    let needle = retired_org_name().to_lowercase();
+    let mut offenders = Vec::new();
+    for path in walk_repo_files(|_| true) {
+        let Ok(body) = fs::read_to_string(&path) else {
+            continue;
+        };
+        if body.to_lowercase().contains(&needle) {
+            let rel = path
+                .strip_prefix(repo_root())
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace("../", "");
+            offenders.push(rel);
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "the retired nonprofit's display name is gone from the tree; these \
+         files still contain it:\n  {}",
         offenders.join("\n  ")
     );
 }

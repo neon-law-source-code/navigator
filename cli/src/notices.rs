@@ -658,7 +658,10 @@ source = "git+https://example.invalid/repo"
         let notices = collect(&[], &[]);
         let out = render(&notices);
         assert!(out.contains("Shook Law PLLC"), "{out}");
-        assert!(!out.contains("Neon Law Foundation"), "{out}");
+        assert!(
+            !out.contains(&["Neon", "Law", "Foundation"].join(" ")),
+            "{out}"
+        );
         assert!(out.contains("LICENSE"));
         assert!(out.contains("BUSL-1.1"));
     }

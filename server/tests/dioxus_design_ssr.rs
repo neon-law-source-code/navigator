@@ -120,7 +120,7 @@ async fn gallery_explains_the_brand_specific_primary() {
     assert!(!html.contains("signed-in design reference"), "{html}");
     assert!(html.contains("Neon Law uses copper"), "{html}");
     assert!(
-        !html.contains("Neon Law Foundation"),
+        !html.contains(&["Neon", "Law", "Foundation"].join(" ")),
         "the retired brand has no swatch to explain: {html}"
     );
 }

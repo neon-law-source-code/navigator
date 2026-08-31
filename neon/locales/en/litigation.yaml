@@ -31,14 +31,12 @@ body:
         , the firm’s case system. Work arrives on the matter as an event: a new
         court docket filing, a letter, or new research. Our event-driven agentic
         workflows start the work that event implies instead of waiting for
-        someone to notice it. A statutory deadline is calendared from the
-        statute that sets it.
+        someone to notice it.
   - - text: >-
         The system is data engineering applied to a case file. We build the
         matter as a graph and log each relationship in it as the case moves, so
         the record of who is connected to whom is kept as we go rather than
-        reconstructed later. We match that record literally, because litigation
-        turns on what the record actually says.
+        reconstructed later.
   - - text: >-
         Filings land on the matter by kind: pleading, motion, opposition, reply,
         order. The docket, the discovery, and the disclosures sit together, so

@@ -25,7 +25,6 @@ pub mod email;
 pub mod github;
 pub mod guardrail;
 pub mod intake;
-pub mod nautilus;
 pub mod notation_session;
 pub mod notify;
 pub mod runtime;
@@ -54,11 +53,6 @@ pub use email::{
 pub use guardrail::{lawyer_review_gates_filing, lawyer_review_precedes_submission, GateViolation};
 pub use intake::{
     dispatch_document_intake, is_document_intake, IntakeArtifact, IntakeError, IntakePayload,
-};
-pub use nautilus::{
-    classify, classify_fcra_result, deadline_from, deadlines_for, litigation_referral, route,
-    triage, DeadlineKind, FcraDisputeResult, LitigationReferral, ScreeningMailClass,
-    StatutoryDeadline, TriageDecision, TriageRoute,
 };
 pub use notation_session::{
     answer_step, answer_step_with_reference, choice_label, create_notation_from_repo, current_step,

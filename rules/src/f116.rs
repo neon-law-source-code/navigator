@@ -16,14 +16,14 @@
 //!
 //! - `generate_pdf__*` renders a PDF for attorney review
 //!   ("review-ready, never auto-filed") — it is the *start* of a gated
-//!   path, not the outbound act. Gating it would wrongly flag the
-//!   Nautilus letters, which render *then* review *then* mail.
+//!   path, not the outbound act. Gating it would wrongly flag letters
+//!   that render *then* review *then* mail.
 //! - `sent_for_signature__*` is the e-signature send. Its gating is
-//!   deliberately **non-universal** at run time — the Nautilus
-//!   settlement letter has the client authorize the firm *before*
-//!   `lawyer_review` gates the outbound mailing — so it stays out of this
-//!   universal rule. The engine covers the engagement-document signature
-//!   gate separately.
+//!   deliberately **non-universal** at run time — a settlement letter
+//!   can have the client authorize the firm *before* `lawyer_review`
+//!   gates the outbound mailing — so it stays out of this universal
+//!   rule. The engine covers the engagement-document signature gate
+//!   separately.
 //!
 //! The gated prefix set is kept in lockstep with the engine by the
 //! `outbound_set_matches_workflows_guardrail` drift test below.

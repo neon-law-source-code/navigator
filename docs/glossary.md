@@ -956,11 +956,21 @@ column and neither consults the id — `portal::dioxus_app::project_show_path` w
 renders, and `project_id_from_path` reads one back. A lowercase UUID is itself a well-formed code, so nothing could
 refuse one on sight; what keeps ids out of URLs is the lookup, not the shape of the segment.
 
-The code is **required at matter-open and never derived**: `code` names the matter's Drive ingest folder and its
-object-storage prefix, and that mapping is an equality check, so a code Navigator invented would name no folder.
-(`code_from_name` remains available to fixture and internal callers that are not matter-opens.) Uppercase and
-underscores stay out deliberately: Drive and macOS are case-insensitive, so uppercase would let one folder answer to two
-codes, and a second separator would turn the mapping into a normalization instead of an equality.
+The code is **required at matter-open**: the caller supplies a stem, validated by the same `is_valid_code` shape and
+reserved-word rules a hand-typed code always carried. `store::projects::code_from_name` then appends a short generated
+suffix — eight lowercase letters derived from the matter's id — so two matters can never collide on a hand-picked stem;
+one client with two matters, or two clients with similar names, no longer permanently strands the loser with whatever it
+settled for. Uppercase and underscores stay out deliberately: the code is also the repository name (see
+[`project-repositories`](project-repositories.md)), and a second separator would turn the stem-plus-suffix concatenation
+into a normalization instead of an unambiguous join.
+
+**The code is immutable.** It is chosen once, at matter-open, and never changes — not on a client rename, not for a
+nicer slug, not ever. `code` addresses things Navigator does not own: the matter's route (`/app/projects/{code}`), its
+portal mount (`/app/projects/{code}/portal/`), and its documents-bucket prefix (`projects/{code}`) all key off the exact
+spelling picked at creation. `project.code` is `READONLY` in the SurrealDB schema, so a direct write that tries to
+change it is refused by the engine itself, not only by the absence of a handler that offers to — `UpdateProjectCommand`
+carries no `code` field at all. There is no rename path, and none is planned: the refusal is a rule with a reason, not
+an absence waiting to be filled in.
 
 Object-storage artifacts (rendered PDFs, signed documents, generated exports) live in
 `gs://YOUR_PROJECT_ID-assets/projects/{id}/` for machine reads, and the nightly store→Parquet snapshots are immutable

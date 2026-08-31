@@ -42,11 +42,13 @@ host and path, no whitespace, and no embedded credential. That URL is handed to 
 a link, so a `file://` value would read the serving host's disk and a `user:token@` value would put a secret in a column
 that is rendered into a page and logged.
 
-The Project code is the stable Navigator `projects.code`. It is the Project folder basename in its deployment's selected
-Drive ingest root, and the documents-bucket prefix is `projects/<code>`. That equality is why the slug rules are what
-they are: lowercase letters, digits, and single hyphens, alphanumeric at both ends, at most 80 characters. Drive and
-macOS are case-insensitive, so uppercase would let one folder answer to two codes; one separator keeps the mapping an
-equality check rather than a normalization. The code does **not** name the repository.
+The Project code is the stable Navigator `projects.code`, and the documents-bucket prefix is `projects/<code>`. It is
+also the repository's own directory name, by the convention the next section states — that equality is why the slug
+rules are what they are: lowercase letters, digits, and single hyphens, alphanumeric at both ends, at most 80
+characters. A checkout and macOS are case-insensitive, so uppercase would let one directory answer to two codes; one
+separator keeps the mapping an equality check rather than a normalization. The code no longer names a Drive folder —
+per-matter Drive folders are being retired (see [the glossary](glossary.md#project)) — and `project.repository_url`
+itself remains a stored URL Navigator never composes from the code (above).
 
 `new` is refused as a Project code. `/app/projects/new` is Navigator's matter-open form, so a Project coded `new` would
 collide with a literal route. Which side of a genuine collision wins depends on route registration order, so the code is
@@ -66,8 +68,10 @@ on every deployment forever, which is exactly what a Project's repository never 
 A Project code is **lowercase letters, digits, and single hyphens**, alphanumeric at both ends, at most 80 characters —
 no uppercase, no underscores, no other punctuation, no spaces. `store::projects::is_valid_code` is the one definition
 and [the glossary](glossary.md#project) carries the rationale for each restriction. The code is the matter's whole
-public identity: its show page, its client portal, its repository name, and its folder in the firm's shared drive are
-all that one word, and Navigator never invents it.
+public identity: its show page, its client portal, and its repository name are all that one word — and it is
+**immutable**, chosen once at matter-open and never changed. A lawyer supplies the stem; Navigator appends a short
+generated suffix (`store::projects::code_from_name`) so two matters can never collide on a hand-picked stem, the way a
+hand-picked permanent identifier once could.
 
 ```text
 /app/projects/<project-code>            the matter's show page — never its internal UUID

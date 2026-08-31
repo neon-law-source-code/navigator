@@ -62,14 +62,22 @@ DEFINE FIELD OVERWRITE applied_at ON schema_version TYPE datetime DEFAULT time::
 -- command seams, and so is this one, because the engine does not validate a
 -- link.
 DEFINE TABLE IF NOT EXISTS project SCHEMAFULL PERMISSIONS NONE;
--- A Project code is its Drive folder name and a route segment.
+-- A Project code is a route segment and a repository name.
 -- `/app/projects/new` is the matter-open form, so a Project whose code is
 -- `new` would collide with it; refusing the code in
 -- `store::projects::is_valid_code` alone would leave a direct write able to
 -- create the colliding row. The slug *shape* stays enforced in Rust, at every
 -- write path, rather than being restated here as a second regex to keep in
 -- step.
+--
+-- `READONLY` makes immutability structural rather than a property of which
+-- handlers happen to omit `code` from their update commands (see
+-- `docs/glossary.md#project`): a Project's route, portal mount, and
+-- documents-bucket prefix all key off the exact spelling chosen at
+-- matter-open, so a direct write that rewrites it must be refused by the
+-- engine itself, not only by the absence of a handler that offers to.
 DEFINE FIELD OVERWRITE code ON project TYPE string
+    READONLY
     ASSERT $value != 'new';
 DEFINE FIELD OVERWRITE name ON project TYPE string;
 DEFINE FIELD OVERWRITE status ON project TYPE string;

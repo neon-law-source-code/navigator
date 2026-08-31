@@ -273,10 +273,13 @@ mod tests {
         assert_eq!(
             surfaces,
             ProjectSurfaces {
-                code: "acme".into(),
-                documents_prefix: "projects/acme".into(),
+                code: project.code.clone(),
+                documents_prefix: format!("projects/{}", project.code),
                 drive_folder_id: Some("folder-1".into()),
-                repository_url: Some("https://forge.example/an-organization/acme".into()),
+                repository_url: Some(format!(
+                    "https://forge.example/an-organization/{}",
+                    project.code
+                )),
             }
         );
 
@@ -287,7 +290,7 @@ mod tests {
         assert_eq!(reloaded.drive_folder_id.as_deref(), Some("folder-1"));
         assert_eq!(
             reloaded.repository_url.as_deref(),
-            Some("https://forge.example/an-organization/acme")
+            Some(format!("https://forge.example/an-organization/{}", project.code).as_str())
         );
         assert!(reloaded.forge_provisioned_at.is_some());
 
@@ -322,7 +325,7 @@ mod tests {
         assert_eq!(forge.repository_count(), 1);
         let folders = drive.list_folders().await.expect("list");
         assert_eq!(folders.len(), 1);
-        assert_eq!(folders[0].name, "acme");
+        assert_eq!(folders[0].name, project.code);
     }
 
     #[tokio::test]
@@ -330,7 +333,10 @@ mod tests {
         let surreal = mem_surreal().await;
         let project = open_acme(&surreal).await;
         let drive = FakeDrive::default();
-        let already = drive.create_folder("acme").await.expect("pre-create");
+        let already = drive
+            .create_folder(&project.code)
+            .await
+            .expect("pre-create");
         let forge = FakeForge::new();
 
         let surfaces = reconcile(&surreal, project.id, Some(&drive), Some(&forge))
@@ -375,7 +381,10 @@ mod tests {
         let surfaces = reconcile(&surreal, project.id, None::<&FakeDrive>, None::<&FakeForge>)
             .await
             .expect("skip");
-        assert_eq!(surfaces.documents_prefix, "projects/acme");
+        assert_eq!(
+            surfaces.documents_prefix,
+            format!("projects/{}", project.code)
+        );
         assert_eq!(surfaces.drive_folder_id, None);
         assert_eq!(surfaces.repository_url, None);
     }

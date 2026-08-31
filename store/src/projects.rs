@@ -139,6 +139,14 @@ pub enum ProjectStoreError {
     Person(#[from] crate::persons::PersonError),
     #[error("that project code is already in use")]
     CodeTaken,
+    /// A direct write tried to change `code` on an existing row. The engine
+    /// refuses this itself (`project.code` is `READONLY`); this variant only
+    /// gives the refusal a message that points at the rule.
+    #[error(
+        "a Project code cannot be changed after it is chosen at matter-open — see \
+         docs/glossary.md#project"
+    )]
+    CodeImmutable,
     #[error("writing a project returned no usable row")]
     WriteReturnedNothing,
     #[error("no person {0}")]
@@ -148,8 +156,11 @@ pub enum ProjectStoreError {
 }
 
 fn classify_project_write(error: surrealdb::Error) -> ProjectStoreError {
-    if error.to_string().contains("project_code") {
+    let message = error.to_string();
+    if message.contains("project_code") {
         ProjectStoreError::CodeTaken
+    } else if message.contains("field `code`") && message.contains("readonly") {
+        ProjectStoreError::CodeImmutable
     } else {
         ProjectStoreError::Db(error)
     }
@@ -871,9 +882,9 @@ pub enum DriSide {
 ///
 /// Digits survive. A name carrying a numeral — a company name ending in one, a
 /// statute or form number, a matter named for a section — keeps it, rather than
-/// having it collapsed into a separator. That matters because a matter's code is
-/// also the name of its folder in the firm's shared drive (#938), and a folder
-/// named for a numbered filing has to be expressible as a code.
+/// having it collapsed into a separator: the code is what the matter's route,
+/// portal mount, and documents-bucket prefix use, so a numbered filing has to
+/// be expressible as a code.
 #[must_use]
 pub fn code_base_from_name(name: &str) -> String {
     let mut out = String::new();
@@ -932,16 +943,16 @@ pub fn normalize_code(input: &str) -> Option<String> {
 }
 
 /// Whether a matter code is safe as a URL segment, a bare-repo directory name,
-/// and a folder name in the firm's shared drive.
+/// and an object-storage key prefix.
 ///
 /// Lowercase letters, digits, and single hyphens; alphanumeric at both ends,
 /// and not a segment Navigator routes on its own.
 ///
 /// `cloud::workspace` holds the single definition of that shape and this calls
-/// it, so a Project code and its Drive folder name cannot drift apart. The
-/// rationale for each shape restriction lives there. A Project's repository is
-/// *not* named from the code — it is a whole URL stored on the row, validated
-/// by [`is_valid_repository_url`].
+/// it, so a Project code and its repository's directory name cannot drift
+/// apart. The rationale for each shape restriction lives there. The
+/// `repository_url` *column*, in contrast, is not composed from the code — it
+/// is a whole URL stored on the row, validated by [`is_valid_repository_url`].
 ///
 /// The reserved-code refusal is the second half. A code is a route segment —
 /// `/app/projects/{code}/portal` — and `/app/projects/new` is the matter-open
@@ -1694,14 +1705,16 @@ pub async fn delete_project_with_surreal(
 pub struct OpenMatterCommand {
     /// The matter's display name. Required.
     pub name: String,
-    /// The matter's code. **Required** — a blank code is refused, never
-    /// derived.
+    /// The stem of the matter's code. **Required** — a blank stem is refused.
     ///
-    /// The code is also the name of the matter's folder in the firm's shared
-    /// drive, and that mapping is 1-1 (#938). Deriving one here would append a
-    /// UUID letter suffix ([`code_from_name`]) that no folder is named after, so
-    /// every derivation would silently open a matter whose working files are
-    /// unreachable. The caller — who knows the folder — supplies it.
+    /// This is not the stored code: [`open_matter`] appends a short generated
+    /// suffix ([`code_from_name`]) so two matters can never collide on a
+    /// hand-picked stem — a code is chosen once and never changes (see
+    /// [`docs/glossary.md#project`](../../docs/glossary.md#project)), so a
+    /// collision would otherwise permanently strand the loser with whatever
+    /// it settled for. The stem itself still passes [`is_valid_code`]: lowercase
+    /// letters, digits, and single hyphens, alphanumeric at both ends, and not
+    /// a reserved word.
     pub code: String,
     /// The client of record — a pre-existing `Role::Client` person, never a
     /// firm attorney (the firm-as-its-own-client default is a loyalty problem
@@ -1860,19 +1873,23 @@ pub async fn open_matter(
         return Err(OpenMatterError::Invalid("Name is required."));
     }
     let project_id = Uuid::now_v7();
-    // The code is required, not derived. It is the name of this matter's folder
-    // in the firm's shared drive, so a code this function invented would name no
-    // folder at all (#938) — the caller supplies it or the open is refused.
-    let code = normalize_code(&input.code).ok_or(OpenMatterError::Invalid(
-        "Code is required — it is also the matter's shared-drive folder name, \
-         so it cannot be derived.",
-    ))?;
-    if !is_valid_code(&code) {
+    // The stem is required, not blank — validated the same way a hand-typed
+    // code always was. What actually lands in `code` is this stem plus a
+    // generated suffix (below), so two matters can never collide on the same
+    // stem the way a hand-picked permanent identifier once could.
+    let stem = normalize_code(&input.code).ok_or(OpenMatterError::Invalid("Code is required."))?;
+    if !is_valid_code(&stem) {
         return Err(OpenMatterError::Invalid(
             "Project code must use lowercase letters, digits, and single hyphens; \
              it must start and end with a letter or digit.",
         ));
     }
+    // Generated, not typed: the code is chosen once and never changes (the
+    // engine enforces this — `project.code` is `READONLY`), so a stem alone
+    // would strand every collision on whatever it settled for. `code_from_name`
+    // already produces exactly this shape for the self-serve retainer walk;
+    // every matter-open door now shares it.
+    let code = code_from_name(&stem, project_id);
 
     // Validate every reference before opening. The project and both
     // participations commit in the explicit SurrealDB transaction below;
@@ -2239,9 +2256,9 @@ pub async fn matter_lifecycle_sets(
 #[cfg(test)]
 mod surreal_read_tests {
     use super::{
-        can_access_as_client_in_surreal, can_access_as_lawyer_in_surreal, create,
-        designate_dri_in_surreal, find_by_id, matter_directory, record_id, DriSide, NewProject,
-        ProjectStoreError, ENTITY_TABLE,
+        can_access_as_client_in_surreal, can_access_as_lawyer_in_surreal, classify_project_write,
+        create, designate_dri_in_surreal, find_by_id, matter_directory, record_id, DriSide,
+        NewProject, ProjectStoreError, ENTITY_TABLE,
     };
     use crate::persons::Role;
     use crate::schema::apply;
@@ -2362,6 +2379,44 @@ mod surreal_read_tests {
         assert!(
             direct.is_err(),
             "the engine must refuse a Project coded `new` written around is_valid_code"
+        );
+    }
+
+    /// Immutability is structural: an `UPDATE` that rewrites `code` on an
+    /// existing row is refused by the engine itself, not only by the absence
+    /// of a handler that offers to change it (`UpdateProjectCommand` has no
+    /// `code` field at all — this test is the direct write no handler stands
+    /// between).
+    #[tokio::test]
+    async fn a_direct_write_cannot_change_an_existing_projects_code() {
+        let db = unmigrated().await;
+        apply(&db).await.unwrap();
+        let id = uuid::Uuid::now_v7();
+        let entity_id = uuid::Uuid::now_v7();
+        db.query(
+            "CREATE $id SET code = 'alpha-matter', name = 'Alpha', status = 'open', \
+             entity_id = $entity_id, inserted_at = '2026-08-25T00:00:00Z', \
+             updated_at = '2026-08-25T00:00:00Z'",
+        )
+        .bind(("id", crate::surreal::record_id("project", id)))
+        .bind(("entity_id", record_id(ENTITY_TABLE, entity_id)))
+        .await
+        .and_then(surrealdb::IndexedResults::check)
+        .expect("seed the project row");
+
+        let attempt = db
+            .query("UPDATE $id SET code = 'beta-matter'")
+            .bind(("id", crate::surreal::record_id("project", id)))
+            .await
+            .and_then(surrealdb::IndexedResults::check);
+
+        let error = attempt.expect_err("the engine must refuse a direct write that changes `code`");
+        assert!(
+            matches!(
+                classify_project_write(error),
+                ProjectStoreError::CodeImmutable
+            ),
+            "the refusal should classify as CodeImmutable, pointing callers at the glossary rule"
         );
     }
 

@@ -1070,10 +1070,11 @@ async fn delete_entity(
 #[derive(Debug, Deserialize)]
 struct OpenProjectRequest {
     name: String,
-    /// The matter code. Required — no `serde(default)`: it names the matter's
-    /// folder in the firm's shared drive as well as its repo, and the mapping is
-    /// an equality check (#938), so a derived code would name no folder. An
-    /// omitted `code` is a 422 at deserialize.
+    /// The stem of the matter's code. Required — no `serde(default)`, so an
+    /// omitted `code` is a 422 at deserialize. This is not the stored code:
+    /// `store::projects::open_matter` appends a short generated suffix so the
+    /// stem alone can never collide with another matter's, since a code is
+    /// chosen once and never changes (`docs/glossary.md#project`).
     code: String,
     client_id: Uuid,
     entity_id: Uuid,

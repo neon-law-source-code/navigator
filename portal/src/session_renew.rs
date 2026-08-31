@@ -83,6 +83,7 @@ mod tests {
             source,
             provider: None,
             impersonation: None,
+            scope: None,
         }
     }
 

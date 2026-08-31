@@ -62,6 +62,7 @@ impl FirmWorld {
             source: portal::session::SessionSource::Browser,
             provider: None,
             impersonation: None,
+            scope: None,
         };
         format!("{SESSION_COOKIE_NAME}={}", self.sessions().encode(&session))
     }

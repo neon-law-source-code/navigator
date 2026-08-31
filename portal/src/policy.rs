@@ -184,6 +184,7 @@ pub async fn require_policy(
                 source: crate::session::SessionSource::Browser,
                 provider: None,
                 impersonation: None,
+                scope: None,
             });
         }
     }

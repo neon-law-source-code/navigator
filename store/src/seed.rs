@@ -346,7 +346,8 @@ where
 /// closed registry rather than a table-name escape hatch: each model keeps
 /// its store invariants (mailbox claims, reference resolution, and firm-anchor
 /// protection) on the server.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum SeedModel {
     Person,
     Entity,
@@ -383,6 +384,58 @@ pub struct ReconcileReport {
     pub unchanged: usize,
 }
 
+/// The authorization facts a reconcile pass needs, resolved by the adapter
+/// (`POST /app/api/seed`) from the caller's session so this module stays free
+/// of session types — the same split `people_commands::UpdateContext` draws.
+///
+/// `project_scope` is `None` for an unrestricted (interactive lawyer)
+/// session and `Some(code)` for a CI-minted, project-scoped one (ENG-344).
+#[derive(Debug, Clone, Copy)]
+pub struct ReconcileActor<'a> {
+    pub bootstrap_owner_email: Option<&'a str>,
+    pub actor_role: crate::persons::Role,
+    pub may_change_roles: bool,
+    pub project_scope: Option<&'a str>,
+}
+
+/// A refusal distinguishable from an ordinary parse or validation failure —
+/// the caller asked for something outside its session's scope, not
+/// something malformed. `reconcile_seed` downcasts to this type to answer
+/// `403 scope_violation` rather than `422 invalid_seed`.
+#[derive(Debug, thiserror::Error)]
+pub enum ScopeViolation {
+    /// The session's scope names an endpoint other than the one it was
+    /// presented to.
+    #[error("this session's scope does not cover this endpoint")]
+    EndpointNotScoped,
+    /// The session's scope does not list the requested [`SeedModel`].
+    #[error("this session's scope does not cover the {0} model")]
+    ModelNotScoped(&'static str),
+    /// The session's scope names a project code with no matching `project`
+    /// row — the common case while a repository has no live Project yet.
+    #[error("no live project carries code {0:?}")]
+    UnknownProject(String),
+    /// The record exists and is linked to a project other than the one this
+    /// session is scoped to.
+    #[error("record is linked to a different project than this session's scope")]
+    CrossProject,
+    /// The record exists but carries no project link at all, so a scoped
+    /// session cannot decide whether it may touch it. Refusing is the safe
+    /// default.
+    #[error("record carries no project link; a scoped session cannot claim it")]
+    Unlinked,
+    /// A scoped session tried to create a new Entity. An Entity's project
+    /// link (`project.entity_id`) is set when a project opens against it,
+    /// never at Entity-creation, so there is no project-owned link for a
+    /// scoped write to originate — only the Entity a project already names
+    /// can be reconciled under scope.
+    #[error(
+        "a scoped session cannot create a new entity; only the entity already \
+         linked to its scoped project can be updated"
+    )]
+    EntityCreateNotScopable,
+}
+
 /// Reconcile one seed-shaped YAML document.
 ///
 /// The document must use the same `lookup_fields` / `records` envelope as
@@ -397,11 +450,33 @@ pub async fn reconcile_yaml(
     yaml: &str,
     firm_anchor: &str,
     overwrite: bool,
+    actor: &ReconcileActor<'_>,
 ) -> anyhow::Result<ReconcileReport> {
     validate_yaml(model, yaml)?;
+    let scope_project = match actor.project_scope {
+        Some(code) => Some(
+            crate::projects::find_by_code(surreal, code)
+                .await?
+                .ok_or_else(|| {
+                    anyhow::Error::new(ScopeViolation::UnknownProject(code.to_string()))
+                })?,
+        ),
+        None => None,
+    };
     match model {
-        SeedModel::Person => reconcile_people(surreal, yaml, overwrite).await,
-        SeedModel::Entity => reconcile_entities(surreal, yaml, firm_anchor, overwrite).await,
+        SeedModel::Person => {
+            reconcile_people(surreal, yaml, overwrite, actor, scope_project.as_ref()).await
+        }
+        SeedModel::Entity => {
+            reconcile_entities(
+                surreal,
+                yaml,
+                firm_anchor,
+                overwrite,
+                scope_project.as_ref(),
+            )
+            .await
+        }
     }
 }
 
@@ -474,45 +549,95 @@ where
     Ok(parsed.records)
 }
 
+/// `person_project_role` scope check for an existing person under a scoped
+/// session: allowed only when a row already links this person to the
+/// scoped project. Distinguishes "linked elsewhere" from "linked nowhere"
+/// in the error only — both are refused, per the issue's ambiguous-case
+/// default.
+async fn authorize_person_project_scope(
+    surreal: &SurrealDb,
+    person_id: Uuid,
+    project: &crate::projects::Project,
+) -> anyhow::Result<()> {
+    if crate::projects::participation_for_person(surreal, person_id, project.id)
+        .await?
+        .is_some()
+    {
+        return Ok(());
+    }
+    let elsewhere = crate::projects::participations_for_person(surreal, person_id).await?;
+    Err(anyhow::Error::new(if elsewhere.is_empty() {
+        ScopeViolation::Unlinked
+    } else {
+        ScopeViolation::CrossProject
+    }))
+}
+
 async fn reconcile_people(
     surreal: &SurrealDb,
     yaml: &str,
     overwrite: bool,
+    actor: &ReconcileActor<'_>,
+    scope_project: Option<&crate::projects::Project>,
 ) -> anyhow::Result<ReconcileReport> {
     let mut report = ReconcileReport {
         model: SeedModel::Person.term().to_string(),
         ..ReconcileReport::default()
     };
+    let update_ctx = crate::people_commands::UpdateContext {
+        bootstrap_owner_email: actor.bootstrap_owner_email,
+        actor_role: actor.actor_role,
+        may_change_roles: actor.may_change_roles,
+    };
     for rec in parse_seed::<PersonRec>(yaml, SeedModel::Person, &["email"])? {
         let existing = crate::persons::find_by_email_ci(surreal, &rec.email).await?;
         match existing {
             None => {
-                crate::persons::create(
+                let created = crate::people_commands::create_person(
                     surreal,
-                    &crate::persons::NewPerson {
-                        profile_image_url: rec.profile_image_url,
-                        ..crate::persons::NewPerson::new(rec.name, rec.email)
+                    &crate::people_commands::CreatePersonCommand {
+                        name: rec.name,
+                        email: rec.email,
+                        role: String::new(),
+                        given_name: None,
+                        family_name: None,
+                        middle_name: None,
                     },
                 )
-                .await?;
+                .await
+                .map_err(|error| anyhow::anyhow!(error.user_message()))?;
+                if let Some(project) = scope_project {
+                    crate::projects::add_participation(
+                        surreal,
+                        project.id,
+                        created.id,
+                        crate::projects::participation_for_role(created.role),
+                    )
+                    .await?;
+                }
                 report.created += 1;
             }
             Some(_) if !overwrite => report.unchanged += 1,
             Some(existing) => {
-                let updated = crate::persons::edit(
+                if let Some(project) = scope_project {
+                    authorize_person_project_scope(surreal, existing.id, project).await?;
+                }
+                crate::people_commands::update_person(
                     surreal,
                     existing.id,
-                    &crate::persons::PersonEdit {
-                        name: Some(rec.name),
-                        profile_image_url: Some(rec.profile_image_url),
-                        ..crate::persons::PersonEdit::default()
+                    &crate::people_commands::UpdatePersonCommand {
+                        name: rec.name,
+                        email: rec.email,
+                        role: String::new(),
+                        given_name: None,
+                        family_name: None,
+                        middle_name: None,
                     },
+                    &update_ctx,
                 )
                 .await
-                .map_err(|error| anyhow::anyhow!(error.to_string()))?;
-                if updated.is_some() {
-                    report.updated += 1;
-                }
+                .map_err(|error| anyhow::anyhow!(error.user_message()))?;
+                report.updated += 1;
             }
         }
     }
@@ -524,6 +649,7 @@ async fn reconcile_entities(
     yaml: &str,
     firm_anchor: &str,
     overwrite: bool,
+    scope_project: Option<&crate::projects::Project>,
 ) -> anyhow::Result<ReconcileReport> {
     let mut report = ReconcileReport {
         model: SeedModel::Entity.term().to_string(),
@@ -552,6 +678,9 @@ async fn reconcile_entities(
             crate::entities::find_by_name_and_type(surreal, &rec.name, entity_type.id).await?;
         match existing {
             None => {
+                if scope_project.is_some() {
+                    return Err(anyhow::Error::new(ScopeViolation::EntityCreateNotScopable));
+                }
                 crate::entity_commands::create_entity(
                     surreal,
                     firm_anchor,
@@ -567,6 +696,11 @@ async fn reconcile_entities(
             }
             Some(_) if !overwrite => report.unchanged += 1,
             Some(existing) => {
+                if let Some(project) = scope_project {
+                    if existing.id != project.entity_id {
+                        return Err(anyhow::Error::new(ScopeViolation::CrossProject));
+                    }
+                }
                 crate::entity_commands::update_entity(
                     surreal,
                     existing.id,
@@ -2471,12 +2605,26 @@ async fn seed_person_project_roles(
 mod tests {
     use super::{
         normalized_body_bytes, reconcile_yaml, seed_canonical, seeded_template_codes,
-        split_template, validate_yaml, SeedModel, TemplateFrontmatter, SEEDED_TEMPLATES,
+        split_template, validate_yaml, ReconcileActor, ScopeViolation, SeedModel,
+        TemplateFrontmatter, SEEDED_TEMPLATES,
     };
-    use crate::jurisdictions;
-    use crate::persons::{self, Role};
+    use crate::jurisdictions::{self, NewJurisdiction};
+    use crate::persons::{self, NewPerson, Role};
     use crate::question_registry::QuestionType;
     use crate::test_support::mem_surreal;
+    use crate::{entities, entity_types, projects};
+
+    /// An unrestricted (interactive lawyer) reconcile actor — no session
+    /// scope, full authority. The baseline every unscoped test reconciles
+    /// under; scope tests below build their own [`ReconcileActor`].
+    fn unrestricted_actor() -> ReconcileActor<'static> {
+        ReconcileActor {
+            bootstrap_owner_email: None,
+            actor_role: Role::Owner,
+            may_change_roles: true,
+            project_scope: None,
+        }
+    }
 
     /// A filesystem-backed storage at a fixed path so the bytes a seed
     /// writes are readable by a later `templates::body` call in the same
@@ -2508,17 +2656,31 @@ records:
     name: Updated Name
 ";
 
-        let created = reconcile_yaml(&surreal, SeedModel::Person, initial, "Firm", false)
-            .await
-            .expect("create from seed");
+        let created = reconcile_yaml(
+            &surreal,
+            SeedModel::Person,
+            initial,
+            "Firm",
+            false,
+            &unrestricted_actor(),
+        )
+        .await
+        .expect("create from seed");
         assert_eq!(
             (created.created, created.updated, created.unchanged),
             (1, 0, 0)
         );
 
-        let unchanged = reconcile_yaml(&surreal, SeedModel::Person, changed, "Firm", false)
-            .await
-            .expect("default leaves match alone");
+        let unchanged = reconcile_yaml(
+            &surreal,
+            SeedModel::Person,
+            changed,
+            "Firm",
+            false,
+            &unrestricted_actor(),
+        )
+        .await
+        .expect("default leaves match alone");
         assert_eq!(
             (unchanged.created, unchanged.updated, unchanged.unchanged),
             (0, 0, 1)
@@ -2532,9 +2694,16 @@ records:
             "First Name"
         );
 
-        let overwritten = reconcile_yaml(&surreal, SeedModel::Person, changed, "Firm", true)
-            .await
-            .expect("overwrite matching record");
+        let overwritten = reconcile_yaml(
+            &surreal,
+            SeedModel::Person,
+            changed,
+            "Firm",
+            true,
+            &unrestricted_actor(),
+        )
+        .await
+        .expect("overwrite matching record");
         assert_eq!(
             (
                 overwritten.created,
@@ -2551,6 +2720,390 @@ records:
                 .name,
             "Updated Name"
         );
+    }
+
+    async fn project_fixture(surreal: &crate::surreal::SurrealDb, code: &str) -> projects::Project {
+        projects::create(
+            surreal,
+            &projects::NewProject {
+                code: code.into(),
+                name: code.into(),
+                status: "open".into(),
+                entity_id: crate::test_support::seed_entity(surreal).await,
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("create fixture project")
+    }
+
+    fn scoped_actor(project_code: &str) -> ReconcileActor<'_> {
+        ReconcileActor {
+            bootstrap_owner_email: None,
+            actor_role: Role::Lawyer,
+            may_change_roles: false,
+            project_scope: Some(project_code),
+        }
+    }
+
+    fn person_yaml(email: &str, name: &str) -> String {
+        format!("lookup_fields:\n  - email\nrecords:\n  - email: {email}\n    name: {name}\n")
+    }
+
+    fn downcasts_to<E: std::error::Error + Send + Sync + 'static>(
+        error: &anyhow::Error,
+        expected: impl Fn(&E) -> bool,
+    ) -> bool {
+        error.downcast_ref::<E>().is_some_and(expected)
+    }
+
+    #[tokio::test]
+    async fn scoped_person_create_links_to_the_scoped_project() {
+        let surreal = mem_surreal().await;
+        let project = project_fixture(&surreal, "acme").await;
+
+        let report = reconcile_yaml(
+            &surreal,
+            SeedModel::Person,
+            &person_yaml("new@example.com", "New Person"),
+            "Firm",
+            false,
+            &scoped_actor("acme"),
+        )
+        .await
+        .expect("scoped create is allowed");
+        assert_eq!((report.created, report.updated), (1, 0));
+
+        let person = persons::find_by_email_ci(&surreal, "new@example.com")
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(
+            projects::participation_for_person(&surreal, person.id, project.id)
+                .await
+                .unwrap()
+                .is_some(),
+            "a newly seeded person must be linked to the scope's project"
+        );
+    }
+
+    #[tokio::test]
+    async fn scoped_person_update_is_allowed_when_already_in_the_scoped_project() {
+        let surreal = mem_surreal().await;
+        let project = project_fixture(&surreal, "acme").await;
+        let person = persons::create(&surreal, &NewPerson::new("Old Name", "in@example.com"))
+            .await
+            .unwrap();
+        projects::add_participation(&surreal, project.id, person.id, "client")
+            .await
+            .unwrap();
+
+        let report = reconcile_yaml(
+            &surreal,
+            SeedModel::Person,
+            &person_yaml("in@example.com", "Renamed"),
+            "Firm",
+            true,
+            &scoped_actor("acme"),
+        )
+        .await
+        .expect("update within the scoped project is allowed");
+        assert_eq!((report.created, report.updated), (0, 1));
+    }
+
+    #[tokio::test]
+    async fn scoped_person_update_refuses_a_record_linked_to_a_different_project() {
+        let surreal = mem_surreal().await;
+        project_fixture(&surreal, "acme").await;
+        let other = project_fixture(&surreal, "widget-works").await;
+        let person = persons::create(
+            &surreal,
+            &NewPerson::new("Elsewhere", "elsewhere@example.com"),
+        )
+        .await
+        .unwrap();
+        projects::add_participation(&surreal, other.id, person.id, "client")
+            .await
+            .unwrap();
+
+        let error = reconcile_yaml(
+            &surreal,
+            SeedModel::Person,
+            &person_yaml("elsewhere@example.com", "Renamed"),
+            "Firm",
+            true,
+            &scoped_actor("acme"),
+        )
+        .await
+        .expect_err("a record linked to another project must be refused");
+        assert!(downcasts_to::<ScopeViolation>(&error, |v| matches!(
+            v,
+            ScopeViolation::CrossProject
+        )));
+    }
+
+    #[tokio::test]
+    async fn scoped_person_update_refuses_an_unlinked_record() {
+        let surreal = mem_surreal().await;
+        project_fixture(&surreal, "acme").await;
+        persons::create(
+            &surreal,
+            &NewPerson::new("Unlinked", "unlinked@example.com"),
+        )
+        .await
+        .unwrap();
+
+        let error = reconcile_yaml(
+            &surreal,
+            SeedModel::Person,
+            &person_yaml("unlinked@example.com", "Renamed"),
+            "Firm",
+            true,
+            &scoped_actor("acme"),
+        )
+        .await
+        .expect_err("a record with no project link is the ambiguous case and must be refused");
+        assert!(downcasts_to::<ScopeViolation>(&error, |v| matches!(
+            v,
+            ScopeViolation::Unlinked
+        )));
+    }
+
+    #[tokio::test]
+    async fn scoped_reconcile_refuses_a_project_code_naming_no_live_project() {
+        let surreal = mem_surreal().await;
+        let error = reconcile_yaml(
+            &surreal,
+            SeedModel::Person,
+            &person_yaml("anyone@example.com", "Anyone"),
+            "Firm",
+            false,
+            &scoped_actor("no-such-project"),
+        )
+        .await
+        .expect_err("an unresolvable project code must be refused, not silently no-op");
+        assert!(downcasts_to::<ScopeViolation>(&error, |v| matches!(
+            v,
+            ScopeViolation::UnknownProject(code) if code == "no-such-project"
+        )));
+    }
+
+    async fn entity_type_and_jurisdiction(
+        surreal: &crate::surreal::SurrealDb,
+    ) -> (entity_types::EntityType, jurisdictions::Jurisdiction) {
+        let entity_type = entity_types::create(surreal, "LLC").await.unwrap();
+        let jurisdiction =
+            jurisdictions::create(surreal, &NewJurisdiction::new("Nevada", "NV", "state"))
+                .await
+                .unwrap();
+        (entity_type, jurisdiction)
+    }
+
+    fn entity_yaml(name: &str) -> String {
+        format!(
+            "lookup_fields:\n  - name\n  - entity_type_id\nrecords:\n  - name: {name}\n    entity_type:\n      name: LLC\n      jurisdiction:\n        name: Nevada\n"
+        )
+    }
+
+    #[tokio::test]
+    async fn scoped_entity_create_is_refused() {
+        let surreal = mem_surreal().await;
+        let (entity_type, jurisdiction) = entity_type_and_jurisdiction(&surreal).await;
+        // The project's own entity exists, but the seed record names a
+        // second, not-yet-created one — creation is what a scoped session
+        // can never do (no project-owned link to originate).
+        let anchor = entities::create(
+            &surreal,
+            &entities::NewEntity {
+                name: "Acme Holdco".into(),
+                entity_type_id: entity_type.id,
+                jurisdiction_id: jurisdiction.id,
+                phone: None,
+                url: None,
+                firm_anchor_key: None,
+            },
+        )
+        .await
+        .unwrap();
+        projects::create(
+            &surreal,
+            &projects::NewProject {
+                code: "acme".into(),
+                name: "acme".into(),
+                status: "open".into(),
+                entity_id: anchor.id,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        let error = reconcile_yaml(
+            &surreal,
+            SeedModel::Entity,
+            &entity_yaml("Acme Newco"),
+            "Firm",
+            false,
+            &scoped_actor("acme"),
+        )
+        .await
+        .expect_err("a scoped session cannot create a new entity");
+        assert!(downcasts_to::<ScopeViolation>(&error, |v| matches!(
+            v,
+            ScopeViolation::EntityCreateNotScopable
+        )));
+    }
+
+    #[tokio::test]
+    async fn scoped_entity_update_allowed_only_for_the_projects_own_entity() {
+        let surreal = mem_surreal().await;
+        let (entity_type, jurisdiction) = entity_type_and_jurisdiction(&surreal).await;
+        let acme_entity = entities::create(
+            &surreal,
+            &entities::NewEntity {
+                name: "Acme Holdco".into(),
+                entity_type_id: entity_type.id,
+                jurisdiction_id: jurisdiction.id,
+                phone: None,
+                url: None,
+                firm_anchor_key: None,
+            },
+        )
+        .await
+        .unwrap();
+        let other_entity = entities::create(
+            &surreal,
+            &entities::NewEntity {
+                name: "Widget Works".into(),
+                entity_type_id: entity_type.id,
+                jurisdiction_id: jurisdiction.id,
+                phone: None,
+                url: None,
+                firm_anchor_key: None,
+            },
+        )
+        .await
+        .unwrap();
+        projects::create(
+            &surreal,
+            &projects::NewProject {
+                code: "acme".into(),
+                name: "acme".into(),
+                status: "open".into(),
+                entity_id: acme_entity.id,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        projects::create(
+            &surreal,
+            &projects::NewProject {
+                code: "widget-works".into(),
+                name: "widget-works".into(),
+                status: "open".into(),
+                entity_id: other_entity.id,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        // Updating the scoped project's own entity succeeds.
+        let report = reconcile_yaml(
+            &surreal,
+            SeedModel::Entity,
+            &entity_yaml("Acme Holdco"),
+            "Firm",
+            true,
+            &scoped_actor("acme"),
+        )
+        .await
+        .expect("updating the scoped project's own entity is allowed");
+        assert_eq!((report.created, report.updated), (0, 1));
+
+        // Updating a different project's entity is refused.
+        let error = reconcile_yaml(
+            &surreal,
+            SeedModel::Entity,
+            &entity_yaml("Widget Works"),
+            "Firm",
+            true,
+            &scoped_actor("acme"),
+        )
+        .await
+        .expect_err("a different project's entity must be refused");
+        assert!(downcasts_to::<ScopeViolation>(&error, |v| matches!(
+            v,
+            ScopeViolation::CrossProject
+        )));
+    }
+
+    #[tokio::test]
+    async fn person_seed_cannot_touch_the_bootstrap_owner() {
+        let surreal = mem_surreal().await;
+        persons::create(
+            &surreal,
+            &NewPerson::with_role("The Owner", "owner@example.com", Role::Owner),
+        )
+        .await
+        .unwrap();
+
+        let actor = ReconcileActor {
+            bootstrap_owner_email: Some("owner@example.com"),
+            actor_role: Role::Admin,
+            may_change_roles: true,
+            project_scope: None,
+        };
+        let error = reconcile_yaml(
+            &surreal,
+            SeedModel::Person,
+            &person_yaml("owner@example.com", "Hacked Name"),
+            "Firm",
+            true,
+            &actor,
+        )
+        .await
+        .expect_err("a seed document must not be able to rewrite the bootstrap Owner");
+        assert!(error.to_string().contains("bootstrap Owner"));
+        assert_eq!(
+            persons::find_by_email_ci(&surreal, "owner@example.com")
+                .await
+                .unwrap()
+                .unwrap()
+                .name,
+            "The Owner",
+            "the bootstrap Owner row must be unchanged"
+        );
+    }
+
+    #[tokio::test]
+    async fn person_seed_cannot_edit_a_higher_ranked_person() {
+        let surreal = mem_surreal().await;
+        persons::create(
+            &surreal,
+            &NewPerson::with_role("Ranking Owner", "ranking-owner@example.com", Role::Owner),
+        )
+        .await
+        .unwrap();
+
+        let actor = ReconcileActor {
+            bootstrap_owner_email: None,
+            actor_role: Role::Lawyer,
+            may_change_roles: false,
+            project_scope: None,
+        };
+        let error = reconcile_yaml(
+            &surreal,
+            SeedModel::Person,
+            &person_yaml("ranking-owner@example.com", "Hacked Name"),
+            "Firm",
+            true,
+            &actor,
+        )
+        .await
+        .expect_err("a lawyer-tier seed caller must not edit a higher-ranked person");
+        assert!(error.to_string().contains("higher system role"));
     }
 
     #[test]

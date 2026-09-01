@@ -953,6 +953,8 @@ struct SeedRequest {
     yaml: String,
     #[serde(default)]
     overwrite: bool,
+    #[serde(default)]
+    dry_run: bool,
 }
 
 /// This route's own address, matched against a scoped session's
@@ -993,6 +995,7 @@ async fn reconcile_seed(
                     .scope
                     .as_ref()
                     .map(|scope| scope.project_code.as_str()),
+                dry_run: input.dry_run,
             },
         )
         .await

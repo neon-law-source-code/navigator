@@ -375,6 +375,27 @@ impl SeedModel {
     }
 }
 
+/// The action the reconciler would take for one seed record.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReconcileAction {
+    #[default]
+    New,
+    Unchanged,
+    Changed,
+}
+
+/// The per-record plan returned by seed reconciliation.
+#[derive(Debug, Default, Serialize)]
+pub struct ReconcileRecord {
+    /// The natural-key value that identifies this record in the seed model.
+    pub key: String,
+    pub action: ReconcileAction,
+    /// Fields that `--overwrite` would replace.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub changed_fields: Vec<String>,
+}
+
 /// The result of reconciling one seed document through the operator API.
 #[derive(Debug, Default, Serialize)]
 pub struct ReconcileReport {
@@ -382,6 +403,7 @@ pub struct ReconcileReport {
     pub created: usize,
     pub updated: usize,
     pub unchanged: usize,
+    pub records: Vec<ReconcileRecord>,
 }
 
 /// The authorization facts a reconcile pass needs, resolved by the adapter
@@ -396,6 +418,7 @@ pub struct ReconcileActor<'a> {
     pub actor_role: crate::persons::Role,
     pub may_change_roles: bool,
     pub project_scope: Option<&'a str>,
+    pub dry_run: bool,
 }
 
 /// A refusal distinguishable from an ordinary parse or validation failure —
@@ -441,9 +464,11 @@ pub enum ScopeViolation {
 /// The document must use the same `lookup_fields` / `records` envelope as
 /// `store/seeds`. By default an existing lookup match is left untouched; with
 /// `overwrite`, the fields represented by that model's seed record replace the
-/// existing values. The dispatch is typed so this authenticated path shares
-/// the same natural-key and write machinery as bootstrap seeding, without
-/// permitting a caller to name arbitrary SurrealQL tables or fields.
+/// existing values. When the actor is in `dry_run` mode, the same lookups and
+/// reference checks happen but no write is attempted. The dispatch is typed so
+/// this authenticated path shares the same natural-key and write machinery as
+/// bootstrap seeding, without permitting a caller to name arbitrary SurrealQL
+/// tables or fields.
 pub async fn reconcile_yaml(
     surreal: &SurrealDb,
     model: SeedModel,
@@ -474,6 +499,7 @@ pub async fn reconcile_yaml(
                 firm_anchor,
                 overwrite,
                 scope_project.as_ref(),
+                actor.dry_run,
             )
             .await
         }
@@ -590,58 +616,112 @@ async fn reconcile_people(
         may_change_roles: actor.may_change_roles,
     };
     for rec in parse_seed::<PersonRec>(yaml, SeedModel::Person, &["email"])? {
+        let key = rec.email.clone();
         let existing = crate::persons::find_by_email_ci(surreal, &rec.email).await?;
         match existing {
             None => {
-                let created = crate::people_commands::create_person(
-                    surreal,
-                    &crate::people_commands::CreatePersonCommand {
-                        name: rec.name,
-                        email: rec.email,
-                        role: String::new(),
-                        given_name: None,
-                        family_name: None,
-                        middle_name: None,
-                    },
-                )
-                .await
-                .map_err(|error| anyhow::anyhow!(error.user_message()))?;
-                if let Some(project) = scope_project {
-                    crate::projects::add_participation(
+                if !actor.dry_run {
+                    let created = crate::people_commands::create_person(
                         surreal,
-                        project.id,
-                        created.id,
-                        crate::projects::participation_for_role(created.role),
+                        &crate::people_commands::CreatePersonCommand {
+                            name: rec.name,
+                            email: rec.email,
+                            role: String::new(),
+                            given_name: None,
+                            family_name: None,
+                            middle_name: None,
+                        },
                     )
-                    .await?;
+                    .await
+                    .map_err(|error| anyhow::anyhow!(error.user_message()))?;
+                    if let Some(project) = scope_project {
+                        crate::projects::add_participation(
+                            surreal,
+                            project.id,
+                            created.id,
+                            crate::projects::participation_for_role(created.role),
+                        )
+                        .await?;
+                    }
                 }
                 report.created += 1;
+                report.records.push(ReconcileRecord {
+                    key,
+                    action: ReconcileAction::New,
+                    ..ReconcileRecord::default()
+                });
             }
-            Some(_) if !overwrite => report.unchanged += 1,
+            Some(_) if !overwrite => {
+                report.unchanged += 1;
+                report.records.push(ReconcileRecord {
+                    key,
+                    action: ReconcileAction::Unchanged,
+                    ..ReconcileRecord::default()
+                });
+            }
             Some(existing) => {
                 if let Some(project) = scope_project {
                     authorize_person_project_scope(surreal, existing.id, project).await?;
                 }
-                crate::people_commands::update_person(
-                    surreal,
-                    existing.id,
-                    &crate::people_commands::UpdatePersonCommand {
-                        name: rec.name,
-                        email: rec.email,
-                        role: String::new(),
-                        given_name: None,
-                        family_name: None,
-                        middle_name: None,
-                    },
-                    &update_ctx,
-                )
-                .await
-                .map_err(|error| anyhow::anyhow!(error.user_message()))?;
-                report.updated += 1;
+                let changed_fields = person_changed_fields(&existing, &rec);
+                if changed_fields.is_empty() {
+                    report.unchanged += 1;
+                    report.records.push(ReconcileRecord {
+                        key,
+                        action: ReconcileAction::Unchanged,
+                        ..ReconcileRecord::default()
+                    });
+                } else {
+                    report.updated += 1;
+                    report.records.push(ReconcileRecord {
+                        key,
+                        action: ReconcileAction::Changed,
+                        changed_fields,
+                    });
+                    if !actor.dry_run {
+                        update_person_from_seed(surreal, &existing, rec, &update_ctx).await?;
+                    }
+                }
             }
         }
     }
     Ok(report)
+}
+
+async fn update_person_from_seed(
+    surreal: &SurrealDb,
+    existing: &crate::persons::Person,
+    rec: PersonRec,
+    update_ctx: &crate::people_commands::UpdateContext<'_>,
+) -> anyhow::Result<()> {
+    crate::people_commands::update_person(
+        surreal,
+        existing.id,
+        &crate::people_commands::UpdatePersonCommand {
+            name: rec.name,
+            email: rec.email,
+            role: String::new(),
+            given_name: None,
+            family_name: None,
+            middle_name: None,
+        },
+        update_ctx,
+    )
+    .await
+    .map_err(|error| anyhow::anyhow!(error.user_message()))?;
+    if existing.profile_image_url != rec.profile_image_url {
+        crate::persons::edit(
+            surreal,
+            existing.id,
+            &crate::persons::PersonEdit {
+                profile_image_url: Some(rec.profile_image_url),
+                ..crate::persons::PersonEdit::default()
+            },
+        )
+        .await
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+    }
+    Ok(())
 }
 
 async fn reconcile_entities(
@@ -650,6 +730,7 @@ async fn reconcile_entities(
     firm_anchor: &str,
     overwrite: bool,
     scope_project: Option<&crate::projects::Project>,
+    dry_run: bool,
 ) -> anyhow::Result<ReconcileReport> {
     let mut report = ReconcileReport {
         model: SeedModel::Entity.term().to_string(),
@@ -676,48 +757,119 @@ async fn reconcile_entities(
             })?;
         let existing =
             crate::entities::find_by_name_and_type(surreal, &rec.name, entity_type.id).await?;
+        let key = format!("{} / {}", rec.name, rec.entity_type.name);
         match existing {
             None => {
                 if scope_project.is_some() {
                     return Err(anyhow::Error::new(ScopeViolation::EntityCreateNotScopable));
                 }
-                crate::entity_commands::create_entity(
-                    surreal,
-                    firm_anchor,
-                    &crate::entity_commands::CreateEntityCommand {
-                        name: rec.name,
-                        entity_type_id: entity_type.id,
-                        jurisdiction_id: jurisdiction.id,
-                    },
-                )
-                .await
-                .map_err(|error| anyhow::anyhow!(error.user_message()))?;
+                if !dry_run {
+                    crate::entity_commands::create_entity(
+                        surreal,
+                        firm_anchor,
+                        &crate::entity_commands::CreateEntityCommand {
+                            name: rec.name,
+                            entity_type_id: entity_type.id,
+                            jurisdiction_id: jurisdiction.id,
+                        },
+                    )
+                    .await
+                    .map_err(|error| anyhow::anyhow!(error.user_message()))?;
+                }
                 report.created += 1;
+                report.records.push(ReconcileRecord {
+                    key,
+                    action: ReconcileAction::New,
+                    ..ReconcileRecord::default()
+                });
             }
-            Some(_) if !overwrite => report.unchanged += 1,
+            Some(_) if !overwrite => {
+                report.unchanged += 1;
+                report.records.push(ReconcileRecord {
+                    key,
+                    action: ReconcileAction::Unchanged,
+                    ..ReconcileRecord::default()
+                });
+            }
             Some(existing) => {
                 if let Some(project) = scope_project {
                     if existing.id != project.entity_id {
                         return Err(anyhow::Error::new(ScopeViolation::CrossProject));
                     }
                 }
-                crate::entity_commands::update_entity(
-                    surreal,
-                    existing.id,
-                    firm_anchor,
-                    &crate::entity_commands::UpdateEntityCommand {
-                        name: rec.name,
-                        entity_type_id: entity_type.id,
-                        jurisdiction_id: jurisdiction.id,
-                    },
-                )
-                .await
-                .map_err(|error| anyhow::anyhow!(error.user_message()))?;
-                report.updated += 1;
+                let changed_fields = entity_changed_fields(&existing, jurisdiction.id);
+                if changed_fields.is_empty() {
+                    report.unchanged += 1;
+                    report.records.push(ReconcileRecord {
+                        key,
+                        action: ReconcileAction::Unchanged,
+                        ..ReconcileRecord::default()
+                    });
+                } else {
+                    report.updated += 1;
+                    report.records.push(ReconcileRecord {
+                        key,
+                        action: ReconcileAction::Changed,
+                        changed_fields,
+                    });
+                    if !dry_run {
+                        update_entity_from_seed(
+                            surreal,
+                            existing.id,
+                            firm_anchor,
+                            rec.name,
+                            entity_type.id,
+                            jurisdiction.id,
+                        )
+                        .await?;
+                    }
+                }
             }
         }
     }
     Ok(report)
+}
+
+async fn update_entity_from_seed(
+    surreal: &SurrealDb,
+    id: Uuid,
+    firm_anchor: &str,
+    name: String,
+    entity_type_id: Uuid,
+    jurisdiction_id: Uuid,
+) -> anyhow::Result<()> {
+    crate::entity_commands::update_entity(
+        surreal,
+        id,
+        firm_anchor,
+        &crate::entity_commands::UpdateEntityCommand {
+            name,
+            entity_type_id,
+            jurisdiction_id,
+        },
+    )
+    .await
+    .map_err(|error| anyhow::anyhow!(error.user_message()))?;
+    Ok(())
+}
+
+fn person_changed_fields(existing: &crate::persons::Person, incoming: &PersonRec) -> Vec<String> {
+    let mut fields = Vec::new();
+    if existing.name != incoming.name {
+        fields.push("name".to_string());
+    }
+    if existing.profile_image_url != incoming.profile_image_url {
+        fields.push("profile_image_url".to_string());
+    }
+    fields
+}
+
+fn entity_changed_fields(existing: &crate::entities::Entity, jurisdiction_id: Uuid) -> Vec<String> {
+    if existing.jurisdiction_id == jurisdiction_id {
+        Vec::new()
+    } else {
+        vec!["jurisdiction".to_string()]
+    }
 }
 
 /// Run the full canonical seed pass against `db`. Each entity table
@@ -2605,7 +2757,7 @@ async fn seed_person_project_roles(
 mod tests {
     use super::{
         normalized_body_bytes, reconcile_yaml, seed_canonical, seeded_template_codes,
-        split_template, validate_yaml, ReconcileActor, ScopeViolation, SeedModel,
+        split_template, validate_yaml, ReconcileAction, ReconcileActor, ScopeViolation, SeedModel,
         TemplateFrontmatter, SEEDED_TEMPLATES,
     };
     use crate::jurisdictions::{self, NewJurisdiction};
@@ -2623,6 +2775,7 @@ mod tests {
             actor_role: Role::Owner,
             may_change_roles: true,
             project_scope: None,
+            dry_run: false,
         }
     }
 
@@ -2722,6 +2875,136 @@ records:
         );
     }
 
+    #[tokio::test]
+    async fn operator_person_seed_dry_run_plans_without_writing() {
+        let surreal = mem_surreal().await;
+        let existing = person_yaml("existing@example.com", "Original Name");
+        reconcile_yaml(
+            &surreal,
+            SeedModel::Person,
+            &existing,
+            "Firm",
+            false,
+            &unrestricted_actor(),
+        )
+        .await
+        .expect("seed existing person");
+
+        let planned = "lookup_fields:\n  - email\nrecords:\n  - email: existing@example.com\n    name: Revised Name\n    profile_image_url: https://example.com/revised.png\n  - email: new@example.com\n    name: New Person\n";
+        let report = reconcile_yaml(
+            &surreal,
+            SeedModel::Person,
+            planned,
+            "Firm",
+            true,
+            &ReconcileActor {
+                dry_run: true,
+                ..unrestricted_actor()
+            },
+        )
+        .await
+        .expect("plan person seed");
+
+        assert_eq!(
+            (report.created, report.updated, report.unchanged),
+            (1, 1, 0)
+        );
+        assert_eq!(report.records[0].key, "existing@example.com");
+        assert_eq!(report.records[0].action, ReconcileAction::Changed);
+        assert_eq!(
+            report.records[0].changed_fields,
+            vec!["name", "profile_image_url"]
+        );
+        assert_eq!(report.records[1].action, ReconcileAction::New);
+        assert!(persons::find_by_email_ci(&surreal, "new@example.com")
+            .await
+            .expect("read planned person")
+            .is_none());
+
+        let unchanged = reconcile_yaml(
+            &surreal,
+            SeedModel::Person,
+            &existing,
+            "Firm",
+            true,
+            &ReconcileActor {
+                dry_run: true,
+                ..unrestricted_actor()
+            },
+        )
+        .await
+        .expect("plan unchanged person seed");
+        assert_eq!(
+            (unchanged.created, unchanged.updated, unchanged.unchanged),
+            (0, 0, 1)
+        );
+        assert_eq!(unchanged.records[0].action, ReconcileAction::Unchanged);
+    }
+
+    #[tokio::test]
+    async fn operator_entity_seed_dry_run_resolves_references_without_writing() {
+        let surreal = mem_surreal().await;
+        let entity_type = entity_types::create(&surreal, "Corporation")
+            .await
+            .expect("create entity type");
+        let original_jurisdiction =
+            jurisdictions::create(&surreal, &NewJurisdiction::new("Nevada", "NV", "state"))
+                .await
+                .expect("create original jurisdiction");
+        let revised_jurisdiction =
+            jurisdictions::create(&surreal, &NewJurisdiction::new("California", "CA", "state"))
+                .await
+                .expect("create revised jurisdiction");
+        let entity = entities::create(
+            &surreal,
+            &entities::NewEntity {
+                name: "Acme Example".into(),
+                entity_type_id: entity_type.id,
+                jurisdiction_id: original_jurisdiction.id,
+                phone: None,
+                url: None,
+                firm_anchor_key: None,
+            },
+        )
+        .await
+        .expect("create existing entity");
+        let planned = "lookup_fields:\n  - name\n  - entity_type_id\nrecords:\n  - name: Acme Example\n    entity_type:\n      name: Corporation\n      jurisdiction:\n        name: California\n  - name: New Example\n    entity_type:\n      name: Corporation\n      jurisdiction:\n        name: California\n";
+        let report = reconcile_yaml(
+            &surreal,
+            SeedModel::Entity,
+            planned,
+            "Firm",
+            true,
+            &ReconcileActor {
+                dry_run: true,
+                ..unrestricted_actor()
+            },
+        )
+        .await
+        .expect("plan entity seed");
+
+        assert_eq!(
+            (report.created, report.updated, report.unchanged),
+            (1, 1, 0)
+        );
+        assert_eq!(report.records[0].key, "Acme Example / Corporation");
+        assert_eq!(report.records[0].action, ReconcileAction::Changed);
+        assert_eq!(report.records[0].changed_fields, vec!["jurisdiction"]);
+        assert_eq!(report.records[1].action, ReconcileAction::New);
+        let persisted = entities::find_by_id(&surreal, entity.id)
+            .await
+            .expect("read existing entity")
+            .expect("existing entity remains");
+        assert_eq!(persisted.jurisdiction_id, original_jurisdiction.id);
+        assert_ne!(persisted.jurisdiction_id, revised_jurisdiction.id);
+        assert!(
+            entities::find_by_name_and_type(&surreal, "New Example", entity_type.id)
+                .await
+                .expect("read planned entity")
+                .is_none()
+        );
+    }
+
     async fn project_fixture(surreal: &crate::surreal::SurrealDb, code: &str) -> projects::Project {
         projects::create(
             surreal,
@@ -2743,6 +3026,7 @@ records:
             actor_role: Role::Lawyer,
             may_change_roles: false,
             project_scope: Some(project_code),
+            dry_run: false,
         }
     }
 
@@ -3020,7 +3304,10 @@ records:
         )
         .await
         .expect("updating the scoped project's own entity is allowed");
-        assert_eq!((report.created, report.updated), (0, 1));
+        assert_eq!(
+            (report.created, report.updated, report.unchanged),
+            (0, 0, 1)
+        );
 
         // Updating a different project's entity is refused.
         let error = reconcile_yaml(
@@ -3054,6 +3341,7 @@ records:
             actor_role: Role::Admin,
             may_change_roles: true,
             project_scope: None,
+            dry_run: false,
         };
         let error = reconcile_yaml(
             &surreal,
@@ -3092,6 +3380,7 @@ records:
             actor_role: Role::Lawyer,
             may_change_roles: false,
             project_scope: None,
+            dry_run: false,
         };
         let error = reconcile_yaml(
             &surreal,

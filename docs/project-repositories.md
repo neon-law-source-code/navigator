@@ -504,10 +504,11 @@ notation contract, persists its bytes as a content-addressed Asset, and records 
 The mechanisms above are documented separately because each is owned by a different piece of code. A lawyer or operator
 experiences them as one sequence, not five, so this section threads them together in order.
 
-1. **Open the matter.** A lawyer-tier account fills the form at `/app/projects/new` — name, code stem, Entity,
-   description, scope of services, client DRI, and the conflict-check attestation. Submitting calls
-   `store::projects::open_matter` and redirects to `/app/projects/<code>`, where `<code>` is the typed stem plus
-   Navigator's generated suffix — the redirect is the first and only place the final code is shown back.
+1. **Open the matter.** A lawyer-tier account fills the form at `/app/projects/new` — name, code, Entity, description,
+   scope of services, client DRI, and the conflict-check attestation. Submitting calls `store::projects::open_matter`
+   and redirects to `/app/projects/<code>`, where `<code>` is exactly what was typed (normalized for case and
+   whitespace) — Navigator stores it verbatim rather than generating one, so a code already in use by another matter is
+   refused instead of silently disambiguated.
 
 2. **Provision the repository and Drive folder.** [Provisioning the three handles](#provisioning-the-three-handles)
    describes what this step does; the detail worth calling out here is that it does not happen automatically for a

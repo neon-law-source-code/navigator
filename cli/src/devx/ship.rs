@@ -1885,7 +1885,7 @@ pub(super) fn referenced_secret_manager_objects(
 /// registry publishes, deduplicated and stripped of its tag.
 ///
 /// The filter is [`pin_cronjob_images`]'s rule — `<registry>/…` — so a
-/// third-party image (Envoy, ClamAV) and the KIND base's registry-less
+/// third-party image (Envoy, `ClamAV`) and the KIND base's registry-less
 /// `navigator-web:dev` are both left alone, and only images CI is responsible
 /// for publishing are asserted on.
 fn manifest_images_under_registry(manifests: &str, prefix: &str) -> BTreeSet<String> {
@@ -4161,7 +4161,7 @@ mod tests {
     }
 
     /// A realistic slice of a built stream: our two Deployments, two trigger
-    /// CronJobs, a third-party sidecar, and the KIND base's registry-less tag.
+    /// `CronJobs`, a third-party sidecar, and the KIND base's registry-less tag.
     const BUILT_STREAM: &str = "\
 spec:
   containers:

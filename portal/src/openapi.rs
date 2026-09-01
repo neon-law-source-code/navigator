@@ -2760,6 +2760,12 @@ pub const TOOLS_WITHOUT_AN_API_OPERATION: &[(&str, &str)] = &[
          review inline and writes nothing, so there is no command for an \
          API operation to share.",
     ),
+    (
+        "aida_list_deadlines",
+        "No route today. Deadline reads are an MCP-only aggregate over the \
+         existing Project-scoped deadline query, so there is no API operation \
+         for the tool to share.",
+    ),
 ];
 
 /// Every `x-mcp-tool` value in [`document`], paired with the operation

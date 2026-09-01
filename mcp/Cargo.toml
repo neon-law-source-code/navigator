@@ -28,6 +28,7 @@ uuid.workspace = true
 workflows.workspace = true
 
 [dev-dependencies]
+chrono.workspace = true
 http-body-util.workspace = true
 store = { workspace = true, features = ["test-support"] }
 tempfile.workspace = true

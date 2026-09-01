@@ -280,7 +280,7 @@ what each code actually checks, its severity, and whether it autofixes, see the 
 | `title` | yes | any non-empty text | N101 |
 | `code` | yes | unique `snake_case` | N108 |
 | `respondent_type` | yes | `person`, `entity`, `person_and_entity` | N102 |
-| `jurisdiction` | yes | `NV`, `CA`, `US` | N110 |
+| `jurisdiction` | yes | any code seeded in `store/seeds/Jurisdiction.yaml` (e.g. `NV`, `CA`, `US`, `NY`) | N110 |
 | `confidential` | yes | `true` or `false` | N105 |
 | `questionnaire` | yes (paired) | a `BEGIN` → `END` ladder | N104 |
 | `workflow` | yes (paired) | a `BEGIN` → `END` path that includes `lawyer_review` | N104, N106 |

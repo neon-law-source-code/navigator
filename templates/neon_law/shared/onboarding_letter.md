@@ -237,17 +237,18 @@ ten years the Firm securely destroys the file and its contents.
 
 This letter is governed by the law of {{custom_single_choice__governing_law}}. If a dispute arises out of or relates to
 this engagement or this letter, you and the Firm agree to resolve it by final and binding arbitration before a single
-arbitrator administered by **JAMS** under its Comprehensive Arbitration Rules and Procedures — or, where the amount in
-controversy qualifies, its Streamlined Rules — conducted confidentially and decided under the law of
-{{custom_single_choice__governing_law}}. Each party bears its share of the JAMS fees as those rules provide, and
+arbitrator administered by the **American Arbitration Association** under its Commercial Arbitration Rules — or, where
+the amount in controversy qualifies, its Expedited Procedures — conducted confidentially and decided under the law of
+{{custom_single_choice__governing_law}}. Each party bears its share of the AAA fees as those rules provide, and
 judgment on the award may be entered in any court of competent jurisdiction. The arbitrator applies the same law and may
 award the same remedies a court could; this clause selects the forum for a dispute and does **not** limit, cap, or waive
 the Firm's responsibility for its own work.
 
 > **A. Your fee-arbitration rights are preserved.** Nothing above waives or overrides any non-waivable statutory right
 > you have to arbitration of a fee dispute — including, in California, the Mandatory Fee Arbitration Act (Bus. & Prof.
-> Code § 6200 et seq.), and the corresponding fee-dispute programs of the State Bar of Nevada and the Washington State
-> Bar Association. You keep those rights in full.
+> Code § 6200 et seq.); in New York, the Attorney-Client Fee Dispute Resolution Program (22 NYCRR Part 137); and the
+> corresponding fee-dispute programs of the State Bar of Nevada and the Washington State Bar Association. You keep
+> those rights in full.
 
 By signing this letter you and the Firm each give up the right to a jury trial and to have a covered dispute decided in
 court. Because this is an agreement about how future disputes are handled, you have the right to consult independent

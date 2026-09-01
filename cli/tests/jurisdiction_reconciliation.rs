@@ -71,9 +71,9 @@ fn jurisdiction_from_frontmatter(contents: &str) -> Option<&str> {
 #[test]
 fn every_validator_jurisdiction_code_is_seeded() {
     let codes = seeded_codes();
-    for (code, _prefix) in rules::JURISDICTIONS {
+    for (code, _prefix) in rules::JURISDICTIONS.iter() {
         assert!(
-            codes.contains(*code),
+            codes.contains(code),
             "rules::f110 accepts jurisdiction `{code}`, but store/seeds/Jurisdiction.yaml has no row for it"
         );
     }

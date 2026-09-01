@@ -17,9 +17,38 @@
 
 use crate::{frontmatter, line_byte_range, Rule, SourceFile, Violation};
 use std::path::Path;
+use std::sync::LazyLock;
 
 const ROOTS: &[&str] = &["neon_law", "forms"];
-pub const JURISDICTIONS: &[(&str, &str)] = &[("NV", "nv"), ("CA", "ca"), ("US", "us")];
+
+const JURISDICTION_SEED_YAML: &str = include_str!("../../store/seeds/Jurisdiction.yaml");
+
+#[derive(serde::Deserialize)]
+struct JurisdictionSeed {
+    records: Vec<JurisdictionRecord>,
+}
+
+#[derive(serde::Deserialize)]
+struct JurisdictionRecord {
+    code: String,
+}
+
+/// Every jurisdiction code Navigator seeds, paired with its lowercase form
+/// prefix (e.g. `NV` -> `nv`). Derived from `store/seeds/Jurisdiction.yaml`
+/// at compile time — not a database lookup — so this list can never fall
+/// behind the seeded reference data; `cli/tests/jurisdiction_reconciliation.rs`
+/// guards the reverse direction (every template's jurisdiction is seeded).
+pub static JURISDICTIONS: LazyLock<Vec<(String, String)>> = LazyLock::new(|| {
+    let seed: JurisdictionSeed =
+        serde_yaml::from_str(JURISDICTION_SEED_YAML).expect("Jurisdiction.yaml parses");
+    seed.records
+        .into_iter()
+        .map(|record| {
+            let prefix = record.code.to_lowercase();
+            (record.code, prefix)
+        })
+        .collect()
+});
 
 pub struct F110JurisdictionPath;
 
@@ -111,11 +140,8 @@ impl Rule for F110JurisdictionPath {
             violations.push(Self::violation(
                 file,
                 format!(
-                    "Unknown jurisdiction `{jurisdiction}`; expected one of {:?}",
-                    JURISDICTIONS
-                        .iter()
-                        .map(|(code, _)| *code)
-                        .collect::<Vec<_>>()
+                    "Unknown jurisdiction `{jurisdiction}`; expected a code seeded in \
+                     store/seeds/Jurisdiction.yaml"
                 ),
             ));
             return violations;
@@ -231,10 +257,21 @@ mod tests {
     fn flags_unknown_jurisdiction() {
         let v = F110JurisdictionPath.lint(&at(
             "templates/neon_law/shared/onboarding_letter.md",
-            "title: T\ncode: nest__retainer\njurisdiction: TX",
+            "title: T\ncode: nest__retainer\njurisdiction: ZZ",
         ));
         assert_eq!(v[0].code, "N110");
-        assert!(v[0].message.contains("Unknown jurisdiction `TX`"));
+        assert!(v[0].message.contains("Unknown jurisdiction `ZZ`"));
+    }
+
+    #[test]
+    fn accepts_every_seeded_jurisdiction_code() {
+        for (code, _prefix) in super::JURISDICTIONS.iter() {
+            let v = F110JurisdictionPath.lint(&at(
+                "templates/neon_law/shared/onboarding_letter.md",
+                &format!("title: T\ncode: nest__retainer\njurisdiction: {code}"),
+            ));
+            assert!(v.is_empty(), "jurisdiction `{code}` should validate: {v:?}");
+        }
     }
 
     #[test]

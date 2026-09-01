@@ -813,9 +813,7 @@ async fn handle_lawyer_reply(
     // open by default. This check needs no configuration and is therefore on
     // everywhere. Where the option IS set, the stricter gate above has already
     // returned, so the two compose.
-    let sender_domain = extract_addr(&inbound.from)
-        .rsplit_once('@')
-        .map_or_else(String::new, |(_, domain)| domain.to_string());
+    let sender_domain = extract_domain(&inbound.from);
     let sender_authenticated = dkim_passes_for_domain(&inbound.dkim, &sender_domain);
 
     let mut conversation = conversation.clone();
@@ -917,7 +915,9 @@ async fn refuse_unauthenticated_signal(
         ctx.cfg.lawyer_notify_email.as_str(),
         &format!("[refused] {}", conversation.subject),
         &format!(
-            "Your @{condition} command was NOT executed: this reply's sender could not be              cryptographically authenticated (no DKIM pass for the sending domain). Approve              from the portal instead, where the session names the attorney."
+            "Your @{condition} command was NOT executed: this reply's sender could not be \
+             cryptographically authenticated (no DKIM pass for the sending domain). Approve \
+             from the portal instead, where the session names the attorney."
         ),
     )
     .await?;
@@ -1276,6 +1276,14 @@ fn extract_addr(raw: &str) -> String {
     s.to_lowercase()
 }
 
+/// The lowercased domain of a header value that may be `Name <addr@host>` or
+/// just `addr@host`. Empty when the address carries no `@`.
+fn extract_domain(raw: &str) -> String {
+    extract_addr(raw)
+        .rsplit_once('@')
+        .map_or_else(String::new, |(_, domain)| domain.to_string())
+}
+
 /// The display name from a `Name <addr>` header value, if present.
 fn extract_name(raw: &str) -> Option<String> {
     let s = raw.trim();
@@ -1546,9 +1554,7 @@ mod tests {
     /// field would silently turn every fixture into an unauthenticated
     /// sender.
     fn inbound(from: &str, to: &str, subject: &str, text: &str) -> InboundEmail {
-        let sender_domain = super::extract_addr(from)
-            .rsplit_once('@')
-            .map_or_else(String::new, |(_, domain)| domain.to_string());
+        let sender_domain = super::extract_domain(from);
         InboundEmail {
             from: from.into(),
             to: to.into(),
@@ -2250,7 +2256,25 @@ mod tests {
 
         assert!(
             rt.signals.lock().unwrap().is_empty(),
-            "an unauthenticated sender signed a legal instrument: the approval              gate fired `approved` on a message whose DKIM verdict is a fail              for the firm domain, because the deployment sets no              NAVIGATOR_DKIM_REQUIRE_DOMAIN"
+            "an unauthenticated sender signed a legal instrument: the approval \
+             gate fired `approved` on a message whose DKIM verdict is a fail \
+             for the firm domain, because the deployment sets no \
+             NAVIGATOR_DKIM_REQUIRE_DOMAIN"
+        );
+
+        // The refusal must actually reach the cockpit — a silently dropped
+        // approval is the defect this gate exists to prevent, so proving the
+        // signal didn't fire is not enough on its own.
+        let sent = cap.captured();
+        let refusal = sent
+            .iter()
+            .find(|m| m.to == cfg().lawyer_notify_email)
+            .expect("no refusal notice was sent to the cockpit");
+        assert!(refusal.subject.starts_with("[refused]"));
+        assert!(
+            !refusal.body.contains("  "),
+            "refusal body has a formatting defect (a run of spaces): {:?}",
+            refusal.body
         );
     }
 

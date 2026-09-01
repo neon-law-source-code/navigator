@@ -21,6 +21,7 @@ pub mod heartbeat;
 pub mod journal;
 pub mod notation_service;
 pub mod notify_config;
+pub mod project_slack;
 pub mod registry;
 pub mod repository_correlation;
 pub mod webhook;
@@ -30,6 +31,7 @@ pub use notation_service::{
     CurrentStateResponse, NotationService, QuestionnaireSignalBody, SignalResponse, StartBody,
     WorkflowSignalBody,
 };
+pub use notify_config::bot_from_env as slack_bot_from_env;
 pub use notify_config::from_env as notifier_from_env;
 
 #[cfg(test)]

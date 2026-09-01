@@ -60,7 +60,8 @@ pub use notation_session::{
     QuestionChoice, QuestionDescriptor, StartOutcome,
 };
 pub use notify::{
-    ops_slack_messages, CapturingNotifier, Notifier, NotifyError, SlackNotifier, SlackOpsDelivery,
+    ops_slack_messages, CapturingNotifier, CapturingSlackBot, Notifier, NotifyError, SlackBot,
+    SlackBotClient, SlackBotError, SlackChannel, SlackNotifier, SlackOpsDelivery,
 };
 pub use runtime::{
     InMemoryRuntime, SignalContext, StateMachineRuntime, WorkflowEvent, WorkflowRuntimeError,

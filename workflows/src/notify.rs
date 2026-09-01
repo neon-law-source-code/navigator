@@ -36,6 +36,7 @@
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
+use serde::Deserialize;
 use serde_json::json;
 use thiserror::Error;
 
@@ -51,6 +52,199 @@ pub enum NotifyError {
     /// The webhook returned a non-2xx status (e.g. 404 for a revoked webhook).
     #[error("notification endpoint rejected the message: status {0}")]
     Rejected(u16),
+}
+
+/// Why a Slack Web API request failed. The bot client is separate from the
+/// legacy incoming-webhook notifier because Web API calls choose a channel at
+/// request time and therefore can serve one private channel per Project.
+#[derive(Debug, Error)]
+pub enum SlackBotError {
+    /// The request did not complete.
+    #[error("Slack API transport error: {0}")]
+    Transport(String),
+    /// Slack or its edge rejected the HTTP request.
+    #[error("Slack API HTTP status {0}")]
+    HttpStatus(u16),
+    /// Slack returned a structured API error.
+    #[error("Slack API rejected the request: {0}")]
+    Api(String),
+    /// Slack returned success without the object the caller needs.
+    #[error("Slack API returned an incomplete response")]
+    IncompleteResponse,
+}
+
+/// The subset of a Slack channel response Navigator needs to address later
+/// messages. The ID, not the channel name, is the stable posting coordinate.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct SlackChannel {
+    pub id: String,
+    pub name: String,
+}
+
+/// Target-aware Slack delivery for internal Project channels.
+#[async_trait]
+pub trait SlackBot: Send + Sync {
+    /// Create one private channel named after the Project code.
+    async fn create_private_channel(&self, name: &str) -> Result<SlackChannel, SlackBotError>;
+    /// Post a short internal notice to a channel ID.
+    async fn post_message(&self, channel_id: &str, text: &str) -> Result<(), SlackBotError>;
+}
+
+/// Slack Web API client authenticated with a bot token. The token is held only
+/// in the HTTP client's request path and is never included in errors or logs.
+#[derive(Clone)]
+pub struct SlackBotClient {
+    http: reqwest::Client,
+    base_url: String,
+    token: String,
+}
+
+impl SlackBotClient {
+    /// The production Slack Web API origin.
+    pub const DEFAULT_BASE_URL: &'static str = "https://slack.com/api";
+
+    /// Build a client for Slack's Web API.
+    #[must_use]
+    pub fn new(token: impl Into<String>) -> Self {
+        Self::with_base_url(token, Self::DEFAULT_BASE_URL)
+    }
+
+    /// Build a client against an explicit origin for tests.
+    #[must_use]
+    pub fn with_base_url(token: impl Into<String>, base_url: impl Into<String>) -> Self {
+        Self {
+            http: reqwest::Client::new(),
+            base_url: base_url.into().trim_end_matches('/').to_string(),
+            token: token.into(),
+        }
+    }
+
+    async fn post<T: serde::Serialize, R: for<'de> Deserialize<'de>>(
+        &self,
+        method: &str,
+        body: &T,
+    ) -> Result<R, SlackBotError> {
+        let response = self
+            .http
+            .post(format!("{}/{method}", self.base_url))
+            .bearer_auth(&self.token)
+            .json(body)
+            .send()
+            .await
+            .map_err(|error| SlackBotError::Transport(error.to_string()))?;
+        let status = response.status();
+        if !status.is_success() {
+            return Err(SlackBotError::HttpStatus(status.as_u16()));
+        }
+        response
+            .json::<R>()
+            .await
+            .map_err(|error| SlackBotError::Transport(error.to_string()))
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct CreateChannelResponse {
+    ok: bool,
+    #[serde(default)]
+    error: Option<String>,
+    channel: Option<SlackChannel>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PostMessageResponse {
+    ok: bool,
+    #[serde(default)]
+    error: Option<String>,
+}
+
+#[async_trait]
+impl SlackBot for SlackBotClient {
+    async fn create_private_channel(&self, name: &str) -> Result<SlackChannel, SlackBotError> {
+        let response: CreateChannelResponse = self
+            .post(
+                "conversations.create",
+                &json!({ "name": name, "is_private": true }),
+            )
+            .await?;
+        if !response.ok {
+            return Err(SlackBotError::Api(
+                response
+                    .error
+                    .unwrap_or_else(|| "unknown_error".to_string()),
+            ));
+        }
+        response.channel.ok_or(SlackBotError::IncompleteResponse)
+    }
+
+    async fn post_message(&self, channel_id: &str, text: &str) -> Result<(), SlackBotError> {
+        let response: PostMessageResponse = self
+            .post(
+                "chat.postMessage",
+                &json!({ "channel": channel_id, "text": text }),
+            )
+            .await?;
+        if response.ok {
+            Ok(())
+        } else {
+            Err(SlackBotError::Api(
+                response
+                    .error
+                    .unwrap_or_else(|| "unknown_error".to_string()),
+            ))
+        }
+    }
+}
+
+/// In-memory Slack bot used by tests and local development. It proves the
+/// target-aware request path without sending anything outside the process.
+#[derive(Clone, Default)]
+pub struct CapturingSlackBot {
+    created: Arc<Mutex<Vec<String>>>,
+    posted: Arc<Mutex<Vec<(String, String)>>>,
+}
+
+impl CapturingSlackBot {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    #[must_use]
+    pub fn created_channels(&self) -> Vec<String> {
+        self.created
+            .lock()
+            .expect("Slack bot lock poisoned")
+            .clone()
+    }
+
+    #[must_use]
+    pub fn posted_messages(&self) -> Vec<(String, String)> {
+        self.posted.lock().expect("Slack bot lock poisoned").clone()
+    }
+}
+
+#[async_trait]
+impl SlackBot for CapturingSlackBot {
+    async fn create_private_channel(&self, name: &str) -> Result<SlackChannel, SlackBotError> {
+        let count = {
+            let mut created = self.created.lock().expect("Slack bot lock poisoned");
+            created.push(name.to_string());
+            created.len()
+        };
+        Ok(SlackChannel {
+            id: format!("C{count:016X}"),
+            name: name.to_string(),
+        })
+    }
+
+    async fn post_message(&self, channel_id: &str, text: &str) -> Result<(), SlackBotError> {
+        self.posted
+            .lock()
+            .expect("Slack bot lock poisoned")
+            .push((channel_id.to_string(), text.to_string()));
+        Ok(())
+    }
 }
 
 /// A one-way channel for internal operations notifications. Implementors post a
@@ -239,8 +433,8 @@ impl EmailService for SlackOpsDelivery {
 #[cfg(test)]
 mod tests {
     use super::{
-        ops_slack_messages, CapturingNotifier, Notifier, NotifyError, SlackNotifier,
-        SlackOpsDelivery, SLACK_CHUNK_BUDGET,
+        ops_slack_messages, CapturingNotifier, CapturingSlackBot, Notifier, NotifyError, SlackBot,
+        SlackBotClient, SlackNotifier, SlackOpsDelivery, SLACK_CHUNK_BUDGET,
     };
     use crate::email::service::{EmailError, EmailService, OutboundEmail};
     use async_trait::async_trait;
@@ -258,6 +452,70 @@ mod tests {
     fn slack_body_is_text_field() {
         let body = SlackNotifier::build_request_body("hello ops");
         assert_eq!(body, serde_json::json!({ "text": "hello ops" }));
+    }
+
+    #[tokio::test]
+    async fn bot_creates_private_channel_and_posts_to_its_id() {
+        let bot = CapturingSlackBot::new();
+        let channel = bot
+            .create_private_channel("sample-project")
+            .await
+            .expect("capturing bot creates a channel");
+        bot.post_message(&channel.id, "Client viewed this Project in the portal.")
+            .await
+            .expect("capturing bot posts");
+
+        assert_eq!(bot.created_channels(), vec!["sample-project"]);
+        assert_eq!(
+            bot.posted_messages(),
+            vec![(
+                channel.id,
+                "Client viewed this Project in the portal.".to_string()
+            )]
+        );
+    }
+
+    #[tokio::test]
+    async fn bot_uses_channel_id_and_bearer_token_on_the_web_api() {
+        use wiremock::matchers::{body_partial_json, header, method, path};
+        use wiremock::{Mock, ResponseTemplate};
+
+        let server = wiremock::MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/conversations.create"))
+            .and(header("authorization", "Bearer xoxb-test"))
+            .and(body_partial_json(serde_json::json!({
+                "name": "sample-project",
+                "is_private": true
+            })))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_string(
+                    r#"{"ok":true,"channel":{"id":"C123","name":"sample-project"}}"#,
+                ),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/chat.postMessage"))
+            .and(header("authorization", "Bearer xoxb-test"))
+            .and(body_partial_json(serde_json::json!({
+                "channel": "C123",
+                "text": "hello"
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"ok":true}"#))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let bot = SlackBotClient::with_base_url("xoxb-test", server.uri());
+        let channel = bot
+            .create_private_channel("sample-project")
+            .await
+            .expect("Slack create succeeds");
+        bot.post_message(&channel.id, "hello")
+            .await
+            .expect("Slack post succeeds");
     }
 
     #[test]

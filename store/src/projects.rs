@@ -18,6 +18,7 @@ use crate::surreal::{record_id, record_uuid, retry, SurrealDb};
 /// The same cap a Project **application** name carries, because they are the
 /// same shape — see [`is_valid_code`].
 pub const PROJECT_CODE_MAX_LEN: usize = cloud::workspace::SLUG_MAX_LEN;
+const SLACK_CHANNEL_ID_INVALID: &str = "Slack channel id is invalid.";
 
 /// A Project read from the SurrealDB projects cluster.
 ///
@@ -55,6 +56,10 @@ pub struct Project {
     /// The Slack channel shared with the client, if this matter has one.
     /// Optional: most matters never get a client-facing channel.
     pub external_slack_channel_url: Option<String>,
+    /// The Slack Web API channel ID for the private firm-side channel. This is
+    /// distinct from the optional URL: the bot posts by ID, while a URL is a
+    /// human-facing resource link that may not exist for every deployment.
+    pub internal_slack_channel_id: Option<String>,
     /// The firm-only Notion page for this matter — the internal write-up,
     /// research, and working notes. Paired with
     /// [`Self::shared_notion_page_url`] for the same reason the two Slack
@@ -89,6 +94,7 @@ struct ProjectRow {
     closed_at: Option<String>,
     internal_slack_channel_url: Option<String>,
     external_slack_channel_url: Option<String>,
+    internal_slack_channel_id: Option<String>,
     private_notion_page_url: Option<String>,
     shared_notion_page_url: Option<String>,
     inserted_at: String,
@@ -111,6 +117,7 @@ impl ProjectRow {
             closed_at: self.closed_at,
             internal_slack_channel_url: self.internal_slack_channel_url,
             external_slack_channel_url: self.external_slack_channel_url,
+            internal_slack_channel_id: self.internal_slack_channel_id,
             private_notion_page_url: self.private_notion_page_url,
             shared_notion_page_url: self.shared_notion_page_url,
             inserted_at: self.inserted_at,
@@ -127,6 +134,7 @@ const PROJECT_SELECT: &str = "id, code, name, status, entity_id, description, \
                               drive_folder_id, repository_url, git_initialized_at, \
                               forge_provisioned_at, closed_at, \
                               internal_slack_channel_url, external_slack_channel_url, \
+                              internal_slack_channel_id, \
                               private_notion_page_url, shared_notion_page_url, \
                               inserted_at, updated_at";
 
@@ -1286,6 +1294,42 @@ pub async fn set_drive_folder_id(
         ))
         .bind(("id", record_id(PROJECT_TABLE, project_id)))
         .bind(("drive_folder_id", drive_folder_id))
+        .bind(("updated_at", chrono::Utc::now().to_rfc3339()))
+        .await
+        .and_then(surrealdb::IndexedResults::check)
+        .map_err(|error| ProjectCommandError::Db(error.to_string()))?;
+    let updated: Option<ProjectRow> = response
+        .take(0)
+        .map_err(|error| ProjectCommandError::Db(error.to_string()))?;
+    Ok(updated.and_then(ProjectRow::into_project))
+}
+
+/// Record the Slack Web API channel ID provisioned for a matter's private
+/// firm-side channel. This is a system-managed coordinate, not a free-form
+/// resource URL, so only non-empty ASCII channel IDs are accepted here.
+pub async fn set_internal_slack_channel_id(
+    surreal: &SurrealDb,
+    project_id: Uuid,
+    channel_id: &str,
+) -> Result<Option<Project>, ProjectCommandError> {
+    let channel_id = channel_id.trim();
+    if channel_id.is_empty() || !channel_id.bytes().all(|byte| byte.is_ascii_alphanumeric()) {
+        return Err(ProjectCommandError::Invalid(SLACK_CHANNEL_ID_INVALID));
+    }
+    if find_by_id(surreal, project_id)
+        .await
+        .map_err(|error| ProjectCommandError::Db(error.to_string()))?
+        .is_none()
+    {
+        return Ok(None);
+    }
+    let mut response = surreal
+        .query(format!(
+            "UPDATE $id SET internal_slack_channel_id = $channel_id, updated_at = $updated_at \
+             RETURN {PROJECT_SELECT}"
+        ))
+        .bind(("id", record_id(PROJECT_TABLE, project_id)))
+        .bind(("channel_id", channel_id.to_string()))
         .bind(("updated_at", chrono::Utc::now().to_rfc3339()))
         .await
         .and_then(surrealdb::IndexedResults::check)

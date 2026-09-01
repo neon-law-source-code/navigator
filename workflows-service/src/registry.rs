@@ -40,7 +40,7 @@ pub const WORKFLOW_SERVICES: &[&str] = &[
 /// (`/notation/<id>/...`, `/devx-pr/<repo>-<pr>/...`), not invoked as a one-shot
 /// workflow, so it follows Restate's object-naming convention rather than the
 /// `PascalCase` template convention.
-pub const VIRTUAL_OBJECTS: &[&str] = &["notation", "devx-pr", "devx-guardrails"];
+pub const VIRTUAL_OBJECTS: &[&str] = &["notation", "devx-pr", "devx-guardrails", "project-slack"];
 
 #[cfg(test)]
 mod tests {

@@ -169,6 +169,13 @@ fn step_body(view: &WalkerStepView) -> Element {
             a { class: "nav-link", href: "/auth/logout", "Sign out" }
         }
         main { id: "walker-step", class: "nav-theme",
+            div {
+                role: "progressbar",
+                "aria-label": "Intake progress",
+                "aria-valuenow": "{step.position}",
+                "aria-valuemin": "0",
+                "aria-valuemax": "{step.total}",
+            }
             FormCard {
                 title,
                 action,
@@ -247,6 +254,16 @@ mod tests {
         assert!(html.contains(">Continue</button>"), "{html}");
         assert!(html.contains("type=\"text\""), "{html}");
         assert_forms_accessible(&html, "walker_step");
+    }
+
+    #[test]
+    fn the_step_exposes_accessible_progress_semantics() {
+        let html = render(&view("string", "", &[]));
+        assert!(html.contains(r#"role="progressbar""#), "{html}");
+        assert!(html.contains(r#"aria-label="Intake progress""#), "{html}");
+        assert!(html.contains(r#"aria-valuenow="2""#), "{html}");
+        assert!(html.contains(r#"aria-valuemin="0""#), "{html}");
+        assert!(html.contains(r#"aria-valuemax="4""#), "{html}");
     }
 
     #[test]

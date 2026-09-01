@@ -503,6 +503,8 @@ pub fn LawyerProjectDetail() -> Element {
                     " · Client DRI: {client_dri_disp}"
                     " · "
                     a { class: "nav-link", href: "/app/projects/{view.code}/edit", "Edit project" }
+                    " · "
+                    a { class: "nav-link", href: "/app/projects/{view.code}/notations/new", "New notation" }
                 }
                 form {
                     class: "lawyer-detail__inline-form",

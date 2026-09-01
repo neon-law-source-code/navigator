@@ -1174,6 +1174,10 @@ pub const LAWYER_PROJECT_EDIT_PATH: &str = "/app/projects/{project_code}/edit";
 /// /app/projects/{project_code}/people` (the create) stays on the admin router.
 pub const LAWYER_PARTICIPATION_NEW_PATH: &str = "/app/projects/{project_code}/people/new";
 
+/// The project-scoped notation-create form path. The `POST` on this same path
+/// stays on the existing lawyer notation-create handler.
+pub const LAWYER_PROJECT_NOTATION_NEW_PATH: &str = "/app/projects/{project_code}/notations/new";
+
 /// The edit-participation form path (#956 Phase 4) — admin-only. The `POST` on
 /// this same path (the update) stays on the admin router; axum merges the
 /// same-path methods.
@@ -1222,6 +1226,14 @@ pub fn lawyer_project_forms_router(
     .merge(csrf_page_router(
         LAWYER_PARTICIPATION_EDIT_PATH,
         webapp::project_participation::LawyerParticipationEdit,
+        surreal.clone(),
+        sessions.clone(),
+        policy.clone(),
+        auth.clone(),
+    ))
+    .merge(csrf_page_router(
+        LAWYER_PROJECT_NOTATION_NEW_PATH,
+        webapp::project_notation::LawyerProjectNotationNew,
         surreal,
         sessions,
         policy,

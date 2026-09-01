@@ -11,7 +11,7 @@
 //! function the CLI's `notation create --project` drives over HTTP, so both
 //! surfaces auto-save the template the same way with no separate `import`
 //! step. Creation is lawyer-only *and* matter-scoped: the route lives under
-//! `/app/lawyer` and additionally requires the acting lawyer to participate
+//! `/app/projects` and additionally requires the acting lawyer to participate
 //! in the target project (`access::can_see_project`; admin bypasses), so a
 //! lawyer session cannot open a notation in a matter outside its scope.
 //! `lawyer_review` remains the gate before any binding step (enforced

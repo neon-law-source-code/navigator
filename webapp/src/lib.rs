@@ -84,6 +84,7 @@ pub mod project_document_detail;
 pub mod project_edit;
 pub mod project_list;
 pub mod project_new;
+pub mod project_notation;
 pub mod project_participation;
 pub mod project_resources;
 pub mod public_chrome;

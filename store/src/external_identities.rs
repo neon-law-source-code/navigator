@@ -6,8 +6,8 @@
 //! A row here turns "this Person" into "this account" for an API call:
 //! creating a repository and putting the right people on it means
 //! telling GitHub *which* user, and the API wants an id, not an email
-//! address. Inviting someone to a Slack channel, or as a Docusign
-//! envelope recipient, is the same problem.
+//! address. Inviting someone to a Slack channel, as a Docusign
+//! envelope recipient, or into a Notion relation is the same problem.
 //!
 //! Three separate things are involved and this module owns exactly one:
 //!
@@ -41,7 +41,8 @@
 //! # The id, never the handle
 //!
 //! [`ExternalIdentity::external_id`] is the provider's **immutable** id:
-//! a GitHub numeric id, a Slack `U…`, a Google `sub`, a Linear uuid.
+//! a GitHub numeric id, a Slack `U…`, a Google `sub`, a Linear uuid, or a
+//! Notion workspace user id.
 //! [`ExternalIdentity::handle`] is display only and expected to drift.
 //! Handles are renameable, and a mapping keyed on one breaks quietly —
 //! the provisioning call simply fails to find a user, at exactly the
@@ -114,6 +115,8 @@ pub enum ExternalSystem {
     Claude,
     /// ChatGPT. `external_id` is the workspace member id.
     Chatgpt,
+    /// Notion. `external_id` is the stable workspace user id.
+    Notion,
 }
 
 impl ExternalSystem {
@@ -128,6 +131,7 @@ impl ExternalSystem {
         Self::Linear,
         Self::Claude,
         Self::Chatgpt,
+        Self::Notion,
     ];
 
     /// The stored spelling — what goes in the column and what the ASSERT
@@ -142,6 +146,7 @@ impl ExternalSystem {
             Self::Linear => "linear",
             Self::Claude => "claude",
             Self::Chatgpt => "chatgpt",
+            Self::Notion => "notion",
         }
     }
 
@@ -390,6 +395,72 @@ pub async fn find_by_account(
     Ok(row.and_then(ExternalIdentityRow::into_identity))
 }
 
+/// Resolve the Person named by an external account id.
+///
+/// This is the provisioning-side relation resolver. It deliberately accepts
+/// only the provider's stable account id and never takes, searches, or falls
+/// back to a display name or email. Finding a Person here does not authorize
+/// any action; the caller still applies the provider and Navigator policy
+/// before making an outbound call.
+///
+/// # Errors
+///
+/// [`ExternalIdentityError::Db`] if either lookup fails.
+pub async fn find_person_by_account(
+    db: &SurrealDb,
+    system: ExternalSystem,
+    external_id: &str,
+) -> Result<Option<persons::Person>, ExternalIdentityError> {
+    let Some(identity) = find_by_account(db, system, external_id).await? else {
+        return Ok(None);
+    };
+    persons::find_by_id(db, identity.person_id)
+        .await
+        .map_err(ExternalIdentityError::Person)
+}
+
+/// The Notion user ids for every attorney DRI on a Project.
+///
+/// The Projects database's `Lead` relation is a set: every lawyer DRI is
+/// included, in stable external-id order. The relation is resolved from the
+/// Notion identity rows only; names and email addresses are never used as
+/// relation keys. A DRI without a Notion identity is omitted so an
+/// unconfigured account cannot be mistaken for another user.
+///
+/// # Errors
+///
+/// [`ExternalIdentityError::Db`] if the participation or identity lookup
+/// fails.
+pub async fn notion_user_ids_for_project_leads(
+    db: &SurrealDb,
+    project_id: Uuid,
+) -> Result<Vec<String>, ExternalIdentityError> {
+    let mut response = db
+        .query(
+            "SELECT VALUE person_id FROM person_project_role \
+             WHERE project_id = $project_id AND is_lawyer_dri = true",
+        )
+        .bind(("project_id", record_id("project", project_id)))
+        .await
+        .and_then(surrealdb::IndexedResults::check)?;
+    let person_ids: Vec<surrealdb::types::RecordId> = response.take(0)?;
+
+    let mut notion_ids = Vec::new();
+    for person_id in person_ids {
+        let Some(person_id) = record_uuid(&person_id) else {
+            continue;
+        };
+        if let Some(identity) =
+            find_by_person_and_system(db, person_id, ExternalSystem::Notion).await?
+        {
+            notion_ids.push(identity.external_id);
+        }
+    }
+    notion_ids.sort();
+    notion_ids.dedup();
+    Ok(notion_ids)
+}
+
 /// Every identity recorded for one person, oldest first.
 ///
 /// # Errors
@@ -453,6 +524,63 @@ pub async fn find_or_link(
     }
 }
 
+/// Set or clear one Person's identity on one external system.
+///
+/// Setting an existing identity updates its immutable account id only after
+/// the database has checked the `(system, external_id)` unique index. Clearing
+/// removes the row. This is the deliberate correction path for an admin or an
+/// import; [`find_or_link`] intentionally keeps its existing-idempotent,
+/// never-repoint behavior.
+///
+/// # Errors
+///
+/// [`ExternalIdentityError::NoSuchPerson`] when the Person does not exist,
+/// [`ExternalIdentityError::AccountTaken`] when another Person holds the
+/// account, or [`ExternalIdentityError::Db`] for another database failure.
+pub async fn set_for_person(
+    db: &SurrealDb,
+    person_id: Uuid,
+    system: ExternalSystem,
+    external_id: Option<&str>,
+) -> Result<Option<ExternalIdentity>, ExternalIdentityError> {
+    if persons::find_by_id(db, person_id).await?.is_none() {
+        return Err(ExternalIdentityError::NoSuchPerson(person_id));
+    }
+    let external_id = external_id.map(str::trim).filter(|id| !id.is_empty());
+    let existing = find_by_person_and_system(db, person_id, system).await?;
+
+    let Some(external_id) = external_id else {
+        if let Some(identity) = existing {
+            unlink(db, identity.id).await?;
+        }
+        return Ok(None);
+    };
+
+    if let Some(identity) = existing {
+        if identity.external_id == external_id {
+            return Ok(Some(identity));
+        }
+        let mut response = writing(system, || {
+            db.query(format!(
+                "UPDATE $id SET external_id = $external_id, updated_at = time::now() \
+                 RETURN {SELECT}"
+            ))
+            .bind(("id", record_id(TABLE, identity.id)))
+            .bind(("external_id", external_id.to_string()))
+        })
+        .await?;
+        let row: Option<ExternalIdentityRow> = response.take(0)?;
+        return row
+            .and_then(ExternalIdentityRow::into_identity)
+            .map(Some)
+            .ok_or(ExternalIdentityError::WriteReturnedNothing);
+    }
+
+    link(db, person_id, system, external_id, None)
+        .await
+        .map(Some)
+}
+
 /// Forget an identity — the account was closed, or recorded in error.
 /// Idempotent: unlinking one that is not there is a no-op.
 ///
@@ -470,7 +598,8 @@ pub async fn unlink(db: &SurrealDb, identity_id: Uuid) -> Result<(), ExternalIde
 #[cfg(test)]
 mod tests {
     use super::{
-        find_by_account, find_by_person_and_system, find_or_link, for_person, link, unlink,
+        find_by_account, find_by_person_and_system, find_or_link, find_person_by_account,
+        for_person, link, notion_user_ids_for_project_leads, set_for_person, unlink,
         ExternalIdentityError, ExternalSystem, PERSON_TABLE,
     };
     use crate::git_access_tokens;
@@ -492,15 +621,7 @@ mod tests {
     /// looks legitimate.
     #[test]
     fn parse_refuses_a_system_the_vocabulary_does_not_name() {
-        for unknown in [
-            "",
-            "GitHub",
-            "github ",
-            "gitlab",
-            "bitbucket",
-            "notion",
-            "xero",
-        ] {
+        for unknown in ["", "GitHub", "github ", "gitlab", "bitbucket", "xero"] {
             assert_eq!(
                 ExternalSystem::parse(unknown),
                 None,
@@ -578,6 +699,132 @@ mod tests {
             "the reverse lookup is what a provisioning call resolves through"
         );
         assert_eq!(for_person(&db, person_id).await.unwrap(), vec![linked]);
+    }
+
+    #[tokio::test]
+    async fn notion_user_ids_resolve_to_people_by_stable_id_only() {
+        let db = mem().await;
+        let person_id = a_person(&db, "notion@example.com", Role::Lawyer).await;
+        link(
+            &db,
+            person_id,
+            ExternalSystem::Notion,
+            "notion-user-123",
+            Some("Renamed"),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            find_person_by_account(&db, ExternalSystem::Notion, "notion-user-123")
+                .await
+                .unwrap()
+                .unwrap()
+                .id,
+            person_id
+        );
+        assert!(
+            find_person_by_account(&db, ExternalSystem::Notion, "Renamed")
+                .await
+                .unwrap()
+                .is_none(),
+            "a Notion display name is never a relation key"
+        );
+        assert!(
+            find_person_by_account(&db, ExternalSystem::Notion, "notion@example.com")
+                .await
+                .unwrap()
+                .is_none(),
+            "a Person email is never a Notion relation key"
+        );
+    }
+
+    #[tokio::test]
+    async fn notion_identity_correction_preserves_uniqueness_and_supports_clearing() {
+        let db = mem().await;
+        let first = a_person(&db, "first@example.com", Role::Lawyer).await;
+        let second = a_person(&db, "second@example.com", Role::Lawyer).await;
+        set_for_person(&db, first, ExternalSystem::Notion, Some("notion-1"))
+            .await
+            .unwrap();
+
+        let duplicate = set_for_person(&db, second, ExternalSystem::Notion, Some("notion-1")).await;
+        assert!(matches!(
+            duplicate,
+            Err(ExternalIdentityError::AccountTaken {
+                system: ExternalSystem::Notion
+            })
+        ));
+
+        set_for_person(&db, first, ExternalSystem::Notion, Some("notion-2"))
+            .await
+            .unwrap();
+        assert!(find_by_account(&db, ExternalSystem::Notion, "notion-1")
+            .await
+            .unwrap()
+            .is_none());
+        set_for_person(&db, first, ExternalSystem::Notion, None)
+            .await
+            .unwrap();
+        assert!(
+            find_by_person_and_system(&db, first, ExternalSystem::Notion)
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn project_lead_notion_ids_include_every_attorney_dri() {
+        let db = mem().await;
+        let first = a_person(&db, "first@example.com", Role::Lawyer).await;
+        let second = a_person(&db, "second@example.com", Role::Admin).await;
+        let unrelated = a_person(&db, "unrelated@example.com", Role::Lawyer).await;
+        let project = crate::projects::create(
+            &db,
+            &crate::projects::NewProject {
+                code: "sample-notion-leads".into(),
+                name: "Sample".into(),
+                status: "open".into(),
+                entity_id: Uuid::now_v7(),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        let project_id = project.id;
+        for person_id in [first, second] {
+            crate::projects::designate_dri_in_surreal(
+                &db,
+                project_id,
+                person_id,
+                crate::projects::DriSide::Lawyer,
+            )
+            .await
+            .unwrap();
+        }
+        link(&db, first, ExternalSystem::Notion, "notion-z", None)
+            .await
+            .unwrap();
+        link(&db, second, ExternalSystem::Notion, "notion-a", None)
+            .await
+            .unwrap();
+        link(
+            &db,
+            unrelated,
+            ExternalSystem::Notion,
+            "notion-unrelated",
+            None,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            notion_user_ids_for_project_leads(&db, project_id)
+                .await
+                .unwrap(),
+            ["notion-a", "notion-z"]
+        );
     }
 
     /// The immutable id is the key and the handle is not, so a rename

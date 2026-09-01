@@ -48,6 +48,9 @@ pub struct PersonFields {
     pub given_name: String,
     pub family_name: String,
     pub middle_name: String,
+    /// The stable Notion workspace user id, if linked. This is an external
+    /// identity address, never an authorization fact.
+    pub notion_user_id: String,
 }
 
 /// A flash notice floated on arrival — the welcome-email send outcome (mapped
@@ -174,6 +177,16 @@ async fn load_person_show(role: ViewerRole) -> Result<PersonShowView, ServerFnEr
     // The configured email is injected by the portal router (mirroring the
     // CSRF token) rather than read from the environment, so a test can set it
     // on the state without a process-global env var.
+    let notion_user_id = store::external_identities::find_by_person_and_system(
+        &surreal,
+        id,
+        store::external_identities::ExternalSystem::Notion,
+    )
+    .await
+    .map_err(|e| ServerFnError::new(e.to_string()))?
+    .map(|identity| identity.external_id)
+    .unwrap_or_default();
+
     let BootstrapOwnerEmail(bootstrap_owner_email) =
         dioxus_fullstack_core::FullstackContext::extract::<axum::Extension<BootstrapOwnerEmail>, _>()
             .await
@@ -230,6 +243,7 @@ async fn load_person_show(role: ViewerRole) -> Result<PersonShowView, ServerFnEr
             given_name: p.given_name.unwrap_or_default(),
             family_name: p.family_name.unwrap_or_default(),
             middle_name: p.middle_name.unwrap_or_default(),
+            notion_user_id,
         }),
         edit_lock,
         can_impersonate,
@@ -312,7 +326,19 @@ fn edit_fields(fields: &PersonFields, edit_lock: EditLock, viewer_role: ViewerRo
     family = family.disabled();
     middle = middle.disabled();
 
-    vec![name, email, role, given, family, middle]
+    let mut notion = Field::text(
+        "Notion user ID",
+        "notion_user_id",
+        fields.notion_user_id.clone(),
+    )
+    .help(
+        "The stable Notion workspace user ID. Navigator uses this ID for Notion person relations; it is not a credential or permission.",
+    );
+    if edit_lock == EditLock::HigherRank {
+        notion = notion.disabled();
+    }
+
+    vec![name, email, role, notion, given, family, middle]
 }
 
 /// The person show/edit page (`/app/admin/people/{id}`).

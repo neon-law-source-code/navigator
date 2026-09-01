@@ -288,7 +288,7 @@ DEFINE FIELD OVERWRITE person_id ON person_mailbox TYPE record<person>;
 DEFINE TABLE IF NOT EXISTS person_external_identity SCHEMAFULL PERMISSIONS NONE;
 DEFINE FIELD OVERWRITE person_id ON person_external_identity TYPE record<person>;
 DEFINE FIELD OVERWRITE system ON person_external_identity TYPE string
-    ASSERT $value IN ['github', 'slack', 'docusign', 'google', 'linear', 'claude', 'chatgpt'];
+    ASSERT $value IN ['github', 'slack', 'docusign', 'google', 'linear', 'claude', 'chatgpt', 'notion'];
 DEFINE FIELD OVERWRITE external_id ON person_external_identity TYPE string;
 DEFINE FIELD OVERWRITE handle ON person_external_identity TYPE option<string>;
 DEFINE FIELD OVERWRITE inserted_at ON person_external_identity TYPE datetime DEFAULT time::now();

@@ -1311,6 +1311,7 @@ async fn projects_new_client_inline(
         given_name: None,
         family_name: None,
         middle_name: None,
+        notion_user_id: None,
     };
     match crate::people_commands::create_person(&state.surreal, &command).await {
         Ok(created) => {

@@ -579,9 +579,9 @@ The kind of legal Entity (`LLC`, `Trust`, `Corporation`, `Foundation`, …). Ref
 ## External System Identity
 
 The identifier a third-party system issues for a [Person](#person) — a GitHub numeric id, a Slack `U…`, a Google `sub`,
-a Linear uuid — so Navigator can name them in an API call. Creating a repository and putting the right people on it
-means telling GitHub *which* user, and the API wants an id, not an email address; inviting someone to a Slack channel,
-or as a Docusign envelope recipient, is the same problem.
+a Linear uuid, or a Notion workspace user id — so Navigator can name them in an API call. Creating a repository and
+putting the right people on it means telling GitHub *which* user, and the API wants an id, not an email address;
+inviting someone to a Slack channel, or as a Docusign envelope recipient, is the same problem.
 
 Always the provider's **immutable** id, never the handle. Handles are renameable, and a mapping keyed on one breaks
 quietly — the provisioning call simply fails to find a user, at exactly the moment a matter is opening. A display

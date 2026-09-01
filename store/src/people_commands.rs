@@ -13,6 +13,7 @@
 use serde::Deserialize;
 use uuid::Uuid;
 
+use crate::external_identities::{self, ExternalIdentityError, ExternalSystem};
 use crate::persons::{self, ContactUpdate, NewPerson, Person, PersonEdit, PersonError, Role};
 use crate::surreal::SurrealDb;
 
@@ -32,6 +33,10 @@ pub struct CreatePersonCommand {
     pub family_name: Option<String>,
     #[serde(default)]
     pub middle_name: Option<String>,
+    /// The stable Notion workspace user id. Stored in the external-identity
+    /// table, never on the Person row.
+    #[serde(default)]
+    pub notion_user_id: Option<String>,
 }
 
 impl CreatePersonCommand {
@@ -74,6 +79,9 @@ pub struct UpdatePersonCommand {
     pub family_name: Option<Option<String>>,
     #[serde(default, deserialize_with = "double_option")]
     pub middle_name: Option<Option<String>>,
+    /// Omit to preserve the Notion identity; send null or blank to clear it.
+    #[serde(default, deserialize_with = "double_option")]
+    pub notion_user_id: Option<Option<String>>,
 }
 
 /// Deserialize a "double option" that keeps a present JSON `null`
@@ -124,6 +132,10 @@ pub enum PeopleCommandError {
     /// send failed. Constructed by the `web` welcome command.
     SendFailed,
     Db(PersonError),
+    /// A Notion identity belongs to another Person, or the external identity
+    /// store rejected the update. No identity value is included in the user
+    /// message.
+    ExternalIdentity,
 }
 
 impl PeopleCommandError {
@@ -140,6 +152,9 @@ impl PeopleCommandError {
                 "Couldn't send the welcome email. Check the email log.".to_string()
             }
             PeopleCommandError::Db(_) => "Something went wrong. Please try again.".to_string(),
+            PeopleCommandError::ExternalIdentity => {
+                "That Notion user is already linked to another person.".to_string()
+            }
         }
     }
 }
@@ -201,6 +216,10 @@ fn classify_write(error: PersonError) -> PeopleCommandError {
     }
 }
 
+fn classify_external_identity(_error: ExternalIdentityError) -> PeopleCommandError {
+    PeopleCommandError::ExternalIdentity
+}
+
 pub async fn create_person(
     db: &SurrealDb,
     input: &CreatePersonCommand,
@@ -208,7 +227,7 @@ pub async fn create_person(
     if let Some(message) = input.validation_message() {
         return Err(PeopleCommandError::Invalid(message));
     }
-    persons::create(
+    let created = persons::create(
         db,
         &NewPerson {
             role: parse_create_role(&input.role),
@@ -219,7 +238,21 @@ pub async fn create_person(
         },
     )
     .await
-    .map_err(classify_write)
+    .map_err(classify_write)?;
+    if input.notion_user_id.is_some() {
+        if let Err(error) = external_identities::set_for_person(
+            db,
+            created.id,
+            ExternalSystem::Notion,
+            input.notion_user_id.as_deref(),
+        )
+        .await
+        {
+            let _ = persons::delete(db, created.id).await;
+            return Err(classify_external_identity(error));
+        }
+    }
+    Ok(created)
 }
 
 /// Update one Person by id. The bootstrap Owner's email and role are pinned —
@@ -280,7 +313,7 @@ pub async fn update_person(
         requested
     };
 
-    persons::edit(
+    let updated = persons::edit(
         db,
         id,
         &PersonEdit {
@@ -309,7 +342,19 @@ pub async fn update_person(
     )
     .await
     .map_err(classify_write)?
-    .ok_or(PeopleCommandError::NotFound)
+    .ok_or(PeopleCommandError::NotFound)?;
+
+    if let Some(notion_user_id) = input.notion_user_id.as_ref() {
+        external_identities::set_for_person(
+            db,
+            id,
+            ExternalSystem::Notion,
+            notion_user_id.as_deref(),
+        )
+        .await
+        .map_err(classify_external_identity)?;
+    }
+    Ok(updated)
 }
 
 /// Delete one Person by id. Only **client** records are deletable: a
@@ -403,6 +448,7 @@ mod tests {
             given_name: None,
             family_name: None,
             middle_name: None,
+            notion_user_id: None,
         }
     }
 
@@ -438,6 +484,57 @@ mod tests {
             .unwrap();
         assert_eq!(row.name, "Libra");
         assert_eq!(row.email, "libra@example.com");
+    }
+
+    #[tokio::test]
+    async fn create_and_update_store_the_notion_user_id_as_an_external_identity() {
+        let db = db().await;
+        let mut command = create("Notion Person", "notion-person@example.com");
+        command.notion_user_id = Some("notion-user-123".into());
+        let row = create_person(&db, &command).await.unwrap();
+        let identity = crate::external_identities::find_by_person_and_system(
+            &db,
+            row.id,
+            crate::external_identities::ExternalSystem::Notion,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(identity.external_id, "notion-user-123");
+
+        let updated = update_person(
+            &db,
+            row.id,
+            &UpdatePersonCommand {
+                name: row.name.clone(),
+                email: row.email.clone(),
+                role: String::new(),
+                given_name: None,
+                family_name: None,
+                middle_name: None,
+                notion_user_id: Some(Some("notion-user-456".into())),
+            },
+            &UpdateContext {
+                bootstrap_owner_email: None,
+                actor_role: Role::Owner,
+                may_change_roles: true,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(updated.id, row.id);
+        assert_eq!(
+            crate::external_identities::find_by_account(
+                &db,
+                crate::external_identities::ExternalSystem::Notion,
+                "notion-user-456"
+            )
+            .await
+            .unwrap()
+            .unwrap()
+            .person_id,
+            row.id
+        );
     }
 
     #[tokio::test]
@@ -490,6 +587,7 @@ mod tests {
             given_name: None,
             family_name: None,
             middle_name: None,
+            notion_user_id: None,
         };
         let ctx = UpdateContext {
             bootstrap_owner_email: None,
@@ -516,6 +614,7 @@ mod tests {
             given_name: None, // omitted → preserved
             family_name: None,
             middle_name: None,
+            notion_user_id: None,
         };
         let ctx = UpdateContext {
             bootstrap_owner_email: None,
@@ -540,6 +639,7 @@ mod tests {
             given_name: Some(Some(String::new())), // present blank → clear
             family_name: None,
             middle_name: None,
+            notion_user_id: None,
         };
         let ctx = UpdateContext {
             bootstrap_owner_email: None,
@@ -568,6 +668,7 @@ mod tests {
             given_name: None,
             family_name: None,
             middle_name: None,
+            notion_user_id: None,
         };
         let ctx = UpdateContext {
             bootstrap_owner_email: Some("boss@example.com"),
@@ -596,6 +697,7 @@ mod tests {
             given_name: None,
             family_name: None,
             middle_name: None,
+            notion_user_id: None,
         };
         let admin_ctx = UpdateContext {
             bootstrap_owner_email: None,
@@ -614,6 +716,7 @@ mod tests {
             given_name: None,
             family_name: None,
             middle_name: None,
+            notion_user_id: None,
         };
         assert!(matches!(
             update_person(&db, client.id, &promote_input, &admin_ctx).await,

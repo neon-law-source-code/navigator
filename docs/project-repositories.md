@@ -495,6 +495,52 @@ The template directory is flat. Each `templates/<code>.md` file is a Project-loc
 Navigator's shared `templates/neon_law` or `templates/forms` catalog. Navigator reads the file at `main`, validates its
 notation contract, persists its bytes as a content-addressed Asset, and records the imported commit SHA as provenance.
 
+## Opening a Project from the browser, end to end
+
+The mechanisms above are documented separately because each is owned by a different piece of code. A lawyer or operator
+experiences them as one sequence, not five, so this section threads them together in order.
+
+1. **Open the matter.** A lawyer-tier account fills the form at `/app/projects/new` — name, code stem, Entity,
+   description, scope of services, client DRI, and the conflict-check attestation. Submitting calls
+   `store::projects::open_matter` and redirects to `/app/projects/<code>`, where `<code>` is the typed stem plus
+   Navigator's generated suffix — the redirect is the first and only place the final code is shown back.
+
+2. **Provision the repository and Drive folder.** [Provisioning the three handles](#provisioning-the-three-handles)
+   describes what this step does; the detail worth calling out here is that it does not happen automatically for a
+   matter opened through the browser form above. `POST /app/api/projects`, the CLI's own open command, and the MCP tool
+   all call `store::project_surfaces::reconcile_after_open` as part of opening — the browser form's handler does not, so
+   a matter opened purely through step 1 leaves `repository_url` and the Drive folder unset. Run the reconciler
+   explicitly to create (or adopt) the empty private repository and Drive folder:
+
+   ```bash
+   navigator site projects surfaces reconcile --project <code>
+   ```
+
+3. **Populate the repository.** Clone it, then run [`scaffold`](#scaffolding-a-repository):
+
+   ```bash
+   navigator site projects repository scaffold <code> --dir . --action-version <YY.M.D>
+   ```
+
+   Commit and push what it writes — that push is what makes `.github/workflows/gate.yml` live on the new repository.
+
+4. **Build a portal, if this Project needs one.** A separate, later decision made in the `vibe-react` lane against a
+   pinned `@neon-law/ux` release; `scaffold` deliberately does not write `portal/`.
+
+5. **Wire the publish secrets** described in [Publishing the built bundle](#publishing-the-built-bundle) — one
+   publisher identity per Project, provisioned by `cli/src/devx/gcp/app_publisher.rs`.
+
+6. **Verify.**
+
+   ```bash
+   navigator site projects doctor --project <code>
+   navigator site projects drift --dir ~/<organization>
+   ```
+
+Step 2's gap is current behavior, not a documented design choice: nothing marks the browser-only path as intentionally
+thinner than the API, CLI, and MCP paths that provision synchronously, so treat it as something to check for rather than
+something the form guarantees.
+
 ## Local checkouts
 
 One checkout root per organization, holding one directory per Project code. The root is the organization's own name, so

@@ -24,6 +24,12 @@ through a PR; merging `main` drives publication.
   release PR must open ready for review, not as a draft. Auto-merge only lands a PR that is not a draft, so a release
   cut as a draft sits published-but-unmerged until someone notices and marks it ready — take it out of draft as soon as
   the gate has run, rather than leaving that step for later.
+- **A review is always required before it merges.** The `production-review` ruleset requires one codeowner-approving
+  review on every PR; green CI and non-draft status alone do not satisfy it. That requirement is bypassed only when the
+  codeowner named in `.github/CODEOWNERS` opens the PR under their own account — a release PR opened any other way (an
+  agent's own token, a bot) sits at `REVIEW_REQUIRED` until a human approves it, so auto-merge will not just fire on its
+  own. See [Review gate: two rulesets with a narrow
+  bypass](../../../docs/gitops.md#review-gate-two-rulesets-with-a-narrow-bypass).
 - Stop when that PR merges. Report its URL. Do not watch `deploy.yml` for the tag, images, archives, or tap.
 - Do not deploy, mutate production, or copy production coordinates into the branch, PR, or release notes. Where release
   notes cite planning, cite the bare Linear issue identifier (`ENG-1234`) — never a `linear.app` URL, issue title, or

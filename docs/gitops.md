@@ -827,10 +827,14 @@ GHCR publishes no endpoint that asks whether one would be authorized, so a green
 workflow file and never about the package role — the first place a lapsed grant can surface is a live sweep with
 something due.
 
-**The summary names what was due as well as what was spent**, because `#navigator` is shown that line and no other. `0
-due, 0 deleted, 0 failed` is a registry holding nothing that clears the floors; `N due, 0 deleted, N failed` is the
-grant. Both were once `0 versions deleted`, and a correct quiet night was twice mistaken for the broken nights that
-preceded it.
+**The summary names what was due as well as what was spent**, because `#navigator` is shown that line and no other. Two
+nights that both deleted nothing read differently once the line also says how many versions were due:
+
+- `0 due, 0 deleted, 0 failed` is a registry holding nothing that clears the floors.
+- `N due, 0 deleted, N failed` is the grant.
+
+Both were once `0 versions deleted`, and a correct quiet night was twice mistaken for the broken nights that preceded
+it.
 
 Change retention by changing `CUTOFF_DAYS` or `RETAINED_VERSIONS` in the workflow; the guard test pins both literals, so
 a change there is a change the test makes you state.

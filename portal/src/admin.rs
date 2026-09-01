@@ -2321,11 +2321,49 @@ async fn projects_csv(
 mod tests {
     use super::{
         admin_gated_message, bootstrap_company_from_lookup, encode_query_value, is_admin,
-        participation_people, project_participation_access,
+        open_matter_form_error, participation_people, project_participation_access, ProjectInput,
     };
     use crate::session::SessionData;
     use store::persons::Role;
     use uuid::Uuid;
+
+    fn blank_project_input(code: &str) -> ProjectInput {
+        ProjectInput {
+            code: code.to_string(),
+            name: "A Matter".to_string(),
+            entity_id: None,
+            description: String::new(),
+            client_dri_person_id: None,
+            scope_of_services: String::new(),
+            internal_slack_channel_url: String::new(),
+            external_slack_channel_url: String::new(),
+            repository_url: String::new(),
+            private_notion_page_url: String::new(),
+            shared_notion_page_url: String::new(),
+            attestation: None,
+        }
+    }
+
+    // A code collision is caller-correctable, so the redirect must say the
+    // lawyer needs to choose a different code — never anything implying
+    // Navigator will pick one (ENG-414: `open_matter` no longer generates
+    // around a collision, so this path is live rather than dead).
+    #[test]
+    fn a_code_conflict_tells_the_lawyer_to_choose_a_different_code() {
+        let input = blank_project_input("acme-holdings");
+        let response =
+            open_matter_form_error(None, &input, store::projects::OpenMatterError::CodeConflict);
+        let location = response
+            .headers()
+            .get(axum::http::header::LOCATION)
+            .expect("a refusal redirects back to the form")
+            .to_str()
+            .expect("a `Location` built from `encode_query_value` is valid ASCII");
+        assert!(
+            location.contains("already%20in%20use") && location.contains("different%20code"),
+            "expected the refusal to name the conflict and ask for a different code: {location}"
+        );
+    }
 
     /// The encoder's contract, pinned directly rather than only through the
     /// one flow that happened to expose it.

@@ -145,10 +145,10 @@ Everything the onboarding chain needs is in the offered set, so this is one conv
 1. **The organization and its people.** Hand Claude the contact list and ask it to load them. It calls
    `aida_bulk_import` with one document; find-or-create means a re-run changes nothing. The payload contract is
    [`bulk-contact-import.md`](bulk-contact-import.md).
-2. **The matter.** `aida_create_project` against the entity that import created. It needs a `code` — the stem of the
-   matter's code, later the base of its repository name. Navigator appends a short generated suffix, since a code is
-   chosen once at matter-open and never changes; give Claude a preferred stem rather than a final code. It also requires
-   the opening attorney's conflict `attestation`, and refuses without it.
+2. **The matter.** `aida_create_project` against the entity that import created. It needs a `code`, stored exactly as
+   given — later the base of its repository name. A code is chosen once at matter-open and never changes; give Claude
+   the exact code rather than a stem for it to slug, since a code already in use by another matter is refused, not
+   disambiguated. It also requires the opening attorney's conflict `attestation`, and refuses without it.
 3. **Who is on it.** `aida_link_person_project` per participant.
 
 `aida_create_project` provisions the matter's repository itself, best-effort:

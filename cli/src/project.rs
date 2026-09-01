@@ -36,10 +36,11 @@ pub struct CreatedProject {
 /// there is no status argument — lifecycle transitions are their own commands
 /// (navigator#770).
 ///
-/// `code` is the stem of the matter's code, required. It is not the stored
-/// code: `open_matter` appends a short generated suffix so the stem alone can
-/// never collide with another matter's — a code is chosen once, at
-/// matter-open, and never changes (`docs/glossary.md#project`).
+/// `code` is the matter's code, required, and is stored exactly as given —
+/// `open_matter` never generates or appends anything to it. A code is chosen
+/// once, at matter-open, and never changes (`docs/glossary.md#project`); a
+/// code already in use by another matter is refused rather than
+/// disambiguated.
 #[allow(clippy::too_many_arguments)] // the human-facing open flags
 pub async fn create(
     surreal: &store::surreal::SurrealDb,

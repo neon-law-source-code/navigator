@@ -956,13 +956,17 @@ column and neither consults the id — `portal::dioxus_app::project_show_path` w
 renders, and `project_id_from_path` reads one back. A lowercase UUID is itself a well-formed code, so nothing could
 refuse one on sight; what keeps ids out of URLs is the lookup, not the shape of the segment.
 
-The code is **required at matter-open**: the caller supplies a stem, validated by the same `is_valid_code` shape and
-reserved-word rules a hand-typed code always carried. `store::projects::code_from_name` then appends a short generated
-suffix — eight lowercase letters derived from the matter's id — so two matters can never collide on a hand-picked stem;
-one client with two matters, or two clients with similar names, no longer permanently strands the loser with whatever it
-settled for. Uppercase and underscores stay out deliberately: the code is also the repository name (see
-[`project-repositories`](project-repositories.md)), and a second separator would turn the stem-plus-suffix concatenation
-into a normalization instead of an unambiguous join.
+The code is **required at matter-open** and is **stored exactly as the caller supplies it** (normalized for case and
+whitespace by `store::projects::normalize_code`, then checked against `is_valid_code`'s shape and reserved-word rules).
+`store::projects::open_matter` never generates or appends anything to it: the code is a coordinate the caller already
+committed to elsewhere — the `project:` value in a repository's `navigator.yaml`, the matter's Drive folder name, the
+Notion `Project code` URL — so Navigator inventing a different one would strand those bindings the moment `project.code`
+(`READONLY`) is written. A collision with an already-open matter's code is refused as `OpenMatterError::CodeConflict`
+(surfaced as an HTTP 409 or an MCP `conflict`), not silently resolved; the caller picks a different code and retries.
+`store::projects::code_from_name` still exists — it derives a default stem (name plus a short generated suffix) for the
+one caller that has no operator-supplied code to begin with, the self-serve retainer walk (`portal::retainer_walk`).
+Uppercase and underscores stay out deliberately: the code is also the repository name (see
+[`project-repositories`](project-repositories.md)).
 
 **The code is immutable.** It is chosen once, at matter-open, and never changes — not on a client rename, not for a
 nicer slug, not ever. `code` addresses things Navigator does not own: the matter's route (`/app/projects/{code}`), its

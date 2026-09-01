@@ -482,3 +482,85 @@ async fn identical_bytes_are_a_no_op_scoped_to_one_slug_and_never_global() {
         "the probe must never answer across projects — that is an existence oracle"
     );
 }
+
+/// A document's identity is `project_id` first — slug and filename are only
+/// meaningful inside that scope. Two matters that happen to use the same
+/// slug and the same filename must never see each other's revision chain,
+/// operative version, or filename lookup.
+#[tokio::test]
+async fn a_document_is_namespaced_by_project_not_by_slug_or_filename_alone() {
+    let (db, storage, _tmp, project_a) = fixtures().await;
+    let project_b = seed_project_surreal(&db, "sibling").await;
+
+    let doc_a = insert_revision(
+        &db,
+        &storage,
+        project_a,
+        Some("msa"),
+        b"project-a-content",
+        None,
+        visibility::CLIENT,
+    )
+    .await;
+    let doc_b = insert_revision(
+        &db,
+        &storage,
+        project_b,
+        Some("msa"),
+        b"project-b-content",
+        None,
+        visibility::CLIENT,
+    )
+    .await;
+
+    // The revision chain never crosses projects, even under the identical slug.
+    let history_a = revisions(&db, project_a, "msa").await.expect("revisions a");
+    assert_eq!(
+        history_a.iter().map(|row| row.id).collect::<Vec<_>>(),
+        vec![doc_a],
+        "project A's chain holds only its own revision"
+    );
+
+    let history_b = revisions(&db, project_b, "msa").await.expect("revisions b");
+    assert_eq!(
+        history_b.iter().map(|row| row.id).collect::<Vec<_>>(),
+        vec![doc_b],
+        "project B's chain holds only its own revision"
+    );
+
+    // `current` resolves within one project only.
+    let current_a = current(&db, project_a, "msa", Lens::Lawyer)
+        .await
+        .expect("current a")
+        .expect("a current revision in project a");
+    assert_eq!(current_a.id, doc_a, "project A's current stays project A's");
+
+    let current_b = current(&db, project_b, "msa", Lens::Lawyer)
+        .await
+        .expect("current b")
+        .expect("a current revision in project b");
+    assert_eq!(current_b.id, doc_b, "project B's current stays project B's");
+
+    // The filename lookup is scoped the same way: both matters filed
+    // "agreement.pdf" (see `insert_revision`), and each must resolve to
+    // its own row, never the other matter's.
+    let by_filename_a =
+        store::assets::find_by_project_and_filename(&db, project_a, "agreement.pdf")
+            .await
+            .expect("find by filename a")
+            .expect("a row in project a");
+    assert_eq!(
+        by_filename_a.id, doc_a,
+        "filename lookup in project a must not resolve project b's row"
+    );
+
+    let by_filename_b =
+        store::assets::find_by_project_and_filename(&db, project_b, "agreement.pdf")
+            .await
+            .expect("find by filename b")
+            .expect("a row in project b");
+    assert_eq!(
+        by_filename_b.id, doc_b,
+        "filename lookup in project b must not resolve project a's row"
+    );
+}

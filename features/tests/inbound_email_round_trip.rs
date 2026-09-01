@@ -78,7 +78,18 @@ fn inbound(from: &str, to: &str, subject: &str, text: &str) -> InboundEmail {
         subject: subject.to_string(),
         text: text.to_string(),
         raw: text.as_bytes().to_vec(),
-        dkim: String::new(),
+        // A pass for the sender's own domain, because that is what SendGrid
+        // Inbound Parse posts for genuine mail. An empty verdict is not a
+        // neutral default: the lawyer command channel requires positive proof
+        // the `From:` header is authentic, so a blank field would silently
+        // turn every scenario in this suite into an unauthenticated sender.
+        dkim: format!(
+            "{{@{} : pass}}",
+            from.trim_end_matches('>')
+                .rsplit('@')
+                .next()
+                .unwrap_or_default()
+        ),
         attachments: Vec::new(),
         quarantined_attachments: Vec::new(),
         message_id: None,

@@ -724,9 +724,13 @@ fn non_empty_or<'a>(s: &'a str, fallback: &'a str) -> &'a str {
 }
 
 /// Handle a reply from a lawyer/admin sender on a known conversation: the
-/// privileged path that may relay to the client and fire workflow
-/// commands. Gated by [`dkim_passes_for_domain`] when the config enables
-/// it; otherwise trusted on lawyer-sender + unguessable token alone.
+/// privileged path that may relay to the client and fire workflow commands.
+///
+/// Every command variant and the relay are gated on
+/// [`dkim_passes_for_domain`] for the sender's own domain — a lawyer-tier
+/// `From:` header plus a thread token is not evidence of authorship. When
+/// `verify_dkim_domain` is configured it pins replies to that one firm domain
+/// as a strictly narrower check on top.
 async fn handle_lawyer_reply(
     ctx: &ThreadCtx<'_>,
     inbound: &InboundEmail,
@@ -772,6 +776,44 @@ async fn handle_lawyer_reply(
         }
     }
 
+    // Is the `From:` header cryptographically authentic? The lawyer-tier
+    // `persons` lookup above trusts that header to name the sender, and a
+    // header is free to write. DKIM is what makes it evidence: requiring a
+    // `pass` for the sender's OWN domain is the alignment check that turns
+    // "claims to be Nick" into "was signed by neonlaw.com".
+    //
+    // This gate covers the whole privileged path — every command variant and
+    // the client relay — rather than one command. Scoping it to `@approve`
+    // left four other verbs and the relay running on sender-plus-token trust,
+    // and the token is not a secret: it is stamped as `Reply-To` on every
+    // outbound hop, so any client who has received a relayed reply holds a
+    // valid one for their own thread. `@link` is the sharpest of them: it
+    // accepts any existing notation id with no participation check, so a
+    // forged one cross-links a stranger's thread onto a client's matter,
+    // files their attachments into it, and — because `is_prospect` reads
+    // `notation_id.is_none()` — lifts the RPC 1.10 imputed-conflicts hold
+    // without ever sending `@cleared`.
+    //
+    // This is deliberately not `cfg.verify_dkim_domain` — that option pins
+    // replies to one firm domain and is unset in every deployment manifest in
+    // the tree, so keying the command channel to it would leave the channel
+    // open by default. This check needs no configuration and is therefore on
+    // everywhere. Where the option IS set, the stricter gate above has already
+    // returned, so the two compose.
+    //
+    // The disposition is a hold, not a drop: nothing executes and nothing
+    // relays, but the reply is journaled and the cockpit is told, so a
+    // genuine attorney whose mail arrives without a usable verdict sees that
+    // it was held and can act from `/app/lawyer/*`, where the session names
+    // them. Refusing a signature is recoverable; silently swallowing
+    // attorney correspondence is not.
+    let sender_domain = extract_domain(&inbound.from);
+    if !dkim_passes_for_domain(&inbound.dkim, &sender_domain) {
+        hold_unauthenticated_reply(ctx, inbound, raw_key, body, token, conversation, sender)
+            .await?;
+        return Ok(());
+    }
+
     let cleaned = strip_quoted(body);
     let parsed = parse_reply(&cleaned);
     let command_payload = (!parsed.commands.is_empty())
@@ -801,21 +843,8 @@ async fn handle_lawyer_reply(
     // notation (the production lawyer-review gate) and still relay any
     // accompanying prose. A successful `@link` updates this local model so a
     // same-message `@approve` and the relay gate below both see the new link.
-    // Is the `From:` header cryptographically authentic? The lawyer-tier
-    // `persons` lookup above trusts that header to name the sender, and a
-    // header is free to write. DKIM is what makes it evidence: requiring a
-    // `pass` for the sender's OWN domain is the alignment check that turns
-    // "claims to be Nick" into "was signed by neonlaw.com".
     //
-    // This is deliberately not `cfg.verify_dkim_domain` — that option pins
-    // replies to one firm domain and is unset in every deployment manifest in
-    // the tree, so keying the command channel to it would leave the channel
-    // open by default. This check needs no configuration and is therefore on
-    // everywhere. Where the option IS set, the stricter gate above has already
-    // returned, so the two compose.
-    let sender_domain = extract_domain(&inbound.from);
-    let sender_authenticated = dkim_passes_for_domain(&inbound.dkim, &sender_domain);
-
+    // Every variant below runs only on a sender the gate above authenticated.
     let mut conversation = conversation.clone();
     let mut suppress_relay = false;
     for command in &parsed.commands {
@@ -847,11 +876,9 @@ async fn handle_lawyer_reply(
                 // Refusing is the recoverable direction: a genuine approval
                 // can be re-made from `/app/lawyer/*`, which authenticates
                 // the attorney by session. Accepting a forged one is not
-                // recoverable, because the letter has already gone out.
-                if !sender_authenticated {
-                    refuse_unauthenticated_signal(ctx, &conversation, token, condition).await?;
-                    continue;
-                }
+                // recoverable, because the letter has already gone out. That
+                // refusal now happens for every command at the gate above,
+                // because a forged `@link` or `@cleared` is no less final.
                 fire_signal(
                     ctx,
                     &conversation,
@@ -889,24 +916,47 @@ async fn handle_lawyer_reply(
     Ok(())
 }
 
-/// Refuse a workflow signal whose sender could not be cryptographically
-/// authenticated, and tell the cockpit it was refused.
+/// Hold a lawyer reply whose sender could not be cryptographically
+/// authenticated: journal the hop, tell the cockpit nothing was acted on, and
+/// park the conversation for a human. No command runs and nothing relays.
 ///
-/// A silently dropped approval is the same class of defect as a silently
-/// accepted one: in both cases a letter's status does not match what the
-/// attorney believes they did. So the refusal is journaled as a `system` hop
-/// and mailed back — never relayed to the client.
-async fn refuse_unauthenticated_signal(
+/// A silently dropped reply is the same class of defect as a silently accepted
+/// one: in both cases the thread's state does not match what the attorney
+/// believes they did. So this holds rather than drops — the same disposition
+/// [`hold_relay_for_conflict_check`] uses when it declines to relay.
+async fn hold_unauthenticated_reply(
     ctx: &ThreadCtx<'_>,
-    conversation: &conv::EmailConversation,
+    inbound: &InboundEmail,
+    raw_key: &str,
+    body: &str,
     token: &str,
-    condition: &str,
+    conversation: &conv::EmailConversation,
+    sender: &str,
 ) -> Result<(), ThreadError> {
     tracing::error!(
         conversation_id = %conversation.id,
-        condition,
-        "refusing a workflow signal from an unauthenticated sender"
+        dkim = %inbound.dkim,
+        "holding a lawyer reply from an unauthenticated sender; no command ran and nothing relayed"
     );
+    // Journaled WITHOUT `command_payload`: the directives on this message were
+    // never executed, and `is_conflict_cleared` reads that field back off the
+    // transcript. Recording them would let a forged `@cleared` release the
+    // RPC 1.10 hold from inside the very record of its refusal.
+    conv::append(
+        ctx.surreal,
+        &conv::NewMessage {
+            conversation_id: conversation.id,
+            direction: DIRECTION_FROM_LAWYER,
+            from_addr: sender,
+            to_addr: &inbound.to,
+            subject: &inbound.subject,
+            body_text: body,
+            raw_storage_key: Some(raw_key),
+            provider_message_id: inbound.message_id.as_deref(),
+            ..Default::default()
+        },
+    )
+    .await?;
     send_and_journal(
         ctx,
         conversation.id,
@@ -914,13 +964,16 @@ async fn refuse_unauthenticated_signal(
         DIRECTION_SYSTEM,
         ctx.cfg.lawyer_notify_email.as_str(),
         &format!("[refused] {}", conversation.subject),
-        &format!(
-            "Your @{condition} command was NOT executed: this reply's sender could not be \
-             cryptographically authenticated (no DKIM pass for the sending domain). Approve \
-             from the portal instead, where the session names the attorney."
+        concat!(
+            "This reply was NOT acted on and NOT relayed to the client: its sender ",
+            "could not be cryptographically authenticated (no DKIM pass for the ",
+            "sending domain). Any commands it carried were ignored. The thread is ",
+            "waiting for a lawyer; act from the portal instead, where the session ",
+            "names the attorney."
         ),
     )
     .await?;
+    conv::set_status(ctx.surreal, conversation.id, STATUS_AWAITING_LAWYER).await?;
     Ok(())
 }
 
@@ -2379,6 +2432,375 @@ mod tests {
             .unwrap();
         assert_eq!(conv.notation_id, None);
         assert!(rt.signals.lock().unwrap().is_empty());
+    }
+
+    /// A forged reply carrying `@close`. #268 gated only `Command::Signal`,
+    /// so this verb ran on a `From:` header plus a bearer token that every
+    /// outbound hop stamps as `Reply-To`. Closing a live client thread drops
+    /// it out of the firm's queue - a duty-of-communication risk - and
+    /// `by_token` never filters on status, so nothing is locked out in
+    /// exchange.
+    ///
+    /// Asserting the command did not run is not enough: a refusal the cockpit
+    /// never sees is the same defect from the attorney's side. So this pins
+    /// the notice's recipient, subject prefix, and body.
+    #[tokio::test]
+    async fn forged_close_does_not_close_and_tells_the_cockpit() {
+        let surreal = mem_surreal().await;
+        seed_lawyer(&surreal, "nick@neonlaw.com").await;
+        let cap = CapturingEmail::new();
+        let rt = RecordingRuntime::default();
+
+        let token = "00000000000000000000000000000010";
+        seed_unlinked_conversation(&surreal, token).await;
+
+        let mut msg = inbound(
+            "Nick <nick@neonlaw.com>",
+            &format!("c{token}@parse.neonlaw.com"),
+            "Re: Estate plan",
+            "@close",
+        );
+        msg.dkim = "{@neonlaw.com : fail}".into();
+
+        thread_inbound(
+            &surreal,
+            &storage().await,
+            &cap,
+            &rt,
+            &cfg(),
+            &msg,
+            "inbound/forged-close.eml",
+        )
+        .await
+        .unwrap();
+
+        let conv = store::email_conversations::by_token(&surreal, token)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_ne!(
+            conv.status,
+            store::email_conversations::STATUS_CLOSED,
+            "a forged @close closed a live client thread"
+        );
+        // Held, not dropped: the thread is parked for a human rather than
+        // left looking untouched.
+        assert_eq!(
+            conv.status,
+            store::email_conversations::STATUS_AWAITING_LAWYER
+        );
+
+        let sent = cap.captured();
+        let notice = sent
+            .iter()
+            .find(|m| m.to == cfg().lawyer_notify_email)
+            .expect("no refusal notice reached the cockpit");
+        assert!(
+            notice.subject.starts_with("[refused]"),
+            "unexpected subject: {:?}",
+            notice.subject
+        );
+        assert!(
+            notice.body.contains("NOT acted on") && notice.body.contains("NOT relayed"),
+            "notice does not say what was refused: {:?}",
+            notice.body
+        );
+        assert!(
+            notice
+                .body
+                .contains("could not be cryptographically authenticated"),
+            "notice does not say why: {:?}",
+            notice.body
+        );
+        assert!(
+            !notice.body.contains("  "),
+            "notice body has a formatting defect (a run of spaces): {:?}",
+            notice.body
+        );
+        // Nothing reached the client.
+        assert!(sent.iter().all(|m| m.to != "pisces@example.com"));
+    }
+
+    /// A forged `@cleared` must not release the RPC 1.10 firm-wide
+    /// imputed-conflicts hold. The refusal journals the hop WITHOUT its
+    /// `command_payload`, because `is_conflict_cleared` reads that field back
+    /// off the transcript - recording the directives of a refused message
+    /// would let the forgery clear the gate from inside the record of its own
+    /// refusal. Proven end-to-end: a following genuine relay is still held.
+    #[tokio::test]
+    async fn forged_cleared_does_not_release_the_conflict_hold() {
+        let surreal = mem_surreal().await;
+        seed_lawyer(&surreal, "nick@neonlaw.com").await;
+        let cap = CapturingEmail::new();
+        let rt = RecordingRuntime::default();
+
+        let token = "00000000000000000000000000000011";
+        seed_unlinked_conversation(&surreal, token).await;
+        let store_svc = storage().await;
+
+        let mut forged = inbound(
+            "Nick <nick@neonlaw.com>",
+            &format!("c{token}@parse.neonlaw.com"),
+            "Re: Estate plan",
+            "@cleared",
+        );
+        forged.dkim = "{@neonlaw.com : fail}".into();
+        thread_inbound(
+            &surreal,
+            &store_svc,
+            &cap,
+            &rt,
+            &cfg(),
+            &forged,
+            "inbound/forged-cleared.eml",
+        )
+        .await
+        .unwrap();
+
+        let conv_id = store::email_conversations::by_token(&surreal, token)
+            .await
+            .unwrap()
+            .unwrap()
+            .id;
+        assert!(
+            !super::is_conflict_cleared(&surreal, conv_id).await.unwrap(),
+            "a forged @cleared released the firm-wide conflicts hold"
+        );
+
+        // A genuine reply now tries to relay substantive prose. The
+        // conversation is an unscreened, unlinked prospective client, so the
+        // hold must still be in force.
+        thread_inbound(
+            &surreal,
+            &store_svc,
+            &cap,
+            &rt,
+            &cfg(),
+            &inbound(
+                "Nick <nick@neonlaw.com>",
+                &format!("c{token}@parse.neonlaw.com"),
+                "Re: Estate plan",
+                "Here is our advice on your estate plan.",
+            ),
+            "inbound/genuine-after-forgery.eml",
+        )
+        .await
+        .unwrap();
+
+        assert!(
+            cap.captured().iter().all(|m| m.to != "pisces@example.com"),
+            "relay reached a prospective client whose conflict check was never cleared"
+        );
+        assert!(
+            cap.captured()
+                .iter()
+                .any(|m| m.subject.starts_with("[conflict check]")),
+            "the relay was dropped rather than held for the conflict check"
+        );
+    }
+
+    /// Forged prose carrying no command at all - the relay path on its own.
+    /// This is the hop that impersonates an attorney to the client over the
+    /// firm's aligned outbound lane AND fabricates the firm's own record of
+    /// what it advised, because `sync_conversation_to_spine` mirrors
+    /// `to_external` into the matter's `communications` spine as an outbound
+    /// firm communication. Both halves are asserted.
+    #[tokio::test]
+    async fn forged_prose_does_not_relay_or_enter_the_matter_spine() {
+        let surreal = mem_surreal().await;
+        let notation_id = store::test_support::seed_notation(&surreal).await;
+        let project_id = store::notations::find_by_id(&surreal, notation_id)
+            .await
+            .unwrap()
+            .unwrap()
+            .project_id;
+        seed_lawyer(&surreal, "nick@neonlaw.com").await;
+        let cap = CapturingEmail::new();
+        let rt = RecordingRuntime::default();
+
+        // Linked, so the conflict gate is already satisfied and the ONLY
+        // thing that can stop this relay is the authentication gate.
+        let token = "00000000000000000000000000000012";
+        seed_linked_conversation(&surreal, token, notation_id).await;
+
+        let mut msg = inbound(
+            "Nick <nick@neonlaw.com>",
+            &format!("c{token}@parse.neonlaw.com"),
+            "Re: Estate plan",
+            "You should sign the settlement offer today.",
+        );
+        msg.dkim = "{@neonlaw.com : fail}".into();
+
+        thread_inbound(
+            &surreal,
+            &storage().await,
+            &cap,
+            &rt,
+            &cfg(),
+            &msg,
+            "inbound/forged-prose.eml",
+        )
+        .await
+        .unwrap();
+
+        assert!(
+            cap.captured().iter().all(|m| m.to != "pisces@example.com"),
+            "attacker prose was relayed to the client as the firm"
+        );
+
+        let conv_id = store::email_conversations::by_token(&surreal, token)
+            .await
+            .unwrap()
+            .unwrap()
+            .id;
+        let hops = store::email_conversations::messages(&surreal, conv_id)
+            .await
+            .unwrap();
+        assert!(
+            hops.iter().all(|m| m.direction != "to_external"),
+            "a to_external hop was journaled for a message that never relayed"
+        );
+
+        let spine = store::communications::for_project(&surreal, project_id)
+            .await
+            .unwrap();
+        assert!(
+            !spine
+                .iter()
+                .any(|c| c.body.contains("sign the settlement offer")),
+            "attacker prose entered the matter's communications spine as a firm communication"
+        );
+    }
+
+    /// A forged `@link` is the sharpest verb of the five, not the mildest:
+    /// `link_notation` accepts any existing notation id with no participation
+    /// check, so binding one cross-links a stranger's thread onto a real
+    /// client's matter, files their attachments into it, and - because
+    /// `is_prospect` reads `notation_id.is_none()` - lifts the conflicts hold
+    /// without ever sending `@cleared`.
+    #[tokio::test]
+    async fn forged_link_leaves_the_conversation_unbound() {
+        let surreal = mem_surreal().await;
+        let notation_id = store::test_support::seed_notation(&surreal).await;
+        seed_lawyer(&surreal, "nick@neonlaw.com").await;
+        let cap = CapturingEmail::new();
+        let rt = RecordingRuntime::default();
+
+        let token = "00000000000000000000000000000013";
+        seed_unlinked_conversation(&surreal, token).await;
+
+        // A real, resolvable notation id - the id is not the secret.
+        let mut msg = inbound(
+            "Nick <nick@neonlaw.com>",
+            &format!("c{token}@parse.neonlaw.com"),
+            "Re: Estate plan",
+            &format!("@link {notation_id}"),
+        );
+        msg.dkim = "{@neonlaw.com : fail}".into();
+
+        thread_inbound(
+            &surreal,
+            &storage().await,
+            &cap,
+            &rt,
+            &cfg(),
+            &msg,
+            "inbound/forged-link.eml",
+        )
+        .await
+        .unwrap();
+
+        let conv = store::email_conversations::by_token(&surreal, token)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            conv.notation_id, None,
+            "a forged @link bound an outsider's thread to a client's matter"
+        );
+    }
+
+    /// The regression guard for the gate itself: a genuine reply on the
+    /// shipped `cfg()` posture still links, clears, relays, and closes.
+    ///
+    /// This is the risk the council named - that a blanket gate turns the
+    /// whole lawyer lane off rather than just the command channel. The
+    /// fixture's DKIM verdict is what SendGrid Inbound Parse posts for
+    /// genuine mail, and on it every verb still works.
+    #[tokio::test]
+    async fn a_genuine_reply_still_links_clears_relays_and_closes() {
+        let surreal = mem_surreal().await;
+        let notation_id = store::test_support::seed_notation(&surreal).await;
+        seed_lawyer(&surreal, "nick@neonlaw.com").await;
+        let cap = CapturingEmail::new();
+        let rt = RecordingRuntime::default();
+        let store_svc = storage().await;
+
+        let token = "00000000000000000000000000000014";
+        seed_unlinked_conversation(&surreal, token).await;
+
+        // One genuine reply: link the matter, clear the conflict hold, and
+        // relay the prose that follows the command lines.
+        let body = format!("@link {notation_id}\n@cleared\n\nWe have your estate plan in hand.");
+        thread_inbound(
+            &surreal,
+            &store_svc,
+            &cap,
+            &rt,
+            &cfg(),
+            &inbound(
+                "Nick <nick@neonlaw.com>",
+                &format!("c{token}@parse.neonlaw.com"),
+                "Re: Estate plan",
+                &body,
+            ),
+            "inbound/genuine.eml",
+        )
+        .await
+        .unwrap();
+
+        let conv = store::email_conversations::by_token(&surreal, token)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(conv.notation_id, Some(notation_id), "@link did not bind");
+        assert!(
+            super::is_conflict_cleared(&surreal, conv.id).await.unwrap(),
+            "@cleared did not register"
+        );
+        let relayed = cap
+            .captured()
+            .into_iter()
+            .find(|m| m.to == "pisces@example.com")
+            .expect("a genuine reply did not relay to the client");
+        assert!(relayed.body.contains("We have your estate plan in hand."));
+
+        // ...and a second genuine reply still closes the thread.
+        thread_inbound(
+            &surreal,
+            &store_svc,
+            &cap,
+            &rt,
+            &cfg(),
+            &inbound(
+                "Nick <nick@neonlaw.com>",
+                &format!("c{token}@parse.neonlaw.com"),
+                "Re: Estate plan",
+                "@close",
+            ),
+            "inbound/genuine-close.eml",
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            store::email_conversations::by_token(&surreal, token)
+                .await
+                .unwrap()
+                .unwrap()
+                .status,
+            store::email_conversations::STATUS_CLOSED,
+            "@close did not close on a genuine reply"
+        );
     }
 
     #[tokio::test]

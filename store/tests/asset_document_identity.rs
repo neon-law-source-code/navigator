@@ -544,19 +544,21 @@ async fn a_document_is_namespaced_by_project_not_by_slug_or_filename_alone() {
     // The filename lookup is scoped the same way: both matters filed
     // "agreement.pdf" (see `insert_revision`), and each must resolve to
     // its own row, never the other matter's.
-    let by_filename_a = store::assets::find_by_project_and_filename(&db, project_a, "agreement.pdf")
-        .await
-        .expect("find by filename a")
-        .expect("a row in project a");
+    let by_filename_a =
+        store::assets::find_by_project_and_filename(&db, project_a, "agreement.pdf")
+            .await
+            .expect("find by filename a")
+            .expect("a row in project a");
     assert_eq!(
         by_filename_a.id, doc_a,
         "filename lookup in project a must not resolve project b's row"
     );
 
-    let by_filename_b = store::assets::find_by_project_and_filename(&db, project_b, "agreement.pdf")
-        .await
-        .expect("find by filename b")
-        .expect("a row in project b");
+    let by_filename_b =
+        store::assets::find_by_project_and_filename(&db, project_b, "agreement.pdf")
+            .await
+            .expect("find by filename b")
+            .expect("a row in project b");
     assert_eq!(
         by_filename_b.id, doc_b,
         "filename lookup in project b must not resolve project a's row"

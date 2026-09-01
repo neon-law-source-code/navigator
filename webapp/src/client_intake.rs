@@ -197,6 +197,13 @@ fn step_body(step: &IntakeStepData, view: &ClientIntakeView) -> Element {
             if let Some(error) = view.error.as_ref() {
                 p { class: "nav-form-error", role: "alert", "{error}" }
             }
+            div {
+                role: "progressbar",
+                "aria-label": "Intake progress",
+                "aria-valuenow": "{step.position}",
+                "aria-valuemin": "0",
+                "aria-valuemax": "{step.total}",
+            }
             FormCard {
                 title,
                 action,
@@ -283,6 +290,16 @@ mod tests {
         // The client sees where they are without having to guess.
         assert!(html.contains("step 3 of 10"), "{html}");
         assert_forms_accessible(&html, "client_intake::step");
+    }
+
+    #[test]
+    fn a_step_exposes_accessible_progress_semantics() {
+        let html = render(&step("string", "", &[]));
+        assert!(html.contains(r#"role="progressbar""#), "{html}");
+        assert!(html.contains(r#"aria-label="Intake progress""#), "{html}");
+        assert!(html.contains(r#"aria-valuenow="3""#), "{html}");
+        assert!(html.contains(r#"aria-valuemin="0""#), "{html}");
+        assert!(html.contains(r#"aria-valuemax="10""#), "{html}");
     }
 
     #[test]

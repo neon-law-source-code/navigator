@@ -839,7 +839,7 @@ async fn the_footer_carries_the_pages_the_header_does_not() {
         "/contact",
         "/docs",
         "/navigator",
-        "https://neon-law-source-code.github.io/navigator-ux/?showcase=home",
+        "https://neon-law-source-code.github.io/navigator-ux/",
         "/notations",
         "/presentations",
         "/privacy",

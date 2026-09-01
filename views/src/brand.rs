@@ -215,7 +215,7 @@ const FIRM_FOOTER_NAV: &[NavLink] = &[
     NavLink::leaf("Navigator", "/navigator"),
     NavLink::leaf(
         "Navigator UX",
-        "https://neon-law-source-code.github.io/navigator-ux/?showcase=home",
+        "https://neon-law-source-code.github.io/navigator-ux/",
     ),
     NavLink::leaf("Notations", "/notations"),
     NavLink::leaf("Presentations", "/presentations"),
@@ -1369,7 +1369,7 @@ mod tests {
         for link in super::firm_footer_nav() {
             if link.label == "Navigator UX" {
                 assert_eq!(
-                    link.href, "https://neon-law-source-code.github.io/navigator-ux/?showcase=home",
+                    link.href, "https://neon-law-source-code.github.io/navigator-ux/",
                     "the showcase's own published URL"
                 );
             } else {

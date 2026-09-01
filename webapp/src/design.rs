@@ -1033,7 +1033,7 @@ fn SiteFooterShowcase() -> Element {
                     ("Navigator", "/navigator"),
                     (
                         "Navigator UX",
-                        "https://neon-law-source-code.github.io/navigator-ux/?showcase=home",
+                        "https://neon-law-source-code.github.io/navigator-ux/",
                     ),
                     ("Notations", "/notations"),
                     ("Presentations", "/presentations"),

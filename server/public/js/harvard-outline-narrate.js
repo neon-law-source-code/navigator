@@ -42,7 +42,7 @@
       var unit = units[current];
       var path = unit.getAttribute("data-harvard-path") || "";
       var label = path ? " · " + path : "";
-      counter.textContent = current + 1 + " / " + units.length + label;
+      counter.textContent = "§ " + (current + 1) + " / " + units.length + label;
     }
     units[current].scrollIntoView({ block: "center", behavior: "smooth" });
   }
@@ -85,8 +85,6 @@
     switch (event.key) {
       case "ArrowDown":
       case "ArrowRight":
-      case "j":
-      case "J":
       case "n":
       case "N":
       case "PageDown":
@@ -98,8 +96,6 @@
         break;
       case "ArrowUp":
       case "ArrowLeft":
-      case "k":
-      case "K":
       case "p":
       case "P":
       case "PageUp":

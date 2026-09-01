@@ -1337,6 +1337,11 @@ fn IconsSection() -> Element {
     }
 }
 
+/// A real notation's YAML frontmatter, grounding [`CodeBlock`]'s `lang` prop
+/// the same way [`SNIPPETS`] grounds its Rust source: [`yaml_snippet_is_a_real_frontmatter`]
+/// fails the build if this ever drifts from the actual file.
+const YAML_SNIPPET: &str = "kind: onboarding\ntitle: Onboarding Letter\nrespondent_type: person_and_entity\ncode: onboarding__letter";
+
 /// The grounded component-source snippets section.
 #[component]
 fn SnippetsSection() -> Element {
@@ -1354,6 +1359,16 @@ fn SnippetsSection() -> Element {
                     // client highlighter.
                     CodeBlock { code: snippet.code.to_string() }
                 }
+            }
+            figure {
+                figcaption {
+                    "A notation's frontmatter — "
+                    code { "CodeBlock" }
+                    "'s "
+                    code { "lang" }
+                    " prop renders any language syntect knows, not only Rust."
+                }
+                CodeBlock { code: YAML_SNIPPET.to_string(), lang: "yaml".to_string() }
             }
         }
     }
@@ -1418,6 +1433,24 @@ mod tests {
                 snippet.code,
             );
         }
+    }
+
+    /// [`super::YAML_SNIPPET`] grounds the gallery's YAML `CodeBlock` example
+    /// the same way [`snippets_are_exact_copies_of_cited_sources`] grounds
+    /// the Rust ones — a verbatim substring of the real template, not
+    /// hand-typed illustrative YAML that can drift unnoticed.
+    #[test]
+    fn yaml_snippet_is_a_real_frontmatter() {
+        let crate_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let path = crate_root.join("../templates/neon_law/shared/onboarding_letter.md");
+        let source = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        assert!(
+            source.contains(super::YAML_SNIPPET),
+            "the gallery's YAML snippet is not a verbatim substring of {}:\n{}",
+            path.display(),
+            super::YAML_SNIPPET,
+        );
     }
 
     /// The gallery previews every component the theme ships (bar the chrome

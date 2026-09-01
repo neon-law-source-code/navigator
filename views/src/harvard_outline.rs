@@ -51,12 +51,15 @@ pub struct OutlineDocument {
     pub title: String,
     pub scheme: Option<DepthOneScheme>,
     pub units: Vec<Unit>,
+    /// The raw YAML between the `---` fences, with neither fence line. `None`
+    /// for a document with no frontmatter.
+    pub frontmatter: Option<String>,
 }
 
 /// Parse Markdown (optional YAML frontmatter) into narration units.
 #[must_use]
 pub fn parse(src: &str) -> OutlineDocument {
-    let (title, body) = title_and_body(src);
+    let (title, frontmatter, body) = title_and_body(src);
     let mut units = Vec::new();
     let mut scheme = None;
     let mut current_depth: u8 = 0;
@@ -130,27 +133,13 @@ pub fn parse(src: &str) -> OutlineDocument {
                         push_unit(&mut units, depth, marker, path, UnitKind::Subsection, &rest);
                     } else {
                         let depth = current_depth.max(1);
-                        push_unit(
-                            &mut units,
-                            depth,
-                            String::new(),
-                            current_path.clone(),
-                            UnitKind::Paragraph,
-                            &para,
-                        );
+                        push_paragraph(&mut units, depth, current_path.clone(), &para);
                     }
                 }
             }
             Block::Prose(text) => {
-                let depth = current_depth; // 0 in the preamble, else the heading
-                push_unit(
-                    &mut units,
-                    depth,
-                    String::new(),
-                    current_path.clone(),
-                    UnitKind::Paragraph,
-                    &text,
-                );
+                // 0 in the preamble, else the enclosing heading's depth.
+                push_paragraph(&mut units, current_depth, current_path.clone(), &text);
             }
         }
     }
@@ -159,6 +148,7 @@ pub fn parse(src: &str) -> OutlineDocument {
         title,
         scheme,
         units,
+        frontmatter: frontmatter.map(str::to_string),
     }
 }
 
@@ -173,8 +163,8 @@ pub fn stage_html(doc: &OutlineDocument) -> String {
     out.push_str(&escape_text(&doc.title));
     out.push_str("</p>\n<p class=\"harvard-stage__counter\" data-harvard-counter></p>\n");
     out.push_str(
-        "<p class=\"harvard-stage__hint\">Arrow keys, J and K, or Space step through the \
-         document. Click a paragraph to highlight it.</p>\n</header>\n<div class=\"harvard-doc\">\n",
+        "<p class=\"harvard-stage__hint\">Arrow keys or Space step through the document. \
+         Click a paragraph to highlight it.</p>\n</header>\n<div class=\"harvard-doc\">\n",
     );
     for unit in &doc.units {
         out.push_str(&unit_html(unit));
@@ -254,6 +244,18 @@ fn push_unit(
     });
 }
 
+/// An unlabeled paragraph — no marker, no distinct subsection.
+fn push_paragraph(units: &mut Vec<Unit>, depth: u8, path: String, markdown: &str) {
+    push_unit(
+        units,
+        depth,
+        String::new(),
+        path,
+        UnitKind::Paragraph,
+        markdown,
+    );
+}
+
 fn join_path(prefix: &str, marker: &str) -> String {
     if prefix.is_empty() {
         marker.to_string()
@@ -264,12 +266,12 @@ fn join_path(prefix: &str, marker: &str) -> String {
     }
 }
 
-fn title_and_body(src: &str) -> (String, &str) {
+fn title_and_body(src: &str) -> (String, Option<&str>, &str) {
     let Some(after_open) = src.strip_prefix("---\n") else {
-        return ("Untitled".to_string(), src);
+        return ("Untitled".to_string(), None, src);
     };
     let Some(end) = after_open.find("\n---\n") else {
-        return ("Untitled".to_string(), src);
+        return ("Untitled".to_string(), None, src);
     };
     let yaml = &after_open[..end];
     let body = &after_open[end + "\n---\n".len()..];
@@ -281,7 +283,20 @@ fn title_and_body(src: &str) -> (String, &str) {
                 .filter(|t| !t.is_empty())
         })
         .unwrap_or_else(|| "Untitled".to_string());
-    (title, body)
+    (title, Some(yaml), body)
+}
+
+/// Read one flat top-level scalar key (`origin_url:`, `jurisdiction:`, …) out
+/// of a template's raw frontmatter YAML, the same way [`title_and_body`]
+/// reads `title:`. `None` when the key is absent or its value is empty.
+#[must_use]
+pub fn frontmatter_field(yaml: &str, key: &str) -> Option<String> {
+    let prefix = format!("{key}:");
+    yaml.lines().find_map(|line| {
+        line.strip_prefix(prefix.as_str())
+            .map(|rest| unquote(rest.trim()))
+            .filter(|value| !value.is_empty())
+    })
 }
 
 fn unquote(value: &str) -> String {
@@ -477,7 +492,7 @@ pub const SAMPLE_MOTION: &str = include_str!(concat!(
 
 #[cfg(test)]
 mod tests {
-    use super::{parse, stage_html, DepthOneScheme, UnitKind};
+    use super::{frontmatter_field, parse, stage_html, DepthOneScheme, UnitKind};
 
     const ONBOARDING: &str = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -523,6 +538,35 @@ mod tests {
             .expect("body under I");
         assert_eq!(under_scope.depth, 1);
         assert_eq!(under_scope.path, "I");
+    }
+
+    #[test]
+    fn parse_extracts_the_frontmatter_yaml_verbatim() {
+        let doc = parse("---\ntitle: Sample\ncode: sample__doc\n---\n\nBody.\n");
+        assert_eq!(
+            doc.frontmatter.as_deref(),
+            Some("title: Sample\ncode: sample__doc")
+        );
+    }
+
+    #[test]
+    fn a_document_with_no_frontmatter_has_none() {
+        let doc = parse("Just a body, no frontmatter fences.\n");
+        assert_eq!(doc.frontmatter, None);
+    }
+
+    #[test]
+    fn frontmatter_field_reads_a_flat_scalar_key() {
+        let yaml = "kind: filing\ntitle: Nevada LLC Formation\norigin_url: https://example.gov/forms\njurisdiction: NV";
+        assert_eq!(
+            frontmatter_field(yaml, "origin_url").as_deref(),
+            Some("https://example.gov/forms")
+        );
+        assert_eq!(
+            frontmatter_field(yaml, "jurisdiction").as_deref(),
+            Some("NV")
+        );
+        assert_eq!(frontmatter_field(yaml, "no_such_key"), None);
     }
 
     #[test]

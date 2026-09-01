@@ -389,6 +389,28 @@
   margin-bottom: 1.5rem;
 }
 
+/* A notation's title and its links (a form's own blank original, the
+   GitHub source) share one row — the links float to the end rather than
+   stacking under the title. */
+.notation-preview-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.notation-preview-header h1 {
+  margin: 0;
+}
+
+.notation-preview-header__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
 /* The material's own lede reads as body copy, not the hero treatment the
    `.catalog-hero .lede` rule gives the landing wordmark. */
 .material-page .lede,

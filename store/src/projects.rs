@@ -1749,16 +1749,18 @@ pub async fn delete_project_with_surreal(
 pub struct OpenMatterCommand {
     /// The matter's display name. Required.
     pub name: String,
-    /// The stem of the matter's code. **Required** — a blank stem is refused.
-    ///
-    /// This is not the stored code: [`open_matter`] appends a short generated
-    /// suffix ([`code_from_name`]) so two matters can never collide on a
-    /// hand-picked stem — a code is chosen once and never changes (see
-    /// [`docs/glossary.md#project`](../../docs/glossary.md#project)), so a
-    /// collision would otherwise permanently strand the loser with whatever
-    /// it settled for. The stem itself still passes [`is_valid_code`]: lowercase
-    /// letters, digits, and single hyphens, alphanumeric at both ends, and not
-    /// a reserved word.
+    /// The matter's code, stored exactly as supplied (after normalizing case
+    /// and whitespace — see [`normalize_code`]). This *is* the stored code:
+    /// [`open_matter`] does not generate or append anything to it. A code is
+    /// chosen once and never changes — `project.code` is `READONLY` (see
+    /// [`docs/glossary.md#project`](../../docs/glossary.md#project)) — and it
+    /// is a coordinate shared with three systems Navigator does not own (a
+    /// repository's `navigator.yaml`, the matter's Drive folder name, and its
+    /// Notion `Project code` URL), so the caller — not Navigator — must own
+    /// picking it. A collision with an already-open matter is refused with
+    /// [`OpenMatterError::CodeConflict`] rather than silently resolved. The
+    /// code must still pass [`is_valid_code`]: lowercase letters, digits, and
+    /// single hyphens, alphanumeric at both ends, and not a reserved word.
     pub code: String,
     /// The client of record — a pre-existing `Role::Client` person, never a
     /// firm attorney (the firm-as-its-own-client default is a loyalty problem
@@ -1808,7 +1810,8 @@ pub enum OpenMatterError {
     /// is a hard stop no attestation overrides; a waiver is a separate flow.
     #[error("conflict check blocked this matter: adverse to a current client")]
     BlockingConflict(Vec<String>),
-    /// The requested (or derived) project code is already in use.
+    /// The supplied project code is already in use by another matter. The
+    /// caller picks a different code; Navigator never resolves this itself.
     #[error("that project code is already in use")]
     CodeConflict,
     /// Appending the conflict attestation to the Relationship Log
@@ -1917,23 +1920,20 @@ pub async fn open_matter(
         return Err(OpenMatterError::Invalid("Name is required."));
     }
     let project_id = Uuid::now_v7();
-    // The stem is required, not blank — validated the same way a hand-typed
-    // code always was. What actually lands in `code` is this stem plus a
-    // generated suffix (below), so two matters can never collide on the same
-    // stem the way a hand-picked permanent identifier once could.
-    let stem = normalize_code(&input.code).ok_or(OpenMatterError::Invalid("Code is required."))?;
-    if !is_valid_code(&stem) {
+    // The code is required, not blank, and is stored exactly as supplied —
+    // normalized for case and whitespace, never generated or appended to. It
+    // is a coordinate the caller already committed to in a repository's
+    // `navigator.yaml`, a Drive folder name, or a Notion URL, so Navigator
+    // storing anything else would be unfixable once `project.code` (READONLY)
+    // is written. A collision is refused below as `CodeConflict`, not
+    // resolved by generation.
+    let code = normalize_code(&input.code).ok_or(OpenMatterError::Invalid("Code is required."))?;
+    if !is_valid_code(&code) {
         return Err(OpenMatterError::Invalid(
             "Project code must use lowercase letters, digits, and single hyphens; \
              it must start and end with a letter or digit.",
         ));
     }
-    // Generated, not typed: the code is chosen once and never changes (the
-    // engine enforces this — `project.code` is `READONLY`), so a stem alone
-    // would strand every collision on whatever it settled for. `code_from_name`
-    // already produces exactly this shape for the self-serve retainer walk;
-    // every matter-open door now shares it.
-    let code = code_from_name(&stem, project_id);
 
     // Validate every reference before opening. The project and both
     // participations commit in the explicit SurrealDB transaction below;

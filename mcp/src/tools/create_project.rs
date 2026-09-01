@@ -35,14 +35,16 @@ pub fn descriptor() -> Value {
                 },
                 "code": {
                     "type": "string",
-                    "description": "The stem of the matter code (e.g. `sison-mutual-release`) — the \
-                                    base of its eventual git repository name. Required. Lowercase \
-                                    letters, digits, and single hyphens; must start and end with a \
-                                    letter or digit; at most 80 characters. This is not the stored \
-                                    code: Navigator appends a short generated suffix so the stem \
-                                    alone can never collide with another matter's, since a code is \
-                                    chosen once at matter-open and never changes. Ask the requesting \
-                                    attorney for their preferred stem rather than inventing one."
+                    "description": "The matter's code (e.g. `sison-mutual-release`), stored exactly as \
+                                    given. Required. Lowercase letters, digits, and single hyphens; \
+                                    must start and end with a letter or digit; at most 80 characters. \
+                                    This is the permanent, stored code — Navigator does not generate or \
+                                    append anything to it — and it must match the `project:` value in \
+                                    the matter's repository `navigator.yaml` and its shared-drive \
+                                    folder name, since those are set independently and never renamed to \
+                                    follow Navigator. A code already in use by another matter is \
+                                    refused; ask the requesting attorney for their exact code rather \
+                                    than inventing one."
                 },
                 "attestation": {
                     "type": "boolean",
@@ -82,8 +84,9 @@ pub fn descriptor() -> Value {
 #[serde(deny_unknown_fields)]
 struct Args {
     name: String,
-    /// The stem of the matter code. Required — see the descriptor: this is
-    /// not the stored code, which gets a generated suffix appended.
+    /// The matter's code, stored exactly as given. Required — see the
+    /// descriptor: this is the permanent, stored code, not a stem Navigator
+    /// generates from.
     #[serde(default)]
     code: Option<String>,
     #[serde(default)]
@@ -107,10 +110,10 @@ pub async fn call(
         return Err(ToolError::InvalidArguments("name must not be empty".into()));
     }
 
-    // The stem is required and passed through to `open_matter`, which appends
-    // a generated suffix — an AIDA-invented stem is fine (unlike an invented
-    // final code once was), but ask the attorney for their preferred one when
-    // it is available, per the descriptor.
+    // The code is required and passed through to `open_matter` exactly as
+    // given — it is stored verbatim, so an AIDA-invented code risks
+    // mismatching the repository and Drive coordinates the attorney already
+    // committed to. Ask the attorney for their exact code per the descriptor.
     let code = args
         .code
         .as_deref()
@@ -252,9 +255,12 @@ fn open_matter_tool_error(err: store::projects::OpenMatterError) -> ToolError {
             ToolError::Forbidden("the attesting attorney must be a firm lawyer".into())
         }
         E::NotFound(what) => ToolError::NotFound(what.into()),
-        E::CodeConflict => {
-            ToolError::InvalidArguments("that project code is already in use".into())
-        }
+        // Caller-correctable, like every other unique-index collision this
+        // tool surfaces — see `ToolError::Conflict`. The message must not
+        // imply Navigator will pick a code: the caller owns this coordinate.
+        E::CodeConflict => ToolError::Conflict(
+            "that project code is already in use — choose a different code".into(),
+        ),
         E::Invalid(m) => ToolError::InvalidArguments(m.into()),
         // The matter is already open when this fires — only its audit
         // entry failed — so it is a server-side fault, not something the
@@ -351,8 +357,8 @@ mod tests {
         let required = d["inputSchema"]["required"].as_array().unwrap();
         let names: Vec<&str> = required.iter().filter_map(|v| v.as_str()).collect();
         // `code` is required on the schema, not just in `call`: AIDA must be
-        // told to ask for a stem rather than discovering the refusal by
-        // trying an open.
+        // told to ask for the exact code rather than discovering the refusal
+        // by trying an open.
         assert_eq!(
             names,
             vec![
@@ -403,6 +409,34 @@ mod tests {
         assert_eq!(r["structuredContent"]["entity_id"], eid.to_string());
         let all = store::projects::all(&surreal).await.unwrap();
         assert_eq!(all.len(), 1);
+    }
+
+    // A second matter on a code already in use is caller-correctable — the
+    // model can retry with a different code — so it must surface as
+    // `ToolError::Conflict`, not `InvalidArguments` or a database error
+    // (ENG-414: `open_matter` no longer generates around a collision, so
+    // this path is live rather than dead).
+    #[tokio::test]
+    async fn a_duplicate_code_is_a_conflict_not_invalid_arguments() {
+        let surreal = db().await;
+        let eid = seed_entity(&surreal).await;
+        let cid = seed_client(&surreal).await;
+        seed_firm_principal(&surreal).await;
+        call(
+            &surreal,
+            None,
+            &json!({ "name": "Sison", "code": "sison", "entity_id": eid, "client_dri_person_id": cid, "attestation": true }),
+        )
+        .await
+        .unwrap();
+        let err = call(
+            &surreal,
+            None,
+            &json!({ "name": "Sison II", "code": "sison", "entity_id": eid, "client_dri_person_id": cid, "attestation": true }),
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(err, ToolError::Conflict(_)), "{err:?}");
     }
 
     #[tokio::test]

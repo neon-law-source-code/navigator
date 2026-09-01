@@ -1073,11 +1073,12 @@ async fn delete_entity(
 #[derive(Debug, Deserialize)]
 struct OpenProjectRequest {
     name: String,
-    /// The stem of the matter's code. Required — no `serde(default)`, so an
-    /// omitted `code` is a 422 at deserialize. This is not the stored code:
-    /// `store::projects::open_matter` appends a short generated suffix so the
-    /// stem alone can never collide with another matter's, since a code is
-    /// chosen once and never changes (`docs/glossary.md#project`).
+    /// The matter's code, stored exactly as given. Required — no
+    /// `serde(default)`, so an omitted `code` is a 422 at deserialize.
+    /// `store::projects::open_matter` does not generate or append anything to
+    /// it: a code is chosen once and never changes (`docs/glossary.md#project`),
+    /// so a collision with an existing matter's code is a 409, not silently
+    /// resolved.
     code: String,
     client_id: Uuid,
     entity_id: Uuid,
@@ -3307,7 +3308,7 @@ impl IntoResponse for ApiError {
                 StatusCode::CONFLICT,
                 Json(serde_json::json!({
                     "error": "conflict",
-                    "message": "That project code is already in use."
+                    "message": "That project code is already in use. Choose a different code."
                 })),
             )
                 .into_response(),
@@ -3824,8 +3825,20 @@ fn accepted_asset_kinds() -> Vec<&'static str> {
 
 #[cfg(test)]
 mod tests {
-    use super::{api_operation_table, documented_api_operations, routes};
+    use super::{api_operation_table, documented_api_operations, routes, ApiError};
+    use axum::response::IntoResponse;
     use std::collections::BTreeSet;
+
+    // A code collision is caller-correctable — the caller picks another code
+    // — so it must surface as 409, never as a 500 that reads as a Navigator
+    // fault (ENG-414: `open_matter` no longer generates around a collision,
+    // so this path is live rather than dead).
+    #[test]
+    fn a_code_conflict_on_matter_open_is_409_not_500() {
+        let response =
+            ApiError::OpenMatter(store::projects::OpenMatterError::CodeConflict).into_response();
+        assert_eq!(response.status(), axum::http::StatusCode::CONFLICT);
+    }
 
     #[test]
     fn documented_operations_are_derived_from_the_route_table() {

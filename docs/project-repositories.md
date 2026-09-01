@@ -69,9 +69,13 @@ A Project code is **lowercase letters, digits, and single hyphens**, alphanumeri
 no uppercase, no underscores, no other punctuation, no spaces. `store::projects::is_valid_code` is the one definition
 and [the glossary](glossary.md#project) carries the rationale for each restriction. The code is the matter's whole
 public identity: its show page, its client portal, and its repository name are all that one word — and it is
-**immutable**, chosen once at matter-open and never changed. A lawyer supplies the stem; Navigator appends a short
-generated suffix (`store::projects::code_from_name`) so two matters can never collide on a hand-picked stem, the way a
-hand-picked permanent identifier once could.
+**immutable**, chosen once at matter-open and never changed. `open_matter` stores the code exactly as the lawyer
+supplies it — it never generates or appends anything to it. In the normal order of operations the repository comes
+first: a repository's `navigator.yaml` names its `project:` code before the matter is ever opened, so Navigator
+inventing a different code at matter-open would strand that repository (and the matter's Drive folder name and Notion
+`Project code` URL, set the same way) on a value it can never adopt, since the code is `READONLY` once written. A code
+already in use by another matter is refused as a conflict rather than resolved by generation, so two matters can never
+share one code.
 
 ```text
 /app/projects/<project-code>            the matter's show page — never its internal UUID

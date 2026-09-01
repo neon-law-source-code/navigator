@@ -1643,10 +1643,10 @@ enum DbProjectAction {
         /// Human-readable matter name, e.g. `"Shook Estate"`.
         #[arg(long)]
         name: String,
-        /// The stem of the matter's code, e.g. `shook-estate`. Required —
-        /// lowercase letters, digits, and single hyphens. Not the stored
-        /// code: Navigator appends a short generated suffix, since a code is
-        /// chosen once at matter-open and never changes.
+        /// The matter's code, e.g. `shook-estate`, stored exactly as given.
+        /// Required — lowercase letters, digits, and single hyphens. A code
+        /// is chosen once at matter-open and never changes; a code already
+        /// in use by another matter is refused, not disambiguated.
         #[arg(long)]
         code: String,
         /// Exact `entities.name` of the legal organization this

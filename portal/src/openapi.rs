@@ -2318,7 +2318,7 @@ pub fn document_with_base(base: &str) -> Value {
             "properties": {
               "name":         { "type": "string", "description": "The matter's display name." },
               "code":         { "type": "string",
-                                "description": "The stem of the matter's code — lowercase letters, digits, and single hyphens, starting and ending with a letter or digit, at most 80 characters. Required. This is not the stored code: Navigator appends a short generated suffix, since a code is chosen once at matter-open and never changes." },
+                                "description": "The matter's code, stored exactly as given — lowercase letters, digits, and single hyphens, starting and ending with a letter or digit, at most 80 characters. Required. A code is chosen once at matter-open and never changes; a code already in use by another matter is refused with 409." },
               "client_id":    { "type": "string", "format": "uuid",
                                 "description": "The client of record — a pre-existing `client`-role person, never a firm attorney." },
               "entity_id":    { "type": "string", "format": "uuid",

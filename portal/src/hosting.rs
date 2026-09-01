@@ -511,6 +511,20 @@ pub async fn run(brand: Brand) -> anyhow::Result<()> {
 
     preflight(&brand, &rt);
 
+    // Reconcile the bootstrap-Owner invariant immediately, rather than
+    // waiting for that identity's next sign-in: a changed
+    // `NAVIGATOR_BOOTSTRAP_OWNER_EMAIL` should promote its new match and
+    // demote any stale `Owner` row from an old value right away, not on
+    // whatever schedule the two people involved happen to log back in.
+    if let Err(error) = crate::oauth::reconcile_bootstrap_owner(
+        &rt.state.surreal,
+        rt.state.bootstrap_owner_email.as_deref(),
+    )
+    .await
+    {
+        tracing::error!(%error, "bootstrap Owner reconciliation failed");
+    }
+
     // Start keeping the footer's GitHub star count current. One background
     // task per process, refreshing on an interval, so the count a page render
     // reads is a cache hit and never an outbound call — see

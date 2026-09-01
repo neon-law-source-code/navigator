@@ -2015,6 +2015,50 @@ fn bootstrap_owner_email(value: Option<&str>) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
+/// Eagerly reconcile the bootstrap-Owner invariant against the currently
+/// configured `NAVIGATOR_BOOTSTRAP_OWNER_EMAIL`, independent of anyone
+/// signing in.
+///
+/// `resolve_person_from_claims` only re-tags the matching row on *its own*
+/// next login — fine for that person, but a *previous* bootstrap identity (a
+/// stale row left over from an old env-var value) has no login of its own
+/// left to trigger on, so nothing would ever demote it. Call this once at
+/// boot — it is idempotent, so calling it again is harmless — and a changed
+/// env var takes effect immediately: whoever now matches becomes `Owner`,
+/// and any other row still holding `Owner` is demoted to `Client`, matching
+/// the rule that exactly one Person carries the bootstrap grant at a time.
+///
+/// `configured_email` is `None` (or blank) when the carve-out is disabled;
+/// then nothing runs, since there is no configured identity to enforce.
+///
+/// # Errors
+///
+/// [`store::persons::PersonError`] if a lookup or write fails.
+pub async fn reconcile_bootstrap_owner(
+    surreal: &store::surreal::SurrealDb,
+    configured_email: Option<&str>,
+) -> Result<(), store::persons::PersonError> {
+    use store::persons;
+
+    let Some(configured) = bootstrap_owner_email(configured_email) else {
+        return Ok(());
+    };
+
+    if let Some(person) = persons::find_by_email_ci(surreal, &configured).await? {
+        if person.role != Role::Owner {
+            persons::set_role(surreal, person.id, Role::Owner).await?;
+        }
+    }
+
+    for other in persons::find_by_role(surreal, Role::Owner).await? {
+        if !other.email.eq_ignore_ascii_case(&configured) {
+            persons::set_role(surreal, other.id, store::persons::Role::Client).await?;
+        }
+    }
+
+    Ok(())
+}
+
 /// Read the global self-signup toggle from `NAVIGATOR_SELF_SIGNUP_ENABLED`
 /// once at boot. **Off by default**: only `1`, `true`, `yes`, or `on`
 /// (case-insensitive) enable it; anything else — including an unset or blank
@@ -2277,10 +2321,11 @@ mod tests {
     use super::{
         authorize_url, bootstrap_owner_email, bootstrap_owner_email_from_env, constant_time_eq,
         decode_unverified_payload, default_return_to, login_notice, oauth_error_fields,
-        pkce_challenge, pkce_verifier, post_login_landing, resolve_existing_after_race,
-        resolve_person_from_claims, self_signup_enabled, session_cookie, urlencode, IdTokenClaims,
-        IdTokenError, IdTokenVerifier, IdentityPasswordConfig, IssuerPolicy, NoticeText,
-        OAuthConfig, PreAuth, ProviderId, ResolveError,
+        pkce_challenge, pkce_verifier, post_login_landing, reconcile_bootstrap_owner,
+        resolve_existing_after_race, resolve_person_from_claims, self_signup_enabled,
+        session_cookie, urlencode, IdTokenClaims, IdTokenError, IdTokenVerifier,
+        IdentityPasswordConfig, IssuerPolicy, NoticeText, OAuthConfig, PreAuth, ProviderId,
+        ResolveError,
     };
     use crate::session::{now_unix_secs, random_token_32, DEFAULT_SESSION_TTL_SECS};
     use crate::test_support::{oidc_verifier, sign_id_token, sign_id_token_with_kid};
@@ -2673,6 +2718,71 @@ mod tests {
                 .expect("bootstrap Owner is always JIT-created");
         assert_eq!(role, Role::Owner);
         assert!(fresh.is_some());
+    }
+
+    #[tokio::test]
+    async fn reconcile_bootstrap_owner_promotes_the_match_and_demotes_the_stale_owner() {
+        let surreal = mem_surreal().await;
+        // A stale bootstrap identity from a previous env-var value, still
+        // sitting at `Owner` because nothing signed it in to get demoted.
+        let stale = store::persons::create(
+            &surreal,
+            &store::persons::NewPerson::with_role("Old Boss", "old@example.com", Role::Owner),
+        )
+        .await
+        .unwrap();
+        // The row the env var now names — seeded with a different role, the
+        // way an operator promotes a person to Admin ahead of a cutover.
+        let next = store::persons::create(
+            &surreal,
+            &store::persons::NewPerson::with_role("New Boss", "new@example.com", Role::Admin),
+        )
+        .await
+        .unwrap();
+
+        reconcile_bootstrap_owner(&surreal, Some("new@example.com"))
+            .await
+            .unwrap();
+
+        let stale = store::persons::find_by_id(&surreal, stale.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            stale.role,
+            store::persons::Role::Client,
+            "the previous bootstrap identity is demoted, not left at Owner",
+        );
+        let next = store::persons::find_by_id(&surreal, next.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            next.role,
+            Role::Owner,
+            "the configured email is promoted immediately, without waiting for a sign-in",
+        );
+    }
+
+    #[tokio::test]
+    async fn reconcile_bootstrap_owner_is_a_no_op_with_no_configured_email() {
+        let surreal = mem_surreal().await;
+        let owner = store::persons::create(
+            &surreal,
+            &store::persons::NewPerson::with_role("Boss", "boss@example.com", Role::Owner),
+        )
+        .await
+        .unwrap();
+
+        // The carve-out disabled (`None`) must not touch an existing Owner —
+        // there is no configured identity to reconcile against.
+        reconcile_bootstrap_owner(&surreal, None).await.unwrap();
+
+        let owner = store::persons::find_by_id(&surreal, owner.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(owner.role, Role::Owner);
     }
 
     #[tokio::test]

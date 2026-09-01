@@ -3040,7 +3040,12 @@ records:
     }
 
     #[tokio::test]
-    async fn person_seed_cannot_touch_the_bootstrap_owner() {
+    async fn person_seed_can_rename_the_bootstrap_owner_but_not_its_role() {
+        // `reconcile_yaml` shares `people_commands::update_person` with the
+        // interactive admin edit form, so it inherits the same narrower
+        // invariant: only the bootstrap Owner's email and role are pinned.
+        // Its name is an ordinary field, editable through this path exactly
+        // like every other seeded person's.
         let surreal = mem_surreal().await;
         persons::create(
             &surreal,
@@ -3049,31 +3054,36 @@ records:
         .await
         .unwrap();
 
+        // An Admin actor can't reach an Owner-rank row at all — the
+        // pre-existing authority-rank lock refuses that outright, regardless
+        // of the bootstrap pin this test covers. Only an Owner actor (equal
+        // rank) reaches the bootstrap-specific pin.
         let actor = ReconcileActor {
             bootstrap_owner_email: Some("owner@example.com"),
-            actor_role: Role::Admin,
+            actor_role: Role::Owner,
             may_change_roles: true,
             project_scope: None,
         };
-        let error = reconcile_yaml(
+        let report = reconcile_yaml(
             &surreal,
             SeedModel::Person,
-            &person_yaml("owner@example.com", "Hacked Name"),
+            &person_yaml("owner@example.com", "Renamed Owner"),
             "Firm",
             true,
             &actor,
         )
         .await
-        .expect_err("a seed document must not be able to rewrite the bootstrap Owner");
-        assert!(error.to_string().contains("bootstrap Owner"));
+        .expect("a seed document may rename the bootstrap Owner");
+        assert_eq!(report.updated, 1);
+        let row = persons::find_by_email_ci(&surreal, "owner@example.com")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(row.name, "Renamed Owner");
         assert_eq!(
-            persons::find_by_email_ci(&surreal, "owner@example.com")
-                .await
-                .unwrap()
-                .unwrap()
-                .name,
-            "The Owner",
-            "the bootstrap Owner row must be unchanged"
+            row.role,
+            Role::Owner,
+            "the bootstrap Owner's role stays pinned through the seed path too"
         );
     }
 

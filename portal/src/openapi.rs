@@ -2237,7 +2237,9 @@ pub fn document_with_base(base: &str) -> Value {
                                "description": "Defaults to `client` when omitted or blank; non-empty invalid values are rejected." },
               "given_name":  { "type": ["string", "null"] },
               "family_name": { "type": ["string", "null"] },
-              "middle_name": { "type": ["string", "null"] }
+              "middle_name": { "type": ["string", "null"] },
+              "notion_user_id": { "type": ["string", "null"],
+                               "description": "Stable Notion workspace user ID. Stored as an external identity; never a token, credential, or permission." }
             },
             "example": {
               "name": "Libra Example",
@@ -2260,7 +2262,9 @@ pub fn document_with_base(base: &str) -> Value {
               "family_name": { "type": ["string", "null"],
                                "description": "Omit to leave unchanged; send null or a blank string to clear." },
               "middle_name": { "type": ["string", "null"],
-                               "description": "Omit to leave unchanged; send null or a blank string to clear." }
+                               "description": "Omit to leave unchanged; send null or a blank string to clear." },
+              "notion_user_id": { "type": ["string", "null"],
+                               "description": "Omit to leave unchanged; send null or a blank string to clear the stable Notion external identity." }
             },
             "example": {
               "name": "Libra Example",

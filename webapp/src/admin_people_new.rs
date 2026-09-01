@@ -124,6 +124,9 @@ fn render_people_new(resource: &Resource<Result<PeopleNewView, ServerFnError>>) 
         Field::text("Name", "name", "").required(),
         Field::input("Email", "email", "", "email").required(),
         role_field,
+        Field::text("Notion user ID", "notion_user_id", "").help(
+            "Optional stable Notion workspace user ID. This identifies the person in Notion; it is not a credential or permission.",
+        ),
     ];
 
     rsx! {

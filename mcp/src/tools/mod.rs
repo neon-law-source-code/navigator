@@ -557,6 +557,9 @@ impl From<store::people_commands::PeopleCommandError> for ToolError {
         match err {
             E::Invalid(m) => ToolError::InvalidArguments(m.to_string()),
             E::EmailConflict => ToolError::Conflict("that email is already in use".into()),
+            E::ExternalIdentity => {
+                ToolError::Conflict("that Notion user is already linked to another person".into())
+            }
             E::NotFound => ToolError::NotFound("person not found".into()),
             E::Blocked(m) => ToolError::Forbidden(m.to_string()),
             E::SendFailed => ToolError::Internal("welcome email send failed".into()),

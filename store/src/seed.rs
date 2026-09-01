@@ -630,6 +630,7 @@ async fn reconcile_people(
                             given_name: None,
                             family_name: None,
                             middle_name: None,
+                            notion_user_id: None,
                         },
                     )
                     .await
@@ -704,6 +705,7 @@ async fn update_person_from_seed(
             given_name: None,
             family_name: None,
             middle_name: None,
+            notion_user_id: None,
         },
         update_ctx,
     )

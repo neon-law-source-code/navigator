@@ -279,8 +279,8 @@ If you find yourself reaching for `disclosures` to decide whether someone can se
 ## What an External System Identity is not
 
 `person_external_identity` (ENG-85) records the id a third-party system issues for a Person — a GitHub numeric id, a
-Slack `U…`, a Google `sub` — so Navigator can name them in an outbound API call. It is an address book. **No code may
-read it to make an access decision.**
+Slack `U…`, a Google `sub`, or a Notion workspace user id — so Navigator can name them in an outbound API call. It is an
+address book. **No code may read it to make an access decision.**
 
 That is not a scoping convenience, it is a safety property, and three separate things make it work:
 

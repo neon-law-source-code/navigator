@@ -3665,6 +3665,14 @@ impl IntoResponse for ApiError {
                 )
                     .into_response()
             }
+            Self::Command(crate::people_commands::PeopleCommandError::ExternalIdentity) => (
+                StatusCode::CONFLICT,
+                Json(serde_json::json!({
+                    "error": "conflict",
+                    "message": "That Notion user is already linked to another person."
+                })),
+            )
+                .into_response(),
             Self::Command(crate::people_commands::PeopleCommandError::Blocked(message)) => (
                 StatusCode::CONFLICT,
                 Json(serde_json::json!({

@@ -28,7 +28,7 @@ const ADMIN_LINKS: &[AdminLink] = &[
     AdminLink {
         title: "People",
         blurb: "Administer every person: roles, records, impersonation, and removal. \
-                The bootstrap Owner record is immutable.",
+                The bootstrap Owner record's email and role are pinned.",
         href: "/app/admin/people",
         cta: "Manage people",
     },

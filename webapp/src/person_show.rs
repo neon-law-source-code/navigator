@@ -15,9 +15,11 @@
 //! and (for a client) the native impersonate form.
 //!
 //! The read-only legal-name parts and a locked role select disable rather than
-//! submit. The bootstrap Owner record renders fully immutable —
-//! every field disabled and no Save — because the command layer rejects every
-//! write to it, so the form must not invite one.
+//! submit. A caller viewing a record that outranks them (`read_only`) gets the
+//! whole form disabled with no Save, since the command layer rejects every
+//! write to it. The bootstrap Owner record is a narrower lock: only its email
+//! and role are pinned (the command layer silently drops a submitted change to
+//! either), so its name and Save stay live even when `read_only` is false.
 
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -57,6 +59,27 @@ pub struct PersonNotice {
     pub message: String,
 }
 
+/// How far the edit form locks down for the viewed record. Two distinct
+/// causes collapse to one field (rather than two independent bools) because
+/// they are mutually exclusive in practice: [`EditLock::HigherRank`] only
+/// applies when the target outranks the caller, and the bootstrap Owner is
+/// always the highest rank — so a caller who could otherwise reach
+/// [`EditLock::BootstrapOwner`] (equal rank) never also qualifies for
+/// [`EditLock::HigherRank`].
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
+pub enum EditLock {
+    /// No lock: every field, including email and role, edits normally.
+    #[default]
+    None,
+    /// This row is the bootstrap Owner: its email and role are pinned (the
+    /// command layer drops a submitted change to either), but name and the
+    /// legal-name parts stay live and Save is offered.
+    BootstrapOwner,
+    /// The caller cannot edit this row at all: it outranks their own system
+    /// role. Every field disables and no Save is offered.
+    HigherRank,
+}
+
 /// The rendered admin person show/edit page, in a wasm-safe shape.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct PersonShowView {
@@ -64,11 +87,7 @@ pub struct PersonShowView {
     pub id: String,
     /// The prefilled fields; `None` when the id resolves to no person (a 404).
     pub fields: Option<PersonFields>,
-    /// The row is the bootstrap Owner: every field is disabled and
-    /// no Save is offered.
-    pub read_only: bool,
-    /// The role select is locked (the bootstrap Owner, whose role is pinned).
-    pub role_locked: bool,
+    pub edit_lock: EditLock,
     /// This person can be impersonated — only a `client` record.
     pub can_impersonate: bool,
     /// The Xero contact id when synced (an external link); `None` renders the
@@ -149,11 +168,12 @@ async fn load_person_show(role: ViewerRole) -> Result<PersonShowView, ServerFnEr
         });
     };
 
-    // The bootstrap Owner record is immutable: its role is pinned
-    // and the command layer rejects every write, so the whole form locks. The
-    // configured email is injected by the portal router (mirroring the CSRF
-    // token) rather than read from the environment, so a test can set it on the
-    // state without a process-global env var.
+    // The bootstrap Owner record's email and role are pinned — the command
+    // layer drops a submitted change to either — so only those two fields
+    // lock; name and the legal-name parts stay live like any other person's.
+    // The configured email is injected by the portal router (mirroring the
+    // CSRF token) rather than read from the environment, so a test can set it
+    // on the state without a process-global env var.
     let BootstrapOwnerEmail(bootstrap_owner_email) =
         dioxus_fullstack_core::FullstackContext::extract::<axum::Extension<BootstrapOwnerEmail>, _>()
             .await
@@ -186,12 +206,19 @@ async fn load_person_show(role: ViewerRole) -> Result<PersonShowView, ServerFnEr
 
     // Only a client can be impersonated.
     let can_impersonate = p.role == store::persons::Role::Client;
-    // The role select locks for the pinned bootstrap Owner and for a target above
-    // the caller's own authority — the command layer drops such a write, so the
-    // form must not invite it. `require_admin` already guarantees the caller may
-    // set roles at all.
+    // The authority-rank lock takes priority: a caller viewing a
+    // higher-ranked record can't touch it at all, even if that record also
+    // happens to be the bootstrap Owner. Only when ranks are equal (an Owner
+    // viewing the pinned bootstrap-Owner row) does the narrower
+    // email-and-role-only lock apply, leaving name and Save live.
     let target_rank = p.role.authority_rank();
-    let role_locked = is_bootstrap_owner || target_rank > role.authority_rank();
+    let edit_lock = if target_rank > role.authority_rank() {
+        EditLock::HigherRank
+    } else if is_bootstrap_owner {
+        EditLock::BootstrapOwner
+    } else {
+        EditLock::None
+    };
 
     Ok(PersonShowView {
         firm_name: crate::app_chrome::firm_name_from_context().await,
@@ -204,8 +231,7 @@ async fn load_person_show(role: ViewerRole) -> Result<PersonShowView, ServerFnEr
             family_name: p.family_name.unwrap_or_default(),
             middle_name: p.middle_name.unwrap_or_default(),
         }),
-        read_only: is_bootstrap_owner || target_rank > role.authority_rank(),
-        role_locked,
+        edit_lock,
         can_impersonate,
         xero_contact_id: p.xero_contact_id,
         notice,
@@ -223,21 +249,26 @@ pub async fn get_admin_person_show() -> Result<PersonShowView, ServerFnError> {
 }
 
 /// Build the edit form's fields from the prefilled values, applying the disabled
-/// state for the read-only legal-name parts, a locked role select, and the fully
-/// immutable bootstrap-Owner record.
-fn edit_fields(
-    fields: &PersonFields,
-    read_only: bool,
-    role_locked: bool,
-    viewer_role: ViewerRole,
-) -> Vec<Field> {
+/// state for the read-only legal-name parts, a locked role select, the pinned
+/// bootstrap-Owner email, and (for a record the caller cannot touch at all) the
+/// fully immutable form.
+fn edit_fields(fields: &PersonFields, edit_lock: EditLock, viewer_role: ViewerRole) -> Vec<Field> {
     let mut name = Field::text("Name", "name", fields.name.clone()).required();
     let mut email = Field::input("Email", "email", fields.email.clone(), "email").required();
-    if read_only {
-        // Name + email stay editable on an ordinary edit; a protected Owner record
-        // locks them too so nothing on the page invites a rejected write.
-        name = name.disabled();
-        email = email.disabled();
+    match edit_lock {
+        EditLock::HigherRank => {
+            // A record outranking the caller locks name + email too, so nothing
+            // on the page invites a rejected write.
+            name = name.disabled();
+            email = email.disabled();
+        }
+        EditLock::BootstrapOwner => {
+            // Only the pinned identity locks: the command layer drops a
+            // submitted email change for this row regardless, but name edits
+            // normally.
+            email = email.disabled();
+        }
+        EditLock::None => {}
     }
 
     let mut role_options = Vec::new();
@@ -256,14 +287,14 @@ fn edit_fields(
         fields.role.clone()
     };
     let mut role = Field::select("Role", "role", role_options, Some(selected));
-    role = if read_only {
+    role = if edit_lock == EditLock::BootstrapOwner {
         // The bootstrap Owner's role is pinned to `owner` by the command layer;
         // disable the select and say where it changes instead.
         role.disabled().help(
             "The bootstrap Owner role on this account cannot be changed from the UI. \
              Edit via NAVIGATOR_BOOTSTRAP_OWNER_EMAIL or a direct DB write.",
         )
-    } else if role_locked {
+    } else if edit_lock == EditLock::HigherRank {
         role.disabled()
             .help("Only an Owner or Admin can change an eligible person's role.")
     } else {
@@ -381,8 +412,7 @@ fn render_person_show(resource: &Resource<Result<PersonShowView, ServerFnError>>
                 Some(fields) => {
                     let action = format!("{DETAIL_PATH}/{}", view.id);
                     let welcome_recipient = fields.email.clone();
-                    let form_fields =
-                        edit_fields(fields, view.read_only, view.role_locked, view.role);
+                    let form_fields = edit_fields(fields, view.edit_lock, view.role);
                     rsx! {
                         document::Title { "{page_title}" }
                         if let Some(notice) = view.notice.as_ref() {
@@ -392,12 +422,20 @@ fn render_person_show(resource: &Resource<Result<PersonShowView, ServerFnError>>
                                 "{notice.message}"
                             }
                         }
-                        if view.read_only {
+                        if view.edit_lock == EditLock::HigherRank {
                             div { class: "nav-form-notice", role: "note",
                                 "This is the bootstrap Owner record. It is immutable "
                                 "from the UI — change it via "
                                 code { "NAVIGATOR_BOOTSTRAP_OWNER_EMAIL" }
                                 " or a direct database write."
+                            }
+                        } else if view.edit_lock == EditLock::BootstrapOwner {
+                            div { class: "nav-form-notice", role: "note",
+                                "This is the bootstrap Owner record. Its email and role are "
+                                "pinned to the configured "
+                                code { "NAVIGATOR_BOOTSTRAP_OWNER_EMAIL" }
+                                " and cannot change from the UI — edit either via a direct "
+                                "database write. Other fields, including name, save normally."
                             }
                         }
                         FormCard {
@@ -405,7 +443,7 @@ fn render_person_show(resource: &Resource<Result<PersonShowView, ServerFnError>>
                             action,
                             submit_label: "Save".to_string(),
                             csrf_token: Some(view.csrf_token.clone()),
-                            read_only: view.read_only,
+                            read_only: view.edit_lock == EditLock::HigherRank,
                             fields: form_fields,
                         }
                         p { a { href: "{LIST_PATH}", "← Cancel" } }

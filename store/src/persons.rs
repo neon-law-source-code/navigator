@@ -616,6 +616,24 @@ pub async fn find_by_email_ci(db: &SurrealDb, email: &str) -> Result<Option<Pers
     one(response)
 }
 
+/// Every person currently holding `role`, in no particular order. The
+/// bootstrap-Owner reconciliation uses this to find every `Owner` besides
+/// the one the configured `NAVIGATOR_BOOTSTRAP_OWNER_EMAIL` names, so a
+/// stale identity from a previous env-var value can be demoted rather than
+/// left at `Owner` indefinitely.
+///
+/// # Errors
+///
+/// [`PersonError::Db`] if the lookup fails.
+pub async fn find_by_role(db: &SurrealDb, role: Role) -> Result<Vec<Person>, PersonError> {
+    let response = db
+        .query(format!("SELECT {SELECT} FROM person WHERE role = $role"))
+        .bind(("role", role.as_str().to_string()))
+        .await
+        .and_then(surrealdb::IndexedResults::check)?;
+    many(response)
+}
+
 /// Resolve a person by their IdP `sub` claim — the first thing the OIDC
 /// callback asks, before falling back to the email.
 ///

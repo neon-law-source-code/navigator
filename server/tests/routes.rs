@@ -14586,7 +14586,7 @@ async fn migrated_dioxus_forms_pass_structural_a11y() {
 }
 
 #[tokio::test]
-async fn bootstrap_owner_row_renders_all_fields_disabled_with_banner() {
+async fn bootstrap_owner_row_locks_email_and_role_but_not_name() {
     // The router must read the person from the SAME engine this test seeds.
     // `empty_state()` mints its own, so pairing it with a handle from
     // elsewhere renders a 404 against an engine that has no rows.
@@ -14603,12 +14603,17 @@ async fn bootstrap_owner_row_renders_all_fields_disabled_with_banner() {
     )
     .await
     .unwrap();
+    // An Admin viewer can't touch an Owner-rank row at all (the pre-existing
+    // authority-rank lock, unrelated to the bootstrap carve-out) — only an
+    // Owner viewer (equal rank) reaches the bootstrap-specific pin this test
+    // covers.
+    let (cookie, _) = session_cookie_and_csrf_for_role(store::persons::Role::Owner);
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
     let resp = app
         .oneshot(
             Request::builder()
                 .uri(format!("/app/admin/people/{}/edit", owner_row.id))
-                .header(header::COOKIE, admin_session_cookie())
+                .header(header::COOKIE, cookie)
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -14616,11 +14621,12 @@ async fn bootstrap_owner_row_renders_all_fields_disabled_with_banner() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
-    // The bootstrap Owner record is immutable: every field renders disabled,
-    // a banner explains why, and there is no Save button. Server-side
-    // reinforcement is the `PATCH /app/api/people/{id}` command (see the sibling
-    // `bootstrap_owner_record_is_immutable_patch_returns_409`).
-    for id in ["name", "email", "role"] {
+    // The bootstrap Owner's identity is pinned: only email and role render
+    // disabled. Name stays live, so a genuine correction (a typo, a legal
+    // name change) does not require a direct database write. Server-side
+    // reinforcement is the `PATCH /app/api/people/{id}` command (see the
+    // sibling `bootstrap_owner_record_pins_email_and_role_but_allows_name`).
+    for id in ["email", "role"] {
         let tag = tag_with_id(&body, id);
         assert!(
             tag.contains("disabled"),
@@ -14628,17 +14634,23 @@ async fn bootstrap_owner_row_renders_all_fields_disabled_with_banner() {
         );
     }
     assert!(
-        body.contains("bootstrap Owner") && body.contains("NAVIGATOR_BOOTSTRAP_OWNER_EMAIL"),
-        "expected the immutability banner",
+        !tag_with_id(&body, "name").contains("disabled"),
+        "bootstrap Owner name must stay editable: {}",
+        tag_with_id(&body, "name"),
     );
     assert!(
-        !body.contains(">Save</button>"),
-        "the immutable record must not offer Save",
+        body.contains("bootstrap Owner") && body.contains("NAVIGATOR_BOOTSTRAP_OWNER_EMAIL"),
+        "expected the pinned-identity banner",
+    );
+    // Save renders — the row is not fully immutable, just pinned on identity.
+    assert!(
+        body.contains("nav-btn--primary") && body.contains(">Save<"),
+        "{body}",
     );
 }
 
 #[tokio::test]
-async fn bootstrap_owner_record_is_immutable_patch_returns_409() {
+async fn bootstrap_owner_record_pins_email_and_role_but_allows_name() {
     // The router must read the person from the SAME engine this test seeds.
     // `empty_state()` mints its own, so pairing it with a handle from
     // elsewhere renders a 404 against an engine that has no rows.
@@ -14655,12 +14667,17 @@ async fn bootstrap_owner_record_is_immutable_patch_returns_409() {
     )
     .await
     .unwrap();
-    let (cookie, csrf) = session_cookie_and_csrf_for_role(store::persons::Role::Admin);
+    // An Admin caller can't reach this row at all — the pre-existing
+    // authority-rank lock refuses editing a higher-ranked person outright,
+    // regardless of the bootstrap pin this test covers. Only an Owner caller
+    // (equal rank) reaches the bootstrap-specific pin.
+    let (cookie, csrf) = session_cookie_and_csrf_for_role(store::persons::Role::Owner);
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
 
-    // PATCH changing the name AND demoting the role — simulating a hostile
-    // client (or a bug) bypassing the disabled UI. The command layer must
-    // refuse the whole write with 409 and leave the row untouched.
+    // PATCH renaming the row AND attempting to steal the email and demote the
+    // role — simulating a hostile client (or a bug) bypassing the disabled
+    // UI. The command layer must apply the name change and silently drop the
+    // email/role change rather than rejecting the whole write.
     let resp = app
         .oneshot(
             Request::builder()
@@ -14670,23 +14687,27 @@ async fn bootstrap_owner_record_is_immutable_patch_returns_409() {
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/x-www-form-urlencoded")
                 .body(Body::from(
-                    "name=Hacked&email=nick%40neonlaw.com&role=client",
+                    "name=Renamed&email=attacker%40example.com&role=client",
                 ))
                 .unwrap(),
         )
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::CONFLICT);
+    assert_eq!(resp.status(), StatusCode::OK);
 
     let row = store::persons::find_by_id(&surreal, owner_row.id)
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(row.name, "Nick", "bootstrap Owner name must be unchanged");
+    assert_eq!(row.name, "Renamed", "bootstrap Owner name must be editable");
+    assert_eq!(
+        row.email, "nick@neonlaw.com",
+        "bootstrap Owner email must stay pinned",
+    );
     assert_eq!(
         row.role,
         store::persons::Role::Owner,
-        "bootstrap Owner role must be unchanged",
+        "bootstrap Owner role must stay pinned",
     );
 }
 

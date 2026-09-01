@@ -59,6 +59,12 @@ impl CreatePersonCommand {
 #[allow(clippy::option_option)]
 pub struct UpdatePersonCommand {
     pub name: String,
+    /// Defaults to blank when omitted: the bootstrap Owner's email field
+    /// renders `disabled` (see `webapp::person_show`), and a disabled HTML
+    /// control submits nothing at all. `update_person` ignores this value
+    /// for that row regardless, so a missing key is never mistaken for a
+    /// blank-out on an ordinary person either.
+    #[serde(default)]
     pub email: String,
     #[serde(default)]
     pub role: String,
@@ -216,35 +222,41 @@ pub async fn create_person(
     .map_err(classify_write)
 }
 
-/// Update one Person by id. Rejects any edit to the bootstrap Owner record,
-/// and rejects callers attempting to edit a higher-ranked person. Otherwise preserves the existing
-/// role when the caller can't change roles or submits a blank role; leaves
-/// an omitted structured-name part untouched and nulls a present-but-blank
-/// one.
+/// Update one Person by id. The bootstrap Owner's email and role are pinned —
+/// any submitted change to either is silently dropped rather than rejecting
+/// the whole write — while its name and legal-name parts edit normally.
+/// Otherwise rejects callers attempting to edit a higher-ranked person, and
+/// preserves the existing role when the caller can't change roles or submits
+/// a blank role; leaves an omitted structured-name part untouched and nulls a
+/// present-but-blank one.
 pub async fn update_person(
     db: &SurrealDb,
     id: Uuid,
     input: &UpdatePersonCommand,
     ctx: &UpdateContext<'_>,
 ) -> Result<Person, PeopleCommandError> {
-    if let Some(message) = validate_name_email(&input.name, &input.email) {
-        return Err(PeopleCommandError::Invalid(message));
-    }
     let existing = persons::find_by_id(db, id)
         .await
         .map_err(PeopleCommandError::Db)?
         .ok_or(PeopleCommandError::NotFound)?;
 
-    // The bootstrap Owner record is immutable: reject every
-    // edit before any write. It is the row `oauth::resolve_person_from_claims`
-    // re-tags on each login and the operator who can see the whole firm's
-    // data, so the UI locks it and this boundary refuses a hand-crafted PATCH
-    // that would slip past the disabled fields.
-    if is_bootstrap_owner_email(ctx.bootstrap_owner_email, &existing.email) {
-        return Err(PeopleCommandError::Blocked(
-            "The bootstrap Owner record is immutable. Change it via \
-             NAVIGATOR_BOOTSTRAP_OWNER_EMAIL or a direct database write.",
-        ));
+    // The bootstrap Owner's identity is pinned: the email that keys the
+    // `NAVIGATOR_BOOTSTRAP_OWNER_EMAIL` carve-out (and, by extension, its
+    // role) cannot move through this boundary. A submitted change to either
+    // is silently dropped — the same preserve-not-error pattern the
+    // `may_change_roles` branch below already uses for a caller without role
+    // authority — rather than rejecting the whole write, since name and the
+    // legal-name parts are not what `oauth::resolve_person_from_claims` keys
+    // its re-tag on and edit like any other person's.
+    let is_bootstrap = is_bootstrap_owner_email(ctx.bootstrap_owner_email, &existing.email);
+    let email = if is_bootstrap {
+        existing.email.clone()
+    } else {
+        input.email.trim().to_string()
+    };
+
+    if let Some(message) = validate_name_email(&input.name, &email) {
+        return Err(PeopleCommandError::Invalid(message));
     }
     if existing.role.authority_rank() > ctx.actor_role.authority_rank() {
         return Err(PeopleCommandError::Blocked(
@@ -252,7 +264,9 @@ pub async fn update_person(
         ));
     }
 
-    let new_role = if !ctx.may_change_roles || input.role.trim().is_empty() {
+    let new_role = if is_bootstrap {
+        Role::Owner
+    } else if !ctx.may_change_roles || input.role.trim().is_empty() {
         existing.role
     } else {
         let requested = parse_role(&input.role).ok_or(PeopleCommandError::Invalid(
@@ -271,7 +285,7 @@ pub async fn update_person(
         id,
         &PersonEdit {
             name: Some(input.name.trim().to_string()),
-            email: Some(input.email.trim().to_string()),
+            email: Some(email),
             role: Some(new_role),
             // Only touch a name part when the request carried it (outer
             // `Some`), so a caller that posts just name/email/role leaves
@@ -537,15 +551,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn update_rejects_the_bootstrap_owner() {
+    async fn update_pins_the_bootstrap_owners_email_and_role_but_allows_the_name() {
         let db = db().await;
         let mut cmd = create("Boss", "boss@example.com");
         cmd.role = "owner".into();
         let row = create_person(&db, &cmd).await.unwrap();
 
+        // Attempts to steal the email and demote the role alongside a
+        // legitimate rename — the command layer applies the name and
+        // silently drops the other two rather than rejecting the whole
+        // write.
         let input = UpdatePersonCommand {
             name: "Renamed".into(),
-            email: "boss@example.com".into(),
+            email: "attacker@example.com".into(),
             role: "client".into(),
             given_name: None,
             family_name: None,
@@ -556,10 +574,10 @@ mod tests {
             actor_role: Role::Owner,
             may_change_roles: true,
         };
-        assert!(matches!(
-            update_person(&db, row.id, &input, &ctx).await,
-            Err(PeopleCommandError::Blocked(_))
-        ));
+        let updated = update_person(&db, row.id, &input, &ctx).await.unwrap();
+        assert_eq!(updated.name, "Renamed");
+        assert_eq!(updated.email, "boss@example.com");
+        assert_eq!(updated.role, Role::Owner);
     }
 
     #[tokio::test]

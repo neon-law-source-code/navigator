@@ -234,6 +234,11 @@ description, scope of services, the client DRI, and a required conflict-check at
 suffix to the stem you type — the code is immutable, and submitting is the only place you see the final value, in the
 redirect to `/app/projects/<generated-code>`.
 
+---
+
+Fill the form live against a throwaway name so the room sees every required field before it submits. Do not open a real
+matter in the shared room database.
+
 ### Provision the repository and Drive folder — a separate step today
 
 The browser form does not provision the Project's repository or Drive folder by itself. Every other way of opening a
@@ -248,6 +253,11 @@ navigator site projects surfaces reconcile --project <code>
 
 This creates — or adopts, if one already exists — an empty private GitHub repository and Drive folder, and records the
 repository URL on the row. It writes no files.
+
+---
+
+Run `reconcile` live and point out the row had no repository URL until this step. Contrast it with the JSON API, CLI,
+and MCP paths, which provision both surfaces synchronously as part of opening.
 
 ### Populate the repository
 
@@ -264,11 +274,21 @@ Pass `--action-version` explicitly rather than relying on a default, which only 
 
 Commit and push. That push is what makes the CI gate live on the new repository.
 
+---
+
+Run `scaffold` against the freshly cloned repository and show the room the files it writes. Commit and push before
+moving on — the CI gate does not exist on the repository until that push lands.
+
 ### The portal is a separate, later decision
 
 Not every Project needs a client-facing application. When one does, its `portal/` is hand-built in the `vibe-react` lane
 against a pinned `@neon-law/ux` release — `scaffold` deliberately leaves it out, so `validate` can tell "no portal yet"
 from "portal exists" without ambiguity.
+
+---
+
+Skip building a portal for this walkthrough. Name `vibe-react` as the lane a real Project would use once one is actually
+needed.
 
 ### Verify
 

@@ -4726,6 +4726,7 @@ spec:
         "SENDGRID_FROM_EMAIL",
         "SENDGRID_INBOUND_SECRET",
         "SESSION_SECRET",
+        "SLACK_BOT_TOKEN",
     ];
 
     /// The class projects the mount contract exactly.

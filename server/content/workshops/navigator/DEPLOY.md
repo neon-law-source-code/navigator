@@ -1051,6 +1051,7 @@ alongside it.
 | Threaded mail | `NAVIGATOR_PARSE_HOST`, `NAVIGATOR_LAWYER_NOTIFY_EMAIL` | Both values enable it |
 | DKIM fence | `NAVIGATOR_DKIM_REQUIRE_DOMAIN` | Optional domain pin |
 | Internal ops notices | `SLACK_WEBHOOK_URL` | Optional; otherwise captured in memory |
+| Per-Project client-view notices | `SLACK_BOT_TOKEN` | Required outside the harness; creates private Project channels |
 | DocuSign endpoint | `DOCUSIGN_BASE_URL` | Declares DocuSign; demo in dev, live in production |
 | DocuSign account | `DOCUSIGN_ACCOUNT_ID` | Environment-specific account |
 | DocuSign JWT IDs | `DOCUSIGN_INTEGRATION_KEY`, `DOCUSIGN_USER_ID` | Preferred auth path |

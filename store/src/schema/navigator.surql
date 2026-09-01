@@ -98,6 +98,9 @@ DEFINE FIELD OVERWRITE forge_provisioned_at ON project TYPE option<string>;
 DEFINE FIELD OVERWRITE closed_at ON project TYPE option<string>;
 DEFINE FIELD OVERWRITE internal_slack_channel_url ON project TYPE option<string>;
 DEFINE FIELD OVERWRITE external_slack_channel_url ON project TYPE option<string>;
+-- The firm-only Slack Web API channel ID. The bot addresses a channel by this
+-- stable ID; the URL above remains an optional human-facing resource link.
+DEFINE FIELD OVERWRITE internal_slack_channel_id ON project TYPE option<string>;
 -- The matter's two Notion pages: the firm-only working page and the page
 -- shared with the client. Two columns rather than one for the same reason the
 -- two Slack channels are separate — one side is firm work product and the

@@ -199,6 +199,14 @@ pub async fn get_project_detail() -> Result<ProjectDetailView, ServerFnError> {
     if !visible {
         return Ok(not_found(id, role, logo, csrf_token));
     }
+    // Queue only for a real client session. An administrator's client-lens
+    // impersonation renders the same page but must not look like client
+    // activity in the firm's channel. The one-way Restate call is best-effort
+    // for the page: a Slack outage must not turn an authorized portal read into
+    // a failed client request.
+    if role == ViewerRole::Client && impersonation.is_none() {
+        tokio::spawn(queue_client_project_view(id));
+    }
     // Notations, each with which of its three PDFs exist in storage.
     let notation_rows = notation_rows(&surreal, storage.as_ref(), id).await?;
 
@@ -272,6 +280,34 @@ pub async fn get_project_detail() -> Result<ProjectDetailView, ServerFnError> {
         logo,
         pending_intake,
     })
+}
+
+/// Start the per-Project Slack virtual object after a client has passed the
+/// same server-side visibility check used to render this page. Local in-memory
+/// development has no Restate broker, so it intentionally does not enqueue.
+#[cfg(feature = "server")]
+async fn queue_client_project_view(project_id: uuid::Uuid) {
+    let Some(broker) = std::env::var("RESTATE_BROKER_URL")
+        .ok()
+        .map(|url| url.trim_end_matches('/').to_string())
+        .filter(|url| !url.trim().is_empty())
+    else {
+        return;
+    };
+    let token = std::env::var("RESTATE_AUTH_TOKEN").ok();
+    if let Err(error) = workflows::start_workflow(
+        &broker,
+        token.as_deref(),
+        "project-slack",
+        &project_id.to_string(),
+        "client_project_view",
+        &serde_json::json!({}),
+        true,
+    )
+    .await
+    {
+        tracing::error!(%project_id, %error, "client Project view Slack notice was not queued");
+    }
 }
 
 /// Build the per-notation rows for a matter: title, a client-friendly status,

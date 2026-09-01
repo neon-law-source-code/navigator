@@ -22,17 +22,21 @@ use workflows::{EmailService, SlackOpsDelivery};
 use workflows_service::github_automation_heartbeat::GitHubAutomationHeartbeatService;
 use workflows_service::heartbeat::HeartbeatService;
 use workflows_service::{
-    email_from_env, notifier_from_env, repository_correlation::ProjectRepositoryResolver,
-    NotationService,
+    email_from_env, notifier_from_env, project_slack::ProjectSlackService,
+    repository_correlation::ProjectRepositoryResolver, slack_bot_from_env, NotationService,
 };
 
 macro_rules! bind_common_services {
-    ($endpoint:expr, $surreal:expr, $email:expr, $storage:expr, $notifier:expr, $ops_delivery:expr) => {
+    ($endpoint:expr, $surreal:expr, $email:expr, $storage:expr, $notifier:expr, $ops_delivery:expr, $slack_bot:expr) => {
         $endpoint
             .bind(NotationService::new(
                 $surreal.clone(),
                 $email.clone(),
                 $storage,
+            ))
+            .bind(ProjectSlackService::new(
+                $surreal.clone(),
+                $slack_bot.clone(),
             ))
             .bind(ArchivesService::new($notifier.clone()))
             .bind(HeartbeatService::new($notifier))
@@ -111,6 +115,7 @@ async fn main() -> anyhow::Result<()> {
     // The client-facing Notation service uses the email backend, keeping
     // client content inside the client delivery channel.
     let notifier = notifier_from_env();
+    let slack_bot = slack_bot_from_env();
     tracing::info!(
         backend = if workflows_service::notify_config::slack_enabled(|k| std::env::var(k).ok()) {
             "Slack"
@@ -170,7 +175,8 @@ async fn main() -> anyhow::Result<()> {
                 email,
                 storage,
                 notifier,
-                ops_delivery
+                ops_delivery,
+                slack_bot
             )
             .build(),
         )
@@ -183,7 +189,8 @@ async fn main() -> anyhow::Result<()> {
                 email,
                 storage,
                 notifier,
-                ops_delivery
+                ops_delivery,
+                slack_bot
             )
             .build(),
         )

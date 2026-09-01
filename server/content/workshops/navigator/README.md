@@ -229,10 +229,10 @@ engagement.
 
 ### Fill the matter-open form
 
-A lawyer-tier account reaches the form at `/app/projects/new`. It asks for a name, a code stem, an Entity, a
-description, scope of services, the client DRI, and a required conflict-check attestation. Navigator appends a generated
-suffix to the stem you type — the code is immutable, and submitting is the only place you see the final value, in the
-redirect to `/app/projects/<generated-code>`.
+A lawyer-tier account reaches the form at `/app/projects/new`. It asks for a name, a code, an Entity, a description,
+scope of services, the client DRI, and a required conflict-check attestation. Navigator stores the code exactly as typed
+— the code is immutable, and a code already in use by another matter is refused rather than silently resolved, because
+it is a coordinate the caller already committed to elsewhere (a repository's `navigator.yaml`, a Drive folder name).
 
 ---
 

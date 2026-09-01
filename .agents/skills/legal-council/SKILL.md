@@ -34,7 +34,8 @@ firm's mission.
   follow-up email, or public policy statement — **before** the language hardens. It does not write the final notation
   (the licensed attorney on the matter does) and never gives legal advice to a client. Template bodies are English-only;
   only a questionnaire prompt may carry an attorney-reviewed localized variant. **Skip already-binding documents** (a
-  signed retainer, a filed pleading) — those go through lawyer and attorney-of-record review, not the council.
+  signed retainer, a filed pleading) — filed pleadings go through the separate [[litigation-filing-review]]
+  attorney-of-record gate, not the council.
 - **Confirm every asserted legal fact before convening — never invent one.** List the concrete facts the copy will state
   (entities, locations, bar numbers, emails, fees, dates, statute cites) and pin each against its canonical repository
   source or ask the user in one batch. Do not reproduce real contact details unless a public-safe, authoritative task

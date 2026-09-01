@@ -17,6 +17,9 @@ cost. Skip councils for mechanical, trivial, or decided work.
 
 Read first, then convene: every voice reacts to evidence.
 
+Filed litigation papers do not go through the Legal Council. They use the separate [Litigation Filing
+Review](#litigation-filing-review), an attorney-of-record gate rather than a fourth council.
+
 ## How to run a council
 
 The `council`, `legal-council`, and `client-council` skills supply their casts and triggers. Every council:
@@ -75,6 +78,19 @@ Scorpio, then Aries through Pisces:
 - ♓ Pisces, estate-planning counselor/mental-health-court lens: honor the human story.
 
 End with revised copy or a named go/no-go question.
+
+## Litigation Filing Review
+
+Litigation Filing Review is the attorney-of-record gate for papers proposed for filing. It is not a council and does not
+expand the Legal Council beyond pre-notation legal copy. Before filing, use the
+[`litigation-filing-review`](../.agents/skills/litigation-filing-review/SKILL.md) skill to identify the jurisdiction and
+procedural posture, verify current primary authority and local rules, connect each element to admissible proof, and
+check every factual proposition against declaration and exhibit pinpoints.
+
+The review also discloses and explains adverse procedural history, including prior applications and rulings; confirms
+relief parity across the application, memorandum, declaration, stipulation, proposed order, and proof of service; and
+red-teams the filing with the shortest plausible denial. After a ruling, compare the proposed order with the entered
+order and capture reusable lessons without matter facts or work product.
 
 ## Client Council
 

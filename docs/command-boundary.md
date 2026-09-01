@@ -25,7 +25,10 @@ own persistence logic.
 - **Seed reconciliation.** `navigator site import <MODEL_NAME> <SEED_FILE>` reads seed YAML locally and sends it
   with the bearer from `navigator site login` to `POST /app/api/seed`. The deployment resolves the glossary model and
   validates its `lookup_fields`, then performs lookup/create there; `--overwrite` changes only fields represented in the
-  seed model. The CLI never reads database credentials.
+  seed model. Add `--dry-run` to perform the same natural-key and foreign-reference checks without writing. It returns a
+  per-record plan: each record is `new`, `unchanged`, or `changed`, and changed records name the fields that
+  `--overwrite` would replace. The flags compose, so `--dry-run --overwrite` previews updates. The CLI never reads
+  database credentials.
 - **Document upload.** `navigator site document upload --project <code> --file <path> --kind <kind>` reads the file
   locally and sends it with the same bearer to `POST /app/api/projects/{id}/documents`. `--kind` is required and must be
   an asset-lane value — the same enum OpenAPI publishes on that operation. The CLI never writes the store itself.

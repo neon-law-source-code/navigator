@@ -641,6 +641,9 @@ enum SiteCmd {
         /// Replace every field represented in each matching seed record.
         #[arg(long)]
         overwrite: bool,
+        /// Show the per-record reconciliation plan without writing anything.
+        #[arg(long)]
+        dry_run: bool,
         #[command(flatten)]
         host: HostOpt,
     },
@@ -1752,12 +1755,14 @@ fn main() -> ExitCode {
                 model_name,
                 seed_file,
                 overwrite,
+                dry_run,
                 host,
             } => runtime().block_on(remote::seed(
                 host.host.as_deref(),
                 &model_name,
                 &seed_file,
                 overwrite,
+                dry_run,
             )),
             SiteCmd::Login { host, no_browser } => {
                 runtime().block_on(login::run_login(&host, no_browser))

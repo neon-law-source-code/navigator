@@ -45,11 +45,18 @@ pub(crate) fn resolve(host: Option<&str>) -> Result<(String, String)> {
     Ok((base, cred.token.clone()))
 }
 
-/// `navigator site import <model> <file> [--overwrite]` — submit one standard
-/// seed YAML document to the logged-in deployment. The CLI deliberately reads
-/// no `SurrealDB` environment: authentication, authorization, lookup, and the
-/// typed write boundary all belong to the server.
-pub async fn seed(host: Option<&str>, model: &str, file: &Path, overwrite: bool) -> ExitCode {
+/// `navigator site import <model> <file> [--overwrite] [--dry-run]` — submit
+/// one standard seed YAML document to the logged-in deployment. The CLI
+/// deliberately reads no `SurrealDB` environment: authentication,
+/// authorization, lookup, and the typed write boundary all belong to the
+/// server.
+pub async fn seed(
+    host: Option<&str>,
+    model: &str,
+    file: &Path,
+    overwrite: bool,
+    dry_run: bool,
+) -> ExitCode {
     run(async {
         let yaml = std::fs::read_to_string(file)
             .with_context(|| format!("read seed file {}", file.display()))?;
@@ -61,6 +68,7 @@ pub async fn seed(host: Option<&str>, model: &str, file: &Path, overwrite: bool)
                 "model": model,
                 "yaml": yaml,
                 "overwrite": overwrite,
+                "dry_run": dry_run,
             }))
             .send()
             .await
@@ -1433,7 +1441,7 @@ mod tests {
         document_upload, ensure_no_unused_selections, fetch_status, matter_open, notation_approve,
         notation_create, notation_document, notation_request_changes, notation_status,
         notation_update, parse_scripted_selection, picker_selection_fields, projects_list,
-        retainer_approve, retainer_send, scripted_picker_selection_fields, select_candidate,
+        retainer_approve, retainer_send, scripted_picker_selection_fields, seed, select_candidate,
         CoverageSummary, StepQuestion, StepResponse,
     };
     use super::{fetch_step, first_line, json_reason, parse_csv, server_error};
@@ -1511,6 +1519,42 @@ mod tests {
         assert!(
             err.to_string().contains("expired"),
             "expected an expired-token error, got: {err}"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn seed_posts_dry_run_and_overwrite_flags() {
+        let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+        let server = MockServer::start().await;
+        let server_uri = server.uri();
+        let _env = CredentialsEnv::new(&server_uri);
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("Person.yaml");
+        let yaml = "lookup_fields:\n  - email\nrecords: []\n";
+        std::fs::write(&file, yaml).unwrap();
+
+        Mock::given(method("POST"))
+            .and(path("/app/api/seed"))
+            .and(body_json(serde_json::json!({
+                "model": "person",
+                "yaml": yaml,
+                "overwrite": true,
+                "dry_run": true,
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "model": "person",
+                "created": 0,
+                "updated": 0,
+                "unchanged": 0,
+                "records": [],
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        assert_eq!(
+            seed(Some(&server_uri), "person", &file, true, true).await,
+            ExitCode::SUCCESS
         );
     }
 

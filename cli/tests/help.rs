@@ -153,7 +153,8 @@ fn site_import_help_requires_the_seed_model_and_file() {
         .assert()
         .success()
         .stdout(str::contains("<MODEL_NAME> <SEED_FILE>"))
-        .stdout(str::contains("--overwrite"));
+        .stdout(str::contains("--overwrite"))
+        .stdout(str::contains("--dry-run"));
 }
 
 /// `db project` is write-side and local; `site projects open` drives a running

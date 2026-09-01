@@ -538,6 +538,7 @@ erDiagram
         option_string forge_provisioned_at
         option_string git_initialized_at
         string inserted_at
+        option_string internal_slack_channel_id
         option_string internal_slack_channel_url
         string name
         option_string private_notion_page_url

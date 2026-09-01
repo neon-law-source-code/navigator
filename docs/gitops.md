@@ -19,8 +19,10 @@ operator a deliberate rollout. This flow supports the actions in [`agent-workflo
    [`agent-workflows.md`](agent-workflows.md#create-a-pr) for the stop condition when a task did not start in New
    Worktree.
 2. **Push + open a PR.** `git push -u origin <branch>` then `gh pr create`.
-3. **Let auto-merge land it.** `ci.yml` enables auto-merge on open and each push. A green required gate plus resolved
-   review threads triggers squash; approval is not required. Use draft status to hold a PR. The PR title becomes the
+3. **Let auto-merge land it.** `ci.yml` enables auto-merge on open and each push. Squash fires once the required gate is
+   green, review threads are resolved, and the review gate's one codeowner approval is satisfied — bypassed only when
+   the codeowner opens the PR under their own account. See [Review gate: two rulesets with a narrow
+   bypass](#review-gate-two-rulesets-with-a-narrow-bypass). Use draft status to hold a PR. The PR title becomes the
    Conventional Commit subject on `main`.
 
 ### Codified merge gate

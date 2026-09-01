@@ -120,6 +120,22 @@ fn read(rel: &str) -> String {
     fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
 }
 
+fn repository_relative_path(path: &Path) -> String {
+    path.strip_prefix(repo_root())
+        .unwrap_or(path)
+        .to_string_lossy()
+        .replace('\\', "/")
+        .replace("../", "")
+}
+
+#[test]
+fn repository_relative_paths_compare_consistently_across_separators() {
+    let expected = "docs/licensing.md";
+    for path in [PathBuf::from(expected), PathBuf::from(r"docs\licensing.md")] {
+        assert_eq!(repository_relative_path(&path), expected);
+    }
+}
+
 /// Whitespace-flattened, lowercased prose. Markdown wraps at the line width, so
 /// a raw `contains` on a phrase reads a refilled paragraph as a deleted clause.
 fn flat_lower(body: &str) -> String {
@@ -1497,11 +1513,7 @@ fn no_document_reads_section_13_as_a_duty_to_this_project_or_the_public() {
     let mut offenders = Vec::new();
 
     for path in markdown_documents() {
-        let rel = path
-            .strip_prefix(repo_root())
-            .unwrap_or(&path)
-            .to_string_lossy()
-            .replace("../", "");
+        let rel = repository_relative_path(&path);
         let flat = flat_lower(&fs::read_to_string(&path).unwrap_or_default());
 
         let mut cites = false;

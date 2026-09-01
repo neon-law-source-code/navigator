@@ -1526,25 +1526,14 @@ fn roll(
         cfg.project_id, cfg.context
     );
 
-    // 2b. Fail fast if the images aren't actually published at this tag —
-    //     applying a manifest that pins a missing tag wedges the workload in
-    //     ImagePullBackOff. A partial CI publish (the web tag lands but the
-    //     workflows-service publish leg fails — they run as a fail-fast:false
-    //     matrix) would otherwise roll workflows-service onto a missing tag,
-    //     so verify every image on every live run. This precedes the render
-    //     because the render bakes `tag` into the manifests the reconcile
-    //     applies. Skipped in dry-run; that mode still performs the
-    //     read-only Kubernetes Secret preflight and manifest diff.
+    // 2b. The published-image check used to sit here, over a hard-coded list of
+    //     the two Deployments plus the private-mode gateway. It now runs at
+    //     step 4a over the BUILT manifest stream, which names the trigger
+    //     CronJobs this list never did. Everything between here and step 4a is
+    //     local work — render, prune, `kubectl kustomize` — so an unpublished
+    //     tag still aborts before the first cluster read.
     let coordinate = |key: &str| deployment.coordinates.get(key).cloned();
     let private_mode = super::private_mode(coordinate("NAVIGATOR_PRIVATE_MODE").as_deref());
-    if !dry_run {
-        for image in [cfg.web_image_name.as_str(), "navigator-workflows-service"] {
-            registry::ensure_tag_published(&cfg.registry, image, &tag)?;
-        }
-        if private_mode {
-            registry::ensure_tag_published(&cfg.registry, "navigator-gateway", &tag)?;
-        }
-    }
 
     // 3. Render the embedded manifest tree with the deployment's NAVIGATOR_*
     //    coordinates and the tag being rolled. Pure local work — nothing
@@ -1573,6 +1562,25 @@ fn roll(
     //    apply strands the cluster on a half-rolled state (which is exactly
     //    how the 26.7.15 ship wedged the git tier).
     let manifests = kustomize_build(&target)?;
+
+    // 4a. Confirm every image the render pinned is actually published at this
+    //     tag, BEFORE the first cluster read below and long before the apply.
+    //     Applying a manifest that names a missing tag wedges a Deployment in
+    //     ImagePullBackOff; a trigger CronJob is worse, because it has no
+    //     rollout to wait on and no replica to report — it simply stops firing.
+    //     `publish-triggers` is a `fail-fast: false` matrix, so one failed leg
+    //     leaves exactly that hole while every other image publishes.
+    //
+    //     The list comes from the BUILT stream rather than from a hard-coded
+    //     set of image names. That is the whole point: the reconcile applies
+    //     this stream, so checking it cannot drift from what is about to be
+    //     written — a trigger added to `../exports` is covered with no edit
+    //     here, and private mode needs no special case because the gateway
+    //     only renders when its component is in the build. Reading the built
+    //     stream rather than the manifest files is also what picks up the
+    //     `web-image` patch, which overrides the base's registry-less tag.
+    ensure_manifest_images_published(cfg, dry_run, &manifests, &tag)?;
+
     ensure_secret_invariants(cfg, dry_run, &manifests)?;
 
     // 4b. …and confirm the *source* of that Secret is readable. Once the CSI
@@ -1873,6 +1881,93 @@ pub(super) fn referenced_secret_manager_objects(
 /// payload, so it needs `secretmanager.versions.get` and not
 /// `secretmanager.versions.access`, and no projected credential enters this
 /// process.
+/// Every repository in the rendered manifest stream that this deployment's own
+/// registry publishes, deduplicated and stripped of its tag.
+///
+/// The filter is [`pin_cronjob_images`]'s rule — `<registry>/…` — so a
+/// third-party image (Envoy, ClamAV) and the KIND base's registry-less
+/// `navigator-web:dev` are both left alone, and only images CI is responsible
+/// for publishing are asserted on.
+fn manifest_images_under_registry(manifests: &str, prefix: &str) -> BTreeSet<String> {
+    let mut images = BTreeSet::new();
+    for line in manifests.lines() {
+        let Some(value) = line.trim().strip_prefix("image:") else {
+            continue;
+        };
+        let value = value.trim().trim_matches(|c| c == '"' || c == '\'');
+        let Some(rest) = value.strip_prefix(prefix) else {
+            continue;
+        };
+        // `<repository>:<tag>` — split from the right so a registry host
+        // carrying a port never loses its own colon to the tag split.
+        let repository = rest.rsplit_once(':').map_or(rest, |(name, _)| name);
+        if !repository.is_empty() {
+            images.insert(repository.to_string());
+        }
+    }
+    images
+}
+
+/// The abort-or-proceed decision itself, split from the registry reads that
+/// feed it for the same reason [`check_projected_objects_resolve`] is: the
+/// thing that stops a bad roll is unit-tested against a fixture rather than
+/// only against a live registry.
+///
+/// Every unpublished image is named, not just the first. A partial publish is
+/// a *count* mismatch between what the release was supposed to produce and
+/// what it did, and an operator re-running the roll once per abort learns that
+/// count the slow way.
+fn check_manifest_images_published(states: &[(String, bool)], tag: &str) -> Result<()> {
+    let missing: Vec<&str> = states
+        .iter()
+        .filter(|(_, published)| !published)
+        .map(|(image, _)| image.as_str())
+        .collect();
+    if missing.is_empty() {
+        eprintln!(
+            "==> images OK ({} rendered image(s), all published at {tag})",
+            states.len()
+        );
+        return Ok(());
+    }
+    bail!(
+        "the rendered manifests pin {} image(s) to {tag} but {} of them are not published: {}.\n\
+         The reconcile writes every one of these, so rolling now would apply a tag that does not \
+         exist: a Deployment wedges in ImagePullBackOff, and a trigger CronJob stops firing with \
+         no rollout and no replica to report it. This is what one failed leg of the \
+         `fail-fast: false` publish matrix leaves behind. Re-run the failed publish leg for that \
+         image, or roll a tag that published completely. Nothing was applied.",
+        states.len(),
+        missing.len(),
+        missing.join(", ")
+    )
+}
+
+/// Assert that every image the rendered stream pins is published at `tag`.
+///
+/// Skipped under `--dry-run`, which reaches no registry — the same contract
+/// the reconcile's apply follows.
+fn ensure_manifest_images_published(
+    cfg: &ShipConfig,
+    dry_run: bool,
+    manifests: &str,
+    tag: &str,
+) -> Result<()> {
+    if dry_run {
+        eprintln!("DRY-RUN: would confirm every rendered image is published at {tag}");
+        return Ok(());
+    }
+    let prefix = format!("{}/", cfg.registry());
+    let states: Vec<(String, bool)> = manifest_images_under_registry(manifests, &prefix)
+        .into_iter()
+        .map(|image| {
+            let published = registry::tag_exists(&cfg.registry, &image, tag);
+            (image, published)
+        })
+        .collect();
+    check_manifest_images_published(&states, tag)
+}
+
 fn ensure_projected_objects_resolve(manifests: &str) -> Result<()> {
     let referenced = referenced_secret_manager_objects(manifests)?;
     if referenced.is_empty() {
@@ -4063,6 +4158,139 @@ mod tests {
         )
         .expect_err("a registration failure must abort the ship");
         assert!(err.to_string().contains(WORKFLOWS_DEPLOYMENT));
+    }
+
+    /// A realistic slice of a built stream: our two Deployments, two trigger
+    /// CronJobs, a third-party sidecar, and the KIND base's registry-less tag.
+    const BUILT_STREAM: &str = "\
+spec:
+  containers:
+    - name: web
+      image: ghcr.io/neon-law-source-code/neon-server:26.8.31
+    - name: clamav
+      image: clamav/clamav:1.4.5_base
+    - name: workflows-service
+      image: \"ghcr.io/neon-law-source-code/navigator-workflows-service:26.8.31\"
+    - name: archives-trigger
+      image: ghcr.io/neon-law-source-code/navigator-archives-trigger:26.8.31
+    - name: heartbeat-trigger
+      image: ghcr.io/neon-law-source-code/navigator-heartbeat-trigger:26.8.31
+    - name: kind-base
+      image: navigator-web:dev
+";
+
+    #[test]
+    fn the_image_preflight_reads_our_images_and_leaves_everyone_elses_alone() {
+        // The derived list must be exactly what CI is responsible for
+        // publishing. A third-party sidecar is not ours to assert on, and the
+        // KIND base's registry-less tag never reaches a cloud registry at all
+        // — asserting on either turns the preflight into a false abort.
+        let images = manifest_images_under_registry(BUILT_STREAM, "ghcr.io/neon-law-source-code/");
+        assert_eq!(
+            images.iter().map(String::as_str).collect::<Vec<_>>(),
+            [
+                "navigator-archives-trigger",
+                "navigator-heartbeat-trigger",
+                "navigator-workflows-service",
+                "neon-server",
+            ],
+            "only images under our own registry, tags stripped, deduplicated"
+        );
+    }
+
+    #[test]
+    fn an_unpublished_trigger_image_stops_the_roll() {
+        // ENG-215. `publish-triggers` is a `fail-fast: false` matrix, so one
+        // failed leg publishes every other image and leaves a hole. The
+        // reconcile writes the trigger CronJob's image unconditionally — the
+        // render bakes the tag in — so without this abort the roll applies a
+        // tag that does not exist and the CronJob stops firing. A CronJob has
+        // no rollout to wait on and no replica to report, which is what makes
+        // this the failure nobody sees.
+        let states = vec![
+            ("neon-server".to_string(), true),
+            ("navigator-workflows-service".to_string(), true),
+            ("navigator-archives-trigger".to_string(), false),
+        ];
+        let err = check_manifest_images_published(&states, "26.8.31")
+            .expect_err("an unpublished trigger image must abort the roll");
+        let message = err.to_string();
+        assert!(
+            message.contains("navigator-archives-trigger"),
+            "the abort must name the image an operator has to re-publish: {message}"
+        );
+        assert!(
+            message.contains("Nothing was applied"),
+            "the abort must say the cluster is untouched: {message}"
+        );
+        assert!(
+            !message.contains("neon-server"),
+            "a published image must not be reported as missing: {message}"
+        );
+    }
+
+    #[test]
+    fn every_unpublished_image_is_named_at_once() {
+        // One abort per re-run teaches the count the slow way; a partial
+        // publish is exactly a count mismatch, so report all of them.
+        let states = vec![
+            ("navigator-archives-trigger".to_string(), false),
+            ("navigator-heartbeat-trigger".to_string(), false),
+            ("neon-server".to_string(), true),
+        ];
+        let message = check_manifest_images_published(&states, "26.8.31")
+            .expect_err("two unpublished images must abort")
+            .to_string();
+        assert!(message.contains("navigator-archives-trigger"), "{message}");
+        assert!(message.contains("navigator-heartbeat-trigger"), "{message}");
+    }
+
+    #[test]
+    fn a_fully_published_tag_rolls_unchanged() {
+        let states = vec![
+            ("neon-server".to_string(), true),
+            ("navigator-archives-trigger".to_string(), true),
+        ];
+        check_manifest_images_published(&states, "26.8.31")
+            .expect("a tag published for every rendered image must roll");
+    }
+
+    #[test]
+    fn the_image_preflight_covers_the_trigger_cronjobs_the_reconcile_writes() {
+        // The guard against this check going vacuous. Deriving the list from
+        // the rendered tree is only worth anything if the trigger CronJobs are
+        // actually in it — `../exports` is the first resource of the GKE
+        // kustomization, and a trigger dropped from that list would silently
+        // narrow the preflight back to the services.
+        let subs =
+            resolve_substitutions_for_deployment("neon-law-stg", "26.7.28", env_getter(HUB_ENV))
+                .expect("hub env resolves");
+        let rendered = render_manifests_with(&subs, false).expect("render succeeds");
+
+        let mut stream = String::new();
+        for entry in walkdir::WalkDir::new(rendered.path()) {
+            let entry = entry.expect("walk rendered tree");
+            if entry.file_type().is_file() {
+                if let Ok(text) = fs::read_to_string(entry.path()) {
+                    stream.push_str(&text);
+                    stream.push('\n');
+                }
+            }
+        }
+        let images = manifest_images_under_registry(&stream, "ghcr.io/neon-law-source-code/");
+        for required in [
+            "navigator-archives-trigger",
+            "navigator-heartbeat-trigger",
+            "navigator-billing-digest-trigger",
+            "navigator-surreal-archive",
+            "navigator-workflows-service",
+        ] {
+            assert!(
+                images.contains(required),
+                "`{required}` is applied by the reconcile, so the preflight must check it: \
+                 {images:?}"
+            );
+        }
     }
 
     #[test]

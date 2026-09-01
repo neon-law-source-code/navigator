@@ -286,7 +286,7 @@ mod tests {
     }
 
     /// `tools/list` serves the *advertised* catalog, so the three
-    /// confirmation-gated tools are absent and the other eleven present.
+    /// confirmation-gated tools are absent and the other twelve present.
     ///
     /// This assertion used to run the other way — it pinned
     /// `aida_create_notation` and `aida_answer_notation` as present,
@@ -321,6 +321,7 @@ mod tests {
             "aida_list_jurisdictions",
             "aida_list_entities",
             "aida_validate_notation",
+            "aida_list_deadlines",
             "aida_create_project",
             "aida_list_projects",
             "aida_link_person_project",
@@ -334,7 +335,7 @@ mod tests {
             );
         }
 
-        assert_eq!(names.len(), 11, "got {names:?}");
+        assert_eq!(names.len(), 12, "got {names:?}");
         for name in &names {
             assert!(name.starts_with("aida_"), "got `{name}`");
         }

@@ -355,18 +355,6 @@ fn resolve_firm_contact_content(
              legal services."
         ),
         page_title: page_title.to_string(),
-        firm_heading: firm_name.to_string(),
-        // No figure here. No page on this host posts a rate — every engagement
-        // is quoted through this page — so a consultation fee would be the first
-        // posted number on a surface whose whole purpose is to start a
-        // conversation before anything is priced. The page promises the quote,
-        // not its amount.
-        firm_intro: format!(
-            "Email {firm_name} with a short description of the matter — estate planning, \
-             corporate formation, ongoing services. We respond within one business day with a \
-             flat-fee quote and a calendar link. The first appointment is 30 minutes with a \
-             licensed attorney."
-        ),
         email_label: "Email".to_string(),
         phone_label: "Phone".to_string(),
         firm_email: branding.firm_email.to_string(),

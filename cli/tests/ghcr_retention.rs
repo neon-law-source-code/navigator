@@ -141,6 +141,56 @@ fn the_sweep_can_be_rehearsed_without_deleting() {
         script.contains("DRY_RUN"),
         "the sweep must honour a dry-run mode, and the dispatch must be able to set it"
     );
+
+    // AND IT MUST SAY WHAT THE REHEARSAL DOES NOT COVER. A dry run issues no
+    // DELETE, and GHCR publishes no endpoint that asks whether one would be
+    // authorized — so the package `admin` grant
+    // ([`a_sweep_that_deletes_nothing_names_the_missing_admin_grant`]) is
+    // precisely the precondition a green rehearsal cannot speak to. Left
+    // unsaid, the dispatch reads as a full proof of the run, which is how a
+    // lapsed grant reaches a night that was supposed to have been rehearsed.
+    let dry_run = triggers()["workflow_dispatch"]["inputs"]["dry_run"]["description"]
+        .as_str()
+        .expect("the dispatch must describe its dry-run input")
+        .to_string();
+    assert!(
+        dry_run.contains("no DELETE"),
+        "the dry-run description must say it issues no DELETE, so nobody reads a green rehearsal as proof of the delete path: found `{dry_run}`"
+    );
+}
+
+/// A QUIET NIGHT MUST NOT READ LIKE A BROKEN ONE.
+///
+/// `#navigator` receives the summary line and nothing else; the per-package
+/// counts sit in a run log nobody opens at 01:11 UTC. `0 deleted, 0 failed` is
+/// what a healthy sweep reports when the registry holds nothing older than
+/// `CUTOFF_DAYS`, and it is also what a sweep whose filters matched nothing
+/// would report — the same six words for a correct outcome and a silent one.
+///
+/// Two issues were filed a fortnight apart against that ambiguity, both reading
+/// a correct quiet night as a continuation of the broken nights before it. So
+/// the summary carries what the floors SELECTED as well as what was spent: `0
+/// due` is arithmetic about the registry, `N due, 0 deleted` is a sweep that
+/// decided and could not act, and no reader has to open the log to tell them
+/// apart.
+#[test]
+fn the_summary_reports_what_was_due_and_not_only_what_was_spent() {
+    let script = sweep_script();
+
+    assert!(
+        script.contains("eligible=$((eligible + doomed_count))"),
+        "the sweep must accumulate what every package's floors selected — a per-package count printed and discarded cannot reach the one line #navigator is shown"
+    );
+
+    for summary in [
+        r#"summary="dry run over ${count} images: ${eligible} versions due,"#,
+        r#"summary="${count} images swept: ${eligible} versions due,"#,
+    ] {
+        assert!(
+            script.contains(summary),
+            "both summaries must name the due count, because a rehearsal that reports nothing due and a live sweep that reports nothing due mean the same thing and must read the same way: missing `{summary}`"
+        );
+    }
 }
 
 /// THE COUNT FLOOR. The property an age-only rule cannot provide.

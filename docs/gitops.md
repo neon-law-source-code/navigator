@@ -822,7 +822,15 @@ separates the two: when *nothing* was deleted it names this grant instead of cou
 **Rehearse a change before a night runs it live.** Dispatch the workflow with `dry_run: true` (the dispatch default) and
 it lists every deletion it would make and deletes nothing. That is the only safe way to prove a change to a job whose
 mistakes are unrecoverable, and `cli/tests/ghcr_retention.rs` guards the floors, the scope bound, and the `#navigator`
-page so none of them can be dropped quietly.
+page so none of them can be dropped quietly. **A rehearsal cannot prove the grant above.** It issues no `DELETE`, and
+GHCR publishes no endpoint that asks whether one would be authorized, so a green dispatch is a statement about the
+workflow file and never about the package role — the first place a lapsed grant can surface is a live sweep with
+something due.
+
+**The summary names what was due as well as what was spent**, because `#navigator` is shown that line and no other. `0
+due, 0 deleted, 0 failed` is a registry holding nothing that clears the floors; `N due, 0 deleted, N failed` is the
+grant. Both were once `0 versions deleted`, and a correct quiet night was twice mistaken for the broken nights that
+preceded it.
 
 Change retention by changing `CUTOFF_DAYS` or `RETAINED_VERSIONS` in the workflow; the guard test pins both literals, so
 a change there is a change the test makes you state.

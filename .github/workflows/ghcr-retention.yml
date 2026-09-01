@@ -56,7 +56,12 @@ name: ghcr retention
 # the script tells those two 404s apart, because nothing else can.
 #
 # Rehearse a change with the dispatch before a night runs it live —
-# `dry_run: true` lists every deletion it would make and deletes nothing.
+# `dry_run: true` lists every deletion it would make and deletes nothing. It
+# proves the three floors, the package list, and the shape of the run. It
+# CANNOT prove the grant above, because it issues no DELETE at all, and GHCR
+# publishes no endpoint that asks whether one would be authorized. So a green
+# rehearsal is a statement about this file, never about the role — the first
+# and only place a lapsed grant can surface is a live sweep with something due.
 
 on:
   schedule:
@@ -70,7 +75,8 @@ on:
       dry_run:
         description: >-
           Report what would be deleted and delete nothing. The safe way to prove
-          a change to this workflow.
+          a change to this workflow — but it issues no DELETE, so it proves the
+          floors and the package list and never the package `admin` grant.
         type: boolean
         default: true
 
@@ -160,6 +166,9 @@ jobs:
           deleted=0
           kept=0
           failed=0
+          # What the three floors SELECTED, before any of it was spent. See the
+          # summary at the foot of the script for why this is reported.
+          eligible=0
 
           for package in ${PACKAGES}; do
               encoded="${package//\//%2F}"
@@ -216,6 +225,7 @@ jobs:
 
               doomed_count="$(printf '%s' "${doomed}" | jq 'length')"
               kept=$((kept + total - doomed_count))
+              eligible=$((eligible + doomed_count))
               echo "${package}: ${total} versions, ${doomed_count} eligible for deletion"
 
               if [ "${doomed_count}" -eq 0 ]; then
@@ -244,10 +254,20 @@ jobs:
           done
 
           echo
+          # REPORT WHAT WAS DUE, not only what was spent. `0 deleted, 0
+          # failed` is the summary of a healthy sweep with nothing old enough
+          # to prune AND of a sweep whose filters silently matched nothing, and
+          # #navigator sees this line and no other — the per-package counts
+          # above sit in a run log nobody opens at 01:11 UTC. Two issues were
+          # filed a fortnight apart against that ambiguity, both reading a
+          # correct quiet night as the broken one that preceded it. The due
+          # count separates them without needing the log: `0 due` is the
+          # registry holding nothing that clears the floors, while `N due, 0
+          # deleted` is a sweep that decided and could not act.
           if [ "${DRY_RUN}" = "true" ]; then
-              summary="dry run over ${count} images: ${kept} versions kept, deletions listed above only"
+              summary="dry run over ${count} images: ${eligible} versions due, ${kept} kept, deletions listed above only"
           else
-              summary="${count} images swept: ${deleted} versions deleted, ${kept} kept, ${failed} failed"
+              summary="${count} images swept: ${eligible} versions due, ${deleted} deleted, ${kept} kept, ${failed} failed"
           fi
           echo "${summary}"
           echo "summary=${summary}" >> "$GITHUB_OUTPUT"

@@ -221,6 +221,70 @@ publishing one would put one client's application on another client's portal.
 Make one small visual change, refresh the bundle, and show the reloaded portal. The manifest name remains
 `sample-litigation`.
 
+## Open a real Project
+
+Every exercise so far works the one seeded matter. Opening a *new* Project is a different, less-worked path — walk it
+once so the room can tell "the fixture already did this" apart from what a lawyer actually does to start a real
+engagement.
+
+### Fill the matter-open form
+
+A lawyer-tier account reaches the form at `/app/projects/new`. It asks for a name, a code stem, an Entity, a
+description, scope of services, the client DRI, and a required conflict-check attestation. Navigator appends a generated
+suffix to the stem you type — the code is immutable, and submitting is the only place you see the final value, in the
+redirect to `/app/projects/<generated-code>`.
+
+### Provision the repository and Drive folder — a separate step today
+
+The browser form does not provision the Project's repository or Drive folder by itself. Every other way of opening a
+Project — the JSON API, the CLI, the MCP tool — provisions both surfaces as part of opening; the browser form only
+writes the matter row. Immediately after submitting, `/app/projects/<code>` names no repository yet.
+
+Close that gap from the matter page's admin retry, or from the CLI:
+
+```bash
+navigator site projects surfaces reconcile --project <code>
+```
+
+This creates — or adopts, if one already exists — an empty private GitHub repository and Drive folder, and records the
+repository URL on the row. It writes no files.
+
+### Populate the repository
+
+Clone the now-existing empty repository, then generate its shell:
+
+```bash
+navigator site projects repository scaffold <code> --dir . --action-version <YY.M.D>
+```
+
+`scaffold` is idempotent. It writes `README.md`, `AGENTS.md`, `CLAUDE.md`, an example `templates/project_template.md`,
+`tests/README.md`, and two workflows — `.github/workflows/gate.yml` (the CI gate) and `.github/workflows/publish.yml`
+(the portal-publish caller). It does not write `portal/`; that only exists once a client-facing application is built.
+Pass `--action-version` explicitly rather than relying on a default, which only resolves from a real release build.
+
+Commit and push. That push is what makes the CI gate live on the new repository.
+
+### The portal is a separate, later decision
+
+Not every Project needs a client-facing application. When one does, its `portal/` is hand-built in the `vibe-react` lane
+against a pinned `@neon-law/ux` release — `scaffold` deliberately leaves it out, so `validate` can tell "no portal yet"
+from "portal exists" without ambiguity.
+
+### Verify
+
+```bash
+navigator site projects doctor --project <code>
+navigator site projects drift --dir ~/neon-law
+```
+
+`doctor` reports whether this machine and this Project's coordinates agree — the repository URL, the Drive folder, and
+the portal mount. `drift` reconciles a machine's checkouts against every live Project row.
+
+---
+
+*Walk the sequence once against a throwaway code, pointing out exactly where the browser form stops and the CLI takes
+over. Do not open a real matter in the shared room database — this is a narration, not a room exercise.*
+
 ## Wrap Up
 
 ### Verify the room

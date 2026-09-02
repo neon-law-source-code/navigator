@@ -1667,21 +1667,26 @@ fn pin_cronjob_images(cfg: &ShipConfig, tag: &str, dry_run: bool) -> Result<()> 
             }
             let base = image.rsplit_once(':').map_or(image, |(b, _)| b);
             let short = base.strip_prefix(&prefix).unwrap_or(base);
-            if registry::tag_exists(&cfg.registry, short, tag) {
-                let target = format!("{base}:{tag}");
-                exec(
-                    dry_run,
-                    kubectl(cfg)
-                        .arg("set")
-                        .arg("image")
-                        .arg(format!("cronjob/{name}"))
-                        .arg(format!("{cname}={target}")),
-                )?;
-                pinned += 1;
-            } else {
-                eprintln!(
+            match registry::tag_exists(&cfg.registry, short, tag) {
+                Ok(true) => {
+                    let target = format!("{base}:{tag}");
+                    exec(
+                        dry_run,
+                        kubectl(cfg)
+                            .arg("set")
+                            .arg("image")
+                            .arg(format!("cronjob/{name}"))
+                            .arg(format!("{cname}={target}")),
+                    )?;
+                    pinned += 1;
+                }
+                Ok(false) => eprintln!(
                     "WARN: {short} has no {tag} tag in the registry — leaving CronJob/{name} on {image}"
-                );
+                ),
+                Err(error) => eprintln!(
+                    "WARN: could not check whether {short}:{tag} is published ({error}) — \
+                     leaving CronJob/{name} on {image}"
+                ),
             }
         }
     }
@@ -1917,29 +1922,61 @@ fn manifest_images_under_registry(manifests: &str, prefix: &str) -> BTreeSet<Str
 /// a *count* mismatch between what the release was supposed to produce and
 /// what it did, and an operator re-running the roll once per abort learns that
 /// count the slow way.
-fn check_manifest_images_published(states: &[(String, bool)], tag: &str) -> Result<()> {
+#[derive(Debug, PartialEq, Eq)]
+enum ManifestImageStatus {
+    Published,
+    Unpublished,
+    LookupFailed(String),
+}
+
+fn check_manifest_images_published(
+    states: &[(String, ManifestImageStatus)],
+    tag: &str,
+) -> Result<()> {
     let missing: Vec<&str> = states
         .iter()
-        .filter(|(_, published)| !published)
-        .map(|(image, _)| image.as_str())
+        .filter_map(|(image, status)| match status {
+            ManifestImageStatus::Unpublished => Some(image.as_str()),
+            ManifestImageStatus::Published | ManifestImageStatus::LookupFailed(_) => None,
+        })
         .collect();
-    if missing.is_empty() {
+    let lookup_failures: Vec<String> = states
+        .iter()
+        .filter_map(|(image, status)| match status {
+            ManifestImageStatus::LookupFailed(cause) => Some(format!("{image} ({cause})")),
+            ManifestImageStatus::Published | ManifestImageStatus::Unpublished => None,
+        })
+        .collect();
+    if missing.is_empty() && lookup_failures.is_empty() {
         eprintln!(
             "==> images OK ({} rendered image(s), all published at {tag})",
             states.len()
         );
         return Ok(());
     }
+    let mut details = Vec::new();
+    if !missing.is_empty() {
+        details.push(format!(
+            "{} image(s) are not published: {}",
+            missing.len(),
+            missing.join(", ")
+        ));
+    }
+    if !lookup_failures.is_empty() {
+        details.push(format!(
+            "registry lookup failed for {} image(s): {}",
+            lookup_failures.len(),
+            lookup_failures.join(", ")
+        ));
+    }
     bail!(
-        "the rendered manifests pin {} image(s) to {tag} but {} of them are not published: {}.\n\
-         The reconcile writes every one of these, so rolling now would apply a tag that does not \
-         exist: a Deployment wedges in ImagePullBackOff, and a trigger CronJob stops firing with \
-         no rollout and no replica to report it. This is what one failed leg of the \
-         `fail-fast: false` publish matrix leaves behind. Re-run the failed publish leg for that \
-         image, or roll a tag that published completely. Nothing was applied.",
+        "the rendered manifests pin {} image(s) to {tag}, but {}.\n\
+         The reconcile writes every one of these, so rolling now could apply an unsafe image \
+         reference. Re-run the failed publish leg for an absent image, resolve the registry \
+         problem for a lookup failure, or roll a tag that can be confirmed completely. Nothing \
+         was applied.",
         states.len(),
-        missing.len(),
-        missing.join(", ")
+        details.join("; ")
     )
 }
 
@@ -1958,13 +1995,18 @@ fn ensure_manifest_images_published(
         return Ok(());
     }
     let prefix = format!("{}/", cfg.registry());
-    let states: Vec<(String, bool)> = manifest_images_under_registry(manifests, &prefix)
-        .into_iter()
-        .map(|image| {
-            let published = registry::tag_exists(&cfg.registry, &image, tag);
-            (image, published)
-        })
-        .collect();
+    let states: Vec<(String, ManifestImageStatus)> =
+        manifest_images_under_registry(manifests, &prefix)
+            .into_iter()
+            .map(|image| {
+                let status = match registry::tag_exists(&cfg.registry, &image, tag) {
+                    Ok(true) => ManifestImageStatus::Published,
+                    Ok(false) => ManifestImageStatus::Unpublished,
+                    Err(error) => ManifestImageStatus::LookupFailed(error.to_string()),
+                };
+                (image, status)
+            })
+            .collect();
     check_manifest_images_published(&states, tag)
 }
 
@@ -4208,9 +4250,15 @@ spec:
         // no rollout to wait on and no replica to report, which is what makes
         // this the failure nobody sees.
         let states = vec![
-            ("neon-server".to_string(), true),
-            ("navigator-workflows-service".to_string(), true),
-            ("navigator-archives-trigger".to_string(), false),
+            ("neon-server".to_string(), ManifestImageStatus::Published),
+            (
+                "navigator-workflows-service".to_string(),
+                ManifestImageStatus::Published,
+            ),
+            (
+                "navigator-archives-trigger".to_string(),
+                ManifestImageStatus::Unpublished,
+            ),
         ];
         let err = check_manifest_images_published(&states, "26.8.31")
             .expect_err("an unpublished trigger image must abort the roll");
@@ -4230,13 +4278,37 @@ spec:
     }
 
     #[test]
+    fn a_registry_lookup_failure_is_not_reported_as_unpublished() {
+        let states = vec![(
+            "navigator-archives-trigger".to_string(),
+            ManifestImageStatus::LookupFailed("network unavailable".to_string()),
+        )];
+        let message = check_manifest_images_published(&states, "26.8.31")
+            .expect_err("a registry lookup failure must abort the roll")
+            .to_string();
+        assert!(message.contains("registry lookup failed"), "{message}");
+        assert!(message.contains("network unavailable"), "{message}");
+        assert!(
+            !message.contains("not published"),
+            "a lookup failure must not be reported as an absent tag: {message}"
+        );
+        assert!(message.contains("Nothing was applied"), "{message}");
+    }
+
+    #[test]
     fn every_unpublished_image_is_named_at_once() {
         // One abort per re-run teaches the count the slow way; a partial
         // publish is exactly a count mismatch, so report all of them.
         let states = vec![
-            ("navigator-archives-trigger".to_string(), false),
-            ("navigator-heartbeat-trigger".to_string(), false),
-            ("neon-server".to_string(), true),
+            (
+                "navigator-archives-trigger".to_string(),
+                ManifestImageStatus::Unpublished,
+            ),
+            (
+                "navigator-heartbeat-trigger".to_string(),
+                ManifestImageStatus::Unpublished,
+            ),
+            ("neon-server".to_string(), ManifestImageStatus::Published),
         ];
         let message = check_manifest_images_published(&states, "26.8.31")
             .expect_err("two unpublished images must abort")
@@ -4248,8 +4320,11 @@ spec:
     #[test]
     fn a_fully_published_tag_rolls_unchanged() {
         let states = vec![
-            ("neon-server".to_string(), true),
-            ("navigator-archives-trigger".to_string(), true),
+            ("neon-server".to_string(), ManifestImageStatus::Published),
+            (
+                "navigator-archives-trigger".to_string(),
+                ManifestImageStatus::Published,
+            ),
         ];
         check_manifest_images_published(&states, "26.8.31")
             .expect("a tag published for every rendered image must roll");

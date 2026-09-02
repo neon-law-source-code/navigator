@@ -328,6 +328,7 @@ pub fn TeamProfilePage(chrome: PublicChrome, content: TeamProfileContent) -> Ele
 /// whoever currently qualifies for the roster; nothing about it is
 /// persisted, so it is not a stable, bookmarkable identifier across a
 /// roster change (see the module doc).
+#[cfg(any(feature = "server", test))]
 fn unique_slug(name: &str, taken: &mut std::collections::HashSet<String>) -> String {
     let base: String = name
         .to_lowercase()

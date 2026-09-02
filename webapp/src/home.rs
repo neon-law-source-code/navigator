@@ -1,11 +1,10 @@
 //! The firm home page (`/`) — the statement of the offering the firm leads
-//! with, then the engagements section that says what that means.
+//! with, then the four practices as equal doors.
 //!
-//! The page publishes no service catalog and no practice grid. It leads with one
-//! offering, so it is one statement and one section of prose rather than a card
-//! per practice — a grid of cards is how a reader is told there are several
-//! things to choose between, and the firm's other practices have pages of their
-//! own that the header carries. Every fee is quoted through `/contact`.
+//! The page publishes no service catalog and no price. It leads with one
+//! statement (impact litigation, an open docket, a team), then a grid of
+//! practice boxes so litigation, company counsel, technology, and one-time
+//! filings are all reachable from `/`. Every fee is quoted through `/contact`.
 //!
 //! The only state is the static copy ([`HomeContent`]), resolved by the portal
 //! router at router-build time and injected via `ServeConfig::context_providers`;
@@ -258,12 +257,10 @@ fn ServiceProse(service: ServiceSection) -> Element {
     }
 }
 
-/// The other practices, as three boxes at the foot of the page.
+/// The practices, as boxes at the foot of the page.
 ///
-/// Each box is a link with a sentence, and the whole box is not the link — the
-/// named anchor is, so a screen reader hears "Litigation" rather than the
-/// paragraph. The section labels itself so the boxes are not three unlabelled
-/// regions between the prose and the footer.
+/// The whole box is the link. The section labels itself so the boxes are not
+/// unlabelled regions between the prose and the footer.
 #[component]
 fn PracticeLinks(heading: String, practices: Vec<PracticeLink>) -> Element {
     rsx! {

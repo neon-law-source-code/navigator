@@ -584,12 +584,14 @@ fn team_profiles() -> Vec<(String, webapp::team_page::TeamProfileContent)> {
 /// causes of action; those live on `/litigation`. Speed stays method, and the
 /// lead binds the aim so it is not read as a promised result.
 ///
-/// **The page leads with litigation.** The statement opens on it,
-/// `locales/en/home.yaml` says what it means, and the three boxes are the
-/// engagements that sit beside it, each labeled for a different visitor. The
-/// fractional CTO engagement is still real work with a page of its own; it is
-/// no longer what this page opens on, and the copy that used to open this page
-/// now opens that one.
+/// **The page leads with litigation, then shows the whole firm.** The
+/// statement opens on impact litigation, `locales/en/home.yaml` says what it
+/// means, and the four boxes are the practice: disputes, company counsel,
+/// technology for law firms, and one-time filings. The fractional CTO
+/// engagement is still real work with a page of its own; it is no longer what
+/// this page opens on, and the copy that used to open this page now opens that
+/// one. The prose names the team and links `/team` rather than claiming a
+/// headcount the roster does not have.
 ///
 /// The home page opens on a New York skyline, supplied as a finished PNG in the
 /// public asset lane. No price, on any section — every engagement is quoted

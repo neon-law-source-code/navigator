@@ -1420,12 +1420,9 @@ async fn home_publishes_no_amount_in_controversy_and_no_co_counsel_claim() {
 }
 
 #[tokio::test]
-async fn home_points_at_the_three_practices_from_its_foot() {
-    // The page leads with one offering, and these three boxes say the firm
-    // has work for visitors who did not come for a dispute. Each links the
-    // page that explains it, so a reader who came for counsel, a technology
-    // function, or a filing is one click from that page rather than reading
-    // the lead and leaving.
+async fn home_points_at_the_four_practices_from_its_foot() {
+    // The page leads with one offering, then four equal doors so litigation,
+    // counsel, technology, and one-time filings are all one click from `/`.
     let app = site_app().await;
     let body = body_string(anon_get(&app, "/").await).await;
     // The section renders, with its heading wired to the copy rather than
@@ -1438,11 +1435,7 @@ async fn home_points_at_the_three_practices_from_its_foot() {
         body.contains(r#"id="home-practices-heading""#),
         "the heading renders: {body}"
     );
-    // Which pages the boxes reach is routing, not copy. Litigation is
-    // deliberately *not* among them: it is the page's lead and its close, so a
-    // fourth box would put the practice the page is built around into a row of
-    // alternatives.
-    for href in ["/fractional-cto", "/fractional-gc", "/services"] {
+    for href in ["/litigation", "/fractional-cto", "/fractional-gc", "/services"] {
         assert!(
             body.contains(&format!(
                 r#"<a class="neon-card home-practice" href="{href}""#
@@ -1450,23 +1443,15 @@ async fn home_points_at_the_three_practices_from_its_foot() {
             "the box for {href} is itself the link: {body}"
         );
     }
-    assert!(
-        !body.contains(r#"<a class="neon-card home-practice" href="/litigation""#),
-        "litigation is the lead, not one of the boxes: {body}"
-    );
     assert_eq!(
         body.matches(r#"<a class="neon-card home-practice" href="#)
             .count(),
-        3,
-        "three boxes and no more: {body}"
+        4,
+        "four boxes and no more: {body}"
     );
-    // Each box opens on a drawn mark, hidden from assistive technology because
-    // the heading beside it already names the practice. Stroked in
-    // `currentColor` so it is white on the dark theme — which is why these are
-    // line marks rather than emoji: `color` does not reach a colour glyph.
     assert_eq!(
         body.matches(r#"class="home-practice__mark""#).count(),
-        3,
+        4,
         "one mark per box: {body}"
     );
     assert!(
@@ -1479,8 +1464,7 @@ async fn home_points_at_the_three_practices_from_its_foot() {
         !body.contains("home-practice__link"),
         "no second anchor inside a box: {body}"
     );
-    // The boxes sit under the litigation prose, not above it: above, they would
-    // read as the page offering four things rather than leading with one.
+    // The boxes sit under the invitation, not above it.
     let service = body.find("home-service").expect("the litigation section");
     let practices = body.find("home-practices").expect("the practice boxes");
     assert!(service < practices, "prose then boxes: {body}");
@@ -1538,12 +1522,20 @@ async fn home_renders_the_statement_and_the_practice_prose() {
         "the statement is the firm's tagline: {body}"
     );
     assert!(
+        body.contains("Come in with the case you have."),
+        "the lead is an invitation: {body}"
+    );
+    assert!(
         body.contains("We take cases of every kind."),
         "the lead names an open docket: {body}"
     );
     assert!(
         body.contains("impact litigation"),
         "the lead names the focus: {body}"
+    );
+    assert!(
+        body.contains("we work as a team"),
+        "the lead names the team: {body}"
     );
     // Causes of action belong on `/litigation`. Listing them in the home hero
     // is what made the page read as four firms at once.
@@ -1555,6 +1547,7 @@ async fn home_renders_the_statement_and_the_practice_prose() {
         "Whatever brings you in",
         "We are by your side through tough times",
         "Our complementary practice",
+        "If you did not come for a dispute",
     ] {
         assert!(
             !body.contains(retired),
@@ -1584,6 +1577,10 @@ async fn home_renders_the_statement_and_the_practice_prose() {
     assert!(
         body.contains(r#"class="home-service__link" href="/litigation""#),
         "the prose links the litigation practice inline: {body}"
+    );
+    assert!(
+        body.contains(r#"class="home-service__link" href="/team""#),
+        "the prose links the team: {body}"
     );
 
     // The retired home-page surfaces. Each is markup rather than wording: a

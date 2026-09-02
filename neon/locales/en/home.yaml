@@ -1,20 +1,20 @@
 head_title: "{site_name} | Home"
 meta_description: >-
-  Impact litigation. We take cases of every kind, and we focus on work whose
-  point is to make a person's life better. Company counsel, technology for law
-  firms, and one-time filings sit beside that practice.
+  Impact litigation, company counsel, technology for law firms, and one-time
+  filings. We take cases of every kind. Come in. We will listen.
 heading: Everyone deserves to be seen.
 lead: >-
-  We take cases of every kind. We focus on impact litigation: work whose point
-  is to make a person's life better, and the lives of people in the same
-  position. We do as much as we can, as early as we can. That is how we work.
-  It is not a promise about a result.
+  Come in with the case you have. We take cases of every kind. The work we care
+  about most is impact litigation: work whose point is to make a person's life
+  better, and the lives of people in the same position. We listen, we move
+  early, and we work as a team. That is how we work. It is not a promise about
+  a result.
 contact_label: Contact us
 hero:
   alt: New York City skyline at sunset, viewed from above Lower Manhattan.
   asset: img/new-york/new-york.png
 service:
-  heading: Impact litigation, and the rest of the docket.
+  heading: You have a place here.
   body:
     - - text: "The "
       - text: litigation practice
@@ -23,36 +23,43 @@ service:
           is plaintiff and defense. We take the case that walks in, as long as
           we are not conflicted out. The work we seek is the dispute that
           changes a person's situation, and that can change it for people like
-          them. Named kinds of case, and the method, live on that page.
+          them.
+    - - text: "We work as a team. You can "
+      - text: meet us
+        href: /team
+      - text: >-
+          , and we bring in the specialists a matter needs. Speed is how we
+          work. A person who is not heard loses ground whether or not the case
+          is close. Moving early is how we keep that from happening quietly.
     - - text: >-
-          Speed is how we work. A person who is not heard loses ground whether
-          or not the case is close. Moving early is how we keep that from
-          happening quietly. We listen, and we staff the experts the matter
-          needs.
-    - - text: >-
-          The three engagements below are for a different visitor. A company
-          that needs counsel. A law firm that needs a technology function. A
-          person with one scoped filing. Each has its own page, its own fee
-          shape, and the same habit of writing everything down.
-practices_heading: If you did not come for a dispute
+          We are also company counsel, the technology function for other law
+          firms, and the lawyers for a will, a formation, or a filing. That
+          work is the rest of the firm, not a sideline. Pick the door that fits.
+practices_heading: The whole practice
 practices:
+  - mark: scales
+    heading: Litigation
+    body: >-
+      Impact litigation, and every other dispute that walks in. Plaintiff and
+      defense. We listen first.
+    href: /litigation
   - mark: technology
     heading: Fractional CTO
     body: >-
-      For law firms. We run the technology function: the architecture, the AI
+      We run the technology function for law firms: the architecture, the AI
       tooling, and the privacy and compliance work under both. The same systems
       we litigate on.
     href: /fractional-cto
   - mark: handshake
     heading: Fractional GC
     body: >-
-      For companies. Counsel on one flat monthly fee, at the pace the sales
-      cycle already runs: contracts, licences, financings, and the corporate
-      advice under them.
+      Ongoing company counsel on one flat monthly fee: contracts, licences,
+      financings, and the advice under them, at the pace the sales cycle
+      already runs.
     href: /fractional-gc
   - mark: gavel
     heading: One-Time Services
     body: >-
-      For one scoped filing: a will, a trust, a formation, a trademark, an
-      annual report. One scope and one flat fee, agreed before we start.
+      A will, a trust, a formation, a trademark, an annual report. One scope
+      and one flat fee, agreed before we start.
     href: /services

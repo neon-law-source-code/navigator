@@ -645,3 +645,98 @@ pub(crate) fn resolve_transactional_content(
 ) -> webapp::transactional_page::TransactionalContent {
     locales::fractional_gc(branding)
 }
+
+#[cfg(test)]
+mod formation_engagement_copy_tests {
+    /// The three Nevada formation bodies, read as the bytes
+    /// `notation_preview_docs` publishes at `/notations/{slug}`. The constants
+    /// there are function-local, so this reads the same files rather than
+    /// reaching into that scope.
+    const BODIES: [(&str, &str); 3] = [
+        (
+            "nv__business_trust_formation",
+            include_str!(
+                "../../templates/forms/united_states/nevada/state/nv__business_trust_formation.md"
+            ),
+        ),
+        (
+            "nv__llc_formation",
+            include_str!("../../templates/forms/united_states/nevada/state/nv__llc_formation.md"),
+        ),
+        (
+            "nv__profit_corp_formation",
+            include_str!(
+                "../../templates/forms/united_states/nevada/state/nv__profit_corp_formation.md"
+            ),
+        ),
+    ];
+
+    /// Each body defines `the "Engagement"` and must then use that defined term
+    /// to carry its scope. A bare `It covers the` leaves the pronoun to resolve
+    /// across two intervening nouns — the entity type and the client's name —
+    /// so a reader can attach the scope list to the entity rather than to the
+    /// Engagement. The defined term is already in the sentence; using it costs
+    /// nothing and removes the ambiguity.
+    #[test]
+    fn scope_sentence_uses_the_defined_term() {
+        for (code, body) in BODIES {
+            assert!(
+                body.contains("(the \"Engagement\")"),
+                "{code}: body no longer defines the \"Engagement\" term"
+            );
+            assert!(
+                body.contains("The Engagement covers the"),
+                "{code}: scope sentence does not carry the defined term"
+            );
+            assert!(
+                !body.contains("It covers the"),
+                "{code}: scope sentence still leads with the ambiguous pronoun"
+            );
+        }
+    }
+
+    /// Each body opens an engagement, states a scope, and carries both
+    /// signature blocks, so it is a paper the client signs. NV RPC 1.5(b)
+    /// requires the basis or rate of the fee to be communicated in writing.
+    /// These bodies are published templates rather than the fee agreement, so
+    /// they satisfy that by naming where the fee is set — not by quoting one.
+    #[test]
+    fn each_body_says_where_the_fee_is_set() {
+        for (code, body) in BODIES {
+            assert!(
+                body.contains("{{client.signature}}") && body.contains("{{firm.signature}}"),
+                "{code}: expected a body both parties sign"
+            );
+            assert!(
+                body.contains("set in the separate signed fee agreement"),
+                "{code}: body states a scope but never says where the fee is set"
+            );
+            assert!(
+                body.contains("passed through at cost"),
+                "{code}: body does not name filing fees as pass-through"
+            );
+        }
+    }
+
+    /// A published template is a fixed artifact, so any amount baked into one
+    /// goes stale the moment the firm re-prices — which is what a former
+    /// catalog list price did here. The bodies name where the fee lives and
+    /// publish no amount, matching the convention `resolve_transactional_content`
+    /// documents for the firm pages.
+    #[test]
+    fn no_body_publishes_an_amount() {
+        for (code, body) in BODIES {
+            assert!(
+                !body
+                    .as_bytes()
+                    .windows(2)
+                    .any(|w| w[0] == b'$' && w[1].is_ascii_digit()),
+                "{code}: body publishes a currency amount"
+            );
+            assert!(
+                !body.contains("per year"),
+                "{code}: body publishes a recurring price cadence"
+            );
+        }
+    }
+}

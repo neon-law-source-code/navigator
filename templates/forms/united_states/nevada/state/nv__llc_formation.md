@@ -54,12 +54,13 @@ workflow:
   END: {}
 ---
 
-This Nevada entity formation engagement (the "Engagement") forms `{{entity__company.name}}`, a Nevada
-limited-liability company, for `{{person__client.name}}` (the "Organizer"). It covers the
-Articles of Organization, the Initial List of Managers or Managing Members,
-and the State Business License application filed with the Nevada Secretary of State, together with the company's
-registered
-agent of record, `{{person__registered_agent.name}}`.
+This Nevada entity formation engagement (the "Engagement") forms `{{entity__company.name}}`, a Nevada limited-liability
+company, for `{{person__client.name}}` (the "Organizer"). The Engagement covers the Articles of Organization, the
+Initial List of Managers or Managing Members, and the State Business License application filed with the Nevada Secretary
+of State, together with the company's registered agent of record, `{{person__registered_agent.name}}`.
+
+Fees for this Engagement are set in the separate signed fee agreement between you and the Firm, which controls the fee;
+Nevada Secretary of State filing fees and the State Business License fee are passed through at cost.
 
 The company will be `{{custom_single_choice__management_structure}}`-managed. Its managers or managing members are:
 

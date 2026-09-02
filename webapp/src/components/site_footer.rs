@@ -599,10 +599,7 @@ mod tests {
         ("Privacy", "/privacy"),
         ("Team", "/team"),
         ("Terms", "/terms"),
-        (
-            "UX",
-            "https://neon-law-source-code.github.io/navigator-ux/",
-        ),
+        ("UX", "https://neon-law-source-code.github.io/navigator-ux/"),
         ("Workshops", "/workshops"),
     ];
 

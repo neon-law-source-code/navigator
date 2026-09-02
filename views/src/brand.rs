@@ -233,10 +233,7 @@ const FIRM_FOOTER_NAV: &[NavLink] = &[
     NavLink::leaf("Privacy", "/privacy"),
     NavLink::leaf("Team", "/team"),
     NavLink::leaf("Terms", "/terms"),
-    NavLink::leaf(
-        "UX",
-        "https://neon-law-source-code.github.io/navigator-ux/",
-    ),
+    NavLink::leaf("UX", "https://neon-law-source-code.github.io/navigator-ux/"),
     NavLink::leaf("Workshops", "/workshops"),
 ];
 

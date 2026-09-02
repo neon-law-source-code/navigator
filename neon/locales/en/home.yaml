@@ -1,33 +1,34 @@
 head_title: "{site_name} | Home"
 meta_description: >-
-  A litigation firm for people who were wronged or wrongly accused, and for
-  companies in a dispute. Company counsel, technology for law firms, and
-  one-time filings sit beside that practice.
+  Impact litigation. We take cases of every kind, and we focus on work whose
+  point is to make a person's life better. Company counsel, technology for law
+  firms, and one-time filings sit beside that practice.
 heading: Everyone deserves to be seen.
 lead: >-
-  We are litigators. We represent people who were wronged or wrongly accused,
-  and companies in a dispute. We do as much as we can, as early as we can.
-  That is how we work. It is not a promise about a result.
+  We take cases of every kind. We focus on impact litigation: work whose point
+  is to make a person's life better, and the lives of people in the same
+  position. We do as much as we can, as early as we can. That is how we work.
+  It is not a promise about a result.
 contact_label: Contact us
 hero:
   alt: New York City skyline at sunset, viewed from above Lower Manhattan.
   asset: img/new-york/new-york.png
 service:
-  heading: The dispute comes first.
+  heading: Impact litigation, and the rest of the docket.
   body:
     - - text: "The "
       - text: litigation practice
         href: /litigation
       - text: >-
-          is plaintiff and defense. Commercial and technology disputes for
-          companies. Fraud, family, and the matters where a person's rights were
-          taken and no form was written for them. The kinds of case, and the
-          method, live on that page.
+          is plaintiff and defense. We take the case that walks in, as long as
+          we are not conflicted out. The work we seek is the dispute that
+          changes a person's situation, and that can change it for people like
+          them. Named kinds of case, and the method, live on that page.
     - - text: >-
           Speed is how we work. A person who is not heard loses ground whether
           or not the case is close. Moving early is how we keep that from
-          happening quietly. We listen, we staff the experts the matter needs,
-          and we will not take a conflicted case.
+          happening quietly. We listen, and we staff the experts the matter
+          needs.
     - - text: >-
           The three engagements below are for a different visitor. A company
           that needs counsel. A law firm that needs a technology function. A

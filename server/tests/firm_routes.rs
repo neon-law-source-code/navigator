@@ -357,36 +357,32 @@ async fn litigation_is_the_statement_and_the_filed_paragraphs() {
     assert!(body.contains("built"), "the statement: {body}");
     assert!(body.contains("speed."), "the statement: {body}");
     assert!(
-        body.contains("Values-Based Litigation"),
+        body.contains("Impact Litigation"),
         "the eyebrow: {body}"
     );
     let seen = body
         .find("We represent those who haven\u{2019}t been justly seen")
         .expect("the who-we-represent paragraph");
     let breadth = body
-        .find("The disputes we take are specific")
-        .expect("the inventory paragraph");
+        .find("We take cases of every kind, for people and for companies")
+        .expect("the open-docket sentence");
     assert!(seen < breadth, "in the filed order: {body}");
     // The matter types the firm names, which is the part an edit shortens
-    // first. They are the whole reason a reader can tell whether this is their
-    // practice: "those who haven't been justly seen" is a stance, and these are
-    // what it means in cases. Categories only, never a matter. The page names
-    // the inventory; it does not say the firm will take anything.
+    // first. They are examples of an open docket, not a closed menu: "those
+    // who haven't been justly seen" is a stance, and these are what it has
+    // meant in cases. Categories only, never a matter.
     for named in [
         "trademark and copyright disputes",
         "prison rights litigation",
         "restraining orders",
         "domestic violence",
+        "impact litigation",
     ] {
         assert!(
             body.contains(named),
             "the filed copy keeps {named:?}: {body}"
         );
     }
-    assert!(
-        !body.contains("There is little we will not take on"),
-        "the page does not hold itself out as unlimited: {body}"
-    );
     // The conflicts caveat is the one qualifier on an otherwise open door, and
     // it is a real check rather than a hedge: `store::conflicts` runs a bounded
     // multi-hop traversal before the firm can take a matter.
@@ -1542,8 +1538,12 @@ async fn home_renders_the_statement_and_the_practice_prose() {
         "the statement is the firm's tagline: {body}"
     );
     assert!(
-        body.contains("We are litigators."),
-        "the lead names the practice: {body}"
+        body.contains("We take cases of every kind."),
+        "the lead names an open docket: {body}"
+    );
+    assert!(
+        body.contains("impact litigation"),
+        "the lead names the focus: {body}"
     );
     // Causes of action belong on `/litigation`. Listing them in the home hero
     // is what made the page read as four firms at once.

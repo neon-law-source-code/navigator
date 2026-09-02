@@ -577,11 +577,12 @@ fn team_profiles() -> Vec<(String, webapp::team_page::TeamProfileContent)> {
 /// **The page's statement is the firm's tagline, and the practice it leads with
 /// is litigation.** "Everyone deserves to be seen." is the whole of the `<h1>`:
 /// it is what the firm is for, and it is short enough to be read rather than
-/// read through. The lead under it names the practice (litigators) and the two
-/// kinds of client it is for — a person wronged or wrongly accused, or a
-/// company in a dispute — because a reader deciding whether to call needs to
-/// recognise themselves in the first two sentences. It does not list causes of
-/// action; those live on `/litigation`.
+/// read through. The lead under it names the docket (cases of every kind) and
+/// the work the firm focuses on (impact litigation whose point is to make a
+/// person's life better) because a reader deciding whether to call needs both
+/// the open door and the aim in the first two sentences. It does not list
+/// causes of action; those live on `/litigation`. Speed stays method, and the
+/// lead binds the aim so it is not read as a promised result.
 ///
 /// **The page leads with litigation.** The statement opens on it,
 /// `locales/en/home.yaml` says what it means, and the three boxes are the
@@ -621,8 +622,10 @@ pub(crate) fn resolve_firm_home_content(
 /// domestic violence are categories, so none of them identifies a client, a
 /// Project code, or an outcome. That distinction is what keeps the copy inside
 /// the no-client-data rule while still telling a reader whether this is their
-/// practice. The inventory is finite on purpose: the page does not say the firm
-/// will take anything. Naming experience is also precisely the situation the
+/// practice. The docket is open: the page says the firm takes cases of every
+/// kind, then names types it has litigated so a reader can still recognise
+/// their matter. The focus is impact litigation, stated as aim rather than as
+/// a promised result. Naming experience is also precisely the situation the
 /// footer's "Past results do not guarantee future outcomes." exists to cover,
 /// and `carries_the_regulated_copy_and_no_results_promise` asserts it reaches
 /// the reader.

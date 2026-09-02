@@ -14,4 +14,5 @@ Read [`docs/agent-workflows.md`](../../../docs/agent-workflows.md),
 - Use only abstract or synthetic examples. Linear never receives client data, legal files, real contact details, or
   production identifiers.
 
-Use `triage-projects` for portfolio reconciliation and `triage-issue` for one existing issue.
+Use `triage-projects` for portfolio reconciliation and `implement-issue` for one existing issue that needs code. The
+deprecated `triage-issue` command remains only for an explicit plan-only request.

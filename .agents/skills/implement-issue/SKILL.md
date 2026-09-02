@@ -1,17 +1,18 @@
 ---
 name: implement-issue
 description: >
-  Implement one grounded Linear issue in its own Navigator worktree. Use when the user asks to implement, pick up,
-  start, or build ENG-NN after it has been triaged. Refresh from origin/main, verify the issue against the current
-  code and tests, then make the smallest test-driven change. Do not use for portfolio triage, issue planning, or
-  opening the pull request itself.
+  Ground and implement one Linear issue in its own Navigator worktree. Use when the user asks to implement, pick up,
+  start, or build ENG-NN, whether or not it has already been triaged. Refresh from origin/main, read the full issue,
+  verify it against shipped code and tests, adjudicate it, then make the smallest test-driven change. Do not use for
+  portfolio triage, a plan-only request, or opening the pull request itself.
 ---
 
-# `/implement-issue` — implement one grounded issue
+# `/implement-issue` — ground and implement one issue
 
-Turn one issue identifier into one minimal, proven implementation. This skill owns the implementation loop; use
-[`triage-issue`](../triage-issue/SKILL.md) when the task is only to decide whether an issue remains valid, and
-[`create-pr`](../create-pr/SKILL.md) when a ready working tree needs to ship.
+Turn one issue identifier into one grounded, minimal, proven implementation in one session. This skill owns both the
+grounding and implementation loop. Use the deprecated [`triage-issue`](../triage-issue/SKILL.md) compatibility command
+only when the user explicitly wants a Linear plan without code, and [`create-pr`](../create-pr/SKILL.md) when a ready
+working tree needs to ship.
 
 ## Start current
 
@@ -29,15 +30,37 @@ cannot complete safely, stop and report the condition rather than combining unre
 ## Ground the issue
 
 Read `docs/public-contributor-safety.md`, `docs/glossary.md`, and the narrowest relevant source of truth from
-`docs/index.md`. Then read the Linear issue from its opening body through every comment, including relations.
+`docs/index.md`. Fetch the Linear issue with `get_issue` using `includeRelations: true`, then use `list_comments` and
+read from the opening body through the last comment. Treat an existing triage comment as evidence, not authority:
+refresh every claim against `origin/main` before editing.
 
-At `origin/main`, verify the requested behavior in the source and its covering tests. Check the issue has not already
-shipped through Linear's GitHub linkage first, then explicit merged-PR and source evidence. Inspect active worktrees
-and open PRs for overlapping files.
+Check Linear's GitHub linkage first, then correlated merged pull requests and the source itself, to determine whether
+the issue already shipped. Derive the repository from `origin`, list its merged pull requests, and call Linear's
+`get_diff` for each candidate GitHub URL. A returned issue is the canonical association. If no diff resolves, use an
+issue reference in the pull-request body and corroborate branch-name or title matches with explicit Linear evidence.
+Record when only a heuristic is available.
 
-Stop instead of coding when the evidence shows the issue is already shipped, duplicate, blocked by an unfinished
-dependency, or requires an unresolved legal, product, or operator decision. Report the evidence and the smallest
-next action; do not infer the missing decision.
+A pull-request search proves whether an issue was linked to merged work; it does not prove the requested capability is
+absent. Search the relevant code, configuration, public API, and tests at `origin/main` before calling it missing. For
+proposed new structure, also follow the source checks in
+[`author-linear-issue`](../author-linear-issue/SKILL.md).
+
+Reproduce the current behavior where practical. If an unknown still prevents a grounded scope, run the smallest
+throwaway Rust spike that answers it and record the command, observation, and conclusion. Inspect active worktrees and
+open pull requests for overlapping files.
+
+## Adjudicate before editing
+
+Reach exactly one verdict from the evidence:
+
+- **Still valid:** name the smallest behavior, covering test, exact blast-radius files, and collisions, then continue.
+- **Already shipped:** cite the correlated merge and source or test evidence, then stop without editing.
+- **Duplicate or superseded:** name the surviving issue and evidence, then stop without editing.
+- **Blocked on a decision or dependency:** name the blocker, owner, and smallest next action, then stop without editing.
+
+Do not post a separate triage-plan comment during an implementation request. The grounding is the first phase of this
+same session, and its result directly controls whether implementation begins. Do not infer a missing legal, product,
+or operator decision.
 
 ## Implement with TDD
 

@@ -4,7 +4,8 @@ description: >
   Review a numbered GitHub pull request against the current Navigator codebase, tests, documentation, and its
   governing Linear issue or issues. Read the complete PR and Linear conversations, reproduce relevant behavior, and
   return an evidence-backed verdict. Trigger for `/review` with a PR number or a request for a whole-PR review; use
-  `review-pr` for addressing one existing review comment and `triage-issue` for planning an issue without a PR.
+  `review-pr` for addressing one existing review comment, `implement-issue` when an issue needs code, and the deprecated
+  `triage-issue` compatibility command only for an explicit plan-only request.
 ---
 
 # `/review` — review one pull request

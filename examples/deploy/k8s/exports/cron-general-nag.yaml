@@ -1,0 +1,66 @@
+# general-nag daily #general post — Flavor B (see docs/cronjobs.md): a
+# self-contained batch, not a trigger for a durable Restate workflow. It
+# posts one static message through the Slack Web API bot client and exits;
+# there is no multi-step state a mid-run crash could lose or duplicate, so
+# there is nothing for Restate to buy here.
+#
+# Schedule `11 1 * * *` UTC = 01:11 UTC — the same minute as
+# dri-digest-trigger. Both are sub-second calls to different destinations
+# (Slack Web API vs. the Restate ingress), so the shared minute is harmless.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: general-nag
+  namespace: navigator
+  labels:
+    app: general-nag
+spec:
+  schedule: "11 1 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 4
+  failedJobsHistoryLimit: 4
+  startingDeadlineSeconds: 120
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 120
+      template:
+        metadata:
+          labels:
+            app: general-nag
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: general-nag
+              image: YOUR_IMAGE_REGISTRY/navigator-general-nag:YY.M.D
+              imagePullPolicy: Always
+              env:
+                # The Slack Web API bot token. Sourced from the Secret rather
+                # than written inline — see the `RESTATE_INGRESS_URL` note in
+                # kustomization.yaml for why a literal here blocks every
+                # manifest change.
+                - name: SLACK_BOT_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: navigator-web-secrets
+                      key: SLACK_BOT_TOKEN
+                      optional: true
+                # #general's channel ID — the stable posting coordinate for
+                # the Slack Web API (see workflows::notify::SlackChannel).
+                # Not a secret; substitute the real ID at render time.
+                - name: SLACK_GENERAL_CHANNEL_ID
+                  value: YOUR_SLACK_GENERAL_CHANNEL_ID
+                - name: RUST_LOG
+                  value: info
+              envFrom:
+                # Collector endpoint (OTEL_EXPORTER_OTLP_ENDPOINT) — the job
+                # emits through the fail-closed redaction collector, shared
+                # with web + workflows-service via one ConfigMap.
+                - configMapRef:
+                    name: navigator-otel-env
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 64Mi
+                limits:
+                  memory: 128Mi

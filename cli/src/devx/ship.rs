@@ -261,6 +261,7 @@ where
         ),
         ("navigator-web-secrets", "NAVIGATOR_WEB_SECRET_NAME"),
         ("YOUR_GOOGLE_OAUTH_REQUIRED_HD", "GOOGLE_OAUTH_REQUIRED_HD"),
+        ("YOUR_SLACK_GENERAL_CHANNEL_ID", "SLACK_GENERAL_CHANNEL_ID"),
         // The GCP region, for the resources that still live in GCP (GKE,
         // buckets, KMS). No longer part of an image reference: those come from
         // GHCR, which has no region.
@@ -3182,6 +3183,7 @@ mod tests {
         ("NAVIGATOR_GCP_SERVICE_ACCOUNT_ID", "neon-production-web"),
         ("NAVIGATOR_WEB_SECRET_NAME", "neon-production-web-secrets"),
         ("GOOGLE_OAUTH_REQUIRED_HD", "neonlaw.com"),
+        ("SLACK_GENERAL_CHANNEL_ID", "C012GENERAL"),
         ("NAVIGATOR_K8S_NAMESPACE", "neon-production"),
         ("NAVIGATOR_GCP_LOCATION", "us-west4"),
         (
@@ -3217,6 +3219,7 @@ mod tests {
         ("NAVIGATOR_GCP_SERVICE_ACCOUNT_ID", "neon-law-stg-web"),
         ("NAVIGATOR_WEB_SECRET_NAME", "neon-law-stg-web-secrets"),
         ("GOOGLE_OAUTH_REQUIRED_HD", "neonlaw.com"),
+        ("SLACK_GENERAL_CHANNEL_ID", "C012GENERAL"),
         ("NAVIGATOR_K8S_NAMESPACE", "neon-law-stg"),
         ("NAVIGATOR_GCP_LOCATION", "us-west4"),
         (

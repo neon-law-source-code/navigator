@@ -1,0 +1,50 @@
+# `general-nag` — daily #general post.
+#
+# Flavor B (see docs/cronjobs.md): a self-contained batch, not a trigger for
+# a durable Restate workflow — it posts once through the Slack Web API bot
+# client and exits. Requires SLACK_BOT_TOKEN and SLACK_GENERAL_CHANNEL_ID,
+# neither of which KIND provisions by default, so this CronJob fails its run
+# (and shows in `failedJobsHistoryLimit`) until both are exported into the
+# container's env — unlike the no-op-when-unconfigured triggers elsewhere in
+# this overlay.
+#
+# Schedule "11 1 * * *" = 01:11 UTC — the same minute as
+# `dri-digest-trigger`. Both are sub-second calls to different destinations
+# (Slack Web API vs. the Restate ingress), so the shared minute is harmless.
+#
+# Trigger a run by hand:
+#   kubectl create job --from=cronjob/general-nag general-nag-manual -n navigator
+#
+# Image `navigator-general-nag:dev` is built from the shared
+# `images/Containerfile.trigger` (--build-arg CRATE=workflows-service
+# --build-arg BIN=general-nag).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: general-nag
+  namespace: navigator
+  labels:
+    app: general-nag
+spec:
+  schedule: "11 1 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 4
+  failedJobsHistoryLimit: 4
+  startingDeadlineSeconds: 120
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 120
+      template:
+        metadata:
+          labels:
+            app: general-nag
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: general-nag
+              image: navigator-general-nag:dev
+              imagePullPolicy: IfNotPresent
+              env:
+                - name: RUST_LOG
+                  value: info

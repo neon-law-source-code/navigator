@@ -158,6 +158,7 @@ jobs:
           navigator-reconcile-invoices-trigger
           navigator-billing-digest-trigger
           navigator-dri-digest-trigger
+          navigator-general-nag
           navigator-runner
           "
           count="$(printf '%s\n' ${PACKAGES} | wc -w | tr -d ' ')"

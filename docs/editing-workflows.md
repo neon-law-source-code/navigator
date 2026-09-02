@@ -12,7 +12,7 @@ template body is replaceable. `features/` proves the flow even when a template b
 
 A workflow `code`, such as `nv__llc_formation`, has four synchronized artifacts:
 
-1. **Template Markdown:** `templates/forms/...` or `templates/neon_law/<area>/...`; frontmatter carries metadata,
+1. **Template Markdown:** `templates/forms/...` or `templates/neon_law/shared/...`; frontmatter carries metadata,
    `questionnaire`, and `workflow`, followed by document prose.
 2. **Standalone spec:** `workflows/specs/<code>.yaml`; the same questionnaire and workflow, without prose. The
    scaffolder generates it and the runtime resolves it by code.
@@ -109,7 +109,7 @@ Run the cheap structural tests first, then the journey that exercises the flow e
 
 ```bash
 cargo test -p workflows --test workflow_integrity --test spec_coherence
-cargo test -p features --test <journey>          # e.g. nest_formation, legal_workflow_shapes
+cargo test -p features --test <journey>          # e.g. nv_llc_formation, legal_workflow_shapes
 cargo run -p cli --quiet -- validate templates/forms/united_states/nevada/state/nv__llc_formation.md
 ```
 

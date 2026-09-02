@@ -29,10 +29,6 @@ const LEGACY_ALIASES: &[(&str, &str)] = &[
         "forms/united_states/nevada/state/nv__annual_report",
     ),
     (
-        "nest/nevada",
-        "forms/united_states/nevada/state/nv__llc_formation",
-    ),
-    (
         "nonprofit/form990_annual_report",
         "forms/united_states/federal/irs/us__form_990",
     ),
@@ -179,18 +175,18 @@ mod tests {
     #[test]
     fn rejects_path_traversal_segments() {
         assert!(find_raw_path("../nevada").is_none());
-        assert!(find_raw_path("nest/../onboarding/retainer").is_none());
-        assert!(find_raw_path("nest/..").is_none());
+        assert!(find_raw_path("forms/../onboarding/retainer").is_none());
+        assert!(find_raw_path("forms/..").is_none());
         assert!(find_raw_path("").is_none());
     }
 
     #[test]
     fn legacy_two_segment_links_resolve_to_canonical_paths() {
         assert_eq!(
-            legacy_alias("nest/nevada"),
-            Some("forms/united_states/nevada/state/nv__llc_formation")
+            legacy_alias("annual_report/nevada"),
+            Some("forms/united_states/nevada/state/nv__annual_report")
         );
-        assert!(find_raw("nest", "nevada").is_some());
+        assert!(find_raw("annual_report", "nevada").is_some());
     }
 
     #[test]

@@ -1,6 +1,6 @@
 Feature: Profit corporation and business trust formations on the official packets
 
-  Nest forms a Nevada entity for a flat $1,111 a year — and "entity" is
+  Navigator forms a Nevada entity — and "entity" is
   bigger than the LLC. These journeys follow the same founder through the
   other two formation packets the Secretary of State publishes: a profit
   corporation (NRS 78) and a business trust (NRS 88A). Each template binds

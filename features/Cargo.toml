@@ -142,7 +142,7 @@ name = "aida_welcome_chain"
 harness = false
 
 [[test]]
-name = "nest_formation"
+name = "nv_llc_formation"
 harness = false
 
 [[test]]

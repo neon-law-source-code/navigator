@@ -55,8 +55,8 @@ workflow:
 ---
 
 This Nevada entity formation engagement (the "Engagement") forms `{{entity__company.name}}`, a Nevada
-limited-liability company, for `{{person__client.name}}` (the "Organizer"). Neon Law's flat Nest fee is
-**\$1,111 per year**. That fee covers the Articles of Organization, the Initial List of Managers or Managing Members,
+limited-liability company, for `{{person__client.name}}` (the "Organizer"). It covers the
+Articles of Organization, the Initial List of Managers or Managing Members,
 and the State Business License application filed with the Nevada Secretary of State, together with the company's
 registered
 agent of record, `{{person__registered_agent.name}}`.

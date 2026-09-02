@@ -5,21 +5,21 @@
 //! `Role::Client` as the client DRI) against `StubSignatureProvider`, so
 //! nothing reaches DocuSign and the test is CI-safe.
 //!
-//! Opening a matter opens the **matter, and only the matter**: the Project,
-//! its participation ledger, and its service. The retainer is a separate,
+//! Opening a matter opens the **matter, and only the matter**: the Project
+//! and its participation ledger. The retainer is a separate,
 //! deliberate step (`navigator notation create <retainer_code> --project
 //! <code>`, or the lawyer retainer walk at `/app/lawyer/retainers/new`), so these
 //! tests assert this door creates *zero* notations and sends nothing. The
 //! retainer lifecycle that follows — walk → `lawyer_review` → approve → send
 //! exactly one envelope — is covered at its own door by
 //! `features/tests/mutable_intake_docusign.rs` and
-//! `web/tests/nest_cli_surface.rs`.
+//! `server/tests/llc_formation_cli_surface.rs`.
 //!
 //! Covers:
 //!
 //!   1. Happy path — the project lands with its client DRI
-//!      column and both participations (lawyer DRI + client) seeded, carries
-//!      its Product, and redirects to the matter. No notation, no envelope.
+//!      column and both participations (lawyer DRI + client) seeded, and
+//!      redirects to the matter. No notation, no envelope.
 //!   2. Negative — no client selected → the refusal redirect and **no** matter.
 //!   3. Negative — a non-client person chosen as the client DRI → refused.
 //!   4. Negative — no entity, or a blank entity/client `<select>` → refused
@@ -192,18 +192,18 @@ async fn matter_open_asks_for_no_service() {
     // correlation at all.
     let (app, surreal, _stub) = build_app("product-code").await;
     let entity_id = store::test_support::seed_entity(&surreal).await;
-    let client_id = seed_client(&surreal, "Newleaf Client", "newleaf@example.com").await;
+    let client_id = seed_client(&surreal, "Formation Client", "formation-client@example.com").await;
 
     let body = format!(
         "name={}&code=matter-open-1&status=open&entity_id={entity_id}\
          &client_dri_person_id={client_id}\
          &attestation=1",
-        enc("Newleaf uncontested divorce"),
+        enc("Uncontested divorce"),
     );
     let resp = post_projects(&app, body).await;
     assert_eq!(resp.status(), StatusCode::SEE_OTHER);
 
-    store::projects::find_by_name(&surreal, "Newleaf uncontested divorce")
+    store::projects::find_by_name(&surreal, "Uncontested divorce")
         .await
         .unwrap()
         .expect("project row inserted");

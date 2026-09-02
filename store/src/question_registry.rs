@@ -90,12 +90,10 @@ pub enum QuestionType {
     /// N-400's country of birth) never offers a U.S. state.
     Country,
     EntityType,
-    Product,
     Project,
     // --- Reference types — aggregate ---
     Jurisdictions,
     EntityTypes,
-    Products,
     // --- Custom primitives (value in the answer JSON, no SQL grounding) ---
     CustomText,
     /// A phone number — the contact primitive (`<input type="tel">`).
@@ -118,7 +116,7 @@ impl QuestionType {
             CustomMultipleChoice, CustomPhone, CustomSingleChoice, CustomText, CustomUsd,
             CustomYesNo, Disclosure, Disclosures, Entities, Entity, EntityType, EntityTypes,
             Filing, Filings, Issuance, Issuances, Jurisdiction, Jurisdictions, Notarization,
-            People, Person, Product, Products, Project, Role, Roles, Signature,
+            People, Person, Project, Role, Roles, Signature,
         };
         match self {
             Person => "person",
@@ -142,11 +140,9 @@ impl QuestionType {
             Jurisdiction => "jurisdiction",
             Country => "country",
             EntityType => "entity_type",
-            Product => "product",
             Project => "project",
             Jurisdictions => "jurisdictions",
             EntityTypes => "entity_types",
-            Products => "products",
             CustomText => "custom_text",
             CustomPhone => "custom_phone",
             CustomYesNo => "custom_yes_no",
@@ -197,13 +193,14 @@ impl QuestionType {
         use QuestionType::{
             Country, CustomDatetime, CustomMultipleChoice, CustomPhone, CustomSingleChoice,
             CustomText, CustomUsd, CustomYesNo, EntityType, EntityTypes, Jurisdiction,
-            Jurisdictions, Product, Products, Project,
+            Jurisdictions, Project,
         };
         match self {
             CustomText | CustomPhone | CustomYesNo | CustomSingleChoice | CustomMultipleChoice
             | CustomUsd | CustomDatetime => Kind::Custom,
-            Jurisdiction | Jurisdictions | Country | EntityType | EntityTypes | Product
-            | Products | Project => Kind::Reference,
+            Jurisdiction | Jurisdictions | Country | EntityType | EntityTypes | Project => {
+                Kind::Reference
+            }
             _ => Kind::Record,
         }
     }
@@ -214,11 +211,11 @@ impl QuestionType {
     pub fn cardinality(&self) -> Cardinality {
         use QuestionType::{
             Addresses, Credentials, Disclosures, Entities, EntityTypes, Filings, Issuances,
-            Jurisdictions, People, Products, Roles,
+            Jurisdictions, People, Roles,
         };
         match self {
             People | Entities | Addresses | Roles | Filings | Credentials | Disclosures
-            | Issuances | Jurisdictions | EntityTypes | Products => Cardinality::Aggregate,
+            | Issuances | Jurisdictions | EntityTypes => Cardinality::Aggregate,
             _ => Cardinality::Singular,
         }
     }
@@ -229,7 +226,7 @@ impl QuestionType {
         use QuestionType::{
             Address, Addresses, Credential, Credentials, Disclosure, Disclosures, Entities, Entity,
             EntityType, EntityTypes, Filing, Filings, Issuance, Issuances, Jurisdiction,
-            Jurisdictions, People, Person, Product, Products, Role, Roles,
+            Jurisdictions, People, Person, Role, Roles,
         };
         Some(match self {
             Person => People,
@@ -242,7 +239,6 @@ impl QuestionType {
             Issuance => Issuances,
             Jurisdiction => Jurisdictions,
             EntityType => EntityTypes,
-            Product => Products,
             _ => return None,
         })
     }
@@ -253,7 +249,7 @@ impl QuestionType {
         use QuestionType::{
             Address, Addresses, Credential, Credentials, Disclosure, Disclosures, Entities, Entity,
             EntityType, EntityTypes, Filing, Filings, Issuance, Issuances, Jurisdiction,
-            Jurisdictions, People, Person, Product, Products, Role, Roles,
+            Jurisdictions, People, Person, Role, Roles,
         };
         Some(match self {
             People => Person,
@@ -266,7 +262,6 @@ impl QuestionType {
             Issuances => Issuance,
             Jurisdictions => Jurisdiction,
             EntityTypes => EntityType,
-            Products => Product,
             _ => return None,
         })
     }
@@ -279,8 +274,8 @@ impl QuestionType {
         use QuestionType::{
             Address, Addresses, Country, Credential, Credentials, Disclosure, Disclosures,
             Entities, Entity, EntityType, EntityTypes, Filing, Filings, Issuance, Issuances,
-            Jurisdiction, Jurisdictions, Notarization, People, Person, Product, Products, Project,
-            Role, Roles, Signature,
+            Jurisdiction, Jurisdictions, Notarization, People, Person, Project, Role, Roles,
+            Signature,
         };
         Some(match self {
             Person | People => "persons",
@@ -295,7 +290,6 @@ impl QuestionType {
             Notarization => "notarizations",
             Jurisdiction | Jurisdictions | Country => "jurisdictions",
             EntityType | EntityTypes => "entity_types",
-            Product | Products => "products",
             Project => "projects",
             _ => return None,
         })
@@ -308,8 +302,8 @@ impl QuestionType {
         use QuestionType::{
             Address, Addresses, Country, Credential, Credentials, Disclosure, Disclosures,
             Entities, Entity, EntityType, EntityTypes, Filing, Filings, Issuance, Issuances,
-            Jurisdiction, Jurisdictions, Notarization, People, Person, Product, Products, Project,
-            Role, Roles, Signature,
+            Jurisdiction, Jurisdictions, Notarization, People, Person, Project, Role, Roles,
+            Signature,
         };
         Some(match self {
             Person | People => "Person",
@@ -324,7 +318,6 @@ impl QuestionType {
             Notarization => "Notarization",
             Jurisdiction | Jurisdictions | Country => "Jurisdiction",
             EntityType | EntityTypes => "Entity Type",
-            Product | Products => "Product",
             Project => "Project",
             _ => return None,
         })
@@ -472,9 +465,6 @@ mod tests {
                 // `entity_types` moved to SurrealDB with its wave-one
                 // slice, so its name is also named directly.
                 QuestionType::EntityType | QuestionType::EntityTypes => Some("entity_types"),
-                // `products` moved to SurrealDB with its wave-one slice,
-                // so its name is also named directly.
-                QuestionType::Product | QuestionType::Products => Some("products"),
                 // `project` is a SurrealDB cluster table, so it has no
                 // SeaORM entity to supply its name.
                 QuestionType::Project => Some("projects"),

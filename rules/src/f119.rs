@@ -467,7 +467,7 @@ custom_questions:
 
     #[test]
     fn flags_a_github_notation_off_the_shelf() {
-        let v = F119GithubNotation.lint(&valid_at("templates/neon_law/nest/create_issue.md"));
+        let v = F119GithubNotation.lint(&valid_at("templates/neon_law/shared/create_issue.md"));
         assert_eq!(v.len(), 1, "{v:?}");
         assert!(v[0].message.contains("templates/github/"), "{v:?}");
     }

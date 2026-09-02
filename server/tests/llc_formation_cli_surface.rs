@@ -25,17 +25,19 @@ use store::test_support::mem_surreal;
 use tower::ServiceExt;
 use workflows::{DispatchingRuntime, InMemoryRuntime, StateMachineRuntime};
 
-const SESSION_KEY: &str = "nest-cli-surface-key-not-for-production";
+const SESSION_KEY: &str = "llc-formation-cli-surface-key-not-for-production";
 
 async fn build_app() -> axum::Router {
-    let repo_root =
-        std::env::temp_dir().join(format!("navigator-nest-cli-repos-{}", uuid::Uuid::now_v7()));
+    let repo_root = std::env::temp_dir().join(format!(
+        "navigator-llc-formation-cli-repos-{}",
+        uuid::Uuid::now_v7()
+    ));
     std::fs::create_dir_all(&repo_root).unwrap();
     std::env::set_var("NAVIGATOR_GIT_REPO_ROOT", &repo_root);
 
     let surreal = mem_surreal().await;
     let storage: Arc<dyn cloud::StorageService> = Arc::new(
-        cloud::FsStorage::new(std::env::temp_dir().join("navigator-nest-cli-surface"))
+        cloud::FsStorage::new(std::env::temp_dir().join("navigator-llc-formation-cli-surface"))
             .await
             .unwrap(),
     );
@@ -129,11 +131,11 @@ async fn post(
 }
 
 /// The whole formation surface the CLI drives, end to end over HTTP:
-/// open → walk the seven Nest questions as JSON → complete → status →
+/// open → walk the formation questions as JSON → complete → status →
 /// idempotent approve → download the filled packet.
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
-async fn nest_walker_json_step_and_document_download_drive_the_formation() {
+async fn llc_formation_walker_json_step_and_document_download_drive_the_formation() {
     let app = build_app().await;
     let bearer = admin_bearer();
 

@@ -883,7 +883,7 @@ fn entity_changed_fields(existing: &crate::entities::Entity, jurisdiction_id: Uu
 /// Apply the production-safe canonical seed: reference data plus the
 /// firm-owned baseline (jurisdictions, entity types, the protected firm
 /// [`FIRM_ENTITY_NAME`] Entity and its people, questions, credentials,
-/// templates, products, testimonials). It is **environment-blind** — it
+/// templates, testimonials). It is **environment-blind** — it
 /// runs identically in production, so it must never insert a disposable
 /// Project, mailroom, letter, or answer row. Those live in
 /// [`seed_sample_portfolio`] and are applied on a `dev` profile only.

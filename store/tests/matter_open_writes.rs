@@ -56,8 +56,8 @@ async fn opening_a_matter_writes_the_project_two_participations_and_the_attestat
     let project = projects::open_matter(
         &surreal,
         &OpenMatterCommand {
-            name: "Nest Formation".into(),
-            code: "nest-formation".into(),
+            name: "LLC Formation".into(),
+            code: "llc-formation".into(),
             client_id,
             entity_id,
             description: Some("Delaware LLC formation.".into()),
@@ -70,7 +70,7 @@ async fn opening_a_matter_writes_the_project_two_participations_and_the_attestat
 
     // The stored code is the code the caller supplied, verbatim — see
     // `project_code_storage.rs` for the storage contract itself.
-    assert_eq!(project.code, "nest-formation");
+    assert_eq!(project.code, "llc-formation");
 
     // Both participations: the attesting attorney as lawyer DRI, the client
     // as client DRI.

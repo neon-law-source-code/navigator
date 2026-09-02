@@ -5,8 +5,8 @@
 //! (`onboarding__*`) notation — the client's retainer — and a *closed*
 //! matter carries an `offboarding__letter`. Neither is schema-enforced, so the
 //! Projects list surfaces the gaps: a missing onboarding notation folds into
-//! the lifecycle status pill's "needs onboarding" state (no separate badge
-//! duplicates it), and a missing offboarding letter still carries its own
+//! the lifecycle status pill's "pitch" state (no separate badge duplicates
+//! it), and a missing offboarding letter still carries its own
 //! warning badge. These tests pin both the pure rule
 //! (`store::projects::matter_flags`) and the rendered list.
 //!
@@ -629,7 +629,7 @@ async fn an_uploaded_engagement_letter_clears_the_lifecycle_pill_on_the_rendered
         .unwrap_or_default()
         .to_string();
     assert!(
-        !row.contains("needs onboarding"),
+        !row.contains("pitch"),
         "an uploaded engagement letter must clear the lifecycle pill's onboarding-missing state: {row}"
     );
     assert!(
@@ -872,29 +872,30 @@ async fn projects_list_flags_the_lifecycle_gaps_and_nothing_else() {
     let absent = |row: &str, badge: &str| assert!(!row.contains(badge), "{row}");
 
     // B — bare open matter — is missing its onboarding: the lifecycle pill
-    // says so (there is no second, duplicate "no onboarding" badge next to
-    // the name), and it carries no offboarding-letter badge (it is open).
+    // says so ("pitch" — there is no second, duplicate "no onboarding" badge
+    // next to the name), and it carries no offboarding-letter badge (it is
+    // open).
     let b = row_for("Bare open matter");
-    assert!(&b.contains("needs onboarding"));
+    assert!(&b.contains("pitch"));
     absent(&b, "no offboarding letter");
 
     // C — closed without a letter — is flagged for the offboarding letter
     // only (its onboarding letter produced an instrument, so the pill itself
-    // reads "closed" rather than the onboarding-missing state).
+    // reads "closed" rather than the onboarding-missing "pitch" state).
     let c = row_for("Closed no letter");
     assert!(&c.contains("no offboarding letter"));
-    absent(&c, "needs onboarding");
+    absent(&c, "pitch");
 
-    // A and D are clean — no offboarding badge and no "needs onboarding" pill.
+    // A and D are clean — no offboarding badge and no "pitch" pill.
     let a = row_for("Has retainer open");
     assert!(&a.contains("onboarding on file"));
     absent(&a, "no offboarding letter");
     let d = row_for("Closed with letter");
-    absent(&d, "needs onboarding");
+    absent(&d, "pitch");
     absent(&d, "no offboarding letter");
 
     // The badge vocabulary is the codebase's, not the conversational one: the
-    // row says "needs onboarding"/"no offboarding letter", never "no retainer".
+    // row says "pitch"/"no offboarding letter", never "no retainer".
     assert!(
         !html.contains("no retainer"),
         "the warning badge must use the onboarding vocabulary: {html}"

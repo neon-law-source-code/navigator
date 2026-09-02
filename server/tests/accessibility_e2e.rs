@@ -749,13 +749,11 @@ async fn the_error_pages_pass_axe_wcag_a_and_aa() {
 /// The public surface's two interactive image affordances: the home page's call
 /// to action, and the blog collage's lightbox dialog.
 ///
-/// There is deliberately no `/team` leg. This test used to open `/team` and
-/// assert its profile photo carried alternative text, but the public surface
-/// declares no team page — `neon::PUBLIC_PATHS` is the whole declaration and has
-/// none, and nothing in the tree renders `.team-profile-card`, so the route
-/// `404`s and the wait timed out rather than failing an accessibility claim.
-/// Removing a page orphaned the assertion about it; the check that survived the
-/// page's removal is the one below, on markup that still ships.
+/// There is deliberately no `/team` leg here. The roster is back
+/// (`/team`, `/team/nick`, `/team/jask`), so it is audited by
+/// [`the_whole_public_surface_passes_the_axe_gate`] like every other declared
+/// path — this test stays scoped to the two interactive image affordances its
+/// name promises, on markup that ships regardless of the roster.
 #[tokio::test]
 async fn public_navigation_images_and_collage_dialog_are_accessible() {
     let site_base_url = base_url();

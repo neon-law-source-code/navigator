@@ -218,8 +218,8 @@ pub(crate) fn tel_href(phone: &str) -> String {
 ///   component with no destination should get rather than an `<a href="">`
 ///   that reloads whatever page it is sitting on.
 /// - `nav`: the public routes the header does not carry, rendered as one list
-///   the stylesheet lays out in two columns of five on a wide viewport and one
-///   column of ten on a narrow one. Empty renders no row.
+///   the stylesheet lays out in four columns of three on a wide viewport and
+///   one column of twelve on a narrow one. Empty renders no row.
 ///
 /// The whole footer is width-constrained to the same 72rem column the
 /// [`crate::components::SiteHeader`] nav uses, so its content lines up with
@@ -351,10 +351,28 @@ pub fn SiteFooterLegal(
                                 ul { class: "site-footer__nav-list",
                                     for link in nav.iter() {
                                         li { class: "site-footer__nav-item", key: "{link.href}",
-                                            a {
-                                                class: "site-footer__nav-link",
-                                                href: "{link.href}",
-                                                "{link.label}"
+                                            // An entry that leaves this site
+                                            // wears the same off-site arrow
+                                            // every other outbound link on the
+                                            // page does, so a reader sees it
+                                            // is leaving before they click —
+                                            // `href.starts_with("http")` is
+                                            // the row's own test for that,
+                                            // shared with
+                                            // `views::brand`'s
+                                            // `every_footer_link_is_internal_or_the_ux_showcase`.
+                                            if link.href.starts_with("http") {
+                                                ExternalLink {
+                                                    class: "site-footer__nav-link".to_string(),
+                                                    href: link.href.clone(),
+                                                    "{link.label}"
+                                                }
+                                            } else {
+                                                a {
+                                                    class: "site-footer__nav-link",
+                                                    href: "{link.href}",
+                                                    "{link.label}"
+                                                }
                                             }
                                         }
                                     }
@@ -567,22 +585,21 @@ mod tests {
     }
 
     /// The link row a deploy hands this component, mirroring what
-    /// `views::brand::firm_footer_nav` publishes: the ten public routes the
-    /// header does not carry, alphabetized by label. Navigator UX is the one
-    /// entry that links off-site, to the platform's design showcase.
-    const FOOTER_ROW: [(&str, &str); 10] = [
+    /// `views::brand::firm_footer_nav` publishes: the twelve public routes the
+    /// header does not carry, alphabetized by label. UX is the one entry that
+    /// links off-site, to the platform's design showcase.
+    const FOOTER_ROW: [(&str, &str); 12] = [
+        ("API", "/api"),
         ("Blog", "/blog"),
         ("Contact", "/contact"),
         ("Docs", "/docs"),
         ("Navigator", "/navigator"),
-        (
-            "Navigator UX",
-            "https://neon-law-source-code.github.io/navigator-ux/",
-        ),
         ("Notations", "/notations"),
         ("Presentations", "/presentations"),
         ("Privacy", "/privacy"),
+        ("Team", "/team"),
         ("Terms", "/terms"),
+        ("UX", "https://neon-law-source-code.github.io/navigator-ux/"),
         ("Workshops", "/workshops"),
     ];
 
@@ -1193,11 +1210,12 @@ mod tests {
 
     /// The row is one list, at every width.
     ///
-    /// Two columns of five on a wide viewport and one column of ten on a narrow
-    /// one is a stylesheet job — `.site-footer__nav-list` flows down five rows
-    /// and across, and the narrow layout stops columnizing it. Rendering two
-    /// `<ul>`s to get the wide layout would give a screen reader two lists of
-    /// five on every viewport and split the reading order down the middle, so
+    /// Four columns of three on a wide viewport and one column of twelve on a
+    /// narrow one is a stylesheet job — `.site-footer__nav-list` flows down
+    /// three rows and across, and the narrow layout stops columnizing it.
+    /// Rendering four `<ul>`s to get the wide layout would give a screen
+    /// reader four lists of three on every viewport and split the reading
+    /// order down the middle, so
     /// this asserts the single list the CSS is written against.
     #[test]
     fn renders_the_row_as_one_list_of_sibling_destinations() {
@@ -1243,6 +1261,37 @@ mod tests {
             row.matches(r#"class="site-footer__nav-link""#).count(),
             FOOTER_ROW.len(),
             "every link wears the one class and no variant: {row}"
+        );
+    }
+
+    /// The one entry that leaves the site — UX — opens in a new tab with the
+    /// OWASP `rel` pair and the off-site arrow, exactly like every other
+    /// outbound link on the page. Every other entry is a plain same-origin
+    /// anchor and carries none of that.
+    #[test]
+    fn only_the_off_site_entry_carries_the_external_link_treatment() {
+        let out = contactable_html();
+        let row = out
+            .split_once(r#"aria-label="More pages""#)
+            .and_then(|(_, rest)| rest.split_once("</nav>"))
+            .map(|(row, _)| row)
+            .expect("the row renders as a labelled landmark");
+        assert_eq!(
+            row.matches(r#"target="_blank""#).count(),
+            1,
+            "exactly one entry opens a new tab: {row}"
+        );
+        assert!(
+            row.contains(r#"rel="noopener noreferrer""#),
+            "the off-site entry carries the OWASP rel pair: {row}"
+        );
+        let ux = row
+            .find("https://neon-law-source-code.github.io/navigator-ux/")
+            .expect("UX links the showcase");
+        let arrow = row.find("nav-icon").expect("the off-site arrow renders");
+        assert!(
+            ux < arrow,
+            "the arrow follows the link it marks as off-site: {row}"
         );
     }
 

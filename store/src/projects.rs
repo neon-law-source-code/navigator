@@ -2171,7 +2171,11 @@ impl MatterLifecycle {
     #[must_use]
     pub fn label(self) -> &'static str {
         match self {
-            MatterLifecycle::NeedsOnboarding => "needs onboarding",
+            // "Pitch" is the firm's own term for this stage: the matter is
+            // open but not yet papered, which is the state a prospective
+            // client is in before they sign — the word a lawyer already uses
+            // for it, and shorter than the description it stands in for.
+            MatterLifecycle::NeedsOnboarding => "pitch",
             MatterLifecycle::OnboardingOnFile => "onboarding on file",
             MatterLifecycle::Closed => "closed",
         }

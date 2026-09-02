@@ -102,14 +102,12 @@ pub fn document_with_base(base: &str) -> Value {
         "version": "0.1.0",
         "description":
           "JSON listings and commands for the Neon Law Navigator domain tables, plus a stateless \
-           markdown notation validator. The whole surface is private and lives under \
-           `/app/api`. Every endpoint requires OIDC authentication — either a browser \
-           session cookie issued by the OAuth flow at `/auth/login`, or a JWT bearer \
-           token — and so does the documentation: this document at \
-           `/app/api/openapi.json` and the Swagger UI that renders it at `/app/api` \
-           both answer an anonymous caller with an unauthenticated stub rather than the \
-           schema. The MCP endpoint at `/mcp` (JSON-RPC, Google OAuth bearer) is \
-           documented separately.",
+           markdown notation validator. The surface itself lives under `/app/api`, and every \
+           endpoint requires OIDC authentication — either a browser session cookie issued by \
+           the OAuth flow at `/auth/login`, or a JWT bearer token. This document and the \
+           Swagger UI that renders it (at `/app/api` and its shorter alias `/api`) are public: \
+           reading the reference needs no session, only calling an operation it describes does. \
+           The MCP endpoint at `/mcp` (JSON-RPC, Google OAuth bearer) is documented separately.",
         "contact": { "name": FIRM_BRAND.site_name, "url": contact_url }
       },
       "servers": [

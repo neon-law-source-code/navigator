@@ -1615,69 +1615,22 @@ test_removed_notations_validate_alias_denied_for_anonymous if {
 	not authz.allow with input as {"path": ["app", "api", "notations", "validate"], "method": "POST", "session": null}
 }
 
-# ---------- API documentation surfaces (clerk and above, never client) ----------
+# ---------- API documentation surfaces (decided by routing, not this policy) ----------
 
-# The Swagger shell at the /app/api root and the OpenAPI document beside it.
-# Every tier that operates Navigator reads them; `client` is the one
-# authenticated tier denied, and anonymous never reaches the policy at all.
-# Both paths are asserted separately: the shell is an HTML page and the
-# document is machine-readable, and Swagger UI is useless without the
-# document, so a gate that admitted one and not the other would be a
-# half-open door rather than a working page.
-test_lawyer_reaches_api_docs if {
-	authz.allow with input as {"path": ["app", "api"], "method": "GET", "session": lawyer_session}
-}
-
-test_clerk_reaches_api_docs if {
-	authz.allow with input as {"path": ["app", "api"], "method": "GET", "session": clerk_session}
-}
-
-test_admin_reaches_api_docs if {
-	authz.allow with input as {"path": ["app", "api"], "method": "GET", "session": admin_session}
-}
-
-test_owner_reaches_api_docs if {
-	authz.allow with input as {"path": ["app", "api"], "method": "GET", "session": owner_session}
-}
-
-test_client_denied_on_api_docs if {
-	not authz.allow with input as {"path": ["app", "api"], "method": "GET", "session": client_session}
-}
-
-test_anonymous_denied_on_api_docs if {
+# The Swagger shell at /app/api (and its shorter public alias /api) and the
+# OpenAPI document beside it are public: `portal::bootstrap` mounts all three
+# with no session boundary and no `require_policy` layer at all, so this
+# policy never evaluates a request for them — see the note above
+# `/app/api/aida.json`'s own such rule, and `portal/tests/router_contract.rs`
+# for the router-level half this Rego test cannot see. Mirrored here like the
+# A2A agent card below: an anonymous read must not be allowed by this policy
+# either, which is the only half a policy test can prove.
+test_policy_does_not_decide_api_docs if {
 	not authz.allow with input as {"path": ["app", "api"], "method": "GET", "session": null}
 }
 
-test_lawyer_reaches_openapi if {
-	authz.allow with input as {"path": ["app", "api", "openapi.json"], "method": "GET", "session": lawyer_session}
-}
-
-test_clerk_reaches_openapi if {
-	authz.allow with input as {"path": ["app", "api", "openapi.json"], "method": "GET", "session": clerk_session}
-}
-
-test_admin_reaches_openapi if {
-	authz.allow with input as {"path": ["app", "api", "openapi.json"], "method": "GET", "session": admin_session}
-}
-
-test_owner_reaches_openapi if {
-	authz.allow with input as {"path": ["app", "api", "openapi.json"], "method": "GET", "session": owner_session}
-}
-
-test_client_denied_on_openapi if {
-	not authz.allow with input as {"path": ["app", "api", "openapi.json"], "method": "GET", "session": client_session}
-}
-
-test_anonymous_denied_on_openapi if {
+test_policy_does_not_decide_openapi_json if {
 	not authz.allow with input as {"path": ["app", "api", "openapi.json"], "method": "GET", "session": null}
-}
-
-# A Clerk reads the reference but not the directory it describes. Asserted as a
-# pair because the two halves are what make the audience deliberate rather than
-# incidental — see the note on `api_documentation_paths`.
-test_clerk_reads_the_reference_but_not_the_directory if {
-	authz.allow with input as {"path": ["app", "api"], "method": "GET", "session": clerk_session}
-	not authz.allow with input as {"path": ["app", "api", "people"], "method": "GET", "session": clerk_session}
 }
 
 # The retired top-level paths. Nothing mounts at /api-docs or /openapi.json now

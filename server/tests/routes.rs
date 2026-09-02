@@ -1657,7 +1657,6 @@ async fn anonymous_access_to_the_shared_navigator_surface_lands_at_the_login_doo
         "/app/docs",
         "/app/docs/glossary",
         "/templates",
-        "/app/api",
     ] {
         let resp = app
             .clone()
@@ -1679,7 +1678,7 @@ async fn anonymous_access_to_the_shared_navigator_surface_lands_at_the_login_doo
     }
 
     // Machine surfaces refuse in a shape a machine can read.
-    for path in ["/app/api/openapi.json", "/app/api/people"] {
+    for path in ["/app/api/people"] {
         let resp = app
             .clone()
             .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
@@ -1692,6 +1691,22 @@ async fn anonymous_access_to_the_shared_navigator_surface_lands_at_the_login_doo
         );
         let document: serde_json::Value = serde_json::from_str(&body_string(resp).await).unwrap();
         assert_eq!(document["error"], "unauthenticated", "{path}");
+    }
+
+    // The API documentation is a different surface from the API it
+    // describes: no session boundary at all, so an anonymous reader gets the
+    // real page and the real document rather than a login door or a refusal.
+    for path in ["/app/api", "/api", "/app/api/openapi.json"] {
+        let resp = app
+            .clone()
+            .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(
+            resp.status(),
+            StatusCode::OK,
+            "the API reference at {path} is public"
+        );
     }
 }
 
@@ -11390,17 +11405,24 @@ async fn admin_questions_is_read_only_listing() {
     assert_eq!(new.status(), StatusCode::NOT_FOUND);
 }
 
+/// Plain anonymous `GET` — no cookie, no bearer token, no role at all.
+async fn anon_get(app: axum::Router, uri: &str) -> axum::response::Response {
+    app.oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
+        .await
+        .unwrap()
+}
+
 #[tokio::test]
-async fn openapi_json_is_served_to_a_signed_in_caller() {
+async fn openapi_json_is_served_to_an_anonymous_reader() {
     let app = server::neon_router(
         empty_state().await,
         std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
     );
-    // Clerk is the least privileged tier the documentation gate admits — a
-    // `client` is refused, which `api_documentation_is_gated_to_clerk_and_above`
-    // pins against the real policy. This test is about the document's shape,
-    // so it uses the lowest role that can see one.
-    let resp = get_with_role(app, "/app/api/openapi.json", store::persons::Role::Clerk).await;
+    // The document is public — no session, no role — while the operations it
+    // describes stay gated. `api_documentation_is_public_but_the_endpoints_it_describes_stay_gated`
+    // pins that split against the real policy; this test is about the
+    // document's shape.
+    let resp = anon_get(app, "/app/api/openapi.json").await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
     assert!(body.contains("\"openapi\":\"3.1.0\""));
@@ -11412,19 +11434,20 @@ async fn openapi_json_is_served_to_a_signed_in_caller() {
 async fn api_docs_serves_swagger_ui_shell_with_csp() {
     // The Swagger UI shell lives at the `/app/api` root, a sibling of
     // `/app/api/openapi.json` rather than a leaf under the `/app/api/*` data
-    // prefix. It takes the session boundary and `require_policy`, and the
-    // policy admits Clerk and above. This test asserts the handler wiring
-    // (CSP, vendored assets) with a passthrough policy; the tier property is
-    // pinned separately by `api_documentation_is_gated_to_clerk_and_above`.
+    // prefix. It carries no session boundary and no `require_policy` at all —
+    // it is public. This test asserts the handler wiring (CSP, vendored
+    // assets) reaches an anonymous reader; the split from the gated
+    // operations is pinned separately by
+    // `api_documentation_is_public_but_the_endpoints_it_describes_stay_gated`.
     let app = server::neon_router(
         empty_state().await,
         std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
     );
-    let resp = get_with_role(app, "/app/api", store::persons::Role::Clerk).await;
+    let resp = anon_get(app, "/app/api").await;
     assert_eq!(
         resp.status(),
         StatusCode::OK,
-        "the API documentation must render for a signed-in caller"
+        "the API documentation must render for an anonymous reader"
     );
     let csp = resp
         .headers()
@@ -11456,76 +11479,100 @@ async fn api_docs_serves_swagger_ui_shell_with_csp() {
     );
 }
 
+/// The public-footer alias serves the identical shell, including the link
+/// back to the app — the same way a Project's client portal links back to
+/// the app it is mounted under. Fetched anonymously: the alias exists so a
+/// reader never needs a session to reach it.
 #[tokio::test]
-async fn doc_surfaces_are_decided_by_the_embedded_policy() {
-    // The documentation surfaces take `require_policy` along with the session
-    // boundary, so the policy layer must actually reach them. Under a deny-all
-    // policy both are refused — which is the whole point of putting a
-    // *restrictive* rule in the bundle: it fails closed.
-    //
-    // The earlier posture was the reverse (these paths mounted outside the
-    // policy so a stale bundle could not gate them). That protected a *public*
-    // exemption, where default-deny is the failure. A tier gate has no such
-    // hazard: a stale bundle yields 403 and a redeploy fixes it.
+async fn api_alias_serves_the_same_shell_with_a_link_back_to_the_app() {
+    let app = server::neon_router(
+        empty_state().await,
+        std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
+    );
+    let resp = anon_get(app, "/api").await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_string(resp).await;
+    assert!(
+        body.contains("id=\"swagger-ui\""),
+        "the alias renders the same Swagger UI shell"
+    );
+    assert!(
+        body.contains(r#"href="/app""#),
+        "the shell links back to the app: {body}"
+    );
+}
+
+#[tokio::test]
+async fn api_documentation_ignores_the_embedded_policy_entirely() {
+    // The documentation surfaces carry no session boundary and no
+    // `require_policy` layer at all — they are a routing decision, not a
+    // policy one. Under a deny-all policy that denies literally everything
+    // else, they must still answer 200: there is nothing here for a stale or
+    // hostile bundle to deny, unlike the gated `/app/api/*` operations they
+    // describe.
     let app = server::neon_router(
         empty_state_with_policy(deny_all_policy()).await,
         std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
     );
 
-    for uri in ["/app/api", "/app/api/openapi.json"] {
-        let resp = get_with_role(app.clone(), uri, store::persons::Role::Lawyer).await;
+    for uri in ["/app/api", "/api", "/app/api/openapi.json"] {
+        let resp = anon_get(app.clone(), uri).await;
         assert_eq!(
             resp.status(),
-            StatusCode::FORBIDDEN,
-            "{uri} must be refused when the policy denies every request — the tier decision \
-             lives in the bundle, so the layer has to be wired to it"
+            StatusCode::OK,
+            "{uri} does not depend on the policy bundle at all"
         );
     }
 }
 
 #[tokio::test]
-async fn api_documentation_is_gated_to_clerk_and_above() {
-    // ENG-83's gate, against the *real* embedded Rego rather than a stub: every
-    // tier that operates Navigator reads the API reference, and `client` — the
-    // one authenticated tier that does not — is refused.
-    //
-    // The `client` half is the load-bearing assertion. A client holds a
-    // session, and the any-authenticated GET grant on `/app/api/*` would admit
-    // them here if the documentation paths were not excluded from it.
+async fn api_documentation_is_public_but_the_endpoints_it_describes_stay_gated() {
+    // Against the *real* embedded Rego rather than a stub: the reference is
+    // open to an anonymous reader and to every role, while the directory it
+    // describes stays exactly as gated as it always was.
     let mut state = empty_state().await;
     state.policy = portal::policy::PolicyClient::embedded().expect("embedded policy compiles");
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
 
-    for uri in ["/app/api", "/app/api/openapi.json"] {
+    for uri in ["/app/api", "/api", "/app/api/openapi.json"] {
+        let anon = anon_get(app.clone(), uri).await;
+        assert_eq!(
+            anon.status(),
+            StatusCode::OK,
+            "an anonymous reader reads {uri} — no session needed"
+        );
+
         for role in [
             store::persons::Role::Owner,
             store::persons::Role::Admin,
             store::persons::Role::Lawyer,
             store::persons::Role::Clerk,
+            store::persons::Role::Client,
         ] {
             let resp = get_with_role(app.clone(), uri, role).await;
             assert_eq!(
                 resp.status(),
                 StatusCode::OK,
-                "{role:?} operates Navigator and must read {uri}"
+                "{role:?} reads {uri} exactly like an anonymous caller does"
             );
         }
-
-        let client = get_with_role(app.clone(), uri, store::persons::Role::Client).await;
-        assert_eq!(
-            client.status(),
-            StatusCode::FORBIDDEN,
-            "a client must not read {uri} — it describes the firm's own commands"
-        );
     }
 
-    // A Clerk reads the reference but not the directory it describes: operating
-    // Navigator is what admits them to the docs, and the CRM is not part of
-    // operating it. The pair is what makes the audience deliberate.
-    let directory =
+    // The directory the reference describes is a different question, and it
+    // is unmoved: still session-gated, and still narrower than "any
+    // authenticated caller" — a Clerk reads the reference but not the people
+    // directory it names.
+    let anon_directory = anon_get(app.clone(), "/app/api/people").await;
+    assert_eq!(
+        anon_directory.status(),
+        StatusCode::UNAUTHORIZED,
+        "the directory itself still requires a session"
+    );
+
+    let clerk_directory =
         get_with_role(app.clone(), "/app/api/people", store::persons::Role::Clerk).await;
     assert_eq!(
-        directory.status(),
+        clerk_directory.status(),
         StatusCode::FORBIDDEN,
         "a clerk reads the API reference but not the people directory"
     );

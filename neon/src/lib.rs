@@ -42,6 +42,9 @@ pub const PUBLIC_PATHS: &[&str] = &[
     "/notations",
     "/notations/{slug}",
     "/contact",
+    "/team",
+    "/team/nick",
+    "/team/jask",
     "/blog",
     "/blog/{slug}",
     // The talks catalog and every talk beneath it. Anonymous like the rest of
@@ -92,6 +95,9 @@ pub fn sitemap_paths(state: &AppState) -> std::collections::BTreeSet<String> {
         "/navigator",
         "/notations",
         "/contact",
+        "/team",
+        "/team/nick",
+        "/team/jask",
         "/blog",
         "/workshops",
         "/presentations",
@@ -233,6 +239,12 @@ fn indexed_pages(mark: &str) -> Vec<portal::LlmsTxtLink> {
             "Contact",
             "/contact",
             "How to reach the firm about a matter, and what to include in the first email.",
+        ),
+        page(
+            "Team",
+            "/team",
+            "The people at the firm, each with their own page naming an email and a LinkedIn \
+                 profile.",
         ),
     ]
 }

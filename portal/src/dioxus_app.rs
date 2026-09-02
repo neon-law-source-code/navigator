@@ -3419,6 +3419,54 @@ pub fn contact_router(path: &str, content: webapp::contact_page::ContactContent)
         ))
 }
 
+/// The firm `/team` index — the roster, one link per person. Content-backed
+/// and static like [`contact_router`]: the caller resolves the
+/// [`webapp::team_page::TeamIndexContent`] and injects it, and
+/// `webapp::team_page::team_index_view` reads it back. `path` is the route
+/// the page mounts at. Public and firm-scoped.
+pub fn team_index_router(path: &str, content: webapp::team_page::TeamIndexContent) -> Router {
+    let injected = webapp::team_page::InjectedTeamIndex(content);
+    let cfg = ServeConfig::new().context_providers(std::sync::Arc::new(vec![Box::new(move || {
+        Box::new(injected.clone()) as Box<dyn std::any::Any>
+    })
+        as Box<dyn Fn() -> Box<dyn std::any::Any> + Send + Sync>]));
+
+    Router::<FullstackState>::new()
+        .route(
+            path,
+            get(render_handler)
+                .layer(from_fn(dioxus_document_head))
+                .layer(from_fn(inject_public_utility)),
+        )
+        .with_state(FullstackState::new(cfg, webapp::team_page::TeamIndexEntry))
+}
+
+/// One person's `/team/{slug}` profile. Content-backed like
+/// [`team_index_router`]: the caller resolves one
+/// [`webapp::team_page::TeamProfileContent`] per person and mounts it at that
+/// person's own `path`, so two calls with two different `path`s and two
+/// different `content`s is how `/team/nick` and `/team/jask` come to serve
+/// different people through the one shared page component.
+pub fn team_profile_router(path: &str, content: webapp::team_page::TeamProfileContent) -> Router {
+    let injected = webapp::team_page::InjectedTeamProfile(content);
+    let cfg = ServeConfig::new().context_providers(std::sync::Arc::new(vec![Box::new(move || {
+        Box::new(injected.clone()) as Box<dyn std::any::Any>
+    })
+        as Box<dyn Fn() -> Box<dyn std::any::Any> + Send + Sync>]));
+
+    Router::<FullstackState>::new()
+        .route(
+            path,
+            get(render_handler)
+                .layer(from_fn(dioxus_document_head))
+                .layer(from_fn(inject_public_utility)),
+        )
+        .with_state(FullstackState::new(
+            cfg,
+            webapp::team_page::TeamProfileEntry,
+        ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

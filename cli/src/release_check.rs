@@ -54,11 +54,32 @@ impl Outcome {
     ///
     /// The GitHub Release is the one surface that treats a prerelease
     /// differently — it is flagged so GitHub stops reporting it as "Latest".
-    /// Everything else (the images, the CLI archives, the Homebrew tap) follows
-    /// every publishable version, because a consumer resolving one version needs
-    /// it to be the newest good build.
+    /// The images and the CLI archives follow every publishable version,
+    /// because a consumer resolving one version needs it to be the newest good
+    /// build. The Homebrew tap is the one narrower surface — see
+    /// [`Self::tap_follows`], which asks a different question of the same
+    /// prerelease.
     fn prerelease(&self) -> bool {
         !self.version.pre.is_empty()
+    }
+
+    /// Whether the Homebrew tap will follow this version.
+    ///
+    /// The tap holds exactly one formula version and its own workflows accept
+    /// only `YY.M.D` and `YY.M.D-hotfix.N`, so a release candidate is a tag it
+    /// refuses outright rather than one it merely deprioritises. `deploy.yml`
+    /// reads this to decide whether to dispatch at all: without it the deploy
+    /// held a release-candidate policy its own tap did not, told the tap about
+    /// `26.8.30-rc.1`, and then failed the release over a bump that was never
+    /// going to happen.
+    ///
+    /// It is deliberately NOT `publishable && …`. The two outputs answer
+    /// different questions — "did this commit cut a release?" and "is this a
+    /// release the tap can carry?" — and folding them together would leave
+    /// `deploy.yml` unable to say which one a skipped tap job answered.
+    /// [`release::tap_follows`] holds the rule so nothing transcribes it here.
+    fn tap_follows(&self) -> bool {
+        release::tap_follows(&self.version)
     }
 }
 
@@ -214,9 +235,10 @@ pub(crate) fn release_tags(repo: &Path) -> Result<Vec<String>> {
 
 /// Hand the answer to the workflow step that asked.
 ///
-/// `deploy.yml` reads all three: `tag` becomes the `RELEASE_TAG` build-arg and
+/// `deploy.yml` reads all four: `tag` becomes the `RELEASE_TAG` build-arg and
 /// the ref the tag job creates, `publishable` gates every job after
-/// integration, and `prerelease` flags the GitHub Release.
+/// integration, `prerelease` flags the GitHub Release, and `tap_follows` gates
+/// the Homebrew hand-off alone.
 fn write_github_output(outcome: &Outcome) -> Result<()> {
     use std::io::Write;
 
@@ -232,6 +254,8 @@ fn write_github_output(outcome: &Outcome) -> Result<()> {
     writeln!(file, "publishable={}", outcome.publishable())
         .context("write the publishable output")?;
     writeln!(file, "prerelease={}", outcome.prerelease()).context("write the prerelease output")?;
+    writeln!(file, "tap_follows={}", outcome.tap_follows())
+        .context("write the tap_follows output")?;
     Ok(())
 }
 
@@ -358,6 +382,64 @@ mod tests {
             "a `-hotfix.N` version must report itself as a prerelease so the GitHub Release is \
              flagged"
         );
+    }
+
+    /// A release candidate publishes everywhere except the tap.
+    ///
+    /// This is the whole of item 1: the deploy used to hold no shape filter, so
+    /// `26.8.30-rc.1` was dispatched to a tap whose own guard refuses it. The
+    /// answer is one more output, not a second copy of the tap's regex — the
+    /// version has already been parsed by the time this is asked.
+    #[test]
+    fn a_release_candidate_publishes_but_the_tap_is_not_told() {
+        let repo = repo_with_tags(&["26.8.28"]);
+        let manifest = manifest_at(repo.path(), "26.8.30-rc.1");
+        let outcome = check(&manifest, repo.path(), false).expect("a decision");
+
+        assert_eq!(
+            outcome.standing,
+            Standing::Releasable,
+            "an rc is still a release: it proves the workspace, publishes every image, and cuts the archives"
+        );
+        assert!(outcome.publishable());
+        assert!(outcome.prerelease());
+        assert!(
+            !outcome.tap_follows(),
+            "the tap refuses this shape, so a deploy that dispatches it fails the release over a bump that was never going to run"
+        );
+    }
+
+    /// A hotfix is told to the tap, and that is the assertion the 404 was made
+    /// of.
+    ///
+    /// The formula holds exactly one version, so excluding hotfixes strands
+    /// `brew install` on the last ordinary release for as long as a run of
+    /// hotfixes lasts. Narrowing the gate to release candidates must not
+    /// re-introduce that.
+    #[test]
+    fn a_hotfix_is_still_told_to_the_tap() {
+        let repo = repo_with_tags(&["26.8.22"]);
+        let manifest = manifest_at(repo.path(), "26.8.23-hotfix.1");
+        let outcome = check(&manifest, repo.path(), false).expect("a decision");
+
+        assert!(outcome.publishable());
+        assert!(outcome.prerelease(), "a hotfix is a semver prerelease");
+        assert!(
+            outcome.tap_follows(),
+            "a hotfix is a shape the tap publishes — it did so for `26.8.26-hotfix.1`"
+        );
+    }
+
+    /// An ordinary release is told to the tap.
+    #[test]
+    fn an_ordinary_release_is_told_to_the_tap() {
+        let repo = repo_with_tags(&["26.8.22"]);
+        let manifest = manifest_at(repo.path(), "26.8.23");
+        let outcome = check(&manifest, repo.path(), false).expect("a decision");
+
+        assert!(outcome.publishable());
+        assert!(!outcome.prerelease());
+        assert!(outcome.tap_follows());
     }
 
     /// A repository with no releases yet publishes whatever it is handed.

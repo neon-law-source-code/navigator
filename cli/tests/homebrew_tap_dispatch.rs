@@ -32,10 +32,11 @@ const TAP_REPO: &str = "neon-law-source-code/homebrew-navigator";
 /// bump landed.
 const FORMULA_PATH: &str = "Formula/navigator.rb";
 
-/// How long the release waits for the tap to publish the formula. The bump
-/// itself runs in under a minute; the rest of the budget absorbs a queued
-/// runner and the tap's `bump-formula` concurrency group.
-const POLL_BUDGET_MINUTES: u64 = 15;
+/// The CEILING on how long the release waits for the tap to publish the
+/// formula. The bump itself runs in under a minute, and a bump that FAILS is
+/// reported the moment it fails rather than at this deadline, so what is left
+/// to absorb is a queued runner and the tap's `bump-formula` concurrency group.
+const BUMP_BUDGET_MINUTES: u64 = 10;
 
 fn deploy_workflow() -> String {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -327,8 +328,170 @@ fn a_tap_that_never_bumps_fails_the_release() {
         .as_u64()
         .unwrap_or_else(|| panic!("`{JOB}` must declare `timeout-minutes`"));
     assert!(
-        timeout > POLL_BUDGET_MINUTES,
-        "`{JOB}`'s {timeout}-minute timeout must outlast its {POLL_BUDGET_MINUTES}-minute poll, \
+        timeout > BUMP_BUDGET_MINUTES,
+        "`{JOB}`'s {timeout}-minute timeout must outlast its {BUMP_BUDGET_MINUTES}-minute wait, \
          or the job dies on the clock instead of reporting the stale formula"
+    );
+}
+/// A RELEASE CANDIDATE IS NOT DISPATCHED, and this is the live bug it closes.
+///
+/// The tap's `bump` and `test` workflows both accept `YY.M.D` and
+/// `YY.M.D-hotfix.N` and refuse everything else, so a deploy holding no shape
+/// filter held a different release-candidate policy from the two components
+/// that act on its dispatch. `26.8.30-rc.1` published on 2026-08-29, the bump
+/// failed 27 seconds later on the tap's own guard, and this job then burned
+/// 1h39m26s waiting on a formula nothing was going to move. It recurred on
+/// every release candidate.
+#[test]
+fn a_release_candidate_is_not_dispatched_to_the_tap() {
+    let gate = deploy_job(JOB)["if"]
+        .as_str()
+        .expect("`release-homebrew-tap` must declare an `if:` gate")
+        .to_string();
+
+    assert!(
+        gate.contains("needs.release-version.outputs.tap_follows == 'true'"),
+        "`{JOB}` must not dispatch a tag shape the tap refuses — without this gate a release \
+         candidate fails the release over a bump that was never going to run. Got: {gate:?}"
+    );
+}
+
+/// `tap_follows` is a real output, not a name that quietly resolves to empty.
+///
+/// A `needs.<job>.outputs.<name>` referring to an output the producing job does
+/// not declare evaluates to the empty string, so the gate above would be
+/// permanently false and the tap would never be told about ANY release. That
+/// failure is silent in exactly the way this file exists to prevent — a skipped
+/// job is not a failed one — so the declaration is asserted rather than assumed.
+#[test]
+fn the_tap_gate_reads_an_output_the_decision_job_declares() {
+    let outputs = deploy_job("release-version")["outputs"].clone();
+    let declared = outputs
+        .as_mapping()
+        .expect("`release-version` declares an outputs map");
+    let names: Vec<&str> = declared
+        .keys()
+        .filter_map(serde_yaml::Value::as_str)
+        .collect();
+
+    assert!(
+        names.contains(&"tap_follows"),
+        "`release-version` must declare `tap_follows`, or the tap gate silently reads an \
+         empty string and no release ever reaches the formula. Declared: {names:?}"
+    );
+    assert_eq!(
+        outputs["tap_follows"].as_str(),
+        Some("${{ steps.version.outputs.tap_follows }}"),
+        "`tap_follows` must come from the same `ops release check` step that answers \
+         `publishable`"
+    );
+}
+
+/// THE SHAPE RULE IS NOT TRANSCRIBED HERE, and that is a constraint on the fix
+/// rather than a nicety.
+///
+/// The tap states the rule as a regex, and that regex already exists three
+/// times over there — `bump.yml`, `test.yml`, `scripts/bump.sh`. Writing it a
+/// fourth time in this workflow is how those three drifted from each other, and
+/// it is the mistake `cli/src/release.rs` records this workspace having already
+/// made once with the release grammar itself: four hand-transcribed copies, one
+/// of which ordered `26.8.22-hotfix.22` above `26.8.22`.
+///
+/// So the tap job asks `ops release check` a question and reads a boolean. It
+/// must not learn to recognise a version by itself.
+#[test]
+fn the_tap_job_transcribes_no_version_pattern() {
+    let job = serde_yaml::to_string(&deploy_job(JOB)).expect("the job serializes");
+
+    for forbidden in ["hotfix", "-rc.", "[0-9]", "[[:digit:]]", "\\d+"] {
+        assert!(
+            !job.contains(forbidden),
+            "`{JOB}` must not carry `{forbidden}` — the release shape is `cli/src/release.rs`'s \
+             one job, and a copy here is the fourth transcription that made the first three \
+             disagree"
+        );
+    }
+}
+
+/// The wait ends when the bump's conclusion says it can, not when the clock does.
+///
+/// A formula that has not moved reads identically whether the bump died thirty
+/// seconds ago or is still queued, so a poll that can only see the formula has
+/// to spend its whole budget on a bump that already failed. That is what turned
+/// a 27-second answer into 99 minutes. The tap's run conclusion is the one
+/// signal that separates the two.
+#[test]
+fn a_failed_bump_ends_the_wait_instead_of_running_out_the_clock() {
+    let workflow = deploy_workflow();
+
+    assert!(
+        workflow.contains("/actions/workflows/bump.yml/runs?event=repository_dispatch"),
+        "`{JOB}` must read the tap's own bump runs — the formula alone cannot say whether a bump \
+         is still coming or already dead, and waiting out the budget on a dead one is the defect"
+    );
+    assert!(
+        workflow.contains(r#"[ "${conclusion}" != "success" ]"#),
+        "`{JOB}` must fail as soon as the bump's conclusion is anything but success"
+    );
+    assert!(
+        workflow.contains("the tap refused"),
+        "the early failure must say the tap refused this tag, so the reader is not left assuming \
+         a slow bump"
+    );
+}
+
+/// Reading the tap's runs widens no grant.
+///
+/// The tap is public — Homebrew clones it anonymously on every `brew update` —
+/// so its run list is public data readable with this run's own token. That is
+/// the whole reason the conclusion can be read at all: `HOMEBREW_TAP_TOKEN`
+/// stays `contents: write` on one repository, and an `actions: read` it never
+/// needed is never asked for.
+#[test]
+fn the_conclusion_read_does_not_widen_the_tap_token() {
+    let job = serde_yaml::to_string(&deploy_job(JOB)).expect("the job serializes");
+
+    assert!(
+        job.contains("PUBLIC_TOKEN: ${{ github.token }}"),
+        "the tap's public run list must be read with the run's own token"
+    );
+    assert!(
+        !job.contains("actions: read"),
+        "`{JOB}` must not widen `HOMEBREW_TAP_TOKEN` to `actions: read` — the tap is public and \
+         its runs need no cross-repository grant"
+    );
+}
+
+/// The conclusion may only ever end the wait EARLY.
+///
+/// A green bump that committed nothing is still a stale tap, and it is the
+/// silence this whole job exists for — three consecutive releases were told,
+/// all three bumps went on to die, and every one stayed green here while `brew`
+/// served an old version. So success is proved by the formula, and the run's
+/// conclusion is never allowed to stand in for it.
+#[test]
+fn only_the_formula_proves_the_bump_landed() {
+    let workflow = deploy_workflow();
+
+    let confirm = workflow
+        .split("- name: confirm the formula moved")
+        .nth(1)
+        .expect("the job confirms the formula moved");
+    let formula_check = confirm
+        .find(r#"[ "${published}" = "${TAG}" ]"#)
+        .expect("the confirmation compares the published formula version against this tag");
+    let conclusion_read = confirm
+        .find("bump.yml/runs")
+        .expect("the confirmation reads the tap's bump runs");
+
+    assert!(
+        formula_check < conclusion_read,
+        "the formula must be checked BEFORE the run's conclusion: a manual repair that already \
+         published this tag has to end the loop cleanly, and only the formula proves the bump \
+         committed"
+    );
+    assert!(
+        confirm.contains("exit 0"),
+        "the only success path must be the formula reporting this tag"
     );
 }

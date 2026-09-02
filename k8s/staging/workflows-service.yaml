@@ -109,6 +109,11 @@ spec:
                 configMapKeyRef:
                   name: navigator-garage
                   key: documents_bucket
+            - name: NAVIGATOR_SURREAL_ARCHIVES_BUCKET
+              valueFrom:
+                configMapKeyRef:
+                  name: navigator-garage
+                  key: surreal_archives_bucket
             - name: NAVIGATOR_STORAGE_REGION
               value: garage
             - name: NAVIGATOR_STORAGE_ACCESS_KEY

@@ -183,10 +183,9 @@ pub async fn exports_from_env() -> Result<Arc<dyn StorageService>, StorageError>
     .await
 }
 
-/// Resolve the operational `SurrealDB` archive lane. Production names its
-/// firm-retention bucket with `NAVIGATOR_SURREAL_ARCHIVES_BUCKET`; local KIND
-/// falls back to the ordinary exports bucket so the restore drill is runnable
-/// without a cloud credential.
+/// Resolve the operational `SurrealDB` archive lane. Every deployment names
+/// its firm-retention bucket with `NAVIGATOR_SURREAL_ARCHIVES_BUCKET`; local
+/// KIND explicitly points this setting at its shared Garage exports bucket.
 pub async fn surreal_archives_from_env() -> Result<Arc<dyn StorageService>, StorageError> {
     backend_from_env(
         GcsStorageConfig::surreal_archives_from_env,
@@ -552,6 +551,7 @@ mod backend_tests {
         "NAVIGATOR_STORAGE_SECRET_KEY",
         "NAVIGATOR_STORAGE_BUCKET",
         "NAVIGATOR_DOCUMENTS_BUCKET",
+        "NAVIGATOR_SURREAL_ARCHIVES_BUCKET",
         "NAVIGATOR_ASSETS_BUCKET",
         "NAVIGATOR_APPLICATIONS_BUCKET",
         "NAVIGATOR_LFS_BUCKET",
@@ -575,6 +575,7 @@ mod backend_tests {
         std::env::set_var("NAVIGATOR_STORAGE_SECRET_KEY", "secret");
         std::env::set_var("NAVIGATOR_STORAGE_BUCKET", "navigator-exports");
         std::env::set_var("NAVIGATOR_DOCUMENTS_BUCKET", "navigator-documents");
+        std::env::set_var("NAVIGATOR_SURREAL_ARCHIVES_BUCKET", "navigator-archives");
         std::env::set_var("NAVIGATOR_ASSETS_BUCKET", "navigator-assets");
         std::env::set_var("NAVIGATOR_APPLICATIONS_BUCKET", "navigator-applications");
         std::env::set_var("NAVIGATOR_LFS_BUCKET", "navigator-lfs");
@@ -587,6 +588,10 @@ mod backend_tests {
         assert_eq!(
             S3StorageConfig::exports_from_env().unwrap().bucket,
             "navigator-exports"
+        );
+        assert_eq!(
+            S3StorageConfig::surreal_archives_from_env().unwrap().bucket,
+            "navigator-archives"
         );
         assert_eq!(
             S3StorageConfig::assets_from_env().unwrap().bucket,

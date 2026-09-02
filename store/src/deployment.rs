@@ -62,6 +62,11 @@ pub static WEB_REQUIREMENTS: &[Requirement] = &[
     // deployment, so a deployment missing the coordinate is a real gap `ops ship`
     // must refuse rather than a lane it may decline.
     required!("NAVIGATOR_APPLICATIONS_BUCKET"),
+    // Operational SurrealDB exports have a separate confidentiality and
+    // retention boundary from client documents. A missing dedicated bucket
+    // must stop boot and `ops ship`; it must never degrade to a generic
+    // storage or documents bucket.
+    required!("NAVIGATOR_SURREAL_ARCHIVES_BUCKET"),
     required!("NAVIGATOR_CLAMD_ADDR"),
     required!(integration "NAVIGATOR_EMAIL_BACKEND"),
     required!(integration "SENDGRID_API_KEY"),

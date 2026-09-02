@@ -1876,6 +1876,13 @@ fn render_env_for(cfg: &KindConfig, db_name: &str, web_port: u16, root: &Path) -
             format!("http://localhost:{}", cfg.garage_s3_port),
         ),
         ("NAVIGATOR_STORAGE_BUCKET", "navigator-documents".into()),
+        // The local KIND topology shares the already-provisioned exports
+        // bucket for this lane, but names it explicitly so the archive
+        // resolver has no confidentiality-boundary fallback.
+        (
+            "NAVIGATOR_SURREAL_ARCHIVES_BUCKET",
+            "navigator-exports".into(),
+        ),
         ("NAVIGATOR_ASSETS_BUCKET", "navigator-assets".into()),
         (
             "NAVIGATOR_APPLICATIONS_BUCKET",

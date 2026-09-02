@@ -828,6 +828,7 @@ runtime environment and the KIND secrets; they are never suitable for a public d
 | Storage driver | `NAVIGATOR_STORAGE_BACKEND`, `NAVIGATOR_STORAGE_ENDPOINT` |
 | Storage buckets | `NAVIGATOR_STORAGE_BUCKET`, `NAVIGATOR_ASSETS_BUCKET`, `NAVIGATOR_LFS_BUCKET` |
 | Applications bucket | `NAVIGATOR_APPLICATIONS_BUCKET` |
+| SurrealDB operational archive bucket | `NAVIGATOR_SURREAL_ARCHIVES_BUCKET` |
 | Archive buckets | `NAVIGATOR_ICEBERG_BUCKET`, `NAVIGATOR_TELEMETRY_BUCKET` |
 | Storage region | `NAVIGATOR_STORAGE_REGION` |
 | Documents credentials | `NAVIGATOR_STORAGE_ACCESS_KEY`, `NAVIGATOR_STORAGE_SECRET_KEY` |

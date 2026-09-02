@@ -48,9 +48,8 @@ impl GcsStorageConfig {
         Self::exports_from_lookup(|k| std::env::var(k).ok())
     }
 
-    /// Operational-Surreal-archive variant. Cloud deployments name the
-    /// firm-controlled retention bucket explicitly; local development falls
-    /// back to its ordinary exports bucket.
+    /// Operational-Surreal-archive variant. Every deployment names the
+    /// firm-controlled retention bucket explicitly.
     pub fn surreal_archives_from_env() -> Result<Self, StorageError> {
         Self::surreal_archives_from_lookup(|k| std::env::var(k).ok())
     }
@@ -101,9 +100,8 @@ impl GcsStorageConfig {
     ) -> Result<Self, StorageError> {
         let bucket = get("NAVIGATOR_SURREAL_ARCHIVES_BUCKET")
             .filter(|value| !value.is_empty())
-            .or_else(|| get("NAVIGATOR_STORAGE_BUCKET").filter(|value| !value.is_empty()))
             .ok_or(StorageError::MissingEnv(
-                "NAVIGATOR_SURREAL_ARCHIVES_BUCKET or NAVIGATOR_STORAGE_BUCKET",
+                "NAVIGATOR_SURREAL_ARCHIVES_BUCKET",
             ))?;
         Ok(Self {
             bucket,
@@ -723,6 +721,23 @@ mod tests {
         })
         .unwrap();
         assert_eq!(cfg.bucket, "neon-law-archives");
+    }
+
+    #[test]
+    fn surreal_archive_lane_requires_its_dedicated_bucket() {
+        use std::collections::HashMap;
+        let map: HashMap<&str, &str> = HashMap::from([
+            ("NAVIGATOR_DOCUMENTS_BUCKET", "proj-documents"),
+            ("NAVIGATOR_STORAGE_BUCKET", "worktree-exports"),
+        ]);
+        let error = GcsStorageConfig::surreal_archives_from_lookup(|key| {
+            map.get(key).map(|value| (*value).to_string())
+        })
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            StorageError::MissingEnv("NAVIGATOR_SURREAL_ARCHIVES_BUCKET")
+        ));
     }
 
     /// A minimal but fully decodable `storage#object` resource — every

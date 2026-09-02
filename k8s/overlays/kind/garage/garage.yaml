@@ -11,6 +11,7 @@ data:
   s3_endpoint: http://navigator-garage.navigator.svc.cluster.local:3900
   documents_bucket: navigator-documents
   exports_bucket: navigator-exports
+  surreal_archives_bucket: navigator-exports
   assets_bucket: navigator-assets
   applications_bucket: navigator-applications
   lfs_bucket: navigator-lfs

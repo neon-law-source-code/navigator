@@ -2900,9 +2900,9 @@ fn fix_directory(
     })
 }
 
-/// Render a single rule violation: path/line in dim cyan-700, rule
-/// code in cyan-500, message in default. Shared by validate and
-/// site seed so both subcommands have the same look.
+/// Render a single rule violation with its severity: path/line in dim
+/// cyan-700, rule code in cyan-500, message in default. Shared by validate
+/// and site seed so both subcommands have the same look.
 /// Split a violation list into `(error_count, warning_count)` by each
 /// code's [`rules::Severity`]. Used for the `validate` summary line so
 /// blocking errors and "not built yet" advisories are tallied apart.
@@ -2915,8 +2915,13 @@ fn severity_counts(violations: &[rules::Violation]) -> (usize, usize) {
 }
 
 fn print_violation(path: &str, line: usize, code: &str, message: &str) {
+    let severity = match rules::severity_for_code(code) {
+        rules::Severity::Error => "error:",
+        rules::Severity::Warning => "warning:",
+    };
     println!(
-        "{} {}: {}",
+        "{} {} {}: {}",
+        severity,
         palette::dim(format!("{path}:{line}")),
         palette::highlight(code),
         message,

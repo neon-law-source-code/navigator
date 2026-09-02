@@ -59,6 +59,31 @@ fn validate_exits_nonzero_on_violations_and_prints_each_one() {
 }
 
 #[test]
+fn validate_marks_each_diagnostic_with_its_severity() {
+    let dir = TempDir::new().unwrap();
+    let warning_source = workspace_root().join("templates/neon_law/shared/onboarding_letter.md");
+    let warning_path = dir
+        .path()
+        .join("templates/neon_law/shared/onboarding_letter.md");
+    fs::create_dir_all(warning_path.parent().unwrap()).unwrap();
+    fs::copy(warning_source, warning_path).unwrap();
+    write(
+        dir.path(),
+        "Bad.md",
+        &format!("Intro.\n\n{}\n", "x".repeat(121)),
+    );
+
+    navigator()
+        .arg("validate")
+        .arg(dir.path())
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(str::is_match(r"(?m)^error: .*S101:").unwrap())
+        .stdout(str::is_match(r"(?m)^warning: .*N112:").unwrap());
+}
+
+#[test]
 fn validate_default_rule_set_flags_missing_frontmatter() {
     let dir = TempDir::new().unwrap();
     // A file self-identifies as a notation template by declaring

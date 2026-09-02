@@ -58,6 +58,7 @@ NAV_BASE_URL = "https://home.example.com"
 NAVIGATOR_ASSET_BASE_URL = "https://home.example.com/assets"
 NAVIGATOR_WORKFLOWS_HOST = "workflows.home.example.com"
 NAVIGATOR_WORKFLOWS_URL = "https://workflows.home.example.com/"
+SLACK_GENERAL_CHANNEL_ID = "C012GENERAL"
 
 # --- Sign-in ---------------------------------------------------------------
 GOOGLE_OAUTH_REQUIRED_HD = "example.com"

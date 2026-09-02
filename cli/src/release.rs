@@ -114,6 +114,54 @@ pub fn is_release_version(text: &str) -> bool {
     parse(text).is_ok()
 }
 
+/// The one prerelease label the Homebrew tap follows.
+///
+/// The tap's formula holds exactly one version, and its `bump` and `test`
+/// workflows both refuse anything outside `YY.M.D` and `YY.M.D-hotfix.N`. So a
+/// release candidate is not a tag the tap declines to prefer — it is a tag the
+/// tap will not accept at all.
+pub const TAP_PRERELEASE_LABEL: &str = "hotfix";
+
+/// True when the Homebrew tap will follow `version`.
+///
+/// # This is derived, not a fourth transcription
+///
+/// The tap states its rule as a regex, and that regex already exists three
+/// times over there — in `bump.yml`, in `test.yml`, and in `scripts/bump.sh`.
+/// Writing it down a fourth time here is exactly how the three drifted from
+/// each other, and it is the mistake this module's header records the workspace
+/// having already made once with the release grammar itself.
+///
+/// So nothing here restates the shape. `YY.M.D` — three dot-separated numeric
+/// components, no leading zeros, no fourth component, no build metadata — is
+/// [`parse`]'s job and stays [`parse`]'s job; a caller reaches this function
+/// only with a `Version` that already parsed. What is left is a single
+/// structural question about the prerelease that [`parse`] already split off:
+/// is it absent, or is its first identifier the hotfix label? That is the whole
+/// difference between `26.8.26-hotfix.1`, which the tap published, and
+/// `26.8.30-rc.1`, which it refused 27 seconds after being told about it.
+///
+/// # Why the discriminator is not `prerelease`
+///
+/// Both shapes are semver prereleases, so [`Version::pre`] being non-empty
+/// separates nothing: `-hotfix.N` and `-rc.N` are alike to it, and GitHub flags
+/// both as Pre-release. Gating the tap on that flag would strand the formula on
+/// the last ordinary release for as long as a run of hotfixes lasted, which is
+/// the 404 `cli/tests/homebrew_tap_dispatch.rs` was written to make impossible.
+/// The label is the discriminator; the flag is not.
+#[must_use]
+pub fn tap_follows(version: &Version) -> bool {
+    let pre = version.pre.as_str();
+    // An ordinary `YY.M.D` release carries no prerelease at all.
+    if pre.is_empty() {
+        return true;
+    }
+    // `hotfix.4` splits to `hotfix`; a bare `hotfix` is its own first
+    // identifier. Anything else — `rc.1`, `alpha`, `beta.2` — is a shape the
+    // tap's guard refuses, so dispatching it only buys a failed bump.
+    pre.split('.').next() == Some(TAP_PRERELEASE_LABEL)
+}
+
 /// Read `[workspace.package].version` out of a workspace manifest.
 ///
 /// The table is addressed rather than searched. `[workspace.dependencies]` holds
@@ -314,6 +362,82 @@ mod tests {
             std::cmp::Ordering::Less,
             "the crate orders by build metadata, which the specification says to ignore"
         );
+    }
+
+    /// The tap follows an ordinary release and a hotfix, and nothing else.
+    ///
+    /// `26.8.30-rc.1` is the measured case: published 2026-08-29, dispatched to
+    /// the tap by a deploy that held no shape filter, refused by the tap's own
+    /// guard 27 seconds later, and then waited on for 1h39m by a poll that
+    /// could not tell "failed" from "not yet".
+    #[test]
+    fn the_tap_follows_ordinary_releases_and_hotfixes_only() {
+        for followed in [
+            "26.8.22",
+            "26.8.5",
+            "2026.6.23",
+            "26.8.22-hotfix.1",
+            "26.8.22-hotfix.0",
+            "26.8.22-hotfix.214",
+            // A bare label is still the hotfix series, and it orders below any
+            // numbered member of it, so the tap can always walk forward off it.
+            "26.8.22-hotfix",
+        ] {
+            let version = parse(followed).expect("a release version");
+            assert!(
+                tap_follows(&version),
+                "the tap must be told about `{followed}`: the formula holds one version, and it has to be the newest build that exists"
+            );
+        }
+
+        for refused in [
+            "26.8.30-rc.1",
+            "26.8.30-rc",
+            "26.8.30-alpha.1",
+            "26.8.30-beta",
+            // The label must be the FIRST identifier: `rc.hotfix.1` sorts as an
+            // rc series and the tap's guard reads it as one.
+            "26.8.30-rc.hotfix.1",
+        ] {
+            let version = parse(refused).expect("a release version");
+            assert!(
+                !tap_follows(&version),
+                "`{refused}` is a shape the tap's guard refuses: dispatching it buys a failed bump and a release that fails over a tag nothing was going to follow"
+            );
+        }
+    }
+
+    /// A refused shape is still a full release everywhere else.
+    ///
+    /// The tap is the ONE surface narrowed here. The images, the CLI archives
+    /// and the GitHub Release all still publish, because the tap's limitation is
+    /// the tap's — a formula that holds exactly one version — and not a
+    /// statement about whether the tag shipped.
+    #[test]
+    fn a_shape_the_tap_refuses_is_still_a_release_version() {
+        assert!(is_release_version("26.8.30-rc.1"));
+        let version = parse("26.8.30-rc.1").expect("a release version");
+        assert!(!version.pre.is_empty(), "an rc is a semver prerelease");
+        assert!(!tap_follows(&version));
+    }
+
+    /// The discriminator cannot be the prerelease flag, and this is why.
+    ///
+    /// `-hotfix.N` and `-rc.N` are both prereleases and GitHub flags both as
+    /// Pre-release, so that flag separates the two shapes not at all. This test
+    /// exists to fail if anyone reaches for it again.
+    #[test]
+    fn the_prerelease_flag_does_not_separate_a_hotfix_from_a_release_candidate() {
+        let hotfix = parse("26.8.26-hotfix.1").expect("a release version");
+        let candidate = parse("26.8.30-rc.1").expect("a release version");
+
+        assert_eq!(
+            hotfix.pre.is_empty(),
+            candidate.pre.is_empty(),
+            "both are prereleases, so `prerelease` cannot be the tap's gate"
+        );
+        assert!(tap_follows(&hotfix));
+        assert!(!tap_follows(&candidate));
     }
 
     /// The tomorrow-base rule, as a consequence rather than a rule. Nothing

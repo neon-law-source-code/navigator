@@ -242,9 +242,18 @@ jobs:
       # Whether this version is a semver prerelease. It gates the one place a
       # prerelease must NOT behave like an ordinary release: the GitHub Release
       # is marked as a prerelease, so GitHub stops reporting it as "Latest
-      # release". The Homebrew tap IS told about a prerelease — see
-      # `release-homebrew-tap` for why that is safe.
+      # release".
       prerelease: ${{ steps.version.outputs.prerelease }}
+      # Whether the Homebrew tap can carry this version at all.
+      #
+      # NOT the same question as `prerelease`, and that is the point. The tap
+      # publishes `YY.M.D` and `YY.M.D-hotfix.N`; both a hotfix and a release
+      # candidate are semver prereleases and GitHub flags both as Pre-release,
+      # so that flag separates them not at all. `ops release check` answers this
+      # from the version it has already parsed — see `cli/src/release.rs`, which
+      # holds the rule so this file does not transcribe the tap's regex a fourth
+      # time. Only `release-homebrew-tap` reads it.
+      tap_follows: ${{ steps.version.outputs.tap_follows }}
     steps:
       # THE TAGS ARE THE ANCHOR, so the checkout has to carry them. `fetch-depth:
       # 0` fetches the full history and every tag; `release-check` also fetches
@@ -373,6 +382,7 @@ jobs:
                   echo "tag=${REF_NAME}"
                   echo "publishable=false"
                   echo "prerelease=false"
+                  echo "tap_follows=false"
               } >> "$GITHUB_OUTPUT"
               echo "branch iteration ${REF_NAME}: integration only, nothing publishes"
               exit 0
@@ -2471,12 +2481,33 @@ jobs:
   # version to everyone who installed through it, which is the same shape as the
   # Project-CI 404 the archive jobs above exist to prevent.
   #
-  # So the job reads the formula back and waits for it to name this tag. It
-  # checks the OUTCOME rather than the tap's run conclusion for three reasons:
-  # the token below can already read a file it is trusted to write, so nothing
-  # widens to `actions: read`; there is no run id to discover and therefore no
-  # race with a concurrent manual re-run, which the tap serializes rather than
-  # cancels; and a bump that goes green without committing is still caught.
+  # So the job reads the formula back and waits for it to name this tag. THE
+  # FORMULA REMAINS THE PROOF — a bump that goes green without committing is
+  # caught by nothing else, and the outcome is what `brew` resolves.
+  #
+  # What the formula alone cannot say is WHY it has not moved: a bump that died
+  # thirty seconds ago and a bump still queued read identically as "not this tag
+  # yet", so a poll waiting on the second has to spend its whole budget on the
+  # first. It did: `26.8.30-rc.1` was refused by the tap 27 seconds after being
+  # dispatched, and this job then waited a further quarter of an hour to say so.
+  #
+  # The tap's own run conclusion is what separates those two, so the loop reads
+  # it and fails the moment the bump has failed. Three reasons this is safe now,
+  # each of which was a reason not to do it before:
+  #
+  #   - NO GRANT WIDENS. The tap is a PUBLIC repository — Homebrew clones it
+  #     anonymously on every `brew update` — so its run list is public data,
+  #     read with this run's own `GITHUB_TOKEN`. `HOMEBREW_TAP_TOKEN` stays
+  #     `contents: write` and nothing asks it for `actions: read`.
+  #   - NO RACE WITH A MANUAL RE-RUN. The read is narrowed to
+  #     `event=repository_dispatch` and to runs created since this job
+  #     dispatched, so the tap's `workflow_dispatch` repair path is invisible to
+  #     it. And the formula is checked FIRST on every pass, so a repair that has
+  #     already published this tag ends the loop before any conclusion is read.
+  #   - A READ THAT FAILS COSTS NOTHING. The conclusion only ever ends the wait
+  #     EARLY; it is never what proves success. If the run cannot be found or
+  #     the API declines, the loop is exactly the formula poll it was before,
+  #     bounded by the same deadline.
   #
   # A HOTFIX REACHES THE TAP TOO, and the reason is that the tap can always walk
   # forward off one. The formula holds exactly one version and every `brew
@@ -2504,17 +2535,31 @@ jobs:
   release-homebrew-tap:
     name: hand the release to the Homebrew tap
     needs: [release-windows-cli-publish, release-version]
-    # The Release must exist before the tap is told to read it: the bump
-    # downloads the attached archives to digest them, and a dispatch sent
-    # earlier would race an empty Release. `release-windows-cli-publish`
-    # already carries the `publishable` gate, so needing it is the whole
-    # condition — every publishable tag is dispatched, hotfix or not.
+    # TWO CONDITIONS, and they answer different questions.
+    #
+    # `publishable` is "did this commit cut a release?" The Release must also
+    # exist before the tap is told to read it — the bump downloads the attached
+    # archives to digest them, and a dispatch sent earlier would race an empty
+    # Release — which is what needing `release-windows-cli-publish` buys.
+    #
+    # `tap_follows` is "is this a release the tap can carry?", and it is the
+    # only gate in this file that narrows below `publishable`. Every publishable
+    # tag is still dispatched, HOTFIX INCLUDED — that has broken before and
+    # `cli/tests/homebrew_tap_dispatch.rs` refuses to let it break again. What
+    # is excluded is the shape the tap's own `bump` and `test` workflows refuse:
+    # a release candidate. Holding a release-candidate policy the tap did not is
+    # what dispatched `26.8.30-rc.1` into a bump that failed 27 seconds later
+    # and a release that failed over it an hour and a half after that.
+    #
+    # A skipped job is not a failed one, so an rc release stays green here and
+    # publishes everything else: images, archives, and a flagged Release.
     if: needs.release-version.outputs.publishable == 'true'
+      && needs.release-version.outputs.tap_follows == 'true'
     runs-on: ubuntu-latest
-    # Outlasts the confirmation poll below, which is the long pole. A job that
+    # Outlasts the confirmation wait below, which is the long pole. A job that
     # dies on its own clock reports a timeout rather than the stale formula that
     # caused it.
-    timeout-minutes: 25
+    timeout-minutes: 15
     # No `contents: write`. This job writes nothing in THIS repository; the
     # cross-repository grant is the `HOMEBREW_TAP_TOKEN` secret, scoped to
     # `contents: write` on the tap alone.
@@ -2533,6 +2578,7 @@ jobs:
           stage: "release-homebrew-tap"
           step: "dispatch the formula bump"
       - name: dispatch the formula bump
+        id: dispatch
         env:
           # A fine-grained token with `contents: write` on
           # `neon-law-source-code/homebrew-navigator` and nothing else. The
@@ -2548,6 +2594,16 @@ jobs:
               echo "::error::HOMEBREW_TAP_TOKEN is unset — the Homebrew tap cannot be told about ${TAG}, and every brew install would keep resolving the previous release"
               exit 1
           fi
+          # THE INSTANT THE TAP WAS TOLD, recorded before telling it. The
+          # confirmation below narrows the tap's run list to runs created since
+          # this moment, so an older run — a previous release's, or a re-run of
+          # one — can never be mistaken for this release's bump. A minute is
+          # subtracted because the two repositories' clocks are not the same
+          # clock and GitHub's `created` filter has one-second resolution.
+          # Erring early can only widen the window, and the `event` filter plus
+          # the formula check below already exclude everything that could admit.
+          echo "since=$(date -u -d '-1 minute' +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
           # `-f` sends a string field; the nested `client_payload[tag]` key is
           # how `gh api` composes the object the tap workflow reads as
           # `github.event.client_payload.tag`.
@@ -2566,17 +2622,34 @@ jobs:
           # The same tap-scoped token. Reading a file it can already write asks
           # for no grant it does not hold.
           GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          # The run's OWN token, for the tap's run list alone. The tap is public
+          # — Homebrew clones it anonymously on every `brew update` — so its
+          # runs are public data and reading them needs no cross-repository
+          # grant. Keeping this separate is the point: `HOMEBREW_TAP_TOKEN`
+          # stays `contents: write` on one repository and never acquires
+          # `actions: read`.
+          PUBLIC_TOKEN: ${{ github.token }}
           TAG: ${{ needs.release-version.outputs.tag }}
           TAP_REPO: neon-law-source-code/homebrew-navigator
-          # The bump runs in well under a minute; the rest of this budget
-          # absorbs a queued runner and the tap's `bump-formula` concurrency
-          # group. `POLL_BUDGET_MINUTES` in
+          SINCE: ${{ steps.dispatch.outputs.since }}
+          # A CEILING, NOT A PLAN. The bump answers in well under a minute, and
+          # a bump that FAILS is now reported the moment it fails rather than at
+          # this deadline — which is the whole of what changed here. What is
+          # left to absorb is a queued runner and the tap's `bump-formula`
+          # concurrency group, so the ceiling covers the case where no
+          # conclusion can be read at all. `BUMP_BUDGET_MINUTES` in
           # `cli/tests/homebrew_tap_dispatch.rs` holds the job timeout above it.
-          POLL_BUDGET_MINUTES: "15"
+          BUMP_BUDGET_MINUTES: "10"
         run: |
           set -euo pipefail
-          deadline=$((SECONDS + POLL_BUDGET_MINUTES * 60))
+          deadline=$((SECONDS + BUMP_BUDGET_MINUTES * 60))
           while :; do
+              # THE FORMULA IS ASKED FIRST, every pass. It is the only thing
+              # that proves the bump COMMITTED — a green run that wrote nothing
+              # is still a stale tap — and asking it before the conclusion is
+              # what makes a manual repair run end this loop cleanly instead of
+              # racing the failed dispatch run it was cutting short.
+              #
               # A read failure is indistinguishable from a formula that has not
               # moved yet, and both are answered by waiting, so a transient API
               # error must not end the poll early.
@@ -2591,11 +2664,34 @@ jobs:
                   echo "the tap's formula publishes ${TAG}"
                   exit 0
               fi
-              if [ "${SECONDS}" -ge "${deadline}" ]; then
-                  echo "::error::the tap never published ${TAG} — its formula still reports '${published:-nothing}' after ${POLL_BUDGET_MINUTES} minutes. The dispatch above was accepted, so the bump itself is what failed: https://github.com/${TAP_REPO}/actions/workflows/bump.yml"
+
+              # THE FORMULA HAS NOT MOVED. Ask the tap's own run whether it is
+              # still coming or already dead. `created=>=` and
+              # `event=repository_dispatch` narrow the list to bumps this job
+              # caused; the tap's `workflow_dispatch` repair path is deliberately
+              # not matched, because a human re-running a bump by hand is
+              # answered by the formula check above, not by this one.
+              #
+              # Every failure here is swallowed: an unreadable run list means
+              # this loop is the formula poll it has always been, bounded by the
+              # same deadline. The conclusion may only ever END THE WAIT EARLY.
+              conclusion="$(GH_TOKEN="${PUBLIC_TOKEN}" gh api \
+                  "/repos/${TAP_REPO}/actions/workflows/bump.yml/runs?event=repository_dispatch&created=%3E%3D${SINCE}&per_page=1" \
+                  --jq '.workflow_runs[0] | select(.status == "completed") | .conclusion' 2>/dev/null || true)"
+              if [ -n "${conclusion}" ] && [ "${conclusion}" != "success" ]; then
+                  echo "::error::the tap refused ${TAG} — its bump completed '${conclusion}' and the formula still reports '${published:-nothing}'. The dispatch was accepted, so the bump itself is what failed: https://github.com/${TAP_REPO}/actions/workflows/bump.yml"
                   exit 1
               fi
-              sleep 20
+              # A run that completed `success` without moving the formula is the
+              # silent case this job exists for. It is NOT reported here — the
+              # bump commits and pushes after its own checks, so the formula can
+              # trail a successful conclusion by seconds. The deadline below is
+              # what reports it, and it reports it as what it is.
+              if [ "${SECONDS}" -ge "${deadline}" ]; then
+                  echo "::error::the tap never published ${TAG} — its formula still reports '${published:-nothing}' after ${BUMP_BUDGET_MINUTES} minutes${conclusion:+, and its bump completed '${conclusion}' without moving it}. The dispatch above was accepted, so the bump itself is what failed: https://github.com/${TAP_REPO}/actions/workflows/bump.yml"
+                  exit 1
+              fi
+              sleep 10
           done
 
   # ---------- Stage 4: post the release report to Slack ----------

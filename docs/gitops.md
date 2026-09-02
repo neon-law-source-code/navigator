@@ -534,16 +534,25 @@ cargo run -p cli -- ops release version --tag 26.8.23-hotfix.1
 **A prerelease does not become the default download.** Exactly one thing behaves differently from an ordinary release,
 because a prerelease must not present itself as the latest version to someone browsing the releases page:
 
-| Surface | Ordinary release | prerelease |
-| --- | --- | --- |
-| GHCR images and CLI archives | published | published |
-| GitHub Release | latest | flagged `--prerelease` |
-| Homebrew tap | bumped | bumped |
+| Surface | Ordinary release | `-hotfix.N` | other prerelease |
+| --- | --- | --- | --- |
+| GHCR images and CLI archives | published | published | published |
+| GitHub Release | latest | flagged `--prerelease` | flagged `--prerelease` |
+| Homebrew tap | bumped | bumped | not dispatched |
 
 Which versions count as prereleases is no longer a spelling rule the workflow knows: `release check` reports it from
 `Version::pre`, so `-hotfix.3` and `-rc.1` are both flagged.
 
-**The tap follows every publishable version, prerelease included.** It holds exactly one version and every `brew
+**The tap is the one surface that reads the prerelease LABEL rather than the flag**, and it is the only gate in
+`deploy.yml` that narrows below `publishable`. The tap's own `bump` and `test` workflows accept `YY.M.D` and
+`YY.M.D-hotfix.N` and refuse everything else, so a release candidate is not a tag the tap deprioritises — it is one the
+tap will not take at all. A deploy that dispatched it anyway held a release-candidate policy neither component acting on
+that dispatch shared: `26.8.30-rc.1` published on 2026-08-29, the bump failed 27 seconds later on the tap's guard, and
+the deploy then spent an hour and a half waiting on a formula nothing was going to move. `release check` answers this as
+`tap_follows`, from the version it has already parsed, so no shape pattern is transcribed into the workflow — see
+`cli/src/release.rs`, which holds the release grammar precisely because four hand-written copies of it once disagreed.
+
+**A hotfix still reaches the tap, and that is load-bearing.** The formula holds exactly one version and every `brew
 install` resolves to it, so the version it holds has to be the newest build that exists — not the newest build of a
 particular shape. Excluding prereleases meant the formula could only move when an ordinary release succeeded end to end,
 and a run of ordinary releases failing at the KIND gate left `brew install` serving a 404 for days with every check
@@ -648,11 +657,29 @@ either a bot commit to a protected `main` or a PR nobody reads, and would put a 
 `brew update`.
 
 The dispatch authenticates with `HOMEBREW_TAP_TOKEN`, a fine-grained token scoped to `contents: write` on the tap and
-nothing else — the run's own `GITHUB_TOKEN` cannot reach another repository, and widening it to one that could would
+nothing else — the run's own `GITHUB_TOKEN` cannot write to another repository, and widening it to one that could would
 hand that reach to every job in the workflow. **A missing or rejected token fails the release**, deliberately: a tap
 that silently stops updating serves a stale version to everyone who installed through it while nothing anywhere goes
 red, which is the Project-CI 404 one channel over. `cli/tests/homebrew_tap_dispatch.rs` holds the contract, because the
 two repositories never reference each other.
+
+**The release then waits for the formula, and asks the tap's own run why it has not moved.** An accepted dispatch is not
+a completed bump: `POST /dispatches` answers 204 the moment GitHub queues the event and carries no run id, and three
+consecutive releases were told, all three bumps died, and all three stayed green here. So the job reads the formula back
+and fails unless it names this tag — **the formula is the proof, because a bump that goes green without committing is
+still a stale tap.**
+
+What the formula alone cannot say is *why* it has not moved. A bump that died thirty seconds ago and a bump still queued
+read identically as "not this tag yet", so a wait that can only see the formula spends its whole budget on a bump that
+already failed — which is how a 27-second answer cost 99 minutes. The job therefore also reads the tap's `bump` runs,
+narrowed to `event=repository_dispatch` and to runs created since this release dispatched, and **fails the moment that
+run's conclusion is anything but success.** The conclusion may only ever end the wait early: it never stands in for the
+formula, and a read that fails leaves the loop exactly the formula poll it was, bounded by the same ceiling.
+
+Reading those runs widens nothing. **The tap is a public repository**, so its run list is public data and the run's own
+`GITHUB_TOKEN` reads it; `HOMEBREW_TAP_TOKEN` stays `contents: write` and never acquires `actions: read`. The tap's
+`workflow_dispatch` repair path is deliberately not matched, because a human re-running a bump by hand is answered by
+the formula check, which runs first on every pass.
 
 Two platforms have no prebuilt archive — Intel macOS and arm64 Linux — and the formula compiles the immutable source tag
 for them instead. The tap's own CI installs the formula on all four platforms, gating every push on the two prebuilt

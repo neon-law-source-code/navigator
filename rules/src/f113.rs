@@ -50,12 +50,10 @@ pub const REGISTERED_QUESTION_TYPES: &[&str] = &[
     "jurisdiction",
     "country",
     "entity_type",
-    "product",
     "project",
     // reference — aggregate
     "jurisdictions",
     "entity_types",
-    "products",
     // custom primitives
     "custom_text",
     "custom_phone",
@@ -101,11 +99,9 @@ pub const BANK_PROMPTS: &[(&str, &str)] = &[
     ("jurisdiction", "Which jurisdiction is {{for_label}}?"),
     ("country", "Which country is {{for_label}}?"),
     ("entity_type", "What entity type is {{for_label}}?"),
-    ("product", "Which product is {{for_label}}?"),
     ("project", "What is the project for {{for_label}}?"),
     ("jurisdictions", "Which jurisdictions are {{for_label}}?"),
     ("entity_types", "Which entity types are {{for_label}}?"),
-    ("products", "Which products are {{for_label}}?"),
     (
         "custom_text",
         "What text should be added for {{for_label}}?",

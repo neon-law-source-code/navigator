@@ -36,7 +36,6 @@ pub const AGGREGATE_QUESTION_TYPES: &[&str] = &[
     "issuances",
     "jurisdictions",
     "entity_types",
-    "products",
 ];
 
 pub struct F114ForParentOrdering;

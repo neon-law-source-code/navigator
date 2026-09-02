@@ -95,10 +95,6 @@ records:
     prompt: What entity type is {{for_label}}?
     question_type: entity_type
     help_text: Select the kind of legal entity (LLC, Trust, Corporation, …).
-  - code: product
-    prompt: Which product is {{for_label}}?
-    question_type: product
-    help_text: Select the seeded product this engagement covers.
   - code: project
     prompt: What is the project for {{for_label}}?
     question_type: project
@@ -112,10 +108,6 @@ records:
     prompt: Which entity types are {{for_label}}?
     question_type: entity_type
     help_text: List each kind of legal entity.
-  - code: products
-    prompt: Which products are {{for_label}}?
-    question_type: product
-    help_text: List each product this engagement covers.
   # --- Custom primitives (value lives in the answer JSON, no SQL grounding) ---
   - code: custom_text
     prompt: What text should be added for {{for_label}}?

@@ -32,15 +32,17 @@
 //! narrows it.
 //!
 //! The parameters are the point rather than a detail, and two of them carry the
-//! whole commercial position. `Additional Use Grant: None` is what makes every
-//! production use need a commercial licence — BUSL's base grant already covers
-//! non-production use, so the Additional Use Grant is the slot for permitting
-//! limited production use, and `None` is the absence of that extra permission
-//! rather than a restriction added to the licence. `Change Date` is what stops
-//! the arrangement being permanent: each published version converts to
-//! `AGPL-3.0-only` four years on, per version, whatever happens to later ones.
-//! A change that kept the SPDX tag but lost either parameter would keep the
-//! label and move the deal, so both are asserted by value below.
+//! whole commercial position. `Additional Use Grant` is the free zone: what a
+//! reader may run without buying anything. It was `None` — the absence of an
+//! extra permission rather than a restriction added to the licence — and `None`
+//! left BUSL's undefined term, "production use", carrying the entire boundary,
+//! which is read against the party that drafted it. It now grants operation for
+//! evaluation, development, testing, and demonstration, anywhere, for so long
+//! as nothing relies on the result. `Change Date` is what stops the arrangement
+//! being permanent: each published version converts to `AGPL-3.0-only` four
+//! years on, per version, whatever happens to later ones. A change that kept
+//! the SPDX tag but lost either parameter would keep the label and move the
+//! deal, so both are asserted by value below.
 //!
 //! This work was published under `AGPL-3.0-only` before this licence took
 //! effect, and every copy distributed then is still an `AGPL-3.0-only` copy,
@@ -323,6 +325,39 @@ fn editor_extension_manifest_declares_the_license_of_record() {
 /// on the Change Date, the requirement to buy a licence for non-complying use,
 /// the trademark carve-out, and the four Covenants of Licensor that bound what a
 /// licensor may put in the parameters at all.
+/// The Additional Use Grant, by value.
+///
+/// It replaced `Additional Use Grant: None` and it is the parameter most worth
+/// pinning, because it is the only one that says what a reader may *run*. It is
+/// also the one a well-meaning edit is likeliest to soften — a reworded
+/// "for so long as" clause, a dropped "any other person", and the free zone
+/// silently becomes production use nobody paid for.
+///
+/// **It is drafted as a grant rather than as a definition, and that is load
+/// bearing.** BUSL's second Covenant of Licensor permits an Additional Use
+/// Grant only where it "does not impose any additional restriction on the right
+/// granted in this License". A clause defining "production use" would narrow
+/// the base grant's non-production use and risk being exactly such a
+/// restriction, which would breach the covenant the Firm's permission to use
+/// BUSL at all is conditioned on. A clause that only adds permission cannot. So
+/// this text says what you *may* do and where the additional grant stops; what
+/// lies beyond it is left to BUSL's own undefined term, and the Firm's reading
+/// of that term lives in `NOTICE`, where it binds nobody.
+///
+/// The same paragraph opens the grant in `navigator-ux` and in the Homebrew
+/// tap, so a review that has cleared one repository has cleared all three.
+const ADDITIONAL_USE_GRANT: &str = "\
+Additional Use Grant: You may operate the Licensed Work on infrastructure You
+                      control or rent, including hosted and cloud
+                      infrastructure, to evaluate, develop against, test, or
+                      demonstrate it, for so long as it performs no work that
+                      You or any other person relies on. This additional grant
+                      reaches no further. It does not permit operating the
+                      Licensed Work where You or any other person relies on
+                      what it does, and it does not permit offering or
+                      marketing to customers a product or service that relies
+                      on the Licensed Work.";
+
 #[test]
 fn the_licence_file_is_the_grant_text_with_our_parameters() {
     assert!(
@@ -389,10 +424,12 @@ fn the_licence_file_is_the_grant_text_with_our_parameters() {
              the scope of the grant to argument",
         ),
         (
-            "Additional Use Grant: None".to_string(),
-            "`None` is what makes production use need a commercial licence. Any \
-             prose here grants production rights away, and BUSL's second \
-             covenant allows only a no-restriction grant or this literal word",
+            ADDITIONAL_USE_GRANT.to_string(),
+            "the Additional Use Grant is the free zone, pinned by value. It is \
+             what a reader may run without buying anything, and every word of \
+             it is load-bearing: drop `for so long as it performs no work that \
+             You or any other person relies on` and the grant becomes \
+             unlimited production use",
         ),
         (
             "Change Date:          Four years from the date the Licensed Work is published"

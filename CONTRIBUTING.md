@@ -14,8 +14,10 @@ address is read by people, and a report that never becomes a pull request is sti
 The licence is a separate question. Navigator is source-available under the Business Source License 1.1 — `BUSL-1.1` —
 over the whole tree, `templates/` included. You may read, build, fork, modify, redistribute, and make any non-production
 use of it with no permission to ask for. **Production use is the obligation to know before you deploy:** the Additional
-Use Grant is `None`, so running Navigator to deliver legal services to other people needs a commercial licence from the
-firm. Each version converts to `AGPL-3.0-only` four years after it is published, and § 13 attaches to that version in
+Use Grant lets you run Navigator anywhere — the cloud included — to evaluate, develop against, test, or demonstrate it,
+for so long as it performs no work anybody relies on. Running it where somebody relies on what it does, and marketing to
+customers a product or service that relies on it, needs a commercial licence from the firm. The test is reliance rather
+than where the software runs. Each version converts to `AGPL-3.0-only` four years after it is published, and § 13 attaches to that version in
 full when it does — it obliges an operator to offer those users, the people reaching its own instance, the corresponding
 source. See [`LICENSE`](LICENSE) for the grant, [`NOTICE`](NOTICE) for what the firm says about it, and
 [`docs/licensing.md`](docs/licensing.md).

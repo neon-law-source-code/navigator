@@ -144,8 +144,9 @@ This tree is licensed on the same terms as the rest of the repository, and delib
 
 **The notation bodies here are `BUSL-1.1`** — the legal prose, the questionnaire prompts, and the workflow definitions
 carried in the same files, exactly like the code that renders them. Adapt them, redistribute them, and make any
-non-production use of them; using them to deliver legal services to other people is production use and needs a
-commercial licence from the Firm. Each version converts to `AGPL-3.0-only` four years after it is published. The prose
+non-production use of them; using them where somebody relies on the result — delivering legal services to other
+people — is production use and needs a commercial licence from the Firm, as is marketing a product or service to
+customers that relies on them. Each version converts to `AGPL-3.0-only` four years after it is published. The prose
 and the state machine are the same file here, so a split licence would ask you to work out which half of a line you are
 editing; one grant means there is one answer. See [`../LICENSE`](../LICENSE) for the grant and [`../NOTICE`](../NOTICE)
 for what the copyright holder says about it.

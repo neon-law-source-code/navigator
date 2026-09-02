@@ -22,16 +22,27 @@ tells you almost nothing.
 | --- | --- | --- |
 | Licensor | **Shook Law PLLC** | Who sells a production licence, and who may set every other parameter |
 | Licensed Work | Neon Law Navigator | What is licensed |
-| Additional Use Grant | `None` | That production use needs a commercial licence |
+| Additional Use Grant | Evaluate, develop, test, demonstrate — anywhere, so long as nothing relies on it | What you may run without buying anything |
 | Change Date | Four years from each version's publication | When the restriction ends, per version |
 | Change License | `AGPL-3.0-only` | What each version becomes |
 
-**`None` is not a restriction.** This is the parameter most likely to be misread, in both directions. BUSL's base grant
-already permits copying, modification, redistribution, and *non-production use*; the Additional Use Grant is the slot a
-licensor uses to permit some **limited production** use on top of that. Writing `None` therefore adds nothing and takes
-nothing away — it declines to grant the extra permission, which is what leaves every production use needing a licence.
-BUSL's second covenant allows only two things in that slot: a grant that imposes no additional restriction, or the
-literal word `None`. Prose describing a restriction would breach it.
+**The Additional Use Grant pins the free zone.** BUSL's base grant already permits copying, modification,
+redistribution, and *non-production use*; the Additional Use Grant is the slot a licensor uses to permit some **limited
+production** use on top of that. This parameter was `None` until 2026 — not a restriction, just the absence of the extra
+permission — and `None` left BUSL's undefined term, "production use", carrying the entire commercial boundary. An
+undefined term in a licence is read against the party that drafted it, and that party is the Firm. So the slot now
+states affirmatively what you may run: Navigator, on infrastructure you control or rent, to evaluate, develop against,
+test, or demonstrate it, for so long as it performs no work anybody relies on.
+
+**It is written as a grant and not as a definition, deliberately.** BUSL's second covenant allows only two things in
+that slot: a grant that imposes no additional restriction on the base grant, or the literal word `None`. A clause
+*defining* "production use" broadly would narrow the base grant's non-production use and risk being exactly such a
+restriction — which would breach the covenant the Firm's permission to use BUSL is conditioned on. A clause that only
+adds permission cannot. So the free zone is operative text; what lies outside it remains BUSL's own undefined term, and
+the Firm's reading of that lives in [`NOTICE`](../NOTICE) and below, where it binds nobody.
+
+The same paragraph opens the grant in `navigator-ux` and in the Homebrew tap. A legal review that has cleared one of
+the three has cleared all three.
 
 **The Change Date runs per version.** Each published version carries its own four-year clock, so a version published
 today converts four years from today whatever happens to the ones after it. That is BUSL's own rule, not a choice: its
@@ -158,8 +169,9 @@ Every line of code and every line of drafted legal prose is licensed under the B
 ([`LICENSE`](../LICENSE)). Cargo and npm manifests declare `BUSL-1.1`.
 
 What the base grant gives you, before any parameter: copy the work, modify it, create derivative works from it,
-redistribute it, and make **non-production use** of it. What it does not give you is production use — that is what the
-Additional Use Grant would have granted, and ours is `None`.
+redistribute it, and make **non-production use** of it. What it does not give you is production use. The Additional Use
+Grant adds one thing on top: you may *operate* the work — anywhere, the cloud included — to evaluate, develop against,
+test, or demonstrate it, for so long as nothing relies on what it does.
 
 Three conditions ride along with it, and they are the ones a fork actually has to act on:
 
@@ -176,17 +188,23 @@ later too.
 
 ### Where the production line falls
 
-BUSL does not define "production use", which means the licensor has to. This is the Firm's reading and it is
-deliberately narrow, because an undefined boundary in a licence published beside a law practice is worth less than a
-stated one.
+BUSL does not define "production use". The licence answers the question from the other side instead: the Additional Use
+Grant states what you may run, and [that is operative text](#the-four-parameters) rather than commentary. Inside it you
+need nothing from us.
 
-**Production use** is running Navigator to deliver legal services to other people: operating a portal, a matter, or a
-filing pipeline that somebody relies on. If a person outside your organization is depending on the output, it is
-production.
+**Granted by `LICENSE` itself:** operating Navigator on infrastructure you control or rent — a laptop, a rented VM, CI,
+a cloud sandbox — to evaluate, develop against, test, or demonstrate it, for so long as it performs no work that you or
+anybody else relies on. Reading the source, building it, running the test suite, standing up the local KIND tier,
+benchmarking it, and teaching from it sit inside that comfortably, as do internal experiments and proofs of concept.
 
-**Not production use:** reading the source, building it, running the test suite, standing up the local KIND tier,
-evaluating it, developing against it, benchmarking it, teaching from it, and demonstrating it. Internal experiments and
-proofs of concept sit here too.
+**The Firm's reading of what lies outside**, offered as our own account rather than as a term: running Navigator where
+it performs work you or anybody else relies on — a portal, a matter, a filing pipeline — is production use, and so is
+marketing to customers a product or service that relies on it.
+
+**The test is reliance, not where the software runs.** That choice was deliberate. A test keyed to deployment topology —
+"any cloud deployment is production use" — fails in both directions: it reaches the cloud sandbox that owes nothing,
+which is most evaluation now, and it misses the competitor serving clients from their own hardware, which is the use
+worth reaching. Reliance inverts both.
 
 If your case does not obviously fall on one side, write to `contact@neonlaw.org` and ask before deploying rather than
 after. A question costs nothing; a production deployment discovered later is an awkward conversation for both parties.
@@ -212,7 +230,9 @@ Two things § 13 will still not do when it arrives:
 
 1. **Keep the notices, and display the licence.** BUSL conditions your rights on displaying this License conspicuously
    on every copy — which is `LICENSE` and `NOTICE`, travelling together.
-2. **Stay out of production, or buy a licence.** The Additional Use Grant is `None`, so there is no third option.
+2. **Stay out of production, or buy a licence.** The Additional Use Grant reaches evaluation, development, testing, and
+   demonstration and no further, so there is no third option. Moving the deployment off the cloud is not one either:
+   the test is reliance, not where it runs.
 3. **Pass the licence on.** Every copy and derivative you convey is subject to it, and the recipient holds the same
    terms you do.
 4. **Offer your source to the users you operate it for** — once the version you are running has converted, per § 13
@@ -275,8 +295,9 @@ question from either licence.
 **Production use needs a commercial licence, and only the copyright holder can grant one.** That holder is **Shook Law
 PLLC**.
 
-**What is on offer is the right to run Navigator in production.** The Additional Use Grant is `None`, so operating
-Navigator to deliver legal services to other people takes a licence from the Firm.
+**What is on offer is the right to run Navigator in production.** The Additional Use Grant reaches evaluation,
+development, testing, and demonstration only, so operating Navigator where somebody relies on what it does takes a
+licence from the Firm.
 
 **Non-production use needs no licence.** Reading the source, building it, running the tests, standing up the local tier,
 evaluating it, and developing against it are all granted by the licence itself.

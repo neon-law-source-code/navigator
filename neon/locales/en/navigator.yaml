@@ -182,15 +182,18 @@ bands:
       - - text: >-
             Navigator is source-available under the Business Source License 1.1,
             over the whole tree — the code, the tooling, and the drafted legal
-            prose. Read it, build it, run the tests, stand it up on your own
-            machine, fork it, change it, teach from it. There is no permission
-            to ask for and nobody to ask.
+            prose. Read it, build it, run the tests, fork it, change it, teach
+            from it. Stand it up to evaluate it, develop against it, or
+            demonstrate it — on your own machine, on a rented one, in CI, in the
+            cloud; where you run it is not the test. There is no permission to
+            ask for and nobody to ask.
       - - text: "The one thing we sell is "
         - text: running it for other people
           emphasis: true
         - text: >-
             — operating a portal, a matter, or a filing pipeline that somebody
-            relies on. That is production use, and the licence does not grant
+            relies on, or marketing a product or service to customers that
+            relies on it. That is production use, and the licence does not grant
             it, so a firm delivering legal services on Navigator takes a
             commercial licence from us first. Everything short of that is
             already yours.

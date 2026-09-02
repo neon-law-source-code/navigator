@@ -106,6 +106,10 @@ name = "portal_invoice_card"
 harness = false
 
 [[test]]
+name = "portal_signed_document"
+harness = false
+
+[[test]]
 name = "portal_admin_firm_surface"
 harness = false
 

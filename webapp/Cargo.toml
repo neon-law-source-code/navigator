@@ -35,7 +35,10 @@ percent-encoding = { workspace = true }
 # Server-only: the `#[server]` function bodies query the store through the
 # shared `store` crate. It is gated behind the `server` feature so the wasm
 # client build (the `web` feature, selected by `dx`) never pulls it.
-store = { workspace = true, optional = true }
+# `test-support` exposes the embedded-engine seeds this crate's own `#[cfg(test)]`
+# module uses to prove `notation_rows` reads signature evidence rather than
+# storage presence (ENG-421) — mirrors `portal`'s and `features`' dependency.
+store = { workspace = true, features = ["test-support"], optional = true }
 # Row and record identifiers cross the server/client boundary as `Uuid`, so
 # this one is NOT server-gated — the wasm build names the type too.
 uuid = { workspace = true }

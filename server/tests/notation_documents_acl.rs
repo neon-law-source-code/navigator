@@ -188,8 +188,26 @@ async fn notation_pdfs_are_gated_by_project_participation_and_listed_on_the_proj
         "admin bypasses project scoping",
     );
 
-    // (4) The client project page lists the notation under "Your
-    // agreements" with a working signed-copy link.
+    // (4) Once the provider confirms execution, the client project page
+    // lists the notation under "Your agreements" with a working signed-copy
+    // link.
+    let provider_id = format!("env-{notation_id}");
+    store::signatures::record_request(
+        &f.surreal,
+        notation_id,
+        store::signatures::SignatureProvider::DocuSign,
+        &provider_id,
+    )
+    .await
+    .unwrap();
+    assert!(store::signatures::stamp_signed(
+        &f.surreal,
+        store::signatures::SignatureProvider::DocuSign,
+        &provider_id,
+        "2026-09-02T00:00:00Z",
+    )
+    .await
+    .unwrap());
     let page = get(
         &f.app,
         &format!("/app/projects/{}", project.code),

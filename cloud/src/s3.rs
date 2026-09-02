@@ -68,9 +68,8 @@ impl S3StorageConfig {
         Self::from_lookup_with_bucket(get, "NAVIGATOR_SURREAL_ARCHIVES", |get| {
             get("NAVIGATOR_SURREAL_ARCHIVES_BUCKET")
                 .filter(|value| !value.is_empty())
-                .or_else(|| get("NAVIGATOR_STORAGE_BUCKET").filter(|value| !value.is_empty()))
                 .ok_or(StorageError::MissingEnv(
-                    "NAVIGATOR_SURREAL_ARCHIVES_BUCKET or NAVIGATOR_STORAGE_BUCKET",
+                    "NAVIGATOR_SURREAL_ARCHIVES_BUCKET",
                 ))
         })
     }
@@ -455,6 +454,25 @@ mod tests {
         .unwrap();
         assert_eq!(config.bucket, "neon-law-archives");
         assert_eq!(config.access_key, "archive-access");
+    }
+
+    #[test]
+    fn surreal_archive_lane_requires_its_dedicated_bucket() {
+        let values = HashMap::from([
+            ("NAVIGATOR_DOCUMENTS_BUCKET", "documents"),
+            ("NAVIGATOR_STORAGE_BUCKET", "exports"),
+            ("NAVIGATOR_STORAGE_ENDPOINT", "http://garage:3900"),
+            ("NAVIGATOR_STORAGE_ACCESS_KEY", "access"),
+            ("NAVIGATOR_STORAGE_SECRET_KEY", "secret"),
+        ]);
+        let error = S3StorageConfig::surreal_archives_from_lookup(|key| {
+            values.get(key).map(ToString::to_string)
+        })
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            StorageError::MissingEnv("NAVIGATOR_SURREAL_ARCHIVES_BUCKET")
+        ));
     }
 
     #[tokio::test]

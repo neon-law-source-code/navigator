@@ -5,7 +5,9 @@ analytical Parquet/Iceberg `archives` lane.
 
 ## Storage and retention
 
-Cloud deployments set `NAVIGATOR_SURREAL_ARCHIVES_BUCKET=neon-law-archives-staging`. Keys are point-in-time selectable:
+Each cloud deployment sets `NAVIGATOR_SURREAL_ARCHIVES_BUCKET` to its own private retention bucket. The staging
+deployment uses `neon-law-archives-staging`; the other deployment lanes use distinct operator-configured buckets and
+must not reuse this value. Keys are point-in-time selectable:
 
 ```text
 surreal-backups/<namespace>/<database>/<utc-timestamp>-<uuid>.surql
@@ -29,7 +31,8 @@ failure exits non-zero so Kubernetes records a failed Job. The GKE `SurrealArchi
 firm ops on a failed Job or a missing successful run for 26 hours; configure its critical notification channel in the
 deployment project.
 
-For local verification, source `.devx/env`; the archive lane falls back to the worktree's Garage exports bucket:
+For local verification, source the generated `.devx/env`; it explicitly points the archive lane at the worktree's shared
+Garage exports bucket:
 
 ```bash
 set -a; source .devx/env; set +a

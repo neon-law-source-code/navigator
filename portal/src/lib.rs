@@ -1071,7 +1071,7 @@ pub fn bootstrap(
     let cli_auth = cli_auth::routes(state.sessions.clone());
     let host_layer = axum::middleware::from_fn_with_state(
         state.canonical_host.clone(),
-        canonical_host::enforce_canonical_host,
+        canonical_host::resolve_brand_and_enforce_host,
     );
     // Browser-flow login routes only mount when OAUTH_* is configured;
     // otherwise the bearer-token path remains the only auth surface.
@@ -1748,9 +1748,9 @@ pub fn bootstrap(
     // last on the response):
     //
     //   request  → request-id → trace → security-headers → propagate-id
-    //            → trailing-slash → host → cookies → renew → handler
+    //            → trailing-slash → host → brand → cookies → renew → handler
     //   response ← request-id ← trace ← security-headers ← propagate-id
-    //            ← trailing-slash ← host ← cookies ← renew ← handler
+    //            ← trailing-slash ← host ← brand ← cookies ← renew ← handler
     //
     // We want the request-id assigned BEFORE the trace span opens
     // (so the span carries the id) and the security headers applied
@@ -1760,6 +1760,10 @@ pub fn bootstrap(
     // host/cookie/session-renew work, since a redirect needs none of
     // that — but it still wants the same request-id and security
     // headers every other response gets.
+    // `scope_branding` sits just inside `host_layer`: the host layer is what
+    // resolves the request's `views::brand::BrandKey` and stashes it as a
+    // request extension, so branding can only be scoped correctly once that
+    // has already run.
     // Session renewal sits *inside* the cookie manager so the cookie it
     // re-issues is serialized into the response's `Set-Cookie` header.
     Ok(router
@@ -1768,6 +1772,10 @@ pub fn bootstrap(
             session_renew::renew_session,
         ))
         .layer(tower_cookies::CookieManagerLayer::new())
+        .layer(axum::middleware::from_fn_with_state(
+            branding,
+            scope_branding,
+        ))
         .layer(host_layer)
         .layer(axum::middleware::from_fn(redirect_trailing_slash))
         .layer(PropagateRequestIdLayer::new(X_REQUEST_ID))
@@ -1796,11 +1804,7 @@ pub fn bootstrap(
             visitor_analytics_state,
             visitor_analytics::count_public_visit,
         ))
-        .layer(SetRequestIdLayer::new(X_REQUEST_ID, MakeRequestUuid))
-        .layer(axum::middleware::from_fn_with_state(
-            branding,
-            scope_branding,
-        )))
+        .layer(SetRequestIdLayer::new(X_REQUEST_ID, MakeRequestUuid)))
 }
 
 /// `true` when `path` is the Project client-portal subtree —
@@ -2167,11 +2171,25 @@ fn mount_brand_assets(
     router
 }
 
+/// Scope the request's resolved brand for the life of the request. `state`
+/// is this deployment's own default branding (built-in, or a mounted
+/// white-label manifest); `host_layer` (which runs just outside this layer)
+/// resolves which [`views::brand::BrandKey`] the request's `Host:` header
+/// names and stashes it as a request extension. A request that reaches this
+/// layer with no such extension — a router built without `host_layer`, as
+/// most direct view/unit tests are — scopes the default key's branding, which
+/// is `state` itself.
 async fn scope_branding(
-    State(branding): State<&'static views::brand::Branding>,
+    State(default_branding): State<&'static views::brand::Branding>,
     request: Request<axum::body::Body>,
     next: Next,
 ) -> Response {
+    let branding = request
+        .extensions()
+        .get::<views::brand::BrandKey>()
+        .copied()
+        .unwrap_or_default()
+        .resolve_branding(default_branding);
     views::brand::scope(branding, next.run(request)).await
 }
 

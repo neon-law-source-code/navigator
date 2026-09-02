@@ -125,11 +125,14 @@ pub const FIRM_ENTITY_NAME: &str = "Shook Law PLLC";
 /// identities are the founding case: they are real, they belong in production,
 /// and they belong in no other deployment's database.
 ///
-/// A brand binary declares its own value in [`hosting::Brand`], so adding a
-/// brand is a new variant plus its seed directory rather than a branch in
-/// this module.
+/// A brand binary declares its own value in [`hosting::Site`], so adding a
+/// binary is a new variant plus its seed directory rather than a branch in
+/// this module. Distinct from `views::brand::BrandKey`, which names a
+/// *request's* resolved house brand within one binary rather than the binary
+/// itself — a single `neon-server` boot applies one `BrandSeed` regardless of
+/// how many `BrandKey`s it serves.
 ///
-/// [`hosting::Brand`]: https://docs.rs/portal
+/// [`hosting::Site`]: https://docs.rs/portal
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BrandSeed {
     /// `neonlaw.com` — Neon Law: the firm, serving the whole site from its
@@ -146,7 +149,7 @@ pub enum BrandSeed {
 }
 
 impl BrandSeed {
-    /// The brand's short key, matching `hosting::Brand::key`.
+    /// The brand's short key, matching `hosting::Site::key`.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {

@@ -1,16 +1,26 @@
-//! Canonical-host enforcement middleware.
+//! Brand-host resolution and canonical-host enforcement middleware.
 //!
-//! When `CANONICAL_HOST` is set, every request whose `Host:` header
-//! is not the canonical value is permanently redirected to the same path on
-//! the canonical host, except `/health`: kubelet and load-balancer probes
-//! address a backend rather than its public hostname. When the env var is
-//! unset (the default), the middleware is a pass-through — useful for local
-//! development and integration tests.
+//! Every request's `Host:` header resolves to a [`views::brand::BrandKey`]
+//! through the compiled registry
+//! ([`views::brand::registered_brand_key`]). A host the registry names
+//! passes through carrying its own resolved brand, whatever `CANONICAL_HOST`
+//! says. The deployment's own configured host — `CANONICAL_HOST`, whatever
+//! literal value that deployment names — also passes through as the default
+//! brand even when it is not itself a registry entry, which is what keeps an
+//! arbitrary test host or a not-yet-registered deployment host working.
+//! Every other host is permanently redirected to the same path on the
+//! configured host, except `/health`: kubelet and load-balancer probes
+//! address a backend rather than its public hostname. When `CANONICAL_HOST`
+//! is unset (the default), enforcement is a pass-through and every host still
+//! resolves to its registered brand (or the default brand for an
+//! unregistered one) — useful for local development and integration tests.
 
 use axum::extract::{Request, State};
 use axum::http::{header, StatusCode, Uri};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Redirect, Response};
+
+use views::brand::{registered_brand_key, BrandKey};
 
 #[derive(Clone)]
 pub struct CanonicalHost(Option<String>);
@@ -49,11 +59,13 @@ impl CanonicalHost {
     }
 }
 
-/// Axum middleware. Redirects non-canonical hosts; passes everything
-/// else through unchanged.
-pub async fn enforce_canonical_host(
+/// Axum middleware. Resolves the request's brand from its `Host:` header and
+/// stashes it as a [`BrandKey`] request extension for `scope_branding` to
+/// read; redirects an unregistered, non-canonical host when enforcement is
+/// configured.
+pub async fn resolve_brand_and_enforce_host(
     State(cfg): State<CanonicalHost>,
-    req: Request,
+    mut req: Request,
     next: Next,
 ) -> Response {
     // Health probes reach a pod or backend IP and therefore cannot promise
@@ -62,17 +74,25 @@ pub async fn enforce_canonical_host(
     if req.uri().path() == "/health" {
         return next.run(req).await;
     }
-    let Some(canonical) = cfg.canonical() else {
-        return next.run(req).await;
-    };
     let actual_host = req
         .headers()
         .get(header::HOST)
         .and_then(|v| v.to_str().ok())
         .map(strip_port);
-    match actual_host {
-        Some(h) if h == canonical => next.run(req).await,
-        _ => {
+    let resolved = actual_host.and_then(|host| {
+        registered_brand_key(host)
+            .or_else(|| (cfg.canonical() == Some(host)).then_some(BrandKey::default()))
+    });
+    match (resolved, cfg.canonical()) {
+        (Some(key), _) => {
+            req.extensions_mut().insert(key);
+            next.run(req).await
+        }
+        (None, None) => {
+            req.extensions_mut().insert(BrandKey::default());
+            next.run(req).await
+        }
+        (None, Some(canonical)) => {
             let path_and_query = req
                 .uri()
                 .path_and_query()

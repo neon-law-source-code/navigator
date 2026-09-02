@@ -1,12 +1,17 @@
-Feature: Public routing across the one face the site serves
+Feature: Public routing on the firm's own host
 
-  The `neon` binary serves the whole site, and the firm holds the root. A
-  path with no firm page answers `404`, the same answer as a path that never
-  existed.
+  The `neon` binary composes the public routes for every house brand this
+  repository registers, resolved per request from the `Host:` header; the
+  firm holds the root on its own registered hosts. A path with no firm page
+  answers `404`, the same answer as a path that never existed.
 
-  The site publishes ONE header, so `og:site_name` is "Neon Law" throughout.
-  That name is what these scenarios assert: its absence marks a page mounted
-  under the wrong brand.
+  This harness drives every scenario against the firm's own host, so
+  `og:site_name` is "Neon Law" throughout — that name is what these scenarios
+  assert; its absence marks a page mounted under the wrong brand. The
+  exhaustive host-by-brand matrix (a second registered host answering its own
+  brand, an unregistered host redirecting) lives in `server/tests/routes.rs`,
+  which drives one composed router directly rather than building a whole app
+  per scenario.
 
   Background:
     Given the Neon Law Navigator public site is running

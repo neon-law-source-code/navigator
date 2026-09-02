@@ -3,7 +3,7 @@
 //! The two-binary host pair that #860 removed rotted into two 95%-identical
 //! stacks: each grew its own reach into the domain crates until neither could
 //! be changed without the other. The replacement (#974) is a crate per brand,
-//! each *composition only* — a `portal::hosting::Brand` value and a call to
+//! each *composition only* — a `portal::hosting::Site` value and a call to
 //! the shared run loop — so there is nothing in them to drift.
 //!
 //! Nothing but a test keeps them that way. A brand crate may name the
@@ -13,7 +13,7 @@
 //! the application is supposed to own — a public page that needs a domain read
 //! goes through what the application crate deliberately re-exports instead.
 //!
-//! A brand crate is no longer only a `Brand` value: each now owns its own
+//! A brand crate is no longer only a `Site` value: each now owns its own
 //! public face — copy, page compositions, path table — because that surface is
 //! the one thing a brand crate does not share. The rule that matters is
 //! therefore about the *domain*, not about line count.

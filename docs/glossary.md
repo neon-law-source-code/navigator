@@ -106,32 +106,44 @@ instead is the failure mode: it drifts from the record and cannot be re-verified
 
 ## Brand
 
-The public face a binary publishes. **The brand is the binary, not a flag**: each brand crate compiles one
-[`portal::hosting::Brand`](../portal/src/hosting.rs) naming its telemetry service and the public routes it composes, and
-mounts the identical Navigator application beneath it. There is no runtime switch, so a misconfigured deployment cannot
-serve one entity's pages under another entity's tag.
+A closed key naming which house brand a request resolves to — [`views::brand::BrandKey`](../views/src/brand.rs) (`neon`,
+`same-day`). **A brand is a registry entry, not a binary**: each key names its own served hosts and its own
+[`Branding`](../views/src/brand.rs), and the resolver that maps a request's `Host:` header onto a key
+([`views::brand::registered_brand_key`](../views/src/brand.rs)) runs inside the *same* `neon-server` binary for every
+key it serves. One repository, one running process, N house brands — adding one is a code change to the registry (a new
+key, its hosts, its `Branding`) with a covering test, which is the right cost for a legal identity, and there is no
+runtime flag that can move a page from one brand's hosts to another's.
 
-Two shapes ship:
+`portal::canonical_host::resolve_brand_and_enforce_host` resolves the key early in the middleware stack from the
+incoming `Host:` header and stashes it as a request extension; `scope_branding` reads that extension and scopes the
+resolved `Branding` for the rest of the request, the same [`views::brand::scope`](../views/src/brand.rs) task-local
+mechanism a mounted white-label bundle already used to scope its own `Branding`. An unregistered host redirects to the
+deployment's own configured host (`CANONICAL_HOST`); `/health` answers on every host, unredirected.
 
-- **`neon`** — [the whole site](../neon/src/lib.rs), served at `www.neonlaw.com`: the law firm, at the root and nowhere
-  else. It is also the only binary that mounts the [Presentation](#presentation) and workshop catalogs. Single-word
-  crate name, matching its siblings; the public domain and display brand live in the site configuration, not in the
-  crate name.
+Distinct from [`portal::hosting::Site`](../portal/src/hosting.rs) (formerly named `Brand`, renamed to end the collision
+once "brand" came to mean the per-request identity above): a `Site` is what one brand *crate*'s `main` hands the shared
+run loop — its telemetry service name and the public routes and Dioxus routers it composes. Two shapes ship:
+
+- **`neon`** — [the whole site](../neon/src/lib.rs), the `neon-server` image. It composes the public routes for every
+  house brand the registry names and mounts the identical Navigator application beneath them, and it is the only binary
+  that mounts the [Presentation](#presentation) and workshop catalogs.
 - **`tenant`** — [the white-label shape](../portal/src/tenant.rs), which publishes no public face at all and redirects
   its bare host into the portal. It lives inside `portal` rather than in a crate of its own because a tenant has no
-  brand to compose — that is the entire point.
+  public site to compose — that is the entire point.
 
-Distinct from [`views::brand::SiteBrand`](../views/src/brand.rs) (`FIRM_BRAND`), the presentation half: the strings, nav
-links, and footer attribution a page renders, overridable by a mounted `BrandManifest`. One names *the serving binary*
-and the other *what the page says*.
+Distinct again from [`views::brand::SiteBrand`](../views/src/brand.rs) (`FIRM_BRAND`), the presentation half: the
+strings, nav links, and footer attribution a page renders for whichever `Branding` is scoped to the request, overridable
+by a mounted `BrandManifest` for the `neon` key alone. `BrandKey` names *which identity a request resolved to*, `Site`
+names *the serving binary's own composition*, and `SiteBrand` names *what the page says*.
 
 - Deployment map: [`environments.md`](environments.md#why-the-brand-is-the-image)
 
 ## Brand Seed
 
-The seed layer a [Brand](#brand) owns, applied on every boot of that binary **including production**. It carries the
-data one brand holds and another must not: `neon` seeds the Firm's own entities and postal identities, and `tenant`
-seeds none of ours at all ([`store::seed::BrandSeed`](../store/src/seed.rs)).
+The seed layer a [`Site`](#brand) owns, applied on every boot of that binary **including production**. Keyed to the
+serving binary, not to a request's resolved [`BrandKey`](#brand): it carries the data one binary holds and another must
+not — `neon` seeds the Firm's own entities and postal identities regardless of which house brand a given request
+resolves to, and `tenant` seeds none of ours at all ([`store::seed::BrandSeed`](../store/src/seed.rs)).
 
 The canonical layer keeps the *shared registry* — the firm anchor and the identities every deployment resolves by name.
 An entity no deployment of ours does business as belongs nowhere in these layers at all, which is what keeps a `tenant`
@@ -146,7 +158,7 @@ reach production:
    their supporting rows. Applied only where the matters are sample, so the shared examples are ready whenever local
    development starts and never reach a deployment holding real files.
 
-A brand declares its `BrandSeed` in the `Brand` value it hands to the shared run loop, so the seed set is chosen by
+A brand crate declares its `BrandSeed` in the `Site` value it hands to the shared run loop, so the seed set is chosen by
 which binary is running rather than by configuration. The Firm's mailboxes sit alongside other entities' at one mail
 center, sharing a street, a suite, and a ZIP and differing only in the box number — which is why "seed them all
 everywhere" reads as correct in any test that merely counts rows, and why the layer exists.

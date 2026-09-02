@@ -7,9 +7,10 @@
 //! composition those tests share.
 //!
 //! The `server` binary it is named for is gone. `--site` selected a public face
-//! at runtime; one brand binary — `neon` — now serves
-//! exactly one, so the binary is the site and no flag can point a deployment at
-//! another entity's face (#974).
+//! at runtime; one brand binary — `neon` — composes the routes for every house
+//! brand this repository registers, resolved per request from its `Host:`
+//! header against the compiled registry (`views::brand::BrandKey`), so no flag
+//! can point a request at another entity's face (#974).
 //!
 //! The name is therefore a misnomer, and moving this suite into `portal` or
 //! renaming the package would be the honest follow-up. Neither is done here:

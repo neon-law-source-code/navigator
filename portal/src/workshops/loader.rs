@@ -192,20 +192,15 @@ pub(crate) fn material_from_markdown(
 /// Strip a leading YAML frontmatter block (`---` … `---`) and return the
 /// body that follows. Returns `raw` unchanged when it declares no
 /// frontmatter, so a page written without one still loads.
+///
+/// Delegates to `rules::frontmatter::split` so this loader accepts the same
+/// delimiters as every other reader of these files. The LF-only probe it
+/// replaces treated a CRLF checkout's workshop pages as having no
+/// frontmatter at all and failed open, leaving the frontmatter block to
+/// leak into the rendered slide as visible content instead of being
+/// stripped.
 fn strip_frontmatter(raw: &str) -> &str {
-    let Some(after_open) = raw.strip_prefix("---\n") else {
-        return raw;
-    };
-    let Some(close) = after_open.find("\n---") else {
-        return raw;
-    };
-    // `close` points at the newline before the closing `---`; advance past
-    // the whole closing-delimiter line to the first line of the body.
-    let after_delim = &after_open[close + 1..];
-    match after_delim.find('\n') {
-        Some(nl) => after_delim[nl + 1..].trim_start_matches('\n'),
-        None => "",
-    }
+    rules::frontmatter::split(raw).map_or(raw, |(_, body)| body.trim_start_matches(['\n', '\r']))
 }
 
 fn render_markdown(src: &str) -> String {
@@ -558,6 +553,20 @@ mod tests {
         assert_eq!(
             strip_frontmatter("# Body\n\nProse.\n"),
             "# Body\n\nProse.\n"
+        );
+    }
+
+    #[test]
+    fn strip_frontmatter_removes_a_leading_crlf_block() {
+        // A Windows checkout (`core.autocrlf=true`) materialises these files
+        // with `\r\n`. The LF-only probe this delegates to `rules::frontmatter`
+        // used to replace treated a CRLF block as absent and failed open,
+        // leaving the frontmatter to leak into the rendered slide as content.
+        assert_eq!(
+            strip_frontmatter(
+                "---\r\nkind: workshop\r\ntitle: T\r\n---\r\n\r\n# Body\r\n\r\nProse.\r\n"
+            ),
+            "# Body\r\n\r\nProse.\r\n"
         );
     }
 

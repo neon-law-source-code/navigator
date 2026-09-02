@@ -22,7 +22,7 @@ tells you almost nothing.
 | --- | --- | --- |
 | Licensor | **Shook Law PLLC** | Who sells a production licence, and who may set every other parameter |
 | Licensed Work | Neon Law Navigator | What is licensed |
-| Additional Use Grant | Evaluate, develop, test, demonstrate — anywhere, so long as nothing relies on it | What you may run without buying anything |
+| Additional Use Grant | Unrelied-on evaluation, development, testing, and demonstration | Free operation |
 | Change Date | Four years from each version's publication | When the restriction ends, per version |
 | Change License | `AGPL-3.0-only` | What each version becomes |
 
@@ -230,9 +230,9 @@ Two things § 13 will still not do when it arrives:
 
 1. **Keep the notices, and display the licence.** BUSL conditions your rights on displaying this License conspicuously
    on every copy — which is `LICENSE` and `NOTICE`, travelling together.
-2. **Stay out of production, or buy a licence.** The Additional Use Grant reaches evaluation, development, testing, and
-   demonstration and no further, so there is no third option. Moving the deployment off the cloud is not one either:
-   the test is reliance, not where it runs.
+2. **Stay out of production, or buy a licence.** The Additional Use Grant reaches evaluation, development, testing,
+   and demonstration and no further, so there is no third option. Moving off the cloud is not one either: the test is
+   reliance, not where it runs.
 3. **Pass the licence on.** Every copy and derivative you convey is subject to it, and the recipient holds the same
    terms you do.
 4. **Offer your source to the users you operate it for** — once the version you are running has converted, per § 13

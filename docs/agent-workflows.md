@@ -393,7 +393,7 @@ not permission to place sensitive material in a path it does not inspect.
 For a new matter type or workflow extension, prefer a template + questionnaire + workflow over a one-off router:
 
 1. Write the composition `.feature` first in `features/tests/features/`.
-2. Create or edit the template under `templates/forms/...` or `templates/neon_law/<product>/...`.
+2. Create or edit the template under `templates/forms/...` or `templates/neon_law/shared/...`.
 3. Add new questions to `store/seeds/Question.yaml`.
 4. Compose the workflow from documented step prefixes in [`notation-authoring.md`](notation-authoring.md).
 5. Add reusable `StepKind` and dispatch code only when the existing step registry cannot express the work.

@@ -73,7 +73,7 @@ Frontmatter fields:
 
 - `title` — the human document title (N101 requires it non-empty).
 - `respondent_type` — one of `person`, `entity`, `person_and_entity` (N102).
-- `jurisdiction` — a seeded jurisdiction code (`NV`, `CA`, `US`); required even for product templates.
+- `jurisdiction` — a seeded jurisdiction code (`NV`, `CA`, `US`); required even for firm templates.
 - `code` — the stable, unique identifier (`onboarding__letter`, `nv__llc_formation`); how every surface
   refers to it.
 - `confidential` — an explicit `true`/`false` decision, never defaulted (N105).
@@ -104,7 +104,7 @@ Every type is one of three kinds:
 - **Record** — the answer creates or links a `store::entity` row: `person`, `entity`, `address`, `role`, `filing`,
   `credential`, `disclosure`, `issuance`, `signature`, `notarization`.
 - **Reference** — the answer selects an existing seeded row: `jurisdiction`, `country` (the
-  `jurisdiction_type = 'country'` subset, rendered as a country picker), `entity_type`, `product`, `project`.
+  `jurisdiction_type = 'country'` subset, rendered as a country picker), `entity_type`, `project`.
 - **Custom** — a primitive value living in the answer JSON, no SQL grounding: `custom_text`, `custom_phone`,
   `custom_yes_no`, `custom_single_choice`, `custom_multiple_choice`, `custom_usd`, `custom_datetime`. A custom state
   reads `custom_<type>__<prompt_key>` and needs a matching `prompts:` entry (`N104`).
@@ -131,7 +131,7 @@ fails closed until it is either typed or adjudicated onto the allowlist. Roles t
 `custom_text__client_name`, `custom_text__client_email`, `custom_text__healthcare_agent`,
 `custom_text__country_of_birth`, `custom_text__daytime_phone`, `custom_text__product_description` — can never be
 allowlisted (a meta-test bars the tokens). Use `person__client`, `person__healthcare_agent`, `country__of_birth`,
-`custom_phone__daytime_phone`, and their dotted fields, or product/project render context such as the retainer's
+`custom_phone__daytime_phone`, and their dotted fields, or project render context such as the retainer's
 `{{custom_clauses}}` slot. The allowlist exists to keep *client* facts in typed states, so it applies to the legal
 shelves only — the `kind: github` engineering notations under `templates/github/` hold no client facts and are not held
 to `N117`.
@@ -159,7 +159,7 @@ Feature-first, so the composition is specified before the prose exists:
    steps, using only Person / Entity nouns from [`glossary.md`](glossary.md). The feature is the product-level spec; the
    template satisfies it by composing already-known steps.
 2. **Write the template + questionnaire.** Create the markdown file under `templates/forms/...` for a government form,
-   or `templates/neon_law/<product>/...` for a product template. Declare the `questionnaire:` walk and the `workflow:`
+   or `templates/neon_law/shared/...` for a firm template. Declare the `questionnaire:` walk and the `workflow:`
    states. Body prose uses `{{question_code}}` placeholders. If a questionnaire state uses a `custom_*__prompt_key`
    code, add a sibling `prompts:` map with that English prompt key and the exact prompt to ask.
 3. **Seed the questions.** Add each new question `code` to `store/seeds/Question.yaml` (prompt, `question_type`,
@@ -275,7 +275,7 @@ opens nothing and says so, so a KIND run or a test never reaches github.com. The
 journaled on the transition; a skipped open journals nothing rather than an issue that does not exist.
 
 The registry is deliberately small. Template authors should compose these prefixes with discriminators
-(`generate_pdf__articles_pdf`, `mailroom_send__notice_of_representation`) rather than creating per-product verbs. If a
+(`generate_pdf__articles_pdf`, `mailroom_send__notice_of_representation`) rather than creating per-matter verbs. If a
 workflow needs a genuinely new act, add a reusable `StepKind` first, document it here, cover the mechanics in Rust, and
 then compose it from a feature spec.
 

@@ -50,8 +50,8 @@ Nesting them under a real `metadata:` key would be a breaking parser change touc
 
 - Schema: [`template` in `navigator.surql`](../store/src/schema/navigator.surql) Queries:
   [`store::templates`](../store/src/templates.rs) Files: [`templates/`](../templates/) — three top-level shelves:
-  `forms/<country>/<jurisdiction>/<office>/<code>.md` for government forms, `neon_law/<product>/<document>.md` for Neon
-  Law product work, and `github/<notation>.md` for engineering intake. Only the first two are Templates in the sense
+  `forms/<country>/<jurisdiction>/<office>/<code>.md` for government forms, `neon_law/shared/<document>.md` for Neon
+  Law firm work, and `github/<notation>.md` for engineering intake. Only the first two are Templates in the sense
   this doc means: a `kind: github` file declares a questionnaire and a body but is not a legal instrument, is never
   imported as a `templates` row, and so never becomes a Notation. See [`notation-authoring.md`](notation-authoring.md).
 

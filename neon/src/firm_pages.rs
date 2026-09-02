@@ -740,3 +740,124 @@ mod formation_engagement_copy_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod notation_catalog_tests {
+    use std::{collections::BTreeSet, fs, path::Path};
+
+    use super::{notation_preview_docs, notations_index_content, NOTATIONS_BLOB_BASE};
+
+    fn collect_markdown_paths(root: &Path, base: &Path, paths: &mut BTreeSet<String>) {
+        for entry in fs::read_dir(root).expect("read legal template shelf") {
+            let path = entry.expect("read legal template directory entry").path();
+            if path.is_dir() {
+                collect_markdown_paths(&path, base, paths);
+            } else if path.extension().is_some_and(|extension| extension == "md") {
+                paths.insert(
+                    path.strip_prefix(base)
+                        .expect("legal template is beneath templates/")
+                        .to_string_lossy()
+                        .replace(std::path::MAIN_SEPARATOR, "/"),
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn public_notations_catalog_matches_legal_templates() {
+        let repository_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let templates_root = repository_root.join("templates");
+        let mut intended_paths = BTreeSet::new();
+        // These are the legal-template shelves. The GitHub shelf and prose such
+        // as templates/README.md are deliberately outside this catalog.
+        for shelf in ["forms", "neon_law"] {
+            collect_markdown_paths(
+                &templates_root.join(shelf),
+                &templates_root,
+                &mut intended_paths,
+            );
+        }
+
+        let catalog = notations_index_content();
+        let cards: Vec<String> = catalog
+            .materials
+            .iter()
+            .map(|material| {
+                material
+                    .href
+                    .strip_prefix("/notations/")
+                    .expect("catalog card links to a notation preview")
+                    .to_string()
+            })
+            .collect();
+        let card_slugs: BTreeSet<&str> = cards.iter().map(String::as_str).collect();
+        assert_eq!(
+            card_slugs.len(),
+            cards.len(),
+            "catalog contains a duplicate card"
+        );
+
+        let previews = notation_preview_docs();
+        let preview_slugs: Vec<&str> = previews
+            .iter()
+            .map(|preview| preview.slug.as_str())
+            .collect();
+        let unique_preview_slugs: BTreeSet<&str> = preview_slugs.iter().copied().collect();
+        assert_eq!(
+            unique_preview_slugs.len(),
+            preview_slugs.len(),
+            "preview catalog contains a duplicate slug"
+        );
+        assert_eq!(
+            card_slugs, unique_preview_slugs,
+            "every catalog card must have exactly one matching preview"
+        );
+
+        let preview_paths: Vec<String> = previews
+            .iter()
+            .map(|preview| {
+                preview
+                    .source_href
+                    .strip_prefix(NOTATIONS_BLOB_BASE)
+                    .expect("preview source points at the Navigator template repository")
+                    .to_string()
+            })
+            .collect();
+        let unique_preview_paths: BTreeSet<&str> =
+            preview_paths.iter().map(String::as_str).collect();
+        assert_eq!(
+            unique_preview_paths.len(),
+            preview_paths.len(),
+            "preview catalog contains a duplicate source path"
+        );
+        assert_eq!(
+            intended_paths,
+            preview_paths.iter().cloned().collect(),
+            "the public catalog must contain every legal template exactly once"
+        );
+
+        for preview in previews {
+            let source_path = preview
+                .source_href
+                .strip_prefix(NOTATIONS_BLOB_BASE)
+                .expect("preview source points at the Navigator template repository");
+            let source = fs::read_to_string(templates_root.join(source_path))
+                .expect("preview source path exists");
+            let document = views::harvard_outline::parse(&source);
+            assert_eq!(
+                preview.title, document.title,
+                "preview title must come from {source_path}"
+            );
+            assert_eq!(
+                preview.frontmatter,
+                document.frontmatter.clone().unwrap_or_default(),
+                "preview frontmatter must come from {source_path}"
+            );
+            assert_eq!(
+                preview.stage_html,
+                views::harvard_outline::stage_html(&document),
+                "preview body must come from {source_path}"
+            );
+        }
+    }
+}

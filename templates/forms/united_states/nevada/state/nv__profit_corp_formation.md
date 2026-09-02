@@ -54,9 +54,12 @@ workflow:
 ---
 
 This Nevada entity formation engagement (the "Engagement") incorporates `{{entity__company.name}}`, a Nevada profit
-corporation, for `{{person__client.name}}` (the "Incorporator"). It covers the Articles of Incorporation, the Initial
-List of Officers, and the State Business License application filed with the Nevada Secretary of State, together with
-the corporation's registered agent of record, `{{person__registered_agent.name}}`.
+corporation, for `{{person__client.name}}` (the "Incorporator"). The Engagement covers the Articles of Incorporation,
+the Initial List of Officers, and the State Business License application filed with the Nevada Secretary of State,
+together with the corporation's registered agent of record, `{{person__registered_agent.name}}`.
+
+Fees for this Engagement are set in the separate signed fee agreement between you and the Firm, which controls the fee;
+Nevada Secretary of State filing fees and the State Business License fee are passed through at cost.
 
 The corporation's board of directors:
 

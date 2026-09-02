@@ -709,6 +709,7 @@ async fn update_person_from_seed(
             family_name: None,
             middle_name: None,
             notion_user_id: None,
+            linkedin_url: None,
         },
         update_ctx,
     )

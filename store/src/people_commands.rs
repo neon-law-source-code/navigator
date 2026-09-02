@@ -82,6 +82,10 @@ pub struct UpdatePersonCommand {
     /// Omit to preserve the Notion identity; send null or blank to clear it.
     #[serde(default, deserialize_with = "double_option")]
     pub notion_user_id: Option<Option<String>>,
+    /// The public `LinkedIn` profile URL shown on `/team`. Omit to preserve
+    /// it; send null or blank to clear it.
+    #[serde(default, deserialize_with = "double_option")]
+    pub linkedin_url: Option<Option<String>>,
 }
 
 /// Deserialize a "double option" that keeps a present JSON `null`
@@ -338,6 +342,10 @@ pub async fn update_person(
                 .as_ref()
                 .map(|part| none_if_blank(part.as_deref())),
             profile_image_url: None,
+            linkedin_url: input
+                .linkedin_url
+                .as_ref()
+                .map(|part| none_if_blank(part.as_deref())),
         },
     )
     .await
@@ -513,6 +521,7 @@ mod tests {
                 family_name: None,
                 middle_name: None,
                 notion_user_id: Some(Some("notion-user-456".into())),
+                linkedin_url: None,
             },
             &UpdateContext {
                 bootstrap_owner_email: None,
@@ -588,6 +597,7 @@ mod tests {
             family_name: None,
             middle_name: None,
             notion_user_id: None,
+            linkedin_url: None,
         };
         let ctx = UpdateContext {
             bootstrap_owner_email: None,
@@ -615,6 +625,7 @@ mod tests {
             family_name: None,
             middle_name: None,
             notion_user_id: None,
+            linkedin_url: None,
         };
         let ctx = UpdateContext {
             bootstrap_owner_email: None,
@@ -640,6 +651,7 @@ mod tests {
             family_name: None,
             middle_name: None,
             notion_user_id: None,
+            linkedin_url: None,
         };
         let ctx = UpdateContext {
             bootstrap_owner_email: None,
@@ -669,6 +681,7 @@ mod tests {
             family_name: None,
             middle_name: None,
             notion_user_id: None,
+            linkedin_url: None,
         };
         let ctx = UpdateContext {
             bootstrap_owner_email: Some("boss@example.com"),
@@ -698,6 +711,7 @@ mod tests {
             family_name: None,
             middle_name: None,
             notion_user_id: None,
+            linkedin_url: None,
         };
         let admin_ctx = UpdateContext {
             bootstrap_owner_email: None,
@@ -717,6 +731,7 @@ mod tests {
             family_name: None,
             middle_name: None,
             notion_user_id: None,
+            linkedin_url: None,
         };
         assert!(matches!(
             update_person(&db, client.id, &promote_input, &admin_ctx).await,

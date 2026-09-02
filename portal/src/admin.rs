@@ -7,7 +7,7 @@
 use std::sync::Arc;
 use uuid::Uuid;
 
-use axum::extract::{DefaultBodyLimit, Extension, FromRef, Path, State};
+use axum::extract::{DefaultBodyLimit, Extension, FromRef, Multipart, Path, State};
 use axum::http::StatusCode;
 use axum::middleware;
 use axum::response::{IntoResponse, Redirect, Response};
@@ -191,6 +191,13 @@ pub fn routes(
         // native-form actions post here: update, welcome-email send, delete,
         // and impersonate. axum merges the Dioxus GET and these POSTs on each path.
         .route("/app/admin/people/{id}", post(admin_person_update))
+        .route(
+            "/app/admin/people/{id}/avatar",
+            // Axum's own default body limit (~2 MB) sits in front of this
+            // handler's own `MAX_AVATAR_BYTES` check, same reasoning as the
+            // project-documents upload route below.
+            post(admin_person_avatar_upload).layer(DefaultBodyLimit::max(MAX_AVATAR_BYTES)),
+        )
         .route("/app/admin/people/{id}/welcome", post(admin_person_welcome))
         .route("/app/admin/people/{id}/delete", post(admin_person_delete))
         .route(
@@ -768,6 +775,110 @@ async fn admin_person_update(
             encode_query_value(&e.user_message())
         ))
         .into_response(),
+    }
+}
+
+/// Content types the avatar upload accepts. A key extension is derived from
+/// whichever one matched, so the stored object has a sensible name — the
+/// bucket itself does not care, but a browser guessing the URL benefits.
+const ALLOWED_AVATAR_CONTENT_TYPES: [(&str, &str); 3] = [
+    ("image/png", "png"),
+    ("image/jpeg", "jpg"),
+    ("image/webp", "webp"),
+];
+
+/// Most bytes one avatar upload may carry. Generous for a profile photo,
+/// nowhere near the document-batch ceiling.
+const MAX_AVATAR_BYTES: usize = 5 * 1024 * 1024;
+
+/// `POST /app/admin/people/{id}/avatar` — the native multipart form behind the
+/// Dioxus admin show/edit page's avatar upload card. Validates the image,
+/// writes it to the public assets bucket (never the private documents
+/// lane, since the avatar must be viewable on the public `/team` page),
+/// and points `profile_image_url` at the app's own `/assets/{key}` route.
+async fn admin_person_avatar_upload(
+    State(s): State<AdminState>,
+    Path(id): Path<Uuid>,
+    cookies: tower_cookies::Cookies,
+    session: Option<Extension<SessionData>>,
+    mut multipart: Multipart,
+) -> Response {
+    if let Some(forbidden) = admin_gate(session.as_deref()) {
+        return forbidden;
+    }
+    // `admin_gate` above already refused a `None` session, so this is
+    // always `Some` here — but the value, not just the tier check, is
+    // what `require_multipart_csrf` needs.
+    let Some(Extension(session_data)) = session else {
+        return StatusCode::FORBIDDEN.into_response();
+    };
+
+    if let Err(status) =
+        crate::csrf::require_multipart_csrf(&cookies, &session_data, &mut multipart).await
+    {
+        return status.into_response();
+    }
+
+    let field = match multipart.next_field().await {
+        Ok(Some(field)) if field.name() == Some("file") => field,
+        Ok(_) | Err(_) => return StatusCode::BAD_REQUEST.into_response(),
+    };
+    let content_type = field.content_type().map(str::to_string);
+    let Some(ext) = content_type
+        .as_deref()
+        .and_then(|ct| {
+            ALLOWED_AVATAR_CONTENT_TYPES
+                .iter()
+                .find(|(allowed, _)| *allowed == ct)
+        })
+        .map(|(_, ext)| *ext)
+    else {
+        return StatusCode::BAD_REQUEST.into_response();
+    };
+    let Ok(bytes) = field.bytes().await else {
+        return StatusCode::BAD_REQUEST.into_response();
+    };
+    if bytes.is_empty() {
+        return StatusCode::BAD_REQUEST.into_response();
+    }
+    if bytes.len() > MAX_AVATAR_BYTES {
+        return StatusCode::PAYLOAD_TOO_LARGE.into_response();
+    }
+
+    let key = format!("avatars/{id}.{ext}");
+    if let Err(e) = s
+        .assets_storage
+        .put_cached(
+            &key,
+            &bytes,
+            content_type
+                .as_deref()
+                .unwrap_or("application/octet-stream"),
+            "public, max-age=3600",
+        )
+        .await
+    {
+        tracing::error!(error = %e, person_id = %id, "avatar upload: storage write failed");
+        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    }
+
+    let avatar_url = format!("/assets/{key}");
+    match store::persons::edit(
+        &s.surreal,
+        id,
+        &store::persons::PersonEdit {
+            profile_image_url: Some(Some(avatar_url)),
+            ..Default::default()
+        },
+    )
+    .await
+    {
+        Ok(Some(_)) => Redirect::to(&format!("/app/admin/people/{id}")).into_response(),
+        Ok(None) => StatusCode::NOT_FOUND.into_response(),
+        Err(e) => {
+            tracing::error!(error = %e, person_id = %id, "avatar upload: person edit failed");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
     }
 }
 

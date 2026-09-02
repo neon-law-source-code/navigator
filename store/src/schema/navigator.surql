@@ -226,6 +226,8 @@ DEFINE FIELD OVERWRITE title ON person TYPE option<string>;
 DEFINE FIELD OVERWRITE phone ON person TYPE option<string>;
 DEFINE FIELD OVERWRITE xero_contact_id ON person TYPE option<string>;
 DEFINE FIELD OVERWRITE profile_image_url ON person TYPE option<string>;
+DEFINE FIELD OVERWRITE linkedin_url ON person TYPE option<string>;
+DEFINE FIELD OVERWRITE email_confirmed ON person TYPE bool DEFAULT false;
 DEFINE FIELD OVERWRITE inserted_at ON person TYPE datetime DEFAULT time::now();
 DEFINE FIELD OVERWRITE updated_at ON person TYPE datetime DEFAULT time::now();
 DEFINE INDEX OVERWRITE person_email_lower ON person FIELDS email_lower UNIQUE;

@@ -2558,17 +2558,37 @@ async fn every_public_page_links_the_source_repository() {
     }
 }
 
-/// The `/team` surface is live: the index and one profile per attorney,
-/// `/team/nick` and `/team/jask`. A slug naming nobody on the roster still
-/// answers `404` rather than a stray redirect — a crawler or a bookmark
-/// holding a typo must not land on a page that claims to be someone.
+/// Seed a firm-side `Person` with a confirmed email, so they qualify for the
+/// live `/team` roster ([`store::persons::find_team_members`]) the way a
+/// real sign-in or email confirmation would mark them.
+async fn seed_confirmed_team_member(surreal: &store::surreal::SurrealDb, name: &str, email: &str) {
+    let person = store::persons::create(
+        surreal,
+        &store::persons::NewPerson::with_role(name, email, store::persons::Role::Lawyer),
+    )
+    .await
+    .expect("seed team member");
+    store::persons::set_email_confirmed(surreal, person.id, true)
+        .await
+        .expect("confirm team member email");
+}
+
+/// The `/team` surface is live: the index and one profile per confirmed,
+/// non-client `Person`, each at a slug derived from their name (`/team/nick`
+/// for a person named "Nick"). A slug naming nobody on the current roster
+/// still answers `404` rather than a stray redirect — a crawler or a
+/// bookmark holding a typo must not land on a page that claims to be
+/// someone.
 ///
 /// `/app/team` is a different surface and is deliberately NOT checked here. It
 /// is the authenticated matter-side roster inside the portal, and conflating
 /// the two is how a working page gets deleted next.
 #[tokio::test]
 async fn the_team_surface_publishes_the_index_and_each_attorneys_profile() {
-    let app = site_router(site_state().await);
+    let state = site_state().await;
+    seed_confirmed_team_member(&state.surreal, "Nick", "nick@neonlaw.com").await;
+    seed_confirmed_team_member(&state.surreal, "Jask", "jask@neonlaw.com").await;
+    let app = site_router(state);
     for path in ["/team", "/team/nick", "/team/jask"] {
         let resp = app
             .clone()

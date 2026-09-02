@@ -357,6 +357,7 @@ mod tests {
         let columns = fingerprint(&batch);
         let expected_columns = vec![
             "email".into(),
+            "email_confirmed".into(),
             "email_lower".into(),
             "id".into(),
             "inserted_at".into(),

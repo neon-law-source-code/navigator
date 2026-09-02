@@ -226,6 +226,15 @@ pub struct Person {
     /// Optional public profile image URL. Used only on consented public
     /// attribution surfaces such as testimonials.
     pub profile_image_url: Option<String>,
+    /// Optional public `LinkedIn` profile URL, shown on the public `/team`
+    /// page. `None` until set by an admin edit.
+    pub linkedin_url: Option<String>,
+    /// Whether this person's email has been confirmed — either by the IdP
+    /// carrying `email_verified: true` at sign-in, or by completing the
+    /// non-Google confirm-email flow. Defaults to `false`; the public
+    /// `/team` page shows only confirmed, non-client people. See
+    /// [`set_email_confirmed`].
+    pub email_confirmed: bool,
     pub inserted_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -248,6 +257,8 @@ struct PersonRow {
     phone: Option<String>,
     xero_contact_id: Option<String>,
     profile_image_url: Option<String>,
+    linkedin_url: Option<String>,
+    email_confirmed: bool,
     inserted_at: surrealdb::types::Datetime,
     updated_at: surrealdb::types::Datetime,
 }
@@ -272,6 +283,8 @@ impl PersonRow {
             phone: self.phone,
             xero_contact_id: self.xero_contact_id,
             profile_image_url: self.profile_image_url,
+            linkedin_url: self.linkedin_url,
+            email_confirmed: self.email_confirmed,
             inserted_at: self.inserted_at.into(),
             updated_at: self.updated_at.into(),
         })
@@ -283,8 +296,8 @@ impl PersonRow {
 /// `email_lower` is deliberately absent: it is a stored derivation of
 /// `email` that exists for the unique index, not a fact a caller needs.
 const SELECT: &str = "id, name, given_name, family_name, middle_name, email, oidc_subject, \
-                      role, title, phone, xero_contact_id, profile_image_url, \
-                      inserted_at, updated_at";
+                      role, title, phone, xero_contact_id, profile_image_url, linkedin_url, \
+                      email_confirmed, inserted_at, updated_at";
 
 /// Errors reading or writing a person.
 #[derive(Debug, thiserror::Error)]
@@ -484,6 +497,7 @@ pub struct NewPerson {
     pub title: Option<String>,
     pub phone: Option<String>,
     pub profile_image_url: Option<String>,
+    pub linkedin_url: Option<String>,
 }
 
 impl NewPerson {
@@ -526,6 +540,10 @@ pub struct PersonEdit {
     /// leaving identity and authority untouched. Browser-facing commands do
     /// not populate this field, so their existing PATCH contract is unchanged.
     pub profile_image_url: Option<Option<String>>,
+    /// The public `LinkedIn` profile URL shown on `/team`. Edited through the
+    /// ordinary admin Person form, same clear-vs-leave-alone semantics as
+    /// [`profile_image_url`](Self::profile_image_url).
+    pub linkedin_url: Option<Option<String>>,
 }
 
 /// The contact facts a directory import owns: the display name and the
@@ -629,6 +647,27 @@ pub async fn find_by_role(db: &SurrealDb, role: Role) -> Result<Vec<Person>, Per
     let response = db
         .query(format!("SELECT {SELECT} FROM person WHERE role = $role"))
         .bind(("role", role.as_str().to_string()))
+        .await
+        .and_then(surrealdb::IndexedResults::check)?;
+    many(response)
+}
+
+/// Every person eligible for the public `/team` roster: any firm-side role
+/// (owner, admin, lawyer, or clerk — anyone but [`Role::Client`]) whose
+/// email is confirmed, alphabetized by name. No email-domain restriction —
+/// a team member's mailbox may live anywhere.
+///
+/// # Errors
+///
+/// [`PersonError::Db`] if the lookup fails.
+pub async fn find_team_members(db: &SurrealDb) -> Result<Vec<Person>, PersonError> {
+    let response = db
+        .query(format!(
+            "SELECT {SELECT} FROM person \
+             WHERE role != $client AND email_confirmed = true \
+             ORDER BY name ASC"
+        ))
+        .bind(("client", Role::Client.as_str().to_string()))
         .await
         .and_then(surrealdb::IndexedResults::check)?;
     many(response)
@@ -830,7 +869,8 @@ async fn write_row(db: &SurrealDb, id: Uuid, input: &NewPerson) -> Result<Person
              oidc_subject = $oidc_subject, \
              title = $title, \
              phone = $phone, \
-             profile_image_url = $profile_image_url \
+             profile_image_url = $profile_image_url, \
+             linkedin_url = $linkedin_url \
              RETURN {SELECT}"
         ))
         .bind(("id", record_id(TABLE, id)))
@@ -844,6 +884,7 @@ async fn write_row(db: &SurrealDb, id: Uuid, input: &NewPerson) -> Result<Person
         .bind(("title", input.title.clone()))
         .bind(("phone", input.phone.clone()))
         .bind(("profile_image_url", input.profile_image_url.clone()))
+        .bind(("linkedin_url", input.linkedin_url.clone()))
     })
     .await?;
 
@@ -1018,6 +1059,9 @@ pub async fn edit(
     if input.profile_image_url.is_some() {
         assignments.push("profile_image_url = $profile_image_url");
     }
+    if input.linkedin_url.is_some() {
+        assignments.push("linkedin_url = $linkedin_url");
+    }
     if assignments.is_empty() {
         return find_by_id(db, id).await;
     }
@@ -1065,6 +1109,10 @@ pub async fn edit(
                 "profile_image_url",
                 input.profile_image_url.clone().unwrap_or_default(),
             ),
+            bind(
+                "linkedin_url",
+                input.linkedin_url.clone().unwrap_or_default(),
+            ),
         ],
     )
     .await;
@@ -1095,6 +1143,34 @@ pub async fn set_role(db: &SurrealDb, id: Uuid, role: Role) -> Result<Option<Per
         id,
         "role = $role",
         vec![bind("role", role.as_str().to_string())],
+    )
+    .await
+}
+
+/// Set (or clear) a person's confirmed-email flag. Returns `None` when the
+/// person no longer exists.
+///
+/// Called from the two places sign-in learns an address is verified: the
+/// OIDC callback (`complete_sign_in`, once the IdP's `email_verified` claim
+/// is not `false`) and the non-Google confirm-email flow
+/// (`email_confirm::confirm`, once Identity Platform reports the address
+/// verified). Both calls are best-effort — a failure here must not block
+/// sign-in — so this is a plain single-field setter, not routed through
+/// [`PersonEdit`]/[`edit`].
+///
+/// # Errors
+///
+/// [`PersonError::Db`] if the write fails.
+pub async fn set_email_confirmed(
+    db: &SurrealDb,
+    id: Uuid,
+    confirmed: bool,
+) -> Result<Option<Person>, PersonError> {
+    update_one(
+        db,
+        id,
+        "email_confirmed = $confirmed",
+        vec![bind("confirmed", confirmed)],
     )
     .await
 }
@@ -1194,9 +1270,9 @@ pub async fn delete(db: &SurrealDb, id: Uuid) -> Result<(), PersonError> {
 mod tests {
     use super::{
         create, default_firm_dri, delete, edit, find_by_email_ci, find_by_id, find_by_ids,
-        find_by_oidc_subject, find_or_create, link_oidc_subject, list_directory, retry, search,
-        set_role, set_xero_contact_id, update_contact, ContactUpdate, NewPerson, PersonEdit,
-        PersonError, Role,
+        find_by_oidc_subject, find_or_create, find_team_members, link_oidc_subject, list_directory,
+        retry, search, set_email_confirmed, set_role, set_xero_contact_id, update_contact,
+        ContactUpdate, NewPerson, PersonEdit, PersonError, Role,
     };
     use crate::surreal::test_support::mem;
     use crate::surreal::{record_id, SurrealDb};
@@ -2098,6 +2174,127 @@ mod tests {
             find_by_id(&db, row.id).await.unwrap().unwrap().role,
             Role::Lawyer
         );
+    }
+
+    #[tokio::test]
+    async fn linkedin_url_round_trips_through_edit_set_clear_and_leave_alone() {
+        let db = mem().await;
+        let row = person(&db, "Gem", "gem@example.com").await;
+        assert!(row.linkedin_url.is_none());
+
+        let set = edit(
+            &db,
+            row.id,
+            &PersonEdit {
+                linkedin_url: Some(Some("https://www.linkedin.com/in/gem".into())),
+                ..PersonEdit::default()
+            },
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            set.linkedin_url.as_deref(),
+            Some("https://www.linkedin.com/in/gem")
+        );
+
+        let untouched = edit(
+            &db,
+            row.id,
+            &PersonEdit {
+                name: Some("Gemini".into()),
+                ..PersonEdit::default()
+            },
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            untouched.linkedin_url.as_deref(),
+            Some("https://www.linkedin.com/in/gem"),
+            "an unnamed field is preserved"
+        );
+
+        let cleared = edit(
+            &db,
+            row.id,
+            &PersonEdit {
+                linkedin_url: Some(None),
+                ..PersonEdit::default()
+            },
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert!(cleared.linkedin_url.is_none(), "a present None clears it");
+    }
+
+    #[tokio::test]
+    async fn email_confirmed_defaults_false_and_set_email_confirmed_flips_it() {
+        let db = mem().await;
+        let row = person(&db, "Stella", "stella@example.com").await;
+        assert!(!row.email_confirmed);
+
+        let confirmed = set_email_confirmed(&db, row.id, true)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(confirmed.email_confirmed);
+        assert!(
+            find_by_id(&db, row.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .email_confirmed
+        );
+
+        let unconfirmed = set_email_confirmed(&db, row.id, false)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(!unconfirmed.email_confirmed);
+
+        assert!(set_email_confirmed(&db, Uuid::now_v7(), true)
+            .await
+            .unwrap()
+            .is_none());
+    }
+
+    #[tokio::test]
+    async fn find_team_members_excludes_clients_and_unconfirmed_emails_any_domain() {
+        let db = mem().await;
+
+        let client_confirmed =
+            person_at(&db, "Zeta Client", "zeta@example.com", Role::Client).await;
+        set_email_confirmed(&db, client_confirmed.id, true)
+            .await
+            .unwrap();
+
+        let owner_unconfirmed = person_at(&db, "Owen Owner", "owen@neonlaw.com", Role::Owner).await;
+        // deliberately left unconfirmed
+
+        let lawyer_confirmed_offsite =
+            person_at(&db, "Ada Lawyer", "ada@example.org", Role::Lawyer).await;
+        set_email_confirmed(&db, lawyer_confirmed_offsite.id, true)
+            .await
+            .unwrap();
+
+        let clerk_confirmed = person_at(&db, "Bea Clerk", "bea@neonlaw.com", Role::Clerk).await;
+        set_email_confirmed(&db, clerk_confirmed.id, true)
+            .await
+            .unwrap();
+
+        let members = find_team_members(&db).await.unwrap();
+        let names: Vec<&str> = members.iter().map(|p| p.name.as_str()).collect();
+
+        assert_eq!(
+            names,
+            vec!["Ada Lawyer", "Bea Clerk"],
+            "alphabetical, excludes the unconfirmed owner and the confirmed client"
+        );
+        assert!(!names.contains(&"Zeta Client"));
+        assert!(!names.contains(&"Owen Owner"));
+        let _ = owner_unconfirmed;
     }
 
     #[tokio::test]

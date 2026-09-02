@@ -3459,15 +3459,16 @@ pub fn contact_router(path: &str, content: webapp::contact_page::ContactContent)
         ))
 }
 
-/// The firm `/team` index — the roster, one link per person. Content-backed
-/// and static like [`contact_router`]: the caller resolves the
-/// [`webapp::team_page::TeamIndexContent`] and injects it, and
-/// `webapp::team_page::team_index_view` reads it back. `path` is the route
-/// the page mounts at. Public and firm-scoped.
-pub fn team_index_router(path: &str, content: webapp::team_page::TeamIndexContent) -> Router {
-    let injected = webapp::team_page::InjectedTeamIndex(content);
+/// The firm `/team` index — the roster, one link per person. Unlike the
+/// doc-only public pages, this is a **live, per-request** query: the caller
+/// injects the `SurrealDb` handle (same shape as [`projects_router`]), and
+/// `webapp::team_page::team_index_view`'s server-side loader queries
+/// [`store::persons::find_team_members`] fresh on every request — so a
+/// newly-confirmed team member appears without a redeploy. `path` is the
+/// route the page mounts at. Public and firm-scoped.
+pub fn team_index_router(path: &str, surreal: store::surreal::SurrealDb) -> Router {
     let cfg = ServeConfig::new().context_providers(std::sync::Arc::new(vec![Box::new(move || {
-        Box::new(injected.clone()) as Box<dyn std::any::Any>
+        Box::new(surreal.clone()) as Box<dyn std::any::Any>
     })
         as Box<dyn Fn() -> Box<dyn std::any::Any> + Send + Sync>]));
 
@@ -3481,22 +3482,20 @@ pub fn team_index_router(path: &str, content: webapp::team_page::TeamIndexConten
         .with_state(FullstackState::new(cfg, webapp::team_page::TeamIndexEntry))
 }
 
-/// One person's `/team/{slug}` profile. Content-backed like
-/// [`team_index_router`]: the caller resolves one
-/// [`webapp::team_page::TeamProfileContent`] per person and mounts it at that
-/// person's own `path`, so two calls with two different `path`s and two
-/// different `content`s is how `/team/nick` and `/team/jask` come to serve
-/// different people through the one shared page component.
-pub fn team_profile_router(path: &str, content: webapp::team_page::TeamProfileContent) -> Router {
-    let injected = webapp::team_page::InjectedTeamProfile(content);
+/// The generic `/team/{slug}` profile route. One mount serves every current
+/// team member — `webapp::team_page::team_profile_view`'s loader extracts
+/// the `{slug}` path segment itself, queries the same live roster
+/// [`team_index_router`] does, and matches it against a slug computed fresh
+/// from that roster (404 on no match), rather than one router per person.
+pub fn team_profile_router(surreal: store::surreal::SurrealDb) -> Router {
     let cfg = ServeConfig::new().context_providers(std::sync::Arc::new(vec![Box::new(move || {
-        Box::new(injected.clone()) as Box<dyn std::any::Any>
+        Box::new(surreal.clone()) as Box<dyn std::any::Any>
     })
         as Box<dyn Fn() -> Box<dyn std::any::Any> + Send + Sync>]));
 
     Router::<FullstackState>::new()
         .route(
-            path,
+            "/team/{slug}",
             get(render_handler)
                 .layer(from_fn(dioxus_document_head))
                 .layer(from_fn(inject_public_utility)),
@@ -4302,5 +4301,107 @@ mod tests {
             html.find("@font-face").unwrap() < html.find("</head>").unwrap(),
             "the faces belong inside the head: {html}",
         );
+    }
+
+    /// `/team` reads the injected `SurrealDb` fresh on every request rather
+    /// than baking a roster in at router-construction time — the whole
+    /// point of moving off the old boot-time-fixed `TEAM_ROSTER`. Seed a
+    /// confirmed, non-client person *after* the router is built, then prove
+    /// they show up on the very next request.
+    #[tokio::test]
+    async fn team_index_reads_the_roster_fresh_on_every_request() {
+        let surreal = store::test_support::mem_surreal().await;
+        let router = team_index_router("/team", surreal.clone());
+
+        let empty = router
+            .clone()
+            .oneshot(Request::builder().uri("/team").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let bytes = axum::body::to_bytes(empty.into_body(), MAX_RENDER_BYTES)
+            .await
+            .unwrap();
+        let html = String::from_utf8(bytes.to_vec()).unwrap();
+        assert!(
+            !html.contains("Ada Lovelace"),
+            "nobody is confirmed yet: {html}"
+        );
+
+        let person = store::persons::create(
+            &surreal,
+            &store::persons::NewPerson::with_role(
+                "Ada Lovelace",
+                "ada@example.com",
+                store::persons::Role::Lawyer,
+            ),
+        )
+        .await
+        .unwrap();
+        store::persons::set_email_confirmed(&surreal, person.id, true)
+            .await
+            .unwrap();
+
+        let after = router
+            .oneshot(Request::builder().uri("/team").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let bytes = axum::body::to_bytes(after.into_body(), MAX_RENDER_BYTES)
+            .await
+            .unwrap();
+        let html = String::from_utf8(bytes.to_vec()).unwrap();
+        assert!(
+            html.contains("Ada Lovelace"),
+            "the same, already-built router must read the roster fresh: {html}"
+        );
+        assert!(html.contains(r#"href="/team/ada-lovelace""#), "{html}");
+    }
+
+    /// `/team/{slug}` matches the live roster too, and a slug naming nobody
+    /// on it is a `404`, not a stray page.
+    #[tokio::test]
+    async fn team_profile_resolves_the_live_slug_and_404s_an_unknown_one() {
+        let surreal = store::test_support::mem_surreal().await;
+        let person = store::persons::create(
+            &surreal,
+            &store::persons::NewPerson::with_role(
+                "Ada Lovelace",
+                "ada@example.com",
+                store::persons::Role::Lawyer,
+            ),
+        )
+        .await
+        .unwrap();
+        store::persons::set_email_confirmed(&surreal, person.id, true)
+            .await
+            .unwrap();
+        let router = team_profile_router(surreal);
+
+        let found = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/team/ada-lovelace")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(found.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(found.into_body(), MAX_RENDER_BYTES)
+            .await
+            .unwrap();
+        let html = String::from_utf8(bytes.to_vec()).unwrap();
+        assert!(html.contains("ada@example.com"), "{html}");
+
+        let missing = router
+            .oneshot(
+                Request::builder()
+                    .uri("/team/nobody-here")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(missing.status(), StatusCode::NOT_FOUND);
     }
 }

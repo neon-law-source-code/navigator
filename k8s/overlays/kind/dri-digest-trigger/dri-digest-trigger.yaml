@@ -1,0 +1,51 @@
+# `dri-digest-trigger` — nightly trigger for the `DriDigest` workflow.
+#
+# The workflow itself is hosted by the `workflows-service` worker (it binds
+# `DriDigestService` alongside `Notation` and the other workflows — see
+# `../workflows-service/`), so there is no separate digest worker pod. This
+# CronJob is the thin trigger: it POSTs to the Restate ingress to start one
+# invocation, then exits. Restate owns retries. The workflow reads every
+# project's lawyer and client DRIs and posts one Slack line per project to
+# firm ops through the worker's Slack notifier.
+#
+# Schedule "11 1 * * *" = 01:11 UTC — off the top of the hour and clear of
+# every other nightly trigger.
+#
+# In KIND it need not fire on a schedule to be useful — trigger a run by
+# hand:
+#   kubectl create job --from=cronjob/dri-digest-trigger dri-digest-trigger-manual -n navigator
+#
+# Image `navigator-dri-digest-trigger:dev` is built with
+# `--build-arg CRATE=workflows-service --build-arg BIN=dri-digest-trigger`.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: dri-digest-trigger
+  namespace: navigator
+  labels:
+    app: dri-digest-trigger
+spec:
+  schedule: "11 1 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 7
+  failedJobsHistoryLimit: 7
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            app: dri-digest-trigger
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: dri-digest-trigger
+              image: navigator-dri-digest-trigger:dev
+              imagePullPolicy: IfNotPresent
+              env:
+                # In-cluster Restate ingress (see
+                # k8s/staging/restate.yaml).
+                - name: RESTATE_INGRESS_URL
+                  value: http://restate.restate.svc.cluster.local:8080
+                - name: RUST_LOG
+                  value: info

@@ -25,6 +25,7 @@ resources:
   - archives-trigger
   - billing-canary-trigger
   - billing-digest-trigger
+  - dri-digest-trigger
   - heartbeat-trigger
 
 patches:

@@ -6,10 +6,14 @@ SPDX-License-Identifier: BUSL-1.1
 
 This program is source-available software, not open source.  You may read,
 copy, modify, create derivative works from, and redistribute it, and you may
-make any non-production use of it.  Production use requires a commercial
-licence from Shook Law PLLC.  Four years after a given version is published,
-that version converts to the GNU Affero General Public License, version 3 only,
-and the restriction ends for it permanently.
+make any non-production use of it.  What you may run without a commercial
+licence is pinned in LICENSE itself, in the Additional Use Grant: you may
+operate this program anywhere, the cloud included, to evaluate, develop
+against, test, or demonstrate it, for so long as nobody relies on what it
+does.  Beyond that, production use requires a commercial licence from Shook
+Law PLLC.  Four years after a given version is published, that version
+converts to the GNU Affero General Public License, version 3 only, and the
+restriction ends for it permanently.
 
 This program is distributed WITHOUT ANY WARRANTY; without even the implied
 warranty of MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, NON-INFRINGEMENT,
@@ -34,11 +38,27 @@ else's.
 
   Licensor is Shook Law PLLC.  Licensed Work is Neon Law Navigator.
 
-  Additional Use Grant is `None`.  BUSL's base grant already covers
-  non-production use, and the Additional Use Grant is the slot for permitting
-  *limited production* use on top of it.  `None` therefore is not a restriction
-  added to the licence — it is the absence of an extra permission, and it means
-  every production use needs a commercial licence.
+  Additional Use Grant pins the free use, in a paragraph shared word-for-word
+  with Navigator UX and the Homebrew tap.  It was `None` until this version.
+  `None` was never a restriction added to the licence, only the absence of an
+  extra permission — but it left BUSL's undefined term, "production use",
+  carrying the entire commercial boundary, and an undefined term in a licence
+  is read against the party that drafted it.  That party is the Firm.
+
+  So the grant now says affirmatively what you may run: this program, on
+  infrastructure you control or rent, to evaluate, develop against, test, or
+  demonstrate it, for so long as it performs no work anybody relies on.  The
+  test is reliance rather than where the software runs.
+
+  It is written as a grant and not as a definition, deliberately.  BUSL's
+  second Covenant of Licensor permits an Additional Use Grant only if it "does
+  not impose any additional restriction on the right granted in this License".
+  A clause defining "production use" broadly would shrink the base grant's
+  non-production use and risk being exactly that restriction, which would put
+  the Firm outside the permission that lets it use BUSL at all.  A clause that
+  only adds permission cannot.  The free zone is therefore operative text;
+  what lies outside it stays BUSL's own term, and what the Firm makes of that
+  is below, where it binds nobody.
 
   Change Date is four years from the date the Licensed Work is published.  It
   applies per version, as BUSL's terms require: each release carries its own
@@ -58,14 +78,28 @@ under `templates/` are all BUSL-1.1.  One grant covers the tree, so there is
 nothing to look up per directory: a reader of a notation body holds the same
 terms as a reader of the code that renders it.
 
-WHAT "PRODUCTION USE" MEANS HERE.  BUSL does not define it, so this is the
-Firm's own reading and it is deliberately narrow.  Running Navigator to deliver
-legal services to other people — operating a portal, a matter, or a filing
-pipeline that someone relies on — is production use.  Reading the source,
-building it, running the test suite, standing up the local KIND tier, evaluating
-it, developing against it, and demonstrating it are not.  If you are unsure
-which side of the line you are on, write to contact@neonlaw.org and ask before
-deploying rather than after.
+WHAT "PRODUCTION USE" MEANS HERE.  BUSL does not define it, and neither does
+LICENSE — for the covenant reason given above.  What LICENSE does instead is
+pin the other side of the line, so the question that matters in practice is
+answerable from the instrument: you may run this program to evaluate, develop
+against, test, or demonstrate it, wherever you like, for so long as nobody
+relies on what it does.  Inside that, you need nothing from us.
+
+Outside it, this is the Firm's reading, and it is offered as our own account
+rather than as a term.  Running Navigator where it performs work you or
+anybody else relies on — a portal, a matter, a filing pipeline — is production
+use, and so is marketing to customers a product or service that relies on it.
+Reading the source, building it, running the test suite, standing up the local
+KIND tier, evaluating it, developing against it, and demonstrating it are not,
+and stay free wherever you run them: on a laptop, on a rented VM, in CI, in a
+cloud sandbox.
+
+Where the software runs was deliberately not made the test.  A topology test
+would reach the cloud sandbox that owes nothing and miss the competitor
+serving clients from their own hardware, which is the use worth reaching.
+
+If you are unsure which side of the line you are on, write to
+contact@neonlaw.org and ask before deploying rather than after.
 
 THE NETWORK CASE.  BUSL carries no network clause, and needs none: the
 deployment shape such a clause reaches — running a modified version as a service

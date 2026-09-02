@@ -6,13 +6,15 @@ NEON LAW mark, and is the sole Licensor. **This is a public, source-available re
 over the whole tree including the legal prose under `templates/`. Root [`LICENSE`](LICENSE) holds that grant — the
 Business Source License 1.1 with its parameters filled in and its terms otherwise unaltered, so every licence scanner
 names it; [`NOTICE`](NOTICE) beside it carries the copyright line and the Firm's own statements, and is where any
-wording of ours belongs. **The parameter that matters operationally is `Additional Use Grant: None`** — non-production
-use is free, and running Navigator to deliver legal services to other people needs a commercial licence from the Firm.
-Each version converts to `AGPL-3.0-only` four years after it is published, and § 13 then obliges an operator who
-modified that version to offer those users — its own remote users — the corresponding source. Copies distributed under
-the AGPL stay AGPL permanently. Outside contributions are **currently closed** — point anyone asking at
-`contact@neonlaw.org` — though the work in here assigns to the Firm. The marks are reserved. This monorepo holds one
-website — the firm at the root — and the delivery stack for legal services. See
+wording of ours belongs. **The parameter that matters operationally is the `Additional Use Grant`** — it pins what you
+may run without buying anything: Navigator, anywhere including the cloud, to evaluate, develop against, test, or
+demonstrate it, for so long as it performs no work anyone relies on. Running it where somebody relies on what it does,
+and marketing to customers a product or service that relies on it, needs a commercial licence from the Firm. The test is
+reliance, not where the software runs. Each version converts to `AGPL-3.0-only` four years after it is published, and §
+13 then obliges an operator who modified that version to offer those users — its own remote users — the corresponding
+source. Copies distributed under the AGPL stay AGPL permanently. Outside contributions are **currently closed** — point
+anyone asking at `contact@neonlaw.org` — though the work in here assigns to the Firm. The marks are reserved. This
+monorepo holds one website — the firm at the root — and the delivery stack for legal services. See
 [`docs/licensing.md`](docs/licensing.md).
 
 **Everything you write here is published.** The no-client-data rule below is what stands between a live legal practice

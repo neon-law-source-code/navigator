@@ -20,8 +20,7 @@ customers a product or service that relies on it, needs a commercial licence fro
 than where the software runs. Each version converts to `AGPL-3.0-only` four years after it is published, and § 13
 attaches to that version in full when it does — it obliges an operator to offer those users, the people reaching its own
 instance, the corresponding source. See [`LICENSE`](LICENSE) for the grant, [`NOTICE`](NOTICE) for what the firm says
-about it, and
-[`docs/licensing.md`](docs/licensing.md).
+about it, and [`docs/licensing.md`](docs/licensing.md).
 
 ## The contributor licence agreement
 

@@ -356,26 +356,24 @@ async fn litigation_is_the_statement_and_the_filed_paragraphs() {
     assert!(body.contains("<title>Neon Law | Litigation</title>"));
     assert!(body.contains("built"), "the statement: {body}");
     assert!(body.contains("speed."), "the statement: {body}");
-    assert!(
-        body.contains("Values-Based Litigation"),
-        "the eyebrow: {body}"
-    );
+    assert!(body.contains("Impact Litigation"), "the eyebrow: {body}");
     let seen = body
         .find("We represent those who haven\u{2019}t been justly seen")
         .expect("the who-we-represent paragraph");
     let breadth = body
-        .find("There is little we will not take on")
-        .expect("the breadth paragraph");
+        .find("We take cases of every kind, for people and for companies")
+        .expect("the open-docket sentence");
     assert!(seen < breadth, "in the filed order: {body}");
     // The matter types the firm names, which is the part an edit shortens
-    // first. They are the whole reason a reader can tell whether this is their
-    // practice: "those who haven't been justly seen" is a stance, and these are
-    // what it means in cases. Categories only, never a matter.
+    // first. They are examples of an open docket, not a closed menu: "those
+    // who haven't been justly seen" is a stance, and these are what it has
+    // meant in cases. Categories only, never a matter.
     for named in [
         "trademark and copyright disputes",
         "prison rights litigation",
         "restraining orders",
         "domestic violence",
+        "impact litigation",
     ] {
         assert!(
             body.contains(named),
@@ -386,7 +384,7 @@ async fn litigation_is_the_statement_and_the_filed_paragraphs() {
     // it is a real check rather than a hedge: `store::conflicts` runs a bounded
     // multi-hop traversal before the firm can take a matter.
     assert!(
-        body.contains("as long as we are not conflicted out"),
+        body.contains("As long as we are not conflicted out"),
         "the page states the conflicts caveat: {body}"
     );
     // The third paragraph: how a matter runs here, after who the firm
@@ -1419,11 +1417,9 @@ async fn home_publishes_no_amount_in_controversy_and_no_co_counsel_claim() {
 }
 
 #[tokio::test]
-async fn home_points_at_the_three_practices_from_its_foot() {
-    // The page leads with one offering, and these three boxes say the firm
-    // practices law too. Each links the page that explains it, so a reader who
-    // came for a dispute is one click from the litigation practice rather than
-    // reading the lead and leaving.
+async fn home_points_at_the_four_practices_from_its_foot() {
+    // The page leads with one offering, then four equal doors so litigation,
+    // counsel, technology, and one-time filings are all one click from `/`.
     let app = site_app().await;
     let body = body_string(anon_get(&app, "/").await).await;
     // The section renders, with its heading wired to the copy rather than
@@ -1436,11 +1432,12 @@ async fn home_points_at_the_three_practices_from_its_foot() {
         body.contains(r#"id="home-practices-heading""#),
         "the heading renders: {body}"
     );
-    // Which pages the boxes reach is routing, not copy. Litigation is
-    // deliberately *not* among them: it is the page's lead and its close, so a
-    // fourth box would put the practice the page is built around into a row of
-    // alternatives.
-    for href in ["/fractional-cto", "/fractional-gc", "/services"] {
+    for href in [
+        "/litigation",
+        "/fractional-cto",
+        "/fractional-gc",
+        "/services",
+    ] {
         assert!(
             body.contains(&format!(
                 r#"<a class="neon-card home-practice" href="{href}""#
@@ -1448,23 +1445,15 @@ async fn home_points_at_the_three_practices_from_its_foot() {
             "the box for {href} is itself the link: {body}"
         );
     }
-    assert!(
-        !body.contains(r#"<a class="neon-card home-practice" href="/litigation""#),
-        "litigation is the lead, not one of the boxes: {body}"
-    );
     assert_eq!(
         body.matches(r#"<a class="neon-card home-practice" href="#)
             .count(),
-        3,
-        "three boxes and no more: {body}"
+        4,
+        "four boxes and no more: {body}"
     );
-    // Each box opens on a drawn mark, hidden from assistive technology because
-    // the heading beside it already names the practice. Stroked in
-    // `currentColor` so it is white on the dark theme — which is why these are
-    // line marks rather than emoji: `color` does not reach a colour glyph.
     assert_eq!(
         body.matches(r#"class="home-practice__mark""#).count(),
-        3,
+        4,
         "one mark per box: {body}"
     );
     assert!(
@@ -1477,8 +1466,7 @@ async fn home_points_at_the_three_practices_from_its_foot() {
         !body.contains("home-practice__link"),
         "no second anchor inside a box: {body}"
     );
-    // The boxes sit under the litigation prose, not above it: above, they would
-    // read as the page offering four things rather than leading with one.
+    // The boxes sit under the invitation, not above it.
     let service = body.find("home-service").expect("the litigation section");
     let practices = body.find("home-practices").expect("the practice boxes");
     assert!(service < practices, "prose then boxes: {body}");
@@ -1531,6 +1519,26 @@ async fn home_renders_the_statement_and_the_practice_prose() {
         assert!(body.contains(rendered), "{rendered} renders: {body}");
     }
     assert!(body.contains("<title>Neon Law | Home</title>"));
+    assert!(
+        body.contains("Everyone deserves to be seen."),
+        "the statement is the firm's tagline: {body}"
+    );
+    assert!(
+        body.contains("Come in with the case you have."),
+        "the lead is an invitation: {body}"
+    );
+    assert!(
+        body.contains("We take cases of every kind."),
+        "the lead names an open docket: {body}"
+    );
+    assert!(
+        body.contains("impact litigation"),
+        "the lead names the focus: {body}"
+    );
+    assert!(
+        body.contains("we work as a team"),
+        "the lead names the team: {body}"
+    );
 
     // The practice prose: one card of paragraphs under one heading. A card
     // *per* practice area is the shape this page sheds, so the count is what
@@ -1555,32 +1563,10 @@ async fn home_renders_the_statement_and_the_practice_prose() {
         body.contains(r#"class="home-service__link" href="/litigation""#),
         "the prose links the litigation practice inline: {body}"
     );
-
-    // The retired home-page surfaces. Each is markup rather than wording: a
-    // practice grid, a per-practice card, a chip list, and the glow whose wash
-    // bled past the hero's edge into the page margin.
-    for retired in [
-        r#"class="practice-grid""#,
-        r#"class="practice__heading""#,
-        r#"class="litigation__heading""#,
-        r#"class="firm-chip""#,
-        "home-service__commitment",
-        // The numbered 1-2-3 and the closing band came off the page. Guarded so
-        // the markup does not come back empty with the next copy edit.
-        "home-process",
-        "home-step",
-        "home-closing",
-        "firm-glow",
-        "hero-neon",
-        "catalog-card",
-        "testimonial-section",
-        "justice-banner",
-    ] {
-        assert!(
-            !body.contains(retired),
-            "the home page must not render {retired:?}: {body}"
-        );
-    }
+    assert!(
+        body.contains(r#"class="home-service__link" href="/team""#),
+        "the prose links the team: {body}"
+    );
 
     // The page's sections, in the order the page argues in: the statement, what
     // leading with litigation means, and the engagements beside it.
@@ -1601,6 +1587,51 @@ async fn home_renders_the_statement_and_the_practice_prose() {
     // The shared chrome survives — header nav and the legal footer.
     assert!(body.contains("site-header"), "public header chrome");
     assert!(body.contains("site-footer__legal"), "public legal footer");
+}
+
+#[tokio::test]
+async fn home_does_not_restore_retired_home_surfaces() {
+    let app = site_app().await;
+    let body = body_string(anon_get(&app, "/").await).await;
+    // Causes of action belong on `/litigation`. Listing them in the home hero
+    // is what made the page read as four firms at once.
+    for retired in [
+        "Personal injury",
+        "criminal investigations",
+        "business divorce",
+        "Every problem is unique",
+        "Whatever brings you in",
+        "We are by your side through tough times",
+        "Our complementary practice",
+        "If you did not come for a dispute",
+    ] {
+        assert!(
+            !body.contains(retired),
+            "the home page must not publish {retired:?}: {body}"
+        );
+    }
+    // Retired markup rather than wording: a practice grid, a per-practice card,
+    // a chip list, and the glow whose wash bled past the hero's edge.
+    for retired in [
+        r#"class="practice-grid""#,
+        r#"class="practice__heading""#,
+        r#"class="litigation__heading""#,
+        r#"class="firm-chip""#,
+        "home-service__commitment",
+        "home-process",
+        "home-step",
+        "home-closing",
+        "firm-glow",
+        "hero-neon",
+        "catalog-card",
+        "testimonial-section",
+        "justice-banner",
+    ] {
+        assert!(
+            !body.contains(retired),
+            "the home page must not render {retired:?}: {body}"
+        );
+    }
 }
 
 /// The home page loads the firm's mark, and the mark's own files are served.
@@ -1807,10 +1838,10 @@ async fn a_talk_hub_renders_under_the_firm_brand() {
         "the custom firm-services slide must replace its Markdown marker: {slides}"
     );
     for heading in [
-        "Fractional CTO",
         "Litigation",
+        "Fractional CTO",
         "Fractional GC",
-        "One-time services",
+        "One-Time Services",
     ] {
         assert!(slides.contains(heading), "missing {heading}: {slides}");
     }

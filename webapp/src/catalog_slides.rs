@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::catalog_slide_body::CatalogSlideBody;
 use crate::components::{PublicShell, SiteHeader, SiteNavLink, CATALOG_STYLESHEET_HREF};
+use crate::home::PracticeLink;
 use crate::public_chrome::{PublicChrome, PublicFooter};
 
 /// The first-party script that paints slide-seen state and reveals the
@@ -69,6 +70,7 @@ pub struct InjectedLightTable(pub LightTableContent);
 pub struct CatalogSlidesView {
     pub chrome: PublicChrome,
     pub content: LightTableContent,
+    pub practices: Vec<PracticeLink>,
 }
 
 /// Resolve the shared chrome and this material's light table.
@@ -80,9 +82,17 @@ pub async fn catalog_slides_view() -> Result<CatalogSlidesView, ServerFnError> {
         .await
         .map(|axum::Extension(c)| c.0)
         .unwrap_or_default();
+    let practices = dioxus_fullstack_core::FullstackContext::extract::<
+        axum::Extension<crate::catalog_slide_body::InjectedPracticeCatalog>,
+        _,
+    >()
+    .await
+    .map(|axum::Extension(c)| c.0)
+    .unwrap_or_default();
     Ok(CatalogSlidesView {
         chrome: crate::public_chrome::firm_public_chrome_from_context().await,
         content,
+        practices,
     })
 }
 
@@ -95,13 +105,21 @@ pub fn CatalogSlidesEntry() -> Element {
         _ => return rsx! {},
     };
     rsx! {
-        CatalogSlidesPage { chrome: view.chrome, content: view.content }
+        CatalogSlidesPage {
+            chrome: view.chrome,
+            content: view.content,
+            practices: view.practices,
+        }
     }
 }
 
 /// The pure light table.
 #[component]
-pub fn CatalogSlidesPage(chrome: PublicChrome, content: LightTableContent) -> Element {
+pub fn CatalogSlidesPage(
+    chrome: PublicChrome,
+    content: LightTableContent,
+    #[props(default)] practices: Vec<PracticeLink>,
+) -> Element {
     let header = rsx! {
         SiteHeader {
             brand_name: chrome.brand_name.clone(),
@@ -146,7 +164,10 @@ pub fn CatalogSlidesPage(chrome: PublicChrome, content: LightTableContent) -> El
                 }
                 div { class: "lighttable-chapters",
                     for chapter in content.chapters.iter() {
-                        LightTableChapter { chapter: chapter.clone() }
+                        LightTableChapter {
+                            chapter: chapter.clone(),
+                            practices: practices.clone(),
+                        }
                     }
                 }
                 CertificateGate {
@@ -160,7 +181,7 @@ pub fn CatalogSlidesPage(chrome: PublicChrome, content: LightTableContent) -> El
 
 /// One chapter's thumbnails.
 #[component]
-fn LightTableChapter(chapter: SlideChapter) -> Element {
+fn LightTableChapter(chapter: SlideChapter, practices: Vec<PracticeLink>) -> Element {
     rsx! {
         section {
             class: "workshop-chapter",
@@ -188,6 +209,7 @@ fn LightTableChapter(chapter: SlideChapter) -> Element {
                             CatalogSlideBody {
                                 title: slide.title.clone(),
                                 body_html: slide.body_html.clone(),
+                                practices: practices.clone(),
                             }
                         }
                         div { class: "slide-thumb__caption", "{slide.number}. {slide.title}" }

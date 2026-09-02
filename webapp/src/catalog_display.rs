@@ -24,6 +24,7 @@ use serde::{Deserialize, Serialize};
 use crate::catalog_slide_body::CatalogSlideBody;
 use crate::catalog_step::CATALOG_DISPLAY_SCRIPT_HREF;
 use crate::components::{CATALOG_STYLESHEET_HREF, THEME_STYLESHEET_HREF};
+use crate::home::PracticeLink;
 
 /// Everything one projected slide renders.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
@@ -45,34 +46,54 @@ pub struct DisplayContent {
 #[derive(Clone, Default)]
 pub struct InjectedDisplay(pub DisplayContent);
 
+/// Everything the projector face renders.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+pub struct CatalogDisplayView {
+    pub content: DisplayContent,
+    pub practices: Vec<PracticeLink>,
+}
+
 /// Resolve this slide's content. There is no chrome to resolve — the display
 /// face deliberately wears none.
 #[server]
-pub async fn catalog_display_view() -> Result<DisplayContent, ServerFnError> {
-    Ok(
+pub async fn catalog_display_view() -> Result<CatalogDisplayView, ServerFnError> {
+    let content =
         dioxus_fullstack_core::FullstackContext::extract::<axum::Extension<InjectedDisplay>, _>()
             .await
             .map(|axum::Extension(c)| c.0)
-            .unwrap_or_default(),
-    )
+            .unwrap_or_default();
+    let practices = dioxus_fullstack_core::FullstackContext::extract::<
+        axum::Extension<crate::catalog_slide_body::InjectedPracticeCatalog>,
+        _,
+    >()
+    .await
+    .map(|axum::Extension(c)| c.0)
+    .unwrap_or_default();
+    Ok(CatalogDisplayView { content, practices })
 }
 
 /// The page's route entry.
 #[component]
 pub fn CatalogDisplayEntry() -> Element {
     let resource = use_server_future(catalog_display_view)?;
-    let content = match &*resource.read() {
-        Some(Ok(content)) => content.clone(),
+    let view = match &*resource.read() {
+        Some(Ok(view)) => view.clone(),
         _ => return rsx! {},
     };
     rsx! {
-        CatalogDisplayPage { content }
+        CatalogDisplayPage {
+            content: view.content,
+            practices: view.practices,
+        }
     }
 }
 
 /// The pure display face.
 #[component]
-pub fn CatalogDisplayPage(content: DisplayContent) -> Element {
+pub fn CatalogDisplayPage(
+    content: DisplayContent,
+    #[props(default)] practices: Vec<PracticeLink>,
+) -> Element {
     rsx! {
         document::Title { "{content.title} | {content.workshop_title}" }
         // No `PublicShell` here, so the theme stylesheet is this page's own to
@@ -95,6 +116,7 @@ pub fn CatalogDisplayPage(content: DisplayContent) -> Element {
                 CatalogSlideBody {
                     title: content.title.clone(),
                     body_html: content.body_html.clone(),
+                    practices: practices.clone(),
                 }
             }
             // Near-invisible controls that fade in on hover or focus, so a

@@ -4,53 +4,42 @@
 //! small marker lets a slide opt into a first-party Dioxus component without
 //! allowing arbitrary author-written HTML. The step page, projector display,
 //! and light table all call this component so the three faces cannot drift.
+//!
+//! The firm-practice marker renders the same practice list the home page
+//! publishes. That list is the English YAML catalog (`locales/en/home.yaml`);
+//! this module does not keep a second copy of the doors.
 
 use dioxus::prelude::*;
 
 use crate::brand_style::{BRAND_STYLESHEET_HREF, BRAND_TOKENS_HREF};
 use crate::components::{PracticeCard, PracticeMark, PracticeMarkGlyph};
-use crate::home::HOME_STYLESHEET_HREF;
+use crate::home::{PracticeLink, HOME_STYLESHEET_HREF};
 
-/// Markdown marker that replaces the ordinary slide body with the firm's four
-/// product cards.
+/// Markdown marker that replaces the ordinary slide body with the firm's
+/// practice catalog, the same boxes `/` renders from YAML.
 pub const FIRM_PRODUCT_CARDS_MARKER: &str = "{{firm-product-cards}}";
 
 /// Markdown marker that renders the Navigator identity slide.
 pub const NAVIGATOR_PRODUCT_MARKER: &str = "{{navigator-product}}";
 
-struct FirmProduct {
-    mark: PracticeMark,
-    heading: &'static str,
-    href: &'static str,
-}
-
-const FIRM_PRODUCTS: &[FirmProduct] = &[
-    FirmProduct {
-        mark: PracticeMark::Technology,
-        heading: "Fractional CTO",
-        href: "/fractional-cto",
-    },
-    FirmProduct {
-        mark: PracticeMark::Scales,
-        heading: "Litigation",
-        href: "/litigation",
-    },
-    FirmProduct {
-        mark: PracticeMark::Handshake,
-        heading: "Fractional GC",
-        href: "/fractional-gc",
-    },
-    FirmProduct {
-        mark: PracticeMark::Gavel,
-        heading: "One-time services",
-        href: "/services",
-    },
-];
+/// The practice doors injected by the brand crate from `locales/en/home.yaml`.
+///
+/// Workshop faces that expand [`FIRM_PRODUCT_CARDS_MARKER`] read this rather
+/// than a Rust list, so a YAML edit is the only copy change.
+#[derive(Clone, Default)]
+pub struct InjectedPracticeCatalog(pub Vec<PracticeLink>);
 
 /// Render one slide body, selecting a first-party component only when its
 /// explicit marker is present.
+///
+/// `practices` is the YAML catalog. Ordinary Markdown slides ignore it; the
+/// firm-practice marker renders exactly those cards, in catalog order.
 #[component]
-pub fn CatalogSlideBody(title: String, body_html: String) -> Element {
+pub fn CatalogSlideBody(
+    title: String,
+    body_html: String,
+    #[props(default)] practices: Vec<PracticeLink>,
+) -> Element {
     if body_html.contains(NAVIGATOR_PRODUCT_MARKER) {
         return rsx! {
             document::Stylesheet { href: BRAND_TOKENS_HREF }
@@ -90,12 +79,12 @@ pub fn CatalogSlideBody(title: String, body_html: String) -> Element {
             div {
                 class: "home-practices__grid workshop-product-cards",
                 "aria-label": "{title}",
-                for (index, product) in FIRM_PRODUCTS.iter().enumerate() {
+                for (index, product) in practices.iter().enumerate() {
                     PracticeCard {
                         mark: product.mark,
-                        heading: product.heading.to_string(),
+                        heading: product.heading.clone(),
                         body: String::new(),
-                        href: product.href.to_string(),
+                        href: product.href.clone(),
                         heading_id: format!("workshop-product-heading-{index}"),
                     }
                 }
@@ -107,50 +96,83 @@ pub fn CatalogSlideBody(title: String, body_html: String) -> Element {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::home::PracticeLink;
 
-    fn render(title: &str, body_html: &str) -> String {
+    fn render(title: &str, body_html: &str, practices: Vec<PracticeLink>) -> String {
         fn app() -> Element {
-            let (title, body_html) = consume_context::<(String, String)>();
-            rsx! { CatalogSlideBody { title, body_html } }
+            let (title, body_html, practices) =
+                consume_context::<(String, String, Vec<PracticeLink>)>();
+            rsx! { CatalogSlideBody { title, body_html, practices } }
         }
 
         let title = title.to_string();
         let body_html = body_html.to_string();
         let mut dom = VirtualDom::new(app);
-        dom.insert_any_root_context(Box::new((title, body_html)));
+        dom.insert_any_root_context(Box::new((title, body_html, practices)));
         dom.rebuild_in_place();
         dioxus_ssr::render(&dom)
     }
 
+    fn sample_catalog() -> Vec<PracticeLink> {
+        vec![
+            PracticeLink {
+                mark: PracticeMark::Scales,
+                heading: "Litigation".into(),
+                body: String::new(),
+                href: "/litigation".into(),
+            },
+            PracticeLink {
+                mark: PracticeMark::Technology,
+                heading: "Fractional CTO".into(),
+                body: String::new(),
+                href: "/fractional-cto".into(),
+            },
+        ]
+    }
+
     #[test]
-    fn the_marker_renders_the_four_homepage_practice_cards() {
+    fn the_marker_renders_the_supplied_practice_catalog() {
         let html = render(
             "What our firm does",
             &format!("<h3>What our firm does</h3><p>{FIRM_PRODUCT_CARDS_MARKER}</p>"),
+            sample_catalog(),
         );
         assert!(html.contains("workshop-product-cards"), "{html}");
         assert!(
             html.contains(r#"aria-label="What our firm does""#),
             "{html}"
         );
-        assert_eq!(html.matches("neon-card home-practice").count(), 4, "{html}");
+        assert_eq!(html.matches("neon-card home-practice").count(), 2, "{html}");
         for (heading, href) in [
-            ("Fractional CTO", "/fractional-cto"),
             ("Litigation", "/litigation"),
-            ("Fractional GC", "/fractional-gc"),
-            ("One-time services", "/services"),
+            ("Fractional CTO", "/fractional-cto"),
         ] {
             assert!(html.contains(heading), "missing {heading}: {html}");
             assert!(html.contains(&format!(r#"href="{href}""#)), "{html}");
         }
+        assert!(!html.contains("Fractional GC"), "{html}");
         assert!(!html.contains(FIRM_PRODUCT_CARDS_MARKER), "{html}");
     }
 
     #[test]
+    fn the_marker_without_a_catalog_renders_no_hardcoded_doors() {
+        let html = render(
+            "What our firm does",
+            &format!("<p>{FIRM_PRODUCT_CARDS_MARKER}</p>"),
+            Vec::new(),
+        );
+        assert!(html.contains("workshop-product-cards"), "{html}");
+        assert_eq!(html.matches("neon-card home-practice").count(), 0, "{html}");
+        assert!(!html.contains("Fractional CTO"), "{html}");
+        assert!(!html.contains("One-time services"), "{html}");
+    }
+
+    #[test]
     fn ordinary_markdown_html_passes_through_unchanged() {
-        let html = render("Ordinary", "<h3>Ordinary</h3><p>Body</p>");
+        let html = render("Ordinary", "<h3>Ordinary</h3><p>Body</p>", sample_catalog());
         assert!(html.contains("<h3>Ordinary</h3><p>Body</p>"), "{html}");
         assert!(!html.contains("workshop-product-cards"), "{html}");
+        assert!(!html.contains("Litigation"), "{html}");
     }
 
     #[test]
@@ -158,6 +180,7 @@ mod tests {
         let html = render(
             "NeonLawNavigator",
             &format!("<h3>NeonLawNavigator</h3><p>{NAVIGATOR_PRODUCT_MARKER}</p>"),
+            Vec::new(),
         );
         assert!(html.contains("workshop-navigator-slide"), "{html}");
         assert!(html.contains(r#"data-practice-mark="helm""#), "{html}");

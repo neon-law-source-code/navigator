@@ -28,6 +28,7 @@ use serde::{Deserialize, Serialize};
 use crate::catalog_slide_body::CatalogSlideBody;
 use crate::catalog_slides::WORKSHOP_PROGRESS_SCRIPT_HREF;
 use crate::components::{PublicShell, SiteHeader, SiteNavLink, CATALOG_STYLESHEET_HREF};
+use crate::home::PracticeLink;
 use crate::public_chrome::{PublicChrome, PublicFooter};
 
 /// The first-party script that turns ArrowLeft/ArrowRight into deck moves.
@@ -96,6 +97,8 @@ pub struct InjectedStep(pub StepContent);
 pub struct CatalogStepView {
     pub chrome: PublicChrome,
     pub content: StepContent,
+    /// The YAML practice catalog, used when this slide expands the firm-practice marker.
+    pub practices: Vec<PracticeLink>,
 }
 
 /// Resolve the shared chrome and this step's content.
@@ -106,9 +109,17 @@ pub async fn catalog_step_view() -> Result<CatalogStepView, ServerFnError> {
             .await
             .map(|axum::Extension(c)| c.0)
             .unwrap_or_default();
+    let practices = dioxus_fullstack_core::FullstackContext::extract::<
+        axum::Extension<crate::catalog_slide_body::InjectedPracticeCatalog>,
+        _,
+    >()
+    .await
+    .map(|axum::Extension(c)| c.0)
+    .unwrap_or_default();
     Ok(CatalogStepView {
         chrome: crate::public_chrome::firm_public_chrome_from_context().await,
         content,
+        practices,
     })
 }
 
@@ -121,13 +132,21 @@ pub fn CatalogStepEntry() -> Element {
         _ => return rsx! {},
     };
     rsx! {
-        CatalogStepPage { chrome: view.chrome, content: view.content }
+        CatalogStepPage {
+            chrome: view.chrome,
+            content: view.content,
+            practices: view.practices,
+        }
     }
 }
 
 /// The pure classroom step.
 #[component]
-pub fn CatalogStepPage(chrome: PublicChrome, content: StepContent) -> Element {
+pub fn CatalogStepPage(
+    chrome: PublicChrome,
+    content: StepContent,
+    #[props(default)] practices: Vec<PracticeLink>,
+) -> Element {
     let header = rsx! {
         SiteHeader {
             brand_name: chrome.brand_name.clone(),
@@ -171,6 +190,7 @@ pub fn CatalogStepPage(chrome: PublicChrome, content: StepContent) -> Element {
                     CatalogSlideBody {
                         title: content.title.clone(),
                         body_html: content.body_html.clone(),
+                        practices: practices.clone(),
                     }
                 }
                 if !content.notes_html.is_empty() {

@@ -1,40 +1,48 @@
 head_title: "{site_name} | Home"
 meta_description: >-
-  Everyone deserves to be seen. Litigation for the wrongly accused and the
-  wronged: personal injury, divorce, business divorce, and criminal
-  investigations.
+  Impact litigation, company counsel, technology for law firms, and one-time
+  filings. We take cases of every kind. Come in. We will listen.
 heading: Everyone deserves to be seen.
 lead: >-
-  We fight for people who have been wrongly accused, and for people who were
-  wronged and handed no form to put it on. We move fast and judiciously, because
-  being heard late is its own injury.
+  Come in with the case you have. We take cases of every kind. The work we care
+  about most is impact litigation: work whose point is to make a person's life
+  better, and the lives of people in the same position. We listen, we move
+  early, and we work as a team. That is how we work. It is not a promise about
+  a result.
 contact_label: Contact us
 hero:
   alt: New York City skyline at sunset, viewed from above Lower Manhattan.
   asset: img/new-york/new-york.png
 service:
-  heading: We are by your side through tough times.
+  heading: You have a place here.
   body:
-    - - text: >-
-          We stand with people who have been wrongly accused, and with people
-          against whom a real wrong was committed and no form was ever written
-          for it. Personal injury. Divorce, and the business divorce that looks
-          nothing like it on paper and exactly like it in the room. Criminal
-          investigations, from the first letter onward.
-    - - text: "We move fast and judiciously, and the "
+    - - text: "The "
       - text: litigation practice
         href: /litigation
-      - text: " states the method: do as much as we can, as early as we can, and get to a resolution sooner. Speed is not the point of it. A person who is not seen loses ground whether or not the case is close, and moving early is how we keep that from happening quietly."
+      - text: >-
+          is plaintiff and defense. We take the case that walks in, as long as
+          we are not conflicted out. The work we seek is the dispute that
+          changes a person's situation, and that can change it for people like
+          them.
+    - - text: "We work as a team. You can "
+      - text: meet us
+        href: /team
+      - text: >-
+          , and we bring in the specialists a matter needs. Speed is how we
+          work. A person who is not heard loses ground whether or not the case
+          is close. Moving early is how we keep that from happening quietly.
     - - text: >-
-          Every problem is unique. As long as we are not conflicted out, we will
-          listen to your story, surround ourselves with the experts it needs, and
-          do everything we can when everything is on the line.
-    - - text: >-
-          The rest of what we do exists because litigation taught us to build
-          it: the systems, the discipline, and the habit of writing everything
-          down. Whatever brings you in, the work runs the same way.
-practices_heading: Our complementary practice
+          We are also company counsel, the technology function for other law
+          firms, and the lawyers for a will, a formation, or a filing. That
+          work is the rest of the firm, not a sideline. Pick the door that fits.
+practices_heading: The whole practice
 practices:
+  - mark: scales
+    heading: Litigation
+    body: >-
+      Impact litigation, and every other dispute that walks in. Plaintiff and
+      defense. We listen first.
+    href: /litigation
   - mark: technology
     heading: Fractional CTO
     body: >-
@@ -45,14 +53,13 @@ practices:
   - mark: handshake
     heading: Fractional GC
     body: >-
-      Company counsel on one flat monthly fee, working at the pace your sales
-      cycle already runs at: contracts, licences, financings, and the corporate
-      advice under them.
+      Ongoing company counsel on one flat monthly fee: contracts, licences,
+      financings, and the advice under them, at the pace the sales cycle
+      already runs.
     href: /fractional-gc
   - mark: gavel
     heading: One-Time Services
     body: >-
-      The routine matters a person or a company walks in with: a will, a trust,
-      a formation, a trademark, an annual report. One scope and one flat fee,
-      agreed before we start.
+      A will, a trust, a formation, a trademark, an annual report. One scope
+      and one flat fee, agreed before we start.
     href: /services

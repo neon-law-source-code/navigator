@@ -408,12 +408,12 @@ pub fn firm_public_dioxus_routers(state: &AppState) -> Vec<Router> {
     for (path, content) in team_profiles() {
         routers.push(dioxus_app::team_profile_router(&path, content));
     }
+    let home = resolve_firm_home_content(branding);
     // The home page (`/`): a static statement of the practice, no per-request
-    // data.
-    routers.push(dioxus_app::home_router(
-        "/",
-        resolve_firm_home_content(branding),
-    ));
+    // data. The practice boxes on `/` are the YAML catalog workshop slides
+    // reuse — one list, not a second Rust copy.
+    let practice_catalog = home.practices.clone();
+    routers.push(dioxus_app::home_router("/", home));
     // The practice pages the home page's cards lead into. Static copy like the
     // home page's, resolved here so the `<title>` names the mounted brand.
     routers.push(dioxus_app::litigation_router(
@@ -461,6 +461,7 @@ pub fn firm_public_dioxus_routers(state: &AppState) -> Vec<Router> {
         state.workshops.clone(),
         &state.sessions,
         secure_cookies(state),
+        practice_catalog.clone(),
     ));
     // The Navigator classes, anonymous like the talks.
     // The certificate `POST` keeps its own gate: who may claim a completion
@@ -475,6 +476,7 @@ pub fn firm_public_dioxus_routers(state: &AppState) -> Vec<Router> {
         state.workshops.clone(),
         &state.sessions,
         secure_cookies(state),
+        practice_catalog,
     ));
     routers.push(portal::catalog_workshop_command_routes(state));
     routers
@@ -577,15 +579,21 @@ fn team_profiles() -> Vec<(String, webapp::team_page::TeamProfileContent)> {
 /// **The page's statement is the firm's tagline, and the practice it leads with
 /// is litigation.** "Everyone deserves to be seen." is the whole of the `<h1>`:
 /// it is what the firm is for, and it is short enough to be read rather than
-/// read through. The lead under it names the two kinds of person the litigation
-/// practice is for — wrongly accused, or wronged — because a reader deciding
-/// whether to call needs to recognise themselves in the first two sentences.
+/// read through. The lead under it names the docket (cases of every kind) and
+/// the work the firm focuses on (impact litigation whose point is to make a
+/// person's life better) because a reader deciding whether to call needs both
+/// the open door and the aim in the first two sentences. It does not list
+/// causes of action; those live on `/litigation`. Speed stays method, and the
+/// lead binds the aim so it is not read as a promised result.
 ///
-/// **The page leads with litigation.** The statement opens on it,
-/// `locales/en/home.yaml` says what it means, and the three boxes are the
-/// engagements that sit beside it. The fractional CTO engagement is still real
-/// work with a page of its own; it is no longer what this page opens on, and
-/// the copy that used to open this page now opens that one.
+/// **The page leads with litigation, then shows the whole firm.** The
+/// statement opens on impact litigation, `locales/en/home.yaml` says what it
+/// means, and the four boxes are the practice: disputes, company counsel,
+/// technology for law firms, and one-time filings. The fractional CTO
+/// engagement is still real work with a page of its own; it is no longer what
+/// this page opens on, and the copy that used to open this page now opens that
+/// one. The prose names the team and links `/team` rather than claiming a
+/// headcount the roster does not have.
 ///
 /// The home page opens on a New York skyline, supplied as a finished PNG in the
 /// public asset lane. No price, on any section — every engagement is quoted
@@ -618,10 +626,13 @@ pub(crate) fn resolve_firm_home_content(
 /// domestic violence are categories, so none of them identifies a client, a
 /// Project code, or an outcome. That distinction is what keeps the copy inside
 /// the no-client-data rule while still telling a reader whether this is their
-/// practice. Naming experience is also precisely the situation the footer's
-/// "Past results do not guarantee future outcomes." exists to cover, and
-/// `carries_the_regulated_copy_and_no_results_promise` asserts it reaches the
-/// reader.
+/// practice. The docket is open: the page says the firm takes cases of every
+/// kind, then names types it has litigated so a reader can still recognise
+/// their matter. The focus is impact litigation, stated as aim rather than as
+/// a promised result. Naming experience is also precisely the situation the
+/// footer's "Past results do not guarantee future outcomes." exists to cover,
+/// and `carries_the_regulated_copy_and_no_results_promise` asserts it reaches
+/// the reader.
 ///
 /// **The body is the firm's own filed copy and `locales/en/litigation.yaml` holds it verbatim.**
 /// The page arrived at these paragraphs by subtraction: it was a Rule 23

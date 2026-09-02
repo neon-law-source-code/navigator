@@ -421,5 +421,18 @@ mod tests {
             format!("mailto:{}", views::brand::firm_email())
         );
         assert_eq!(content.heading, "Everyone deserves to be seen.");
+        assert_eq!(
+            content
+                .practices
+                .iter()
+                .map(|practice| practice.heading.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "Litigation",
+                "Fractional CTO",
+                "Fractional GC",
+                "One-Time Services",
+            ]
+        );
     }
 }

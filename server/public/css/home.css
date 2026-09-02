@@ -1,12 +1,11 @@
 /* Home page (`/`) layout: the statement, the litigation practice in prose, and
-   the three engagements that sit beside litigation. The brand layer
-   (`brand-firm.css`) owns the palette, the serif, the card, and the motion;
-   this file only places them.
+   the four practice boxes. The brand layer (`brand-firm.css`) owns the palette,
+   the serif, the card, and the motion; this file only places them.
 
    The page publishes no services catalog and no price. It leads with the
-   litigation practice, which is why the prose is one card of paragraphs rather
-   than a grid: a card per practice area is how a reader is told there are
-   several things to choose between. */
+   litigation practice in the statement, then shows the whole firm as four
+   equal doors so counsel, technology, and one-time filings are not a leftover
+   row. */
 
 /* ---- The hero ---------------------------------------------------------- */
 
@@ -193,10 +192,10 @@
   text-wrap: balance;
 }
 
-/* Three abreast on any screen with room for them, stacked on a phone. Three
-   explicit columns rather than `auto-fit`: with three boxes `auto-fit` will drop
-   one to a second row as soon as the track minimum stops fitting, and a 2-and-1
-   split reads as though the third practice were an afterthought. */
+/* Two by two on any screen with room for them, stacked on a phone. Two
+   explicit columns rather than `auto-fit` or four abreast: four tracks crowd
+   the sentence in each box, and a 3-and-1 split reads as though the last
+   practice were an afterthought. */
 .home-practices__grid {
   display: grid;
   gap: 1.5rem;
@@ -204,7 +203,7 @@
 
 @media (min-width: 48rem) {
   .home-practices__grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

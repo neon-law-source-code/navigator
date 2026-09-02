@@ -1022,6 +1022,7 @@ alongside it.
 | Event webhook | `SENDGRID_EVENTS_SECRET`, `SENDGRID_EVENTS_PUBLIC_KEY` | Required outside the harness |
 | Threaded mail | `NAVIGATOR_PARSE_HOST`, `NAVIGATOR_LAWYER_NOTIFY_EMAIL` | Both values enable it |
 | DKIM fence | `NAVIGATOR_DKIM_REQUIRE_DOMAIN` | Optional domain pin |
+| Lawyer-sender DKIM check | none (always on) | Must pass for sender's own domain on every lawyer command/relay |
 | Internal ops notices | `SLACK_WEBHOOK_URL` | Optional; otherwise captured in memory |
 | Per-Project client-view notices | `SLACK_BOT_TOKEN` | Required outside the harness; creates private Project channels |
 | DocuSign endpoint | `DOCUSIGN_BASE_URL` | Declares DocuSign; demo in dev, live in production |

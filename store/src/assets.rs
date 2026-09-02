@@ -96,6 +96,17 @@ pub struct Asset {
     pub updated_at: DateTime<Utc>,
 }
 
+/// One lawyer-facing document identity and its insertion-ordered revision
+/// history. A `None` slug represents a one-off asset, so `revisions` is empty
+/// and `current` is that asset itself.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AssetHistory {
+    pub slug: Option<String>,
+    pub current: Asset,
+    /// Slugged revisions, newest first. The first entry is always `current`.
+    pub revisions: Vec<Asset>,
+}
+
 /// The row as the engine reads and writes it. Separate from [`Asset`]
 /// because the SDK owns its own `RecordId` and `Datetime`, and the
 /// conversion belongs at this seam rather than in every caller.
@@ -264,6 +275,57 @@ pub async fn for_project(db: &SurrealDb, project_id: Uuid) -> Result<Vec<Asset>,
         .await
         .and_then(surrealdb::IndexedResults::check)?;
     many(response)
+}
+
+/// Read every asset on a Project once, then group slugged rows into
+/// insertion-ordered document histories. The query's `id DESC` ordering is
+/// the lawyer lens's operative-version rule; `published_at` is display
+/// metadata and never participates in selection.
+///
+/// Assets without a slug remain independent one-off rows and do not acquire a
+/// synthetic history. Every returned row came from the Project-scoped query,
+/// so a matching slug on another Project cannot enter a group.
+///
+/// # Errors
+/// [`AssetError::Db`] if the lookup fails.
+pub async fn grouped_for_project(
+    db: &SurrealDb,
+    project_id: Uuid,
+) -> Result<Vec<AssetHistory>, AssetError> {
+    let assets = for_project(db, project_id).await?;
+    let mut groups = Vec::new();
+
+    for asset in assets {
+        let Some(slug) = asset.slug.as_deref() else {
+            groups.push(AssetHistory {
+                slug: None,
+                current: asset,
+                revisions: Vec::new(),
+            });
+            continue;
+        };
+
+        if let Some(group) = groups
+            .iter_mut()
+            .find(|group: &&mut AssetHistory| group.slug.as_deref() == Some(slug))
+        {
+            group.revisions.push(asset);
+        } else {
+            groups.push(AssetHistory {
+                slug: Some(slug.to_string()),
+                current: asset.clone(),
+                revisions: vec![asset],
+            });
+        }
+    }
+
+    for group in &mut groups {
+        if let Some(newest) = group.revisions.first() {
+            group.current = newest.clone();
+        }
+    }
+
+    Ok(groups)
 }
 
 /// Whether any asset is scoped to this Project — the matter-delete guard.

@@ -7,7 +7,9 @@
 //! the client, and "latest visible to you" for lawyers — plus the fact that
 //! a back-dated `published_at` cannot reorder a chain.
 
-use store::assets::{current, file_revision, revisions, Filed, Lens, RevisionError};
+use store::assets::{
+    current, file_revision, grouped_for_project, revisions, Filed, Lens, RevisionError,
+};
 use store::documents::visibility;
 use store::surreal::test_support::mem;
 use store::surreal::SurrealDb;
@@ -278,6 +280,101 @@ async fn an_unslugged_asset_is_a_one_off_and_joins_no_chain() {
     assert!(
         all.iter().all(|row| row.slug.is_none()),
         "a one-off carries no document identity"
+    );
+}
+
+/// The lawyer Project list reads one flat Project slice and groups it in the
+/// store projection: each slug appears once with its newest revision selected,
+/// while an unset slug remains an independent one-off. The other Project's
+/// same-named chain is not part of this result.
+#[tokio::test]
+async fn grouped_project_history_selects_newest_revisions_and_keeps_one_offs_scoped() {
+    let (db, storage, _tmp, project_id) = fixtures().await;
+    let other_project = seed_project_surreal(&db, "grouped-other").await;
+
+    let first = insert_revision(
+        &db,
+        &storage,
+        project_id,
+        Some("msa"),
+        b"first",
+        Some("2026-08-10T00:00:00Z"),
+        visibility::CLIENT,
+    )
+    .await;
+    let operative = insert_revision(
+        &db,
+        &storage,
+        project_id,
+        Some("msa"),
+        b"operative",
+        Some("2026-08-01T00:00:00Z"),
+        visibility::INTERNAL,
+    )
+    .await;
+    let one_off = insert_revision(
+        &db,
+        &storage,
+        project_id,
+        None,
+        b"attachment",
+        None,
+        visibility::INTERNAL,
+    )
+    .await;
+    let other = insert_revision(
+        &db,
+        &storage,
+        other_project,
+        Some("msa"),
+        b"other-project",
+        None,
+        visibility::CLIENT,
+    )
+    .await;
+
+    let groups = grouped_for_project(&db, project_id)
+        .await
+        .expect("grouped project history");
+    assert_eq!(groups.len(), 2, "one slugged document and one one-off");
+
+    let document = groups
+        .iter()
+        .find(|group| group.slug.as_deref() == Some("msa"))
+        .expect("slugged document");
+    assert_eq!(document.current.id, operative);
+    assert_eq!(
+        document
+            .revisions
+            .iter()
+            .map(|asset| asset.id)
+            .collect::<Vec<_>>(),
+        vec![operative, first],
+        "the history stays newest-first by insertion order"
+    );
+    assert_eq!(
+        document.current.published_at.as_deref(),
+        Some("2026-08-01T00:00:00Z")
+    );
+
+    let one_off_group = groups
+        .iter()
+        .find(|group| group.slug.is_none())
+        .expect("one-off asset");
+    assert_eq!(one_off_group.current.id, one_off);
+    assert!(
+        one_off_group.revisions.is_empty(),
+        "an unset slug never becomes a revision chain"
+    );
+    assert!(
+        groups
+            .iter()
+            .flat_map(|group| group
+                .revisions
+                .iter()
+                .chain(std::iter::once(&group.current)))
+            .all(|asset| asset.id != other),
+        "a same-named slug in another Project stays out of the result"
     );
 }
 

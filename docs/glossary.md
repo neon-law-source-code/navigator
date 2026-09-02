@@ -107,7 +107,7 @@ instead is the failure mode: it drifts from the record and cannot be re-verified
 ## Brand
 
 A closed key naming which house brand a request resolves to — [`views::brand::BrandKey`](../views/src/brand.rs) (`neon`,
-`same-day`). **A brand is a registry entry, not a binary**: each key names its own served hosts and its own
+`delete-your-data`). **A brand is a registry entry, not a binary**: each key names its own served hosts and its own
 [`Branding`](../views/src/brand.rs), and the resolver that maps a request's `Host:` header onto a key
 ([`views::brand::registered_brand_key`](../views/src/brand.rs)) runs inside the *same* `neon-server` binary for every
 key it serves. One repository, one running process, N house brands — adding one is a code change to the registry (a new

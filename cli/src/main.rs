@@ -489,8 +489,8 @@ enum TemplateCmd {
     ///
     /// Depth-1 headings numbered `I.` (contracts) or `1.` (motion practice),
     /// plus `> **A.**` block-quote subsections, become highlightable units.
-    /// Open the HTML in a browser and step with Arrow keys, J/K, or Space
-    /// while recording. `H` hides the hint for a clean frame.
+    /// Open the HTML in a browser and step with Arrow keys or Space while
+    /// recording. `H` hides the hint for a clean frame.
     Narrate {
         /// Markdown file to parse (a notation template, or a plain draft).
         file: PathBuf,

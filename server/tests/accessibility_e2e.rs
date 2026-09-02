@@ -126,6 +126,7 @@ const PARAMETERISED: &[(&str, &[&str])] = &[
         // authored content rather than component output.
         &["/blog/thanks-apple", "/blog/going-all-in-on-rust"],
     ),
+    ("/notations/{slug}", &["/notations/onboarding-letter"]),
     ("/workshops/{slug}", &["/workshops/use-the-navigator"]),
     (
         "/workshops/{slug}/slides",

@@ -685,6 +685,8 @@ fn title_segment(segment: &str) -> String {
             "cto" => "CTO".to_string(),
             "gc" => "GC".to_string(),
             "id" => "ID".to_string(),
+            "irs" => "IRS".to_string(),
+            "llc" => "LLC".to_string(),
             "mcp" => "MCP".to_string(),
             "oidc" => "OIDC".to_string(),
             other => {
@@ -2739,6 +2741,66 @@ async fn inject_catalog_index(
     next.run(req).await
 }
 
+/// The public show page for one bundled notation — the `/notations`
+/// catalog's default link for every card. `{slug}` is a distinct path per
+/// document (`onboarding-letter`, `nevada-llc-formation`, …), the same shape
+/// as [`WORKSHOP_MATERIAL_PATH`]/[`PRESENTATION_MATERIAL_PATH`] — but this
+/// mount carries no auth or policy layer, unlike the lawyer-tier recording
+/// stage at [`APP_OUTLINE_PATH`].
+pub const NOTATION_PREVIEW_PATH: &str = "/notations/{slug}";
+
+/// The ungated Dioxus notation-preview stage. Like [`harvard_outline_router`],
+/// the bundled document library is compiled in rather than read from the
+/// store. Unlike it, the `{slug}` resolves in [`inject_notation_preview`] —
+/// synchronous axum middleware, mirroring [`inject_catalog_material`] —
+/// rather than an awaited extractor inside the render, matching how
+/// [`webapp::contact_page`] reads its content.
+pub fn notation_preview_router(docs: Vec<webapp::notation_preview::PreviewDoc>) -> Router {
+    Router::<FullstackState>::new()
+        .route(
+            NOTATION_PREVIEW_PATH,
+            get(render_handler)
+                .layer(from_fn(dioxus_document_head))
+                .layer(from_fn(inject_public_utility))
+                .layer(from_fn_with_state(docs, inject_notation_preview)),
+        )
+        .with_state(FullstackState::new(
+            ServeConfig::new(),
+            webapp::notation_preview::NotationPreviewEntry,
+        ))
+}
+
+/// Resolve the requested bundled document from the `{slug}` path segment and
+/// hand it to the render task, already picked. An unknown slug 404s, exactly
+/// as [`inject_catalog_material`] refuses an unknown workshop or
+/// presentation material.
+async fn inject_notation_preview(
+    axum::extract::State(docs): axum::extract::State<Vec<webapp::notation_preview::PreviewDoc>>,
+    mut req: Request,
+    next: Next,
+) -> Response {
+    let slug = req
+        .uri()
+        .path()
+        .rsplit('/')
+        .next()
+        .unwrap_or_default()
+        .to_string();
+    let Some(found) = docs.iter().find(|d| d.slug == slug) else {
+        return (StatusCode::NOT_FOUND, webapp::error_pages::not_found()).into_response();
+    };
+    let content = webapp::notation_preview::NotationPreviewContent {
+        title: found.title.clone(),
+        source_href: found.source_href.clone(),
+        frontmatter: found.frontmatter.clone(),
+        stage_html: found.stage_html.clone(),
+        origin_url: found.origin_url.clone(),
+    };
+    req.extensions_mut()
+        .insert(webapp::notation_preview::InjectedNotationPreview(content));
+    next.run(req).await
+}
+
 /// A Catalog material's hub — `/workshops/{slug}` or `/presentations/{slug}`
 /// (#956 Phase 4).
 ///
@@ -4033,6 +4095,18 @@ mod tests {
             (
                 "/app/admin/jurisdictions",
                 "Navigator | Admin | Jurisdictions",
+            ),
+            (
+                "/notations/onboarding-letter",
+                "Neon Law | Notations | Onboarding Letter",
+            ),
+            (
+                "/notations/nevada-llc-formation",
+                "Neon Law | Notations | Nevada LLC Formation",
+            ),
+            (
+                "/notations/irs-form-990",
+                "Neon Law | Notations | IRS Form 990",
             ),
         ];
 

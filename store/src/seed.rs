@@ -3949,7 +3949,7 @@ records:
     }
 
     /// The firm's one engagement agreement carries the three load-bearing
-    /// elements every matter needs: the JAMS arbitration clause (forum
+    /// elements every matter needs: the AAA arbitration clause (forum
     /// selection only, with the non-waivable fee-arbitration carve-out and
     /// the independent-counsel sentence — never a liability limitation), the
     /// `contact@neonlaw.com` reach-the-Firm clause, and the custom-clause
@@ -3970,10 +3970,11 @@ records:
         // satisfy the Markdown linter cannot silently drop a clause from
         // this guard.
         let required = [
-            "binding arbitration before a single arbitrator administered by **JAMS**",
+            "binding arbitration before a single arbitrator administered by the **American Arbitration",
             "limit, cap, or waive the Firm's responsibility for its own work",
             "right to consult independent counsel of your own choosing before you agree to it",
             "Mandatory Fee Arbitration Act",
+            "22 NYCRR Part 137",
             "Washington State Bar Association",
             "Write to contact@neonlaw.com",
             "{{custom_clauses}}",

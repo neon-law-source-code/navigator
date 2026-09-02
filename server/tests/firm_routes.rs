@@ -839,7 +839,7 @@ async fn the_footer_carries_the_pages_the_header_does_not() {
         "/contact",
         "/docs",
         "/navigator",
-        "https://neon-law-source-code.github.io/navigator-ux/?showcase=home",
+        "https://neon-law-source-code.github.io/navigator-ux/",
         "/notations",
         "/presentations",
         "/privacy",
@@ -2417,20 +2417,22 @@ async fn notations_page_uses_the_catalog_hero_and_links_the_letters_and_forms() 
         "catalog hero: {body}"
     );
     assert!(body.contains(">Notations<"), "page heading: {body}");
+    // Every card's default link opens the notation's own show page now — the
+    // raw GitHub source lives on that page, not the catalog card.
     assert!(
-        body.contains("neon_law/shared/onboarding_letter.md"),
+        body.contains(r#"href="/notations/onboarding-letter""#),
         "onboarding letter: {body}"
     );
     assert!(
-        body.contains("neon_law/shared/offboarding_letter.md"),
+        body.contains(r#"href="/notations/offboarding-letter""#),
         "offboarding letter: {body}"
     );
     assert!(
-        body.contains("forms/united_states/nevada/state/nv__llc_formation.md"),
+        body.contains(r#"href="/notations/nevada-llc-formation""#),
         "LLC formation form: {body}"
     );
     assert!(
-        body.contains("forms/united_states/federal/irs/us__form_990.md"),
+        body.contains(r#"href="/notations/irs-form-990""#),
         "Form 990: {body}"
     );
     assert!(body.contains("site-header"), "public header chrome");

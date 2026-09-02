@@ -40,6 +40,7 @@ pub const PUBLIC_PATHS: &[&str] = &[
     "/fractional-gc",
     "/navigator",
     "/notations",
+    "/notations/{slug}",
     "/contact",
     "/blog",
     "/blog/{slug}",

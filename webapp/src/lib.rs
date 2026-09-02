@@ -74,6 +74,7 @@ pub mod marketing_page;
 pub mod matter_directory;
 pub mod matter_surface;
 pub mod notation_outline;
+pub mod notation_preview;
 pub mod people;
 pub mod person_show;
 pub mod playbooks;

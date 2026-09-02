@@ -23,9 +23,6 @@ pub struct ContactContent {
     pub meta_description: String,
     /// The page `<h1>` (`contact.title`).
     pub page_title: String,
-    /// The firm section heading (the firm brand's site name).
-    pub firm_heading: String,
-    pub firm_intro: String,
     pub email_label: String,
     pub phone_label: String,
     pub firm_email: String,
@@ -117,8 +114,6 @@ pub fn ContactPage(chrome: PublicChrome, content: ContactContent) -> Element {
             article { class: "contact-page",
                 h1 { "{content.page_title}" }
                 section {
-                    h2 { "{content.firm_heading}" }
-                    p { "{content.firm_intro}" }
                     dl {
                         dt { "{content.email_label}" }
                         dd {
@@ -155,8 +150,6 @@ mod tests {
                 head_title: "Neon Law | Contact".to_string(),
                 meta_description: "Reach the firm.".to_string(),
                 page_title: "Contact".to_string(),
-                firm_heading: "Neon Law".to_string(),
-                firm_intro: "Email the firm with a short description.".to_string(),
                 email_label: "Email".to_string(),
                 phone_label: "Phone".to_string(),
                 firm_email: "support@example.com".to_string(),

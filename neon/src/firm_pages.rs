@@ -87,24 +87,164 @@ const NOTATIONS_INDEX_LEDE: &str =
      it in, and the workflow that carries it from intake through attorney review to signature, \
      filing, or closing. Navigator ships the sample letters that open and close a matter, and \
      the government forms the firm files.";
-const NOTATIONS_INDEX_FOOTNOTE: &str =
-    "Letters are the firm's confidential work product. Blank government PDFs belong to the \
-     issuing agency; the catalog cards and workflows beside them are the firm's.";
 const NOTATIONS_BLOB_BASE: &str =
     "https://github.com/neon-law-source-code/navigator/blob/main/templates/";
 
+/// A notation's card: the default link opens the show page at
+/// `/notations/{slug}` (built from [`notation_preview_docs`]) — a letter's
+/// paragraph-highlighted stage or a form's cover sheet — rather than the raw
+/// GitHub source, which now lives as a link on that page instead. `slug`
+/// names the document (`onboarding-letter`, `nevada-llc-formation`), not
+/// just an eyebrow word, because it also becomes the URL's `{slug}` — and,
+/// through the sitewide `stamp_document_title` path-derived tab title, the
+/// words that title-case into the browser tab's title.
 fn notation_card(
     eyebrow: &str,
     title: &str,
-    path: &str,
+    slug: &str,
     summary: &str,
 ) -> webapp::catalog_index::CatalogMaterial {
     webapp::catalog_index::CatalogMaterial {
-        href: format!("{NOTATIONS_BLOB_BASE}{path}"),
+        href: format!("/notations/{slug}"),
         eyebrow: eyebrow.to_string(),
         title: title.to_string(),
         summary: summary.to_string(),
     }
+}
+
+/// A sample letter, parsed into the highlighted-preview stage.
+fn letter_preview_doc(
+    slug: &str,
+    source_path: &str,
+    src: &str,
+) -> webapp::notation_preview::PreviewDoc {
+    let doc = views::harvard_outline::parse(src);
+    webapp::notation_preview::PreviewDoc {
+        slug: slug.to_string(),
+        title: doc.title.clone(),
+        source_href: format!("{NOTATIONS_BLOB_BASE}{source_path}"),
+        frontmatter: doc.frontmatter.clone().unwrap_or_default(),
+        stage_html: views::harvard_outline::stage_html(&doc),
+        origin_url: None,
+    }
+}
+
+/// A government form, parsed into the same stepping stage as a letter, plus
+/// a link to the government's own blank form when the template declares
+/// `origin_url`.
+fn form_preview_doc(
+    slug: &str,
+    source_path: &str,
+    src: &str,
+) -> webapp::notation_preview::PreviewDoc {
+    let doc = views::harvard_outline::parse(src);
+    let frontmatter = doc.frontmatter.clone().unwrap_or_default();
+    let origin_url = views::harvard_outline::frontmatter_field(&frontmatter, "origin_url");
+    webapp::notation_preview::PreviewDoc {
+        slug: slug.to_string(),
+        title: doc.title.clone(),
+        source_href: format!("{NOTATIONS_BLOB_BASE}{source_path}"),
+        frontmatter,
+        stage_html: views::harvard_outline::stage_html(&doc),
+        origin_url,
+    }
+}
+
+/// Every bundled notation's show-page content — the two sample letters and
+/// every government form — the content
+/// [`portal::dioxus_app::notation_preview_router`] serves at
+/// `/notations/{slug}`.
+fn notation_preview_docs() -> Vec<webapp::notation_preview::PreviewDoc> {
+    const ONBOARDING: &str = include_str!("../../templates/neon_law/shared/onboarding_letter.md");
+    const OFFBOARDING: &str = include_str!("../../templates/neon_law/shared/offboarding_letter.md");
+    const FORM_990: &str =
+        include_str!("../../templates/forms/united_states/federal/irs/us__form_990.md");
+    const NATURALIZATION: &str =
+        include_str!("../../templates/forms/united_states/federal/uscis/us__naturalization.md");
+    const NV_LLC: &str =
+        include_str!("../../templates/forms/united_states/nevada/state/nv__llc_formation.md");
+    const NV_PROFIT_CORP: &str = include_str!(
+        "../../templates/forms/united_states/nevada/state/nv__profit_corp_formation.md"
+    );
+    const NV_BUSINESS_TRUST: &str = include_str!(
+        "../../templates/forms/united_states/nevada/state/nv__business_trust_formation.md"
+    );
+    const NV_NONPROFIT: &str = include_str!(
+        "../../templates/forms/united_states/nevada/state/nv__nonprofit_501c3_formation.md"
+    );
+    const NV_ANNUAL_REPORT: &str =
+        include_str!("../../templates/forms/united_states/nevada/state/nv__annual_report.md");
+    const NV_DISSOLUTION: &str =
+        include_str!("../../templates/forms/united_states/nevada/state/nv__dissolution.md");
+    const NV_MODIFIED_BUSINESS_TAX: &str = include_str!(
+        "../../templates/forms/united_states/nevada/state/nv__modified_business_tax.md"
+    );
+    const NV_CHARITABLE: &str = include_str!(
+        "../../templates/forms/united_states/nevada/state/nv__charitable_solicitation_registration.md"
+    );
+
+    vec![
+        letter_preview_doc(
+            "onboarding-letter",
+            "neon_law/shared/onboarding_letter.md",
+            ONBOARDING,
+        ),
+        letter_preview_doc(
+            "offboarding-letter",
+            "neon_law/shared/offboarding_letter.md",
+            OFFBOARDING,
+        ),
+        form_preview_doc(
+            "irs-form-990",
+            "forms/united_states/federal/irs/us__form_990.md",
+            FORM_990,
+        ),
+        form_preview_doc(
+            "application-for-naturalization",
+            "forms/united_states/federal/uscis/us__naturalization.md",
+            NATURALIZATION,
+        ),
+        form_preview_doc(
+            "nevada-llc-formation",
+            "forms/united_states/nevada/state/nv__llc_formation.md",
+            NV_LLC,
+        ),
+        form_preview_doc(
+            "nevada-profit-corporation-formation",
+            "forms/united_states/nevada/state/nv__profit_corp_formation.md",
+            NV_PROFIT_CORP,
+        ),
+        form_preview_doc(
+            "nevada-business-trust-formation",
+            "forms/united_states/nevada/state/nv__business_trust_formation.md",
+            NV_BUSINESS_TRUST,
+        ),
+        form_preview_doc(
+            "nevada-nonprofit-formation",
+            "forms/united_states/nevada/state/nv__nonprofit_501c3_formation.md",
+            NV_NONPROFIT,
+        ),
+        form_preview_doc(
+            "nevada-annual-list",
+            "forms/united_states/nevada/state/nv__annual_report.md",
+            NV_ANNUAL_REPORT,
+        ),
+        form_preview_doc(
+            "nevada-llc-dissolution",
+            "forms/united_states/nevada/state/nv__dissolution.md",
+            NV_DISSOLUTION,
+        ),
+        form_preview_doc(
+            "nevada-modified-business-tax",
+            "forms/united_states/nevada/state/nv__modified_business_tax.md",
+            NV_MODIFIED_BUSINESS_TAX,
+        ),
+        form_preview_doc(
+            "nevada-charitable-solicitation-registration",
+            "forms/united_states/nevada/state/nv__charitable_solicitation_registration.md",
+            NV_CHARITABLE,
+        ),
+    ]
 }
 
 /// The public `/notations` catalog: the sample engagement letters and every
@@ -117,78 +257,78 @@ fn notations_index_content() -> webapp::catalog_index::CatalogIndexContent {
             notation_card(
                 "Letter",
                 "Onboarding Letter",
-                "neon_law/shared/onboarding_letter.md",
+                "onboarding-letter",
                 "The sample letter that opens a matter (`onboarding__letter`).",
             ),
             notation_card(
                 "Letter",
                 "Closing Letter",
-                "neon_law/shared/offboarding_letter.md",
+                "offboarding-letter",
                 "The sample letter that closes a matter (`offboarding__letter`).",
             ),
             notation_card(
                 "Form · Federal",
                 "IRS Form 990",
-                "forms/united_states/federal/irs/us__form_990.md",
+                "irs-form-990",
                 "Return of Organization Exempt From Income Tax.",
             ),
             notation_card(
                 "Form · Federal",
                 "Application for Naturalization (N-400)",
-                "forms/united_states/federal/uscis/us__naturalization.md",
+                "application-for-naturalization",
                 "Intake summary for Form N-400.",
             ),
             notation_card(
                 "Form · Nevada",
                 "Nevada LLC Formation",
-                "forms/united_states/nevada/state/nv__llc_formation.md",
+                "nevada-llc-formation",
                 "Articles of organization for a Nevada limited-liability company.",
             ),
             notation_card(
                 "Form · Nevada",
                 "Nevada Profit Corporation Formation",
-                "forms/united_states/nevada/state/nv__profit_corp_formation.md",
+                "nevada-profit-corporation-formation",
                 "Articles of incorporation for a Nevada profit corporation.",
             ),
             notation_card(
                 "Form · Nevada",
                 "Nevada Business Trust Formation",
-                "forms/united_states/nevada/state/nv__business_trust_formation.md",
+                "nevada-business-trust-formation",
                 "Certificate of business trust for Nevada.",
             ),
             notation_card(
                 "Form · Nevada",
                 "Nevada Nonprofit Articles of Incorporation (501(c)(3))",
-                "forms/united_states/nevada/state/nv__nonprofit_501c3_formation.md",
+                "nevada-nonprofit-formation",
                 "Articles that form a Nevada nonprofit seeking 501(c)(3) status.",
             ),
             notation_card(
                 "Form · Nevada",
                 "Nevada Annual List",
-                "forms/united_states/nevada/state/nv__annual_report.md",
+                "nevada-annual-list",
                 "Annual list of managers, members, and registered agent.",
             ),
             notation_card(
                 "Form · Nevada",
                 "Nevada LLC Articles of Dissolution",
-                "forms/united_states/nevada/state/nv__dissolution.md",
+                "nevada-llc-dissolution",
                 "The filing that dissolves a Nevada LLC.",
             ),
             notation_card(
                 "Form · Nevada",
                 "Nevada Modified Business Tax Return",
-                "forms/united_states/nevada/state/nv__modified_business_tax.md",
+                "nevada-modified-business-tax",
                 "Nevada Modified Business Tax return.",
             ),
             notation_card(
                 "Form · Nevada",
                 "Nevada Charitable Solicitation Registration",
-                "forms/united_states/nevada/state/nv__charitable_solicitation_registration.md",
+                "nevada-charitable-solicitation-registration",
                 "Registration before soliciting donations in Nevada.",
             ),
         ],
         contact_email: views::brand::firm_email().to_string(),
-        footnote: NOTATIONS_INDEX_FOOTNOTE.to_string(),
+        footnote: String::new(),
     }
 }
 
@@ -254,6 +394,7 @@ pub fn firm_public_dioxus_routers(state: &AppState) -> Vec<Router> {
         dioxus_app::NOTATIONS_INDEX_PATH,
         notations_index_content(),
     ));
+    routers.push(dioxus_app::notation_preview_router(notation_preview_docs()));
     // The firm `/contact` page, content resolved from the same mounted brand
     // bundle as the pages around it.
     routers.push(dioxus_app::contact_router(
@@ -355,18 +496,6 @@ fn resolve_firm_contact_content(
              legal services."
         ),
         page_title: page_title.to_string(),
-        firm_heading: firm_name.to_string(),
-        // No figure here. No page on this host posts a rate — every engagement
-        // is quoted through this page — so a consultation fee would be the first
-        // posted number on a surface whose whole purpose is to start a
-        // conversation before anything is priced. The page promises the quote,
-        // not its amount.
-        firm_intro: format!(
-            "Email {firm_name} with a short description of the matter — estate planning, \
-             corporate formation, ongoing services. We respond within one business day with a \
-             flat-fee quote and a calendar link. The first appointment is 30 minutes with a \
-             licensed attorney."
-        ),
         email_label: "Email".to_string(),
         phone_label: "Phone".to_string(),
         firm_email: branding.firm_email.to_string(),

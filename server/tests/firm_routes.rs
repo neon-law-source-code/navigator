@@ -391,7 +391,7 @@ async fn litigation_is_the_statement_and_the_filed_paragraphs() {
     // it is a real check rather than a hedge: `store::conflicts` runs a bounded
     // multi-hop traversal before the firm can take a matter.
     assert!(
-        body.contains("as long as we are not conflicted out"),
+        body.contains("As long as we are not conflicted out"),
         "the page states the conflicts caveat: {body}"
     );
     // The third paragraph: how a matter runs here, after who the firm

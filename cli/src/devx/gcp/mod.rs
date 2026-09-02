@@ -1072,7 +1072,7 @@ mod tests {
     }
 
     #[test]
-    fn deploy_workshop_records_the_substrate_checkpoint_and_unshipped_production() {
+    fn deploy_workshop_records_the_current_storage_checkpoint() {
         let deploy_md = concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../server/content/workshops/navigator/DEPLOY.md"
@@ -1089,25 +1089,28 @@ mod tests {
         let prose = raw.split_whitespace().collect::<Vec<_>>().join(" ");
 
         for observed in [
-            "the two production substrates have completed every setup stage",
-            "Both production GKE Autopilot clusters are `RUNNING`",
-            // Pinned on the provisioner invariant rather than on instance
-            // state. The previous claim — that both instances were `RUNNABLE`
-            // — was a fact about live infrastructure that this test could not
-            // observe, so deleting an instance turned the assertion into a
-            // fiction it kept passing on. These two survive the decommission:
-            // `setup` creating no instance is a property of the tree, and the
-            // operator's remaining step is a statement about the runbook.
-            "`ops gcp setup` provisions no Cloud SQL instance",
-            "An operator must export the two legacy production Postgres 15 instances",
-            "created but unprovisioned project",
-            "The two production clusters currently have no application namespace",
-            "their public hosts do not yet answer TLS",
-            "An operator must ship one immutable release",
+            "Five unconditional private buckets",
+            "optional archive and telemetry lanes",
+            "never creates a cloud bucket per Project",
+            "Each portal lives under its `{project-code}/portal/` prefix",
+            "The documents bucket stores content-addressed `blobs/<sha>` objects",
+            "Surreal asset rows carry the Project association",
         ] {
             assert!(
                 prose.contains(observed),
-                "DEPLOY.md must preserve the observed substrate checkpoint `{observed}`",
+                "DEPLOY.md must preserve the current storage checkpoint `{observed}`",
+            );
+        }
+        for retired in [
+            "An operator must export the two legacy production Postgres 15 instances",
+            "created but unprovisioned project",
+            "The two production clusters currently have no application namespace",
+            "one private object-storage bucket per deployment",
+            "issues/1103",
+        ] {
+            assert!(
+                !prose.contains(retired),
+                "DEPLOY.md must not preserve the retired substrate claim `{retired}`",
             );
         }
         for forbidden_domain in ["@neonlaw.com", "@neon-law-stg.iam.gserviceaccount.com"] {

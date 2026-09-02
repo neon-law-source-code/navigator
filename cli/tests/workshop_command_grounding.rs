@@ -296,8 +296,8 @@ fn deployment_workshop_runs_every_persistent_row_on_the_production_profile() {
     let prose = deploy.split_whitespace().collect::<Vec<_>>().join(" ");
 
     for observed in [
-        "The two production clusters currently have no application namespace",
-        "their public hosts do not yet answer TLS",
+        "A completed setup provisions infrastructure but not a running application",
+        "Ship an immutable release",
         "disposable `navigator dev staging` integration surface",
         "All three managed GKE rows use `production`",
         "“Test” is the `dev` profile with `NAVIGATOR_CI_HARNESS=1`",
@@ -320,22 +320,32 @@ fn deployment_workshop_runs_every_persistent_row_on_the_production_profile() {
 }
 
 #[test]
-fn deployment_workshop_separates_the_live_bucket_checkpoint_from_the_single_bucket_target() {
+fn deployment_workshop_describes_deployment_scoped_bucket_lanes() {
     let deploy = repo_file("server/content/workshops/navigator/DEPLOY.md");
     let prose = deploy.split_whitespace().collect::<Vec<_>>().join(" ");
 
     for observed in [
-        "Each provisioned row has five private assets, documents, exports, logs, and applications buckets",
-        "current checkpoint, not the target topology",
-        "exactly one private object-storage bucket per deployment",
-        "never one bucket per Project",
-        "`{project-code}/documents/`",
-        "issues/1103",
+        "Five unconditional private buckets",
+        "optional archive and telemetry lanes",
+        "never creates a cloud bucket per Project",
+        "`{project-code}/portal/` prefix",
+        "content-addressed `blobs/<sha>` objects",
+        "Surreal asset rows carry the Project association",
         "does not grant `allUsers`",
     ] {
         assert!(
             prose.contains(observed),
             "deployment workshop must preserve the storage-topology checkpoint `{observed}`"
+        );
+    }
+    for removed in [
+        "one private object-storage bucket per deployment",
+        "issues/1103",
+        "{project-code}/documents/",
+    ] {
+        assert!(
+            !prose.contains(removed),
+            "deployment workshop must not preserve the retired storage claim `{removed}`"
         );
     }
 }

@@ -12,9 +12,10 @@ your **own** instance — the same Rust stack our attorneys use, on your own Goo
 One command does most of the work: `navigator ops gcp setup`, a provisioner written in Rust that talks to Google's REST
 APIs directly and ships with a dry-run so you can read the whole plan before a single packet leaves your laptop.
 
-Two things to hold up front. This provisions **billable** Google Cloud resources — a GKE Autopilot cluster and five
-storage buckets — so it is not free, and you should set a budget alert before you begin. And this is a deployment guide
-for admin users standing up infrastructure. With that said: you can run the same stack we run. Let's stand it up.
+Two things to hold up front. This provisions **billable** Google Cloud resources — a GKE Autopilot cluster and five core
+storage buckets, with optional archive and telemetry lanes — so it is not free, and you should set a budget alert before
+you begin. This is a deployment guide for admin users standing up infrastructure. With that said: you can run the same
+stack we run. Let's stand it up.
 
 > **Bring your own typeface license.** Neon Law Navigator source code is owned by Shook Law PLLC.
 > [GORP Serif](https://trashtype.com/fonts/gorp) is proprietary font software licensed separately from TrashType and is
@@ -61,7 +62,8 @@ Six steps, each tagged with its Bloom verb. You are the admin operator; the `nav
 - **Create** — stand up a billed project and authenticate.
 - **Predict** — run `--dry-run` and read every API call before sending one.
 - **Identify** — name the twenty-two Google Cloud APIs the provisioner enables.
-- **Explain** — describe the VPC, the five buckets, the private image registry, and the three service deployments.
+- **Explain** — describe the VPC, five core buckets, optional archive/telemetry lanes, private image registry, and three
+  service deployments.
 - **Execute** — bring up the cluster, the static IP, and Fleet membership.
 - **Verify** — ship the service images and confirm `/readyz` answers 200.
 
@@ -72,10 +74,10 @@ revision](https://en.wikipedia.org/wiki/Bloom%27s_taxonomy)). You are the admin 
 instrument. **Create** — stand up a billed Google Cloud project and authenticate so `navigator` can act on your behalf.
 **Predict** — run `navigator ops gcp setup --dry-run` and read every API call the provisioner _would_ make before
 sending one. **Identify** — name the twenty-two Google Cloud APIs the provisioner enables, and why each is needed.
-**Explain** — describe the VPC, the five storage buckets, the private image registry, the two service deployments, and
-why re-running setup is always safe. **Execute** — bring up the GKE Autopilot cluster, the static IP, and Fleet
-membership with one command. **Verify** — ship the service images and confirm the running service answers `/readyz` with
-a 200.
+**Explain** — describe the VPC, the five core storage buckets and optional archive/telemetry lanes, the private image
+registry, the two service deployments, and why re-running setup is always safe. **Execute** — bring up the GKE Autopilot
+cluster, the static IP, and Fleet membership with one command. **Verify** — ship the service images and confirm the
+running service answers `/readyz` with a 200.
 
 ## Prepare Google Cloud
 
@@ -350,37 +352,22 @@ covered later in this workshop.
 
 ### Live rollout checkpoint
 
-As of 31 July 2026, the two production substrates have completed every setup stage, and `neon-law-stg` is a created but
-unprovisioned project:
+The rollout checkpoint is the repository's deployment contract:
 
-- Both production GKE Autopilot clusters are `RUNNING` in `us-west4`, and no deployment reads Postgres: ENG-22 moved the
-  store to SurrealDB, `/health` pings SurrealDB, and `ops gcp setup` provisions no Cloud SQL instance, so a deleted one
-  is not recreated on the next run. An operator must export the two legacy production Postgres 15 instances to each
-  deployment's own exports bucket and then delete them. Nothing has ever archived those instances — the nightly archive
-  lane covers the SurrealDB tables only — so the export is what makes the deletion reversible, and it is not optional.
-- `neon-law-stg` and `ghcr` exist in the `neonlaw.com` organization and are linked to billing, but neither has been
-  through its provisioner yet. Run `ops gcp hub setup` against the hub first, then `ops gcp setup` against staging — the
-  environment provisioner grants against the hub repository, so the hub must exist before any environment names it.
-- Each provisioned row has five private assets, documents, exports, logs, and applications buckets.
-- On those rows, both the deployment runtime identity and the active operator have bucket-scoped
-  `roles/storage.objectAdmin`; none of the buckets grants `allUsers`.
-
-The five-bucket list is the current checkpoint, not the target topology. Issue
-[#1103](https://github.com/neon-law-source-code/navigator/issues/1103) coordinates the migration to exactly one private
-object-storage bucket per deployment and never one bucket per Project. Project growth adds rows and logical key space,
-with lanes such as `{project-code}/documents/` and `{project-code}/exports/` inside the deployment bucket; it does not
-create cloud buckets. Marketing bytes remain available through the same-origin `/assets/*` application route while the
-bucket itself stays private and does not grant `allUsers`. Until that atomic migration lands, setup reconciles the five
-existing bucket resources recorded above.
+Five unconditional private buckets — assets, documents, exports, logs, and applications — plus optional archive and
+telemetry lanes when named. Project growth adds rows and logical key space; it never creates a cloud bucket per Project.
+Each portal lives under its `{project-code}/portal/` prefix in the applications bucket. The documents bucket stores
+content-addressed `blobs/<sha>` objects, while Surreal asset rows carry the Project association, visibility, and
+provenance used for authorization. Marketing bytes remain available through the same-origin `/assets/*` application
+route while the bucket itself stays private and does not grant `allUsers`.
 
 New clusters are created with `--enable-fleet`; the subsequent idempotent reconciliation can therefore report `Changing
 existing fleet membership is not supported`. Navigator treats only that exact response as already reconciled and
 continues; unrelated Fleet errors still stop setup.
 
-Infrastructure is not deployment. The two production clusters currently have no application namespace, Deployment,
-Service, Gateway, or HTTPRoute, so their public hosts do not yet answer TLS. An operator must ship one immutable release
-to Neon production and Neon Law production, then prove `/readyz`, `/version`, certificate readiness, Restate
-registration, and the browser surface before posting the `#navigator` handoff.
+Infrastructure is not deployment. A completed setup provisions infrastructure but not a running application. Ship an
+immutable release and prove `/readyz`, `/version`, certificate readiness, Restate registration, and the browser surface
+before posting the `#navigator` handoff.
 
 For a prefix `<name>`, set `NAVIGATOR_GKE_CLUSTER_NAME=<name>`, `NAVIGATOR_GKE_CONTEXT=gke_<project>_<region>_<name>`,
 `NAVIGATOR_K8S_NAMESPACE=<name>`, `NAVIGATOR_VPC_NAME=<name>-vpc`, `NAVIGATOR_SUBNETWORK_NAME=<name>-subnet`,
@@ -403,8 +390,8 @@ SendGrid credentials and production uses live credentials authenticated for its 
 
 Provision each row with the same region-agnostic command — one run per `deployments/` directory, its coordinates
 exported from that directory's `config.toml` (populate the directory first; the config is the source of every coordinate
-the provisioner reads, so a row is provisioned only once its directory exists). Each run creates five buckets and one
-Autopilot cluster; re-running reconciles only that row:
+the provisioner reads, so a row is provisioned only once its directory exists). Each run creates five core buckets and
+one Autopilot cluster; configured archive and telemetry lanes are additional:
 
 ```bash
 set -a; eval "$(grep ' = "' deployments/neon-law-stg/config.toml | sed 's/ = /=/')"; set +a
@@ -429,10 +416,10 @@ set -a; eval "$(grep ' = "' deployments/neon-law-stg/config.toml | sed 's/ = /=/
 navigator ops gcp setup
 ```
 
-That is the live resource boundary, per deployment: five buckets, one VPC/subnet pair, one reserved gateway address, one
-Autopilot cluster, one KMS key, and two deployment service accounts. The command also enables the twenty-two required
-APIs in that runtime project. A completed command is not yet a deployed website; `ops ship`, DNS, and the browser checks
-later in this workshop remain required.
+That is the live resource boundary, per deployment: five core buckets, plus any named archive/telemetry lanes, one
+VPC/subnet pair, one reserved gateway address, one Autopilot cluster, one KMS key, and two deployment service accounts.
+The command also enables the twenty-two required APIs in that runtime project. A completed command is not yet a deployed
+website; `ops ship`, DNS, and the browser checks later in this workshop remain required.
 
 Setup provisions no database and generates no credential, so there is nothing printed to record. The store's own
 credentials go into `deployments/<name>/secrets.enc.yaml` (`sops set` — the plaintext never touches disk), then
@@ -525,7 +512,7 @@ batches. Nothing else in the run works until these are on, which is why it goes 
 Compute API as disabled at its own endpoint after the enable operation is done; the following VPC step waits through
 that narrowly identified propagation case instead of making the operator restart the whole provisioning run.
 
-### Network and five buckets
+### Network and storage buckets
 
 With the APIs on, the CLI provisions the data plane and runtime identity:
 
@@ -534,16 +521,17 @@ With the APIs on, the CLI provisions the data plane and runtime identity:
 - **Five private Cloud Storage buckets**, all uniform bucket-level access: `-assets` (marketing objects served through
   the same-origin `/assets/*` application route), `-documents` (client documents), `-exports` (Parquet/Iceberg
   archives), `-logs` (the Nearline log-sink destination), and `-applications` (each Project's published client-portal
-  bundle, streamed same-origin through `/app/projects/{code}/portal`).
+  bundle, streamed same-origin through `/app/projects/{code}/portal`). A deployment may also name separate archive and
+  telemetry buckets for long-term snapshots and telemetry landing data.
 - A **deployment-specific Google service account** with the Secret Manager accessor role, object access on only that
-  deployment's five buckets, Workload Identity bindings for the namespace's `navigator-web` and `workflows-service`
-  Kubernetes service accounts, and permission to sign its own GCS URLs.
+  deployment's five core buckets and any named archive/telemetry lanes, Workload Identity bindings for the namespace's
+  `navigator-web` and `workflows-service` Kubernetes service accounts, and permission to sign its own GCS URLs.
 - A separate **Workspace Drive service account** with no runtime GCP roles. An operator creates one JSON key, records it
   in that deployment's `secrets.enc.yaml`, and grants its OAuth client domain-wide delegation in the selected Workspace.
 
 ---
 
-No stage generates a credential, so a run prints no secret and there is nothing to record. The five private
+No stage generates a credential, so a run prints no secret and there is nothing to record. The five core private
 [buckets](https://cloud.google.com/storage/docs/creating-buckets) are: `your-project-id-assets` — marketing photography
 read by `web` and delivered through `/assets/*`; `your-project-id-documents` — client documents, where `web` writes
 content-addressed blobs, kept separate from assets; `your-project-id-exports` — nightly Parquet/Iceberg snapshots
@@ -586,10 +574,10 @@ flowchart LR
 ---
 
 The **repository name is the Project code**, so the Vite base baked at build time (`/app/projects/acme/portal/`) and the
-object prefix in the bucket (`acme/portal/`) both derive from it — nothing declares its own name. Publish order is
-load-bearing: hashed assets are uploaded first and `index.html` last, and nothing is ever deleted, so a client mid-load
-never resolves an asset the running `index.html` has not published yet. The 30-day
-[lifecycle](#network-and-five-buckets) reaches only assets a later build orphaned, because every publish rewrites the
+object prefix in the applications bucket (`acme/portal/`) both derive from it — nothing declares its own name. Publish
+order is load-bearing: hashed assets are uploaded first and `index.html` last, and nothing is ever deleted, so a client
+mid-load never resolves an asset the running `index.html` has not published yet. The ten-year
+[lifecycle](#network-and-storage-buckets) reaches only assets a later build orphaned, because every publish rewrites the
 live set unconditionally.
 
 The publisher is a per-deployment `navigator-app-publisher` service account reached by keyless Workload Identity, so no
@@ -600,41 +588,25 @@ across Projects, so the bucket is not the boundary: that grant carries an IAM co
 the mirror of that trust: `web` holds `objectAdmin` on the bucket but streams the bytes itself rather than handing out a
 signed URL, so a bundle's own `/app/api` reads carry the same session cookie and stay inside the participation gate.
 
-### One matter's document never backs another matter's
+### A document's bytes and authorization are separate
 
-Inside the documents bucket, two matters never share an object:
+Inside the documents bucket, the storage key is content-addressed: `store::documents::ingest_bytes` writes bytes at
+`blobs/<sha256>`. The Surreal `asset` row is the Project-scoped record: it carries the Project association, provenance,
+visibility, and the reference to that object. The portal checks that row before streaming a document, so clients never
+receive bucket credentials or direct object URLs.
 
-- Content addressing dedupes **within a matter**, never across matters. A governed expunge deletes an object only when
-  no asset row on another matter still points at it, and says so in the log when it declines.
+The ingest deduplication decision is scoped to the Project, even though the key shape is not: an existing matching asset
+on the same Project avoids a second write, while a matching asset on another Project does not authorize reuse of its
+row. Because two rows can name the same content-addressed key, a governed expunge checks whether another asset row still
+references the object before deleting its bytes. That reference check keeps a deletion in one Project from removing
+bytes still needed by another.
+
+This is why Project growth does not require a documents bucket per Project. The bucket is a private deployment lane; the
+Surreal record supplies the Project boundary, and the application supplies the authorization boundary. The applications
+lane uses a different shape: each published portal is under its Project-code prefix and the publisher's IAM condition
+enforces that prefix.
 
 ---
-
-An object key in the documents bucket is `blobs/<sha256>` — the address _is_ the content hash, so filing the same bytes
-twice costs one object instead of two. That is the right instinct for storage and the wrong one for a law firm, because
-the identical PDF is exactly the case you should expect: a blank government form, a recorded deed, a protective order,
-an exhibit filed on two related matters. Dedup on the hash alone means one object backs two clients' documents, and the
-matters are now coupled through a bucket key that nothing in either file mentions.
-
-That coupling only shows its teeth on deletion. A governed expunge — a privilege clawback, a sealing order, a lawful
-deletion request — rewrites the matter's repository history and deletes the document's bytes. If the object were shared,
-deleting it on the sealed matter would also empty an unrelated client's file, on the authority of an order that never
-named them. If that second matter were under a preservation duty, the firm would have destroyed evidence in a case that
-had nothing to do with the one it was acting on, and it would have no record of doing so.
-
-So dedup is scoped to the matter: `store::documents::ingest_bytes` reuses an object only when an asset row **on the same
-project** already points at it. Two matters holding the same exhibit get two objects. The storage cost is a rounding
-error against a single spoliation finding.
-
-Scoping ingest fixes what gets written from here on; it does not unshare what was already written. So expunge carries
-the matching guard: before deleting a key it asks whether an asset row on another matter still references it, and if one
-does it keeps the object and emits a warning naming the key. That is deliberately loud rather than silent — an order
-that requires the bytes actually destroyed now needs a person to reach the other matter and deal with it there, which is
-a decision for a lawyer and not for a delete loop. An asset row carrying no project at all does not block the deletion:
-it is unattached rather than another matter's, and letting a stray row veto a privilege clawback would defeat the one
-thing this primitive exists to do.
-
-Together the two rules give you the property that matters when you are the one answering for the file: no matter's
-documents are held hostage to another matter's, and no order deletes bytes it did not name.
 
 When multiple deployments share a project, pass their explicit bucket, SQL, VPC, subnet, cluster, namespace, gateway-IP,
 and service-account variables. The single-project `<project>-suffix` defaults remain convenient for an independent OSS
@@ -2037,7 +2009,8 @@ path, and the difference is worth knowing before you hit it.
 
 It is the row that holds real matters, so it went last — after the same release had first proven itself on staging.
 `navigator ops gcp setup` had already built the project's half of the world: the `neon-law-prod` GKE Autopilot cluster,
-the `navigator-secrets` KMS keyring, five storage buckets, and the reserved global address `neon-law-prod-gateway-ip`.
+the `navigator-secrets` KMS keyring, five core storage buckets plus any named archive/telemetry lanes, and the reserved
+global address `neon-law-prod-gateway-ip`.
 
 Then the first `ops ship` failed, and kept failing. Three things were in the way, in the order we hit them.
 

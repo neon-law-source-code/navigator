@@ -2861,6 +2861,7 @@ pub fn catalog_slides_router(
     workshops: crate::WorkshopIndex,
     sessions: crate::SessionStore,
     secure_cookies: bool,
+    practices: Vec<webapp::home::PracticeLink>,
 ) -> Router {
     Router::<FullstackState>::new()
         .route(
@@ -2869,7 +2870,7 @@ pub fn catalog_slides_router(
                 .layer(from_fn(dioxus_document_head))
                 .layer(from_fn(inject_public_utility))
                 .layer(from_fn_with_state(
-                    (workshops, sessions, secure_cookies),
+                    (workshops, sessions, secure_cookies, practices),
                     inject_catalog_slides,
                 )),
         )
@@ -2880,10 +2881,11 @@ pub fn catalog_slides_router(
 }
 
 async fn inject_catalog_slides(
-    axum::extract::State((workshops, sessions, secure_cookies)): axum::extract::State<(
+    axum::extract::State((workshops, sessions, secure_cookies, practices)): axum::extract::State<(
         crate::WorkshopIndex,
         crate::SessionStore,
         bool,
+        Vec<webapp::home::PracticeLink>,
     )>,
     mut req: Request,
     next: Next,
@@ -2911,6 +2913,10 @@ async fn inject_catalog_slides(
         .insert(webapp::catalog_slides::InjectedLightTable(
             crate::light_table_content(material, csrf),
         ));
+    req.extensions_mut()
+        .insert(webapp::catalog_slide_body::InjectedPracticeCatalog(
+            practices,
+        ));
     next.run(req).await
 }
 
@@ -2931,14 +2937,21 @@ fn material_slide_path(path: &str) -> Option<(String, String, usize)> {
 /// Steps are 1-based, so index `0` and anything past the last section are out
 /// of range. The pre-layer resolves the slide and 404s there rather than
 /// letting an unresolved render fall through to a `200` with an empty page.
-pub fn catalog_step_router(path: &str, workshops: crate::WorkshopIndex) -> Router {
+pub fn catalog_step_router(
+    path: &str,
+    workshops: crate::WorkshopIndex,
+    practices: Vec<webapp::home::PracticeLink>,
+) -> Router {
     Router::<FullstackState>::new()
         .route(
             path,
             get(render_handler)
                 .layer(from_fn(dioxus_document_head))
                 .layer(from_fn(inject_public_utility))
-                .layer(from_fn_with_state(workshops, inject_catalog_step)),
+                .layer(from_fn_with_state(
+                    (workshops, practices),
+                    inject_catalog_step,
+                )),
         )
         .with_state(FullstackState::new(
             ServeConfig::new(),
@@ -2947,7 +2960,10 @@ pub fn catalog_step_router(path: &str, workshops: crate::WorkshopIndex) -> Route
 }
 
 async fn inject_catalog_step(
-    axum::extract::State(workshops): axum::extract::State<crate::WorkshopIndex>,
+    axum::extract::State((workshops, practices)): axum::extract::State<(
+        crate::WorkshopIndex,
+        Vec<webapp::home::PracticeLink>,
+    )>,
     mut req: Request,
     next: Next,
 ) -> Response {
@@ -2963,6 +2979,10 @@ async fn inject_catalog_step(
     };
     req.extensions_mut()
         .insert(webapp::catalog_step::InjectedStep(content));
+    req.extensions_mut()
+        .insert(webapp::catalog_slide_body::InjectedPracticeCatalog(
+            practices,
+        ));
     next.run(req).await
 }
 
@@ -2971,13 +2991,20 @@ async fn inject_catalog_step(
 /// Same addressing and 404 rules as the classroom step, but the page wears no
 /// site chrome at all, so no chrome pre-layer runs here — a projector shows the
 /// slide and nothing else.
-pub fn catalog_display_router(path: &str, workshops: crate::WorkshopIndex) -> Router {
+pub fn catalog_display_router(
+    path: &str,
+    workshops: crate::WorkshopIndex,
+    practices: Vec<webapp::home::PracticeLink>,
+) -> Router {
     Router::<FullstackState>::new()
         .route(
             path,
             get(render_handler)
                 .layer(from_fn(dioxus_document_head))
-                .layer(from_fn_with_state(workshops, inject_catalog_display)),
+                .layer(from_fn_with_state(
+                    (workshops, practices),
+                    inject_catalog_display,
+                )),
         )
         .with_state(FullstackState::new(
             ServeConfig::new(),
@@ -2986,7 +3013,10 @@ pub fn catalog_display_router(path: &str, workshops: crate::WorkshopIndex) -> Ro
 }
 
 async fn inject_catalog_display(
-    axum::extract::State(workshops): axum::extract::State<crate::WorkshopIndex>,
+    axum::extract::State((workshops, practices)): axum::extract::State<(
+        crate::WorkshopIndex,
+        Vec<webapp::home::PracticeLink>,
+    )>,
     mut req: Request,
     next: Next,
 ) -> Response {
@@ -3002,6 +3032,10 @@ async fn inject_catalog_display(
     };
     req.extensions_mut()
         .insert(webapp::catalog_display::InjectedDisplay(content));
+    req.extensions_mut()
+        .insert(webapp::catalog_slide_body::InjectedPracticeCatalog(
+            practices,
+        ));
     next.run(req).await
 }
 
@@ -3101,12 +3135,17 @@ pub const PRESENTATION_CERTIFICATE_PATH: &str = "/presentations/{slug}/certifica
 /// The pre-layers recover the category and slug by counting segments back
 /// from the end of the request path, so the same five constructors serve
 /// either category without knowing which root they were mounted under.
+///
+/// `practices` is the firm's YAML practice catalog (`locales/en/home.yaml`).
+/// Slide faces that expand `{{firm-product-cards}}` render those doors; other
+/// slides ignore the list.
 #[must_use]
 pub fn catalog_material_routers(
     paths: &MaterialPaths,
     workshops: crate::WorkshopIndex,
     sessions: &crate::SessionStore,
     secure_cookies: bool,
+    practices: Vec<webapp::home::PracticeLink>,
 ) -> Vec<Router> {
     vec![
         catalog_material_router(paths.material, workshops.clone()),
@@ -3115,10 +3154,11 @@ pub fn catalog_material_routers(
             workshops.clone(),
             sessions.clone(),
             secure_cookies,
+            practices.clone(),
         ),
-        catalog_step_router(paths.step, workshops.clone()),
+        catalog_step_router(paths.step, workshops.clone(), practices.clone()),
         // The projector face wears no site chrome at all, so it takes none.
-        catalog_display_router(paths.display, workshops.clone()),
+        catalog_display_router(paths.display, workshops.clone(), practices),
         certificate_sent_router(paths.certificate_sent, workshops),
     ]
 }

@@ -84,7 +84,7 @@ I decided to be a lawyer in New York.
 
 ---
 
-Our firm offers Fractional CTO, Litigation, Fractional GC, and one-time services.
+Our firm offers Litigation, Fractional CTO, Fractional GC, and One-Time Services.
 
 ### Neon Law Navigator
 

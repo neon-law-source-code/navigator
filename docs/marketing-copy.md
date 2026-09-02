@@ -26,6 +26,9 @@ There is no translated surface. A second locale directory is a validate error (`
 missing field or an unknown stem fails the gate before a brand crate can load it. The advertising guards in
 `neon::firm_copy` still read the loaded pages when the Rust suite runs.
 
+The `practices` list in `home.yaml` is the firm's practice catalog. The home page renders those doors, and workshop
+slides that expand `{{firm-product-cards}}` render the same list. Do not keep a second copy of the doors in Rust.
+
 ## A copy-only pull request
 
 Change the YAML, then run:

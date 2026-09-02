@@ -356,10 +356,7 @@ async fn litigation_is_the_statement_and_the_filed_paragraphs() {
     assert!(body.contains("<title>Neon Law | Litigation</title>"));
     assert!(body.contains("built"), "the statement: {body}");
     assert!(body.contains("speed."), "the statement: {body}");
-    assert!(
-        body.contains("Impact Litigation"),
-        "the eyebrow: {body}"
-    );
+    assert!(body.contains("Impact Litigation"), "the eyebrow: {body}");
     let seen = body
         .find("We represent those who haven\u{2019}t been justly seen")
         .expect("the who-we-represent paragraph");
@@ -1435,7 +1432,12 @@ async fn home_points_at_the_four_practices_from_its_foot() {
         body.contains(r#"id="home-practices-heading""#),
         "the heading renders: {body}"
     );
-    for href in ["/litigation", "/fractional-cto", "/fractional-gc", "/services"] {
+    for href in [
+        "/litigation",
+        "/fractional-cto",
+        "/fractional-gc",
+        "/services",
+    ] {
         assert!(
             body.contains(&format!(
                 r#"<a class="neon-card home-practice" href="{href}""#
@@ -1834,10 +1836,10 @@ async fn a_talk_hub_renders_under_the_firm_brand() {
         "the custom firm-services slide must replace its Markdown marker: {slides}"
     );
     for heading in [
-        "Fractional CTO",
         "Litigation",
+        "Fractional CTO",
         "Fractional GC",
-        "One-time services",
+        "One-Time Services",
     ] {
         assert!(slides.contains(heading), "missing {heading}: {slides}");
     }

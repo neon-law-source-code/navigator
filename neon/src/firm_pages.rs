@@ -408,12 +408,12 @@ pub fn firm_public_dioxus_routers(state: &AppState) -> Vec<Router> {
     for (path, content) in team_profiles() {
         routers.push(dioxus_app::team_profile_router(&path, content));
     }
+    let home = resolve_firm_home_content(branding);
     // The home page (`/`): a static statement of the practice, no per-request
-    // data.
-    routers.push(dioxus_app::home_router(
-        "/",
-        resolve_firm_home_content(branding),
-    ));
+    // data. The practice boxes on `/` are the YAML catalog workshop slides
+    // reuse — one list, not a second Rust copy.
+    let practice_catalog = home.practices.clone();
+    routers.push(dioxus_app::home_router("/", home));
     // The practice pages the home page's cards lead into. Static copy like the
     // home page's, resolved here so the `<title>` names the mounted brand.
     routers.push(dioxus_app::litigation_router(
@@ -461,6 +461,7 @@ pub fn firm_public_dioxus_routers(state: &AppState) -> Vec<Router> {
         state.workshops.clone(),
         &state.sessions,
         secure_cookies(state),
+        practice_catalog.clone(),
     ));
     // The Navigator classes, anonymous like the talks.
     // The certificate `POST` keeps its own gate: who may claim a completion
@@ -475,6 +476,7 @@ pub fn firm_public_dioxus_routers(state: &AppState) -> Vec<Router> {
         state.workshops.clone(),
         &state.sessions,
         secure_cookies(state),
+        practice_catalog,
     ));
     routers.push(portal::catalog_workshop_command_routes(state));
     routers

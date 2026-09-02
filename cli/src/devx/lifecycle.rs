@@ -478,6 +478,12 @@ pub(super) fn reset<C: Cluster>(
 mod tests {
     use super::*;
 
+    #[test]
+    fn lifecycle_label_keys_remain_namespaced_under_neonlaw_org() {
+        assert_eq!(ENVIRONMENT_LABEL, "navigator.neonlaw.org/environment");
+        assert_eq!(ENVIRONMENT_ID_LABEL, "navigator.neonlaw.org/environment-id");
+    }
+
     fn labels() -> BTreeMap<String, String> {
         BTreeMap::from([
             (MANAGED_LABEL.into(), MANAGED_VALUE.into()),

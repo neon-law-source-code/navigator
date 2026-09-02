@@ -10,7 +10,7 @@
 //! | --- | --- |
 //! | `projects list` | `GET /app/projects.csv` |
 //! | `project open`   | `GET /app/projects/:code` |
-//! | `projects close` | `PATCH /app/api/projects/:id` |
+//! | `projects close` | `POST /app/api/projects/{id}/lifecycle` |
 //! | `document upload` | `POST /app/api/projects/{id}/documents` |
 //! | `notation create`  | `POST /app/projects/{project_code}/notations/new` |
 //! | `notation status`  | `GET /app/lawyer/notations/:id/review?format=json` |
@@ -201,9 +201,16 @@ pub async fn projects_list(host: Option<&str>, json: bool) -> ExitCode {
     .await
 }
 
-/// `navigator site projects close <project-code>` — close a visible matter
-/// through the shared Project PATCH command. The server owns the lifecycle
-/// invariant and derives `closed_at` from the requested status.
+/// `navigator site projects close <project-code>` — move a matter directly to
+/// `closed` through the REST lifecycle door
+/// (`POST /app/api/projects/{id}/lifecycle`), rather than the local-only
+/// `surfaces reconcile` style commands that require a
+/// `NAVIGATOR_SURREAL_ENDPOINT`. Resolves the human-facing code to the matter
+/// id the same way `document upload` does, through the visible-projects
+/// list, then posts the transition. The server derives `closed_at` from the
+/// transition; idempotent server-side, so closing an already-`closed` matter
+/// succeeds and reports it unchanged, while an `archived` matter refuses with
+/// a caller-readable error.
 pub async fn matter_close(host: Option<&str>, project_code: &str) -> ExitCode {
     run(async {
         let (base, token) = resolve(host)?;
@@ -228,14 +235,14 @@ pub async fn matter_close(host: Option<&str>, project_code: &str) -> ExitCode {
             .iter()
             .find(|project| project.code == project_code)
             .ok_or_else(|| anyhow!("no visible matter with code `{project_code}`"))?;
-        let url = format!("{base}/app/api/projects/{}", project.id);
+        let url = format!("{base}/app/api/projects/{}/lifecycle", project.id);
         let response = client
-            .patch(&url)
+            .post(&url)
             .bearer_auth(token)
-            .json(&serde_json::json!({"status": "closed"}))
+            .json(&serde_json::json!({ "transition": "close" }))
             .send()
             .await
-            .with_context(|| format!("PATCH {url}"))?;
+            .with_context(|| format!("POST {url}"))?;
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
         if !status.is_success() {
@@ -1698,6 +1705,59 @@ mod tests {
         );
     }
 
+    #[tokio::test(flavor = "current_thread")]
+    async fn matter_close_refuses_an_unknown_matter_code() {
+        let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+        let server = MockServer::start().await;
+        let server_uri = server.uri();
+        let _env = CredentialsEnv::new(&server_uri);
+
+        Mock::given(method("GET"))
+            .and(path("/app/api/projects"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"id": Uuid::now_v7(), "code": "acme"}
+            ])))
+            .mount(&server)
+            .await;
+
+        assert_eq!(
+            matter_close(Some(server_uri.as_str()), "not-a-matter").await,
+            ExitCode::from(2)
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn matter_close_reports_a_server_refusal() {
+        // An archived matter refuses every transition but a repeated
+        // archive — the CLI must surface the server's 400, not claim success.
+        let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+        let server = MockServer::start().await;
+        let server_uri = server.uri();
+        let _env = CredentialsEnv::new(&server_uri);
+        let project_id = Uuid::now_v7();
+
+        Mock::given(method("GET"))
+            .and(path("/app/api/projects"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"id": project_id, "code": "acme"}
+            ])))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path(format!("/app/api/projects/{project_id}/lifecycle")))
+            .respond_with(ResponseTemplate::new(400).set_body_json(serde_json::json!({
+                "error": "invalid_request",
+                "message": "This matter is archived; archiving is terminal.",
+            })))
+            .mount(&server)
+            .await;
+
+        assert_eq!(
+            matter_close(Some(server_uri.as_str()), "acme").await,
+            ExitCode::from(2)
+        );
+    }
+
     async fn mount_project_routes(server: &MockServer, ids: LawyerRouteIds) {
         Mock::given(method("GET"))
             .and(path("/app/api/projects"))
@@ -1706,9 +1766,9 @@ mod tests {
             ])))
             .mount(server)
             .await;
-        Mock::given(method("PATCH"))
-            .and(path(format!("/app/api/projects/{}", ids.project)))
-            .and(body_json(serde_json::json!({"status": "closed"})))
+        Mock::given(method("POST"))
+            .and(path(format!("/app/api/projects/{}/lifecycle", ids.project)))
+            .and(body_json(serde_json::json!({ "transition": "close" })))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "id": ids.project,
                 "code": "acme",

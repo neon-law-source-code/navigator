@@ -4955,6 +4955,55 @@ async fn api_projects_update_rejects_a_blank_name() {
 }
 
 #[tokio::test]
+async fn api_projects_update_rejects_status_and_closed_at() {
+    // `status` and `closed_at` are not columns this patch may touch — moving
+    // a matter's lifecycle belongs to `POST /app/api/projects/{id}/lifecycle`.
+    // A body naming either must fail deserialization with a `400`, not
+    // silently drop the field behind a `200` that looks like success.
+    let (state, surreal) = state_with_engines().await;
+    store::seed::seed_canonical(&state.surreal, &state.storage)
+        .await
+        .unwrap();
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+    let (cookie, csrf) = session_cookie_and_csrf_for_role(store::persons::Role::Lawyer);
+
+    for body in [
+        serde_json::json!({ "status": "closed" }),
+        serde_json::json!({ "status": "zzz-not-a-status" }),
+        serde_json::json!({ "closed_at": "2020-01-01T00:00:00Z" }),
+    ] {
+        let matter = seeded_matter(&surreal).await;
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri(format!("/app/api/projects/{matter}"))
+                    .header("content-type", "application/json")
+                    .header(header::COOKIE, cookie.clone())
+                    .header("x-csrf-token", csrf.clone())
+                    .body(Body::from(body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "body: {body}");
+        let saved = store::projects::find_by_id(&surreal, matter)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            saved.status, "open",
+            "a rejected patch leaves the matter unchanged"
+        );
+        assert_eq!(
+            saved.closed_at, None,
+            "a rejected patch leaves closed_at unchanged"
+        );
+    }
+}
+
+#[tokio::test]
 async fn api_projects_update_404s_for_an_unknown_matter() {
     let (state, _surreal) = state_with_engines().await;
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
@@ -5183,6 +5232,219 @@ async fn api_projects_delete_404s_for_an_unknown_matter() {
         )
         .await
         .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    let body: serde_json::Value = serde_json::from_str(&body_string(resp).await).unwrap();
+    assert_eq!(body["error"], "not_found");
+}
+
+// ---- POST /app/api/projects/{id}/lifecycle (direct transition, distinct from /close) ----
+
+async fn transition(
+    app: &axum::Router,
+    matter: uuid::Uuid,
+    body: serde_json::Value,
+    role: Option<store::persons::Role>,
+) -> axum::http::Response<Body> {
+    let mut builder = Request::builder()
+        .method("POST")
+        .uri(format!("/app/api/projects/{matter}/lifecycle"))
+        .header("content-type", "application/json");
+    if let Some(role) = role {
+        let (cookie, csrf) = session_cookie_and_csrf_for_role(role);
+        builder = builder
+            .header(header::COOKIE, cookie)
+            .header("x-csrf-token", csrf);
+    }
+    app.clone()
+        .oneshot(builder.body(Body::from(body.to_string())).unwrap())
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn api_projects_lifecycle_authorizes_only_lawyer_and_admin() {
+    // Same shape as the bare PATCH/DELETE matter path: tier-only, not scoped
+    // to the caller's own matters — `seeded_matter` carries no participants
+    // at all, and lawyer/admin still succeed.
+    let (state, surreal) = state_with_engines().await;
+    store::seed::seed_canonical(&state.surreal, &state.storage)
+        .await
+        .unwrap();
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+
+    let cases = [
+        (
+            "anonymous",
+            None,
+            StatusCode::UNAUTHORIZED,
+            "unauthenticated",
+        ),
+        (
+            "client",
+            Some(store::persons::Role::Client),
+            StatusCode::FORBIDDEN,
+            "forbidden",
+        ),
+        (
+            "lawyer",
+            Some(store::persons::Role::Lawyer),
+            StatusCode::OK,
+            "",
+        ),
+        (
+            "admin",
+            Some(store::persons::Role::Admin),
+            StatusCode::OK,
+            "",
+        ),
+    ];
+
+    for (label, role, status, error) in cases {
+        let matter = seeded_matter(&surreal).await;
+        let resp = transition(
+            &app,
+            matter,
+            serde_json::json!({ "transition": "close" }),
+            role,
+        )
+        .await;
+        assert_eq!(resp.status(), status, "{label}");
+        let body: serde_json::Value = serde_json::from_str(&body_string(resp).await).unwrap();
+        let saved = store::projects::find_by_id(&surreal, matter)
+            .await
+            .unwrap()
+            .unwrap();
+        if status.is_success() {
+            assert_eq!(body["status"], "closed", "{label}");
+            assert_eq!(saved.status, "closed", "{label} persisted");
+        } else {
+            assert_eq!(body["error"], error, "{label}");
+            assert_eq!(saved.status, "open", "{label}: matter unchanged");
+        }
+    }
+}
+
+#[tokio::test]
+async fn api_projects_lifecycle_closes_reopens_and_archives() {
+    let (state, surreal) = state_with_engines().await;
+    store::seed::seed_canonical(&state.surreal, &state.storage)
+        .await
+        .unwrap();
+    let matter = seeded_matter(&surreal).await;
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+    let lawyer = Some(store::persons::Role::Lawyer);
+
+    let resp = transition(
+        &app,
+        matter,
+        serde_json::json!({ "transition": "close" }),
+        lawyer,
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = serde_json::from_str(&body_string(resp).await).unwrap();
+    assert_eq!(body["status"], "closed");
+    assert!(body["closed_at"].is_string());
+    let first_closed_at = body["closed_at"].as_str().unwrap().to_string();
+
+    // Idempotent: re-closing an already-closed matter is a no-op success
+    // that does not restart the retention window.
+    let resp = transition(
+        &app,
+        matter,
+        serde_json::json!({ "transition": "close" }),
+        lawyer,
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = serde_json::from_str(&body_string(resp).await).unwrap();
+    assert_eq!(body["closed_at"], first_closed_at);
+
+    let resp = transition(
+        &app,
+        matter,
+        serde_json::json!({ "transition": "reopen" }),
+        lawyer,
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = serde_json::from_str(&body_string(resp).await).unwrap();
+    assert_eq!(body["status"], "open");
+    assert!(body["closed_at"].is_null());
+
+    let resp = transition(
+        &app,
+        matter,
+        serde_json::json!({ "transition": "archive" }),
+        lawyer,
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = serde_json::from_str(&body_string(resp).await).unwrap();
+    assert_eq!(body["status"], "archived");
+
+    // Archiving is terminal: every further transition but a repeated archive
+    // is refused.
+    let resp = transition(
+        &app,
+        matter,
+        serde_json::json!({ "transition": "reopen" }),
+        lawyer,
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body: serde_json::Value = serde_json::from_str(&body_string(resp).await).unwrap();
+    assert_eq!(body["error"], "invalid_request");
+
+    let resp = transition(
+        &app,
+        matter,
+        serde_json::json!({ "transition": "archive" }),
+        lawyer,
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn api_projects_lifecycle_rejects_an_unrecognized_transition() {
+    let (state, surreal) = state_with_engines().await;
+    store::seed::seed_canonical(&state.surreal, &state.storage)
+        .await
+        .unwrap();
+    let matter = seeded_matter(&surreal).await;
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+
+    let resp = transition(
+        &app,
+        matter,
+        serde_json::json!({ "transition": "zzz-not-a-status" }),
+        Some(store::persons::Role::Lawyer),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let saved = store::projects::find_by_id(&surreal, matter)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        saved.status, "open",
+        "a rejected transition leaves the matter unchanged"
+    );
+}
+
+#[tokio::test]
+async fn api_projects_lifecycle_404s_for_an_unknown_matter() {
+    let (state, _surreal) = state_with_engines().await;
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+
+    let resp = transition(
+        &app,
+        uuid::Uuid::from_u128(0x00c0_ffee),
+        serde_json::json!({ "transition": "close" }),
+        Some(store::persons::Role::Lawyer),
+    )
+    .await;
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     let body: serde_json::Value = serde_json::from_str(&body_string(resp).await).unwrap();
     assert_eq!(body["error"], "not_found");

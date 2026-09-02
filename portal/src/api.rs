@@ -168,6 +168,11 @@ fn api_operation_table() -> Vec<(&'static str, &'static str, MethodRouter<ApiSta
         ("POST", "/app/api/projects/{id}/close", post(close_matter)),
         (
             "POST",
+            "/app/api/projects/{id}/lifecycle",
+            post(transition_matter),
+        ),
+        (
+            "POST",
             "/app/api/projects/{id}/conversation/messages",
             post(post_conversation_message_door),
         ),
@@ -1126,14 +1131,15 @@ async fn open_project(
     Ok((StatusCode::CREATED, Json(matter)).into_response())
 }
 
-/// `PATCH /app/api/projects/{id}` — update a matter's descriptive fields and,
-/// optionally, its lifecycle status. Lawyer-tier only. This is not the
-/// matter-open path: it runs no conflict check and provisions no repo. Status
-/// changes converge on `store::projects::transition_project`, which derives
-/// `closed_at`; unknown fields, including an independently supplied
-/// `closed_at`, are rejected during request deserialization. The rules live in
-/// `store::projects::update_project`, which the `/app/projects/{project_code}`
-/// edit form calls too.
+/// `PATCH /app/api/projects/{id}` — update a matter's descriptive fields (name,
+/// entity, scope narrative). Lawyer-tier only. This is the descriptive
+/// update, deliberately not the matter-open path: it runs no conflict check
+/// and provisions no repo. It also never touches `status`/`closed_at` —
+/// unknown fields, including `status` and an independently supplied
+/// `closed_at`, are rejected during request deserialization; move a matter's
+/// lifecycle through `POST /app/api/projects/{id}/lifecycle` instead. The
+/// rules live in `store::projects::update_project`, which the
+/// `/app/projects/{project_code}` edit form calls too.
 async fn update_project(
     State(state): State<ApiState>,
     _lawyer: LawyerSession,
@@ -1141,6 +1147,37 @@ async fn update_project(
     JsonOrForm(input): JsonOrForm<store::projects::UpdateProjectCommand>,
 ) -> Result<Json<store::projects::Project>, ApiError> {
     let updated = store::projects::update_project(&state.surreal, id, &input).await?;
+    Ok(Json(updated))
+}
+
+/// Request body for `POST /app/api/projects/{id}/lifecycle` — the one field a
+/// caller may set. `status` and `closed_at` are never independently
+/// settable: `closed_at` is derived from `transition` inside
+/// `store::projects::transition_project`, which is why the descriptive
+/// `PATCH /app/api/projects/{id}` refuses both fields outright rather than
+/// exposing a second way to write them.
+#[derive(Debug, Deserialize)]
+struct TransitionProjectRequest {
+    transition: store::projects::Transition,
+}
+
+/// `POST /app/api/projects/{id}/lifecycle` — move a matter directly through
+/// its lifecycle (`close`, `reopen`, or `archive`), the REST door onto
+/// `store::projects::transition_project`. Distinct from `POST
+/// /app/api/projects/{id}/close` (the closing-letter ceremony): no notation
+/// opens here. Lawyer-tier only, same as the bare `PATCH`/`DELETE` matter
+/// path — a lifecycle move is a firm-administration action, not scoped to
+/// the acting lawyer's own matters. Idempotent per `transition_project`'s own
+/// rules — a repeated transition the matter already made is a no-op success
+/// — and `archived` is terminal, so any transition off it but a repeated
+/// archive is refused as `400`.
+async fn transition_matter(
+    State(state): State<ApiState>,
+    _lawyer: LawyerSession,
+    Path(id): Path<Uuid>,
+    JsonOrForm(input): JsonOrForm<TransitionProjectRequest>,
+) -> Result<Json<store::projects::Project>, ApiError> {
+    let updated = store::projects::transition_project(&state.surreal, id, input.transition).await?;
     Ok(Json(updated))
 }
 

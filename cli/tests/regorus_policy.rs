@@ -160,9 +160,14 @@ fn regorus_matches_every_checked_in_policy_decision() {
     //   by this policy either, which is the only half a Rego test can prove —
     //   `portal/tests/router_contract.rs` covers the routing half.
     // 391 − 13 + 2 = 380.
+    //
+    // + 5 for the direct matter-lifecycle transition (POST
+    //   /app/api/projects/{id}/lifecycle): the five-case tier matrix, same
+    //   shape as `close matter` above.
+    // 380 + 5 = 385.
     assert_eq!(
         test_names.len(),
-        380,
+        385,
         "the policy decision inventory changed; review every new or removed rule"
     );
 

@@ -507,6 +507,23 @@ allow if {
     is_lawyer(input.session)
 }
 
+# Move a matter directly through its lifecycle (close/reopen/archive): POST
+# /app/api/projects/{id}/lifecycle reaches `store::projects::transition_project`
+# directly — no closing-letter notation opens here, unlike `/close` above.
+# Lawyer/admin only at the tier, same as the bare PATCH/DELETE matter path
+# below: a lifecycle move is firm administration, not scoped to the acting
+# lawyer's own matters. Scoped to the lifecycle sub-path (five segments) and
+# POST, the one verb it ships.
+allow if {
+    input.path[0] == "app"
+    input.path[1] == "api"
+    input.path[2] == "projects"
+    input.path[4] == "lifecycle"
+    count(input.path) == 5
+    input.method == "POST"
+    is_lawyer(input.session)
+}
+
 # Approve a released estate plan: POST /app/api/projects/{id}/approve-plan is
 # the client approving their own plan, so — unlike every other project write —
 # it is client-writable. Any authenticated caller is admitted here; the handler
@@ -930,8 +947,8 @@ allow if {
 }
 
 # Project update + delete on the bare matter path:
-# PATCH /app/api/projects/{id} edits a matter's descriptive fields or applies
-# a lifecycle status (no conflict check, no repo provisioning, no price move);
+# PATCH /app/api/projects/{id} edits a matter's descriptive fields (no
+# lifecycle/status, no conflict check, no repo provisioning, no price move);
 # DELETE /app/api/projects/{id} removes a matter (blocked by the database when
 # dependents still reference it). Lawyer/admin only. Scoped to these
 # two verbs on the bare matter path — the matter-open (POST) verb earns its

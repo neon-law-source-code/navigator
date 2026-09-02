@@ -2146,11 +2146,11 @@ jobs:
           webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
           tag: "${{ needs.release-version.outputs.tag }}"
           stage: "release-windows-cli-build"
-          step: "build the tagged Navigator CLI"
-      - name: build the tagged Navigator CLI
+          step: "build the tagged Navigator CLI and LSP"
+      - name: build the tagged Navigator CLI and LSP
         env:
           NAVIGATOR_RELEASE_TAG: ${{ needs.release-version.outputs.tag }}
-        run: cargo build --locked --release -p cli
+        run: cargo build --locked --release -p cli -p lsp
       - uses: ./.github/actions/slack-progress
         with:
           webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -2184,6 +2184,34 @@ jobs:
         with:
           name: navigator-windows-cli
           path: dist/navigator-*-windows.zip
+          if-no-files-found: error
+      - uses: ./.github/actions/slack-progress
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          tag: "${{ needs.release-version.outputs.tag }}"
+          stage: "release-windows-cli-build"
+          step: "package the Windows LSP"
+      - name: package the Windows LSP
+        shell: pwsh
+        env:
+          TAG: ${{ needs.release-version.outputs.tag }}
+        run: |
+          New-Item -ItemType Directory -Force dist/navigator-lsp-windows | Out-Null
+          Copy-Item "target/release/navigator-lsp.exe" "dist/navigator-lsp-windows/navigator-lsp.exe"
+          Copy-Item "LICENSE" "dist/navigator-lsp-windows/LICENSE"
+          Copy-Item "NOTICE" "dist/navigator-lsp-windows/NOTICE"
+          Compress-Archive -Path "dist/navigator-lsp-windows/*" -DestinationPath "dist/navigator-lsp-$env:TAG-windows.zip" -Force
+      - uses: ./.github/actions/slack-progress
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          tag: "${{ needs.release-version.outputs.tag }}"
+          stage: "release-windows-cli-build"
+          step: "upload the Windows LSP archive"
+      - name: upload the Windows LSP archive
+        uses: actions/upload-artifact@v7
+        with:
+          name: navigator-windows-lsp
+          path: dist/navigator-lsp-*-windows.zip
           if-no-files-found: error
 
 
@@ -2222,11 +2250,11 @@ jobs:
           webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
           tag: "${{ needs.release-version.outputs.tag }}"
           stage: "release-cli-build-linux"
-          step: "build the tagged Navigator CLI"
-      - name: build the tagged Navigator CLI
+          step: "build the tagged Navigator CLI and LSP"
+      - name: build the tagged Navigator CLI and LSP
         env:
           NAVIGATOR_RELEASE_TAG: ${{ needs.release-version.outputs.tag }}
-        run: cargo build --locked --release -p cli
+        run: cargo build --locked --release -p cli -p lsp
       - uses: ./.github/actions/slack-progress
         with:
           webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -2262,6 +2290,35 @@ jobs:
         with:
           name: navigator-linux-cli
           path: dist/navigator-*-linux.tar.gz
+          if-no-files-found: error
+      - uses: ./.github/actions/slack-progress
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          tag: "${{ needs.release-version.outputs.tag }}"
+          stage: "release-cli-build-linux"
+          step: "package the Linux LSP"
+      - name: package the Linux LSP
+        env:
+          TAG: ${{ needs.release-version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist/navigator-lsp-linux
+          install -m 0755 target/release/navigator-lsp dist/navigator-lsp-linux/navigator-lsp
+          install -m 0644 LICENSE dist/navigator-lsp-linux/LICENSE
+          install -m 0644 NOTICE dist/navigator-lsp-linux/NOTICE
+          tar -czf "dist/navigator-lsp-${TAG}-linux.tar.gz" \
+              -C dist/navigator-lsp-linux navigator-lsp LICENSE NOTICE
+      - uses: ./.github/actions/slack-progress
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          tag: "${{ needs.release-version.outputs.tag }}"
+          stage: "release-cli-build-linux"
+          step: "upload the Linux LSP archive"
+      - name: upload the Linux LSP archive
+        uses: actions/upload-artifact@v7
+        with:
+          name: navigator-linux-lsp
+          path: dist/navigator-lsp-*-linux.tar.gz
           if-no-files-found: error
 
   release-cli-build-macos:
@@ -2301,11 +2358,11 @@ jobs:
           webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
           tag: "${{ needs.release-version.outputs.tag }}"
           stage: "release-cli-build-macos"
-          step: "build the tagged Navigator CLI"
-      - name: build the tagged Navigator CLI
+          step: "build the tagged Navigator CLI and LSP"
+      - name: build the tagged Navigator CLI and LSP
         env:
           NAVIGATOR_RELEASE_TAG: ${{ needs.release-version.outputs.tag }}
-        run: cargo build --locked --release -p cli
+        run: cargo build --locked --release -p cli -p lsp
       - uses: ./.github/actions/slack-progress
         with:
           webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -2340,6 +2397,35 @@ jobs:
         with:
           name: navigator-macos-cli
           path: dist/navigator-*-macos.tar.gz
+          if-no-files-found: error
+      - uses: ./.github/actions/slack-progress
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          tag: "${{ needs.release-version.outputs.tag }}"
+          stage: "release-cli-build-macos"
+          step: "package the macOS LSP"
+      - name: package the macOS LSP
+        env:
+          TAG: ${{ needs.release-version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist/navigator-lsp-macos
+          install -m 0755 target/release/navigator-lsp dist/navigator-lsp-macos/navigator-lsp
+          install -m 0644 LICENSE dist/navigator-lsp-macos/LICENSE
+          install -m 0644 NOTICE dist/navigator-lsp-macos/NOTICE
+          tar -czf "dist/navigator-lsp-${TAG}-macos.tar.gz" \
+              -C dist/navigator-lsp-macos navigator-lsp LICENSE NOTICE
+      - uses: ./.github/actions/slack-progress
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          tag: "${{ needs.release-version.outputs.tag }}"
+          stage: "release-cli-build-macos"
+          step: "upload the macOS LSP archive"
+      - name: upload the macOS LSP archive
+        uses: actions/upload-artifact@v7
+        with:
+          name: navigator-macos-lsp
+          path: dist/navigator-lsp-*-macos.tar.gz
           if-no-files-found: error
 
   release-windows-cli-publish:
@@ -2417,6 +2503,39 @@ jobs:
           webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
           tag: "${{ needs.release-version.outputs.tag }}"
           stage: "release-windows-cli-publish"
+          step: "download the Windows LSP archive"
+      - name: download the Windows LSP archive
+        uses: actions/download-artifact@v8
+        with:
+          name: navigator-windows-lsp
+          path: dist
+      - uses: ./.github/actions/slack-progress
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          tag: "${{ needs.release-version.outputs.tag }}"
+          stage: "release-windows-cli-publish"
+          step: "download the Linux LSP archive"
+      - name: download the Linux LSP archive
+        uses: actions/download-artifact@v8
+        with:
+          name: navigator-linux-lsp
+          path: dist
+      - uses: ./.github/actions/slack-progress
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          tag: "${{ needs.release-version.outputs.tag }}"
+          stage: "release-windows-cli-publish"
+          step: "download the macOS LSP archive"
+      - name: download the macOS LSP archive
+        uses: actions/download-artifact@v8
+        with:
+          name: navigator-macos-lsp
+          path: dist
+      - uses: ./.github/actions/slack-progress
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          tag: "${{ needs.release-version.outputs.tag }}"
+          stage: "release-windows-cli-publish"
           step: "create the release if needed and attach the archive"
       - name: create the release if needed and attach the archive
         env:
@@ -2448,6 +2567,16 @@ jobs:
           gh release upload "${TAG}" dist/navigator-*-linux.tar.gz \
               --repo "${GITHUB_REPOSITORY}" --clobber
           gh release upload "${TAG}" dist/navigator-*-macos.tar.gz \
+              --repo "${GITHUB_REPOSITORY}" --clobber
+          # `navigator-lsp-*` is a distinct glob from `navigator-*` above: the
+          # LSP archives share this job and this Release, but not the CLI's
+          # filename prefix, so an editor extension (Zed's marketplace, first)
+          # can resolve the LSP asset without also matching the CLI's.
+          gh release upload "${TAG}" dist/navigator-lsp-*-windows.zip \
+              --repo "${GITHUB_REPOSITORY}" --clobber
+          gh release upload "${TAG}" dist/navigator-lsp-*-linux.tar.gz \
+              --repo "${GITHUB_REPOSITORY}" --clobber
+          gh release upload "${TAG}" dist/navigator-lsp-*-macos.tar.gz \
               --repo "${GITHUB_REPOSITORY}" --clobber
 
   # ---------- Stage 3b: hand the release to the Homebrew tap ----------

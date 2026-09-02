@@ -148,9 +148,21 @@ fn regorus_matches_every_checked_in_policy_decision() {
     // + 3 for Owner inheritance across participant add, participant edit, and
     //   DRI designation.
     // 388 + 3 = 391.
+    //
+    // − 11 for making the API documentation public. `/app/api`, its `/api`
+    //   alias, and `/app/api/openapi.json` now mount with no session boundary
+    //   and no `require_policy` layer at all, so the 13 decisions that used to
+    //   pin their Clerk-and-above audience (four tiers reaching each of the
+    //   two paths, `client` and anonymous denied at each, plus the
+    //   Clerk-reads-the-reference-not-the-directory pair) no longer describe
+    //   anything this policy decides. Two replace them, mirroring the
+    //   `/app/api/aida.json` card below: an anonymous read must not be allowed
+    //   by this policy either, which is the only half a Rego test can prove —
+    //   `portal/tests/router_contract.rs` covers the routing half.
+    // 391 − 13 + 2 = 380.
     assert_eq!(
         test_names.len(),
-        391,
+        380,
         "the policy decision inventory changed; review every new or removed rule"
     );
 

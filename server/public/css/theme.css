@@ -473,13 +473,6 @@ a.nav-pagination__link:hover {
   margin: 0;
 }
 
-/* Service page — the prose article below the product hero: a readable measure,
-   with the pricing row and the booking CTA. (The animated hero itself is styled
-   by the hoisted `product-hero.css`.) */
-.service-page__pricing {
-  margin-bottom: 2rem;
-}
-
 .service-open-letter {
   max-width: 65ch;
   margin: 0 auto;
@@ -671,20 +664,6 @@ a.nav-pagination__link:hover {
    is a set of destinations, not a sentence with a word that leaves the page. */
 .nav-theme :is(header, footer, nav) :is(p, li) > a:not([class]) {
   text-decoration: none;
-}
-
-.service-page__cta {
-  text-align: center;
-  margin-top: 2rem;
-}
-
-.service-page__cta-link {
-  display: inline-block;
-  padding: 0.625rem 1.25rem;
-  border-radius: var(--nav-radius-sm);
-  background: var(--nav-color-primary);
-  color: var(--nav-color-on-primary) !important;
-  font-weight: 600;
 }
 
 /* Blog index — the `/blog` listing: newest post first, each a title link over

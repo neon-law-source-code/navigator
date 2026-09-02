@@ -1539,23 +1539,6 @@ async fn home_renders_the_statement_and_the_practice_prose() {
         body.contains("we work as a team"),
         "the lead names the team: {body}"
     );
-    // Causes of action belong on `/litigation`. Listing them in the home hero
-    // is what made the page read as four firms at once.
-    for retired in [
-        "Personal injury",
-        "criminal investigations",
-        "business divorce",
-        "Every problem is unique",
-        "Whatever brings you in",
-        "We are by your side through tough times",
-        "Our complementary practice",
-        "If you did not come for a dispute",
-    ] {
-        assert!(
-            !body.contains(retired),
-            "the home page must not publish {retired:?}: {body}"
-        );
-    }
 
     // The practice prose: one card of paragraphs under one heading. A card
     // *per* practice area is the shape this page sheds, so the count is what
@@ -1585,32 +1568,6 @@ async fn home_renders_the_statement_and_the_practice_prose() {
         "the prose links the team: {body}"
     );
 
-    // The retired home-page surfaces. Each is markup rather than wording: a
-    // practice grid, a per-practice card, a chip list, and the glow whose wash
-    // bled past the hero's edge into the page margin.
-    for retired in [
-        r#"class="practice-grid""#,
-        r#"class="practice__heading""#,
-        r#"class="litigation__heading""#,
-        r#"class="firm-chip""#,
-        "home-service__commitment",
-        // The numbered 1-2-3 and the closing band came off the page. Guarded so
-        // the markup does not come back empty with the next copy edit.
-        "home-process",
-        "home-step",
-        "home-closing",
-        "firm-glow",
-        "hero-neon",
-        "catalog-card",
-        "testimonial-section",
-        "justice-banner",
-    ] {
-        assert!(
-            !body.contains(retired),
-            "the home page must not render {retired:?}: {body}"
-        );
-    }
-
     // The page's sections, in the order the page argues in: the statement, what
     // leading with litigation means, and the engagements beside it.
     let at = |needle: &str| {
@@ -1630,6 +1587,51 @@ async fn home_renders_the_statement_and_the_practice_prose() {
     // The shared chrome survives — header nav and the legal footer.
     assert!(body.contains("site-header"), "public header chrome");
     assert!(body.contains("site-footer__legal"), "public legal footer");
+}
+
+#[tokio::test]
+async fn home_does_not_restore_retired_home_surfaces() {
+    let app = site_app().await;
+    let body = body_string(anon_get(&app, "/").await).await;
+    // Causes of action belong on `/litigation`. Listing them in the home hero
+    // is what made the page read as four firms at once.
+    for retired in [
+        "Personal injury",
+        "criminal investigations",
+        "business divorce",
+        "Every problem is unique",
+        "Whatever brings you in",
+        "We are by your side through tough times",
+        "Our complementary practice",
+        "If you did not come for a dispute",
+    ] {
+        assert!(
+            !body.contains(retired),
+            "the home page must not publish {retired:?}: {body}"
+        );
+    }
+    // Retired markup rather than wording: a practice grid, a per-practice card,
+    // a chip list, and the glow whose wash bled past the hero's edge.
+    for retired in [
+        r#"class="practice-grid""#,
+        r#"class="practice__heading""#,
+        r#"class="litigation__heading""#,
+        r#"class="firm-chip""#,
+        "home-service__commitment",
+        "home-process",
+        "home-step",
+        "home-closing",
+        "firm-glow",
+        "hero-neon",
+        "catalog-card",
+        "testimonial-section",
+        "justice-banner",
+    ] {
+        assert!(
+            !body.contains(retired),
+            "the home page must not render {retired:?}: {body}"
+        );
+    }
 }
 
 /// The home page loads the firm's mark, and the mark's own files are served.

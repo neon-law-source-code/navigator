@@ -37,3 +37,4 @@ resources:
   - cron-heartbeat-trigger.yaml
   - cron-github-automation-heartbeat-trigger.yaml
   - cron-billing-digest-trigger.yaml
+  - cron-dri-digest-trigger.yaml

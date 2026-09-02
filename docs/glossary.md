@@ -422,6 +422,10 @@ the entity and the client role before any row is created.
 - Schema and command: [`store::projects`](../store/src/projects.rs) (the `is_lawyer_dri` / `is_client_dri` fields);
   `store::projects::designate_dri_in_surreal` writes the membership record and its marker as one act
 - Rules, authorization, and the audit write: [`store::participation`](../store/src/participation.rs)
+- Nightly digest: the `DriDigest` Restate workflow
+  ([`workflows-service/src/dri_digest.rs`](../workflows-service/src/dri_digest.rs)) reads `store::projects::dri_digest`
+  and posts firm ops one Slack line per project naming both DRI sides, fired nightly by the `dri-digest-trigger`
+  `CronJob`
 
 ## Disclosure
 

@@ -1962,6 +1962,12 @@ jobs:
             build-args: |
               CRATE=billing-workflows
               BIN=billing-digest-trigger
+          - image: navigator-dri-digest-trigger
+            dockerfile: images/Containerfile.trigger
+            runner: ubuntu-latest
+            build-args: |
+              CRATE=workflows-service
+              BIN=dri-digest-trigger
           # An amd64 job runner, not a CronJob trigger. It shares this
           # publish lane because both are single-architecture OCI images and
           # this job already waits for the full KIND integration proof.
@@ -2694,10 +2700,10 @@ jobs:
           • \`navigator-web\` — alias tag, byte-identical to \`neon-server\`; retires with #796
 
           *Scheduled-job images*
-          • \`navigator-heartbeat-trigger\`, \`navigator-archives-trigger\`, \`navigator-surreal-archive\`, \`navigator-reconcile-invoices-trigger\`, \`navigator-billing-digest-trigger\`
+          • \`navigator-heartbeat-trigger\`, \`navigator-archives-trigger\`, \`navigator-surreal-archive\`, \`navigator-reconcile-invoices-trigger\`, \`navigator-billing-digest-trigger\`, \`navigator-dri-digest-trigger\`
           • \`navigator-runner\` — the CI/devx runner image
 
-          All 11 tagged \`${TAG}\` + \`latest\` on \`ghcr.io/${{ github.repository_owner }}\`.
+          All 12 tagged \`${TAG}\` + \`latest\` on \`ghcr.io/${{ github.repository_owner }}\`.
 
           Run: ${RUN_URL}"
           PAYLOAD=$(jq -n --arg text "${TEXT}" '{ text: $text }')

@@ -30,6 +30,7 @@ pub const WORKFLOW_SERVICES: &[&str] = &[
     "BillingCanary",
     "BillingDigest",
     "ReconcileInvoices",
+    "DriDigest",
     "Heartbeat",
     "GitHubAutomationHeartbeat",
     "DevxIssueTriage",

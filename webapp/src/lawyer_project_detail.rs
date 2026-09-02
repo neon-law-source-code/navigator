@@ -642,7 +642,7 @@ pub fn LawyerProjectDetail() -> Element {
                         }
                         " or "
                         a { class: "nav-link", href: "mailto:support@neonlaw.com", "support@neonlaw.com" }
-                        ". Closing is bespoke: a lawyer DRI opens the offboarding-letter walk, and signing the offboarding letter marks the matter complete."
+                        "."
                     }
                     // A matter always has at least one lawyer DRI — they are who
                     // close it. An empty set is therefore a gap to fill, not a

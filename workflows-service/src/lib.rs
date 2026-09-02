@@ -15,6 +15,7 @@
 //! execution) for the architectural arc.
 
 pub mod asset_config;
+pub mod dri_digest;
 pub mod email_config;
 pub mod github_automation_heartbeat;
 pub mod heartbeat;

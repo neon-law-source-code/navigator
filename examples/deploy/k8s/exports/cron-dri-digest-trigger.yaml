@@ -1,0 +1,81 @@
+# dri-digest nightly trigger — starts one `DriDigest` Restate workflow
+# invocation per day. The workflow itself is hosted by the `workflows-service`
+# worker (../gke/workflows-service/) — all workflows live there, so there is
+# no separate digest worker. This CronJob is a thin trigger that POSTs to the
+# Restate Cloud ingress and exits in seconds. Restate owns the retry schedule.
+#
+# `DriDigest` reads every project's lawyer and client DRIs and posts firm ops
+# one Slack line per project naming both sides — "none" when a side is
+# unassigned, so the gap is visible from the notice itself.
+#
+# Schedule `11 1 * * *` UTC = 01:11 UTC. Off the top of the hour and clear of
+# every other nightly trigger (archives 10:00, reconcile-invoices 11:00,
+# billing-digest 13:00, canary Sunday 14:00). The trigger keys each invocation
+# on the UTC date, so a same-day double-fire is a no-op.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: dri-digest-trigger
+  namespace: navigator
+  labels:
+    app: dri-digest-trigger
+spec:
+  schedule: "11 1 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 7
+  failedJobsHistoryLimit: 7
+  # Forbid + a finite deadline together: never overlap runs, but never let a
+  # stuck trigger (e.g. ImagePullBackOff, or a hung ingress POST) stay Active
+  # and skip every subsequent schedule. A healthy trigger exits in seconds.
+  startingDeadlineSeconds: 120
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 120
+      template:
+        metadata:
+          labels:
+            app: dri-digest-trigger
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: dri-digest-trigger
+              image: YOUR_IMAGE_REGISTRY/navigator-dri-digest-trigger:YY.M.D
+              imagePullPolicy: Always
+              env:
+                # Restate Cloud ingress endpoint. Sourced from the Secret rather
+                # than written inline — see the `RESTATE_INGRESS_URL` note in
+                # kustomization.yaml for why a literal here blocks every manifest
+                # change. The trigger POSTs
+                # `${RESTATE_INGRESS_URL}/DriDigest/<run-date>/run`.
+                - name: RESTATE_INGRESS_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: navigator-web-secrets
+                      key: RESTATE_INGRESS_URL
+                      optional: true
+                # Restate Cloud authenticates every ingress call with the
+                # tenant bearer. Sourced from the same `navigator-web-secrets`
+                # Secret the web Deployment mounts. `optional` so KIND — where
+                # this manifest isn't applied — never blocks on a missing key.
+                - name: RESTATE_AUTH_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: navigator-web-secrets
+                      key: RESTATE_AUTH_TOKEN
+                      optional: true
+                - name: RUST_LOG
+                  value: info
+              envFrom:
+                # Collector endpoint (OTEL_EXPORTER_OTLP_ENDPOINT) — the trigger
+                # emits the `navigator.workflow.trigger.fired` metric (flushed on
+                # exit) through the fail-closed redaction collector. Shared with
+                # web + workflows-service via one ConfigMap.
+                - configMapRef:
+                    name: navigator-otel-env
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 64Mi
+                limits:
+                  memory: 128Mi

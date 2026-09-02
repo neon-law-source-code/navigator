@@ -553,6 +553,10 @@ test_admin_can_add_participant if {
 	authz.allow with input as {"path": ["app", "api", "projects", "p1", "participants"], "method": "POST", "session": admin_session}
 }
 
+test_owner_can_add_participant if {
+	authz.allow with input as {"path": ["app", "api", "projects", "p1", "participants"], "method": "POST", "session": owner_session}
+}
+
 test_client_denied_add_participant if {
 	not authz.allow with input as {"path": ["app", "api", "projects", "p1", "participants"], "method": "POST", "session": client_session}
 }
@@ -575,6 +579,10 @@ test_admin_can_remove_participant if {
 	authz.allow with input as {"path": ["app", "api", "projects", "p1", "participants", "r1"], "method": "DELETE", "session": admin_session}
 }
 
+test_owner_can_edit_participant if {
+	authz.allow with input as {"path": ["app", "api", "projects", "p1", "participants", "r1"], "method": "PATCH", "session": owner_session}
+}
+
 test_client_denied_edit_participant if {
 	not authz.allow with input as {"path": ["app", "api", "projects", "p1", "participants", "r1"], "method": "PATCH", "session": client_session}
 }
@@ -595,6 +603,10 @@ test_lawyer_can_designate_dri if {
 
 test_admin_can_clear_dri if {
 	authz.allow with input as {"path": ["app", "api", "projects", "p1", "participants", "r1", "dri"], "method": "DELETE", "session": admin_session}
+}
+
+test_owner_can_designate_dri if {
+	authz.allow with input as {"path": ["app", "api", "projects", "p1", "participants", "r1", "dri"], "method": "PUT", "session": owner_session}
 }
 
 test_client_denied_designate_dri if {

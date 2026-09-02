@@ -1150,6 +1150,55 @@ mod tests {
         }
     }
 
+    /// Owner and Admin are lawyer-tier, so either may be designated the
+    /// matter's accountable lawyer DRI — the same marker an ordinary Lawyer
+    /// carries.
+    #[tokio::test]
+    async fn owner_and_admin_may_be_designated_lawyer_dri() {
+        let surreal = crate::test_support::mem_surreal().await;
+        let matter = project(&surreal, "dri-admin-tier").await;
+        for (tag, tier) in [("owner", Role::Owner), ("admin", Role::Admin)] {
+            let who = person(&surreal, tag, tier).await;
+            let designated = add(
+                &surreal,
+                matter,
+                who,
+                DriRequest::Designate(DriSide::Lawyer),
+                DriActor::System,
+            )
+            .await
+            .unwrap();
+            assert!(designated.is_lawyer_dri, "{tag} must carry the lawyer DRI");
+        }
+    }
+
+    /// Owner and Admin bypass the lawyer side's self-governing check — the rule
+    /// that only a current lawyer DRI may name another. Neither holds a marker
+    /// on this matter at all, yet each may still designate one, which is also
+    /// what bootstraps a matter whose lawyer set is empty.
+    #[tokio::test]
+    async fn owner_and_admin_designate_a_lawyer_dri_without_holding_the_marker() {
+        let surreal = crate::test_support::mem_surreal().await;
+        for (tag, tier) in [("owner", Role::Owner), ("admin", Role::Admin)] {
+            let matter = project(&surreal, &format!("dri-bootstrap-{tag}")).await;
+            let actor = person(&surreal, &format!("{tag}-actor"), tier).await;
+            let candidate = person(&surreal, &format!("{tag}-candidate"), Role::Lawyer).await;
+            let designated = add(
+                &surreal,
+                matter,
+                candidate,
+                DriRequest::Designate(DriSide::Lawyer),
+                DriActor::Person(actor),
+            )
+            .await
+            .unwrap();
+            assert!(
+                designated.is_lawyer_dri,
+                "{tag} must be able to designate a lawyer DRI without holding one"
+            );
+        }
+    }
+
     /// The lawyer set is never empty. The last accountable lawyer cannot step
     /// off and cannot be removed from the matter — the two doors defend the same
     /// invariant from opposite sides.

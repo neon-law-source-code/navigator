@@ -577,53 +577,120 @@ pub async fn matter_directory(
         return Ok(Vec::new());
     }
 
-    // One round trip per table, not one per matter: every flagged row, then
-    // the persons they name. The same batching `matter_lifecycle_sets` uses.
+    let dris_by_project = dri_names_by_project(surreal, "is_lawyer_dri").await?;
+    Ok(projects
+        .into_iter()
+        .map(|project| MatterDirectoryEntry {
+            // A matter with no flagged row reads as unassigned rather than
+            // an error.
+            lawyer_dris: dris_by_project
+                .get(&project.id)
+                .cloned()
+                .unwrap_or_default(),
+            code: project.code,
+            name: project.name,
+            status: project.status,
+        })
+        .collect())
+}
+
+/// Every project's names on one DRI side, keyed by project id, for every
+/// project that has at least one. One round trip per table, not one per
+/// matter: every flagged row, then the persons they name — the same batching
+/// `matter_lifecycle_sets` uses. `flag_column` is always one of this module's
+/// own two DRI column names, never external input.
+///
+/// A flagged row naming a person who is no longer there drops out rather than
+/// becoming a name the caller cannot produce. The set has no inherent order,
+/// so each project's names come back sorted rather than left in row-scan
+/// order.
+async fn dri_names_by_project(
+    surreal: &SurrealDb,
+    flag_column: &str,
+) -> Result<std::collections::HashMap<Uuid, Vec<String>>, ProjectStoreError> {
     let mut response = surreal
         .query(format!(
             "SELECT {PERSON_PROJECT_ROLE_SELECT} FROM {PERSON_PROJECT_ROLE_TABLE} \
-             WHERE is_lawyer_dri = true"
+             WHERE {flag_column} = true"
         ))
         .await
         .and_then(surrealdb::IndexedResults::check)?;
     let rows: Vec<PersonProjectRoleRow> = response.take(0)?;
-    let mut dris_by_project: std::collections::HashMap<Uuid, Vec<Uuid>> =
+    let mut ids_by_project: std::collections::HashMap<Uuid, Vec<Uuid>> =
         std::collections::HashMap::new();
     for row in rows.into_iter().filter_map(PersonProjectRoleRow::into_role) {
-        dris_by_project
+        ids_by_project
             .entry(row.project_id)
             .or_default()
             .push(row.person_id);
     }
-    let dri_ids: Vec<Uuid> = dris_by_project.values().flatten().copied().collect();
+    let dri_ids: Vec<Uuid> = ids_by_project.values().flatten().copied().collect();
     let names: std::collections::HashMap<Uuid, String> =
         crate::persons::find_by_ids(surreal, &dri_ids)
             .await?
             .into_iter()
             .map(|person| (person.id, person.name))
             .collect();
+    Ok(ids_by_project
+        .into_iter()
+        .map(|(project_id, ids)| {
+            let mut names: Vec<String> = ids
+                .into_iter()
+                .filter_map(|id| names.get(&id).cloned())
+                .collect();
+            names.sort();
+            (project_id, names)
+        })
+        .collect())
+}
 
+/// One project's accountable people on both DRI sides — the shape the nightly
+/// `DriDigest` Slack notice renders one line per project from.
+///
+/// `Deserialize` too (unlike [`MatterDirectoryEntry`]): this is the journaled
+/// output of the workflow's `query` step, and Restate must be able to replay
+/// it back out of the journal.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ProjectDriSummary {
+    pub code: String,
+    pub name: String,
+    pub status: String,
+    /// The names on the project's `is_lawyer_dri` rows, alphabetical, or
+    /// empty when no lawyer holds the marker.
+    pub lawyer_dris: Vec<String>,
+    /// The names on the project's `is_client_dri` rows, alphabetical, or
+    /// empty when no client holds the marker.
+    pub client_dris: Vec<String>,
+}
+
+/// Every project's DRIs on both sides, for the nightly digest.
+///
+/// Unlike [`matter_directory`], this has no role gate: the caller is a
+/// headless workflow with no session, not a person, and the digest's whole
+/// purpose is to surface a side left unassigned — on either side — so both
+/// are read here, where `matter_directory` deliberately reads only the
+/// lawyer side for its Owner/Admin oversight view.
+pub async fn dri_digest(surreal: &SurrealDb) -> Result<Vec<ProjectDriSummary>, ProjectStoreError> {
+    let projects = all(surreal).await?;
+    if projects.is_empty() {
+        return Ok(Vec::new());
+    }
+    let lawyer_by_project = dri_names_by_project(surreal, "is_lawyer_dri").await?;
+    let client_by_project = dri_names_by_project(surreal, "is_client_dri").await?;
     Ok(projects
         .into_iter()
-        .map(|project| {
-            // A flagged row naming a person who is no longer there drops out
-            // rather than becoming a name the directory cannot produce; a
-            // matter left with none reads as unassigned.
-            let mut lawyer_dris: Vec<String> = dris_by_project
+        .map(|project| ProjectDriSummary {
+            lawyer_dris: lawyer_by_project
                 .get(&project.id)
-                .into_iter()
-                .flatten()
-                .filter_map(|person_id| names.get(person_id).cloned())
-                .collect();
-            // The set has no inherent order, so give it a stable one rather
-            // than letting the row scan decide how the directory reads.
-            lawyer_dris.sort();
-            MatterDirectoryEntry {
-                lawyer_dris,
-                code: project.code,
-                name: project.name,
-                status: project.status,
-            }
+                .cloned()
+                .unwrap_or_default(),
+            client_dris: client_by_project
+                .get(&project.id)
+                .cloned()
+                .unwrap_or_default(),
+            code: project.code,
+            name: project.name,
+            status: project.status,
         })
         .collect())
 }
@@ -2301,8 +2368,8 @@ pub async fn matter_lifecycle_sets(
 mod surreal_read_tests {
     use super::{
         can_access_as_client_in_surreal, can_access_as_lawyer_in_surreal, classify_project_write,
-        create, designate_dri_in_surreal, find_by_id, matter_directory, record_id, DriSide,
-        NewProject, ProjectStoreError, ENTITY_TABLE,
+        create, designate_dri_in_surreal, dri_digest, find_by_id, matter_directory, record_id,
+        DriSide, NewProject, ProjectStoreError, ENTITY_TABLE,
     };
     use crate::persons::Role;
     use crate::schema::apply;
@@ -2805,6 +2872,79 @@ mod surreal_read_tests {
         assert_eq!(directory.len(), 1);
         assert_eq!(directory[0].code, "dangling-dri");
         assert!(directory[0].lawyer_dris.is_empty());
+    }
+
+    /// Unlike `matter_directory`, the digest carries both DRI sides and no
+    /// role gate at all — the nightly workflow that reads it runs headless,
+    /// with no session to check.
+    #[tokio::test]
+    async fn dri_digest_reports_both_sides_for_every_project() {
+        let surreal = mem_surreal().await;
+        let lawyer = crate::persons::create(
+            &surreal,
+            &crate::persons::NewPerson::new("Accountable Lawyer", "digest-lawyer@neonlaw.com"),
+        )
+        .await
+        .unwrap();
+        let client = crate::persons::create(
+            &surreal,
+            &crate::persons::NewPerson::new("Represented Client", "digest-client@neonlaw.com"),
+        )
+        .await
+        .unwrap();
+        let assigned = create(
+            &surreal,
+            &NewProject {
+                code: "digest-assigned".into(),
+                name: "Digest assigned".into(),
+                status: "open".into(),
+                entity_id: uuid::Uuid::now_v7(),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        create(
+            &surreal,
+            &NewProject {
+                code: "digest-unassigned".into(),
+                name: "Digest unassigned".into(),
+                status: "open".into(),
+                entity_id: uuid::Uuid::now_v7(),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        designate_dri_in_surreal(&surreal, assigned.id, lawyer.id, DriSide::Lawyer)
+            .await
+            .unwrap();
+        designate_dri_in_surreal(&surreal, assigned.id, client.id, DriSide::Client)
+            .await
+            .unwrap();
+
+        let digest = dri_digest(&surreal).await.unwrap();
+        let entries: Vec<(&str, Vec<&str>, Vec<&str>)> = digest
+            .iter()
+            .map(|entry| {
+                (
+                    entry.code.as_str(),
+                    entry.lawyer_dris.iter().map(String::as_str).collect(),
+                    entry.client_dris.iter().map(String::as_str).collect(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            entries,
+            vec![
+                (
+                    "digest-assigned",
+                    vec!["Accountable Lawyer"],
+                    vec!["Represented Client"]
+                ),
+                ("digest-unassigned", vec![], vec![]),
+            ]
+        );
     }
 
     #[tokio::test]

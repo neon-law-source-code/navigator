@@ -19,6 +19,7 @@ use github_webhooks::worker::{
 };
 use restate_sdk::prelude::*;
 use workflows::{EmailService, SlackOpsDelivery};
+use workflows_service::dri_digest::DriDigestService;
 use workflows_service::github_automation_heartbeat::GitHubAutomationHeartbeatService;
 use workflows_service::heartbeat::HeartbeatService;
 use workflows_service::{
@@ -39,10 +40,11 @@ macro_rules! bind_common_services {
                 $slack_bot.clone(),
             ))
             .bind(ArchivesService::new($notifier.clone()))
-            .bind(HeartbeatService::new($notifier))
+            .bind(HeartbeatService::new($notifier.clone()))
             .bind(BillingCanaryService::new($ops_delivery.clone()))
             .bind(BillingDigestService::new($ops_delivery))
-            .bind(ReconcileInvoicesService::new($surreal))
+            .bind(ReconcileInvoicesService::new($surreal.clone()))
+            .bind(DriDigestService::new($surreal, $notifier))
     };
 }
 
@@ -143,10 +145,11 @@ async fn main() -> anyhow::Result<()> {
     // One endpoint hosts every workflow: the `Notation` virtual object and
     // the `Archives` nightly-export, `Heartbeat`
     // durable-execution liveness canary, `BillingCanary`, `BillingDigest`
-    // (daily GCP cost email), and `ReconcileInvoices` workflows, each with a
-    // thin `*-trigger` CronJob. All run against this one worker — there is no
-    // per-workflow pod. The exact set of service names bound here is mirrored
-    // in `workflows_service::registry`, which the registry tests guard against
+    // (daily GCP cost email), `ReconcileInvoices`, and `DriDigest` (nightly
+    // project-DRI Slack notice) workflows, each with a thin `*-trigger`
+    // CronJob. All run against this one worker — there is no per-workflow
+    // pod. The exact set of service names bound here is mirrored in
+    // `workflows_service::registry`, which the registry tests guard against
     // drift (count + PascalCase naming).
     let github_automation_home =
         is_automation_home(std::env::var("NAVIGATOR_GCP_PROJECT_ID").ok().as_deref());

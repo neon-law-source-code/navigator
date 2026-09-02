@@ -144,9 +144,13 @@ fn regorus_matches_every_checked_in_policy_decision() {
     // and the matter-bound outline path under `/app/projects` (client admitted
     // by the ENG-81 prefix; the handler hides it from a Clerk).
     // 383 + 5 = 388.
+    //
+    // + 3 for Owner inheritance across participant add, participant edit, and
+    //   DRI designation.
+    // 388 + 3 = 391.
     assert_eq!(
         test_names.len(),
-        388,
+        391,
         "the policy decision inventory changed; review every new or removed rule"
     );
 

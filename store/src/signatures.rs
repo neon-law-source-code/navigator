@@ -233,6 +233,33 @@ pub async fn request_id_for_notation(
     Ok(one(response)?.map(|s| s.provider_id))
 }
 
+/// The completed signature for a Notation, if the provider has ever
+/// confirmed execution — a row with `signed_at` set. `None` whether no
+/// envelope was ever sent, one is still outstanding, or one was declined
+/// or voided: in every one of those cases there is no provider-confirmed
+/// execution to report, which is exactly the distinction this query
+/// exists to preserve for a caller (the client portal's "Signed" label)
+/// that must not infer execution from anything else — an object's
+/// presence in storage, a workflow state, or a row's mere existence.
+///
+/// # Errors
+///
+/// [`SignatureError::Db`] if the lookup fails.
+pub async fn completed_for_notation(
+    db: &SurrealDb,
+    notation_id: Uuid,
+) -> Result<Option<Signature>, SignatureError> {
+    let response = db
+        .query(format!(
+            "SELECT {SELECT} FROM {TABLE} WHERE notation_id = $notation AND signed_at != NONE \
+             ORDER BY inserted_at DESC LIMIT 1"
+        ))
+        .bind(("notation", record_id(crate::notations::TABLE, notation_id)))
+        .await
+        .and_then(surrealdb::IndexedResults::check)?;
+    Ok(one(response)?)
+}
+
 /// Stamp `signed_at` on the signature for `(provider, provider_id)` when
 /// the provider reports completion. A no-op (returns `false`) for an
 /// unknown envelope — the callback may arrive for one we never tracked, or
@@ -295,6 +322,33 @@ mod tests {
                 .unwrap(),
             Some("env-1".to_string())
         );
+    }
+
+    #[tokio::test]
+    async fn completed_for_notation_is_none_until_stamp_signed_runs() {
+        let surreal = mem().await;
+        let notation_id = seed_notation(&surreal).await;
+        record_request(&surreal, notation_id, SignatureProvider::DocuSign, "env-1")
+            .await
+            .unwrap();
+        assert!(completed_for_notation(&surreal, notation_id)
+            .await
+            .unwrap()
+            .is_none());
+        stamp_signed(
+            &surreal,
+            SignatureProvider::DocuSign,
+            "env-1",
+            "2026-06-30T00:00:00Z",
+        )
+        .await
+        .unwrap();
+        let completed = completed_for_notation(&surreal, notation_id)
+            .await
+            .unwrap()
+            .expect("stamped signature is now completed");
+        assert_eq!(completed.provider_id, "env-1");
+        assert_eq!(completed.signed_at.as_deref(), Some("2026-06-30T00:00:00Z"));
     }
 
     #[tokio::test]

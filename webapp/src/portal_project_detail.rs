@@ -11,7 +11,9 @@
 //! - the invoice from the local Xero mirror (never Xero live);
 //! - the matter's notations (retainer, etc.) with a download link per PDF that
 //!   exists in the object store (`store::notations` keys, probed through the
-//!   injected storage handle);
+//!   injected storage handle) — except the signed copy, which additionally
+//!   requires a completed `store::signatures` record, so an object at that
+//!   key never reads as executed on its own;
 //! - the client-readable review drafts;
 //! - the matter's documents.
 
@@ -48,6 +50,11 @@ pub struct NotationRow {
     /// Client-friendly status, e.g. "Signed" / "Awaiting your signature".
     pub status: String,
     pub rendered_ready: bool,
+    /// Whether a completed signature record — provider id and `signed_at`
+    /// — backs this notation's document. Deliberately not "does an object
+    /// exist at the signed-document storage key": that would let any
+    /// upload landing at that key read as executed. See
+    /// [`notation_status_label`].
     pub signed_ready: bool,
     pub certificate_ready: bool,
 }
@@ -100,6 +107,12 @@ pub struct ProjectDetailView {
 /// Client-friendly status for a notation, derived from its workflow state and
 /// which PDFs have materialized — never the raw docket state. Mirrors the
 /// `notation_status_label`.
+///
+/// `signed_ready` here is signature evidence
+/// ([`store::signatures::completed_for_notation`]), not object presence — a
+/// declined or voided envelope, or one still outstanding, both leave it
+/// `false`, so neither renders "Signed"; a still-outstanding envelope is
+/// told apart from every other unsigned state by `state` (`sent_for_signature*`).
 #[cfg(feature = "server")]
 fn notation_status_label(state: &str, signed_ready: bool, rendered_ready: bool) -> &'static str {
     if signed_ready {
@@ -313,6 +326,14 @@ async fn queue_client_project_view(project_id: uuid::Uuid) {
 /// Build the per-notation rows for a matter: title, a client-friendly status,
 /// and which of the three PDFs exist. `exists` is a metadata-only HEAD, so a
 /// handful of probes per matter is cheap. Mirrors the `notation_rows`.
+///
+/// `signed_ready` is the one field this loop does not answer from storage:
+/// an object at the signed-document key only proves bytes were written
+/// there, never that a provider confirmed execution — a lawyer-uploaded PDF
+/// that merely looks signed would satisfy the same probe. It reads
+/// [`store::signatures::completed_for_notation`] instead, so the client
+/// only sees "Signed" when a completed signature record — provider id and
+/// `signed_at` — backs the document.
 #[cfg(feature = "server")]
 async fn notation_rows(
     surreal: &store::surreal::SurrealDb,
@@ -333,10 +354,11 @@ async fn notation_rows(
             .exists(&store::notations::document_pdf_storage_key(n.id))
             .await
             .unwrap_or(false);
-        let signed_ready = storage
-            .exists(&store::notations::signed_document_storage_key(n.id))
+        let signed_ready = store::signatures::completed_for_notation(surreal, n.id)
             .await
-            .unwrap_or(false);
+            .ok()
+            .flatten()
+            .is_some();
         let certificate_ready = storage
             .exists(&store::notations::certificate_of_completion_storage_key(
                 n.id,
@@ -570,5 +592,118 @@ pub fn ClientProjectDetail() -> Element {
                 }
             }
         }
+    }
+}
+
+#[cfg(all(test, feature = "server"))]
+mod tests {
+    use super::{notation_rows, notation_status_label};
+    use cloud::StorageService;
+
+    /// Signature evidence, not workflow state, decides the label — with
+    /// `state` and `rendered_ready` held fixed, only flipping evidence flips
+    /// the label (ENG-421, covering test 1 & 2: an unsigned notation never
+    /// gets the signed label, a signed one always does).
+    #[test]
+    fn signature_evidence_alone_changes_the_label() {
+        let unsigned = notation_status_label("sent_for_signature__pending", false, true);
+        let signed = notation_status_label("sent_for_signature__pending", true, true);
+        assert_ne!(unsigned, signed);
+    }
+
+    /// Once there is signature evidence, the label does not depend on the
+    /// workflow state or whether a rendered draft exists — evidence is the
+    /// one thing that can assert execution.
+    #[test]
+    fn signature_evidence_produces_the_same_label_regardless_of_workflow_state() {
+        let via_pending = notation_status_label("sent_for_signature__pending", true, true);
+        let via_end = notation_status_label("END", true, true);
+        let via_no_render = notation_status_label("BEGIN", true, false);
+        assert_eq!(via_pending, via_end);
+        assert_eq!(via_pending, via_no_render);
+    }
+
+    /// A declined or voided envelope (which the esignature webhook leaves
+    /// at the terminal `END` state without ever stamping `signed_at`) reads
+    /// as distinct from one still outstanding at
+    /// `sent_for_signature__pending` — neither is the signed label, and the
+    /// two are told apart from each other (ENG-421, covering test 3).
+    #[test]
+    fn a_declined_envelope_is_distinguishable_from_one_still_outstanding() {
+        let outstanding = notation_status_label("sent_for_signature__pending", false, true);
+        let declined = notation_status_label("END", false, true);
+        let signed = notation_status_label("END", true, true);
+        assert_ne!(outstanding, declined);
+        assert_ne!(declined, signed);
+    }
+
+    /// The route-level proof: `notation_rows` must not read `signed_ready`
+    /// off `storage.exists()`. An object at the signed-document key with no
+    /// completed `store::signatures` row must not read as signed — the
+    /// exact failure mode ENG-421 reports (a lawyer-uploaded PDF landing at
+    /// that key would otherwise claim execution). Once the provider's
+    /// completion is recorded, the same notation reads as signed with no
+    /// change to what is in storage.
+    #[tokio::test]
+    async fn notation_rows_reads_signed_ready_from_signature_evidence_not_storage() {
+        let surreal = store::surreal::test_support::mem().await;
+        let notation_id = store::test_support::seed_notation(&surreal).await;
+        let notation = store::notations::find_by_id(&surreal, notation_id)
+            .await
+            .expect("query notation")
+            .expect("seeded notation exists");
+        let storage = cloud::FsStorage::new(std::env::temp_dir().join(format!(
+            "navigator-webapp-portal-project-detail-{notation_id}"
+        )))
+        .await
+        .expect("create FsStorage temp root");
+
+        // An object at the signed-document key alone — no signature ever
+        // recorded — must not read as signed.
+        storage
+            .put(
+                &store::notations::signed_document_storage_key(notation_id),
+                b"looks-signed-but-isn't",
+                "application/pdf",
+            )
+            .await
+            .expect("write object at the signed key");
+        let rows = notation_rows(&surreal, &storage, notation.project_id)
+            .await
+            .expect("build notation rows");
+        let row = rows.iter().find(|r| r.id == notation_id.to_string());
+        assert_eq!(
+            row.map(|r| r.signed_ready),
+            Some(false),
+            "an object at the signed key with no signature record must not be signed_ready"
+        );
+
+        // Recording the provider's completed signature — no change to what
+        // is in storage — is what flips it.
+        store::signatures::record_request(
+            &surreal,
+            notation_id,
+            store::signatures::SignatureProvider::DocuSign,
+            "env-eng-421",
+        )
+        .await
+        .expect("record signature request");
+        store::signatures::stamp_signed(
+            &surreal,
+            store::signatures::SignatureProvider::DocuSign,
+            "env-eng-421",
+            "2026-06-30T00:00:00Z",
+        )
+        .await
+        .expect("stamp signed_at");
+        let rows = notation_rows(&surreal, &storage, notation.project_id)
+            .await
+            .expect("build notation rows");
+        let row = rows.iter().find(|r| r.id == notation_id.to_string());
+        assert_eq!(
+            row.map(|r| r.signed_ready),
+            Some(true),
+            "a completed signature record must make the notation signed_ready"
+        );
     }
 }

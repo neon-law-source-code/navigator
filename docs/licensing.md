@@ -41,8 +41,8 @@ restriction — which would breach the covenant the Firm's permission to use BUS
 adds permission cannot. So the free zone is operative text; what lies outside it remains BUSL's own undefined term, and
 the Firm's reading of that lives in [`NOTICE`](../NOTICE) and below, where it binds nobody.
 
-The same paragraph opens the grant in `navigator-ux` and in the Homebrew tap. A legal review that has cleared one of
-the three has cleared all three.
+The same paragraph opens the grant in `navigator-ux` and in the Homebrew tap. A legal review that has cleared one of the
+three has cleared all three.
 
 **The Change Date runs per version.** Each published version carries its own four-year clock, so a version published
 today converts four years from today whatever happens to the ones after it. That is BUSL's own rule, not a choice: its

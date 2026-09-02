@@ -19,8 +19,8 @@ for so long as it performs no work anybody relies on. Running it where somebody 
 customers a product or service that relies on it, needs a commercial licence from the firm. The test is reliance rather
 than where the software runs. Each version converts to `AGPL-3.0-only` four years after it is published, and § 13
 attaches to that version in full when it does — it obliges an operator to offer those users, the people reaching its own
-instance, the corresponding
-source. See [`LICENSE`](LICENSE) for the grant, [`NOTICE`](NOTICE) for what the firm says about it, and
+instance, the corresponding source. See [`LICENSE`](LICENSE) for the grant, [`NOTICE`](NOTICE) for what the firm says
+about it, and
 [`docs/licensing.md`](docs/licensing.md).
 
 ## The contributor licence agreement

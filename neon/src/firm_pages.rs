@@ -577,15 +577,18 @@ fn team_profiles() -> Vec<(String, webapp::team_page::TeamProfileContent)> {
 /// **The page's statement is the firm's tagline, and the practice it leads with
 /// is litigation.** "Everyone deserves to be seen." is the whole of the `<h1>`:
 /// it is what the firm is for, and it is short enough to be read rather than
-/// read through. The lead under it names the two kinds of person the litigation
-/// practice is for — wrongly accused, or wronged — because a reader deciding
-/// whether to call needs to recognise themselves in the first two sentences.
+/// read through. The lead under it names the practice (litigators) and the two
+/// kinds of client it is for — a person wronged or wrongly accused, or a
+/// company in a dispute — because a reader deciding whether to call needs to
+/// recognise themselves in the first two sentences. It does not list causes of
+/// action; those live on `/litigation`.
 ///
 /// **The page leads with litigation.** The statement opens on it,
 /// `locales/en/home.yaml` says what it means, and the three boxes are the
-/// engagements that sit beside it. The fractional CTO engagement is still real
-/// work with a page of its own; it is no longer what this page opens on, and
-/// the copy that used to open this page now opens that one.
+/// engagements that sit beside it, each labeled for a different visitor. The
+/// fractional CTO engagement is still real work with a page of its own; it is
+/// no longer what this page opens on, and the copy that used to open this page
+/// now opens that one.
 ///
 /// The home page opens on a New York skyline, supplied as a finished PNG in the
 /// public asset lane. No price, on any section — every engagement is quoted
@@ -618,10 +621,11 @@ pub(crate) fn resolve_firm_home_content(
 /// domestic violence are categories, so none of them identifies a client, a
 /// Project code, or an outcome. That distinction is what keeps the copy inside
 /// the no-client-data rule while still telling a reader whether this is their
-/// practice. Naming experience is also precisely the situation the footer's
-/// "Past results do not guarantee future outcomes." exists to cover, and
-/// `carries_the_regulated_copy_and_no_results_promise` asserts it reaches the
-/// reader.
+/// practice. The inventory is finite on purpose: the page does not say the firm
+/// will take anything. Naming experience is also precisely the situation the
+/// footer's "Past results do not guarantee future outcomes." exists to cover,
+/// and `carries_the_regulated_copy_and_no_results_promise` asserts it reaches
+/// the reader.
 ///
 /// **The body is the firm's own filed copy and `locales/en/litigation.yaml` holds it verbatim.**
 /// The page arrived at these paragraphs by subtraction: it was a Rule 23

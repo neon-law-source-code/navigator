@@ -364,13 +364,14 @@ async fn litigation_is_the_statement_and_the_filed_paragraphs() {
         .find("We represent those who haven\u{2019}t been justly seen")
         .expect("the who-we-represent paragraph");
     let breadth = body
-        .find("There is little we will not take on")
-        .expect("the breadth paragraph");
+        .find("The disputes we take are specific")
+        .expect("the inventory paragraph");
     assert!(seen < breadth, "in the filed order: {body}");
     // The matter types the firm names, which is the part an edit shortens
     // first. They are the whole reason a reader can tell whether this is their
     // practice: "those who haven't been justly seen" is a stance, and these are
-    // what it means in cases. Categories only, never a matter.
+    // what it means in cases. Categories only, never a matter. The page names
+    // the inventory; it does not say the firm will take anything.
     for named in [
         "trademark and copyright disputes",
         "prison rights litigation",
@@ -382,6 +383,10 @@ async fn litigation_is_the_statement_and_the_filed_paragraphs() {
             "the filed copy keeps {named:?}: {body}"
         );
     }
+    assert!(
+        !body.contains("There is little we will not take on"),
+        "the page does not hold itself out as unlimited: {body}"
+    );
     // The conflicts caveat is the one qualifier on an otherwise open door, and
     // it is a real check rather than a hedge: `store::conflicts` runs a bounded
     // multi-hop traversal before the firm can take a matter.
@@ -1421,9 +1426,10 @@ async fn home_publishes_no_amount_in_controversy_and_no_co_counsel_claim() {
 #[tokio::test]
 async fn home_points_at_the_three_practices_from_its_foot() {
     // The page leads with one offering, and these three boxes say the firm
-    // practices law too. Each links the page that explains it, so a reader who
-    // came for a dispute is one click from the litigation practice rather than
-    // reading the lead and leaving.
+    // has work for visitors who did not come for a dispute. Each links the
+    // page that explains it, so a reader who came for counsel, a technology
+    // function, or a filing is one click from that page rather than reading
+    // the lead and leaving.
     let app = site_app().await;
     let body = body_string(anon_get(&app, "/").await).await;
     // The section renders, with its heading wired to the copy rather than
@@ -1531,6 +1537,30 @@ async fn home_renders_the_statement_and_the_practice_prose() {
         assert!(body.contains(rendered), "{rendered} renders: {body}");
     }
     assert!(body.contains("<title>Neon Law | Home</title>"));
+    assert!(
+        body.contains("Everyone deserves to be seen."),
+        "the statement is the firm's tagline: {body}"
+    );
+    assert!(
+        body.contains("We are litigators."),
+        "the lead names the practice: {body}"
+    );
+    // Causes of action belong on `/litigation`. Listing them in the home hero
+    // is what made the page read as four firms at once.
+    for retired in [
+        "Personal injury",
+        "criminal investigations",
+        "business divorce",
+        "Every problem is unique",
+        "Whatever brings you in",
+        "We are by your side through tough times",
+        "Our complementary practice",
+    ] {
+        assert!(
+            !body.contains(retired),
+            "the home page must not publish {retired:?}: {body}"
+        );
+    }
 
     // The practice prose: one card of paragraphs under one heading. A card
     // *per* practice area is the shape this page sheds, so the count is what

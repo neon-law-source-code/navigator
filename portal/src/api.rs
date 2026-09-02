@@ -338,31 +338,33 @@ pub fn routes() -> Router<ApiState> {
 }
 
 /// The API-documentation surfaces — the Swagger UI shell at the
-/// `/app/api` root and the OpenAPI document at `/app/api/openapi.json`.
-/// They describe the API but are not the API: they read no client data
-/// and call no protected data endpoint themselves.
+/// `/app/api` root (and its short, publicly-linkable alias `/api`, which is
+/// what the site footer's "API" entry names) and the OpenAPI document at
+/// `/app/api/openapi.json`. They describe the API but are not the API: they
+/// read no client data and call no protected data endpoint themselves.
 ///
-/// They sit under the same private `/app/api` prefix as the operations
-/// they document, and [`crate::bootstrap`] gives them the same two layers:
-/// the session boundary for reachability, then `require_policy` for the
-/// tier. The policy admits Clerk and above and denies `client`, which is a
-/// *narrower* audience than the data reads beside them — the document
-/// describes every lawyer-only write, so it belongs to the people who
-/// operate Navigator rather than to the clients they serve.
+/// [`crate::bootstrap`] mounts all three with no session boundary and no
+/// `require_policy` layer at all — they are public. A reader needs no
+/// session just to see what the API looks like, the same way a public
+/// developer portal publishes its reference without gating the reference
+/// itself; what stays gated is [`routes`], the API this documents. "Try it
+/// out" against a real operation still runs the full session + policy stack
+/// that operation always ran, so an anonymous reader can browse the whole
+/// reference and still cannot call anything through it —
+/// [`crate::policy::swagger_ui_unauthenticated`] is the friendly 401 that
+/// failure renders instead of a redirect an XHR can't follow.
 ///
-/// The tier gate lives in the Rego bundle rather than in a handler check,
-/// and that direction matters. An earlier *public* exemption for these
-/// paths could not live there: an allow rule is the only thing between a
-/// path and default-deny, so when #204 shipped the exemption in the Rego
-/// and an image-only deploy advanced the binary ahead of the bundle, the
-/// policy default-denied the docs in production. A restrictive rule
-/// inverts that failure — a stale bundle yields 403 and a redeploy fixes
-/// it, rather than opening a surface to someone who should not see it.
+/// This mounting was gated once, briefly, and the reversal is deliberate
+/// rather than a drift back to an old mistake — see the note at
+/// `portal/policy/navigator.rego` naming the #204 incident for why a public
+/// *routing* decision here carries none of the risk a public *policy*
+/// exemption once did.
 ///
 /// Neither handler reads `Db`, so this router needs no state.
 pub fn doc_routes() -> Router {
     Router::new()
         .route("/app/api", axum::routing::get(api_docs))
+        .route("/api", axum::routing::get(api_docs))
         .route("/app/api/openapi.json", axum::routing::get(openapi_json))
 }
 
@@ -379,9 +381,10 @@ pub fn doc_routes() -> Router {
 /// was blind to method drift, and a hand-maintained list could omit a
 /// registered route outright.
 ///
-/// Excludes the `/app/api` shell and `/app/api/openapi.json`: those are
-/// documentation surfaces mounted *outside* the policy gate by
-/// [`doc_routes`], not part of the API the document describes.
+/// Excludes the `/app/api` shell (and its `/api` alias) and
+/// `/app/api/openapi.json`: those are documentation surfaces mounted
+/// *outside* the policy gate by [`doc_routes`], not part of the API the
+/// document describes.
 #[must_use]
 pub fn documented_api_operations() -> Vec<(&'static str, &'static str)> {
     api_operation_table()
@@ -390,18 +393,18 @@ pub fn documented_api_operations() -> Vec<(&'static str, &'static str)> {
         .collect()
 }
 
-/// Static Swagger UI shell, served at the `/app/api` root — the private
-/// prefix's own front door, so a reader who lands on the API namespace
-/// gets the explorer for the operations beneath it. Loads the vendored
+/// Static Swagger UI shell, served publicly at the `/app/api` root — the
+/// private prefix's own front door, so a reader who lands on the API
+/// namespace gets the explorer for the operations beneath it — and again at
+/// the short `/api` alias the public footer links. Loads the vendored
 /// `swagger-ui-dist` assets from `/public/swagger-ui/` and points the
-/// renderer at the sibling `/app/api/openapi.json`. Mounted by
-/// [`doc_routes`] *outside* the embedded Rego policy gate (see that fn
-/// for why) — the documentation describes the API but is not the API, so
-/// the policy guards the data endpoints it documents while the session
-/// boundary guards the docs. The per-response
-/// `Content-Security-Policy` header keeps script execution on the same
-/// origin — the whole point of vendoring rather than CDN-loading the
-/// dist is so this header can stay strict.
+/// renderer at the sibling, equally public `/app/api/openapi.json`. See
+/// [`doc_routes`] for why this and the document both carry no session or
+/// policy gate while the operations they describe still carry both. The
+/// per-response `Content-Security-Policy` header keeps script execution on
+/// the same origin — the whole point of vendoring rather than CDN-loading
+/// the dist is so this header can stay strict even on a page anyone can
+/// load.
 async fn api_docs() -> impl IntoResponse {
     const HTML: &str = include_str!("../../server/public/swagger-ui/index.html");
     (

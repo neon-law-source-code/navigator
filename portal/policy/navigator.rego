@@ -242,40 +242,16 @@ allow if {
     is_lawyer(input.session)
 }
 
-# The API documentation surfaces: the Swagger UI shell at the /app/api root
-# and the OpenAPI document beside it. Enumerated as exact paths because they
-# are the two members of a closed set, not a prefix.
+# The API documentation surfaces — the Swagger UI shell at /app/api (and its
+# short public alias /api) and the OpenAPI document beside it — carry no rule
+# here at all. `portal::bootstrap` mounts them with no session boundary and no
+# `require_policy` layer, so this policy never sees a request for them: the
+# reference is public, and a reader needs no session just to see what the API
+# looks like. What the reference *describes* is a different set of paths
+# entirely — `/app/api/people` and the rest of the data reads below — and
+# those keep their own per-resource rules unchanged. A Clerk (or an anonymous
+# reader) sees the reference but not the directory it describes.
 #
-# Every tier that operates Navigator may read them — Lawyer and Clerk by the
-# two rules here, Owner and Admin through the route bypass at the top of this
-# policy — and `client` is the one authenticated tier denied. The document is
-# the firm's own command reference, describing every lawyer-only write; a
-# client has no more use for it than for /app/docs.
-#
-# Note the audience is deliberately *not* the same as the data reads below,
-# in either direction. A Clerk reads the reference but not the directory it
-# describes: operating Navigator is what admits them here, and the CRM is not
-# part of operating it. That mirrors /app/docs admitting Clerk while
-# /app/lawyer does not.
-#
-# Clerk gets an explicit rule rather than being folded into `lawyer_tier`, for
-# the reason stated at the top of this file: a non-lawyer role must never
-# inherit legal authority as a side effect of being admitted somewhere.
-# Reading an API reference is not legal authority.
-api_documentation_paths := {["app", "api"], ["app", "api", "openapi.json"]}
-
-allow if {
-    api_documentation_paths[input.path]
-    input.method == "GET"
-    is_lawyer(input.session)
-}
-
-allow if {
-    api_documentation_paths[input.path]
-    input.method == "GET"
-    is_clerk(input.session)
-}
-
 # ---------------------------------------------------------------------------
 # /app/api read paths — one rule per resource, no blanket grant.
 # ---------------------------------------------------------------------------
@@ -987,26 +963,26 @@ allow if {
     is_lawyer(input.session)
 }
 
-# NOTE: the API documentation surfaces ARE decided here, by
-# `api_documentation_paths` above — they are the one part of the /app/api
-# prefix whose audience is narrower than "any authenticated caller", and a
-# tier decision is this policy's job rather than the router's.
+# NOTE: the API documentation surfaces (/app/api, its /api alias, and
+# /app/api/openapi.json) are NOT decided here. `portal::bootstrap` mounts them
+# with no session boundary and no `require_policy` layer at all — see
+# `portal::api::doc_routes` — so this policy never evaluates a request for
+# them. They are public: a reader needs no session just to see what the API
+# looks like, and the document itself carries no client data, only the shape
+# of the operations below.
 #
-# That reverses an earlier posture worth recording, because the reversal is
-# safe in one direction only. These paths once mounted outside
-# require_policy so that a stale ConfigMap could not gate them: the public
-# exemption shipped in the Rego with #204, an image-only deploy advanced the
-# `web` binary ahead of the policy bundle, and the policy default-denied the
-# new path. The lesson was about *widening* — an allow rule is the only thing
-# standing between a path and default-deny, so a path that must be MORE open
-# than the default cannot depend on a bundle that redeploys separately.
+# This looks like the same public exemption the #204 incident retired, and
+# the difference is what makes it safe again. #204's danger was an
+# allow-rule-shaped grant a stale ConfigMap could default-deny out from under
+# a path that needed to stay open — the bundle and the `web` image redeploy on
+# separate schedules, so a lagging bundle silently narrowed access. A routing
+# decision has no such failure mode: there is no policy evaluation on these
+# paths to go stale, so a lagging bundle cannot narrow OR widen what they
+# serve. The lesson survives; it just never applied to a path this policy
+# never sees.
 #
-# A restrictive rule is the opposite shape. If this ConfigMap goes stale the
-# docs default-deny and a reader sees 403 — an availability annoyance a
-# redeploy fixes, not a surface opening to someone who should not see it. So
-# the tier gate lives here and fails closed, while the /app/api/aida.json
-# agent card, which needs only a session, still stays a routing decision.
-#
-# None of these paths is anonymous. They compose behind
-# `portal::auth::require_session` as well, so the session boundary decides
-# reachability and this policy decides which authenticated tier proceeds.
+# The API those docs describe is a different question, and this file still
+# answers it: `/app/api/people` and every other operation below still
+# composes behind `portal::auth::require_session`, and this policy still
+# decides which authenticated tier proceeds. Reading the reference and
+# calling the API it describes are two different gates.

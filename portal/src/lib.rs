@@ -804,30 +804,18 @@ pub fn bootstrap(
         &state.sessions,
         &state.auth,
     );
-    // API documentation — the OpenAPI document and the Swagger UI shell.
-    // They describe the API rather than being the API, so they still mount
-    // outside `require_policy`: routing decides what the embedded policy never
-    // sees. See
-    // `api::doc_routes` for the prod incident that pattern prevents. They are
-    // Navigator tools all the same, so the session boundary still applies —
-    // `/app/api/openapi.json` answers an anonymous caller with the structured
-    // unauthenticated document rather than the schema.
-    // API documentation — the Swagger UI shell at the `/app/api` root and the
-    // OpenAPI document at `/app/api/openapi.json`. Both take the full stack:
-    // the session boundary decides reachability, and `require_policy` then
-    // decides the tier. The policy admits Clerk and above and denies `client` —
-    // the document is the firm's command reference. See
-    // `portal/policy/navigator.rego`'s `api_documentation_paths` for why a
-    // restrictive rule belongs in the bundle even though the earlier *public*
-    // exemption for these paths did not.
-    let api_docs = session_boundary(
-        api::doc_routes().route_layer(axum::middleware::from_fn_with_state(
-            (state.sessions.clone(), state.policy.clone()),
-            crate::policy::require_policy,
-        )),
-        &state.sessions,
-        &state.auth,
-    );
+    // API documentation — the Swagger UI shell (at `/app/api` and its
+    // shorter public-footer alias `/api`) and the OpenAPI document at
+    // `/app/api/openapi.json`. Unlike `api::routes()` above, these mount with
+    // no session boundary and no `require_policy` at all: the reference is
+    // public, precisely so a reader never needs a session just to see what
+    // the API looks like. What stays gated is the API `api::routes()`
+    // describes, not the description of it — `/app/api/people` and every
+    // other operation still runs the full session + policy stack above, so
+    // "Try it out" against a real operation still needs a session, and
+    // `crate::policy::swagger_ui_unauthenticated` is what that failure
+    // renders (a friendly 401 rather than a redirect an XHR can't follow).
+    let api_docs = api::doc_routes();
     let admin_state = admin::AdminState {
         surreal: state.surreal.clone(),
         workflow_runtime: state.workflow_runtime.clone(),
@@ -2084,6 +2072,7 @@ pub const RESERVED_PATH_PREFIXES: &[&str] = &[
     "/auth",
     "/mcp",
     "/docs",
+    "/api",
 ];
 
 /// A host tried to register a portal-owned path.

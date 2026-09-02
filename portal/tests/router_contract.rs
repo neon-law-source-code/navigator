@@ -92,11 +92,17 @@ const CONTRACT: &[(&str, Access)] = &[
         "/templates/forms/united-states/federal/irs/us--form-990",
         Access::ProtectedHuman,
     ),
-    // The Swagger UI shell at the `/app/api` root is an HTML page a reader
-    // lands on, so it takes the login door rather than a JSON refusal.
-    ("/app/api", Access::ProtectedHuman),
-    // Machine surfaces answer machines, even when refusing.
-    ("/app/api/openapi.json", Access::ProtectedProtocol),
+    // The Swagger UI shell at the `/app/api` root, its shorter public-footer
+    // alias `/api`, and the OpenAPI document beside them are the API's
+    // documentation rather than the API: they carry no session boundary and
+    // no policy at all, so an anonymous reader gets the real page and the
+    // real document, not a login door or a refusal.
+    ("/app/api", Access::PortalPublic),
+    ("/api", Access::PortalPublic),
+    ("/app/api/openapi.json", Access::PortalPublic),
+    // Machine surfaces answer machines, even when refusing. Unlike the
+    // documentation above, these are the operations it describes, and they
+    // stay gated.
     ("/app/api/people", Access::ProtectedProtocol),
     (
         "/app/api/templates/neon-law/shared/retainer",

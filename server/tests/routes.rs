@@ -1657,7 +1657,6 @@ async fn anonymous_access_to_the_shared_navigator_surface_lands_at_the_login_doo
         "/app/docs",
         "/app/docs/glossary",
         "/templates",
-        "/app/api",
     ] {
         let resp = app
             .clone()
@@ -1679,7 +1678,7 @@ async fn anonymous_access_to_the_shared_navigator_surface_lands_at_the_login_doo
     }
 
     // Machine surfaces refuse in a shape a machine can read.
-    for path in ["/app/api/openapi.json", "/app/api/people"] {
+    for path in ["/app/api/people"] {
         let resp = app
             .clone()
             .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
@@ -1692,6 +1691,22 @@ async fn anonymous_access_to_the_shared_navigator_surface_lands_at_the_login_doo
         );
         let document: serde_json::Value = serde_json::from_str(&body_string(resp).await).unwrap();
         assert_eq!(document["error"], "unauthenticated", "{path}");
+    }
+
+    // The API documentation is a different surface from the API it
+    // describes: no session boundary at all, so an anonymous reader gets the
+    // real page and the real document rather than a login door or a refusal.
+    for path in ["/app/api", "/api", "/app/api/openapi.json"] {
+        let resp = app
+            .clone()
+            .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(
+            resp.status(),
+            StatusCode::OK,
+            "the API reference at {path} is public"
+        );
     }
 }
 
@@ -11548,10 +11563,10 @@ async fn api_documentation_is_public_but_the_endpoints_it_describes_stay_gated()
     // authenticated caller" — a Clerk reads the reference but not the people
     // directory it names.
     let anon_directory = anon_get(app.clone(), "/app/api/people").await;
-    assert!(
-        anon_directory.status().is_redirection(),
-        "the directory itself still requires a session: {:?}",
-        anon_directory.status()
+    assert_eq!(
+        anon_directory.status(),
+        StatusCode::UNAUTHORIZED,
+        "the directory itself still requires a session"
     );
 
     let clerk_directory =

@@ -1170,16 +1170,16 @@ a.nav-pagination__link:hover {
   padding: 0;
 }
 
-/* Two columns of five on a wide viewport. The rows are fixed at five and the
-   flow runs down them before moving across, so the list reads top-to-bottom
-   inside each column rather than snaking across the pair. One `<ul>` does
-   this at every width — the narrow layout below simply stops columnizing it,
-   which is why the markup needs no second list. */
+/* Four columns of three on a wide viewport. The rows are fixed at three and
+   the flow runs down them before moving across, so the list reads
+   top-to-bottom inside each column rather than snaking across the row. One
+   `<ul>` does this at every width — the narrow layout below simply stops
+   columnizing it, which is why the markup needs no second list. */
 .site-footer__nav-list {
   display: grid;
   grid-auto-flow: column;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-template-rows: repeat(5, auto);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-rows: repeat(3, auto);
   column-gap: var(--footer-band-gap);
   row-gap: 0.4rem;
   margin: 0;
@@ -1526,9 +1526,9 @@ a.nav-pagination__link:hover {
     grid-column: 1;
   }
 
-  /* One list of ten. The same `<ul>` stops columnizing and runs straight down
-     the page, so a narrow viewport shows the row as the single list it is in
-     the markup. */
+  /* One list of twelve. The same `<ul>` stops columnizing and runs straight
+     down the page, so a narrow viewport shows the row as the single list it
+     is in the markup. */
   .site-footer__nav-list {
     grid-auto-flow: row;
     grid-template-rows: none;

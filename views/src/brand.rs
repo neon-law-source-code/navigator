@@ -195,32 +195,48 @@ const FIRM_NAV: &[NavLink] = &[
 /// looking for "how do I reach them" gets a page naming the firm's inbox and
 /// voice line rather than having to find a CTA on some other page first.
 ///
-/// Navigator UX is the one entry here that is not this site's own route. It
-/// is the platform's design showcase, published from its own repository
+/// UX is the one entry here that is not this site's own route. It is the
+/// platform's design showcase, published from its own repository
 /// (`neon-law-source-code/navigator-ux`) rather than served by this binary, so
-/// its href is the showcase's absolute URL rather than a path. Everything else
-/// in this row stays internal — see `every_footer_link_is_internal_or_the_ux_showcase`.
+/// its href is the showcase's absolute URL rather than a path, and it is the
+/// one row entry the footer renders with the off-site arrow — see
+/// `crate::components::SiteFooterLegal`. Everything else in this row stays
+/// internal — see `every_footer_link_is_internal_or_the_ux_showcase`.
 ///
-/// Ten entries, and the count is part of the design: the footer lays them out
-/// as two even columns of five on a wide viewport and one list of ten on a
-/// narrow one, so an eleventh would leave a column uneven.
+/// API documents the Swagger explorer for the JSON surface under `/app/api`.
+/// It lives at the short `/api` alias rather than the private prefix itself.
+/// The reference itself is public — a reader needs no session to see what the
+/// API looks like — while the operations it documents keep their own gate
+/// unchanged; see `portal::api::doc_routes`.
+///
+/// Team is the firm's own two-person roster: an index and one page per
+/// person, naming an email and a LinkedIn profile rather than the bar
+/// credentials the old `/team` page carried. [`FIRM_ATTORNEYS`] is still the
+/// footer's own bar-licence disclosure, and it names nobody today — a Team
+/// profile is a contact card, not a substitute for that regulated notice.
+///
+/// Twelve entries, and the count is part of the design: the footer lays them
+/// out as three even rows of four on a wide viewport and one list of twelve on
+/// a narrow one, so a thirteenth would leave a row uneven.
 ///
 /// A "Firm" entry pointing at `/` is deliberately absent. It was one half of a
 /// cross-link pair with the nonprofit's home, and with that page retired the
 /// remaining half links the reader to where the header logo already goes.
 const FIRM_FOOTER_NAV: &[NavLink] = &[
+    NavLink::leaf("API", "/api"),
     NavLink::leaf("Blog", "/blog"),
     NavLink::leaf("Contact", "/contact"),
     NavLink::leaf("Docs", "/docs"),
     NavLink::leaf("Navigator", "/navigator"),
-    NavLink::leaf(
-        "Navigator UX",
-        "https://neon-law-source-code.github.io/navigator-ux/",
-    ),
     NavLink::leaf("Notations", "/notations"),
     NavLink::leaf("Presentations", "/presentations"),
     NavLink::leaf("Privacy", "/privacy"),
+    NavLink::leaf("Team", "/team"),
     NavLink::leaf("Terms", "/terms"),
+    NavLink::leaf(
+        "UX",
+        "https://neon-law-source-code.github.io/navigator-ux/",
+    ),
     NavLink::leaf("Workshops", "/workshops"),
 ];
 
@@ -1294,17 +1310,20 @@ mod tests {
         );
     }
 
-    /// Blog, Contact, Docs, Navigator, Navigator UX, Notations, Presentations,
-    /// Privacy, Terms, and Workshops are the routes the header does not carry,
-    /// ordered alphabetically by label. They are still linked from every public
-    /// page — a route in neither row is stranded, which is the failure this
-    /// pairs with the test above to catch.
+    /// API, Blog, Contact, Docs, Navigator, Notations, Presentations, Privacy,
+    /// Team, Terms, UX, and Workshops are the routes the header does not
+    /// carry, ordered alphabetically by label. They are still linked from
+    /// every public page — a route in neither row is stranded, which is the
+    /// failure this pairs with the test above to catch.
     ///
     /// Workshops joined the row when the classes became public, and Docs when
     /// the workspace documentation did. While either was gated the chrome
     /// deliberately omitted it rather than send a signed-out reader at a login
     /// door; now that anyone may read them, a footer link is what stops each
-    /// being reachable only by typing the URL.
+    /// being reachable only by typing the URL. API joined the same way: the
+    /// Swagger explorer it names is public — a reader needs no session just
+    /// to see what the API looks like, though the operations it documents
+    /// still do.
     ///
     /// Privacy and Terms are here for the plainer reason that the header links
     /// neither and the legal strip below links only the bar records: without
@@ -1316,22 +1335,24 @@ mod tests {
         assert_eq!(
             footer,
             [
+                "API",
                 "Blog",
                 "Contact",
                 "Docs",
                 "Navigator",
-                "Navigator UX",
                 "Notations",
                 "Presentations",
                 "Privacy",
+                "Team",
                 "Terms",
+                "UX",
                 "Workshops"
             ]
         );
         assert_eq!(
             footer.len(),
-            10,
-            "the footer lays the row out as two even columns of five: {footer:?}"
+            12,
+            "the footer lays the row out as three even rows of four: {footer:?}"
         );
         let mut sorted = footer.clone();
         sorted.sort_unstable();
@@ -1347,7 +1368,7 @@ mod tests {
                 "{label} is linked once, from the footer"
             );
         }
-        for retired in ["Team", "Foundation", "Firm"] {
+        for retired in ["Foundation", "Firm"] {
             assert!(
                 !header.contains(&retired) && !footer.contains(&retired),
                 "{retired} names a retired or redundant entry that neither row may link",
@@ -1362,12 +1383,12 @@ mod tests {
     }
 
     /// Every footer link is this site's own route, with the one deliberate
-    /// exception: Navigator UX names the design showcase published from its own
+    /// exception: UX names the design showcase published from its own
     /// repository, so it links out rather than to a path this binary serves.
     #[test]
     fn every_footer_link_is_internal_or_the_ux_showcase() {
         for link in super::firm_footer_nav() {
-            if link.label == "Navigator UX" {
+            if link.label == "UX" {
                 assert_eq!(
                     link.href, "https://neon-law-source-code.github.io/navigator-ux/",
                     "the showcase's own published URL"
@@ -1385,20 +1406,16 @@ mod tests {
 
     /// No row links a retired URL.
     ///
-    /// The legal aid audience page, the Team page, and the whole `/foundation`
-    /// tree were retired outright, and `/foundation/*` answers `410 Gone`. A
-    /// link in either row would send a reader at one of those answers, which is
-    /// the failure this catches for every retired shape at once.
+    /// The legal aid audience page and the whole `/foundation` tree were
+    /// retired outright, and `/foundation/*` answers `410 Gone`. A link in
+    /// either row would send a reader at one of those answers, which is the
+    /// failure this catches for every retired shape at once. `/team` is no
+    /// longer in this list — the roster came back, at its own two-attorney
+    /// pages, so linking it is the point rather than a regression.
     #[test]
     fn neither_row_links_a_retired_url() {
         for link in FIRM_BRAND.nav.iter().chain(super::firm_footer_nav()) {
-            for retired in [
-                "/foundation",
-                "legal-aid",
-                "/team",
-                "/mission",
-                "/attorneys",
-            ] {
+            for retired in ["/foundation", "legal-aid", "/mission", "/attorneys"] {
                 assert!(
                     !link.href.starts_with(retired),
                     "{} links the retired {retired}: {}",

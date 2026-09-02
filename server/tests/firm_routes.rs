@@ -832,18 +832,21 @@ async fn the_footer_carries_the_pages_the_header_does_not() {
     // only by typing the URL.
     //
     // `/privacy` and `/terms` ride the row on the same footing as the rest.
-    // Navigator UX is the one entry that links off-site, to the platform's
-    // design showcase, rather than to a path this host serves.
-    const ROW: [&str; 10] = [
+    // UX is the one entry that links off-site, to the platform's design
+    // showcase, rather than to a path this host serves. `/api` and `/team`
+    // joined when the Swagger explorer alias and the firm's roster published.
+    const ROW: [&str; 12] = [
+        "/api",
         "/blog",
         "/contact",
         "/docs",
         "/navigator",
-        "https://neon-law-source-code.github.io/navigator-ux/",
         "/notations",
         "/presentations",
         "/privacy",
+        "/team",
         "/terms",
+        "https://neon-law-source-code.github.io/navigator-ux/",
         "/workshops",
     ];
     let app = site_app().await;
@@ -867,21 +870,20 @@ async fn the_footer_carries_the_pages_the_header_does_not() {
         positions.windows(2).all(|pair| pair[0] < pair[1]),
         "the footer row is alphabetized by label: {footer}"
     );
-    // Neither row links a page the site does not publish: the team page and
-    // the whole `/foundation` tree.
-    for unpublished in [r#"href="/team""#, r#"href="/foundation""#] {
-        assert!(
-            !footer.contains(unpublished),
-            "{unpublished} names no page, so the footer must not link it: {footer}"
-        );
-    }
+    // Neither row links a page the site does not publish: the whole
+    // `/foundation` tree.
+    assert!(
+        !footer.contains(r#"href="/foundation""#),
+        "/foundation names no page, so the footer must not link it: {footer}"
+    );
 }
 
 #[tokio::test]
 async fn the_firm_footer_publishes_no_bar_number_and_no_qualified_office() {
     // The firm's regulated footer strip names the entity, the disclaimer, and
-    // the offices — and nothing about who is licensed under what number. The
-    // jurisdictions live on `/team` as credential chips instead.
+    // the offices — and nothing about who is licensed under what number.
+    // `views::brand::FIRM_ATTORNEYS` is empty today; `/team` names a contact
+    // card per attorney, not a bar-credential disclosure.
     //
     // Both halves are the assertion. A bar number reappearing means
     // `views::brand::FIRM_ATTORNEYS` was refilled; an office note reappearing
@@ -2525,27 +2527,26 @@ async fn every_public_page_links_the_source_repository() {
     }
 }
 
-/// The `/team` surface is retired in full — the index and every profile.
-///
-/// It was the firm's people page: a listing at `/team` and a profile per
-/// lawyer at `/team/{slug}`, with bios, credential chips, and the bar
-/// jurisdictions the footer deliberately stopped publishing. The routers, the
-/// `views::team` module, `webapp::team_index` / `team_profile`, the path
-/// constants, the header entry, and the sitemap and llms.txt rows all went
-/// with it.
-///
-/// Asserted as a `404` rather than left untested, because "the page is gone"
-/// and "the page is gone AND nothing redirects to it" are different claims and
-/// only the second one is safe: a stray redirect would send a reader — or a
-/// crawler holding the old URL — to a page that no longer answers.
+/// The `/team` surface is live: the index and one profile per attorney,
+/// `/team/nick` and `/team/jask`. A slug naming nobody on the roster still
+/// answers `404` rather than a stray redirect — a crawler or a bookmark
+/// holding a typo must not land on a page that claims to be someone.
 ///
 /// `/app/team` is a different surface and is deliberately NOT checked here. It
-/// is the authenticated matter-side roster inside the portal, it never moved,
-/// and conflating the two is how a working page gets deleted next.
+/// is the authenticated matter-side roster inside the portal, and conflating
+/// the two is how a working page gets deleted next.
 #[tokio::test]
-async fn the_team_surface_is_retired_in_full() {
+async fn the_team_surface_publishes_the_index_and_each_attorneys_profile() {
     let app = site_router(site_state().await);
-    for path in ["/team", "/team/nick", "/team/jacob", "/team/nobody"] {
+    for path in ["/team", "/team/nick", "/team/jask"] {
+        let resp = app
+            .clone()
+            .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK, "{path} is published");
+    }
+    for path in ["/team/jacob", "/team/nobody"] {
         let resp = app
             .clone()
             .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
@@ -2554,7 +2555,7 @@ async fn the_team_surface_is_retired_in_full() {
         assert_eq!(
             resp.status(),
             StatusCode::NOT_FOUND,
-            "{path} is retired and must answer 404 with no redirect"
+            "{path} names nobody on the roster and must not redirect anywhere"
         );
     }
 }

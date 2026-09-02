@@ -612,6 +612,13 @@ Container images are **linux/amd64 only**; GKE Autopilot consumes amd64. The mac
 Apple silicon — so an Intel Mac still builds the immutable release tag locally with Cargo, and the `#navigator` report
 carries that exact command beside the three downloads. Failure at any stage pages `#navigator`.
 
+The same three build jobs also compile and attach `navigator-lsp-<tag>-<platform>` archives to the same Release, one per
+platform, from the same `cargo build` invocation as the CLI. It is a distinct filename prefix (`navigator-lsp-*` versus
+`navigator-*`) on the same tag, so an editor extension — a Zed marketplace listing, first — can resolve a specific
+released version of the language server the way a `gh release`-based extension expects, rather than the "latest" key
+`navigator ops lsp publish` writes to the public assets bucket for the site's own use. See [editor
+integration](lsp/README.md).
+
 **Every publishing run builds all three CLI archives, and Project CI depends on them.** `release-windows-cli-build`,
 `release-cli-build-linux`, and `release-cli-build-macos` declare the same `needs: [integration, release-version]` and
 the same `publishable` gate the two publish jobs do, so they run whenever a run publishes images and skip whenever one

@@ -338,6 +338,13 @@ enum Command {
 
 #[derive(Subcommand)]
 enum ProjectsCmd {
+    /// Close an existing Project through the live site's lifecycle command.
+    Close {
+        /// Project code, resolved only against Projects visible to the login.
+        project_code: String,
+        #[command(flatten)]
+        host: HostOpt,
+    },
     /// List the live site's Projects as a table or JSON.
     List {
         #[command(flatten)]
@@ -2097,6 +2104,9 @@ async fn run_project_create(
 
 async fn run_projects(action: ProjectsCmd) -> ExitCode {
     match action {
+        ProjectsCmd::Close { project_code, host } => {
+            remote::matter_close(host.host.as_deref(), &project_code).await
+        }
         ProjectsCmd::List { host, json } => remote::projects_list(host.host.as_deref(), json).await,
         ProjectsCmd::Open { project_code, host } => {
             remote::matter_open(host.host.as_deref(), &project_code).await

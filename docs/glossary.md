@@ -936,6 +936,10 @@ A **[Matter](#matter)** in client English. The durable container every [Notation
 `status` (`open`, `closed`, `archived`) and is **always opened against an [Entity](#entity)** — a legal organization, or
 a `Human` entity for a solo natural person. The `entity_id` FK is `NOT NULL`: a matter without an entity is a bug.
 
+Lifecycle status changes use the shared transition command, including the Project PATCH, CLI close command, and
+`aida_close_project`. `closed_at` is derived from a close or archive transition and is never independently settable, so
+the status/retention invariant cannot be bypassed by a partial update.
+
 **Every Notation belongs to exactly one Project.** The schema enforces this with a `NOT NULL` `project_id` FK on
 `notations`. A Notation without a Project is a bug.
 

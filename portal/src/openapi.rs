@@ -596,15 +596,14 @@ pub fn document_with_base(base: &str) -> Value {
             }
           },
           "patch": {
-            "summary": "Update a matter's descriptive fields",
+            "summary": "Update a matter's descriptive fields or status",
             "description":
               "Updates the name, entity, and scope narrative of an existing matter. This is the \
                descriptive update only: it runs no conflict check and provisions no repo (those \
                belong to matter-open and `POST /app/api/project-surfaces/{id}`), and it does not \
-               change the matter's \
-               lifecycle `status`/`closed_at` — moving through open/closed/archived is a transition \
-               with firm retention semantics, handled by dedicated lifecycle commands, not this \
-               edit. **Every field is optional and this is always a patch**: send only the \
+               change the matter's descriptive fields or apply a requested lifecycle `status`. The \
+               shared transition command derives the coupled `closed_at`, which is not independently \
+               settable. **Every field is optional and this is always a patch**: send only the \
                fields you want to change. An absent field — or an explicit `null` — leaves its \
                column exactly as it was, and an empty string clears it. Nothing is blanked out \
                because a body did not mention it. `name` is the one exception to clearing: an \
@@ -2365,8 +2364,11 @@ pub fn document_with_base(base: &str) -> Value {
               "private_notion_page_url": { "type": "string",
                                "description": "The firm-only Notion page. Omit to leave unchanged; a blank string clears it." },
               "shared_notion_page_url": { "type": "string",
-                               "description": "The Notion page shared with the client. Omit to leave unchanged; a blank string clears it." }
+                               "description": "The Notion page shared with the client. Omit to leave unchanged; a blank string clears it." },
+              "status": { "type": "string", "enum": ["open", "closed", "archived"],
+                               "description": "Optional lifecycle transition. `closed_at` is derived and must not be supplied." }
             },
+            "additionalProperties": false,
             "example": {
               "repository_url": "https://forge.example/an-organization/acme"
             }

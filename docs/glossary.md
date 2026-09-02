@@ -424,8 +424,9 @@ unique index, so the cardinality rules live in Rust where they can be tested:
 
 - **The lawyer set is never empty.** The last accountable lawyer cannot step off and cannot be removed from the matter.
 - **Changing either side is authorized and audited.** A matter's lawyer DRIs govern their own side — any of them may
-  add or remove any other — while the client side takes the lawyer tier and above. Owner and Admin pass both. Every
-  designation and removal appends a `relationship_log` entry naming the actor, the matter, and the person moved.
+  add or remove any other — while the client side takes the lawyer tier and above. Owner and Admin pass both. A matter
+  whose lawyer set is empty is named by a lawyer-tier participant already on it, or by Owner/Admin. Every designation
+  and removal appends a `relationship_log` entry naming the actor, the matter, and the person moved.
 
 A matter is opened against a pre-existing [Entity](#entity), **for** a pre-existing client, **and** always on a
 [retainer](#engagement--retainer) — a project is not official until a retainer exists. The matter-open service validates

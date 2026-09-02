@@ -149,10 +149,10 @@ struct DriChange {
 /// above; a client never designates their own counterpart, and a Clerk is a
 /// supervised non-lawyer who designates neither.
 ///
-/// Owner and Admin pass both, which is also what bootstraps a matter whose
-/// lawyer set is empty: with no holders there is no one for the self-governing
-/// rule to admit, so the first lawyer DRI after an open is designated from the
-/// admin tier or by [`DriActor::System`] at open time.
+/// Owner and Admin pass both. A matter whose lawyer set is empty has no holder
+/// for the self-governing rule to admit, so the first lawyer DRI is named by a
+/// lawyer-tier participant already on the matter, by Owner/Admin from outside
+/// the ledger, or by [`DriActor::System`] at open time.
 async fn authorize(
     surreal: &SurrealDb,
     project_id: Uuid,
@@ -171,11 +171,34 @@ async fn authorize(
     }
     let permitted = match side {
         DriSide::Client => acting.role.is_lawyer_tier(),
-        DriSide::Lawyer => holders(surreal, project_id, DriSide::Lawyer)
-            .await?
-            .contains(&actor_id),
+        DriSide::Lawyer => {
+            let current = holders(surreal, project_id, DriSide::Lawyer).await?;
+            current.contains(&actor_id)
+                || (current.is_empty()
+                    && acting.role.is_lawyer_tier()
+                    && actor_is_firm_participant(surreal, project_id, actor_id).await?)
+        }
     };
     permitted.then_some(()).ok_or(DriError::NotPermitted)
+}
+
+/// Whether this person already sits on the firm side of the matter.
+///
+/// The empty lawyer-DRI set has no self-governing holder to admit a designation,
+/// so the first marker is named by a lawyer-tier participant who is already on
+/// the matter — not by someone reaching in from outside it.
+async fn actor_is_firm_participant(
+    surreal: &SurrealDb,
+    project_id: Uuid,
+    actor_id: Uuid,
+) -> Result<bool, DriError> {
+    let Some(row) = projects::participation_for_person(surreal, actor_id, project_id)
+        .await
+        .map_err(|error| DriError::Db(error.to_string()))?
+    else {
+        return Ok(false);
+    };
+    Ok(!projects::PARTICIPATION_CLIENT_SIDE.contains(&row.participation.as_str()))
 }
 
 /// Validate a DRI request against the matter's current markers, before anything
@@ -1170,6 +1193,65 @@ mod tests {
             .unwrap();
             assert!(designated.is_lawyer_dri, "{tag} must carry the lawyer DRI");
         }
+    }
+
+    /// A lawyer already on a matter whose lawyer set is empty may name the first
+    /// DRI — including themselves. Owner and Admin still bootstrap from outside
+    /// the ledger; a lawyer who is not on the matter still cannot.
+    #[tokio::test]
+    async fn a_firm_participant_names_the_first_lawyer_dri_when_the_set_is_empty() {
+        let surreal = crate::test_support::mem_surreal().await;
+        let matter = project(&surreal, "dri-empty-bootstrap").await;
+        let lawyer = person(&surreal, "on-the-matter", Role::Lawyer).await;
+        let row = add(
+            &surreal,
+            matter,
+            lawyer,
+            DriRequest::Unchanged,
+            DriActor::System,
+        )
+        .await
+        .unwrap();
+        assert!(!row.is_lawyer_dri);
+        assert!(holders(&surreal, matter, DriSide::Lawyer).await.is_empty());
+
+        let designated = update_participant(
+            &surreal,
+            &UpdateParticipantCommand {
+                project_id: matter,
+                role_id: row.id,
+                person_id: lawyer,
+                dri: DriRequest::Designate(DriSide::Lawyer),
+                actor: DriActor::Person(lawyer),
+            },
+        )
+        .await
+        .unwrap();
+
+        assert!(designated.is_lawyer_dri);
+        assert_eq!(holders(&surreal, matter, DriSide::Lawyer).await, [lawyer]);
+    }
+
+    /// An empty set does not let a lawyer who is not on the matter reach in.
+    #[tokio::test]
+    async fn a_lawyer_off_the_matter_cannot_name_the_first_lawyer_dri() {
+        let surreal = crate::test_support::mem_surreal().await;
+        let matter = project(&surreal, "dri-empty-outsider").await;
+        let candidate = person(&surreal, "candidate", Role::Lawyer).await;
+        let outsider = person(&surreal, "outsider", Role::Lawyer).await;
+        let refused = add(
+            &surreal,
+            matter,
+            candidate,
+            DriRequest::Designate(DriSide::Lawyer),
+            DriActor::Person(outsider),
+        )
+        .await;
+        assert!(matches!(
+            refused,
+            Err(AddParticipantError::Dri(DriError::NotPermitted))
+        ));
+        assert!(holders(&surreal, matter, DriSide::Lawyer).await.is_empty());
     }
 
     /// Owner and Admin bypass the lawyer side's self-governing check — the rule

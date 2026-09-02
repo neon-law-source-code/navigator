@@ -494,8 +494,14 @@ pub fn LawyerProjectDetail() -> Element {
     let lawyer_dri_disp = names(&view.lawyer_dris);
     let client_dri_disp = names(&view.client_dris);
     // Who may govern each side, mirroring `store::participation::authorize` so
-    // the page renders exactly the controls the command would honour.
-    let may_govern_lawyer_side = is_admin || view.viewer_is_lawyer_dri;
+    // the page renders exactly the controls the command would honour. An empty
+    // lawyer set is the bootstrap case: a lawyer already on this workbench may
+    // name the first DRI, because there is no current holder to admit them.
+    let may_govern_lawyer_side = may_govern_lawyer_dri(
+        is_admin,
+        view.viewer_is_lawyer_dri,
+        view.lawyer_dris.is_empty() && view.role.is_lawyer_tier(),
+    );
     let may_govern_client_side = view.role.is_lawyer_tier();
 
     rsx! {
@@ -697,12 +703,17 @@ pub fn LawyerProjectDetail() -> Element {
                     }
                     // A matter always has at least one lawyer DRI — they are who
                     // close it. An empty set is therefore a gap to fill, not a
-                    // neutral blank, so the workbench says so and links to the
-                    // form that fixes it.
-                    if view.lawyer_dris.is_empty() && is_admin {
+                    // neutral blank, so the workbench says so. Admin can add a
+                    // person and mark them; a lawyer already on the matter uses
+                    // Make DRI on a firm-side row in the ledger below.
+                    if view.lawyer_dris.is_empty() && view.role.is_lawyer_tier() {
                         p { class: "nav-form-error", role: "alert",
                             "This matter has no lawyer DRI. "
-                            a { class: "nav-link", href: "/app/projects/{view.code}/people/new", "Designate the accountable lawyer" }
+                            if is_admin {
+                                a { class: "nav-link", href: "/app/projects/{view.code}/people/new", "Designate the accountable lawyer" }
+                            } else {
+                                "Use Make DRI on a lawyer already assigned to this matter"
+                            }
                             "."
                         }
                     }
@@ -710,6 +721,16 @@ pub fn LawyerProjectDetail() -> Element {
             }
         }
     }
+}
+
+/// Whether the workbench should offer lawyer-side DRI controls.
+///
+/// Mirrors `store::participation::authorize` for a viewer already on this
+/// matter. `may_bootstrap` is the empty-set case: a lawyer-tier participant
+/// already on the matter may name the first DRI because there is no current
+/// holder to admit the designation.
+fn may_govern_lawyer_dri(is_admin: bool, viewer_is_lawyer_dri: bool, may_bootstrap: bool) -> bool {
+    is_admin || viewer_is_lawyer_dri || may_bootstrap
 }
 
 /// The matter's "Matter people" ledger table: everyone assigned, their system
@@ -835,5 +856,97 @@ pub fn ParticipationTable(
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{may_govern_lawyer_dri, ParticipationRow, ParticipationTable};
+    use dioxus::prelude::*;
+
+    fn row(id: &str, lawyer_dri: bool) -> ParticipationRow {
+        ParticipationRow {
+            id: id.to_string(),
+            person_name: "Avery Attorney".to_string(),
+            person_email: "avery@neonlaw.com".to_string(),
+            person_role: "lawyer".to_string(),
+            participation: "lawyer".to_string(),
+            is_lawyer_dri: lawyer_dri,
+            is_client_dri: false,
+        }
+    }
+
+    fn render(
+        participations: Vec<ParticipationRow>,
+        may_govern_lawyer_side: bool,
+        is_admin: bool,
+    ) -> String {
+        dioxus_ssr::render_element(rsx! {
+            ParticipationTable {
+                code: "sample-litigation".to_string(),
+                csrf: "TOK".to_string(),
+                participations,
+                is_admin,
+                may_govern_lawyer_side,
+                may_govern_client_side: true,
+            }
+        })
+    }
+
+    #[test]
+    fn a_governable_row_posts_make_dri_with_the_session_csrf() {
+        let html = render(
+            vec![row("00000000-0000-0000-0000-0000000000aa", false)],
+            true,
+            false,
+        );
+        assert!(html.contains("Make DRI"), "{html}");
+        assert!(
+            html.contains(
+                r#"action="/app/projects/sample-litigation/people/00000000-0000-0000-0000-0000000000aa/dri""#
+            ),
+            "{html}"
+        );
+        assert!(
+            html.contains(r#"name="_csrf" value="TOK""#),
+            "the workbench control must echo the session token: {html}"
+        );
+    }
+
+    #[test]
+    fn a_held_row_posts_remove_dri() {
+        let html = render(
+            vec![row("00000000-0000-0000-0000-0000000000aa", true)],
+            true,
+            false,
+        );
+        assert!(html.contains("Remove DRI"), "{html}");
+        assert!(
+            html.contains(
+                r#"action="/app/projects/sample-litigation/people/00000000-0000-0000-0000-0000000000aa/dri/remove""#
+            ),
+            "{html}"
+        );
+        assert!(html.contains(">Lawyer DRI<"), "{html}");
+    }
+
+    #[test]
+    fn a_viewer_who_cannot_govern_sees_the_label_and_no_control() {
+        let html = render(
+            vec![row("00000000-0000-0000-0000-0000000000aa", true)],
+            false,
+            false,
+        );
+        assert!(html.contains(">Lawyer DRI<"), "{html}");
+        assert!(!html.contains("Make DRI"), "{html}");
+        assert!(!html.contains("Remove DRI"), "{html}");
+    }
+
+    #[test]
+    fn an_empty_lawyer_set_lets_a_lawyer_on_the_matter_govern() {
+        assert!(may_govern_lawyer_dri(false, false, true));
+        assert!(!may_govern_lawyer_dri(false, false, false));
+        assert!(may_govern_lawyer_dri(true, false, true));
+        assert!(may_govern_lawyer_dri(false, true, false));
     }
 }

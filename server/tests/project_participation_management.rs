@@ -1302,3 +1302,229 @@ async fn the_workbench_dri_change_is_audited() {
         .expect("the designation is on the trail");
     assert_eq!(entry.actor_person_id, Some(fixture.dri_id));
 }
+
+/// The token in the first `_csrf` hidden input on the page.
+fn csrf_from_html(html: &str) -> String {
+    html.split(r#"name="_csrf" value=""#)
+        .nth(1)
+        .and_then(|rest| rest.split('"').next())
+        .filter(|token| !token.is_empty())
+        .unwrap_or_else(|| panic!("the page rendered no session CSRF token: {html}"))
+        .to_string()
+}
+
+/// The workbench Make DRI control posts through the HTML the reader sees: the
+/// action and the CSRF token both come off the page, then the store and the
+/// matter header both name the new holder.
+#[tokio::test]
+async fn the_workbench_html_form_persists_a_lawyer_dri() {
+    let fixture = build_fixture().await;
+    let page = fixture
+        .app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/app/projects/{}", fixture.project_code))
+                .header("cookie", &fixture.dri_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(page.status(), StatusCode::OK);
+    let html = body_string(page).await;
+    let action = format!(
+        "/app/projects/{}/people/{}/dri",
+        fixture.project_code, fixture.assigned_role_id
+    );
+    assert!(
+        html.contains(&format!(r#"action="{action}""#)),
+        "the Make DRI control is on the page: {html}"
+    );
+    let csrf = csrf_from_html(&html);
+    assert_eq!(csrf, fixture.dri_csrf_token);
+
+    let response = fixture
+        .app
+        .clone()
+        .oneshot(form_request(
+            action,
+            &fixture.dri_cookie,
+            format!("_csrf={csrf}"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    assert_eq!(lawyer_dri_holders(&fixture).await.len(), 2);
+
+    let reloaded = fixture
+        .app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/app/projects/{}", fixture.project_code))
+                .header("cookie", &fixture.dri_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = body_string(reloaded).await;
+    assert!(body.contains("Lawyer DRI:"), "{body}");
+    assert!(body.contains("Lawyer Member"), "{body}");
+
+    let directory = store::projects::matter_directory(&fixture.surreal, Role::Owner)
+        .await
+        .unwrap();
+    let entry = directory
+        .iter()
+        .find(|row| row.code == fixture.project_code)
+        .expect("the matter stays in the directory");
+    assert!(
+        entry.lawyer_dris.iter().any(|name| name == "Lawyer Member"),
+        "directory (and MCP directory reads) name the new holder: {entry:?}"
+    );
+}
+
+/// An Owner/Admin who holds no row still reaches the participation-only page
+/// and can designate from the same workbench control — that is the staffing
+/// door for a matter nobody has put them on yet.
+#[tokio::test]
+async fn an_unassigned_admin_designates_from_the_participation_page() {
+    let fixture = build_fixture().await;
+    let page = fixture
+        .app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/app/projects/{}", fixture.project_code))
+                .header("cookie", &fixture.admin_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(page.status(), StatusCode::OK);
+    let html = body_string(page).await;
+    assert!(
+        html.contains("You are not assigned to this matter"),
+        "{html}"
+    );
+    let action = format!(
+        "/app/projects/{}/people/{}/dri",
+        fixture.project_code, fixture.assigned_role_id
+    );
+    assert!(html.contains(&format!(r#"action="{action}""#)), "{html}");
+    let csrf = csrf_from_html(&html);
+    assert_eq!(csrf, fixture.admin_csrf_token);
+
+    let response = fixture
+        .app
+        .clone()
+        .oneshot(form_request(
+            action,
+            &fixture.admin_cookie,
+            format!("_csrf={csrf}"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    assert_eq!(lawyer_dri_holders(&fixture).await.len(), 2);
+}
+
+/// A lawyer already on a matter whose lawyer set is empty can name themselves
+/// from the workbench. That is the write the empty-set gap used to refuse.
+#[tokio::test]
+async fn a_lawyer_on_an_unassigned_matter_names_themselves_dri() {
+    let surreal = mem_surreal().await;
+    let storage: std::sync::Arc<dyn cloud::StorageService> = std::sync::Arc::new(
+        cloud::FsStorage::new(std::env::temp_dir().join("navigator-empty-dri-workbench"))
+            .await
+            .unwrap(),
+    );
+    let lawyer = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role("On Matter", "on-matter@example.com", Role::Lawyer),
+    )
+    .await
+    .unwrap();
+    let project = store::projects::create(
+        &surreal,
+        &store::projects::NewProject {
+            code: "empty-dri-matter".into(),
+            name: "Empty DRI matter".into(),
+            status: "open".into(),
+            entity_id: store::test_support::seed_entity(&surreal).await,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let row = store::projects::add_participation(&surreal, project.id, lawyer.id, "lawyer")
+        .await
+        .unwrap();
+    assert!(
+        store::participation::holders(&surreal, project.id, store::projects::DriSide::Lawyer)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+
+    let sessions = SessionStore::new(KEY);
+    let mut session = SessionData::fresh("empty-dri-sub", Role::Lawyer);
+    session.person_id = Some(lawyer.id);
+    let csrf = session.csrf_token.clone();
+    let cookie = format!("{SESSION_COOKIE_NAME}={}", sessions.encode(&session));
+    let state = AppState {
+        sessions: SessionStore::new(KEY),
+        storage: storage.clone(),
+        ..portal::test_support::app_state(surreal.clone()).await
+    };
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+
+    let page = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/app/projects/{}", project.code))
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(page.status(), StatusCode::OK);
+    let html = body_string(page).await;
+    assert!(html.contains("This matter has no lawyer DRI"), "{html}");
+    assert!(html.contains("Make DRI"), "{html}");
+    let action = format!("/app/projects/{}/people/{}/dri", project.code, row.id);
+    assert!(html.contains(&format!(r#"action="{action}""#)), "{html}");
+    assert_eq!(csrf_from_html(&html), csrf);
+
+    let response = app
+        .clone()
+        .oneshot(form_request(action, &cookie, format!("_csrf={csrf}")))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    let holders =
+        store::participation::holders(&surreal, project.id, store::projects::DriSide::Lawyer)
+            .await
+            .unwrap();
+    assert_eq!(holders, vec![lawyer.id]);
+
+    let reloaded = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/app/projects/{}", project.code))
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = body_string(reloaded).await;
+    assert!(body.contains("Lawyer DRI: On Matter"), "{body}");
+    assert!(body.contains(">Lawyer DRI<"), "{body}");
+}

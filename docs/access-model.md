@@ -437,8 +437,8 @@ there, whatever the caller:
    `owner`, `admin`, or `lawyer`, never a Clerk and never a client. A client DRI is a client-side contact.
 3. **The lawyer side governs itself.** Any of a matter's current lawyer DRIs may add or remove any other, themselves
    included, bounded by rule 1. A lawyer who holds no marker on that matter may not, and neither may a lawyer who is not
-   on it at all (`DriError::NotPermitted`). Owner and Admin pass, which is also what designates the first lawyer DRI on
-   a matter whose set is empty.
+   on it at all (`DriError::NotPermitted`). Owner and Admin pass. When the lawyer set is empty, a lawyer-tier
+   participant already on the matter may name the first DRI; the workbench `Make DRI` control is that write.
 4. **The client side is the firm's call.** Designating or removing a client DRI takes `Role::is_lawyer_tier` — `owner`,
    `admin`, or `lawyer`. A client never designates their own counterpart, and a Clerk designates neither side.
 

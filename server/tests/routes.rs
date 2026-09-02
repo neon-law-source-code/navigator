@@ -13793,6 +13793,148 @@ async fn project_detail_page_renders_empty_state_when_project_has_no_documents()
     assert!(body.contains("No documents yet."));
 }
 
+#[tokio::test]
+async fn lawyer_project_documents_render_grouped_history_and_one_offs() {
+    let (state, surreal) = state_with_engines().await;
+    let (project_id, _lawyer, cookie, _csrf) = lawyer_project_fixture(&surreal).await;
+    let project_code = code_for_project(&surreal, project_id).await;
+    let other_project = test_project(&surreal, "Other document matter", "open").await;
+
+    let first = ingest_route_document(
+        &surreal,
+        &state.storage,
+        RouteDocument {
+            project_id,
+            filename: "agreement-v1.pdf",
+            slug: Some("agreement"),
+            published_at: Some("2026-08-10T00:00:00Z"),
+            visibility: store::documents::visibility::CLIENT,
+            bytes: b"agreement v1",
+        },
+    )
+    .await;
+    let operative = ingest_route_document(
+        &surreal,
+        &state.storage,
+        RouteDocument {
+            project_id,
+            filename: "agreement-v2.pdf",
+            slug: Some("agreement"),
+            published_at: Some("2026-08-01T00:00:00Z"),
+            visibility: store::documents::visibility::INTERNAL,
+            bytes: b"agreement v2",
+        },
+    )
+    .await;
+    let one_off = ingest_route_document(
+        &surreal,
+        &state.storage,
+        RouteDocument {
+            project_id,
+            filename: "attachment.pdf",
+            slug: None,
+            published_at: None,
+            visibility: store::documents::visibility::INTERNAL,
+            bytes: b"attachment",
+        },
+    )
+    .await;
+    let other = ingest_route_document(
+        &surreal,
+        &state.storage,
+        RouteDocument {
+            project_id: other_project.id,
+            filename: "other-project-agreement.pdf",
+            slug: Some("agreement"),
+            published_at: None,
+            visibility: store::documents::visibility::CLIENT,
+            bytes: b"other project agreement",
+        },
+    )
+    .await;
+
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+    let body =
+        body_string(get_with_cookie(app, &format!("/app/projects/{project_code}"), &cookie).await)
+            .await;
+
+    assert!(
+        body.contains("agreement-v2.pdf"),
+        "the operative filename renders: {body}"
+    );
+    assert!(
+        body.contains("2 revisions"),
+        "the grouped count renders: {body}"
+    );
+    assert_eq!(
+        body.matches("<details").count(),
+        1,
+        "one slugged document row expands: {body}"
+    );
+    assert!(body.contains(&format!(
+        "/app/projects/{project_code}/documents/{operative}"
+    )));
+    assert!(body.contains(&format!(
+        "/app/projects/{project_code}/documents/{operative}/download"
+    )));
+    assert!(body.contains(&format!("/app/projects/{project_code}/documents/{first}")));
+    assert!(body.contains(&format!(
+        "/app/projects/{project_code}/documents/{first}/download"
+    )));
+    assert!(body.contains(&format!("/app/projects/{project_code}/documents/{one_off}")));
+    assert!(body.contains(&format!(
+        "/app/projects/{project_code}/documents/{one_off}/download"
+    )));
+    assert!(!body.contains("other-project-agreement.pdf"));
+    assert!(
+        !body.contains(&other.to_string()),
+        "another Project's asset id is not linked: {body}"
+    );
+}
+
+struct RouteDocument<'a> {
+    project_id: uuid::Uuid,
+    filename: &'a str,
+    slug: Option<&'a str>,
+    published_at: Option<&'a str>,
+    visibility: &'a str,
+    bytes: &'a [u8],
+}
+
+async fn ingest_route_document(
+    surreal: &store::surreal::SurrealDb,
+    storage: &std::sync::Arc<dyn cloud::StorageService>,
+    document: RouteDocument<'_>,
+) -> uuid::Uuid {
+    store::documents::ingest_bytes_as(
+        surreal,
+        storage,
+        &store::documents::IngestArgs {
+            project_id: document.project_id,
+            source: "upload",
+            filename: document.filename,
+            kind: if document.slug.is_some() {
+                "agreement"
+            } else {
+                "unclassified"
+            },
+            content_type: "application/pdf",
+            description: None,
+            visibility: document.visibility,
+            secondary_storage_key: None,
+        },
+        &store::documents::DocumentIdentity {
+            slug: document.slug,
+            published_at: document.published_at,
+            ..Default::default()
+        },
+        document.bytes,
+    )
+    .await
+    .expect("route fixture document")
+    .asset_id
+}
+
 /// The matter workbench's calendar section — from its own class to the
 /// participation ledger that follows it. The page around it legitimately names
 /// the matter and its documents, so assertions that the calendar synthesizes

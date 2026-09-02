@@ -44,11 +44,20 @@ use crate::people::ViewerRole;
 #[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct ProjectRepositoryPointer(pub Option<String>);
 
-/// One document row (filename + id for the download link).
+/// One revision in a grouped lawyer document history.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct LawyerDocRevision {
+    pub id: String,
+    pub filename: String,
+}
+
+/// One document row (the operative filename + id and its revision history).
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct LawyerDocRow {
     pub id: String,
     pub filename: String,
+    /// Newest-first revisions for a slugged document. Empty for one-off assets.
+    pub revisions: Vec<LawyerDocRevision>,
 }
 
 /// One participation-ledger row: who is assigned, their system tier, the
@@ -285,13 +294,21 @@ pub async fn get_lawyer_project_detail() -> Result<LawyerDetailView, ServerFnErr
     let lawyer_dris = dri_names(&surreal, &lawyer_dri_ids).await?;
     let client_dris = dri_names(&surreal, &client_dri_ids).await?;
 
-    let documents = store::assets::for_project(&surreal, id)
+    let documents = store::assets::grouped_for_project(&surreal, id)
         .await
         .map_err(server_error)?
         .into_iter()
-        .map(|d| LawyerDocRow {
-            id: d.id.to_string(),
-            filename: d.filename.unwrap_or_default(),
+        .map(|group| LawyerDocRow {
+            id: group.current.id.to_string(),
+            filename: group.current.filename.unwrap_or_default(),
+            revisions: group
+                .revisions
+                .into_iter()
+                .map(|revision| LawyerDocRevision {
+                    id: revision.id.to_string(),
+                    filename: revision.filename.unwrap_or_default(),
+                })
+                .collect(),
         })
         .collect();
 
@@ -573,11 +590,45 @@ pub fn LawyerProjectDetail() -> Element {
                 } else {
                     div { class: "nav-table-wrap",
                         table { class: "nav-table",
-                            thead { tr { th { scope: "col", "Filename" } th { scope: "col", "Download" } } }
+                            thead {
+                                tr {
+                                    th { scope: "col", "Filename" }
+                                    th { scope: "col", "Revisions" }
+                                    th { scope: "col", "Download" }
+                                }
+                            }
                             tbody {
                                 for doc in view.documents.iter() {
                                     tr {
-                                        td { a { class: "nav-link", href: "/app/projects/{view.code}/documents/{doc.id}", "{doc.filename}" } }
+                                        td {
+                                            if doc.revisions.is_empty() {
+                                                a { class: "nav-link", href: "/app/projects/{view.code}/documents/{doc.id}", "{doc.filename}" }
+                                            } else {
+                                                details {
+                                                    summary {
+                                                        a { class: "nav-link", href: "/app/projects/{view.code}/documents/{doc.id}", "{doc.filename}" }
+                                                    }
+                                                    ul {
+                                                        for revision in doc.revisions.iter() {
+                                                            li {
+                                                                a { class: "nav-link", href: "/app/projects/{view.code}/documents/{revision.id}", "{revision.filename}" }
+                                                                " "
+                                                                a { class: "nav-link", href: "/app/projects/{view.code}/documents/{revision.id}/download", "Download" }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        td {
+                                            if doc.revisions.is_empty() {
+                                                "—"
+                                            } else if doc.revisions.len() == 1 {
+                                                "1 revision"
+                                            } else {
+                                                "{doc.revisions.len()} revisions"
+                                            }
+                                        }
                                         td { a { class: "nav-link", href: "/app/projects/{view.code}/documents/{doc.id}/download", "Download" } }
                                     }
                                 }

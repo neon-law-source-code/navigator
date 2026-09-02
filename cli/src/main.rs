@@ -301,6 +301,14 @@ enum Command {
         /// `navigator-lsp` `source.fixAll` action ships in editors.
         #[arg(long)]
         fix: bool,
+        /// Print only the findings that fail the gate, hiding the
+        /// Warning-severity advisories. The summary line still counts
+        /// both and the exit code is unchanged: this narrows the
+        /// listing for a CI-triage read, not the gate itself. Rejected
+        /// with `--fix`, where a remaining warning still has to be
+        /// resolved before the run passes and so must stay on screen.
+        #[arg(long, conflicts_with = "fix")]
+        errors_only: bool,
     },
     /// The notation author's offline workbench for everything under
     /// `templates/`.
@@ -1734,7 +1742,11 @@ fn main() -> ExitCode {
         return ExitCode::from(2);
     };
     match cli_command {
-        Command::Validate { dir, fix } => run_validate(&dir, fix),
+        Command::Validate {
+            dir,
+            fix,
+            errors_only,
+        } => run_validate(&dir, fix, errors_only),
         // The docs reference helpers need no cluster, so they are handled
         // here rather than routed into the KIND dispatcher with the rest
         // of `dev`.
@@ -2211,12 +2223,15 @@ fn is_yaml_path(path: &std::path::Path) -> bool {
 
 /// Parse every `.yaml`/`.yml` file under `dir` as part of `validate`. Prints
 /// one line per parse error plus a `Parsed N …` summary, and returns the
-/// error count. Standalone YAML (k8s manifests, config, reference catalogs)
+/// errors. Standalone YAML (k8s manifests, config, reference catalogs)
 /// is disjoint from the markdown the classified engine lints, so this is a
 /// second pass over the same tree rather than a second command.
-fn yaml_pass(dir: &std::path::Path) -> std::io::Result<usize> {
+///
+/// A parse error goes to stderr, as it always has, so the marker is the
+/// plain word rather than a stdout-colored one.
+fn yaml_pass(dir: &std::path::Path) -> std::io::Result<Vec<GateError>> {
     let mut files_scanned = 0usize;
-    let mut errors = 0usize;
+    let mut errors: Vec<GateError> = Vec::new();
     for entry in walkdir::WalkDir::new(dir)
         .into_iter()
         .filter_entry(|entry| {
@@ -2233,22 +2248,29 @@ fn yaml_pass(dir: &std::path::Path) -> std::io::Result<usize> {
         let raw = std::fs::read_to_string(entry.path())?;
         for document in serde_yaml::Deserializer::from_str(&raw) {
             if let Err(err) = serde_yaml::Value::deserialize(document) {
-                if let Some(location) = err.location() {
-                    eprintln!(
-                        "{}:{}:{}: YAML parse error: {err}",
+                let location = match err.location() {
+                    Some(location) => format!(
+                        "{}:{}:{}",
                         entry.path().display(),
                         location.line(),
                         location.column()
-                    );
-                } else {
-                    eprintln!("{}: YAML parse error: {err}", entry.path().display());
-                }
-                errors += 1;
+                    ),
+                    None => entry.path().display().to_string(),
+                };
+                eprintln!("error: {location}: YAML parse error: {err}");
+                errors.push(GateError::new(
+                    location,
+                    None,
+                    format!("YAML parse error: {err}"),
+                ));
                 break;
             }
         }
     }
-    println!("Parsed {files_scanned} YAML file(s), found {errors} error(s)");
+    println!(
+        "Parsed {files_scanned} YAML file(s), found {} error(s)",
+        errors.len()
+    );
     Ok(errors)
 }
 
@@ -2275,9 +2297,9 @@ fn seed_model_for_path(path: &std::path::Path) -> Option<anyhow::Result<store::s
 /// Validate the direct `seeds/*.yaml` documents that an operator can submit
 /// through `navigator site import`. The store owns the parser; this pass only
 /// discovers the files and reports its refusal with the validation lint code.
-fn seed_document_pass(dir: &std::path::Path) -> std::io::Result<usize> {
+fn seed_document_pass(dir: &std::path::Path) -> std::io::Result<Vec<GateError>> {
     let mut files_scanned = 0usize;
-    let mut errors = 0usize;
+    let mut errors: Vec<GateError> = Vec::new();
     for entry in walkdir::WalkDir::new(dir)
         .into_iter()
         .filter_entry(|entry| {
@@ -2304,10 +2326,17 @@ fn seed_document_pass(dir: &std::path::Path) -> std::io::Result<usize> {
                 SEED_DOCUMENT_CODE,
                 &error.to_string(),
             );
-            errors += 1;
+            errors.push(GateError::new(
+                format!("{}:1", path.display()),
+                Some(SEED_DOCUMENT_CODE),
+                error.to_string(),
+            ));
         }
     }
-    println!("Validated {files_scanned} seed document(s), found {errors} error(s)");
+    println!(
+        "Validated {files_scanned} seed document(s), found {} error(s)",
+        errors.len()
+    );
     Ok(errors)
 }
 
@@ -2317,9 +2346,9 @@ fn seed_document_pass(dir: &std::path::Path) -> std::io::Result<usize> {
 /// other than [`views::locales::DEFAULT_LOCALE`] is an error, and a known page
 /// must deserialize as its typed catalog so a copy-only edit cannot land a
 /// document the brand crate cannot load.
-fn locale_document_pass(dir: &std::path::Path) -> std::io::Result<usize> {
+fn locale_document_pass(dir: &std::path::Path) -> std::io::Result<Vec<GateError>> {
     let mut files_scanned = 0usize;
-    let mut errors = 0usize;
+    let mut errors: Vec<GateError> = Vec::new();
     for entry in walkdir::WalkDir::new(dir)
         .into_iter()
         .filter_entry(|entry| {
@@ -2338,25 +2367,37 @@ fn locale_document_pass(dir: &std::path::Path) -> std::io::Result<usize> {
         };
         files_scanned += 1;
         if locale != views::locales::DEFAULT_LOCALE {
+            let message = format!(
+                "locale directory `{locale}` is not published; only `{}` is allowed",
+                views::locales::DEFAULT_LOCALE
+            );
             print_violation(
                 &path.display().to_string(),
                 1,
                 LOCALE_DOCUMENT_CODE,
-                &format!(
-                    "locale directory `{locale}` is not published; only `{}` is allowed",
-                    views::locales::DEFAULT_LOCALE
-                ),
+                &message,
             );
-            errors += 1;
+            errors.push(GateError::new(
+                format!("{}:1", path.display()),
+                Some(LOCALE_DOCUMENT_CODE),
+                message,
+            ));
             continue;
         }
         let raw = std::fs::read_to_string(path)?;
         if let Err(error) = views::locales::parse_locale_file(stem, &raw) {
             print_violation(&path.display().to_string(), 1, LOCALE_DOCUMENT_CODE, &error);
-            errors += 1;
+            errors.push(GateError::new(
+                format!("{}:1", path.display()),
+                Some(LOCALE_DOCUMENT_CODE),
+                error,
+            ));
         }
     }
-    println!("Validated {files_scanned} locale catalog(s), found {errors} error(s)");
+    println!(
+        "Validated {files_scanned} locale catalog(s), found {} error(s)",
+        errors.len()
+    );
     Ok(errors)
 }
 
@@ -2514,11 +2555,13 @@ fn detect_mutable_tags(path: &std::path::Path, contents: &str) -> Vec<(usize, St
 
 /// Walk `dir` for *consumed* mutable tags — the diligence guard for
 /// [navigator#540](https://github.com/neon-law-source-code/navigator/issues/540).
-/// Prints one line per offence and returns the count. Runs over YAML manifests,
+/// Prints one line per offence and returns them. Runs over YAML manifests,
 /// Containerfiles, and workflow files alike; the `.git`, `target`, and
-/// `.worktrees` trees are skipped, as in [`yaml_pass`].
-fn mutable_tag_pass(dir: &std::path::Path) -> std::io::Result<usize> {
-    let mut findings = 0usize;
+/// `.worktrees` trees are skipped, as in [`yaml_pass`]. An offence goes to
+/// stderr, as it always has, so the marker is the plain word rather than a
+/// stdout-colored one.
+fn mutable_tag_pass(dir: &std::path::Path) -> std::io::Result<Vec<GateError>> {
+    let mut findings: Vec<GateError> = Vec::new();
     for entry in walkdir::WalkDir::new(dir)
         .into_iter()
         .filter_entry(|entry| {
@@ -2534,26 +2577,31 @@ fn mutable_tag_pass(dir: &std::path::Path) -> std::io::Result<usize> {
         }
         let contents = std::fs::read_to_string(path)?;
         for (line, message) in detect_mutable_tags(path, &contents) {
-            eprintln!("{}:{line}: {message}", path.display());
-            findings += 1;
+            let location = format!("{}:{line}", path.display());
+            eprintln!("error: {location}: {message}");
+            findings.push(GateError::new(location, None, message));
         }
     }
-    println!("Checked consumed image/binary tags, found {findings} mutable tag(s)");
+    println!(
+        "Checked consumed image/binary tags, found {} mutable tag(s)",
+        findings.len()
+    );
     Ok(findings)
 }
 
 /// The standalone passes `validate` runs over the raw tree after the markdown
 /// lint — YAML syntax, seed-document shape, locale catalogs, and consumed
-/// mutable tags.
-fn standalone_tree_passes(dir: &std::path::Path) -> std::io::Result<(usize, usize, usize, usize)> {
-    let yaml_errors = yaml_pass(dir)?;
-    let seed_errors = seed_document_pass(dir)?;
-    let locale_errors = locale_document_pass(dir)?;
-    let mutable_tags = mutable_tag_pass(dir)?;
-    Ok((yaml_errors, seed_errors, locale_errors, mutable_tags))
+/// mutable tags. Every finding any of them reports fails the gate, so the
+/// four lists concatenate into one.
+fn standalone_tree_passes(dir: &std::path::Path) -> std::io::Result<Vec<GateError>> {
+    let mut errors = yaml_pass(dir)?;
+    errors.append(&mut seed_document_pass(dir)?);
+    errors.append(&mut locale_document_pass(dir)?);
+    errors.append(&mut mutable_tag_pass(dir)?);
+    Ok(errors)
 }
 
-fn run_validate(dir: &std::path::Path, fix: bool) -> ExitCode {
+fn run_validate(dir: &std::path::Path, fix: bool, errors_only: bool) -> ExitCode {
     let question_codes = rules::canonical_question_codes();
     if fix {
         let fix_report = match fix_directory(dir, &rules::DefaultFileFilter::default(), |file| {
@@ -2606,10 +2654,28 @@ fn run_validate(dir: &std::path::Path, fix: bool) -> ExitCode {
             return ExitCode::from(2);
         }
     }
+    // `--errors-only` narrows what prints here and nothing else: the
+    // summary below still counts every advisory, and the gate below still
+    // ignores them.
     for v in &report.violations {
+        if errors_only && rules::severity_for_code(v.code) != rules::Severity::Error {
+            continue;
+        }
         print_violation(&v.path.display().to_string(), v.line, v.code, &v.message);
     }
     let (error_count, warning_count) = severity_counts(&report.violations);
+    let mut gate_errors: Vec<GateError> = report
+        .violations
+        .iter()
+        .filter(|v| rules::severity_for_code(v.code) == rules::Severity::Error)
+        .map(|v| {
+            GateError::new(
+                format!("{}:{}", v.path.display(), v.line),
+                Some(v.code),
+                v.message.clone(),
+            )
+        })
+        .collect();
 
     println!(
         "{}",
@@ -2622,28 +2688,27 @@ fn run_validate(dir: &std::path::Path, fix: bool) -> ExitCode {
     // Standalone raw-tree passes over the same walk: YAML parse errors, seed
     // document shape, locale catalogs, and consumed mutable image/binary tags
     // (navigator#540).
-    let (yaml_errors, seed_errors, locale_errors, mutable_tags) = match standalone_tree_passes(dir)
-    {
-        Ok(counts) => counts,
+    match standalone_tree_passes(dir) {
+        Ok(mut errors) => gate_errors.append(&mut errors),
         Err(e) => {
             eprintln!("navigator: {e}");
             return ExitCode::from(2);
         }
-    };
+    }
+
+    // Close by naming every failing line again in one block, so the answer
+    // to "which line do I fix" is the last thing on screen rather than
+    // something to be found by scrolling (ENG-413).
+    print_error_recap(&gate_errors);
 
     // Fail the gate on Error-severity markdown violations, malformed YAML,
     // seed documents, locale catalogs, or a consumed mutable tag.
     // Warning-severity advisories (e.g. a step that's allowed but not built
     // yet) are printed but do not fail.
-    if error_count > 0
-        || yaml_errors > 0
-        || seed_errors > 0
-        || locale_errors > 0
-        || mutable_tags > 0
-    {
-        ExitCode::from(1)
-    } else {
+    if gate_errors.is_empty() {
         ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
     }
 }
 
@@ -2900,9 +2965,6 @@ fn fix_directory(
     })
 }
 
-/// Render a single rule violation: path/line in dim cyan-700, rule
-/// code in cyan-500, message in default. Shared by validate and
-/// site seed so both subcommands have the same look.
 /// Split a violation list into `(error_count, warning_count)` by each
 /// code's [`rules::Severity`]. Used for the `validate` summary line so
 /// blocking errors and "not built yet" advisories are tallied apart.
@@ -2914,13 +2976,112 @@ fn severity_counts(violations: &[rules::Violation]) -> (usize, usize) {
     (errors, violations.len() - errors)
 }
 
+/// Render one diagnostic: severity marker, then `path:line` in dim
+/// cyan-700, then the rule code in cyan-500 and the message.
+///
+/// The marker leads the line, the way `rustc` and `clippy` write one.
+/// It has to lead: paths vary in width, so a marker anywhere later stops
+/// being a column a reader can scan, and scanning is the whole point —
+/// a run is routinely one error inside hundreds of advisories, and
+/// before this the two were typographically identical (ENG-413).
+///
+/// `location` is pre-rendered rather than `(path, line)` because the
+/// YAML syntax pass reports a column too; `code` is `None` for the two
+/// passes that carry no rule code at all.
+fn diagnostic_line(
+    severity: rules::Severity,
+    location: &str,
+    code: Option<&str>,
+    message: &str,
+) -> String {
+    let marker = match severity {
+        rules::Severity::Error => palette::error_marker(),
+        rules::Severity::Warning => palette::warning_marker(),
+    };
+    match code {
+        Some(code) => format!(
+            "{marker} {} {}: {message}",
+            palette::dim(location),
+            palette::highlight(code),
+        ),
+        None => format!("{marker} {}: {message}", palette::dim(location)),
+    }
+}
+
+/// Print one rule violation to stdout, its severity read from the code.
+/// Shared by validate, site seed, and render so all three have the same
+/// look.
 fn print_violation(path: &str, line: usize, code: &str, message: &str) {
     println!(
-        "{} {}: {}",
-        palette::dim(format!("{path}:{line}")),
-        palette::highlight(code),
-        message,
+        "{}",
+        diagnostic_line(
+            rules::severity_for_code(code),
+            &format!("{path}:{line}"),
+            Some(code),
+            message,
+        )
     );
+}
+
+/// One finding that fails the `validate` gate, retained so a run can
+/// recapitulate every error at the end.
+///
+/// The primary listing prints in tree order — per pass, per file, per
+/// line — which is what keeps a file's violations adjacent and the body
+/// readable. That order also scatters the errors: among the warnings
+/// inside the markdown pass, and across the four standalone passes that
+/// print after it. Collecting them here is what lets the run close with
+/// a single block naming every line that failed.
+struct GateError {
+    /// `path:line`, or `path:line:column` where the pass knows one.
+    location: String,
+    /// The rule code, or `None` for the two passes that have none: the
+    /// YAML syntax check and the consumed-mutable-tag guard.
+    code: Option<String>,
+    message: String,
+}
+
+impl GateError {
+    fn new(location: impl Into<String>, code: Option<&str>, message: impl Into<String>) -> Self {
+        Self {
+            location: location.into(),
+            code: code.map(str::to_string),
+            message: message.into(),
+        }
+    }
+
+    fn render(&self) -> String {
+        diagnostic_line(
+            rules::Severity::Error,
+            &self.location,
+            self.code.as_deref(),
+            &self.message,
+        )
+    }
+}
+
+/// Close a `validate` run by naming every error again, on its own, after
+/// the passes have finished printing.
+///
+/// This is the half of ENG-413 the per-line marker cannot cover. A
+/// marker tells a reader what a line they are *looking at* means; it
+/// does not help when the one error scrolled past three hundred lines
+/// ago. The recapitulation puts the failing lines where a terminal
+/// leaves the reader — at the tail — and it is additive, so the primary
+/// listing keeps the tree order that makes it readable in the first
+/// place.
+fn print_error_recap(errors: &[GateError]) {
+    if errors.is_empty() {
+        return;
+    }
+    println!();
+    println!(
+        "{}",
+        palette::header(format!("{} error(s) fail this run:", errors.len()))
+    );
+    for error in errors {
+        println!("{}", error.render());
+    }
 }
 
 async fn run_catalog_seed(dir: &std::path::Path) -> ExitCode {

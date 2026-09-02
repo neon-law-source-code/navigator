@@ -813,3 +813,281 @@ fn validate_fix_is_idempotent() {
         .success()
         .stdout(str::contains("Fixed 0 file(s)"));
 }
+
+// ─────────── Severity is legible on the line itself (ENG-413) ───────────
+//
+// `validate` used to print an Error-severity violation and a
+// Warning-severity advisory in one identical format, so the only things
+// separating them were the summary count and the exit code. On a real
+// run that is one error inside a couple of hundred advisories, and a
+// reader picking a plausible line out of the middle picks a warning.
+// These tests assert the *rendered text* rather than the exit code,
+// because the exit code was never the part that was wrong.
+
+/// Run `validate` over `dir` and return its stdout and exit code.
+fn validate_output(dir: &Path, extra_args: &[&str]) -> (String, i32) {
+    let mut command = navigator();
+    command.arg("validate").arg(dir);
+    for arg in extra_args {
+        command.arg(arg);
+    }
+    let output = command.output().unwrap();
+    (
+        String::from_utf8(output.stdout).unwrap(),
+        output.status.code().unwrap(),
+    )
+}
+
+/// A tree shaped like the run ENG-413 was filed over: one Error-severity
+/// violation (`S101`, an over-long line) among several Warning-severity
+/// advisories (`M061`, a docs link to a code file).
+///
+/// The error's file sorts *first*, so the primary listing ends on a
+/// warning and the error is genuinely buried — the same shape that
+/// produced the misreading, not a shape that hides it.
+fn error_buried_among_warnings(dir: &Path) {
+    // M061 is the web-portability advisory, not the disk-resolution
+    // error, so its target has to exist for M057 to stay quiet.
+    write(dir, "billing/src/lib.rs", "pub fn placeholder() {}\n");
+    write(
+        dir,
+        "docs/a_long.md",
+        &format!("Intro.\n\n{}\n", "x".repeat(130)),
+    );
+    for name in ["m_one.md", "n_two.md", "z_three.md"] {
+        write(
+            dir,
+            &format!("docs/{name}"),
+            "Body.\n\nSee [billing](../billing/src/lib.rs) for detail.\n",
+        );
+    }
+}
+
+/// Collect the recapitulation block: every line after the
+/// `N error(s) fail this run:` header.
+fn recap_lines(stdout: &str) -> Vec<&str> {
+    stdout
+        .lines()
+        .skip_while(|line| !line.ends_with("error(s) fail this run:"))
+        .skip(1)
+        .filter(|line| !line.trim().is_empty())
+        .collect()
+}
+
+/// Each finding names its own severity. A reader looking at one line
+/// knows whether it blocks, without consulting the summary or the exit
+/// code — which is the whole of ENG-413's "done when".
+#[test]
+fn validate_marks_every_finding_with_its_own_severity() {
+    let dir = TempDir::new().unwrap();
+    error_buried_among_warnings(dir.path());
+    let (stdout, code) = validate_output(dir.path(), &[]);
+    assert_eq!(
+        code, 1,
+        "expected the S101 error to fail the gate:\n{stdout}"
+    );
+
+    let error_line = stdout
+        .lines()
+        .find(|line| line.contains("S101"))
+        .unwrap_or_else(|| panic!("no S101 line in:\n{stdout}"));
+    assert!(
+        error_line.starts_with("error: "),
+        "an Error-severity violation must say so on its own line; got: {error_line:?}",
+    );
+
+    let warning_line = stdout
+        .lines()
+        .find(|line| line.contains("M061"))
+        .unwrap_or_else(|| panic!("no M061 line in:\n{stdout}"));
+    assert!(
+        warning_line.starts_with("warning: "),
+        "M061 is Warning-severity and must never read as the error; got: {warning_line:?}",
+    );
+}
+
+/// The run closes by naming every failing line again, on its own. This
+/// is the half a per-line marker cannot cover: the marker helps a reader
+/// looking *at* a line, and does nothing when the error scrolled past
+/// hundreds of lines ago.
+#[test]
+fn validate_recapitulates_only_the_errors_at_the_tail() {
+    let dir = TempDir::new().unwrap();
+    error_buried_among_warnings(dir.path());
+    let (stdout, code) = validate_output(dir.path(), &[]);
+    assert_eq!(code, 1, "expected exit 1:\n{stdout}");
+
+    // The primary listing keeps tree order, so it still ends on a
+    // warning — the error really is buried, and the recap is what
+    // rescues it.
+    let listing_end = stdout
+        .lines()
+        .take_while(|line| !line.starts_with("Scanned "))
+        .filter(|line| !line.trim().is_empty())
+        .last()
+        .unwrap_or_else(|| panic!("no listing in:\n{stdout}"));
+    assert!(
+        listing_end.starts_with("warning: "),
+        "fixture no longer buries the error; got: {listing_end:?}",
+    );
+
+    assert!(
+        stdout.contains("1 error(s) fail this run:"),
+        "expected an errors-only recapitulation in:\n{stdout}",
+    );
+    let recap = recap_lines(&stdout);
+    assert_eq!(
+        recap.len(),
+        1,
+        "expected one recapped error, got: {recap:?}"
+    );
+    assert!(
+        recap[0].starts_with("error: ")
+            && recap[0].contains("a_long.md")
+            && recap[0].contains("S101"),
+        "the recapped line must name the failing file and code; got: {:?}",
+        recap[0],
+    );
+    assert!(
+        !recap.iter().any(|line| line.contains("M061")),
+        "an advisory must never appear in the errors recapitulation: {recap:?}",
+    );
+
+    // The recapitulation is the last thing on screen, where the
+    // terminal leaves the reader.
+    assert!(
+        stdout
+            .trim_end()
+            .lines()
+            .next_back()
+            .unwrap()
+            .starts_with("error: "),
+        "the run must end on the failing line:\n{stdout}",
+    );
+}
+
+/// The recapitulation spans every pass, not just the markdown lint. The
+/// four standalone passes print *after* the markdown summary line, so
+/// ordering inside one pass could never have gathered them; one block at
+/// the tail is the only place that can name them all.
+#[test]
+fn validate_recapitulation_gathers_errors_from_every_pass() {
+    let dir = TempDir::new().unwrap();
+    error_buried_among_warnings(dir.path());
+    // A locale catalog in a directory the site does not publish: Y002,
+    // reported by the locale pass long after the markdown listing ended.
+    write(dir.path(), "locales/xx/home.yaml", "heading: Hello\n");
+    let (stdout, code) = validate_output(dir.path(), &[]);
+    assert_eq!(code, 1, "expected exit 1:\n{stdout}");
+
+    assert!(
+        stdout.contains("2 error(s) fail this run:"),
+        "expected both passes' errors counted together in:\n{stdout}",
+    );
+    let recap = recap_lines(&stdout);
+    assert!(
+        recap.iter().any(|line| line.contains("S101")),
+        "markdown error missing from the recapitulation: {recap:?}",
+    );
+    assert!(
+        recap.iter().any(|line| line.contains("Y002")),
+        "locale-pass error missing from the recapitulation: {recap:?}",
+    );
+    assert!(
+        recap.iter().all(|line| line.starts_with("error: ")),
+        "every recapped line is an error: {recap:?}",
+    );
+}
+
+/// A clean run says nothing extra: no recapitulation, no empty header.
+#[test]
+fn validate_prints_no_recapitulation_when_there_are_no_errors() {
+    let dir = TempDir::new().unwrap();
+    // Advisories only — M061 never fails the gate.
+    write(
+        dir.path(),
+        "billing/src/lib.rs",
+        "pub fn placeholder() {}\n",
+    );
+    write(
+        dir.path(),
+        "docs/guide.md",
+        "Body.\n\nSee [billing](../billing/src/lib.rs) for detail.\n",
+    );
+    let (stdout, code) = validate_output(dir.path(), &[]);
+    assert_eq!(code, 0, "advisories must not fail the gate:\n{stdout}");
+    assert!(
+        stdout.contains("found 0 error(s), 1 warning(s)"),
+        "expected the advisory counted:\n{stdout}",
+    );
+    assert!(
+        !stdout.contains("fail this run"),
+        "a clean run must not print a recapitulation:\n{stdout}",
+    );
+}
+
+/// `--errors-only` narrows the listing and nothing else: the summary
+/// still counts every advisory, and the exit code is unchanged. It is a
+/// triage read, not a quieter gate.
+#[test]
+fn validate_errors_only_hides_advisories_but_not_their_count() {
+    let dir = TempDir::new().unwrap();
+    error_buried_among_warnings(dir.path());
+    let (stdout, code) = validate_output(dir.path(), &["--errors-only"]);
+    assert_eq!(code, 1, "the gate is unchanged by --errors-only:\n{stdout}");
+    assert!(
+        !stdout.contains("M061"),
+        "--errors-only must hide the advisories:\n{stdout}",
+    );
+    assert!(
+        stdout.contains("found 1 error(s), 3 warning(s)"),
+        "the summary still counts the hidden advisories:\n{stdout}",
+    );
+    let recap = recap_lines(&stdout);
+    assert_eq!(recap.len(), 1, "expected the error still named: {recap:?}");
+    assert!(recap[0].contains("S101"), "got: {:?}", recap[0]);
+}
+
+/// `--errors-only` is rejected with `--fix`, where a remaining advisory
+/// still has to be resolved before the run passes — hiding one there
+/// would hide a line that fails the run.
+#[test]
+fn validate_errors_only_is_rejected_with_fix() {
+    let dir = TempDir::new().unwrap();
+    navigator()
+        .args(["validate", "--errors-only", "--fix"])
+        .arg(dir.path())
+        .assert()
+        .failure()
+        .stderr(str::contains(
+            "the argument \'--errors-only\' cannot be used with \'--fix\'",
+        ));
+}
+
+/// `--fix` reports what it could not fix through the same marked
+/// format, so the two paths read alike.
+#[test]
+fn validate_fix_marks_the_severity_of_what_it_leaves_behind() {
+    let dir = TempDir::new().unwrap();
+    // M010 (a hard tab, autofixable) plus N101 (a template with no
+    // `title`, diagnostic-only and Error-severity).
+    write(
+        dir.path(),
+        "templates/needs.md",
+        "---\nkind: onboarding\nrespondent_type: entity\nquestionnaire:\n  BEGIN:\n    _: END\n---\n\n\tTabbed\n",
+    );
+    let output = navigator()
+        .args(["validate", "--fix"])
+        .arg(dir.path())
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let remaining = stdout
+        .lines()
+        .find(|line| line.contains("N101"))
+        .unwrap_or_else(|| panic!("no N101 line in:\n{stdout}"));
+    assert!(
+        remaining.starts_with("error: "),
+        "a remaining violation names its severity too; got: {remaining:?}",
+    );
+}

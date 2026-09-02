@@ -52,6 +52,9 @@ same fix the `navigator-lsp` `source.fixAll` editor action ships.
 - **`--fix`** — apply every autofixable rule's fix in place (see the Autofix column below), then re-validate and report
   what remains. Exits `0` only if no violation remains after fixing; a remaining violation is always one a human has to
   resolve, never a bug in the fixer.
+- **`--errors-only`** — print only the findings that fail the gate, hiding the Warning-severity advisories. The summary
+  line still counts both and the exit code is unchanged: this narrows the listing for a CI-triage read, not the gate. It
+  is rejected with `--fix`, where a remaining advisory still fails the run and so has to stay on screen.
 
 ## Errors versus warnings
 
@@ -60,6 +63,32 @@ failure, a locale-catalog failure, or a consumed mutable tag all fail the gate (
 violation prints alongside everything else but never fails the run — it is a heads-up, not a blocker. Only two codes are
 `Warning`: `N112` (a workflow step is allowed but its automation is not built yet) and `M061` (a link that renders
 correctly on GitHub but would 404 on the published site). Every other code, including `Y001` and `Y002`, is `Error`.
+
+**Every finding names its own severity, and every run ends with its errors.** A line opens with `error:` or `warning:`
+the way `rustc` and `clippy` write one, before the `path:line`, the rule code, and the message:
+
+```text
+warning: docs/example.md:12 M061: Relative link `../billing/src/lib.rs` renders verbatim on the website …
+error: docs/example.md:104 S101: Line is 130 characters (max 120)
+```
+
+The marker leads the line because paths vary in width, so anywhere later it stops being a column that can be scanned.
+That matters because a whole-tree run is routinely a couple of hundred advisories with a single error somewhere inside
+them.
+
+The listing itself stays in tree order — per pass, per file, per line — so a file's findings remain adjacent. A run that
+found any error therefore closes with an errors-only recapitulation, after every pass has printed:
+
+```text
+2 error(s) fail this run:
+error: docs/example.md:104 S101: Line is 130 characters (max 120)
+error: locales/xx/home.yaml:1 Y002: locale directory `xx` is not published; only `en` is allowed
+```
+
+The recapitulation spans all six passes, which is why it is a separate block rather than a reordering: the four
+standalone passes print *after* the markdown lint's summary line, so no ordering within one pass could gather them.
+Reading it is the supported way to answer "which line do I fix" — the summary count and the exit code say only *how
+many*.
 
 ## Rule codes
 

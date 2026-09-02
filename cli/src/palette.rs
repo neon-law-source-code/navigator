@@ -5,6 +5,12 @@
 //! - `CYAN_500` (`#06B6D4`) — primary highlights (codes, keys)
 //! - `CYAN_300` (`#67E8F9`) — strong emphasis (table headers, titles)
 //!
+//! Two diagnostic colors sit outside the brand cyans, because severity
+//! is not branding: `RED_500` for `error:` and `AMBER_400` for
+//! `warning:`. They match the red/yellow squiggle an editor already
+//! draws for [`rules::Severity`], so one violation reads the same way in
+//! `navigator validate`, in `navigator-lsp`, and in `rustc`.
+//!
 //! All styling routes through [`owo_colors::OwoColorize::if_supports_color`]
 //! against `Stream::Stdout`, so when stdout isn't a TTY (CI, captured
 //! by `assert_cmd`, piped through `less`) the output is plain ASCII
@@ -20,6 +26,10 @@ pub const CYAN_700: (u8, u8, u8) = (14, 116, 144);
 pub const CYAN_500: (u8, u8, u8) = (6, 182, 212);
 /// Tailwind `cyan-300` — `#67E8F9`. The `N`.
 pub const CYAN_300: (u8, u8, u8) = (103, 232, 249);
+/// Tailwind `red-500` — `#EF4444`. The `error:` severity marker.
+pub const RED_500: (u8, u8, u8) = (239, 68, 68);
+/// Tailwind `amber-400` — `#FBBF24`. The `warning:` severity marker.
+pub const AMBER_400: (u8, u8, u8) = (251, 191, 36);
 
 fn paint<T: Display>(value: T, rgb: (u8, u8, u8), bold: bool) -> String {
     let mut style = Style::new().truecolor(rgb.0, rgb.1, rgb.2);
@@ -44,4 +54,16 @@ pub fn highlight<T: Display>(value: T) -> String {
 /// Dim accent (em-dash separators, paths, summary lines) in cyan-700.
 pub fn dim<T: Display>(value: T) -> String {
     paint(value, CYAN_700, false)
+}
+
+/// The `error:` severity marker in bold red-500 — a violation that
+/// fails the gate.
+pub fn error_marker() -> String {
+    paint("error:", RED_500, true)
+}
+
+/// The `warning:` severity marker in bold amber-400 — an advisory that
+/// prints but never fails the gate.
+pub fn warning_marker() -> String {
+    paint("warning:", AMBER_400, true)
 }

@@ -840,11 +840,14 @@ fn validate_output(dir: &Path, extra_args: &[&str]) -> (String, i32) {
 
 /// A tree shaped like the run ENG-413 was filed over: one Error-severity
 /// violation (`S101`, an over-long line) among several Warning-severity
-/// advisories (`M061`, a docs link to a code file).
+/// advisories (`M061`, a docs link to a code file) — the same shape
+/// that produced the misreading, not a shape that hides it.
 ///
-/// The error's file sorts *first*, so the primary listing ends on a
-/// warning and the error is genuinely buried — the same shape that
-/// produced the misreading, not a shape that hides it.
+/// Which line lands last in the listing is not fixed: the listing
+/// follows the directory walk, and `walkdir` reports entries in
+/// filesystem order, which is sorted on NTFS and arbitrary on
+/// ext4/tmpfs. Tests over this fixture assert the severity mixing and
+/// the position of the recapitulation, never a specific walk order.
 fn error_buried_among_warnings(dir: &Path) {
     // M061 is the web-portability advisory, not the disk-resolution
     // error, so its target has to exist for M057 to stay quiet.
@@ -917,18 +920,45 @@ fn validate_recapitulates_only_the_errors_at_the_tail() {
     let (stdout, code) = validate_output(dir.path(), &[]);
     assert_eq!(code, 1, "expected exit 1:\n{stdout}");
 
-    // The primary listing keeps tree order, so it still ends on a
-    // warning — the error really is buried, and the recap is what
-    // rescues it.
-    let listing_end = stdout
+    // The primary listing mixes the severities, which is the condition
+    // the recapitulation exists to answer. Assert the mixing itself
+    // rather than which line lands last: the listing follows the
+    // directory walk, and `walkdir` yields entries in whatever order the
+    // filesystem reports, sorted on NTFS but arbitrary on ext4/tmpfs.
+    // Pinning the last line would be a test of `walkdir`, not of this
+    // output.
+    let listing: Vec<&str> = stdout
         .lines()
         .take_while(|line| !line.starts_with("Scanned "))
         .filter(|line| !line.trim().is_empty())
-        .last()
-        .unwrap_or_else(|| panic!("no listing in:\n{stdout}"));
+        .collect();
     assert!(
-        listing_end.starts_with("warning: "),
-        "fixture no longer buries the error; got: {listing_end:?}",
+        listing.iter().any(|line| line.starts_with("warning: "))
+            && listing.iter().any(|line| line.starts_with("error: ")),
+        "the listing must mix both severities for this test to mean anything; got: {listing:?}",
+    );
+
+    // The error is buried in the sense that matters: its place in the
+    // listing is separated from the end of the run by the five
+    // pass-summary lines, so it is not what the reader is left looking
+    // at. The recapitulation is what puts it back there.
+    let lines: Vec<&str> = stdout.lines().collect();
+    let first_error = lines
+        .iter()
+        .position(|line| line.starts_with("error: "))
+        .expect("an error line in the listing");
+    let summary = lines
+        .iter()
+        .position(|line| line.starts_with("Scanned "))
+        .expect("the markdown summary line");
+    let recap_header = lines
+        .iter()
+        .position(|line| line.ends_with("error(s) fail this run:"))
+        .expect("the recapitulation header");
+    assert!(
+        first_error < summary && summary < recap_header,
+        "expected listing → summaries → recapitulation, got indices \
+         error={first_error}, summary={summary}, recap={recap_header}:\n{stdout}",
     );
 
     assert!(

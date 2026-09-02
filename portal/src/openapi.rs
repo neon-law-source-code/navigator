@@ -597,6 +597,7 @@ pub fn document_with_base(base: &str) -> Value {
           },
           "patch": {
             "summary": "Update a matter's descriptive fields or status",
+            "x-mcp-tool": "aida_close_project",
             "description":
               "Updates the name, entity, and scope narrative of an existing matter. This is the \
                descriptive update only: it runs no conflict check and provisions no repo (those \

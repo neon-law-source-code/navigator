@@ -323,6 +323,7 @@ mod tests {
             "aida_validate_notation",
             "aida_list_deadlines",
             "aida_create_project",
+            "aida_close_project",
             "aida_list_projects",
             "aida_link_person_project",
             "aida_list_tools",
@@ -335,7 +336,7 @@ mod tests {
             );
         }
 
-        assert_eq!(names.len(), 12, "got {names:?}");
+        assert_eq!(names.len(), 13, "got {names:?}");
         for name in &names {
             assert!(name.starts_with("aida_"), "got `{name}`");
         }

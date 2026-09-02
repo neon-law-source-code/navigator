@@ -43,7 +43,7 @@ workflow:
 ---
 
 This Nevada entity formation engagement (the "Engagement") forms `{{entity__company.name}}`, a Nevada business
-trust, for `{{person__client.name}}`. Neon Law's flat Nest fee is **\$1,111 per year**. That fee covers the
+trust, for `{{person__client.name}}`. It covers the
 Certificate of Business Trust, the Initial List of Trustees, and the State Business License application filed with the
 Nevada Secretary of State, together with the trust's registered agent of record, `{{person__registered_agent.name}}`.
 

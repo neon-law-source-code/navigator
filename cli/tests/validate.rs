@@ -838,3 +838,249 @@ fn validate_fix_is_idempotent() {
         .success()
         .stdout(str::contains("Fixed 0 file(s)"));
 }
+
+// ───────── Every run ends with the lines that failed it (ENG-413) ─────────
+//
+// `validate` runs six passes. The four standalone ones print after the
+// markdown lint's summary line, so no ordering inside a single pass can
+// gather a markdown error and a locale-catalog error together — only a
+// block printed after every pass can name them all. These tests assert the
+// *rendered text* rather than the exit code, because the exit code was
+// never the part that was wrong.
+
+/// Run `validate` over `dir` and return its stdout and exit code.
+fn validate_output(dir: &Path, extra_args: &[&str]) -> (String, i32) {
+    let mut command = navigator();
+    command.arg("validate").arg(dir);
+    for arg in extra_args {
+        command.arg(arg);
+    }
+    let output = command.output().unwrap();
+    (
+        String::from_utf8(output.stdout).unwrap(),
+        output.status.code().unwrap(),
+    )
+}
+
+/// A tree shaped like the run this was filed over: one Error-severity
+/// violation (`S101`, an over-long line) among several Warning-severity
+/// advisories (`M061`, a docs link to a code file) — the same shape that
+/// produced the misreading, not a shape that hides it.
+///
+/// Which line lands last in the listing is not fixed: the listing follows
+/// the directory walk, and `walkdir` reports entries in filesystem order,
+/// which is sorted on NTFS and arbitrary on ext4/tmpfs. Tests over this
+/// fixture assert the severity mixing and the position of the
+/// recapitulation, never a specific walk order.
+fn error_buried_among_warnings(dir: &Path) {
+    // M061 is the web-portability advisory, not the disk-resolution
+    // error, so its target has to exist for M057 to stay quiet.
+    write(dir, "billing/src/lib.rs", "pub fn placeholder() {}\n");
+    write(
+        dir,
+        "docs/a_long.md",
+        &format!("Intro.\n\n{}\n", "x".repeat(130)),
+    );
+    for name in ["m_one.md", "n_two.md", "z_three.md"] {
+        write(
+            dir,
+            &format!("docs/{name}"),
+            "Body.\n\nSee [billing](../billing/src/lib.rs) for detail.\n",
+        );
+    }
+}
+
+/// Collect the recapitulation block: every line after the
+/// `N error(s) fail this run:` header.
+fn recap_lines(stdout: &str) -> Vec<&str> {
+    stdout
+        .lines()
+        .skip_while(|line| !line.ends_with("error(s) fail this run:"))
+        .skip(1)
+        .filter(|line| !line.trim().is_empty())
+        .collect()
+}
+
+/// The run closes by naming every failing line again, on its own. This is
+/// the half a per-line severity marker cannot cover: the marker helps a
+/// reader looking *at* a line, and does nothing when the error scrolled
+/// past hundreds of lines ago.
+#[test]
+fn validate_recapitulates_only_the_errors_at_the_tail() {
+    let dir = TempDir::new().unwrap();
+    error_buried_among_warnings(dir.path());
+    let (stdout, code) = validate_output(dir.path(), &[]);
+    assert_eq!(code, 1, "expected exit 1:\n{stdout}");
+
+    // The primary listing mixes the severities, which is the condition the
+    // recapitulation exists to answer. Assert the mixing itself rather than
+    // which line lands last: the listing follows the directory walk, and
+    // `walkdir` yields entries in whatever order the filesystem reports,
+    // sorted on NTFS but arbitrary on ext4/tmpfs. Pinning the last line
+    // would be a test of `walkdir`, not of this output.
+    let listing: Vec<&str> = stdout
+        .lines()
+        .take_while(|line| !line.starts_with("Scanned "))
+        .filter(|line| !line.trim().is_empty())
+        .collect();
+    assert!(
+        listing.iter().any(|line| line.starts_with("warning: "))
+            && listing.iter().any(|line| line.starts_with("error: ")),
+        "the listing must mix both severities for this test to mean anything; got: {listing:?}",
+    );
+
+    // The error is buried in the sense that matters: its place in the
+    // listing is separated from the end of the run by the pass-summary
+    // lines, so it is not what the reader is left looking at. The
+    // recapitulation is what puts it back there.
+    let lines: Vec<&str> = stdout.lines().collect();
+    let first_error = lines
+        .iter()
+        .position(|line| line.starts_with("error: "))
+        .expect("an error line in the listing");
+    let summary = lines
+        .iter()
+        .position(|line| line.starts_with("Scanned "))
+        .expect("the markdown summary line");
+    let recap_header = lines
+        .iter()
+        .position(|line| line.ends_with("error(s) fail this run:"))
+        .expect("the recapitulation header");
+    assert!(
+        first_error < summary && summary < recap_header,
+        "expected listing then summaries then recapitulation, got indices \
+         error={first_error}, summary={summary}, recap={recap_header}:\n{stdout}",
+    );
+
+    assert!(
+        stdout.contains("1 error(s) fail this run:"),
+        "expected an errors-only recapitulation in:\n{stdout}",
+    );
+    let recap = recap_lines(&stdout);
+    assert_eq!(
+        recap.len(),
+        1,
+        "expected one recapped error, got: {recap:?}"
+    );
+    assert!(
+        recap[0].starts_with("error: ")
+            && recap[0].contains("a_long.md")
+            && recap[0].contains("S101"),
+        "the recapped line must name the failing file and code; got: {:?}",
+        recap[0],
+    );
+    assert!(
+        !recap.iter().any(|line| line.contains("M061")),
+        "an advisory must never appear in the errors recapitulation: {recap:?}",
+    );
+
+    // The recapitulation is the last thing on screen, where the terminal
+    // leaves the reader.
+    assert!(
+        stdout
+            .trim_end()
+            .lines()
+            .next_back()
+            .unwrap()
+            .starts_with("error: "),
+        "the run must end on the failing line:\n{stdout}",
+    );
+}
+
+/// The recapitulation spans every pass, not just the markdown lint. The
+/// four standalone passes print *after* the markdown summary line, so
+/// ordering inside one pass could never have gathered them; one block at
+/// the tail is the only place that can name them all.
+#[test]
+fn validate_recapitulation_gathers_errors_from_every_pass() {
+    let dir = TempDir::new().unwrap();
+    error_buried_among_warnings(dir.path());
+    // A locale catalog in a directory the site does not publish: Y002,
+    // reported by the locale pass long after the markdown listing ended.
+    write(dir.path(), "locales/xx/home.yaml", "heading: Hello\n");
+    let (stdout, code) = validate_output(dir.path(), &[]);
+    assert_eq!(code, 1, "expected exit 1:\n{stdout}");
+
+    assert!(
+        stdout.contains("2 error(s) fail this run:"),
+        "expected both passes' errors counted together in:\n{stdout}",
+    );
+    let recap = recap_lines(&stdout);
+    assert!(
+        recap.iter().any(|line| line.contains("S101")),
+        "markdown error missing from the recapitulation: {recap:?}",
+    );
+    assert!(
+        recap.iter().any(|line| line.contains("Y002")),
+        "locale-pass error missing from the recapitulation: {recap:?}",
+    );
+    assert!(
+        recap.iter().all(|line| line.starts_with("error: ")),
+        "every recapped line is an error: {recap:?}",
+    );
+}
+
+/// A clean run says nothing extra: no recapitulation, no empty header.
+#[test]
+fn validate_prints_no_recapitulation_when_there_are_no_errors() {
+    let dir = TempDir::new().unwrap();
+    // Advisories only — M061 never fails the gate.
+    write(
+        dir.path(),
+        "billing/src/lib.rs",
+        "pub fn placeholder() {}\n",
+    );
+    write(
+        dir.path(),
+        "docs/guide.md",
+        "Body.\n\nSee [billing](../billing/src/lib.rs) for detail.\n",
+    );
+    let (stdout, code) = validate_output(dir.path(), &[]);
+    assert_eq!(code, 0, "advisories must not fail the gate:\n{stdout}");
+    assert!(
+        stdout.contains("found 0 error(s), 1 warning(s)"),
+        "expected the advisory counted:\n{stdout}",
+    );
+    assert!(
+        !stdout.contains("fail this run"),
+        "a clean run must not print a recapitulation:\n{stdout}",
+    );
+}
+
+/// `--errors-only` narrows the listing and nothing else: the summary still
+/// counts every advisory, and the exit code is unchanged. It is a triage
+/// read, not a quieter gate.
+#[test]
+fn validate_errors_only_hides_advisories_but_not_their_count() {
+    let dir = TempDir::new().unwrap();
+    error_buried_among_warnings(dir.path());
+    let (stdout, code) = validate_output(dir.path(), &["--errors-only"]);
+    assert_eq!(code, 1, "the gate is unchanged by --errors-only:\n{stdout}");
+    assert!(
+        !stdout.contains("M061"),
+        "--errors-only must hide the advisories:\n{stdout}",
+    );
+    assert!(
+        stdout.contains("found 1 error(s), 3 warning(s)"),
+        "the summary still counts the hidden advisories:\n{stdout}",
+    );
+    let recap = recap_lines(&stdout);
+    assert_eq!(recap.len(), 1, "expected the error still named: {recap:?}");
+    assert!(recap[0].contains("S101"), "got: {:?}", recap[0]);
+}
+
+/// `--errors-only` is rejected with `--fix`, where a remaining advisory
+/// still has to be resolved before the run passes — hiding one there would
+/// hide a line that fails the run.
+#[test]
+fn validate_errors_only_is_rejected_with_fix() {
+    let dir = TempDir::new().unwrap();
+    navigator()
+        .args(["validate", "--errors-only", "--fix"])
+        .arg(dir.path())
+        .assert()
+        .failure()
+        .stderr(str::contains(
+            "the argument '--errors-only' cannot be used with '--fix'",
+        ));
+}

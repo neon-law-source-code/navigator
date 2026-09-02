@@ -1940,6 +1940,17 @@ async fn complete_sign_in(
         return crate::email_confirm::gate_unverified(s, cookies, person_id, &name, &email).await;
     }
 
+    // Falling through the gate above means the address is verified (or
+    // there is no admin config to gate against), so materialize that onto
+    // the row: the public `/team` page reads `email_confirmed`, not the
+    // IdP, and this is the only place a browser sign-in learns the
+    // address is good. Best-effort — a write failure here must not block
+    // sign-in, and the flag simply stays unset until the next successful
+    // sign-in retries it.
+    if let Err(e) = store::persons::set_email_confirmed(&s.surreal, person_id, true).await {
+        tracing::warn!(error = %e, person_id = %person_id, "auth: set_email_confirmed failed");
+    }
+
     // First-time signup → drive the `onboarding__welcome` workflow,
     // fire-and-forget so the redirect doesn't wait on the broker. The
     // bootstrap-Owner JIT path and, where enabled, a self-signup client

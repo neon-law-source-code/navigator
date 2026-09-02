@@ -14861,6 +14861,195 @@ async fn admin_person_update_via_native_form_persists_and_redirects() {
     assert_eq!(row.role, store::persons::Role::Lawyer);
 }
 
+/// A one-pixel PNG, valid image bytes for the avatar upload tests below.
+const ONE_PIXEL_PNG: &[u8] = &[
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+    0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4,
+    0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x62, 0x00, 0x01, 0x00, 0x00,
+    0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae,
+    0x42, 0x60, 0x82,
+];
+
+/// One `multipart/form-data` body: `_csrf` first (the way `FormCard`
+/// renders the hidden field), then a `file` part.
+fn avatar_multipart_body(
+    boundary: &str,
+    csrf: &str,
+    filename: &str,
+    content_type: &str,
+    bytes: &[u8],
+) -> Vec<u8> {
+    let mut body = Vec::new();
+    body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
+    body.extend_from_slice(b"Content-Disposition: form-data; name=\"_csrf\"\r\n\r\n");
+    body.extend_from_slice(csrf.as_bytes());
+    body.extend_from_slice(format!("\r\n--{boundary}\r\n").as_bytes());
+    body.extend_from_slice(
+        format!("Content-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\n")
+            .as_bytes(),
+    );
+    body.extend_from_slice(format!("Content-Type: {content_type}\r\n\r\n").as_bytes());
+    body.extend_from_slice(bytes);
+    body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+    body
+}
+
+/// `POST /app/admin/people/{id}/avatar` writes the image to the public assets
+/// bucket (never the private documents lane), points `profile_image_url` at
+/// the app's own `/assets/{key}` route, and redirects back to the show page.
+#[tokio::test]
+async fn admin_person_avatar_upload_writes_the_asset_and_sets_profile_image_url() {
+    let (state, surreal) = state_with_engines().await;
+    let libra = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "Libra",
+            "libra@example.com",
+            store::persons::Role::Lawyer,
+        ),
+    )
+    .await
+    .unwrap();
+    let app = server::neon_router(
+        state.clone(),
+        std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
+    );
+    let (cookie, csrf) = admin_session_cookie_and_csrf();
+    let boundary = "----navigator-test-avatar-boundary";
+    let body = avatar_multipart_body(boundary, &csrf, "me.png", "image/png", ONE_PIXEL_PNG);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/app/admin/people/{}/avatar", libra.id))
+                .header(header::COOKIE, &cookie)
+                .header(
+                    header::CONTENT_TYPE,
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::SEE_OTHER, "{:?}", resp.status());
+    assert_eq!(
+        resp.headers()
+            .get(header::LOCATION)
+            .and_then(|v| v.to_str().ok()),
+        Some(format!("/app/admin/people/{}", libra.id).as_str()),
+    );
+
+    let row = store::persons::find_by_id(&surreal, libra.id)
+        .await
+        .unwrap()
+        .expect("row still present");
+    let url = row
+        .profile_image_url
+        .expect("the upload must set profile_image_url");
+    assert_eq!(url, format!("/assets/avatars/{}.png", libra.id));
+
+    let key = format!("avatars/{}.png", libra.id);
+    let stored = state.assets_storage.get(&key).await.unwrap();
+    assert_eq!(stored.bytes, ONE_PIXEL_PNG);
+    assert_eq!(stored.content_type, "image/png");
+}
+
+/// A disallowed content type (not PNG/JPEG/WebP) is refused with `400`, and
+/// the person's `profile_image_url` is left untouched.
+#[tokio::test]
+async fn admin_person_avatar_upload_rejects_a_disallowed_content_type() {
+    let (state, surreal) = state_with_engines().await;
+    let libra = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "Libra",
+            "libra@example.com",
+            store::persons::Role::Lawyer,
+        ),
+    )
+    .await
+    .unwrap();
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+    let (cookie, csrf) = admin_session_cookie_and_csrf();
+    let boundary = "----navigator-test-avatar-badtype";
+    let body = avatar_multipart_body(
+        boundary,
+        &csrf,
+        "me.gif",
+        "image/gif",
+        b"GIF89a not actually an approved format",
+    );
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/app/admin/people/{}/avatar", libra.id))
+                .header(header::COOKIE, &cookie)
+                .header(
+                    header::CONTENT_TYPE,
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    let row = store::persons::find_by_id(&surreal, libra.id)
+        .await
+        .unwrap()
+        .expect("row still present");
+    assert!(row.profile_image_url.is_none());
+}
+
+/// A non-admin (lawyer) session is refused, matching every other
+/// `/app/admin/people/*` action.
+#[tokio::test]
+async fn admin_person_avatar_upload_requires_admin() {
+    let (state, surreal) = state_with_engines().await;
+    let libra = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "Libra",
+            "libra@example.com",
+            store::persons::Role::Lawyer,
+        ),
+    )
+    .await
+    .unwrap();
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+    let session = portal::SessionData::fresh("lawyer@example.com", store::persons::Role::Lawyer);
+    let csrf = session.csrf_token.clone();
+    let cookie = format!(
+        "{}={}",
+        portal::session::SESSION_COOKIE_NAME,
+        test_sessions().encode(&session)
+    );
+    let boundary = "----navigator-test-avatar-nonadmin";
+    let body = avatar_multipart_body(boundary, &csrf, "me.png", "image/png", ONE_PIXEL_PNG);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/app/admin/people/{}/avatar", libra.id))
+                .header(header::COOKIE, &cookie)
+                .header(
+                    header::CONTENT_TYPE,
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+}
+
 /// The Dioxus admin person page's welcome-email button posts to the native
 /// `POST /app/admin/people/{id}/welcome` route. Prove it redirects back to the show
 /// view with a `?notice=` flag (the flash the page floats), not a 5xx.

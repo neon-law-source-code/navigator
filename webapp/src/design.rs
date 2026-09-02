@@ -30,14 +30,14 @@ use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::components::{
-    wire_runs, AppFooter, AppLogo, AppNavbar, BackBreadcrumb, Card, CatalogHero, Choice, CodeBlock,
-    Column, ConfirmDelete, DataTable, ExternalLink, Field, FooterAttorney, FooterBarLicense,
-    FooterNavLink, FooterOffice, FormCard, GitHubStars, Icon, IconName, ImpersonationBanner,
-    ImpersonationView, LawyerPortalBreadcrumb, LegalBlueprintDisclaimer, NavigatorDestination,
-    NavigatorFooter, NavigatorFooterLink, NavigatorNavbar, NavigatorShell, Pagination,
-    PeopleListInputs, PersonChoice, PersonPicker, PricingCard, PricingSection, PublicShell,
-    RowActions, RunParagraph, SampleMattersBanner, SiteFooterLegal, SiteHeader, SiteNavLink,
-    SocialMeta, SortState, TestimonialCard, TestimonialSection, Toast, ToastTone,
+    wire_runs, AppFooter, AppLogo, AppNavbar, Avatar, BackBreadcrumb, Card, CatalogHero, Choice,
+    CodeBlock, Column, ConfirmDelete, DataTable, ExternalLink, Field, FooterAttorney,
+    FooterBarLicense, FooterNavLink, FooterOffice, FormCard, GitHubStars, Icon, IconName,
+    ImpersonationBanner, ImpersonationView, LawyerPortalBreadcrumb, LegalBlueprintDisclaimer,
+    NavigatorDestination, NavigatorFooter, NavigatorFooterLink, NavigatorNavbar, NavigatorShell,
+    Pagination, PeopleListInputs, PersonChoice, PersonPicker, PricingCard, PricingSection,
+    PublicShell, RowActions, RunParagraph, SampleMattersBanner, SiteFooterLegal, SiteHeader,
+    SiteNavLink, SocialMeta, SortState, TestimonialCard, TestimonialSection, Toast, ToastTone,
     THEME_STYLESHEET_HREF,
 };
 // The vendor marks come from their own module rather than the theme root: they
@@ -400,6 +400,7 @@ pub fn DesignGallery() -> Element {
             ConfirmDeleteShowcase {}
             PricingShowcase {}
             TestimonialShowcase {}
+            AvatarShowcase {}
             DisclaimerShowcase {}
             ImpersonationShowcase {}
             SampleMattersShowcase {}
@@ -755,6 +756,37 @@ fn TestimonialShowcase() -> Element {
                 heading: "What clients say".to_string(),
                 lead: "Real outcomes, in the clients' words.".to_string(),
                 cards,
+            }
+        }
+    }
+}
+
+/// The avatar (image, or generated-initials fallback) used on `/team` and the
+/// admin Person edit page.
+#[component]
+fn AvatarShowcase() -> Element {
+    rsx! {
+        section {
+            h2 { "Avatar" }
+            p {
+                "An uploaded image when one is set, or the person's initials otherwise — "
+                "shared by "
+                code { "/team" }
+                ", the testimonial cards, and the admin Person avatar upload preview."
+            }
+            div { class: "design-avatars", style: "display:flex; gap:1rem; align-items:center;",
+                Avatar {
+                    name: "Ada Lovelace".to_string(),
+                    image_url: None,
+                    size: 56,
+                    class: "design-avatar".to_string(),
+                }
+                Avatar {
+                    name: "Grace Hopper".to_string(),
+                    image_url: Some("/images/testimonial.webp".to_string()),
+                    size: 56,
+                    class: "design-avatar".to_string(),
+                }
             }
         }
     }
@@ -1466,6 +1498,7 @@ mod tests {
         for component in [
             "AppFooter",
             "AppNavbar",
+            "Avatar",
             "BackBreadcrumb",
             "LawyerPortalBreadcrumb",
             "Card",

@@ -178,6 +178,13 @@ async fn confirm(State(s): State<AuthState>, Query(q): Query<TokenQuery>) -> Res
             .into_response();
     }
 
+    // Best-effort, same as the OIDC callback's own write: a failure here
+    // must not block the confirmation the person just completed.
+    if let Err(e) = store::persons::set_email_confirmed(&s.surreal, token_row.person_id, true).await
+    {
+        tracing::warn!(error = %e, person_id = %token_row.person_id, "email-confirm: set_email_confirmed failed");
+    }
+
     if let Err(e) = store::email_tokens::consume(&s.surreal, token_row.id, now).await {
         tracing::warn!(error = %e, "email-confirm: token consume failed (email was verified)");
     }

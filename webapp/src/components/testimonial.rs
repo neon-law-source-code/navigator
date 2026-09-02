@@ -8,6 +8,8 @@
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use super::avatar::initials;
+
 /// One testimonial card.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TestimonialCard {
@@ -72,23 +74,6 @@ pub fn TestimonialSection(heading: String, lead: String, cards: Vec<TestimonialC
     }
 }
 
-/// Up-to-two-letter initials for the avatar fallback, matching the helper.
-/// Falls back to `"N"` when `name` is empty or whitespace-only, so a blank
-/// attribution still renders a filled avatar rather than an empty circle.
-fn initials(name: &str) -> String {
-    let out: String = name
-        .split_whitespace()
-        .take(2)
-        .filter_map(|part| part.chars().next())
-        .map(|c| c.to_ascii_uppercase())
-        .collect();
-    if out.is_empty() {
-        "N".to_string()
-    } else {
-        out
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -97,18 +82,6 @@ mod tests {
         let mut dom = VirtualDom::new(app);
         dom.rebuild_in_place();
         dioxus_ssr::render(&dom)
-    }
-
-    #[test]
-    fn initials_takes_first_two_words() {
-        assert_eq!(initials("Libra Balance"), "LB");
-        assert_eq!(initials("cancer"), "C");
-    }
-
-    #[test]
-    fn initials_falls_back_to_n_for_blank_attribution() {
-        assert_eq!(initials(""), "N");
-        assert_eq!(initials("   "), "N");
     }
 
     #[test]

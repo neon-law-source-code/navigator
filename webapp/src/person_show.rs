@@ -24,7 +24,7 @@
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::components::{Choice, Field, FormCard};
+use crate::components::{Avatar, Choice, Field, FormCard, Heading};
 use crate::people::ViewerRole;
 
 // Server-only: the `#[server]` body loads the person via `find`.
@@ -51,6 +51,12 @@ pub struct PersonFields {
     /// The stable Notion workspace user id, if linked. This is an external
     /// identity address, never an authorization fact.
     pub notion_user_id: String,
+    /// The public `LinkedIn` profile URL shown on `/team`. Blank when unset.
+    pub linkedin_url: String,
+    /// The current avatar's public URL (an app-relative `/assets/{key}`
+    /// path), for the preview above the upload form. `None` until an
+    /// avatar has been uploaded.
+    pub avatar_url: Option<String>,
 }
 
 /// A flash notice floated on arrival — the welcome-email send outcome (mapped
@@ -129,6 +135,27 @@ pub const DETAIL_PATH: &str = "/app/admin/people";
 /// a committed 404 when the id resolves to no row), and resolve the immutable
 /// bootstrap-Owner branch. The caller runs the admin auth gate and passes the
 /// resolved `role`.
+/// `?error=` (a rejected update) is a red flash; the welcome-send `?notice=`
+/// maps to a green/red toast naming the recipient.
+#[cfg(feature = "server")]
+fn flash_notice(query: &PersonShowQuery, email: &str) -> Option<PersonNotice> {
+    match (query.error.as_deref(), query.notice.as_deref()) {
+        (Some(error), _) if !error.is_empty() => Some(PersonNotice {
+            success: false,
+            message: error.to_string(),
+        }),
+        (_, Some("welcome_sent")) => Some(PersonNotice {
+            success: true,
+            message: format!("Welcome email sent to {email}."),
+        }),
+        (_, Some("welcome_failed")) => Some(PersonNotice {
+            success: false,
+            message: format!("Couldn't send the welcome email to {email}. Check the email log."),
+        }),
+        _ => None,
+    }
+}
+
 #[cfg(feature = "server")]
 async fn load_person_show(role: ViewerRole) -> Result<PersonShowView, ServerFnError> {
     let axum::extract::Path(id) =
@@ -196,26 +223,7 @@ async fn load_person_show(role: ViewerRole) -> Result<PersonShowView, ServerFnEr
         .as_deref()
         .is_some_and(|configured| configured.eq_ignore_ascii_case(&p.email));
 
-    // `?error=` (a rejected update) is a red flash; the welcome-send `?notice=`
-    // maps to a green/red toast naming the recipient.
-    let notice = match (query.error.as_deref(), query.notice.as_deref()) {
-        (Some(error), _) if !error.is_empty() => Some(PersonNotice {
-            success: false,
-            message: error.to_string(),
-        }),
-        (_, Some("welcome_sent")) => Some(PersonNotice {
-            success: true,
-            message: format!("Welcome email sent to {}.", p.email),
-        }),
-        (_, Some("welcome_failed")) => Some(PersonNotice {
-            success: false,
-            message: format!(
-                "Couldn't send the welcome email to {}. Check the email log.",
-                p.email
-            ),
-        }),
-        _ => None,
-    };
+    let notice = flash_notice(&query, &p.email);
 
     // Only a client can be impersonated.
     let can_impersonate = p.role == store::persons::Role::Client;
@@ -244,6 +252,8 @@ async fn load_person_show(role: ViewerRole) -> Result<PersonShowView, ServerFnEr
             family_name: p.family_name.unwrap_or_default(),
             middle_name: p.middle_name.unwrap_or_default(),
             notion_user_id,
+            linkedin_url: p.linkedin_url.unwrap_or_default(),
+            avatar_url: p.profile_image_url,
         }),
         edit_lock,
         can_impersonate,
@@ -338,7 +348,27 @@ fn edit_fields(fields: &PersonFields, edit_lock: EditLock, viewer_role: ViewerRo
         notion = notion.disabled();
     }
 
-    vec![name, email, role, notion, given, family, middle]
+    let mut linkedin_url = Field::input(
+        "LinkedIn",
+        "linkedin_url",
+        fields.linkedin_url.clone(),
+        "url",
+    )
+    .help("Shown on the public /team page. Leave blank to hide it there.");
+    if edit_lock == EditLock::HigherRank {
+        linkedin_url = linkedin_url.disabled();
+    }
+
+    vec![
+        name,
+        email,
+        role,
+        notion,
+        linkedin_url,
+        given,
+        family,
+        middle,
+    ]
 }
 
 /// The person show/edit page (`/app/admin/people/{id}`).
@@ -401,6 +431,37 @@ fn person_actions(view: &PersonShowView, welcome_recipient: &str) -> Element {
                         button { class: "nav-btn nav-btn--secondary", r#type: "submit", "Impersonate client" }
                     }
                 }
+            }
+        }
+    }
+}
+
+/// The avatar preview and upload form, a sibling `FormCard` to the main edit
+/// form rather than folded into it — the two need different `enctype`s, and
+/// `FormCard` only supports one per `<form>`.
+fn avatar_upload_card(view: &PersonShowView, fields: &PersonFields) -> Element {
+    let action = format!("{DETAIL_PATH}/{}/avatar", view.id);
+    rsx! {
+        section { id: "person-avatar", class: "person-avatar",
+            h2 { "Avatar" }
+            Avatar {
+                name: fields.name.clone(),
+                image_url: fields.avatar_url.clone(),
+                size: 96,
+                class: "person-avatar__preview".to_string(),
+            }
+            FormCard {
+                title: "Upload avatar".to_string(),
+                action,
+                submit_label: "Upload".to_string(),
+                heading: Heading::H2,
+                multipart: true,
+                csrf_token: Some(view.csrf_token.clone()),
+                fields: vec![
+                    Field::file("Avatar", "file")
+                        .required()
+                        .help("PNG, JPEG, or WebP, up to 5 MB. Replaces any existing avatar."),
+                ],
             }
         }
     }
@@ -473,6 +534,9 @@ fn render_person_show(resource: &Resource<Result<PersonShowView, ServerFnError>>
                             fields: form_fields,
                         }
                         p { a { href: "{LIST_PATH}", "← Cancel" } }
+                        if view.edit_lock != EditLock::HigherRank {
+                            {avatar_upload_card(&view, fields)}
+                        }
                         {person_actions(&view, &welcome_recipient)}
                     }
                 }
@@ -484,5 +548,107 @@ fn render_person_show(resource: &Resource<Result<PersonShowView, ServerFnError>>
                 },
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ssr(app: fn() -> Element) -> String {
+        let mut dom = VirtualDom::new(app);
+        dom.rebuild_in_place();
+        dioxus_ssr::render(&dom)
+    }
+
+    fn sample_view(avatar_url: Option<String>) -> (PersonShowView, PersonFields) {
+        let fields = PersonFields {
+            name: "Gemini Twin".to_string(),
+            email: "gem@example.com".to_string(),
+            role: "lawyer".to_string(),
+            given_name: String::new(),
+            family_name: String::new(),
+            middle_name: String::new(),
+            notion_user_id: String::new(),
+            linkedin_url: String::new(),
+            avatar_url,
+        };
+        let view = PersonShowView {
+            id: "00000000-0000-7000-8000-000000000000".to_string(),
+            fields: Some(fields.clone()),
+            csrf_token: "csrf-token".to_string(),
+            role: ViewerRole::Admin,
+            ..PersonShowView::default()
+        };
+        (view, fields)
+    }
+
+    fn app_none() -> Element {
+        let (view, fields) = sample_view(None);
+        avatar_upload_card(&view, &fields)
+    }
+
+    fn app_with_image() -> Element {
+        let (view, fields) = sample_view(Some("/assets/avatars/x.png".to_string()));
+        avatar_upload_card(&view, &fields)
+    }
+
+    #[test]
+    fn the_avatar_card_is_a_sibling_multipart_form_with_csrf_first() {
+        let (view, _) = sample_view(None);
+        let out = ssr(app_none);
+        assert!(
+            out.contains(r#"enctype="multipart/form-data""#),
+            "the avatar form must be multipart: {out}"
+        );
+        assert!(
+            out.contains(&format!("{DETAIL_PATH}/{}/avatar", view.id)),
+            "posts to the per-person avatar route: {out}"
+        );
+        let csrf_pos = out.find(r#"name="_csrf""#);
+        let file_pos = out.find(r#"type="file""#);
+        assert!(
+            csrf_pos.is_some() && file_pos.is_some() && csrf_pos < file_pos,
+            "CSRF must be the first field, before the file input: {out}"
+        );
+    }
+
+    #[test]
+    fn the_avatar_preview_shows_the_image_or_falls_back_to_initials() {
+        let out = ssr(app_with_image);
+        assert!(out.contains(r#"src="/assets/avatars/x.png""#), "{out}");
+
+        let out = ssr(app_none);
+        assert!(
+            out.contains("person-avatar__preview--initials"),
+            "no avatar_url falls back to initials: {out}"
+        );
+        assert!(out.contains(">GT<"), "{out}");
+    }
+
+    #[test]
+    fn the_edit_form_carries_a_linkedin_field_prefilled_from_the_person() {
+        fn app_with(form_fields: Vec<Field>) -> Element {
+            rsx! {
+                FormCard {
+                    title: "Edit person".to_string(),
+                    action: "/app/admin/people/x".to_string(),
+                    submit_label: "Save".to_string(),
+                    fields: form_fields,
+                }
+            }
+        }
+        let mut fields = sample_view(None).1;
+        fields.linkedin_url = "https://www.linkedin.com/in/example/".to_string();
+        let form_fields = edit_fields(&fields, EditLock::None, ViewerRole::Admin);
+
+        let mut dom = VirtualDom::new_with_props(app_with, form_fields);
+        dom.rebuild_in_place();
+        let out = dioxus_ssr::render(&dom);
+        assert!(out.contains(r#"name="linkedin_url""#), "{out}");
+        assert!(
+            out.contains(r#"value="https://www.linkedin.com/in/example/""#),
+            "prefilled: {out}"
+        );
     }
 }

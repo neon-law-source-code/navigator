@@ -481,10 +481,12 @@ erDiagram
     person {
         record id PK
         string email
+        bool email_confirmed
         string email_lower
         option_string family_name
         option_string given_name
         datetime inserted_at
+        option_string linkedin_url
         option_string middle_name
         string name
         option_string oidc_subject

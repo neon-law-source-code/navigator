@@ -3156,6 +3156,8 @@ Sign: {{client.signature}}";
             phone: None,
             xero_contact_id: None,
             profile_image_url: None,
+            linkedin_url: None,
+            email_confirmed: false,
             inserted_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         }

@@ -28,6 +28,7 @@
 
 pub mod app_footer;
 pub mod app_navbar;
+pub mod avatar;
 pub mod breadcrumb;
 pub mod card;
 pub mod catalog_hero;
@@ -62,6 +63,7 @@ pub mod toast;
 pub use app_footer::render_app_footer;
 pub use app_footer::AppFooter;
 pub use app_navbar::{AppLogo, AppNavLink, AppNavbar};
+pub use avatar::{initials, Avatar};
 pub use breadcrumb::{BackBreadcrumb, LawyerPortalBreadcrumb};
 pub use card::Card;
 pub use catalog_hero::{CatalogHero, CATALOG_STYLESHEET_HREF};

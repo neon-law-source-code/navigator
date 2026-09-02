@@ -95,6 +95,7 @@ pub mod review;
 pub mod schedules;
 pub mod source_repository;
 pub mod team_home;
+pub mod team_page;
 pub mod template_gallery;
 pub mod transactional_page;
 pub mod walker_step;

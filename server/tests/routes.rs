@@ -8298,27 +8298,27 @@ async fn a_second_registered_brand_host_renders_its_own_chrome_on_the_same_route
         "{neon_body}"
     );
 
-    let same_day_resp = app
+    let delete_your_data_resp = app
         .oneshot(
             Request::builder()
                 .uri("/")
-                .header(header::HOST, "same-day.neonlaw.com")
+                .header(header::HOST, "staging.deleteyourdata.com")
                 .body(Body::empty())
                 .unwrap(),
         )
         .await
         .unwrap();
-    assert_eq!(same_day_resp.status(), StatusCode::OK);
-    let same_day_body = body_string(same_day_resp).await;
+    assert_eq!(delete_your_data_resp.status(), StatusCode::OK);
+    let delete_your_data_body = body_string(delete_your_data_resp).await;
     assert!(
-        page_declares_og_site_name(&same_day_body, "SameDay.Legal"),
-        "{same_day_body}"
+        page_declares_og_site_name(&delete_your_data_body, "DeleteYourData.com"),
+        "{delete_your_data_body}"
     );
     assert!(
-        same_day_body.contains("/public/brand/same-day/logo.svg"),
-        "{same_day_body}"
+        delete_your_data_body.contains("/public/brand/delete-your-data/logo.svg"),
+        "{delete_your_data_body}"
     );
-    assert_ne!(neon_body, same_day_body);
+    assert_ne!(neon_body, delete_your_data_body);
 }
 
 /// An unregistered host still redirects to the deployment's own configured
@@ -8363,16 +8363,19 @@ async fn a_server_fn_backed_app_page_on_the_non_default_host_renders_its_own_bra
         app,
         "/app/team",
         store::persons::Role::Lawyer,
-        "same-day.neonlaw.com",
+        "staging.deleteyourdata.com",
     )
     .await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
     assert!(
-        body.contains(r#"aria-label="SameDay.Legal home""#),
+        body.contains(r#"aria-label="DeleteYourData.com home""#),
         "{body}"
     );
-    assert!(body.contains("/public/brand/same-day/logo.svg"), "{body}");
+    assert!(
+        body.contains("/public/brand/delete-your-data/logo.svg"),
+        "{body}"
+    );
     assert!(!body.contains(r#"aria-label="Neon Law home""#), "{body}");
 }
 
@@ -8429,12 +8432,12 @@ async fn assert_unregistered_host_redirects(
 /// and every redirect is followed to its actual target rather than trusted
 /// on the `Location` header alone.
 ///
-/// |                    | default host   | `same-day` host      | unknown host  |
-/// | ------------------ | --------------- | -------------------- | ------------- |
-/// | marketing path     | 200, own chrome | 200, own chrome       | 301 → default |
-/// | `/app`              | 303 → login     | 303 → login (no brand leak) | 301 → default |
-/// | `/public/*` asset  | 200             | 200                   | 301 → default |
-/// | `/health`          | 200             | 200                   | 200           |
+/// |                    | default host    | `delete-your-data` host     | unknown host  |
+/// | ------------------ | --------------- | ---------------------------- | ------------- |
+/// | marketing path     | 200, own chrome | 200, own chrome              | 301 → default |
+/// | `/app`             | 303 → login     | 303 → login (no brand leak)  | 301 → default |
+/// | `/public/*` asset  | 200             | 200                          | 301 → default |
+/// | `/health`          | 200             | 200                          | 200           |
 ///
 /// The `/app` row's brand assertion lives in
 /// `a_server_fn_backed_app_page_on_the_non_default_host_renders_its_own_brand`
@@ -8444,7 +8447,7 @@ async fn assert_unregistered_host_redirects(
 #[tokio::test]
 async fn host_brand_path_matrix_resolves_every_combination() {
     let default_host = "www.neonlaw.com";
-    let same_day_host = "same-day.neonlaw.com";
+    let delete_your_data_host = "staging.deleteyourdata.com";
     let unknown_host = "unregistered.example";
     let state =
         empty_state_with_canonical_host(CanonicalHost::new(Some(default_host.into()))).await;
@@ -8453,7 +8456,10 @@ async fn host_brand_path_matrix_resolves_every_combination() {
     // Marketing path: 200 on both registered hosts with their own
     // `og:site_name`; the unknown host's redirect target renders the
     // default brand's chrome, not merely a 301.
-    for (host, brand) in [(default_host, "Neon Law"), (same_day_host, "SameDay.Legal")] {
+    for (host, brand) in [
+        (default_host, "Neon Law"),
+        (delete_your_data_host, "DeleteYourData.com"),
+    ] {
         let resp = get_on_host(&app, "/contact", host).await;
         assert_eq!(resp.status(), StatusCode::OK, "{host} /contact");
         let body = body_string(resp).await;
@@ -8471,7 +8477,7 @@ async fn host_brand_path_matrix_resolves_every_combination() {
     // `/app`: session-gated on every host. The host layer runs outside the
     // session boundary, so the unauthenticated status is identical on both
     // registered hosts — no brand leaks through an anonymous redirect.
-    for host in [default_host, same_day_host] {
+    for host in [default_host, delete_your_data_host] {
         let resp = get_on_host(&app, "/app/projects", host).await;
         assert_eq!(resp.status(), StatusCode::SEE_OTHER, "{host} /app/projects");
         assert_eq!(
@@ -8492,7 +8498,7 @@ async fn host_brand_path_matrix_resolves_every_combination() {
 
     // `/public/*` asset: served on every registered host; the unknown host's
     // redirect target actually serves the file.
-    for host in [default_host, same_day_host] {
+    for host in [default_host, delete_your_data_host] {
         let resp = get_on_host(&app, "/public/favicon.svg", host).await;
         assert_eq!(resp.status(), StatusCode::OK, "{host} /public/favicon.svg");
     }
@@ -8507,7 +8513,7 @@ async fn host_brand_path_matrix_resolves_every_combination() {
 
     // `/health`: a probe target, not a public hostname — every host answers,
     // registered or not, and never redirects.
-    for host in [default_host, same_day_host, unknown_host] {
+    for host in [default_host, delete_your_data_host, unknown_host] {
         let resp = get_on_host(&app, "/health", host).await;
         assert_eq!(resp.status(), StatusCode::OK, "{host} /health");
         assert!(

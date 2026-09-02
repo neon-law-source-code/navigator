@@ -463,27 +463,27 @@ pub static DEFAULT_BRANDING: Branding = Branding {
     portal_only: false,
 };
 
-/// The placeholder `same-day` house brand. Every value here is provisional —
+/// The placeholder `delete-your-data` house brand. Every value here is provisional —
 /// wordmark, tagline, nav, and logo assets land with the brand's own identity
 /// work — but the mechanism this key exercises (a distinct registry entry,
 /// with its own hosts and its own rendered chrome) is real. The trademark
 /// fields stay empty, the same way a renamed white-label deploy's do: this
 /// brand's registration status is not yet decided, so there is nothing to
 /// notice.
-pub static SAME_DAY_BRANDING: Branding = Branding {
+pub static DELETE_YOUR_DATA_BRANDING: Branding = Branding {
     firm: SiteBrand {
-        site_name: "SameDay.Legal",
+        site_name: "DeleteYourData.com",
         home_href: "/",
-        tagline: "Placeholder tagline for the SameDay.Legal house brand.",
+        tagline: "Placeholder tagline for the DeleteYourData.com house brand.",
         postal_address: "5150 Mae Anne Ave Ste 405-9002, Reno, NV 89523",
-        logo_href: "/public/brand/same-day/logo.svg",
-        social_image: "/public/brand/same-day/logo.png",
+        logo_href: "/public/brand/delete-your-data/logo.svg",
+        social_image: "/public/brand/delete-your-data/logo.png",
         nav: &[],
         is_law_firm: true,
         legal_entity: "Shook Law PLLC",
     },
-    firm_email: "contact@sameday.legal",
-    support_domain: "sameday.legal",
+    firm_email: "contact@deleteyourdata.com",
+    support_domain: "deleteyourdata.com",
     firm_phone: "+1 510 800 2080",
     firm_offices: &[],
     firm_attorneys: &[],
@@ -494,10 +494,10 @@ pub static SAME_DAY_BRANDING: Branding = Branding {
     terms_url: "/terms",
     privacy_url: "/privacy",
     base_url: "",
-    primary_domain: "sameday.legal",
+    primary_domain: "deleteyourdata.com",
     firm_disclaimer: "Attorney advertisement. Nothing here is legal advice without a signed retainer for an active project. Past results do not guarantee future outcomes.",
-    mission_description: "Placeholder mission copy for the SameDay.Legal house brand.",
-    service_description: "Placeholder service copy for the SameDay.Legal house brand.",
+    mission_description: "Placeholder mission copy for the DeleteYourData.com house brand.",
+    service_description: "Placeholder service copy for the DeleteYourData.com house brand.",
     portal_only: false,
 };
 
@@ -511,18 +511,18 @@ pub static SAME_DAY_BRANDING: Branding = Branding {
 pub enum BrandKey {
     #[default]
     Neon,
-    SameDay,
+    DeleteYourData,
 }
 
 impl BrandKey {
     /// Every key the registry serves, in registry order.
-    pub const ALL: &'static [Self] = &[Self::Neon, Self::SameDay];
+    pub const ALL: &'static [Self] = &[Self::Neon, Self::DeleteYourData];
 
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Neon => "neon",
-            Self::SameDay => "same-day",
+            Self::DeleteYourData => "delete-your-data",
         }
     }
 
@@ -533,7 +533,7 @@ impl BrandKey {
     pub const fn hosts(self) -> &'static [&'static str] {
         match self {
             Self::Neon => &["www.neonlaw.com", "staging.neonlaw.com"],
-            Self::SameDay => &["www.sameday.legal", "same-day.neonlaw.com"],
+            Self::DeleteYourData => &["www.deleteyourdata.com", "staging.deleteyourdata.com"],
         }
     }
 
@@ -546,7 +546,7 @@ impl BrandKey {
     pub fn resolve_branding(self, default_branding: &'static Branding) -> &'static Branding {
         match self {
             Self::Neon => default_branding,
-            Self::SameDay => &SAME_DAY_BRANDING,
+            Self::DeleteYourData => &DELETE_YOUR_DATA_BRANDING,
         }
     }
 }
@@ -1643,7 +1643,7 @@ mod tests {
         assert_eq!(n.children.len(), 1);
     }
 
-    use super::{registered_brand_key, BrandKey, SAME_DAY_BRANDING};
+    use super::{registered_brand_key, BrandKey, DELETE_YOUR_DATA_BRANDING};
 
     /// Every host a key claims resolves back to that same key.
     #[test]
@@ -1689,17 +1689,20 @@ mod tests {
         assert_eq!(resolved.firm.site_name, "Neon Law");
     }
 
-    /// `SameDay` resolves its own compiled placeholder, never the supplied
+    /// `DeleteYourData` resolves its own compiled placeholder, never the supplied
     /// default — a white-label rename of the firm's brand must not leak into
     /// the house brand next to it.
     #[test]
-    fn same_day_resolves_its_own_branding_regardless_of_the_supplied_default() {
+    fn delete_your_data_resolves_its_own_branding_regardless_of_the_supplied_default() {
         let renamed = Branding::from_manifest(
             &serde_yaml::from_str("version: 1\nbrand:\n  firm: Acme Law\n").unwrap(),
         );
-        let resolved = BrandKey::SameDay.resolve_branding(renamed);
-        assert_eq!(resolved.firm.site_name, "SameDay.Legal");
-        assert_eq!(resolved.firm.site_name, SAME_DAY_BRANDING.firm.site_name);
+        let resolved = BrandKey::DeleteYourData.resolve_branding(renamed);
+        assert_eq!(resolved.firm.site_name, "DeleteYourData.com");
+        assert_eq!(
+            resolved.firm.site_name,
+            DELETE_YOUR_DATA_BRANDING.firm.site_name
+        );
     }
 
     /// The two brands render distinct chrome: a different name and a
@@ -1708,11 +1711,11 @@ mod tests {
     fn the_two_brands_carry_distinct_chrome() {
         assert_ne!(
             DEFAULT_BRANDING.firm.site_name,
-            SAME_DAY_BRANDING.firm.site_name
+            DELETE_YOUR_DATA_BRANDING.firm.site_name
         );
         assert_ne!(
             DEFAULT_BRANDING.firm.logo_href,
-            SAME_DAY_BRANDING.firm.logo_href
+            DELETE_YOUR_DATA_BRANDING.firm.logo_href
         );
     }
 }

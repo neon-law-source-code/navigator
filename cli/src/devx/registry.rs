@@ -182,12 +182,9 @@ pub fn fetch_tags(registry: &str, image: &str) -> Result<Vec<String>> {
     })
 }
 
-/// Whether `tag` is published for `<registry>/<image>`. Conservative on
-/// error: a failed lookup returns `false` (treat as "can't confirm →
-/// don't pin"), so it never green-lights a tag it couldn't verify.
-#[must_use]
-pub fn tag_exists(registry: &str, image: &str, tag: &str) -> bool {
-    fetch_tags(registry, image).is_ok_and(|tags| tags.iter().any(|t| t == tag))
+/// Whether `tag` is published for `<registry>/<image>`.
+pub fn tag_exists(registry: &str, image: &str, tag: &str) -> Result<bool> {
+    Ok(fetch_tags(registry, image)?.iter().any(|t| t == tag))
 }
 
 /// Bail unless `tag` is published for `<registry>/<image>`. Used to fail
@@ -350,6 +347,16 @@ mod tests {
         for blank in [None, Some(""), Some("   ")] {
             assert_eq!(super::super::ship::images_registry(blank), DEFAULT_REGISTRY);
         }
+    }
+
+    #[test]
+    fn a_malformed_registry_lookup_remains_an_error() {
+        let error = tag_exists("not-a-registry", "navigator-web", "26.6.23")
+            .expect_err("a malformed registry must not look like an absent tag");
+        assert!(
+            error.to_string().contains("is not `<host>/<namespace>`"),
+            "{error}"
+        );
     }
 
     /// A fork overrides the one variable and every image follows.

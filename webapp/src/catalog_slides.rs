@@ -15,7 +15,7 @@
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::catalog_slide_body::{CatalogSlideBody, InjectedPracticeCatalog};
+use crate::catalog_slide_body::CatalogSlideBody;
 use crate::components::{PublicShell, SiteHeader, SiteNavLink, CATALOG_STYLESHEET_HREF};
 use crate::home::PracticeLink;
 use crate::public_chrome::{PublicChrome, PublicFooter};
@@ -83,7 +83,7 @@ pub async fn catalog_slides_view() -> Result<CatalogSlidesView, ServerFnError> {
         .map(|axum::Extension(c)| c.0)
         .unwrap_or_default();
     let practices = dioxus_fullstack_core::FullstackContext::extract::<
-        axum::Extension<InjectedPracticeCatalog>,
+        axum::Extension<crate::catalog_slide_body::InjectedPracticeCatalog>,
         _,
     >()
     .await

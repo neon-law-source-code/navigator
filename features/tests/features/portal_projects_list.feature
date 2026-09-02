@@ -35,5 +35,5 @@ Feature: /app/projects — the matter list, scoped per tier
     And a project "Freshly Opened LLC" with no participants
     When "nick@neonlaw.com" opens the projects list
     Then the response status is 200
-    And the response body contains "needs onboarding"
+    And the response body contains "pitch"
     And the response body does not contain "no onboarding"

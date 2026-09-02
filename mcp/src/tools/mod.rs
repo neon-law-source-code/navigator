@@ -19,6 +19,7 @@ pub mod aida_bulk_import;
 pub mod aida_send_welcome_email;
 pub mod aida_spawn_legal_council;
 pub mod answer_notation;
+pub mod close_project;
 pub mod create_notation;
 pub mod create_person;
 pub mod create_project;
@@ -43,6 +44,7 @@ pub fn list_tools() -> Vec<Value> {
         answer_notation::descriptor(),
         validate_notation::descriptor(),
         create_project::descriptor(),
+        close_project::descriptor(),
         list_deadlines::descriptor(),
         list_projects::descriptor(),
         link_person_project::descriptor(),
@@ -174,6 +176,7 @@ pub fn is_side_effecting(tool_name: &str) -> bool {
 const CONFIRMATION_EXEMPT_TOOLS: &[&str] = &[
     "aida_create_person",
     "aida_create_project",
+    "aida_close_project",
     "aida_link_person_project",
     "aida_bulk_import",
 ];
@@ -263,6 +266,7 @@ pub async fn call_tool(
         }
         "aida_validate_notation" => validate_notation::call(arguments).await,
         "aida_create_project" => create_project::call(surreal, principal, arguments).await,
+        "aida_close_project" => close_project::call(surreal, arguments).await,
         "aida_list_deadlines" => list_deadlines::call(surreal, &scope, arguments).await,
         "aida_list_projects" => list_projects::call(surreal, &scope, arguments).await,
         "aida_link_person_project" => link_person_project::call(surreal, arguments).await,
@@ -657,6 +661,7 @@ mod tests {
         assert!(names.contains(&"aida_answer_notation"));
         assert!(names.contains(&"aida_validate_notation"));
         assert!(names.contains(&"aida_create_project"));
+        assert!(names.contains(&"aida_close_project"));
         assert!(names.contains(&"aida_list_deadlines"));
         assert!(names.contains(&"aida_list_projects"));
         assert!(names.contains(&"aida_link_person_project"));
@@ -690,6 +695,7 @@ mod tests {
             "aida_create_person",
             "aida_send_welcome_email",
             "aida_create_project",
+            "aida_close_project",
             "aida_create_notation",
             "aida_bulk_import",
         ] {
@@ -812,6 +818,7 @@ mod tests {
         for name in [
             "aida_create_person",
             "aida_create_project",
+            "aida_close_project",
             "aida_link_person_project",
             "aida_bulk_import",
         ] {

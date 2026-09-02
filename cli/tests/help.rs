@@ -168,6 +168,7 @@ fn db_project_holds_only_the_local_write_side() {
     assert_eq!(
         command_names(&help(&["site", "projects", "--help"])),
         vec![
+            "close",
             "doctor",
             "drift",
             "list",
@@ -198,6 +199,7 @@ fn projects_help_lists_the_project_workspace_verbs() {
     assert_eq!(
         command_names(&help(&["site", "projects", "--help"])),
         vec![
+            "close",
             "doctor",
             "drift",
             "list",

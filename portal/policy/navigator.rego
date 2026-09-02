@@ -929,9 +929,9 @@ allow if {
     is_authenticated(input.session)
 }
 
-# Project descriptive update + delete on the bare matter path:
-# PATCH /app/api/projects/{id} edits a matter's descriptive fields (no
-# lifecycle/status, no conflict check, no repo provisioning, no price move);
+# Project update + delete on the bare matter path:
+# PATCH /app/api/projects/{id} edits a matter's descriptive fields or applies
+# a lifecycle status (no conflict check, no repo provisioning, no price move);
 # DELETE /app/api/projects/{id} removes a matter (blocked by the database when
 # dependents still reference it). Lawyer/admin only. Scoped to these
 # two verbs on the bare matter path — the matter-open (POST) verb earns its

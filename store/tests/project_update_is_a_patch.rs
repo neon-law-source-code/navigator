@@ -191,3 +191,59 @@ async fn a_blank_name_is_refused_but_an_absent_one_is_fine() {
         .expect("an empty patch is a no-op, not an error");
     assert_eq!(absent.name, before.name);
 }
+
+/// Lifecycle status is a supported PATCH field, but its write must use the
+/// transition command so `closed_at` follows the status invariant.
+#[tokio::test]
+async fn a_status_patch_transitions_the_matter_and_stamps_closed_at() {
+    let surreal = mem_surreal().await;
+    let before = matter(&surreal).await;
+    let command: UpdateProjectCommand = serde_json::from_value(serde_json::json!({
+        "status": "closed"
+    }))
+    .expect("status is a supported patch field");
+
+    let after = update_project(&surreal, before.id, &command)
+        .await
+        .expect("status patch applies");
+
+    assert_eq!(after.status, "closed");
+    assert!(after.closed_at.is_some(), "closing must stamp closed_at");
+}
+
+/// The close date is derived by the lifecycle transition and cannot be
+/// supplied independently by a PATCH caller.
+#[test]
+fn closed_at_is_not_a_settable_patch_field() {
+    let error = serde_json::from_value::<UpdateProjectCommand>(serde_json::json!({
+        "closed_at": "2026-08-15T00:00:00Z"
+    }))
+    .expect_err("closed_at must be rejected rather than silently ignored");
+    assert!(error.to_string().contains("unknown field"), "{error}");
+}
+
+/// A status outside the lifecycle vocabulary must fail instead of returning
+/// a successful no-op.
+#[tokio::test]
+async fn an_unknown_status_is_refused() {
+    let surreal = mem_surreal().await;
+    let before = matter(&surreal).await;
+    let command: UpdateProjectCommand = serde_json::from_value(serde_json::json!({
+        "status": "zzz-not-a-status"
+    }))
+    .expect("status reaches command validation");
+
+    let error = update_project(&surreal, before.id, &command)
+        .await
+        .expect_err("unknown status must be rejected");
+    assert!(
+        matches!(error, ProjectCommandError::Invalid(_)),
+        "{error:?}"
+    );
+    let unchanged = store::projects::find_by_id(&surreal, before.id)
+        .await
+        .expect("reload")
+        .expect("matter still exists");
+    assert_eq!(unchanged.status, "open");
+    assert!(unchanged.closed_at.is_none());
+}

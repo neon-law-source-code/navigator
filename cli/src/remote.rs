@@ -10,6 +10,7 @@
 //! | --- | --- |
 //! | `projects list` | `GET /app/projects.csv` |
 //! | `project open`   | `GET /app/projects/:code` |
+//! | `projects close` | `PATCH /app/api/projects/:id` |
 //! | `document upload` | `POST /app/api/projects/{id}/documents` |
 //! | `notation create`  | `POST /app/projects/{project_code}/notations/new` |
 //! | `notation status`  | `GET /app/lawyer/notations/:id/review?format=json` |
@@ -195,6 +196,59 @@ pub async fn projects_list(host: Option<&str>, json: bool) -> ExitCode {
         }
         let rows = parse_csv(&body);
         print_projects(&rows, json)?;
+        Ok(())
+    })
+    .await
+}
+
+/// `navigator site projects close <project-code>` — close a visible matter
+/// through the shared Project PATCH command. The server owns the lifecycle
+/// invariant and derives `closed_at` from the requested status.
+pub async fn matter_close(host: Option<&str>, project_code: &str) -> ExitCode {
+    run(async {
+        let (base, token) = resolve(host)?;
+        let client = reqwest::Client::new();
+        let list = client
+            .get(format!("{base}/app/api/projects"))
+            .bearer_auth(&token)
+            .send()
+            .await
+            .context("GET /app/api/projects")?;
+        let list_status = list.status();
+        let list_body = list.text().await.unwrap_or_default();
+        if !list_status.is_success() {
+            return Err(anyhow!(
+                "list projects failed: {list_status}: {}",
+                first_line(&list_body)
+            ));
+        }
+        let projects: Vec<VisibleProject> =
+            serde_json::from_str(&list_body).context("parse GET /app/api/projects")?;
+        let project = projects
+            .iter()
+            .find(|project| project.code == project_code)
+            .ok_or_else(|| anyhow!("no visible matter with code `{project_code}`"))?;
+        let url = format!("{base}/app/api/projects/{}", project.id);
+        let response = client
+            .patch(&url)
+            .bearer_auth(token)
+            .json(&serde_json::json!({"status": "closed"}))
+            .send()
+            .await
+            .with_context(|| format!("PATCH {url}"))?;
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(anyhow!(
+                "close project `{project_code}` failed: {status}: {}",
+                first_line(&body)
+            ));
+        }
+        println!(
+            "{} {}",
+            palette::dim("closed matter"),
+            palette::highlight(project_code)
+        );
         Ok(())
     })
     .await
@@ -1438,11 +1492,11 @@ mod tests {
 
     use super::{
         candidate_by_name, canonical_choice_value, clause_add, clause_edit, clause_list,
-        document_upload, ensure_no_unused_selections, fetch_status, matter_open, notation_approve,
-        notation_create, notation_document, notation_request_changes, notation_status,
-        notation_update, parse_scripted_selection, picker_selection_fields, projects_list,
-        retainer_approve, retainer_send, scripted_picker_selection_fields, seed, select_candidate,
-        CoverageSummary, StepQuestion, StepResponse,
+        document_upload, ensure_no_unused_selections, fetch_status, matter_close, matter_open,
+        notation_approve, notation_create, notation_document, notation_request_changes,
+        notation_status, notation_update, parse_scripted_selection, picker_selection_fields,
+        projects_list, retainer_approve, retainer_send, scripted_picker_selection_fields, seed,
+        select_candidate, CoverageSummary, StepQuestion, StepResponse,
     };
     use super::{fetch_step, first_line, json_reason, parse_csv, server_error};
     use crate::credentials::{self, Credentials, HostCredential};
@@ -1646,6 +1700,25 @@ mod tests {
 
     async fn mount_project_routes(server: &MockServer, ids: LawyerRouteIds) {
         Mock::given(method("GET"))
+            .and(path("/app/api/projects"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"id": ids.project, "code": "acme"}
+            ])))
+            .mount(server)
+            .await;
+        Mock::given(method("PATCH"))
+            .and(path(format!("/app/api/projects/{}", ids.project)))
+            .and(body_json(serde_json::json!({"status": "closed"})))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": ids.project,
+                "code": "acme",
+                "name": "Acme",
+                "status": "closed"
+            })))
+            .expect(1)
+            .mount(server)
+            .await;
+        Mock::given(method("GET"))
             .and(path("/app/projects.csv"))
             .respond_with(ResponseTemplate::new(200).set_body_string(format!(
                 "id,code,name,status\r\n{},acme,Acme,open\r\n",
@@ -1761,6 +1834,7 @@ mod tests {
     async fn exercise_project_commands(host: Option<&str>) {
         assert_eq!(projects_list(host, true).await, ExitCode::SUCCESS);
         assert_eq!(matter_open(host, "acme").await, ExitCode::SUCCESS);
+        assert_eq!(matter_close(host, "acme").await, ExitCode::SUCCESS);
     }
 
     async fn exercise_notation_commands(host: Option<&str>, server_uri: &str, ids: LawyerRouteIds) {

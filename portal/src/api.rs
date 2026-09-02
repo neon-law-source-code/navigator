@@ -1126,12 +1126,14 @@ async fn open_project(
     Ok((StatusCode::CREATED, Json(matter)).into_response())
 }
 
-/// `PATCH /app/api/projects/{id}` — update a matter's descriptive fields (name,
-/// status, entity, scope narrative). Lawyer-tier only. This is the descriptive
-/// update, deliberately not the matter-open path: it runs no conflict check
-/// and provisions no repo. The rules live in
-/// `store::projects::update_project`, which the `/app/projects/{project_code}` edit
-/// form calls too.
+/// `PATCH /app/api/projects/{id}` — update a matter's descriptive fields and,
+/// optionally, its lifecycle status. Lawyer-tier only. This is not the
+/// matter-open path: it runs no conflict check and provisions no repo. Status
+/// changes converge on `store::projects::transition_project`, which derives
+/// `closed_at`; unknown fields, including an independently supplied
+/// `closed_at`, are rejected during request deserialization. The rules live in
+/// `store::projects::update_project`, which the `/app/projects/{project_code}`
+/// edit form calls too.
 async fn update_project(
     State(state): State<ApiState>,
     _lawyer: LawyerSession,

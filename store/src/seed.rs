@@ -3555,6 +3555,30 @@ records:
         assert_eq!(pc.entity_type_id, entity_type.id);
     }
 
+    /// A Florida P.A. is a distinct designation under Ch. 621, Fla. Stat.,
+    /// not a `Professional Corporation` — so the vocabulary needs its own
+    /// entry rather than absorbing P.A.s into the nearest available form.
+    #[tokio::test]
+    async fn professional_association_seeds_as_its_own_entity_type() {
+        let surreal = mem_surreal().await;
+
+        seed_canonical(&surreal, &fs_storage().await)
+            .await
+            .expect("seed");
+
+        let pa = crate::entity_types::find_by_name(&surreal, "Professional Association")
+            .await
+            .unwrap()
+            .expect("the professional-association type seeds");
+
+        let pc = crate::entity_types::find_by_name(&surreal, "Professional Corporation")
+            .await
+            .unwrap()
+            .expect("the professional-corporation type seeds");
+
+        assert_ne!(pa.id, pc.id, "a P.A. is not a P.C.");
+    }
+
     /// Losing it is not hypothetical: this seed finds an existing entity
     /// by `(name, entity_type_id)`, so an anchor row carrying a different
     /// entity type is invisible to the find and reaches the create — and

@@ -1,9 +1,15 @@
 ---
-# Organization Types are defined in NeonLaw.Orgs.Type module and have a unique compound index on name and
-# jurisdiction_id.
+# `entity_type` carries a unique index on `name` alone (`store/src/schema/navigator.surql`):
+# a legal form is a form regardless of where it is used, so two records with the same name
+# collapse to one seeded row. `jurisdiction` below is per-record documentation of which
+# jurisdiction motivated adding the form — it is not part of the lookup key.
+#
+# Non-US forms stay under `Foreign Company` plus a `jurisdiction` link rather than growing
+# one entity type per country (see the Germany record below): add a new top-level form only
+# when a jurisdiction's own statute makes it a genuinely distinct designation, the way
+# Florida's P.A. is distinct from a `Professional Corporation`.
 lookup_fields:
   - name
-  - jurisdiction_id
 records:
   - name: C-Corp
     jurisdiction:
@@ -36,6 +42,13 @@ records:
   - name: Professional Corporation
     jurisdiction:
       name: California
+      jurisdiction_type: state
+  # A Florida professional association is its own designation under the
+  # Professional Service Corporation and Limited Liability Company Act
+  # (Ch. 621, Fla. Stat.), not a Professional Corporation.
+  - name: Professional Association
+    jurisdiction:
+      name: Florida
       jurisdiction_type: state
   - name: 501(c)(3) Non-Profit
     icon: "hero-heart"

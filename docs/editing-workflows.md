@@ -109,7 +109,7 @@ Run the cheap structural tests first, then the journey that exercises the flow e
 
 ```bash
 cargo test -p workflows --test workflow_integrity --test spec_coherence
-cargo test -p features --test <journey>          # e.g. nest_formation, legal_workflow_shapes
+cargo test -p features --test <journey>          # e.g. nv_llc_formation, legal_workflow_shapes
 cargo run -p cli --quiet -- validate templates/forms/united_states/nevada/state/nv__llc_formation.md
 ```
 

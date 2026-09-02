@@ -4,7 +4,7 @@
 //!
 //! The legal notation tree has two shelves:
 //!
-//! - `neon_law/` for firm-authored product templates.
+//! - `neon_law/` for firm-authored templates.
 //! - `forms/` for government form-backed templates whose repo path
 //!   mirrors their public bucket key.
 //!
@@ -197,10 +197,10 @@ mod tests {
     }
 
     #[test]
-    fn accepts_a_product_template_with_jurisdiction() {
+    fn accepts_a_firm_template_with_jurisdiction() {
         let v = F110JurisdictionPath.lint(&at(
             "templates/neon_law/shared/onboarding_letter.md",
-            "title: T\ncode: nest__retainer\njurisdiction: NV",
+            "title: T\ncode: onboarding__letter\njurisdiction: NV",
         ));
         assert!(v.is_empty(), "{v:?}");
     }
@@ -238,7 +238,7 @@ mod tests {
     fn flags_missing_jurisdiction() {
         let v = F110JurisdictionPath.lint(&at(
             "templates/neon_law/shared/onboarding_letter.md",
-            "title: T\ncode: nest__retainer",
+            "title: T\ncode: onboarding__letter",
         ));
         assert_eq!(v[0].code, "N110");
         assert!(v[0].message.contains("jurisdiction"));
@@ -257,7 +257,7 @@ mod tests {
     fn flags_unknown_jurisdiction() {
         let v = F110JurisdictionPath.lint(&at(
             "templates/neon_law/shared/onboarding_letter.md",
-            "title: T\ncode: nest__retainer\njurisdiction: ZZ",
+            "title: T\ncode: onboarding__letter\njurisdiction: ZZ",
         ));
         assert_eq!(v[0].code, "N110");
         assert!(v[0].message.contains("Unknown jurisdiction `ZZ`"));
@@ -268,7 +268,7 @@ mod tests {
         for (code, _prefix) in super::JURISDICTIONS.iter() {
             let v = F110JurisdictionPath.lint(&at(
                 "templates/neon_law/shared/onboarding_letter.md",
-                &format!("title: T\ncode: nest__retainer\njurisdiction: {code}"),
+                &format!("title: T\ncode: onboarding__letter\njurisdiction: {code}"),
             ));
             assert!(v.is_empty(), "jurisdiction `{code}` should validate: {v:?}");
         }

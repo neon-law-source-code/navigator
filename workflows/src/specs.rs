@@ -14,7 +14,7 @@
 //! `templates/forms/...` or `templates/neon_law/...`,
 //! write the same `workflow:` + `questionnaire:` blocks into
 //! `workflows/specs/<code>.yaml`, and add the file to
-//! [`BUNDLED_SPEC_YAML`] below. Product-specific retainers may reuse the
+//! [`BUNDLED_SPEC_YAML`] below. Project-scoped onboarding letters may reuse the
 //! shared retainer spec through [`catalog_spec_yaml`]. The coherence test in
 //! `workflows/tests/spec_coherence.rs` catches any drift between standalone
 //! YAML and its template frontmatter.
@@ -39,11 +39,10 @@ pub const RETAINER_INTAKE_SPEC_YAML: &str = include_str!("../specs/onboarding__l
 /// Shared questionnaire/workflow every *project-scoped* onboarding letter
 /// (`onboarding__letter_*`) rides via [`catalog_spec_yaml`]. It differs from
 /// the generic intake spec by the `custom_single_choice__governing_law`
-/// question — the fillable governing-law clause every product letter now
+/// question — the fillable governing-law clause every scoped letter now
 /// carries (#363). Project-scoped letters vary only in their legal prose, so one
 /// spec covers all of them rather than a per-letter copy.
-pub const RETAINER_PRODUCT_SPEC_YAML: &str =
-    include_str!("../specs/onboarding__letter_product.yaml");
+pub const RETAINER_SCOPED_SPEC_YAML: &str = include_str!("../specs/onboarding__letter_scoped.yaml");
 
 /// Welcome-email workflow spec. Lives outside [`BUNDLED_SPEC_YAML`]
 /// because the welcome flow is a notification, not a legal-document
@@ -141,7 +140,7 @@ pub fn bundled_spec_yaml(code: &str) -> Option<&'static str> {
 ///
 /// Most templates have their own standalone YAML in [`BUNDLED_SPEC_YAML`].
 /// A project-scoped onboarding-letter variant (`onboarding__letter_<something>`)
-/// intentionally shares the [`RETAINER_PRODUCT_SPEC_YAML`]
+/// intentionally shares the [`RETAINER_SCOPED_SPEC_YAML`]
 /// questionnaire/workflow: its legal prose varies per matter, but the intake,
 /// fillable governing-law question, and review/signature path stay the same
 /// until one needs a distinct questionnaire.
@@ -149,7 +148,7 @@ pub fn bundled_spec_yaml(code: &str) -> Option<&'static str> {
 pub fn catalog_spec_yaml(code: &str) -> Option<&'static str> {
     bundled_spec_yaml(code).or_else(|| {
         code.strip_prefix("onboarding__letter_")
-            .map(|_| RETAINER_PRODUCT_SPEC_YAML)
+            .map(|_| RETAINER_SCOPED_SPEC_YAML)
     })
 }
 
@@ -388,7 +387,7 @@ mod tests {
         custom_questions_from_yaml, merge_custom_questions, questionnaire_spec_from_template,
         questionnaire_spec_from_yaml, retainer_intake_questionnaire, retainer_intake_spec,
         template_has_questionnaire, workflow_spec_from_template, workflow_spec_from_yaml,
-        RETAINER_INTAKE_SPEC_YAML, RETAINER_PRODUCT_SPEC_YAML,
+        RETAINER_INTAKE_SPEC_YAML, RETAINER_SCOPED_SPEC_YAML,
     };
     use crate::spec::StateName;
     use std::collections::BTreeMap;
@@ -603,11 +602,11 @@ custom_questions:
         // fallback serves.
         assert_eq!(
             catalog_spec_yaml("onboarding__letter_transcript"),
-            Some(RETAINER_PRODUCT_SPEC_YAML)
+            Some(RETAINER_SCOPED_SPEC_YAML)
         );
         assert_eq!(
             catalog_spec_yaml("onboarding__letter_anything"),
-            Some(RETAINER_PRODUCT_SPEC_YAML)
+            Some(RETAINER_SCOPED_SPEC_YAML)
         );
         assert!(catalog_spec_yaml("does__not_exist").is_none());
         // The generic onboarding letter resolves to its own registered spec, not the
@@ -620,9 +619,9 @@ custom_questions:
 
     #[test]
     fn product_retainer_fallback_matches_seeded_frontmatter() {
-        let shared_questionnaire = questionnaire_spec_from_yaml(RETAINER_PRODUCT_SPEC_YAML)
+        let shared_questionnaire = questionnaire_spec_from_yaml(RETAINER_SCOPED_SPEC_YAML)
             .expect("shared product retainer questionnaire");
-        let shared_workflow = workflow_spec_from_yaml(RETAINER_PRODUCT_SPEC_YAML)
+        let shared_workflow = workflow_spec_from_yaml(RETAINER_SCOPED_SPEC_YAML)
             .expect("shared product retainer workflow");
         let mut fallback_variants = 0;
 
@@ -641,7 +640,7 @@ custom_questions:
             }
 
             fallback_variants += 1;
-            assert_eq!(catalog_spec_yaml(code), Some(RETAINER_PRODUCT_SPEC_YAML));
+            assert_eq!(catalog_spec_yaml(code), Some(RETAINER_SCOPED_SPEC_YAML));
             assert_eq!(
                 questionnaire_spec_from_template(template.markdown)
                     .unwrap_or_else(|e| panic!("{code} questionnaire parses: {e}")),
@@ -659,7 +658,7 @@ custom_questions:
             assert_eq!(
                 custom_questions_from_template(template.markdown)
                     .unwrap_or_else(|e| panic!("{code} custom_questions parse: {e}")),
-                custom_questions_from_yaml(RETAINER_PRODUCT_SPEC_YAML)
+                custom_questions_from_yaml(RETAINER_SCOPED_SPEC_YAML)
                     .expect("shared product custom_questions"),
                 "{code} must carry the shared governing_law question"
             );

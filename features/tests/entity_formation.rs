@@ -1,7 +1,7 @@
 //! Cucumber runner for `features/entity_formation.feature`.
 //!
-//! The profit-corporation and business-trust siblings of the Nest LLC
-//! journey (`nest_formation.rs`): each template binds the state's own
+//! The profit-corporation and business-trust siblings of the Nevada LLC
+//! journey (`nv_llc_formation.rs`): each template binds the state's own
 //! formation packet (`form:` frontmatter), so the founder's answers
 //! land on the official Secretary-of-State `AcroForm` via the form's
 //! field map, the attorney reviews the filled packet, and the matter

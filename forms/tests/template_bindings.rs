@@ -63,6 +63,6 @@ fn every_template_form_binding_points_at_a_vendored_form() {
     }
     assert!(
         bound >= 1,
-        "expected at least the Nest template to carry a form: binding"
+        "expected at least one formation template to carry a form: binding"
     );
 }

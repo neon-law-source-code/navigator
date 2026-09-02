@@ -623,11 +623,11 @@ mod tests {
     const ID42: Uuid = Uuid::from_u128(42);
 
     /// A flat-fee estate matter: one line, billed once.
-    fn northstar_invoice() -> InvoiceRequest {
+    fn estate_invoice() -> InvoiceRequest {
         InvoiceRequest {
             contact_name: "Libra".into(),
             contact_email: "libra@example.com".into(),
-            reference: "NL-NORTHSTAR-0001".into(),
+            reference: "NL-ESTATE-0001".into(),
             line_items: vec![InvoiceLine {
                 description: "Estate plan (flat fee)".into(),
                 quantity: 1,
@@ -660,13 +660,10 @@ mod tests {
     async fn stub_records_each_call_with_matter_id_and_request() {
         let stub = StubBillingProvider::new();
         let id1 = stub
-            .create_invoice(ID42, &northstar_invoice())
+            .create_invoice(ID42, &estate_invoice())
             .await
             .expect("stub never errors");
-        let id2 = stub
-            .create_invoice(ID1, &northstar_invoice())
-            .await
-            .unwrap();
+        let id2 = stub.create_invoice(ID1, &estate_invoice()).await.unwrap();
 
         assert_ne!(id1, id2, "each call gets a distinct id");
         assert_eq!(id1.0, format!("stub-invoice-{ID42}-1"));
@@ -676,19 +673,15 @@ mod tests {
         assert_eq!(calls.len(), 2);
         assert_eq!(calls[0].matter_id, ID42);
         // The request threads through verbatim so the step can assert it.
-        assert_eq!(calls[0].request, northstar_invoice());
+        assert_eq!(calls[0].request, estate_invoice());
     }
 
     #[tokio::test]
     async fn stub_calls_snapshot_is_shareable_after_more_calls() {
         let stub = StubBillingProvider::new();
-        stub.create_invoice(ID1, &northstar_invoice())
-            .await
-            .unwrap();
+        stub.create_invoice(ID1, &estate_invoice()).await.unwrap();
         let snap = stub.calls();
-        stub.create_invoice(ID2, &northstar_invoice())
-            .await
-            .unwrap();
+        stub.create_invoice(ID2, &estate_invoice()).await.unwrap();
         assert_eq!(snap.len(), 1, "snapshot doesn't see later calls");
         assert_eq!(stub.calls().len(), 2);
     }
@@ -710,11 +703,11 @@ mod tests {
 
     #[test]
     fn invoice_body_is_accrec_authorised_with_decimal_amount() {
-        let body = xero("https://api.xero.com/api.xro/2.0".into())
-            .build_invoice_body(&northstar_invoice());
+        let body =
+            xero("https://api.xero.com/api.xro/2.0".into()).build_invoice_body(&estate_invoice());
         assert_eq!(body["Type"], "ACCREC");
         assert_eq!(body["Status"], "AUTHORISED");
-        assert_eq!(body["Reference"], "NL-NORTHSTAR-0001");
+        assert_eq!(body["Reference"], "NL-ESTATE-0001");
         assert_eq!(body["Contact"]["Name"], "Libra");
         let lines = body["LineItems"].as_array().unwrap();
         assert_eq!(lines.len(), 1);
@@ -741,7 +734,7 @@ mod tests {
             .await;
 
         let id = xero(server.uri())
-            .create_invoice(ID42, &northstar_invoice())
+            .create_invoice(ID42, &estate_invoice())
             .await
             .expect("create succeeds");
         assert_eq!(id, InvoiceId("inv-789".into()));
@@ -781,11 +774,11 @@ mod tests {
             XeroBillingProvider::with_client_credentials(server.uri(), "tenant-guid", auth);
 
         let id1 = provider
-            .create_invoice(ID1, &northstar_invoice())
+            .create_invoice(ID1, &estate_invoice())
             .await
             .expect("first create mints a token");
         let id2 = provider
-            .create_invoice(ID2, &northstar_invoice())
+            .create_invoice(ID2, &estate_invoice())
             .await
             .expect("second create reuses the cached token");
         assert_eq!(id1, InvoiceId("inv-1".into()));
@@ -804,7 +797,7 @@ mod tests {
             .await;
 
         let err = xero(server.uri())
-            .create_invoice(ID42, &northstar_invoice())
+            .create_invoice(ID42, &estate_invoice())
             .await
             .expect_err("a 400 is a provider error");
         assert!(err.to_string().contains("400"), "status surfaces: {err}");
@@ -822,7 +815,7 @@ mod tests {
             .await;
 
         let err = xero(server.uri())
-            .create_invoice(ID42, &northstar_invoice())
+            .create_invoice(ID42, &estate_invoice())
             .await
             .expect_err("empty Invoices is an error");
         assert!(err.to_string().contains("no invoice"), "surfaces: {err}");

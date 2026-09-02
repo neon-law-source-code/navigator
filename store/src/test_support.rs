@@ -164,7 +164,7 @@ pub async fn release_firm_anchor(
 }
 
 /// Create a minimal open matter in the projects cluster. Tests that need
-/// a different lifecycle state or product can call
+/// a different lifecycle state can call
 /// [`crate::projects::create`] directly.
 ///
 /// # Panics

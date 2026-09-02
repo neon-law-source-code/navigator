@@ -7952,8 +7952,8 @@ async fn client_project_detail_links_the_documents_zip() {
     let (state, surreal) = state_with_engines().await;
     let (project_id, project_code, cookie) = client_project_fixture_for_product(
         &surreal,
-        "Nest Detail Client",
-        "nest-detail-client@example.com",
+        "Formation Detail Client",
+        "formation-detail-client@example.com",
         "Formation Client Co.",
     )
     .await;

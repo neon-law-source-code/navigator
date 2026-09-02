@@ -1,4 +1,4 @@
-//! Cucumber runner for `features/nest_formation.feature`.
+//! Cucumber runner for `features/nv_llc_formation.feature`.
 //!
 //! The first end-to-end *journey* spec: it follows one founder (Libra)
 //! and one Neon Law attorney through a whole Nevada entity formation,
@@ -24,23 +24,23 @@ const SIGNATURE_WAIT: &str = "sent_for_signature__pending";
 
 #[derive(Default, World)]
 #[world(init = Self::default)]
-struct NestWorld {
+struct LlcFormationWorld {
     journey: Option<Journey>,
     person_id: Option<Uuid>,
     person_email: String,
     notation_id: Option<Uuid>,
 }
 
-impl std::fmt::Debug for NestWorld {
+impl std::fmt::Debug for LlcFormationWorld {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("NestWorld")
+        f.debug_struct("LlcFormationWorld")
             .field("person_id", &self.person_id)
             .field("notation_id", &self.notation_id)
             .finish_non_exhaustive()
     }
 }
 
-impl NestWorld {
+impl LlcFormationWorld {
     fn journey(&self) -> &Journey {
         self.journey.as_ref().expect("journey not built")
     }
@@ -51,19 +51,19 @@ impl NestWorld {
 }
 
 #[given("a fresh Neon Law Navigator app with the canonical templates seeded")]
-async fn build_app(world: &mut NestWorld) {
-    world.journey = Some(Journey::open("nest").await);
+async fn build_app(world: &mut LlcFormationWorld) {
+    world.journey = Some(Journey::open("nv-llc-formation").await);
 }
 
 #[given(regex = r#"^a client named "([^"]+)" <([^>]+)>$"#)]
-async fn seed_client(world: &mut NestWorld, name: String, email: String) {
+async fn seed_client(world: &mut LlcFormationWorld, name: String, email: String) {
     let person = client(&world.journey().surreal, &name, &email).await;
     world.person_id = Some(person.id);
     world.person_email = email;
 }
 
 #[when(regex = r#"^the firm opens the "([^"]+)" matter for the client$"#)]
-async fn open_matter(world: &mut NestWorld, code: String) {
+async fn open_matter(world: &mut LlcFormationWorld, code: String) {
     let email = world.person_email.clone();
     let body = format!(
         "client_email={}&retainer_template_code={code}",
@@ -88,7 +88,7 @@ async fn open_matter(world: &mut NestWorld, code: String) {
 }
 
 #[when("the founder answers the formation questionnaire:")]
-async fn answer_questionnaire(world: &mut NestWorld, step: &Step) {
+async fn answer_questionnaire(world: &mut LlcFormationWorld, step: &Step) {
     let table = step.table.as_ref().expect("scenario has a data table");
     let path = format!("/app/lawyer/notations/{}/step", world.notation_id());
     // First row is the `value` header; skip it.
@@ -119,7 +119,7 @@ async fn answer_questionnaire(world: &mut NestWorld, step: &Step) {
 }
 
 #[when("the attorney approves and sends the document")]
-async fn attorney_approves_and_sends(world: &mut NestWorld) {
+async fn attorney_approves_and_sends(world: &mut LlcFormationWorld) {
     // Intake now parks at the `lawyer_review` human gate: no packet is
     // rendered on the founder's final answer. Lawyer approves (fills +
     // persists the official SoS form at `generate_pdf__*`) then sends.
@@ -142,7 +142,7 @@ async fn attorney_approves_and_sends(world: &mut NestWorld) {
 }
 
 #[then("the generated packet is filed as a document in the matter")]
-async fn assert_generated_document_filed(world: &mut NestWorld) {
+async fn assert_generated_document_filed(world: &mut LlcFormationWorld) {
     // The attorney's approve rendered + persisted the packet at the
     // `generate_pdf` step, which files it into the matter as a
     // project-scoped `documents` row backed by a content-addressed blob —
@@ -169,7 +169,7 @@ async fn assert_generated_document_filed(world: &mut NestWorld) {
 }
 
 #[then("the formation reaches the signature wait")]
-async fn assert_signature_wait(world: &mut NestWorld) {
+async fn assert_signature_wait(world: &mut LlcFormationWorld) {
     let state = StateMachineRuntime::current_state(
         world.journey().runtime.as_ref(),
         MachineKind::Workflow,
@@ -184,7 +184,7 @@ async fn assert_signature_wait(world: &mut NestWorld) {
 }
 
 #[then("the persisted packet is the official SoS form carrying the founder's answers")]
-async fn assert_filled_packet(world: &mut NestWorld) {
+async fn assert_filled_packet(world: &mut LlcFormationWorld) {
     let key = format!("notations/{}/document.pdf", world.notation_id());
     let stored = world
         .journey()
@@ -215,7 +215,7 @@ async fn assert_filled_packet(world: &mut NestWorld) {
 }
 
 #[when("the attorney files the Articles with the Nevada Secretary of State")]
-async fn file_articles(world: &mut NestWorld) {
+async fn file_articles(world: &mut LlcFormationWorld) {
     let worker = world.journey().worker();
     let notation_id = world.notation_id();
     let payload = serde_json::to_string(&CompliancePayload {
@@ -243,7 +243,7 @@ async fn file_articles(world: &mut NestWorld) {
 }
 
 #[then("the formation workflow reaches END")]
-async fn assert_workflow_end(world: &mut NestWorld) {
+async fn assert_workflow_end(world: &mut LlcFormationWorld) {
     let state = StateMachineRuntime::current_state(
         world.journey().runtime.as_ref(),
         MachineKind::Workflow,
@@ -254,7 +254,7 @@ async fn assert_workflow_end(world: &mut NestWorld) {
 }
 
 #[then(regex = r#"^a filing was recorded with the "([^"]+)"$"#)]
-async fn assert_filing(world: &mut NestWorld, office: String) {
+async fn assert_filing(world: &mut LlcFormationWorld, office: String) {
     let rows = store::filings::for_notation(&world.journey().surreal, world.notation_id())
         .await
         .expect("query filings");
@@ -264,7 +264,7 @@ async fn assert_filing(world: &mut NestWorld, office: String) {
 }
 
 #[then("the founder's six onboarding answers are on file")]
-async fn assert_answers(world: &mut NestWorld) {
+async fn assert_answers(world: &mut LlcFormationWorld) {
     let person_id = world.person_id.expect("person seeded");
     let rows: Vec<_> = store::answers::list_all(&world.journey().surreal)
         .await
@@ -276,7 +276,7 @@ async fn assert_answers(world: &mut NestWorld) {
 }
 
 #[then(regex = r#"^the "([^"]+)" workflow ends at a Secretary-of-State filing$"#)]
-async fn assert_recurring_obligation(_world: &mut NestWorld, code: String) {
+async fn assert_recurring_obligation(_world: &mut LlcFormationWorld, code: String) {
     let yaml = bundled_spec_yaml(&code).unwrap_or_else(|| panic!("no bundled spec for {code}"));
     let spec = workflow_spec_from_yaml(yaml).expect("workflow spec parses");
     // The recurring obligation is "visible" as a workflow that ends at a
@@ -297,7 +297,7 @@ async fn assert_recurring_obligation(_world: &mut NestWorld, code: String) {
 
 #[tokio::main]
 async fn main() {
-    NestWorld::cucumber()
-        .run_and_exit("tests/features/nest_formation.feature")
+    LlcFormationWorld::cucumber()
+        .run_and_exit("tests/features/nv_llc_formation.feature")
         .await;
 }

@@ -12,7 +12,7 @@ template body is replaceable. `features/` proves the flow even when a template b
 
 A workflow `code`, such as `nv__llc_formation`, has four synchronized artifacts:
 
-1. **Template Markdown:** `templates/forms/...` or `templates/neon_law/<area>/...`; frontmatter carries metadata,
+1. **Template Markdown:** `templates/forms/...` or `templates/neon_law/shared/...`; frontmatter carries metadata,
    `questionnaire`, and `workflow`, followed by document prose.
 2. **Standalone spec:** `workflows/specs/<code>.yaml`; the same questionnaire and workflow, without prose. The
    scaffolder generates it and the runtime resolves it by code.

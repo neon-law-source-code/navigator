@@ -159,9 +159,9 @@ Feature-first, so the composition is specified before the prose exists:
    steps, using only Person / Entity nouns from [`glossary.md`](glossary.md). The feature is the product-level spec; the
    template satisfies it by composing already-known steps.
 2. **Write the template + questionnaire.** Create the markdown file under `templates/forms/...` for a government form,
-   or `templates/neon_law/shared/...` for a firm template. Declare the `questionnaire:` walk and the `workflow:`
-   states. Body prose uses `{{question_code}}` placeholders. If a questionnaire state uses a `custom_*__prompt_key`
-   code, add a sibling `prompts:` map with that English prompt key and the exact prompt to ask.
+   or `templates/neon_law/shared/...` for a firm template. Declare the `questionnaire:` walk and the `workflow:` states.
+   Body prose uses `{{question_code}}` placeholders. If a questionnaire state uses a `custom_*__prompt_key` code, add a
+   sibling `prompts:` map with that English prompt key and the exact prompt to ask.
 3. **Seed the questions.** Add each new question `code` to `store/seeds/Question.yaml` (prompt, `question_type`,
    help text). The questionnaire's state prefixes must resolve to these codes or N104 fails.
 4. **Declare the workflow YAML.** Compose the post-intake flow from the shared step registry (below) — never a one-off

@@ -680,8 +680,8 @@ different things: a report that hides repositories without saying so fails the s
 
 ## Shared notations
 
-The notations that are not specific to one Project live in **this** repository, under `templates/neon_law/shared/`
-and `templates/forms/`. They are Navigator's own catalog, versioned and validated with its source.
+The notations that are not specific to one Project live in **this** repository, under `templates/neon_law/shared/` and
+`templates/forms/`. They are Navigator's own catalog, versioned and validated with its source.
 
 A Project repository's `templates/` directory is separate from that catalog rather than an extension of it: it carries
 the blueprints belonging to that Project, and Navigator imports each one at the commit it reads. A Project-local

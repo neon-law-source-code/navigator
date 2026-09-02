@@ -43,15 +43,21 @@ navigator ops dns setup \
   --dry-run
 ```
 
-There is one production site on one zone. The production deployment serves `www.neonlaw.com` — the firm — with
-`workflows.neonlaw.com` on the same gateway address. Staging has no public host, so it has no DNS.
+The production deployment serves `www.neonlaw.com` — the firm — with `workflows.neonlaw.com` on the same gateway
+address. The staging deployment also has public hostnames, `staging.neonlaw.com` and `workflows-staging.neonlaw.com`, on
+its own gateway address; its tailnet perimeter keeps the sample-data deployment private. The separate `neonlaw.org` zone
+is served by the redirect service, which sends both its apex and `www` host to the corresponding path on
+`https://www.neonlaw.com` with a 301.
 
-| Zone | Deployment | `www` / `workflows` → |
+| Hostnames | Deployment | DNS target |
 | --- | --- | --- |
-| `neonlaw.com` | the production deployment | its `<prefix>-gateway-ip` |
+| `www.neonlaw.com` / `workflows.neonlaw.com` | the production deployment | its `<prefix>-gateway-ip` |
+| `staging.neonlaw.com` / `workflows-staging.neonlaw.com` | the staging deployment | its `<prefix>-gateway-ip` |
+| `neonlaw.org` / `www.neonlaw.org` | the redirect service | `https://www.neonlaw.com` (path-preserving 301) |
 
-The apex is not a third entry: `neonlaw.com` itself carries a `URL` record that 301s to `https://www.neonlaw.com`, which
-is a record inside this zone rather than a deployment of its own. It is the Apex→www row of the record table below.
+The `neonlaw.com` apex is not a deployment entry: it carries a `URL` record that 301s to `https://www.neonlaw.com`,
+which is a record inside the production zone. It is the Apex→www row of the record table below. The `neonlaw.org` zone
+has its own host-dispatched redirect service so deep links survive the domain migration.
 
 `DNS_ACCT` is the DNSimple account that holds the zone. Read it from `dnsimple accounts list` — a user token can span
 several accounts, and a command run against the wrong one fails with `Zone not found` rather than a permission error,

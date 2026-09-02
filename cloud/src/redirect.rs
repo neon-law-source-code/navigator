@@ -1,24 +1,16 @@
 //! HTTP redirect service deployed to Cloud Run for standalone host redirects.
 //!
-//! Status code is 308 (`PERMANENT_REDIRECT`) to mirror the
-//! workspace convention spelled out in
-//! `k8s/overlays/gke/ingress/frontend-config.yaml` — clients
-//! re-issue with the original method, which matters for any POST
-//! traffic that ever lands on one of these hosts.
+//! The service returns a 301 (`MOVED_PERMANENTLY`) for domain migrations.
 //!
-//! The dispatch table lives in [`redirect_target`] — a pure
-//! function over the `Host` so it's trivially unit-testable. The
-//! axum wrapper in [`router`] turns `None` into 404.
+//! The dispatch table lives in [`redirect_target`] — a pure function over the
+//! `Host` and request path so it's trivially unit-testable. The axum wrapper in
+//! [`router`] turns `None` into 404.
 //!
-//! No host is currently registered here. This shell previously carried a
-//! `chat.neonlaw.com` → Gemini Enterprise landing-page arm, retired because
-//! the native Gemini app for macOS covers that access directly against the
-//! same Workspace identity, with no bookmark redirect required. The next
-//! arm this service is expected to carry is `neonlaw.org` → `www.neonlaw.com`
-//! (path-preserving), tracked separately.
+//! The registered hosts are `neonlaw.org` and `www.neonlaw.org`, both of which
+//! redirect to the corresponding path on `www.neonlaw.com`.
 
-use axum::http::{HeaderMap, StatusCode};
-use axum::response::Redirect;
+use axum::http::{header::HeaderValue, HeaderMap, StatusCode, Uri};
+use axum::response::{IntoResponse, Response};
 use axum::routing::any;
 use axum::Router;
 
@@ -30,26 +22,31 @@ pub fn router() -> Router {
 // `X-Forwarded-Host` / `Forwarded`, a spoofing footgun); read the
 // `Host` header directly. This edge redirector sits behind GKE
 // ingress, so the request-line `Host` is the authority we match on.
-async fn handler(headers: HeaderMap) -> Result<Redirect, StatusCode> {
+async fn handler(headers: HeaderMap, uri: Uri) -> Result<Response, StatusCode> {
     let host = headers
         .get(axum::http::header::HOST)
         .and_then(|h| h.to_str().ok())
         .ok_or(StatusCode::NOT_FOUND)?;
-    redirect_target(host)
-        .map(|t| Redirect::permanent(&t))
-        .ok_or(StatusCode::NOT_FOUND)
+    let path_and_query = uri.path_and_query().map_or("/", |value| value.as_str());
+    let target = redirect_target(host, path_and_query).ok_or(StatusCode::NOT_FOUND)?;
+    let location = HeaderValue::from_str(&target).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok((
+        StatusCode::MOVED_PERMANENTLY,
+        [(axum::http::header::LOCATION, location)],
+    )
+        .into_response())
 }
 
-/// Compute the redirect destination for a request, or `None` if
-/// the host is one we don't own a rule for (handler turns that
-/// into 404).
-///
-/// No arm is registered today — see the module docs. The signature and
-/// doc comment stay so the next arm (`neonlaw.org`, tracked separately)
-/// has a home to land in.
+/// Compute the redirect destination for a request, or `None` if the host is
+/// one we don't own a rule for (handler turns that into 404).
 #[must_use]
-pub fn redirect_target(_host: &str) -> Option<String> {
-    None
+pub fn redirect_target(host: &str, path_and_query: &str) -> Option<String> {
+    match host {
+        "neonlaw.org" | "www.neonlaw.org" => {
+            Some(format!("https://www.neonlaw.com{path_and_query}"))
+        }
+        _ => None,
+    }
 }
 
 #[cfg(test)]
@@ -61,12 +58,45 @@ mod tests {
 
     #[test]
     fn unknown_host_returns_none() {
-        assert!(redirect_target("example.com").is_none());
+        assert!(redirect_target("example.com", "/").is_none());
         // The apex + www of neonlaw.com are intentionally NOT handled
         // here — the apex→www redirect is a DNSimple `URL` record, and
         // www is served by the stack that owns the marketing site.
-        assert!(redirect_target("neonlaw.com").is_none());
-        assert!(redirect_target("www.neonlaw.com").is_none());
+        assert!(redirect_target("neonlaw.com", "/").is_none());
+        assert!(redirect_target("www.neonlaw.com", "/").is_none());
+    }
+
+    #[test]
+    fn org_hosts_preserve_the_path_and_query() {
+        for host in ["neonlaw.org", "www.neonlaw.org"] {
+            assert_eq!(
+                redirect_target(host, "/attorneys?source=org"),
+                Some("https://www.neonlaw.com/attorneys?source=org".into())
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn router_redirects_org_hosts_with_a_301() {
+        let response = router()
+            .oneshot(
+                Request::builder()
+                    .uri("/legal-aid?source=org")
+                    .header("host", "neonlaw.org")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::MOVED_PERMANENTLY);
+        assert_eq!(
+            response.headers().get(axum::http::header::LOCATION),
+            Some(
+                &"https://www.neonlaw.com/legal-aid?source=org"
+                    .parse()
+                    .unwrap()
+            )
+        );
     }
 
     #[tokio::test]

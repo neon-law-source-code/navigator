@@ -2144,7 +2144,6 @@ async fn projects_update_lawyer_only(
         repository_url: Some(input.repository_url),
         private_notion_page_url: Some(input.private_notion_page_url),
         shared_notion_page_url: Some(input.shared_notion_page_url),
-        status: None,
     };
     match store::projects::update_project(&surreal, project_id, &command).await {
         Ok(_) => Redirect::to("/app/projects").into_response(),

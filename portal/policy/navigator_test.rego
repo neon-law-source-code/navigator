@@ -643,6 +643,28 @@ test_anonymous_denied_close_matter if {
 	not authz.allow with input as {"path": ["app", "api", "projects", "p1", "close"], "method": "POST", "session": null}
 }
 
+# ---------- POST /app/api/projects/{id}/lifecycle direct transition command (lawyer tier only) ----------
+
+test_lawyer_can_transition_matter if {
+	authz.allow with input as {"path": ["app", "api", "projects", "p1", "lifecycle"], "method": "POST", "session": lawyer_session}
+}
+
+test_admin_can_transition_matter if {
+	authz.allow with input as {"path": ["app", "api", "projects", "p1", "lifecycle"], "method": "POST", "session": admin_session}
+}
+
+test_client_denied_transition_matter if {
+	not authz.allow with input as {"path": ["app", "api", "projects", "p1", "lifecycle"], "method": "POST", "session": client_session}
+}
+
+test_clerk_denied_transition_matter if {
+	not authz.allow with input as {"path": ["app", "api", "projects", "p1", "lifecycle"], "method": "POST", "session": clerk_session}
+}
+
+test_anonymous_denied_transition_matter if {
+	not authz.allow with input as {"path": ["app", "api", "projects", "p1", "lifecycle"], "method": "POST", "session": null}
+}
+
 # ---------- POST /app/api/projects/{id}/approve-plan (any AUTHENTICATED tier — client-writable) ----------
 
 # The client approving their own estate plan reaches this door; the handler then

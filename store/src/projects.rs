@@ -1210,11 +1210,15 @@ pub async fn close_for_notation(
 /// keys off `closed_at`, so a contradiction routes a matter as open
 /// while retention treats it as closed, or the reverse.
 ///
-/// That invariant lives in these transitions and the PATCH command that
-/// delegates to them, nowhere else.
+/// That invariant lives in these three transitions and nowhere else.
 /// [`update_project`] owns the genuinely descriptive fields and refuses
-/// to write either lifecycle column directly.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// to touch either column — `status` and `closed_at` are rejected outright
+/// by a PATCH, not silently accepted and forwarded here. Deserializes from
+/// the lowercase wire form (`"close"`, `"reopen"`, `"archive"`) so
+/// `POST /app/api/projects/{id}/lifecycle`, the CLI, and the
+/// `aida_close_project` MCP tool all name the same three transitions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Transition {
     /// Close a matter directly, without the closing-letter ceremony.
     /// Stamps `closed_at` if it is not already stamped.
@@ -1408,12 +1412,19 @@ pub async fn set_internal_slack_channel_id(
     Ok(updated.and_then(ProjectRow::into_project))
 }
 
-/// Request body for updating a matter through the command boundary — its
-/// descriptive fields and, optionally, its lifecycle `status`. Deliberately
+/// Request body for updating a matter's **descriptive** fields through the
+/// command boundary — its name, entity, and scope narrative. Deliberately
 /// narrow: it is neither the matter-open path (no conflict check, no repo
-/// provisioning) nor an independently writable lifecycle record. A requested
-/// status is delegated to [`transition_project`], which derives the coupled
-/// `closed_at`; the date itself is not a PATCH field.
+/// provisioning) nor a lifecycle transition. `status` and its coupled
+/// `closed_at` are intentionally absent — moving a matter through
+/// open/closed/archived is a lifecycle change whose retention semantics are a
+/// firm-policy determination, so it belongs to [`transition_project`] through
+/// `POST /app/api/projects/{id}/lifecycle`, not this general edit.
+///
+/// `#[serde(deny_unknown_fields)]` is load-bearing here, not decorative: a
+/// caller posting `status` or `closed_at` (or any other field this struct
+/// does not name) must be told so with a `400`, rather than have the field
+/// silently dropped while a `200` implies it was honored.
 ///
 /// # This is always a patch
 ///
@@ -1470,10 +1481,6 @@ pub struct UpdateProjectCommand {
     /// The client-shared Notion page, on the same blank-clears terms.
     #[serde(default)]
     pub shared_notion_page_url: Option<String>,
-    /// The requested lifecycle status. The transition command owns the
-    /// `closed_at` invariant; callers cannot provide that date independently.
-    #[serde(default)]
-    pub status: Option<String>,
 }
 
 /// Set or clear the Project's source repository URL.
@@ -1602,19 +1609,68 @@ fn validate_resource_links(input: &UpdateProjectCommand) -> Result<(), ProjectCo
     Ok(())
 }
 
-fn has_descriptive_update(input: &UpdateProjectCommand) -> bool {
-    input.name.is_some()
-        || input.entity_id.is_some()
-        || optional_text_columns(input)
-            .iter()
-            .any(|(_, value)| value.is_some())
-}
-
-async fn update_descriptive_fields(
+/// Update a matter's descriptive fields — name, entity, scope narrative, its
+/// Slack channels, and its source repository URL. Behind both the JSON
+/// `PATCH /app/api/projects/{id}` command and the `/app/projects/{id}` edit
+/// form, so neither door re-implements the write. Name is required; a submitted
+/// `entity_id` or `description` is applied and an omitted one is left
+/// untouched, with a blank description clearing the column.
+///
+/// `repository_url` is the one Project field that is validated rather than
+/// merely trimmed ([`is_valid_repository_url`]): it is handed to `git clone`
+/// and rendered as a link, so a bad scheme or an embedded credential is
+/// refused here rather than stored.
+///
+/// Scope is deliberately narrow. It is not the matter-open path (no conflict
+/// check), it does not move the agreed price (the append-only price-events
+/// command), and it does not change `status`/`closed_at` — a lifecycle
+/// transition whose retention semantics are a firm-policy determination owned
+/// by [`transition_project`].
+///
+/// Because every written value comes wholly from the request (never from a
+/// read of the row), there is no read-modify-write to serialize: the sparse
+/// `Unchanged(id)` update leaves `status`, `closed_at`, and every other
+/// column a concurrent lifecycle write may be changing entirely untouched.
+pub async fn update_project(
     surreal: &SurrealDb,
     id: Uuid,
     input: &UpdateProjectCommand,
 ) -> Result<Project, ProjectCommandError> {
+    if let Some(name) = &input.name {
+        if name.trim().is_empty() {
+            return Err(ProjectCommandError::Invalid("Name is required."));
+        }
+    }
+    // A blank submission clears the column; anything else must be a URL that
+    // could actually be cloned and safely rendered as a link.
+    if let Some(url) = &input.repository_url {
+        if !url.trim().is_empty() && !is_valid_repository_url(url) {
+            return Err(ProjectCommandError::Invalid(REPOSITORY_URL_INVALID));
+        }
+    }
+    validate_resource_links(input)?;
+    if find_by_id(surreal, id)
+        .await
+        .map_err(|error| ProjectCommandError::Db(error.to_string()))?
+        .is_none()
+    {
+        return Err(ProjectCommandError::NotFound);
+    }
+    if let Some(entity_id) = input.entity_id {
+        // A `record<entity>` link is not validated by the engine, so this
+        // read-back is what keeps a matter from being repointed at an
+        // entity that does not exist.
+        if crate::entities::find_by_id(surreal, entity_id)
+            .await
+            .map_err(|error| ProjectCommandError::Db(error.to_string()))?
+            .is_none()
+        {
+            return Err(ProjectCommandError::Invalid("That entity does not exist."));
+        }
+    }
+    // The optional text columns are handled from one table, so a column is set
+    // and bound from the same row rather than from two `if` blocks a hundred
+    // lines apart that have to be kept in step.
     let text_columns = optional_text_columns(input);
     let mut assignments = vec!["updated_at = $updated_at".to_string()];
     if input.name.is_some() {
@@ -1628,7 +1684,6 @@ async fn update_descriptive_fields(
             assignments.push(format!("{column} = ${column}"));
         }
     }
-
     let mut response = surreal
         .query(format!(
             "UPDATE $id SET {} RETURN {PROJECT_SELECT}",
@@ -1664,98 +1719,6 @@ async fn update_descriptive_fields(
     updated
         .and_then(ProjectRow::into_project)
         .ok_or(ProjectCommandError::NotFound)
-}
-
-/// Update a matter through sparse PATCH fields — descriptive fields such as
-/// name, entity, scope narrative, Slack channels, and source repository URL,
-/// plus an optional lifecycle status. Behind both the JSON
-/// `PATCH /app/api/projects/{id}` command and the `/app/projects/{id}` edit
-/// form, so neither door re-implements the write. Name is required; a submitted
-/// `entity_id` or `description` is applied and an omitted one is left
-/// untouched, with a blank description clearing the column.
-///
-/// `repository_url` is the one Project field that is validated rather than
-/// merely trimmed ([`is_valid_repository_url`]): it is handed to `git clone`
-/// and rendered as a link, so a bad scheme or an embedded credential is
-/// refused here rather than stored.
-///
-/// Scope is deliberately narrow. It is not the matter-open path (no conflict
-/// check), it does not move the agreed price (the append-only price-events
-/// command), and a requested status is handed to [`transition_project`]
-/// rather than written by this sparse descriptive update.
-///
-/// Because every written value comes wholly from the request (never from a
-/// read of the row), there is no read-modify-write to serialize: the sparse
-/// `Unchanged(id)` update leaves `status`, `closed_at`, and every other
-/// column a concurrent lifecycle write may be changing entirely untouched;
-/// when a status is requested, the separate transition command owns those
-/// lifecycle columns.
-pub async fn update_project(
-    surreal: &SurrealDb,
-    id: Uuid,
-    input: &UpdateProjectCommand,
-) -> Result<Project, ProjectCommandError> {
-    if let Some(name) = &input.name {
-        if name.trim().is_empty() {
-            return Err(ProjectCommandError::Invalid("Name is required."));
-        }
-    }
-    // A blank submission clears the column; anything else must be a URL that
-    // could actually be cloned and safely rendered as a link.
-    if let Some(url) = &input.repository_url {
-        if !url.trim().is_empty() && !is_valid_repository_url(url) {
-            return Err(ProjectCommandError::Invalid(REPOSITORY_URL_INVALID));
-        }
-    }
-    validate_resource_links(input)?;
-    let requested_transition = input
-        .status
-        .as_deref()
-        .map(|status| match status {
-            "open" => Ok(Transition::Reopen),
-            "closed" => Ok(Transition::Close),
-            "archived" => Ok(Transition::Archive),
-            _ => Err(ProjectCommandError::Invalid(
-                "status must be one of: open, closed, archived",
-            )),
-        })
-        .transpose()?;
-    let Some(current) = find_by_id(surreal, id)
-        .await
-        .map_err(|error| ProjectCommandError::Db(error.to_string()))?
-    else {
-        return Err(ProjectCommandError::NotFound);
-    };
-    if matches!(
-        (current.status.as_str(), requested_transition),
-        ("archived", Some(transition)) if transition != Transition::Archive
-    ) {
-        return Err(ProjectCommandError::Invalid(
-            "This matter is archived; archiving is terminal.",
-        ));
-    }
-    if let Some(entity_id) = input.entity_id {
-        // A `record<entity>` link is not validated by the engine, so this
-        // read-back is what keeps a matter from being repointed at an
-        // entity that does not exist.
-        if crate::entities::find_by_id(surreal, entity_id)
-            .await
-            .map_err(|error| ProjectCommandError::Db(error.to_string()))?
-            .is_none()
-        {
-            return Err(ProjectCommandError::Invalid("That entity does not exist."));
-        }
-    }
-    let updated = if has_descriptive_update(input) {
-        update_descriptive_fields(surreal, id, input).await?
-    } else {
-        current
-    };
-
-    match requested_transition {
-        Some(transition) => transition_project(surreal, updated.id, transition).await,
-        None => Ok(updated),
-    }
 }
 
 /// A reference probe could not be answered. The matter is left alone: a

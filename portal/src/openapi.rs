@@ -594,15 +594,17 @@ pub fn document_with_base(base: &str) -> Value {
             }
           },
           "patch": {
-            "summary": "Update a matter's descriptive fields or status",
-            "x-mcp-tool": "aida_close_project",
+            "summary": "Update a matter's descriptive fields",
             "description":
               "Updates the name, entity, and scope narrative of an existing matter. This is the \
                descriptive update only: it runs no conflict check and provisions no repo (those \
                belong to matter-open and `POST /app/api/project-surfaces/{id}`), and it does not \
-               change the matter's descriptive fields or apply a requested lifecycle `status`. The \
-               shared transition command derives the coupled `closed_at`, which is not independently \
-               settable. **Every field is optional and this is always a patch**: send only the \
+               change the matter's \
+               lifecycle `status`/`closed_at` — moving through open/closed/archived is a transition \
+               with firm retention semantics, handled by `POST /app/api/projects/{id}/lifecycle`, \
+               not this edit. `status` and `closed_at` are rejected outright (`400`) rather than \
+               silently dropped if a caller posts them — a caller must be told a field it named was \
+               not applied. **Every field is optional and this is always a patch**: send only the \
                fields you want to change. An absent field — or an explicit `null` — leaves its \
                column exactly as it was, and an empty string clears it. Nothing is blanked out \
                because a body did not mention it. `name` is the one exception to clearing: an \
@@ -709,6 +711,51 @@ pub fn document_with_base(base: &str) -> Value {
                 "schema": { "$ref": "#/components/schemas/ApiError" }
               } } },
               "500": { "description": "The closing notation could not be opened", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } }
+            }
+          }
+        },
+        "/app/api/projects/{id}/lifecycle": {
+          "post": {
+            "summary": "Move a matter through its lifecycle",
+            "x-mcp-tool": "aida_close_project",
+            "description":
+              "Moves a matter directly through `open` → `closed` → `archived`, the REST door onto \
+               `store::projects::transition_project`. Distinct from `POST /app/api/projects/{id}/close`: \
+               that door opens the firm-signed closing-letter notation and leaves the status flip to \
+               the walk that follows, while this one flips `status`/`closed_at` immediately and opens \
+               no notation. `closed_at` is derived from `transition`, never posted directly. Idempotent: \
+               re-applying a transition the matter already made returns `200` with the matter \
+               unchanged. `archived` is terminal — every transition off it, other than a repeated \
+               archive, is refused as `400`. Authorization: the caller's `persons.role` must be \
+               `lawyer` or `admin`; anonymous, `client`, and non-lawyer `clerk` callers are rejected \
+               — the same tier gate as the bare `PATCH`/`DELETE` matter path, not scoped to the \
+               caller's own matters.",
+            "parameters": [
+              { "name": "id", "in": "path", "required": true,
+                "schema": { "type": "string", "format": "uuid" } }
+            ],
+            "requestBody": {
+              "required": true,
+              "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/TransitionProjectRequest" }
+              } }
+            },
+            "responses": {
+              "200": { "description": "The matter, in its new (or unchanged) lifecycle state", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/Project" }
+              } } },
+              "400": { "description": "Malformed body, an unrecognized `transition`, or a transition refused because the matter is archived", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } },
+              "401": { "description": "No authenticated session", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } },
+              "403": { "description": "Authenticated caller is not Lawyer/admin", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } },
+              "404": { "description": "No matter with that id", "content": { "application/json": {
                 "schema": { "$ref": "#/components/schemas/ApiError" }
               } } }
             }
@@ -2339,7 +2386,9 @@ pub fn document_with_base(base: &str) -> Value {
             "description": "A patch. Every field is optional: send only what you want to change. Absent — or an explicit \
                             JSON `null` — leaves a column exactly as it was; an empty string clears it. No column is ever \
                             blanked out because the body did not mention it, so a caller that knows about three fields \
-                            cannot erase the other five.",
+                            cannot erase the other five. Any field not listed here — `status` and `closed_at` included — \
+                            is rejected with `400` rather than silently ignored; move a matter's lifecycle through \
+                            `POST /app/api/projects/{id}/lifecycle` instead.",
             "properties": {
               "name":        { "type": "string",
                                "description": "Omit to leave unchanged. The one field with no clear operation: a blank \
@@ -2363,13 +2412,30 @@ pub fn document_with_base(base: &str) -> Value {
               "private_notion_page_url": { "type": "string",
                                "description": "The firm-only Notion page. Omit to leave unchanged; a blank string clears it." },
               "shared_notion_page_url": { "type": "string",
-                               "description": "The Notion page shared with the client. Omit to leave unchanged; a blank string clears it." },
-              "status": { "type": "string", "enum": ["open", "closed", "archived"],
-                               "description": "Optional lifecycle transition. `closed_at` is derived and must not be supplied." }
+                               "description": "The Notion page shared with the client. Omit to leave unchanged; a blank string clears it." }
             },
             "additionalProperties": false,
             "example": {
               "repository_url": "https://forge.example/an-organization/acme"
+            }
+          },
+          "TransitionProjectRequest": {
+            "type": "object",
+            "required": ["transition"],
+            "description": "The one field `POST /app/api/projects/{id}/lifecycle` accepts.",
+            "properties": {
+              "transition": {
+                "type": "string",
+                "enum": ["close", "reopen", "archive"],
+                "description": "Which lifecycle move to make. `close` and `archive` stamp `closed_at` \
+                                if it is not already stamped (preserving an existing stamp rather than \
+                                restarting the retention window); `reopen` clears it. `archive` is \
+                                terminal — every transition off it besides a repeated `archive` is \
+                                refused."
+              }
+            },
+            "example": {
+              "transition": "close"
             }
           },
           "AddParticipantRequest": {
@@ -2945,6 +3011,7 @@ mod tests {
             "Project",
             "OpenMatterRequest",
             "UpdateProjectRequest",
+            "TransitionProjectRequest",
             "AddParticipantRequest",
             "UpdateParticipantRequest",
             "Participation",

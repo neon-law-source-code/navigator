@@ -64,8 +64,9 @@ violation prints alongside everything else but never fails the run — it is a h
 `Warning`: `N112` (a workflow step is allowed but its automation is not built yet) and `M061` (a link that renders
 correctly on GitHub but would 404 on the published site). Every other code, including `Y001` and `Y002`, is `Error`.
 
-Every finding opens with `error:` or `warning:`, the way `rustc` and `clippy` write one, before the `path:line`, the
-rule code, and the message:
+Every rule-backed finding in the primary listing opens with `error:` or `warning:`, the way `rustc` and `clippy` write
+one, before the `path:line`, the rule code, and the message. The raw YAML-syntax and consumed-tag passes retain their
+plain stderr diagnostics; the error recapitulation below renders those failures with `error:` too:
 
 ```text
 warning: docs/example.md:12 M061: Relative link `../billing/src/lib.rs` renders verbatim on the website …

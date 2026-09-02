@@ -157,6 +157,7 @@ jobs:
           navigator-surreal-archive
           navigator-reconcile-invoices-trigger
           navigator-billing-digest-trigger
+          navigator-dri-digest-trigger
           navigator-runner
           "
           count="$(printf '%s\n' ${PACKAGES} | wc -w | tr -d ' ')"

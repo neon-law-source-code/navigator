@@ -85,7 +85,7 @@ use super::{require_auth, require_tools, run};
 const WEB_DEPLOYMENT: &str = "navigator-web";
 /// The only publishable web images. A deployment chooses its immutable brand
 /// image in its `config.toml`; no runtime flag can change the public face.
-const BRAND_IMAGES: &[&str] = &["neon-server", "neon-server"];
+const BRAND_IMAGES: &[&str] = &["neon-server"];
 const WORKFLOWS_DEPLOYMENT: &str = "workflows-service";
 
 /// The GKE manifest tree, embedded at compile time. `ship` renders it —

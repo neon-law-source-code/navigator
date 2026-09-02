@@ -1,4 +1,4 @@
-//! The public-page chrome resolved from the process brand — the reusable
+//! The public-page chrome resolved from the request's scoped brand — the reusable
 //! header + footer data every ported public marketing page needs (issue #641 /
 //! #730 PR6).
 //!
@@ -213,7 +213,7 @@ pub fn PublicFooter(chrome: PublicChrome) -> Element {
     }
 }
 
-/// Resolve the firm host's public chrome from the process brand. Server-only
+/// Resolve the firm host's public chrome from the request's scoped brand. Server-only
 /// (`views::brand` does not compile to wasm); each page's `#[server]` view
 /// function calls this, and the macro stubs those bodies for the wasm client.
 ///

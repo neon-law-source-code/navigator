@@ -8245,6 +8245,137 @@ async fn canonical_host_passes_through_when_disabled() {
     assert_eq!(resp.status(), StatusCode::OK);
 }
 
+/// Whether `body` declares `brand` as its `og:site_name`. HTML attributes may
+/// arrive in either order, matching `features/tests/brand_routing.rs`'s own
+/// matcher for the same tag.
+fn page_declares_og_site_name(body: &str, brand: &str) -> bool {
+    body.contains(&format!("og:site_name\" content=\"{brand}\""))
+        || body.contains(&format!("content=\"{brand}\" property=\"og:site_name\""))
+}
+
+async fn get_with_role_and_host(
+    app: axum::Router,
+    uri: &str,
+    role: store::persons::Role,
+    host: &str,
+) -> axum::http::Response<Body> {
+    app.oneshot(
+        Request::builder()
+            .uri(uri)
+            .header(header::COOKIE, session_cookie_for_role(role))
+            .header(header::HOST, host)
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await
+    .unwrap()
+}
+
+/// The same composed router answers two registered hosts with two different
+/// brands' chrome, whatever `CANONICAL_HOST` names — a registered host is
+/// never redirected away from its own brand.
+#[tokio::test]
+async fn a_second_registered_brand_host_renders_its_own_chrome_on_the_same_router() {
+    let state =
+        empty_state_with_canonical_host(CanonicalHost::new(Some("www.neonlaw.com".into()))).await;
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+
+    let neon_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/")
+                .header(header::HOST, "www.neonlaw.com")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(neon_resp.status(), StatusCode::OK);
+    let neon_body = body_string(neon_resp).await;
+    assert!(
+        page_declares_og_site_name(&neon_body, "Neon Law"),
+        "{neon_body}"
+    );
+
+    let same_day_resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/")
+                .header(header::HOST, "same-day.neonlaw.com")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(same_day_resp.status(), StatusCode::OK);
+    let same_day_body = body_string(same_day_resp).await;
+    assert!(
+        page_declares_og_site_name(&same_day_body, "SameDay.Legal"),
+        "{same_day_body}"
+    );
+    assert!(
+        same_day_body.contains("/public/brand/same-day/logo.svg"),
+        "{same_day_body}"
+    );
+    assert_ne!(neon_body, same_day_body);
+}
+
+/// An unregistered host still redirects to the deployment's own configured
+/// host, path and query preserved — the registry adds hosts, it does not
+/// remove the existing single-canonical-host fallback.
+#[tokio::test]
+async fn an_unregistered_host_redirects_to_the_configured_default_preserving_path_and_query() {
+    let state =
+        empty_state_with_canonical_host(CanonicalHost::new(Some("www.neonlaw.com".into()))).await;
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/contact?ref=ad")
+                .header(header::HOST, "unregistered.example")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::PERMANENT_REDIRECT);
+    let location = resp
+        .headers()
+        .get(header::LOCATION)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    assert_eq!(location, "https://www.neonlaw.com/contact?ref=ad");
+}
+
+/// The trap ENG-77 named: a `#[server]`-backed `/app` page must not fall back
+/// to the default brand's chrome when the request resolved a different one.
+/// `/app/team` renders its brand mark through `webapp::app_chrome`'s
+/// request-extension seam rather than reading the task-local directly, which
+/// is exactly the seam that silently falls back to the default brand if the
+/// host layer's resolved key never reaches `scope_branding`.
+#[tokio::test]
+async fn a_server_fn_backed_app_page_on_the_non_default_host_renders_its_own_brand() {
+    let state =
+        empty_state_with_canonical_host(CanonicalHost::new(Some("www.neonlaw.com".into()))).await;
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+    let resp = get_with_role_and_host(
+        app,
+        "/app/team",
+        store::persons::Role::Lawyer,
+        "same-day.neonlaw.com",
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_string(resp).await;
+    assert!(
+        body.contains(r#"aria-label="SameDay.Legal home""#),
+        "{body}"
+    );
+    assert!(body.contains("/public/brand/same-day/logo.svg"), "{body}");
+    assert!(!body.contains(r#"aria-label="Neon Law home""#), "{body}");
+}
+
 #[tokio::test]
 async fn design_page_renders_the_component_gallery() {
     let app = server::neon_router(

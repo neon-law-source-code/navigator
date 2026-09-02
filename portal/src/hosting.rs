@@ -1,9 +1,9 @@
 //! Shared host runtime assembly and run loop for Navigator's brand binaries.
 //!
 //! Every brand binary boots the same Navigator application: same database,
-//! storage, providers, and `AppState`. What differs is the [`Brand`] it
+//! storage, providers, and `AppState`. What differs is the [`Site`] it
 //! declares — its telemetry name and the public surface it publishes — so a
-//! brand crate is a `Brand` value and nothing else. [`build_from_env`]
+//! brand crate is a `Site` value and nothing else. [`build_from_env`]
 //! assembles the runtime and [`run`] owns the boot: telemetry, that assembly,
 //! composition through [`crate::bootstrap`], bind, serve, and drain.
 //!
@@ -27,7 +27,7 @@ use crate::{AppConfig, AppState};
 /// type it needs.
 pub use axum::Router as PublicRouter;
 
-/// Re-exported so a brand crate composes its whole [`Brand`] from `portal`
+/// Re-exported so a brand crate composes its whole [`Site`] from `portal`
 /// alone, without taking a `store` dependency for one enum.
 pub use store::seed::BrandSeed;
 
@@ -50,7 +50,7 @@ pub struct HostRuntime {
 /// bind/serve loop; this function owns everything in between so brand
 /// binaries cannot drift in how they assemble the application.
 ///
-/// `brand_seed` names whose seeds this boot applies. It is [`Brand::seed`] for
+/// `brand_seed` names whose seeds this boot applies. It is [`Site::seed`] for
 /// a real binary; a caller assembling a runtime directly picks the brand whose
 /// data it means to carry.
 #[allow(clippy::too_many_lines)]
@@ -450,7 +450,7 @@ pub type PublicDioxusRouters = Box<dyn FnOnce(&AppState) -> Vec<Router> + Send>;
 /// authenticated application, the JSON API, the anonymous-access boundary —
 /// comes from the application crate, identically for every brand, so a brand
 /// cannot fork authorization by construction.
-pub struct Brand {
+pub struct Site {
     /// The brand's short key (`neon`). Labels the boot log,
     /// so a deploy names the face it serves in its first lines.
     pub key: &'static str,
@@ -490,7 +490,7 @@ pub struct Brand {
 ///
 /// Propagates a failure to assemble the runtime (configuration, database,
 /// storage, content) or to bind and serve the configured port.
-pub async fn run(brand: Brand) -> anyhow::Result<()> {
+pub async fn run(brand: Site) -> anyhow::Result<()> {
     // Load `.env` / `.devx/env` before any env read; in cluster the
     // environment is injected and both calls are no-ops.
     let _ = dotenvy::dotenv();
@@ -561,7 +561,7 @@ pub async fn run(brand: Brand) -> anyhow::Result<()> {
 
 /// Report the resolved brand at boot, so a deploy serving the wrong face says
 /// so in its first log lines rather than at the first request.
-fn preflight(brand: &Brand, rt: &HostRuntime) {
+fn preflight(brand: &Site, rt: &HostRuntime) {
     tracing::info!(
         brand = brand.key,
         service_name = brand.service_name,

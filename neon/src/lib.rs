@@ -1,8 +1,13 @@
 //! `neonlaw.com` — Neon Law's public face, over the mounted Navigator
 //! application.
 //!
-//! One crate, one binary, one site, one brand. Neon Law is the practice of
-//! Shook Law PLLC, and every page this crate serves is the firm's.
+//! One crate, one binary — the `neon-server` image — serving every house
+//! brand this repository registers. Each request's `Host:` header resolves
+//! to its own [`views::brand::BrandKey`], so the same running process renders
+//! Neon Law's chrome on its own hosts and a second house brand's on its own,
+//! from the one composed router this crate declares. Neon Law is the practice
+//! of Shook Law PLLC, and every page this crate serves is the firm's or a
+//! house brand the firm operates.
 //!
 //! This crate owns the public surface outright: its marketing copy, its page
 //! compositions, and its path table. `portal` owns the authenticated
@@ -19,7 +24,7 @@ mod firm_copy;
 mod firm_pages;
 mod locales;
 
-use portal::hosting::{Brand, BrandSeed, PublicRouter};
+use portal::hosting::{BrandSeed, PublicRouter, Site};
 use portal::AppState;
 
 pub use firm_pages::firm_public_dioxus_routers;
@@ -288,10 +293,10 @@ fn legal_dioxus_routers() -> Vec<PublicRouter> {
     )
 }
 
-/// The whole brand: what `main` hands to the shared run loop.
+/// The whole site: what `main` hands to the shared run loop.
 #[must_use]
-pub fn brand() -> Brand {
-    Brand {
+pub fn brand() -> Site {
+    Site {
         key: "neon",
         seed: BrandSeed::Neon,
         service_name: "neon-server",

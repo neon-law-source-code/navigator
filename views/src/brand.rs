@@ -6,9 +6,13 @@
 //! Site brand: the strings and links that identify the product to
 //! the visitor (name, copyright owner, nav targets).
 //!
-//! One brand serves the binary: [`FIRM_BRAND`] for the law firm. Each
-//! page takes it through `PageLayout::with_brand`; the layout never
-//! branches on the URL.
+//! [`FIRM_BRAND`] reads whichever [`Branding`] is scoped to the current
+//! request. Each page takes it through `PageLayout::with_brand`; the layout
+//! never branches on the URL. What varies the scoped value is the request's
+//! resolved [`BrandKey`]: one running deployment can serve more than one
+//! house brand, each with its own registered hosts and its own `Branding`,
+//! chosen by [`BrandKey::resolve_branding`] and scoped by the caller for the
+//! life of the request.
 //!
 //! Branding defaults to Neon Law's complete in-repository identity. A web
 //! deployment can load a validated [`crate::brand_bundle::BrandManifest`]
@@ -458,6 +462,105 @@ pub static DEFAULT_BRANDING: Branding = Branding {
     service_description: "Flat-fee legal services from Neon Law, with every price published.",
     portal_only: false,
 };
+
+/// The placeholder `same-day` house brand. Every value here is provisional —
+/// wordmark, tagline, nav, and logo assets land with the brand's own identity
+/// work — but the mechanism this key exercises (a distinct registry entry,
+/// with its own hosts and its own rendered chrome) is real. The trademark
+/// fields stay empty, the same way a renamed white-label deploy's do: this
+/// brand's registration status is not yet decided, so there is nothing to
+/// notice.
+pub static SAME_DAY_BRANDING: Branding = Branding {
+    firm: SiteBrand {
+        site_name: "SameDay.Legal",
+        home_href: "/",
+        tagline: "Placeholder tagline for the SameDay.Legal house brand.",
+        postal_address: "5150 Mae Anne Ave Ste 405-9002, Reno, NV 89523",
+        logo_href: "/public/brand/same-day/logo.svg",
+        social_image: "/public/brand/same-day/logo.png",
+        nav: &[],
+        is_law_firm: true,
+        legal_entity: "Shook Law PLLC",
+    },
+    firm_email: "contact@sameday.legal",
+    support_domain: "sameday.legal",
+    firm_phone: "+1 510 800 2080",
+    firm_offices: &[],
+    firm_attorneys: &[],
+    firm_trademark: "",
+    firm_trademark_registration: "",
+    firm_trademark_record_url: "",
+    consultation_url: "https://calendar.app.google/GueqKHiAuqXEwkRG8",
+    terms_url: "/terms",
+    privacy_url: "/privacy",
+    base_url: "",
+    primary_domain: "sameday.legal",
+    firm_disclaimer: "Attorney advertisement. Nothing here is legal advice without a signed retainer for an active project. Past results do not guarantee future outcomes.",
+    mission_description: "Placeholder mission copy for the SameDay.Legal house brand.",
+    service_description: "Placeholder service copy for the SameDay.Legal house brand.",
+    portal_only: false,
+};
+
+/// A closed key naming which house brand a request resolves to. Distinct
+/// from `portal::hosting::Site`, which names the *binary*: a `BrandKey`
+/// names one request's resolved identity, and one running binary can resolve
+/// more than one of them. Adding a brand is a code change to this enum plus
+/// [`BrandKey::hosts`] and a covering test — configuration, not a table,
+/// which is the right cost for a legal identity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BrandKey {
+    #[default]
+    Neon,
+    SameDay,
+}
+
+impl BrandKey {
+    /// Every key the registry serves, in registry order.
+    pub const ALL: &'static [Self] = &[Self::Neon, Self::SameDay];
+
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Neon => "neon",
+            Self::SameDay => "same-day",
+        }
+    }
+
+    /// Every host this key answers to, across every environment this
+    /// repository deploys. A host absent from every key's list is
+    /// unregistered.
+    #[must_use]
+    pub const fn hosts(self) -> &'static [&'static str] {
+        match self {
+            Self::Neon => &["www.neonlaw.com", "staging.neonlaw.com"],
+            Self::SameDay => &["www.sameday.legal", "same-day.neonlaw.com"],
+        }
+    }
+
+    /// Resolve the [`Branding`] this key renders. `Neon` renders whatever
+    /// this deployment resolved as its own default branding — the built-in
+    /// value, or a mounted white-label manifest — so a white-label deploy's
+    /// rename still applies to the default brand; every other key renders
+    /// its own compiled placeholder, untouched by that manifest.
+    #[must_use]
+    pub fn resolve_branding(self, default_branding: &'static Branding) -> &'static Branding {
+        match self {
+            Self::Neon => default_branding,
+            Self::SameDay => &SAME_DAY_BRANDING,
+        }
+    }
+}
+
+/// Look up which key, if any, is registered to serve `host` (already
+/// port-stripped). `None` means the host answers to no brand in the
+/// registry.
+#[must_use]
+pub fn registered_brand_key(host: &str) -> Option<BrandKey> {
+    BrandKey::ALL
+        .iter()
+        .copied()
+        .find(|key| key.hosts().contains(&host))
+}
 
 tokio::task_local! {
     static ACTIVE_BRANDING: &'static Branding;
@@ -1538,5 +1641,78 @@ mod tests {
         let n = NavLink::dropdown("Group", CHILDREN);
         assert!(n.is_dropdown());
         assert_eq!(n.children.len(), 1);
+    }
+
+    use super::{registered_brand_key, BrandKey, SAME_DAY_BRANDING};
+
+    /// Every host a key claims resolves back to that same key.
+    #[test]
+    fn every_registered_host_maps_to_its_key() {
+        for key in BrandKey::ALL {
+            for host in key.hosts() {
+                assert_eq!(
+                    registered_brand_key(host),
+                    Some(*key),
+                    "{host} should resolve to {key:?}"
+                );
+            }
+        }
+    }
+
+    /// A host no key claims resolves to no brand at all — the caller decides
+    /// what an unregistered host means (redirect, or fall back to default).
+    #[test]
+    fn an_unregistered_host_resolves_to_no_key() {
+        assert_eq!(registered_brand_key("unregistered.example"), None);
+        assert_eq!(registered_brand_key("localhost"), None);
+    }
+
+    /// No host is claimed by more than one key — a spoofable ambiguity would
+    /// let a request pick which brand's chrome it renders.
+    #[test]
+    fn no_host_is_claimed_by_two_keys() {
+        let mut seen = std::collections::HashSet::new();
+        for key in BrandKey::ALL {
+            for host in key.hosts() {
+                assert!(seen.insert(*host), "{host} is registered to two keys");
+            }
+        }
+    }
+
+    /// `Neon` is the default key, and resolving it hands back whatever
+    /// default branding the caller supplies — including a white-label
+    /// manifest's — untouched.
+    #[test]
+    fn neon_resolves_the_supplied_default_branding() {
+        assert_eq!(BrandKey::default(), BrandKey::Neon);
+        let resolved = BrandKey::Neon.resolve_branding(&DEFAULT_BRANDING);
+        assert_eq!(resolved.firm.site_name, "Neon Law");
+    }
+
+    /// `SameDay` resolves its own compiled placeholder, never the supplied
+    /// default — a white-label rename of the firm's brand must not leak into
+    /// the house brand next to it.
+    #[test]
+    fn same_day_resolves_its_own_branding_regardless_of_the_supplied_default() {
+        let renamed = Branding::from_manifest(
+            &serde_yaml::from_str("version: 1\nbrand:\n  firm: Acme Law\n").unwrap(),
+        );
+        let resolved = BrandKey::SameDay.resolve_branding(renamed);
+        assert_eq!(resolved.firm.site_name, "SameDay.Legal");
+        assert_eq!(resolved.firm.site_name, SAME_DAY_BRANDING.firm.site_name);
+    }
+
+    /// The two brands render distinct chrome: a different name and a
+    /// different logo, which is the whole point of a second registry entry.
+    #[test]
+    fn the_two_brands_carry_distinct_chrome() {
+        assert_ne!(
+            DEFAULT_BRANDING.firm.site_name,
+            SAME_DAY_BRANDING.firm.site_name
+        );
+        assert_ne!(
+            DEFAULT_BRANDING.firm.logo_href,
+            SAME_DAY_BRANDING.firm.logo_href
+        );
     }
 }

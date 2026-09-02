@@ -52,8 +52,8 @@ One contract, three sets of values. Nothing in `webapp/src/components/` changes 
    `.nav-card`, `.nav-btn`, `.nav-table`, `.nav-toast`, and the page chrome each read `var(--nav-…)`, never a hex value.
 3. A component emits only those class names. It never carries a colour of its own.
 
-The `/design` palette section paints each swatch from its own token, so the gallery shows whichever brand the process is
-running as.
+The `/design` palette section paints each swatch from its own token, so the gallery shows whichever brand the request
+resolved to.
 
 **The inherited trap:** SSR tests check class names, not CSS. A page whose chrome rules were never added to `theme.css`
 ships green and renders unstyled. Every migrated surface adds its chrome rules in the same pull request.
@@ -61,8 +61,8 @@ ships green and renders unstyled. Every migrated surface adds its chrome rules i
 ## Two render modes
 
 - **Anonymous, server-rendered** — the firm host's public Dioxus pages (`neon::firm_public_dioxus_routers`) mount
-  outside the session boundary. Content resolves from the process brand on the server, so the page is readable with no
-  client bundle.
+  outside the session boundary. Content resolves from the request's resolved brand on the server, so the page is
+  readable with no client bundle.
 - **Authenticated and hydrated** — the lawyer, admin, and portal clusters mount inside the session boundary. Dioxus
   ships hydration data as inline scripts, which the strict `script-src` blocks; the per-response nonce middleware is the
   fix, never `unsafe-inline`.

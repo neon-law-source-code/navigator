@@ -18,7 +18,7 @@
 use axum::response::Redirect;
 use axum::routing::get;
 
-use crate::hosting::{Brand, BrandSeed, PublicRouter};
+use crate::hosting::{BrandSeed, PublicRouter, Site};
 use crate::AppState;
 
 /// The tenant's whole public surface: a redirect from `/` into the app.
@@ -40,8 +40,8 @@ pub fn public_routes() -> PublicRouter<AppState> {
 /// one of many, so it sets `OTEL_SERVICE_NAME` to name itself and
 /// `telemetry::init` prefers that over this value.
 #[must_use]
-pub fn brand() -> Brand {
-    Brand {
+pub fn brand() -> Site {
+    Site {
         key: "tenant",
         seed: BrandSeed::Tenant,
         service_name: "tenant-server",

@@ -122,9 +122,13 @@ why the value is the selected login domain rather than the site's public hostnam
 
 ## Why the brand is the image
 
-`neon-server` is built from the `neon` brand crate, and the crate is what composes the public routes. There is no
-runtime site switch: the deployment config selects one allow-listed image name, and `navigator ops ship` pins all
-runtime images to one immutable release tag.
+`neon-server` is built from the `neon` brand crate, and the crate is what composes the public routes for every house
+brand this repository registers — the deployment config selects one allow-listed image name, and `navigator ops ship`
+pins all runtime images to one immutable release tag. There is no runtime *image* switch, but there is a runtime *host*
+switch: which house brand a request renders is resolved per request from its `Host:` header against the compiled
+registry (`views::brand::BrandKey`, see [`glossary.md`](glossary.md#brand)), not from a deployment-level flag. A
+misconfigured deployment cannot serve one entity's pages under another entity's tag, because the served-host list for
+each key is compiled in rather than read from config.
 
 Staging and production keep their own data planes. A reset, secret rotation, version rollback, or failed certificate in
 one row cannot cross a database, bucket, cluster, runtime principal, or Restate journal boundary. Staging proves the

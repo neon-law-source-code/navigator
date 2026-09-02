@@ -179,6 +179,8 @@ Local `KIND` deployment
 - **Restate** - Durable Workflows
 - **Surreal** - Store
 
+![Ferris carries four glowing tools between connected workshop rooms](img/rust-in-peace/libraries-developer-parity.png)
+
 ---
 
 Choosing Rust vendors helps us stay pure rust.
@@ -193,6 +195,8 @@ A `person` can be one of:
 - **Admin** - lawyers with admin access to the system
 - **Owner** - owner of the system
 
+![Ferris joins a five-role council around a worktable](img/rust-in-peace/data-people.png)
+
 ---
 
 Important to have a single owner or DRI.
@@ -202,6 +206,8 @@ Important to have a single owner or DRI.
 A project or "matter" is a loose and flexible arrangement of legal services.
 
 Each has at least one client and lawyer DRI who can make decisions.
+
+![Ferris connects a client and lawyer through a flexible project constellation](img/rust-in-peace/data-project.png)
 
 ---
 
@@ -213,6 +219,8 @@ The abstract deliverable of lawyers.
 
 Contracts, pleadings, forms.
 
+![Ferris transforms legal work into a stack of signed documents](img/rust-in-peace/data-documents.png)
+
 ---
 
 The more signed PDFs we acquire the better our business.
@@ -221,6 +229,8 @@ The more signed PDFs we acquire the better our business.
 
 github.com/neon-law-source-code/navigator
 
+![Ferris maintains a living treehouse monorepo](img/rust-in-peace/devx-monorepo.png)
+
 ---
 
 A well-tested mono repo keeps things in sync.
@@ -228,6 +238,8 @@ A well-tested mono repo keeps things in sync.
 ### DevX: Glossary & Ontology
 
 www.neonlaw.com/docs/glossary
+
+![Ferris organizes a shared vocabulary in a magical library](img/rust-in-peace/devx-glossary-ontology.png)
 
 ---
 
@@ -261,6 +273,8 @@ Optimize for both Claude Code & Codex.
 
 Adversarial review between the two is amazing.
 
+![Two Ferris characters review the same code in mirrored workshops](img/rust-in-peace/devx-agent-skills.png)
+
 ---
 
 A "tell me what this is prompt" is often illuminating.
@@ -291,6 +305,8 @@ One `main` branch. Squash & Merge. Worktree per PR.
 
 Tag only from `main`.
 
+![Ferris tends a main railway with worktree branches](img/rust-in-peace/devx-one-flow-worktree-pr.png)
+
 ---
 
 Environment creation should be idempotent. The test should always run all the time.
@@ -298,6 +314,8 @@ Environment creation should be idempotent. The test should always run all the ti
 ### Cloud: GCP
 
 Omakase. Nicer customer support.
+
+![Ferris selects dependable cloud infrastructure from a cloud kitchen](img/rust-in-peace/cloud-gcp.png)
 
 ---
 
@@ -318,6 +336,8 @@ Benefits of using the same manifests and tech like sidecars don't need to learn 
 SaaS will never die, the same way restaurants wont.
 
 Sendgrid, Docusign, Xero, Slack, Notion, GitHub.
+
+![Ferris assembles specialized services in a storybook marketplace](img/rust-in-peace/cloud-saas.png)
 
 ---
 
@@ -343,6 +363,8 @@ Each uses the Business Source license, an excellent choice for tech companies.
 Save everything application {logs,telemetry,data} in Iceberg.
 
 Different GCP account **and** different vendor.
+
+![Ferris sends glowing data containers to a distant iceberg backup vault](img/rust-in-peace/cloud-iceberg-backups.png)
 
 ---
 
@@ -373,6 +395,8 @@ flexible on purpose.
 
 Collect info. Web forms, chat prompts, API calls (e.g. ID.me, Docusign)
 
+![Ferris welcomes a visitor through three intake entrances](img/rust-in-peace/intake-customer-conversion.png)
+
 ---
 
 Decouple questions from projects to ensure we're not repeating and asking the same things.
@@ -382,6 +406,8 @@ Decouple questions from projects to ensure we're not repeating and asking the sa
 The best ideas never happen with one person. We work with our teammates and clients.
 
 Custom web apps, client MCPs, phone & video.
+
+![Ferris builds an idea with a lawyer and client around a feedback table](img/rust-in-peace/continuous-feedback.png)
 
 ---
 
@@ -468,6 +494,8 @@ This Retainer Agreement (the "Agreement") is entered into between the Firm and
 Imbue markdown with a ton of rules. Incremental progress.
 
 ### A Clippy for law
+
+![Ferris inspects legal pages with a magnifying glass](img/rust-in-peace/clippy-for-law.png)
 
 ```bash
 navigator validate --help

@@ -2,8 +2,15 @@
 //!
 //! Boots the real composed router against an in-memory `SQLite`
 //! and grep-asserts the per-brand `og:site_name` on every public
-//! route, since brand selection is per-handler (no middleware). The
-//! footer is unified site-wide and is no longer a brand marker.
+//! route. Brand resolution runs as request middleware —
+//! `portal::canonical_host::resolve_brand_and_enforce_host` resolves the
+//! request's `views::brand::BrandKey` from its `Host:` header, and
+//! `scope_branding` scopes the resolved `Branding` for the rest of the
+//! request — so every scenario here (all against the firm's own host)
+//! exercises the same seam a second brand host resolves through; the
+//! exhaustive per-host matrix lives in
+//! `server/tests/routes.rs::host_brand_path_matrix_resolves_every_combination`.
+//! The footer is unified site-wide and is no longer a brand marker.
 
 // Cucumber's step-attribute macros require `async fn`, so assertion
 // steps that don't await anything still have to be declared async.

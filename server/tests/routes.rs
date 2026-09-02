@@ -8376,6 +8376,147 @@ async fn a_server_fn_backed_app_page_on_the_non_default_host_renders_its_own_bra
     assert!(!body.contains(r#"aria-label="Neon Law home""#), "{body}");
 }
 
+/// Issue `GET path` against `app` with the given `Host:` header.
+async fn get_on_host(app: &axum::Router, path: &str, host: &str) -> axum::http::Response<Body> {
+    app.clone()
+        .oneshot(
+            Request::builder()
+                .uri(path)
+                .header(header::HOST, host)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap()
+}
+
+/// `path` on `unknown_host` redirects permanently to that same path on
+/// `default_host`; this re-requests the `Location` it names and returns that
+/// response, so the caller asserts against the actual target rather than the
+/// redirect header alone — "a redirect-only assertion proves nothing about
+/// the target" (ENG-434).
+async fn assert_unregistered_host_redirects(
+    app: &axum::Router,
+    path: &str,
+    default_host: &str,
+    unknown_host: &str,
+) -> axum::http::Response<Body> {
+    let resp = get_on_host(app, path, unknown_host).await;
+    assert_eq!(
+        resp.status(),
+        StatusCode::PERMANENT_REDIRECT,
+        "{unknown_host} {path} must redirect"
+    );
+    let location = resp
+        .headers()
+        .get(header::LOCATION)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default()
+        .to_string();
+    let expected_prefix = format!("https://{default_host}");
+    assert!(
+        location.starts_with(&expected_prefix),
+        "{unknown_host} {path} redirected to {location}, expected the default host {default_host}"
+    );
+    let target_path = &location[expected_prefix.len()..];
+    get_on_host(app, target_path, default_host).await
+}
+
+/// The (brand host × path) matrix ENG-434 names, asserted exhaustively on one
+/// composed router: every registered brand host renders its own chrome on
+/// every path category, an unregistered host is permanently redirected to
+/// the deployment's own configured host on every category except `/health`,
+/// and every redirect is followed to its actual target rather than trusted
+/// on the `Location` header alone.
+///
+/// |                    | default host   | `same-day` host      | unknown host  |
+/// | ------------------ | --------------- | -------------------- | ------------- |
+/// | marketing path     | 200, own chrome | 200, own chrome       | 301 → default |
+/// | `/app`              | 303 → login     | 303 → login (no brand leak) | 301 → default |
+/// | `/public/*` asset  | 200             | 200                   | 301 → default |
+/// | `/health`          | 200             | 200                   | 200           |
+///
+/// The `/app` row's brand assertion lives in
+/// `a_server_fn_backed_app_page_on_the_non_default_host_renders_its_own_brand`
+/// above (an authenticated request, since the anonymous redirect renders no
+/// chrome to check) — this matrix asserts the status/redirect shape that
+/// holds on every host regardless of session.
+#[tokio::test]
+async fn host_brand_path_matrix_resolves_every_combination() {
+    let default_host = "www.neonlaw.com";
+    let same_day_host = "same-day.neonlaw.com";
+    let unknown_host = "unregistered.example";
+    let state =
+        empty_state_with_canonical_host(CanonicalHost::new(Some(default_host.into()))).await;
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+
+    // Marketing path: 200 on both registered hosts with their own
+    // `og:site_name`; the unknown host's redirect target renders the
+    // default brand's chrome, not merely a 301.
+    for (host, brand) in [(default_host, "Neon Law"), (same_day_host, "SameDay.Legal")] {
+        let resp = get_on_host(&app, "/contact", host).await;
+        assert_eq!(resp.status(), StatusCode::OK, "{host} /contact");
+        let body = body_string(resp).await;
+        assert!(page_declares_og_site_name(&body, brand), "{host}: {body}");
+    }
+    let followed =
+        assert_unregistered_host_redirects(&app, "/contact", default_host, unknown_host).await;
+    assert_eq!(followed.status(), StatusCode::OK, "followed /contact");
+    let followed_body = body_string(followed).await;
+    assert!(
+        page_declares_og_site_name(&followed_body, "Neon Law"),
+        "{followed_body}"
+    );
+
+    // `/app`: session-gated on every host. The host layer runs outside the
+    // session boundary, so the unauthenticated status is identical on both
+    // registered hosts — no brand leaks through an anonymous redirect.
+    for host in [default_host, same_day_host] {
+        let resp = get_on_host(&app, "/app/projects", host).await;
+        assert_eq!(resp.status(), StatusCode::SEE_OTHER, "{host} /app/projects");
+        assert_eq!(
+            resp.headers()
+                .get(header::LOCATION)
+                .and_then(|v| v.to_str().ok()),
+            Some("/auth/login?return_to=/app/projects"),
+            "{host} /app/projects",
+        );
+    }
+    let followed =
+        assert_unregistered_host_redirects(&app, "/app/projects", default_host, unknown_host).await;
+    assert_eq!(
+        followed.status(),
+        StatusCode::SEE_OTHER,
+        "followed /app/projects"
+    );
+
+    // `/public/*` asset: served on every registered host; the unknown host's
+    // redirect target actually serves the file.
+    for host in [default_host, same_day_host] {
+        let resp = get_on_host(&app, "/public/favicon.svg", host).await;
+        assert_eq!(resp.status(), StatusCode::OK, "{host} /public/favicon.svg");
+    }
+    let followed =
+        assert_unregistered_host_redirects(&app, "/public/favicon.svg", default_host, unknown_host)
+            .await;
+    assert_eq!(
+        followed.status(),
+        StatusCode::OK,
+        "followed /public/favicon.svg"
+    );
+
+    // `/health`: a probe target, not a public hostname — every host answers,
+    // registered or not, and never redirects.
+    for host in [default_host, same_day_host, unknown_host] {
+        let resp = get_on_host(&app, "/health", host).await;
+        assert_eq!(resp.status(), StatusCode::OK, "{host} /health");
+        assert!(
+            resp.headers().get(header::LOCATION).is_none(),
+            "{host} /health must not redirect"
+        );
+    }
+}
+
 #[tokio::test]
 async fn design_page_renders_the_component_gallery() {
     let app = server::neon_router(

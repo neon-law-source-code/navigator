@@ -170,9 +170,13 @@ fn regorus_matches_every_checked_in_policy_decision() {
     //   /app/api/project-lifecycle): Owner/Admin admitted, the other three
     //   tiers and anonymous denied, plus one noun-isolation case.
     // 385 + 7 = 392.
+    //
+    // + 6 for `/app/brands`: the four firm tiers admitted, with client and
+    //   anonymous callers denied, matching `/app/team`.
+    // 392 + 6 = 398.
     assert_eq!(
         test_names.len(),
-        392,
+        398,
         "the policy decision inventory changed; review every new or removed rule"
     );
 

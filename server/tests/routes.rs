@@ -8464,6 +8464,15 @@ async fn host_brand_path_matrix_resolves_every_combination() {
         assert_eq!(resp.status(), StatusCode::OK, "{host} /contact");
         let body = body_string(resp).await;
         assert!(page_declares_og_site_name(&body, brand), "{host}: {body}");
+        let other_brand = if brand == "Neon Law" {
+            "DeleteYourData.com"
+        } else {
+            "Neon Law"
+        };
+        assert!(
+            !page_declares_og_site_name(&body, other_brand),
+            "{host}: page must not declare {other_brand:?} as its og:site_name: {body}"
+        );
     }
     let followed =
         assert_unregistered_host_redirects(&app, "/contact", default_host, unknown_host).await;
@@ -8471,6 +8480,10 @@ async fn host_brand_path_matrix_resolves_every_combination() {
     let followed_body = body_string(followed).await;
     assert!(
         page_declares_og_site_name(&followed_body, "Neon Law"),
+        "{followed_body}"
+    );
+    assert!(
+        !page_declares_og_site_name(&followed_body, "DeleteYourData.com"),
         "{followed_body}"
     );
 

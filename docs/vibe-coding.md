@@ -27,7 +27,7 @@ the other.
 | --- | --- | --- |
 | 1. Build it in React | The Project repository | [`vibe-react`](../.claude/skills/vibe-react/SKILL.md) |
 | 2. Write the issue | Linear | [`author-linear-issue`](../.claude/skills/author-linear-issue/SKILL.md) |
-| 3. Ground it | Linear + docs, source, tests | [`triage-issue`](../.claude/skills/triage-issue/SKILL.md) |
+| 3. Ground and implement | Repository + Linear | [`implement-issue`](../.claude/skills/implement-issue/SKILL.md) |
 | 4. Land it, then keep it green | GitHub | `create-pr`, then `fix-checks` |
 
 The order is deliberate but not rigid. Vibing *first* and writing the issue *second* is the point: an issue written
@@ -61,7 +61,8 @@ The workspace's own conventions govern, and they are worth reading once before f
 - **Branch names carry the issue.** `nick/eng-123-slug`, so Linear links the branch, the magic word closes the issue,
   and the merge transitions status. Never hand-transition an issue a merge should have moved.
 
-Status runs `Triage` → `Backlog` → `Todo` → `In Progress` → `Done`. Nothing is handed to an agent from Triage.
+Status runs `Triage` → `Backlog` → `Todo` → `In Progress` → `Done`. An implementation session may start from Triage, but
+grounding must reach **Still valid** before code begins.
 
 ## Stage 1 — build it in React
 
@@ -101,11 +102,12 @@ you did not expect. That last section is the one people skip and the one that sa
 Write the issue to describe **the work**, not the prototype. If the exploration produced three screens' worth of change,
 that is three issues, because it will be three pull requests.
 
-## Stage 3 — ground it before anything lands
+## Stage 3 — ground and implement it before anything lands
 
-[`triage-issue`](../.claude/skills/triage-issue/SKILL.md) is the procedure, and the discipline it enforces is worth
-stating plainly: **the repository is almost always further along than the backlog says.** Work written from issue text
-alone is regularly work that is already done.
+[`implement-issue`](../.claude/skills/implement-issue/SKILL.md) begins with grounding, and the discipline it enforces is
+worth stating plainly: **the repository is almost always further along than the backlog says.** Work written from issue
+text alone is regularly work that is already done. Grounding and implementation belong in one session; an invalid,
+shipped, duplicate, or blocked issue stops before the first edit.
 
 Grounding a Project-application issue means reading, in this order:
 
@@ -125,7 +127,8 @@ There is nothing to register. A Project has one repository, named for its code, 
 plus the literal `portal`. `navigator site projects doctor` reports both coordinates; whether the repository exists yet
 is a separate question, and a coordinate that names nothing is a legitimate state rather than an error.
 
-Triage ends at a plan comment on the Linear issue. Implementation is a separate action that starts in its own worktree.
+The deprecated [`triage-issue`](../.claude/skills/triage-issue/SKILL.md) compatibility command remains available only
+when the user explicitly wants a Linear plan without implementation. It posts the plan and stops before code.
 
 ## Stage 4 — land it, then keep it green
 

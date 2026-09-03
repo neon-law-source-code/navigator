@@ -16553,6 +16553,10 @@ async fn entities_that_are_not_the_firm_anchor_may_share_a_name_and_jurisdiction
     assert_eq!(namesakes, 2, "namesakes must both persist");
 }
 
+// ENG-441 / ENG-312: keep one fresh-engine round in the PR gate. The
+// scheduled firm-anchor soak restores the original twelve-round volume.
+const PR_FIRM_ANCHOR_RACE_ROUNDS: usize = 1;
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 async fn concurrent_creates_cannot_fork_the_firm_anchor() {
     let (state, surreal) = state_with_engines().await;
@@ -16641,8 +16645,8 @@ async fn a_delete_racing_a_rename_into_the_firm_name_never_removes_the_anchor() 
     // The invariant this asserts holds regardless of who wins the race: a
     // rename that reports minting the anchor is never undone by the racing
     // delete. It is a regression guard for the delete-path serialization, run
-    // across several rounds to widen the window.
-    for round in 0..12 {
+    // across the bounded PR-gate round; the scheduled soak repeats it.
+    for round in 0..PR_FIRM_ANCHOR_RACE_ROUNDS {
         let (state, surreal) = state_with_engines().await;
         store::seed::seed_canonical(&state.surreal, &state.storage)
             .await
@@ -16753,7 +16757,7 @@ async fn a_rename_racing_a_rename_into_the_firm_name_never_loses_the_anchor() {
     // guard, and rename the freshly protected firm away. The invariant holds
     // no matter who wins: a rename that reports minting the anchor is never
     // undone, and the firm name is never split into duplicates.
-    for round in 0..12 {
+    for round in 0..PR_FIRM_ANCHOR_RACE_ROUNDS {
         let (state, surreal) = state_with_engines().await;
         store::seed::seed_canonical(&state.surreal, &state.storage)
             .await

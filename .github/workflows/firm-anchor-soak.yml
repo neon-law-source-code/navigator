@@ -1,4 +1,4 @@
-# The firm-anchor race, soaked off the PR critical path (ENG-312).
+# The firm-anchor race, soaked off the PR critical path (ENG-312, ENG-441).
 #
 # Why this exists rather than a merge-gate assertion: the fork is rare. One
 # occurrence in 82 gate runs, which puts the per-run rate somewhere in
@@ -71,6 +71,13 @@ jobs:
           test -n "$BIN" || { echo "::error::could not locate the race binary"; exit 1; }
           echo "binary: $BIN"
 
+          ROUTE_BIN=$(cargo test -p server --test routes --no-run --locked \
+                  --message-format=json 2>/dev/null \
+                | jq -r 'select(.executable != null and .target.name == "routes") | .executable' \
+                | tail -1)
+          test -n "$ROUTE_BIN" || { echo "::error::could not locate the route race binary"; exit 1; }
+          echo "route binary: $ROUTE_BIN"
+
           ITERS="${{ inputs.iterations || '600' }}"
           # ENG-312: name the branch each racer left `take_claim` through, so a
           # fork arrives with the mechanism attached instead of just a count.
@@ -106,5 +113,29 @@ jobs:
           echo "=== $forks forks in $ITERS iterations (~$races races) ==="
           if [ "$forks" -ne 0 ]; then
             echo "::error::the firm anchor forked $forks time(s) — this is a data-integrity failure, not a flake; do not re-run to clear it"
+            exit 1
+          fi
+
+          # ENG-441: the PR gate keeps the two fresh-engine route races to one
+          # bounded round. Repeat every route-level assertion at its original
+          # twelve-round volume here, alongside ENG-312's store reproduction.
+          ROUTE_ROUNDS=12
+          route_failures=0
+          for test_name in \
+            concurrent_creates_cannot_fork_the_firm_anchor \
+            a_delete_racing_a_rename_into_the_firm_name_never_removes_the_anchor \
+            a_rename_racing_a_rename_into_the_firm_name_never_loses_the_anchor; do
+            for round in $(seq 1 "$ROUTE_ROUNDS"); do
+              output="/tmp/route-${test_name}-${round}"
+              "$ROUTE_BIN" --exact "$test_name" --test-threads=1 > "$output" 2>&1 || {
+                route_failures=$((route_failures + 1))
+                echo "::error::route test $test_name failed in soak round $round — this is a data-integrity failure, not a flake; do not re-run to clear it"
+                cat "$output"
+              }
+            done
+          done
+          echo "=== $route_failures route failures across $ROUTE_ROUNDS rounds per test ==="
+          if [ "$route_failures" -ne 0 ]; then
+            echo "::error::the route-level firm-anchor reproduction failed — do not re-run to clear it"
             exit 1
           fi

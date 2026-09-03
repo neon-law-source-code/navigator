@@ -6,40 +6,16 @@
 -- preserves the rows already there) and `OVERWRITE` on fields (so a
 -- field definition converges on what this file says).
 --
--- SCOPE. The phase-2 conflicts slice, the phase-3 `email_token` slice,
--- the persons slice (#1093, "Schema + migration plan"; ENG-19), the
--- jurisdictions slice, the wave-one flat reference tables —
--- `entity_types`, `glossary_terms`, `git_repositories`,
--- and the wave-two tables: `sent_email`,
--- `visitor_route_count`, the mail chain `address` -> `mailroom` ->
--- `letter`, and the projects cluster — `project`, `person_project_role`,
--- `project_module`, `statutory_deadline`,
--- `git_access_token`, and `testimonial` (ENG-119) — and the wave-four
--- entities cluster: `entity`, the `entity_role` and `relationship`
--- graph edges, and `relationship_log` (ENG-120), plus
--- `person_external_identity` (ENG-85), which is Surreal-native from the
--- start rather than ported — and the
--- wave-five questionnaire pair `question` and `answer`, plus the
--- two-document-lanes pair `asset` and `template` (ENG-121).
--- Postgres still owns the remaining tables and keeps owning them until
--- cutover; a table lands here only when the slice that ports its queries
--- lands.
+-- SCOPE. This file is the complete operational schema for Navigator's
+-- SurrealDB store. It covers the project, identity, conflict-graph,
+-- questionnaire, document, litigation, communication, and reference-data
+-- tables used by the application. Every definition below is applied on
+-- boot and by the store test harness.
 --
--- THE CONFLICT GRAPH IS THIS SCHEMA. It was not, until wave four.
--- `store::conflicts` used to load `person_entity_roles` and
--- `relationship_edges` out of Postgres and project a name-only copy
--- into a throwaway in-memory database per check, because the rows it
--- traverses lived in the other engine. `conflict_graph.surql` held that
--- copy's definitions, and the two files had to be kept from drifting by
--- hand.
---
--- Wave four made the rows resident, so there is nothing left to project
--- into: `entity_role` and `relationship` below are the graph, and the
--- traversal runs against the deployment's own connection. The second
--- file is deleted rather than maintained — a projection of a table into
--- a copy of itself is a second source of truth that buys nothing once
--- both live in one engine. The traversal is read-only by construction
--- (`LET` + `SELECT`), which `store::conflicts` pins with a test.
+-- THE CONFLICT GRAPH IS THIS SCHEMA. `entity_role` and `relationship` are
+-- the graph, and `store::conflicts` traverses them on the deployment's own
+-- connection. The traversal is read-only by construction (`LET` + `SELECT`),
+-- which `store::conflicts` pins with a test.
 --
 -- PERMISSIONS. Every table below says `PERMISSIONS NONE` out loud. That
 -- is the engine's default, and writing it anyway is the point: #1145
@@ -57,10 +33,10 @@ DEFINE FIELD OVERWRITE version ON schema_version TYPE int;
 DEFINE FIELD OVERWRITE applied_at ON schema_version TYPE datetime DEFAULT time::now();
 
 -- `projects` cluster — project ids continue to be UUIDs across both engines.
--- `entity_id` is a real `record<entity>` link since the entities slice
--- (ENG-120); the person and project links below are still read back by their
--- command seams, and so is this one, because the engine does not validate a
--- link.
+-- `entity_id`, person references, and project references are native record
+-- links. Command seams still read referenced rows before writing because a
+-- record link constrains the target table but does not prove that its row
+-- exists.
 DEFINE TABLE IF NOT EXISTS project SCHEMAFULL PERMISSIONS NONE;
 -- A Project code is a route segment and a repository name.
 -- `/app/projects/new` is the matter-open form, so a Project whose code is
@@ -192,26 +168,21 @@ DEFINE FIELD OVERWRITE inserted_at ON testimonial TYPE string;
 DEFINE FIELD OVERWRITE updated_at ON testimonial TYPE string;
 DEFINE INDEX OVERWRITE testimonial_replay ON testimonial FIELDS project_id, person_id, quote UNIQUE;
 
--- `persons`: the directory of human contacts. The record id is the
--- existing Postgres UUID at import time, so every foreign key ports
--- verbatim.
+-- `persons`: the directory of human contacts. Record ids are UUIDs, so
+-- references preserve the ids used throughout the application.
 --
--- `role` is the system-wide authorization tier, and it stays a stored
--- column read *above* the database (#1145) — the ASSERT below is the
--- same gate the Postgres `CHECK (role IN (...))` was, expressed the way
--- `email_token.purpose` expresses its own.
+-- `role` is the system-wide authorization tier, read above the database
+-- (#1145). The ASSERT below is the write-time gate for its closed set.
 --
--- `email_lower` carries the Postgres `persons_email_lower_key` across.
--- Surreal rejects an expression index outright, so the lowercase form is
--- a stored field with a computed VALUE and the UNIQUE index sits on
--- that. Email is a case-insensitive identifier: `Attorney@Example.com`
+-- Surreal rejects an expression index, so the lowercase form is a stored
+-- field with a computed VALUE and the UNIQUE index sits on that. Email is a
+-- case-insensitive identifier: `Attorney@Example.com`
 -- and `attorney@example.com` are one mailbox, and an IdP may present a
 -- casing that differs from the stored row.
 --
 -- `oidc_subject` is UNIQUE over `option<string>`. Multiple NONEs do not
--- collide on a Surreal unique index, so seeded persons not yet linked to
--- an IdP identity coexist — the same shape the nullable Postgres unique
--- constraint had.
+-- collide on a Surreal unique index, so persons not yet linked to an IdP
+-- identity coexist.
 DEFINE TABLE IF NOT EXISTS person SCHEMAFULL PERMISSIONS NONE;
 DEFINE FIELD OVERWRITE name ON person TYPE string;
 DEFINE FIELD OVERWRITE given_name ON person TYPE option<string>;
@@ -305,18 +276,17 @@ DEFINE INDEX OVERWRITE person_external_identity_person_system
 -- `jurisdictions`: the reference table of US states (plus DC) and
 -- foreign sovereigns an Entity can be organized under — canonical seed
 -- data, identical in every deployment, production included. The record
--- id is the UUID `store::jurisdictions` mints, so every cross-engine
--- `jurisdiction_id` still held by a Postgres table addresses it
--- verbatim.
+-- The record id is the UUID `store::jurisdictions` mints, so references
+-- preserve the canonical id.
 --
--- `code` (`NV`, `CA`, `US`) carries the Postgres unique across as a
--- plain UNIQUE index. Every lookup keyed on it matches exactly — the
+-- `code` (`NV`, `CA`, `US`) has a plain UNIQUE index. Every lookup keyed on
+-- it matches exactly — the
 -- codes are canonical spellings from `store/seeds/Jurisdiction.yaml`,
 -- never user-typed — so no stored lowercase field is needed the way
 -- `person.email_lower` is.
 --
--- `jurisdiction_type` had no Postgres CHECK, but the domain is closed
--- and load-bearing: the intake `country` question type filters on
+-- The domain of `jurisdiction_type` is closed and load-bearing: the intake
+-- `country` question type filters on
 -- `jurisdiction_type = 'country'`, so a typo'd value would silently
 -- vanish from every picker rather than fail. The ASSERT makes that a
 -- write-time error, the same way `person.role` carries its ladder.
@@ -345,18 +315,17 @@ DEFINE FIELD OVERWRITE jurisdiction_id ON credential TYPE record<jurisdiction>;
 DEFINE FIELD OVERWRITE license_number ON credential TYPE string;
 DEFINE FIELD OVERWRITE inserted_at ON credential TYPE datetime DEFAULT time::now();
 DEFINE FIELD OVERWRITE updated_at ON credential TYPE datetime DEFAULT time::now();
--- Carries the Postgres unique `(person_id, jurisdiction_id)` across: the
--- same attorney cannot be double-listed under one jurisdiction.
+-- The unique `(person_id, jurisdiction_id)` index ensures the same attorney
+-- cannot be double-listed under one jurisdiction.
 DEFINE INDEX OVERWRITE credential_person_jurisdiction ON credential
     FIELDS person_id, jurisdiction_id UNIQUE;
 
 -- `entity_types`: the kinds of legal entity an organization can be
 -- (LLC, Trust, Corporation, …) — canonical seed data, identical in
 -- every deployment. The record id is the UUID `store::entity_types`
--- mints, so the cross-engine `entity_type_id` still held by the
--- Postgres `entities` table addresses it verbatim.
+-- mints, so references preserve the canonical id.
 --
--- `name` carries the Postgres unique across as a plain UNIQUE index.
+-- `name` has a plain UNIQUE index.
 -- The names are canonical seed spellings (`store/seeds/EntityType.yaml`)
 -- that every lookup matches exactly — no stored lowercase twin needed
 -- the way `person.email_lower` is.
@@ -370,22 +339,18 @@ DEFINE INDEX OVERWRITE entity_type_name ON entity_type FIELDS name UNIQUE;
 -- `Human` entity standing for a solo natural person. A matter is always
 -- opened against one, which is why `project.entity_id` above is required.
 --
--- Until wave four (ENG-120) this table held only `name`: it was a graph
--- node for the conflicts projection while Postgres owned the real row.
--- The full row lives here now, and `entity_type_id` and `jurisdiction_id`
--- are real `record<>` links rather than the cross-engine UUIDs the
--- Postgres row carried — both reference tables ported ahead of this one,
--- so the ids they already addressed verbatim just became links.
+-- `entity_type_id` and `jurisdiction_id` are native links to the reference
+-- rows that define an Entity's kind and jurisdiction.
 --
 -- The engine does not validate a link, so `store::entities` reads both
 -- rows back before it writes, exactly as `store::credentials` does.
 --
--- `firm_anchor_key` is what replaced a Postgres advisory lock. The firm's
+-- `firm_anchor_key` serializes the firm's anchor invariant. The firm's
 -- own Entity row may not be forked, renamed, or deleted, and that guard
 -- was a read (`does this name exist?`) followed by a write —
 -- `pg_advisory_xact_lock` made the pair atomic. SurrealDB has no advisory
 -- lock and a multi-statement query is not one transaction, so the
--- invariant moves into the schema: `store::entity_commands` stores the
+-- invariant is enforced by the schema: `store::entity_commands` stores the
 -- lowercased name here when (and only when) the row is an anchor. Multiple
 -- NONEs do not collide on a Surreal unique index, so ordinary namesakes —
 -- deliberately non-unique, because namesakes are real — never take part.
@@ -437,15 +402,13 @@ DEFINE FIELD OVERWRITE entity_id ON firm_anchor TYPE record<entity>;
 
 -- `person_entity_roles`: the structural ties the conflict check walks at
 -- full confidence — a person manages / owns / is a member of an entity.
--- The Postgres `(person_id, entity_id)` pair is the relation's own `in`
--- and `out`, so only `role` remains a field.
+-- The `(person_id, entity_id)` pair is the relation's own `in` and `out`,
+-- so only `role` remains a field.
 --
--- The Postgres table carried no unique constraint, and every writer —
--- `store::seed`, `import::apply` — hand-rolled a find-then-insert to stay
--- idempotent. The index below makes that race-safe rather than merely
--- usually-right: `store::entity_roles::grant` re-reads the winner's row
--- when it loses. A person may hold several roles in one entity, so the
--- tie is the triple, not the pair.
+-- The index makes the grant race-safe rather than merely usually-right:
+-- `store::entity_roles::grant` re-reads the winner's row when it loses. A
+-- person may hold several roles in one entity, so the tie is the triple,
+-- not the pair.
 DEFINE TABLE IF NOT EXISTS entity_role TYPE RELATION FROM person TO entity SCHEMAFULL PERMISSIONS NONE;
 DEFINE FIELD OVERWRITE role ON entity_role TYPE string;
 DEFINE FIELD OVERWRITE inserted_at ON entity_role TYPE datetime DEFAULT time::now();
@@ -454,7 +417,7 @@ DEFINE INDEX OVERWRITE entity_role_tie ON entity_role FIELDS in, out, role UNIQU
 
 -- `relationship_edges`: the polymorphic (from_type, from_id, to_type,
 -- to_id) quad collapses into native record links on both ends.
--- `confidence_pct` keeps the Postgres CHECK as an ASSERT — the floors
+-- `confidence_pct` is bounded by an ASSERT — the floors
 -- (REVIEW_FLOOR_PCT, BLOCK_FLOOR_PCT) stay in Rust, because they decide
 -- which paths are worth following and that is a judgment about conflicts
 -- rather than about graphs.
@@ -463,15 +426,15 @@ DEFINE INDEX OVERWRITE entity_role_tie ON entity_role FIELDS in, out, role UNIQU
 -- says whether a human asserted it or an LLM parsed it out of free text,
 -- and a finding shows that so lawyers judge an edge rather than trust it.
 -- `source_id` names the originating row — a `relationship_log` for an
--- LLM-parsed edge, a `disclosure` for a derived one. It stays an
--- unenforced `uuid` rather than a link because it is polymorphic across
--- two tables, one of which (`disclosures`) is still Postgres.
+-- LLM-parsed edge or a `disclosure` for a derived one. It is an optional
+-- union link to those two tables, so the engine constrains the table kind
+-- without forcing a source on manually asserted edges.
 DEFINE TABLE IF NOT EXISTS relationship TYPE RELATION FROM person|entity TO person|entity SCHEMAFULL PERMISSIONS NONE;
 DEFINE FIELD OVERWRITE kind ON relationship TYPE string;
 DEFINE FIELD OVERWRITE confidence_pct ON relationship TYPE int ASSERT $value >= 0 AND $value <= 100;
 DEFINE FIELD OVERWRITE source_kind ON relationship TYPE string
     ASSERT $value IN ['manual', 'disclosure', 'relationship_log', 'llm'];
-DEFINE FIELD OVERWRITE source_id ON relationship TYPE option<uuid>;
+DEFINE FIELD OVERWRITE source_id ON relationship TYPE option<record<relationship_log|disclosure>>;
 DEFINE FIELD OVERWRITE detail ON relationship TYPE option<string>;
 DEFINE FIELD OVERWRITE inserted_at ON relationship TYPE datetime DEFAULT time::now();
 DEFINE FIELD OVERWRITE updated_at ON relationship TYPE datetime DEFAULT time::now();
@@ -485,17 +448,15 @@ DEFINE FIELD OVERWRITE updated_at ON relationship TYPE datetime DEFAULT time::no
 -- edge above), but it is not part of it and the traversal never reads
 -- it.
 --
--- It moves in this wave because its writers do. `store::projects` and
--- `store::project_modules` are already Surreal-resident and were
--- reaching back into Postgres for this one insert, which made a matter
--- open a two-engine write with no transaction over it.
+-- `store::projects` and `store::project_modules` write this audit row on
+-- the same store handle as the changes they record.
 --
 -- Append-only — never updated, never deleted — so no unique index and
 -- no ASSERT on `action`: the trail records what happened, including
 -- actions this code has no closed set for. `subject_type` is a table
 -- name and `subject_id` its key; the pair is polymorphic across tables
--- on both sides of the port, so it stays an unenforced `uuid` rather
--- than becoming a link.
+-- on both sides of the graph, so it remains a table name plus an opaque UUID
+-- rather than a link to one particular table.
 DEFINE TABLE IF NOT EXISTS relationship_log SCHEMAFULL PERMISSIONS NONE;
 DEFINE FIELD OVERWRITE actor_person_id ON relationship_log TYPE option<record<person>>;
 DEFINE FIELD OVERWRITE subject_type ON relationship_log TYPE string;
@@ -508,11 +469,11 @@ DEFINE FIELD OVERWRITE updated_at ON relationship_log TYPE datetime DEFAULT time
 DEFINE INDEX OVERWRITE relationship_log_inserted_at ON relationship_log FIELDS inserted_at;
 
 
--- `git_repositories`: provenance for repositories that carried imported
+-- `git_repositories`: provenance for repositories that contain imported
 -- notation content. Rows come from the canonical seed; `navigator
 -- site seed` seeds from a local directory and never writes here.
--- `remote_hash` (a SHA-256 of `git remote get-url origin`) carries the
--- Postgres unique across.
+-- `remote_hash` (a SHA-256 of `git remote get-url origin`) is unique, so a
+-- repository cannot be recorded twice.
 DEFINE TABLE IF NOT EXISTS git_repository SCHEMAFULL PERMISSIONS NONE;
 DEFINE FIELD OVERWRITE remote_hash ON git_repository TYPE string;
 DEFINE FIELD OVERWRITE last_commit_sha ON git_repository TYPE string;
@@ -546,10 +507,8 @@ DEFINE INDEX OVERWRITE glossary_term_slug ON glossary_term FIELDS slug UNIQUE;
 -- validate a link, so a token minted for a person that was never written
 -- is accepted here and caught in Rust.
 --
--- The instants are native `datetime` rather than the RFC 3339 strings
--- Postgres held. The engine parses on write, so an unparseable stored
--- timestamp — which the Postgres lane had to defend against by treating
--- it as expired — cannot occur here.
+-- The instants are native `datetime` values. The engine parses them on
+-- write, so an unparseable stored timestamp cannot occur here.
 DEFINE TABLE IF NOT EXISTS email_token SCHEMAFULL PERMISSIONS NONE;
 DEFINE FIELD OVERWRITE person_id ON email_token TYPE record<person>;
 DEFINE FIELD OVERWRITE email ON email_token TYPE string;
@@ -560,8 +519,8 @@ DEFINE FIELD OVERWRITE expires_at ON email_token TYPE datetime;
 DEFINE FIELD OVERWRITE used_at ON email_token TYPE option<datetime>;
 DEFINE FIELD OVERWRITE inserted_at ON email_token TYPE datetime DEFAULT time::now();
 DEFINE FIELD OVERWRITE updated_at ON email_token TYPE datetime DEFAULT time::now();
--- Carries the Postgres `unique_key()` on `token_hash` across. The
--- throttle index pairs it, matching `idx_email_tokens_person_purpose`.
+-- `token_hash` is unique. The throttle index pairs person and purpose for
+-- the lookup that prevents repeated requests.
 DEFINE INDEX OVERWRITE email_token_hash ON email_token FIELDS token_hash UNIQUE;
 DEFINE INDEX OVERWRITE email_token_person_purpose ON email_token FIELDS person_id, purpose;
 
@@ -573,10 +532,8 @@ DEFINE INDEX OVERWRITE email_token_person_purpose ON email_token FIELDS person_i
 -- code has no closed set for (`failed:<reason>` carries the backend's
 -- own message).
 --
--- `sent_at` is a native `datetime` rather than the RFC 3339 string
--- Postgres held, the same trade `email_token` above makes. It also
--- makes the listing's ORDER BY a real chronological sort instead of a
--- lexicographic one that happened to agree.
+-- `sent_at` is a native `datetime`, so the listing's ORDER BY is a real
+-- chronological sort.
 --
 -- `sg_message_id` is SendGrid's `X-Message-Id`, the join key to the
 -- delivery-side Event Webhook stream. `NONE` for failed sends and for
@@ -592,8 +549,8 @@ DEFINE FIELD OVERWRITE sg_message_id ON sent_email TYPE option<string>;
 DEFINE FIELD OVERWRITE sent_at ON sent_email TYPE datetime;
 DEFINE FIELD OVERWRITE inserted_at ON sent_email TYPE datetime DEFAULT time::now();
 DEFINE FIELD OVERWRITE updated_at ON sent_email TYPE datetime DEFAULT time::now();
--- Carries `idx_sent_emails_sent_at` across: the email log's hot read is
--- a newest-first paginated listing, which scans without this.
+-- The email log's hot read is a newest-first paginated listing, which scans
+-- without this index.
 DEFINE INDEX OVERWRITE sent_email_sent_at ON sent_email FIELDS sent_at;
 
 -- `visitor_route_counts`: aggregate public-website visit counters, one
@@ -605,14 +562,12 @@ DEFINE INDEX OVERWRITE sent_email_sent_at ON sent_email FIELDS sent_at;
 -- is the privacy guarantee, so adding one of those here is the thing to
 -- refuse rather than to review.
 --
--- `bucket_date` is a `datetime` pinned to midnight UTC, standing in for
--- the Postgres `date` column, which has no Surreal equivalent. The
--- summary formats it (`%Y-%m-%d`, `%Y-%m`) rather than storing a second
--- derived column.
+-- `bucket_date` is a `datetime` pinned to midnight UTC. The summary
+-- formats it (`%Y-%m-%d`, `%Y-%m`) rather than storing a second derived
+-- column.
 --
--- The unique index carries the Postgres `ON CONFLICT` target across:
--- it is what makes `record_visit` an upsert rather than an appender, and
--- `store::visitor_analytics` discriminates on its name when a
+-- The unique index makes `record_visit` an upsert rather than an appender,
+-- and `store::visitor_analytics` discriminates on its name when a
 -- concurrent visit loses the race to create the bucket.
 DEFINE TABLE IF NOT EXISTS visitor_route_count SCHEMAFULL PERMISSIONS NONE;
 DEFINE FIELD OVERWRITE bucket_date ON visitor_route_count TYPE datetime;
@@ -630,16 +585,12 @@ DEFINE INDEX OVERWRITE visitor_route_count_bucket ON visitor_route_count
 -- `addresses`: a postal address, attached to a person, to an entity, or
 -- to neither.
 --
--- Both `person_id` and `entity_id` are real `record<>` links: the
--- persons slice made the first one, and the entities slice (ENG-120)
--- made the second, retiring the last cross-engine `uuid` this table
--- carried.
+-- Both `person_id` and `entity_id` are optional `record<>` links. The
+-- address may belong to one of them or to neither.
 --
--- There is deliberately no XOR assert. The Postgres comment described
--- the person/entity exclusivity as application-enforced "to stay
--- portable", but the seed's mailroom placeholder address sets *both* to
--- NONE, so an `ASSERT` spelling the XOR out would reject a row the
--- canonical seed writes on every boot.
+-- There is deliberately no XOR assert. The seed's mailroom placeholder
+-- address sets both to NONE, so an ASSERT spelling the XOR out would reject
+-- a row the canonical seed writes on every boot.
 DEFINE TABLE IF NOT EXISTS address SCHEMAFULL PERMISSIONS NONE;
 DEFINE FIELD OVERWRITE person_id ON address TYPE option<record<person>>;
 DEFINE FIELD OVERWRITE entity_id ON address TYPE option<record<entity>>;
@@ -654,32 +605,26 @@ DEFINE FIELD OVERWRITE updated_at ON address TYPE datetime DEFAULT time::now();
 
 -- `mailrooms`: a physical mail-receiving destination.
 --
--- `address_id` is a real `record<address>` link, because `addresses`
--- landed in the commit before this one — the whole reason the trio moved
--- together. The engine still does not validate it, so
--- `store::mailrooms::create` reads the address back before writing;
--- `fk_mailrooms_address` used to do that job, and the read-back is what
--- replaced it, not the `record<T>` type.
+-- `address_id` is a `record<address>` link. The engine constrains the
+-- target table but does not prove that the row exists, so
+-- `store::mailrooms::create` reads the address back before writing.
 DEFINE TABLE IF NOT EXISTS mailroom SCHEMAFULL PERMISSIONS NONE;
 DEFINE FIELD OVERWRITE name ON mailroom TYPE string;
 DEFINE FIELD OVERWRITE address_id ON mailroom TYPE record<address>;
 DEFINE FIELD OVERWRITE inserted_at ON mailroom TYPE datetime DEFAULT time::now();
 DEFINE FIELD OVERWRITE updated_at ON mailroom TYPE datetime DEFAULT time::now();
--- Carries the Postgres unique on `name` across.
+-- Mailroom names are unique.
 DEFINE INDEX OVERWRITE mailroom_name ON mailroom FIELDS name UNIQUE;
 
 -- `letters`: one physical piece of mail, incoming or outgoing.
 --
--- `mailroom_id` is a real `record<mailroom>` link, the last hop of the
--- `letter -> mailroom -> address` chain this wave moved as a unit. The
--- engine does not validate it, so `store::letters::record` reads the
--- mailroom back before writing — the replacement for the dropped
--- `fk_letters_mailroom`.
+-- `mailroom_id` is a `record<mailroom>` link, the last hop of the
+-- `letter -> mailroom -> address` chain. The engine does not validate it,
+-- so `store::letters::record` reads the mailroom back before writing.
 --
--- `direction` carries the closed set the Postgres column only held by
--- convention. The lawyer listing and the inbound router both write
--- `incoming`; an outgoing letter is a real value, and a typo'd third
--- one would silently vanish from both surfaces rather than fail.
+-- `direction` is a closed set. The lawyer listing and the inbound router
+-- both write `incoming`; an outgoing letter is a real value, and a typo'd
+-- third one would silently vanish from both surfaces rather than fail.
 DEFINE TABLE IF NOT EXISTS letter SCHEMAFULL PERMISSIONS NONE;
 DEFINE FIELD OVERWRITE mailroom_id ON letter TYPE record<mailroom>;
 DEFINE FIELD OVERWRITE direction ON letter TYPE string
@@ -694,13 +639,12 @@ DEFINE FIELD OVERWRITE updated_at ON letter TYPE datetime DEFAULT time::now();
 -- traversal. Seeded from template frontmatter by `cli import`, so the
 -- lawyer surface is a transparency listing only — no add, edit, or delete.
 --
--- `code` carries the Postgres unique across. The codes are canonical
+-- `code` is unique. The codes are canonical
 -- identifiers written by a template author (`client_name`, `trustee_name`)
 -- and matched exactly by every lookup, so no stored lowercase twin is
 -- needed the way `person.email_lower` is.
 --
--- `audience` carries a closed set the Postgres column only held by
--- convention (NOT NULL DEFAULT 'both', no CHECK). It is load-bearing:
+-- `audience` is a closed set with a default of `both`. It is load-bearing:
 -- `store::questions::is_client_facing` reads it to decide whether the
 -- client's magic-link surface shows the question at all, so a typo'd value
 -- would silently hide a question from the client rather than fail. The
@@ -720,9 +664,9 @@ DEFINE INDEX OVERWRITE question_code ON question FIELDS code UNIQUE;
 --
 -- Append-only. Re-asks and corrections are new rows, never updates, and
 -- latest-per-`(notation_id, state_name)` wins on read — so there is no
--- unique index, and `store::answers` exports no update and no delete. That
--- is the `sent_email` precedent above: the guarantee is carried by the
--- command seam's shape rather than by the engine.
+-- unique index, and `store::answers` exports no update and no delete. The
+-- guarantee is carried by the command seam's shape rather than by the
+-- engine.
 --
 -- `person_id` is the **respondent** (whose answer it is);
 -- `authored_by_person_id` is who actually typed it — a lawyer filling it in
@@ -730,12 +674,11 @@ DEFINE INDEX OVERWRITE question_code ON question FIELDS code UNIQUE;
 -- notation can interleave both authorships and the data lake can tell them
 -- apart. `source` is the same dimension as a low-cardinality string.
 --
--- `notation_id` stays an unenforced `uuid` rather than a `record<notation>`
--- link: `notations` is still Postgres-resident and moves in a later slice
--- of this wave (ENG-121). It becomes a real link then. `relationship.
--- source_id` above is the same shape for the same reason.
+-- `notation_id` is an optional `record<notation>` link. A bare answer may
+-- omit it, while every Notation-bound write points at the Notation row that
+-- collected the answer.
 --
--- `value` is the ported JSONB column, and its type is the whole decision.
+-- `value` is an arbitrary JSON value, and its type is the whole decision.
 -- It carries three shapes — a primitive envelope `{"value": …}`, a mirrored
 -- record row, and an aggregate array — and on a SCHEMAFULL table only
 -- `TYPE any` accepts all three. Verified against the pinned surrealdb
@@ -751,14 +694,13 @@ DEFINE INDEX OVERWRITE question_code ON question FIELDS code UNIQUE;
 --   * `FLEXIBLE TYPE object` does not parse at all — FLEXIBLE must be
 --     written AFTER TYPE in 3.2.x.
 --
--- `TYPE any` also means the Postgres NOT NULL cannot be carried here: an
--- `ASSERT $value != NONE` does not fire on a NONE-valued `any` field. The
--- not-null guarantee is the command seam's instead — `store::answers`
+-- `TYPE any` also admits NONE: an `ASSERT $value != NONE` does not fire on
+-- a NONE-valued `any` field. The not-null guarantee is the command seam's — `store::answers`
 -- always sets `value`, and nothing else writes this table.
 DEFINE TABLE IF NOT EXISTS answer SCHEMAFULL PERMISSIONS NONE;
 DEFINE FIELD OVERWRITE question_id ON answer TYPE record<question>;
 DEFINE FIELD OVERWRITE person_id ON answer TYPE record<person>;
-DEFINE FIELD OVERWRITE notation_id ON answer TYPE option<uuid>;
+DEFINE FIELD OVERWRITE notation_id ON answer TYPE option<record<notation>>;
 DEFINE FIELD OVERWRITE state_name ON answer TYPE option<string>;
 DEFINE FIELD OVERWRITE value ON answer TYPE any;
 DEFINE FIELD OVERWRITE source ON answer TYPE string DEFAULT 'lawyer'
@@ -784,15 +726,15 @@ DEFINE INDEX OVERWRITE answer_question_person ON answer FIELDS question_id, pers
 -- rows. `sha256_hex` is the dedup key, and its index is non-unique for the
 -- same reason.
 --
--- `project_id` is a real `record<project>` link — `project` has been
--- Surreal-resident since wave two. The engine does not validate a link, so
--- the ingest seam is what checks the matter exists, as everywhere else.
+-- `project_id` is a real `record<project>` link. The engine constrains its
+-- target table but does not validate that the row exists, so the ingest seam
+-- checks the matter before writing, as everywhere else.
 --
--- `visibility` carries the Postgres `assets_visibility_check` CHECK across
--- as an ASSERT. It is the client-portal gate: a typo'd value would drop a
--- document out of the client's "Your documents" silently rather than fail.
+-- `visibility` is an ASSERT-backed client-portal gate: a typo'd value would
+-- drop a document out of the client's "Your documents" silently rather than
+-- fail.
 --
--- `metadata` is the ported JSONB column and takes `TYPE any` for the reason
+-- `metadata` is an arbitrary JSON value and takes `TYPE any` for the reason
 -- `answer.value` above does — on a SCHEMAFULL table it is the only type
 -- that accepts arbitrary nesting, and FLEXIBLE must be written after TYPE.
 -- `store/src/assets.rs` pins the round trip with a test.
@@ -831,23 +773,18 @@ DEFINE INDEX OVERWRITE asset_project_slug ON asset FIELDS project_id, slug;
 -- `templates`: the questionnaire + markdown body that drives a notation,
 -- identified by a stable `code`.
 --
--- `asset_id` is a real `record<asset>` link, which is the whole reason
--- these two tables move in one slice: `store::templates::save_version`
--- folds `asset_id` into the tuple that decides whether a version changed,
--- so split across engines the lane would hold its version identity in one
--- and the bytes it names in the other. `fk_templates_asset` is already
--- dropped (`m20260911_drop_notation_group_foreign_keys`); what replaces it
--- is `store::templates::body`'s read-back of the asset before it fetches
--- from storage, not the link's type — the engine does not validate a link.
+-- `asset_id` is a real `record<asset>` link. `store::templates::save_version`
+-- folds it into the tuple that decides whether a version changed, and the
+-- body seam reads the asset back before fetching its bytes. The engine
+-- constrains the target table but does not prove that the row exists.
 --
 -- ROWS ARE IMMUTABLE BY POLICY. An edit appends a new row and flips
 -- `is_current`; it never rewrites a spec a Notation pinned through
 -- `notation.template_id`.
 --
--- `current_key` is how the two Postgres *partial* unique indexes come
--- across — `UNIQUE (code) WHERE project_id IS NULL AND is_current` and
--- `UNIQUE (project_id, code) WHERE is_current`. Surreal has no partial
--- index, so `store::templates` stores a key only while a row is current
+-- `current_key` represents the two conditional uniqueness rules — shared
+-- codes are unique when current, and project-scoped codes are unique when
+-- current. Surreal has no partial index, so `store::templates` stores a key only while a row is current
 -- and clears it when the row retires. Multiple NONEs do not collide on a
 -- Surreal unique index, so retired versions never take part, and the
 -- shared (`project_id` NONE) and project-scoped lines get distinct keys.
@@ -873,20 +810,19 @@ DEFINE INDEX OVERWRITE template_current_key ON template FIELDS current_key UNIQU
 DEFINE INDEX OVERWRITE template_code ON template FIELDS code;
 
 -- ---------------------------------------------------------------------
--- The notation group (wave five, ENG-121)
+-- The notation group
 --
--- Fifteen tables that hang together off `notation`: the core, its
+-- Tables that hang together off `notation`: the core, its
 -- satellite ring, the citation apparatus, and the two JSONB-body tables.
--- `m20260911_drop_notation_group_foreign_keys` already removed the
--- Postgres foreign keys across the whole group, so nothing below is
--- replacing a live constraint — the links here are how the reference is
--- *typed*, and the read-back at the command seam is what actually
--- validates it. The engine does not validate a `record<…>` link.
+-- The links below type references between the notation group's tables. The
+-- command seam reads referenced rows before writing because the engine
+-- constrains a `record<…>` link's table kind but does not validate row
+-- existence.
 --
--- A reference is a `record<…>` only when the referenced table also lives
--- in Surreal. `document_comment.communication_id` stays a bare `uuid`
--- because `communications` is the comms cluster and moves in a later
--- wave; typing it as a link now would name a table that does not exist.
+-- A reference is a `record<…>` when the referenced table is part of the
+-- store schema. `document_comment.communication_id` remains a bare `uuid`
+-- because that optional association has no command seam that resolves a
+-- communication row yet.
 --
 -- JSONB columns land as `TYPE any`, the shape `asset.metadata` already
 -- uses. `any` admits NONE, so a nullable JSON column needs no `option<>`
@@ -897,12 +833,9 @@ DEFINE INDEX OVERWRITE template_code ON template FIELDS code;
 -- file. Domain timestamps that the application passes through as opaque
 -- RFC 3339 text (`recorded_at`, `submitted_at`,
 -- `signed_at`, `notarized_at`, `issued_on`, `checked_on`) stay `string`,
--- so porting these tables does not also re-type a public seam.
+-- so the public seam remains stable.
 --
--- Every one of the fifteen carried `crate::uuid_active_model_behavior!`,
--- the SeaORM `before_save` hook that stamped `id`, `inserted_at`, and
--- `updated_at`. A hook cannot reach Surreal (the wave-two rule), so each
--- ported write stamps `Uuid::now_v7()` and the timestamps itself. The
+-- Each write stamps `Uuid::now_v7()` and its timestamps explicitly. The
 -- `DEFAULT time::now()` below is the backstop for a row written without
 -- them, not the mechanism.
 
@@ -944,14 +877,9 @@ DEFINE INDEX OVERWRITE notation_clause_notation ON notation_clause FIELDS notati
 -- `notation_events`: the append-only journal of every state-machine
 -- transition for every Notation. One row per transition.
 --
--- APPEND-ONLY, BY CONSTRUCTION AT THE COMMAND SEAM. Postgres enforced
--- this with the `prevent_notation_events_mutation` trigger
--- (`m20260802_harden_notation_events_journal`), which raised on UPDATE
--- and DELETE. Surreal has no trigger in our usage, so the guarantee moves
--- to `store::notation_events`: it exports an append and reads, and no
--- update or delete function at all, pinned by a covering test. This is
--- the `sent_email` precedent — documented and structurally enforced by
--- what the module does not export, rather than by the engine.
+-- APPEND-ONLY, BY CONSTRUCTION AT THE COMMAND SEAM. `store::notation_events`
+-- exports an append and reads, and no update or delete function at all,
+-- pinned by a covering test. The module's public shape is the invariant.
 --
 -- `payload` is opaque JSON *text*, not a native object: a questionnaire
 -- event can carry client answer content, so it is written and read as an
@@ -1001,8 +929,8 @@ DEFINE FIELD OVERWRITE anchor_end ON document_comment TYPE int;
 DEFINE FIELD OVERWRITE quoted_text ON document_comment TYPE string;
 DEFINE FIELD OVERWRITE body ON document_comment TYPE string;
 DEFINE FIELD OVERWRITE resolved ON document_comment TYPE bool DEFAULT false;
--- Bare `uuid`, not a link: `communications` is the comms cluster and has
--- not moved yet. It becomes `option<record<communication>>` in that wave.
+-- Bare `uuid`, not a link: this optional association is resolved by the
+-- document-comment seam rather than by the schema.
 DEFINE FIELD OVERWRITE communication_id ON document_comment TYPE option<uuid>;
 DEFINE FIELD OVERWRITE inserted_at ON document_comment TYPE datetime DEFAULT time::now();
 DEFINE FIELD OVERWRITE updated_at ON document_comment TYPE datetime DEFAULT time::now();
@@ -1185,9 +1113,8 @@ DEFINE INDEX OVERWRITE contract_review_playbook ON contract_review FIELDS playbo
 DEFINE TABLE IF NOT EXISTS expunge_record SCHEMAFULL PERMISSIONS NONE;
 DEFINE FIELD OVERWRITE project_id ON expunge_record TYPE record<project>;
 DEFINE FIELD OVERWRITE path ON expunge_record TYPE string;
--- The Postgres table carried no CHECK; the category constants lived only
--- in Rust. The ASSERT makes an unrecognized category a write-time error
--- rather than a row nothing can classify later.
+-- The category constants live in Rust. The ASSERT makes an unrecognized
+-- category a write-time error rather than a row nothing can classify later.
 DEFINE FIELD OVERWRITE category ON expunge_record TYPE string
     ASSERT $value IN ['privilege', 'sealing', 'client_request'];
 DEFINE FIELD OVERWRITE authorized_by_person_id ON expunge_record TYPE record<person>;
@@ -1215,7 +1142,7 @@ DEFINE FIELD OVERWRITE expunge_record_id ON expunge_request TYPE option<record<e
 DEFINE FIELD OVERWRITE inserted_at ON expunge_request TYPE datetime DEFAULT time::now();
 DEFINE FIELD OVERWRITE updated_at ON expunge_request TYPE datetime DEFAULT time::now();
 -- The lawyer queue reads `status`; the client-facing "already requested?"
--- check reads `asset_id`. Both Postgres indexes carry over.
+-- check reads `asset_id`.
 DEFINE INDEX OVERWRITE expunge_request_project_status ON expunge_request FIELDS project_id, status;
 DEFINE INDEX OVERWRITE expunge_request_asset ON expunge_request FIELDS asset_id;
 
@@ -1230,9 +1157,8 @@ DEFINE FIELD OVERWRITE forum ON case TYPE option<string>;
 DEFINE FIELD OVERWRITE jurisdiction ON case TYPE option<string>;
 DEFINE FIELD OVERWRITE docket_number ON case TYPE option<string>;
 DEFINE FIELD OVERWRITE judge ON case TYPE option<string>;
--- Which side the client is on. Free text under Postgres and free text
--- here: the postures worth naming vary by forum, and a closed list would
--- block recording a real one.
+-- Which side the client is on. The postures worth naming vary by forum, and
+-- a closed list would block recording a real one.
 DEFINE FIELD OVERWRITE posture ON case TYPE string;
 DEFINE FIELD OVERWRITE status ON case TYPE string DEFAULT 'open'
     ASSERT $value IN ['open', 'stayed', 'closed'];
@@ -1266,7 +1192,7 @@ DEFINE FIELD OVERWRITE notation_id ON case_docket_entry TYPE option<record<notat
 DEFINE FIELD OVERWRITE inserted_at ON case_docket_entry TYPE datetime DEFAULT time::now();
 DEFINE FIELD OVERWRITE updated_at ON case_docket_entry TYPE datetime DEFAULT time::now();
 -- A docket cannot have two number 1s, but the same number on another case
--- is fine — the uniqueness is per case, exactly as Postgres had it.
+-- is fine — the uniqueness is per case.
 DEFINE INDEX OVERWRITE case_docket_entry_case_number ON case_docket_entry
     FIELDS case_id, entry_number UNIQUE;
 
@@ -1321,10 +1247,9 @@ DEFINE INDEX OVERWRITE discovery_item_request_number ON discovery_item
 DEFINE TABLE IF NOT EXISTS disclosure SCHEMAFULL PERMISSIONS NONE;
 DEFINE FIELD OVERWRITE entity_id ON disclosure TYPE option<record<entity>>;
 DEFINE FIELD OVERWRITE project_id ON disclosure TYPE option<record<project>>;
--- The Postgres table carried no CHECK on `kind`, and this one carries no
--- ASSERT: the conflict graph reads two kinds (`conflict`,
--- `related_party`) but the table records any formal disclosure the firm
--- makes, and a closed list here would block recording a real one.
+-- The conflict graph reads two kinds (`conflict`, `related_party`), but the
+-- table records any formal disclosure the firm makes, and a closed list
+-- here would block recording a real one.
 DEFINE FIELD OVERWRITE kind ON disclosure TYPE string;
 DEFINE FIELD OVERWRITE summary ON disclosure TYPE string;
 DEFINE FIELD OVERWRITE inserted_at ON disclosure TYPE datetime DEFAULT time::now();
@@ -1370,8 +1295,8 @@ DEFINE INDEX OVERWRITE communication_project_occurred ON communication
 -- Idempotent ingest: a re-delivered email or re-ingested source cannot
 -- duplicate. An absent `source_ref` does NOT collide — many rows may carry
 -- NONE under one unique index — so a channel with no external id (a
--- document comment) stays unrestricted, exactly as the Postgres index
--- behaved. `store::communications::ingest` covers both halves.
+-- document comment) stays unrestricted. `store::communications::ingest`
+-- covers both halves.
 DEFINE INDEX OVERWRITE communication_channel_source_ref ON communication
     FIELDS channel, source_ref UNIQUE;
 
@@ -1389,9 +1314,8 @@ DEFINE FIELD OVERWRITE person_id ON email_conversation TYPE option<record<person
 DEFINE FIELD OVERWRITE subject ON email_conversation TYPE string;
 DEFINE FIELD OVERWRITE status ON email_conversation TYPE string DEFAULT 'open'
     ASSERT $value IN ['open', 'awaiting_lawyer', 'awaiting_client', 'closed'];
--- Now a real link: `notations` and this table are both SurrealDB tables
--- since wave six, so the thread-to-matter join is enforced rather than an
--- unenforced cross-engine id.
+-- `notation_id` is a typed link to the Notation that owns the workflow
+-- thread; the command seam still resolves the row before writing.
 DEFINE FIELD OVERWRITE notation_id ON email_conversation TYPE option<record<notation>>;
 DEFINE FIELD OVERWRITE inserted_at ON email_conversation TYPE datetime DEFAULT time::now();
 DEFINE FIELD OVERWRITE updated_at ON email_conversation TYPE datetime DEFAULT time::now();

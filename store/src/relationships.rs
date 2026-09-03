@@ -31,6 +31,8 @@ use uuid::Uuid;
 use crate::surreal::{record_id, record_uuid, retry, SurrealDb};
 
 const TABLE: &str = "relationship";
+const DISCLOSURE_TABLE: &str = "disclosure";
+const RELATIONSHIP_LOG_TABLE: &str = "relationship_log";
 
 /// Relationship kind: one node is legally adverse to the other. The
 /// strongest conflict signal — a confident `adverse_to` edge between
@@ -94,8 +96,8 @@ pub struct Relationship {
     pub confidence_pct: i32,
     pub source_kind: String,
     /// The originating row — a Relationship Log for an LLM-parsed edge,
-    /// a Disclosure for a derived one. Polymorphic across two tables, so
-    /// it stays a bare id rather than a typed link.
+    /// a Disclosure for a derived one. The schema stores it as a typed
+    /// union link while the application-facing shape remains a UUID.
     pub source_id: Option<Uuid>,
     pub detail: Option<String>,
     pub inserted_at: DateTime<Utc>,
@@ -123,7 +125,7 @@ struct RelationshipRow {
     kind: String,
     confidence_pct: i32,
     source_kind: String,
-    source_id: Option<Uuid>,
+    source_id: Option<surrealdb::types::RecordId>,
     detail: Option<String>,
     inserted_at: surrealdb::types::Datetime,
     updated_at: surrealdb::types::Datetime,
@@ -139,7 +141,7 @@ impl RelationshipRow {
             kind: self.kind,
             confidence_pct: self.confidence_pct,
             source_kind: self.source_kind,
-            source_id: self.source_id,
+            source_id: self.source_id.as_ref().and_then(record_uuid),
             detail: self.detail,
             inserted_at: self.inserted_at.into(),
             updated_at: self.updated_at.into(),
@@ -184,7 +186,17 @@ pub async fn record(
         .bind(("kind", input.kind.clone()))
         .bind(("confidence_pct", input.confidence_pct))
         .bind(("source_kind", input.source_kind.clone()))
-        .bind(("source_id", input.source_id))
+        .bind((
+            "source_id",
+            input.source_id.map(|id| {
+                let table = if input.source_kind == SOURCE_DISCLOSURE {
+                    DISCLOSURE_TABLE
+                } else {
+                    RELATIONSHIP_LOG_TABLE
+                };
+                record_id(table, id)
+            }),
+        ))
         .bind(("detail", input.detail.clone()))
     })
     .await?;

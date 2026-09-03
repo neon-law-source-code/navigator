@@ -28,9 +28,11 @@ pub struct Doc {
     /// Page title, taken from the doc's leading `# ` heading (falls
     /// back to the slug when the file has none).
     pub title: String,
-    /// Rendered HTML body (NOT raw markdown). Internal `*.md` links are
-    /// rewritten to `/docs/*` routes and headings carry GitHub-style
-    /// anchor ids so in-page `#anchor` links resolve.
+    /// Rendered HTML body (NOT raw markdown). Sibling `*.md` links are
+    /// rewritten to `/docs/*` routes, repo-relative `../` links become
+    /// GitHub source URLs, off-site anchors carry the up-right arrow,
+    /// and headings carry GitHub-style anchor ids so in-page `#anchor`
+    /// links resolve.
     pub body_html: String,
 }
 

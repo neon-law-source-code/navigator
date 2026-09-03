@@ -258,7 +258,16 @@ struct PersonRow {
     xero_contact_id: Option<String>,
     profile_image_url: Option<String>,
     linkedin_url: Option<String>,
-    email_confirmed: bool,
+    /// `Option` even though the schema types it `bool DEFAULT false`, and the
+    /// public [`Person`] carries a plain `bool`. `DEFAULT` is a write-time
+    /// default: it supplies a value for rows written after the field was
+    /// defined and does not reach rows written before it, which hold no value
+    /// at all. Reading those as a bare `bool` fails with `Expected bool, got
+    /// none`, and this read sits on a boot path, so it crash-looped every
+    /// deployment holding person rows older than the field while every test
+    /// (fresh engine, every row current) stayed green. [`into_person`] collapses
+    /// the absent case to `false`, which is what the default would have written.
+    email_confirmed: Option<bool>,
     inserted_at: surrealdb::types::Datetime,
     updated_at: surrealdb::types::Datetime,
 }
@@ -284,7 +293,7 @@ impl PersonRow {
             xero_contact_id: self.xero_contact_id,
             profile_image_url: self.profile_image_url,
             linkedin_url: self.linkedin_url,
-            email_confirmed: self.email_confirmed,
+            email_confirmed: self.email_confirmed.unwrap_or_default(),
             inserted_at: self.inserted_at.into(),
             updated_at: self.updated_at.into(),
         })
@@ -2258,6 +2267,46 @@ mod tests {
             .await
             .unwrap()
             .is_none());
+    }
+
+    #[tokio::test]
+    async fn reads_a_person_row_written_before_email_confirmed_was_defined() {
+        let db = mem().await;
+
+        // The faithful reproduction of a historical row, and the only one: drop
+        // the definition, write the row, put the definition back. Every other
+        // route writes the field, because `CREATE` leaves it to the schema
+        // `DEFAULT` and that default fires on any write the definition can see.
+        //
+        // This is what the deployments hold. `DEFAULT` is a write-time default,
+        // so re-defining the field converges the *definition* and leaves this
+        // row's absent value absent. A bare `bool` on the row struct fails here
+        // with `Expected bool, got none`, on a boot path, which is why a green
+        // suite of fresh-engine tests said nothing about it.
+        db.query("REMOVE FIELD email_confirmed ON person")
+            .await
+            .unwrap();
+        let row = person(&db, "Ada", "ada@example.com").await;
+        db.query("DEFINE FIELD OVERWRITE email_confirmed ON person TYPE bool DEFAULT false")
+            .await
+            .unwrap();
+
+        assert!(
+            !find_by_id(&db, row.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .email_confirmed,
+            "an absent value reads as the default the schema would have written"
+        );
+
+        // And the row is still writable afterwards, so a backfill is a cleanup
+        // rather than the thing standing between the deployment and a boot.
+        let confirmed = set_email_confirmed(&db, row.id, true)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(confirmed.email_confirmed);
     }
 
     #[tokio::test]

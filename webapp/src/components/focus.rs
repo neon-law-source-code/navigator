@@ -245,11 +245,15 @@ pub fn ChoiceGroup(
     };
 
     rsx! {
+        // No `aria-required` here: WAI-ARIA doesn't allow it on the fieldset's
+        // implicit `group` role (axe's `aria-allowed-attr`, WCAG A). Each radio
+        // already carries the native `required` below, which is how the
+        // browser and assistive tech learn "one of these" for a single-select
+        // group.
         fieldset {
             class: "{group_class}",
             "aria-describedby": described_by,
             "aria-invalid": has_error.then_some("true"),
-            "aria-required": required.then_some("true"),
             legend { class: "{legend_class}",
                 {legend}
                 if required {

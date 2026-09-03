@@ -32,7 +32,7 @@ use crate::surreal::SurrealDb;
 /// The version this build of Navigator applies. Bump it whenever
 /// `navigator.surql` changes so a database prepared by another build
 /// reports as drifted instead of silently disagreeing.
-pub const SCHEMA_VERSION: u32 = 21;
+pub const SCHEMA_VERSION: u32 = 22;
 
 /// The table holding the applied version.
 const VERSION_TABLE: &str = "schema_version";
@@ -221,8 +221,8 @@ pub async fn state(db: &SurrealDb) -> Result<SchemaState, SchemaError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        apply, installed_version, state, table_names, SchemaState, DEFINITIONS, SCHEMA_VERSION,
-        VERSION_RECORD,
+        apply, installed_version, introspect, state, table_names, SchemaState, DEFINITIONS,
+        SCHEMA_VERSION, VERSION_RECORD,
     };
     use crate::surreal::test_support::unmigrated;
 
@@ -250,6 +250,31 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[tokio::test]
+    async fn answer_notation_id_is_a_nullable_notation_link() {
+        let db = unmigrated().await;
+        apply(&db).await.unwrap();
+
+        let fields = introspect(&db).await.unwrap();
+        let notation_id = &fields["answer"].fields["notation_id"];
+        assert!(notation_id.contains("record<notation>"), "{notation_id}");
+        assert!(!notation_id.contains("uuid"), "{notation_id}");
+    }
+
+    #[tokio::test]
+    async fn relationship_source_id_is_a_nullable_union_link() {
+        let db = unmigrated().await;
+        apply(&db).await.unwrap();
+
+        let fields = introspect(&db).await.unwrap();
+        let source_id = &fields["relationship"].fields["source_id"];
+        assert!(
+            source_id.contains("record<relationship_log | disclosure>"),
+            "{source_id}"
+        );
+        assert!(!source_id.contains("uuid"), "{source_id}");
     }
 
     #[test]

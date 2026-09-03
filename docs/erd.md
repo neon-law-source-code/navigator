@@ -97,7 +97,7 @@ erDiagram
         record id PK
         option_record_person authored_by_person_id FK
         datetime inserted_at
-        option_uuid notation_id
+        option_record_notation notation_id FK
         record_person person_id FK
         record_question question_id FK
         string source
@@ -575,7 +575,7 @@ erDiagram
         datetime inserted_at
         string kind
         record_person_entity out FK
-        option_uuid source_id
+        option_record_relationship_log_disclosure source_id FK
         string source_kind
         datetime updated_at
     }
@@ -705,6 +705,7 @@ erDiagram
     entity ||--o{ address : "entity_id"
     person ||--o{ address : "person_id"
     person ||--o{ answer : "authored_by_person_id"
+    notation ||--o{ answer : "notation_id"
     person ||--o{ answer : "person_id"
     question ||--o{ answer : "question_id"
     project ||--o{ asset : "project_id"
@@ -777,6 +778,8 @@ erDiagram
     entity ||--o{ relationship : "in"
     person ||--o{ relationship : "out"
     entity ||--o{ relationship : "out"
+    relationship_log ||--o{ relationship : "source_id"
+    disclosure ||--o{ relationship : "source_id"
     person ||--o{ relationship_log : "actor_person_id"
     notation ||--o{ review_document : "notation_id"
     notation ||--o{ signature : "notation_id"

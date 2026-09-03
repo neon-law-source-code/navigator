@@ -63,6 +63,8 @@ const TABLE: &str = "answer";
 const QUESTION_TABLE: &str = "question";
 /// The table [`Answer::person_id`] addresses.
 const PERSON_TABLE: &str = "person";
+/// The table [`Answer::notation_id`] addresses.
+const NOTATION_TABLE: &str = "notation";
 
 /// `answers.source` — lawyer entered the answer on the client's behalf.
 pub const SOURCE_LAWYER: &str = "lawyer";
@@ -139,7 +141,7 @@ struct AnswerRow {
     id: surrealdb::types::RecordId,
     question_id: surrealdb::types::RecordId,
     person_id: surrealdb::types::RecordId,
-    notation_id: Option<Uuid>,
+    notation_id: Option<surrealdb::types::RecordId>,
     state_name: Option<String>,
     value: Json,
     source: String,
@@ -156,7 +158,7 @@ impl AnswerRow {
             id: record_uuid(&self.id)?,
             question_id: record_uuid(&self.question_id)?,
             person_id: record_uuid(&self.person_id)?,
-            notation_id: self.notation_id,
+            notation_id: self.notation_id.as_ref().and_then(record_uuid),
             state_name: self.state_name,
             value: self.value,
             source: self.source,
@@ -287,7 +289,10 @@ pub async fn record(db: &SurrealDb, new: &NewAnswer) -> Result<Answer, AnswerErr
         .bind(("id", record_id(TABLE, id)))
         .bind(("question_id", record_id(QUESTION_TABLE, new.question_id)))
         .bind(("person_id", record_id(PERSON_TABLE, new.person_id)))
-        .bind(("notation_id", new.notation_id))
+        .bind((
+            "notation_id",
+            new.notation_id.map(|id| record_id(NOTATION_TABLE, id)),
+        ))
         .bind(("state_name", new.state_name.clone()))
         .bind(("value", new.value.clone()))
         .bind(("source", new.source.clone()))
@@ -333,7 +338,7 @@ pub async fn latest_for_state(
         .bind(("question_id", record_id(QUESTION_TABLE, question_id)))
         .bind(("state_name", state_name.to_string()))
         .bind(("person_id", record_id(PERSON_TABLE, person_id)))
-        .bind(("notation_id", notation_id))
+        .bind(("notation_id", record_id(NOTATION_TABLE, notation_id)))
         .await
         .and_then(surrealdb::IndexedResults::check)?;
     one(response)
@@ -351,7 +356,7 @@ pub async fn for_notation(db: &SurrealDb, notation_id: Uuid) -> Result<Vec<Answe
         .query(format!(
             "SELECT {SELECT} FROM {TABLE} WHERE notation_id = $notation_id ORDER BY id ASC"
         ))
-        .bind(("notation_id", notation_id))
+        .bind(("notation_id", record_id(NOTATION_TABLE, notation_id)))
         .await
         .and_then(surrealdb::IndexedResults::check)?;
     many(response)
@@ -376,7 +381,7 @@ pub async fn for_person_in_notation(
              ORDER BY id ASC"
         ))
         .bind(("person_id", record_id(PERSON_TABLE, person_id)))
-        .bind(("notation_id", notation_id))
+        .bind(("notation_id", record_id(NOTATION_TABLE, notation_id)))
         .await
         .and_then(surrealdb::IndexedResults::check)?;
     many(response)
@@ -451,7 +456,7 @@ pub async fn exists_for_state(
             "SELECT {SELECT} FROM ONLY {TABLE} \
              WHERE notation_id = $notation_id AND state_name = $state_name LIMIT 1"
         ))
-        .bind(("notation_id", notation_id))
+        .bind(("notation_id", record_id(NOTATION_TABLE, notation_id)))
         .bind(("state_name", state_name.to_string()))
         .await
         .and_then(surrealdb::IndexedResults::check)?;

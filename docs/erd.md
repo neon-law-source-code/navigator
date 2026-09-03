@@ -531,6 +531,7 @@ erDiagram
     }
     project {
         record id PK
+        string brand
         option_string closed_at
         string code
         option_string description

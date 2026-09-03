@@ -2368,7 +2368,7 @@ pub fn document_with_base(base: &str) -> Value {
           },
           "Project": {
             "type": "object",
-            "required": ["id", "code", "name", "status", "entity_id",
+            "required": ["id", "code", "name", "status", "brand", "entity_id",
                          "inserted_at", "updated_at"],
             "properties": {
               "id":                 { "type": "string", "format": "uuid" },
@@ -2377,6 +2377,8 @@ pub fn document_with_base(base: &str) -> Value {
               "name":               { "type": "string" },
               "status":             { "type": "string",
                                       "description": "`open`, `closed`, or `archived`." },
+              "brand":              { "type": "string",
+                                      "description": "Which house brand's storefront this matter was opened through — `neon` or `delete-your-data` today. Written by the server from the resolved request host at matter-open; never accepted from a client-submitted field." },
               "entity_id":          { "type": "string", "format": "uuid" },
               "description":        { "type": ["string", "null"] },
               "git_initialized_at": { "type": ["string", "null"] },

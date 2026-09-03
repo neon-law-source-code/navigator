@@ -229,6 +229,7 @@ mod tests {
                 client_id: client.id,
                 entity_id,
                 description: None,
+                brand: "neon".to_string(),
                 attestation: true,
                 acting_person_id: lawyer.id,
             },

@@ -999,6 +999,15 @@ change it is refused by the engine itself, not only by the absence of a handler 
 carries no `code` field at all. There is no rename path, and none is planned: the refusal is a rule with a reason, not
 an absence waiting to be filled in.
 
+**`brand` records which house [Brand](#brand)'s storefront the client came through.** A closed key from
+[`views::brand::BrandKey`](../views/src/brand.rs) (`neon`, `delete-your-data`), `NOT NULL`, `DEFAULT 'neon'` for a row
+written before the field existed. Written by the server from the request's resolved `Host:` header at matter-open —
+`store::projects::open_matter` (the lawyer form, the CLI, the JSON API) and the self-serve retainer walk both set it
+this way — and never accepted from a client-submitted form or JSON field; `UpdateProjectCommand` carries no `brand`
+field, so it cannot be changed after open, the same immutability `code` has. `store` does not depend on `views`, so
+`Project::brand` is a plain validated `String`; the SurrealDB schema's `ASSERT` is the single source of truth for which
+values are valid, not a shared Rust enum.
+
 Object-storage artifacts (rendered PDFs, signed documents, generated exports) live in
 `gs://YOUR_PROJECT_ID-assets/projects/{id}/` for machine reads, and the nightly store→Parquet snapshots are immutable
 objects in GCS — so deleting a Project's database rows never deletes its archives.

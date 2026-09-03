@@ -249,6 +249,7 @@ pub async fn start_post(
             ),
             name: format!("(pending) {client_email}"),
             status: "open".into(),
+            brand: views::brand::brand_key().as_str().to_string(),
             entity_id,
             ..Default::default()
         },

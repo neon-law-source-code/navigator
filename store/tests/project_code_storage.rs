@@ -49,6 +49,7 @@ fn command(
         client_id,
         entity_id,
         description: None,
+        brand: "neon".to_string(),
         attestation: true,
         acting_person_id,
     }

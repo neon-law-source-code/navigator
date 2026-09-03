@@ -100,6 +100,9 @@ pub async fn create(
             client_id: client.id,
             entity_id,
             description: None,
+            // The CLI runs firm-side with no per-request host to resolve; it
+            // always opens against the firm's own default brand.
+            brand: "neon".to_string(),
             attestation: attest,
             acting_person_id: attester,
         },
@@ -126,4 +129,116 @@ pub async fn create(
         status: created.status,
         entity_id: created.entity_id,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::create;
+    use store::entities::NewEntity;
+    use store::persons::{NewPerson, Role};
+    use store::test_support::{mem_surreal, SEED_ENTITY_JURISDICTION_ID, SEED_ENTITY_TYPE_ID};
+
+    /// `cli project create` is the third adapter (alongside the web form and
+    /// `POST /app/api/projects`) onto the shared `store::projects::open_matter`
+    /// command. It resolves the human-facing `--entity-name` and
+    /// `--client-email` flags to ids, the firm principal to the attester, and
+    /// always opens against the firm's own default brand — there is no
+    /// per-request host to resolve outside a browser, so `neon` is not a
+    /// narrowing, it is the only value that makes sense here.
+    #[tokio::test]
+    async fn create_opens_a_matter_against_the_firms_default_brand() {
+        let db = mem_surreal().await;
+        let entity = store::entities::create(
+            &db,
+            &NewEntity {
+                name: "Acme Anchor".to_string(),
+                entity_type_id: SEED_ENTITY_TYPE_ID,
+                jurisdiction_id: SEED_ENTITY_JURISDICTION_ID,
+                phone: None,
+                url: None,
+                firm_anchor_key: None,
+            },
+        )
+        .await
+        .unwrap();
+        store::persons::create(
+            &db,
+            &NewPerson::with_role("Firm Lawyer", "lawyer@example.com", Role::Lawyer),
+        )
+        .await
+        .unwrap();
+        let client = store::persons::create(
+            &db,
+            &NewPerson::with_role("Client of Record", "client@example.com", Role::Client),
+        )
+        .await
+        .unwrap();
+
+        let created = create(
+            &db,
+            "CLI-opened matter",
+            "cli-opened-matter",
+            Some(&entity.name),
+            &client.email,
+            true,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(created.code, "cli-opened-matter");
+        assert_eq!(created.status, "open");
+        let stored = store::projects::find_by_id(&db, created.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            stored.brand, "neon",
+            "the CLI door always opens against the firm's own default brand"
+        );
+    }
+
+    /// The client-of-record check is the CLI's own friendlier error over the
+    /// same refusal `open_matter` enforces — a firm attorney can never stand
+    /// in as their own client.
+    #[tokio::test]
+    async fn create_refuses_a_non_client_of_record() {
+        let db = mem_surreal().await;
+        let entity = store::entities::create(
+            &db,
+            &NewEntity {
+                name: "Acme Anchor".to_string(),
+                entity_type_id: SEED_ENTITY_TYPE_ID,
+                jurisdiction_id: SEED_ENTITY_JURISDICTION_ID,
+                phone: None,
+                url: None,
+                firm_anchor_key: None,
+            },
+        )
+        .await
+        .unwrap();
+        store::persons::create(
+            &db,
+            &NewPerson::with_role("Firm Lawyer", "lawyer2@example.com", Role::Lawyer),
+        )
+        .await
+        .unwrap();
+        let lawyer_as_client = store::persons::create(
+            &db,
+            &NewPerson::with_role("Not A Client", "not-a-client@example.com", Role::Lawyer),
+        )
+        .await
+        .unwrap();
+
+        let err = create(
+            &db,
+            "Bad client matter",
+            "bad-client-matter",
+            Some(&entity.name),
+            &lawyer_as_client.email,
+            true,
+        )
+        .await
+        .unwrap_err();
+        assert!(format!("{err:#}").contains("must be a client person"));
+    }
 }

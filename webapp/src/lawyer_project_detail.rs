@@ -86,6 +86,10 @@ pub struct LawyerDetailView {
     pub code: String,
     pub name: String,
     pub status: String,
+    /// Which house brand's storefront this matter was opened through
+    /// (`store::projects::Project::brand`) — `"neon"` or
+    /// `"delete-your-data"` today.
+    pub brand: String,
     pub entity_id: Option<String>,
     pub entity_name: Option<String>,
     /// Everyone accountable on each side, by name. Empty on the lawyer side is
@@ -337,6 +341,7 @@ pub async fn get_lawyer_project_detail() -> Result<LawyerDetailView, ServerFnErr
         code: project.code,
         name: project.name,
         status: project.status,
+        brand: project.brand,
         entity_id,
         entity_name,
         lawyer_dris,
@@ -524,6 +529,7 @@ pub fn LawyerProjectDetail() -> Element {
                 p { class: "nav-muted",
                     "Code: " code { "{view.code}" }
                     " · Status: {view.status}"
+                    " · Brand: {view.brand}"
                     " · Entity: {entity_disp}"
                     if let Some(entity_id) = view.entity_id.as_ref() {
                         " · "

@@ -31,6 +31,14 @@ pub struct Project {
     pub code: String,
     pub name: String,
     pub status: String,
+    /// Which house brand's storefront this matter was opened through — a
+    /// closed key from `views::brand::BrandKey` (`"neon"`,
+    /// `"delete-your-data"`), written by the server from the resolved
+    /// request host and never accepted from a client-submitted form. `store`
+    /// does not depend on `views`, so this is a plain validated `String`
+    /// rather than the enum itself; the SurrealDB schema's `ASSERT` is the
+    /// single source of truth for which values are valid.
+    pub brand: String,
     pub entity_id: Uuid,
     pub description: Option<String>,
     pub drive_folder_id: Option<String>,
@@ -85,6 +93,13 @@ struct ProjectRow {
     code: String,
     name: String,
     status: String,
+    /// `Option` even though the schema types it `string DEFAULT 'neon'`, and
+    /// the public [`Project`] carries a plain `String`. `DEFAULT` is a
+    /// write-time default: it does not reach rows written before the field
+    /// was defined, which hold no value at all. [`ProjectRow::into_project`]
+    /// collapses the absent case to `"neon"`, what the default would have
+    /// written.
+    brand: Option<String>,
     entity_id: surrealdb::types::RecordId,
     description: Option<String>,
     drive_folder_id: Option<String>,
@@ -108,6 +123,7 @@ impl ProjectRow {
             code: self.code,
             name: self.name,
             status: self.status,
+            brand: self.brand.unwrap_or_else(|| "neon".to_string()),
             entity_id: record_uuid(&self.entity_id)?,
             description: self.description,
             drive_folder_id: self.drive_folder_id,
@@ -130,7 +146,7 @@ pub(crate) const PROJECT_TABLE: &str = "project";
 /// The entities cluster this table links into (ENG-120).
 const ENTITY_TABLE: &str = "entity";
 const PERSON_PROJECT_ROLE_TABLE: &str = "person_project_role";
-const PROJECT_SELECT: &str = "id, code, name, status, entity_id, description, \
+const PROJECT_SELECT: &str = "id, code, name, status, brand, entity_id, description, \
                               drive_folder_id, repository_url, git_initialized_at, \
                               forge_provisioned_at, closed_at, \
                               internal_slack_channel_url, external_slack_channel_url, \
@@ -194,13 +210,35 @@ where
 /// Inputs for creating a Project row. Command callers validate the
 /// `entity_id` before calling this function: the engine does not validate
 /// a `record<>` link, so a dangling one is accepted here and caught above.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct NewProject {
     pub code: String,
     pub name: String,
     pub status: String,
+    /// Which house brand's storefront this matter was opened through — see
+    /// [`Project::brand`]. Defaults to `"neon"` (below) rather than the
+    /// derived empty string, because the schema's `ASSERT` rejects an empty
+    /// value: the many internal and fixture callers that build a `NewProject`
+    /// with `..Default::default()` never touch this field, and `"neon"` is
+    /// the correct value for every one of them. A real client-intake open
+    /// (`portal::retainer_walk`) sets it explicitly from the resolved request
+    /// host instead.
+    pub brand: String,
     pub entity_id: Uuid,
     pub description: Option<String>,
+}
+
+impl Default for NewProject {
+    fn default() -> Self {
+        Self {
+            code: String::new(),
+            name: String::new(),
+            status: String::new(),
+            brand: "neon".to_string(),
+            entity_id: Uuid::nil(),
+            description: None,
+        }
+    }
 }
 
 /// One person's current participation on a Project.
@@ -791,6 +829,7 @@ pub async fn create(surreal: &SurrealDb, input: &NewProject) -> Result<Project, 
         surreal
             .query(format!(
                 "CREATE $id SET code = $code, name = $name, status = $status, \
+                 brand = $brand, \
                  entity_id = $entity_id, \
                  description = $description, inserted_at = $inserted_at, \
                  updated_at = $updated_at RETURN {PROJECT_SELECT}"
@@ -799,6 +838,7 @@ pub async fn create(surreal: &SurrealDb, input: &NewProject) -> Result<Project, 
             .bind(("code", input.code.clone()))
             .bind(("name", input.name.clone()))
             .bind(("status", input.status.clone()))
+            .bind(("brand", input.brand.clone()))
             .bind(("entity_id", record_id(ENTITY_TABLE, input.entity_id)))
             .bind(("description", input.description.clone()))
             .bind(("inserted_at", now.clone()))
@@ -870,6 +910,7 @@ pub async fn upsert_with_id(
         surreal
             .query(format!(
                 "UPSERT $id SET code = $code, name = $name, status = $status, \
+                 brand = $brand, \
                  entity_id = $entity_id, \
                  description = $description, \
                  inserted_at = IF inserted_at THEN inserted_at ELSE $inserted_at END, \
@@ -879,6 +920,7 @@ pub async fn upsert_with_id(
             .bind(("code", input.code.clone()))
             .bind(("name", input.name.clone()))
             .bind(("status", input.status.clone()))
+            .bind(("brand", input.brand.clone()))
             .bind(("entity_id", record_id(ENTITY_TABLE, input.entity_id)))
             .bind(("description", input.description.clone()))
             .bind(("inserted_at", now.clone()))
@@ -1849,6 +1891,13 @@ pub struct OpenMatterCommand {
     pub entity_id: Uuid,
     /// The matter's scope narrative.
     pub description: Option<String>,
+    /// Which house brand's storefront this matter was opened through — see
+    /// [`Project::brand`]. The caller resolves this from the request's
+    /// `Host:` header (or, for a door with no request — the CLI, an MCP
+    /// tool — the firm's own default brand); it is never read from form or
+    /// JSON input the caller deserialized, so a spoofed field cannot reach
+    /// here.
+    pub brand: String,
     /// The opening attorney's conflict attestation. Required on **every** open
     /// — at this firm `lawyer` is an attorney, so a lawyer/admin session opening
     /// a matter is an attorney attesting they have checked for and cleared
@@ -2038,6 +2087,7 @@ pub async fn open_matter(
             .query(format!(
                 r"BEGIN;
                  CREATE $project SET code = $code, name = $name, status = 'open',
+                    brand = $brand,
                     entity_id = $entity_id, description = $description,
                     inserted_at = $now, updated_at = $now RETURN {PROJECT_SELECT};
                  CREATE $lawyer_role SET person_id = $attester, project_id = $project, participation = 'attorney',
@@ -2051,6 +2101,7 @@ pub async fn open_matter(
             .bind(("client_role", record_id(PERSON_PROJECT_ROLE_TABLE, Uuid::now_v7())))
             .bind(("code", code.clone()))
             .bind(("name", name.to_string()))
+            .bind(("brand", input.brand.clone()))
             .bind(("entity_id", record_id(ENTITY_TABLE, input.entity_id)))
             .bind(("description", description.clone()))
             .bind(("attester", record_id("person", input.acting_person_id)))
@@ -2413,6 +2464,86 @@ mod surreal_read_tests {
         assert_eq!(project.id, id);
         assert_eq!(project.entity_id, entity_id);
         assert_eq!(project.code, "matter");
+    }
+
+    /// `brand` round-trips through `create` for every key the registry
+    /// serves today, and a row written with no explicit `brand` (`create`
+    /// always writes one via `NewProject::default()`, but a caller may pass
+    /// through that default) reads back as `"neon"` — see
+    /// [`reads_a_project_row_written_before_brand_was_defined`] for the
+    /// separate case of a row that predates the field entirely.
+    #[tokio::test]
+    async fn create_round_trips_brand_for_every_registered_key() {
+        let db = mem_surreal().await;
+        for (label, brand) in [
+            ("neon", "neon"),
+            ("delete-your-data", "delete-your-data"),
+            ("default", "neon"),
+        ] {
+            let entity_id = crate::test_support::seed_entity(&db).await;
+            let input = if label == "default" {
+                NewProject {
+                    code: format!("brand-{label}"),
+                    name: format!("Brand {label}"),
+                    status: "open".to_string(),
+                    entity_id,
+                    ..Default::default()
+                }
+            } else {
+                NewProject {
+                    code: format!("brand-{label}"),
+                    name: format!("Brand {label}"),
+                    status: "open".to_string(),
+                    brand: brand.to_string(),
+                    entity_id,
+                    description: None,
+                }
+            };
+            let created = create(&db, &input).await.unwrap();
+            assert_eq!(created.brand, brand, "{label}: create response");
+            let reloaded = find_by_id(&db, created.id).await.unwrap().unwrap();
+            assert_eq!(reloaded.brand, brand, "{label}: reread from the store");
+        }
+    }
+
+    /// The faithful reproduction of a historical row, mirroring
+    /// `persons::reads_a_person_row_written_before_email_confirmed_was_defined`:
+    /// drop the definition, write the row, put the definition back. `DEFAULT`
+    /// is a write-time default and does not reach this row's absent value, so
+    /// a bare `String` on `ProjectRow` would fail here with `Expected string,
+    /// got none` — on the same seeding-boot path `email_confirmed` crashed
+    /// staging in #331 — which is why `ProjectRow.brand` is `Option<String>`
+    /// and [`ProjectRow::into_project`] collapses the absent case to `"neon"`.
+    #[tokio::test]
+    async fn reads_a_project_row_written_before_brand_was_defined() {
+        let db = unmigrated().await;
+        apply(&db).await.unwrap();
+        db.query("REMOVE FIELD brand ON project").await.unwrap();
+        let id = uuid::Uuid::now_v7();
+        let entity_id = uuid::Uuid::now_v7();
+        db.query(
+            "CREATE $id SET code = 'pre-brand-matter', name = 'Pre-Brand Matter', \
+             status = 'open', entity_id = $entity_id, \
+             inserted_at = '2026-08-25T00:00:00Z', updated_at = '2026-08-25T00:00:00Z'",
+        )
+        .bind(("id", crate::surreal::record_id("project", id)))
+        .bind(("entity_id", record_id(ENTITY_TABLE, entity_id)))
+        .await
+        .unwrap()
+        .check()
+        .unwrap();
+        db.query(
+            "DEFINE FIELD OVERWRITE brand ON project TYPE string \
+             ASSERT $value IN ['neon', 'delete-your-data'] DEFAULT 'neon'",
+        )
+        .await
+        .unwrap();
+
+        let project = find_by_id(&db, id).await.unwrap().unwrap();
+        assert_eq!(
+            project.brand, "neon",
+            "an absent value reads as the default the schema would have written"
+        );
     }
 
     /// A repository URL may name any forge, in any organization.

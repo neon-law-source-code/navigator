@@ -3,19 +3,19 @@
 //!
 //! `docs/` publishes at `/docs/:slug`, so a link the renderer can't
 //! rewrite becomes a dead link on the site. The docs renderer
-//! ([`portal::docs::loader::rewrite_link`]) only rewrites a sibling
-//! `name.md` to `/docs/name` and leaves everything with a path
-//! component verbatim, so a relative link into a non-markdown repo file
-//! (`../store/foo.rs`, `../k8s/policy.yaml`) has no page on the website.
+//! ([`portal::docs::loader::rewrite_link`]) maps a sibling `name.md` to
+//! `/docs/name` and a single `../` repo path (from `docs/`) to a GitHub
+//! blob or tree URL. A relative link that is neither — a same-directory
+//! `foo.rs`, or `../../` climbing out of the repository — has no page
+//! on the website.
+//!
 //! Sibling and cross-tree `.md` links stay allowed (they still open in
 //! an editor); an absolute `https://…` canonical URL is the escape
 //! hatch for a genuine off-tree reference.
 //!
-//! Warning-severity: the docs tree carries many code-file links today,
-//! so this surfaces them for cleanup without failing the gate. Its
-//! sibling [`crate::M057RelativeLinkResolves`] is the disk-resolution
-//! half (an error — a broken path is a bug). Both check inline links
-//! only; image embeds route through the asset seam.
+//! Warning-severity: its sibling [`crate::M057RelativeLinkResolves`] is
+//! the disk-resolution half (an error — a broken path is a bug). Both
+//! check inline links only; image embeds route through the asset seam.
 
 use std::path::{Component, Path};
 
@@ -51,11 +51,13 @@ impl Rule for M061WebPortableLink {
                 // A sibling or cross-tree `.md` link stays allowed: it
                 // opens the file in an editor, and the docs renderer
                 // rewrites a sibling `name.md` to its `/docs/name`
-                // route. Only a link into a non-markdown repo file
-                // (source code, manifests) has no page on the website.
+                // route. A single `../` from `docs/` is rewritten to a
+                // GitHub source URL. Only a relative path the renderer
+                // cannot map has no page on the website.
                 if Path::new(file_part)
                     .extension()
                     .is_some_and(|e| e.eq_ignore_ascii_case("md"))
+                    || docs_renderer_rewrites(file_part)
                 {
                     continue;
                 }
@@ -66,14 +68,24 @@ impl Rule for M061WebPortableLink {
                     range: line_byte_range(&file.contents, line_no),
                     message: format!(
                         "Relative link `{target}` renders verbatim on the website \
-                         (docs publish at `/docs/:slug`) and would 404; use an absolute \
-                         `https://www.neonlaw.com/docs/…` URL or drop the link"
+                         (docs publish at `/docs/:slug`) and would 404; point it \
+                         at a published `/docs/…` page, a `../` repo path the \
+                         renderer can map to GitHub, or drop the link"
                     ),
                 });
             }
         }
         violations
     }
+}
+
+/// True when `file_part` is a single `../` climb from `docs/` — the
+/// renderer maps that onto Navigator's GitHub tree. `../../` leaves the
+/// repository and still 404s on the site.
+fn docs_renderer_rewrites(file_part: &str) -> bool {
+    file_part
+        .strip_prefix("../")
+        .is_some_and(|rest| !rest.is_empty() && !rest.starts_with("../") && !rest.starts_with('/'))
 }
 
 /// True when `path` is markdown that renders on the public website —
@@ -100,12 +112,31 @@ mod tests {
     }
 
     #[test]
-    fn flags_a_code_file_link_in_docs() {
-        let body = "The entity lives in [expunge_record.rs](../store/src/expunge_record.rs).\n";
+    fn flags_a_same_directory_code_file_link_in_docs() {
+        let body = "The entity lives in [expunge_record.rs](expunge_record.rs).\n";
         let v = M061WebPortableLink.lint(&source("docs/glossary.md", body));
         assert_eq!(v.len(), 1, "{v:?}");
         assert_eq!(v[0].code, "M061");
         assert!(v[0].message.contains("expunge_record.rs"));
+    }
+
+    #[test]
+    fn allows_a_repo_relative_source_link_the_renderer_maps_to_github() {
+        let body = "Schema: [navigator.surql](../store/src/schema/navigator.surql).\n";
+        assert!(
+            M061WebPortableLink
+                .lint(&source("docs/glossary.md", body))
+                .is_empty(),
+            "`../` from docs/ is rewritten to GitHub"
+        );
+        let climbing = "See [outside](../../outside.rs).\n";
+        assert_eq!(
+            M061WebPortableLink
+                .lint(&source("docs/glossary.md", climbing))
+                .len(),
+            1,
+            "`../../` climbs out of the repository and still 404s"
+        );
     }
 
     #[test]
@@ -132,9 +163,9 @@ mod tests {
 
     #[test]
     fn only_fires_on_web_published_docs() {
-        // The same code-file link outside `docs/` is not M061's concern
-        // — only the docs tree renders at /docs/:slug.
-        let body = "Impl in [foo](../store/src/foo.rs).\n";
+        // The same unrewritable code-file link outside `docs/` is not
+        // M061's concern — only the docs tree renders at /docs/:slug.
+        let body = "Impl in [foo](foo.rs).\n";
         assert!(
             M061WebPortableLink
                 .lint(&source("cli/README.md", body))

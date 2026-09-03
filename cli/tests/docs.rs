@@ -37,6 +37,34 @@ fn docs_list_includes_opted_in_docs_and_glossary_term_pages() {
 }
 
 #[test]
+fn docs_list_glossary_terms_match_the_published_page() {
+    let terms = store::glossary::parse(store::glossary::GLOSSARY_MD);
+    let out = Command::new(cargo_bin("navigator"))
+        .args(["dev", "docs", "list"])
+        .output()
+        .expect("run navigator dev docs list");
+    assert!(out.status.success(), "exit status: {:?}", out.status);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout
+            .lines()
+            .any(|line| line == "/docs/glossary\tGlossary"),
+        "CLI list must include the published /docs/glossary page, got: {stdout}"
+    );
+    for term in &terms {
+        let line = format!(
+            "/docs/glossary#{slug}\tGlossary: {title}",
+            slug = term.slug,
+            title = term.title
+        );
+        assert!(
+            stdout.contains(&line),
+            "CLI list missing published glossary term `{line}`"
+        );
+    }
+}
+
+#[test]
 fn docs_glossary_with_known_term_prints_just_that_term() {
     let out = Command::new(cargo_bin("navigator"))
         .args(["dev", "docs", "glossary", "Lawyer Review"])

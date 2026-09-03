@@ -9,9 +9,9 @@ The vocabulary used across the Neon Law Navigator workspace. Most of these nouns
 straight from term to schema.
 
 This glossary is a single alphabetical list. The notation-system vocabulary (Template, Notation, Questionnaire,
-Question, Answer, Rule) lives in its own teaching-ordered doc, [`notation.md`](notation.md).
+Question, Answer, Rule) lives in its own teaching-ordered doc, [`notation`](notation.md).
 
-For task-oriented navigation, start at [`index.md`](index.md). Its glossary quick links map the most common terms to the
+For task-oriented navigation, start at [`index`](index.md). Its glossary quick links map the most common terms to the
 docs that explain how those terms behave in code, operations, and workflows.
 
 ---
@@ -62,7 +62,7 @@ herself is the namespace.
 
 The workflow prefix `analysis` is a system wait state for review-in matters: the web app performs the contract analysis,
 persists the findings, and signals the workflow when `analysis_ready` is available. See
-[`notation-authoring.md`](notation-authoring.md#changing-the-workflow-composition) and
+[`notation-authoring`](notation-authoring.md#changing-the-workflow-composition) and
 [`workflows::step::STEP_PREFIXES`](../workflows/src/step.rs).
 
 ## Asset
@@ -136,7 +136,7 @@ strings, nav links, and footer attribution a page renders for whichever `Brandin
 by a mounted `BrandManifest` for the `neon` key alone. `BrandKey` names *which identity a request resolved to*, `Site`
 names *the serving binary's own composition*, and `SiteBrand` names *what the page says*.
 
-- Deployment map: [`environments.md`](environments.md#why-the-brand-is-the-image)
+- Deployment map: [`environments`](environments.md#why-the-brand-is-the-image)
 
 ## Brand Seed
 
@@ -167,13 +167,13 @@ everywhere" reads as correct in any test that merely counts rows, and why the la
 
 The workflow prefix `certified_mail` records a lawyer-driven outbound certified-mail submission. It is an outbound
 submission step and must sit behind [Lawyer Review](#lawyer-review). See
-[`notation-authoring.md`](notation-authoring.md#changing-the-workflow-composition) and
+[`notation-authoring`](notation-authoring.md#changing-the-workflow-composition) and
 [`workflows::step::STEP_PREFIXES`](../workflows/src/step.rs).
 
 ## Client Review
 
 The workflow prefix `client_review` lets the respondent review and approve attorney-approved drafts before a later
-signature or closing step. See [`notation-authoring.md`](notation-authoring.md#changing-the-workflow-composition) and
+signature or closing step. See [`notation-authoring`](notation-authoring.md#changing-the-workflow-composition) and
 [`workflows::step::STEP_PREFIXES`](../workflows/src/step.rs).
 
 ## Conflict-Check Graph
@@ -204,11 +204,11 @@ throwaway one.
 A check anchors on the proposed client and entity and surfaces every distinct firm-served party it reaches. It reads
 **across matters, unscoped**, because imputed conflicts under Model Rule 1.10 live on other people's matters; the
 containment is that only firm-side create paths call it (see
-[`access-model.md`](access-model.md#where-surrealdb-authorization-lives)). Findings are **advisory to clear,
-authoritative to block**: a confident, direct `adverse_to` link to a current client hard-stops the open; softer
-entanglements (a shared entity, a recorded [Disclosure](#disclosure)) are flagged for authorized lawyers to acknowledge
-— recorded to the [Relationship Log](#relationship-log) when they do. The graph can *raise* a conflict; only a person
-can *clear* one, because it is never assumed complete.
+[`access-model`](access-model.md#where-surrealdb-authorization-lives)). Findings are **advisory to clear, authoritative
+to block**: a confident, direct `adverse_to` link to a current client hard-stops the open; softer entanglements (a
+shared entity, a recorded [Disclosure](#disclosure)) are flagged for authorized lawyers to acknowledge — recorded to the
+[Relationship Log](#relationship-log) when they do. The graph can *raise* a conflict; only a person can *clear* one,
+because it is never assumed complete.
 
 It runs on every create path (portal, [AIDA](#aida) MCP tool, CLI); the non-interactive paths have no acknowledgment
 seam, so any finding refuses the open and routes lawyer to the portal.
@@ -232,7 +232,7 @@ Neon Law Navigator runs three, the same shape with a different bench:
 The Legal Council is **a council of [counsels](#counsel)** — a council (the group) whose members are counsels (the
 attorneys). Both spellings are load-bearing; see [Counsel](#counsel).
 
-See [`agent-decision-councils.md`](agent-decision-councils.md) for the shared protocol.
+See [`agent-decision-councils`](agent-decision-councils.md) for the shared protocol.
 
 ## Counsel
 
@@ -248,7 +248,7 @@ One assessment of whether an [Inquiry](#inquiry) has been answered during a Live
 model-authored or lawyer-authored, and it cites transcript evidence; it is not a confirmed [Answer](notation.md#answer)
 until a lawyer turns it into one.
 
-- Design: [`live-inquiry-coverage.md`](live-inquiry-coverage.md)
+- Design: [`live-inquiry-coverage`](live-inquiry-coverage.md)
 
 ## Credential
 
@@ -491,7 +491,7 @@ file as `unclassified`.
 
 The workflow prefix `document_drafts` is a system wait state for web-rendered review-document rows, used by workflows
 that generate multiple client-reviewable instruments. See
-[`notation-authoring.md`](notation-authoring.md#changing-the-workflow-composition) and
+[`notation-authoring`](notation-authoring.md#changing-the-workflow-composition) and
 [`workflows::step::STEP_PREFIXES`](../workflows/src/step.rs).
 
 ## Document Identity
@@ -515,13 +515,13 @@ change and every Notation pins a template row.
 
 The workflow prefix `document_intake` files an inbound artifact, such as a transcript or executed PDF, into the matter
 through the shared document-ingestion path. See
-[`notation-authoring.md`](notation-authoring.md#changing-the-workflow-composition) and
+[`notation-authoring`](notation-authoring.md#changing-the-workflow-composition) and
 [`workflows::step::STEP_PREFIXES`](../workflows/src/step.rs).
 
 ## Document Open
 
 The workflow prefix `generate_pdf` renders a template body into a Blob-backed document for the Project. See
-[`notation-authoring.md`](notation-authoring.md#changing-the-workflow-composition) and
+[`notation-authoring`](notation-authoring.md#changing-the-workflow-composition) and
 [`workflows::step::STEP_PREFIXES`](../workflows/src/step.rs).
 
 ## Durable execution
@@ -535,13 +535,13 @@ terminal state even if the worker crashes mid-flight. [Restate](#restate) provid
 
 The workflow prefix `e_filing` records an electronic government filing. It is an outbound submission step and must sit
 behind [Lawyer Review](#lawyer-review). See
-[`notation-authoring.md`](notation-authoring.md#changing-the-workflow-composition) and
+[`notation-authoring`](notation-authoring.md#changing-the-workflow-composition) and
 [`workflows::step::STEP_PREFIXES`](../workflows/src/step.rs).
 
 ## Email Send
 
 The workflow prefix `email_send` renders and sends a bundled outbound email template through the configured email
-service. See [`notation-authoring.md`](notation-authoring.md#changing-the-workflow-composition) and
+service. See [`notation-authoring`](notation-authoring.md#changing-the-workflow-composition) and
 [`workflows::step::STEP_PREFIXES`](../workflows/src/step.rs).
 
 ## Engagement / Retainer
@@ -558,7 +558,7 @@ with it; no door creates a retainer alongside the matter.
 The engagement-first rule is enforced at create time on the **self-serve doors** — `web`'s project-scoped create route
 and the CLI, which share `workflows::notation_session::create_notation_from_repo`. There, a matter's first Notation must
 be a template whose declared `kind` opens a matter — see [Onboarding](#onboarding). One classifier answers that for the
-whole workspace, `rules::kind::Kind::opens_a_matter`; see [`docs/frontmatter.md`](frontmatter.md) for the `kind`
+whole workspace, `rules::kind::Kind::opens_a_matter`; see [`docs/frontmatter`](frontmatter.md) for the `kind`
 vocabulary. Later Notations — filings, letters — may be any kind.
 
 **[AIDA](#aida) is not bound by that rule**, because it is lawyer-directed rather than self-serve.
@@ -568,7 +568,7 @@ use. What constrains AIDA is authorization, not kind: the actor must be lawyer a
 (`store::projects::can_access_as_lawyer_in_surreal`), and the respondent is always the Project's client-side DRI.
 
 A **Retainer** is the same idea, narrowed: an Engagement whose bound Template is the firm's onboarding letter,
-`onboarding__letter`. The `portal::retainer_walk` walker, the [`docs/retainer_intake.md`](retainer_intake.md) state
+`onboarding__letter`. The `portal::retainer_walk` walker, the [`docs/retainer_intake`](retainer_intake.md) state
 machine, and the firm's "signed retainer" disclaimer all refer to that specific kind of Notation.
 
 The schema noun in both cases is `Notation`. Client-facing copy speaks Engagement and Retainer because clients do; the
@@ -615,25 +615,24 @@ wrong data, not a security incident.
 - Schema and queries: [`store::external_identities`](../store/src/external_identities.rs) (SurrealDB; ENG-85) —
   [`store/src/schema/navigator.surql`](../store/src/schema/navigator.surql)
 - Inertness guard: `cli/tests/external_identity_is_inert.rs`
-- Access model: [`access-model.md`](access-model.md#what-an-external-system-identity-is-not)
+- Access model: [`access-model`](access-model.md#what-an-external-system-identity-is-not)
 
 ## Extract
 
 The workflow prefix `extract` is a system wait state for structured-data extraction from a previously ingested artifact.
-See [`notation-authoring.md`](notation-authoring.md#changing-the-workflow-composition) and
+See [`notation-authoring`](notation-authoring.md#changing-the-workflow-composition) and
 [`workflows::step::STEP_PREFIXES`](../workflows/src/step.rs).
 
 ## Filing
 
 The workflow prefix `filing` records a named government filing. It is an outbound submission step and must sit behind
-[Lawyer Review](#lawyer-review). See the
-[`notation-authoring.md`](notation-authoring.md#changing-the-workflow-composition) guide and
-[`workflows::step::STEP_PREFIXES`](../workflows/src/step.rs).
+[Lawyer Review](#lawyer-review). See the [`notation-authoring`](notation-authoring.md#changing-the-workflow-composition)
+guide and [`workflows::step::STEP_PREFIXES`](../workflows/src/step.rs).
 
 ## Firm Signature
 
 The workflow prefix `firm_signature` records a lawyer-side signature, usually the firm's countersignature or closing
-signature. See [`notation-authoring.md`](notation-authoring.md#changing-the-workflow-composition) and
+signature. See [`notation-authoring`](notation-authoring.md#changing-the-workflow-composition) and
 [`workflows::step::STEP_PREFIXES`](../workflows/src/step.rs).
 
 ## GitHub Issue
@@ -643,7 +642,7 @@ shelf at `templates/github/`, not legal work, and therefore the one worker step 
 Review](#lawyer-review). GitHub is isolated behind the `workflows::github::IssueOpener` trait: the real
 `RestIssueOpener` calls the REST API with `reqwest` and the runtime never shells out to the `gh` CLI, while the default
 `NullIssueOpener` (no token configured) opens nothing and reports that, so a workflow can never claim an issue that does
-not exist. See [`notation-authoring.md`](notation-authoring.md#changing-the-workflow-composition),
+not exist. See [`notation-authoring`](notation-authoring.md#changing-the-workflow-composition),
 [`workflows::github`](../workflows/src/github.rs), and [`workflows::step::STEP_PREFIXES`](../workflows/src/step.rs).
 
 ## Harvard Outline
@@ -656,7 +655,7 @@ narration units; `navigator template narrate` writes a stage a lawyer can step t
 given a client is the same stage at `/app/projects/{code}/{notation_id}/outline`.
 
 - Parser: [`views::harvard_outline`](../views/src/harvard_outline.rs)
-- How to author: [`notation-authoring.md`](notation-authoring.md#harvard-outline)
+- How to author: [`notation-authoring`](notation-authoring.md#harvard-outline)
 
 ## Ingestion
 
@@ -693,12 +692,12 @@ group of Inquiries is an **Inquiry Set**.
 Use Inquiry rather than "interrogatory" for the generic product noun: an interrogatory is already a formal written
 discovery device in litigation.
 
-- Design: [`live-inquiry-coverage.md`](live-inquiry-coverage.md)
+- Design: [`live-inquiry-coverage`](live-inquiry-coverage.md)
 
 ## Intake Persisted
 
 The workflow prefix `intake_persisted` is a system wait state after questionnaire answers have been written and before
-post-intake workflow work begins. See [`retainer_intake.md`](retainer_intake.md#post-intake-workflow) and
+post-intake workflow work begins. See [`retainer_intake`](retainer_intake.md#post-intake-workflow) and
 [`workflows::step::STEP_PREFIXES`](../workflows/src/step.rs).
 
 ## Jurisdiction
@@ -716,7 +715,7 @@ The workflow prefix `lawyer_review` is the mandatory human attorney/lawyer gate 
 signature, certified mail, e-filing, or another outbound submission. A rejected review does not dead-end — it routes
 `changes_requested → reask__client` to re-collect only the flagged answers (see [Re-ask](#re-ask)), and reserves
 `rejected → END` for a genuine withdrawal. See
-[`notation-authoring.md`](notation-authoring.md#changing-the-workflow-composition),
+[`notation-authoring`](notation-authoring.md#changing-the-workflow-composition),
 [`workflows::guardrail`](../workflows/src/guardrail.rs), and
 [`workflows::step::STEP_PREFIXES`](../workflows/src/step.rs).
 
@@ -734,7 +733,7 @@ intake call — evaluated against an [Inquiry](#inquiry) Set while the transcrip
 immediately, speaker labels are provisional until mapped to a [Person](#person), and Coverage Findings remain proposed
 until a lawyer confirms them.
 
-- Design: [`live-inquiry-coverage.md`](live-inquiry-coverage.md)
+- Design: [`live-inquiry-coverage`](live-inquiry-coverage.md)
 
 ## Mailroom
 
@@ -746,13 +745,13 @@ A physical mail-receiving destination — an Address with a name. Letters land h
 ## Mailroom Receive
 
 The workflow prefix `mailroom_receive` records lawyer receipt of physical mail. See
-[`notation-authoring.md`](notation-authoring.md#changing-the-workflow-composition) and
+[`notation-authoring`](notation-authoring.md#changing-the-workflow-composition) and
 [`workflows::step::STEP_PREFIXES`](../workflows/src/step.rs).
 
 ## Mailroom Send
 
 The workflow prefix `mailroom_send` records lawyer sending physical mail. See
-[`notation-authoring.md`](notation-authoring.md#changing-the-workflow-composition) and
+[`notation-authoring`](notation-authoring.md#changing-the-workflow-composition) and
 [`workflows::step::STEP_PREFIXES`](../workflows/src/step.rs).
 
 ## Matter
@@ -791,16 +790,16 @@ is a **public, source-available repository — not open source**: one grant, `BU
 the legal prose under `templates/`. Evaluating, developing against, testing, and demonstrating it is free wherever you
 run it; production use — where somebody relies on the result — needs a commercial licence, and each version converts to
 `Apache-2.0` four years after it is published. Outside contributions are closed for now, and work in here assigns to the
-Firm ([`LICENSE`](../LICENSE), [`NOTICE`](../NOTICE), [`licensing.md`](licensing.md)).
+Firm ([`LICENSE`](../LICENSE), [`NOTICE`](../NOTICE), [`licensing`](licensing.md)).
 
 *Matter work product* produced from the templates belongs to the client and the matter; the *name and marks* — "Neon
 Law", "Navigator", "Neon Law Navigator", and the Neon Law logos — are reserved. **NEON LAW** is a registered trademark
-of Shook Law PLLC, U.S. Reg. No. 6,325,650. See the [Trademarks note in `README.md`](../README.md#trademarks).
+of Shook Law PLLC, U.S. Reg. No. 6,325,650. See the [Trademarks note in `README`](../README.md#trademarks).
 
 ## Notarization
 
 The workflow prefix `notarization` records a respondent signing or refusing in front of a notary. See
-[`notation-authoring.md`](notation-authoring.md#changing-the-workflow-composition) and
+[`notation-authoring`](notation-authoring.md#changing-the-workflow-composition) and
 [`workflows::step::STEP_PREFIXES`](../workflows/src/step.rs).
 
 ## Notation Event
@@ -837,7 +836,7 @@ orphan an in-flight invocation or an existing document rather than merely rename
 ## On-Chain Record
 
 The workflow prefix `onchain` records an attorney attestation in the durable attestation table and, when configured,
-through the chain backend. See [`solana-attestation.md`](solana-attestation.md) and
+through the chain backend. See [`solana-attestation`](solana-attestation.md) and
 [`workflows::step::STEP_PREFIXES`](../workflows/src/step.rs).
 
 ## Onboarding
@@ -858,7 +857,7 @@ of one column is how this glossary previously came to hold both "open vocabulary
 
 Not to be confused with [Disclosure](#disclosure), which is the firm's conflicts log, not an access grant.
 
-- See [`docs/access-model.md`](access-model.md) for the full role + participation model.
+- See [`docs/access-model`](access-model.md) for the full role + participation model.
 
 ## Person
 
@@ -866,7 +865,7 @@ A human contact. The system-wide tier — `owner`, `admin`, `lawyer`, `clerk`, o
 `role` field, not on the OIDC token. The Rauthy / Google id_token carries only `sub` and `email`; the callback handler
 links that pair to a Person via `oidc_subject` and reads `role` from the DB. `lawyer` means a person licensed to
 practice law authorized for Navigator legal work, not a firm email or source-forge membership. See
-[`docs/access-model.md`](access-model.md) and [`docs/oidc.md`](oidc.md).
+[`docs/access-model`](access-model.md) and [`docs/oidc`](oidc.md).
 
 This is a SurrealDB table and [`store::persons`](../store/src/persons.rs) is the only module that reads or writes it.
 Every `person_id` on another table is therefore an unenforced cross-engine id, resolved in Rust.
@@ -912,7 +911,7 @@ no participation value at all — but a `store` caller that treats presence alon
 into the client-side set and hands an adverse party the lawyer workbench.
 
 Values are stored folded — trimmed, lowercased, separators as single underscores — so one kind is one value. See
-[`docs/access-model.md`](access-model.md).
+[`docs/access-model`](access-model.md).
 
 - Schema: [`store::projects`](../store/src/projects.rs) ·
   [`store/src/schema/navigator.surql`](../store/src/schema/navigator.surql)
@@ -1027,7 +1026,7 @@ iterators against the declared states while `N120` does the same for a bare `{{t
 every `custom_text__*` role to be an allowlisted free-text primitive (glossary nouns — names, emails, countries, phone
 numbers — can never be allowlisted), and `N118` requires the block to be one linear `_` chain from `BEGIN` to `END` (the
 walker's only signal). Use the glossary model and its dotted fields — `person__client` plus `{{person__client.email}}` —
-before reaching for a custom primitive. See [`notation-authoring.md`](notation-authoring.md).
+before reaching for a custom primitive. See [`notation-authoring`](notation-authoring.md).
 
 ## Re-ask
 
@@ -1202,7 +1201,7 @@ login as `owner`.
 - Schema: [`store::persons::Role`](../store/src/persons.rs) — a stored `string` on `person`, defaulting to `client` and
   gated by `ASSERT $value IN ['owner', 'admin', 'lawyer', 'clerk', 'client']` in
   [`navigator.surql`](../store/src/schema/navigator.surql); Anonymous is the absence of a row.
-- See [`docs/access-model.md`](access-model.md) for the full role + [Participation](#participation) model.
+- See [`docs/access-model`](access-model.md) for the full role + [Participation](#participation) model.
 
 ## Sample Matter Fixture
 
@@ -1236,13 +1235,13 @@ this layer at all.
 ## Sent for Signature
 
 The workflow prefix `sent_for_signature` is a system wait state for an outbound e-signature request; a provider webhook
-or equivalent signal advances it. See [`docusign-esignature.md`](docusign-esignature.md) and
+or equivalent signal advances it. See [`docusign-esignature`](docusign-esignature.md) and
 [`workflows::step::STEP_PREFIXES`](../workflows/src/step.rs).
 
 ## Signature
 
 The workflow suffix family `_signature` / `_signatures`, plus the `witnesses` prefix, records respondent-side signing.
-See [`notation-authoring.md`](notation-authoring.md#changing-the-workflow-composition) and
+See [`notation-authoring`](notation-authoring.md#changing-the-workflow-composition) and
 [`workflows::step::STEP_PREFIXES`](../workflows/src/step.rs).
 
 ## Signature Block
@@ -1268,7 +1267,7 @@ Locally it is a KIND pod, memory-backed, so its data resets with the pod. Tests 
 process rather than a container — no server, no port, nothing to reclaim. Deployed, it is a hosted SurrealDB. Row-level
 `PERMISSIONS` are explicitly `NONE` on every table: authorization stays above the database, in [Role](#role),
 [Participation](#participation), and embedded Rego — see
-[`access-model.md`](access-model.md#where-surrealdb-authorization-lives).
+[`access-model`](access-model.md#where-surrealdb-authorization-lives).
 
 - Schema: [`store::surreal`](../store/src/surreal/mod.rs), and [Statement of the present](#statement-of-the-present)
 
@@ -1312,7 +1311,7 @@ A unit of work executed by the runtime when entering a State. Each Step declares
 [`workflows::step::StepKind`](../workflows/src/step.rs), and all three are in use: `system` for the wait and render
 steps (`generate_pdf`, `sent_for_signature`, `intake_persisted`), `lawyer` for the human gates (`lawyer_review`,
 `filing`, `firm_signature`), and `respondent` for client-side signing. Retainer intake is the worked example — see
-[`docs/retainer_intake.md`](retainer_intake.md) — not the only shipped flow; the catalog of prefixes is
+[`docs/retainer_intake`](retainer_intake.md) — not the only shipped flow; the catalog of prefixes is
 `workflows::step::STEP_PREFIXES` in that same module.
 
 A `lawyer` Step means **any** lawyer-tier person in scope on the Project may advance it: the firm lens is granted by the
@@ -1329,8 +1328,7 @@ the machine that gathers what the text needs. It has four parts: **metadata**, *
 
 **Metadata is a conceptual grouping, not a literal nested YAML key.** It names the frontmatter keys that classify the
 file — `kind:`, `code:`, jurisdiction, respondent — which sit at the top level of the frontmatter block. A template that
-declared an actual `metadata:` mapping would be malformed. The full anatomy is documented in
-[`notation.md`](notation.md).
+declared an actual `metadata:` mapping would be malformed. The full anatomy is documented in [`notation`](notation.md).
 
 A Template is versioned by append rather than by edit: `templates.is_current` marks the live revision and a change adds
 a row. Every Notation pins the exact `templates` row it was created from, which is what keeps approved text from
@@ -1342,7 +1340,7 @@ One append-only chunk of text captured during a [Live Inquiry Session](#live-inq
 provider speaker label such as `speaker_1`, but that label is not identity; a lawyer can later map it to a Person or
 session role before confirming an Answer.
 
-- Design: [`live-inquiry-coverage.md`](live-inquiry-coverage.md)
+- Design: [`live-inquiry-coverage`](live-inquiry-coverage.md)
 
 ## Transition
 
@@ -1354,7 +1352,7 @@ One edge between States, fired by an event (e.g. `retainer_rendered`, `signature
 directory tree against the Neon Law Navigator rule set — the same engine `navigator-lsp` runs on every keystroke. Errors
 fail the gate; warnings print but pass. `--fix` applies every safe-by-construction autofix in place, then re-validates.
 
-- Reference: [`validate.md`](validate.md)
+- Reference: [`validate`](validate.md)
 
 ## Verification
 
@@ -1386,7 +1384,7 @@ axis, the outcome, the verifier, the revision SHA, and a duration. No quote, no 
 
 The workflow prefix `witnesses` records respondent-side witness signatures and resolves through the same Signature step
 kind as `_signature` / `_signatures`. See
-[`notation-authoring.md`](notation-authoring.md#changing-the-workflow-composition) and
+[`notation-authoring`](notation-authoring.md#changing-the-workflow-composition) and
 [`workflows::step::STEP_PREFIXES`](../workflows/src/step.rs).
 
 ## Workflow
@@ -1441,4 +1439,4 @@ build-time guards that hold it honest against the repository.
 Workshops belong to the staging deployment, which carries sample matters by design; the one environment holding real
 people's matters never seeds them.
 
-- See also: [Sample Matter Fixture](#sample-matter-fixture) and [`environments.md`](environments.md)
+- See also: [Sample Matter Fixture](#sample-matter-fixture) and [`environments`](environments.md)

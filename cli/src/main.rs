@@ -361,6 +361,14 @@ enum ProjectsCmd {
         #[arg(long)]
         json: bool,
     },
+    /// List every Project's lifecycle fields as a table or JSON.
+    Lifecycle {
+        #[command(flatten)]
+        host: HostOpt,
+        /// Emit JSON instead of a table.
+        #[arg(long)]
+        json: bool,
+    },
     /// Open an existing Project workbench on the live site.
     Open {
         /// Project code, resolved only against Projects visible to the login.
@@ -2150,6 +2158,9 @@ async fn run_projects(action: ProjectsCmd) -> ExitCode {
             remote::matter_close(host.host.as_deref(), &project_code).await
         }
         ProjectsCmd::List { host, json } => remote::projects_list(host.host.as_deref(), json).await,
+        ProjectsCmd::Lifecycle { host, json } => {
+            remote::projects_lifecycle(host.host.as_deref(), json).await
+        }
         ProjectsCmd::Open { project_code, host } => {
             remote::matter_open(host.host.as_deref(), &project_code).await
         }

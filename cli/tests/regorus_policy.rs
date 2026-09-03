@@ -165,9 +165,14 @@ fn regorus_matches_every_checked_in_policy_decision() {
     //   /app/api/projects/{id}/lifecycle): the five-case tier matrix, same
     //   shape as `close matter` above.
     // 380 + 5 = 385.
+    //
+    // + 7 for the admin-only lifecycle projection (GET
+    //   /app/api/project-lifecycle): Owner/Admin admitted, the other three
+    //   tiers and anonymous denied, plus one noun-isolation case.
+    // 385 + 7 = 392.
     assert_eq!(
         test_names.len(),
-        385,
+        392,
         "the policy decision inventory changed; review every new or removed rule"
     );
 

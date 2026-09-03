@@ -112,6 +112,13 @@ fn api_operation_table() -> Vec<(&'static str, &'static str, MethodRouter<ApiSta
             "/app/api/project-repositories",
             get(reconcile_project_repositories_door),
         ),
+        // Own noun, same reason as `project-repositories`: this reads every
+        // matter's lifecycle without granting a matter-content read.
+        (
+            "GET",
+            "/app/api/project-lifecycle",
+            get(project_lifecycle_door),
+        ),
         // Own noun, same reason as `project-repositories`: the `projects`
         // GET rule admits any authenticated caller up to five segments, and
         // an admin-only reconcile nested there would be policy-reachable by
@@ -684,6 +691,40 @@ async fn reconcile_project_repositories_door(
     let deployment = cloud::workspace::WorkspaceConfig::from_env().ok();
     let report = store::project_reconcile::reconcile(&rows, deployment.as_ref());
     Ok((StatusCode::OK, Json(report)).into_response())
+}
+
+#[derive(Debug, Serialize)]
+struct ProjectLifecycleEntry {
+    code: String,
+    status: String,
+    closed_at: Option<String>,
+}
+
+/// `GET /app/api/project-lifecycle` — read every Project's lifecycle fields.
+///
+/// Admin-tier only. This is an oversight read rather than a matter read: it
+/// deliberately reads every row and returns only the stable code and the two
+/// fields that describe its lifecycle, so an operator can compare deployment
+/// state without receiving matter content or needing participation rows.
+async fn project_lifecycle_door(
+    State(state): State<ApiState>,
+    authed: AuthedSession,
+) -> Result<Response, ApiError> {
+    if !authed.0.role.is_admin_tier() {
+        return Err(ApiError::Forbidden);
+    }
+    let projects = store::projects::all(&state.surreal)
+        .await
+        .map_err(|error| ApiError::Db(error.to_string()))?;
+    let lifecycle = projects
+        .into_iter()
+        .map(|project| ProjectLifecycleEntry {
+            code: project.code,
+            status: project.status,
+            closed_at: project.closed_at,
+        })
+        .collect::<Vec<_>>();
+    Ok((StatusCode::OK, Json(lifecycle)).into_response())
 }
 
 /// `POST /app/api/project-surfaces/{id}` — create or adopt the three handles

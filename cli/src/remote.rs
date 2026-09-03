@@ -9,6 +9,7 @@
 //! | command | route |
 //! | --- | --- |
 //! | `projects list` | `GET /app/projects.csv` |
+//! | `projects lifecycle` | `GET /app/api/project-lifecycle` |
 //! | `project open`   | `GET /app/projects/:code` |
 //! | `projects close` | `POST /app/api/projects/{id}/lifecycle` |
 //! | `document upload` | `POST /app/api/projects/{id}/documents` |
@@ -196,6 +197,56 @@ pub async fn projects_list(host: Option<&str>, json: bool) -> ExitCode {
         }
         let rows = parse_csv(&body);
         print_projects(&rows, json)?;
+        Ok(())
+    })
+    .await
+}
+
+#[derive(Debug, Deserialize, serde::Serialize)]
+struct ProjectLifecycle {
+    code: String,
+    status: String,
+    closed_at: Option<String>,
+}
+
+/// `navigator site projects lifecycle [--host h] [--json]` — read the
+/// deployment-wide lifecycle projection from the admin-tier API route.
+pub async fn projects_lifecycle(host: Option<&str>, json: bool) -> ExitCode {
+    run(async {
+        let (base, token) = resolve(host)?;
+        let resp = reqwest::Client::new()
+            .get(format!("{base}/app/api/project-lifecycle"))
+            .bearer_auth(&token)
+            .send()
+            .await
+            .context("GET /app/api/project-lifecycle")?;
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(anyhow!("projects lifecycle failed: {status}"));
+        }
+        let rows: Vec<ProjectLifecycle> =
+            serde_json::from_str(&body).context("parse GET /app/api/project-lifecycle")?;
+        if json {
+            println!("{}", serde_json::to_string_pretty(&rows)?);
+        } else {
+            let table_rows = rows
+                .iter()
+                .map(|row| {
+                    vec![
+                        row.code.clone(),
+                        row.status.clone(),
+                        row.closed_at.clone().unwrap_or_default(),
+                    ]
+                })
+                .collect::<Vec<_>>();
+            print_projects(
+                &std::iter::once(vec!["code".into(), "status".into(), "closed_at".into()])
+                    .chain(table_rows)
+                    .collect::<Vec<_>>(),
+                false,
+            )?;
+        }
         Ok(())
     })
     .await
@@ -1502,8 +1553,9 @@ mod tests {
         document_upload, ensure_no_unused_selections, fetch_status, matter_close, matter_open,
         notation_approve, notation_create, notation_document, notation_request_changes,
         notation_status, notation_update, parse_scripted_selection, picker_selection_fields,
-        projects_list, retainer_approve, retainer_send, scripted_picker_selection_fields, seed,
-        select_candidate, CoverageSummary, StepQuestion, StepResponse,
+        projects_lifecycle, projects_list, retainer_approve, retainer_send,
+        scripted_picker_selection_fields, seed, select_candidate, CoverageSummary, StepQuestion,
+        StepResponse,
     };
     use super::{fetch_step, first_line, json_reason, parse_csv, server_error};
     use crate::credentials::{self, Credentials, HostCredential};
@@ -1722,6 +1774,71 @@ mod tests {
 
         assert_eq!(
             matter_close(Some(server_uri.as_str()), "not-a-matter").await,
+            ExitCode::from(2)
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn projects_lifecycle_reads_the_admin_projection() {
+        let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+        let server = MockServer::start().await;
+        let server_uri = server.uri();
+        let _env = CredentialsEnv::new(&server_uri);
+
+        Mock::given(method("GET"))
+            .and(path("/app/api/project-lifecycle"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"code": "acme", "status": "closed", "closed_at": "2026-09-02T00:00:00Z"},
+                {"code": "sample", "status": "open", "closed_at": null}
+            ])))
+            .expect(2)
+            .mount(&server)
+            .await;
+
+        assert_eq!(
+            projects_lifecycle(Some(&server_uri), true).await,
+            ExitCode::SUCCESS
+        );
+        assert_eq!(
+            projects_lifecycle(Some(&server_uri), false).await,
+            ExitCode::SUCCESS
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn projects_lifecycle_reports_server_errors() {
+        let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+        let server = MockServer::start().await;
+        let server_uri = server.uri();
+        let _env = CredentialsEnv::new(&server_uri);
+
+        Mock::given(method("GET"))
+            .and(path("/app/api/project-lifecycle"))
+            .respond_with(ResponseTemplate::new(503))
+            .mount(&server)
+            .await;
+
+        assert_eq!(
+            projects_lifecycle(Some(&server_uri), true).await,
+            ExitCode::from(2)
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn projects_lifecycle_reports_invalid_json() {
+        let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+        let server = MockServer::start().await;
+        let server_uri = server.uri();
+        let _env = CredentialsEnv::new(&server_uri);
+
+        Mock::given(method("GET"))
+            .and(path("/app/api/project-lifecycle"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("not-json"))
+            .mount(&server)
+            .await;
+
+        assert_eq!(
+            projects_lifecycle(Some(&server_uri), true).await,
             ExitCode::from(2)
         );
     }

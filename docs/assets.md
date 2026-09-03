@@ -139,6 +139,26 @@ tiers — Owner, Admin, Lawyer, and Clerk — and deny client and anonymous call
 lawyer work, so it needs neither the `/app/lawyer` prefix nor the exact-path Clerk exception that prefix used to force.
 A missing object is a loud `502`, never a fallback — the same pull-and-verify posture as the vendored government forms.
 
+### DeleteYourData.com's Plus Jakarta Sans
+
+The `delete-your-data` house brand wears Plus Jakarta Sans instead of GORP Serif. Unlike GORP, the font itself is
+OFL-1.1 — nothing legally requires keeping the bytes out of git — but it publishes through the same operator-upload lane
+as GORP's licensed delivery anyway, so every deployment's font bytes come from one mechanism rather than two, and a
+fresh clone needs none of them to build or test. `cli::assets::FontFamily` generalizes the GORP-specific upload path so
+a second family is a new constant, not a second command:
+
+```bash
+cargo run -p cli -- ops assets fonts upload --family plus-jakarta-sans \
+  --dir '/path/to/plus-jakarta-sans/woff2'
+```
+
+The directory must hold `PlusJakartaSans-Regular.woff2` and `PlusJakartaSans-Bold.woff2`; the command uploads both to
+`fonts/plus-jakarta-sans/` in the public assets bucket (`--family gorp-serif`, the default, is unchanged). Local
+development and tests resolve the same fallback `/public/fonts/plus-jakarta-sans/` path GORP's faces use when
+`NAVIGATOR_ASSET_BASE_URL` is unset. `portal::dioxus_app` selects which family's `@font-face` head fragment to inject
+per request from the resolved `views::brand::BrandKey`, so a `delete-your-data` page never declares GORP Serif and a
+firm page never declares Plus Jakarta Sans.
+
 Publication is not verified by CI. `deploy.yml` builds and publishes images; it never probes a rolled deployment's asset
 origin, so an empty bucket reaches production silently. Run `assets verify` against the deployment's own public host
 after its roll — that is the only check that looks at what a browser would actually receive:

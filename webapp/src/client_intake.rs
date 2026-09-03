@@ -89,6 +89,10 @@ pub struct InjectedIntake(pub IntakeState);
 /// Everything the page renders.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct ClientIntakeView {
+    /// The resolved brand's tokens stylesheet href, so the page wears
+    /// its own palette rather than the firm's on a non-default host.
+    #[serde(default)]
+    pub tokens_href: String,
     pub state: IntakeState,
     pub csrf_token: String,
     /// The `?error=` flash a rejected save redirects back with — a reference
@@ -128,6 +132,7 @@ pub async fn get_client_intake() -> Result<ClientIntakeView, ServerFnError> {
     .await?;
 
     Ok(ClientIntakeView {
+        tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
         state,
         csrf_token,
         error: query.error.filter(|message| !message.is_empty()),
@@ -164,7 +169,7 @@ fn intake_body(view: &ClientIntakeView) -> Element {
             project_code,
             flow_label,
             total,
-        } => complete_body(project_code, flow_label, *total),
+        } => complete_body(project_code, flow_label, *total, &view.tokens_href),
     }
 }
 
@@ -213,6 +218,7 @@ fn step_body(step: &IntakeStepData, view: &ClientIntakeView) -> Element {
     rsx! {
         document::Title { "{page_title}" }
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
+        document::Stylesheet { href: "{view.tokens_href}" }
         main { id: "intake", class: "nav-theme",
             if let Some(error) = view.error.as_ref() {
                 p { class: "nav-form-error", role: "alert", "{error}" }
@@ -241,13 +247,14 @@ fn step_body(step: &IntakeStepData, view: &ClientIntakeView) -> Element {
 /// The "you're done with your part" landing, once the client has answered every
 /// client-facing question — or once the document has gone out for signature and
 /// the answers are frozen.
-fn complete_body(project_code: &str, flow_label: &str, total: usize) -> Element {
+fn complete_body(project_code: &str, flow_label: &str, total: usize, tokens_href: &str) -> Element {
     let page_title = format!("Your {flow_label} — Neon Law Navigator");
     let back = format!("/app/projects/{project_code}");
     let _ = total;
     rsx! {
         document::Title { "{page_title}" }
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
+        document::Stylesheet { href: "{tokens_href}" }
         main { id: "intake", class: "nav-theme",
             div { class: "nav-card",
                 div { class: "nav-card__body",
@@ -281,6 +288,7 @@ mod tests {
         choices: &[(&str, &str)],
     ) -> ClientIntakeView {
         ClientIntakeView {
+            tokens_href: String::new(),
             state: IntakeState::NeedsAnswer(Box::new(IntakeStepData {
                 project_id: "00000000-0000-0000-0000-000000000001".to_string(),
                 project_code: "sample-litigation".to_string(),
@@ -438,6 +446,7 @@ mod tests {
     #[test]
     fn the_completion_landing_links_back_to_the_matter_and_offers_no_write() {
         let html = render(&ClientIntakeView {
+            tokens_href: String::new(),
             state: IntakeState::Complete {
                 project_code: "sample-litigation".to_string(),
                 flow_label: "Retainer Agreement".to_string(),

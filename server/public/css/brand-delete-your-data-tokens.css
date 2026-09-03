@@ -1,0 +1,67 @@
+/* The `delete-your-data` registry key's colour and type layer over
+   `tokens.css`'s shared `--nav-*` aliases: the accessible red the brand
+   decided on 2026-09-02, and Plus Jakarta Sans (OFL-1.1) in place of the
+   firm's licensed GORP Serif.
+
+   The WOFF2 faces are operator assets, uploaded to the public assets bucket
+   by `navigator ops assets fonts upload --family plus-jakarta-sans` and
+   deliberately never committed to this repository — see `docs/assets.md`.
+   `font-display: swap` means an unpublished face degrades quietly to the
+   fallback stack rather than blocking render.
+
+   Contrast, measured against `--nav-color-bg` in each scheme (the same
+   formula `tokens.css`'s own comments use):
+     500 on white   6.47:1   600 on white   8.31:1   700 on white  10.02:1
+     400 on #0d1117 9.93:1   950 on 400     9.38:1
+   The 500 stop clears the 4.5:1 floor for normal text with real headroom —
+   ENG-435's own requirement. The browser accessibility gate audits these
+   pairings in both schemes. */
+
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/public/fonts/plus-jakarta-sans/PlusJakartaSans-Regular.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/public/fonts/plus-jakarta-sans/PlusJakartaSans-Bold.woff2") format("woff2");
+}
+
+:root {
+  --nav-font-family: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+
+  --nav-red-400: #ffa3a3;
+  --nav-red-500: #b91c1c;
+  --nav-red-600: #991b1b;
+  --nav-red-700: #7f1d1d;
+  --nav-red-950: #2c0606;
+  --nav-red-subtle: #fdecec;
+
+  --nav-color-primary: var(--nav-red-500);
+  --nav-color-primary-hover: var(--nav-red-600);
+  --nav-color-primary-active: var(--nav-red-700);
+  --nav-color-link: var(--nav-red-500);
+  --nav-color-link-hover: var(--nav-red-700);
+  --nav-color-surface-subtle: var(--nav-red-subtle);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* The ramp lightens against the dark ground, mirroring `tokens.css`'s own
+       teal dark-mode step: primary climbs to 400 and its ink drops to 950. */
+    --nav-color-primary: var(--nav-red-400);
+    --nav-color-primary-hover: #ffb8b8;
+    --nav-color-primary-active: #ffd0d0;
+    --nav-color-on-primary: var(--nav-red-950);
+    --nav-color-on-brand: var(--nav-red-950);
+    --nav-color-link: var(--nav-red-400);
+    --nav-color-link-hover: #ffb8b8;
+    --nav-color-surface-subtle: #2a0f0f;
+  }
+}

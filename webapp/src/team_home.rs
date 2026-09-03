@@ -39,6 +39,10 @@ pub struct TeamHomeView {
     pub role: ViewerRole,
     #[serde(default)]
     pub logo: Option<crate::components::AppLogo>,
+    /// The resolved brand's tokens stylesheet href, so the page wears
+    /// its own palette rather than the firm's on a non-default host.
+    #[serde(default)]
+    pub tokens_href: String,
     #[serde(default)]
     pub firm_name: String,
 }
@@ -49,6 +53,7 @@ pub async fn team_home_view() -> Result<TeamHomeView, ServerFnError> {
     Ok(TeamHomeView {
         role: crate::admin_listing::require_firm_person().await?,
         logo: crate::app_chrome::app_logo_from_context().await,
+        tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
         firm_name: crate::app_chrome::firm_name_from_context().await,
     })
 }
@@ -163,6 +168,7 @@ pub fn team_home_body(view: &TeamHomeView) -> Element {
         document::Title { "{firm_name} | Team" }
         document::Meta { name: "description", content: DESCRIPTION }
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
+        document::Stylesheet { href: "{view.tokens_href}" }
         crate::components::AppNavbar {
             destinations: crate::app_chrome::app_destinations(role),
             logo: view.logo.clone(),
@@ -189,6 +195,7 @@ mod tests {
 
     fn view_for(role: ViewerRole) -> TeamHomeView {
         TeamHomeView {
+            tokens_href: String::new(),
             firm_name: "Neon Law".to_string(),
             role,
             logo: None,

@@ -110,6 +110,10 @@ pub struct ProjectNewView {
     /// configures none.
     #[serde(default)]
     pub logo: Option<crate::components::AppLogo>,
+    /// The resolved brand's tokens stylesheet href, so the page wears
+    /// its own palette rather than the firm's on a non-default host.
+    #[serde(default)]
+    pub tokens_href: String,
     /// The deploy's firm name, for the document title. Resolved from the
     /// request-scoped branding rather than written into the copy, so a
     /// white-label deploy's tab reads its own name.
@@ -135,6 +139,7 @@ pub async fn get_project_new_form() -> Result<ProjectNewView, ServerFnError> {
             found: false,
             role,
             logo: crate::app_chrome::app_logo_from_context().await,
+            tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
             ..ProjectNewView::default()
         });
     }
@@ -206,6 +211,7 @@ pub async fn get_project_new_form() -> Result<ProjectNewView, ServerFnError> {
         query,
         role,
         logo: crate::app_chrome::app_logo_from_context().await,
+        tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
     })
 }
 
@@ -421,6 +427,7 @@ pub fn LawyerProjectNew() -> Element {
 
     rsx! {
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
+        document::Stylesheet { href: "{view.tokens_href}" }
         {app_navbar(view.role, view.logo.clone())}
         main { id: "project-new", class: "nav-theme",
             if view.found {
@@ -448,6 +455,7 @@ mod tests {
 
     fn view(query: ProjectNewQuery) -> ProjectNewView {
         ProjectNewView {
+            tokens_href: String::new(),
             firm_name: "Neon Law".to_string(),
             found: true,
             entities: vec![EntityOption {

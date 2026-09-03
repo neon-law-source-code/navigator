@@ -40,6 +40,10 @@ pub struct ClerkProjectRow {
 /// The rendered Clerk projects list.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct ClerkProjectsView {
+    /// The resolved brand's tokens stylesheet href, so the page wears
+    /// its own palette rather than the firm's on a non-default host.
+    #[serde(default)]
+    pub tokens_href: String,
     /// The supervised matters. Empty both when the Clerk has no assignments yet
     /// and when the surface is hidden — [`ClerkProjectsView::found`] tells them
     /// apart.
@@ -59,6 +63,10 @@ pub struct ClerkProjectsView {
 /// The rendered Clerk project detail page.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct ClerkProjectDetailView {
+    /// The resolved brand's tokens stylesheet href, so the page wears
+    /// its own palette rather than the firm's on a non-default host.
+    #[serde(default)]
+    pub tokens_href: String,
     /// The matter, or `None` when it is not visible to this Clerk (an unknown
     /// id, another Clerk's matter, or a non-Clerk caller) — rendered as
     /// not-found under a committed `404`.
@@ -154,6 +162,7 @@ pub async fn get_clerk_projects() -> Result<ClerkProjectsView, ServerFnError> {
         .map_err(server_error)?;
 
     Ok(ClerkProjectsView {
+        tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
         firm_name,
         rows: supervised
             .into_iter()
@@ -182,6 +191,7 @@ pub async fn get_clerk_project() -> Result<ClerkProjectDetailView, ServerFnError
             .await?;
     let role = injected_role().await;
     let firm_name = crate::app_chrome::firm_name_from_context().await;
+    let tokens_href = crate::app_chrome::app_tokens_href_from_context().await;
     let csrf_token =
         dioxus_fullstack_core::FullstackContext::extract::<axum::Extension<CsrfToken>, _>()
             .await
@@ -190,6 +200,7 @@ pub async fn get_clerk_project() -> Result<ClerkProjectDetailView, ServerFnError
     let not_found = |role| {
         commit_not_found();
         Ok(ClerkProjectDetailView {
+            tokens_href: tokens_href.clone(),
             firm_name: firm_name.clone(),
             project: None,
             resources: crate::project_resources::ProjectResourcesView::default(),
@@ -232,6 +243,7 @@ pub async fn get_clerk_project() -> Result<ClerkProjectDetailView, ServerFnError
         project_code: project.code.clone(),
     };
     Ok(ClerkProjectDetailView {
+        tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
         firm_name,
         project: Some(ClerkProjectRow {
             id: project.id.to_string(),
@@ -293,6 +305,7 @@ pub fn ClerkProjects() -> Element {
     rsx! {
         document::Title { "{view.firm_name} | Clerk projects" }
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
+        document::Stylesheet { href: "{view.tokens_href}" }
         {clerk_nav()}
         main { id: "clerk-projects", class: "nav-theme",
             if view.found {
@@ -350,6 +363,7 @@ pub fn ClerkProjectDetail() -> Element {
     rsx! {
         document::Title { "{view.firm_name} | Clerk project" }
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
+        document::Stylesheet { href: "{view.tokens_href}" }
         {clerk_nav()}
         main { id: "clerk-project-detail", class: "nav-theme",
             match view.project.as_ref() {

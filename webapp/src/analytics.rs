@@ -34,6 +34,10 @@ pub struct DimensionTotal {
 /// The rendered analytics page: the aggregate totals and the viewer's tier.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct AnalyticsView {
+    /// The resolved brand's tokens stylesheet href, so the page wears
+    /// its own palette rather than the firm's on a non-default host.
+    #[serde(default)]
+    pub tokens_href: String,
     pub total_visits: i64,
     pub daily: Vec<PeriodTotal>,
     pub monthly: Vec<PeriodTotal>,
@@ -88,6 +92,7 @@ pub async fn get_analytics() -> Result<AnalyticsView, ServerFnError> {
     };
 
     Ok(AnalyticsView {
+        tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
         firm_name: crate::app_chrome::firm_name_from_context().await,
         total_visits: summary.total_visits,
         daily: periods(summary.daily),
@@ -187,6 +192,7 @@ fn analytics_body(view: &AnalyticsView) -> Element {
     rsx! {
         document::Title { "{view.firm_name} | Admin | Visitor analytics" }
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
+        document::Stylesheet { href: "{view.tokens_href}" }
         nav { class: "lawyer-nav",
             a { class: "nav-link", href: "/app/projects", "Portal" }
             if view.role.is_lawyer_tier() {
@@ -255,6 +261,7 @@ mod tests {
 
     fn view() -> AnalyticsView {
         AnalyticsView {
+            tokens_href: String::new(),
             firm_name: "Neon Law".to_string(),
             total_visits: 4,
             daily: vec![period("2026-07-09", 4)],

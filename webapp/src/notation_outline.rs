@@ -37,6 +37,10 @@ pub struct NotationOutlineView {
     pub role: ViewerRole,
     #[serde(default)]
     pub logo: Option<crate::components::AppLogo>,
+    /// The resolved brand's tokens stylesheet href, so the page wears
+    /// its own palette rather than the firm's on a non-default host.
+    #[serde(default)]
+    pub tokens_href: String,
     #[serde(default)]
     pub firm_name: String,
 }
@@ -50,6 +54,7 @@ async fn load() -> Result<NotationOutlineView, ServerFnError> {
         .map(|axum::Extension(role)| role)
         .unwrap_or_default();
     let logo = crate::app_chrome::app_logo_from_context().await;
+    let tokens_href = crate::app_chrome::app_tokens_href_from_context().await;
     let firm_name = crate::app_chrome::firm_name_from_context().await;
     let missing = NotationOutlineView {
         firm_name: firm_name.clone(),
@@ -59,6 +64,7 @@ async fn load() -> Result<NotationOutlineView, ServerFnError> {
         failed: false,
         role,
         logo: logo.clone(),
+        tokens_href: tokens_href.clone(),
     };
     let failed = || {
         dioxus_fullstack_core::FullstackContext::commit_http_status(
@@ -73,6 +79,7 @@ async fn load() -> Result<NotationOutlineView, ServerFnError> {
             failed: true,
             role,
             logo: logo.clone(),
+            tokens_href: tokens_href.clone(),
         }
     };
 
@@ -162,6 +169,7 @@ async fn load() -> Result<NotationOutlineView, ServerFnError> {
         failed: false,
         role,
         logo,
+        tokens_href,
     })
 }
 
@@ -175,6 +183,7 @@ fn outline_body(view: &NotationOutlineView) -> Element {
     let role = view.role;
     rsx! {
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
+        document::Stylesheet { href: "{view.tokens_href}" }
         document::Stylesheet { href: HARVARD_OUTLINE_STYLESHEET_HREF }
         document::Script { src: HARVARD_OUTLINE_SCRIPT_HREF, defer: true }
         crate::components::AppNavbar {
@@ -228,6 +237,7 @@ mod tests {
 
     fn found() -> NotationOutlineView {
         NotationOutlineView {
+            tokens_href: String::new(),
             firm_name: "Example Law".to_string(),
             title: "Onboarding letter".to_string(),
             stage_html: Some(

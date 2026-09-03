@@ -31,11 +31,19 @@ fn stub_referenced_writes_the_gallery_and_licensed_fonts_without_content_images(
         .success()
         .stdout(predicates::str::contains(format!(
             "wrote {} placeholder asset",
-            expected_gallery_placeholders() + 2
+            expected_gallery_placeholders() + 4
         )));
 
     for face in ["GORPSerif-Regular.woff2", "GORPSerif-Bold.woff2"] {
         let woff2 = fs::read(out.path().join("fonts/gorp-serif").join(face)).unwrap();
+        assert_eq!(&woff2[..4], b"wOF2", "{face} must be a real WOFF2");
+    }
+
+    for face in [
+        "PlusJakartaSans-Regular.woff2",
+        "PlusJakartaSans-Bold.woff2",
+    ] {
+        let woff2 = fs::read(out.path().join("fonts/plus-jakarta-sans").join(face)).unwrap();
         assert_eq!(&woff2[..4], b"wOF2", "{face} must be a real WOFF2");
     }
 
@@ -75,10 +83,11 @@ fn stub_referenced_writes_valid_placeholder_files_at_content_paths() {
         .arg(out.path())
         .assert()
         .success()
-        // Four content images, every gallery variant, plus two licensed faces.
+        // Four content images, every gallery variant, plus four licensed faces
+        // (two GORP, two Plus Jakarta Sans).
         .stdout(predicates::str::contains(format!(
             "wrote {} placeholder asset",
-            expected_gallery_placeholders() + 6
+            expected_gallery_placeholders() + 8
         )));
 
     let png = fs::read(out.path().join("img/demo/hero.png")).unwrap();

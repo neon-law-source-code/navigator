@@ -27,6 +27,10 @@ pub struct ClauseRow {
 /// The clause editor for one notation.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct ClauseEditorView {
+    /// The resolved brand's tokens stylesheet href, so the page wears
+    /// its own palette rather than the firm's on a non-default host.
+    #[serde(default)]
+    pub tokens_href: String,
     pub notation_id: String,
     /// The bound template's title, for the page chrome.
     pub flow_label: String,
@@ -76,6 +80,7 @@ pub async fn get_clause_editor() -> Result<ClauseEditorView, ServerFnError> {
         .collect();
 
     Ok(ClauseEditorView {
+        tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
         firm_name: crate::app_chrome::firm_name_from_context().await,
         notation_id: notation_id.to_string(),
         flow_label,
@@ -140,6 +145,7 @@ fn editor_body(view: &ClauseEditorView) -> Element {
     rsx! {
         document::Title { "{page_title}" }
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
+        document::Stylesheet { href: "{view.tokens_href}" }
         nav { class: "lawyer-nav",
             a { class: "nav-link", href: "/app/projects", "Portal" }
             if role.is_lawyer_tier() {
@@ -264,6 +270,7 @@ mod tests {
 
     fn view(clauses: &[(&str, &str)]) -> ClauseEditorView {
         ClauseEditorView {
+            tokens_href: String::new(),
             firm_name: "Neon Law".to_string(),
             notation_id: NOTATION.to_string(),
             flow_label: "Retainer Agreement".to_string(),

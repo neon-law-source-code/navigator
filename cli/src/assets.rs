@@ -33,6 +33,17 @@ use workflows::notify::{Notifier, SlackNotifier};
 /// picked up once the week elapses.
 const ASSET_CACHE_CONTROL: &str = "public, max-age=604800";
 
+/// One licensed web font family: its Regular/Bold WOFF2 filenames and the
+/// bucket prefix they publish under. `upload_font_family` and
+/// `font_family_refs` are generic over this so a second brand's font is a new
+/// constant, not a second copy of the upload/verify machinery.
+pub struct FontFamily {
+    /// Human-readable name for CLI output (e.g. "GORP", "Plus Jakarta Sans").
+    label: &'static str,
+    files: &'static [&'static str],
+    prefix: &'static str,
+}
+
 /// The initial GORP Serif faces the web design system serves. The licensed
 /// WOFF2 bytes are operator assets, uploaded to the public assets bucket and
 /// deliberately never committed to this repository. That mattered when the tree
@@ -40,6 +51,28 @@ const ASSET_CACHE_CONTROL: &str = "public, max-age=604800";
 /// covers the Firm's deployments, not redistribution to everyone who clones.
 const GORP_FONT_FILES: [&str; 2] = ["GORPSerif-Regular.woff2", "GORPSerif-Bold.woff2"];
 const GORP_FONT_PREFIX: &str = "fonts/gorp-serif";
+pub const GORP_SERIF: FontFamily = FontFamily {
+    label: "GORP",
+    files: &GORP_FONT_FILES,
+    prefix: GORP_FONT_PREFIX,
+};
+
+/// DeleteYourData.com's Plus Jakarta Sans faces. Unlike GORP, the font itself
+/// is OFL-1.1 (freely redistributable) — nothing here legally requires
+/// keeping the bytes out of git — but this brand's faces are bucket-served on
+/// the same operator-upload lane as GORP's anyway, so a fresh clone needs no
+/// font bytes at all and every deployment's font delivery goes through one
+/// mechanism rather than two.
+const PLUS_JAKARTA_SANS_FONT_FILES: [&str; 2] = [
+    "PlusJakartaSans-Regular.woff2",
+    "PlusJakartaSans-Bold.woff2",
+];
+const PLUS_JAKARTA_SANS_FONT_PREFIX: &str = "fonts/plus-jakarta-sans";
+pub const PLUS_JAKARTA_SANS: FontFamily = FontFamily {
+    label: "Plus Jakarta Sans",
+    files: &PLUS_JAKARTA_SANS_FONT_FILES,
+    prefix: PLUS_JAKARTA_SANS_FONT_PREFIX,
+};
 
 /// Slide markdown is embedded in the release binary so `ops ship` can discover
 /// every presentation/workshop `](img/…)` key without depending on an operator
@@ -262,7 +295,7 @@ pub fn run_upload(dir: &Path, bucket: Option<String>) -> ExitCode {
 /// Entry point for `cli assets fonts upload`. Licensed font files use the
 /// same public assets bucket as images, but a separate `fonts/gorp-serif/`
 /// prefix so the private tree never carries proprietary WOFF2 bytes.
-pub fn run_upload_fonts(dir: &Path, bucket: Option<String>) -> ExitCode {
+pub fn run_upload_fonts(dir: &Path, bucket: Option<String>, family: &FontFamily) -> ExitCode {
     let bucket = match bucket.or_else(|| std::env::var("NAVIGATOR_ASSETS_BUCKET").ok()) {
         Some(b) if !b.trim().is_empty() => b,
         _ => {
@@ -292,10 +325,11 @@ pub fn run_upload_fonts(dir: &Path, bucket: Option<String>) -> ExitCode {
                 return ExitCode::from(2);
             }
         };
-        match upload_gorp_fonts(&storage, dir).await {
+        match upload_font_family(&storage, dir, family).await {
             Ok(n) => {
                 println!(
-                    "navigator: uploaded {n} GORP face(s) to gs://{bucket}/{GORP_FONT_PREFIX}"
+                    "navigator: uploaded {n} {} face(s) to gs://{bucket}/{}",
+                    family.label, family.prefix
                 );
                 ExitCode::SUCCESS
             }
@@ -585,7 +619,8 @@ fn published_asset_refs(content_root: &Path) -> anyhow::Result<BTreeSet<String>>
     let mut refs = reachable_image_keys(content_root)?;
     // The licensed faces are published by `assets fonts upload`, never by a
     // build step, so they are exactly as droppable as an unuploaded hero.
-    refs.extend(gorp_font_refs());
+    refs.extend(font_family_refs(&GORP_SERIF));
+    refs.extend(font_family_refs(&PLUS_JAKARTA_SANS));
     Ok(refs)
 }
 
@@ -679,15 +714,18 @@ fn parse_image_refs(markdown: &str) -> Vec<String> {
 }
 
 /// The public asset keys the design system loads from Rust rather than from
-/// markdown: the licensed GORP faces `views::layout` preloads on every page.
-/// [`parse_image_refs`] only ever sees `](img/…)` in content, so without these
-/// the gate reports success while every page silently falls back to Georgia —
-/// `font-display: swap` means a missing face degrades quietly rather than
-/// erroring, so nothing else catches it.
-fn gorp_font_refs() -> impl Iterator<Item = String> {
-    GORP_FONT_FILES
-        .into_iter()
-        .map(|file| format!("{GORP_FONT_PREFIX}/{file}"))
+/// markdown: `family`'s licensed faces, which `views::layout` (GORP) or the
+/// `delete-your-data` brand tokens (Plus Jakarta Sans) preload on every page
+/// that brand wears. [`parse_image_refs`] only ever sees `](img/…)` in
+/// content, so without these the gate reports success while every page
+/// silently falls back to its system font — `font-display: swap` means a
+/// missing face degrades quietly rather than erroring, so nothing else
+/// catches it.
+fn font_family_refs(family: &FontFamily) -> impl Iterator<Item = String> + '_ {
+    family
+        .files
+        .iter()
+        .map(|file| format!("{}/{file}", family.prefix))
 }
 
 /// Join a public asset base URL with a repo-relative `img/…` key, the
@@ -1452,34 +1490,40 @@ async fn upload(storage: &dyn StorageService, dir: &Path) -> anyhow::Result<usiz
     Ok(uploaded)
 }
 
-/// Upload precisely the licensed GORP faces the current web design uses.
-/// Refusing a partial directory prevents a deploy that claims Bold support
-/// while serving a synthetic browser-generated weight instead.
-async fn upload_gorp_fonts(storage: &dyn StorageService, dir: &Path) -> anyhow::Result<usize> {
+/// Upload precisely `family`'s licensed faces. Refusing a partial directory
+/// prevents a deploy that claims Bold support while serving a synthetic
+/// browser-generated weight instead.
+async fn upload_font_family(
+    storage: &dyn StorageService,
+    dir: &Path,
+    family: &FontFamily,
+) -> anyhow::Result<usize> {
     anyhow::ensure!(
         dir.is_dir(),
-        "GORP font directory `{}` does not exist",
+        "{} font directory `{}` does not exist",
+        family.label,
         dir.display()
     );
-    for file in GORP_FONT_FILES {
+    for file in family.files {
         let path = dir.join(file);
         anyhow::ensure!(
             path.is_file(),
-            "required GORP font `{}` is missing",
+            "required {} font `{}` is missing",
+            family.label,
             path.display()
         );
     }
-    for file in GORP_FONT_FILES {
+    for file in family.files {
         let path = dir.join(file);
         let bytes = std::fs::read(&path).with_context(|| format!("read `{}`", path.display()))?;
-        let key = format!("{GORP_FONT_PREFIX}/{file}");
+        let key = format!("{}/{file}", family.prefix);
         storage
             .put_cached(&key, &bytes, "font/woff2", ASSET_CACHE_CONTROL)
             .await
             .with_context(|| format!("upload `{key}`"))?;
         println!("  → {key} (font/woff2, {} bytes)", bytes.len());
     }
-    Ok(GORP_FONT_FILES.len())
+    Ok(family.files.len())
 }
 
 /// Package every `.otf` face in `dir` into one deflate-compressed ZIP.
@@ -1640,14 +1684,14 @@ mod tests {
     use super::{
         asset_exists, build_gorp_otf_zip, bundled_slide_asset_keys, content_image_refs,
         content_type_for, destination_for_ref, download, fetch_asset, fetch_referenced_content,
-        fetch_report_exit, gallery_variant_keys, gorp_font_refs, join_public_url, orphan_keys,
+        fetch_report_exit, font_family_refs, gallery_variant_keys, join_public_url, orphan_keys,
         orphan_report, parse_image_refs, placeholder_bytes_for, published_asset_refs,
         reachable_image_keys, report_exit, resolve_public_origin, run_fetch_referenced,
         run_orphans, run_pull, run_upload, run_upload_desktop_fonts, run_upload_fonts, select,
-        storage_report_result, stub_referenced_content, upload, upload_gorp_fonts,
+        storage_report_result, stub_referenced_content, upload, upload_font_family,
         upload_gorp_otf_zip, verify_bundled_slide_assets, verify_bundled_slide_assets_bucket,
         verify_content, verify_refs, verify_storage_refs, AssetProbe, FetchReport, VerifyReport,
-        ASSET_CACHE_CONTROL, GORP_OTF_ZIP_KEY,
+        ASSET_CACHE_CONTROL, GORP_OTF_ZIP_KEY, GORP_SERIF, PLUS_JAKARTA_SANS,
     };
     use cloud::{FsStorage, ObjectListing, StorageError, StorageService, StoredObject};
     use std::collections::BTreeSet;
@@ -2270,7 +2314,7 @@ Inline raw-HTML tile: <div>![Team](img/thanks-apple/team-lunch.jpg)</div>\n";
     /// Publish the licensed faces on `server`. `verify_content` probes them on
     /// every run, so any case that expects success must serve them.
     async fn mount_published_fonts(server: &MockServer) {
-        for rel in gorp_font_refs() {
+        for rel in font_family_refs(&GORP_SERIF).chain(font_family_refs(&PLUS_JAKARTA_SANS)) {
             Mock::given(method("HEAD"))
                 .and(path(format!("/{rel}")))
                 .respond_with(ResponseTemplate::new(200))
@@ -2352,7 +2396,7 @@ Inline raw-HTML tile: <div>![Team](img/thanks-apple/team-lunch.jpg)</div>\n";
         for key in gallery_variant_keys() {
             assert!(refs.contains(&key), "verify must probe `{key}`");
         }
-        for key in gorp_font_refs() {
+        for key in font_family_refs(&GORP_SERIF) {
             assert!(refs.contains(&key), "verify must probe `{key}`");
         }
     }
@@ -2899,7 +2943,12 @@ Inline raw-HTML tile: <div>![Team](img/thanks-apple/team-lunch.jpg)</div>\n";
 
         let bucket = TempDir::new().unwrap();
         let storage = FsStorage::new(bucket.path().to_path_buf()).await.unwrap();
-        assert_eq!(upload_gorp_fonts(&storage, source.path()).await.unwrap(), 2);
+        assert_eq!(
+            upload_font_family(&storage, source.path(), &GORP_SERIF)
+                .await
+                .unwrap(),
+            2
+        );
 
         let regular = storage
             .get("fonts/gorp-serif/GORPSerif-Regular.woff2")
@@ -2923,7 +2972,7 @@ Inline raw-HTML tile: <div>![Team](img/thanks-apple/team-lunch.jpg)</div>\n";
         // before any tokio runtime or GCS client is constructed, so the
         // operator gets exit 2 rather than an opaque auth failure.
         let dir = TempDir::new().unwrap();
-        let code = run_upload_fonts(dir.path(), Some("   ".to_string()));
+        let code = run_upload_fonts(dir.path(), Some("   ".to_string()), &GORP_SERIF);
         assert_eq!(code, ExitCode::from(2));
     }
 
@@ -2934,7 +2983,7 @@ Inline raw-HTML tile: <div>![Team](img/thanks-apple/team-lunch.jpg)</div>\n";
         let bucket = TempDir::new().unwrap();
         let storage = FsStorage::new(bucket.path().to_path_buf()).await.unwrap();
 
-        let err = upload_gorp_fonts(&storage, source.path())
+        let err = upload_font_family(&storage, source.path(), &GORP_SERIF)
             .await
             .unwrap_err();
         assert!(err.to_string().contains("GORPSerif-Bold.woff2"));
@@ -2942,6 +2991,62 @@ Inline raw-HTML tile: <div>![Team](img/thanks-apple/team-lunch.jpg)</div>\n";
             .get("fonts/gorp-serif/GORPSerif-Regular.woff2")
             .await
             .is_err());
+    }
+
+    /// DeleteYourData.com's Plus Jakarta Sans faces upload the same way GORP's
+    /// do — a second licensed (OFL-1.1) web font, its own bucket prefix, and
+    /// the same all-or-nothing delivery guarantee — proving `upload_font_family`
+    /// actually generalizes to `upload_font_family` rather than staying a
+    /// GORP-only helper with a second copy beside it.
+    #[tokio::test]
+    async fn upload_font_family_publishes_plus_jakarta_sans_under_its_own_prefix() {
+        let source = TempDir::new().unwrap();
+        fs::write(
+            source.path().join("PlusJakartaSans-Regular.woff2"),
+            b"regular",
+        )
+        .unwrap();
+        fs::write(source.path().join("PlusJakartaSans-Bold.woff2"), b"bold").unwrap();
+
+        let bucket = TempDir::new().unwrap();
+        let storage = FsStorage::new(bucket.path().to_path_buf()).await.unwrap();
+        assert_eq!(
+            upload_font_family(&storage, source.path(), &PLUS_JAKARTA_SANS)
+                .await
+                .unwrap(),
+            2
+        );
+
+        let regular = storage
+            .get("fonts/plus-jakarta-sans/PlusJakartaSans-Regular.woff2")
+            .await
+            .unwrap();
+        assert_eq!(regular.bytes, b"regular");
+        assert_eq!(regular.content_type, "font/woff2");
+        assert_eq!(
+            storage
+                .get("fonts/plus-jakarta-sans/PlusJakartaSans-Bold.woff2")
+                .await
+                .unwrap()
+                .bytes,
+            b"bold"
+        );
+    }
+
+    /// `published_asset_refs` must name the Plus Jakarta Sans keys too, or
+    /// `assets verify` would report success on a deployment that never
+    /// uploaded DeleteYourData.com's font — the same silent-Georgia-fallback
+    /// gap `font_family_refs`'s own doc comment warns about.
+    #[test]
+    fn published_asset_refs_names_every_licensed_font_family() {
+        let content = TempDir::new().unwrap();
+        let refs = published_asset_refs(content.path()).unwrap();
+        for file in PLUS_JAKARTA_SANS.files {
+            assert!(
+                refs.contains(&format!("{}/{file}", PLUS_JAKARTA_SANS.prefix)),
+                "missing Plus Jakarta Sans ref for {file}: {refs:?}"
+            );
+        }
     }
 
     /// Stage the full licensed family so `build`/`upload` accept the delivery.

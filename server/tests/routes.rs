@@ -8379,6 +8379,61 @@ async fn a_server_fn_backed_app_page_on_the_non_default_host_renders_its_own_bra
     assert!(!body.contains(r#"aria-label="Neon Law home""#), "{body}");
 }
 
+/// ENG-435: an `/app` page on each registered host links that host's own
+/// tokens stylesheet and declares that brand's own font — never the other
+/// brand's — proving the mechanism end to end through the full router stack
+/// (`scope_branding` → `dioxus_document_head`), not just the unit-level
+/// per-key resolution `views::brand` and `webapp::brand_style` already cover.
+#[tokio::test]
+async fn an_app_page_links_its_own_brands_tokens_stylesheet_and_font() {
+    let state =
+        empty_state_with_canonical_host(CanonicalHost::new(Some("www.neonlaw.com".into()))).await;
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+
+    let neon_resp = get_with_role_and_host(
+        app.clone(),
+        "/app/projects",
+        store::persons::Role::Lawyer,
+        "www.neonlaw.com",
+    )
+    .await;
+    assert_eq!(neon_resp.status(), StatusCode::OK);
+    let neon_body = body_string(neon_resp).await;
+    assert!(
+        neon_body.contains(r#"href="/public/css/brand-neon-tokens.css""#),
+        "{neon_body}"
+    );
+    assert!(
+        neon_body.contains("font-family:'GORP Serif'"),
+        "{neon_body}"
+    );
+    assert!(!neon_body.contains("Plus Jakarta Sans"), "{neon_body}");
+    assert!(
+        !neon_body.contains("brand-delete-your-data-tokens.css"),
+        "{neon_body}"
+    );
+
+    let dyd_resp = get_with_role_and_host(
+        app,
+        "/app/projects",
+        store::persons::Role::Lawyer,
+        "staging.deleteyourdata.com",
+    )
+    .await;
+    assert_eq!(dyd_resp.status(), StatusCode::OK);
+    let dyd_body = body_string(dyd_resp).await;
+    assert!(
+        dyd_body.contains(r#"href="/public/css/brand-delete-your-data-tokens.css""#),
+        "{dyd_body}"
+    );
+    assert!(
+        dyd_body.contains("font-family:'Plus Jakarta Sans'"),
+        "{dyd_body}"
+    );
+    assert!(!dyd_body.contains("GORP Serif"), "{dyd_body}");
+    assert!(!dyd_body.contains("brand-neon-tokens.css"), "{dyd_body}");
+}
+
 /// Issue `GET path` against `app` with the given `Host:` header.
 async fn get_on_host(app: &axum::Router, path: &str, host: &str) -> axum::http::Response<Body> {
     app.clone()

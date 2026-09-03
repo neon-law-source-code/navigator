@@ -68,6 +68,10 @@ pub struct InjectedWalkerStep(pub WalkerStepData);
 /// Everything the page renders.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct WalkerStepView {
+    /// The resolved brand's tokens stylesheet href, so the page wears
+    /// its own palette rather than the firm's on a non-default host.
+    #[serde(default)]
+    pub tokens_href: String,
     pub step: WalkerStepData,
     pub csrf_token: String,
     pub role: ViewerRole,
@@ -99,6 +103,7 @@ pub async fn get_walker_step() -> Result<WalkerStepView, ServerFnError> {
     .unwrap_or_default();
 
     Ok(WalkerStepView {
+        tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
         firm_name: crate::app_chrome::firm_name_from_context().await,
         step,
         csrf_token,
@@ -175,6 +180,7 @@ fn step_body(view: &WalkerStepView) -> Element {
     rsx! {
         document::Title { "{page_title}" }
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
+        document::Stylesheet { href: "{view.tokens_href}" }
         nav { class: "lawyer-nav",
             a { class: "nav-link", href: "/app/projects", "Portal" }
             if role.is_lawyer_tier() {
@@ -244,6 +250,7 @@ mod tests {
         choices: &[(&str, &str)],
     ) -> WalkerStepView {
         WalkerStepView {
+            tokens_href: String::new(),
             firm_name: "Neon Law".to_string(),
             step: WalkerStepData {
                 notation_id: NOTATION.to_string(),

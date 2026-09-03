@@ -26,6 +26,10 @@ pub struct FormChoice {
 /// session CSRF token for the form's hidden field, and the viewer's tier.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct EntityNewView {
+    /// The resolved brand's tokens stylesheet href, so the page wears
+    /// its own palette rather than the firm's on a non-default host.
+    #[serde(default)]
+    pub tokens_href: String,
     pub types: Vec<FormChoice>,
     pub jurisdictions: Vec<FormChoice>,
     pub csrf_token: String,
@@ -93,6 +97,7 @@ pub async fn get_entity_new_form() -> Result<EntityNewView, ServerFnError> {
         .collect();
 
     Ok(EntityNewView {
+        tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
         firm_name: crate::app_chrome::firm_name_from_context().await,
         types,
         jurisdictions,
@@ -147,6 +152,7 @@ fn entity_new_body(view: &EntityNewView) -> Element {
     rsx! {
         document::Title { "{view.firm_name} | Lawyer | Entities | Add entity" }
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
+        document::Stylesheet { href: "{view.tokens_href}" }
         nav { class: "lawyer-nav",
             a { class: "nav-link", href: "/app/projects", "Projects" }
             a { class: "nav-link", href: "/auth/logout", "Sign out" }
@@ -178,6 +184,7 @@ mod tests {
         // `entity_forms_are_accessible`: no positive tabindex, every
         // `<label for>` and `aria-describedby` resolves, and the form is named.
         let html = dioxus_ssr::render_element(entity_new_body(&EntityNewView {
+            tokens_href: String::new(),
             firm_name: "Neon Law".to_string(),
             types: vec![FormChoice {
                 value: "00000000-0000-0000-0000-000000000001".to_string(),
@@ -202,6 +209,7 @@ mod tests {
         // its message as `?error=`. Without the flash the reload reads as a
         // no-op: the entity is simply absent and nothing says why.
         let html = dioxus_ssr::render_element(entity_new_body(&EntityNewView {
+            tokens_href: String::new(),
             firm_name: "Neon Law".to_string(),
             types: vec![],
             jurisdictions: vec![],

@@ -92,6 +92,10 @@ pub enum EditLock {
 /// The rendered admin person show/edit page, in a wasm-safe shape.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct PersonShowView {
+    /// The resolved brand's tokens stylesheet href, so the page wears
+    /// its own palette rather than the firm's on a non-default host.
+    #[serde(default)]
+    pub tokens_href: String,
     /// The person id (for the form and action routes).
     pub id: String,
     /// The prefilled fields; `None` when the id resolves to no person (a 404).
@@ -242,6 +246,7 @@ async fn load_person_show(role: ViewerRole) -> Result<PersonShowView, ServerFnEr
     };
 
     Ok(PersonShowView {
+        tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
         firm_name: crate::app_chrome::firm_name_from_context().await,
         id: id.to_string(),
         fields: Some(PersonFields {
@@ -490,6 +495,7 @@ fn render_person_show(resource: &Resource<Result<PersonShowView, ServerFnError>>
 
     rsx! {
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
+        document::Stylesheet { href: "{view.tokens_href}" }
         nav { class: "lawyer-nav",
             a { class: "nav-link", href: "/app/projects", "Projects" }
             a { class: "nav-link", href: "/auth/logout", "Sign out" }

@@ -43,6 +43,10 @@ pub struct TemplateChoice {
 /// viewer's tier.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct RetainerStartView {
+    /// The resolved brand's tokens stylesheet href, so the page wears
+    /// its own palette rather than the firm's on a non-default host.
+    #[serde(default)]
+    pub tokens_href: String,
     pub templates: Vec<TemplateChoice>,
     pub client_email: String,
     pub retainer_template_code: String,
@@ -93,6 +97,7 @@ pub async fn get_retainer_start_form() -> Result<RetainerStartView, ServerFnErro
     templates.sort_by(|a, b| a.label.cmp(&b.label));
 
     Ok(RetainerStartView {
+        tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
         firm_name: crate::app_chrome::firm_name_from_context().await,
         templates,
         client_email: query.client_email.unwrap_or_default(),
@@ -162,6 +167,7 @@ fn start_body(view: &RetainerStartView) -> Element {
     rsx! {
         document::Title { "{view.firm_name} | Lawyer | Retainers | New" }
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
+        document::Stylesheet { href: "{view.tokens_href}" }
         nav { class: "lawyer-nav",
             a { class: "nav-link", href: "/app/projects", "Portal" }
             if role.is_lawyer_tier() {
@@ -202,6 +208,7 @@ mod tests {
 
     fn view(error: Option<&str>) -> RetainerStartView {
         RetainerStartView {
+            tokens_href: String::new(),
             firm_name: "Neon Law".to_string(),
             templates: vec![TemplateChoice {
                 code: "onboarding__letter".to_string(),

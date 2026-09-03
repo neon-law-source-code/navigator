@@ -29,6 +29,10 @@ pub struct LetterFields {
 /// letter has that id), and the viewer's tier for the nav chrome.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct LetterDetailView {
+    /// The resolved brand's tokens stylesheet href, so the page wears
+    /// its own palette rather than the firm's on a non-default host.
+    #[serde(default)]
+    pub tokens_href: String,
     pub id: String,
     pub fields: Option<LetterFields>,
     pub role: ViewerRole,
@@ -91,6 +95,7 @@ pub async fn get_letter() -> Result<LetterDetailView, ServerFnError> {
     };
 
     Ok(LetterDetailView {
+        tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
         firm_name: crate::app_chrome::firm_name_from_context().await,
         id: id.to_string(),
         fields,
@@ -123,6 +128,7 @@ pub fn LawyerLetterDetail() -> Element {
 
     rsx! {
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
+        document::Stylesheet { href: "{view.tokens_href}" }
         nav { class: "lawyer-nav",
             a { class: "nav-link", href: "/app/projects", "Portal" }
             if role.is_lawyer_tier() {

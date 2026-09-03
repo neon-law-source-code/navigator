@@ -118,6 +118,10 @@ pub const DETAIL_PATH: &str = "/app/admin/people";
 /// the nav chrome.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct PeopleView {
+    /// The resolved brand's tokens stylesheet href, so the page wears
+    /// its own palette rather than the firm's on a non-default host.
+    #[serde(default)]
+    pub tokens_href: String,
     pub rows: Vec<PersonRow>,
     pub sort: String,
     pub filter_name: String,
@@ -181,6 +185,7 @@ pub async fn list_admin_people() -> Result<PeopleView, ServerFnError> {
             .map_err(|e| ServerFnError::new(e.to_string()))?;
 
     Ok(PeopleView {
+        tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
         firm_name: crate::app_chrome::firm_name_from_context().await,
         rows: people
             .into_iter()
@@ -332,6 +337,7 @@ fn render_people(resource: &Resource<Result<PeopleView, ServerFnError>>) -> Elem
             rsx! {
                 document::Title { "{title}" }
                 document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
+                document::Stylesheet { href: "{view.tokens_href}" }
                 // The role-appropriate lawyer nav chrome the page carried:
                 // portal + sign-out for every signed-in viewer, the lawyer
                 // One destination for every tier; the firm dashboard's

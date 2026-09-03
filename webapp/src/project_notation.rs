@@ -20,6 +20,10 @@ pub struct ProjectNotationNewView {
     pub role: ViewerRole,
     #[serde(default)]
     pub logo: Option<crate::components::AppLogo>,
+    /// The resolved brand's tokens stylesheet href, so the page wears
+    /// its own palette rather than the firm's on a non-default host.
+    #[serde(default)]
+    pub tokens_href: String,
     #[serde(default)]
     pub firm_name: String,
 }
@@ -34,6 +38,7 @@ async fn hidden(role: ViewerRole) -> ProjectNotationNewView {
         firm_name: crate::app_chrome::firm_name_from_context().await,
         role,
         logo: crate::app_chrome::app_logo_from_context().await,
+        tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
         ..ProjectNotationNewView::default()
     }
 }
@@ -103,6 +108,7 @@ pub async fn get_project_notation_new_form() -> Result<ProjectNotationNewView, S
         csrf_token,
         role,
         logo: crate::app_chrome::app_logo_from_context().await,
+        tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
     })
 }
 
@@ -122,6 +128,7 @@ fn notation_new_body(view: &ProjectNotationNewView) -> Element {
     rsx! {
         document::Title { "{view.firm_name} | Lawyer | Notations | New" }
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
+        document::Stylesheet { href: "{view.tokens_href}" }
         crate::components::AppNavbar {
             destinations: crate::app_chrome::app_destinations(view.role),
             logo: view.logo.clone(),

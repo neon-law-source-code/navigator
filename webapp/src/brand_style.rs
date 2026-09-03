@@ -17,7 +17,7 @@
 /// The brand stylesheet, hoisted after `theme.css` and before the page's own.
 pub const BRAND_STYLESHEET_HREF: &str = "/public/css/brand-firm.css";
 
-/// The firm's colour layer: orange over the shared teal tokens.
+/// The firm's colour layer: teal, unchanged from the shared tokens.
 ///
 /// Separate from [`BRAND_STYLESHEET_HREF`] because the two have different
 /// audiences. That one carries the firm's marketing rhythm and is hoisted by
@@ -26,7 +26,28 @@ pub const BRAND_STYLESHEET_HREF: &str = "/public/css/brand-firm.css";
 /// page wears it — including the shared surfaces (`/contact`, `/blog`,
 /// `/privacy`) that never hoist a marketing layer. Folding the colour into the
 /// marketing file would have rebranded four pages and left the rest teal.
-pub const BRAND_TOKENS_HREF: &str = "/public/css/brand-firm-tokens.css";
+///
+/// Fixed to the `neon` registry key rather than resolved per request: the
+/// callers that link it (this workshop-slide catalog, and any surface with no
+/// live request to resolve) render the firm's own identity regardless of
+/// which host serves them. A request-scoped page links [`brand_tokens_href`]
+/// instead.
+pub const BRAND_TOKENS_HREF: &str = "/public/css/brand-neon-tokens.css";
+
+/// The tokens stylesheet path for registry key `key` (`BrandKey::as_str()`),
+/// e.g. `"delete-your-data"` → `/public/css/brand-delete-your-data-tokens.css`.
+///
+/// A plain string function rather than one taking `views::brand::BrandKey`
+/// directly: `views::brand` does not compile to wasm, and this module ships
+/// unconditionally (no `#[cfg(feature = "server")]`) because
+/// [`BRAND_STYLESHEET_HREF`] and [`BRAND_TOKENS_HREF`] above are plain
+/// constants a hydrated client also resolves. The server-only call sites
+/// (`app_chrome`, `public_chrome`) convert the resolved `BrandKey` to its
+/// string form before calling this.
+#[must_use]
+pub fn brand_tokens_href(key: &str) -> String {
+    format!("/public/css/brand-{key}-tokens.css")
+}
 
 #[cfg(test)]
 mod tests {
@@ -37,6 +58,25 @@ mod tests {
         assert!(
             BRAND_STYLESHEET_HREF.starts_with("/public/css/"),
             "served from the public mount: {BRAND_STYLESHEET_HREF}"
+        );
+    }
+
+    /// Every registry key resolves to a distinct file under `/public/css/`,
+    /// so a request's resolved brand links its own palette rather than
+    /// another brand's.
+    #[test]
+    fn brand_tokens_href_resolves_per_registry_key() {
+        assert_eq!(
+            brand_tokens_href("neon"),
+            "/public/css/brand-neon-tokens.css"
+        );
+        assert_eq!(
+            brand_tokens_href("delete-your-data"),
+            "/public/css/brand-delete-your-data-tokens.css"
+        );
+        assert_ne!(
+            brand_tokens_href("neon"),
+            brand_tokens_href("delete-your-data")
         );
     }
 }

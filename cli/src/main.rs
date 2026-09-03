@@ -1353,20 +1353,46 @@ enum AssetsAction {
     },
 }
 
+/// Which licensed web font family `assets fonts upload` publishes. Each
+/// variant names a distinct [`assets::FontFamily`] — its own Regular/Bold
+/// filenames and its own bucket prefix — so a second brand's font is a new
+/// variant here plus a new constant in `assets.rs`, never a second command.
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+enum FontFamilyArg {
+    /// The firm's licensed serif, from `TrashType`.
+    GorpSerif,
+    /// DeleteYourData.com's OFL-1.1 sans, self-hosted on the same
+    /// operator-upload lane as GORP's licensed delivery.
+    PlusJakartaSans,
+}
+
+impl FontFamilyArg {
+    fn resolve(self) -> &'static assets::FontFamily {
+        match self {
+            Self::GorpSerif => &assets::GORP_SERIF,
+            Self::PlusJakartaSans => &assets::PLUS_JAKARTA_SANS,
+        }
+    }
+}
+
 #[derive(Subcommand)]
 enum FontAction {
-    /// Upload the licensed GORP Serif Regular and Bold WOFF2 files to
-    /// `fonts/gorp-serif/` in the public assets bucket. Auth is ADC; this is
+    /// Upload a licensed web font family's Regular and Bold WOFF2 files to
+    /// its bucket prefix in the public assets bucket. Auth is ADC; this is
     /// an operator action and the source directory is never committed.
     Upload {
-        /// Directory containing GORPSerif-Regular.woff2 and
-        /// GORPSerif-Bold.woff2 from the operator's licensed delivery.
+        /// Directory containing `<Family>-Regular.woff2` and
+        /// `<Family>-Bold.woff2` from the operator's delivery.
         #[arg(long)]
         dir: PathBuf,
         /// Target bucket. Defaults to `NAVIGATOR_ASSETS_BUCKET` — the public
         /// `<project>-assets` bucket.
         #[arg(long, env = "NAVIGATOR_ASSETS_BUCKET")]
         bucket: Option<String>,
+        /// Which font family to publish. Defaults to GORP Serif, the
+        /// original single-family command's behavior.
+        #[arg(long, value_enum, default_value_t = FontFamilyArg::GorpSerif)]
+        family: FontFamilyArg,
     },
     /// Package the licensed GORP Serif `.otf` desktop family into one ZIP and
     /// upload it to `fonts/gorp-serif/gorp-serif-otf.zip`, where the policy-gated
@@ -1921,7 +1947,11 @@ fn main() -> ExitCode {
                     assets::run_stub_referenced(&content, &out)
                 }
                 AssetsAction::Fonts { action } => match action {
-                    FontAction::Upload { dir, bucket } => assets::run_upload_fonts(&dir, bucket),
+                    FontAction::Upload {
+                        dir,
+                        bucket,
+                        family,
+                    } => assets::run_upload_fonts(&dir, bucket, family.resolve()),
                     FontAction::UploadDesktop { dir, bucket } => {
                         assets::run_upload_desktop_fonts(&dir, bucket)
                     }

@@ -31,6 +31,10 @@ pub struct EntityRow {
 /// token (for the per-row Delete forms), and the viewer's tier.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct EntityListView {
+    /// The resolved brand's tokens stylesheet href, so the page wears
+    /// its own palette rather than the firm's on a non-default host.
+    #[serde(default)]
+    pub tokens_href: String,
     pub rows: Vec<EntityRow>,
     pub sort: String,
     pub csrf_token: String,
@@ -153,6 +157,7 @@ pub async fn get_entity_list() -> Result<EntityListView, ServerFnError> {
         .collect();
 
     Ok(EntityListView {
+        tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
         firm_name: crate::app_chrome::firm_name_from_context().await,
         rows,
         sort,
@@ -220,6 +225,7 @@ pub fn LawyerEntityList() -> Element {
     rsx! {
         document::Title { "{view.firm_name} | Lawyer | Entities" }
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
+        document::Stylesheet { href: "{view.tokens_href}" }
         nav { class: "lawyer-nav",
             a { class: "nav-link", href: "/app/projects", "Projects" }
             a { class: "nav-link", href: "/auth/logout", "Sign out" }

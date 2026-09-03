@@ -65,6 +65,10 @@ pub struct ProjectListView {
     /// configures none.
     #[serde(default)]
     pub logo: Option<crate::components::AppLogo>,
+    /// The resolved brand's tokens stylesheet href, so the page wears
+    /// its own palette rather than the firm's on a non-default host.
+    #[serde(default)]
+    pub tokens_href: String,
     /// The `?error=` flash surfaced above the table — set when a matter delete
     /// or a participation removal is refused (dependents still reference the
     /// matter, or the lawyer-DRI lockout) and the handler redirects back here.
@@ -263,6 +267,7 @@ pub async fn get_project_list() -> Result<ProjectListView, ServerFnError> {
         sort,
         role,
         logo: crate::app_chrome::app_logo_from_context().await,
+        tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
         error: query.error.filter(|message| !message.is_empty()),
     })
 }
@@ -301,6 +306,7 @@ pub fn LawyerProjects() -> Element {
     rsx! {
         document::Title { "{view.firm_name} | Lawyer | Projects" }
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
+        document::Stylesheet { href: "{view.tokens_href}" }
         crate::components::AppNavbar {
             destinations: crate::app_chrome::app_destinations(view.role),
             logo: view.logo.clone(),

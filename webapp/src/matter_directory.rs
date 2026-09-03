@@ -66,6 +66,10 @@ pub struct MatterDirectoryView {
     /// configures none.
     #[serde(default)]
     pub logo: Option<crate::components::AppLogo>,
+    /// The resolved brand's tokens stylesheet href, so the page wears
+    /// its own palette rather than the firm's on a non-default host.
+    #[serde(default)]
+    pub tokens_href: String,
     /// The deploy's firm name, for the document title. Resolved from the
     /// request-scoped branding rather than written into the copy, so a
     /// white-label deploy's tab reads its own name.
@@ -134,6 +138,7 @@ pub async fn matter_directory_view() -> Result<MatterDirectoryView, ServerFnErro
         sort,
         role,
         logo: crate::app_chrome::app_logo_from_context().await,
+        tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
     })
 }
 
@@ -204,6 +209,7 @@ pub fn matter_directory_body(view: &MatterDirectoryView) -> Element {
     rsx! {
         document::Title { "{view.firm_name} | Admin | Matters" }
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
+        document::Stylesheet { href: "{view.tokens_href}" }
         crate::components::AppNavbar {
             destinations: crate::app_chrome::app_destinations(view.role),
             logo: view.logo.clone(),
@@ -261,6 +267,7 @@ mod tests {
 
     fn directory(rows: Vec<MatterRow>, role: ViewerRole) -> MatterDirectoryView {
         MatterDirectoryView {
+            tokens_href: String::new(),
             firm_name: "Neon Law".to_string(),
             rows,
             sort: String::new(),

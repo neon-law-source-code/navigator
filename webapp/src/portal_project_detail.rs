@@ -98,6 +98,10 @@ pub struct ProjectDetailView {
     /// configures none.
     #[serde(default)]
     pub logo: Option<crate::components::AppLogo>,
+    /// The resolved brand's tokens stylesheet href, so the page wears
+    /// its own palette rather than the firm's on a non-default host.
+    #[serde(default)]
+    pub tokens_href: String,
     /// The one client-facing intake continuation for this matter, when the
     /// current client-facing workflow still needs an answer.
     #[serde(default)]
@@ -169,6 +173,7 @@ pub async fn get_project_detail() -> Result<ProjectDetailView, ServerFnError> {
     // The navbar renders on the 404 body too, so the mark is resolved before the
     // first early return rather than only on the happy path.
     let logo = crate::app_chrome::app_logo_from_context().await;
+    let tokens_href = crate::app_chrome::app_tokens_href_from_context().await;
     let csrf_token = dioxus_fullstack_core::FullstackContext::extract::<
         axum::Extension<crate::csrf::CsrfToken>,
         _,
@@ -291,6 +296,7 @@ pub async fn get_project_detail() -> Result<ProjectDetailView, ServerFnError> {
         role,
         impersonation,
         logo,
+        tokens_href,
         pending_intake,
     })
 }
@@ -445,6 +451,7 @@ pub fn ClientProjectDetail() -> Element {
     rsx! {
         document::Title { "{view.name}" }
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
+        document::Stylesheet { href: "{view.tokens_href}" }
         crate::components::ImpersonationBanner { view: view.impersonation.clone() }
         crate::components::AppNavbar {
             destinations: crate::app_chrome::app_destinations(view.role),

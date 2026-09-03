@@ -86,6 +86,10 @@ pub enum ExpungeState {
 /// tier for the nav chrome.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct ExpungeDocumentView {
+    /// The resolved brand's tokens stylesheet href, so the page wears
+    /// its own palette rather than the firm's on a non-default host.
+    #[serde(default)]
+    pub tokens_href: String,
     pub doc_id: String,
     pub state: ExpungeState,
     pub error: Option<String>,
@@ -147,12 +151,14 @@ pub async fn get_expunge_document() -> Result<ExpungeDocumentView, ServerFnError
             .unwrap_or_default();
 
     let firm_name = crate::app_chrome::firm_name_from_context().await;
+    let tokens_href = crate::app_chrome::app_tokens_href_from_context().await;
     let hidden = |doc_id: String| {
         dioxus_fullstack_core::FullstackContext::commit_http_status(
             axum::http::StatusCode::NOT_FOUND,
             None,
         );
         ExpungeDocumentView {
+            tokens_href: tokens_href.clone(),
             firm_name: firm_name.clone(),
             doc_id,
             state: ExpungeState::NotFound,
@@ -188,6 +194,7 @@ pub async fn get_expunge_document() -> Result<ExpungeDocumentView, ServerFnError
             return Ok(hidden(doc_id.to_string()));
         };
         return Ok(ExpungeDocumentView {
+            tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
             firm_name: firm_name.clone(),
             doc_id: doc_id.to_string(),
             state: ExpungeState::Done(ExpungeOutcome {
@@ -216,6 +223,7 @@ pub async fn get_expunge_document() -> Result<ExpungeDocumentView, ServerFnError
     };
 
     Ok(ExpungeDocumentView {
+        tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
         firm_name,
         doc_id: doc_id.to_string(),
         state: ExpungeState::Confirm(ExpungeTarget {
@@ -349,6 +357,7 @@ pub fn AdminExpungeDocument() -> Element {
 
     rsx! {
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
+        document::Stylesheet { href: "{view.tokens_href}" }
         {expunge_nav(role)}
         main { id: "expunge-document", class: "nav-theme",
             match &view.state {
@@ -389,6 +398,7 @@ mod tests {
 
     fn confirm_view(error: Option<&str>) -> ExpungeDocumentView {
         ExpungeDocumentView {
+            tokens_href: String::new(),
             firm_name: "Neon Law".to_string(),
             doc_id: "00000000-0000-0000-0000-000000000007".to_string(),
             state: ExpungeState::Confirm(ExpungeTarget {
@@ -455,6 +465,7 @@ mod tests {
     #[test]
     fn done_shows_the_audit_row_id() {
         let view = ExpungeDocumentView {
+            tokens_href: String::new(),
             firm_name: "Neon Law".to_string(),
             doc_id: "00000000-0000-0000-0000-000000000007".to_string(),
             state: ExpungeState::Done(ExpungeOutcome {

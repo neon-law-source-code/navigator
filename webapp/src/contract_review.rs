@@ -56,6 +56,10 @@ pub struct FindingRow {
 /// caller outside the matter's lawyer lens — the fail-closed not-found state.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct ContractReviewView {
+    /// The resolved brand's tokens stylesheet href, so the page wears
+    /// its own palette rather than the firm's on a non-default host.
+    #[serde(default)]
+    pub tokens_href: String,
     pub review_id: String,
     pub found: bool,
     pub playbook_name: String,
@@ -264,6 +268,7 @@ pub async fn get_contract_review() -> Result<ContractReviewView, ServerFnError> 
     let editable = review.status == store::contract_reviews::STATUS_ANALYZED
         && notation.state == "lawyer_review";
     Ok(ContractReviewView {
+        tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
         firm_name,
         review_id: id,
         found: true,
@@ -542,6 +547,7 @@ pub fn LawyerContractReview() -> Element {
 
     rsx! {
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
+        document::Stylesheet { href: "{view.tokens_href}" }
         nav { class: "lawyer-nav",
             a { class: "nav-link", href: "/app/projects", "Portal" }
             if role.is_lawyer_tier() {
@@ -586,6 +592,7 @@ mod tests {
 
     fn view(findings: Vec<FindingRow>, all_acted: bool) -> ContractReviewView {
         ContractReviewView {
+            tokens_href: String::new(),
             firm_name: "Neon Law".to_string(),
             review_id: RID.to_string(),
             found: true,

@@ -76,6 +76,11 @@ pub struct AppBrandMark {
     /// The firm's site name for this request. Empty only on a `Default` value,
     /// which [`firm_name_from_context`] treats as unresolved.
     pub firm_name: String,
+    /// The resolved brand's tokens stylesheet href for this request (e.g.
+    /// `/public/css/brand-delete-your-data-tokens.css`). Empty only on a
+    /// `Default` value, which [`app_tokens_href_from_context`] treats as
+    /// unresolved and recomputes directly.
+    pub tokens_href: String,
 }
 
 /// The running deploy's firm brand mark. Server-only: `views::brand` does not
@@ -105,6 +110,7 @@ pub fn firm_brand_mark() -> AppBrandMark {
     AppBrandMark {
         logo: firm_app_logo(),
         firm_name: views::brand::FIRM_BRAND.site_name.to_string(),
+        tokens_href: crate::brand_style::brand_tokens_href(views::brand::brand_key().as_str()),
     }
 }
 
@@ -123,6 +129,23 @@ pub async fn app_logo_from_context() -> Option<AppLogo> {
         return mark.logo;
     }
     firm_app_logo()
+}
+
+/// Resolve the tokens stylesheet href for the current request — the same
+/// seam as [`app_logo_from_context`], for the same reason: a Dioxus server
+/// function's task does not inherit the brand `task_local`, so this prefers
+/// the portal pre-layer's already-resolved value and falls back to building
+/// it directly for the middleware-free test paths.
+#[cfg(feature = "server")]
+pub async fn app_tokens_href_from_context() -> String {
+    if let Ok(axum::Extension(mark)) =
+        dioxus_fullstack_core::FullstackContext::extract::<axum::Extension<AppBrandMark>, _>().await
+    {
+        if !mark.tokens_href.is_empty() {
+            return mark.tokens_href;
+        }
+    }
+    crate::brand_style::brand_tokens_href(views::brand::brand_key().as_str())
 }
 
 /// Resolve the firm name `/app` copy names for the current request — the name a
@@ -260,5 +283,48 @@ mod tests {
                 role.authority_rank()
             );
         }
+    }
+
+    /// `firm_brand_mark` resolves the tokens href for whichever brand the
+    /// `views::brand` task-local currently scopes, matching
+    /// `brand_style::brand_tokens_href`'s own per-key resolution — the same
+    /// property `firm_app_logo`/`firm_name_from_context` already hold for the
+    /// mark and the name.
+    #[tokio::test]
+    async fn firm_brand_mark_resolves_the_scoped_brands_tokens_href() {
+        use views::brand::{scope, DEFAULT_BRANDING, DELETE_YOUR_DATA_BRANDING};
+
+        scope(&DEFAULT_BRANDING, async {
+            assert_eq!(
+                firm_brand_mark().tokens_href,
+                "/public/css/brand-neon-tokens.css"
+            );
+        })
+        .await;
+
+        scope(&DELETE_YOUR_DATA_BRANDING, async {
+            assert_eq!(
+                firm_brand_mark().tokens_href,
+                "/public/css/brand-delete-your-data-tokens.css"
+            );
+        })
+        .await;
+    }
+
+    /// With no request-extension middleware in the way (the direct-call test
+    /// path every other `_from_context` accessor here already exercises),
+    /// `app_tokens_href_from_context` falls back to resolving the href
+    /// directly from the scoped brand, never an empty string.
+    #[tokio::test]
+    async fn app_tokens_href_from_context_falls_back_to_the_scoped_brand() {
+        use views::brand::{scope, DELETE_YOUR_DATA_BRANDING};
+
+        scope(&DELETE_YOUR_DATA_BRANDING, async {
+            assert_eq!(
+                app_tokens_href_from_context().await,
+                "/public/css/brand-delete-your-data-tokens.css"
+            );
+        })
+        .await;
     }
 }

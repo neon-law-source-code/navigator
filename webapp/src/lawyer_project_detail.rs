@@ -120,6 +120,10 @@ pub struct LawyerDetailView {
     /// configures none.
     #[serde(default)]
     pub logo: Option<crate::components::AppLogo>,
+    /// The resolved brand's tokens stylesheet href, so the page wears
+    /// its own palette rather than the firm's on a non-default host.
+    #[serde(default)]
+    pub tokens_href: String,
 }
 
 /// Resolve a side's DRI names from the designated ids, alphabetical.
@@ -194,6 +198,7 @@ pub async fn get_lawyer_project_detail() -> Result<LawyerDetailView, ServerFnErr
     // The navbar renders on the 404 body too, so the mark is resolved before the
     // first early return rather than only on the happy path.
     let logo = crate::app_chrome::app_logo_from_context().await;
+    let tokens_href = crate::app_chrome::app_tokens_href_from_context().await;
     // A non-lawyer caller gets the handler's 404 — the workbench is hidden,
     // not merely refused.
     if !role.is_lawyer_tier() {
@@ -362,6 +367,7 @@ pub async fn get_lawyer_project_detail() -> Result<LawyerDetailView, ServerFnErr
         calendar_dir,
         role,
         logo,
+        tokens_href,
     })
 }
 
@@ -507,6 +513,7 @@ pub fn LawyerProjectDetail() -> Element {
     rsx! {
         document::Title { "{view.name} — Project" }
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
+        document::Stylesheet { href: "{view.tokens_href}" }
         crate::components::AppNavbar {
             destinations: crate::app_chrome::app_destinations(view.role),
             logo: view.logo.clone(),

@@ -151,6 +151,10 @@ pub struct PageState {
 /// `render_listing` contract.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct AdminListingView {
+    /// The resolved brand's tokens stylesheet href, so the page wears
+    /// its own palette rather than the firm's on a non-default host.
+    #[serde(default)]
+    pub tokens_href: String,
     /// The document title (`<title>`) — the deploy's firm name and the page's
     /// own suffix, e.g. `Neon Law | Lawyer | Jurisdictions`. Assembled by
     /// [`view`] rather than written at the call site, so a white-label deploy's
@@ -515,6 +519,7 @@ pub async fn view(
 ) -> AdminListingView {
     let firm = crate::app_chrome::firm_name_from_context().await;
     AdminListingView {
+        tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
         sort: None,
         title: format!("{firm} | {title_suffix}"),
         heading: heading.to_string(),
@@ -552,6 +557,7 @@ pub fn AdminListingScaffold(view: AdminListingView) -> Element {
     rsx! {
         document::Title { "{view.title}" }
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
+        document::Stylesheet { href: "{view.tokens_href}" }
         // The role-appropriate lawyer nav chrome, mirroring the other directories.
         nav { class: "lawyer-nav",
             a { class: "nav-link", href: "/app/projects", "Projects" }

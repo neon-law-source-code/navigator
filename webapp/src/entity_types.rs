@@ -33,6 +33,10 @@ pub struct EntityTypeRow {
 /// viewer's tier.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct EntityTypesView {
+    /// The resolved brand's tokens stylesheet href, so the page wears
+    /// its own palette rather than the firm's on a non-default host.
+    #[serde(default)]
+    pub tokens_href: String,
     pub rows: Vec<EntityTypeRow>,
     pub sort: String,
     pub role: ViewerRole,
@@ -78,6 +82,7 @@ pub async fn list_entity_types() -> Result<EntityTypesView, ServerFnError> {
         .map_err(|e| ServerFnError::new(e.to_string()))?;
 
     Ok(EntityTypesView {
+        tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
         firm_name: crate::app_chrome::firm_name_from_context().await,
         rows: rows
             .into_iter()
@@ -130,6 +135,7 @@ pub fn LawyerEntityTypes() -> Element {
     rsx! {
         document::Title { "{view.firm_name} | Lawyer | Entity types" }
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
+        document::Stylesheet { href: "{view.tokens_href}" }
         nav { class: "lawyer-nav",
             a { class: "nav-link", href: "/app/projects", "Projects" }
             a { class: "nav-link", href: "/auth/logout", "Sign out" }

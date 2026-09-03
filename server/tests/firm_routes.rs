@@ -1099,16 +1099,22 @@ async fn the_llms_index_publishes_no_fee() {
 
 /// The platform page is the firm's, and it makes one invitation.
 ///
-/// The firm builds Navigator, and the page invites the reader to co-counsel a
-/// pro bono case with the firm. Two things must survive on the rendered page:
-/// the co-counsel invitation, and the absence of any published rate.
+/// The firm builds Navigator, and the page offers free use to attorneys who
+/// co-counsel a case with it. The invitation and the absence of a published
+/// rate must survive on the rendered page.
 #[tokio::test]
 async fn the_navigator_page_invites_pro_bono_co_counsel_and_publishes_no_rate() {
     let app = site_app().await;
     let body = body_string(anon_get(&app, "/navigator").await).await;
     assert!(
-        body.contains("Co-Counsel a Pro Bono Case with Us"),
-        "the only invitation is pro bono co-counsel: {body}"
+        body.contains("Free use for those who co-counsel with us."),
+        "the page offers free use to co-counseling attorneys: {body}"
+    );
+    assert!(
+        body.contains(
+            "Anyone who co-counsels a case with us gets the software free for life for their own practices."
+        ),
+        "the lifetime software offer reaches the rendered page: {body}"
     );
     // The co-counsel invitation prefills the email subject, so the mailto the
     // page renders carries it through the recipient's client.
@@ -1126,6 +1132,17 @@ async fn the_navigator_page_invites_pro_bono_co_counsel_and_publishes_no_rate() 
         !priced,
         "the firm publishes no price on the website: {body}"
     );
+    for removed in [
+        "The manuals that go with the binary",
+        "What a firm works with",
+        "The licence, and the one thing we sell around it",
+        "not yet signed or notarized",
+    ] {
+        assert!(
+            !body.contains(removed),
+            "the retired copy remains: {removed}: {body}"
+        );
+    }
 }
 
 /// The public Navigator page maps the Project's connected work around Navigator.
@@ -1302,7 +1319,7 @@ async fn the_navigator_page_publishes_the_cli_at_the_release_it_runs() {
         "the boxes sit in the home page's grid, which arms the hover wash: {body}"
     );
 
-    // The Homebrew route, and the reason it is the recommended one on a Mac.
+    // The Homebrew route remains available alongside the archive downloads.
     let install = webapp::cli_release::HOMEBREW_INSTALL_COMMAND;
     assert_eq!(
         body.matches(install).count(),
@@ -1313,21 +1330,15 @@ async fn the_navigator_page_publishes_the_cli_at_the_release_it_runs() {
         !body.contains("brew upgrade "),
         "brew upgrades in place, so the page does not publish a second line: {body}"
     );
-    assert!(
-        body.contains("not yet signed or notarized"),
-        "the page says why brew is the macOS route rather than implying the \
-         browser download just works: {body}"
-    );
-
-    for href in [
-        "/docs/validate",
-        "https://github.com/neon-law-source-code/navigator/blob/main/docs/gitops.md",
-        "/docs/oss-install",
-        "/workshops",
+    for removed in [
+        "The manuals that go with the binary",
+        "What a firm works with",
+        "The licence, and the one thing we sell around it",
+        "not yet signed or notarized",
     ] {
         assert!(
-            body.contains(&format!(r#"href="{href}""#)),
-            "the read-next band links {href}: {body}"
+            !body.contains(removed),
+            "the retired copy remains: {removed}: {body}"
         );
     }
 }

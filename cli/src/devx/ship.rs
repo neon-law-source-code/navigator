@@ -3508,10 +3508,11 @@ mod tests {
         // so the other registered `BrandKey` (`DeleteYourData`) contributes its
         // own production host here — derived from the compiled registry, not a
         // second hand-maintained coordinate.
-        let cert = fs::read_to_string(gke.join("ingress/managed-certificate.yaml")).unwrap();
+        let cert_manifest =
+            fs::read_to_string(gke.join("ingress/managed-certificate.yaml")).unwrap();
         assert!(
-            cert.contains("- www.deleteyourdata.com"),
-            "the additional brand's production host gets a cert domain: {cert}"
+            cert_manifest.contains("- www.deleteyourdata.com"),
+            "the additional brand's production host gets a cert domain: {cert_manifest}"
         );
         let ingress = fs::read_to_string(gke.join("ingress/ingress.yaml")).unwrap();
         assert!(
@@ -3525,7 +3526,7 @@ mod tests {
             "the additional brand host routes to the same navigator-web Service"
         );
         assert!(
-            !cert.contains("staging.deleteyourdata.com")
+            !cert_manifest.contains("staging.deleteyourdata.com")
                 && !ingress.contains("staging.deleteyourdata.com"),
             "a production render must not carry the staging sibling of the additional brand's host"
         );
@@ -3619,14 +3620,15 @@ mod tests {
                 .expect("hub env resolves");
         let rendered = render_manifests_with(&subs, false).expect("render succeeds");
         let gke = rendered.path().join(GKE_KUSTOMIZE_SUBPATH);
-        let cert = fs::read_to_string(gke.join("ingress/managed-certificate.yaml")).unwrap();
+        let cert_manifest =
+            fs::read_to_string(gke.join("ingress/managed-certificate.yaml")).unwrap();
         assert!(
-            cert.contains("- staging.deleteyourdata.com"),
-            "the additional brand's staging host gets a cert domain: {cert}"
+            cert_manifest.contains("- staging.deleteyourdata.com"),
+            "the additional brand's staging host gets a cert domain: {cert_manifest}"
         );
         assert!(
-            !cert.contains("www.deleteyourdata.com"),
-            "a staging render must not carry the production sibling: {cert}"
+            !cert_manifest.contains("www.deleteyourdata.com"),
+            "a staging render must not carry the production sibling: {cert_manifest}"
         );
         let ingress = fs::read_to_string(gke.join("ingress/ingress.yaml")).unwrap();
         assert!(

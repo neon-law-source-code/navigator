@@ -2045,13 +2045,17 @@ pub fn host_crawler_and_legal_routes(
         .route("/robots.txt", get(robots_txt))
         .route(
             "/sitemap.xml",
-            get(move |State(state): State<AppState>| async move { sitemap_xml(&state, sitemap) }),
+            get(
+                move |State(state): State<AppState>, request: axum::extract::Request| async move {
+                    sitemap_xml(&state, sitemap, &request)
+                },
+            ),
         )
         .route(
             "/llms.txt",
             get(
-                move |State(state): State<AppState>, headers: axum::http::HeaderMap| async move {
-                    llms_txt(&state, &headers, llms)
+                move |State(state): State<AppState>, request: axum::extract::Request| async move {
+                    llms_txt(&state, &request, llms)
                 },
             ),
         )
@@ -2452,19 +2456,18 @@ fn markdown_response(raw: &str) -> impl IntoResponse {
 /// authority resolution so every absolute URL the site advertises uses
 /// the same host, with no hard-coded domain (OSS forks get their own).
 fn resolve_base_url(canonical_host: &CanonicalHost, headers: &axum::http::HeaderMap) -> String {
-    let authority = canonical_host
-        .host()
-        .map(ToOwned::to_owned)
-        .or_else(|| {
-            headers
-                .get(header::HOST)
-                .and_then(|v| v.to_str().ok())
-                .filter(|s| !s.is_empty())
-                .map(ToOwned::to_owned)
-        })
-        .unwrap_or_else(|| "www.example.com".to_string());
-    let scheme = scheme_for_authority(&authority);
-    format!("{scheme}://{authority}")
+    let request_host = headers
+        .get(header::HOST)
+        .and_then(|v| v.to_str().ok())
+        .map(|host| host.split(':').next().unwrap_or(host))
+        .filter(|host| !host.is_empty());
+    if let Some(host) = request_host {
+        if views::brand::registered_brand_key(host).is_some() {
+            let scheme = scheme_for_authority(host);
+            return format!("{scheme}://{host}");
+        }
+    }
+    resolve_crawler_base_url(canonical_host)
 }
 
 fn scheme_for_authority(authority: &str) -> &'static str {
@@ -2520,9 +2523,9 @@ Disallow: /templates
 /// the canonical host even in forks.
 async fn robots_txt(
     State(canonical_host): State<CanonicalHost>,
-    _headers: axum::http::HeaderMap,
+    request: axum::extract::Request,
 ) -> impl IntoResponse {
-    let base = resolve_crawler_base_url(&canonical_host);
+    let base = resolve_base_url(&canonical_host, request.headers());
     let body = format!("{CRAWLER_DISALLOW_BLOCK}\nSitemap: {base}/sitemap.xml\n");
     text_response("text/plain; charset=utf-8", body)
 }
@@ -2567,7 +2570,7 @@ fn percent_encode_sitemap_path(path: &str) -> String {
 /// host. Its declared path table is the wider claim: it lists gated pages too,
 /// and a sitemap entry pointing at a login redirect is worse than no entry at
 /// all.
-pub type SitemapPaths = fn(&AppState) -> std::collections::BTreeSet<String>;
+pub type SitemapPaths = fn(&AppState, views::brand::BrandKey) -> std::collections::BTreeSet<String>;
 
 /// The host-owned public GET surfaces this router publishes: the documents
 /// every brand serves, plus the brand's own anonymous pages.
@@ -2579,6 +2582,7 @@ pub type SitemapPaths = fn(&AppState) -> std::collections::BTreeSet<String>;
 fn sitemap_paths(
     state: &AppState,
     brand_paths: SitemapPaths,
+    key: views::brand::BrandKey,
 ) -> std::collections::BTreeSet<String> {
     let mut paths = std::collections::BTreeSet::new();
     if state.portal_only.enabled() {
@@ -2591,7 +2595,7 @@ fn sitemap_paths(
         "/terms".to_string(),
         "/llms.txt".to_string(),
     ]);
-    paths.extend(brand_paths(state));
+    paths.extend(brand_paths(state, key));
     paths
 }
 
@@ -2614,9 +2618,22 @@ fn render_sitemap_xml(base: &str, paths: &std::collections::BTreeSet<String>) ->
 /// `/sitemap.xml` — absolute canonical URLs for the public GET surfaces the
 /// serving brand mounts. Content-backed pages (the firm's posts and talks) are
 /// read from `AppState`, so the sitemap follows the content loaded at boot.
-fn sitemap_xml(state: &AppState, brand_paths: SitemapPaths) -> Response {
-    let base = resolve_crawler_base_url(&state.canonical_host);
-    let body = render_sitemap_xml(&base, &sitemap_paths(state, brand_paths));
+fn request_brand_key(request: &axum::extract::Request) -> views::brand::BrandKey {
+    request
+        .extensions()
+        .get::<views::brand::BrandKey>()
+        .copied()
+        .unwrap_or_default()
+}
+
+fn sitemap_xml(
+    state: &AppState,
+    brand_paths: SitemapPaths,
+    request: &axum::extract::Request,
+) -> Response {
+    let base = resolve_base_url(&state.canonical_host, request.headers());
+    let key = request_brand_key(request);
+    let body = render_sitemap_xml(&base, &sitemap_paths(state, brand_paths, key));
     text_response("application/xml; charset=utf-8", body).into_response()
 }
 
@@ -2773,7 +2790,7 @@ pub struct LlmsTxt {
 /// Every path a brand returns must be anonymously readable on that brand's
 /// host: advertising a login redirect or a 404 as a crawlable document is
 /// worse than advertising nothing.
-pub type LlmsTxtDocument = fn(&AppState) -> LlmsTxt;
+pub type LlmsTxtDocument = fn(&AppState, views::brand::BrandKey) -> LlmsTxt;
 
 /// The notes every host publishes, whatever brand it wears.
 ///
@@ -2832,11 +2849,12 @@ fn render_llms_txt(base: &str, document: &LlmsTxt) -> String {
 /// them into the shared document shape.
 fn llms_txt(
     state: &AppState,
-    headers: &axum::http::HeaderMap,
+    request: &axum::extract::Request,
     document: LlmsTxtDocument,
 ) -> Response {
-    let base = resolve_base_url(&state.canonical_host, headers);
-    markdown_response(&render_llms_txt(&base, &document(state))).into_response()
+    let base = resolve_base_url(&state.canonical_host, request.headers());
+    let key = request_brand_key(request);
+    markdown_response(&render_llms_txt(&base, &document(state, key))).into_response()
 }
 
 /// Dedicated double-submit CSRF cookie for the workshop certificate form.

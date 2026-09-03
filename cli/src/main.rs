@@ -2315,7 +2315,7 @@ fn yaml_pass(dir: &std::path::Path) -> std::io::Result<Vec<GateError>> {
 /// `Y001` — a `seeds/*.yaml` document must be accepted by `navigator site import`.
 const SEED_DOCUMENT_CODE: &str = "Y001";
 
-/// `Y002` — a `locales/<locale>/<page>.yaml` catalog must deserialize as that page.
+/// `Y002` — a `locales/<locale>/[<brand-key>/]<page>.yaml` catalog must deserialize as that page.
 const LOCALE_DOCUMENT_CODE: &str = "Y002";
 
 fn seed_model_for_path(path: &std::path::Path) -> Option<anyhow::Result<store::seed::SeedModel>> {
@@ -2400,13 +2400,14 @@ fn locale_document_pass(dir: &std::path::Path) -> std::io::Result<Vec<GateError>
         if !entry.file_type().is_file() {
             continue;
         }
-        let Some((locale, stem)) = views::locales::locale_yaml_parts(path) else {
+        let Some(parts) = views::locales::locale_yaml_parts(path) else {
             continue;
         };
         files_scanned += 1;
-        if locale != views::locales::DEFAULT_LOCALE {
+        if parts.locale != views::locales::DEFAULT_LOCALE {
             let message = format!(
-                "locale directory `{locale}` is not published; only `{}` is allowed",
+                "locale directory `{}` is not published; only `{}` is allowed",
+                parts.locale,
                 views::locales::DEFAULT_LOCALE
             );
             print_violation(
@@ -2422,8 +2423,35 @@ fn locale_document_pass(dir: &std::path::Path) -> std::io::Result<Vec<GateError>
             ));
             continue;
         }
+        if let Some(brand_key) = parts.brand_key {
+            let known = views::brand::BrandKey::ALL
+                .iter()
+                .any(|key| key.as_str() == brand_key);
+            if !known {
+                let message = format!(
+                    "brand catalog directory `{brand_key}` is not a registry key; expected one of {}",
+                    views::brand::BrandKey::ALL
+                        .iter()
+                        .map(|key| key.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+                print_violation(
+                    &path.display().to_string(),
+                    1,
+                    LOCALE_DOCUMENT_CODE,
+                    &message,
+                );
+                errors.push(GateError::new(
+                    format!("{}:1", path.display()),
+                    Some(LOCALE_DOCUMENT_CODE),
+                    message,
+                ));
+                continue;
+            }
+        }
         let raw = std::fs::read_to_string(path)?;
-        if let Err(error) = views::locales::parse_locale_file(stem, &raw) {
+        if let Err(error) = views::locales::parse_locale_file(parts.stem, &raw) {
             print_violation(&path.display().to_string(), 1, LOCALE_DOCUMENT_CODE, &error);
             errors.push(GateError::new(
                 format!("{}:1", path.display()),

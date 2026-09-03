@@ -1,0 +1,88 @@
+head_title: "Data-deletion requests — {site_name}"
+meta_description: >-
+  Data-deletion request work from DeleteYourData.com, a practice of Shook
+  Law PLLC. A licensed attorney reviews the work. Fees are quoted before
+  work begins. This is an attorney advertisement.
+title: Data-deletion requests
+hero_mark: gavel
+tagline: Ask a company to delete personal data
+hero_lines:
+  - text: Ask a company
+    accent_words: 3
+  - text: to delete personal data
+    accent_words: 0
+hero_lead: >-
+  One scoped request, quoted before any work begins, reviewed by a licensed
+  attorney. Shook Law PLLC is the law firm you would retain.
+hero_cta:
+  href: "mailto:{firm_email}"
+  label: Contact us
+skin: practice
+bands:
+  - kind: statement
+    heading: Who this is for
+    lead: ""
+    body:
+      - - text: >-
+            This page is for a person who wants a lawyer to help them ask a
+            company to delete personal data it holds about them. It is an
+            attorney advertisement. It is not legal advice, and it is not a
+            promise that a company will delete anything.
+      - - text: >-
+            We do not publish a fee here. Email the practice and we will
+            quote the matter before we start.
+  - kind: cards
+    anchor: work
+    overline: The work
+    heading: What we can quote
+    description: >-
+      Each matter is scoped and quoted on its own facts. Government or
+      platform fees, if any, are passed through at cost.
+    items:
+      - title: A data-deletion request
+        body:
+          - - text: >-
+                We review what you send, draft a request over the firm's
+                signature, and send it to the company you name. A licensed
+                attorney reviews it before it goes out.
+      - title: Follow-up on that request
+        body:
+          - - text: >-
+                If the company answers, we can read the answer with you and
+                quote any further work separately. Further work is not
+                included unless we agree it in writing.
+  - kind: steps
+    anchor: how
+    overline: How it works
+    heading: Quote first, then the request
+    description: >-
+      Create an account, tell us the company and what you know, and we
+      send the quote before any drafting begins.
+    items:
+      - title: Write to us
+        body:
+          - - text: >-
+                Email the practice with the company, what you want deleted
+                if you know it, and how we can reach you.
+      - title: We quote the matter
+        body:
+          - - text: >-
+                You receive the scope and the fee before we start. Nothing
+                is due, and no request is sent, until you agree.
+      - title: A licensed attorney reviews the request
+        body:
+          - - text: >-
+                We draft the request from what you provided. A licensed
+                attorney reviews it, then we send it.
+      - title: We tell you what came back
+        body:
+          - - text: >-
+                When the company answers, we send you that answer. What
+                happens next is a separate quote if you want further help.
+  - kind: cta
+    heading: Ready to ask?
+    body: >-
+      Email the practice. Name the company and what you want deleted, if
+      you know it. We will quote the matter before any work begins.
+    email: "{firm_email}"
+    email_subject: Data-deletion request

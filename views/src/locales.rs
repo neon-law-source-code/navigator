@@ -1,9 +1,11 @@
 //! English marketing-copy catalogs for a brand crate.
 //!
-//! Public page copy lives in `locales/en/*.yaml` beside the brand that publishes
-//! it. The site still publishes one language: these files are an authoring
-//! catalog, not a translated surface. `{site_name}` and `{firm_email}` are the
-//! only substitutions; everything a visitor reads is otherwise the YAML.
+//! Public page copy lives in `locales/en/<brand-key>/*.yaml` beside the brand
+//! crate that publishes it (a fixture may still use the flat
+//! `locales/en/<page>.yaml` layout). The site still publishes one language:
+//! these files are an authoring catalog, not a translated surface.
+//! `{site_name}` and `{firm_email}` are the only substitutions; everything a
+//! visitor reads is otherwise the YAML.
 //!
 //! [`parse_locale_file`] is the typed check `navigator validate` runs so a
 //! copy-only edit cannot land a document the brand crate cannot load.
@@ -340,27 +342,53 @@ pub fn locale_page_kind(stem: &str) -> Option<LocalePageKind> {
     }
 }
 
-/// Whether `path` is a brand locale catalog file: `…/locales/<locale>/<page>.yaml`.
+/// One catalog file under `locales/`.
+///
+/// Two layouts are valid, both English-only:
+///
+/// - `locales/<locale>/<page>.yaml` — a fixture or a single-brand tree
+/// - `locales/<locale>/<brand-key>/<page>.yaml` — a house-of-brands tree
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LocaleYamlParts<'a> {
+    pub locale: &'a str,
+    pub brand_key: Option<&'a str>,
+    pub stem: &'a str,
+}
+
+/// Whether `path` is a brand locale catalog file.
 #[must_use]
 pub fn is_locale_yaml_path(path: &Path) -> bool {
     locale_yaml_parts(path).is_some()
 }
 
-/// The locale directory name and page stem for a catalog path.
+/// The locale directory, optional brand-key directory, and page stem.
 #[must_use]
-pub fn locale_yaml_parts(path: &Path) -> Option<(&str, &str)> {
+pub fn locale_yaml_parts(path: &Path) -> Option<LocaleYamlParts<'_>> {
     let ext = path.extension()?.to_str()?;
     if !ext.eq_ignore_ascii_case("yaml") && !ext.eq_ignore_ascii_case("yml") {
         return None;
     }
     let stem = path.file_stem()?.to_str()?;
-    let locale_dir = path.parent()?;
-    let catalog_root = locale_dir.parent()?;
+    let parent = path.parent()?;
+    let parent_name = parent.file_name()?.to_str()?;
+    let grandparent = parent.parent()?;
+    if grandparent.file_name()?.to_str()? == "locales" {
+        return Some(LocaleYamlParts {
+            locale: parent_name,
+            brand_key: None,
+            stem,
+        });
+    }
+    let catalog_root = grandparent.parent()?;
     if catalog_root.file_name()?.to_str()? != "locales" {
         return None;
     }
-    let locale = locale_dir.file_name()?.to_str()?;
-    Some((locale, stem))
+    let locale = grandparent.file_name()?.to_str()?;
+    Some(LocaleYamlParts {
+        locale,
+        brand_key: Some(parent_name),
+        stem,
+    })
 }
 
 /// Deserialize one catalog file as the page its stem names.
@@ -498,9 +526,30 @@ bands:
     #[test]
     fn locale_yaml_parts_reads_the_locales_en_layout() {
         let path = Path::new("/tmp/neon/locales/en/home.yaml");
-        assert_eq!(locale_yaml_parts(path), Some(("en", "home")));
+        assert_eq!(
+            locale_yaml_parts(path),
+            Some(LocaleYamlParts {
+                locale: "en",
+                brand_key: None,
+                stem: "home",
+            })
+        );
         assert!(is_locale_yaml_path(path));
         assert!(!is_locale_yaml_path(Path::new("/tmp/seeds/Person.yaml")));
+    }
+
+    #[test]
+    fn locale_yaml_parts_reads_a_brand_keyed_catalog() {
+        let path = Path::new("/tmp/neon/locales/en/delete-your-data/home.yaml");
+        assert_eq!(
+            locale_yaml_parts(path),
+            Some(LocaleYamlParts {
+                locale: "en",
+                brand_key: Some("delete-your-data"),
+                stem: "home",
+            })
+        );
+        assert!(is_locale_yaml_path(path));
     }
 
     #[test]

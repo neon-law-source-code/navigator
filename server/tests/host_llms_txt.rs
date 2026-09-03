@@ -13,7 +13,7 @@
 //! this gate by being advertised.
 
 use axum::body::Body;
-use axum::http::{Request, StatusCode};
+use axum::http::{header, Request, StatusCode};
 use axum::Router;
 use store::test_support::mem_surreal;
 use tower::ServiceExt;
@@ -58,9 +58,17 @@ async fn app() -> Router {
 }
 
 async fn get(app: &Router, path: &str) -> (StatusCode, String) {
+    get_on_host(app, path, None).await
+}
+
+async fn get_on_host(app: &Router, path: &str, host: Option<&str>) -> (StatusCode, String) {
+    let mut builder = Request::builder().uri(path);
+    if let Some(host) = host {
+        builder = builder.header(header::HOST, host);
+    }
     let resp = app
         .clone()
-        .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+        .oneshot(builder.body(Body::empty()).unwrap())
         .await
         .unwrap();
     let status = resp.status();
@@ -262,6 +270,28 @@ async fn no_section_renders_empty() {
         assert!(
             !section.trim().is_empty(),
             "a section header renders with nothing beneath it: {body}"
+        );
+    }
+}
+
+/// The house-brand host names itself, uses its own base URL, and does not
+/// advertise Neon practice pages.
+#[tokio::test]
+async fn the_delete_your_data_llms_txt_is_that_brands_pages_under_its_host() {
+    let app = app().await;
+    let host = "staging.deleteyourdata.com";
+    let (status, body) = get_on_host(&app, "/llms.txt", Some(host)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.starts_with("# DeleteYourData.com\n"), "{body}");
+    assert!(body.contains(&format!("https://{host}/)")), "{body}");
+    assert!(!body.contains("neonlaw.com"), "{body}");
+    assert!(!body.contains("/litigation"), "{body}");
+    for path in advertised_paths(&body) {
+        let (status, _) = get_on_host(&app, &path, Some(host)).await;
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "{host} llms.txt advertises {path}, which answers {status}"
         );
     }
 }

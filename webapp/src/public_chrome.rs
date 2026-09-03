@@ -354,6 +354,20 @@ pub async fn firm_public_chrome_from_context() -> PublicChrome {
     firm_public_chrome(utility)
 }
 
+/// Prefer a value the portal pre-layer injected on the request, then the
+/// Dioxus `ServeConfig` context. Server-fns do not inherit the brand
+/// `task_local`, so per-brand page copy has to travel the same extension
+/// seam public chrome already uses.
+#[cfg(feature = "server")]
+pub async fn copy_from_request_or_context<T>(fallback: impl FnOnce() -> T) -> T
+where
+    T: Clone + Send + Sync + 'static,
+{
+    dioxus_fullstack_core::FullstackContext::extract::<axum::Extension<T>, _>()
+        .await
+        .map_or_else(|_| fallback(), |axum::Extension(value)| value)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -8321,6 +8321,79 @@ async fn a_second_registered_brand_host_renders_its_own_chrome_on_the_same_route
     assert_ne!(neon_body, delete_your_data_body);
 }
 
+/// The second brand's `/` is its own catalog: heading, lead, and document
+/// title from `locales/en/delete-your-data/home.yaml`, not Neon's statement.
+#[tokio::test]
+async fn the_delete_your_data_host_renders_its_own_home_catalog() {
+    let state =
+        empty_state_with_canonical_host(CanonicalHost::new(Some("www.neonlaw.com".into()))).await;
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+
+    let neon_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/")
+                .header(header::HOST, "www.neonlaw.com")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(neon_resp.status(), StatusCode::OK);
+    let neon_body = body_string(neon_resp).await;
+    assert!(
+        neon_body.contains("Everyone deserves to be seen."),
+        "{neon_body}"
+    );
+    assert!(
+        neon_body.contains("<title>Neon Law | Home</title>"),
+        "{neon_body}"
+    );
+
+    let delete_your_data_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/")
+                .header(header::HOST, "staging.deleteyourdata.com")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(delete_your_data_resp.status(), StatusCode::OK);
+    let delete_your_data_body = body_string(delete_your_data_resp).await;
+    assert!(
+        delete_your_data_body.contains("Ask companies to delete your data."),
+        "{delete_your_data_body}"
+    );
+    assert!(
+        delete_your_data_body.contains("Shook Law PLLC"),
+        "{delete_your_data_body}"
+    );
+    assert!(
+        delete_your_data_body.contains("<title>DeleteYourData.com | Home</title>"),
+        "{delete_your_data_body}"
+    );
+    assert!(
+        !delete_your_data_body.contains("Everyone deserves to be seen."),
+        "{delete_your_data_body}"
+    );
+
+    let litigation = app
+        .oneshot(
+            Request::builder()
+                .uri("/litigation")
+                .header(header::HOST, "staging.deleteyourdata.com")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(litigation.status(), StatusCode::NOT_FOUND);
+}
+
 /// An unregistered host still redirects to the deployment's own configured
 /// host, path and query preserved — the registry adds hosts, it does not
 /// remove the existing single-canonical-host fallback.

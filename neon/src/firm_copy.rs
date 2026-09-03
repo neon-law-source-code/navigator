@@ -1,4 +1,5 @@
-//! The firm's public marketing-page copy, loaded from `locales/en/`.
+//! Each house brand's public marketing-page copy, loaded from
+//! `locales/en/<brand-key>/`.
 //!
 //! The words live in the English catalog. This module keeps the page
 //! constructors the router calls and the advertising guards that read them.
@@ -10,20 +11,20 @@ use webapp::marketing_page::PageContent;
 use crate::locales;
 
 /// `/fractional-cto` — the firm's lead offering: it runs the technology
-/// function for a law firm. See `locales/en/fractional-cto.yaml`.
-pub fn fractional_cto() -> PageContent {
-    locales::fractional_cto()
+/// function for a law firm. See `locales/en/neon/fractional-cto.yaml`.
+pub fn fractional_cto(branding: &views::brand::Branding) -> PageContent {
+    locales::fractional_cto(branding)
 }
 
 /// `/navigator` — the platform the firms the firm serves work on. See
-/// `locales/en/navigator.yaml`.
-pub fn navigator() -> PageContent {
-    locales::navigator()
+/// `locales/en/neon/navigator.yaml`.
+pub fn navigator(branding: &views::brand::Branding) -> PageContent {
+    locales::navigator(branding)
 }
 
-/// `/services` — the published flat-fee schedule. See `locales/en/services.yaml`.
-pub fn legal_services() -> PageContent {
-    locales::legal_services()
+/// `/services` — the published schedule. See this brand's `services.yaml`.
+pub fn legal_services(branding: &views::brand::Branding) -> PageContent {
+    locales::legal_services(branding)
 }
 
 /// The regulated claims on the firm's public pages.
@@ -233,7 +234,7 @@ mod firm_copy_tests {
     /// The platform page offers one concrete pro bono co-counsel invitation.
     #[test]
     fn the_navigator_page_invites_pro_bono_co_counsel() {
-        let content = super::navigator();
+        let content = super::navigator(&views::brand::DEFAULT_BRANDING);
         let text = format!("{} {}", page_text(&content.bands), content.meta_description);
         assert_eq!(
             content.tagline,
@@ -266,7 +267,7 @@ mod firm_copy_tests {
     /// The platform page is not a CTO/CISO or consulting advertisement.
     #[test]
     fn the_navigator_page_removes_the_cto_ciso_offer() {
-        let content = super::navigator();
+        let content = super::navigator(&views::brand::DEFAULT_BRANDING);
         let text = format!("{} {}", page_text(&content.bands), content.meta_description);
         let words = || text.split(|character: char| !character.is_ascii_alphanumeric());
         assert!(
@@ -319,7 +320,7 @@ mod firm_copy_tests {
     /// no boundary the moment a number arrived beside it.
     #[test]
     fn the_schedule_lists_scoped_matters() {
-        let content = super::legal_services();
+        let content = super::legal_services(&views::brand::DEFAULT_BRANDING);
         let fees = fee_cards(&content);
         assert!(
             fees.len() >= 5,
@@ -345,7 +346,7 @@ mod firm_copy_tests {
     /// for.
     #[test]
     fn any_published_fee_is_a_real_figure() {
-        let content = super::legal_services();
+        let content = super::legal_services(&views::brand::DEFAULT_BRANDING);
         for card in fee_cards(&content) {
             let Some(price) = card.chips.first() else {
                 continue;
@@ -376,7 +377,7 @@ mod firm_copy_tests {
     /// firm that advertised a flat fee.
     #[test]
     fn a_fee_with_a_pass_through_names_it() {
-        let content = super::legal_services();
+        let content = super::legal_services(&views::brand::DEFAULT_BRANDING);
         for card in fee_cards(&content) {
             let Some(price) = card.chips.first() else {
                 continue;
@@ -400,7 +401,7 @@ mod firm_copy_tests {
     /// not named the first one.
     #[test]
     fn a_matter_with_a_government_charge_discloses_it() {
-        let content = super::legal_services();
+        let content = super::legal_services(&views::brand::DEFAULT_BRANDING);
         let cards = fee_cards(&content);
         for matter in ["LLC formation", "Trademark application"] {
             let card = cards
@@ -427,7 +428,7 @@ mod firm_copy_tests {
     /// reads what goes out. That has to be on the page, not only in the footer.
     #[test]
     fn the_legal_services_page_names_attorney_review() {
-        let content = super::legal_services();
+        let content = super::legal_services(&views::brand::DEFAULT_BRANDING);
         let text = format!(
             "{} {} {} {}",
             content.title,
@@ -463,7 +464,7 @@ mod firm_copy_tests {
     /// fine while meaning much less.
     #[test]
     fn the_navigator_page_states_what_is_free_before_what_is_sold() {
-        let content = super::navigator();
+        let content = super::navigator(&views::brand::DEFAULT_BRANDING);
         let text = page_text(&content.bands);
         let lowered = text.to_lowercase();
 
@@ -524,7 +525,7 @@ mod firm_copy_tests {
     /// later.
     #[test]
     fn the_navigator_licence_offer_discloses_its_nature_and_publishes_no_price() {
-        let content = super::navigator();
+        let content = super::navigator(&views::brand::DEFAULT_BRANDING);
         let text = page_text(&content.bands);
         let lowered = text.to_lowercase();
 
@@ -582,7 +583,7 @@ mod firm_copy_tests {
     /// flat-fee schedule exists to avoid.
     #[test]
     fn the_services_page_does_not_price_litigation_or_fractional_gc() {
-        let content = super::legal_services();
+        let content = super::legal_services(&views::brand::DEFAULT_BRANDING);
         let fees = fee_cards(&content);
         for quoted in ["litigation", "fractional"] {
             assert!(
@@ -603,7 +604,7 @@ mod firm_copy_tests {
     /// names leaves the page asserting a preference with nothing under it.
     #[test]
     fn the_navigator_page_makes_the_vibe_coding_case_for_lawyers() {
-        let content = super::navigator();
+        let content = super::navigator(&views::brand::DEFAULT_BRANDING);
         let text = format!(
             "{} {} {}",
             content.tagline,
@@ -635,7 +636,7 @@ mod firm_copy_tests {
     /// The connected-Project diagram names the Project's work surfaces.
     #[test]
     fn the_navigator_page_maps_connected_project_surfaces() {
-        let content = super::navigator();
+        let content = super::navigator(&views::brand::DEFAULT_BRANDING);
         let diagram = content
             .bands
             .iter()
@@ -718,7 +719,7 @@ mod firm_copy_tests {
     /// spelled here is still a superlative.
     #[test]
     fn the_navigator_page_publishes_no_superlative_and_no_turnaround_promise() {
-        let content = super::navigator();
+        let content = super::navigator(&views::brand::DEFAULT_BRANDING);
         let text = format!(
             "{} {} {}",
             content.tagline,
@@ -760,7 +761,7 @@ mod firm_copy_tests {
     /// the notation templates, and the matter dashboard are all in the tree.
     #[test]
     fn the_working_surface_band_names_three_shipped_surfaces() {
-        let content = super::navigator();
+        let content = super::navigator(&views::brand::DEFAULT_BRANDING);
         let cards = content
             .bands
             .iter()
@@ -796,7 +797,7 @@ mod firm_copy_tests {
     /// links a reader who came for the CLI can follow without hunting.
     #[test]
     fn the_read_next_band_links_the_operator_manuals() {
-        let content = super::navigator();
+        let content = super::navigator(&views::brand::DEFAULT_BRANDING);
         let cards = content
             .bands
             .iter()

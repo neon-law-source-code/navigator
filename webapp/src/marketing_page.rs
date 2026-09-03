@@ -314,7 +314,11 @@ pub struct MarketingPageView {
 /// Resolve the public chrome and one marketing page's static copy.
 #[server]
 pub async fn marketing_page_view() -> Result<MarketingPageView, ServerFnError> {
-    let content = consume_context::<InjectedMarketingPage>().0;
+    let content = crate::public_chrome::copy_from_request_or_context(
+        consume_context::<InjectedMarketingPage>,
+    )
+    .await
+    .0;
     Ok(MarketingPageView {
         chrome: crate::public_chrome::firm_public_chrome_from_context().await,
         content,

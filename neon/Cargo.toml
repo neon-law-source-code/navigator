@@ -36,7 +36,7 @@ serde.workspace = true
 serde_yaml.workspace = true
 tokio.workspace = true
 views.workspace = true
-webapp.workspace = true
+webapp = { workspace = true, features = ["server"] }
 
 [dev-dependencies]
 store = { workspace = true, features = ["test-support"] }

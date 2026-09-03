@@ -46,7 +46,10 @@ pub struct ContactPageView {
 /// injected [`InjectedContact`] context.
 #[server]
 pub async fn contact_page_view() -> Result<ContactPageView, ServerFnError> {
-    let content = consume_context::<InjectedContact>().0;
+    let content =
+        crate::public_chrome::copy_from_request_or_context(consume_context::<InjectedContact>)
+            .await
+            .0;
     Ok(ContactPageView {
         chrome: crate::public_chrome::firm_public_chrome_from_context().await,
         content,

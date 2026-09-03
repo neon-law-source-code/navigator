@@ -1,0 +1,40 @@
+head_title: "{site_name} | Home"
+meta_description: >-
+  DeleteYourData.com is a practice of Shook Law PLLC. A licensed attorney
+  helps you ask companies to delete personal data they hold about you. This
+  is an attorney advertisement. It is not legal advice and not a promise
+  about a result.
+heading: Ask companies to delete your data.
+lead: >-
+  DeleteYourData.com is a practice of Shook Law PLLC. If you want a lawyer
+  to help you send a data-deletion request, write to us. We will tell you
+  whether we can take the work, and what it would cost, before any work
+  begins. Nothing on this page is legal advice without a signed retainer
+  for an active project.
+contact_label: Contact us
+service:
+  heading: What this practice does
+  body:
+    - - text: >-
+          We help a person ask a company to delete personal data it holds
+          about them. A licensed attorney reviews the work. Shook Law PLLC
+          is the law firm you would retain.
+    - - text: >-
+          Whether a particular request is available, and what it can
+          achieve, depends on the company, the records, and the law that
+          applies. We do not publish a fee here. Email us and we will quote
+          the matter before we start.
+    - - text: "Write to "
+      - text: "{firm_email}"
+        href: "mailto:{firm_email}"
+      - text: >-
+          . Name the company, what you want deleted if you know it, and how
+          we can reach you.
+practices_heading: The work
+practices:
+  - mark: gavel
+    heading: Data-deletion requests
+    body: >-
+      One scoped request, quoted before work begins, reviewed by a licensed
+      attorney. This is an attorney advertisement.
+    href: /services

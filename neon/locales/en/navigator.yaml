@@ -198,15 +198,16 @@ bands:
             commercial licence from us first. Everything short of that is
             already yours.
       - - text: "This does not last. "
-        - text: Every version becomes AGPL-3.0-only four years after we publish it
+        - text: Every version becomes Apache-2.0 four years after we publish it
           emphasis: true
         - text: >-
             — per version, on its own clock, written into the licence that copy
             already carries rather than promised separately. When a version
-            converts, the restriction ends for it permanently and anyone may run
-            it in production. Copies we distributed under the AGPL before this
-            licence stay AGPL forever; a licence already granted cannot be
-            withdrawn.
+            converts, the restriction ends for it permanently, and anyone may
+            run it, modify it, and redistribute it — including keeping their own
+            changes to themselves. Copies we distributed under the prior
+            AGPL-3.0-only terms keep those terms; a licence already granted
+            cannot be withdrawn.
       - - text: >-
             Licensing software is a law-related service rather than legal
             representation. Taking a licence from us does not make us your

@@ -495,7 +495,7 @@ mod firm_copy_tests {
 
         // The conversion, which is what bounds the restriction.
         for required in [
-            "becomes agpl-3.0-only four years",
+            "becomes apache-2.0 four years",
             "restriction ends for it permanently",
             "cannot be withdrawn",
         ] {

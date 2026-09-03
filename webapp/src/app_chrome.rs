@@ -25,6 +25,10 @@ pub const APP_PROJECTS_HREF: &str = "/app/projects";
 /// tier both here and in the route's Rego rule.
 pub const APP_TEAM_HREF: &str = "/app/team";
 
+/// The house-of-brands home: every registered brand's typeface. Firm tier
+/// only, same audience as the Team home.
+pub const APP_BRANDS_HREF: &str = "/app/brands";
+
 /// The firm workbench. Lawyer tier and up; the handler gates it too.
 pub const APP_LAWYER_HREF: &str = "/app/lawyer";
 
@@ -53,6 +57,7 @@ pub fn app_destinations(role: ViewerRole) -> Vec<AppNavLink> {
     let mut destinations = vec![AppNavLink::new("Projects", APP_PROJECTS_HREF)];
     if role.is_firm_tier() {
         destinations.push(AppNavLink::new("Team", APP_TEAM_HREF));
+        destinations.push(AppNavLink::new("Brands", APP_BRANDS_HREF));
     }
     destinations.push(AppNavLink::new("Sign out", APP_SIGN_OUT_HREF));
     destinations
@@ -194,10 +199,13 @@ mod tests {
     #[test]
     fn a_client_is_offered_no_firm_workspace() {
         assert_eq!(labels(ViewerRole::Client), ["Projects", "Sign out"]);
-        assert_eq!(labels(ViewerRole::Clerk), ["Projects", "Team", "Sign out"]);
+        assert_eq!(
+            labels(ViewerRole::Clerk),
+            ["Projects", "Team", "Brands", "Sign out"]
+        );
     }
 
-    /// Every firm tier is offered the same three: the row does not grow with
+    /// Every firm tier is offered the same four: the row does not grow with
     /// authority, because the tier-gated doors are the Team home's cards now.
     #[test]
     fn every_firm_tier_is_offered_the_same_row() {
@@ -209,7 +217,7 @@ mod tests {
         ] {
             assert_eq!(
                 labels(role),
-                ["Projects", "Team", "Sign out"],
+                ["Projects", "Team", "Brands", "Sign out"],
                 "rank {}",
                 role.authority_rank()
             );
@@ -225,7 +233,10 @@ mod tests {
             .into_iter()
             .map(|link| link.href)
             .collect();
-        assert_eq!(hrefs, ["/app/projects", "/app/team", "/auth/logout"]);
+        assert_eq!(
+            hrefs,
+            ["/app/projects", "/app/team", "/app/brands", "/auth/logout"]
+        );
     }
 
     /// The mapping reaches the rendered row: a firm viewer's navbar carries the

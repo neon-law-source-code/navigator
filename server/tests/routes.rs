@@ -1654,6 +1654,7 @@ async fn anonymous_access_to_the_shared_navigator_surface_lands_at_the_login_doo
         "/app/outline",
         "/app/admin",
         "/app/team",
+        "/app/brands",
         "/app/docs",
         "/app/docs/glossary",
         "/templates",

@@ -1,12 +1,9 @@
-We believe privacy is a fundamental human right. This policy explains what we collect, why we collect it, who we share
-it with, and the choices you have. We aim to collect as little as possible and to be plain about the rest.
+Privacy is a fundamental human right. This policy explains what we collect, why we collect it, who we share
+it with, and the choices you have.
 
 ## Who We Are
 
-This policy covers **Shook Law PLLC**, which trades as Neon Law and is the law firm that renders legal services through
-this site. One organization holds your information: there is no second entity behind any part of this site, and nothing
-collected here is held by anyone else on our behalf beyond the processors described below. The software running this
-site is Neon Law Navigator, which is owned and operated by Shook Law PLLC.
+**Neon Law** (Shook Law PLLC), or its affiliate lawyers are legal providers that render services through this site.
 
 ## Information We Collect
 
@@ -19,14 +16,13 @@ site is Neon Law Navigator, which is owned and operated by Shook Law PLLC.
 
 ## How We Use Your Information
 
-We use the information we collect to provide and improve our services, process donations, communicate with you about our
-programs, and fulfill our mission of expanding access to justice. **We do not sell your personal information**, and we
+We use the information we collect to provide and improve our services. **We do not sell your personal information**, and we
 do not share it with third parties for their own marketing.
 
 ## Text Messaging (SMS)
 
 When you give us your mobile phone number — for example on our contact form or when you become a client — you consent to
-exchange text messages (SMS) with Shook Law PLLC about your legal matter. This includes messages you send us and
+exchange text messages (SMS) with Neon Law about your legal matter. This includes messages you send us and
 messages we send you, such as appointment reminders, document requests, and case updates. **Message frequency varies,
 and message and data rates may apply.** Reply STOP at any time to opt out, or HELP for help.
 
@@ -83,5 +79,5 @@ steps to notify you.
 
 ## Contact Us
 
-If you have questions about this Privacy Policy, please contact Shook Law PLLC at
+If you have questions about this Privacy Policy, please contact Neon Law at
 [contact@neonlaw.com](mailto:contact@neonlaw.com) or +1 510 800 2080.

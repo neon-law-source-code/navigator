@@ -162,15 +162,11 @@ async fn the_terms_name_one_firm_however_the_reader_arrived() {
     );
 }
 
-/// Who renders the legal services moved; who owns the software and the mark did
-/// not. A rebrand that also rewrote these two sentences would misstate the
-/// registrant of a live U.S. registration.
-///
-/// `/privacy` used to carry this as a *licence* — one organization operating
-/// Navigator under licence from the Firm. There is one organization now, so the
-/// same fact is stated as ownership rather than as a grant between two parties.
+/// Who renders the legal services moved; who owns the mark did not. A rebrand
+/// that rewrote this sentence would misstate the registrant of a live U.S.
+/// registration.
 #[tokio::test]
-async fn the_pages_keep_the_navigator_ownership_attribution() {
+async fn the_terms_keep_the_trademark_ownership_attribution() {
     let app = app().await;
 
     let (_, terms) = get(&app, "/terms").await;
@@ -178,13 +174,6 @@ async fn the_pages_keep_the_navigator_ownership_attribution() {
     assert!(
         terms.contains("registered trademark of Shook Law PLLC"),
         "NEON LAW's registrant must survive the firm rename: {terms}"
-    );
-
-    let (_, privacy) = get(&app, "/privacy").await;
-    let privacy = privacy.split_whitespace().collect::<Vec<_>>().join(" ");
-    assert!(
-        privacy.contains("owned and operated by Shook Law PLLC"),
-        "Navigator's owner must survive the firm rename: {privacy}"
     );
 }
 

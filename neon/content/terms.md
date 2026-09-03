@@ -30,8 +30,8 @@ misuse any information or services provided, and to provide accurate information
 
 ## Text Messaging Program
 
-**Program.** Neon Law operates a text-messaging (SMS) program so that clients and prospective clients can reach
-the firm and receive messages about their legal matter.
+**Program.** Neon Law operates a text-messaging (SMS) program so that clients and prospective clients can reach the firm
+and receive messages about their legal matter.
 
 **Enrollment and consent.** You consent to exchange text messages with us when you give us your mobile phone number —
 for example on our contact form or during intake — and agree to these Terms. Consent to receive text messages is not a
@@ -81,5 +81,5 @@ in Washoe County, Nevada, and you consent to the jurisdiction of those courts.
 
 ## Contact Us
 
-If you have questions about these Terms, please contact Neon Law at
-[contact@neonlaw.com](mailto:contact@neonlaw.com) or +1 510 800 2080.
+If you have questions about these Terms, please contact Neon Law at [contact@neonlaw.com](mailto:contact@neonlaw.com) or
++1 510 800 2080.

@@ -1,5 +1,5 @@
-Privacy is a fundamental human right. This policy explains what we collect, why we collect it, who we share
-it with, and the choices you have.
+Privacy is a fundamental human right. This policy explains what we collect, why we collect it, who we share it with, and
+the choices you have.
 
 ## Who We Are
 
@@ -16,15 +16,15 @@ it with, and the choices you have.
 
 ## How We Use Your Information
 
-We use the information we collect to provide and improve our services. **We do not sell your personal information**, and we
-do not share it with third parties for their own marketing.
+We use the information we collect to provide and improve our services. **We do not sell your personal information**, and
+we do not share it with third parties for their own marketing.
 
 ## Text Messaging (SMS)
 
 When you give us your mobile phone number — for example on our contact form or when you become a client — you consent to
-exchange text messages (SMS) with Neon Law about your legal matter. This includes messages you send us and
-messages we send you, such as appointment reminders, document requests, and case updates. **Message frequency varies,
-and message and data rates may apply.** Reply STOP at any time to opt out, or HELP for help.
+exchange text messages (SMS) with Neon Law about your legal matter. This includes messages you send us and messages we
+send you, such as appointment reminders, document requests, and case updates. **Message frequency varies, and message
+and data rates may apply.** Reply STOP at any time to opt out, or HELP for help.
 
 **We do not share or sell your mobile phone number or your SMS consent to any third parties or affiliates, and we never
 share them for anyone's marketing or promotional purposes.** We use them only to communicate with you as described here.

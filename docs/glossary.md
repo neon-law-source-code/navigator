@@ -204,11 +204,11 @@ throwaway one.
 A check anchors on the proposed client and entity and surfaces every distinct firm-served party it reaches. It reads
 **across matters, unscoped**, because imputed conflicts under Model Rule 1.10 live on other people's matters; the
 containment is that only firm-side create paths call it (see
-[`access-model`](access-model.md#where-surrealdb-authorization-lives)). Findings are **advisory to clear,
-authoritative to block**: a confident, direct `adverse_to` link to a current client hard-stops the open; softer
-entanglements (a shared entity, a recorded [Disclosure](#disclosure)) are flagged for authorized lawyers to acknowledge
-— recorded to the [Relationship Log](#relationship-log) when they do. The graph can *raise* a conflict; only a person
-can *clear* one, because it is never assumed complete.
+[`access-model`](access-model.md#where-surrealdb-authorization-lives)). Findings are **advisory to clear, authoritative
+to block**: a confident, direct `adverse_to` link to a current client hard-stops the open; softer entanglements (a
+shared entity, a recorded [Disclosure](#disclosure)) are flagged for authorized lawyers to acknowledge — recorded to the
+[Relationship Log](#relationship-log) when they do. The graph can *raise* a conflict; only a person can *clear* one,
+because it is never assumed complete.
 
 It runs on every create path (portal, [AIDA](#aida) MCP tool, CLI); the non-interactive paths have no acknowledgment
 seam, so any finding refuses the open and routes lawyer to the portal.
@@ -626,9 +626,8 @@ See [`notation-authoring`](notation-authoring.md#changing-the-workflow-compositi
 ## Filing
 
 The workflow prefix `filing` records a named government filing. It is an outbound submission step and must sit behind
-[Lawyer Review](#lawyer-review). See the
-[`notation-authoring`](notation-authoring.md#changing-the-workflow-composition) guide and
-[`workflows::step::STEP_PREFIXES`](../workflows/src/step.rs).
+[Lawyer Review](#lawyer-review). See the [`notation-authoring`](notation-authoring.md#changing-the-workflow-composition)
+guide and [`workflows::step::STEP_PREFIXES`](../workflows/src/step.rs).
 
 ## Firm Signature
 
@@ -1329,8 +1328,7 @@ the machine that gathers what the text needs. It has four parts: **metadata**, *
 
 **Metadata is a conceptual grouping, not a literal nested YAML key.** It names the frontmatter keys that classify the
 file — `kind:`, `code:`, jurisdiction, respondent — which sit at the top level of the frontmatter block. A template that
-declared an actual `metadata:` mapping would be malformed. The full anatomy is documented in
-[`notation`](notation.md).
+declared an actual `metadata:` mapping would be malformed. The full anatomy is documented in [`notation`](notation.md).
 
 A Template is versioned by append rather than by edit: `templates.is_current` marks the live revision and a change adds
 a row. Every Notation pins the exact `templates` row it was created from, which is what keeps approved text from

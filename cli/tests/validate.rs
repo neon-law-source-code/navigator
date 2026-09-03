@@ -896,8 +896,9 @@ fn validate_output(dir: &Path, extra_args: &[&str]) -> (String, i32) {
 /// recapitulation, never a specific walk order.
 fn error_buried_among_warnings(dir: &Path) {
     // M061 is the web-portability advisory, not the disk-resolution
-    // error, so its target has to exist for M057 to stay quiet.
-    write(dir, "billing/src/lib.rs", "pub fn placeholder() {}\n");
+    // error, so its target has to exist for M057 to stay quiet. A
+    // same-directory `lib.rs` is the shape the renderer cannot rewrite.
+    write(dir, "docs/lib.rs", "pub fn placeholder() {}\n");
     write(
         dir,
         "docs/a_long.md",
@@ -907,7 +908,7 @@ fn error_buried_among_warnings(dir: &Path) {
         write(
             dir,
             &format!("docs/{name}"),
-            "Body.\n\nSee [billing](../billing/src/lib.rs) for detail.\n",
+            "Body.\n\nSee [lib](lib.rs) for detail.\n",
         );
     }
 }
@@ -1047,15 +1048,11 @@ fn validate_recapitulation_gathers_errors_from_every_pass() {
 fn validate_prints_no_recapitulation_when_there_are_no_errors() {
     let dir = TempDir::new().unwrap();
     // Advisories only — M061 never fails the gate.
-    write(
-        dir.path(),
-        "billing/src/lib.rs",
-        "pub fn placeholder() {}\n",
-    );
+    write(dir.path(), "docs/lib.rs", "pub fn placeholder() {}\n");
     write(
         dir.path(),
         "docs/guide.md",
-        "Body.\n\nSee [billing](../billing/src/lib.rs) for detail.\n",
+        "Body.\n\nSee [lib](lib.rs) for detail.\n",
     );
     let (stdout, code) = validate_output(dir.path(), &[]);
     assert_eq!(code, 0, "advisories must not fail the gate:\n{stdout}");

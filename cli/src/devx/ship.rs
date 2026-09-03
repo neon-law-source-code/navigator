@@ -3512,7 +3512,7 @@ mod tests {
             fs::read_to_string(gke.join("ingress/managed-certificate.yaml")).unwrap();
         assert!(
             cert_manifest.contains("- www.deleteyourdata.com"),
-            "the additional brand's production host gets a cert domain: {cert_manifest}"
+            "the additional brand's production host gets a cert domain"
         );
         let ingress = fs::read_to_string(gke.join("ingress/ingress.yaml")).unwrap();
         assert!(
@@ -3624,11 +3624,11 @@ mod tests {
             fs::read_to_string(gke.join("ingress/managed-certificate.yaml")).unwrap();
         assert!(
             cert_manifest.contains("- staging.deleteyourdata.com"),
-            "the additional brand's staging host gets a cert domain: {cert_manifest}"
+            "the additional brand's staging host gets a cert domain"
         );
         assert!(
             !cert_manifest.contains("www.deleteyourdata.com"),
-            "a staging render must not carry the production sibling: {cert_manifest}"
+            "a staging render must not carry the production sibling"
         );
         let ingress = fs::read_to_string(gke.join("ingress/ingress.yaml")).unwrap();
         assert!(

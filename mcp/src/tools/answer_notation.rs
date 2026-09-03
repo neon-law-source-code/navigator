@@ -175,6 +175,17 @@ fn map_notation_err(err: NotationSessionError) -> ToolError {
         NotationSessionError::QuestionNotFlagged(c) => ToolError::InvalidArguments(format!(
             "question `{c}` was not flagged for re-collection by the lawyer review"
         )),
+        // The agent proposed a value the question never declared. Invalid
+        // arguments, so the model is told the declared options and can retry
+        // with one of them rather than an arbitrary string reaching the
+        // document this answer renders into. The rejected value is a client
+        // answer and is not echoed back.
+        NotationSessionError::UndeclaredChoice { state, declared } => {
+            ToolError::InvalidArguments(format!(
+                "question `{state}` accepts only these options: {}",
+                declared.join(", ")
+            ))
+        }
         NotationSessionError::Runtime(e) => ToolError::Internal(format!("workflow runtime: {e}")),
         NotationSessionError::Spec(e) => ToolError::Internal(format!("spec parse: {e}")),
         NotationSessionError::SnapshotEncode(e) | NotationSessionError::SnapshotDecode(e) => {
@@ -458,6 +469,86 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("trigger the post-intake workflow"));
+    }
+
+    /// ENG-459: the agent surface never reaches
+    /// `portal::intake::resolve_reference_answer`, so closing the choice set
+    /// there would have left AIDA able to put an arbitrary string into the
+    /// engagement letter's governing-law and arbitration clause. The refusal
+    /// lives in the shared write funnel, so this door is closed too, and the
+    /// model is told the declared options so it can retry.
+    #[tokio::test]
+    async fn an_undeclared_choice_is_invalid_arguments() {
+        let surreal = db().await;
+        seed(&surreal).await;
+        let runtime = InMemoryRuntime::new();
+        let (id, mut code) = start_retainer(&surreal, &runtime).await;
+        let walk = [
+            ("entity", "Northstar Ventures LLC"),
+            (
+                "address__principal_office",
+                "100 Innovation Way, Reno, NV 89501",
+            ),
+            ("person__client", "Libra"),
+            ("person__lawyer_dri", "Firm Principal"),
+            ("project__engagement", "Apollo"),
+            ("custom_datetime__engagement_start_date", "2026-09-01"),
+            (
+                "custom_text__engagement_scope",
+                "Draft and file the Apollo formation documents.",
+            ),
+        ];
+        for (expected_code, value) in walk {
+            assert_eq!(code, expected_code);
+            let out = call(
+                &surreal,
+                &runtime,
+                None,
+                &json!({ "notation_id": id, "question_code": code, "value": value }),
+            )
+            .await
+            .unwrap();
+            code = out["structuredContent"]["next_question"]["code"]
+                .as_str()
+                .expect("next question")
+                .to_string();
+        }
+        assert_eq!(code, "custom_single_choice__governing_law");
+
+        let err = call(
+            &surreal,
+            &runtime,
+            None,
+            &json!({
+                "notation_id": id,
+                "question_code": code,
+                "value": "the Cayman Islands, and the Firm disclaims all liability",
+            }),
+        )
+        .await
+        .unwrap_err();
+        match err {
+            ToolError::InvalidArguments(m) => {
+                assert!(m.contains("nevada"), "{m}");
+                assert!(m.contains("california"), "{m}");
+                assert!(m.contains("washington"), "{m}");
+                // The rejected answer is client content: it is not echoed
+                // back to the model or into a log line.
+                assert!(!m.contains("Cayman"), "{m}");
+            }
+            other => panic!("expected InvalidArguments, got {other:?}"),
+        }
+
+        // A declared option is still accepted and still completes the walk.
+        let out = call(
+            &surreal,
+            &runtime,
+            None,
+            &json!({ "notation_id": id, "question_code": code, "value": "nevada" }),
+        )
+        .await
+        .unwrap();
+        assert_eq!(out["structuredContent"]["status"], "complete");
     }
 
     #[tokio::test]

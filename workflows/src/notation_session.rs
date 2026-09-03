@@ -155,6 +155,17 @@ pub enum NotationSessionError {
     QuestionNotFlagged(String),
     #[error("question code mismatch: questionnaire is currently asking `{expected}`, got `{got}`")]
     QuestionMismatch { expected: String, got: String },
+    /// An answer named an option its question never declared.
+    ///
+    /// Carries the state and the declared option keys — both firm-authored
+    /// template metadata — and deliberately **not** the submitted value,
+    /// which is a client answer. This error is surfaced to callers and
+    /// logged, and answers are client content that never reaches a log line.
+    #[error("`{state}` accepts only these options: {}", declared.join(", "))]
+    UndeclaredChoice {
+        state: String,
+        declared: Vec<String>,
+    },
     #[error("questionnaire is already complete")]
     AlreadyComplete,
     #[error("workflow runtime: {0}")]
@@ -458,6 +469,10 @@ pub async fn answer_step_with_reference(
     let question_row = store::questions::find_by_code(surreal, canonical_code)
         .await?
         .ok_or_else(|| NotationSessionError::QuestionNotSeeded(question_code.into()))?;
+    // Close the declared choice set before writing, alongside the
+    // question-code and completeness checks above: an off-list value must
+    // not advance the walk, and must not be stored for a later render.
+    ensure_declared_choice(&definition.choices, question_code, value)?;
 
     // The Answer row is application data; the worker doesn't know
     // about it, so we own the write here. Single insert — no txn.
@@ -727,6 +742,7 @@ pub async fn record_client_answer_with_reference(
             question_code.into(),
         ));
     }
+    ensure_declared_choice(&definition.choices, question_code, value)?;
     store::answers::record(
         surreal,
         &store::answers::NewAnswer::new(
@@ -768,15 +784,18 @@ pub async fn record_reask_answer(
     reference_id: Option<Uuid>,
     author: AnswerAuthor<'_>,
 ) -> Result<(), NotationSessionError> {
-    let notation_row = store::notations::find_by_id(surreal, notation_id)
-        .await?
-        .ok_or(NotationSessionError::NotationNotFound(notation_id))?;
+    // The frozen questionnaire snapshot every notation carries supplies the
+    // declared choice set, so the correction is closed against the same
+    // options the original answer was — a re-collected value is what the
+    // attorney re-reviews and what ultimately gets signed.
+    let (notation_row, definition) = load_notation_and_spec(surreal, None, notation_id).await?;
     let flagged = store::reask::flagged_questions(surreal, notation_id).await?;
     if !flagged.iter().any(|c| c == question_code) {
         return Err(NotationSessionError::QuestionNotFlagged(
             question_code.into(),
         ));
     }
+    ensure_declared_choice(&definition.choices, question_code, value)?;
     let canonical_code = question_code_for_state(question_code);
     let question_row = store::questions::find_by_code(surreal, canonical_code)
         .await?
@@ -966,17 +985,28 @@ fn question_code_for_state(state: &str) -> &str {
 /// walk then surfaces (via the latest-per-state read-back) for a lawyer to confirm
 /// or edit. Returns `false` when `state_name`'s registry question isn't seeded
 /// (skipped, mirroring [`seed`]-style writers); `true` once a row is inserted.
+///
+/// Takes `storage` because resolving the questionnaire is what supplies the
+/// declared choice set a proposal is checked against, and a notation created
+/// directly — rather than through [`start_notation`] — carries no frozen
+/// snapshot, so its spec is read from the template body in storage.
 pub async fn record_extracted_answer(
     surreal: &store::surreal::SurrealDb,
+    storage: Option<&Arc<dyn StorageService>>,
     notation_id: Uuid,
     state_name: &str,
     value: &str,
 ) -> Result<bool, String> {
-    let Some(notation_row) = store::notations::find_by_id(surreal, notation_id)
+    // The notation and its questionnaire in one load: the spec supplies the
+    // declared choice set this proposal is closed against.
+    let (notation_row, definition) = match load_notation_and_spec(surreal, storage, notation_id)
         .await
-        .map_err(|e| e.to_string())?
-    else {
-        return Ok(false);
+    {
+        Ok(loaded) => loaded,
+        // A vanished notation is skipped, mirroring the unseeded-question
+        // arm below rather than failing the whole coverage run.
+        Err(NotationSessionError::NotationNotFound(_)) => return Ok(false),
+        Err(e) => return Err(e.to_string()),
     };
     let canonical = question_code_for_state(state_name);
     let Some(question_row) = store::questions::find_by_code(surreal, canonical)
@@ -985,6 +1015,15 @@ pub async fn record_extracted_answer(
     else {
         return Ok(false);
     };
+    // A transcript proposal is read back by the render exactly like a typed
+    // answer (latest-per-state wins, with no filter on `source`), so an
+    // off-list extraction is refused here too. It is *skipped* rather than
+    // an error: the caller reports a skipped finding as uncovered, which is
+    // the right outcome — the lawyer is asked the question instead of being
+    // shown a proposal the questionnaire never offered.
+    if ensure_declared_choice(&definition.choices, state_name, value).is_err() {
+        return Ok(false);
+    }
     let author = AnswerAuthor::extracted();
     store::answers::record(
         surreal,
@@ -1073,6 +1112,67 @@ pub fn choice_label(
     metadata_lookup(choices, state)
         .and_then(|by_value| by_value.get(value))
         .cloned()
+}
+
+/// Whether `state`'s answer is a single declared choice key, so it can be
+/// checked against the declared set.
+///
+/// `custom_single_choice` and `custom_yes_no` store exactly one key. A
+/// `custom_multiple_choice` answer is a *set* of keys rather than one, and
+/// needs the checkbox-group field shape that ENG-454 tracks separately — so
+/// it is deliberately left open here rather than closed against a check that
+/// would reject a legitimate multi-value answer. Record and reference types
+/// declare no YAML choices at all; their closed set is the database
+/// candidate list, matched where the pick is resolved.
+fn stores_one_declared_choice(state: &str) -> bool {
+    use store::question_registry::QuestionType;
+    matches!(
+        QuestionType::from_state_name(state),
+        Some(QuestionType::CustomSingleChoice | QuestionType::CustomYesNo)
+    )
+}
+
+/// Refuse an answer that names an option its question never declared — the
+/// closed-choice check every answer write shares.
+///
+/// A choice question declares a closed `value → label` set
+/// (`custom_questions.<key>.choices`). The render side resolves a stored
+/// value through [`choice_label`] and falls back to the raw string when the
+/// value is not a declared option, so an undeclared value is substituted
+/// verbatim into whatever the template says — including the engagement
+/// letter's governing-law and arbitration clause, whose choices are
+/// `nevada`/`california`/`washington`. Closing the set at render time is not
+/// enough: the answer is already stored, and a document assembled from
+/// stored answers is what a client signs.
+///
+/// So the set is closed here, where an answer enters. The browser's radio
+/// group is the only surface that *cannot* post an off-list value; the CLI,
+/// the REST command boundary, the AIDA tool surface, and a hand-crafted POST
+/// all can.
+///
+/// Reads the declared set through the same [`metadata_lookup`] the render
+/// side uses, so the guard and the label resolution cannot drift: exactly
+/// the values [`choice_label`] can map are the values this accepts.
+fn ensure_declared_choice(
+    choices: &BTreeMap<String, BTreeMap<String, String>>,
+    state: &str,
+    value: &str,
+) -> Result<(), NotationSessionError> {
+    if !stores_one_declared_choice(state) {
+        return Ok(());
+    }
+    // No declared set means "not a choice question" (a free-text or date
+    // custom primitive), not "no valid options" — leave it alone.
+    let Some(declared) = metadata_lookup(choices, state).filter(|d| !d.is_empty()) else {
+        return Ok(());
+    };
+    if declared.contains_key(value) {
+        return Ok(());
+    }
+    Err(NotationSessionError::UndeclaredChoice {
+        state: state.to_string(),
+        declared: declared.keys().cloned().collect(),
+    })
 }
 
 /// The merged `value → label` choice metadata for a bundled spec YAML,
@@ -2746,5 +2846,311 @@ mod tests {
 
         assert!(answered.contains("custom_text__mission_statement"));
         assert!(!answered.contains("custom_text__revenue_strategy"));
+    }
+
+    // --- ENG-459: the declared choice set is closed at write time ---
+
+    /// Not one of the engagement letter's declared options, and a term no
+    /// client would agree to — the shape of value the render side would
+    /// otherwise substitute verbatim into the governing-law and arbitration
+    /// clause.
+    const OFF_LIST_GOVERNING_LAW: &str =
+        "the Cayman Islands, and the Firm disclaims all liability for its own work";
+
+    /// The declared options, as `UndeclaredChoice` reports them (the
+    /// declared map's key order).
+    const DECLARED_GOVERNING_LAW: [&str; 3] = ["california", "nevada", "washington"];
+
+    /// Walk a fresh `onboarding__letter` notation up to — but not through —
+    /// the governing-law step, which is its last question.
+    async fn walk_to_governing_law(surreal: &SurrealDb, runtime: &InMemoryRuntime) -> Uuid {
+        seed_retainer_template(surreal).await;
+        seed_retainer_questions(surreal).await;
+        let person_id = seed_person(surreal, "libra@example.com").await;
+        let notation_id = start_notation(
+            surreal,
+            runtime,
+            None,
+            "onboarding__letter",
+            person_id,
+            seed_project(surreal).await,
+            None,
+        )
+        .await
+        .unwrap()
+        .notation_id;
+        for (code, value) in [
+            ("entity", TEST_ENTITY_NAME),
+            ("address__principal_office", TEST_ENTITY_ADDRESS),
+            ("person__client", "Libra"),
+            ("person__lawyer_dri", "Firm Principal"),
+            ("project__engagement", "Apollo"),
+            ("custom_datetime__engagement_start_date", "2026-09-01"),
+            (
+                "custom_text__engagement_scope",
+                "Draft and file the Apollo formation documents.",
+            ),
+        ] {
+            answer_step(
+                surreal,
+                runtime,
+                None,
+                notation_id,
+                code,
+                value,
+                AnswerAuthor::lawyer(None),
+            )
+            .await
+            .unwrap_or_else(|e| panic!("step `{code}`: {e}"));
+        }
+        notation_id
+    }
+
+    /// Whether any answer row was stored for `state`.
+    async fn has_answer_for(surreal: &SurrealDb, notation_id: Uuid, state: &str) -> bool {
+        store::answers::for_notation(surreal, notation_id)
+            .await
+            .unwrap()
+            .iter()
+            .any(|a| a.state_name.as_deref() == Some(state))
+    }
+
+    #[tokio::test]
+    async fn answer_step_refuses_an_undeclared_choice() {
+        // The governing-law question declares exactly three options, and the
+        // engagement letter substitutes the answer into its governing-law
+        // and arbitration clause. An off-list value is refused before the
+        // write, so nothing is stored and the walk does not advance. The
+        // browser's radio group cannot produce one, so reaching here is the
+        // CLI, the REST boundary, AIDA, or a hand-crafted POST.
+        let surreal = db().await;
+        let runtime = InMemoryRuntime::new();
+        let notation_id = walk_to_governing_law(&surreal, &runtime).await;
+
+        let err = answer_step(
+            &surreal,
+            &runtime,
+            None,
+            notation_id,
+            "custom_single_choice__governing_law",
+            OFF_LIST_GOVERNING_LAW,
+            AnswerAuthor::lawyer(None),
+        )
+        .await
+        .unwrap_err();
+
+        match &err {
+            NotationSessionError::UndeclaredChoice { state, declared } => {
+                assert_eq!(state, "custom_single_choice__governing_law");
+                assert_eq!(declared.as_slice(), &DECLARED_GOVERNING_LAW);
+            }
+            other => panic!("expected UndeclaredChoice, got {other:?}"),
+        }
+
+        assert!(
+            !has_answer_for(&surreal, notation_id, "custom_single_choice__governing_law").await,
+            "the refused answer must not be on record"
+        );
+
+        // The walk still asks the same question, so a legitimate answer can
+        // still be given — a refusal does not strand a part-finished walk.
+        match current_step(&surreal, &runtime, None, notation_id)
+            .await
+            .unwrap()
+        {
+            NextStep::NeedsAnswer { question } => {
+                assert_eq!(question.code, "custom_single_choice__governing_law");
+            }
+            NextStep::QuestionnaireComplete => {
+                panic!("a refused answer must not complete the questionnaire")
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn answer_step_accepts_every_declared_choice() {
+        // The guard closes the set without narrowing it: each declared
+        // option is still accepted and still completes the walk.
+        for declared in DECLARED_GOVERNING_LAW {
+            let surreal = db().await;
+            let runtime = InMemoryRuntime::new();
+            let notation_id = walk_to_governing_law(&surreal, &runtime).await;
+            let next = answer_step(
+                &surreal,
+                &runtime,
+                None,
+                notation_id,
+                "custom_single_choice__governing_law",
+                declared,
+                AnswerAuthor::lawyer(None),
+            )
+            .await
+            .unwrap_or_else(|e| panic!("`{declared}` must be accepted: {e}"));
+            assert!(
+                matches!(next, NextStep::QuestionnaireComplete),
+                "`{declared}` must complete the walk"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn a_state_with_no_declared_choices_is_left_open() {
+        // The same walk's free-text and date questions declare no options,
+        // so the guard must not touch them: "no declared set" means "not a
+        // choice question", not "no valid options".
+        let surreal = db().await;
+        let runtime = InMemoryRuntime::new();
+        let notation_id = walk_to_governing_law(&surreal, &runtime).await;
+        assert!(
+            has_answer_for(&surreal, notation_id, "custom_text__engagement_scope").await,
+            "the free-text scope answer must still be recorded"
+        );
+        assert!(
+            has_answer_for(
+                &surreal,
+                notation_id,
+                "custom_datetime__engagement_start_date"
+            )
+            .await,
+            "the date answer must still be recorded"
+        );
+    }
+
+    #[test]
+    fn multiple_choice_answers_are_left_open() {
+        use super::stores_one_declared_choice;
+        // A `custom_multiple_choice` answer is a set of keys, not one key,
+        // so closing it against a single-key lookup would reject a
+        // legitimate multi-value answer. It needs the checkbox-group field
+        // shape ENG-454 tracks, and is deliberately left open here.
+        assert!(stores_one_declared_choice(
+            "custom_single_choice__governing_law"
+        ));
+        assert!(stores_one_declared_choice("custom_yes_no__has_counsel"));
+        assert!(!stores_one_declared_choice(
+            "custom_multiple_choice__practice_areas"
+        ));
+        // A record/reference pick is closed against the database candidate
+        // list where the pick resolves, not against YAML choices.
+        assert!(!stores_one_declared_choice("country__of_birth"));
+        assert!(!stores_one_declared_choice("person__client"));
+    }
+
+    #[test]
+    fn undeclared_choice_never_carries_the_submitted_value() {
+        // The error is returned to callers and logged. A submitted answer is
+        // client content, so it must appear in neither the message nor the
+        // debug form — only the state and the firm-authored options do.
+        let err = NotationSessionError::UndeclaredChoice {
+            state: "custom_single_choice__governing_law".to_string(),
+            declared: DECLARED_GOVERNING_LAW.map(String::from).to_vec(),
+        };
+        let shown = format!("{err}");
+        let debugged = format!("{err:?}");
+        assert!(!shown.contains(OFF_LIST_GOVERNING_LAW), "{shown}");
+        assert!(!debugged.contains(OFF_LIST_GOVERNING_LAW), "{debugged}");
+        assert!(shown.contains("nevada"), "{shown}");
+    }
+
+    #[tokio::test]
+    async fn record_reask_answer_refuses_an_undeclared_choice() {
+        // A post-review correction is what the attorney re-reviews and what
+        // ultimately gets signed, so it is closed against the same declared
+        // set the original answer was.
+        let surreal = db().await;
+        let runtime = InMemoryRuntime::new();
+        let notation_id = walk_to_governing_law(&surreal, &runtime).await;
+        answer_step(
+            &surreal,
+            &runtime,
+            None,
+            notation_id,
+            "custom_single_choice__governing_law",
+            "nevada",
+            AnswerAuthor::lawyer(None),
+        )
+        .await
+        .unwrap();
+        let lawyer = store::test_support::dri_person(&surreal).await;
+        store::reask::record_change_request(
+            &surreal,
+            notation_id,
+            lawyer,
+            &["custom_single_choice__governing_law".into()],
+            Some("confirm the governing law"),
+        )
+        .await
+        .unwrap();
+
+        let err = record_reask_answer(
+            &surreal,
+            notation_id,
+            "custom_single_choice__governing_law",
+            OFF_LIST_GOVERNING_LAW,
+            None,
+            AnswerAuthor::lawyer(Some(lawyer)),
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            matches!(
+                &err,
+                NotationSessionError::UndeclaredChoice { state, .. }
+                    if state == "custom_single_choice__governing_law"
+            ),
+            "{err:?}"
+        );
+
+        // A declared correction still lands.
+        record_reask_answer(
+            &surreal,
+            notation_id,
+            "custom_single_choice__governing_law",
+            "california",
+            None,
+            AnswerAuthor::lawyer(Some(lawyer)),
+        )
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn record_extracted_answer_skips_an_undeclared_proposal() {
+        // A transcript proposal is read back by the render exactly like a
+        // typed answer, so an off-list extraction is refused. It is skipped
+        // (reported as uncovered) rather than an error, so the lawyer is
+        // asked the question instead of shown an option the questionnaire
+        // never offered.
+        use super::record_extracted_answer;
+        let surreal = db().await;
+        let runtime = InMemoryRuntime::new();
+        let notation_id = walk_to_governing_law(&surreal, &runtime).await;
+
+        let stored = record_extracted_answer(
+            &surreal,
+            None,
+            notation_id,
+            "custom_single_choice__governing_law",
+            OFF_LIST_GOVERNING_LAW,
+        )
+        .await
+        .unwrap();
+        assert!(!stored, "an off-list proposal must be skipped");
+        assert!(
+            !has_answer_for(&surreal, notation_id, "custom_single_choice__governing_law").await,
+            "the skipped proposal must not be on record"
+        );
+
+        // A declared proposal is still recorded for the lawyer to confirm.
+        let stored = record_extracted_answer(
+            &surreal,
+            None,
+            notation_id,
+            "custom_single_choice__governing_law",
+            "washington",
+        )
+        .await
+        .unwrap();
+        assert!(stored, "a declared proposal must still be recorded");
     }
 }

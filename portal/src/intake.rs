@@ -591,6 +591,23 @@ pub async fn intake_save(
     )
     .await
     {
+        // An off-list choice takes the same post/redirect/get flash the
+        // rejected reference pick above uses: the answer is not recorded, so
+        // the same question comes back rather than the walk stalling on a
+        // `500`. The radio group cannot post an off-list value, so this is a
+        // hand-crafted POST.
+        if let notation_session::NotationSessionError::UndeclaredChoice { state, .. } = &e {
+            tracing::warn!(
+                %notation_id,
+                %state,
+                "intake: refused an answer naming an undeclared choice"
+            );
+            return Redirect::to(&format!(
+                "{back}?error={}",
+                crate::admin::encode_query_value("Choose an option from the list.")
+            ))
+            .into_response();
+        }
         tracing::error!(error = %e, %notation_id, "intake: record_client_answer failed");
         return (StatusCode::INTERNAL_SERVER_ERROR, "internal").into_response();
     }

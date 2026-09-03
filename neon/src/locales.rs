@@ -1,10 +1,12 @@
-//! Load the firm's English marketing catalog and map it onto page types.
+//! Load each house brand's English marketing catalog and map it onto page types.
 //!
-//! The words live in `locales/en/*.yaml`. This module is the only Rust that
-//! reads them: interpolate the brand placeholders, deserialize, and fill the
-//! few runtime fields a YAML file cannot know (the hero asset URL, the CLI
-//! release archives). Editing published copy is a YAML change.
+//! The words live in `locales/en/<brand-key>/*.yaml`. This module is the only
+//! Rust that reads them: pick the directory for the request's `BrandKey`,
+//! interpolate the brand placeholders, deserialize, and fill the few runtime
+//! fields a YAML file cannot know (the hero asset URL, the CLI release
+//! archives). Editing published copy is a YAML change.
 
+use views::brand::BrandKey;
 use views::locales::{
     interpolate, BandCopy, CardCopy, CopyRun, HeroCtaCopy, HeroLine, HomeCopy, IncludedCopy,
     LitigationCopy, MarketingPageCopy, PackageInstallCopy, PageSkin, Paragraph, PracticeLinkCopy,
@@ -15,18 +17,47 @@ use webapp::marketing_page::{
     Band, Card, Download, HeroCta, PackageInstall, PageContent, ProjectNetworkNode, Run, Step,
 };
 
-const HOME_YAML: &str = include_str!("../locales/en/home.yaml");
-const LITIGATION_YAML: &str = include_str!("../locales/en/litigation.yaml");
-const FRACTIONAL_GC_YAML: &str = include_str!("../locales/en/fractional-gc.yaml");
-const FRACTIONAL_CTO_YAML: &str = include_str!("../locales/en/fractional-cto.yaml");
-const NAVIGATOR_YAML: &str = include_str!("../locales/en/navigator.yaml");
-const SERVICES_YAML: &str = include_str!("../locales/en/services.yaml");
+const NEON_HOME_YAML: &str = include_str!("../locales/en/neon/home.yaml");
+const NEON_LITIGATION_YAML: &str = include_str!("../locales/en/neon/litigation.yaml");
+const NEON_FRACTIONAL_GC_YAML: &str = include_str!("../locales/en/neon/fractional-gc.yaml");
+const NEON_FRACTIONAL_CTO_YAML: &str = include_str!("../locales/en/neon/fractional-cto.yaml");
+const NEON_NAVIGATOR_YAML: &str = include_str!("../locales/en/neon/navigator.yaml");
+const NEON_SERVICES_YAML: &str = include_str!("../locales/en/neon/services.yaml");
+const DELETE_YOUR_DATA_HOME_YAML: &str = include_str!("../locales/en/delete-your-data/home.yaml");
+const DELETE_YOUR_DATA_SERVICES_YAML: &str =
+    include_str!("../locales/en/delete-your-data/services.yaml");
+
+/// The shipped YAML for `key`'s `page` stem, if that brand publishes it.
+#[must_use]
+pub fn catalog_yaml(key: BrandKey, page: &str) -> Option<&'static str> {
+    match (key, page) {
+        (BrandKey::Neon, "home") => Some(NEON_HOME_YAML),
+        (BrandKey::Neon, "litigation") => Some(NEON_LITIGATION_YAML),
+        (BrandKey::Neon, "fractional-gc") => Some(NEON_FRACTIONAL_GC_YAML),
+        (BrandKey::Neon, "fractional-cto") => Some(NEON_FRACTIONAL_CTO_YAML),
+        (BrandKey::Neon, "navigator") => Some(NEON_NAVIGATOR_YAML),
+        (BrandKey::Neon, "services") => Some(NEON_SERVICES_YAML),
+        (BrandKey::DeleteYourData, "home") => Some(DELETE_YOUR_DATA_HOME_YAML),
+        (BrandKey::DeleteYourData, "services") => Some(DELETE_YOUR_DATA_SERVICES_YAML),
+        _ => None,
+    }
+}
 
 /// Load one catalog file as `T`, after substituting the mounted brand.
 fn load<T: serde::de::DeserializeOwned>(yaml: &str, branding: &views::brand::Branding) -> T {
     let raw = interpolate(yaml, branding.firm.site_name, branding.firm_email);
     serde_yaml::from_str(&raw)
         .expect("invariant: shipped locale YAML deserializes; navigator validate Y002 is the gate")
+}
+
+fn load_page<T: serde::de::DeserializeOwned>(branding: &views::brand::Branding, page: &str) -> T {
+    let yaml = catalog_yaml(branding.brand_key, page).unwrap_or_else(|| {
+        panic!(
+            "invariant: {} publishes `{page}`; BrandKey::catalog_pages is the gate",
+            branding.brand_key.as_str()
+        )
+    });
+    load(yaml, branding)
 }
 
 /// Split a hero statement into words, marking the first `accent_words` of them.
@@ -254,9 +285,9 @@ fn marketing_page(copy: MarketingPageCopy) -> PageContent {
     }
 }
 
-/// The firm home page, resolved from `locales/en/home.yaml`.
+/// The firm home page, resolved from this brand's `home.yaml`.
 pub fn home(branding: &views::brand::Branding) -> webapp::home::HomeContent {
-    let copy: HomeCopy = load(HOME_YAML, branding);
+    let copy: HomeCopy = load_page(branding, "home");
     webapp::home::HomeContent {
         head_title: copy.head_title,
         meta_description: copy.meta_description,
@@ -297,9 +328,9 @@ pub fn home(branding: &views::brand::Branding) -> webapp::home::HomeContent {
     }
 }
 
-/// The `/litigation` page, resolved from `locales/en/litigation.yaml`.
+/// The `/litigation` page, resolved from this brand's `litigation.yaml`.
 pub fn litigation(branding: &views::brand::Branding) -> webapp::litigation_page::LitigationContent {
-    let copy: LitigationCopy = load(LITIGATION_YAML, branding);
+    let copy: LitigationCopy = load_page(branding, "litigation");
     webapp::litigation_page::LitigationContent {
         head_title: copy.head_title,
         meta_description: copy.meta_description,
@@ -312,11 +343,11 @@ pub fn litigation(branding: &views::brand::Branding) -> webapp::litigation_page:
     }
 }
 
-/// The `/fractional-gc` page, resolved from `locales/en/fractional-gc.yaml`.
+/// The `/fractional-gc` page, resolved from this brand's `fractional-gc.yaml`.
 pub fn fractional_gc(
     branding: &views::brand::Branding,
 ) -> webapp::transactional_page::TransactionalContent {
-    let copy: TransactionalCopy = load(FRACTIONAL_GC_YAML, branding);
+    let copy: TransactionalCopy = load_page(branding, "fractional-gc");
     webapp::transactional_page::TransactionalContent {
         head_title: copy.head_title,
         meta_description: copy.meta_description,
@@ -374,38 +405,43 @@ pub fn fractional_gc(
     }
 }
 
-/// `/fractional-cto`, from `locales/en/fractional-cto.yaml`.
-pub fn fractional_cto() -> PageContent {
-    marketing_page(load(FRACTIONAL_CTO_YAML, &views::brand::DEFAULT_BRANDING))
+/// `/fractional-cto`, from this brand's `fractional-cto.yaml`.
+pub fn fractional_cto(branding: &views::brand::Branding) -> PageContent {
+    marketing_page(load_page(branding, "fractional-cto"))
 }
 
-/// `/navigator`, from `locales/en/navigator.yaml`.
-pub fn navigator() -> PageContent {
-    marketing_page(load(NAVIGATOR_YAML, &views::brand::DEFAULT_BRANDING))
+/// `/navigator`, from this brand's `navigator.yaml`.
+pub fn navigator(branding: &views::brand::Branding) -> PageContent {
+    marketing_page(load_page(branding, "navigator"))
 }
 
-/// `/services`, from `locales/en/services.yaml`.
-pub fn legal_services() -> PageContent {
-    marketing_page(load(SERVICES_YAML, &views::brand::DEFAULT_BRANDING))
+/// `/services`, from this brand's `services.yaml`.
+pub fn legal_services(branding: &views::brand::Branding) -> PageContent {
+    marketing_page(load_page(branding, "services"))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use views::brand::BrandKey;
     use views::locales::parse_locale_file;
 
-    /// Every shipped English catalog file deserializes as the page it names.
+    /// Every registry key ships every catalog page it declares, and each file
+    /// deserializes as that page. A missing file fails here, not at first request.
     #[test]
-    fn every_english_catalog_deserializes() {
-        for (stem, yaml) in [
-            ("home", HOME_YAML),
-            ("litigation", LITIGATION_YAML),
-            ("fractional-gc", FRACTIONAL_GC_YAML),
-            ("fractional-cto", FRACTIONAL_CTO_YAML),
-            ("navigator", NAVIGATOR_YAML),
-            ("services", SERVICES_YAML),
-        ] {
-            parse_locale_file(stem, yaml).unwrap_or_else(|err| panic!("{stem}: {err}"));
+    fn every_registry_key_has_every_required_catalog_file() {
+        for key in BrandKey::ALL {
+            for page in key.catalog_pages() {
+                let yaml = catalog_yaml(*key, page).unwrap_or_else(|| {
+                    panic!(
+                        "{} is missing locales/en/{}/{page}.yaml",
+                        key.as_str(),
+                        key.as_str()
+                    )
+                });
+                parse_locale_file(page, yaml)
+                    .unwrap_or_else(|err| panic!("{} `{page}`: {err}", key.as_str()));
+            }
         }
     }
 
@@ -433,6 +469,25 @@ mod tests {
                 "Fractional GC",
                 "One-Time Services",
             ]
+        );
+    }
+
+    #[test]
+    fn delete_your_data_home_catalog_names_its_own_heading() {
+        let content = home(&views::brand::DELETE_YOUR_DATA_BRANDING);
+        assert!(content
+            .head_title
+            .contains(views::brand::DELETE_YOUR_DATA_BRANDING.firm.site_name));
+        assert_eq!(content.heading, "Ask companies to delete your data.");
+        assert!(content.lead.contains("Shook Law PLLC"));
+        assert!(!content.heading.contains("Everyone deserves to be seen."));
+        assert_eq!(
+            content
+                .practices
+                .iter()
+                .map(|practice| practice.heading.as_str())
+                .collect::<Vec<_>>(),
+            ["Data-deletion requests"]
         );
     }
 }

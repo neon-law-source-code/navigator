@@ -26,6 +26,7 @@ mod locales;
 
 use portal::hosting::{BrandSeed, PublicRouter, Site};
 use portal::AppState;
+use views::brand::BrandKey;
 
 pub use firm_pages::firm_public_dioxus_routers;
 
@@ -96,44 +97,47 @@ pub const PUBLIC_PATHS: &[&str] = &[
 /// its index page links every current profile, so a crawler still reaches
 /// them — just not with their own sitemap `<url>` entry.
 #[must_use]
-pub fn sitemap_paths(state: &AppState) -> std::collections::BTreeSet<String> {
-    let mut paths: std::collections::BTreeSet<String> = [
-        "/",
-        "/fractional-cto",
-        "/services",
-        "/litigation",
-        "/fractional-gc",
-        "/navigator",
-        "/notations",
-        "/contact",
-        "/team",
-        "/blog",
-        "/workshops",
-        "/presentations",
-    ]
-    .iter()
-    .map(|path| (*path).to_string())
-    .collect();
-    for post in state.blog.posts() {
-        paths.insert(format!("/blog/{}", post.slug));
-    }
-    for material in state
-        .workshops
-        .materials()
-        .iter()
-        .filter(|material| matches!(material.category.as_str(), "presentations" | "workshops"))
-    {
-        let path = format!("/{}/{}", material.category, material.slug);
-        // The hub, its raw-Markdown twin, the light table, and the classroom
-        // step faces.
-        paths.insert(path.clone());
-        paths.insert(format!("{path}.md"));
-        paths.insert(format!("{path}/slides"));
-        for step in 1..=material.sections.len() {
-            paths.insert(format!("{path}/step/{step}"));
+pub fn sitemap_paths(state: &AppState, key: BrandKey) -> std::collections::BTreeSet<String> {
+    match key {
+        BrandKey::DeleteYourData => ["/", "/services", "/contact"]
+            .iter()
+            .map(|path| (*path).to_string())
+            .collect(),
+        BrandKey::Neon => {
+            let mut paths: std::collections::BTreeSet<String> = [
+                "/",
+                "/fractional-cto",
+                "/services",
+                "/litigation",
+                "/fractional-gc",
+                "/navigator",
+                "/notations",
+                "/contact",
+                "/team",
+                "/blog",
+                "/workshops",
+                "/presentations",
+            ]
+            .iter()
+            .map(|path| (*path).to_string())
+            .collect();
+            for post in state.blog.posts() {
+                paths.insert(format!("/blog/{}", post.slug));
+            }
+            for material in state.workshops.materials().iter().filter(|material| {
+                matches!(material.category.as_str(), "presentations" | "workshops")
+            }) {
+                let path = format!("/{}/{}", material.category, material.slug);
+                paths.insert(path.clone());
+                paths.insert(format!("{path}.md"));
+                paths.insert(format!("{path}/slides"));
+                for step in 1..=material.sections.len() {
+                    paths.insert(format!("{path}/step/{step}"));
+                }
+            }
+            paths
         }
     }
-    paths
 }
 
 /// The site's `/llms.txt`: what a crawler has reached at `neonlaw.com`, and the
@@ -151,33 +155,66 @@ pub fn sitemap_paths(state: &AppState) -> std::collections::BTreeSet<String> {
 /// its schedule's matters and scope without one. An index that told a crawler
 /// otherwise would send it looking for numbers the page does not carry.
 #[must_use]
-pub fn llms_txt(state: &AppState) -> portal::LlmsTxt {
-    let mark = views::brand::FIRM_BRAND.site_name;
-    portal::LlmsTxt {
-        title: mark.to_string(),
-        summary: format!(
-            "{mark} is a consumer law firm working on flat fees: wills, trusts, name changes, \
-             formations, and the other routine matters a person actually walks in with, \
-             alongside a litigation and company-counsel practice quoted per engagement."
-        ),
-        pages: indexed_pages(mark),
-        sections: [("Workshop Corpus", "workshops")]
-            .into_iter()
-            .map(|(heading, category)| portal::LlmsTxtSection {
-                heading: heading.to_string(),
-                links: state
-                    .workshops
-                    .materials()
-                    .iter()
-                    .filter(|material| material.category == category)
-                    .map(|material| portal::LlmsTxtLink {
-                        title: material.title.clone(),
-                        path: format!("/{}/{}.md", material.category, material.slug),
-                        description: material.description.clone(),
+pub fn llms_txt(state: &AppState, key: BrandKey) -> portal::LlmsTxt {
+    match key {
+        BrandKey::DeleteYourData => {
+            let branding = &views::brand::DELETE_YOUR_DATA_BRANDING;
+            let mark = branding.firm.site_name;
+            portal::LlmsTxt {
+                title: mark.to_string(),
+                summary: branding.mission_description.to_string(),
+                pages: vec![
+                    portal::LlmsTxtLink {
+                        title: mark.to_string(),
+                        path: "/".to_string(),
+                        description: branding.mission_description.to_string(),
+                    },
+                    portal::LlmsTxtLink {
+                        title: "Data-deletion requests".to_string(),
+                        path: "/services".to_string(),
+                        description: branding.service_description.to_string(),
+                    },
+                    portal::LlmsTxtLink {
+                        title: "Contact".to_string(),
+                        path: "/contact".to_string(),
+                        description: format!(
+                            "How to reach {mark}, a practice of Shook Law PLLC, about a \
+                             data-deletion request."
+                        ),
+                    },
+                ],
+                sections: Vec::new(),
+            }
+        }
+        BrandKey::Neon => {
+            let mark = views::brand::FIRM_BRAND.site_name;
+            portal::LlmsTxt {
+                title: mark.to_string(),
+                summary: format!(
+                    "{mark} is a consumer law firm working on flat fees: wills, trusts, name changes, \
+                     formations, and the other routine matters a person actually walks in with, \
+                     alongside a litigation and company-counsel practice quoted per engagement."
+                ),
+                pages: indexed_pages(mark),
+                sections: [("Workshop Corpus", "workshops")]
+                    .into_iter()
+                    .map(|(heading, category)| portal::LlmsTxtSection {
+                        heading: heading.to_string(),
+                        links: state
+                            .workshops
+                            .materials()
+                            .iter()
+                            .filter(|material| material.category == category)
+                            .map(|material| portal::LlmsTxtLink {
+                                title: material.title.clone(),
+                                path: format!("/{}/{}.md", material.category, material.slug),
+                                description: material.description.clone(),
+                            })
+                            .collect(),
                     })
                     .collect(),
-            })
-            .collect(),
+            }
+        }
     }
 }
 

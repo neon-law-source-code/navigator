@@ -38,8 +38,10 @@ Six normal validation passes happen in this order:
    seed before it ever reaches `site import`.
 5. **A locale-catalog pass** (rule `Y002`) additionally validates every YAML file under a `locales/<locale>/` directory
    against the typed marketing-copy schema in `views::locales`. The site publishes English only: a directory other than
-   `en`, an unknown page stem, or a document that does not deserialize as the page it names fails the gate. This is what
-   lets a copy-only edit stay a YAML change without landing a catalog the brand crate cannot load.
+   `en`, an unknown page stem, an unknown brand-key directory, or a document that does not deserialize as the page it
+   names fails the gate. A house-of-brands tree uses `locales/en/<brand-key>/<page>.yaml`; a fixture may still use the
+   flat `locales/en/<page>.yaml` layout. This is what lets a copy-only edit stay a YAML change without landing a catalog
+   the brand crate cannot load.
 6. **A consumed mutable-tag pass** walks YAML files and Containerfiles/Dockerfiles for an image or binary reference
    pinned to a mutable tag (`latest`, a branch name) rather than a digest or release version, and fails on each one
    found. This has no rule code either.
@@ -214,4 +216,4 @@ file for that violation without a human decision; every other code needs a perso
 | Code | Severity | Rule | Autofix |
 | --- | --- | --- | --- |
 | `Y001` | Error | A `seeds/*.yaml` document must be accepted by `navigator site import`. | No |
-| `Y002` | Error | A `locales/<locale>/<page>.yaml` catalog must be English and deserialize as that page. | No |
+| `Y002` | Error | An English `locales/` catalog must deserialize as the page its stem names. | No |

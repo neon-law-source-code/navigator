@@ -13,7 +13,7 @@
 //! gate by being advertised.
 
 use axum::body::Body;
-use axum::http::{Request, StatusCode};
+use axum::http::{header, Request, StatusCode};
 use axum::Router;
 use store::test_support::mem_surreal;
 use tower::ServiceExt;
@@ -58,9 +58,17 @@ async fn app() -> Router {
 }
 
 async fn get(app: &Router, path: &str) -> (StatusCode, String) {
+    get_on_host(app, path, None).await
+}
+
+async fn get_on_host(app: &Router, path: &str, host: Option<&str>) -> (StatusCode, String) {
+    let mut builder = Request::builder().uri(path);
+    if let Some(host) = host {
+        builder = builder.header(header::HOST, host);
+    }
     let resp = app
         .clone()
-        .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+        .oneshot(builder.body(Body::empty()).unwrap())
         .await
         .unwrap();
     let status = resp.status();
@@ -209,6 +217,55 @@ async fn the_sitemap_expands_over_loaded_content() {
         assert!(
             advertised.iter().any(|path| path == expected),
             "the sitemap is missing {expected}: {advertised:?}"
+        );
+    }
+}
+
+/// The house-brand host advertises only the pages it publishes, under its own
+/// host, and every advertised URL answers 200 on that host.
+#[tokio::test]
+async fn the_delete_your_data_sitemap_lists_only_that_brands_pages_under_its_host() {
+    let app = app().await;
+    let host = "staging.deleteyourdata.com";
+    let (status, body) = get_on_host(&app, "/sitemap.xml", Some(host)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains(&format!("https://{host}/</loc>")), "{body}");
+    assert!(!body.contains("neonlaw.com"), "{body}");
+    let paths: Vec<String> = body
+        .split("<loc>")
+        .skip(1)
+        .filter_map(|rest| rest.split("</loc>").next())
+        .map(|loc| {
+            let after_scheme = loc.split_once("://").expect("an absolute URL").1;
+            let path = after_scheme
+                .find('/')
+                .map_or("/", |slash| &after_scheme[slash..]);
+            path.to_string()
+        })
+        .collect();
+    for required in [
+        "/",
+        "/services",
+        "/contact",
+        "/privacy",
+        "/terms",
+        "/llms.txt",
+    ] {
+        assert!(
+            paths.iter().any(|path| path == required),
+            "missing {required}: {paths:?}"
+        );
+    }
+    assert!(
+        !paths.iter().any(|path| path == "/litigation"),
+        "house-brand sitemap must not advertise Neon practice pages: {paths:?}"
+    );
+    for path in &paths {
+        let (status, _) = get_on_host(&app, path, Some(host)).await;
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "{host} sitemap advertises {path}, which answers {status}"
         );
     }
 }

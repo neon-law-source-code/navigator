@@ -120,7 +120,10 @@ pub struct HomePageView {
 /// Resolve the chrome and the static home content.
 #[server]
 pub async fn home_page_view() -> Result<HomePageView, ServerFnError> {
-    let content = consume_context::<InjectedHome>().0;
+    let content =
+        crate::public_chrome::copy_from_request_or_context(consume_context::<InjectedHome>)
+            .await
+            .0;
     Ok(HomePageView {
         chrome: crate::public_chrome::firm_public_chrome_from_context().await,
         content,

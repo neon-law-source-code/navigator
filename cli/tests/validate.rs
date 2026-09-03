@@ -544,6 +544,28 @@ fn validate_refuses_an_unknown_locale_page_stem() {
         .stdout(str::contains("unknown locale page `about`"));
 }
 
+#[test]
+fn validate_refuses_an_unknown_brand_catalog_directory() {
+    let dir = TempDir::new().unwrap();
+    write(
+        dir.path(),
+        "locales/en/not-a-brand/home.yaml",
+        "head_title: \"{site_name} | Home\"\n\
+         meta_description: Everyone deserves to be seen.\n\
+         heading: Everyone deserves to be seen.\n\
+         lead: We fight for people.\n\
+         contact_label: Contact us\n",
+    );
+    navigator()
+        .arg("validate")
+        .arg(dir.path())
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(str::contains("Y002"))
+        .stdout(str::contains("not a registry key"));
+}
+
 /// The consumed-mutable-tag guard (navigator#540) fires on every consume
 /// site: a YAML `image:` value, a Containerfile `FROM`, and a workflow
 /// installer step's `version: latest`. Each is a way production could change

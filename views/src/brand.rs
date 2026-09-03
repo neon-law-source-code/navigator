@@ -471,18 +471,15 @@ pub static DEFAULT_BRANDING: Branding = Branding {
     brand_key: BrandKey::Neon,
 };
 
-/// The placeholder `delete-your-data` house brand. Every value here is provisional —
-/// wordmark, tagline, nav, and logo assets land with the brand's own identity
-/// work — but the mechanism this key exercises (a distinct registry entry,
-/// with its own hosts and its own rendered chrome) is real. The trademark
-/// fields stay empty, the same way a renamed white-label deploy's do: this
-/// brand's registration status is not yet decided, so there is nothing to
-/// notice.
+/// The `delete-your-data` house brand. Page copy lives in
+/// `neon/locales/en/delete-your-data/`; the three strings here are the chrome
+/// and crawler descriptions for the same practice. Trademark fields stay
+/// empty until that brand's registration status is decided.
 pub static DELETE_YOUR_DATA_BRANDING: Branding = Branding {
     firm: SiteBrand {
         site_name: "DeleteYourData.com",
         home_href: "/",
-        tagline: "Placeholder tagline for the DeleteYourData.com house brand.",
+        tagline: "A Shook Law PLLC practice. A licensed attorney helps you ask companies to delete personal data.",
         postal_address: "5150 Mae Anne Ave Ste 405-9002, Reno, NV 89523",
         logo_href: "/public/brand/delete-your-data/logo.svg",
         social_image: "/public/brand/delete-your-data/logo.png",
@@ -504,8 +501,8 @@ pub static DELETE_YOUR_DATA_BRANDING: Branding = Branding {
     base_url: "",
     primary_domain: "deleteyourdata.com",
     firm_disclaimer: "Attorney advertisement. Nothing here is legal advice without a signed retainer for an active project. Past results do not guarantee future outcomes.",
-    mission_description: "Placeholder mission copy for the DeleteYourData.com house brand.",
-    service_description: "Placeholder service copy for the DeleteYourData.com house brand.",
+    mission_description: "DeleteYourData.com is a practice of Shook Law PLLC. A licensed attorney helps a person ask a company to delete personal data it holds about them. Fees are quoted before work begins. This is an attorney advertisement, not a promise about a result.",
+    service_description: "Data-deletion request work from DeleteYourData.com, a practice of Shook Law PLLC. A licensed attorney reviews the work. Fees are quoted before work begins.",
     portal_only: false,
     brand_key: BrandKey::DeleteYourData,
 };
@@ -516,7 +513,7 @@ pub static DELETE_YOUR_DATA_BRANDING: Branding = Branding {
 /// more than one of them. Adding a brand is a code change to this enum plus
 /// [`BrandKey::hosts`] and a covering test — configuration, not a table,
 /// which is the right cost for a legal identity.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum BrandKey {
     #[default]
     Neon,
@@ -532,6 +529,33 @@ impl BrandKey {
         match self {
             Self::Neon => "neon",
             Self::DeleteYourData => "delete-your-data",
+        }
+    }
+
+    /// English catalog stems this key ships under `locales/en/<key>/`.
+    ///
+    /// Neon publishes every page in [`crate::locales::KNOWN_PAGES`]. A house
+    /// brand ships only the stems it actually serves; a missing file is a
+    /// loader-test failure, not a first-request panic.
+    #[must_use]
+    pub fn catalog_pages(self) -> &'static [&'static str] {
+        match self {
+            Self::Neon => crate::locales::KNOWN_PAGES,
+            Self::DeleteYourData => &["home", "services"],
+        }
+    }
+
+    /// Firm marketing paths this key answers on its own hosts.
+    ///
+    /// Neon answers every firm page the crate mounts. A house brand answers
+    /// only the pages it has a catalog for (plus `/contact`, which is
+    /// addresses rather than a YAML stem). Other firm paths 404 on that host
+    /// rather than rendering another brand's words.
+    #[must_use]
+    pub fn publishes_firm_path(self, path: &str) -> bool {
+        match self {
+            Self::Neon => true,
+            Self::DeleteYourData => matches!(path, "/" | "/services" | "/contact"),
         }
     }
 
@@ -1749,6 +1773,49 @@ mod tests {
             DELETE_YOUR_DATA_BRANDING.brand_key,
             BrandKey::DeleteYourData
         );
+    }
+
+    /// Chrome copy for a house brand is real prose, not a `Placeholder …`
+    /// string, and it does not invent a trademark notice.
+    #[test]
+    fn delete_your_data_chrome_copy_is_not_a_placeholder_and_carries_no_mark() {
+        let branding = &DELETE_YOUR_DATA_BRANDING;
+        assert!(!branding.firm.tagline.contains("Placeholder"));
+        assert!(!branding.mission_description.contains("Placeholder"));
+        assert!(!branding.service_description.contains("Placeholder"));
+        assert!(branding.firm.tagline.contains("Shook Law PLLC"));
+        assert!(branding
+            .mission_description
+            .contains("attorney advertisement"));
+        assert!(branding
+            .service_description
+            .contains("quoted before work begins"));
+        assert!(branding.firm_trademark.is_empty());
+        assert!(branding.firm_trademark_registration.is_empty());
+        assert!(branding.firm_trademark_record_url.is_empty());
+    }
+
+    #[test]
+    fn every_registry_key_declares_the_catalog_pages_it_ships() {
+        for key in BrandKey::ALL {
+            let pages = key.catalog_pages();
+            assert!(!pages.is_empty(), "{key:?} ships at least one catalog page");
+            for page in pages {
+                assert!(
+                    crate::locales::KNOWN_PAGES.contains(page),
+                    "{key:?} catalog page `{page}` is not a known stem"
+                );
+            }
+        }
+        assert_eq!(
+            BrandKey::DeleteYourData.catalog_pages(),
+            &["home", "services"]
+        );
+        assert!(BrandKey::DeleteYourData.publishes_firm_path("/"));
+        assert!(BrandKey::DeleteYourData.publishes_firm_path("/services"));
+        assert!(BrandKey::DeleteYourData.publishes_firm_path("/contact"));
+        assert!(!BrandKey::DeleteYourData.publishes_firm_path("/litigation"));
+        assert!(BrandKey::Neon.publishes_firm_path("/litigation"));
     }
 
     /// A mounted white-label manifest replaces the *default* brand's identity,

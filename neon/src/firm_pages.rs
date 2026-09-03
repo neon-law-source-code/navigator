@@ -1,13 +1,21 @@
 //! The firm's public Dioxus SSR pages, and the content each one renders.
 //!
 //! Every firm page renders through the Dioxus port, so this module — not an
-//! Axum route table — is where the firm's public surface actually lives. The
-//! content resolvers read the mounted brand bundle directly rather than the
-//! ambient branding, because a page's copy is baked at router-build time,
-//! before any request scopes branding.
+//! Axum route table — is where the firm's public surface actually lives. Copy
+//! for pages a brand publishes is loaded per `BrandKey` and injected on the
+//! request task (the same seam public chrome uses), so a house-brand host
+//! never renders another brand's heading.
 
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use axum::extract::{Request, State};
+use axum::http::StatusCode;
+use axum::middleware::{from_fn, from_fn_with_state, Next};
+use axum::response::{IntoResponse, Response};
 use portal::hosting::PublicRouter as Router;
 use portal::{dioxus_app, secure_cookies, AppState, WorkshopIndex};
+use views::brand::BrandKey;
 
 use crate::firm_copy;
 use crate::locales;
@@ -418,11 +426,12 @@ pub fn firm_public_dioxus_routers(state: &AppState) -> Vec<Router> {
         notations_index_content(),
     ));
     routers.push(dioxus_app::notation_preview_router(notation_preview_docs()));
-    // The firm `/contact` page, content resolved from the same mounted brand
-    // bundle as the pages around it.
-    routers.push(dioxus_app::contact_router(
-        "/contact",
-        resolve_firm_contact_content(branding),
+    let contact_copy = branded_map(branding, |resolved| {
+        webapp::contact_page::InjectedContact(resolve_firm_contact_content(resolved))
+    });
+    routers.push(with_branded(
+        dioxus_app::contact_router("/contact", resolve_firm_contact_content(branding)),
+        contact_copy,
     ));
     // The firm's `/team` roster: the index and one generic `/team/{slug}`
     // profile route, both live — every request queries the current
@@ -437,9 +446,15 @@ pub fn firm_public_dioxus_routers(state: &AppState) -> Vec<Router> {
     let home = resolve_firm_home_content(branding);
     // The home page (`/`): a static statement of the practice, no per-request
     // data. The practice boxes on `/` are the YAML catalog workshop slides
-    // reuse — one list, not a second Rust copy.
-    let practice_catalog = home.practices.clone();
-    routers.push(dioxus_app::home_router("/", home));
+    // reuse — one list, not a second Rust copy. Slides always expand the
+    // Neon catalog, even when another host is serving `/`.
+    let practice_catalog = locales::home(&views::brand::DEFAULT_BRANDING)
+        .practices
+        .clone();
+    let home_copy = branded_map(branding, |resolved| {
+        webapp::home::InjectedHome(locales::home(resolved))
+    });
+    routers.push(with_branded(dioxus_app::home_router("/", home), home_copy));
     // The practice pages the home page's cards lead into. Static copy like the
     // home page's, resolved here so the `<title>` names the mounted brand.
     routers.push(dioxus_app::litigation_router(
@@ -457,20 +472,21 @@ pub fn firm_public_dioxus_routers(state: &AppState) -> Vec<Router> {
     // for the law firms it serves, and the other three practices sit under it.
     routers.push(dioxus_app::marketing_page_router(
         dioxus_app::FIRM_FRACTIONAL_CTO_PATH,
-        firm_copy::fractional_cto(),
+        firm_copy::fractional_cto(branding),
     ));
     routers.push(dioxus_app::marketing_page_router(
         dioxus_app::FIRM_NAVIGATOR_PATH,
-        firm_copy::navigator(),
+        firm_copy::navigator(branding),
     ));
-    // The Legal Services page. Like the platform page above it is a marketing
-    // page, not a `/services/*` catalog entry: one page describing the routine,
-    // one-time work, quoted through `mailto:contact@neonlaw.com` and
-    // publishing no price. It is where the firm's government-form filing work
-    // lives.
-    routers.push(dioxus_app::marketing_page_router(
-        dioxus_app::FIRM_SERVICES_PATH,
-        firm_copy::legal_services(),
+    let services_copy = branded_map(branding, |resolved| {
+        webapp::marketing_page::InjectedMarketingPage(firm_copy::legal_services(resolved))
+    });
+    routers.push(with_branded(
+        dioxus_app::marketing_page_router(
+            dioxus_app::FIRM_SERVICES_PATH,
+            firm_copy::legal_services(branding),
+        ),
+        services_copy,
     ));
     // The talks catalog, and the five read routes each talk publishes: the
     // hub, its light table, the classroom step face, the projector face a
@@ -506,12 +522,62 @@ pub fn firm_public_dioxus_routers(state: &AppState) -> Vec<Router> {
     ));
     routers.push(portal::catalog_workshop_command_routes(state));
     routers
+        .into_iter()
+        .map(|router| router.layer(from_fn(reject_unpublished_firm_path)))
+        .collect()
 }
 
 /// Human-readable publish date for the blog (e.g. `"June 19, 2026"`).
 /// Kept in `web` so the `views` crate stays free of `chrono`.
 fn format_blog_date(date: chrono::NaiveDate) -> String {
     date.format("%B %-d, %Y").to_string()
+}
+
+fn branded_map<T>(
+    default: &'static views::brand::Branding,
+    build: impl Fn(&views::brand::Branding) -> T,
+) -> HashMap<BrandKey, T> {
+    BrandKey::ALL
+        .iter()
+        .copied()
+        .map(|key| (key, build(key.resolve_branding(default))))
+        .collect()
+}
+
+fn with_branded<T: Clone + Send + Sync + 'static>(
+    router: Router,
+    copies: HashMap<BrandKey, T>,
+) -> Router {
+    router.layer(from_fn_with_state(Arc::new(copies), inject_branded::<T>))
+}
+
+async fn inject_branded<T: Clone + Send + Sync + 'static>(
+    State(copies): State<Arc<HashMap<BrandKey, T>>>,
+    mut req: Request,
+    next: Next,
+) -> Response {
+    let key = req
+        .extensions()
+        .get::<BrandKey>()
+        .copied()
+        .unwrap_or_default();
+    if let Some(value) = copies.get(&key).cloned() {
+        req.extensions_mut().insert(value);
+    }
+    next.run(req).await
+}
+
+async fn reject_unpublished_firm_path(req: Request, next: Next) -> Response {
+    let key = req
+        .extensions()
+        .get::<BrandKey>()
+        .copied()
+        .unwrap_or_default();
+    if key.publishes_firm_path(req.uri().path()) {
+        next.run(req).await
+    } else {
+        (StatusCode::NOT_FOUND, webapp::error_pages::not_found()).into_response()
+    }
 }
 
 /// Resolve the firm `/contact` content from the mounted `branding`'s addresses
@@ -524,12 +590,20 @@ fn resolve_firm_contact_content(
     let firm_name = branding.firm.site_name;
 
     let page_title = "Contact";
-    webapp::contact_page::ContactContent {
-        head_title: format!("{firm_name} | {page_title}"),
-        meta_description: format!(
+    let meta_description = match branding.brand_key {
+        BrandKey::DeleteYourData => format!(
+            "Reach {firm_name}, a practice of Shook Law PLLC, about a data-deletion request. \
+             Attorney advertisement. Nothing here is legal advice without a signed retainer for \
+             an active project."
+        ),
+        BrandKey::Neon => format!(
             "Reach {firm_name} for estate planning, corporate formation, litigation, and ongoing \
              legal services."
         ),
+    };
+    webapp::contact_page::ContactContent {
+        head_title: format!("{firm_name} | {page_title}"),
+        meta_description,
         page_title: page_title.to_string(),
         email_label: "Email".to_string(),
         phone_label: "Phone".to_string(),

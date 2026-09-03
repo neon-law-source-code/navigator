@@ -31,14 +31,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::components::{
     wire_runs, AppFooter, AppLogo, AppNavbar, Avatar, BackBreadcrumb, Card, CatalogHero, Choice,
-    CodeBlock, Column, ConfirmDelete, DataTable, ExternalLink, Field, FooterAttorney,
-    FooterBarLicense, FooterNavLink, FooterOffice, FormCard, GitHubStars, Icon, IconName,
-    ImpersonationBanner, ImpersonationView, LawyerPortalBreadcrumb, LegalBlueprintDisclaimer,
-    NavigatorDestination, NavigatorFooter, NavigatorFooterLink, NavigatorNavbar, NavigatorShell,
-    Pagination, PeopleListInputs, PersonChoice, PersonPicker, PricingCard, PricingSection,
-    PublicShell, RowActions, RunParagraph, SampleMattersBanner, SiteFooterLegal, SiteHeader,
-    SiteNavLink, SocialMeta, SortState, TestimonialCard, TestimonialSection, Toast, ToastTone,
-    THEME_STYLESHEET_HREF,
+    ChoiceGroup, ChoiceGroupOption, CodeBlock, Column, ConfirmDelete, DataTable, ExternalLink,
+    Field, FooterAttorney, FooterBarLicense, FooterNavLink, FooterOffice, FormCard, GitHubStars,
+    Hero, HeroAlign, HeroLevel, Icon, IconName, ImpersonationBanner, ImpersonationView,
+    LawyerPortalBreadcrumb, LegalBlueprintDisclaimer, NavigatorDestination, NavigatorFooter,
+    NavigatorFooterLink, NavigatorNavbar, NavigatorShell, Pagination, PeopleListInputs,
+    PersonChoice, PersonPicker, PricingCard, PricingSection, PublicShell, RowActions, RunParagraph,
+    SampleMattersBanner, SiteFooterLegal, SiteHeader, SiteNavLink, SocialMeta, SortState, Stage,
+    StageWidth, StepMeta, Stepper, StepperPanel, TestimonialCard, TestimonialSection, Toast,
+    ToastTone, THEME_STYLESHEET_HREF,
 };
 // The vendor marks come from their own module rather than the theme root: they
 // are the one component whose colours are a third party's rather than the
@@ -72,6 +73,11 @@ pub struct DemoQuery {
     /// A non-authoritative name/email filter for the person-picker example.
     #[serde(default)]
     pub design_person_id_search: Option<String>,
+    /// 1-indexed current step of the focus-set stepper specimen. Same lenient
+    /// parsing as `page`: a missing or non-numeric value degrades to step 1
+    /// rather than failing the whole query extraction.
+    #[serde(default, deserialize_with = "deserialize_lenient_page")]
+    pub step: Option<u32>,
 }
 
 /// Deserialize `?page=` leniently: a missing, blank, or non-numeric value
@@ -203,6 +209,35 @@ fn sort_demo_rows(rows: &mut [DemoRow], sort: &str) {
         }
         std::cmp::Ordering::Equal
     });
+}
+
+/// The focus-set stepper specimen's steps, in order.
+const FOCUS_SET_STEPS: &[(&str, &str)] = &[
+    ("practice-area", "Practice area"),
+    ("about-you", "About you"),
+    ("review", "Review"),
+];
+
+/// Where each step in the focus-set specimen revisits: 1-indexed, like
+/// `?page=`. [`Stepper::step_hrefs`] only ever follows this for an already
+/// completed step, so it is safe to hand it one for every step rather than
+/// only the earlier ones.
+fn focus_set_step_hrefs() -> Vec<Option<String>> {
+    (1..=FOCUS_SET_STEPS.len())
+        .map(|step| Some(format!("/design?step={step}#focus-set")))
+        .collect()
+}
+
+/// Read `?step=` for the focus-set specimen and clamp it into range — a
+/// missing, blank, or out-of-range value lands on step 1 rather than failing
+/// the extraction or panicking on an out-of-bounds index.
+#[server]
+pub async fn load_focus_set_step() -> Result<u32, ServerFnError> {
+    let axum::extract::Query(query) =
+        dioxus_fullstack_core::FullstackContext::extract::<axum::extract::Query<DemoQuery>, _>()
+            .await?;
+    let last = u32::try_from(FOCUS_SET_STEPS.len()).unwrap_or(1);
+    Ok(query.step.unwrap_or(1).clamp(1, last))
 }
 
 /// One grounded code sample on the gallery, copied verbatim from a real
@@ -410,6 +445,7 @@ pub fn DesignGallery() -> Element {
             SiteHeaderShowcase {}
             SiteFooterShowcase {}
             PublicShellShowcase {}
+            FocusSetShowcase {}
             FormShowcase {}
             PeopleListShowcase {}
             AppNavbarShowcase {}
@@ -1145,6 +1181,108 @@ fn demo_attorneys() -> Vec<FooterAttorney> {
     }]
 }
 
+/// The focus set — Stage, Hero, `ChoiceGroup`, `StepList` (via [`Stepper`]),
+/// Stepper — for the page that shows one thing (ENG-455). A Stage holds a
+/// three-step intake stepper whose first step is a `ChoiceGroup` of practice
+/// areas; every field is server-rendered from `?step=`, so Back and Continue
+/// are real navigations rather than client state. Invented data throughout —
+/// no client ever named.
+#[component]
+fn FocusSetShowcase() -> Element {
+    let resource = use_server_future(load_focus_set_step)?;
+    let step = match &*resource.read() {
+        Some(Ok(step)) => *step,
+        Some(Err(_)) | None => 1,
+    };
+    let current = usize::try_from(step.saturating_sub(1)).unwrap_or(0);
+    let last = FOCUS_SET_STEPS.len().saturating_sub(1);
+
+    let steps: Vec<StepMeta> = FOCUS_SET_STEPS
+        .iter()
+        .map(|(id, title)| StepMeta::new(*id, *title))
+        .collect();
+
+    rsx! {
+        section { id: "focus-set",
+            h2 { "One thing at a time" }
+            p {
+                "The focus set — "
+                code { "Stage" }
+                ", "
+                code { "Hero" }
+                ", "
+                code { "ChoiceGroup" }
+                ", "
+                code { "StepList" }
+                ", "
+                code { "Stepper" }
+                " — for a sign-in, one intake question, a decision between two options. \
+                 Ported from Navigator UX's "
+                code { "Focus.tsx" }
+                " so a page reads identically in either stack."
+            }
+            Stage {
+                width: StageWidth::Md,
+                fill: false,
+                header: rsx! {
+                    Hero {
+                        eyebrow: rsx! { "Prospective client intake" },
+                        title: rsx! { "Tell us about your matter" },
+                        lede: rsx! { "Three questions, invented for this specimen, so the right attorney reaches out." },
+                        align: HeroAlign::Start,
+                        level: HeroLevel::H2,
+                    }
+                },
+                Stepper {
+                    steps: steps.clone(),
+                    current,
+                    label: "Intake progress".to_string(),
+                    step_hrefs: focus_set_step_hrefs(),
+                    back_href: (current > 0).then(|| format!("/design?step={current}#focus-set")),
+                    continue_href: (current < last)
+                        .then(|| format!("/design?step={}#focus-set", current + 2)),
+                    finish_href: (current >= last).then(|| "/design#focus-set".to_string()),
+                    StepperPanel {
+                        index: 0,
+                        current,
+                        title: rsx! { "Which describes your matter?" },
+                        ChoiceGroup {
+                            legend: rsx! { "Practice area" },
+                            legend_hidden: true,
+                            name: "design_focus_area".to_string(),
+                            columns: 3,
+                            required: true,
+                            selected: vec!["estate".to_string()],
+                            options: vec![
+                                ChoiceGroupOption::new("formation", "Business formation")
+                                    .description("A new LLC, partnership, or nonprofit."),
+                                ChoiceGroupOption::new("estate", "Estate planning")
+                                    .description("A will, a trust, or a power of attorney."),
+                                ChoiceGroupOption::new("litigation", "Litigation")
+                                    .description("A dispute already in motion, or about to be."),
+                            ],
+                        }
+                    }
+                    StepperPanel {
+                        index: 1,
+                        current,
+                        title: rsx! { "About you" },
+                        description: rsx! { "Invented for this specimen — a real intake asks for a name and a way to reply." },
+                        p { "Ada Lovelace · ada@example.com · (555) 010-0100" }
+                    }
+                    StepperPanel {
+                        index: 2,
+                        current,
+                        title: rsx! { "Review" },
+                        description: rsx! { "The last step before the firm hears about it." },
+                        p { "Estate planning, for Ada Lovelace. Finish to send the intake." }
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// The create/edit form card. The plain-textarea field kind is the composer for
 /// long-form input: the theme ships no rich-text editor.
 ///
@@ -1510,6 +1648,12 @@ mod tests {
             "GitHubStars",
             "Icon",
             "ExternalLink",
+            "Stage",
+            "Hero",
+            "ChoiceGroup",
+            "StepList",
+            "Stepper",
+            "StepperPanel",
             "NavigatorShell",
             "Pagination",
             "PeopleListInputs",

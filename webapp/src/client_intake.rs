@@ -19,7 +19,9 @@
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::components::{question_fields, FormCard, PeopleListInputs};
+use crate::components::{
+    question_fields, FormCard, PeopleListInputs, PersonChoice, QuestionFieldContext,
+};
 
 /// The current intake step, shaped by the portal pre-layer into plain fields
 /// that cross the server→client boundary.
@@ -43,6 +45,15 @@ pub struct IntakeStepData {
     /// Seeded option names for a `country` question; empty for every other
     /// `answer_type`.
     pub country_options: Vec<String>,
+    /// `(value, label)` options for a `radio` question — the template's own
+    /// declared choices. Empty for every other `answer_type`.
+    #[serde(default)]
+    pub choices: Vec<(String, String)>,
+    /// The project-scoped people this notation's matter carries — a `person`
+    /// question's real candidate list. Empty for every other `answer_type`,
+    /// or when the matter has no participants yet.
+    #[serde(default)]
+    pub person_candidates: Vec<PersonChoice>,
     /// `(current, total)` — client-facing progress.
     pub position: usize,
     pub total: usize,
@@ -175,7 +186,16 @@ fn step_body(step: &IntakeStepData, view: &ClientIntakeView) -> Element {
     let page_title = format!("Your {} — Neon Law Navigator", step.flow_label);
 
     let is_people_list = step.answer_type == "people_list";
-    let fields = question_fields(&step.answer_type, prompt, prior, &step.country_options);
+    let fields = question_fields(
+        &step.answer_type,
+        prompt,
+        prior,
+        &QuestionFieldContext {
+            country_options: step.country_options.clone(),
+            choices: step.choices.clone(),
+            person_candidates: step.person_candidates.clone(),
+        },
+    );
     let extra = is_people_list.then(|| {
         rsx! {
             PeopleListInputs { prior_json: step.prior_value.clone(), rows: 3 }
@@ -251,6 +271,15 @@ mod tests {
     use crate::components::form::assert_forms_accessible;
 
     fn step(answer_type: &str, prior: &str, country_options: &[&str]) -> ClientIntakeView {
+        step_with_choices(answer_type, prior, country_options, &[])
+    }
+
+    fn step_with_choices(
+        answer_type: &str,
+        prior: &str,
+        country_options: &[&str],
+        choices: &[(&str, &str)],
+    ) -> ClientIntakeView {
         ClientIntakeView {
             state: IntakeState::NeedsAnswer(Box::new(IntakeStepData {
                 project_id: "00000000-0000-0000-0000-000000000001".to_string(),
@@ -262,12 +291,25 @@ mod tests {
                 answer_type: answer_type.to_string(),
                 prior_value: prior.to_string(),
                 country_options: country_options.iter().map(|s| (*s).to_string()).collect(),
+                choices: choices
+                    .iter()
+                    .map(|(v, l)| ((*v).to_string(), (*l).to_string()))
+                    .collect(),
+                person_candidates: Vec::new(),
                 position: 3,
                 total: 10,
             })),
             csrf_token: "TOK".to_string(),
             error: None,
         }
+    }
+
+    fn step_with_person_candidates(prior: &str, people: Vec<PersonChoice>) -> ClientIntakeView {
+        let mut view = step("person", prior, &[]);
+        if let IntakeState::NeedsAnswer(data) = &mut view.state {
+            data.person_candidates = people;
+        }
+        view
     }
 
     fn render(view: &ClientIntakeView) -> String {
@@ -320,6 +362,39 @@ mod tests {
             html[mexico..].starts_with("value=\"Mexico\" selected"),
             "{html}"
         );
+    }
+
+    #[test]
+    fn eng_454_a_radio_question_renders_the_templates_own_choices() {
+        let html = render(&step_with_choices(
+            "radio",
+            "",
+            &[],
+            &[("nevada", "Nevada"), ("california", "California")],
+        ));
+        assert!(html.contains(r#"type="radio""#), "{html}");
+        assert!(
+            html.contains("Nevada") && html.contains("California"),
+            "{html}"
+        );
+    }
+
+    #[test]
+    fn eng_454_a_person_question_with_candidates_renders_a_picker() {
+        let people = vec![PersonChoice::new(
+            "00000000-0000-0000-0000-000000000010",
+            "Ada Lovelace",
+            "ada@example.com",
+        )];
+        let html = render(&step_with_person_candidates("", people));
+        assert!(html.contains("Ada Lovelace"), "{html}");
+        assert!(!html.contains(r#"type="text""#), "{html}");
+    }
+
+    #[test]
+    fn eng_454_a_person_question_with_no_candidates_keeps_the_free_text_path() {
+        let html = render(&step_with_person_candidates("", Vec::new()));
+        assert!(html.contains(r#"type="text""#), "{html}");
     }
 
     #[test]

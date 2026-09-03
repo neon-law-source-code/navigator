@@ -852,6 +852,25 @@ pub(crate) async fn resolve_walker_step(
 
     let country_options =
         crate::intake::jurisdiction_option_names(&state.surreal, &question.answer_type).await;
+    let choices = question
+        .choices
+        .into_iter()
+        .map(|c| (c.value, c.label))
+        .collect();
+    // The read-only step display tolerates a candidate-lookup failure — show
+    // an empty list (the free-text path) rather than failing the whole step;
+    // `step_post`'s `resolve_reference_answer` is where a lookup error must
+    // be loud, exactly as `step_json` already treats it.
+    let person_candidates =
+        crate::intake::reference_candidates(&state.surreal, &question.answer_type, notation_id)
+            .await
+            .unwrap_or_else(|e| {
+                tracing::error!(error = %e, %notation_id, "walker: reference_candidates failed");
+                Vec::new()
+            })
+            .into_iter()
+            .map(|c| webapp::components::PersonChoice::new(c.id.to_string(), c.name, c.email))
+            .collect();
     Ok(webapp::walker_step::WalkerStepData {
         notation_id: notation_id.to_string(),
         flow_label,
@@ -860,6 +879,8 @@ pub(crate) async fn resolve_walker_step(
         answer_type: question.answer_type,
         prior_answer,
         country_options,
+        choices,
+        person_candidates,
         position,
         total,
     })

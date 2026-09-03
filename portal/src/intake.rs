@@ -118,6 +118,12 @@ pub(crate) async fn jurisdiction_option_names(
 pub(crate) struct Candidate {
     pub id: uuid::Uuid,
     pub name: String,
+    /// The person's mailbox — empty for a non-person candidate (a
+    /// jurisdiction/country row, or the matter's entity). ENG-454's browser
+    /// `Field::person_picker` needs it; the CLI pick-list and
+    /// `resolve_reference_answer`'s id/name matching never read it.
+    #[serde(default)]
+    pub email: String,
 }
 
 /// The existing rows a record/reference **singular** question may pick
@@ -171,6 +177,7 @@ async fn jurisdiction_candidates(
         .map(|r| Candidate {
             id: r.id,
             name: r.name,
+            email: String::new(),
         })
         .collect())
 }
@@ -239,6 +246,7 @@ async fn project_person_candidates(
         .map(|p| Candidate {
             id: p.id,
             name: p.name,
+            email: p.email,
         })
         .collect())
 }
@@ -257,6 +265,7 @@ async fn project_entity_candidates(
         .map(|e| Candidate {
             id: e.id,
             name: e.name,
+            email: String::new(),
         })
         .into_iter()
         .collect())
@@ -440,6 +449,26 @@ pub(crate) async fn resolve_intake_state(
         } => {
             let country_options =
                 jurisdiction_option_names(&state.surreal, &question.answer_type).await;
+            let choices = question
+                .choices
+                .into_iter()
+                .map(|c| (c.value, c.label))
+                .collect();
+            // Same tolerance as the lawyer walker's render path: an empty
+            // list (free-text path) rather than failing the whole step.
+            let person_candidates = reference_candidates(
+                &state.surreal,
+                &question.answer_type,
+                notation_id,
+            )
+            .await
+            .unwrap_or_else(|e| {
+                tracing::error!(error = %e, %notation_id, "intake: reference_candidates failed");
+                Vec::new()
+            })
+            .into_iter()
+            .map(|c| webapp::components::PersonChoice::new(c.id.to_string(), c.name, c.email))
+            .collect();
             webapp::client_intake::IntakeState::NeedsAnswer(Box::new(
                 webapp::client_intake::IntakeStepData {
                     project_id: project_id.to_string(),
@@ -451,6 +480,8 @@ pub(crate) async fn resolve_intake_state(
                     answer_type: question.answer_type,
                     prior_value: prior_value.unwrap_or_default(),
                     country_options,
+                    choices,
+                    person_candidates,
                     position,
                     total,
                 },

@@ -79,7 +79,9 @@ pub use focus::{
 };
 #[cfg(test)]
 pub(crate) use form::assert_forms_accessible;
-pub use form::{question_fields, Choice, Field, FieldKind, FormCard, Heading};
+pub use form::{
+    question_fields, Choice, Field, FieldKind, FormCard, Heading, QuestionFieldContext,
+};
 pub use github_stars::GitHubStars;
 pub use icon::{Icon, IconName, LIBRA_SCALES};
 pub use impersonation::{

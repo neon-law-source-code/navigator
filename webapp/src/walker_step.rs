@@ -18,7 +18,9 @@
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::components::{question_fields, FormCard, PeopleListInputs};
+use crate::components::{
+    question_fields, FormCard, PeopleListInputs, PersonChoice, QuestionFieldContext,
+};
 use crate::people::ViewerRole;
 
 /// The current walker step, shaped by the portal pre-layer into plain fields
@@ -43,6 +45,17 @@ pub struct WalkerStepData {
     /// Seeded option names for a `country` question; empty for every other
     /// `answer_type`.
     pub country_options: Vec<String>,
+    /// `(value, label)` options for a `radio` question — the template's own
+    /// declared choices (e.g. `custom_single_choice__governing_law`'s
+    /// nevada/california/washington). Empty for every other `answer_type`.
+    #[serde(default)]
+    pub choices: Vec<(String, String)>,
+    /// The project-scoped people this notation's matter carries — a `person`
+    /// question's real candidate list (`portal::intake::reference_candidates`).
+    /// Empty for every other `answer_type`, or when the matter has no
+    /// participants yet.
+    #[serde(default)]
+    pub person_candidates: Vec<PersonChoice>,
     /// `(current, total)` — the lawyer-visible progress indicator.
     pub position: usize,
     pub total: usize,
@@ -138,7 +151,11 @@ fn step_body(view: &WalkerStepView) -> Element {
         &step.answer_type,
         prompt,
         &step.prior_answer,
-        &step.country_options,
+        &QuestionFieldContext {
+            country_options: step.country_options.clone(),
+            choices: step.choices.clone(),
+            person_candidates: step.person_candidates.clone(),
+        },
     );
     let extra = is_people_list.then(|| {
         rsx! {
@@ -217,6 +234,15 @@ mod tests {
     const NOTATION: &str = "00000000-0000-0000-0000-00000000002a";
 
     fn view(answer_type: &str, prior: &str, country_options: &[&str]) -> WalkerStepView {
+        view_with_choices(answer_type, prior, country_options, &[])
+    }
+
+    fn view_with_choices(
+        answer_type: &str,
+        prior: &str,
+        country_options: &[&str],
+        choices: &[(&str, &str)],
+    ) -> WalkerStepView {
         WalkerStepView {
             firm_name: "Neon Law".to_string(),
             step: WalkerStepData {
@@ -227,12 +253,23 @@ mod tests {
                 answer_type: answer_type.to_string(),
                 prior_answer: prior.to_string(),
                 country_options: country_options.iter().map(|s| (*s).to_string()).collect(),
+                choices: choices
+                    .iter()
+                    .map(|(v, l)| ((*v).to_string(), (*l).to_string()))
+                    .collect(),
+                person_candidates: Vec::new(),
                 position: 2,
                 total: 4,
             },
             csrf_token: "TOK".to_string(),
             role: ViewerRole::Lawyer,
         }
+    }
+
+    fn view_with_person_candidates(prior: &str, people: Vec<PersonChoice>) -> WalkerStepView {
+        let mut view = view("person", prior, &[]);
+        view.step.person_candidates = people;
+        view
     }
 
     fn render(view: &WalkerStepView) -> String {
@@ -288,6 +325,55 @@ mod tests {
             html[mexico..].starts_with("value=\"Mexico\" selected"),
             "{html}"
         );
+    }
+
+    #[test]
+    fn eng_454_a_radio_answer_type_renders_the_templates_own_choices() {
+        let html = render(&view_with_choices(
+            "radio",
+            "nevada",
+            &[],
+            &[("nevada", "Nevada"), ("california", "California")],
+        ));
+        assert!(html.contains(r#"type="radio""#), "{html}");
+        assert!(
+            html.contains("Nevada") && html.contains("California"),
+            "{html}"
+        );
+        let nevada = html.find("value=\"nevada\"").expect("the option renders");
+        assert!(
+            html[nevada..].contains("checked"),
+            "the prior answer stays selected: {html}"
+        );
+    }
+
+    #[test]
+    fn eng_454_a_person_question_with_candidates_renders_a_picker() {
+        let people = vec![
+            PersonChoice::new(
+                "00000000-0000-0000-0000-000000000010",
+                "Ada Lovelace",
+                "ada@example.com",
+            ),
+            PersonChoice::new(
+                "00000000-0000-0000-0000-000000000011",
+                "Grace Hopper",
+                "grace@example.com",
+            ),
+        ];
+        let html = render(&view_with_person_candidates("", people));
+        assert!(html.contains("Ada Lovelace"), "{html}");
+        assert!(html.contains("Grace Hopper"), "{html}");
+        // Not a bare text box: the picker is a select, not `type="text"`.
+        assert!(!html.contains(r#"type="text""#), "{html}");
+    }
+
+    #[test]
+    fn eng_454_a_person_question_with_no_candidates_keeps_the_free_text_path() {
+        // A matter with no participants yet: `resolve_reference_answer`
+        // still accepts a free-typed name to create a new row.
+        let html = render(&view_with_person_candidates("", Vec::new()));
+        assert!(html.contains(r#"type="text""#), "{html}");
     }
 
     #[test]

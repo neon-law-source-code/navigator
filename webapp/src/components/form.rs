@@ -472,8 +472,11 @@ impl Field {
         }
     }
 
+    /// `pub(crate)`: [`crate::notation_demo`] renders a `Field` directly,
+    /// outside a [`FormCard`] — its stepper has no `<form>` at all, so it
+    /// cannot go through [`FormCard::render`]'s field loop.
     #[allow(clippy::too_many_lines)]
-    fn render(&self) -> Element {
+    pub(crate) fn render(&self) -> Element {
         let control_id = self.control_id();
         let help_id = format!("{control_id}-help");
         let error_id = format!("{control_id}-error");
@@ -726,6 +729,24 @@ impl Field {
     }
 }
 
+/// Reference data a question's control may need beyond its raw `answer_type`,
+/// prompt, and prior value — one struct so [`question_fields`]'s signature
+/// doesn't grow a positional slice parameter per answer type.
+#[derive(Clone, Default)]
+pub struct QuestionFieldContext {
+    /// Seeded option names for a `country` question; empty for every other
+    /// `answer_type`.
+    pub country_options: Vec<String>,
+    /// `(value, label)` options for a `radio` question — the template's own
+    /// declared choices (e.g. `custom_single_choice__governing_law`'s
+    /// nevada/california/washington). Empty for every other `answer_type`.
+    pub choices: Vec<(String, String)>,
+    /// The project-scoped people a `person` question may pick from
+    /// (`portal::intake::reference_candidates`). Empty for every other
+    /// `answer_type`.
+    pub person_candidates: Vec<PersonChoice>,
+}
+
 /// Build the control(s) a questionnaire question renders for its `answer_type`.
 ///
 /// Shared by both walkers over the same notation — the lawyer walk and the
@@ -741,7 +762,7 @@ pub fn question_fields(
     answer_type: &str,
     prompt: &str,
     prior: &str,
-    country_options: &[String],
+    context: &QuestionFieldContext,
 ) -> Vec<Field> {
     match answer_type {
         "people_list" => Vec::new(),
@@ -760,10 +781,54 @@ pub fn question_fields(
             .required()],
         "country" => vec![Field::country_select(
             prompt,
-            country_options,
+            &context.country_options,
             Some(prior).filter(|v| !v.is_empty()),
         )],
         "bool" | "yes_no" => vec![Field::checkbox(prompt, "value", "true", prior == "true")],
+        // ENG-454: a template's own one-off radio options (e.g.
+        // `custom_single_choice__governing_law`). The DB `answer_type` for a
+        // `custom_single_choice` question is the seeded catalog row's
+        // `question_type: radio` (`store/seeds/Question.yaml`), not the state's
+        // own `custom_single_choice` prefix — see
+        // `workflows::notation_session::load_question`.
+        "radio" => vec![Field::radio(
+            prompt,
+            "value",
+            context
+                .choices
+                .iter()
+                .map(|(value, label)| Choice::new(value.clone(), label.clone()))
+                .collect(),
+            Some(prior).filter(|v| !v.is_empty()).map(str::to_string),
+        )
+        .required()],
+        // ENG-454: a `person` question with a real, project-scoped candidate
+        // list (`portal::intake::reference_candidates`) — the people already
+        // on this matter. Offered only when there is nothing to lose: no
+        // prior answer yet, or the prior answer already names one of these
+        // candidates. A prior answer that was typed free-text and matches no
+        // candidate (e.g. a lawyer named someone not yet a participant) keeps
+        // the free-text path — a `<select>` cannot represent an option it
+        // doesn't list, and silently dropping what was already typed would
+        // be worse than not offering the picker at all.
+        "person"
+            if !context.person_candidates.is_empty()
+                && (prior.is_empty()
+                    || context.person_candidates.iter().any(|p| p.name == prior)) =>
+        {
+            let selected = context
+                .person_candidates
+                .iter()
+                .find(|person| person.name == prior)
+                .map(|person| person.id.clone());
+            vec![Field::person_picker(
+                prompt,
+                "value",
+                "Choose a person…",
+                context.person_candidates.clone(),
+                selected,
+            )]
+        }
         _ => vec![Field::text(prompt, "value", prior).required()],
     }
 }
@@ -1211,5 +1276,172 @@ mod tests {
         assert!(html.contains(r#"placeholder="0.00""#), "{html}");
         assert!(html.contains("<datalist"), "{html}");
         assert!(html.contains(r#"list="amount-suggestions""#), "{html}");
+    }
+
+    #[test]
+    fn eng_454_a_radio_answer_type_renders_the_templates_own_choices() {
+        // ENG-454: a `custom_single_choice` question's real DB `answer_type`
+        // is the seeded catalog row's `question_type: radio`
+        // (`store/seeds/Question.yaml`), not the state's own
+        // `custom_single_choice` prefix — see
+        // `workflows::notation_session::load_question`. Before this fix,
+        // `question_fields` had no `"radio"` arm and fell through to the
+        // default `Field::text`, a plain single-line box, even though the
+        // template declared real choices.
+        fn app() -> Element {
+            let fields = question_fields(
+                "radio",
+                "Which state's law governs?",
+                "nevada",
+                &QuestionFieldContext {
+                    country_options: Vec::new(),
+                    choices: vec![
+                        ("nevada".to_string(), "Nevada".to_string()),
+                        ("california".to_string(), "California".to_string()),
+                    ],
+                    person_candidates: Vec::new(),
+                },
+            );
+            rsx! {
+                FormCard {
+                    title: "Step".to_string(),
+                    action: "/step".to_string(),
+                    submit_label: "Continue".to_string(),
+                    fields,
+                }
+            }
+        }
+        let html = ssr(app);
+        assert!(html.contains(r#"type="radio""#), "{html}");
+        assert!(
+            html.contains("Nevada") && html.contains("California"),
+            "{html}"
+        );
+        let nevada = html.find("value=\"nevada\"").expect("the option renders");
+        assert!(
+            html[nevada..].contains("checked"),
+            "the prior answer stays selected: {html}"
+        );
+    }
+
+    #[test]
+    fn country_arm_still_uses_the_context_struct() {
+        // Guards the `country_options` plumbing through `QuestionFieldContext`
+        // — the ENG-454 signature change must not silently drop it.
+        fn app() -> Element {
+            let fields = question_fields(
+                "country",
+                "Which country?",
+                "Mexico",
+                &QuestionFieldContext {
+                    country_options: vec!["Canada".to_string(), "Mexico".to_string()],
+                    choices: Vec::new(),
+                    person_candidates: Vec::new(),
+                },
+            );
+            rsx! {
+                FormCard {
+                    title: "Step".to_string(),
+                    action: "/step".to_string(),
+                    submit_label: "Continue".to_string(),
+                    fields,
+                }
+            }
+        }
+        let html = ssr(app);
+        assert!(html.contains("<select"), "{html}");
+        assert!(html.contains("value=\"Mexico\" selected"), "{html}");
+    }
+
+    #[test]
+    fn eng_454_a_person_answer_type_with_candidates_renders_a_picker() {
+        // Before this fix, a `person` question fell through to the default
+        // `Field::text` even when `portal::intake::reference_candidates`
+        // resolved real, project-scoped people for it.
+        fn app() -> Element {
+            let fields = question_fields(
+                "person",
+                "Who is the client?",
+                "",
+                &QuestionFieldContext {
+                    country_options: Vec::new(),
+                    choices: Vec::new(),
+                    person_candidates: vec![PersonChoice::new(
+                        "00000000-0000-0000-0000-000000000010",
+                        "Ada Lovelace",
+                        "ada@example.com",
+                    )],
+                },
+            );
+            rsx! {
+                FormCard {
+                    title: "Step".to_string(),
+                    action: "/step".to_string(),
+                    submit_label: "Continue".to_string(),
+                    fields,
+                }
+            }
+        }
+        let html = ssr(app);
+        assert!(html.contains("Ada Lovelace"), "{html}");
+        assert!(!html.contains(r#"type="text""#), "{html}");
+    }
+
+    #[test]
+    fn a_person_answer_type_with_no_candidates_keeps_the_free_text_path() {
+        fn app() -> Element {
+            let fields = question_fields(
+                "person",
+                "Who is the client?",
+                "",
+                &QuestionFieldContext::default(),
+            );
+            rsx! {
+                FormCard {
+                    title: "Step".to_string(),
+                    action: "/step".to_string(),
+                    submit_label: "Continue".to_string(),
+                    fields,
+                }
+            }
+        }
+        let html = ssr(app);
+        assert!(html.contains(r#"type="text""#), "{html}");
+    }
+
+    #[test]
+    fn a_free_typed_prior_answer_matching_no_candidate_keeps_the_free_text_path() {
+        // Regression: a lawyer can name a `person__client` before that person
+        // is a project participant (free text, `id: None` per
+        // `resolve_reference_answer`). A `<select>` cannot represent a value
+        // it doesn't list, so switching to the picker once real candidates
+        // exist must not hide or drop that already-typed name.
+        fn app() -> Element {
+            let fields = question_fields(
+                "person",
+                "Who is the client?",
+                "Lawyer-typed Libra",
+                &QuestionFieldContext {
+                    country_options: Vec::new(),
+                    choices: Vec::new(),
+                    person_candidates: vec![PersonChoice::new(
+                        "00000000-0000-0000-0000-000000000010",
+                        "Libra",
+                        "libra@example.com",
+                    )],
+                },
+            );
+            rsx! {
+                FormCard {
+                    title: "Step".to_string(),
+                    action: "/step".to_string(),
+                    submit_label: "Continue".to_string(),
+                    fields,
+                }
+            }
+        }
+        let html = ssr(app);
+        assert!(html.contains("value=\"Lawyer-typed Libra\""), "{html}");
+        assert!(html.contains(r#"type="text""#), "{html}");
     }
 }

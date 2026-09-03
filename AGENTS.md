@@ -175,8 +175,11 @@ cluster. `worktree-env up` creates the same topology in its own cluster. Restart
 changing routes, handlers, views, or content.
 
 `dev up` uses Restate ingress `9080`, Restate admin `9070`, Rauthy `30080`, Garage `30900`, and SurrealDB `18000`; `web`
-binds `3001`. A worktree selects a free slot in the `20000`–`21299` ranges, including slots held by stopped or orphaned
-KIND clusters, so worktrees never share a slot. Always read the selected values from that worktree's `.devx/env`.
+binds `3001` for the default brand and `3011` for the `delete-your-data` house brand — locally there is no DNS standing
+in for that brand's real hostname, so `web` answers it on this second port instead of a `Host:` header. A worktree
+selects a free slot in the `20000`–`21299` ranges, including slots held by stopped or orphaned KIND clusters, so
+worktrees never share a slot; its own `web` and `delete-your-data` ports move together with that slot. Always read the
+selected values from that worktree's `.devx/env`.
 
 SurrealDB is the store (#1093). Its connection contract is `NAVIGATOR_SURREAL_ENDPOINT`, `_NAMESPACE`, and `_DATABASE`,
 written into `.devx/env`, and its schema is applied rather than migrated: one idempotent `DEFINE` file

@@ -582,6 +582,27 @@ impl BrandKey {
             Self::DeleteYourData => &DELETE_YOUR_DATA_BRANDING,
         }
     }
+
+    /// The env var naming this key's local-only bind port, if it needs one.
+    ///
+    /// Every registered host in [`Self::hosts`] is a real production/staging
+    /// domain, so `Host:` header matching alone cannot reach a second brand
+    /// locally — there is no DNS, TLS, or `/etc/hosts` entry standing in for
+    /// `www.deleteyourdata.com` on a developer's machine. `Neon` needs no
+    /// entry here: it is the default key, so it already answers on whatever
+    /// port `PORT`/`AppConfig::port` binds, the same as a deployment with a
+    /// single brand always has. Every other key gets its own dedicated port,
+    /// named by this var, so `portal::hosting::run` can bind it and
+    /// `portal::canonical_host` can resolve `localhost:<that port>` straight
+    /// to this key without touching [`Self::hosts`], which stays a pure,
+    /// compile-time registry of real hostnames only.
+    #[must_use]
+    pub const fn local_port_env_var(self) -> Option<&'static str> {
+        match self {
+            Self::Neon => None,
+            Self::DeleteYourData => Some("NAVIGATOR_LOCAL_DELETE_YOUR_DATA_PORT"),
+        }
+    }
 }
 
 /// Look up which key, if any, is registered to serve `host` (already
@@ -1745,6 +1766,26 @@ mod tests {
         assert_eq!(
             resolved.firm.site_name,
             DELETE_YOUR_DATA_BRANDING.firm.site_name
+        );
+    }
+
+    /// `Neon` needs no local port override — it is the default key, so it
+    /// always answers on the ambient `PORT`. Every non-default key must
+    /// name a distinct env var, so two house brands never fight over one
+    /// local bind port.
+    #[test]
+    fn only_the_default_key_has_no_local_port_env_var() {
+        assert_eq!(BrandKey::Neon.local_port_env_var(), None);
+        let mut seen = std::collections::HashSet::new();
+        for key in BrandKey::ALL {
+            if let Some(var) = key.local_port_env_var() {
+                assert_ne!(*key, BrandKey::Neon, "the default key must have none");
+                assert!(seen.insert(var), "{var} is registered to two keys");
+            }
+        }
+        assert_eq!(
+            BrandKey::DeleteYourData.local_port_env_var(),
+            Some("NAVIGATOR_LOCAL_DELETE_YOUR_DATA_PORT")
         );
     }
 

@@ -8394,6 +8394,56 @@ async fn the_delete_your_data_host_renders_its_own_home_catalog() {
     assert_eq!(litigation.status(), StatusCode::NOT_FOUND);
 }
 
+/// Locally there is no DNS standing in for `www.deleteyourdata.com`, so a
+/// developer reaches the second brand through its own bound port instead —
+/// `localhost:<port>` resolves that brand from the `Host:` header's port
+/// alone, ahead of the ordinary (port-stripped) hostname match, and a plain
+/// `localhost` with no matching port override still falls back to the
+/// default brand on the same router.
+#[tokio::test]
+async fn a_local_port_override_resolves_its_brand_from_the_host_header_authority() {
+    let canonical_host = CanonicalHost::new(None).with_local_ports(
+        std::collections::BTreeMap::from([(20_630, views::brand::BrandKey::DeleteYourData)]),
+    );
+    let state = empty_state_with_canonical_host(canonical_host).await;
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+
+    let delete_your_data_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/")
+                .header(header::HOST, "localhost:20630")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(delete_your_data_resp.status(), StatusCode::OK);
+    let delete_your_data_body = body_string(delete_your_data_resp).await;
+    assert!(
+        page_declares_og_site_name(&delete_your_data_body, "DeleteYourData.com"),
+        "{delete_your_data_body}"
+    );
+
+    let default_resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/")
+                .header(header::HOST, "localhost:20600")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(default_resp.status(), StatusCode::OK);
+    let default_body = body_string(default_resp).await;
+    assert!(
+        page_declares_og_site_name(&default_body, "Neon Law"),
+        "an unmapped local port must still fall back to the default brand: {default_body}"
+    );
+}
+
 /// An unregistered host still redirects to the deployment's own configured
 /// host, path and query preserved — the registry adds hosts, it does not
 /// remove the existing single-canonical-host fallback.

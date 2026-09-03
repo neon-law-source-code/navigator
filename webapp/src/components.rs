@@ -37,6 +37,7 @@ pub mod confirm_delete;
 pub mod copy_runs;
 pub mod data_table;
 pub mod disclaimer;
+pub mod focus;
 pub mod form;
 pub mod github_stars;
 pub mod icon;
@@ -72,6 +73,10 @@ pub use confirm_delete::ConfirmDelete;
 pub use copy_runs::{wire_runs, CopyRun, RunParagraph};
 pub use data_table::{Column, DataTable, Direction, SortState};
 pub use disclaimer::LegalBlueprintDisclaimer;
+pub use focus::{
+    ChoiceGroup, ChoiceGroupOption, Hero, HeroAlign, HeroLevel, Stage, StageWidth, StepList,
+    StepMeta, Stepper, StepperPanel,
+};
 #[cfg(test)]
 pub(crate) use form::assert_forms_accessible;
 pub use form::{question_fields, Choice, Field, FieldKind, FormCard, Heading};

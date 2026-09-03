@@ -458,6 +458,87 @@ async fn no_gallery_component_renders_a_link_with_no_destination() {
     );
 }
 
+/// The focus-set specimen (ENG-455): a Stage holding a three-step Stepper
+/// whose first step is a `ChoiceGroup` of practice areas, driven by `?step=`.
+#[tokio::test]
+async fn focus_set_defaults_to_step_one_with_the_practice_area_choice_group() {
+    let (status, html) = render_design_at("/design").await;
+    assert_eq!(status, StatusCode::OK, "{html}");
+    assert!(html.contains("nav-stage"), "renders a Stage: {html}");
+    assert!(html.contains("nav-hero"), "renders a Hero header: {html}");
+    assert!(
+        html.contains("nav-choice-group"),
+        "renders a ChoiceGroup: {html}"
+    );
+    assert!(html.contains("nav-steps"), "renders the step rail: {html}");
+    // Estate planning is the specimen's preset selection.
+    assert!(
+        html.contains(r#"value="estate" checked"#),
+        "preset selection: {html}"
+    );
+    // Exactly one panel is visible: the first, and only the first.
+    assert_eq!(
+        html.matches("nav-stepper__panel").count(),
+        3,
+        "every panel renders: {html}"
+    );
+    // Scoped to the panel's own `hidden` attribute — a bare `"hidden"`
+    // substring also matches every `aria-hidden` elsewhere on the page.
+    assert_eq!(
+        html.matches(r#"nav-stepper__panel" hidden"#).count(),
+        2,
+        "two of the three panels stay hidden on step 1: {html}"
+    );
+    // Step 1 has no Back.
+    assert!(
+        !html.contains(r#"href="/design?step=0#focus-set""#),
+        "no Back from step 1: {html}"
+    );
+    assert!(
+        html.contains(r#"href="/design?step=2#focus-set""#),
+        "Continue targets step 2: {html}"
+    );
+}
+
+#[tokio::test]
+async fn focus_set_step_two_shows_back_and_continue_and_hides_the_choice_group() {
+    let (status, html) = render_design_at("/design?step=2").await;
+    assert_eq!(status, StatusCode::OK, "{html}");
+    assert!(
+        html.contains(r#"href="/design?step=1#focus-set""#),
+        "Back targets step 1: {html}"
+    );
+    assert!(
+        html.contains(r#"href="/design?step=3#focus-set""#),
+        "Continue targets step 3: {html}"
+    );
+    assert!(html.contains("About you"), "{html}");
+}
+
+#[tokio::test]
+async fn focus_set_last_step_renders_finish_instead_of_continue() {
+    let (status, html) = render_design_at("/design?step=3").await;
+    assert_eq!(status, StatusCode::OK, "{html}");
+    assert!(html.contains("Finish"), "{html}");
+    assert!(
+        !html.contains(r#"href="/design?step=4#focus-set""#),
+        "no fourth step: {html}"
+    );
+    assert!(html.contains(r#"href="/design#focus-set""#), "{html}");
+}
+
+#[tokio::test]
+async fn focus_set_survives_a_nonnumeric_step() {
+    // Same lenient parsing as `?page=`: a stray, non-numeric `?step=` degrades
+    // to step 1 rather than failing the query extraction.
+    let (status, html) = render_design_at("/design?step=notanumber").await;
+    assert_eq!(status, StatusCode::OK, "{html}");
+    assert!(
+        html.contains("nav-choice-group"),
+        "falls back to step 1: {html}"
+    );
+}
+
 /// The gallery's two site headers hold two separate disclosure states.
 ///
 /// `/design` is the only page that renders `SiteHeader` twice — once bare, once

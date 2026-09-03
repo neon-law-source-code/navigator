@@ -73,6 +73,31 @@
   --nav-radius-sm: 0.375rem;
   --nav-radius-lg: 1rem;
   --nav-shadow: 0 0.125rem 0.75rem rgba(0, 0, 0, 0.08);
+
+  /* The focus set's spacing scale (`webapp/src/components/focus.rs`) — a step
+     or two up from the rest of this file's ad hoc rems, and deliberately
+     sparse: 5/7/9/10 are absent because the five components that read this
+     scale never needed them, and a gap left in is a gap someone notices
+     before reaching for an arbitrary value instead. */
+  --nav-space-1: 0.25rem;
+  --nav-space-2: 0.5rem;
+  --nav-space-3: 0.75rem;
+  --nav-space-4: 1rem;
+  --nav-space-6: 1.5rem;
+  --nav-space-8: 2rem;
+  --nav-space-12: 3rem;
+  --nav-space-16: 4rem;
+  --nav-space-24: 6rem;
+
+  /* How wide the one thing on a `Stage` may be: a card, a form, a reading
+     column. */
+  --nav-measure-sm: 24rem;
+  --nav-measure-md: 36rem;
+  --nav-measure-lg: 48rem;
+
+  /* A `Stage--fill` takes the whole viewport by default. `svh` rather than
+     `vh` so a phone's address bar sliding away does not leave a gap. */
+  --nav-stage-min-height: 100svh;
 }
 
 @media (prefers-color-scheme: dark) {

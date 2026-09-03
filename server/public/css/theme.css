@@ -3401,3 +3401,483 @@ a.nav-link:hover {
   font-size: 0.8125rem;
   white-space: nowrap;
 }
+
+/* -- The focus set: Stage, Hero, ChoiceGroup, StepList, Stepper -------------
+ *
+ * `webapp/src/components/focus.rs`, ported from Navigator UX's Focus.tsx.
+ * Reads the `--nav-space-*` scale (tokens.css) — the values are a step or two
+ * up from the rest of this file on purpose; the reasoning is there.
+ */
+
+/* A utility the rest of this theme has not needed until now: content that
+   stays in the accessibility tree — a hidden legend, a step's "completed"
+   suffix — but never paints. */
+.nav-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ------------------------------------------------------------------ Stage -- */
+
+.nav-stage {
+  --nav-stage-width: var(--nav-measure-md);
+  display: grid;
+  /* `1fr`, not `minmax(0, 1fr)`: the body row must never be shorter than the
+     body, and `1fr`'s automatic minimum is what guarantees that. */
+  grid-template-rows: auto 1fr auto;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  row-gap: var(--nav-space-8);
+  box-sizing: border-box;
+  width: 100%;
+  padding: var(--nav-space-6) var(--nav-space-4);
+  background: var(--nav-color-bg);
+  color: var(--nav-color-text);
+}
+
+.nav-stage--fill {
+  min-height: var(--nav-stage-min-height);
+}
+
+.nav-stage--sm {
+  --nav-stage-width: var(--nav-measure-sm);
+}
+
+.nav-stage--lg {
+  --nav-stage-width: var(--nav-measure-lg);
+}
+
+/* All three rows share the column so a brand mark above and fine print below
+   line up with the edges of the thing between them. */
+.nav-stage__header,
+.nav-stage__body,
+.nav-stage__footer {
+  width: min(100%, var(--nav-stage-width));
+  min-width: 0;
+}
+
+/* Explicit rows, so the body is centered whether or not a header or footer
+   was given. Left to auto-placement, a stage with no header would put the
+   body in the first row and its `1fr` would go to nothing. */
+.nav-stage__header {
+  grid-row: 1;
+}
+
+.nav-stage__body {
+  grid-row: 2;
+  align-self: center;
+}
+
+.nav-stage__footer {
+  grid-row: 3;
+  color: var(--nav-color-text-muted);
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+.nav-stage__footer p {
+  margin: 0;
+}
+
+@media (min-width: 48rem) {
+  .nav-stage {
+    padding: var(--nav-space-12) var(--nav-space-8);
+  }
+}
+
+/* ------------------------------------------------------------------- Hero -- */
+
+.nav-hero {
+  display: grid;
+  justify-items: center;
+  gap: var(--nav-space-4);
+  text-align: center;
+}
+
+.nav-hero--start {
+  justify-items: start;
+  text-align: start;
+}
+
+.nav-hero__eyebrow {
+  margin: 0;
+  color: var(--nav-color-link);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Fluid between 2rem on a phone and 3.5rem on a desktop. `text-wrap: balance`
+   keeps a two-line title from leaving one word on its second line, which is
+   the thing a centered headline does most often. */
+.nav-hero__title {
+  margin: 0;
+  max-width: 20ch;
+  font-size: clamp(2rem, 1.5rem + 2.5vw, 3.5rem);
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+
+.nav-hero__lede {
+  margin: 0;
+  max-width: 44ch;
+  color: var(--nav-color-text-muted);
+  font-size: clamp(1.0625rem, 1rem + 0.4vw, 1.25rem);
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+
+.nav-hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--nav-space-3);
+  margin-top: var(--nav-space-4);
+}
+
+.nav-hero--start .nav-hero__actions {
+  justify-content: flex-start;
+}
+
+/* ------------------------------------------------------------ ChoiceGroup -- */
+
+.nav-choice-group {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.nav-choice-group__legend {
+  padding: 0;
+  margin-bottom: var(--nav-space-4);
+  font-size: 1.125rem;
+  font-weight: 700;
+}
+
+.nav-choice-group__options {
+  display: grid;
+  gap: var(--nav-space-3);
+}
+
+.nav-choice-group--cols-2 .nav-choice-group__options {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.nav-choice-group--cols-3 .nav-choice-group__options {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/* The whole card is the `<label>`. The native input stays visible inside it:
+   a control that looks like a card and one that looks like a radio are read
+   differently, and this is both. */
+.nav-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--nav-space-4);
+  padding: var(--nav-space-4) var(--nav-space-6);
+  border: 1px solid var(--nav-color-border);
+  border-radius: var(--nav-radius);
+  background: var(--nav-color-surface);
+  cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.nav-choice:hover {
+  background: var(--nav-color-surface-raised);
+}
+
+/* Checked: the border takes the brand and doubles, and the ground tints —
+   three cues rather than a color change alone. */
+.nav-choice.is-checked {
+  border-color: var(--nav-color-primary);
+  background: var(--nav-color-surface-subtle);
+  box-shadow: inset 0 0 0 1px var(--nav-color-primary);
+}
+
+.nav-choice.is-disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.nav-choice__input {
+  flex: 0 0 auto;
+  width: 1.25rem;
+  height: 1.25rem;
+  margin: 0.125rem 0 0;
+  accent-color: var(--nav-color-primary);
+}
+
+/* The ring goes on the card, not the 20px circle inside it. */
+.nav-choice:has(.nav-choice__input:focus-visible) {
+  outline: 3px solid var(--nav-color-primary);
+  outline-offset: 0.25rem;
+}
+
+.nav-choice:has(.nav-choice__input:focus-visible) .nav-choice__input:focus-visible {
+  outline: none;
+}
+
+.nav-choice__icon {
+  flex: 0 0 auto;
+  color: var(--nav-color-primary);
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.nav-choice__text {
+  display: grid;
+  gap: var(--nav-space-1);
+  min-width: 0;
+}
+
+.nav-choice__label {
+  font-size: 1.0625rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.nav-choice__description {
+  color: var(--nav-color-text-muted);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+
+.nav-choice-group.nav-field--invalid .nav-choice {
+  border-color: var(--nav-color-danger);
+}
+
+.nav-choice-group > .nav-field__help,
+.nav-choice-group > .nav-field__error {
+  margin-top: var(--nav-space-3);
+}
+
+@media (max-width: 40rem) {
+  .nav-choice-group--cols-2 .nav-choice-group__options,
+  .nav-choice-group--cols-3 .nav-choice-group__options {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* --------------------------------------------------------------- StepList -- */
+
+/* A rail: each step is a segment whose top edge fills as it is reached. The
+   numbers are aria-hidden — the list is ordered, so assistive technology
+   already counts — and a completed step drops its number for a check. */
+.nav-steps {
+  display: flex;
+  gap: var(--nav-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nav-steps__item {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.nav-steps__step {
+  display: flex;
+  align-items: center;
+  gap: var(--nav-space-2);
+  width: 100%;
+  padding: var(--nav-space-3) 0 0;
+  border: 0;
+  border-top: 0.25rem solid var(--nav-color-border);
+  background: transparent;
+  color: var(--nav-color-text-muted);
+  font: inherit;
+  font-size: 0.875rem;
+  text-align: start;
+  text-decoration: none;
+}
+
+.nav-steps__item.is-done .nav-steps__step,
+.nav-steps__item.is-current .nav-steps__step {
+  border-top-color: var(--nav-color-primary);
+}
+
+.nav-steps__item.is-current .nav-steps__step {
+  color: var(--nav-color-text);
+  font-weight: 700;
+}
+
+a.nav-steps__step {
+  cursor: pointer;
+}
+
+a.nav-steps__step:hover {
+  color: var(--nav-color-link);
+}
+
+a.nav-steps__step:focus-visible {
+  outline: 3px solid var(--nav-color-primary);
+  outline-offset: 0.25rem;
+  border-radius: var(--nav-radius-sm);
+}
+
+.nav-steps__marker {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.nav-steps__item.is-current .nav-steps__marker {
+  border-color: var(--nav-color-primary);
+  color: var(--nav-color-primary);
+}
+
+.nav-steps__item.is-done .nav-steps__marker {
+  border-color: var(--nav-color-primary);
+  background: var(--nav-color-primary);
+  color: var(--nav-color-on-primary);
+}
+
+/* The check is drawn, like the accordion's chevron: two borders of a small box
+   turned 45 degrees. No glyph to fall back from and nothing to fetch. */
+.nav-steps__item.is-done .nav-steps__marker::before {
+  content: "";
+  width: 0.3rem;
+  height: 0.55rem;
+  border: solid currentColor;
+  border-width: 0 2px 2px 0;
+  transform: translateY(-1px) rotate(45deg);
+}
+
+.nav-steps__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* On a phone only the current step keeps its name; the rest shrink to their
+   markers so five steps fit on one line. */
+@media (max-width: 40rem) {
+  .nav-steps__item:not(.is-current) {
+    flex: 0 0 auto;
+  }
+
+  .nav-steps__item:not(.is-current) .nav-steps__label {
+    display: none;
+  }
+}
+
+/* ---------------------------------------------------------------- Stepper -- */
+
+.nav-stepper {
+  display: grid;
+  gap: var(--nav-space-8);
+}
+
+.nav-stepper__panel {
+  display: grid;
+  gap: var(--nav-space-2);
+}
+
+/* `display: grid` above outranks the browser's own `[hidden] { display: none }`,
+   so without this every step would show at once — exactly what the component
+   exists to prevent, and it would fail silently. */
+.nav-stepper__panel[hidden] {
+  display: none;
+}
+
+.nav-stepper__count {
+  margin: 0;
+  color: var(--nav-color-text-muted);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.nav-stepper__title {
+  margin: 0;
+  font-size: clamp(1.5rem, 1.25rem + 1vw, 2rem);
+  font-weight: 700;
+  line-height: 1.2;
+  text-wrap: balance;
+}
+
+/* Focus lands here when the step changes. Not a control, so no ring. */
+.nav-stepper__title:focus {
+  outline: none;
+}
+
+.nav-stepper__description {
+  margin: 0;
+  max-width: 60ch;
+  color: var(--nav-color-text-muted);
+  font-size: 1.0625rem;
+  line-height: 1.55;
+}
+
+.nav-stepper__body {
+  margin-top: var(--nav-space-4);
+}
+
+/* Back left, primary right, so the eye ends on the primary. On a phone the row
+   becomes a column with the primary on top, where a thumb reaches first. */
+.nav-stepper__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--nav-space-3);
+  padding-top: var(--nav-space-6);
+  border-top: 1px solid var(--nav-color-border);
+}
+
+.nav-stepper__actions > :last-child {
+  margin-inline-start: auto;
+}
+
+@media (max-width: 40rem) {
+  .nav-stepper__actions {
+    flex-direction: column-reverse;
+  }
+
+  .nav-stepper__actions .nav-btn {
+    width: 100%;
+  }
+}
+
+/* -------------------------------------------------- Button sizes, for these -- */
+
+/* The 44px target. */
+.nav-btn--lg {
+  min-height: 2.75rem;
+  padding: var(--nav-space-3) var(--nav-space-6);
+  font-size: 1.0625rem;
+}
+
+.nav-btn--block {
+  display: block;
+  width: 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-choice {
+    transition: none;
+  }
+}

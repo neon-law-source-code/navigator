@@ -30,6 +30,12 @@ navigator site projects list
 navigator site projects open <project-code>
 ```
 
+Admin-tier users can read every Project's lifecycle fields across the deployment:
+
+```bash
+navigator site projects lifecycle --json
+```
+
 To discover the repository and Drive coordinates derived from a Project, run the read-only Project check with its code:
 
 ```bash

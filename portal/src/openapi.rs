@@ -488,6 +488,34 @@ pub fn document_with_base(base: &str) -> Value {
             }
           }
         },
+        "/app/api/project-lifecycle": {
+          "get": {
+            "summary": "Read every matter's lifecycle fields (admin)",
+            "description":
+              "Returns one minimal row per matter with its `code`, `status`, and `closed_at`. \
+               This is a deployment-wide oversight read, not a participation-scoped matter \
+               read, and returns no matter content. Authorization: admin-tier only \
+               (`owner`/`admin`).",
+            "responses": {
+              "200": { "description": "The lifecycle rows", "content": { "application/json": {
+                "schema": { "type": "array", "items": { "type": "object", "required": ["code", "status", "closed_at"], "properties": {
+                  "code": { "type": "string" },
+                  "status": { "type": "string", "enum": ["open", "closed", "archived"] },
+                  "closed_at": { "type": ["string", "null"], "format": "date-time" }
+                } } }
+              } } },
+              "401": { "description": "No authenticated session", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } },
+              "403": { "description": "Authenticated caller is not admin-tier", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } },
+              "500": { "description": "The matters could not be read", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } }
+            }
+          }
+        },
         "/app/api/project-surfaces/{id}": {
           "post": {
             "summary": "Create or adopt a Project's Drive ingest folder and source repository (admin)",

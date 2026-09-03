@@ -570,6 +570,18 @@ allow if {
 	is_admin(input.session)
 }
 
+# Read every matter's lifecycle fields: GET /app/api/project-lifecycle.
+# Admin-only, and it carries its own noun because the projects GET rule admits
+# any authenticated caller up to five segments. Three segments and GET.
+allow if {
+	input.path[0] == "app"
+	input.path[1] == "api"
+	input.path[2] == "project-lifecycle"
+	count(input.path) == 3
+	input.method == "GET"
+	is_admin(input.session)
+}
+
 # Create or adopt a Project's Drive ingest folder and source repository:
 # POST /app/api/project-surfaces/{id}. Admin-only, and it carries its own
 # noun rather than sitting under `projects` on purpose — the projects GET

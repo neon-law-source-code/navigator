@@ -171,6 +171,7 @@ fn db_project_holds_only_the_local_write_side() {
             "close",
             "doctor",
             "drift",
+            "lifecycle",
             "list",
             "open",
             "repository",
@@ -189,7 +190,8 @@ fn db_project_holds_only_the_local_write_side() {
 /// or adopts the Drive ingest folder and source repository. The split
 /// matters, because `projects doctor` and `projects drift` promise to change
 /// nothing, `repository scaffold` writes files, and `surfaces reconcile`
-/// talks to Drive and the forge.
+/// talks to Drive and the forge; `lifecycle` reads every row for admin-tier
+/// oversight.
 ///
 /// The retired `projects application` verbs are asserted gone rather than
 /// merely absent from this list: a Project has one portal, so there is no
@@ -202,6 +204,7 @@ fn projects_help_lists_the_project_workspace_verbs() {
             "close",
             "doctor",
             "drift",
+            "lifecycle",
             "list",
             "open",
             "repository",

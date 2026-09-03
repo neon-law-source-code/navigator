@@ -768,6 +768,37 @@ test_a_client_reaches_a_projects_subpath_but_not_this_one if {
 	not authz.allow with input as {"path": ["app", "api", "project-repositories"], "method": "GET", "session": client_session}
 }
 
+# ---------- GET /app/api/project-lifecycle (ADMIN tier only) ----------
+
+test_admin_can_read_project_lifecycle if {
+	authz.allow with input as {"path": ["app", "api", "project-lifecycle"], "method": "GET", "session": admin_session}
+}
+
+test_owner_can_read_project_lifecycle if {
+	authz.allow with input as {"path": ["app", "api", "project-lifecycle"], "method": "GET", "session": owner_session}
+}
+
+test_lawyer_denied_project_lifecycle if {
+	not authz.allow with input as {"path": ["app", "api", "project-lifecycle"], "method": "GET", "session": lawyer_session}
+}
+
+test_clerk_denied_project_lifecycle if {
+	not authz.allow with input as {"path": ["app", "api", "project-lifecycle"], "method": "GET", "session": clerk_session}
+}
+
+test_client_denied_project_lifecycle if {
+	not authz.allow with input as {"path": ["app", "api", "project-lifecycle"], "method": "GET", "session": client_session}
+}
+
+test_anonymous_denied_project_lifecycle if {
+	not authz.allow with input as {"path": ["app", "api", "project-lifecycle"], "method": "GET", "session": null}
+}
+
+test_a_client_reaches_a_projects_subpath_but_not_project_lifecycle if {
+	authz.allow with input as {"path": ["app", "api", "projects", "lifecycle"], "method": "GET", "session": client_session}
+	not authz.allow with input as {"path": ["app", "api", "project-lifecycle"], "method": "GET", "session": client_session}
+}
+
 # ---------- POST /app/api/project-surfaces/{id} (ADMIN tier only — provisions one matter's handles) ----------
 
 test_admin_can_reconcile_project_surfaces if {

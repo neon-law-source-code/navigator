@@ -292,9 +292,11 @@ async fn lawyer_walks_the_full_retainer_questionnaire_end_to_end() {
     // The eight answers we'll submit, in walker order (entity →
     // address__principal_office → person__client → person__lawyer_dri →
     // project__engagement → custom_datetime__engagement_start_date →
-    // custom_text__engagement_scope → custom_single_choice__governing_law). The
-    // values are unique enough that we can fish them back out of the rendered
-    // result page.
+    // custom_text__engagement_scope → custom_single_choice__governing_law).
+    // Not every step ends up rendering the literal string here — see
+    // `set_step_answer_script` below — but each is unique enough that
+    // whatever the walk actually submits can be fished back out of the
+    // rendered result page.
     // `custom_datetime__engagement_start_date` renders a native
     // `<input type="datetime-local">` (its `Question.answer_type` is the
     // generic `datetime`, not `custom_datetime`) — the value must be a full
@@ -302,10 +304,13 @@ async fn lawyer_walks_the_full_retainer_questionnaire_end_to_end() {
     // blanks an incomplete one before the form ever submits it.
     // `entity` and `address__principal_office` fall through
     // `question_fields`'s default arm to the same plain `<input name="value">`
-    // as `person__client`/`project__engagement` (no dedicated `answer_type`
-    // branch exists for either), so the generic
-    // `input[name="value"], textarea[name="value"]` selector below drives them
-    // too.
+    // as `project__engagement` (no dedicated `answer_type` branch exists for
+    // either). `person__client` and `person__lawyer_dri` are `person`
+    // questions instead: `start_post` seeds the client and the lawyer DRI as
+    // project participants before the walk's first question ever renders, so
+    // `question_fields`'s `"person"` arm always finds a non-empty candidate
+    // list and renders a `<select>`, never the plain input this comment used
+    // to promise (#329/ENG-454).
     let client_email = format!("walk-{}@example.com", std::process::id());
     let answers = [
         "Aurora Ridge Holdings LLC",
@@ -388,31 +393,97 @@ async fn lawyer_walks_the_full_retainer_questionnaire_end_to_end() {
     };
 
     // --- Steps 1–8: walk the questionnaire -------------------
+    // ENG-454 (#329) taught `question_fields` to render a real `<select>`
+    // for a `person` question with project-scoped candidates (both
+    // `person__client` and `person__lawyer_dri` always have at least the
+    // client and the lawyer DRI to offer, seeded by `start_post` before the
+    // walk even begins) and a `<input type="radio">` group for a `radio`
+    // question (`custom_single_choice__governing_law`'s own choices) — a
+    // plain `input[name="value"], textarea[name="value"]` no longer exists
+    // on every step — and each `Field::radio` option is itself an
+    // `input[name="value"]`, so `set_step_answer_and_submit_script` below
+    // must check for a radio group *first*, or the generic text/textarea
+    // selector silently matches the first radio and sets its `.value`
+    // without ever checking it (the form then submits with no `value` at
+    // all). It picks whichever control actually rendered, submits the form
+    // in the same synchronous call, and reports both what actually lands in
+    // the journal (`raw`) and what the rendered retainer shows for it
+    // (`rendered`) — a `<select>` pick can't honor the literal typed
+    // `answers[i]` (there is no free-text fallback once real candidates
+    // exist — see `webapp::components::question_fields`'s `"person"` arm),
+    // and a radio answer's stored value is the choice *key* (`"nevada"`),
+    // rendered back to its label (`"Nevada"`) only at template-substitution
+    // time via `workflows::notation_session::choice_label`.
+    let set_step_answer_and_submit_script = "\
+        const desired = arguments[0]; \
+        let rendered = desired; \
+        let raw = desired; \
+        const radios = document.querySelectorAll(\
+          'input[type=\"radio\"][name=\"value\"]'); \
+        if (radios.length > 0) { \
+          const key = desired.toLowerCase(); \
+          const target = Array.from(radios).find(r => r.value === key) || radios[0]; \
+          target.checked = true; \
+          target.dispatchEvent(new Event('input', {bubbles: true})); \
+          target.dispatchEvent(new Event('change', {bubbles: true})); \
+          raw = target.value; \
+        } else { \
+          const text = document.querySelector(\
+            'input:not([type=\"radio\"]):not([type=\"checkbox\"])[name=\"value\"], \
+             textarea[name=\"value\"]'); \
+          if (text) { \
+            text.value = desired; \
+            text.dispatchEvent(new Event('input', {bubbles: true})); \
+            text.dispatchEvent(new Event('change', {bubbles: true})); \
+          } else { \
+            const select = document.querySelector('select[name=\"value\"]'); \
+            if (select) { \
+              const options = Array.from(select.options).filter(\
+                o => o.value && !o.disabled); \
+              const chosen = options[0]; \
+              select.value = chosen.value; \
+              select.dispatchEvent(new Event('input', {bubbles: true})); \
+              select.dispatchEvent(new Event('change', {bubbles: true})); \
+              rendered = chosen.value; \
+              raw = chosen.value; \
+            } else { \
+              throw new Error('no answer control found for this step'); \
+            } \
+          } \
+        } \
+        document.querySelector('form.admin-form').submit(); \
+        return {rendered, raw};";
+
+    // What actually lands in the rendered retainer per step — the literal
+    // `answers[i]` for a text/textarea control, the picked candidate's id
+    // for a `<select>`, or the choice label for a radio (see the script
+    // above). `journal_values` is the raw stored answer, which only differs
+    // from `submitted` for a radio question (the choice key, not its
+    // label).
+    let mut submitted: Vec<String> = answers.iter().map(|s| (*s).to_string()).collect();
+    let mut journal_values: Vec<String> = answers.iter().map(|s| (*s).to_string()).collect();
     for (i, value) in answers.iter().enumerate() {
         // Each step renders "step N of 8" — wait for the right
         // one to be sure we're looking at the form we expect.
         wait_for_text(&c, &format!("step {} of 8", i + 1), Duration::from_secs(10)).await;
 
-        // Set the answer value via JS (chromedriver send_keys is
-        // unreliable on freshly-rendered forms).
-        c.execute(
-            "\
-            const target = document.querySelector(\
-              'input[name=\"value\"], textarea[name=\"value\"]'); \
-            target.value = arguments[0]; \
-            target.dispatchEvent(new Event('input', {bubbles: true})); \
-            target.dispatchEvent(new Event('change', {bubbles: true})); \
-            return target.value;",
-            vec![serde_json::Value::String((*value).to_string())],
-        )
-        .await
-        .unwrap();
-        c.execute(
-            "document.querySelector('form.admin-form').submit(); return true;",
-            vec![],
-        )
-        .await
-        .unwrap();
+        // Set the answer value and submit in one JS round trip (chromedriver
+        // send_keys is unreliable on freshly-rendered forms, and a separate
+        // submit call risks losing a just-set radio `checked` to a
+        // hydration re-render in between).
+        let actual = c
+            .execute(
+                set_step_answer_and_submit_script,
+                vec![serde_json::Value::String((*value).to_string())],
+            )
+            .await
+            .unwrap();
+        if let Some(rendered) = actual.get("rendered").and_then(serde_json::Value::as_str) {
+            submitted[i] = rendered.to_string();
+        }
+        if let Some(raw) = actual.get("raw").and_then(serde_json::Value::as_str) {
+            journal_values[i] = raw.to_string();
+        }
     }
 
     // --- Result page: parked at the lawyer_review human gate --
@@ -423,9 +494,9 @@ async fn lawyer_walks_the_full_retainer_questionnaire_end_to_end() {
     // action.
     wait_for_text(&c, "Awaiting attorney review", Duration::from_secs(20)).await;
     let src = c.source().await.unwrap();
-    for value in &answers {
+    for value in &submitted {
         assert!(
-            src.contains(value),
+            src.contains(value.as_str()),
             "rendered retainer is missing `{value}`",
         );
     }
@@ -561,7 +632,7 @@ async fn lawyer_walks_the_full_retainer_questionnaire_end_to_end() {
     // NULL. Build the expected JSON via the same `answer_payload`
     // helper the worker uses so a future change to the JSON shape
     // can't desync the test from production.
-    let expected_payloads: Vec<Option<String>> = answers
+    let expected_payloads: Vec<Option<String>> = journal_values
         .iter()
         .map(|v| Some(store::notation_events::answer_payload(v)))
         .chain(std::iter::once(None))

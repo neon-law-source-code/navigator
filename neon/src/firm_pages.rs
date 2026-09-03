@@ -112,6 +112,26 @@ fn notation_card(
     }
 }
 
+/// The template's declared questionnaire, in order, ready for the "Try
+/// answering this" demo (ENG-452) — parsed with no live Notation and no
+/// domain-crate dependency (brand crates cannot depend on `workflows` or
+/// `store`; see `views::questionnaire_preview`'s own doc comment).
+fn demo_questions(frontmatter: &str) -> Vec<webapp::notation_demo::DemoQuestion> {
+    views::questionnaire_preview::parse(frontmatter)
+        .into_iter()
+        .map(|q| {
+            let interactive = q.is_interactive();
+            webapp::notation_demo::DemoQuestion {
+                code: q.code,
+                answer_type: q.answer_type,
+                prompt: q.prompt,
+                choices: q.choices,
+                interactive,
+            }
+        })
+        .collect()
+}
+
 /// A sample letter, parsed into the highlighted-preview stage.
 fn letter_preview_doc(
     slug: &str,
@@ -119,11 +139,13 @@ fn letter_preview_doc(
     src: &str,
 ) -> webapp::notation_preview::PreviewDoc {
     let doc = views::harvard_outline::parse(src);
+    let frontmatter = doc.frontmatter.clone().unwrap_or_default();
     webapp::notation_preview::PreviewDoc {
         slug: slug.to_string(),
         title: doc.title.clone(),
         source_href: format!("{NOTATIONS_BLOB_BASE}{source_path}"),
-        frontmatter: doc.frontmatter.clone().unwrap_or_default(),
+        demo_questions: demo_questions(&frontmatter),
+        frontmatter,
         stage_html: views::harvard_outline::stage_html(&doc),
         origin_url: None,
     }
@@ -144,6 +166,7 @@ fn form_preview_doc(
         slug: slug.to_string(),
         title: doc.title.clone(),
         source_href: format!("{NOTATIONS_BLOB_BASE}{source_path}"),
+        demo_questions: demo_questions(&frontmatter),
         frontmatter,
         stage_html: views::harvard_outline::stage_html(&doc),
         origin_url,

@@ -2795,6 +2795,7 @@ async fn inject_notation_preview(
         frontmatter: found.frontmatter.clone(),
         stage_html: found.stage_html.clone(),
         origin_url: found.origin_url.clone(),
+        demo_questions: found.demo_questions.clone(),
     };
     req.extensions_mut()
         .insert(webapp::notation_preview::InjectedNotationPreview(content));

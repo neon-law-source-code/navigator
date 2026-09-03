@@ -472,8 +472,11 @@ impl Field {
         }
     }
 
+    /// `pub(crate)`: [`crate::notation_demo`] renders a `Field` directly,
+    /// outside a [`FormCard`] — its stepper has no `<form>` at all, so it
+    /// cannot go through [`FormCard::render`]'s field loop.
     #[allow(clippy::too_many_lines)]
-    fn render(&self) -> Element {
+    pub(crate) fn render(&self) -> Element {
         let control_id = self.control_id();
         let help_id = format!("{control_id}-help");
         let error_id = format!("{control_id}-error");

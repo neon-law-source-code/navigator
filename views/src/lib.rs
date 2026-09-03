@@ -15,6 +15,7 @@ pub mod lsp;
 pub mod markdown;
 pub mod notation;
 pub mod notations;
+pub mod questionnaire_preview;
 pub mod slug;
 
 pub use auth_state::AuthState;

@@ -148,6 +148,24 @@ allow if {
     is_clerk(input.session)
 }
 
+# /app/brands is the house-of-brands home: every registered brand's typeface.
+# Same audience as /app/team, admitted the same way: Lawyer and Clerk by the
+# two rules below, Owner and Admin through the route bypass at the top of this
+# policy. A brand's font is a firm brand asset, not lawyer work — a Clerk gets
+# its own rule rather than being folded into `lawyer_tier`, for the reason
+# stated at the top of this file.
+allow if {
+    input.path[0] == "app"
+    input.path[1] == "brands"
+    is_lawyer(input.session)
+}
+
+allow if {
+    input.path[0] == "app"
+    input.path[1] == "brands"
+    is_clerk(input.session)
+}
+
 # /app/admin is Owner/Admin only at the hub, the matter directory
 # (`/app/admin/projects`), Person CRUD (`/app/admin/people`), and visitor
 # analytics. Those need no rule of their own: the route bypass at the top of

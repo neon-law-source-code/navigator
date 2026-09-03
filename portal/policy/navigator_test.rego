@@ -1891,3 +1891,31 @@ test_client_denied_app_portal if {
 test_anonymous_denied_app_portal if {
 	not authz.allow with input as {"path": ["app", "team"], "method": "GET", "session": null}
 }
+
+# ---------- /app/brands ----------
+# The house-of-brands home. Same audience as `/app/team`: every firm tier is
+# admitted, with `client` the one authenticated tier denied.
+
+test_lawyer_reaches_app_brands if {
+	authz.allow with input as {"path": ["app", "brands"], "method": "GET", "session": lawyer_session}
+}
+
+test_clerk_reaches_app_brands if {
+	authz.allow with input as {"path": ["app", "brands"], "method": "GET", "session": clerk_session}
+}
+
+test_owner_reaches_app_brands if {
+	authz.allow with input as {"path": ["app", "brands"], "method": "GET", "session": owner_session}
+}
+
+test_admin_reaches_app_brands if {
+	authz.allow with input as {"path": ["app", "brands"], "method": "GET", "session": admin_session}
+}
+
+test_client_denied_app_brands if {
+	not authz.allow with input as {"path": ["app", "brands"], "method": "GET", "session": client_session}
+}
+
+test_anonymous_denied_app_brands if {
+	not authz.allow with input as {"path": ["app", "brands"], "method": "GET", "session": null}
+}

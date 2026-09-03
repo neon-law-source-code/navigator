@@ -3314,6 +3314,40 @@ pub fn app_team_router(
         .route_layer(from_fn_with_state(auth, crate::auth::require_auth))
 }
 
+/// The house-of-brands home — every registered brand's typeface.
+pub const APP_BRANDS_PATH: &str = "/app/brands";
+
+/// `/app/brands` — the house-of-brands home.
+///
+/// Gated exactly like [`app_team_router`]: `require_auth` then
+/// `require_policy`, so an anonymous request is a redirect to sign-in rather
+/// than a policy denial. The Rego rule admits Lawyer and Clerk explicitly and
+/// Owner/Admin through the route bypass — `client` is the one authenticated
+/// tier denied, matching `/app/team`'s audience.
+pub fn app_brands_router(
+    sessions: crate::session::SessionStore,
+    policy: crate::policy::PolicyClient,
+    auth: crate::auth::AuthConfig,
+) -> Router {
+    Router::<FullstackState>::new()
+        .route(
+            APP_BRANDS_PATH,
+            get(render_handler)
+                .layer(from_fn(dioxus_document_head))
+                .layer(from_fn(inject_viewer_role))
+                .layer(from_fn(inject_app_brand_mark)),
+        )
+        .with_state(FullstackState::new(
+            ServeConfig::new(),
+            webapp::brands_home::BrandsHome,
+        ))
+        .route_layer(from_fn_with_state(
+            (sessions, policy),
+            crate::policy::require_policy,
+        ))
+        .route_layer(from_fn_with_state(auth, crate::auth::require_auth))
+}
+
 /// The `/docs` and `/docs/{slug}` pre-layer: canonicalize the slug, 404 an
 /// unknown one, or inject the matched doc for the render. This reproduces the
 /// `docs_page` / `render_doc_page` control flow.

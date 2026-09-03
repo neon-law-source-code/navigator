@@ -18,9 +18,8 @@ use crate::people::ViewerRole;
 /// The `<meta description>` for the brands home.
 const DESCRIPTION: &str = "Every Neon Law Navigator house brand's typeface, in one place.";
 
-/// One brand's font family, as rendered on this page. Pure data — no brand
-/// resolution or storage access — so [`brand_font_cards`] is unit-tested
-/// directly against every [`views::brand::BrandKey`] without a request.
+/// One brand's font family, as rendered on this page. Pure data, with no brand
+/// resolution or storage access.
 #[derive(Clone, PartialEq, Eq)]
 struct BrandFontCard {
     /// The `id` on the card, so a test can pin a brand to its card.
@@ -38,35 +37,32 @@ struct BrandFontCard {
     href: &'static str,
 }
 
-/// One card per registered [`views::brand::BrandKey`], in registry order.
+/// The registered brands' font cards, in registry order.
 ///
 /// The GORP Serif and Plus Jakarta Sans facts here mirror the match arms in
 /// `portal::dioxus_app::dioxus_document_head` and `docs/assets.md`'s
-/// "Licensed webfonts" section — this page is a reader on that same brand→font
-/// mapping, not a second source of truth for it. Adding a brand key is a match
-/// arm here, exactly as it already is at both of those sites.
-fn brand_font_cards() -> Vec<BrandFontCard> {
-    views::brand::BrandKey::ALL
-        .iter()
-        .map(|key| match key {
-            views::brand::BrandKey::Neon => BrandFontCard {
-                id: "brand-card-neon",
-                brand_label: "Neon Law",
-                family_name: "GORP Serif",
-                license_note: "Licensed from TrashType. The desktop family is a firm-only download; the public site serves only the web (WOFF2) faces.",
-                download: Some("gorp-serif.zip"),
-                href: "/app/team/fonts/gorp-serif.zip",
-            },
-            views::brand::BrandKey::DeleteYourData => BrandFontCard {
-                id: "brand-card-delete-your-data",
-                brand_label: "DeleteYourData.com",
-                family_name: "Plus Jakarta Sans",
-                license_note: "SIL Open Font License 1.1 — the desktop family is the same public font anyone can install from Google Fonts.",
-                download: None,
-                href: "https://fonts.google.com/specimen/Plus+Jakarta+Sans",
-            },
-        })
-        .collect()
+/// "Licensed webfonts" section. This client-rendered data stays independent of
+/// the server-only `views` crate so the WASM build does not pull server brand
+/// resolution into the browser bundle.
+fn brand_font_cards() -> [BrandFontCard; 2] {
+    [
+        BrandFontCard {
+            id: "brand-card-neon",
+            brand_label: "Neon Law",
+            family_name: "GORP Serif",
+            license_note: "Licensed from TrashType. The desktop family is a firm-only download; the public site serves only the web (WOFF2) faces.",
+            download: Some("gorp-serif.zip"),
+            href: "/app/team/fonts/gorp-serif.zip",
+        },
+        BrandFontCard {
+            id: "brand-card-delete-your-data",
+            brand_label: "DeleteYourData.com",
+            family_name: "Plus Jakarta Sans",
+            license_note: "SIL Open Font License 1.1 — the desktop family is the same public font anyone can install from Google Fonts.",
+            download: None,
+            href: "https://fonts.google.com/specimen/Plus+Jakarta+Sans",
+        },
+    ]
 }
 
 /// Everything the brands home renders: the viewer's tier and the mounted
@@ -183,9 +179,9 @@ mod tests {
         dioxus_ssr::render_element(brands_home_body(&view_for(role)))
     }
 
-    /// One card per registered `BrandKey`, in registry order — today exactly
-    /// Neon then `DeleteYourData`. A new brand key needs a new match arm, and
-    /// this length assertion is the tripwire that catches a forgotten one.
+    /// One card per registered `BrandKey`, in registry order. The registry is
+    /// server-only, so this tripwire runs only where that dependency is present.
+    #[cfg(feature = "server")]
     #[test]
     fn one_card_per_registered_brand_key() {
         assert_eq!(

@@ -533,6 +533,13 @@ pub async fn run(brand: Site) -> anyhow::Result<()> {
     // reaches this line, which is what keeps the suite off the network.
     webapp::source_repository::spawn_refresh();
 
+    // Every local port a registered brand's own env var claims (see
+    // `views::brand::BrandKey::local_port_env_var`), read before `rt.state`
+    // moves into `bootstrap`. Production and staging bind only the primary
+    // port — every brand there is reached by its own real hostname, so this
+    // is empty outside local dev.
+    let extra_ports: Vec<u16> = rt.state.canonical_host.local_ports().collect();
+
     // Built before `rt.state` moves into `bootstrap`: the public pages are
     // Dioxus routers resolved from state, and a brand that passed none here
     // would 404 its own home page.
@@ -545,18 +552,49 @@ pub async fn run(brand: Site) -> anyhow::Result<()> {
         host_dioxus,
     )?;
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], rt.config.port));
-    let listener = tokio::net::TcpListener::bind(addr)
-        .await
-        .with_context(|| format!("binding {addr}"))?;
-    tracing::info!(%addr, brand = brand.key, "server listening");
+    let mut listeners = Vec::new();
+    for port in bind_ports(rt.config.port, extra_ports) {
+        let addr = SocketAddr::from(([0, 0, 0, 0], port));
+        let listener = tokio::net::TcpListener::bind(addr)
+            .await
+            .with_context(|| format!("binding {addr}"))?;
+        tracing::info!(%addr, brand = brand.key, "server listening");
+        listeners.push(listener);
+    }
 
-    axum::serve(listener, router)
-        .with_graceful_shutdown(shutdown_signal())
-        .await
-        .context("axum serve")?;
+    // One `axum::serve` task per bound listener, all serving the same
+    // router: a request's brand comes from its `Host:` header (`portal`'s
+    // `resolve_brand_and_enforce_host`), not from which listener accepted
+    // it, so every listener shares this one composed router. Each task
+    // drains its own graceful-shutdown signal independently — Ctrl-C and
+    // `SIGTERM` both support more than one listener — so every bound port
+    // stops serving together.
+    let mut servers = tokio::task::JoinSet::new();
+    for listener in listeners {
+        let router = router.clone();
+        servers.spawn(async move {
+            axum::serve(listener, router)
+                .with_graceful_shutdown(shutdown_signal())
+                .await
+        });
+    }
+    while let Some(result) = servers.join_next().await {
+        result
+            .context("server task panicked")?
+            .context("axum serve")?;
+    }
     telemetry_guard.shutdown();
     Ok(())
+}
+
+/// Every port this boot binds: the primary configured port plus every extra
+/// local-brand port, deduplicated and in a stable order. A pure helper so
+/// the bind set is unit-testable without a real listener.
+fn bind_ports(primary: u16, extra: impl IntoIterator<Item = u16>) -> Vec<u16> {
+    let mut ports: Vec<u16> = std::iter::once(primary).chain(extra).collect();
+    ports.sort_unstable();
+    ports.dedup();
+    ports
 }
 
 /// Report the resolved brand at boot, so a deploy serving the wrong face says
@@ -569,4 +607,28 @@ fn preflight(brand: &Site, rt: &HostRuntime) {
         environment = rt.config.environment.as_str(),
         "brand configured"
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::bind_ports;
+
+    #[test]
+    fn bind_ports_includes_the_primary_port_with_no_extras() {
+        assert_eq!(bind_ports(3001, []), vec![3001]);
+    }
+
+    /// Every local-brand port joins the primary port, so `run` binds one
+    /// listener per registered brand this boot can reach locally.
+    #[test]
+    fn bind_ports_adds_every_extra_port() {
+        assert_eq!(bind_ports(3001, [3011]), vec![3001, 3011]);
+    }
+
+    /// A duplicate or out-of-order extra port collapses to one stable,
+    /// sorted bind set rather than binding the same port twice.
+    #[test]
+    fn bind_ports_dedupes_and_sorts() {
+        assert_eq!(bind_ports(3011, [3001, 3011, 3001]), vec![3001, 3011]);
+    }
 }

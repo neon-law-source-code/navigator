@@ -57,6 +57,11 @@ const WORKTREE_RESTATE_ADMIN_PORT_BASE: u16 = 20_200;
 const WORKTREE_RAUTHY_PORT_BASE: u16 = 20_400;
 const WORKTREE_GARAGE_S3_PORT_BASE: u16 = 20_500;
 const WORKTREE_WEB_PORT_BASE: u16 = 20_600;
+/// DeleteYourData.com's own local bind port (ENG-437): locally there is no
+/// DNS standing in for its real hostname, so each worktree gets it a second
+/// port the same way it gets `web` one. `20_300` is the one 100-band in the
+/// worktree window no other tier member claims.
+const WORKTREE_DELETE_YOUR_DATA_WEB_PORT_BASE: u16 = 20_300;
 const WORKTREE_OPENOBSERVE_PORT_BASE: u16 = 20_700;
 const WORKTREE_OPENOBSERVE_OTLP_PORT_BASE: u16 = 20_800;
 const WORKTREE_CLAMAV_PORT_BASE: u16 = 21_100;
@@ -548,6 +553,11 @@ fn status(root: &Path, base_cfg: &KindConfig) {
             if let (Some(slot), Some(_db)) = (d.dev_slot(), &d.db_name) {
                 let cfg = worktree_kind_config(base_cfg, root, slot);
                 println!("  port slot: {slot}");
+                println!(
+                    "  delete-your-data web port {}: {}",
+                    cfg.delete_your_data_web_port,
+                    yes_no(port_listening(cfg.delete_your_data_web_port))
+                );
                 match d.runtime {
                     Runtime::Kind => {
                         println!("  KIND cluster: {}", cfg.cluster);
@@ -717,6 +727,7 @@ fn worktree_kind_config(base: &KindConfig, root: &Path, slot: u16) -> KindConfig
     cfg.rauthy_port = WORKTREE_RAUTHY_PORT_BASE + slot;
     cfg.garage_s3_port = WORKTREE_GARAGE_S3_PORT_BASE + slot;
     cfg.web_port = WORKTREE_WEB_PORT_BASE + slot;
+    cfg.delete_your_data_web_port = WORKTREE_DELETE_YOUR_DATA_WEB_PORT_BASE + slot;
     cfg.openobserve_port = WORKTREE_OPENOBSERVE_PORT_BASE + slot;
     cfg.openobserve_otlp_port = WORKTREE_OPENOBSERVE_OTLP_PORT_BASE + slot;
     cfg.clamav_port = WORKTREE_CLAMAV_PORT_BASE + slot;
@@ -1677,20 +1688,27 @@ fn dev_summary(slug: &str, db_name: &str, runtime: Runtime, cfg: &KindConfig) ->
     };
     format!(
         "\n{rule}\n navigator dev worktree-env up — dev environment for `{slug}`\n{rule}\n\n\
-         {tier}  database     : {db_name}\n  Restate port : {}\n  Surreal port : {}\n  web port     : {}\n\n\
+         {tier}  database     : {db_name}\n  Restate port : {}\n  Surreal port : {}\n  web port     : {}\n\
+         \x20 delete-your-data web port : {}\n\n\
          Start this worktree's web server:\n\n{}\n\n\
          Tear down this worktree's tier:\n    \
          navigator dev worktree-env down\n",
         cfg.restate_ingress_port,
         cfg.surreal_port,
         cfg.web_port,
-        web_start_instructions(cfg.web_port)
+        cfg.delete_your_data_web_port,
+        web_start_instructions(cfg.web_port, cfg.delete_your_data_web_port)
     )
 }
 
-fn web_start_instructions(web_port: u16) -> String {
+/// Both ports one `cargo run -p neon` binds locally: the default brand on
+/// `web_port`, and `delete-your-data` on its own `delete_your_data_web_port`
+/// — see ENG-437. `web` needs no `Host:` trickery to serve either; the port
+/// alone selects the brand.
+fn web_start_instructions(web_port: u16, delete_your_data_web_port: u16) -> String {
     format!(
-        "    set -a; source .devx/env; set +a\n    cargo run -p neon   # listens on :{web_port}"
+        "    set -a; source .devx/env; set +a\n    cargo run -p neon   # neon on :{web_port}, \
+         delete-your-data on :{delete_your_data_web_port}"
     )
 }
 
@@ -1715,10 +1733,14 @@ mod tests {
         // generated env is therefore sufficient, and naming a secrets
         // provider here would advertise a dependency the binary doesn't
         // have.
-        let instructions = web_start_instructions(3042);
+        let instructions = web_start_instructions(3042, 3043);
         assert!(instructions.contains("source .devx/env"));
         assert!(instructions.contains("cargo run -p neon"));
         assert!(instructions.contains(":3042"), "must name the chosen port");
+        assert!(
+            instructions.contains(":3043"),
+            "must name the delete-your-data port too"
+        );
         assert!(
             !instructions.to_lowercase().contains("doppler"),
             "local web start is self-contained and names no secrets provider: {instructions}"
@@ -1741,9 +1763,16 @@ mod tests {
         assert!(summary.contains(&format!("KIND cluster : {}", cfg.cluster)));
         assert!(summary.contains(&format!("Restate port : {}", cfg.restate_ingress_port)));
         assert!(summary.contains(&format!("web port     : {}", cfg.web_port)));
+        assert!(summary.contains(&format!(
+            "delete-your-data web port : {}",
+            cfg.delete_your_data_web_port
+        )));
         // The summary must carry the real start instructions, not a
         // paraphrase that could drift from `web_start_instructions`.
-        assert!(summary.contains(&web_start_instructions(cfg.web_port)));
+        assert!(summary.contains(&web_start_instructions(
+            cfg.web_port,
+            cfg.delete_your_data_web_port
+        )));
         assert!(summary.contains("navigator dev worktree-env down"));
     }
 
@@ -1783,7 +1812,10 @@ mod tests {
         assert!(!summary.contains(&cfg.cluster), "{summary}");
         // Everything downstream still reads the same env file, so the
         // start instructions must not differ between the lanes.
-        assert!(summary.contains(&web_start_instructions(cfg.web_port)));
+        assert!(summary.contains(&web_start_instructions(
+            cfg.web_port,
+            cfg.delete_your_data_web_port
+        )));
     }
 
     #[test]
@@ -1884,9 +1916,17 @@ mod tests {
             WORKTREE_RESTATE_ADMIN_PORT_BASE + 7
         );
         assert_eq!(first.web_port, WORKTREE_WEB_PORT_BASE + 7);
+        assert_eq!(
+            first.delete_your_data_web_port,
+            WORKTREE_DELETE_YOUR_DATA_WEB_PORT_BASE + 7
+        );
         assert_eq!(first.clamav_port, WORKTREE_CLAMAV_PORT_BASE + 7);
         assert_ne!(first.restate_ingress_port, second.restate_ingress_port);
         assert_ne!(first.clamav_port, second.clamav_port);
+
+        // ENG-437: `web` and `delete-your-data` must never share a bind
+        // port — every brand a worktree can reach locally needs its own.
+        assert_ne!(first.web_port, first.delete_your_data_web_port);
 
         let host_ports = [
             first.ingress_http_port,
@@ -1897,6 +1937,7 @@ mod tests {
             first.rauthy_port,
             first.garage_s3_port,
             first.web_port,
+            first.delete_your_data_web_port,
             first.openobserve_port,
             first.openobserve_otlp_port,
         ];
@@ -1905,6 +1946,26 @@ mod tests {
             host_ports.len(),
             "every worktree service must receive its own host port"
         );
+    }
+
+    /// ENG-437: `worktree-env up` writes both `web` bind ports into
+    /// `.devx/env`, and they are never the same port — a developer sourcing
+    /// this file gets two distinct addresses to reach the two brands, not
+    /// one variable silently shadowing the other.
+    #[test]
+    fn rendered_worktree_env_carries_two_distinct_web_ports() {
+        let cfg = worktree_kind_config(
+            &KindConfig::from_env(),
+            Path::new("/tmp/navigator/worktrees/brand-ports"),
+            22,
+        );
+        let env = super::super::render_env_for(&cfg, "navigator", cfg.web_port, Path::new("/ws"));
+        assert!(env.contains(&format!("PORT={}", cfg.web_port)));
+        assert!(env.contains(&format!(
+            "NAVIGATOR_LOCAL_DELETE_YOUR_DATA_PORT={}",
+            cfg.delete_your_data_web_port
+        )));
+        assert_ne!(cfg.web_port, cfg.delete_your_data_web_port);
     }
 
     #[test]
@@ -2004,6 +2065,7 @@ mod tests {
             cfg.rauthy_port,
             cfg.garage_s3_port,
             cfg.web_port,
+            cfg.delete_your_data_web_port,
             cfg.openobserve_port,
             cfg.openobserve_otlp_port,
             cfg.clamav_port,

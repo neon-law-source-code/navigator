@@ -799,6 +799,7 @@ development with no `.env`; add only the sandbox values you actually intend to o
 | Identity port | `NAVIGATOR_KIND_RAUTHY_PORT` | `30080` |
 | Storage port | `NAVIGATOR_KIND_GARAGE_S3_PORT` | `30900` |
 | Web port | `NAVIGATOR_KIND_WEB_PORT` | `3001` |
+| `delete-your-data` web port | `NAVIGATOR_LOCAL_DELETE_YOUR_DATA_PORT` | `3011`; bound alongside `PORT` |
 | Observability | `NAVIGATOR_KIND_OPENOBSERVE_PORT`, `NAVIGATOR_KIND_OPENOBSERVE_OTLP_PORT` | `5080`, `5081` |
 | Documents key | `NAVIGATOR_GARAGE_ACCESS_KEY` | deterministic KIND-only default |
 | Documents secret | `NAVIGATOR_GARAGE_SECRET_KEY` | deterministic KIND-only default |

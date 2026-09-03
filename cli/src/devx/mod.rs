@@ -245,6 +245,19 @@ const SURREAL_LOCAL_PASSWORD: &str = "root";
 
 // Local `web` defaults — matches `cargo run -p neon` defaults.
 const DEFAULT_LOCAL_WEB_PORT: u16 = 3001;
+// The shared `dev up` tier's fixed second port: DeleteYourData.com,
+// locally unreachable by hostname (see ENG-437), needs its own bind port the
+// same way `web` needs `DEFAULT_LOCAL_WEB_PORT`. Written under
+// `views::brand::BrandKey::DeleteYourData.local_port_env_var()`, the exact
+// var name `web` itself reads — devx and the running process can therefore
+// never disagree on which port serves that brand.
+const DEFAULT_LOCAL_DELETE_YOUR_DATA_WEB_PORT: u16 = 3011;
+
+fn delete_your_data_port_env_var() -> &'static str {
+    views::brand::BrandKey::DeleteYourData
+        .local_port_env_var()
+        .expect("DeleteYourData is a registered non-default key and always has a local port var")
+}
 
 // OpenObserve's UI (5080) and direct OTLP gRPC ingest port (5081) are
 // port-forwarded to the host for the operator and host-side `web` process.
@@ -276,6 +289,7 @@ struct KindConfig {
     garage_s3_port: u16,
     surreal_port: u16,
     web_port: u16,
+    delete_your_data_web_port: u16,
     openobserve_port: u16,
     openobserve_otlp_port: u16,
 }
@@ -326,6 +340,10 @@ impl KindConfig {
             garage_s3_port: env_port("NAVIGATOR_KIND_GARAGE_S3_PORT", DEFAULT_GARAGE_S3_HOST_PORT),
             surreal_port: env_port("NAVIGATOR_KIND_SURREAL_PORT", DEFAULT_SURREAL_HOST_PORT),
             web_port: env_port("NAVIGATOR_KIND_WEB_PORT", DEFAULT_LOCAL_WEB_PORT),
+            delete_your_data_web_port: env_port(
+                delete_your_data_port_env_var(),
+                DEFAULT_LOCAL_DELETE_YOUR_DATA_WEB_PORT,
+            ),
             openobserve_port: env_port(
                 "NAVIGATOR_KIND_OPENOBSERVE_PORT",
                 DEFAULT_OPENOBSERVE_HOST_PORT,
@@ -1826,6 +1844,13 @@ fn render_env_for(cfg: &KindConfig, db_name: &str, web_port: u16, root: &Path) -
             cfg.garage_s3_port.to_string(),
         ),
         ("NAVIGATOR_KIND_WEB_PORT", cfg.web_port.to_string()),
+        // The second bind port `portal::hosting::run` opens for
+        // `BrandKey::DeleteYourData`, alongside `PORT` for the default
+        // brand — see ENG-437 and `views::brand::BrandKey::local_port_env_var`.
+        (
+            delete_your_data_port_env_var(),
+            cfg.delete_your_data_web_port.to_string(),
+        ),
         (
             "NAVIGATOR_KIND_OPENOBSERVE_PORT",
             cfg.openobserve_port.to_string(),
@@ -2637,6 +2662,7 @@ mod tests {
         "NAVIGATOR_KIND_RAUTHY_PORT",
         "NAVIGATOR_KIND_GARAGE_S3_PORT",
         "NAVIGATOR_KIND_WEB_PORT",
+        "NAVIGATOR_LOCAL_DELETE_YOUR_DATA_PORT",
         "NAVIGATOR_KIND_OPENOBSERVE_PORT",
         "NAVIGATOR_KIND_OPENOBSERVE_OTLP_PORT",
         "NAVIGATOR_PRIVATE_MODE",
@@ -2676,6 +2702,7 @@ mod tests {
             garage_s3_port: DEFAULT_GARAGE_S3_HOST_PORT,
             surreal_port: DEFAULT_SURREAL_HOST_PORT,
             web_port: DEFAULT_LOCAL_WEB_PORT,
+            delete_your_data_web_port: DEFAULT_LOCAL_DELETE_YOUR_DATA_WEB_PORT,
             openobserve_port: DEFAULT_OPENOBSERVE_HOST_PORT,
             openobserve_otlp_port: DEFAULT_OPENOBSERVE_OTLP_HOST_PORT,
         }
@@ -3033,6 +3060,7 @@ mod tests {
         env::set_var("NAVIGATOR_KIND_RAUTHY_PORT", "31080");
         env::set_var("NAVIGATOR_KIND_GARAGE_S3_PORT", "31900");
         env::set_var("NAVIGATOR_KIND_WEB_PORT", "4001");
+        env::set_var(delete_your_data_port_env_var(), "4011");
         let cfg = KindConfig::from_env();
         clear_kind_env();
         assert_eq!(cfg.ingress_http_port, 18080);
@@ -3043,6 +3071,7 @@ mod tests {
         assert_eq!(cfg.rauthy_port, 31080);
         assert_eq!(cfg.garage_s3_port, 31900);
         assert_eq!(cfg.web_port, 4001);
+        assert_eq!(cfg.delete_your_data_web_port, 4011);
     }
 
     #[test]
@@ -3057,6 +3086,10 @@ mod tests {
         clear_kind_env();
         assert_eq!(cfg.cluster, DEFAULT_CLUSTER_NAME);
         assert_eq!(cfg.web_port, DEFAULT_LOCAL_WEB_PORT);
+        assert_eq!(
+            cfg.delete_your_data_web_port,
+            DEFAULT_LOCAL_DELETE_YOUR_DATA_WEB_PORT
+        );
     }
 
     #[test]
@@ -3064,6 +3097,7 @@ mod tests {
         let mut cfg = default_cfg();
         cfg.cluster = "navigator-task".into();
         cfg.web_port = 4001;
+        cfg.delete_your_data_web_port = 4011;
         cfg.clamav_port = 23310;
         cfg.rauthy_port = 31080;
         cfg.garage_s3_port = 31900;
@@ -3076,6 +3110,7 @@ mod tests {
         assert!(env.contains("NAVIGATOR_KIND_CLUSTER=navigator-task"));
         assert!(env.contains("NAVIGATOR_KIND_RESTATE_INGRESS_PORT=19080"));
         assert!(env.contains("NAVIGATOR_KIND_WEB_PORT=4001"));
+        assert!(env.contains(&format!("{}=4011", delete_your_data_port_env_var())));
         assert!(env.contains("NAVIGATOR_GIT_REPO_ROOT='/ws/.devx/repos/navigator'"));
         assert!(env.contains("OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:15081"));
         assert!(env.contains("NAVIGATOR_OPENOBSERVE_URL=http://localhost:15080"));

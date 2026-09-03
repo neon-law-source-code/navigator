@@ -74,7 +74,10 @@ egress ranges; it is deliberately not implemented here.
 The host ports split into two categories with very different blast radius:
 
 - **Port-forward ports:** SurrealDB, Restate ingress/admin, Garage S3, OpenObserve UI and OTLP ingest, and the local
-  server.
+  server — which binds one port per registered brand it can reach locally rather than only one. Every host in
+  `views::brand::BrandKey::hosts` is a real production/staging domain, so a second brand needs its own local port
+  instead of a `Host:` header a developer's machine has no DNS to send. `NAVIGATOR_LOCAL_DELETE_YOUR_DATA_PORT` names
+  that second port for the `delete-your-data` house brand (ENG-437); `web` binds it directly, alongside `PORT`.
 - **Create-time NodePort mappings:** ingress HTTP/HTTPS and Rauthy, rendered into `k8s/kind-config.yaml`.
 
 The CLI renders a temporary KIND config and changes only requested `hostPort` values. Port-forward changes, including

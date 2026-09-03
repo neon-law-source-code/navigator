@@ -20,3 +20,9 @@ metadata:
 spec:
   domains:
     - NAVIGATOR_PUBLIC_HOST
+    # `ops ship` replaces this comment with one `- <host>` entry per other
+    # brand host this deployment's environment serves, derived from
+    # `views::brand::BrandKey::ALL` — not a hand-maintained coordinate, so a
+    # brand added to the registry gets a cert automatically. Renders to
+    # nothing when this environment serves no other brand.
+    # NAVIGATOR_BRAND_HOST_CERT_DOMAINS

@@ -411,6 +411,34 @@
   gap: 0.5rem;
 }
 
+/* The "Try answering this" demo (ENG-452) — a card so it reads as a distinct,
+   self-contained sandbox rather than a continuation of the document body it
+   sits below. */
+.notation-demo {
+  margin-top: 2rem;
+  padding: 1.5rem;
+  border: 1px solid var(--nav-color-border);
+  border-radius: 0.75rem;
+}
+
+.notation-demo h2 {
+  margin-top: 0;
+}
+
+.notation-demo__step {
+  margin-block: 1rem;
+}
+
+.notation-demo__explanation {
+  color: var(--nav-color-text);
+}
+
+.notation-demo__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
 /* The material's own lede reads as body copy, not the hero treatment the
    `.catalog-hero .lede` rule gives the landing wordmark. */
 .material-page .lede,

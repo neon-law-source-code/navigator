@@ -15,7 +15,7 @@ use dioxus::prelude::*;
 pub const CATALOG_STYLESHEET_HREF: &str = concat!(
     "/public/css/catalog.css?v=",
     env!("CARGO_PKG_VERSION"),
-    "-6"
+    "-7"
 );
 
 /// The animated scene: two drifting starfields, a cloud of color, and a

@@ -46,6 +46,7 @@ use crate::components::{
     CATALOG_STYLESHEET_HREF,
 };
 use crate::harvard_outline::{HARVARD_OUTLINE_SCRIPT_HREF, HARVARD_OUTLINE_STYLESHEET_HREF};
+use crate::notation_demo::{DemoQuestion, QuestionnaireDemo};
 use crate::public_chrome::{PublicChrome, PublicFooter};
 
 /// One bundled document ready to preview.
@@ -63,6 +64,11 @@ pub struct PreviewDoc {
     /// The government's own blank form, for a form template that declares
     /// `origin_url`. `None` for a letter.
     pub origin_url: Option<String>,
+    /// The template's declared questionnaire, in order, from
+    /// `views::questionnaire_preview::parse` — feeds the "Try answering
+    /// this" demo (ENG-452). Empty for a template with no questionnaire
+    /// block, which renders no demo section at all.
+    pub demo_questions: Vec<DemoQuestion>,
 }
 
 /// Everything the page renders, resolved ahead of the render — the router's
@@ -76,6 +82,7 @@ pub struct NotationPreviewContent {
     pub frontmatter: String,
     pub stage_html: String,
     pub origin_url: Option<String>,
+    pub demo_questions: Vec<DemoQuestion>,
 }
 
 /// The [`NotationPreviewContent`] injected into the render context by the
@@ -181,6 +188,7 @@ pub fn NotationPreviewPage(chrome: PublicChrome, content: NotationPreviewContent
                     }
                 }
                 div { dangerous_inner_html: "{content.stage_html}" }
+                QuestionnaireDemo { questions: content.demo_questions.clone() }
             }
         }
     }
@@ -206,6 +214,7 @@ mod tests {
                     <h2>Scope of the engagement</h2></section></article>"
                 .to_string(),
             origin_url: None,
+            demo_questions: Vec::new(),
         }
     }
 
@@ -222,6 +231,7 @@ mod tests {
                 "https://www.nvsos.gov/businesses/commercial-recordings/forms-fees/all-business-forms"
                     .to_string(),
             ),
+            demo_questions: Vec::new(),
         }
     }
 
@@ -359,5 +369,38 @@ mod tests {
             1,
             "only the GitHub link, no blank-form link: {out}"
         );
+    }
+
+    #[test]
+    fn a_document_with_no_declared_questionnaire_shows_no_demo_section() {
+        assert!(
+            !html().contains("Try answering this"),
+            "letter_content() carries no demo_questions: {}",
+            html()
+        );
+    }
+
+    #[test]
+    fn a_document_with_a_declared_questionnaire_shows_the_demo_section() {
+        fn app() -> Element {
+            let chrome = PublicChrome {
+                brand_name: "Neon Law".to_string(),
+                ..PublicChrome::default()
+            };
+            let content = NotationPreviewContent {
+                demo_questions: vec![DemoQuestion {
+                    code: "custom_single_choice__governing_law".to_string(),
+                    answer_type: "custom_single_choice".to_string(),
+                    prompt: "Which state's law governs this engagement?".to_string(),
+                    choices: vec![("nevada".to_string(), "Nevada".to_string())],
+                    interactive: true,
+                }],
+                ..letter_content()
+            };
+            rsx! { NotationPreviewPage { chrome, content } }
+        }
+        let out = ssr(app);
+        assert!(out.contains("Try answering this"), "{out}");
+        assert!(out.contains(r#"type="radio""#), "{out}");
     }
 }

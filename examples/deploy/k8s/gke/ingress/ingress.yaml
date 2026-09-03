@@ -86,6 +86,12 @@ spec:
                 name: navigator-web
                 port:
                   number: 80
+    # `ops ship` replaces this comment with one `- host: <host>` rule per
+    # other brand host this deployment's environment serves (routed straight
+    # to navigator-web, no /mcp path — that surface stays off brand hosts),
+    # derived from `views::brand::BrandKey::ALL`. Renders to nothing when
+    # this environment serves no other brand.
+    # NAVIGATOR_BRAND_HOST_INGRESS_RULES
     - host: NAVIGATOR_WORKFLOWS_HOST
       http:
         paths:

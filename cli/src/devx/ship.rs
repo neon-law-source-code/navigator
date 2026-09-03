@@ -75,6 +75,7 @@ use tempfile::TempDir;
 
 use portal::chatwoot::NAVIGATOR_CHATWOOT_WEBSITE_TOKEN;
 use store::NAVIGATOR_SIMULATED_MATTERS;
+use views::brand::BrandKey;
 
 use super::registry;
 use super::{require_auth, require_tools, run};
@@ -353,7 +354,79 @@ where
         env: "OAUTH_MICROSOFT_ALLOWED_TENANTS",
         value: non_empty_env("OAUTH_MICROSOFT_ALLOWED_TENANTS", &get).unwrap_or_default(),
     });
+    // Not in TABLE and not read from `get` at all: the additional brand
+    // hosts this deployment's environment serves come from the compiled
+    // `views::brand::BrandKey` registry, keyed off the `NAVIGATOR_PUBLIC_HOST`
+    // value TABLE already resolved above — never a second hand-maintained
+    // coordinate that could drift from the registry.
+    let public_host = substitutions
+        .iter()
+        .find(|substitution| substitution.token == "NAVIGATOR_PUBLIC_HOST")
+        .expect("NAVIGATOR_PUBLIC_HOST is a required TABLE substitution")
+        .value
+        .clone();
+    let brand_hosts = additional_brand_hosts(&public_host);
+    substitutions.push(Substitution {
+        token: BRAND_CERT_DOMAINS_TOKEN,
+        env: "views::brand::BrandKey",
+        value: brand_cert_domain_lines(&brand_hosts),
+    });
+    substitutions.push(Substitution {
+        token: BRAND_INGRESS_RULES_TOKEN,
+        env: "views::brand::BrandKey",
+        value: brand_ingress_rule_lines(&brand_hosts),
+    });
     Ok(substitutions)
+}
+
+/// Every host this deployment's environment serves for a brand other than
+/// the default (`views::brand::BrandKey::default()`), derived from the
+/// compiled registry rather than a hand-maintained coordinate — so a brand
+/// added to `BrandKey` gets a cert and an Ingress rule with no second list to
+/// keep in sync. [`BrandKey::hosts`] mixes production and staging hosts for
+/// the same key (e.g. `www.deleteyourdata.com` and
+/// `staging.deleteyourdata.com`); this keeps only the one matching
+/// `public_host`'s own `staging.`-prefix convention, the same split
+/// `NAVIGATOR_PUBLIC_HOST` already follows for the default brand.
+fn additional_brand_hosts(public_host: &str) -> Vec<&'static str> {
+    let staging = public_host.starts_with("staging.");
+    BrandKey::ALL
+        .iter()
+        .copied()
+        .filter(|key| *key != BrandKey::default())
+        .flat_map(|key| key.hosts().iter().copied())
+        .filter(|host| host.starts_with("staging.") == staging)
+        .collect()
+}
+
+/// Render [`BRAND_CERT_DOMAINS_TOKEN`]'s replacement: one `- <host>` entry
+/// per host, indented to match the sibling `- NAVIGATOR_PUBLIC_HOST` entry.
+/// Empty input renders to the empty string, which is what makes the
+/// placeholder's whole line disappear cleanly.
+fn brand_cert_domain_lines(hosts: &[&str]) -> String {
+    hosts.iter().fold(String::new(), |mut lines, host| {
+        lines.push_str("    - ");
+        lines.push_str(host);
+        lines.push('\n');
+        lines
+    })
+}
+
+/// Render [`BRAND_INGRESS_RULES_TOKEN`]'s replacement: one Ingress host rule
+/// per host, routed straight to `navigator-web` on a catch-all `/*` — no
+/// `/mcp` path, which stays off every brand host. Matches the indentation of
+/// the sibling `- host: NAVIGATOR_PUBLIC_HOST` rule.
+fn brand_ingress_rule_lines(hosts: &[&str]) -> String {
+    hosts.iter().fold(String::new(), |mut rules, host| {
+        rules.push_str("    - host: ");
+        rules.push_str(host);
+        rules.push_str(
+            "\n      http:\n        paths:\n          - path: /*\n            \
+             pathType: ImplementationSpecific\n            backend:\n              service:\n                \
+             name: navigator-web\n                port:\n                  number: 80\n",
+        );
+        rules
+    })
 }
 
 fn base_substitutions<F>(deployment: &str, tag: &str, get: &F) -> Result<Vec<Substitution>>
@@ -458,6 +531,18 @@ const GOOGLE_OAUTH_CLIENT_ID_SUFFIX: &str = ".apps.googleusercontent.com";
 /// embedded tree carries. It is a substitution token, NOT an example of the
 /// tag convention — the render replaces it with the `--tag` being rolled.
 const RELEASE_TAG_TOKEN: &str = "YY.M.D";
+
+/// The whole-line placeholder comment in `managed-certificate.yaml`,
+/// including its indentation and trailing newline so replacing it with an
+/// empty string removes the line cleanly rather than leaving a blank one.
+/// `ops ship` replaces it with zero or more `- <host>` domain entries — see
+/// [`additional_brand_hosts`].
+const BRAND_CERT_DOMAINS_TOKEN: &str = "    # NAVIGATOR_BRAND_HOST_CERT_DOMAINS\n";
+
+/// The whole-line placeholder comment in `ingress.yaml`, same shape as
+/// [`BRAND_CERT_DOMAINS_TOKEN`]. `ops ship` replaces it with zero or more
+/// Ingress host rules — see [`additional_brand_hosts`].
+const BRAND_INGRESS_RULES_TOKEN: &str = "    # NAVIGATOR_BRAND_HOST_INGRESS_RULES\n";
 
 /// The placeholder standing in for the registry namespace that HOLDS the
 /// images — the `ghcr.io/<owner>` half of every image line.
@@ -3274,6 +3359,8 @@ mod tests {
         "YOUR_OAUTH_MICROSOFT_CLIENT_ID",
         "YOUR_OAUTH_MICROSOFT_ALLOWED_TENANTS",
         RELEASE_TAG_TOKEN,
+        BRAND_CERT_DOMAINS_TOKEN,
+        BRAND_INGRESS_RULES_TOKEN,
     ];
 
     /// Every `YOUR_*` placeholder still present in `text`.
@@ -3417,6 +3504,31 @@ mod tests {
             web_env.contains("name: GOOGLE_OAUTH_REQUIRED_HD"),
             "OAuth hosted-domain environment-variable name is preserved"
         );
+        // The production render's `NAVIGATOR_PUBLIC_HOST` is `www.neonlaw.com`,
+        // so the other registered `BrandKey` (`DeleteYourData`) contributes its
+        // own production host here — derived from the compiled registry, not a
+        // second hand-maintained coordinate.
+        let cert = fs::read_to_string(gke.join("ingress/managed-certificate.yaml")).unwrap();
+        assert!(
+            cert.contains("- www.deleteyourdata.com"),
+            "the additional brand's production host gets a cert domain: {cert}"
+        );
+        let ingress = fs::read_to_string(gke.join("ingress/ingress.yaml")).unwrap();
+        assert!(
+            ingress.contains("- host: www.deleteyourdata.com"),
+            "the additional brand's production host gets an Ingress rule: {ingress}"
+        );
+        assert!(
+            ingress.contains(
+                "name: navigator-web\n                port:\n                  number: 80"
+            ),
+            "the additional brand host routes to the same navigator-web Service"
+        );
+        assert!(
+            !cert.contains("staging.deleteyourdata.com")
+                && !ingress.contains("staging.deleteyourdata.com"),
+            "a production render must not carry the staging sibling of the additional brand's host"
+        );
         // The support-chat coordinate is optional, so the drift that matters is
         // the reverse of the required keys': the env *name* must survive even
         // when the value renders empty, or a deployment that later adopts the
@@ -3479,6 +3591,48 @@ mod tests {
             "the Namespace object itself uses the deployment namespace"
         );
         assert!(!namespace_manifest.contains("name: navigator"));
+    }
+
+    #[test]
+    fn additional_brand_hosts_excludes_the_default_and_matches_the_environment() {
+        assert_eq!(
+            additional_brand_hosts("www.neonlaw.com"),
+            vec!["www.deleteyourdata.com"],
+            "a production public host pulls in only the other brand's production host"
+        );
+        assert_eq!(
+            additional_brand_hosts("staging.neonlaw.com"),
+            vec!["staging.deleteyourdata.com"],
+            "a staging public host pulls in only the other brand's staging host"
+        );
+    }
+
+    #[test]
+    fn a_staging_render_carries_the_staging_sibling_not_the_production_one() {
+        // Mirrors `render_substitutes_every_placeholder_to_zero_remaining`'s
+        // production assertion, but for the `neon-law-stg` shape (`HUB_ENV`),
+        // whose `NAVIGATOR_PUBLIC_HOST` is `staging.neonlaw.com` — the other
+        // registered brand's cert/Ingress entry must flip to its own
+        // `staging.` host, not repeat the production one.
+        let subs =
+            resolve_substitutions_for_deployment("neon-law-stg", "26.7.15", env_getter(HUB_ENV))
+                .expect("hub env resolves");
+        let rendered = render_manifests_with(&subs, false).expect("render succeeds");
+        let gke = rendered.path().join(GKE_KUSTOMIZE_SUBPATH);
+        let cert = fs::read_to_string(gke.join("ingress/managed-certificate.yaml")).unwrap();
+        assert!(
+            cert.contains("- staging.deleteyourdata.com"),
+            "the additional brand's staging host gets a cert domain: {cert}"
+        );
+        assert!(
+            !cert.contains("www.deleteyourdata.com"),
+            "a staging render must not carry the production sibling: {cert}"
+        );
+        let ingress = fs::read_to_string(gke.join("ingress/ingress.yaml")).unwrap();
+        assert!(
+            ingress.contains("- host: staging.deleteyourdata.com"),
+            "the additional brand's staging host gets an Ingress rule: {ingress}"
+        );
     }
 
     /// Collect every `env:` entry declared anywhere under `node`, as

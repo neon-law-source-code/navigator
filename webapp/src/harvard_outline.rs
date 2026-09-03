@@ -58,6 +58,10 @@ pub struct OutlineStageView {
     /// configures none.
     #[serde(default)]
     pub logo: Option<crate::components::AppLogo>,
+    /// The resolved brand's tokens stylesheet href, so the page wears
+    /// its own palette rather than the firm's on a non-default host.
+    #[serde(default)]
+    pub tokens_href: String,
 }
 
 /// Pick the requested document, or the first one when `doc` is missing or unknown.
@@ -106,6 +110,7 @@ pub async fn outline_stage_view() -> Result<OutlineStageView, ServerFnError> {
         content,
         role,
         logo: crate::app_chrome::app_logo_from_context().await,
+        tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
     })
 }
 
@@ -138,6 +143,7 @@ fn outline_stage_body(view: &OutlineStageView) -> Element {
     rsx! {
         document::Title { "{view.firm_name} | Lawyer | Outline stage | {title}" }
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
+        document::Stylesheet { href: "{view.tokens_href}" }
         document::Stylesheet { href: HARVARD_OUTLINE_STYLESHEET_HREF }
         document::Script { src: HARVARD_OUTLINE_SCRIPT_HREF, defer: true }
         crate::components::AppNavbar {
@@ -172,6 +178,7 @@ mod tests {
 
     fn view() -> OutlineStageView {
         OutlineStageView {
+            tokens_href: String::new(),
             firm_name: "Example Law".to_string(),
             role: crate::people::ViewerRole::Lawyer,
             current_slug: "onboarding".to_string(),

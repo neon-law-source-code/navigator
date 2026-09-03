@@ -31,6 +31,10 @@ pub struct GovFormRows(pub Vec<GovFormRow>);
 /// The rendered index: the rows, and the viewer's tier for the nav chrome.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct GovFormsView {
+    /// The resolved brand's tokens stylesheet href, so the page wears
+    /// its own palette rather than the firm's on a non-default host.
+    #[serde(default)]
+    pub tokens_href: String,
     pub rows: Vec<GovFormRow>,
     pub role: ViewerRole,
     /// Who the viewer is acting as, when an admin is impersonating a client.
@@ -67,6 +71,7 @@ pub async fn list_gov_forms() -> Result<GovFormsView, ServerFnError> {
         .unwrap_or_default();
 
     Ok(GovFormsView {
+        tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
         firm_name: crate::app_chrome::firm_name_from_context().await,
         rows,
         role,
@@ -97,6 +102,7 @@ pub fn GovForms() -> Element {
     rsx! {
         document::Title { "{view.firm_name} | Blank government forms" }
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
+        document::Stylesheet { href: "{view.tokens_href}" }
         crate::components::ImpersonationBanner { view: view.impersonation.clone() }
         nav { class: "lawyer-nav",
             a { class: "nav-link", href: "/app/projects", "Projects" }

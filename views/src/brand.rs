@@ -389,6 +389,13 @@ pub struct Branding {
     pub mission_description: &'static str,
     pub service_description: &'static str,
     pub portal_only: bool,
+    /// The registry key this `Branding` renders under. A mounted white-label
+    /// manifest always carries [`BrandKey::Neon`] — it replaces the default
+    /// brand's identity, never its registry slot — so this field lets a
+    /// caller holding only the scoped `Branding` (not the key that resolved
+    /// it) recover which per-brand assets to link, such as the tokens
+    /// stylesheet [`crate::brand`]'s scoped accessor resolves by key.
+    pub brand_key: BrandKey,
 }
 
 pub static DEFAULT_BRANDING: Branding = Branding {
@@ -461,6 +468,7 @@ pub static DEFAULT_BRANDING: Branding = Branding {
     mission_description: "How Neon Law makes routine legal services affordable without sacrificing correctness, and what a licensed attorney in the loop actually buys you.",
     service_description: "Flat-fee legal services from Neon Law, with every price published.",
     portal_only: false,
+    brand_key: BrandKey::Neon,
 };
 
 /// The placeholder `delete-your-data` house brand. Every value here is provisional —
@@ -499,6 +507,7 @@ pub static DELETE_YOUR_DATA_BRANDING: Branding = Branding {
     mission_description: "Placeholder mission copy for the DeleteYourData.com house brand.",
     service_description: "Placeholder service copy for the DeleteYourData.com house brand.",
     portal_only: false,
+    brand_key: BrandKey::DeleteYourData,
 };
 
 /// A closed key naming which house brand a request resolves to. Distinct
@@ -766,6 +775,9 @@ impl Branding {
             mission_description,
             service_description,
             portal_only: manifest.portal_only,
+            // A mounted manifest always replaces the default brand's
+            // identity, never its registry slot.
+            brand_key: BrandKey::Neon,
         }))
     }
 }
@@ -853,6 +865,13 @@ pub fn support_domain() -> &'static str {
 #[must_use]
 pub fn portal_only() -> bool {
     current().portal_only
+}
+
+/// The registry key of the request-scoped `Branding` — which per-brand
+/// assets (the tokens stylesheet) this request's chrome should link.
+#[must_use]
+pub fn brand_key() -> BrandKey {
+    current().brand_key
 }
 
 /// The firm's published voice line from request-scoped branding.
@@ -1717,5 +1736,33 @@ mod tests {
             DEFAULT_BRANDING.firm.logo_href,
             DELETE_YOUR_DATA_BRANDING.firm.logo_href
         );
+    }
+
+    /// Every compiled `Branding` carries the registry key that produced it, so
+    /// a caller resolving per-brand assets (the tokens stylesheet) can recover
+    /// the key from the scoped value alone — it does not have to be threaded
+    /// alongside `Branding` everywhere `Branding` already travels.
+    #[test]
+    fn every_branding_carries_its_own_registry_key() {
+        assert_eq!(DEFAULT_BRANDING.brand_key, BrandKey::Neon);
+        assert_eq!(
+            DELETE_YOUR_DATA_BRANDING.brand_key,
+            BrandKey::DeleteYourData
+        );
+    }
+
+    /// A mounted white-label manifest replaces the *default* brand's identity,
+    /// never the key: it always renders in the `Neon` registry slot, the same
+    /// slot `BrandKey::Neon` resolves through [`BrandKey::resolve_branding`].
+    #[tokio::test]
+    async fn a_mounted_manifest_still_carries_the_neon_key() {
+        let manifest: BrandManifest =
+            serde_yaml::from_str("version: 1\nbrand:\n  firm: Acme Law\n").unwrap();
+        let branding = Branding::from_manifest(&manifest);
+        assert_eq!(branding.brand_key, BrandKey::Neon);
+        scope(branding, async {
+            assert_eq!(super::brand_key(), BrandKey::Neon);
+        })
+        .await;
     }
 }

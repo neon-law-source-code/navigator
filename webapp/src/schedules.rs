@@ -135,6 +135,10 @@ pub fn resolve_notice(value: Option<&str>) -> Option<ScheduleNotice> {
 /// carry, the viewer's tier, and the resolved `?notice=` flash.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct SchedulesView {
+    /// The resolved brand's tokens stylesheet href, so the page wears
+    /// its own palette rather than the firm's on a non-default host.
+    #[serde(default)]
+    pub tokens_href: String,
     pub csrf_token: String,
     pub role: ViewerRole,
     #[serde(default)]
@@ -174,6 +178,7 @@ pub async fn get_schedules() -> Result<SchedulesView, ServerFnError> {
     .await?;
 
     Ok(SchedulesView {
+        tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
         firm_name: crate::app_chrome::firm_name_from_context().await,
         csrf_token,
         role,
@@ -219,6 +224,7 @@ fn schedules_body(view: &SchedulesView) -> Element {
     rsx! {
         document::Title { "{view.firm_name} | Lawyer | Cron schedules" }
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
+        document::Stylesheet { href: "{view.tokens_href}" }
         nav { class: "lawyer-nav",
             a { class: "nav-link", href: "/app/projects", "Portal" }
             if view.role.is_lawyer_tier() {
@@ -280,6 +286,7 @@ mod tests {
 
     fn view() -> SchedulesView {
         SchedulesView {
+            tokens_href: String::new(),
             firm_name: "Neon Law".to_string(),
             csrf_token: "tok-9".into(),
             role: ViewerRole::Lawyer,

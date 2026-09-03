@@ -56,6 +56,10 @@ pub struct PlaybookRow {
 /// tier. No CSRF token — the rows carry only an Edit link, no `POST` form.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct PlaybookListView {
+    /// The resolved brand's tokens stylesheet href, so the page wears
+    /// its own palette rather than the firm's on a non-default host.
+    #[serde(default)]
+    pub tokens_href: String,
     pub rows: Vec<PlaybookRow>,
     pub sort: String,
     pub role: ViewerRole,
@@ -136,6 +140,7 @@ pub async fn get_playbook_list() -> Result<PlaybookListView, ServerFnError> {
     });
 
     Ok(PlaybookListView {
+        tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
         firm_name: crate::app_chrome::firm_name_from_context().await,
         rows,
         sort,
@@ -196,6 +201,7 @@ fn playbook_list_body(view: &PlaybookListView) -> Element {
     rsx! {
         document::Title { "{view.firm_name} | Lawyer | Playbooks" }
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
+        document::Stylesheet { href: "{view.tokens_href}" }
         LawyerNav { role }
         main { id: "playbooks", class: "nav-theme",
             header { class: "page-header",
@@ -247,6 +253,10 @@ fn playbook_list_body(view: &PlaybookListView) -> Element {
 /// token, the viewer's tier, and any values a refused create bounced back.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct PlaybookNewView {
+    /// The resolved brand's tokens stylesheet href, so the page wears
+    /// its own palette rather than the firm's on a non-default host.
+    #[serde(default)]
+    pub tokens_href: String,
     pub companies: Vec<CompanyChoice>,
     pub csrf_token: String,
     pub role: ViewerRole,
@@ -300,6 +310,7 @@ pub async fn get_playbook_new_form() -> Result<PlaybookNewView, ServerFnError> {
     let companies = company_choices(&surreal).await?;
 
     Ok(PlaybookNewView {
+        tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
         firm_name: crate::app_chrome::firm_name_from_context().await,
         companies,
         csrf_token,
@@ -359,6 +370,7 @@ fn playbook_new_body(view: &PlaybookNewView) -> Element {
     rsx! {
         document::Title { "{view.firm_name} | Lawyer | Playbooks | Add playbook" }
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
+        document::Stylesheet { href: "{view.tokens_href}" }
         LawyerNav { role }
         main { id: "playbook-new", class: "nav-theme",
             if let Some(error) = error.as_ref() {
@@ -392,6 +404,10 @@ pub struct PlaybookFields {
 /// viewer's tier, and any `?error=` flash.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct PlaybookEditView {
+    /// The resolved brand's tokens stylesheet href, so the page wears
+    /// its own palette rather than the firm's on a non-default host.
+    #[serde(default)]
+    pub tokens_href: String,
     pub id: String,
     pub fields: Option<PlaybookFields>,
     pub csrf_token: String,
@@ -466,6 +482,7 @@ pub async fn get_playbook_edit_form() -> Result<PlaybookEditView, ServerFnError>
     }
 
     Ok(PlaybookEditView {
+        tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
         firm_name: crate::app_chrome::firm_name_from_context().await,
         id: id.to_string(),
         fields,
@@ -508,6 +525,7 @@ fn playbook_edit_body(view: &PlaybookEditView) -> Element {
 
     rsx! {
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
+        document::Stylesheet { href: "{view.tokens_href}" }
         LawyerNav { role }
         main { id: "playbook-edit", class: "nav-theme",
             if let Some(error) = error.as_ref() {
@@ -642,6 +660,7 @@ mod tests {
     #[test]
     fn the_empty_list_points_at_the_create_form() {
         let html = dioxus_ssr::render_element(playbook_list_body(&PlaybookListView {
+            tokens_href: String::new(),
             firm_name: "Neon Law".to_string(),
             rows: vec![],
             sort: String::new(),
@@ -654,6 +673,7 @@ mod tests {
     #[test]
     fn a_listed_playbook_shows_its_company_count_and_edit_link() {
         let html = dioxus_ssr::render_element(playbook_list_body(&PlaybookListView {
+            tokens_href: String::new(),
             firm_name: "Neon Law".to_string(),
             rows: vec![row("Acme Inc", "Vendor MSA", 4, true)],
             sort: String::new(),
@@ -695,6 +715,7 @@ mod tests {
         // blank textarea would cost the attorney every line they entered.
         let typed = "Liability | mutual cap | 2x fees | uncapped | critical";
         let html = dioxus_ssr::render_element(playbook_new_body(&PlaybookNewView {
+            tokens_href: String::new(),
             firm_name: "Neon Law".to_string(),
             companies: vec![CompanyChoice {
                 id: COMPANY.to_string(),
@@ -723,6 +744,7 @@ mod tests {
     fn the_edit_form_prefills_the_positions_under_fixed_context() {
         let stored = "Liability | mutual cap | 2x fees | uncapped | high";
         let html = dioxus_ssr::render_element(playbook_edit_body(&PlaybookEditView {
+            tokens_href: String::new(),
             firm_name: "Neon Law".to_string(),
             id: ID.to_string(),
             fields: Some(PlaybookFields {
@@ -747,6 +769,7 @@ mod tests {
     #[test]
     fn an_unresolvable_id_offers_no_form_to_submit() {
         let html = dioxus_ssr::render_element(playbook_edit_body(&PlaybookEditView {
+            tokens_href: String::new(),
             firm_name: "Neon Law".to_string(),
             id: ID.to_string(),
             fields: None,

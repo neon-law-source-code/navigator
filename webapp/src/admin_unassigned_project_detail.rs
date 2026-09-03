@@ -49,6 +49,10 @@ pub struct AdminUnassignedView {
     /// configures none.
     #[serde(default)]
     pub logo: Option<crate::components::AppLogo>,
+    /// The resolved brand's tokens stylesheet href, so the page wears
+    /// its own palette rather than the firm's on a non-default host.
+    #[serde(default)]
+    pub tokens_href: String,
     /// The deploy's firm name, for the document title.
     #[serde(default)]
     pub firm_name: String,
@@ -95,6 +99,7 @@ pub async fn get_admin_unassigned_project_detail() -> Result<AdminUnassignedView
         .map(|axum::Extension(role)| role)
         .unwrap_or_default();
     let logo = crate::app_chrome::app_logo_from_context().await;
+    let tokens_href = crate::app_chrome::app_tokens_href_from_context().await;
     let firm_name = crate::app_chrome::firm_name_from_context().await;
     let person_id = dioxus_fullstack_core::FullstackContext::extract::<
         axum::Extension<crate::portal_project_list::PersonId>,
@@ -152,6 +157,7 @@ pub async fn get_admin_unassigned_project_detail() -> Result<AdminUnassignedView
         csrf_token,
         role,
         logo,
+        tokens_href,
         firm_name,
     })
 }
@@ -186,6 +192,7 @@ pub fn AdminUnassignedProjectDetail() -> Element {
     rsx! {
         document::Title { "{view.name} — Project" }
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
+        document::Stylesheet { href: "{view.tokens_href}" }
         crate::components::AppNavbar {
             destinations: crate::app_chrome::app_destinations(view.role),
             logo: view.logo.clone(),

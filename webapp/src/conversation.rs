@@ -33,6 +33,10 @@ pub struct ConversationMessage {
 /// The rendered conversation — every field wasm-safe.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct ConversationView {
+    /// The resolved brand's tokens stylesheet href, so the page wears
+    /// its own palette rather than the firm's on a non-default host.
+    #[serde(default)]
+    pub tokens_href: String,
     pub project_id: String,
     pub project_name: String,
     pub messages: Vec<ConversationMessage>,
@@ -173,6 +177,7 @@ pub async fn get_conversation() -> Result<ConversationView, ServerFnError> {
         .collect();
 
     Ok(ConversationView {
+        tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
         project_id: project_id.to_string(),
         project_name: project.name,
         messages,
@@ -245,6 +250,7 @@ pub fn Conversation() -> Element {
     rsx! {
         document::Title { "Conversation" }
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
+        document::Stylesheet { href: "{view.tokens_href}" }
 
         main { id: "conversation", class: "nav-theme portal-conversation",
             nav { class: "portal-detail__back",

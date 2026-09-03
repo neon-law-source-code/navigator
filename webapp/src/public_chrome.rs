@@ -115,6 +115,11 @@ pub struct PublicChrome {
     /// footer publishes no version rather than an empty one.
     pub navigator_version: String,
     pub navigator_href: String,
+    /// The resolved brand's tokens stylesheet href — `/public/css/brand-
+    /// <key>-tokens.css`. Resolved from [`views::brand::brand_key`], the same
+    /// registry key that produced the rest of this chrome, so the palette
+    /// always matches the identity the header and footer already carry.
+    pub tokens_href: String,
     /// How many people have starred that repository, or `None` when the
     /// process has not fetched it yet.
     ///
@@ -143,12 +148,13 @@ pub struct PublicChrome {
 #[component]
 pub fn PublicFooter(chrome: PublicChrome) -> Element {
     rsx! {
-        // The firm's colour, hoisted here because this is the one place that
-        // already knows which brand the page wears. Navigator's shared tokens
-        // are teal; the firm is orange. Loading it here means every public page
-        // gets the palette — including `/contact`, `/blog`, and the legal
-        // pages, which hoist no marketing layer.
-        document::Stylesheet { href: crate::brand_style::BRAND_TOKENS_HREF }
+        // The resolved brand's colour, hoisted here because this is the one
+        // place that already knows which brand the page wears. Navigator's
+        // shared tokens are teal; each registered brand overrides the alias
+        // block. Loading it here means every public page gets the palette —
+        // including `/contact`, `/blog`, and the legal pages, which hoist no
+        // marketing layer.
+        document::Stylesheet { href: "{chrome.tokens_href}" }
         SiteFooterLegal {
             // The copyright names the legal person that renders the legal
             // services, resolved from the firm brand, so it is the same name at
@@ -321,6 +327,7 @@ fn chrome_for(brand: &views::brand::SiteBrand, utility: Vec<ChromeNavLink>) -> P
             .unwrap_or_default()
             .to_string(),
         navigator_href: "/navigator".to_string(),
+        tokens_href: crate::brand_style::brand_tokens_href(views::brand::brand_key().as_str()),
     }
 }
 
@@ -419,6 +426,35 @@ mod tests {
             "the firm footer carries the firm's mark: {out}"
         );
         assert!(!out.contains("site-footer--foundation"), "{out}");
+    }
+
+    /// `firm_public_chrome` resolves `tokens_href` from whichever brand the
+    /// `views::brand` task-local currently scopes — the mechanism a
+    /// `delete-your-data` request depends on for `PublicFooter` to hoist its
+    /// own palette rather than the firm's. `document::Stylesheet` hoists into
+    /// the document head via the full `dioxus-server` render pipeline, which
+    /// a bare `dioxus_ssr::render` over `PublicFooter` alone does not
+    /// exercise — `server::tests::routes` proves the head actually carries it
+    /// end to end; this proves the chrome the footer reads is correct.
+    #[tokio::test]
+    async fn firm_public_chrome_resolves_the_scoped_brands_tokens_href() {
+        use views::brand::{scope, DEFAULT_BRANDING, DELETE_YOUR_DATA_BRANDING};
+
+        scope(&DEFAULT_BRANDING, async {
+            assert_eq!(
+                firm_public_chrome(Vec::new()).tokens_href,
+                "/public/css/brand-neon-tokens.css"
+            );
+        })
+        .await;
+
+        scope(&DELETE_YOUR_DATA_BRANDING, async {
+            assert_eq!(
+                firm_public_chrome(Vec::new()).tokens_href,
+                "/public/css/brand-delete-your-data-tokens.css"
+            );
+        })
+        .await;
     }
 
     /// The footer's mark is a link to the firm's home, under any header.

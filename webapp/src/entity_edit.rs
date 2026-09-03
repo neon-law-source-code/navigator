@@ -31,6 +31,10 @@ pub struct EntityFields {
 /// jurisdiction options, the session CSRF token, and the viewer's tier.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct EntityEditView {
+    /// The resolved brand's tokens stylesheet href, so the page wears
+    /// its own palette rather than the firm's on a non-default host.
+    #[serde(default)]
+    pub tokens_href: String,
     pub id: String,
     pub fields: Option<EntityFields>,
     pub types: Vec<FormChoice>,
@@ -136,6 +140,7 @@ pub async fn get_entity_edit_form() -> Result<EntityEditView, ServerFnError> {
         .collect();
 
     Ok(EntityEditView {
+        tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
         firm_name: crate::app_chrome::firm_name_from_context().await,
         id: id.to_string(),
         fields,
@@ -190,6 +195,7 @@ fn entity_edit_body(view: &EntityEditView) -> Element {
 
     rsx! {
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
+        document::Stylesheet { href: "{view.tokens_href}" }
         nav { class: "lawyer-nav",
             a { class: "nav-link", href: "/app/projects", "Projects" }
             a { class: "nav-link", href: "/auth/logout", "Sign out" }
@@ -251,6 +257,7 @@ mod tests {
 
     fn view(fields: Option<EntityFields>) -> EntityEditView {
         EntityEditView {
+            tokens_href: String::new(),
             firm_name: "Neon Law".to_string(),
             id: ID.to_string(),
             fields,

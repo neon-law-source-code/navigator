@@ -79,6 +79,10 @@ pub struct ParticipationView {
     /// configures none.
     #[serde(default)]
     pub logo: Option<crate::components::AppLogo>,
+    /// The resolved brand's tokens stylesheet href, so the page wears
+    /// its own palette rather than the firm's on a non-default host.
+    #[serde(default)]
+    pub tokens_href: String,
     /// The deploy's firm name, for the document title. Resolved from the
     /// request-scoped branding rather than written into the copy, so a
     /// white-label deploy's tab reads its own name.
@@ -99,6 +103,7 @@ async fn hidden(role: ViewerRole) -> ParticipationView {
         found: false,
         role,
         logo: crate::app_chrome::app_logo_from_context().await,
+        tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
         ..ParticipationView::default()
     }
 }
@@ -247,6 +252,7 @@ async fn load(
         error: query.error,
         role,
         logo: crate::app_chrome::app_logo_from_context().await,
+        tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
     })
 }
 
@@ -405,6 +411,7 @@ fn render_participation(resource: &Resource<Result<ParticipationView, ServerFnEr
 
     rsx! {
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
+        document::Stylesheet { href: "{view.tokens_href}" }
         {participation_nav(&view)}
         main { id: "project-participation", class: "nav-theme",
             if view.found {
@@ -458,6 +465,7 @@ mod tests {
 
     fn view(role_id: Option<&str>, error: Option<&str>) -> ParticipationView {
         ParticipationView {
+            tokens_href: String::new(),
             firm_name: "Neon Law".to_string(),
             found: true,
             project_id: "00000000-0000-0000-0000-0000000000aa".to_string(),

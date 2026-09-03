@@ -35,6 +35,10 @@ pub const CREATE_PATH: &str = "/app/admin/people";
 /// flash, and the viewer's tier.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct PeopleNewView {
+    /// The resolved brand's tokens stylesheet href, so the page wears
+    /// its own palette rather than the firm's on a non-default host.
+    #[serde(default)]
+    pub tokens_href: String,
     pub csrf_token: String,
     pub error: Option<String>,
     pub role: ViewerRole,
@@ -74,6 +78,7 @@ pub async fn get_admin_people_new_form() -> Result<PeopleNewView, ServerFnError>
     let role = crate::admin_listing::require_admin().await?;
     let (csrf_token, error) = people_new_context().await;
     Ok(PeopleNewView {
+        tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
         firm_name: crate::app_chrome::firm_name_from_context().await,
         csrf_token,
         error,
@@ -132,6 +137,7 @@ fn render_people_new(resource: &Resource<Result<PeopleNewView, ServerFnError>>) 
     rsx! {
         document::Title { "{title}" }
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
+        document::Stylesheet { href: "{view.tokens_href}" }
         nav { class: "lawyer-nav",
             a { class: "nav-link", href: "/app/projects", "Projects" }
             a { class: "nav-link", href: "/auth/logout", "Sign out" }

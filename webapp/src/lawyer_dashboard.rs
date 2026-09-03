@@ -101,6 +101,10 @@ pub struct DashboardView {
     /// configures none.
     #[serde(default)]
     pub logo: Option<crate::components::AppLogo>,
+    /// The resolved brand's tokens stylesheet href, so the page wears
+    /// its own palette rather than the firm's on a non-default host.
+    #[serde(default)]
+    pub tokens_href: String,
     /// The deploy's firm name, for the document title. Resolved from the
     /// request-scoped branding rather than written into the copy, so a
     /// white-label deploy's tab reads its own name.
@@ -217,6 +221,7 @@ pub async fn get_lawyer_dashboard() -> Result<DashboardView, ServerFnError> {
         dir: crate::project_calendar::sort_dir(query.dir.as_deref()),
         role,
         logo: crate::app_chrome::app_logo_from_context().await,
+        tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
     })
 }
 
@@ -256,6 +261,7 @@ fn lawyer_dashboard_body(view: &DashboardView) -> Element {
             content: "Neon Law Navigator lawyer project overview.",
         }
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
+        document::Stylesheet { href: "{view.tokens_href}" }
         crate::components::AppNavbar {
             destinations: crate::app_chrome::app_destinations(role),
             logo: view.logo.clone(),
@@ -490,6 +496,7 @@ mod tests {
 
     fn view() -> DashboardView {
         DashboardView {
+            tokens_href: String::new(),
             firm_name: "Neon Law".to_string(),
             total_projects: 3,
             open_projects: 2,

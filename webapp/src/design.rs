@@ -573,6 +573,11 @@ fn NavigatorChromeShowcase() -> Element {
 pub struct SocialBranding {
     pub site_name: String,
     pub image: String,
+    /// The resolved brand's tokens stylesheet href, so `/design` paints each
+    /// swatch from the host's own palette rather than always the default's —
+    /// the whole point of the gallery being able to show a second brand's
+    /// identity "for free."
+    pub tokens_href: String,
 }
 
 /// Resolve the running deploy's social-share branding from the process brand
@@ -581,13 +586,11 @@ pub struct SocialBranding {
 /// absolute (scrapers drop relative URLs), so the firm's raster mark is resolved
 /// against the site origin server-side.
 #[server]
-// A server function must be `async` (the macro requires it); this one resolves
-// process branding synchronously, with nothing to await.
-#[allow(clippy::unused_async)]
 pub async fn design_social_branding() -> Result<SocialBranding, ServerFnError> {
     Ok(SocialBranding {
         site_name: views::brand::FIRM_BRAND.site_name.to_string(),
         image: views::assets::absolute_url(views::brand::FIRM_BRAND.social_image),
+        tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
     })
 }
 
@@ -605,6 +608,7 @@ fn SocialMetaSection() -> Element {
         _ => return rsx! {},
     };
     rsx! {
+        document::Stylesheet { href: "{branding.tokens_href}" }
         SocialMeta {
             title: format!("Design system — {}", branding.site_name),
             description: format!("{}'s living Dioxus design system.", branding.site_name),

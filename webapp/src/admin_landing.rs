@@ -57,6 +57,10 @@ pub struct AdminLandingView {
     /// `None` when the mounted brand configures no mark.
     #[serde(default)]
     pub logo: Option<crate::components::AppLogo>,
+    /// The resolved brand's tokens stylesheet href, so the page wears
+    /// its own palette rather than the firm's on a non-default host.
+    #[serde(default)]
+    pub tokens_href: String,
     /// The deploy's firm name, for the document title. Resolved from the
     /// request-scoped branding rather than written into the copy, so a
     /// white-label deploy's tab reads its own name.
@@ -74,6 +78,7 @@ pub async fn admin_landing_view() -> Result<AdminLandingView, ServerFnError> {
         firm_name: crate::app_chrome::firm_name_from_context().await,
         role,
         logo: crate::app_chrome::app_logo_from_context().await,
+        tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
     })
 }
 
@@ -106,6 +111,7 @@ pub fn admin_landing_body(view: &AdminLandingView) -> Element {
     rsx! {
         document::Title { "{view.firm_name} | Admin" }
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
+        document::Stylesheet { href: "{view.tokens_href}" }
         crate::components::AppNavbar {
             destinations: crate::app_chrome::app_destinations(role),
             logo: view.logo.clone(),
@@ -133,6 +139,7 @@ mod tests {
 
     fn html(role: ViewerRole) -> String {
         dioxus_ssr::render_element(admin_landing_body(&AdminLandingView {
+            tokens_href: String::new(),
             firm_name: "Neon Law".to_string(),
             role,
             logo: None,
@@ -204,6 +211,7 @@ mod tests {
     #[test]
     fn the_nav_renders_the_configured_brand_mark() {
         let with_mark = dioxus_ssr::render_element(admin_landing_body(&AdminLandingView {
+            tokens_href: String::new(),
             firm_name: "Neon Law".to_string(),
             role: ViewerRole::Admin,
             logo: Some(crate::components::AppLogo {

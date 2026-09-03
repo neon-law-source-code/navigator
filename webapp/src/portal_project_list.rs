@@ -52,6 +52,10 @@ pub struct ClientProjectsView {
     /// configures none.
     #[serde(default)]
     pub logo: Option<crate::components::AppLogo>,
+    /// The resolved brand's tokens stylesheet href, so the page wears
+    /// its own palette rather than the firm's on a non-default host.
+    #[serde(default)]
+    pub tokens_href: String,
     /// The deploy's own firm, for the document title. Resolved from
     /// request-scoped branding so a white-label portal names its operator.
     #[serde(default)]
@@ -115,6 +119,7 @@ pub async fn list_client_projects() -> Result<ClientProjectsView, ServerFnError>
         role,
         impersonation,
         logo: crate::app_chrome::app_logo_from_context().await,
+        tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
         firm_name: crate::app_chrome::firm_name_from_context().await,
     })
 }
@@ -144,6 +149,7 @@ pub fn ClientProjects() -> Element {
     rsx! {
         document::Title { "{view.firm_name} | Portal" }
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
+        document::Stylesheet { href: "{view.tokens_href}" }
         crate::components::ImpersonationBanner { view: view.impersonation.clone() }
         crate::components::AppNavbar {
             destinations: crate::app_chrome::app_destinations(view.role),

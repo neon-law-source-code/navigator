@@ -40,6 +40,10 @@ pub struct InjectedReask(pub ReaskData);
 /// Everything the page renders.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct ReaskView {
+    /// The resolved brand's tokens stylesheet href, so the page wears
+    /// its own palette rather than the firm's on a non-default host.
+    #[serde(default)]
+    pub tokens_href: String,
     pub data: ReaskData,
     pub csrf_token: String,
     pub role: ViewerRole,
@@ -70,6 +74,7 @@ pub async fn get_reask() -> Result<ReaskView, ServerFnError> {
     .unwrap_or_default();
 
     Ok(ReaskView {
+        tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
         firm_name: crate::app_chrome::firm_name_from_context().await,
         data,
         csrf_token,
@@ -121,6 +126,7 @@ fn reask_body(view: &ReaskView) -> Element {
     rsx! {
         document::Title { "{view.firm_name} | Lawyer | Notations | Re-collect flagged answers" }
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
+        document::Stylesheet { href: "{view.tokens_href}" }
         nav { class: "lawyer-nav",
             a { class: "nav-link", href: "/app/projects", "Portal" }
             if role.is_lawyer_tier() {
@@ -174,6 +180,7 @@ mod tests {
 
     fn view(flagged: &[(&str, &str)], note: Option<&str>) -> ReaskView {
         ReaskView {
+            tokens_href: String::new(),
             firm_name: "Neon Law".to_string(),
             data: ReaskData {
                 notation_id: NOTATION.to_string(),

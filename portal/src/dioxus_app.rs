@@ -190,11 +190,15 @@ async fn dioxus_document_head(req: Request, next: Next) -> Response {
     } else {
         ""
     };
+    let font_head: &str = match views::brand::brand_key() {
+        views::brand::BrandKey::Neon => &GORP_HEAD,
+        views::brand::BrandKey::DeleteYourData => &PLUS_JAKARTA_SANS_HEAD,
+    };
     let html = stamp_document_title(&stamp_html_lang(&rendered, lang), &path)
         .replace("<script>", &format!("<script nonce=\"{nonce}\">"))
         .replacen(
             "</head>",
-            &format!("{navigator_favicon}{}</head>", *GORP_HEAD),
+            &format!("{navigator_favicon}{font_head}</head>"),
             1,
         );
     let html = if *SAMPLE_MATTERS {
@@ -366,18 +370,31 @@ fn open_with_banner(html: &str, banner: &str) -> String {
 /// resolves against. `views` owns the declaration text consumed by the Dioxus
 /// browser surface.
 static GORP_HEAD: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-    gorp_head_fragment(
+    font_head_fragment(
+        "GORP Serif",
         &views::assets::asset_url("fonts/gorp-serif/GORPSerif-Regular.woff2"),
         &views::assets::asset_url("fonts/gorp-serif/GORPSerif-Bold.woff2"),
     )
 });
 
-/// Pure builder behind [`GORP_HEAD`], so tests exercise every asset-origin
-/// shape without stomping the process-wide env var. The preload `href` is
-/// HTML-escaped; the stylesheet body arrives already CSS-string-escaped from
-/// `views::layout`.
-fn gorp_head_fragment(regular_url: &str, bold_url: &str) -> String {
-    let faces = views::assets::gorp_font_face_css(regular_url, bold_url);
+/// DeleteYourData.com's Plus Jakarta Sans head fragment — the same
+/// bucket-served shape as [`GORP_HEAD`], for the one brand that wears a
+/// different face. [`dioxus_document_head`] picks between the two per the
+/// request's resolved [`views::brand::BrandKey`].
+static PLUS_JAKARTA_SANS_HEAD: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+    font_head_fragment(
+        "Plus Jakarta Sans",
+        &views::assets::asset_url("fonts/plus-jakarta-sans/PlusJakartaSans-Regular.woff2"),
+        &views::assets::asset_url("fonts/plus-jakarta-sans/PlusJakartaSans-Bold.woff2"),
+    )
+});
+
+/// Pure builder behind [`GORP_HEAD`] and [`PLUS_JAKARTA_SANS_HEAD`], so tests
+/// exercise every asset-origin shape without stomping the process-wide env
+/// var. The preload `href` is HTML-escaped; the stylesheet body arrives
+/// already CSS-string-escaped from `views::assets::font_face_css`.
+fn font_head_fragment(family: &str, regular_url: &str, bold_url: &str) -> String {
+    let faces = views::assets::font_face_css(family, regular_url, bold_url);
     format!(
         "<link rel=\"preload\" as=\"font\" type=\"font/woff2\" crossorigin href=\"{}\"><style>{faces}</style>",
         webapp::html_escape::escape_attr(regular_url),
@@ -3651,7 +3668,8 @@ mod tests {
     /// declaration, not the WOFF2 bytes.
     #[test]
     fn the_gorp_head_declares_both_faces_against_the_asset_origin() {
-        let fragment = gorp_head_fragment(
+        let fragment = font_head_fragment(
+            "GORP Serif",
             "https://storage.example.test/assets/fonts/gorp-serif/GORPSerif-Regular.woff2",
             "https://storage.example.test/assets/fonts/gorp-serif/GORPSerif-Bold.woff2",
         );
@@ -3673,7 +3691,8 @@ mod tests {
     /// direct builder escapes the attribute; this pins that both still apply.
     #[test]
     fn a_hostile_asset_origin_cannot_escape_the_head_fragment() {
-        let fragment = gorp_head_fragment(
+        let fragment = font_head_fragment(
+            "GORP Serif",
             "https://evil.test/x');}</style><script>alert(1)</script>",
             "https://evil.test/bold.woff2",
         );

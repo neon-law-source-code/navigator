@@ -43,11 +43,22 @@ pub fn css_single_quoted(value: &str) -> String {
     escaped
 }
 
+/// Two `@font-face` declarations (Regular 400, Bold 700) for `family`,
+/// resolved against `regular_url`/`bold_url` — the bucket-served shape every
+/// licensed web font family in this repository shares (GORP Serif, Plus
+/// Jakarta Sans). A brand's own font is a new call with its own family name
+/// and URLs, never a copy of this builder.
 #[must_use]
-pub fn gorp_font_face_css(regular_url: &str, bold_url: &str) -> String {
+pub fn font_face_css(family: &str, regular_url: &str, bold_url: &str) -> String {
+    let family = css_single_quoted(family);
     let regular_url = css_single_quoted(regular_url);
     let bold_url = css_single_quoted(bold_url);
-    format!("@font-face{{font-family:'GORP Serif';font-style:normal;font-weight:400;font-display:swap;src:url('{regular_url}') format('woff2')}}\n@font-face{{font-family:'GORP Serif';font-style:normal;font-weight:700;font-display:swap;src:url('{bold_url}') format('woff2')}}")
+    format!("@font-face{{font-family:'{family}';font-style:normal;font-weight:400;font-display:swap;src:url('{regular_url}') format('woff2')}}\n@font-face{{font-family:'{family}';font-style:normal;font-weight:700;font-display:swap;src:url('{bold_url}') format('woff2')}}")
+}
+
+#[must_use]
+pub fn gorp_font_face_css(regular_url: &str, bold_url: &str) -> String {
+    font_face_css("GORP Serif", regular_url, bold_url)
 }
 
 /// Width variants emitted for every photo, in ascending order. The
@@ -474,8 +485,31 @@ pub fn responsive_picture(slug: &str, sizes: &str) -> Option<ResponsivePicture> 
 #[cfg(test)]
 mod tests {
     use super::{
-        asset_url, find, join_base, join_site, validate_asset_base_url, Aspect, Theme, GALLERY,
+        asset_url, find, font_face_css, join_base, join_site, validate_asset_base_url, Aspect,
+        Theme, GALLERY,
     };
+
+    /// `font_face_css` emits both weights under the given family name, so a
+    /// second licensed brand font (DeleteYourData.com's Plus Jakarta Sans) is
+    /// a new call with its own family name and URLs, not a copy of GORP's
+    /// hard-coded `@font-face` builder.
+    #[test]
+    fn font_face_css_declares_both_weights_under_the_given_family() {
+        let css = font_face_css(
+            "Plus Jakarta Sans",
+            "https://assets.example.test/fonts/plus-jakarta-sans/PlusJakartaSans-Regular.woff2",
+            "https://assets.example.test/fonts/plus-jakarta-sans/PlusJakartaSans-Bold.woff2",
+        );
+        assert!(css.contains("font-family:'Plus Jakarta Sans'"), "{css}");
+        assert!(css.contains("font-weight:400"), "{css}");
+        assert!(css.contains("font-weight:700"), "{css}");
+        assert!(
+            css.contains(
+                "url('https://assets.example.test/fonts/plus-jakarta-sans/PlusJakartaSans-Regular.woff2')"
+            ),
+            "{css}"
+        );
+    }
 
     #[test]
     fn validate_accepts_the_public_default_and_blank() {

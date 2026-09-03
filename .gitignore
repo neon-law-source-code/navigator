@@ -74,6 +74,11 @@
 # committed to this open-source repository.
 /server/public/fonts/gorp-serif/*.woff2
 
+# DeleteYourData.com's Plus Jakarta Sans WOFF2 faces follow the same bucket
+# lane as GORP's, uploaded by `navigator ops assets fonts upload --family
+# plus-jakarta-sans` — see `docs/assets.md`.
+/server/public/fonts/plus-jakarta-sans/*.woff2
+
 # Default local object-storage root (cloud::from_env fs backend)
 var/
 

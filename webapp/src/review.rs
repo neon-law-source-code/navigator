@@ -24,6 +24,10 @@ use crate::csrf::CsrfToken;
 /// The rendered review page — every field wasm-safe.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct ReviewView {
+    /// The resolved brand's tokens stylesheet href, so the page wears
+    /// its own palette rather than the firm's on a non-default host.
+    #[serde(default)]
+    pub tokens_href: String,
     pub project_id: String,
     pub project_code: String,
     pub doc_id: String,
@@ -125,6 +129,7 @@ pub async fn get_review() -> Result<ReviewView, ServerFnError> {
     };
 
     Ok(ReviewView {
+        tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
         project_id: project_id.to_string(),
         project_code: project.code,
         doc_id: doc.id.to_string(),
@@ -182,6 +187,7 @@ pub fn Review() -> Element {
     rsx! {
         document::Title { "{view.title}" }
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
+        document::Stylesheet { href: "{view.tokens_href}" }
         // The first-party custom-element script — same-origin, so `script-src
         // 'self'` allows it with no nonce; `defer` so it runs after the element
         // and its document body are in the DOM.

@@ -1,7 +1,0 @@
-/* The firm's colour layer.
-   Deliberately empty of overrides: Neon Law wears the shared teal that
-   `tokens.css` already defines, the same teal the NL mark is drawn in.
-   One brand, one colour.
-   The file stays — `webapp::brand_style::BRAND_TOKENS_HREF` links it on every
-   firm page — so a future deployment that needs its own palette has the seam
-   without a route change. A white-label bundle overrides here. */

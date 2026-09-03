@@ -67,6 +67,10 @@ pub struct DocumentDetailView {
     /// configures none.
     #[serde(default)]
     pub logo: Option<crate::components::AppLogo>,
+    /// The resolved brand's tokens stylesheet href, so the page wears
+    /// its own palette rather than the firm's on a non-default host.
+    #[serde(default)]
+    pub tokens_href: String,
     /// The deploy's firm name, for the document title. Resolved from the
     /// request-scoped branding rather than written into the copy, so a
     /// white-label deploy's tab reads its own name.
@@ -88,6 +92,7 @@ async fn load() -> Result<DocumentDetailView, ServerFnError> {
     // Both refusal bodies render the navbar, so the mark is resolved before the
     // first early return rather than only on the happy path.
     let logo = crate::app_chrome::app_logo_from_context().await;
+    let tokens_href = crate::app_chrome::app_tokens_href_from_context().await;
     let firm_name = crate::app_chrome::firm_name_from_context().await;
     let missing = DocumentDetailView {
         firm_name: firm_name.clone(),
@@ -95,6 +100,7 @@ async fn load() -> Result<DocumentDetailView, ServerFnError> {
         failed: false,
         role,
         logo: logo.clone(),
+        tokens_href: tokens_href.clone(),
     };
     let failed = || {
         dioxus_fullstack_core::FullstackContext::commit_http_status(
@@ -107,6 +113,7 @@ async fn load() -> Result<DocumentDetailView, ServerFnError> {
             failed: true,
             role,
             logo: logo.clone(),
+            tokens_href: tokens_href.clone(),
         }
     };
 
@@ -205,6 +212,7 @@ async fn load() -> Result<DocumentDetailView, ServerFnError> {
         failed: false,
         role,
         logo,
+        tokens_href,
     })
 }
 
@@ -276,6 +284,7 @@ fn render_document(resource: &Resource<Result<DocumentDetailView, ServerFnError>
 
     rsx! {
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
+        document::Stylesheet { href: "{view.tokens_href}" }
         crate::components::AppNavbar {
             destinations: crate::app_chrome::app_destinations(role),
             logo: view.logo.clone(),

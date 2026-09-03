@@ -240,10 +240,8 @@ fn open_matter_form(view: &ProjectNewView) -> Element {
             .placeholder("fractional-gc")
             .help(
                 "Lowercase letters, digits, and single hyphens, starting and ending with a letter \
-                 or digit — no uppercase, no underscores, no spaces. Navigator appends a short \
-                 generated suffix to what you type here, so `fractional-gc` becomes something like \
-                 `fractional-gc-a1b2c3d4` — the matter's page, the client's portal, and the \
-                 lawyer-only repository name all become that exact word, chosen once and never \
+                 or digit — no uppercase, no underscores, no spaces. The matter's page, the client's portal, \
+                 and the lawyer-only repository name all become that exact word, chosen once and never \
                  changed. No edit form changes it later.",
             ),
         Field::select(
@@ -517,23 +515,27 @@ mod tests {
     /// The code is required at matter-open, immutable, and no edit form
     /// changes it later — so the rule and the consequence both belong on the
     /// field itself: a lawyer who learns the shape from a rejected submission
-    /// has already had to guess, and one who learns the generated suffix
+    /// has already had to guess, and one who learns the code is immutable
     /// later has already given a client a link.
     #[test]
-    fn the_code_field_states_its_shape_and_what_the_code_becomes() {
+    fn the_code_field_states_its_shape_and_that_the_code_is_immutable() {
         let html = render(&view(ProjectNewQuery::default()));
 
         for shape in ["Lowercase letters", "single hyphens", "no underscores"] {
             assert!(html.contains(shape), "the code's shape is unstated: {html}");
         }
         assert!(
-            html.contains("generated suffix"),
-            "the field does not say Navigator appends a generated suffix: {html}"
+            html.contains(
+                "matter&#39;s page, the client&#39;s portal, and the lawyer-only repository name",
+            ),
+            "the field does not explain what the code names: {html}"
         );
         assert!(
             html.contains("chosen once and never changed"),
             "the field does not say the resulting code is immutable: {html}"
         );
+        assert!(!html.contains("generated suffix"), "{html}");
+        assert!(!html.contains("a1b2c3d4"), "{html}");
     }
 
     #[test]

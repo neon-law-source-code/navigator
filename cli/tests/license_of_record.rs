@@ -81,7 +81,7 @@ const LICENSE: &str = "BUSL-1.1";
 /// outbound grant today, and the grant every published version becomes whatever
 /// the Firm later decides. BUSL's Covenants of Licensor oblige this to be
 /// GPL-2.0-or-later or something compatible with a later version of it, which
-/// Apache-2.0 satisfies the same way SurrealDB and Restate rely on for their
+/// Apache-2.0 satisfies the same way `SurrealDB` and `Restate` rely on for their
 /// own BUSL grants: the FSF and the Apache Software Foundation both treat
 /// Apache-2.0 as compatible with GPL-3.0, and GPL-3.0 is a later version of
 /// GPL-2.0. A version already published with `AGPL-3.0-only` as this parameter

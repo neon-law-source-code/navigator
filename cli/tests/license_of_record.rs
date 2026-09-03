@@ -39,10 +39,10 @@
 //! which is read against the party that drafted it. It now grants operation for
 //! evaluation, development, testing, and demonstration, anywhere, for so long
 //! as nothing relies on the result. `Change Date` is what stops the arrangement
-//! being permanent: each published version converts to `AGPL-3.0-only` four
-//! years on, per version, whatever happens to later ones. A change that kept
-//! the SPDX tag but lost either parameter would keep the label and move the
-//! deal, so both are asserted by value below.
+//! being permanent: each published version converts to `Apache-2.0` four years
+//! on, per version, whatever happens to later ones. A change that kept the SPDX
+//! tag but lost either parameter would keep the label and move the deal, so
+//! both are asserted by value below.
 //!
 //! This work was published under `AGPL-3.0-only` before this licence took
 //! effect, and every copy distributed then is still an `AGPL-3.0-only` copy,
@@ -81,8 +81,12 @@ const LICENSE: &str = "BUSL-1.1";
 /// outbound grant today, and the grant every published version becomes whatever
 /// the Firm later decides. BUSL's Covenants of Licensor oblige this to be
 /// GPL-2.0-or-later or something compatible with a later version of it, which
-/// AGPL-3.0 satisfies through GPL-3.0 § 13.
-const CHANGE_LICENSE: &str = "AGPL-3.0-only";
+/// Apache-2.0 satisfies the same way SurrealDB and Restate rely on for their
+/// own BUSL grants: the FSF and the Apache Software Foundation both treat
+/// Apache-2.0 as compatible with GPL-3.0, and GPL-3.0 is a later version of
+/// GPL-2.0. A version already published with `AGPL-3.0-only` as this parameter
+/// keeps that promise; this constant governs versions published from here on.
+const CHANGE_LICENSE: &str = "Apache-2.0";
 
 /// The grant itself: the Business Source License 1.1, parameters filled in and
 /// terms otherwise unaltered.
@@ -505,8 +509,9 @@ fn the_notice_puts_this_work_under_the_grant() {
 ///
 /// The § 13 history is asserted alongside it for the opposite reason. This work
 /// was Affero-licensed, that obligation is what a returning reader remembers,
-/// and the honest answer is that it is gone now and comes back at the Change
-/// Date. A notice silent on it reads as an oversight.
+/// and the honest answer is that it is gone now — and, because this version's
+/// Change License is `Apache-2.0` rather than `AGPL-3.0-only`, it does not come
+/// back at the Change Date either. A notice silent on it reads as an oversight.
 #[test]
 fn the_notice_draws_the_production_boundary_in_its_own_voice() {
     let flat = flat_lower(&read(NOTICE_FILE));

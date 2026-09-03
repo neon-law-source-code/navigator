@@ -27,7 +27,7 @@ Those belong in Navigator-managed systems and approved file stores. See
 
 Navigator is **source-available, not open source**, under the [Business Source License 1.1](LICENSE): `BUSL-1.1`. Read
 it, build it, fork it, redistribute it, and make any non-production use of it. **Production use needs a commercial
-licence** from Shook Law PLLC. Four years after a version is published, that version converts to `AGPL-3.0-only` and the
+licence** from Shook Law PLLC. Four years after a version is published, that version converts to `Apache-2.0` and the
 restriction ends for it permanently.
 
 Copyright (C) 2026 **Shook Law PLLC**.

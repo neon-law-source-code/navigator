@@ -12,8 +12,8 @@ operate this program anywhere, the cloud included, to evaluate, develop
 against, test, or demonstrate it, for so long as nobody relies on what it
 does.  Beyond that, production use requires a commercial licence from Shook
 Law PLLC.  Four years after a given version is published, that version
-converts to the GNU Affero General Public License, version 3 only, and the
-restriction ends for it permanently.
+converts to the Apache License, Version 2.0, and the restriction ends for it
+permanently.
 
 This program is distributed WITHOUT ANY WARRANTY; without even the implied
 warranty of MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, NON-INFRINGEMENT,
@@ -63,14 +63,22 @@ else's.
   Change Date is four years from the date the Licensed Work is published.  It
   applies per version, as BUSL's terms require: each release carries its own
   four-year clock, so a version published today converts four years from today
-  whatever happens to later ones.
+  whatever happens to later ones.  This parameter changes only prospectively:
+  a version already published with a different Change License keeps the one it
+  was published with, and this edit governs every version published from here
+  on.
 
-  Change License is AGPL-3.0-only.  BUSL's Covenants of Licensor oblige the
-  Change License to be GPL-2.0-or-later or something compatible with a later
-  version of it.  AGPL-3.0 qualifies through GPL-3.0 § 13, which expressly
-  permits combining a GPL-3.0 work with an AGPL-3.0 work — so AGPL-3.0-only code
-  can be included in a program with GPL-3.0 code, and GPL-3.0 is a later version
-  of GPL-2.0.
+  Change License is the Apache License, Version 2.0 (Apache-2.0), the same
+  parameter SurrealDB and Restate specify in their own BUSL grants.  BUSL's
+  Covenants of Licensor oblige the Change License to be GPL-2.0-or-later or
+  something compatible with a later version of it.  Apache-2.0 qualifies the
+  same way those two projects rely on: the Free Software Foundation and the
+  Apache Software Foundation both treat Apache-2.0 as compatible with GPL-3.0 —
+  Apache-2.0 code can be included in a program with GPL-3.0 code — and GPL-3.0
+  is a later version of GPL-2.0.  This project's earlier Change License was
+  AGPL-3.0-only, chosen for the same covenant reason through GPL-3.0 § 13's
+  express permission to combine a GPL-3.0 work with an AGPL-3.0 one; a version
+  already published under that parameter keeps it.
 
 ONE LICENCE, OVER EVERYTHING THE FIRM CAN LICENSE.  The Rust workspace, the
 `navigator` CLI, the build and deployment tooling, and the drafted legal prose
@@ -104,10 +112,14 @@ contact@neonlaw.org and ask before deploying rather than after.
 THE NETWORK CASE.  BUSL carries no network clause, and needs none: the
 deployment shape such a clause reaches — running a modified version as a service
 for other people — is production use, which BUSL permits only under a commercial
-licence.  When a version reaches its Change Date and converts to AGPL-3.0-only,
-§ 13 of that licence attaches to that version in full, obliging anyone who
-modifies it and runs it for remote users to offer those users the corresponding
-source.
+licence.  A version published with AGPL-3.0-only as its Change License still
+converts to it on that version's own Change Date, and § 13 of that licence
+attaches to that version in full: anyone who modifies it and runs it for remote
+users must offer those users the corresponding source.  A version published
+with this Change License converts to Apache-2.0 instead, which carries no
+equivalent clause.  No source-sharing duty attaches to anyone once that
+happens; the restriction on production use simply ends, permanently, for that
+version.
 
 GOVERNMENT FORMS ARE NOBODY'S HERE TO LICENSE.  The blank government PDFs under
 `templates/forms/` are works of the issuing state or federal agency.  The Firm

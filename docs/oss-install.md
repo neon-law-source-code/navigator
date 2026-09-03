@@ -24,10 +24,10 @@ use** and needs no permission. Running it as a law practice you charge clients f
 licence does not grant: the Additional Use Grant reaches evaluation, development, testing, and demonstration only, so
 that needs a commercial licence from the Firm first. Where you run it makes no difference either way — a cloud
 deployment nobody relies on is still non-production use, and on-prem operation somebody relies on is still not. Each
-version converts to `AGPL-3.0-only` four years after it is published, and from then on that version may be run in
-production by anyone — subject to § 13, which obliges an operator who modified it and lets clients reach it over a
-network to offer those users the corresponding source. See [`licensing.md`](licensing.md), and write to
-`contact@neonlaw.org` before deploying if you are unsure which side of the line you are on.
+version converts to `Apache-2.0` four years after it is published, and from then on that version may be run in
+production by anyone, modified, and redistributed — including keeping those modifications entirely private, since
+Apache-2.0 carries no source-sharing duty. See [`licensing.md`](licensing.md), and write to `contact@neonlaw.org` before
+deploying if you are unsure which side of the line you are on.
 
 Rename your deployment through the brand manifest rather than by editing sources: the NEON LAW marks are not licensed
 here, and that seam exists so a fork does not have to patch views to drop them.

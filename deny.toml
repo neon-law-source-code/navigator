@@ -43,9 +43,9 @@ exceptions = []
 # workspace is licensed out. A permissive inbound policy under a source-available
 # outbound grant is the combination that works — every license above may be
 # distributed inside this work, whereas the reverse would not hold. It has to
-# keep holding at the Change Date too: each version converts to AGPL-3.0-only
+# keep holding at the Change Date too: each version converts to Apache-2.0
 # four years on, so an inbound license that could not be distributed inside an
-# AGPL work would break then rather than now.
+# Apache-2.0 work would break then rather than now.
 # `publish = false` keeps the crates off crates.io, and `private.ignore` exempts
 # them from this check.
 private = { ignore = true }

@@ -24,7 +24,7 @@ tells you almost nothing.
 | Licensed Work | Neon Law Navigator | What is licensed |
 | Additional Use Grant | Unrelied-on evaluation, development, testing, and demonstration | Free operation |
 | Change Date | Four years from each version's publication | When the restriction ends, per version |
-| Change License | `AGPL-3.0-only` | What each version becomes |
+| Change License | `Apache-2.0` | What each version becomes |
 
 **The Additional Use Grant pins the free zone.** BUSL's base grant already permits copying, modification,
 redistribution, and *non-production use*; the Additional Use Grant is the slot a licensor uses to permit some **limited
@@ -47,13 +47,19 @@ three has cleared all three.
 **The Change Date runs per version.** Each published version carries its own four-year clock, so a version published
 today converts four years from today whatever happens to the ones after it. That is BUSL's own rule, not a choice: its
 terms say the licence "applies separately for each version" and that the change happens on the Change Date or the fourth
-anniversary of that version's first public distribution, whichever comes first.
+anniversary of that version's first public distribution, whichever comes first. **The Change License parameter itself
+changes only prospectively.** A version already published under a prior Change License keeps the one it was published
+with; editing this parameter governs every version published from here on, not the ones already out.
 
-**Why `AGPL-3.0-only` is a permitted Change License.** BUSL's first covenant obliges the Change License to be GPL-2.0 or
+**Why `Apache-2.0` is a permitted Change License.** BUSL's first covenant obliges the Change License to be GPL-2.0 or
 any later version, or something compatible with GPL-2.0 or a later version — where compatible means code under the
-Change License can be included in a program with GPL-licensed code. AGPL-3.0 is not GPL-2.0-compatible, but it does not
-need to be: GPL-3.0 is "a later version", and GPL-3.0 § 13 expressly permits combining a GPL-3.0 work with an AGPL-3.0
-work. So AGPL-3.0-only code can be included in a program with GPL-3.0 code, which is what the covenant asks.
+Change License can be included in a program with GPL-licensed code. Apache-2.0 is not GPL-2.0-compatible, but it does
+not need to be: GPL-3.0 is "a later version", and the Free Software Foundation and the Apache Software Foundation both
+treat Apache-2.0 as compatible with it — Apache-2.0 code can be included in a program with GPL-3.0 code, which is what
+the covenant asks. SurrealDB and Restate specify the same Change License under the same covenant in their own BUSL
+grants. This project's earlier Change License, `AGPL-3.0-only`, satisfied the covenant the same way, through GPL-3.0 §
+13's express permission to combine a GPL-3.0 work with an AGPL-3.0 one; a version already published under that parameter
+keeps it, per the Change Date rule above.
 
 ## Two files, and which one is the instrument
 
@@ -98,8 +104,9 @@ a stated licence untrue while the repository looked exactly the same.
 **What that costs, stated plainly.** A sole Licensor may stop publishing, or change these parameters, whenever it
 chooses; nothing here promises otherwise. What a reader can rely on is narrower and does not depend on the Firm's later
 goodwill, or on the Firm still existing: every copy already distributed keeps the terms it came with, and every version
-published under BUSL converts to `AGPL-3.0-only` on its own Change Date, because that conversion is a term of the
-licence each of those copies already carries.
+published under BUSL converts on its own Change Date — to `Apache-2.0`, or to `AGPL-3.0-only` for a version published
+while that was the Change License — because the conversion is a term of the licence each of those copies already
+carries.
 
 **The practical consequence** is the sentence to read if you read only one: read it, build it, fork it, change it, and
 redistribute it — none of that needs anyone's permission. Running it to deliver legal services to other people is
@@ -183,8 +190,8 @@ Three conditions ride along with it, and they are the ones a fork actually has t
 
 `deny.toml`'s allowlist is a different question. It governs what this workspace is willing to *consume*, which has
 nothing to do with how the workspace is licensed out. The property an inbound licence needs is that it can be
-distributed inside this work — and, because every version converts on its Change Date, inside an AGPL work four years
-later too.
+distributed inside this work — and, because every version converts on its Change Date, inside an Apache-2.0 work four
+years later too.
 
 ### Where the production line falls
 
@@ -209,22 +216,25 @@ worth reaching. Reliance inverts both.
 If your case does not obviously fall on one side, write to `contact@neonlaw.org` and ask before deploying rather than
 after. A question costs nothing; a production deployment discovered later is an awkward conversation for both parties.
 
-### Section 13 arrives at the Change Date
+### What happens at the Change Date
 
 **BUSL carries no network clause,** and needs none: the deployment shape such a clause reaches — running a modified
 version as a service for other people — is production use, which this licence grants only through a commercial licence.
 
-**When a version reaches its Change Date it becomes `AGPL-3.0-only`, and § 13 attaches to that version in full.** From
-then on, anyone who modifies that version and lets users interact with it remotely over a network must offer *those
-users* — the people using that operator's own instance — the corresponding source of what they are running. The duty
-runs in that one direction only.
+**A version already published with `AGPL-3.0-only` as its Change License still converts to it, and § 13 still attaches
+to that version in full.** From then on, anyone who modifies that version and lets users interact with it remotely over
+a network must offer *those users* — the people using that operator's own instance — the corresponding source of what
+they are running. The duty runs in one direction only: it does not reach an unmodified deployment, because the
+corresponding source is already here, and it does not reach client data, because § 13 obliges an offer of *the modified
+software* and a matter, a document, and a client's facts are not the software.
 
-Two things § 13 will still not do when it arrives:
-
-- **It does not reach an unmodified deployment.** Running a converted version as published carries no source obligation,
-  because the corresponding source is already here.
-- **It does not reach client data.** § 13 obliges you to offer *your modified software*. A matter, a document, and a
-  client's facts are not the software, and nothing in either licence asks for them.
+**A version published with this Change License converts to `Apache-2.0` instead, and carries no equivalent duty.**
+Apache-2.0 is a permissive licence: once a version reaches its Change Date, anyone may run it, modify it, and
+redistribute it — including keeping their own modifications entirely private, forever. No source-sharing obligation
+attaches to anyone at that point; the restriction on production use simply ends, permanently, for that version. That is
+the same outcome SurrealDB and Restate reach with their own BUSL grants, and it is a real trade against the version this
+project shipped with earlier: the software becomes unambiguously free at the Change Date, at the cost of never again
+obliging a modifier to share what they changed.
 
 ### What a fork owes, in order
 
@@ -235,8 +245,9 @@ Two things § 13 will still not do when it arrives:
    reliance, not where it runs.
 3. **Pass the licence on.** Every copy and derivative you convey is subject to it, and the recipient holds the same
    terms you do.
-4. **Offer your source to the users you operate it for** — once the version you are running has converted, per § 13
-   above.
+4. **Offer your source to the users you operate it for, if your version's Change License is `AGPL-3.0-only`** — once
+   that version has converted, per § 13 above. A version whose Change License is `Apache-2.0` owes nothing at the Change
+   Date; the restriction on production use simply ends.
 5. **Rename it.** Not a copyright obligation at all — see [Trademarks](#trademarks). The brand manifest
    (`views::brand_bundle`) is the seam.
 
@@ -272,13 +283,17 @@ publishing the prices: a legal system where only the well-resourced can afford c
 efficient in private.
 
 **Source-available is the promise this repository makes, and it is worth naming precisely.** The source is readable by
-anyone, nothing in the mechanism is secret, and every published version becomes `AGPL-3.0-only` four years on. The Firm
-sells the right to operate it in the meantime, and says so.
+anyone, nothing in the mechanism is secret, and every published version becomes `Apache-2.0` four years on (a version
+already carrying the earlier `AGPL-3.0-only` Change License keeps that promise instead). The Firm sells the right to
+operate it in the meantime, and says so.
 
-Four consequences follow, and they are the trade being made:
+Five consequences follow, and they are the trade being made:
 
 - **No trade-secret protection.** Anything published cannot be un-published, so no mechanism in this tree is a secret.
   BUSL restricts use, not reading.
+- **The end state is permissive, not copyleft.** Apache-2.0 asks nothing of a modifier once a version converts —
+  including one who never shares a line back. A version carrying the earlier `AGPL-3.0-only` Change License converts to
+  a copyleft licence instead, and § 13 attaches to it in full; see [Section 13](#what-happens-at-the-change-date).
 - **The confidentiality boundary is procedural.** A publication path exists, so the no-client-data rule is enforced by
   a load-bearing test on every pull request — see [`agent-workflows.md`](agent-workflows.md#no-client-data-in-the-repo).
 - **Forks are expected, and none of them owes this project anything.** Reading, building on, and redistributing

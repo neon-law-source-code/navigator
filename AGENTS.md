@@ -10,11 +10,12 @@ wording of ours belongs. **The parameter that matters operationally is the `Addi
 may run without buying anything: Navigator, anywhere including the cloud, to evaluate, develop against, test, or
 demonstrate it, for so long as it performs no work anyone relies on. Running it where somebody relies on what it does,
 and marketing to customers a product or service that relies on it, needs a commercial licence from the Firm. The test is
-reliance, not where the software runs. Each version converts to `AGPL-3.0-only` four years after it is published, and §
-13 then obliges an operator who modified that version to offer those users — its own remote users — the corresponding
-source. Copies distributed under the AGPL stay AGPL permanently. Outside contributions are **currently closed** — point
-anyone asking at `contact@neonlaw.org` — though the work in here assigns to the Firm. The marks are reserved. This
-monorepo holds one website — the firm at the root — and the delivery stack for legal services. See
+reliance, not where the software runs. Each version converts to `Apache-2.0` four years after it is published, matching
+what SurrealDB and Restate specify for their own BUSL grants — the restriction on production use simply ends, with no
+duty to share modifications ever attaching. A version already published with the `AGPL-3.0-only` Change License this
+project carried earlier keeps that parameter instead. Outside contributions are **currently closed** — point anyone
+asking at `contact@neonlaw.org` — though the work in here assigns to the Firm. The marks are reserved. This monorepo
+holds one website — the firm at the root — and the delivery stack for legal services. See
 [`docs/licensing.md`](docs/licensing.md).
 
 **Everything you write here is published.** The no-client-data rule below is what stands between a live legal practice

@@ -37,9 +37,9 @@ rust-version = "1.95"
 # non-production use, and every production use needs a commercial licence from
 # the Firm. The Additional Use Grant pins the free zone: you may run it anywhere
 # to evaluate, develop against, test, or demonstrate it, for so long as nothing
-# relies on the result. Each version converts to AGPL-3.0-only four years after it is
-# published. One grant covers the whole tree, `templates/` included — see
-# LICENSE.
+# relies on the result. Each version converts to Apache-2.0 four years after it is
+# published, matching SurrealDB and Restate's own BUSL grants. One grant covers
+# the whole tree, `templates/` included — see LICENSE.
 license = "BUSL-1.1"
 publish = false
 

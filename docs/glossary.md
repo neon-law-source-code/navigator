@@ -790,8 +790,8 @@ Short for **Neon Law Navigator** — the umbrella over this monorepo: the CLI (`
 is a **public, source-available repository — not open source**: one grant, `BUSL-1.1`, covers the whole tree including
 the legal prose under `templates/`. Evaluating, developing against, testing, and demonstrating it is free wherever you
 run it; production use — where somebody relies on the result — needs a commercial licence, and each version converts to
-`AGPL-3.0-only` four years after it is published. Outside contributions are closed for now, and work in here assigns to
-the Firm ([`LICENSE`](../LICENSE), [`NOTICE`](../NOTICE), [`licensing.md`](licensing.md)).
+`Apache-2.0` four years after it is published. Outside contributions are closed for now, and work in here assigns to the
+Firm ([`LICENSE`](../LICENSE), [`NOTICE`](../NOTICE), [`licensing.md`](licensing.md)).
 
 *Matter work product* produced from the templates belongs to the client and the matter; the *name and marks* — "Neon
 Law", "Navigator", "Neon Law Navigator", and the Neon Law logos — are reserved. **NEON LAW** is a registered trademark

@@ -146,9 +146,9 @@ This tree is licensed on the same terms as the rest of the repository, and delib
 carried in the same files, exactly like the code that renders them. Adapt them, redistribute them, and make any
 non-production use of them; using them where somebody relies on the result — delivering legal services to other people —
 is production use and needs a commercial licence from the Firm, as is marketing a product or service to customers that
-relies on them. Each version converts to `AGPL-3.0-only` four years after it is published. The prose and the state
-machine are the same file here, so a split licence would ask you to work out which half of a line you are editing; one
-grant means there is one answer. See [`../LICENSE`](../LICENSE) for the grant and [`../NOTICE`](../NOTICE) for what the
+relies on them. Each version converts to `Apache-2.0` four years after it is published. The prose and the state machine
+are the same file here, so a split licence would ask you to work out which half of a line you are editing; one grant
+means there is one answer. See [`../LICENSE`](../LICENSE) for the grant and [`../NOTICE`](../NOTICE) for what the
 copyright holder says about it.
 
 **The blank government PDFs under `forms/` are not the Firm's to license.** They are works of the issuing state or

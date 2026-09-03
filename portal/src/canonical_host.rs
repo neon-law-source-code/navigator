@@ -87,7 +87,6 @@ impl CanonicalHost {
     /// `PORT`, and the brand each one forces — what
     /// [`portal::hosting::run`](crate::hosting::run) binds additional
     /// listeners for.
-    #[must_use]
     pub fn local_ports(&self) -> impl Iterator<Item = u16> + '_ {
         self.local_ports.keys().copied()
     }

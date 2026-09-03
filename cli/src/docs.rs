@@ -1,20 +1,14 @@
 //! `navigator dev docs ...` — command-line access to published workspace docs.
 //!
-//! The glossary is parsed from `docs/glossary.md` at compile time so the CLI
-//! cannot drift from the website's published vocabulary.
+//! The glossary is the same vocabulary the website publishes at
+//! `/docs/glossary`: parsed from `docs/glossary.md` by
+//! [`store::glossary::parse`] so the CLI cannot drift from the page.
 
 use std::process::ExitCode;
 
+use store::glossary::{parse, Term, GLOSSARY_MD};
+
 use crate::palette;
-
-const GLOSSARY_MD: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/glossary.md"));
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct GlossaryEntry {
-    title: String,
-    slug: String,
-    body: String,
-}
 
 #[must_use]
 pub fn list() -> ExitCode {
@@ -51,63 +45,25 @@ pub fn glossary(term: Option<&str>) -> ExitCode {
     }
 }
 
-fn print_entry(entry: &GlossaryEntry) {
+fn print_entry(entry: &Term) {
     println!("## {}", palette::header(&entry.title));
     println!();
     println!("{}", entry.body.trim());
     println!();
 }
 
-fn matches_entry(entry: &GlossaryEntry, needle: &str) -> bool {
-    entry.title.eq_ignore_ascii_case(needle) || entry.slug == slugify_heading(needle)
+fn matches_entry(entry: &Term, needle: &str) -> bool {
+    entry.title.eq_ignore_ascii_case(needle) || entry.slug == store::glossary::slugify(needle)
 }
 
-fn glossary_entries() -> Vec<GlossaryEntry> {
-    let mut entries = Vec::new();
-    let mut current_title: Option<String> = None;
-    let mut current_body = String::new();
-    for line in GLOSSARY_MD.lines() {
-        if let Some(title) = line.strip_prefix("## ") {
-            if let Some(title) = current_title.replace(title.trim().to_string()) {
-                entries.push(entry(title, &current_body));
-                current_body.clear();
-            }
-        } else if current_title.is_some() {
-            current_body.push_str(line);
-            current_body.push('\n');
-        }
-    }
-    if let Some(title) = current_title {
-        entries.push(entry(title, &current_body));
-    }
-    entries
-}
-
-fn entry(title: String, body: &str) -> GlossaryEntry {
-    GlossaryEntry {
-        slug: slugify_heading(&title),
-        title,
-        body: body.trim().to_string(),
-    }
-}
-
-fn slugify_heading(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    for c in text.chars() {
-        if c.is_alphanumeric() {
-            out.extend(c.to_lowercase());
-        } else if c == ' ' {
-            out.push('-');
-        } else if c == '-' || c == '_' {
-            out.push(c);
-        }
-    }
-    out
+fn glossary_entries() -> Vec<Term> {
+    parse(GLOSSARY_MD)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{glossary_entries, slugify_heading, GLOSSARY_MD};
+    use super::glossary_entries;
+    use store::glossary::GLOSSARY_MD;
 
     #[test]
     fn parses_glossary_headings_as_entries() {
@@ -118,9 +74,9 @@ mod tests {
 
     #[test]
     fn heading_slug_matches_published_docs_anchor_shape() {
-        assert_eq!(slugify_heading("Lawyer Review"), "lawyer-review");
+        assert_eq!(store::glossary::slugify("Lawyer Review"), "lawyer-review");
         assert_eq!(
-            slugify_heading("Engagement / Retainer"),
+            store::glossary::slugify("Engagement / Retainer"),
             "engagement--retainer"
         );
     }
@@ -138,6 +94,56 @@ mod tests {
         assert_eq!(
             headings, alphabetical,
             "glossary headings must be alphabetical"
+        );
+    }
+
+    #[test]
+    fn glossary_terms_match_the_published_docs_page() {
+        let entries = glossary_entries();
+        let docs = portal::docs::loader::bundled();
+        let glossary = docs
+            .find("glossary")
+            .expect("glossary is published at /docs/glossary");
+        assert!(
+            !entries.is_empty(),
+            "the CLI glossary must parse the authored vocabulary"
+        );
+        let mut html_ids = Vec::new();
+        let mut rest = glossary.body_html.as_str();
+        while let Some(at) = rest.find("<h2 id=\"") {
+            rest = &rest[at + 8..];
+            let Some(end) = rest.find('"') else {
+                break;
+            };
+            html_ids.push(rest[..end].to_string());
+            rest = &rest[end + 1..];
+        }
+        let slugs: Vec<String> = entries.iter().map(|entry| entry.slug.clone()).collect();
+        assert_eq!(
+            slugs, html_ids,
+            "navigator dev docs glossary drifted from /docs/glossary"
+        );
+        for entry in &entries {
+            assert!(
+                glossary
+                    .body_html
+                    .contains(&format!("<h2 id=\"{}\">", entry.slug)),
+                "published /docs/glossary missing heading for `{}`",
+                entry.title
+            );
+        }
+    }
+
+    #[test]
+    fn docs_list_includes_the_glossary_page_from_the_bundled_index() {
+        let docs = portal::docs::loader::bundled();
+        assert!(
+            docs.docs().iter().any(|doc| doc.slug == "glossary"),
+            "the published docs index must include /docs/glossary"
+        );
+        assert_eq!(
+            docs.find("glossary").map(|doc| doc.title.as_str()),
+            Some("Glossary")
         );
     }
 }

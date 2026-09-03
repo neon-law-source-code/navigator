@@ -31,7 +31,8 @@ pub fn descriptor() -> Value {
         "name": "aida_list_projects",
         "description": "List the Projects (matters) the signed-in caller may see. A firm or \
                         client participant gets the matters they are on, each with id, name, \
-                        status, and the bound Entity's id and name when one is attached — use \
+                        status, brand (which house brand's storefront the matter was opened \
+                        through), and the bound Entity's id and name when one is attached — use \
                         this to pick a Project by name (e.g. \"ShookEstate\") before linking a \
                         Person or attaching a Notation. An owner or admin gets the oversight \
                         directory instead: every matter's code, name, status, and lawyer DRIs, \
@@ -86,6 +87,7 @@ pub async fn call(
                 "id": row.id,
                 "name": row.name,
                 "status": row.status,
+                "brand": row.brand,
                 "entity_id": row.entity_id,
                 "entity_name": entity_name(row.entity_id),
             })

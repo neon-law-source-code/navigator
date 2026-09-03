@@ -29,6 +29,10 @@ pub struct ClientProjectRow {
     pub code: String,
     pub name: String,
     pub status: String,
+    /// Which house brand's storefront this matter was opened through
+    /// (`store::projects::Project::brand`) — `"neon"` or
+    /// `"delete-your-data"` today.
+    pub brand: String,
 }
 
 /// The dashboard KPI summary: open vs closed matters.
@@ -110,6 +114,7 @@ pub async fn list_client_projects() -> Result<ClientProjectsView, ServerFnError>
             code: p.code,
             name: p.name,
             status: p.status,
+            brand: p.brand,
         })
         .collect();
 
@@ -169,6 +174,7 @@ pub fn ClientProjects() -> Element {
                     a { class: "portal-project-card", key: "{row.id}", href: "/app/projects/{row.code}",
                         div { class: "portal-project-card__name", "{row.name}" }
                         div { class: "portal-project-card__status", "Status: {row.status}" }
+                        div { class: "portal-project-card__brand", "Brand: {row.brand}" }
                     }
                 }
             }

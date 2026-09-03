@@ -1070,6 +1070,11 @@ struct SampleMatter {
     repository_url: &'static str,
     /// The deterministic document published when no built bundle is staged.
     portal_index: &'static str,
+    /// Which house brand's storefront this matter was opened through — a
+    /// closed key from `views::brand::BrandKey`. Two of the three matters
+    /// carry the default `"neon"`; one carries `"delete-your-data"` so the
+    /// local fixture exercises both registered values.
+    brand: &'static str,
 }
 
 /// Which seeded entity type a sample matter's client resolves to.
@@ -1107,6 +1112,7 @@ const SAMPLE_MATTERS: &[SampleMatter] = &[
         description: "trespass to land, and rescission of the doughnut instrument",
         repository_url: "https://github.com/neon-law-staging/sample-litigation",
         portal_index: SAMPLE_LITIGATION_PORTAL_INDEX,
+        brand: "neon",
     },
     SampleMatter {
         code: SAMPLE_TRANSACTIONAL_CODE,
@@ -1116,6 +1122,7 @@ const SAMPLE_MATTERS: &[SampleMatter] = &[
         description: "employment agreements and contract review on a monthly retainer",
         repository_url: "https://github.com/neon-law-staging/sample-transactional",
         portal_index: SAMPLE_TRANSACTIONAL_PORTAL_INDEX,
+        brand: "delete-your-data",
     },
     SampleMatter {
         code: SAMPLE_ESTATE_CODE,
@@ -1125,6 +1132,7 @@ const SAMPLE_MATTERS: &[SampleMatter] = &[
         description: "estate plan dividing the residue among nieces and nephews",
         repository_url: "https://github.com/neon-law-staging/sample-estate",
         portal_index: SAMPLE_ESTATE_PORTAL_INDEX,
+        brand: "neon",
     },
 ];
 
@@ -1464,6 +1472,7 @@ async fn open_sample_matter(
             matter.name,
             entity_id,
             matter.description,
+            matter.brand,
         )
         .await?;
 
@@ -1759,11 +1768,13 @@ async fn ensure_dev_project(
     name: &str,
     entity_id: Uuid,
     description: &str,
+    brand: &str,
 ) -> anyhow::Result<Uuid> {
     let input = crate::projects::NewProject {
         code: code.to_string(),
         name: name.to_string(),
         status: "open".to_string(),
+        brand: brand.to_string(),
         entity_id,
         description: Some(description.to_string()),
     };

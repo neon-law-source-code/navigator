@@ -5570,6 +5570,96 @@ async fn api_projects_open_authorizes_only_lawyer_and_admin() {
 }
 
 #[tokio::test]
+async fn api_projects_open_records_the_resolved_brand_and_ignores_a_posted_one() {
+    // `brand` is written by the server from the request's resolved `Host:`
+    // header (per `views::brand::registered_brand_key`), never from client
+    // input: opening on the `delete-your-data` host stores that key, opening
+    // on the default host stores `neon`, and a caller that posts its own
+    // `brand` field is ignored either way — the server's resolved value wins.
+    let (state, surreal) = state_with_engines().await;
+    store::seed::seed_canonical(&state.surreal, &state.storage)
+        .await
+        .unwrap();
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+
+    for (label, code, host, spoofed_brand, expected_brand) in [
+        (
+            "default host, no spoof",
+            "brand-default-no-spoof",
+            "www.neonlaw.com",
+            None,
+            "neon",
+        ),
+        (
+            "default host, spoofed delete-your-data",
+            "brand-default-spoofed",
+            "www.neonlaw.com",
+            Some("delete-your-data"),
+            "neon",
+        ),
+        (
+            "delete-your-data host, no spoof",
+            "brand-dyd-no-spoof",
+            "www.deleteyourdata.com",
+            None,
+            "delete-your-data",
+        ),
+        (
+            "delete-your-data host, spoofed neon",
+            "brand-dyd-spoofed",
+            "www.deleteyourdata.com",
+            Some("neon"),
+            "delete-your-data",
+        ),
+    ] {
+        let (client_id, entity_id) = open_matter_prereqs(&surreal).await;
+        let attester = seeded_actor(
+            &surreal,
+            &format!("{code}-attorney@neonlaw.com"),
+            store::persons::Role::Lawyer,
+        )
+        .await;
+        let (cookie, csrf) = session_cookie_and_csrf_for_person(&attester);
+        let mut req = serde_json::json!({
+            "name": format!("{label} matter"),
+            "code": code,
+            "client_id": client_id,
+            "entity_id": entity_id,
+            "attestation": true,
+        });
+        if let Some(spoofed) = spoofed_brand {
+            req["brand"] = serde_json::json!(spoofed);
+        }
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/app/api/projects")
+                    .header("content-type", "application/json")
+                    .header(header::HOST, host)
+                    .header(header::COOKIE, cookie)
+                    .header("x-csrf-token", csrf)
+                    .body(Body::from(req.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED, "{label}");
+        let body: serde_json::Value = serde_json::from_str(&body_string(resp).await).unwrap();
+        assert_eq!(body["brand"], expected_brand, "{label}: response body");
+
+        let stored = store::projects::all(&surreal)
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|p| p.name == format!("{label} matter"))
+            .unwrap_or_else(|| panic!("{label}: matter opened"));
+        assert_eq!(stored.brand, expected_brand, "{label}: stored row");
+    }
+}
+
+#[tokio::test]
 async fn api_projects_open_requires_the_attorneys_attestation() {
     // A matter open with no attestation is refused with its own error code, and
     // opens nothing.

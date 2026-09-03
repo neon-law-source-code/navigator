@@ -57,6 +57,17 @@ DEFINE FIELD OVERWRITE code ON project TYPE string
     ASSERT $value != 'new';
 DEFINE FIELD OVERWRITE name ON project TYPE string;
 DEFINE FIELD OVERWRITE status ON project TYPE string;
+-- Which house brand's storefront this matter was opened through — a closed
+-- key from `views::brand::BrandKey`, written by the server from the
+-- resolved request `Host:`, never accepted from a client-submitted form (see
+-- `docs/glossary.md#project`). `DEFAULT 'neon'` is write-time only: it
+-- supplies the value for rows written after this field was defined and does
+-- not reach rows written before it, which is why `ProjectRow.brand` reads as
+-- `option<string>` and collapses an absent value to `'neon'` in Rust rather
+-- than relying on this default alone.
+DEFINE FIELD OVERWRITE brand ON project TYPE string
+    ASSERT $value IN ['neon', 'delete-your-data']
+    DEFAULT 'neon';
 DEFINE FIELD OVERWRITE entity_id ON project TYPE record<entity>;
 DEFINE FIELD OVERWRITE description ON project TYPE option<string>;
 DEFINE FIELD OVERWRITE drive_folder_id ON project TYPE option<string>;

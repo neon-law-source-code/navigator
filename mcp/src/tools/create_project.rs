@@ -206,6 +206,9 @@ pub async fn call(
             client_id: client.id,
             entity_id,
             description: None,
+            // AIDA runs firm-side with no per-request host to resolve; it
+            // always opens against the firm's own default brand.
+            brand: "neon".to_string(),
             attestation: args.attestation.unwrap_or(false),
             acting_person_id: lawyer_dri,
         },

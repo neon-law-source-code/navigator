@@ -2201,6 +2201,11 @@ a.nav-link:hover {
   margin-top: 0.25rem;
 }
 
+.portal-project-card__brand {
+  color: var(--nav-color-text-muted);
+  font-size: 0.9rem;
+}
+
 .portal-project-card__service {
   margin-top: 0.5rem;
 }

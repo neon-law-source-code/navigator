@@ -1708,6 +1708,7 @@ mod tests {
                 code: format!("sample-matter-{}", uuid::Uuid::now_v7().simple()),
                 name: "Sample matter".into(),
                 status: "open".into(),
+                brand: "neon".into(),
                 entity_id,
                 description: None,
             },

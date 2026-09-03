@@ -1123,6 +1123,7 @@ async fn open_project(
         client_id: input.client_id,
         entity_id: input.entity_id,
         description: input.description,
+        brand: views::brand::brand_key().as_str().to_string(),
         attestation: input.attestation,
         acting_person_id: acting,
     };

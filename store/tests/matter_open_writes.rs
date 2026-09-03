@@ -61,6 +61,7 @@ async fn opening_a_matter_writes_the_project_two_participations_and_the_attestat
             client_id,
             entity_id,
             description: Some("Delaware LLC formation.".into()),
+            brand: "neon".to_string(),
             attestation: true,
             acting_person_id,
         },

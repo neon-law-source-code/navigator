@@ -783,6 +783,94 @@ fn no_document_promises_a_contributor_keeps_the_copyright() {
     );
 }
 
+/// No workshop deck attributes the grant to a foundation.
+///
+/// The defect this catches is one that shipped. The deck that teaches a room how
+/// to stand Navigator up opened by telling them a *foundation* ran it and gave
+/// the recipe away. The Firm is the copyright holder and the sole Licensor, so a
+/// deck that hands that role to a nonprofit sends a reader who wants a
+/// production licence to an organization that cannot grant one — and the retired
+/// nonprofit it evoked cannot grant anything at all, because it no longer exists.
+///
+/// [`no_file_contains_the_retired_org_display_name`] already sweeps every file in
+/// the tree for that nonprofit's display name as a contiguous phrase, and this
+/// guard deliberately does not repeat it. **The shipped sentence never wrote the
+/// display name.** It said "the Foundation" and left the room to supply the rest,
+/// which is exactly how it survived a tree-wide sweep for the full name and had
+/// to be found by reading instead. The unqualified reference is the property
+/// here, and it is the one nothing else checks.
+///
+/// Scoped to the workshop tree rather than to every Markdown document, because
+/// the rest of the tree has reason to discuss other people's foundations and a
+/// deck is where the ambiguity costs the most: it is read aloud, to a room, by
+/// someone who is usually not its author and cannot annotate what they meant.
+///
+/// Two carve-outs for the ordinary English noun rather than an organization —
+/// `foundation(s) of` and `foundational`. A named third party is allowed through
+/// [`OTHER_FOUNDATIONS`]; every other mention has to say whose foundation it is.
+///
+/// **This is the absence half only.** A companion assertion that a deck *states*
+/// the licence position belongs with the copy that states it. That sentence has
+/// not been written yet, and pinning the present silence would fix the wrong
+/// invariant — so the presence half is left out on purpose, not by oversight.
+#[test]
+fn no_workshop_deck_attributes_the_grant_to_a_foundation() {
+    /// Foundations that belong to somebody else, which a deck may name.
+    ///
+    /// A deck comparing governance models has every reason to reach for one of
+    /// these. Extend this list rather than dropping the qualifier from the prose:
+    /// the qualifier is the whole of what makes the reference unambiguous.
+    const OTHER_FOUNDATIONS: [&str; 7] = [
+        "rust foundation",
+        "linux foundation",
+        "apache software foundation",
+        "free software foundation",
+        "python software foundation",
+        "mozilla foundation",
+        "eclipse foundation",
+    ];
+
+    /// Matched against lowercased prose, so the capitalized and spoken-aside
+    /// forms are one case rather than two.
+    const NEEDLE: &str = "foundation";
+
+    let decks = workshop_decks();
+
+    // A walk that inspects nothing passes forever. The decks are this guard's
+    // whole subject, so finding none is a broken guard rather than a clean tree.
+    assert!(
+        !decks.is_empty(),
+        "no workshop deck was found under `server/content/workshops/`; this \
+         guard is reading the wrong tree and is proving nothing"
+    );
+
+    let mut offenders = Vec::new();
+    for path in &decks {
+        let rel = repository_relative_path(path);
+        let flat = unemphasized(&fs::read_to_string(path).unwrap_or_default());
+        for (at, _) in flat.match_indices(NEEDLE) {
+            let upto = &flat[..at + NEEDLE.len()];
+            if OTHER_FOUNDATIONS.iter().any(|named| upto.ends_with(named)) {
+                continue;
+            }
+            let rest = &flat[at + NEEDLE.len()..];
+            if rest.starts_with("al") || rest.trim_start_matches('s').starts_with(" of ") {
+                continue;
+            }
+            offenders.push(format!("{rel}: …{}…", window(&flat, at, NEEDLE.len())));
+        }
+    }
+
+    assert!(
+        offenders.is_empty(),
+        "`{OWNER}` is the copyright holder and the sole Licensor, so a workshop \
+         deck names the Firm rather than a foundation — and names a third \
+         party's foundation in full where the reference is genuinely theirs:\n  \
+         {}",
+        offenders.join("\n  ")
+    );
+}
+
 /// No document claims a second party may publish this work.
 ///
 /// This inverts an assertion that used to sit here, and the inversion is the
@@ -1436,6 +1524,20 @@ fn trademark_notices_name_the_firm_as_the_registrant() {
 /// wherever someone writes it rather than only in the terms files.
 fn markdown_documents() -> Vec<PathBuf> {
     walk_repo_files(|name| name.to_ascii_lowercase().ends_with(".md"))
+}
+
+/// Every workshop deck, discovered by walking the workshop tree.
+///
+/// Deliberately a walk rather than a hand-listed set. The guards over this tree
+/// have twice been written against one `const DECK`, and a pinned path only ever
+/// covers the file whose defect prompted it — the deck added next quarter
+/// inherits none of it. A deck is public the moment it lands, so the list that
+/// matters is whatever is on disk, not whatever a test remembered to name.
+fn workshop_decks() -> Vec<PathBuf> {
+    markdown_documents()
+        .into_iter()
+        .filter(|path| repository_relative_path(path).starts_with("server/content/workshops/"))
+        .collect()
 }
 
 /// Bundled notices named `LICENSE.txt`. Root [`LICENSE`] is the BUSL text and

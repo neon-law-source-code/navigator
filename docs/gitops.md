@@ -421,13 +421,18 @@ runs the in-tree command on every pull request, so the rule is proved on the bra
 
 Two consequences worth stating rather than discovering. **The checker is release N-1's**, so a change to `ops release
 check` itself governs from the release after the one that lands it — tolerable because the binary carries the rule while
-the run supplies the data, reading this commit's manifest and the current tag list. And **the binary is deliberately
-unpinned**, the one exception to [Pin every consumed image, binary, and
-action](#pin-every-consumed-image-binary-and-action): a checker that had to be pinned would freeze at one version and
-need a manual bump to ever move. `/releases/latest` is *not* how it is found — that endpoint excludes prereleases and
-every release here is one, so it answers 404; the job enumerates releases and takes the newest carrying the archive. A
-download that fails falls back to compiling from this tree, because a release lost to a blipped API is the failure this
-pipeline has already paid for once.
+the run supplies the data, reading this commit's manifest and the current tag list. That tolerance has one sharp edge:
+**a new OUTPUT is not governed a release late, it is silently absent.** An output the tree has just started reading is
+by definition one release N-1 never wrote, and an unwritten output is the empty string rather than an error — which is
+how `26.9.3` skipped its Homebrew hand-off. So the `checker` step no longer trusts a `--help` probe alone: it makes the
+candidate binary write the outputs into a scratch file and falls back to a source build when any key the workflow reads
+is missing. `RELEASE_OUTPUTS` on that step names the set, and `cli/tests/deploy_workflow.rs` holds it to the
+`release-version` job's declared outputs so the two cannot drift. And **the binary is deliberately unpinned**, the one
+exception to [Pin every consumed image, binary, and action](#pin-every-consumed-image-binary-and-action): a checker that
+had to be pinned would freeze at one version and need a manual bump to ever move. `/releases/latest` is *not* how it is
+found — that endpoint excludes prereleases and every release here is one, so it answers 404; the job enumerates releases
+and takes the newest carrying the archive. A download that fails falls back to compiling from this tree, because a
+release lost to a blipped API is the failure this pipeline has already paid for once.
 
 The version threads into every image build as the `RELEASE_TAG` build-arg, which each Containerfile turns into the
 runtime environment variable `NAVIGATOR_RELEASE_TAG`.
@@ -538,19 +543,25 @@ because a prerelease must not present itself as the latest version to someone br
 | --- | --- | --- | --- |
 | GHCR images and CLI archives | published | published | published |
 | GitHub Release | latest | flagged `--prerelease` | flagged `--prerelease` |
-| Homebrew tap | bumped | bumped | not dispatched |
+| Homebrew tap | bumped | bumped | bumped |
 
 Which versions count as prereleases is no longer a spelling rule the workflow knows: `release check` reports it from
 `Version::pre`, so `-hotfix.3` and `-rc.1` are both flagged.
 
-**The tap is the one surface that reads the prerelease LABEL rather than the flag**, and it is the only gate in
-`deploy.yml` that narrows below `publishable`. The tap's own `bump` and `test` workflows accept `YY.M.D` and
-`YY.M.D-hotfix.N` and refuse everything else, so a release candidate is not a tag the tap deprioritises — it is one the
-tap will not take at all. A deploy that dispatched it anyway held a release-candidate policy neither component acting on
-that dispatch shared: `26.8.30-rc.1` published on 2026-08-29, the bump failed 27 seconds later on the tap's guard, and
-the deploy then spent an hour and a half waiting on a formula nothing was going to move. `release check` answers this as
-`tap_follows`, from the version it has already parsed, so no shape pattern is transcribed into the workflow — see
-`cli/src/release.rs`, which holds the release grammar precisely because four hand-written copies of it once disagreed.
+**No gate in `deploy.yml` narrows below `publishable` any more**, and the round trip that removed the one that did is
+worth keeping. The tap's own `bump` and `test` workflows used to accept `YY.M.D` and `YY.M.D-hotfix.N` and refuse
+everything else, so a release candidate was not a tag the tap deprioritised — it was one the tap would not take at all.
+A deploy that dispatched it anyway held a release-candidate policy neither component acting on that dispatch shared:
+`26.8.30-rc.1` published on 2026-08-29, the bump failed 27 seconds later on the tap's guard, and the deploy then spent
+an hour and a half waiting on a formula nothing was going to move. The fix was a second condition, `tap_follows`.
+
+**That condition then cost `26.9.3` its bump, which is the more useful lesson.** It was added on 2026-09-02; `26.9.3`
+released the next day, and the checker binary the deploy runs was `26.9.2` — published before the output existed. An
+undeclared or unwritten `needs.<job>.outputs.<name>` evaluates to the empty string rather than failing, so the gate read
+false, `release-homebrew-tap` skipped, and `brew install` served a version two releases behind for a day with every job
+in the run green. The tap accepts `-rc.N` as of `homebrew-navigator#9`, so the condition is gone and the shape question
+lives in the component that acts on it. **A gate that narrows below `publishable` has to earn its place, because its
+failure mode is a silent skip rather than a red run.**
 
 **A hotfix still reaches the tap, and that is load-bearing.** The formula holds exactly one version and every `brew
 install` resolves to it, so the version it holds has to be the newest build that exists — not the newest build of a

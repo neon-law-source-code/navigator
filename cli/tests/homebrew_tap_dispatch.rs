@@ -333,57 +333,46 @@ fn a_tap_that_never_bumps_fails_the_release() {
          or the job dies on the clock instead of reporting the stale formula"
     );
 }
-/// A RELEASE CANDIDATE IS NOT DISPATCHED, and this is the live bug it closes.
+/// EVERY PUBLISHABLE RELEASE IS DISPATCHED, and the gate says so by holding
+/// exactly one condition.
 ///
-/// The tap's `bump` and `test` workflows both accept `YY.M.D` and
-/// `YY.M.D-hotfix.N` and refuse everything else, so a deploy holding no shape
-/// filter held a different release-candidate policy from the two components
-/// that act on its dispatch. `26.8.30-rc.1` published on 2026-08-29, the bump
-/// failed 27 seconds later on the tap's own guard, and this job then burned
-/// 1h39m26s waiting on a formula nothing was going to move. It recurred on
-/// every release candidate.
+/// This narrowed once and cost two releases. The tap's `bump` and `test`
+/// workflows accepted `YY.M.D` and `YY.M.D-hotfix.N` and refused a release
+/// candidate, so `26.8.30-rc.1` was dispatched into a bump that failed 27
+/// seconds later and a release that waited 1h39m26s on a formula nothing was
+/// going to move. The answer at the time was a second condition,
+/// `tap_follows`.
+///
+/// That condition then cost `26.9.3` its bump outright. It was added on
+/// 2026-09-02; `26.9.3` released the next day, the checker binary `deploy.yml`
+/// runs was `26.9.2` and predated the output, `needs...outputs.tap_follows`
+/// resolved to the empty string, and this job skipped on a green run. `brew
+/// install` served a version two releases behind for a day.
+///
+/// The tap accepts `-rc.N` now (`homebrew-navigator#9`), so the shape question
+/// is settled where it belongs — in the tap — and this job asks only whether a
+/// release happened. A second `needs.<job>.outputs.<name>` condition here is
+/// refused rather than reviewed: its failure mode is a silent skip, not a red
+/// run.
 #[test]
-fn a_release_candidate_is_not_dispatched_to_the_tap() {
+fn every_publishable_release_is_dispatched_to_the_tap() {
     let gate = deploy_job(JOB)["if"]
         .as_str()
         .expect("`release-homebrew-tap` must declare an `if:` gate")
         .to_string();
 
     assert!(
-        gate.contains("needs.release-version.outputs.tap_follows == 'true'"),
-        "`{JOB}` must not dispatch a tag shape the tap refuses — without this gate a release \
-         candidate fails the release over a bump that was never going to run. Got: {gate:?}"
+        gate.contains("needs.release-version.outputs.publishable == 'true'"),
+        "`{JOB}` must dispatch exactly when a release happened. Got: {gate:?}"
     );
-}
 
-/// `tap_follows` is a real output, not a name that quietly resolves to empty.
-///
-/// A `needs.<job>.outputs.<name>` referring to an output the producing job does
-/// not declare evaluates to the empty string, so the gate above would be
-/// permanently false and the tap would never be told about ANY release. That
-/// failure is silent in exactly the way this file exists to prevent — a skipped
-/// job is not a failed one — so the declaration is asserted rather than assumed.
-#[test]
-fn the_tap_gate_reads_an_output_the_decision_job_declares() {
-    let outputs = deploy_job("release-version")["outputs"].clone();
-    let declared = outputs
-        .as_mapping()
-        .expect("`release-version` declares an outputs map");
-    let names: Vec<&str> = declared
-        .keys()
-        .filter_map(serde_yaml::Value::as_str)
-        .collect();
-
-    assert!(
-        names.contains(&"tap_follows"),
-        "`release-version` must declare `tap_follows`, or the tap gate silently reads an \
-         empty string and no release ever reaches the formula. Declared: {names:?}"
-    );
+    let conditions = gate.matches("needs.release-version.outputs.").count();
     assert_eq!(
-        outputs["tap_follows"].as_str(),
-        Some("${{ steps.version.outputs.tap_follows }}"),
-        "`tap_follows` must come from the same `ops release check` step that answers \
-         `publishable`"
+        conditions, 1,
+        "`{JOB}` must read ONE release output — `publishable` — and narrow no \
+         further. A shape filter belongs in the tap, which refuses what it \
+         cannot carry loudly, rather than here, where an output that arrives \
+         empty skips the hand-off silently. Got: {gate:?}"
     );
 }
 
@@ -397,8 +386,9 @@ fn the_tap_gate_reads_an_output_the_decision_job_declares() {
 /// made once with the release grammar itself: four hand-transcribed copies, one
 /// of which ordered `26.8.22-hotfix.22` above `26.8.22`.
 ///
-/// So the tap job asks `ops release check` a question and reads a boolean. It
-/// must not learn to recognise a version by itself.
+/// So the tap job reads one boolean `ops release check` already answered and
+/// never learns to recognise a version by itself. The shape question now lives
+/// entirely in the tap, which is the component that acts on the answer.
 #[test]
 fn the_tap_job_transcribes_no_version_pattern() {
     let job = serde_yaml::to_string(&deploy_job(JOB)).expect("the job serializes");

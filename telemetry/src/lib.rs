@@ -23,10 +23,10 @@
 //! engineering-council standing order): identifiers and counts, never
 //! content.** A `notation_id`, a `service` name, an `outcome`, a duration, a
 //! status code — yes. A client name, an answer body, an email address, a
-//! document body — never. This matters most for **logs**, where a free-text
-//! message is the easy place for a client identifier to slip in: log a
-//! `person_id`, never a person's name. Telemetry leaves the firm's trust
-//! boundary; client content does not.
+//! document body — never. The [`SanitizingSubscriber`] is the source-side
+//! backstop: it rejects unsafe log records before stdout or direct OpenObserve
+//! OTLP export. Telemetry leaves the firm's trust boundary; client content does
+//! not.
 
 use base64::Engine as _;
 use opentelemetry::propagation::{Extractor, Injector};
@@ -39,8 +39,10 @@ use opentelemetry_sdk::metrics::SdkMeterProvider;
 use opentelemetry_sdk::propagation::TraceContextPropagator;
 use opentelemetry_sdk::trace::SdkTracerProvider;
 use opentelemetry_sdk::Resource;
+use tracing::subscriber::Interest;
+use tracing::{span, Event, Id, Metadata, Subscriber};
+use tracing_core::span::Current;
 use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::Layer;
 
 /// The instrumentation scope name for durable-execution metrics.
@@ -102,6 +104,199 @@ struct ExportProviders {
     tracer: SdkTracerProvider,
     meter: SdkMeterProvider,
     logger: SdkLoggerProvider,
+}
+
+/// The source-side content boundary for every log sink.
+///
+/// Direct OpenObserve receives the same events that the process writes to
+/// stdout, so a backend-side allow-list cannot protect either copy. This
+/// subscriber rejects an event before delegating it to the configured layers
+/// when one of its values is clearly content-bearing. Rejection is deliberate:
+/// retaining a partial event would make an opaque id look like evidence about a
+/// value that was not retained, and `tracing` does not provide a way to mutate
+/// an event in place for all downstream layers.
+struct SanitizingSubscriber<S> {
+    inner: S,
+}
+
+impl<S> SanitizingSubscriber<S> {
+    fn new(inner: S) -> Self {
+        Self { inner }
+    }
+}
+
+#[derive(Default)]
+struct SafetyVisitor {
+    unsafe_value: bool,
+}
+
+impl SafetyVisitor {
+    fn inspect(&mut self, field: &tracing::field::Field, value: &str) {
+        let name = field.name();
+        let body_like = matches!(
+            name,
+            "answer"
+                | "body"
+                | "content"
+                | "document"
+                | "file_name"
+                | "filename"
+                | "payload"
+                | "path"
+                | "query"
+                | "raw"
+                | "response"
+                | "sql"
+                | "text"
+                | "url"
+                | "value"
+        );
+        let identity_like = matches!(
+            name,
+            "email"
+                | "email_address"
+                | "ein"
+                | "government_id"
+                | "phone"
+                | "phone_number"
+                | "ssn"
+                | "tax_id"
+        );
+
+        self.unsafe_value = self.unsafe_value
+            || identity_like
+            || (body_like && !value.is_empty())
+            || contains_sensitive_text(value)
+            || (name == "message" && looks_like_document_body(value));
+    }
+}
+
+impl tracing::field::Visit for SafetyVisitor {
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+        self.inspect(field, &format!("{value:?}"));
+    }
+
+    fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+        self.inspect(field, value);
+    }
+}
+
+/// Detect content classes that must not reach a direct telemetry sink.
+///
+/// This is intentionally conservative for string values. Typed counters and
+/// bounded enum fields are not converted to text by the visitor, so approved
+/// numeric/id fields remain available to the operator while untrusted strings
+/// are rejected when they resemble client content.
+fn contains_sensitive_text(value: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    let has_email_shape = lower.split_whitespace().any(|word| {
+        let candidate = word.trim_matches(|c: char| "()[]{}<>,;:\"'".contains(c));
+        let Some((local, domain)) = candidate.split_once('@') else {
+            return false;
+        };
+        !local.is_empty() && domain.contains('.') && !domain.starts_with('.')
+    });
+    if has_email_shape {
+        return true;
+    }
+
+    let digits = value.chars().filter(char::is_ascii_digit).count();
+    let phone_shape = (10..=15).contains(&digits)
+        && value.chars().any(|c| c.is_ascii_digit())
+        && (value.contains('+')
+            || value.contains('-')
+            || value.contains('(')
+            || value.contains(')')
+            || value.split_whitespace().count() > 1);
+    let government_id_shape = value
+        .split(|c: char| !(c.is_ascii_digit() || c == '-'))
+        .filter(|candidate| !candidate.is_empty())
+        .any(|candidate| {
+            let groups: Vec<_> = candidate.split('-').collect();
+            matches!(groups.as_slice(), [a, b, c] if a.len() == 3
+                && b.len() == 2
+                && c.len() == 4
+                && groups.iter().all(|group| group.chars().all(|c| c.is_ascii_digit())))
+                || matches!(groups.as_slice(), [a, b] if a.len() == 2
+                    && b.len() == 7
+                    && groups.iter().all(|group| group.chars().all(|c| c.is_ascii_digit())))
+                || ((9..=10).contains(&digits) && candidate.chars().all(|c| c.is_ascii_digit()))
+        });
+
+    phone_shape || government_id_shape
+}
+
+fn looks_like_document_body(value: &str) -> bool {
+    value.len() > 160
+        || value.contains('\n')
+        || [
+            "confidential",
+            "agreement",
+            "attorney-client",
+            "client",
+            "contract",
+            "document",
+            "defendant",
+            "exhibit",
+            "plaintiff",
+            "the party shall",
+        ]
+        .iter()
+        .any(|marker| value.to_ascii_lowercase().contains(marker))
+}
+
+impl<S: Subscriber> Subscriber for SanitizingSubscriber<S> {
+    fn enabled(&self, metadata: &Metadata<'_>) -> bool {
+        self.inner.enabled(metadata)
+    }
+
+    fn new_span(&self, span: &span::Attributes<'_>) -> Id {
+        self.inner.new_span(span)
+    }
+
+    fn record(&self, span: &Id, values: &span::Record<'_>) {
+        self.inner.record(span, values);
+    }
+
+    fn record_follows_from(&self, span: &Id, follows: &Id) {
+        self.inner.record_follows_from(span, follows);
+    }
+
+    fn event(&self, event: &Event<'_>) {
+        let mut visitor = SafetyVisitor::default();
+        event.record(&mut visitor);
+        if !visitor.unsafe_value {
+            self.inner.event(event);
+        }
+    }
+
+    fn enter(&self, span: &Id) {
+        self.inner.enter(span);
+    }
+
+    fn exit(&self, span: &Id) {
+        self.inner.exit(span);
+    }
+
+    fn clone_span(&self, id: &Id) -> Id {
+        self.inner.clone_span(id)
+    }
+
+    fn try_close(&self, id: Id) -> bool {
+        self.inner.try_close(id)
+    }
+
+    fn current_span(&self) -> Current {
+        self.inner.current_span()
+    }
+
+    fn register_callsite(&self, metadata: &'static Metadata<'static>) -> Interest {
+        self.inner.register_callsite(metadata)
+    }
+
+    fn max_level_hint(&self) -> Option<tracing::metadata::LevelFilter> {
+        self.inner.max_level_hint()
+    }
 }
 
 /// The complete direct-OTLP contract OpenObserve requires. Keeping the
@@ -293,8 +488,8 @@ pub fn init(default_service_name: &str) -> TelemetryGuard {
         .ok()
         .filter(|s| !s.trim().is_empty() && s != "unknown");
 
-    // JSON to stdout when exporting (prod) so Cloud Logging -> BigQuery parses
-    // each field; human-readable otherwise. Boxed so both arms share one type.
+    // JSON to stdout when exporting so a deployment's log viewer parses each
+    // field; human-readable otherwise. Boxed so both arms share one type.
     let fmt_layer = if export_config.as_ref().is_ok_and(Option::is_some) {
         tracing_subscriber::fmt::layer()
             .json()
@@ -307,10 +502,12 @@ pub fn init(default_service_name: &str) -> TelemetryGuard {
     let config = match export_config {
         Ok(Some(config)) => config,
         Ok(None) => {
-            tracing_subscriber::registry()
-                .with(env_filter)
-                .with(fmt_layer)
-                .init();
+            tracing::subscriber::set_global_default(SanitizingSubscriber::new(
+                tracing_subscriber::registry()
+                    .with(env_filter)
+                    .with(fmt_layer),
+            ))
+            .expect("install telemetry subscriber");
             tracing::info!(
                 service = %service_name,
                 release = %release.as_deref().unwrap_or("unknown"),
@@ -323,10 +520,12 @@ pub fn init(default_service_name: &str) -> TelemetryGuard {
             };
         }
         Err(error) => {
-            tracing_subscriber::registry()
-                .with(env_filter)
-                .with(fmt_layer)
-                .init();
+            tracing::subscriber::set_global_default(SanitizingSubscriber::new(
+                tracing_subscriber::registry()
+                    .with(env_filter)
+                    .with(fmt_layer),
+            ))
+            .expect("install telemetry subscriber");
             tracing::warn!(%error, "telemetry initialized (stdout only)");
             return TelemetryGuard {
                 tracer: None,
@@ -353,15 +552,17 @@ pub fn init(default_service_name: &str) -> TelemetryGuard {
 
     // Bridge `tracing` log records to the OTLP logger. This is the third layer
     // alongside the stdout fmt layer — logs **dual-emit** (stdout JSON *and*
-    // OTLP), so a collector outage never drops a log line.
+    // OTLP), with the sanitizing subscriber in front of both direct sinks.
     let otel_log_layer = OpenTelemetryTracingBridge::new(&logger);
 
-    tracing_subscriber::registry()
-        .with(env_filter)
-        .with(fmt_layer)
-        .with(otel_trace_layer)
-        .with(otel_log_layer)
-        .init();
+    tracing::subscriber::set_global_default(SanitizingSubscriber::new(
+        tracing_subscriber::registry()
+            .with(env_filter)
+            .with(fmt_layer)
+            .with(otel_trace_layer)
+            .with(otel_log_layer),
+    ))
+    .expect("install telemetry subscriber");
 
     tracing::info!(
         service = %service_name,
@@ -576,6 +777,7 @@ mod tests {
     use super::{
         build_export_providers, current_trace_context_headers, normalize_endpoint,
         openobserve_export_config, parent_context_from, trace_context_headers,
+        SanitizingSubscriber,
     };
 
     #[test]
@@ -631,8 +833,8 @@ mod tests {
     #[test]
     fn normalize_endpoint_keeps_a_real_endpoint() {
         assert_eq!(
-            normalize_endpoint(Some("http://otel-collector:4317".to_string())),
-            Some("http://otel-collector:4317".to_string())
+            normalize_endpoint(Some("http://openobserve:5081".to_string())),
+            Some("http://openobserve:5081".to_string())
         );
     }
 
@@ -660,7 +862,7 @@ mod tests {
         .expect("test endpoint enables export");
         let providers = build_export_providers(&config, "telemetry-test", Some("26.6.23"));
         // All three signals are present; shutting down flushes (no-op here,
-        // nothing batched) without panicking or requiring a live collector.
+        // nothing batched) without panicking or requiring a live OpenObserve.
         let _ = providers.tracer.shutdown();
         let _ = providers.meter.shutdown();
         let _ = providers.logger.shutdown();
@@ -729,5 +931,139 @@ mod tests {
     #[test]
     fn current_headers_empty_without_an_active_span() {
         assert!(current_trace_context_headers().is_empty());
+    }
+
+    fn emit_synthetic_records() {
+        tracing::info!(
+            person_id = "opaque-person-id",
+            outcome = "accepted",
+            email = "client@example.com",
+            "unsafe email must not be exported"
+        );
+        tracing::info!(
+            person_id = "opaque-person-id",
+            outcome = "accepted",
+            phone = "+1 (212) 555-0199",
+            "unsafe phone must not be exported"
+        );
+        tracing::info!(
+            person_id = "opaque-person-id",
+            outcome = "accepted",
+            government_id = "123-45-6789",
+            "unsafe government id must not be exported"
+        );
+        tracing::info!(
+            person_id = "opaque-person-id",
+            outcome = "accepted",
+            "unsafe message client@example.com must not be exported"
+        );
+        tracing::info!(
+            person_id = "opaque-person-id",
+            outcome = "accepted",
+            "unsafe message +1 (212) 555-0199 must not be exported"
+        );
+        tracing::info!(
+            person_id = "opaque-person-id",
+            outcome = "accepted",
+            "unsafe message government id 123-45-6789 must not be exported"
+        );
+        tracing::info!(
+            person_id = "opaque-person-id",
+            outcome = "accepted",
+            body = "CONFIDENTIAL CLIENT AGREEMENT: the party shall indemnify the client.",
+            "unsafe document body must not be exported"
+        );
+        tracing::info!(
+            person_id = "opaque-person-id",
+            outcome = "accepted",
+            "CONFIDENTIAL CLIENT AGREEMENT: the party shall indemnify the client."
+        );
+        tracing::info!(
+            person_id = "opaque-person-id",
+            outcome = "accepted",
+            "approved telemetry survives unchanged"
+        );
+    }
+
+    fn assert_safe_output(rendered: &str) {
+        assert!(!rendered.contains("client@example.com"));
+        assert!(!rendered.contains("212"));
+        assert!(!rendered.contains("123-45-6789"));
+        assert!(!rendered.contains("CONFIDENTIAL CLIENT AGREEMENT"));
+        assert!(rendered.contains("opaque-person-id"));
+        assert!(rendered.contains("accepted"));
+        assert!(rendered.contains("approved telemetry survives unchanged"));
+        assert_eq!(
+            rendered
+                .matches("approved telemetry survives unchanged")
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn direct_export_subscriber_rejects_unsafe_values_but_keeps_safe_fields() {
+        use std::sync::{Arc, Mutex};
+        use tracing_subscriber::fmt::MakeWriter;
+        use tracing_subscriber::layer::SubscriberExt;
+
+        #[derive(Clone, Default)]
+        struct Buffer(Arc<Mutex<String>>);
+
+        impl<'a> MakeWriter<'a> for Buffer {
+            type Writer = BufferWriter;
+
+            fn make_writer(&'a self) -> Self::Writer {
+                BufferWriter(self.0.clone())
+            }
+        }
+
+        struct BufferWriter(Arc<Mutex<String>>);
+
+        impl std::io::Write for BufferWriter {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                let text = String::from_utf8_lossy(bytes);
+                self.0
+                    .lock()
+                    .expect("test buffer is not poisoned")
+                    .push_str(&text);
+                Ok(bytes.len())
+            }
+
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let stdout = Arc::new(Mutex::new(String::new()));
+        let openobserve = Arc::new(Mutex::new(String::new()));
+        let stdout_layer = tracing_subscriber::fmt::layer()
+            .json()
+            .with_writer(Buffer(stdout.clone()))
+            .with_target(false);
+        let openobserve_layer = tracing_subscriber::fmt::layer()
+            .json()
+            .with_writer(Buffer(openobserve.clone()))
+            .with_target(false);
+        let subscriber = SanitizingSubscriber::new(
+            tracing_subscriber::registry()
+                .with(stdout_layer)
+                .with(openobserve_layer),
+        );
+
+        tracing::subscriber::with_default(subscriber, emit_synthetic_records);
+
+        for rendered in [
+            stdout
+                .lock()
+                .expect("stdout test buffer is not poisoned")
+                .clone(),
+            openobserve
+                .lock()
+                .expect("OpenObserve test buffer is not poisoned")
+                .clone(),
+        ] {
+            assert_safe_output(&rendered);
+        }
     }
 }

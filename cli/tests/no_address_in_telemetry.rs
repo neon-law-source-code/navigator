@@ -49,9 +49,10 @@
 //! binding — `let who = p.email;` then `who = %who` — is not caught, and
 //! neither would a macro imported unqualified (`use tracing::warn;` then
 //! `warn!(…)`); no crate does that today. The gate is a ratchet on new code
-//! rather than a proof of absence. It also says nothing about the export path:
-//! whether a field survives the collector's `allowed_keys` is a separate
-//! property, and one the sanitized field names were chosen to satisfy.
+//! rather than a proof of absence. It also says nothing about the export path
+//! beyond these source call sites: the selected direct `OpenObserve` subscriber
+//! has its own runtime enforcement, which is why this static ratchet remains a
+//! separate, narrower control.
 
 use std::path::{Path, PathBuf};
 

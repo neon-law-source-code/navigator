@@ -32,7 +32,7 @@ async fn main() -> Result<()> {
     // per workflow key, so a duplicate fire is a no-op.
     let run_id = chrono::Utc::now().format("%Y-%m-%d").to_string();
 
-    let body = workflows::start_workflow(
+    let _response = workflows::start_workflow(
         &ingress,
         auth_token.as_deref(),
         "BillingCanary",
@@ -44,7 +44,7 @@ async fn main() -> Result<()> {
     .await
     .context("triggering BillingCanary workflow")?;
 
-    tracing::info!(%run_id, response = %body, "billing canary workflow triggered");
-    println!("triggered BillingCanary/{run_id}: {body}");
+    tracing::info!(%run_id, "billing canary workflow triggered");
+    println!("triggered BillingCanary/{run_id}");
     Ok(())
 }

@@ -57,7 +57,7 @@ async fn main() -> Result<()> {
     // invocation while a duplicate fire within the same hour is a no-op.
     let run_id = chrono::Utc::now().format("%Y-%m-%d-%H").to_string();
 
-    let body = workflows::start_workflow(
+    let _response = workflows::start_workflow(
         &ingress,
         auth_token.as_deref(),
         workflow_service,
@@ -69,8 +69,8 @@ async fn main() -> Result<()> {
     .await
     .with_context(|| format!("triggering {workflow_service} workflow"))?;
 
-    tracing::info!(%workflow_service, %run_id, response = %body, "heartbeat workflow triggered");
-    println!("triggered {workflow_service}/{run_id}: {body}");
+    tracing::info!(%workflow_service, %run_id, "heartbeat workflow triggered");
+    println!("triggered {workflow_service}/{run_id}");
     Ok(())
 }
 

@@ -34,7 +34,7 @@ async fn main() -> Result<()> {
     // per day.
     let run_id = chrono::Utc::now().format("%Y-%m-%d").to_string();
 
-    let body = workflows::start_workflow(
+    let _response = workflows::start_workflow(
         &ingress,
         auth_token.as_deref(),
         "BillingDigest",
@@ -46,7 +46,7 @@ async fn main() -> Result<()> {
     .await
     .context("triggering BillingDigest workflow")?;
 
-    tracing::info!(%run_id, response = %body, "billing digest workflow triggered");
-    println!("triggered BillingDigest/{run_id}: {body}");
+    tracing::info!(%run_id, "billing digest workflow triggered");
+    println!("triggered BillingDigest/{run_id}");
     Ok(())
 }

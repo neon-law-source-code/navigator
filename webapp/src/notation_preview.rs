@@ -22,9 +22,17 @@
 //! exactly as an unknown workshop or presentation material does. A
 //! [`BackBreadcrumb`] returns to the `/notations` catalog, and "View source
 //! on GitHub" sits on the title's own line rather than the `/notations`
-//! catalog card — the card's own link now opens this page directly. The
-//! template's YAML frontmatter renders here too, as a [`CodeBlock`], so a
-//! reader sees the document's declared shape without leaving the page.
+//! catalog card — the card's own link now opens this page directly.
+//!
+//! Below the title, the page is four stacked [`Accordion`]s, each closed by
+//! default so a reader lands on a short page rather than a wall of YAML and
+//! Markdown: **Frontmatter** (the template's declared YAML as a
+//! [`CodeBlock`]; omitted entirely for a template with none), **Body** (the
+//! highlighted stage), **Questionnaire** (the "Try answering this" demo,
+//! [`QuestionnaireDemo`]), and **Workflow** (the sample-run diagram,
+//! [`WorkflowDiagram`]). The last two are omitted when the template declares
+//! no `questionnaire:` or `workflow:` block, same as before this page had
+//! accordions at all.
 //!
 //! The slug also drives the browser tab title for free: every
 //! server-rendered route's `<title>` is replaced by `stamp_document_title`
@@ -42,11 +50,12 @@ use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::components::{
-    BackBreadcrumb, CodeBlock, PublicShell, SiteHeader, SiteNavLink, SocialMeta,
+    Accordion, BackBreadcrumb, CodeBlock, PublicShell, SiteHeader, SiteNavLink, SocialMeta,
     CATALOG_STYLESHEET_HREF,
 };
 use crate::harvard_outline::{HARVARD_OUTLINE_SCRIPT_HREF, HARVARD_OUTLINE_STYLESHEET_HREF};
 use crate::notation_demo::{DemoQuestion, QuestionnaireDemo};
+use crate::notation_workflow::{WorkflowDiagram, WorkflowStateView};
 use crate::public_chrome::{PublicChrome, PublicFooter};
 
 /// One bundled document ready to preview.
@@ -69,6 +78,11 @@ pub struct PreviewDoc {
     /// this" demo (ENG-452). Empty for a template with no questionnaire
     /// block, which renders no demo section at all.
     pub demo_questions: Vec<DemoQuestion>,
+    /// The template's declared `workflow:` state machine, from
+    /// `views::workflow_preview::parse` — feeds the sample "Workflow" runs.
+    /// Empty for a template with no workflow block, which renders no
+    /// section at all.
+    pub demo_workflow: Vec<WorkflowStateView>,
 }
 
 /// Everything the page renders, resolved ahead of the render — the router's
@@ -83,6 +97,7 @@ pub struct NotationPreviewContent {
     pub stage_html: String,
     pub origin_url: Option<String>,
     pub demo_questions: Vec<DemoQuestion>,
+    pub demo_workflow: Vec<WorkflowStateView>,
 }
 
 /// The [`NotationPreviewContent`] injected into the render context by the
@@ -182,13 +197,23 @@ pub fn NotationPreviewPage(chrome: PublicChrome, content: NotationPreviewContent
                     }
                 }
                 if !content.frontmatter.is_empty() {
-                    section { class: "notation-preview-frontmatter",
-                        h2 { "Template frontmatter" }
+                    Accordion { title: "Frontmatter".to_string(),
                         CodeBlock { code: content.frontmatter.clone(), lang: "yaml".to_string() }
                     }
                 }
-                div { dangerous_inner_html: "{content.stage_html}" }
-                QuestionnaireDemo { questions: content.demo_questions.clone() }
+                Accordion { title: "Body".to_string(),
+                    div { dangerous_inner_html: "{content.stage_html}" }
+                }
+                if !content.demo_questions.is_empty() {
+                    Accordion { title: "Questionnaire".to_string(),
+                        QuestionnaireDemo { questions: content.demo_questions.clone() }
+                    }
+                }
+                if !content.demo_workflow.is_empty() {
+                    Accordion { title: "Workflow".to_string(),
+                        WorkflowDiagram { states: content.demo_workflow.clone() }
+                    }
+                }
             }
         }
     }
@@ -215,6 +240,7 @@ mod tests {
                 .to_string(),
             origin_url: None,
             demo_questions: Vec::new(),
+            demo_workflow: Vec::new(),
         }
     }
 
@@ -232,6 +258,7 @@ mod tests {
                     .to_string(),
             ),
             demo_questions: Vec::new(),
+            demo_workflow: Vec::new(),
         }
     }
 
@@ -402,5 +429,58 @@ mod tests {
         let out = ssr(app);
         assert!(out.contains("Try answering this"), "{out}");
         assert!(out.contains(r#"type="radio""#), "{out}");
+    }
+
+    #[test]
+    fn frontmatter_and_body_each_render_as_their_own_collapsible_accordion() {
+        let out = html();
+        assert!(out.contains("<details"), "native disclosure: {out}");
+        assert_eq!(
+            out.matches("nav-accordion__toggle").count(),
+            2,
+            "frontmatter and body, each its own accordion, with no questionnaire or \
+             workflow declared: {out}"
+        );
+    }
+
+    #[test]
+    fn a_document_with_no_declared_workflow_shows_no_workflow_section() {
+        assert!(
+            !html().contains("notation-workflow"),
+            "letter_content() carries no demo_workflow: {}",
+            html()
+        );
+    }
+
+    #[test]
+    fn a_document_with_a_declared_workflow_shows_the_workflow_accordion() {
+        fn app() -> Element {
+            let chrome = PublicChrome {
+                brand_name: "Neon Law".to_string(),
+                ..PublicChrome::default()
+            };
+            let content = NotationPreviewContent {
+                demo_workflow: vec![
+                    WorkflowStateView {
+                        name: "BEGIN".to_string(),
+                        transitions: vec![("go".to_string(), "review".to_string())],
+                    },
+                    WorkflowStateView {
+                        name: "review".to_string(),
+                        transitions: vec![("done".to_string(), "END".to_string())],
+                    },
+                    WorkflowStateView {
+                        name: "END".to_string(),
+                        transitions: Vec::new(),
+                    },
+                ],
+                ..letter_content()
+            };
+            rsx! { NotationPreviewPage { chrome, content } }
+        }
+        let out = ssr(app);
+        assert!(out.contains("notation-workflow"), "{out}");
+        assert!(out.contains("Workflow"), "accordion title: {out}");
+        assert!(out.contains("review"), "task chip: {out}");
     }
 }

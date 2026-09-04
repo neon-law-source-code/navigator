@@ -140,6 +140,20 @@ fn demo_questions(frontmatter: &str) -> Vec<webapp::notation_demo::DemoQuestion>
         .collect()
 }
 
+/// The template's declared `workflow:` state machine, ready for the sample
+/// "Workflow" runs — parsed with no live Restate invocation and no
+/// domain-crate dependency (see `views::workflow_preview`'s own doc
+/// comment).
+fn demo_workflow(frontmatter: &str) -> Vec<webapp::notation_workflow::WorkflowStateView> {
+    views::workflow_preview::parse(frontmatter)
+        .into_iter()
+        .map(|s| webapp::notation_workflow::WorkflowStateView {
+            name: s.name,
+            transitions: s.transitions.into_iter().map(|t| (t.event, t.to)).collect(),
+        })
+        .collect()
+}
+
 /// A sample letter, parsed into the highlighted-preview stage.
 fn letter_preview_doc(
     slug: &str,
@@ -153,6 +167,7 @@ fn letter_preview_doc(
         title: doc.title.clone(),
         source_href: format!("{NOTATIONS_BLOB_BASE}{source_path}"),
         demo_questions: demo_questions(&frontmatter),
+        demo_workflow: demo_workflow(&frontmatter),
         frontmatter,
         stage_html: views::harvard_outline::stage_html(&doc),
         origin_url: None,
@@ -175,6 +190,7 @@ fn form_preview_doc(
         title: doc.title.clone(),
         source_href: format!("{NOTATIONS_BLOB_BASE}{source_path}"),
         demo_questions: demo_questions(&frontmatter),
+        demo_workflow: demo_workflow(&frontmatter),
         frontmatter,
         stage_html: views::harvard_outline::stage_html(&doc),
         origin_url,
@@ -956,5 +972,26 @@ mod notation_catalog_tests {
                 "preview body must come from {source_path}"
             );
         }
+    }
+
+    /// The naturalization form declares a branching `workflow:` block
+    /// (`lawyer_review` alone has `approved`/`rejected`) — grounds that
+    /// `demo_workflow` actually reaches the page rather than defaulting to
+    /// empty, the same way `demo_questions` already does for the
+    /// questionnaire section.
+    #[test]
+    fn the_naturalization_form_carries_its_declared_workflow_states() {
+        let previews = notation_preview_docs();
+        let naturalization = previews
+            .iter()
+            .find(|preview| preview.slug == "application-for-naturalization")
+            .expect("the naturalization form is in the public catalog");
+        let names: BTreeSet<&str> = naturalization
+            .demo_workflow
+            .iter()
+            .map(|state| state.name.as_str())
+            .collect();
+        assert!(names.contains("lawyer_review"), "{names:?}");
+        assert!(names.contains("BEGIN"), "{names:?}");
     }
 }

@@ -77,6 +77,7 @@ pub mod matter_surface;
 pub mod notation_demo;
 pub mod notation_outline;
 pub mod notation_preview;
+pub mod notation_workflow;
 pub mod people;
 pub mod person_show;
 pub mod playbooks;

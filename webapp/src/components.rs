@@ -26,6 +26,7 @@
 //! stated only here — a boundary that lives in a comment erodes on the first
 //! deadline.
 
+pub mod accordion;
 pub mod app_footer;
 pub mod app_navbar;
 pub mod avatar;
@@ -60,6 +61,7 @@ pub mod social;
 pub mod testimonial;
 pub mod toast;
 
+pub use accordion::Accordion;
 #[cfg(feature = "server")]
 pub use app_footer::render_app_footer;
 pub use app_footer::AppFooter;

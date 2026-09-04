@@ -17,6 +17,7 @@ pub mod notation;
 pub mod notations;
 pub mod questionnaire_preview;
 pub mod slug;
+pub mod workflow_preview;
 
 pub use auth_state::AuthState;
 pub use brand::SiteBrand;

@@ -30,16 +30,16 @@ use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::components::{
-    wire_runs, AppFooter, AppLogo, AppNavbar, Avatar, BackBreadcrumb, Card, CatalogHero, Choice,
-    ChoiceGroup, ChoiceGroupOption, CodeBlock, Column, ConfirmDelete, DataTable, ExternalLink,
-    Field, FooterAttorney, FooterBarLicense, FooterNavLink, FooterOffice, FormCard, GitHubStars,
-    Hero, HeroAlign, HeroLevel, Icon, IconName, ImpersonationBanner, ImpersonationView,
-    LawyerPortalBreadcrumb, LegalBlueprintDisclaimer, NavigatorDestination, NavigatorFooter,
-    NavigatorFooterLink, NavigatorNavbar, NavigatorShell, Pagination, PeopleListInputs,
-    PersonChoice, PersonPicker, PricingCard, PricingSection, PublicShell, RowActions, RunParagraph,
-    SampleMattersBanner, SiteFooterLegal, SiteHeader, SiteNavLink, SocialMeta, SortState, Stage,
-    StageWidth, StepMeta, Stepper, StepperPanel, TestimonialCard, TestimonialSection, Toast,
-    ToastTone, THEME_STYLESHEET_HREF,
+    wire_runs, Accordion, AppFooter, AppLogo, AppNavbar, Avatar, BackBreadcrumb, Card, CatalogHero,
+    Choice, ChoiceGroup, ChoiceGroupOption, CodeBlock, Column, ConfirmDelete, DataTable,
+    ExternalLink, Field, FooterAttorney, FooterBarLicense, FooterNavLink, FooterOffice, FormCard,
+    GitHubStars, Hero, HeroAlign, HeroLevel, Icon, IconName, ImpersonationBanner,
+    ImpersonationView, LawyerPortalBreadcrumb, LegalBlueprintDisclaimer, NavigatorDestination,
+    NavigatorFooter, NavigatorFooterLink, NavigatorNavbar, NavigatorShell, Pagination,
+    PeopleListInputs, PersonChoice, PersonPicker, PricingCard, PricingSection, PublicShell,
+    RowActions, RunParagraph, SampleMattersBanner, SiteFooterLegal, SiteHeader, SiteNavLink,
+    SocialMeta, SortState, Stage, StageWidth, StepMeta, Stepper, StepperPanel, TestimonialCard,
+    TestimonialSection, Toast, ToastTone, THEME_STYLESHEET_HREF,
 };
 // The vendor marks come from their own module rather than the theme root: they
 // are the one component whose colours are a third party's rather than the
@@ -402,6 +402,8 @@ pub fn DesignGallery() -> Element {
                     }
                 }
             }
+
+            AccordionSection {}
 
             section {
                 h2 { "Toasts" }
@@ -1508,6 +1510,29 @@ fn IconsSection() -> Element {
                         code { "{name.glyph()}" }
                     }
                 }
+            }
+        }
+    }
+}
+
+/// The `Accordion` gallery section.
+#[component]
+fn AccordionSection() -> Element {
+    rsx! {
+        section {
+            h2 { "Accordion" }
+            p {
+                "A native "
+                code { "<details>" }
+                " disclosure — no JavaScript, keyboard-accessible by default, open before hydration. The stacked sections on "
+                code { "/notations/{{slug}}" }
+                " (Frontmatter, Body, Questionnaire, Workflow) are each one of these."
+            }
+            Accordion { title: "Frontmatter".to_string(),
+                p { "Collapsed by default; expands to the template's declared YAML." }
+            }
+            Accordion { title: "Body".to_string(), open: true,
+                p { "The " code { "open" } " prop seeds the initial disclosed state." }
             }
         }
     }

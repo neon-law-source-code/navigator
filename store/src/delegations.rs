@@ -59,19 +59,25 @@
 //!
 //! # The same defect exists at the other membership door
 //!
-//! ENG-492 records the mirror image of what [`grant`] refuses:
-//! [`crate::firms::add_membership`] writes a `person_firm_role` row
-//! without ever reading `person.role`, so a `client` can be given
-//! firm-side visibility. Both are the same class — `person.role` going
-//! unchecked at a membership write path — approached from opposite sides.
+//! [`crate::firms::add_membership`] answers the mirror-image question:
+//! it refuses a `client`-tier person a `person_firm_role` row with
+//! [`crate::firms::FirmError::ClientCannotJoinFirm`], because a client
+//! reaches a matter through `person_project_role` and never through firm
+//! membership. Both are the same class — `person.role` decided at a
+//! membership write path — approached from opposite sides: that one keeps
+//! a client out of the firm, this one keeps the firm out of a client's
+//! profile.
 //!
-//! This module deliberately does **not** fix that; it is tracked
-//! separately. The refusal here is shaped to match, so the two can later
-//! be folded into one shared "may this person hold this kind of
-//! membership" predicate without either having to change its contract: a
-//! typed error variant that names the person and the role that
-//! disqualified them, refused at the write path before any row is
-//! created.
+//! The two are deliberately shaped alike, so they can later fold into one
+//! shared "may this person hold this kind of membership" predicate without
+//! either having to change its contract: a typed error variant naming the
+//! person, refused at the write path before any row is created, with a
+//! test that walks every tier rather than sampling one. The one difference
+//! is that `ClientCannotJoinFirm` has a single disqualifying role and can
+//! name it in the message, whereas a delegation has four, so
+//! [`DelegationError::DelegateNotClient`] and
+//! [`DelegationError::SubjectNotClient`] carry the offending role in the
+//! payload.
 
 use serde::Serialize;
 use surrealdb::types::SurrealValue;

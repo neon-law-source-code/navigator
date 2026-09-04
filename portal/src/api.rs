@@ -3243,6 +3243,20 @@ fn answer_notation_error(e: workflows::NotationSessionError) -> Response {
             })),
         )
             .into_response(),
+        // The answer named an option the question never declared. A caller
+        // error, not a fault: 422 with the declared options (firm-authored
+        // template metadata) so it can retry with one of them. The rejected
+        // value is a client answer and is never echoed back or logged.
+        E::UndeclaredChoice { state, declared } => (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(serde_json::json!({
+                "error": "undeclared_choice",
+                "message": format!("`{state}` accepts only its declared options."),
+                "state": state,
+                "declared": declared
+            })),
+        )
+            .into_response(),
         // Everything else is an internal fault (seed gap, runtime, db, spec,
         // snapshot, or a creation-time error that cannot arise on answer).
         other => {

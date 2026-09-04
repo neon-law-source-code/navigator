@@ -243,6 +243,12 @@ fn map_notation_err(err: NotationSessionError) -> ToolError {
         NotationSessionError::QuestionNotFlagged(c) => ToolError::InvalidArguments(format!(
             "question `{c}` was not flagged for re-collection by the lawyer review"
         )),
+        NotationSessionError::UndeclaredChoice { state, declared } => {
+            ToolError::InvalidArguments(format!(
+                "question `{state}` accepts only these options: {}",
+                declared.join(", ")
+            ))
+        }
         NotationSessionError::Runtime(e) => ToolError::Internal(format!("workflow runtime: {e}")),
         NotationSessionError::Spec(e) => ToolError::Internal(format!("spec parse: {e}")),
         NotationSessionError::SnapshotEncode(e) | NotationSessionError::SnapshotDecode(e) => {

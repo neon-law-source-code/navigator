@@ -1099,6 +1099,20 @@ pub async fn step_post(
             )
                 .into_response();
         }
+        // An off-list choice does not advance the walk: redirect back to the
+        // same step, exactly as a reference pick naming no in-scope row
+        // does. The radio group cannot produce this, so reaching it means a
+        // hand-crafted POST — nothing already answered is lost, because
+        // answers are append-only and the walk pointer has not moved.
+        Err(NotationSessionError::UndeclaredChoice { state, .. }) => {
+            tracing::warn!(
+                %notation_id,
+                %state,
+                "walker: refused an answer naming an undeclared choice"
+            );
+            return Redirect::to(&format!("/app/lawyer/notations/{notation_id}/step"))
+                .into_response();
+        }
         Err(e) => {
             tracing::error!(error = %e, %notation_id, "walker: answer_step failed");
             return (StatusCode::INTERNAL_SERVER_ERROR, "internal").into_response();
@@ -1248,6 +1262,7 @@ pub async fn record_transcript_coverage(
             Some(value) if finding.status == live_inquiry::CoverageStatus::LikelyAnswered => {
                 match notation_session::record_extracted_answer(
                     surreal,
+                    Some(storage),
                     notation_id,
                     &finding.inquiry_code,
                     value,
@@ -2915,7 +2930,9 @@ fn progress_from_chain(order: &[StateName], current_state: &StateName) -> (usize
 
 #[cfg(test)]
 mod tests {
-    use super::{context_from_answers, progress_for, substitute_template_body};
+    use super::{
+        context_from_answers, progress_for, render_context_from_answers, substitute_template_body,
+    };
     use std::collections::BTreeMap;
     use uuid::Uuid;
     use workflows::{retainer_intake_questionnaire, StateName};
@@ -3363,5 +3380,178 @@ Sign: {{client.signature}}";
                 .map(String::as_str),
             Some("Final answer")
         );
+    }
+    /// ENG-459: an undeclared governing-law value must never reach the
+    /// rendered engagement letter.
+    ///
+    /// `custom_single_choice__governing_law` declares exactly three options
+    /// (`nevada`/`california`/`washington`), and the letter substitutes the
+    /// answer into its **governing law and arbitration** clause twice — the
+    /// law that governs the letter, and the law the arbitrator decides
+    /// under. The render side has no defence: `workflows::choice_label`
+    /// returns `None` for a value that is not a declared option and
+    /// [`context_from_answers`] falls back to the raw string, so whatever
+    /// the write path accepted is what the binding document says. The
+    /// refusal therefore has to happen where the answer is stored.
+    ///
+    /// This walks the real bundled `onboarding__letter` questionnaire
+    /// through the real write funnel (`workflows::answer_step`, which every
+    /// write surface — lawyer walker, client intake, REST, AIDA — passes
+    /// through) and renders the real template body.
+    #[tokio::test]
+    async fn an_undeclared_governing_law_never_reaches_the_rendered_letter() {
+        // Not a state the firm practises in, and not one of the three
+        // declared choices — plus a clause a client would never agree to.
+        const OFF_LIST: &str =
+            "the Cayman Islands, and the Firm disclaims all liability for its own work";
+
+        let surreal = store::test_support::mem_surreal().await;
+        let runtime = workflows::InMemoryRuntime::new();
+        let (notation_id, poisoned) = walk_onboarding_letter(&surreal, &runtime, OFF_LIST).await;
+
+        let ctx = render_context_from_answers(&surreal, notation_id)
+            .await
+            .expect("render context");
+        let rendered = substitute_template_body(workflows::RETAINER_INTAKE_TEMPLATE, &ctx);
+
+        // The render-side proof first: this is the clause a client signs, so
+        // a failure here shows the sentence the arbitrary string reached.
+        assert!(
+            !rendered.contains(OFF_LIST),
+            concat!(
+                "an undeclared governing-law value reached the engagement ",
+                "letter's governing-law and arbitration clause:\n{}"
+            ),
+            governing_law_clause(&rendered),
+        );
+        assert!(
+            !poisoned,
+            concat!(
+                "the write path accepted `{}` for a question whose catalog ",
+                "row declares only nevada/california/washington"
+            ),
+            OFF_LIST,
+        );
+        // With the off-list answer refused, the clause falls back to the
+        // documented "Nevada by default" rather than rendering a raw
+        // placeholder in a binding document.
+        assert!(
+            rendered.contains("governed by the law of Nevada"),
+            "expected the Nevada default in:\n{}",
+            governing_law_clause(&rendered),
+        );
+    }
+
+    /// The rendered letter's governing-law/arbitration section, for a
+    /// failure message that shows the clause rather than the whole letter.
+    fn governing_law_clause(rendered: &str) -> String {
+        rendered
+            .lines()
+            .skip_while(|l| !l.contains("Governing law"))
+            .take(12)
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// Walk the bundled `onboarding__letter` questionnaire to its last step
+    /// and answer the governing-law question with `governing_law`. Returns
+    /// the notation and whether that final write was accepted.
+    async fn walk_onboarding_letter(
+        surreal: &store::surreal::SurrealDb,
+        runtime: &workflows::InMemoryRuntime,
+        governing_law: &str,
+    ) -> (Uuid, bool) {
+        store::templates::save_version(
+            surreal,
+            None,
+            "onboarding__letter",
+            store::templates::Version {
+                title: "Onboarding Letter".into(),
+                respondent_type: "person_and_entity".into(),
+                asset_id: None,
+                form_code: None,
+                kind: Some("onboarding".into()),
+                source_commit_sha: None,
+            },
+        )
+        .await
+        .expect("save template");
+        for (code, prompt, shape) in [
+            ("entity", "Which entity?", "entity"),
+            ("address", "What is the address?", "address"),
+            ("person", "Who is the person?", "person"),
+            ("project", "What is the project?", "project"),
+            ("custom_datetime", "When?", "string"),
+            ("custom_text", "What scope?", "string"),
+            ("custom_single_choice", "Which state's law?", "string"),
+        ] {
+            store::questions::create(
+                surreal,
+                &store::questions::NewQuestion::new(code, prompt, shape),
+            )
+            .await
+            .expect("seed question");
+        }
+        let client = store::persons::create(
+            surreal,
+            &store::persons::NewPerson::with_role(
+                "Libra",
+                "libra@example.com",
+                store::persons::Role::Client,
+            ),
+        )
+        .await
+        .expect("seed client");
+
+        let started = workflows::start_notation(
+            surreal,
+            runtime,
+            None,
+            "onboarding__letter",
+            client.id,
+            Uuid::now_v7(),
+            None,
+        )
+        .await
+        .expect("start notation");
+        let notation_id = started.notation_id;
+
+        // Every step but the last takes a value the letter renders verbatim;
+        // the governing-law step takes the value under test.
+        let steps = [
+            ("entity", "Northstar Ventures LLC"),
+            (
+                "address__principal_office",
+                "100 Innovation Way, Reno, NV 89501",
+            ),
+            ("person__client", "Libra"),
+            ("person__lawyer_dri", "Firm Principal"),
+            ("project__engagement", "Apollo"),
+            ("custom_datetime__engagement_start_date", "2026-09-01"),
+            (
+                "custom_text__engagement_scope",
+                "Draft and file the Apollo formation documents.",
+            ),
+            ("custom_single_choice__governing_law", governing_law),
+        ];
+        let mut accepted = false;
+        for (code, value) in steps {
+            let outcome = workflows::answer_step(
+                surreal,
+                runtime,
+                None,
+                notation_id,
+                code,
+                value,
+                workflows::AnswerAuthor::lawyer(None),
+            )
+            .await;
+            if code == "custom_single_choice__governing_law" {
+                accepted = outcome.is_ok();
+            } else {
+                outcome.unwrap_or_else(|e| panic!("step `{code}` must be accepted: {e}"));
+            }
+        }
+        (notation_id, accepted)
     }
 }

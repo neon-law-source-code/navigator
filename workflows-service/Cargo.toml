@@ -51,7 +51,7 @@ views.workspace = true
 rules = { workspace = true }
 bs58.workspace = true
 ed25519-dalek.workspace = true
-jsonwebtoken.workspace = true
+restate-jwt.workspace = true
 store = { workspace = true, features = ["test-support"] }
 tokio = { workspace = true, features = ["macros", "rt"] }
 tower = { workspace = true }

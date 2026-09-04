@@ -34,7 +34,7 @@ mod tests {
     use axum::body::Body;
     use axum::http::Request;
     use ed25519_dalek::{pkcs8::EncodePrivateKey, SigningKey};
-    use jsonwebtoken::{EncodingKey, Header};
+    use restate_jwt::{EncodingKey, Header};
     use restate_sdk::endpoint::Endpoint;
     use serde::Serialize;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -79,7 +79,7 @@ mod tests {
             iat: now,
             nbf: now.saturating_sub(60),
         };
-        let mut header = Header::new(jsonwebtoken::Algorithm::EdDSA);
+        let mut header = Header::new(restate_jwt::Algorithm::EdDSA);
         header.typ = Some("JWT".into());
         header.kid = Some(identity_key.clone());
         let private_key = signing_key
@@ -142,7 +142,6 @@ mod tests {
 
     #[test]
     fn production_endpoint_accepts_only_a_valid_identity_signature() {
-        let _ = jsonwebtoken::crypto::rust_crypto::DEFAULT_PROVIDER.install_default();
         let (identity_key, token) = signed_request();
         let endpoint = endpoint_with_key(Some(&identity_key));
 

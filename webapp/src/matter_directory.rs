@@ -108,8 +108,19 @@ pub async fn matter_directory_view() -> Result<MatterDirectoryView, ServerFnErro
         ViewerRole::Clerk => store::persons::Role::Clerk,
         ViewerRole::Client => store::persons::Role::Client,
     };
+    let crate::portal_project_list::PersonId(person_id) =
+        dioxus_fullstack_core::FullstackContext::extract::<
+            axum::Extension<crate::portal_project_list::PersonId>,
+            _,
+        >()
+        .await
+        .map(|axum::Extension(id)| id)
+        .unwrap_or_default();
+    let viewer_person_id = person_id
+        .as_deref()
+        .and_then(|id| uuid::Uuid::parse_str(id).ok());
     let surreal = consume_context::<store::surreal::SurrealDb>();
-    let entries = store::projects::matter_directory(&surreal, store_role)
+    let entries = store::projects::matter_directory_for(&surreal, store_role, viewer_person_id)
         .await
         .map_err(|error| {
             // A directory that cannot be read is a server error, not a page

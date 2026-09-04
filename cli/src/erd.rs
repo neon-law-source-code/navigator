@@ -738,6 +738,14 @@ mod tests {
             "person_firm_role table missing from ERD"
         );
         assert!(
+            mermaid.contains("    firm_brand {"),
+            "firm_brand table missing from ERD"
+        );
+        assert!(
+            mermaid.contains("option_record_entity entity_id FK") && mermaid.contains("    firm {"),
+            "firm.entity_id missing from ERD"
+        );
+        assert!(
             mermaid.contains("option_record_firm firm_id FK"),
             "project.firm_id missing from ERD"
         );

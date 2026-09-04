@@ -25,8 +25,9 @@ participation. The system answers "what can this person do" by reading both.
 
 `person_firm_role` is the ownership join: a person may belong to a [`firm`](glossary.md#firm) as `admin`, `lawyer`, or
 `clerk`, with an optional `is_dri` marker. It does not overload `person.role`. Owner remains the one system-wide
-super-owner tier; clients do not get a firm-membership row. Embedded Rego still does not read this table — a schema row
-is not an authorization decision.
+super-owner tier; clients do not get a firm-membership row. `/app/owner` is Owner only. An Admin's people directory and
+matter directory list only rows in firms they belong to. Embedded Rego does not yet isolate every project or person
+route by firm.
 
 ## The five stored tiers
 
@@ -41,8 +42,9 @@ full workbench — Owner included: a matter nobody put them on renders only the 
 who is assigned), never that matter's documents, notations, or other content. `/app/projects` itself is unscoped for
 Owner — it lists every matter in the deployment, the same administrative-listing shape a reconciliation report already
 reads for its own deployment-wide question — which is what gives the detail page's participation-only carve-out
-somewhere to navigate from. Only an Owner may create, edit, or demote an Owner identity; Admin cannot govern the tier
-above it. Person deletion remains client-only, so no privileged identity is deletable through that command.
+somewhere to navigate from. `/app/owner` is Owner only: it lists every practice and the house brands each one wears.
+Admin is denied that inventory. Only an Owner may create, edit, or demote an Owner identity; Admin cannot govern the
+tier above it. Person deletion remains client-only, so no privileged identity is deletable through that command.
 
 ### `client`
 
@@ -97,9 +99,11 @@ Admin is a superset of Lawyer. Like Owner, a matter nobody has put an Admin on s
 workbench, documents, and notations at `/app/projects/{code}` stay behind the participation row every tier needs. What
 Admin sees instead of a `404` there is a participation-only rendering — enough to see the matter and manage who is
 assigned to it, nothing it discloses beyond that — and `/app/projects` lists every matter so there is something to
-navigate to. Privileged reach is a surface you navigate to rather than an invisible widening of a shared route, which is
-what makes a lens bug distinguishable from an intended bypass — the two are otherwise indistinguishable from a response
-body. Admin cannot create, edit, or demote an Owner.
+navigate to. The people directory and the matter directory at `/app/admin` are scoped to the firms the Admin holds a
+`person_firm_role` row on; an Admin with no membership sees those two listings empty. Privileged reach is a surface you
+navigate to rather than an invisible widening of a shared route, which is what makes a lens bug distinguishable from an
+intended bypass — the two are otherwise indistinguishable from a response body. Admin cannot create, edit, or demote an
+Owner. `/app/owner` is not an Admin surface.
 
 ### *anonymous*
 

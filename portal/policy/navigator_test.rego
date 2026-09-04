@@ -1919,3 +1919,31 @@ test_client_denied_app_brands if {
 test_anonymous_denied_app_brands if {
 	not authz.allow with input as {"path": ["app", "brands"], "method": "GET", "session": null}
 }
+
+# ---------- /app/owner ----------
+# Deployment-wide firm inventory. Owner only: the Owner/Admin route bypass
+# does not apply here, so an Admin is denied the same way a Lawyer is.
+
+test_owner_reaches_app_owner if {
+	authz.allow with input as {"path": ["app", "owner"], "method": "GET", "session": owner_session}
+}
+
+test_admin_denied_app_owner if {
+	not authz.allow with input as {"path": ["app", "owner"], "method": "GET", "session": admin_session}
+}
+
+test_lawyer_denied_app_owner if {
+	not authz.allow with input as {"path": ["app", "owner"], "method": "GET", "session": lawyer_session}
+}
+
+test_clerk_denied_app_owner if {
+	not authz.allow with input as {"path": ["app", "owner"], "method": "GET", "session": clerk_session}
+}
+
+test_client_denied_app_owner if {
+	not authz.allow with input as {"path": ["app", "owner"], "method": "GET", "session": client_session}
+}
+
+test_anonymous_denied_app_owner if {
+	not authz.allow with input as {"path": ["app", "owner"], "method": "GET", "session": null}
+}

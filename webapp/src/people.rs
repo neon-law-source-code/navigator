@@ -80,6 +80,11 @@ impl ViewerRole {
         matches!(self, Self::Owner | Self::Admin)
     }
 
+    #[must_use]
+    pub fn is_owner(self) -> bool {
+        matches!(self, Self::Owner)
+    }
+
     /// Every tier that works for the firm — the four roles seeded from a firm
     /// domain, with `client` the one authenticated tier outside it.
     ///
@@ -179,10 +184,41 @@ pub async fn list_admin_people() -> Result<PeopleView, ServerFnError> {
         .unwrap_or_default();
 
     let surreal = consume_context::<store::surreal::SurrealDb>();
-    let people =
+    let mut people =
         store::persons::list_directory(&surreal, &filter_name, &filter_email, &parse_sort(&sort))
             .await
             .map_err(|e| ServerFnError::new(e.to_string()))?;
+    if role == ViewerRole::Admin {
+        let crate::portal_project_list::PersonId(person_id) =
+            dioxus_fullstack_core::FullstackContext::extract::<
+                axum::Extension<crate::portal_project_list::PersonId>,
+                _,
+            >()
+            .await
+            .map(|axum::Extension(id)| id)
+            .unwrap_or_default();
+        let Some(viewer_id) = person_id
+            .as_deref()
+            .and_then(|id| uuid::Uuid::parse_str(id).ok())
+        else {
+            people.clear();
+            return Ok(PeopleView {
+                tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
+                firm_name: crate::app_chrome::firm_name_from_context().await,
+                rows: Vec::new(),
+                sort,
+                filter_name,
+                filter_email,
+                role,
+                error,
+                csrf_token,
+            });
+        };
+        let visible = store::firms::visible_person_ids(&surreal, viewer_id)
+            .await
+            .map_err(|e| ServerFnError::new(e.to_string()))?;
+        people.retain(|person| visible.contains(&person.id));
+    }
 
     Ok(PeopleView {
         tokens_href: crate::app_chrome::app_tokens_href_from_context().await,

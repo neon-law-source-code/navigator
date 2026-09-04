@@ -55,6 +55,18 @@ async fn a_seed_without_sample_matters_has_no_disposable_projects_or_people() {
         );
     }
     assert_eq!(report.projects_inserted, 0);
+
+    let firms = store::firms::all(&surreal).await.unwrap();
+    assert_eq!(firms.len(), 1);
+    assert_eq!(firms[0].name, store::seed::FIRM_ENTITY_NAME);
+    assert!(firms[0].entity_id.is_some());
+    let brands = store::firms::brand_keys_for_firm(&surreal, firms[0].id)
+        .await
+        .unwrap();
+    assert_eq!(
+        brands,
+        vec!["delete-your-data".to_string(), "neon".to_string()]
+    );
 }
 
 /// The default follows the deployment profile, which is what makes an
@@ -617,4 +629,68 @@ async fn the_dev_portfolios_mail_survives_the_mailroom_moving_layers() {
     assert!(letters
         .iter()
         .any(|l| l.summary == "Notice of Intent to Lien"));
+}
+
+/// The practice this deployment already is: one entity-backed firm, both
+/// house-brand keys, every sample matter pointed at it, and membership for
+/// Admin / Lawyer / Clerk only. A second boot inserts nothing.
+#[tokio::test]
+async fn the_dev_boot_seeds_the_practice_once() {
+    let surreal = mem_surreal().await;
+    let storage = storage().await;
+
+    for _ in 0..2 {
+        store::seed::seed_environment_with(
+            &surreal,
+            &storage,
+            DeploymentEnvironment::Dev,
+            store::seed::BrandSeed::Neon,
+        )
+        .await
+        .unwrap();
+    }
+
+    let firms = store::firms::all(&surreal).await.unwrap();
+    assert_eq!(firms.len(), 1);
+    let firm = &firms[0];
+    assert_eq!(firm.name, store::seed::FIRM_ENTITY_NAME);
+    let entity_id = firm.entity_id.expect("the seeded practice is an entity");
+    let entity = store::entities::find_by_id(&surreal, entity_id)
+        .await
+        .unwrap()
+        .expect("firm.entity_id names a live entity");
+    assert_eq!(entity.name, store::seed::FIRM_ENTITY_NAME);
+
+    let brands = store::firms::brand_keys_for_firm(&surreal, firm.id)
+        .await
+        .unwrap();
+    assert_eq!(
+        brands,
+        vec!["delete-your-data".to_string(), "neon".to_string()]
+    );
+
+    for project in projects::all(&surreal).await.unwrap() {
+        assert_eq!(
+            project.firm_id,
+            Some(firm.id),
+            "every sample matter belongs to the seeded practice"
+        );
+    }
+
+    for (email, should_belong) in [
+        ("admin@neonlaw.com", true),
+        ("lawyer@neonlaw.com", true),
+        ("clerk@neonlaw.com", true),
+        ("owner@neonlaw.com", false),
+        ("client@neonlaw.com", false),
+    ] {
+        let person = persons::find_by_email_ci(&surreal, email)
+            .await
+            .unwrap()
+            .unwrap_or_else(|| panic!("{email} is a fixture identity"));
+        let membership = store::firms::membership_for_person(&surreal, person.id, firm.id)
+            .await
+            .unwrap();
+        assert_eq!(membership.is_some(), should_belong, "{email} membership");
+    }
 }

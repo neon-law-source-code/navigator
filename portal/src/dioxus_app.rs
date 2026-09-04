@@ -2241,6 +2241,7 @@ pub fn admin_people_router(
             get(render_handler)
                 .layer(from_fn(inject_viewer_role))
                 .layer(from_fn(inject_app_brand_mark))
+                .layer(from_fn(inject_person_id))
                 .layer(from_fn(inject_csrf_token))
                 .layer(from_fn(dioxus_document_head))
                 .layer(from_fn(reject_unadvertised_sort)),
@@ -3343,6 +3344,38 @@ pub fn app_brands_router(
             ServeConfig::new(),
             webapp::brands_home::BrandsHome,
         ))
+        .route_layer(from_fn_with_state(
+            (sessions, policy),
+            crate::policy::require_policy,
+        ))
+        .route_layer(from_fn_with_state(auth, crate::auth::require_auth))
+}
+
+/// The Owner listing of practices and the brands they wear.
+pub const APP_OWNER_PATH: &str = "/app/owner";
+
+/// `/app/owner` — Owner only. Admin is denied at both this handler's
+/// `require_owner` gate and the Rego rule that carves this path out of the
+/// Owner/Admin route bypass.
+pub fn app_owner_router(
+    sessions: crate::session::SessionStore,
+    policy: crate::policy::PolicyClient,
+    auth: crate::auth::AuthConfig,
+    surreal: store::surreal::SurrealDb,
+) -> Router {
+    let cfg = ServeConfig::new().context_providers(std::sync::Arc::new(vec![Box::new(move || {
+        Box::new(surreal.clone()) as Box<dyn std::any::Any>
+    })
+        as Box<dyn Fn() -> Box<dyn std::any::Any> + Send + Sync>]));
+    Router::<FullstackState>::new()
+        .route(
+            APP_OWNER_PATH,
+            get(render_handler)
+                .layer(from_fn(dioxus_document_head))
+                .layer(from_fn(inject_viewer_role))
+                .layer(from_fn(inject_app_brand_mark)),
+        )
+        .with_state(FullstackState::new(cfg, webapp::owner_home::OwnerHome))
         .route_layer(from_fn_with_state(
             (sessions, policy),
             crate::policy::require_policy,

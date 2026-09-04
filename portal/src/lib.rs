@@ -894,6 +894,12 @@ pub fn bootstrap(
         state.policy.clone(),
         state.auth.clone(),
     );
+    let dioxus_app_owner = dioxus_app::app_owner_router(
+        state.sessions.clone(),
+        state.policy.clone(),
+        state.auth.clone(),
+        state.surreal.clone(),
+    );
     // #956 Phase 4: the template gallery renders through Dioxus at /templates
     // and /templates/{*path}. The detail pre-layer keeps owning the alias and
     // kebab redirects, the `/download` raw markdown, and the not-curated 404.
@@ -1673,6 +1679,7 @@ pub fn bootstrap(
         dioxus_app_doc,
         dioxus_app_team,
         dioxus_app_brands,
+        dioxus_app_owner,
         dioxus_template_gallery,
         dioxus_template_entry,
     ] {

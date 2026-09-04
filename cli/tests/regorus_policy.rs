@@ -174,9 +174,13 @@ fn regorus_matches_every_checked_in_policy_decision() {
     // + 6 for `/app/brands`: the four firm tiers admitted, with client and
     //   anonymous callers denied, matching `/app/team`.
     // 392 + 6 = 398.
+    //
+    // + 6 for `/app/owner`: Owner admitted; Admin, Lawyer, Clerk, client, and
+    //   anonymous denied.
+    // 398 + 6 = 404.
     assert_eq!(
         test_names.len(),
-        398,
+        404,
         "the policy decision inventory changed; review every new or removed rule"
     );
 

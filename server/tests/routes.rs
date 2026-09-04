@@ -824,12 +824,13 @@ async fn admin_people_surface_is_admin_only_with_full_controls() {
         );
     }
 
-    // Admin sees the list with the full controls and the singular
-    // `/app/admin/people` detail path.
+    // Owner sees the list with the full controls and the singular
+    // `/app/admin/people` detail path. Admin's people directory is firm-scoped
+    // and empty without a `person_firm_role` row.
     let resp = get_with_role(
         app.clone(),
         "/app/admin/people",
-        store::persons::Role::Admin,
+        store::persons::Role::Owner,
     )
     .await;
     assert_eq!(resp.status(), StatusCode::OK);
@@ -1282,7 +1283,7 @@ async fn lawyer_people_mirror_paths_are_gone() {
             "/app/admin/people must answer {expected} for {role:?}",
         );
     }
-    let admin_list = get_with_role(app, "/app/admin/people", store::persons::Role::Admin).await;
+    let admin_list = get_with_role(app, "/app/admin/people", store::persons::Role::Owner).await;
     let html = body_string(admin_list).await;
     assert!(
         html.contains("<title>Navigator | Admin | People</title>"),
@@ -1655,6 +1656,7 @@ async fn anonymous_access_to_the_shared_navigator_surface_lands_at_the_login_doo
         "/app/admin",
         "/app/team",
         "/app/brands",
+        "/app/owner",
         "/app/docs",
         "/app/docs/glossary",
         "/templates",
@@ -1709,6 +1711,34 @@ async fn anonymous_access_to_the_shared_navigator_surface_lands_at_the_login_doo
             "the API reference at {path} is public"
         );
     }
+}
+
+#[tokio::test]
+async fn owner_lists_the_seeded_practice_and_its_brands() {
+    let (state, surreal) = state_with_engines().await;
+    store::seed::seed_canonical(&surreal, &state.storage)
+        .await
+        .unwrap();
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+
+    let resp = get_with_role(app.clone(), "/app/owner", store::persons::Role::Owner).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let html = body_string(resp).await;
+    assert!(html.contains("<title>Navigator | Owner</title>"), "{html}");
+    assert!(html.contains("Shook Law PLLC"), "{html}");
+    assert!(html.contains("Entity: Shook Law PLLC"), "{html}");
+    assert!(html.contains("Brands: delete-your-data, neon"), "{html}");
+    assert!(
+        html.contains("href=\"/app/owner\""),
+        "Owner nav must offer the listing: {html}"
+    );
+
+    let admin = get_with_role(app, "/app/owner", store::persons::Role::Admin).await;
+    assert_eq!(
+        admin.status(),
+        StatusCode::FORBIDDEN,
+        "Admin is scoped to firms they belong to and does not inventory the deployment"
+    );
 }
 
 #[tokio::test]
@@ -8984,7 +9014,7 @@ async fn form_encoded_create_via_api_lists_the_person() {
         .unwrap();
     assert_eq!(create.status(), StatusCode::CREATED);
 
-    let list = get_with_role(app, "/app/admin/people", store::persons::Role::Admin).await;
+    let list = get_with_role(app, "/app/admin/people", store::persons::Role::Owner).await;
     assert_eq!(list.status(), StatusCode::OK);
     let body = body_string(list).await;
     assert!(body.contains("Libra"));
@@ -9822,12 +9852,12 @@ async fn api_people_welcome_authorizes_owner_admin_and_lawyer() {
 #[tokio::test]
 async fn admin_people_page_renders_directory() {
     let (state, surreal) = state_with_engines().await;
-    let admin = store::persons::create(
+    let owner = store::persons::create(
         &surreal,
         &store::persons::NewPerson::with_role(
-            "Admin",
-            "admin@neonlaw.com",
-            store::persons::Role::Admin,
+            "Owner",
+            "owner@neonlaw.com",
+            store::persons::Role::Owner,
         ),
     )
     .await
@@ -9842,7 +9872,7 @@ async fn admin_people_page_renders_directory() {
     )
     .await
     .unwrap();
-    let (cookie, _) = session_cookie_and_csrf_for_person(&admin);
+    let (cookie, _) = session_cookie_and_csrf_for_person(&owner);
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
     let resp = app
         .oneshot(
@@ -10439,12 +10469,12 @@ async fn impersonating_admin_cannot_start_second_impersonation() {
 #[tokio::test]
 async fn admin_people_index_shows_impersonate_only_for_client_rows() {
     let (state, surreal) = state_with_engines().await;
-    let admin = store::persons::create(
+    let owner = store::persons::create(
         &surreal,
         &store::persons::NewPerson::with_role(
-            "Admin",
-            "admin@neonlaw.com",
-            store::persons::Role::Admin,
+            "Owner",
+            "owner@neonlaw.com",
+            store::persons::Role::Owner,
         ),
     )
     .await
@@ -10469,11 +10499,12 @@ async fn admin_people_index_shows_impersonate_only_for_client_rows() {
     )
     .await
     .unwrap();
-    let (cookie, _) = session_cookie_and_csrf_for_person(&admin);
+    let (cookie, _) = session_cookie_and_csrf_for_person(&owner);
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
 
     // Impersonation lives on the admin console surface (`/app/admin/people`),
-    // not the de-scoped lawyer workbench list.
+    // not the de-scoped lawyer workbench list. Owner lists every person;
+    // Admin without firm membership does not.
     let resp = app
         .oneshot(
             Request::builder()
@@ -10488,7 +10519,7 @@ async fn admin_people_index_shows_impersonate_only_for_client_rows() {
     let body = body_string(resp).await;
     assert!(body.contains(&format!("/app/admin/people/{}/impersonate", client.id)));
     assert!(!body.contains(&format!("/app/admin/people/{}/impersonate", lawyer.id)));
-    assert!(!body.contains(&format!("/app/admin/people/{}/impersonate", admin.id)));
+    assert!(!body.contains(&format!("/app/admin/people/{}/impersonate", owner.id)));
 }
 
 #[tokio::test]
@@ -10598,7 +10629,7 @@ async fn admin_people_index_drops_id_column_and_renders_sort_links() {
     let (state, surreal) = state_with_engines().await;
     seed_three_people(&surreal).await;
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
-    let resp = get_with_role(app, "/app/admin/people", store::persons::Role::Admin).await;
+    let resp = get_with_role(app, "/app/admin/people", store::persons::Role::Owner).await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
     // No ID column header rendered.
@@ -10625,7 +10656,7 @@ async fn admin_people_index_honors_jsonapi_sort_ascending_by_name() {
     let resp = get_with_role(
         app,
         "/app/admin/people?sort=name",
-        store::persons::Role::Admin,
+        store::persons::Role::Owner,
     )
     .await;
     assert_eq!(resp.status(), StatusCode::OK);
@@ -10652,7 +10683,7 @@ async fn admin_people_index_honors_jsonapi_sort_descending_by_name() {
     let resp = get_with_role(
         app,
         "/app/admin/people?sort=-name",
-        store::persons::Role::Admin,
+        store::persons::Role::Owner,
     )
     .await;
     assert_eq!(resp.status(), StatusCode::OK);
@@ -10696,7 +10727,7 @@ async fn admin_people_index_honors_jsonapi_filter_on_name() {
     let resp = get_with_role(
         app,
         "/app/admin/people?filter%5Bname%5D=Libra",
-        store::persons::Role::Admin,
+        store::persons::Role::Owner,
     )
     .await;
     assert_eq!(resp.status(), StatusCode::OK);
@@ -10717,7 +10748,7 @@ async fn admin_people_index_stitches_filter_through_sort_links() {
     let resp = get_with_role(
         app,
         "/app/admin/people?filter%5Bname%5D=Libra",
-        store::persons::Role::Admin,
+        store::persons::Role::Owner,
     )
     .await;
     let body = body_string(resp).await;
@@ -15762,11 +15793,32 @@ async fn migrated_dioxus_forms_pass_structural_a11y() {
     .unwrap();
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
     let cookie = admin_session_cookie_with_person();
+    let owner_cookie = session_cookie_for_role(store::persons::Role::Owner);
 
-    // The create forms (no id), then the person show/edit pages (seeded id).
-    // All render through the shared `webapp::FormCard`.
+    // The people directory's only `<form>`s are per-row Delete / Impersonate.
+    // Admin's directory is firm-scoped and empty without a `person_firm_role`
+    // row, so the listing is exercised as Owner. Create and person pages still
+    // render through the shared `webapp::FormCard` for Admin.
+    let listing = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/app/admin/people")
+                .header(header::COOKIE, &owner_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        listing.status(),
+        StatusCode::OK,
+        "/app/admin/people should render"
+    );
+    let listing_body = body_string(listing).await;
+    assert_dioxus_forms_accessible(&listing_body, "/app/admin/people");
+
     let routes = [
-        "/app/admin/people".to_string(),
         "/app/admin/people/new".to_string(),
         "/app/admin/entities/new".to_string(),
         format!("/app/admin/people/{}", libra.id),

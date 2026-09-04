@@ -11,6 +11,10 @@ straight from term to schema.
 This glossary is a single alphabetical list. The notation-system vocabulary (Template, Notation, Questionnaire,
 Question, Answer, Rule) lives in its own teaching-ordered doc, [`notation`](notation.md).
 
+The [ERD](erd.md#schema) is the physical-schema companion to this vocabulary. When an entry names a SurrealDB table or
+field, it uses the ERD's singular table name (for example, `person.role` and `person_project_role.participation`);
+plural `store::persons` and `store::projects` are Rust module names.
+
 For task-oriented navigation, start at [`index`](index.md). Its glossary quick links map the most common terms to the
 docs that explain how those terms behave in code, operations, and workflows.
 
@@ -353,7 +357,7 @@ otherwise tell it apart from the deployment holding real matters.
 ## Deployment Operator
 
 The person or automation that owns Kubernetes, cloud accounts, secrets, domains, mounted deployment configuration, and
-rollouts. This is distinct from an application [Role](#role): a Person with `persons.role = 'admin'` has application
+rollouts. This is distinct from an application [Role](#role): a Person with `person.role = 'admin'` has application
 authorization but does not thereby gain infrastructure access.
 
 ## `devx`
@@ -606,7 +610,7 @@ quietly — the provisioning call simply fails to find a user, at exactly the mo
 `handle` is kept beside the id and is expected to drift.
 
 **It carries no authorization meaning, and that is the point.** A row is an address, not a key and not a permission:
-`persons.role` is the authorization tier and `person_project_roles.participation` is the scope, and an external identity
+`person.role` is the authorization tier and `person_project_role.participation` is the scope, and an external identity
 is neither. No code may read it to make an access decision. This is what keeps the [Clerk](#person) rule intact — a
 Clerk recorded as GitHub user `12345` receives no Git authority by that record — and what keeps the table from becoming
 a back door around the rule that Project participation never grants source-forge access. The vocabulary of systems is
@@ -788,7 +792,7 @@ The workflow prefix `mailroom_send` records lawyer sending physical mail. See
 ## Matter
 
 Client-English synonym for **[Project](#project)**. The same row, under the noun a lawyer or a client uses out loud.
-*"Open a matter"* and *"open a Project"* describe the same insert into the `projects` table; the marketing surface picks
+*"Open a matter"* and *"open a Project"* describe the same insert into the `project` table; the marketing surface picks
 one, the schema picks the other.
 
 ## Module
@@ -881,10 +885,10 @@ for that client-facing shape. The codebase and the workflow runtime speak Onboar
 
 ## Participation
 
-The `person_project_roles.participation` column, and **nothing else**: participation is a property of a [Person–Project
-Role](#personproject-role) row, never a standalone concept. That entry is the single definition — what the value is,
-where it comes from, and which question its presence answers versus its value. Do not restate it here; two descriptions
-of one column is how this glossary previously came to hold both "open vocabulary" and "closed derived set" at once.
+The `person_project_role.participation` column. It is a property of a [Person–Project Role](#personproject-role) row,
+never a standalone grant, and is derived from `person.role`. Its row's presence and its value answer different access
+questions; the [access model](access-model.md) defines the route-specific checks. Embedded Rego receives the role for
+route admission, while the matter surface reads the participation ledger for data scope.
 
 Not to be confused with [Disclosure](#disclosure), which is the firm's conflicts log, not an access grant.
 
@@ -940,8 +944,8 @@ does not prove the row exists.
 ## Person–Project Role
 
 A Person's participation on a Project. The `participation` column records which side of the matter they are on, and it
-is **derived, never entered**: `store::projects::participation_for_role` maps `persons.role` onto it, so the value is
-one of `owner`, `admin`, `lawyer`, `clerk`, or `client`. No write door takes a participation — not the lawyer form, not
+is **derived, never entered**: `store::projects::participation_for_role` maps `person.role` onto it, so the value is one
+of `owner`, `admin`, `lawyer`, `clerk`, or `client`. No write door takes a participation — not the lawyer form, not
 `POST /app/api/projects/{id}/participants`, not `aida_link_person_project`.
 
 The row answers two questions, and they are not the same question. Its **presence** gates whether a `client` or `lawyer`
@@ -1014,7 +1018,7 @@ and Navigator [Assets](#asset). Google Drive stays as a per-Project ingest dropb
 Navigator copies them into the documents bucket and never treats the folder as a live store.
 [`project-repositories`](project-repositories.md) is the canonical deployment map and source boundary.
 
-`projects.code` is **lowercase letters, digits, and single hyphens**, alphanumeric at both ends, at most 80 characters —
+`project.code` is **lowercase letters, digits, and single hyphens**, alphanumeric at both ends, at most 80 characters —
 enforced by [`store::projects::is_valid_code`](../store/src/projects.rs) and the SurrealDB `project_code` unique index.
 No uppercase, no underscores, no other punctuation, and no spaces.
 
@@ -1063,7 +1067,7 @@ objects in GCS — so deleting a Project's database rows never deletes its archi
 
 Working files live under the documents-bucket prefix `projects/{code}` — a key convention in the deployment's private
 documents bucket, not a bucket per Project. Google Drive is the Project's ingest dropbox. Its deployment-selected root
-holds one folder per matter, named for `projects.code`; Workspace membership lets people drop files in, and Navigator
+holds one folder per matter, named for `project.code`; Workspace membership lets people drop files in, and Navigator
 copies them into the documents bucket. Drive is never the serve origin and never a CI publish target. Project
 participation grants Navigator and deployed Project-application access, never source-forge access. Opening a Project
 creates or adopts the three handles through `store::project_surfaces`; `POST /app/api/project-surfaces/{id}` and
@@ -1236,21 +1240,23 @@ CM/ECF practice (Fed. R. Civ. P. 5.2(f)). Per-revision visibility is never a red
 
 ## Role
 
-The **system-wide authorization tier** a [Person](#person) carries in `persons.role`. There are exactly five tiers and a
+The **system-wide authorization tier** a [Person](#person) carries in `person.role`. There are exactly five tiers and a
 person holds exactly one:
 
-- **Owner** — the highest tier: the human who owns the system. Inherits every Admin and Lawyer capability, bypasses
-  Project-scoping, and alone may create, edit, or demote an Owner identity.
-- **Admin** — a licensed lawyer with system-administration authority. Bypasses Project-scoping entirely and sees every
-  Project, but cannot govern an Owner identity. Person deletion remains client-only for every privileged tier.
+- **Owner** — the highest tier: the human who owns the system. Inherits every Admin and Lawyer capability and alone may
+  create, edit, or demote an Owner identity. Owner may pass route admission and use the Project directory without a
+  participation row, but matter-content routes still apply the participation gate.
+- **Admin** — a licensed lawyer with system-administration authority. Admin may pass route admission and use the Project
+  directory without a participation row, but matter-content routes still apply the participation gate. Admin cannot
+  govern an Owner identity. Person deletion remains client-only for every privileged tier.
 - **Lawyer** — a person licensed to practice law. Same per-Project visibility scope as `client`; the tier difference is
   in what the lawyer may *do* on a visible Project (edit, sign, file) and in supervising Clerk work.
 - **Clerk** — a supervised non-lawyer firm worker. Clerk's dedicated `/clerk` surface is read-only and shows only
   firm-assigned Projects with a disclosed licensed-lawyer `lawyer_dri`; it never receives lawyer-work, advice, Git, MCP,
   or `/app/lawyer` authority by inheritance.
 - **Client** — a person the firm represents on at least one matter. Sees only Projects with a matching
-  `person_project_roles` row.
-- **Anonymous** — not signed in; no `persons` row at all. The public visitor, who sees only public pages.
+  `person_project_role` row.
+- **Anonymous** — not signed in; no `person` row at all. The public visitor, who sees only public pages.
 
 `role` is read from the DB row at callback time, never trusted from the OIDC token. Sign-up is operator-mediated: an
 unseeded identity is rejected, not created. The one exception is the system's configured Owner email, created on first

@@ -5,6 +5,53 @@ use std::process::Command;
 use assert_cmd::cargo::cargo_bin;
 
 #[test]
+fn docs_erd_and_glossary_share_physical_schema_names() {
+    let glossary = include_str!("../../docs/glossary.md");
+    let erd = include_str!("../../docs/erd.md");
+    let erd_svg = include_str!("../../docs/erd.svg");
+    let schema = include_str!("../../store/src/schema/navigator.surql");
+
+    assert!(glossary.contains("[ERD](erd.md#schema)"));
+    assert!(erd.contains("[glossary](glossary.md)"));
+
+    for table in ["person", "person_project_role", "project"] {
+        assert!(
+            schema.contains(&format!("DEFINE TABLE IF NOT EXISTS {table} ")),
+            "schema must define `{table}`"
+        );
+        assert!(
+            erd.contains(&format!("    {table} {{")),
+            "ERD must render `{table}`"
+        );
+        assert!(
+            erd_svg.contains(&format!(">{table}</text>")),
+            "SVG ERD must render `{table}`"
+        );
+    }
+
+    for field in [
+        "`person.role`",
+        "`person_project_role.participation`",
+        "`project.code`",
+    ] {
+        assert!(glossary.contains(field), "glossary must use `{field}`");
+    }
+
+    for retired_name in [
+        "`persons.role`",
+        "`persons` row",
+        "`person_project_roles`",
+        "`person_project_roles.participation`",
+        "`projects.code`",
+    ] {
+        assert!(
+            !glossary.contains(retired_name),
+            "glossary must not name the non-schema `{retired_name}`"
+        );
+    }
+}
+
+#[test]
 fn docs_requires_a_subcommand() {
     let out = Command::new(cargo_bin("navigator"))
         .arg("dev")

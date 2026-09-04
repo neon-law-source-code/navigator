@@ -10,6 +10,9 @@ The workspace ships two ERD artifacts, both rendered from the same live `INFO FO
   outside the repo). Unlike Mermaid's own SVG (text in `<foreignObject>`, invisible in many viewers), this renderer uses
   native `<text>` elements, so it opens in GNOME Image Viewer, `feh`, browsers — anything.
 
+The [glossary](glossary.md) owns the business vocabulary and uses these same singular table names whenever it names a
+physical field or relation. Rust modules may be plural; the ERD and schema are not.
+
 ## Regenerating
 
 Both artifacts come from one command; `--format` selects the renderer. The command reads the `NAVIGATOR_SURREAL_*`

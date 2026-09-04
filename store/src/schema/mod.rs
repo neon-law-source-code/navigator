@@ -32,7 +32,7 @@ use crate::surreal::SurrealDb;
 /// The version this build of Navigator applies. Bump it whenever
 /// `navigator.surql` changes so a database prepared by another build
 /// reports as drifted instead of silently disagreeing.
-pub const SCHEMA_VERSION: u32 = 23;
+pub const SCHEMA_VERSION: u32 = 24;
 
 /// The table holding the applied version.
 const VERSION_TABLE: &str = "schema_version";

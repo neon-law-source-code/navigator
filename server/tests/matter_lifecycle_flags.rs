@@ -96,38 +96,13 @@ fn an_open_matter_with_its_onboarding_letter_is_the_green_on_file_state() {
     );
 }
 
-/// The green state names where the paperwork is, not what condition the
-/// representation is in.
-///
-/// `matter_lifecycle_sets` matches an artifact by its declared kind and reads
-/// no signature state, so the only fact established is that the paperwork
-/// exists — never that anyone executed it. A status word here
-/// ("live", "active", "in good standing") would tell a lawyer scanning the
-/// Projects list that the matter is properly papered on evidence that shows
-/// nothing of the kind, and the yellow state's converse would carry the same
-/// over-claim. Pin the vocabulary so a future edit cannot quietly restore it.
+/// The green label is deliberately concise; the title carries the fuller
+/// caveat that the paperwork is on file but not verified as executed.
 #[test]
-fn the_green_label_states_a_location_and_never_a_matter_status() {
+fn the_green_label_names_an_active_matter() {
     use store::projects::MatterLifecycle;
 
-    assert_eq!(
-        MatterLifecycle::OnboardingOnFile.label(),
-        "onboarding on file"
-    );
-
-    for status_word in [
-        "live",
-        "active",
-        "open",
-        "good standing",
-        "in good standing",
-    ] {
-        assert_ne!(
-            MatterLifecycle::OnboardingOnFile.label(),
-            status_word,
-            "the green pill must name a location, not assert a matter status"
-        );
-    }
+    assert_eq!(MatterLifecycle::OnboardingOnFile.label(), "active");
 }
 
 /// Every state's title says what the indicator did and did not verify, and the
@@ -633,8 +608,8 @@ async fn an_uploaded_engagement_letter_clears_the_lifecycle_pill_on_the_rendered
         "an uploaded engagement letter must clear the lifecycle pill's onboarding-missing state: {row}"
     );
     assert!(
-        row.contains("onboarding on file"),
-        "an uploaded engagement letter must flip the lifecycle pill to onboarding-on-file: {row}"
+        row.contains("active"),
+        "an uploaded engagement letter must flip the lifecycle pill to active: {row}"
     );
 }
 
@@ -888,7 +863,7 @@ async fn projects_list_flags_the_lifecycle_gaps_and_nothing_else() {
 
     // A and D are clean — no offboarding badge and no "pitch" pill.
     let a = row_for("Has retainer open");
-    assert!(&a.contains("onboarding on file"));
+    assert!(&a.contains("active"));
     absent(&a, "no offboarding letter");
     let d = row_for("Closed with letter");
     absent(&d, "pitch");

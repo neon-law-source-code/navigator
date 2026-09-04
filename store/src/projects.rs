@@ -2225,12 +2225,10 @@ impl MatterLifecycle {
     /// (not just the class) is what a colour-blind or screen-reader reader
     /// gets.
     ///
-    /// The green state names a **location, not a status**: "onboarding on
-    /// file" is what [`matter_lifecycle_sets`] actually establishes, since it
-    /// matches an artifact by declared kind and reads no signature state. A
-    /// status word there ("live", "open", "in good standing") would assert the
-    /// matter is properly papered on evidence that only shows the paperwork
-    /// exists. [`MatterLifecycle::title`] carries the limit in full.
+    /// The green state reads "active": short, and the word a lawyer scanning
+    /// the list actually wants — whether papering is *filed*, not merely
+    /// executed, stays [`MatterLifecycle::title`]'s job, spelled out in full
+    /// on hover rather than carried by the pill's own word.
     #[must_use]
     pub fn label(self) -> &'static str {
         match self {
@@ -2239,7 +2237,7 @@ impl MatterLifecycle {
             // client is in before they sign — the word a lawyer already uses
             // for it, and shorter than the description it stands in for.
             MatterLifecycle::NeedsOnboarding => "pitch",
-            MatterLifecycle::OnboardingOnFile => "onboarding on file",
+            MatterLifecycle::OnboardingOnFile => "active",
             MatterLifecycle::Closed => "closed",
         }
     }
@@ -2545,6 +2543,55 @@ mod surreal_read_tests {
             project.brand, "neon",
             "an absent value reads as the default the schema would have written"
         );
+    }
+
+    /// The write-side counterpart to
+    /// [`reads_a_project_row_written_before_brand_was_defined`]: a project
+    /// row that predates `brand` reads fine (the tolerant `Option<String>`
+    /// collapse), but any later partial `UPDATE` against that same row makes
+    /// SurrealDB re-validate the whole record against the schema, including
+    /// the untouched `brand` field, whose stored value is genuinely absent
+    /// rather than defaulted. `designate_dri_in_surreal` is exactly such an
+    /// update — it only sets `updated_at` on the Project row — and this is
+    /// the shape of the coercion error a live DRI assignment hit against a
+    /// pre-brand Project.
+    #[tokio::test]
+    async fn designating_a_dri_on_a_project_written_before_brand_was_defined() {
+        let db = unmigrated().await;
+        apply(&db).await.unwrap();
+        db.query("REMOVE FIELD brand ON project").await.unwrap();
+        let project_id = uuid::Uuid::now_v7();
+        let entity_id = uuid::Uuid::now_v7();
+        db.query(
+            "CREATE $id SET code = 'pre-brand-dri', name = 'Pre-Brand DRI Matter', \
+             status = 'open', entity_id = $entity_id, \
+             inserted_at = '2026-08-25T00:00:00Z', updated_at = '2026-08-25T00:00:00Z'",
+        )
+        .bind(("id", crate::surreal::record_id("project", project_id)))
+        .bind(("entity_id", record_id(ENTITY_TABLE, entity_id)))
+        .await
+        .unwrap()
+        .check()
+        .unwrap();
+        // Re-apply the shipped schema, exactly as a boot would: the
+        // Project's `brand` was never written, and re-applying converges the
+        // field definition without touching the row.
+        apply(&db).await.unwrap();
+
+        let lawyer = crate::persons::create(
+            &db,
+            &crate::persons::NewPerson::with_role(
+                "Pre-Brand DRI Lawyer",
+                "dri-lawyer@example.com",
+                Role::Lawyer,
+            ),
+        )
+        .await
+        .unwrap();
+
+        designate_dri_in_surreal(&db, project_id, lawyer.id, DriSide::Lawyer)
+            .await
+            .expect("designating a DRI must not fail on a project row that predates `brand`");
     }
 
     /// A repository URL may name any forge, in any organization.

@@ -32,6 +32,9 @@ struct WritesWorld {
     persons: HashMap<String, Uuid>,
     projects: HashMap<String, Uuid>,
     project_codes: HashMap<String, String>,
+    /// `person_project_role` row id, keyed by `"{project_name}:{email}"` —
+    /// what the DRI controls address a participant by.
+    participation_role_ids: HashMap<String, Uuid>,
     last_status: Option<StatusCode>,
     last_body: String,
     last_location: Option<String>,
@@ -93,6 +96,7 @@ async fn seed_person(world: &mut WritesWorld, email: String, role: String) {
         "owner" => store::persons::Role::Owner,
         "admin" => store::persons::Role::Admin,
         "lawyer" => store::persons::Role::Lawyer,
+        "clerk" => store::persons::Role::Clerk,
         _ => store::persons::Role::Client,
     };
     // `seed_canonical` already plants the firm principal (`nick@neonlaw.com`,
@@ -161,7 +165,7 @@ async fn seed_project_with_participant(
         .await
         .expect("lookup participant")
         .expect("participant exists");
-    store::projects::add_participation(
+    let row = store::projects::add_participation(
         &surreal,
         project_id,
         person_id,
@@ -169,6 +173,9 @@ async fn seed_project_with_participant(
     )
     .await
     .expect("insert SurrealDB person_project_role");
+    world
+        .participation_role_ids
+        .insert(format!("{project_name}:{participant_email}"), row.id);
 }
 
 #[given(regex = r#"^a project "([^"]+)" with no participants$"#)]
@@ -290,6 +297,41 @@ async fn submit_delete(world: &mut WritesWorld, email: String, body: String, pro
     capture(world, resp).await;
 }
 
+/// `POST /app/projects/{code}/people/{role_id}/dri` — the matter-workbench
+/// accountability control, exercised by the caller naming their own already-
+/// seeded participation row. This is the exact mutation a live "Add Lawyer
+/// DRI" hit the `project.brand` coercion bug on (#1093-adjacent): it writes
+/// the Project row itself (`UPDATE $project SET updated_at = $now`) before
+/// touching the participation row, so any project row missing `brand`
+/// tripped it regardless of who was asking.
+#[when(regex = r#"^"([^"]+)" designates themselves as lawyer DRI on "([^"]+)"$"#)]
+async fn designate_self_as_lawyer_dri(
+    world: &mut WritesWorld,
+    email: String,
+    project_name: String,
+) {
+    let project_code = world.project_code(&project_name).to_owned();
+    let role_id = *world
+        .participation_role_ids
+        .get(&format!("{project_name}:{email}"))
+        .expect("participant was seeded earlier");
+    let cookie = session_cookie_for(world, &email).await;
+    let resp = world
+        .app()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/app/projects/{project_code}/people/{role_id}/dri"))
+                .header("cookie", cookie)
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(Body::from(format!("_csrf={CSRF}")))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    capture(world, resp).await;
+}
+
 #[when(regex = r#"^"([^"]+)" opens the edit page for "([^"]+)"$"#)]
 async fn open_edit(world: &mut WritesWorld, email: String, project_name: String) {
     let project_code = world
@@ -403,6 +445,31 @@ async fn location_contains(world: &mut WritesWorld, needle: String) {
     assert!(
         loc.contains(&needle),
         "expected Location to contain {needle:?}, got {loc:?}",
+    );
+}
+
+/// The regression guard for the edit form's save action: it must post to the
+/// matter's *code* — the segment `POST /app/projects/{project_code}` actually
+/// matches — never to the row's raw id, which 404s the save and strands the
+/// lawyer on an id-shaped URL instead of saving anything.
+#[then(regex = r#"^the response body posts its save to "([^"]+)"$"#)]
+async fn body_posts_save_to(world: &mut WritesWorld, project_name: String) {
+    let code = world.project_code(&project_name).to_owned();
+    let id = *world
+        .projects
+        .get(&project_name)
+        .expect("project was seeded earlier");
+    let wanted = format!(r#"action="/app/projects/{code}""#);
+    assert!(
+        world.last_body.contains(&wanted),
+        "expected the form to post to {wanted:?}; body: {}",
+        truncate(&world.last_body),
+    );
+    let by_id = format!(r#"action="/app/projects/{id}""#);
+    assert!(
+        !world.last_body.contains(&by_id),
+        "the form posted to the row id instead of the matter code: {}",
+        truncate(&world.last_body),
     );
 }
 

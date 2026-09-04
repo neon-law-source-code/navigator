@@ -47,7 +47,11 @@ pub struct ProjectEditView {
     /// `false` for a non-lawyer caller or an unknown matter — the page renders
     /// not-found under a committed `404`.
     pub found: bool,
-    pub project_id: String,
+    /// The matter's route segment — what the save posts to, and what the
+    /// "Edit project" page itself is mounted at. Never the row's UUID: the
+    /// router matches `POST /app/projects/{project_code}` by code, so an
+    /// action built from the id would 404 the save.
+    pub project_code: String,
     pub name: String,
     pub description: String,
     pub entity_id: Option<String>,
@@ -183,7 +187,7 @@ pub async fn get_project_edit_form() -> Result<ProjectEditView, ServerFnError> {
     Ok(ProjectEditView {
         firm_name: crate::app_chrome::firm_name_from_context().await,
         found: true,
-        project_id: project.id.to_string(),
+        project_code: project.code.clone(),
         name: project.name,
         description: project.description.unwrap_or_default(),
         entity_id: Some(project.entity_id.to_string()),
@@ -272,7 +276,7 @@ pub(crate) const REPOSITORY_URL_HELP: &str =
 
 /// The loaded edit form.
 fn edit_body(view: &ProjectEditView) -> Element {
-    let action = format!("/app/projects/{}", view.project_id);
+    let action = format!("/app/projects/{}", view.project_code);
     let fields = vec![
         Field::text("Name", "name", view.name.clone()).required(),
         Field::select(
@@ -389,7 +393,7 @@ mod tests {
             tokens_href: String::new(),
             firm_name: "Neon Law".to_string(),
             found: true,
-            project_id: "00000000-0000-0000-0000-0000000000aa".to_string(),
+            project_code: "acme-formation".to_string(),
             name: "Acme Formation".to_string(),
             description: "Form the LLC.".to_string(),
             entity_id: Some("00000000-0000-0000-0000-000000000001".to_string()),
@@ -418,11 +422,12 @@ mod tests {
     }
 
     #[test]
-    fn posts_to_the_matter_route_with_the_entity_preselected() {
+    fn posts_to_the_matter_route_by_code_not_id() {
         let html = render(&view());
         assert!(
-            html.contains(r#"action="/app/projects/00000000-0000-0000-0000-0000000000aa""#),
-            "{html}"
+            html.contains(r#"action="/app/projects/acme-formation""#),
+            "the save must post to the matter's code, the segment the router \
+             actually matches — an id here 404s the save: {html}"
         );
         assert!(html.contains(r#"name="_csrf" value="TOK""#), "{html}");
         assert!(

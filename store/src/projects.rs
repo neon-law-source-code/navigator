@@ -2224,12 +2224,10 @@ impl MatterLifecycle {
     /// (not just the class) is what a colour-blind or screen-reader reader
     /// gets.
     ///
-    /// The green state names a **location, not a status**: "onboarding on
-    /// file" is what [`matter_lifecycle_sets`] actually establishes, since it
-    /// matches an artifact by declared kind and reads no signature state. A
-    /// status word there ("live", "open", "in good standing") would assert the
-    /// matter is properly papered on evidence that only shows the paperwork
-    /// exists. [`MatterLifecycle::title`] carries the limit in full.
+    /// The green state reads "active": short, and the word a lawyer scanning
+    /// the list actually wants — whether papering is *filed*, not merely
+    /// executed, stays [`MatterLifecycle::title`]'s job, spelled out in full
+    /// on hover rather than carried by the pill's own word.
     #[must_use]
     pub fn label(self) -> &'static str {
         match self {
@@ -2238,7 +2236,7 @@ impl MatterLifecycle {
             // client is in before they sign — the word a lawyer already uses
             // for it, and shorter than the description it stands in for.
             MatterLifecycle::NeedsOnboarding => "pitch",
-            MatterLifecycle::OnboardingOnFile => "onboarding on file",
+            MatterLifecycle::OnboardingOnFile => "active",
             MatterLifecycle::Closed => "closed",
         }
     }

@@ -2680,7 +2680,7 @@ pub fn template_card(
 }
 
 /// One marketing page built from the shared band vocabulary — `/navigator`,
-/// `/fractional-cto`, and `/fractional-gc`.
+/// `/personal-plan`, and `/services`.
 ///
 /// One router serves them all: they differ only in the copy the caller
 /// resolves, which is what keeps a further page a data change.
@@ -2708,11 +2708,10 @@ pub fn marketing_page_router(path: &str, content: webapp::marketing_page::PageCo
 /// it, and the invitation to co-counsel a pro bono case.
 pub const FIRM_NAVIGATOR_PATH: &str = "/navigator";
 
-/// The firm's lead offering: it runs the technology function for a law firm —
-/// AI enablement, the privacy and compliance work under it, and complex counsel
-/// beside it. A law-related service, which is why its page carries an RPC 5.7
-/// disclosure the other marketing pages do not need.
-pub const FIRM_FRACTIONAL_CTO_PATH: &str = "/fractional-cto";
+/// The firm's consumer legal plan: estate planning, tax filing, privacy
+/// protection, and credit monitoring (beta) on one flat annual or daily fee —
+/// the personal-side counterpart to `/fractional-gc`.
+pub const FIRM_PERSONAL_PLAN_PATH: &str = "/personal-plan";
 
 /// The firm's Legal Services page: the published flat-fee catalog of one-time
 /// consumer legal work — a will, a trust, a name change, a formation — each

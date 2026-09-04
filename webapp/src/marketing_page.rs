@@ -16,6 +16,7 @@
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::components::pricing::{PricingCard, PricingSection};
 use crate::components::{
     PlatformMark, PlatformMarkGlyph, PracticeMark, PracticeMarkGlyph, PublicShell, SiteHeader,
     SiteNavLink, SocialMeta,
@@ -84,9 +85,14 @@ pub struct Card {
     /// Short labels rendered as a chip row. Empty renders no row.
     pub chips: Vec<String>,
     pub body: Vec<Paragraph>,
-    /// Optional deep link to the page that expands this card.
+    /// Optional deep link to the page that expands this card. In the
+    /// pricing-card style this is the call to action instead.
     pub href: Option<String>,
     pub href_label: Option<String>,
+    /// The billing cadence, read only in the pricing-card style.
+    pub cadence: Option<String>,
+    /// Bullet features, read only in the pricing-card style.
+    pub features: Vec<String>,
 }
 
 /// One entry in a numbered walk.
@@ -167,6 +173,9 @@ pub enum Band {
         heading: String,
         description: Option<String>,
         items: Vec<Card>,
+        /// Render with the shared "Navigator-UX" pricing-card treatment
+        /// instead of the plain grid.
+        pricing_style: bool,
     },
     /// A titled, numbered walk.
     Steps {
@@ -511,7 +520,7 @@ fn Bands(items: Vec<Band>) -> Element {
                         }
                     }
                 },
-                Band::Cards { anchor, overline, heading, description, items } => rsx! {
+                Band::Cards { anchor, overline, heading, description, items, pricing_style } => rsx! {
                     section { class: "fm-band fm-band--cards", id: "{anchor}",
                         div { class: "fm-band__inner",
                             BandHeading {
@@ -519,26 +528,55 @@ fn Bands(items: Vec<Band>) -> Element {
                                 heading: heading.clone(),
                                 description: description.clone(),
                             }
-                            ul { class: "fm-cards",
-                                for card in items.iter() {
-                                    li { class: "fm-card",
-                                        h3 { class: "fm-card__title", "{card.title}" }
-                                        if !card.chips.is_empty() {
-                                            ul { class: "fm-chips",
-                                                for chip in card.chips.iter() {
-                                                    li { class: "fm-chip", "{chip}" }
+                            if *pricing_style {
+                                {
+                                    let cards: Vec<PricingCard> = items
+                                        .iter()
+                                        .map(|card| PricingCard {
+                                            title: card.title.clone(),
+                                            price: card.chips.first().cloned().unwrap_or_default(),
+                                            cadence: card.cadence.clone(),
+                                            blurb: card
+                                                .body
+                                                .iter()
+                                                .flat_map(|p| p.iter().map(|r| r.text.clone()))
+                                                .collect::<Vec<_>>()
+                                                .join(" "),
+                                            features: card.features.clone(),
+                                            cta_label: card.href_label.clone().unwrap_or_default(),
+                                            cta_href: card.href.clone().unwrap_or_default(),
+                                            featured_label: None,
+                                        })
+                                        .collect();
+                                    rsx! {
+                                        PricingSection {
+                                            cols_lg: u8::try_from(cards.len()).unwrap_or(4),
+                                            cards,
+                                        }
+                                    }
+                                }
+                            } else {
+                                ul { class: "fm-cards",
+                                    for card in items.iter() {
+                                        li { class: "fm-card",
+                                            h3 { class: "fm-card__title", "{card.title}" }
+                                            if !card.chips.is_empty() {
+                                                ul { class: "fm-chips",
+                                                    for chip in card.chips.iter() {
+                                                        li { class: "fm-chip", "{chip}" }
+                                                    }
                                                 }
                                             }
-                                        }
-                                        div { class: "fm-card__body",
-                                            for paragraph in card.body.iter() {
-                                                Prose { runs: paragraph.clone() }
+                                            div { class: "fm-card__body",
+                                                for paragraph in card.body.iter() {
+                                                    Prose { runs: paragraph.clone() }
+                                                }
                                             }
-                                        }
-                                        if let (Some(href), Some(label)) =
-                                            (card.href.as_ref(), card.href_label.as_ref())
-                                        {
-                                            a { class: "fm-card__link", href: "{href}", "{label}" }
+                                            if let (Some(href), Some(label)) =
+                                                (card.href.as_ref(), card.href_label.as_ref())
+                                            {
+                                                a { class: "fm-card__link", href: "{href}", "{label}" }
+                                            }
                                         }
                                     }
                                 }
@@ -1047,9 +1085,9 @@ mod tests {
             hero_lines: Vec::new(),
             hero_lead: String::new(),
             hero_cta: None,
-            head_title: "Fractional CTO — Neon Law".to_string(),
+            head_title: "Sample Practice — Neon Law".to_string(),
             meta_description: "The technology function, run by the firm.".to_string(),
-            title: "Fractional CTO".to_string(),
+            title: "Sample Practice".to_string(),
             hero_mark: None,
             tagline: "The technology function, run by the firm.".to_string(),
             skin: PageSkin::Marketing,
@@ -1073,7 +1111,10 @@ mod tests {
                         body: vec![vec![Run::plain("Cap table and employee agreements.")]],
                         href: Some("/fractional-gc".to_string()),
                         href_label: Some("See the practice".to_string()),
+                        cadence: None,
+                        features: Vec::new(),
                     }],
+                    pricing_style: false,
                 },
                 Band::Steps {
                     anchor: "how-it-works".to_string(),
@@ -1318,7 +1359,7 @@ mod tests {
                 hero_cta: None,
                 head_title: "T".to_string(),
                 meta_description: "D".to_string(),
-                title: "Fractional CTO".to_string(),
+                title: "Sample Practice".to_string(),
                 hero_mark: Some(PracticeMark::Technology),
                 tagline: "We run the technology function for law firms.".to_string(),
                 bands: vec![],
@@ -1341,7 +1382,7 @@ mod tests {
             "the practice skin marks the page root: {practice}"
         );
         assert!(
-            practice.contains(r#"<p class="firm-eyebrow">Fractional CTO</p>"#),
+            practice.contains(r#"<p class="firm-eyebrow">Sample Practice</p>"#),
             "the practice name is the eyebrow: {practice}"
         );
         assert!(

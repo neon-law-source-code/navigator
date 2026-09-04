@@ -123,9 +123,9 @@ mod tests {
             },
             PracticeLink {
                 mark: PracticeMark::Technology,
-                heading: "Fractional CTO".into(),
+                heading: "Personal Plan".into(),
                 body: String::new(),
-                href: "/fractional-cto".into(),
+                href: "/personal-plan".into(),
             },
         ]
     }
@@ -145,7 +145,7 @@ mod tests {
         assert_eq!(html.matches("neon-card home-practice").count(), 2, "{html}");
         for (heading, href) in [
             ("Litigation", "/litigation"),
-            ("Fractional CTO", "/fractional-cto"),
+            ("Personal Plan", "/personal-plan"),
         ] {
             assert!(html.contains(heading), "missing {heading}: {html}");
             assert!(html.contains(&format!(r#"href="{href}""#)), "{html}");
@@ -163,7 +163,7 @@ mod tests {
         );
         assert!(html.contains("workshop-product-cards"), "{html}");
         assert_eq!(html.matches("neon-card home-practice").count(), 0, "{html}");
-        assert!(!html.contains("Fractional CTO"), "{html}");
+        assert!(!html.contains("Personal Plan"), "{html}");
         assert!(!html.contains("One-time services"), "{html}");
     }
 

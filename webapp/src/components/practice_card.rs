@@ -128,10 +128,10 @@ mod tests {
             rsx! {
                 PracticeCard {
                     mark: PracticeMark::Technology,
-                    heading: "Fractional CTO".to_string(),
+                    heading: "Personal Plan".to_string(),
                     body: String::new(),
-                    href: "/fractional-cto".to_string(),
-                    heading_id: "practice-cto".to_string(),
+                    href: "/personal-plan".to_string(),
+                    heading_id: "practice-pp".to_string(),
                 }
             }
         }
@@ -143,9 +143,9 @@ mod tests {
             html.contains(r#"class="neon-card home-practice""#),
             "{html}"
         );
-        assert!(html.contains(r#"href="/fractional-cto""#), "{html}");
-        assert!(html.contains(r#"aria-labelledby="practice-cto""#), "{html}");
-        assert!(html.contains("Fractional CTO"), "{html}");
+        assert!(html.contains(r#"href="/personal-plan""#), "{html}");
+        assert!(html.contains(r#"aria-labelledby="practice-pp""#), "{html}");
+        assert!(html.contains("Personal Plan"), "{html}");
         assert!(
             html.contains(r#"data-practice-mark="technology""#),
             "{html}"

@@ -19,11 +19,11 @@ pub const DEFAULT_LOCALE: &str = "en";
 
 /// Page stems the English catalog may hold.
 pub const KNOWN_PAGES: &[&str] = &[
-    "fractional-cto",
     "fractional-gc",
     "home",
     "litigation",
     "navigator",
+    "personal-plan",
     "services",
 ];
 
@@ -161,6 +161,19 @@ pub struct SeparateWorkCopy {
     pub link_label: Option<String>,
 }
 
+/// One flat-fee pricing card the fractional-GC page publishes for the base
+/// retainer itself, alongside the fee schedule it no longer withholds.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PricingCardCopy {
+    pub title: String,
+    pub price: String,
+    #[serde(default)]
+    pub cadence: Option<String>,
+    pub blurb: String,
+    #[serde(default)]
+    pub features: Vec<String>,
+}
+
 /// The `/fractional-gc` catalog.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TransactionalCopy {
@@ -175,6 +188,10 @@ pub struct TransactionalCopy {
     pub msa_definition: String,
     pub fee_heading: String,
     pub fee_body: String,
+    #[serde(default)]
+    pub pricing: Vec<PricingCardCopy>,
+    #[serde(default)]
+    pub availability_note: Option<String>,
     pub included_heading: String,
     pub included: Vec<IncludedCopy>,
     pub cycle_heading: String,
@@ -204,6 +221,14 @@ pub struct CardCopy {
     pub href: Option<String>,
     #[serde(default)]
     pub href_label: Option<String>,
+    /// The billing cadence, when the band renders in the pricing-card style
+    /// (`/year`, `/day`, "flat fee"). Read only when the band's own
+    /// `pricing_style` is set; ignored otherwise.
+    #[serde(default)]
+    pub cadence: Option<String>,
+    /// Bullet features, rendered only in the pricing-card style.
+    #[serde(default)]
+    pub features: Vec<String>,
 }
 
 /// One entry in a numbered walk.
@@ -249,6 +274,12 @@ pub enum BandCopy {
         description: Option<String>,
         #[serde(default)]
         items: Vec<CardCopy>,
+        /// Render this band's cards with the shared "Navigator-UX" pricing-card
+        /// treatment (the same one `/fractional-gc` uses) instead of the plain
+        /// grid. A card's `href`/`href_label` become its call to action, and
+        /// its first chip becomes the price beside `cadence`.
+        #[serde(default)]
+        pricing_style: bool,
     },
     Steps {
         #[serde(default)]
@@ -299,7 +330,7 @@ pub enum BandCopy {
     },
 }
 
-/// A marketing page (`/fractional-cto`, `/navigator`, `/services`).
+/// A marketing page (`/navigator`, `/personal-plan`, `/services`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MarketingPageCopy {
     pub head_title: String,
@@ -337,7 +368,7 @@ pub fn locale_page_kind(stem: &str) -> Option<LocalePageKind> {
         "home" => Some(LocalePageKind::Home),
         "litigation" => Some(LocalePageKind::Litigation),
         "fractional-gc" => Some(LocalePageKind::Transactional),
-        "fractional-cto" | "navigator" | "services" => Some(LocalePageKind::Marketing),
+        "navigator" | "personal-plan" | "services" => Some(LocalePageKind::Marketing),
         _ => None,
     }
 }
@@ -451,9 +482,9 @@ service:
 practices_heading: Our complementary practice
 practices:
   - mark: technology
-    heading: Fractional CTO
-    body: We run the technology function.
-    href: /fractional-cto
+    heading: Personal Plan
+    body: We protect your personal legal matters.
+    href: /personal-plan
 "#,
         )
         .expect("home catalog");

@@ -10,8 +10,8 @@ use views::brand::BrandKey;
 use views::locales::{
     interpolate, BandCopy, CardCopy, CopyRun, HeroCtaCopy, HeroLine, HomeCopy, IncludedCopy,
     LitigationCopy, MarketingPageCopy, PackageInstallCopy, PageSkin, Paragraph, PracticeLinkCopy,
-    PracticeMark, ProjectNetworkNodeCopy, SalesStageCopy, SeparateWorkCopy, ServiceSectionCopy,
-    StepCopy, TransactionalCopy, VirtueCopy,
+    PracticeMark, PricingCardCopy, ProjectNetworkNodeCopy, SalesStageCopy, SeparateWorkCopy,
+    ServiceSectionCopy, StepCopy, TransactionalCopy, VirtueCopy,
 };
 use webapp::marketing_page::{
     Band, Card, Download, HeroCta, PackageInstall, PageContent, ProjectNetworkNode, Run, Step,
@@ -20,7 +20,7 @@ use webapp::marketing_page::{
 const NEON_HOME_YAML: &str = include_str!("../locales/en/neon/home.yaml");
 const NEON_LITIGATION_YAML: &str = include_str!("../locales/en/neon/litigation.yaml");
 const NEON_FRACTIONAL_GC_YAML: &str = include_str!("../locales/en/neon/fractional-gc.yaml");
-const NEON_FRACTIONAL_CTO_YAML: &str = include_str!("../locales/en/neon/fractional-cto.yaml");
+const NEON_PERSONAL_PLAN_YAML: &str = include_str!("../locales/en/neon/personal-plan.yaml");
 const NEON_NAVIGATOR_YAML: &str = include_str!("../locales/en/neon/navigator.yaml");
 const NEON_SERVICES_YAML: &str = include_str!("../locales/en/neon/services.yaml");
 const DELETE_YOUR_DATA_HOME_YAML: &str = include_str!("../locales/en/delete-your-data/home.yaml");
@@ -34,7 +34,7 @@ pub fn catalog_yaml(key: BrandKey, page: &str) -> Option<&'static str> {
         (BrandKey::Neon, "home") => Some(NEON_HOME_YAML),
         (BrandKey::Neon, "litigation") => Some(NEON_LITIGATION_YAML),
         (BrandKey::Neon, "fractional-gc") => Some(NEON_FRACTIONAL_GC_YAML),
-        (BrandKey::Neon, "fractional-cto") => Some(NEON_FRACTIONAL_CTO_YAML),
+        (BrandKey::Neon, "personal-plan") => Some(NEON_PERSONAL_PLAN_YAML),
         (BrandKey::Neon, "navigator") => Some(NEON_NAVIGATOR_YAML),
         (BrandKey::Neon, "services") => Some(NEON_SERVICES_YAML),
         (BrandKey::DeleteYourData, "home") => Some(DELETE_YOUR_DATA_HOME_YAML),
@@ -124,6 +124,8 @@ fn card(copy: CardCopy) -> Card {
         body: paragraphs_to_marketing(copy.body),
         href: copy.href,
         href_label: copy.href_label,
+        cadence: copy.cadence,
+        features: copy.features,
     }
 }
 
@@ -198,12 +200,14 @@ fn band(copy: BandCopy) -> Band {
             heading,
             description,
             items,
+            pricing_style,
         } => Band::Cards {
             anchor,
             overline,
             heading,
             description,
             items: items.into_iter().map(card).collect(),
+            pricing_style,
         },
         BandCopy::Steps {
             anchor,
@@ -365,6 +369,26 @@ pub fn fractional_gc(
         msa_definition: copy.msa_definition,
         fee_heading: copy.fee_heading,
         fee_body: copy.fee_body,
+        pricing: copy
+            .pricing
+            .into_iter()
+            .map(
+                |PricingCardCopy {
+                     title,
+                     price,
+                     cadence,
+                     blurb,
+                     features,
+                 }| webapp::transactional_page::PricingOffer {
+                    title,
+                    price,
+                    cadence,
+                    blurb,
+                    features,
+                },
+            )
+            .collect(),
+        availability_note: copy.availability_note,
         included_heading: copy.included_heading,
         included: copy
             .included
@@ -405,9 +429,9 @@ pub fn fractional_gc(
     }
 }
 
-/// `/fractional-cto`, from this brand's `fractional-cto.yaml`.
-pub fn fractional_cto(branding: &views::brand::Branding) -> PageContent {
-    marketing_page(load_page(branding, "fractional-cto"))
+/// `/personal-plan`, from this brand's `personal-plan.yaml`.
+pub fn personal_plan(branding: &views::brand::Branding) -> PageContent {
+    marketing_page(load_page(branding, "personal-plan"))
 }
 
 /// `/navigator`, from this brand's `navigator.yaml`.
@@ -465,8 +489,8 @@ mod tests {
                 .collect::<Vec<_>>(),
             [
                 "Litigation",
-                "Fractional CTO",
                 "Fractional GC",
+                "Personal Plan",
                 "One-Time Services",
             ]
         );

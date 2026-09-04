@@ -1565,7 +1565,7 @@ async fn catalog_step_arrow_keys_navigate_but_shift_and_focused_controls_do_not(
 /// automatic minimum size took the min-content width of the page's
 /// `<pre>` Homebrew commands (unbreakable by `white-space: pre`) and grew the
 /// whole shell — header and footer included — past a 375px viewport. Every
-/// practice-skin page (`/litigation`, `/fractional-gc`, `/fractional-cto`,
+/// practice-skin page (`/litigation`, `/fractional-gc`, `/personal-plan`,
 /// `/services`) carried a second, unrelated defect: their hero's decorative
 /// glow bleeds `-25vw` past each edge on purpose, and the hero it bleeds from
 /// carried no `overflow: hidden` to clip that bleed back to real layout
@@ -1584,7 +1584,7 @@ async fn public_marketing_pages_have_no_horizontal_overflow_on_mobile() {
         "/navigator",
         "/litigation",
         "/fractional-gc",
-        "/fractional-cto",
+        "/personal-plan",
         "/services",
     ] {
         c.goto(&format!("{}{path}", base_url())).await.unwrap();

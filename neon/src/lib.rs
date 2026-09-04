@@ -40,7 +40,7 @@ pub use firm_pages::firm_public_dioxus_routers;
 pub const PUBLIC_PATHS: &[&str] = &[
     // --- The firm ---------------------------------------------------------
     "/",
-    "/fractional-cto",
+    "/personal-plan",
     "/services",
     "/litigation",
     "/fractional-gc",
@@ -106,7 +106,7 @@ pub fn sitemap_paths(state: &AppState, key: BrandKey) -> std::collections::BTree
         BrandKey::Neon => {
             let mut paths: std::collections::BTreeSet<String> = [
                 "/",
-                "/fractional-cto",
+                "/personal-plan",
                 "/services",
                 "/litigation",
                 "/fractional-gc",
@@ -234,19 +234,20 @@ fn indexed_pages(mark: &str) -> Vec<portal::LlmsTxtLink> {
                  the v., and company counsel for emerging technology companies.",
         ),
         page(
-            "Fractional CTO",
-            "/fractional-cto",
-            "The firm runs the technology function for a law firm: AI enablement delivered \
-                 through the firm, the privacy and compliance work under it, and complex counsel \
-                 beside it. A law-related service, quoted per engagement.",
+            "Personal Plan",
+            "/personal-plan",
+            "The firm's consumer legal plan: tax filing, privacy protection, and credit \
+                 monitoring (beta), on one flat annual or daily fee.",
         ),
         page(
             "Legal Services and fees",
             "/services",
             "The flat-fee schedule: wills, trusts, name changes, formations, trademarks, \
-                 tenant defense, and demand letters, each a fixed fee agreed before work \
-                 begins and reviewed by a licensed attorney. The site names no dollar figure; \
-                 email the firm for the fee on your matter.",
+                 tenant defense, demand letters, contract and form review, and a Nevada \
+                 business address, each a fixed fee agreed before work begins and reviewed \
+                 by a licensed attorney. Requires an active Fractional GC or Personal \
+                 Protection plan. Some fees are published on the page; email the firm for \
+                 the rest.",
         ),
         page(
             "Litigation",
@@ -257,8 +258,8 @@ fn indexed_pages(mark: &str) -> Vec<portal::LlmsTxtLink> {
         page(
             "Fractional General Counsel",
             "/fractional-gc",
-            "Company counsel on a flat monthly fee — cap table, employee agreements, and \
-                 state tax filings, with a one-business-day redline turnaround.",
+            "Company counsel on a flat annual or daily fee — cap table, employee agreements, \
+                 and state tax filings, with a one-business-day redline turnaround.",
         ),
         page(
             "Neon Law Navigator",

@@ -2,7 +2,8 @@ head_title: "Legal Services — {site_name}"
 meta_description: >-
   Flat-fee legal services from Neon Law: wills, trusts, name changes,
   formations, trademarks, and tenant defense, each on a fixed fee and reviewed
-  by a licensed attorney.
+  by a licensed attorney. Requires an active Fractional GC or Personal
+  Plan.
 title: Legal Services
 hero_mark: gavel
 tagline: Once-Billed Legal Services
@@ -12,8 +13,9 @@ hero_lines:
   - text: Legal Services
     accent_words: 0
 hero_lead: >-
-  The routine matters a person or a company walks in with, each scoped and
-  quoted before any work begins.
+  Available to clients on an active Fractional GC or Personal Plan:
+  the routine matters you walk in with, each scoped and quoted before any work
+  begins.
 hero_cta:
   href: "mailto:{firm_email}"
   label: Contact us
@@ -23,13 +25,16 @@ bands:
     heading: Who this is for
     lead: ""
     body:
-      - - text: >-
-            These fees are for one-time matters. Business filings are already
-            included in our
-        - text: fractional GC
+      - - text: "These flat fees require an active "
+        - text: Fractional GC
           href: /fractional-gc
-        - text: " projects, and a dispute is "
-        - text: litigation
+        - text: " or "
+        - text: Personal Plan
+          href: /personal-plan
+        - text: >-
+            . Recurring business filings are already included in your
+            Fractional GC plan, and a dispute is
+        - text: " litigation"
           href: /litigation
         - text: ", which we quote per engagement."
   - kind: cards
@@ -38,9 +43,10 @@ bands:
     heading: The work we do at a flat fee
     description: >-
       Each of these is a fixed-fee matter: one scope, one price, agreed before
-      we start. Where a government body charges its own fee we pass it through
-      at cost — we do not mark it up, and we cannot control it. Email us for the
-      fee on the matter you need.
+      we start. Contract reviews run $100–$500 depending on the contract type.
+      Where a government body charges its own fee we pass it through at cost —
+      we do not mark it up, and we cannot control it. Email us for the fee on
+      the matter you need.
     items:
       - title: Simple will
         body:
@@ -94,10 +100,61 @@ bands:
                 The annual list and the state business licence renewal for one
                 entity. The state sets its own fee.
       - title: Mutual NDA review
+        chips:
+          - "$100"
         body:
           - - text: >-
-                One agreement read and redlined, with a short note on what we
-                changed and why.
+                One NDA, read end-to-end and redlined, with a short note on
+                what we changed and why.
+      - title: Consulting agreement review
+        chips:
+          - "$250"
+        body:
+          - - text: >-
+                One consulting or independent-contractor agreement, read
+                end-to-end and redlined against your interests.
+      - title: Employment agreement review
+        chips:
+          - "$350"
+        body:
+          - - text: >-
+                One offer letter or employment agreement, read end-to-end,
+                including any equity or non-compete terms.
+      - title: MSA review
+        chips:
+          - "$500"
+        body:
+          - - text: >-
+                One master services agreement, read end-to-end and redlined —
+                the counterparty's paper, not one we drafted for you.
+      - title: Form review
+        chips:
+          - "$50"
+        body:
+          - - text: >-
+                Filling out and reviewing one government or intake form,
+                returned by a licensed attorney. Add a form to the same filing
+                packet for $5 more. Any government or third-party fee passes
+                through at cost.
+      - title: Nevada business address
+        chips:
+          - "$350/year"
+        body:
+          - - text: >-
+                A Nevada street address for service of process and mail,
+                forwarded to you. Billed annually.
+      - title: Send a template contract
+        chips:
+          - "$5"
+        body:
+          - - text: >-
+                One of our own template contracts, sent to your counterparty
+                through DocuSign for signature. Per contract sent.
+      - title: Custom or ad-hoc business work
+        body:
+          - - text: >-
+                Something outside this list. Tell us what you need and we will
+                scope and quote it before starting.
   - kind: steps
     anchor: how
     overline: How it works

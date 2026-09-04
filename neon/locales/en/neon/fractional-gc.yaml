@@ -1,14 +1,15 @@
 head_title: "{site_name} | Fractional General Counsel"
 meta_description: >-
-  Company counsel on a flat monthly fee — cap table, employee agreements, and
-  state tax filings, with a one-business-day redline turnaround.
+  Company counsel on one flat annual fee, just $10 a day — cap table, employee
+  agreements, and state tax filings, with a one-business-day redline
+  turnaround.
 eyebrow: Fractional General Counsel
 heading:
   text: Accurate. Efficient. Speedy.
   accent_words: 1
 lead: >-
-  Company counsel on one flat monthly fee, working at the pace your sales cycle
-  already runs at. A redline comes back in one business day.
+  Company counsel on one flat annual fee, just $10 a day, working at the pace
+  your sales cycle already runs at. A redline comes back in one business day.
 cta_label: Contact us
 virtues:
   - word: Accurate
@@ -18,8 +19,8 @@ virtues:
       actually is.
   - word: Efficient
     body: >-
-      One flat monthly fee covers the recurring work, so a routine question
-      costs nothing to ask and the answer arrives the day you asked it.
+      One flat fee covers the recurring work, so a routine question costs
+      nothing to ask and the answer arrives the day you asked it.
   - word: Speedy
     body: >-
       Turnarounds are published rather than negotiated deal by deal: one
@@ -31,12 +32,23 @@ msa_definition: >-
   deal becomes a short order form that points back at it instead of a fresh
   negotiation, which is why getting the MSA right is what makes the next ten
   deals quick.
-fee_heading: One flat monthly fee
+fee_heading: One base package, flat fees for everything else
 fee_body: >-
-  One amount, the same in a quiet month as in a loud one, billed monthly. We
-  quote it for your company rather than posting a number here, and it is fixed
-  in the engagement letter before the first month runs.
-included_heading: What the monthly fee covers
+  One flat annual fee covers the base package below. Other work — drafting an
+  MSA, a financing, a dispute — sits outside it and is priced on its own.
+pricing:
+  - title: Base package
+    price: "$3,650"
+    cadence: /year
+    blurb: >-
+      That's just $10 a day. Routine contract review and redlines, covered by
+      one flat annual fee.
+    features:
+      - DocuSign sent & tracked for you at $5 per contract
+availability_note: >-
+  We take on a limited number of Fractional GC clients at a time — reach out
+  early to hold a spot.
+included_heading: What the fee covers
 included:
   - name: Cap table management
     body: >-
@@ -60,7 +72,7 @@ included:
   - name: Counsel on call
     body: >-
       The questions that would otherwise wait for a scheduled call. Ask them the
-      day you have them; the answer is inside the monthly fee.
+      day you have them; the answer is inside the base fee.
 cycle_heading: It runs inside your sales cycle
 cycle_body: >-
   Legal is a step inside the stage your rep is already in, not a stage that
@@ -82,9 +94,14 @@ cycle:
       will look for it a year from now.
 separate_heading: Priced separately
 separate_body: >-
-  Two kinds of work sit outside the retainer, because neither is recurring and
-  neither can be quoted by the month.
+  Three kinds of work sit outside the base package: two are quoted per
+  engagement because their scope isn't knowable in advance, and one is a flat
+  fee of its own.
 separate:
+  - name: Contracts with revisions
+    body: >-
+      Any contract that needs revision work, reviewed for a flat $500 each —
+      one business day turnaround.
   - name: Financings
     body: >-
       Priced rounds, SAFEs, convertible notes, and the closing set that goes

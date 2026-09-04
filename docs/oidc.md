@@ -5,7 +5,8 @@ Neon Law Navigator separates **identity** (who you are) from **authorization** (
 see [A second provider](#a-second-provider-sign-in-with-microsoft)) own identity only — a stable `sub` and an address.
 The `persons` table in our database owns everything else: profile, project memberships, billing relationships, and the
 **single role** column (`owner` / `admin` / `lawyer` / `clerk` / `client`; anonymous is the absence of a row) that gates
-the back-office. Embedded Rego evaluates the policy against that DB-sourced role, never against the IdP token. See
+the back-office. The separate `is_admitted` flag decides whether a resolved row may mint a session. Embedded Rego
+evaluates the policy against that DB-sourced role, never against the IdP token. See
 [`docs/access-model.md`](access-model.md) for the role/participation split.
 
 This document is the canonical narrative for the system. The Rust modules link back to it from their rustdoc:
@@ -52,10 +53,10 @@ sequenceDiagram
         DB-->>Web: existing row
     else not linked
         Web->>DB: SELECT * FROM persons WHERE email = ?
-        alt email matches a seeded row
+        alt email matches an admitted seeded row
             Web->>DB: UPDATE persons SET oidc_subject = sub WHERE id = ?
             DB-->>Web: row promoted, keeps prior role
-        else no match
+        else no match and self-signup enabled
             Web->>DB: INSERT INTO persons (sub, email, name, role='client')
             DB-->>Web: new row, role=client
         end

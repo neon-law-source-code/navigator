@@ -824,12 +824,13 @@ async fn admin_people_surface_is_admin_only_with_full_controls() {
         );
     }
 
-    // Admin sees the list with the full controls and the singular
-    // `/app/admin/people` detail path.
+    // Owner sees the list with the full controls and the singular
+    // `/app/admin/people` detail path. Admin's people directory is firm-scoped
+    // and empty without a `person_firm_role` row.
     let resp = get_with_role(
         app.clone(),
         "/app/admin/people",
-        store::persons::Role::Admin,
+        store::persons::Role::Owner,
     )
     .await;
     assert_eq!(resp.status(), StatusCode::OK);
@@ -1282,7 +1283,7 @@ async fn lawyer_people_mirror_paths_are_gone() {
             "/app/admin/people must answer {expected} for {role:?}",
         );
     }
-    let admin_list = get_with_role(app, "/app/admin/people", store::persons::Role::Admin).await;
+    let admin_list = get_with_role(app, "/app/admin/people", store::persons::Role::Owner).await;
     let html = body_string(admin_list).await;
     assert!(
         html.contains("<title>Navigator | Admin | People</title>"),
@@ -8985,7 +8986,7 @@ async fn form_encoded_create_via_api_lists_the_person() {
         .unwrap();
     assert_eq!(create.status(), StatusCode::CREATED);
 
-    let list = get_with_role(app, "/app/admin/people", store::persons::Role::Admin).await;
+    let list = get_with_role(app, "/app/admin/people", store::persons::Role::Owner).await;
     assert_eq!(list.status(), StatusCode::OK);
     let body = body_string(list).await;
     assert!(body.contains("Libra"));
@@ -9823,12 +9824,12 @@ async fn api_people_welcome_authorizes_owner_admin_and_lawyer() {
 #[tokio::test]
 async fn admin_people_page_renders_directory() {
     let (state, surreal) = state_with_engines().await;
-    let admin = store::persons::create(
+    let owner = store::persons::create(
         &surreal,
         &store::persons::NewPerson::with_role(
-            "Admin",
-            "admin@neonlaw.com",
-            store::persons::Role::Admin,
+            "Owner",
+            "owner@neonlaw.com",
+            store::persons::Role::Owner,
         ),
     )
     .await
@@ -9843,7 +9844,7 @@ async fn admin_people_page_renders_directory() {
     )
     .await
     .unwrap();
-    let (cookie, _) = session_cookie_and_csrf_for_person(&admin);
+    let (cookie, _) = session_cookie_and_csrf_for_person(&owner);
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
     let resp = app
         .oneshot(
@@ -10440,12 +10441,12 @@ async fn impersonating_admin_cannot_start_second_impersonation() {
 #[tokio::test]
 async fn admin_people_index_shows_impersonate_only_for_client_rows() {
     let (state, surreal) = state_with_engines().await;
-    let admin = store::persons::create(
+    let owner = store::persons::create(
         &surreal,
         &store::persons::NewPerson::with_role(
-            "Admin",
-            "admin@neonlaw.com",
-            store::persons::Role::Admin,
+            "Owner",
+            "owner@neonlaw.com",
+            store::persons::Role::Owner,
         ),
     )
     .await
@@ -10470,11 +10471,12 @@ async fn admin_people_index_shows_impersonate_only_for_client_rows() {
     )
     .await
     .unwrap();
-    let (cookie, _) = session_cookie_and_csrf_for_person(&admin);
+    let (cookie, _) = session_cookie_and_csrf_for_person(&owner);
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
 
     // Impersonation lives on the admin console surface (`/app/admin/people`),
-    // not the de-scoped lawyer workbench list.
+    // not the de-scoped lawyer workbench list. Owner lists every person;
+    // Admin without firm membership does not.
     let resp = app
         .oneshot(
             Request::builder()
@@ -10489,7 +10491,7 @@ async fn admin_people_index_shows_impersonate_only_for_client_rows() {
     let body = body_string(resp).await;
     assert!(body.contains(&format!("/app/admin/people/{}/impersonate", client.id)));
     assert!(!body.contains(&format!("/app/admin/people/{}/impersonate", lawyer.id)));
-    assert!(!body.contains(&format!("/app/admin/people/{}/impersonate", admin.id)));
+    assert!(!body.contains(&format!("/app/admin/people/{}/impersonate", owner.id)));
 }
 
 #[tokio::test]
@@ -10599,7 +10601,7 @@ async fn admin_people_index_drops_id_column_and_renders_sort_links() {
     let (state, surreal) = state_with_engines().await;
     seed_three_people(&surreal).await;
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
-    let resp = get_with_role(app, "/app/admin/people", store::persons::Role::Admin).await;
+    let resp = get_with_role(app, "/app/admin/people", store::persons::Role::Owner).await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
     // No ID column header rendered.
@@ -10626,7 +10628,7 @@ async fn admin_people_index_honors_jsonapi_sort_ascending_by_name() {
     let resp = get_with_role(
         app,
         "/app/admin/people?sort=name",
-        store::persons::Role::Admin,
+        store::persons::Role::Owner,
     )
     .await;
     assert_eq!(resp.status(), StatusCode::OK);
@@ -10653,7 +10655,7 @@ async fn admin_people_index_honors_jsonapi_sort_descending_by_name() {
     let resp = get_with_role(
         app,
         "/app/admin/people?sort=-name",
-        store::persons::Role::Admin,
+        store::persons::Role::Owner,
     )
     .await;
     assert_eq!(resp.status(), StatusCode::OK);
@@ -10697,7 +10699,7 @@ async fn admin_people_index_honors_jsonapi_filter_on_name() {
     let resp = get_with_role(
         app,
         "/app/admin/people?filter%5Bname%5D=Libra",
-        store::persons::Role::Admin,
+        store::persons::Role::Owner,
     )
     .await;
     assert_eq!(resp.status(), StatusCode::OK);
@@ -10718,7 +10720,7 @@ async fn admin_people_index_stitches_filter_through_sort_links() {
     let resp = get_with_role(
         app,
         "/app/admin/people?filter%5Bname%5D=Libra",
-        store::persons::Role::Admin,
+        store::persons::Role::Owner,
     )
     .await;
     let body = body_string(resp).await;

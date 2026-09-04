@@ -34,7 +34,7 @@ async fn main() -> Result<()> {
     // no-op rather than a double snapshot.
     let run_id = chrono::Utc::now().format("%Y-%m-%d").to_string();
 
-    let body = workflows::start_workflow(
+    let _response = workflows::start_workflow(
         &ingress,
         auth_token.as_deref(),
         "Archives",
@@ -46,7 +46,7 @@ async fn main() -> Result<()> {
     .await
     .context("triggering Archives workflow")?;
 
-    tracing::info!(%run_id, response = %body, "archives workflow triggered");
-    println!("triggered Archives/{run_id}: {body}");
+    tracing::info!(%run_id, "archives workflow triggered");
+    println!("triggered Archives/{run_id}");
     Ok(())
 }

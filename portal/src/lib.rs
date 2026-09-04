@@ -3033,7 +3033,7 @@ async fn readyz(State(state): State<AppState>) -> impl IntoResponse {
         (StatusCode::OK, "ready").into_response()
     } else {
         let body = failures.join("\n");
-        tracing::warn!(reasons = %body, "readyz: degraded");
+        tracing::warn!(failure_count = failures.len(), "readyz: degraded");
         (StatusCode::SERVICE_UNAVAILABLE, body).into_response()
     }
 }

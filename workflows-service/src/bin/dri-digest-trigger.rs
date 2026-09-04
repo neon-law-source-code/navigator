@@ -41,7 +41,7 @@ async fn main() -> Result<()> {
     // second digest post.
     let run_id = chrono::Utc::now().format("%Y-%m-%d").to_string();
 
-    let body = workflows::start_workflow(
+    let _response = workflows::start_workflow(
         &ingress,
         auth_token.as_deref(),
         "DriDigest",
@@ -53,7 +53,7 @@ async fn main() -> Result<()> {
     .await
     .context("triggering DriDigest workflow")?;
 
-    tracing::info!(%run_id, response = %body, "dri digest workflow triggered");
-    println!("triggered DriDigest/{run_id}: {body}");
+    tracing::info!(%run_id, "dri digest workflow triggered");
+    println!("triggered DriDigest/{run_id}");
     Ok(())
 }

@@ -142,10 +142,26 @@ async fn discard_pending_intake_project(
     let roles = store::projects::participations_for_project(surreal, project_id)
         .await
         .map_err(|error| error.to_string())?;
+    let client_person_ids: Vec<Uuid> = roles
+        .iter()
+        .filter(|role| role.participation == "client")
+        .map(|role| role.person_id)
+        .collect();
     for role in roles {
         store::projects::remove_participation(surreal, role.id)
             .await
             .map_err(|error| error.to_string())?;
+    }
+    for person_id in client_person_ids {
+        if store::projects::participations_for_person(surreal, person_id)
+            .await
+            .map_err(|error| error.to_string())?
+            .is_empty()
+        {
+            store::persons::set_admitted(surreal, person_id, false)
+                .await
+                .map_err(|error| error.to_string())?;
+        }
     }
     // `link_retainer_rows` may have already opened the retainer Notation
     // before this abort — never shown to the client, never walked. The
@@ -327,6 +343,9 @@ pub async fn start_post(
         Ok(_) => {}
         Err(e) => {
             tracing::error!(error = %e, "start_post: conflict check failed");
+            if let Err(error) = discard_pending_intake_project(&state.surreal, project_id).await {
+                tracing::error!(error = %error, %project_id, "start_post: pending project cleanup failed");
+            }
             return (StatusCode::INTERNAL_SERVER_ERROR, "internal").into_response();
         }
     }

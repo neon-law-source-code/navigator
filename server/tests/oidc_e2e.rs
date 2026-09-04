@@ -696,6 +696,60 @@ async fn callback_returns_403_html_when_email_is_not_pre_seeded() {
 }
 
 #[tokio::test]
+async fn a_retained_but_unadmitted_client_row_cannot_mint_a_session() {
+    // This is the post-discard shape: the retainer walk leaves the client
+    // Person row behind, but the admission decision is explicitly off. A
+    // valid IdP token must not turn that retained row into a client session.
+    let idp = idp_returning(
+        "rauthy-refused-intake-subject",
+        "refused-intake@example.com",
+        "Refused Intake",
+    )
+    .await;
+    let (s, surreal) = state_with_bootstrap_owner(
+        oauth_cfg(&idp),
+        sessions(),
+        policy::PolicyClient::embedded().expect("embedded policy compiles"),
+        Some("nobody@unreachable.invalid".into()),
+    )
+    .await;
+    let person = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "Refused Intake",
+            "refused-intake@example.com",
+            store::persons::Role::Client,
+        ),
+    )
+    .await
+    .expect("seed retained person");
+    surreal
+        .query("UPDATE $id SET is_admitted = false")
+        .bind(("id", store::surreal::record_id("person", person.id)))
+        .await
+        .expect("mark retained person unadmitted");
+
+    let app = server::neon_router(s, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+    let response = callback_response(&app, &idp, "/app/projects").await;
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    assert!(
+        !response
+            .headers()
+            .get_all("set-cookie")
+            .iter()
+            .any(|value| value.to_str().unwrap().contains("navigator_session=")),
+        "an unadmitted row must not receive a session cookie",
+    );
+    let retained = store::persons::find_by_id(&surreal, person.id)
+        .await
+        .unwrap()
+        .expect("retained person remains in the directory");
+    assert_eq!(retained.role, store::persons::Role::Client);
+    assert_eq!(retained.oidc_subject, None);
+}
+
+#[tokio::test]
 async fn callback_jit_creates_bootstrap_owner_with_owner_role_when_absent() {
     // The bootstrap Owner email is configured via env. If that Owner
     // signs in to a fresh deployment where no `persons` row exists

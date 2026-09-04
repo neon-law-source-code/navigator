@@ -516,6 +516,21 @@ erDiagram
         datetime updated_at
         option_string xero_contact_id
     }
+    person_delegate {
+        record id PK
+        string basis
+        record_person delegate_person_id FK
+        string granted_at
+        record_person granted_by_person_id FK
+        string inserted_at
+        option_string instrument_reference
+        option_string revoked_at
+        option_record_person revoked_by_person_id FK
+        option_string subject_notified_at
+        option_string subject_notified_channel
+        record_person subject_person_id FK
+        string updated_at
+    }
     person_external_identity {
         record id PK
         string external_id
@@ -798,6 +813,10 @@ erDiagram
     person ||--o{ notation_event : "acting_person_id"
     notation ||--o{ notation_event : "notation_id"
     template ||--o{ notation_event : "template_version_id"
+    person ||--o{ person_delegate : "delegate_person_id"
+    person ||--o{ person_delegate : "granted_by_person_id"
+    person ||--o{ person_delegate : "revoked_by_person_id"
+    person ||--o{ person_delegate : "subject_person_id"
     person ||--o{ person_external_identity : "person_id"
     firm ||--o{ person_firm_role : "firm_id"
     person ||--o{ person_firm_role : "person_id"

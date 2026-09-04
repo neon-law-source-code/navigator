@@ -29,6 +29,9 @@ pub const APP_TEAM_HREF: &str = "/app/team";
 /// only, same audience as the Team home.
 pub const APP_BRANDS_HREF: &str = "/app/brands";
 
+/// The Owner listing of practices and the brands they wear. Owner only.
+pub const APP_OWNER_HREF: &str = "/app/owner";
+
 /// The firm workbench. Lawyer tier and up; the handler gates it too.
 pub const APP_LAWYER_HREF: &str = "/app/lawyer";
 
@@ -45,10 +48,11 @@ pub const APP_SIGN_OUT_HREF: &str = "/auth/logout";
 /// stay authoritative. This decides only what the navbar advertises, so a client
 /// is not shown a door that answers 403.
 ///
-/// The row is deliberately short: Projects, the firm's Team home, and Sign out.
-/// The Workbench and Admin doors are not here — they are cards on the Team home,
-/// which every firm tier lands on at sign-in, so the tier-gated surfaces are one
-/// click from the row rather than two more items in it.
+/// The row is deliberately short: Projects, the firm's Team home, Brands, and
+/// Sign out. Owner also sees `/app/owner`. The Workbench and Admin doors are
+/// not here — they are cards on the Team home, which every firm tier lands on
+/// at sign-in, so the tier-gated surfaces are one click from the row rather
+/// than two more items in it.
 ///
 /// Pure, so the role→destinations mapping is unit-tested directly rather than
 /// through nine rendered pages.
@@ -58,6 +62,9 @@ pub fn app_destinations(role: ViewerRole) -> Vec<AppNavLink> {
     if role.is_firm_tier() {
         destinations.push(AppNavLink::new("Team", APP_TEAM_HREF));
         destinations.push(AppNavLink::new("Brands", APP_BRANDS_HREF));
+    }
+    if role.is_owner() {
+        destinations.push(AppNavLink::new("Owner", APP_OWNER_HREF));
     }
     destinations.push(AppNavLink::new("Sign out", APP_SIGN_OUT_HREF));
     destinations
@@ -205,16 +212,11 @@ mod tests {
         );
     }
 
-    /// Every firm tier is offered the same four: the row does not grow with
-    /// authority, because the tier-gated doors are the Team home's cards now.
+    /// Firm tiers share Projects, Team, and Brands. Owner also gets the Owner
+    /// listing of practices.
     #[test]
     fn every_firm_tier_is_offered_the_same_row() {
-        for role in [
-            ViewerRole::Clerk,
-            ViewerRole::Lawyer,
-            ViewerRole::Admin,
-            ViewerRole::Owner,
-        ] {
+        for role in [ViewerRole::Clerk, ViewerRole::Lawyer, ViewerRole::Admin] {
             assert_eq!(
                 labels(role),
                 ["Projects", "Team", "Brands", "Sign out"],
@@ -222,11 +224,15 @@ mod tests {
                 role.authority_rank()
             );
         }
+        assert_eq!(
+            labels(ViewerRole::Owner),
+            ["Projects", "Team", "Brands", "Owner", "Sign out"]
+        );
     }
 
     /// The workbench and admin doors are not navbar items at any tier. They are
     /// cards on `/app/team`, which every firm tier lands on at sign-in — so the
-    /// row must not carry them even for an Owner.
+    /// row must not carry them even for an Owner. Owner does carry `/app/owner`.
     #[test]
     fn the_row_carries_neither_workbench_nor_admin() {
         let hrefs: Vec<String> = app_destinations(ViewerRole::Owner)
@@ -235,7 +241,13 @@ mod tests {
             .collect();
         assert_eq!(
             hrefs,
-            ["/app/projects", "/app/team", "/app/brands", "/auth/logout"]
+            [
+                "/app/projects",
+                "/app/team",
+                "/app/brands",
+                "/app/owner",
+                "/auth/logout"
+            ]
         );
     }
 

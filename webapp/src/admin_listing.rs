@@ -495,6 +495,25 @@ pub async fn require_admin() -> Result<ViewerRole, ServerFnError> {
     }
 }
 
+/// Read the injected viewer role and refuse any caller who is not Owner.
+#[cfg(feature = "server")]
+pub async fn require_owner() -> Result<ViewerRole, ServerFnError> {
+    let role = dioxus_fullstack_core::FullstackContext::extract::<axum::Extension<ViewerRole>, _>()
+        .await
+        .map(|axum::Extension(role)| role)
+        .unwrap_or_default();
+
+    if role.is_owner() {
+        Ok(role)
+    } else {
+        dioxus_fullstack_core::FullstackContext::commit_http_status(
+            axum::http::StatusCode::FORBIDDEN,
+            None,
+        );
+        Err(ServerFnError::new("owner access required"))
+    }
+}
+
 /// Assemble an [`AdminListingView`] from rows the caller has already built and
 /// the role [`require_lawyer`] returned. The entry point for listings whose rows
 /// come from a join or aggregation rather than a single-entity projection (e.g.

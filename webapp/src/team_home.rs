@@ -15,7 +15,7 @@
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::app_chrome::{APP_ADMIN_HREF, APP_LAWYER_HREF, APP_PROJECTS_HREF};
+use crate::app_chrome::{APP_ADMIN_HREF, APP_LAWYER_HREF, APP_OWNER_HREF, APP_PROJECTS_HREF};
 use crate::people::ViewerRole;
 
 /// The `<meta description>` for the team home.
@@ -132,6 +132,15 @@ fn destinations_for(role: ViewerRole) -> Vec<Destination> {
             download: None,
         });
     }
+    if role.is_owner() {
+        cards.push(Destination {
+            id: "team-card-owner",
+            title: "Owner",
+            description: "Every practice on this deployment, and the house brands each one wears.",
+            href: APP_OWNER_HREF,
+            download: None,
+        });
+    }
     cards.push(Destination {
         id: "team-card-fonts",
         title: "Brand fonts",
@@ -229,22 +238,28 @@ mod tests {
         );
     }
 
-    /// The admin tiers gain the admin card too.
+    /// The admin tier gains the admin card. Owner also gains the Owner listing.
     #[test]
     fn the_admin_tiers_gain_the_admin_card() {
-        for role in [ViewerRole::Admin, ViewerRole::Owner] {
-            assert_eq!(
-                card_ids(role),
-                [
-                    "team-card-projects",
-                    "team-card-lawyer",
-                    "team-card-admin",
-                    "team-card-fonts"
-                ],
-                "rank {}",
-                role.authority_rank()
-            );
-        }
+        assert_eq!(
+            card_ids(ViewerRole::Admin),
+            [
+                "team-card-projects",
+                "team-card-lawyer",
+                "team-card-admin",
+                "team-card-fonts"
+            ],
+        );
+        assert_eq!(
+            card_ids(ViewerRole::Owner),
+            [
+                "team-card-projects",
+                "team-card-lawyer",
+                "team-card-admin",
+                "team-card-owner",
+                "team-card-fonts"
+            ],
+        );
     }
 
     /// The rendered page carries the greeting and the role-filtered cards, with

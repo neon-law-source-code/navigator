@@ -30,10 +30,22 @@ is_admin(session) if {
 }
 
 # Owner/Admin bypass: an authenticated Owner or Admin reaches every route the
-# other rules below don't otherwise allow. Per docs/access-model.md
+# other rules below don't otherwise allow, except `/app/owner`, which is the
+# deployment-wide firm inventory and is Owner only. Per docs/access-model.md
 # this bypass is silent — no per-read audit row.
+owner_only_path if {
+    input.path[0] == "app"
+    input.path[1] == "owner"
+}
+
 allow if {
     is_admin(input.session)
+    not owner_only_path
+}
+
+allow if {
+    owner_only_path
+    input.session.role == "owner"
 }
 
 # /app/projects/* is the one matter surface (ENG-81). Every tier enters the

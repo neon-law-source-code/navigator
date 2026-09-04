@@ -999,15 +999,14 @@ pub async fn record_extracted_answer(
 ) -> Result<bool, String> {
     // The notation and its questionnaire in one load: the spec supplies the
     // declared choice set this proposal is closed against.
-    let (notation_row, definition) = match load_notation_and_spec(surreal, storage, notation_id)
-        .await
-    {
-        Ok(loaded) => loaded,
-        // A vanished notation is skipped, mirroring the unseeded-question
-        // arm below rather than failing the whole coverage run.
-        Err(NotationSessionError::NotationNotFound(_)) => return Ok(false),
-        Err(e) => return Err(e.to_string()),
-    };
+    let (notation_row, definition) =
+        match load_notation_and_spec(surreal, storage, notation_id).await {
+            Ok(loaded) => loaded,
+            // A vanished notation is skipped, mirroring the unseeded-question
+            // arm below rather than failing the whole coverage run.
+            Err(NotationSessionError::NotationNotFound(_)) => return Ok(false),
+            Err(e) => return Err(e.to_string()),
+        };
     let canonical = question_code_for_state(state_name);
     let Some(question_row) = store::questions::find_by_code(surreal, canonical)
         .await

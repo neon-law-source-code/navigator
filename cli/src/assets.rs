@@ -924,9 +924,8 @@ fn report_exit(report: &VerifyReport, base_url: &str) -> u8 {
     }
     if !report.missing.is_empty() {
         eprintln!(
-            "navigator: assets verify: {} public asset(s) are NOT published at \
-             {base_url} (run `navigator ops assets upload` for an image, \
-             `navigator ops assets fonts upload` for a font):",
+            "navigator: assets verify: {} public asset(s) are NOT published at {base_url} \
+             (run `navigator ops assets upload` for an image, `navigator ops assets fonts upload` for a font):",
             report.missing.len()
         );
         for rel in &report.missing {

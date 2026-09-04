@@ -85,146 +85,20 @@ bands:
     heading: Run Navigator yourself
     description: >-
       Navigator is source-available under the Business Source License 1.1 — free
-      to read, build, and use outside production. The command-line tool is how
-      you drive it: pick your platform, or install it with Homebrew.
+      to read, build, and use outside production.
     archive_label: every release
     package:
       heading: Install with Homebrew
       body:
-        - - text: "On a Mac this is the route we recommend. The released binary is "
-          - text: not yet signed or notarized
-            emphasis: true
-          - text: >-
-              , and macOS refuses a binary downloaded through a browser; Homebrew
-              fetches the same bytes without that mark, so they run. Homebrew
-              also works on Linux.
         - - text: "The formula lives in our own tap, "
           - text: neon-law-source-code/homebrew-navigator
             href: https://github.com/neon-law-source-code/homebrew-navigator
           - text: ", which is updated by every release."
-  - kind: cards
-    anchor: read
-    overline: Read next
-    heading: The manuals that go with the binary
-    description: >-
-      The same documents the CLI and CI run against. Install the binary, then
-      open the guide that matches what you are doing.
-    items:
-      - title: Validate
-        chips:
-          - CLI
-        body:
-          - - text: >-
-                navigator validate walks Markdown, YAML, and seed documents under
-                a directory. One table of rule codes, one command.
-        href: /docs/validate
-        href_label: Open the validate reference
-      - title: GitOps
-        chips:
-          - Release
-        body:
-          - - text: >-
-                How a tag attaches the three archives and hands the Homebrew tap.
-                That guide is in the public tree; it is not a /docs page.
-        href: https://github.com/neon-law-source-code/navigator/blob/main/docs/gitops.md
-        href_label: Open gitops.md
-      - title: Self-host
-        body:
-          - - text: >-
-                Stand Navigator up on your own cloud. The archives on this page
-                are the same binaries that guide installs.
-        href: /docs/oss-install
-        href_label: Open the install guide
-      - title: Workshops
-        body:
-          - - text: >-
-                Instructor-led decks for using, deploying, and contributing to
-                Navigator, including the validate walk in the Rust workshop.
-        href: /workshops
-        href_label: Open the workshops
-  - kind: cards
-    anchor: surface
-    overline: The working surface
-    heading: What a firm works with
-    description: >-
-      One platform, three things a lawyer touches. Every engagement is quoted
-      through the contact page.
-    items:
-      - title: AIDA and its tools
-        chips:
-          - MCP
-          - A2A
-        body:
-          - - text: >-
-                One catalog of tools over open protocols, so the agent a lawyer
-                already works in can read a matter, answer a questionnaire, or
-                open a project without leaving the editor.
-      - title: Notation templates
-        chips:
-          - Typst
-        body:
-          - - text: >-
-                The documents a matter produces are templates with the answers
-                filled in, so what the firm files is the template it reviewed
-                rather than a fresh draft each time.
-      - title: The matter dashboard
-        body:
-          - - text: >-
-                The projects, the people on them, the documents, and the
-                questionnaires still open — the shared view a firm and its
-                co-counsel read the matter from.
-        href: "mailto:{firm_email}"
-        href_label: Ask us for a walkthrough
-  - kind: statement
-    heading: The licence, and the one thing we sell around it
-    lead: Read it, build it, fork it. Nobody needs our permission for any of that.
-    body:
-      - - text: >-
-            Navigator is source-available under the Business Source License 1.1,
-            over the whole tree — the code, the tooling, and the drafted legal
-            prose. Read it, build it, run the tests, fork it, change it, teach
-            from it. Stand it up to evaluate it, develop against it, or
-            demonstrate it — on your own machine, on a rented one, in CI, in the
-            cloud; where you run it is not the test. There is no permission to
-            ask for and nobody to ask.
-      - - text: "The one thing we sell is "
-        - text: running it for other people
-          emphasis: true
-        - text: >-
-            — operating a portal, a matter, or a filing pipeline that somebody
-            relies on, or marketing a product or service to customers that
-            relies on it. That is production use, and the licence does not grant
-            it, so a firm delivering legal services on Navigator takes a
-            commercial licence from us first. Everything short of that is
-            already yours.
-      - - text: "This does not last. "
-        - text: Every version becomes Apache-2.0 four years after we publish it
-          emphasis: true
-        - text: >-
-            — per version, on its own clock, written into the licence that copy
-            already carries rather than promised separately. When a version
-            converts, the restriction ends for it permanently, and anyone may
-            run it, modify it, and redistribute it — including keeping their own
-            changes to themselves. Copies we distributed under the prior
-            AGPL-3.0-only terms keep those terms; a licence already granted
-            cannot be withdrawn.
-      - - text: >-
-            Licensing software is a law-related service rather than legal
-            representation. Taking a licence from us does not make us your
-            counsel, and the protections of the attorney-client relationship —
-            privilege and confidentiality among them — do not attach to it. An
-            attorney-client relationship with the firm begins only with a signed
-            retainer.
-      - - text: >-
-            Every licence is scoped and quoted in conversation, and legal aid
-            and nonprofit deployments should ask. 
-        - text: Ask us what yours would involve
-          href: "mailto:{firm_email}"
-        - text: "."
   - kind: cta
-    heading: Co-Counsel a Pro Bono Case with Us
+    heading: Free use for those who co-counsel with us.
     body: >-
-      To see how vibe coding can help you tell more persuasive stories, we
-      invite you to help make the world a better place and explore AI together.
+      We believe practicing law is better together and we'd prefer to do our
+      current cases with great attorneys like you. Anyone who co-counsels a case
+      with us gets the software free for life for their own practices.
     email: "{firm_email}"
     email_subject: Co-Counseling for Good with AI

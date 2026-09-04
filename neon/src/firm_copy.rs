@@ -155,44 +155,6 @@ mod firm_copy_tests {
         }
     }
 
-    /// Every destination the page routes a reader to.
-    ///
-    /// [`band_text`] reads run and card *text* and never an `href`, which is
-    /// correct for the copy guards — a URL is not a regulated claim — but it
-    /// leaves "does this band actually route anywhere" unassertable. A band can
-    /// say "ask us" and link nowhere, and every guard in this module reports
-    /// green. So routing is read separately from copy rather than by widening
-    /// what the copy guards see.
-    fn band_hrefs(bands: &[Band]) -> Vec<String> {
-        fn from_paragraphs(body: &[Paragraph]) -> Vec<String> {
-            body.iter()
-                .flat_map(|p| p.iter().filter_map(|r| r.href.clone()))
-                .collect()
-        }
-        bands
-            .iter()
-            .flat_map(|band| match band {
-                Band::Statement { body, .. } => from_paragraphs(body),
-                Band::Cards { items, .. } => items
-                    .iter()
-                    .flat_map(|c| {
-                        from_paragraphs(&c.body)
-                            .into_iter()
-                            .chain(c.href.clone())
-                            .collect::<Vec<_>>()
-                    })
-                    .collect(),
-                Band::Steps { items, .. } => items
-                    .iter()
-                    .flat_map(|s| from_paragraphs(&s.body))
-                    .collect(),
-                Band::ProjectNetwork { .. } | Band::Downloads { .. } | Band::Cta { .. } => {
-                    Vec::new()
-                }
-            })
-            .collect()
-    }
-
     fn page_text(bands: &[Band]) -> String {
         bands.iter().map(band_text).collect::<Vec<_>>().join(" ")
     }
@@ -213,25 +175,7 @@ mod firm_copy_tests {
             .expect("the Legal Services page renders its fee schedule as a card band")
     }
 
-    /// The `/navigator` licence band, resolved from the page.
-    ///
-    /// Scoping matters more here than it looks. The first version of the routing
-    /// assertion below read every href on the page and passed with this band's
-    /// link deleted — the working-surface card three bands up also points at
-    /// `/contact`, so "the page routes to /contact" was true either way. An
-    /// assertion about a band has to read that band.
-    fn navigator_licence_band(content: &webapp::marketing_page::PageContent) -> &Band {
-        content
-            .bands
-            .iter()
-            .find(|band| {
-                matches!(band, Band::Statement { lead, .. }
-                    if lead.contains("Nobody needs our permission"))
-            })
-            .expect("the Navigator page states the licence before it offers an exception to it")
-    }
-
-    /// The platform page offers one concrete pro bono co-counsel invitation.
+    /// The platform page offers free use to attorneys who co-counsel with the firm.
     #[test]
     fn the_navigator_page_invites_pro_bono_co_counsel() {
         let content = super::navigator(&views::brand::DEFAULT_BRANDING);
@@ -241,9 +185,23 @@ mod firm_copy_tests {
             "Agentic lawyering designed to scale and mise-en-place argument prep and human judgment."
         );
         assert!(
-            text.contains("Co-Counsel a Pro Bono Case with Us"),
-            "the only invitation is pro bono co-counsel: {text}"
+            text.contains("Free use for those who co-counsel with us."),
+            "the page offers free use to co-counseling attorneys: {text}"
         );
+        assert!(
+            text.contains("Anyone who co-counsels a case with us gets the software free for life for their own practices."),
+            "the page states the lifetime software offer: {text}"
+        );
+        for removed in [
+            "The manuals that go with the binary",
+            "What a firm works with",
+            "The licence, and the one thing we sell around it",
+        ] {
+            assert!(
+                !text.contains(removed),
+                "the retired band remains: {removed}: {text}"
+            );
+        }
         assert!(
             !text.to_lowercase().contains("fractional"),
             "the retired fractional offer must not remain: {text}"
@@ -442,138 +400,6 @@ mod firm_copy_tests {
         );
     }
 
-    /// The licence band leads with permission, not with the sale.
-    ///
-    /// This is the assertion the band was drafted around, and the one worth
-    /// having a test for: the order of the argument is load-bearing. A reader
-    /// who meets "commercial licence" before what is free concludes that
-    /// everything has to be paid for — which is wrong, and wrong in the
-    /// direction that turns away a legal aid office or a solo practitioner. So
-    /// the free half is stated first in the prose, and the assertion is
-    /// positional rather than a check that both phrases appear somewhere.
-    ///
-    /// **The boundary is checked because vagueness here is the expensive
-    /// failure.** BUSL defines no "production use", so a band that says a
-    /// licence is needed without saying for what leaves every reader guessing,
-    /// and a developer standing in front of a public source tree guesses
-    /// permissively. Naming the activity is what makes the offer legible.
-    ///
-    /// **The conversion is checked because it is what keeps the restriction
-    /// honest.** Four years, per version, written into the copy the reader
-    /// already holds. If that sentence were softened the page would still read
-    /// fine while meaning much less.
-    #[test]
-    fn the_navigator_page_states_what_is_free_before_what_is_sold() {
-        let content = super::navigator(&views::brand::DEFAULT_BRANDING);
-        let text = page_text(&content.bands);
-        let lowered = text.to_lowercase();
-
-        let permission = lowered
-            .find("no permission to ask for")
-            .expect("the page says plainly what needs no permission");
-        let sold = lowered
-            .find("commercial licence")
-            .expect("the page names what it sells");
-        assert!(
-            permission < sold,
-            "what is free has to be stated before what is sold, or a reader \
-             concludes a fork needs to buy one: {text}"
-        );
-
-        // The boundary itself. Production use is the whole of what is withheld,
-        // so the band has to name the activity rather than the term of art.
-        for required in [
-            "production use",
-            "running it for other people",
-            "somebody relies",
-        ] {
-            assert!(
-                lowered.contains(required),
-                "the page must state `{required}` — an unnamed boundary is one \
-                 every reader resolves in their own favour: {text}"
-            );
-        }
-
-        // The conversion, which is what bounds the restriction.
-        for required in [
-            "becomes apache-2.0 four years",
-            "restriction ends for it permanently",
-            "cannot be withdrawn",
-        ] {
-            assert!(
-                lowered.contains(required),
-                "the page must state `{required}` — a restriction with no stated \
-                 end reads as permanent: {text}"
-            );
-        }
-    }
-
-    /// The licence band discloses that a software licence is not legal work, and
-    /// carries no price.
-    ///
-    /// Two rules meeting on one band. **RPC 5.7**: selling a licence is a
-    /// law-related service, and the reader most likely to assume the
-    /// attorney-client protections travel with it is a lawyer buying from a law
-    /// firm — so the disclaimer has to be on the page rather than only in the
-    /// agreement. This is the one page that carries it: `/fractional-cto` used
-    /// to make the same disclosure and no longer does.
-    ///
-    /// **No price.** A deployment's scope is not knowable in advance, so a
-    /// figure here would be a floor dressed as a fee — the same reason
-    /// litigation and fractional GC carry none. The band quotes through
-    /// `/contact` instead, and this test is what keeps a number from drifting in
-    /// later.
-    #[test]
-    fn the_navigator_licence_offer_discloses_its_nature_and_publishes_no_price() {
-        let content = super::navigator(&views::brand::DEFAULT_BRANDING);
-        let text = page_text(&content.bands);
-        let lowered = text.to_lowercase();
-
-        assert!(
-            lowered.contains("law-related service rather than legal representation"),
-            "the licence offer must say it is not legal representation: {text}"
-        );
-        assert!(
-            lowered.contains("does not make us your counsel"),
-            "the licence offer must say plainly that buying it does not engage \
-             the firm as counsel: {text}"
-        );
-        assert!(
-            lowered.contains("signed retainer"),
-            "the page must say where an attorney-client relationship does begin: {text}"
-        );
-
-        let routes = band_hrefs(std::slice::from_ref(navigator_licence_band(&content)));
-        assert!(
-            routes
-                .iter()
-                .any(|href| href == "mailto:contact@neonlaw.com"),
-            "the licence band must route to the firm inbox, where a licence is \
-             scoped and quoted like every other engagement; it routes to \
-             {routes:?}"
-        );
-
-        // No figure, in any of the shapes one arrives in.
-        assert!(
-            !text.contains('$'),
-            "the licence offer publishes no price: {text}"
-        );
-        for shape in [
-            "per month",
-            "per year",
-            "per seat",
-            "starting at",
-            "usd",
-            "annually",
-        ] {
-            assert!(
-                !lowered.contains(shape),
-                "`{shape}` reads as a price on a page that quotes per \
-                 engagement: {text}"
-            );
-        }
-    }
-
     /// The two quoted practices publish no figure.
     ///
     /// Litigation and fractional GC are quoted per engagement because their
@@ -750,85 +576,6 @@ mod firm_copy_tests {
         assert!(
             !lowered.contains("business day") && !lowered.contains("turnaround"),
             "the platform page promises no turnaround: {text}"
-        );
-    }
-
-    /// Every card on the working-surface band names something that ships.
-    ///
-    /// The band exists to tell a firm what it would actually touch, so a card
-    /// for a roadmap surface is an advertisement for something the reader cannot
-    /// use. AIDA's tool catalog (`mcp/src/tools/`, exposed over MCP and A2A),
-    /// the notation templates, and the matter dashboard are all in the tree.
-    #[test]
-    fn the_working_surface_band_names_three_shipped_surfaces() {
-        let content = super::navigator(&views::brand::DEFAULT_BRANDING);
-        let cards = content
-            .bands
-            .iter()
-            .find_map(|band| match band {
-                Band::Cards {
-                    overline, items, ..
-                } if overline == "The working surface" => Some(items.as_slice()),
-                _ => None,
-            })
-            .expect("the platform page renders its working surface as a card band");
-        assert_eq!(cards.len(), 3, "three surfaces, one card each");
-        for card in cards {
-            assert!(
-                !card.body.is_empty(),
-                "{} names no work a lawyer does with it",
-                card.title
-            );
-        }
-        let titles: Vec<&str> = cards.iter().map(|card| card.title.as_str()).collect();
-        assert!(
-            titles.iter().any(|title| title.contains("AIDA")),
-            "the tool catalog is on the page: {titles:?}"
-        );
-        assert!(
-            titles.iter().any(|title| title.contains("Notation")),
-            "the notation templates are on the page: {titles:?}"
-        );
-    }
-
-    /// `/navigator` groups the operator manuals next to the download band.
-    ///
-    /// The alphabetical `/docs` catalog remains the full map. This band is four
-    /// links a reader who came for the CLI can follow without hunting.
-    #[test]
-    fn the_read_next_band_links_the_operator_manuals() {
-        let content = super::navigator(&views::brand::DEFAULT_BRANDING);
-        let cards = content
-            .bands
-            .iter()
-            .find_map(|band| match band {
-                Band::Cards {
-                    overline, items, ..
-                } if overline == "Read next" => Some(items.as_slice()),
-                _ => None,
-            })
-            .expect("the platform page groups operator manuals as a card band");
-        let hrefs: Vec<&str> = cards
-            .iter()
-            .filter_map(|card| card.href.as_deref())
-            .collect();
-        for required in [
-            "/docs/validate",
-            "https://github.com/neon-law-source-code/navigator/blob/main/docs/gitops.md",
-            "/docs/oss-install",
-            "/workshops",
-        ] {
-            assert!(
-                hrefs.contains(&required),
-                "the read-next band must link {required}: {hrefs:?}"
-            );
-        }
-        assert_eq!(hrefs.len(), 4, "four manuals, four links: {hrefs:?}");
-        assert!(
-            cards
-                .iter()
-                .all(|card| card.href.is_some() && card.href_label.is_some()),
-            "each card is a link, not a dead tile"
         );
     }
 }

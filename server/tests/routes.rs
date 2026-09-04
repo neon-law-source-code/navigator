@@ -1714,6 +1714,34 @@ async fn anonymous_access_to_the_shared_navigator_surface_lands_at_the_login_doo
 }
 
 #[tokio::test]
+async fn owner_lists_the_seeded_practice_and_its_brands() {
+    let (state, surreal) = state_with_engines().await;
+    store::seed::seed_canonical(&surreal, &state.storage)
+        .await
+        .unwrap();
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+
+    let resp = get_with_role(app.clone(), "/app/owner", store::persons::Role::Owner).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let html = body_string(resp).await;
+    assert!(html.contains("<title>Navigator | Owner</title>"), "{html}");
+    assert!(html.contains("Shook Law PLLC"), "{html}");
+    assert!(html.contains("Entity: Shook Law PLLC"), "{html}");
+    assert!(html.contains("Brands: delete-your-data, neon"), "{html}");
+    assert!(
+        html.contains("href=\"/app/owner\""),
+        "Owner nav must offer the listing: {html}"
+    );
+
+    let admin = get_with_role(app, "/app/owner", store::persons::Role::Admin).await;
+    assert_eq!(
+        admin.status(),
+        StatusCode::FORBIDDEN,
+        "Admin is scoped to firms they belong to and does not inventory the deployment"
+    );
+}
+
+#[tokio::test]
 async fn the_design_gallery_reads_anonymously() {
     // `/design` is a public reference surface: it mounts outside the session
     // boundary, so an anonymous reader gets the gallery itself rather than the
@@ -15765,11 +15793,32 @@ async fn migrated_dioxus_forms_pass_structural_a11y() {
     .unwrap();
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
     let cookie = admin_session_cookie_with_person();
+    let owner_cookie = session_cookie_for_role(store::persons::Role::Owner);
 
-    // The create forms (no id), then the person show/edit pages (seeded id).
-    // All render through the shared `webapp::FormCard`.
+    // The people directory's only `<form>`s are per-row Delete / Impersonate.
+    // Admin's directory is firm-scoped and empty without a `person_firm_role`
+    // row, so the listing is exercised as Owner. Create and person pages still
+    // render through the shared `webapp::FormCard` for Admin.
+    let listing = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/app/admin/people")
+                .header(header::COOKIE, &owner_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        listing.status(),
+        StatusCode::OK,
+        "/app/admin/people should render"
+    );
+    let listing_body = body_string(listing).await;
+    assert_dioxus_forms_accessible(&listing_body, "/app/admin/people");
+
     let routes = [
-        "/app/admin/people".to_string(),
         "/app/admin/people/new".to_string(),
         "/app/admin/entities/new".to_string(),
         format!("/app/admin/people/{}", libra.id),

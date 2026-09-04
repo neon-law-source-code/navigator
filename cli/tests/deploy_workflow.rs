@@ -1072,3 +1072,102 @@ fn release_version_job(workflow: &str) -> String {
     );
     serde_yaml::to_string(job).expect("the release-version job re-serialises")
 }
+
+/// EVERY RELEASE OUTPUT THIS WORKFLOW READS IS ONE THE DECISION JOB DECLARES.
+///
+/// A `needs.<job>.outputs.<name>` naming an output the producing job does not
+/// declare is not an error in Actions — it evaluates to the empty string. So a
+/// job gated on `== 'true'` against a name nobody declared never runs, and
+/// nothing anywhere goes red: a skipped job is not a failed one.
+///
+/// That is not a hypothetical failure mode in this file. `tap_follows` was a
+/// declared output, but the CHECKER BINARY that had to write it was one release
+/// behind the tree and predated it, so the value arrived empty for `26.9.3`,
+/// the Homebrew hand-off skipped, and `brew install` served a version two
+/// releases behind for a day on a fully green run. Declaration is half the
+/// contract; `the_checker_probes_for_every_release_output` holds the other half.
+#[test]
+fn every_release_output_the_workflow_reads_is_declared() {
+    let workflow_text = deploy_workflow();
+    let workflow: serde_yaml::Value =
+        serde_yaml::from_str(&workflow_text).expect("deploy.yml parses as YAML");
+    let declared: Vec<String> = workflow["jobs"]["release-version"]["outputs"]
+        .as_mapping()
+        .expect("`release-version` declares an outputs map")
+        .keys()
+        .filter_map(serde_yaml::Value::as_str)
+        .map(str::to_string)
+        .collect();
+
+    let needle = "needs.release-version.outputs.";
+    let mut read: Vec<String> = Vec::new();
+    for (index, _) in workflow_text.match_indices(needle) {
+        let rest = &workflow_text[index + needle.len()..];
+        let name: String = rest
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+            .collect();
+        if !name.is_empty() && !read.contains(&name) {
+            read.push(name);
+        }
+    }
+
+    assert!(
+        !read.is_empty(),
+        "deploy.yml must read at least one release output, or this test proves nothing"
+    );
+    for name in &read {
+        assert!(
+            declared.contains(name),
+            "deploy.yml reads `{needle}{name}` but `release-version` declares only \
+             {declared:?} — an undeclared output reads as the empty string, so whatever \
+             job that gates SKIPS on a green run"
+        );
+    }
+}
+
+/// THE CHECKER IS PROBED FOR EVERY OUTPUT THE WORKFLOW READS.
+///
+/// `release-version` runs a PUBLISHED `navigator` rather than one it compiles,
+/// which means the binary answering the release question is normally one release
+/// OLDER than the tree asking it. Any output the tree has just started reading
+/// is therefore one the binary has never heard of — the normal case for a new
+/// output, not an unlucky one — and an output that is never written arrives as
+/// the empty string rather than as an error.
+///
+/// So the `checker` step makes a candidate binary write the outputs before
+/// trusting it, and falls back to a source build when a key is missing. That
+/// probe is only as good as its list, so the list is held to the declared
+/// outputs here rather than maintained by hand in two places.
+#[test]
+fn the_checker_probes_for_every_release_output() {
+    let workflow: serde_yaml::Value =
+        serde_yaml::from_str(&deploy_workflow()).expect("deploy.yml parses as YAML");
+
+    let mut declared: Vec<&str> = workflow["jobs"]["release-version"]["outputs"]
+        .as_mapping()
+        .expect("`release-version` declares an outputs map")
+        .keys()
+        .filter_map(serde_yaml::Value::as_str)
+        .collect();
+
+    let step = workflow["jobs"]["release-version"]["steps"]
+        .as_sequence()
+        .expect("`release-version` has steps")
+        .iter()
+        .find(|step| step["id"].as_str() == Some("checker"))
+        .expect("`release-version` has a `checker` step");
+    let probed_raw = step["env"]["RELEASE_OUTPUTS"]
+        .as_str()
+        .expect("the `checker` step declares RELEASE_OUTPUTS, the list it probes for");
+    let mut probed: Vec<&str> = probed_raw.split_whitespace().collect();
+
+    declared.sort_unstable();
+    probed.sort_unstable();
+    assert_eq!(
+        probed, declared,
+        "`RELEASE_OUTPUTS` and `release-version`'s declared outputs must name the same \
+         set. An output declared but not probed for is one a year-old checker can leave \
+         empty, which is exactly how `26.9.3` skipped its Homebrew bump on a green run"
+    );
+}

@@ -244,16 +244,6 @@ jobs:
       # is marked as a prerelease, so GitHub stops reporting it as "Latest
       # release".
       prerelease: ${{ steps.version.outputs.prerelease }}
-      # Whether the Homebrew tap can carry this version at all.
-      #
-      # NOT the same question as `prerelease`, and that is the point. The tap
-      # publishes `YY.M.D` and `YY.M.D-hotfix.N`; both a hotfix and a release
-      # candidate are semver prereleases and GitHub flags both as Pre-release,
-      # so that flag separates them not at all. `ops release check` answers this
-      # from the version it has already parsed — see `cli/src/release.rs`, which
-      # holds the rule so this file does not transcribe the tap's regex a fourth
-      # time. Only `release-homebrew-tap` reads it.
-      tap_follows: ${{ steps.version.outputs.tap_follows }}
     steps:
       # THE TAGS ARE THE ANCHOR, so the checkout has to carry them. `fetch-depth:
       # 0` fetches the full history and every tag; `release-check` also fetches
@@ -306,6 +296,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
+          # EVERY OUTPUT THE JOBS BELOW READ, named once, space separated.
+          # `cli/tests/deploy_workflow.rs` holds this list and the
+          # `release-version` job's own `outputs:` block to the same set, so a
+          # new output cannot be consumed without being probed for.
+          RELEASE_OUTPUTS: "tag publishable prerelease"
         run: |
           set -euo pipefail
           tag="$(gh api "/repos/${REPO}/releases?per_page=20" --jq '
@@ -336,6 +331,47 @@ jobs:
               echo "ready=false" >> "$GITHUB_OUTPUT"
               exit 0
           fi
+
+          # AND IT MUST WRITE EVERY OUTPUT THE JOBS BELOW READ. `--help` proves
+          # the command still parses; it says nothing about the KEYS the step
+          # after this one writes, and a key that never gets written is an error
+          # nowhere: `needs.release-version.outputs.<name>` for an unwritten key
+          # is the empty string, so a downstream `== 'true'` gate reads false
+          # and the job it guards SKIPS on a green run.
+          #
+          # THAT IS NOT HYPOTHETICAL, and it is why this costs a second
+          # invocation. `tap_follows` was added on 2026-09-02. `26.9.3` released
+          # the next day and the newest release carrying a Linux archive — the
+          # binary selected above — was `26.9.2`, which predated the output. The
+          # Homebrew hand-off skipped, `brew install` served a version two
+          # releases behind for a day, and every job in that run was green. The
+          # checker is one release behind the tree BY DESIGN, so this is the
+          # normal case for any output the tree adds, not an unlucky one.
+          #
+          # A NON-ZERO EXIT IS NOT READ AS A VERDICT HERE. `ops release check`
+          # also exits non-zero on a version that REGRESSES below one already
+          # published, which must fail the release rather than this probe — so
+          # that outcome falls back to the source build, which reaches the same
+          # conclusion and fails there, where the message belongs. Output goes
+          # to a scratch file rather than `$GITHUB_OUTPUT`: this is a probe, and
+          # the step below is what publishes the answer.
+          probe="$(mktemp)"
+          if ! GITHUB_OUTPUT="${probe}" \
+              "${RUNNER_TEMP}/navigator-bin/navigator" ops release check \
+              --github-output --no-fetch >/dev/null 2>&1; then
+              echo "::notice::navigator ${tag} could not answer the release question; building the checker from source"
+              echo "ready=false" >> "$GITHUB_OUTPUT"
+              exit 0
+          fi
+          for key in ${RELEASE_OUTPUTS}; do
+              if grep -Eq "^${key}=" "${probe}"; then
+                  continue
+              fi
+              echo "::notice::navigator ${tag} writes no '${key}' output, which the jobs below read; building the checker from source"
+              echo "ready=false" >> "$GITHUB_OUTPUT"
+              exit 0
+          done
+
           echo "ready=true" >> "$GITHUB_OUTPUT"
       # THE FALLBACK, and the reason this job still knows how to compile. A
       # release lost because the release API blipped is the exact failure this
@@ -382,7 +418,6 @@ jobs:
                   echo "tag=${REF_NAME}"
                   echo "publishable=false"
                   echo "prerelease=false"
-                  echo "tap_follows=false"
               } >> "$GITHUB_OUTPUT"
               echo "branch iteration ${REF_NAME}: integration only, nothing publishes"
               exit 0
@@ -2677,19 +2712,29 @@ jobs:
     # archives to digest them, and a dispatch sent earlier would race an empty
     # Release — which is what needing `release-windows-cli-publish` buys.
     #
-    # `tap_follows` is "is this a release the tap can carry?", and it is the
-    # only gate in this file that narrows below `publishable`. Every publishable
-    # tag is still dispatched, HOTFIX INCLUDED — that has broken before and
-    # `cli/tests/homebrew_tap_dispatch.rs` refuses to let it break again. What
-    # is excluded is the shape the tap's own `bump` and `test` workflows refuse:
-    # a release candidate. Holding a release-candidate policy the tap did not is
-    # what dispatched `26.8.30-rc.1` into a bump that failed 27 seconds later
-    # and a release that failed over it an hour and a half after that.
+    # AND THERE IS NO SECOND CONDITION ANY MORE. `publishable` is the whole
+    # gate: EVERY publishable tag is dispatched, hotfix and release candidate
+    # included, and `cli/tests/homebrew_tap_dispatch.rs` refuses to let that
+    # narrow again.
     #
-    # A skipped job is not a failed one, so an rc release stays green here and
-    # publishes everything else: images, archives, and a flagged Release.
+    # It narrowed once. The tap's own `bump` and `test` workflows accepted
+    # `YY.M.D` and `YY.M.D-hotfix.N` and refused a release candidate, so this
+    # job grew a `tap_follows` condition rather than dispatching `26.8.30-rc.1`
+    # into a bump that could only fail. `homebrew-navigator#9` taught the tap to
+    # accept `-rc.N`, which removes the reason for the condition — and removing
+    # it is worth more than the tidiness, because that condition is what cost
+    # `26.9.3` its bump. `tap_follows` was added on 2026-09-02; `26.9.3`
+    # released the next day with `26.9.2` as the checker binary this workflow
+    # runs, that binary predated the output, `needs...outputs.tap_follows`
+    # resolved to the empty string, and this job SKIPPED on a fully green run.
+    # `brew install` served a version two releases behind for a day with no
+    # failure anywhere to say so.
+    #
+    # The general lesson is in the `checker` step above, which now refuses a
+    # binary that does not write every output this job reads. The specific
+    # lesson is here: a gate that narrows below `publishable` must earn its
+    # place, because its failure mode is a silent skip rather than a red run.
     if: needs.release-version.outputs.publishable == 'true'
-      && needs.release-version.outputs.tap_follows == 'true'
     runs-on: ubuntu-latest
     # Outlasts the confirmation wait below, which is the long pole. A job that
     # dies on its own clock reports a timeout rather than the stale formula that

@@ -1,5 +1,5 @@
 //! Vendored government forms — the metadata registry behind
-//! `templates/forms/`.
+//! `templates/notations/forms/`.
 //!
 //! The blank PDF bytes live **only** in the public assets bucket, at
 //! each form's `object_path`. The repository keeps the diffable text:
@@ -154,7 +154,7 @@ const BUNDLED: &[FormMeta] = &[
         origin_url: USCIS_N400_URL,
         object_path: "forms/united_states/federal/uscis/us__naturalization.pdf",
         sha256_pin: include_str!(
-            "../../templates/forms/united_states/federal/uscis/us__naturalization.sha256"
+            "../../templates/notations/forms/united_states/federal/uscis/us__naturalization.sha256"
         ),
     },
     FormMeta {
@@ -164,7 +164,7 @@ const BUNDLED: &[FormMeta] = &[
         origin_url: NV_SOS_FORMS_URL,
         object_path: "forms/united_states/nevada/state/nv__llc_formation.pdf",
         sha256_pin: include_str!(
-            "../../templates/forms/united_states/nevada/state/nv__llc_formation.sha256"
+            "../../templates/notations/forms/united_states/nevada/state/nv__llc_formation.sha256"
         ),
     },
     FormMeta {
@@ -174,7 +174,7 @@ const BUNDLED: &[FormMeta] = &[
         origin_url: NV_SOS_FORMS_URL,
         object_path: "forms/united_states/nevada/state/nv__profit_corp_formation.pdf",
         sha256_pin: include_str!(
-            "../../templates/forms/united_states/nevada/state/nv__profit_corp_formation.sha256"
+            "../../templates/notations/forms/united_states/nevada/state/nv__profit_corp_formation.sha256"
         ),
     },
     FormMeta {
@@ -184,7 +184,7 @@ const BUNDLED: &[FormMeta] = &[
         origin_url: NV_SOS_FORMS_URL,
         object_path: "forms/united_states/nevada/state/nv__business_trust_formation.pdf",
         sha256_pin: include_str!(
-            "../../templates/forms/united_states/nevada/state/nv__business_trust_formation.sha256"
+            "../../templates/notations/forms/united_states/nevada/state/nv__business_trust_formation.sha256"
         ),
     },
 ];

@@ -549,7 +549,7 @@ enum TemplateCmd {
         answers: Vec<(String, String)>,
     },
     /// Drop the three files that a new legal workflow starts with:
-    /// `templates/<category>/<jurisdiction>.md`,
+    /// `templates/notations/<category>/<jurisdiction>.md`,
     /// `workflows/specs/<code>.yaml`, and
     /// `features/tests/features/<matter>.feature`. Idempotent —
     /// existing files are left alone.
@@ -557,7 +557,8 @@ enum TemplateCmd {
         /// Snake-case matter slug, e.g. `incorporation`,
         /// `estate_planning`. Forms the prefix of the template `code`.
         matter: String,
-        /// Directory under `templates/` to drop the markdown into.
+        /// Shelf under `templates/notations/` to drop the markdown into
+        /// (`neon_law` or `forms`).
         #[arg(long)]
         category: String,
         /// Jurisdiction name (`PascalCase` for the filename,
@@ -606,7 +607,7 @@ enum TemplateCmd {
         #[arg(long)]
         pretty: bool,
     },
-    /// Vendored government forms (`templates/forms/`).
+    /// Vendored government forms (`templates/notations/forms/`).
     Forms {
         #[command(subcommand)]
         action: FormsAction,
@@ -1472,7 +1473,7 @@ enum GithubAction {
 enum FormsAction {
     /// Vendor + verify the blank government forms in the assets
     /// bucket. For each registry form: a local working copy at
-    /// `templates/<object_path>` (untracked) is uploaded and its
+    /// `templates/notations/<object_path>` (untracked) is uploaded and its
     /// repo `.sha256` pin rewritten; without one, the bucket object
     /// is pulled and verified against the pin. A missing object or a
     /// pin mismatch fails loudly. Auth is ADC; the emulator endpoint
@@ -1500,7 +1501,7 @@ enum FormsAction {
     /// `.fields.toml` — the recorded human mapping judgment — drives
     /// every rename, checkbox-pair → radio merge, and pre-printed
     /// literal; unmapped fields land in the `unmapped__` namespace.
-    /// Writes the transformed working copy to `templates/<object_path>`
+    /// Writes the transformed working copy to `templates/notations/<object_path>`
     /// plus its diffable `.fields` manifest; visual QA, `forms sync`,
     /// and deleting the consumed `.fields.toml` remain human steps.
     ReAuthor {

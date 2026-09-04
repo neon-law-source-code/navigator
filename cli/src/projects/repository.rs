@@ -325,7 +325,7 @@ pub fn sync_skills(root: &Path) -> ExitCode {
 ///
 /// Templates are intentionally passed to the rule engine under bare filenames:
 /// they are Project blueprints, not members of Navigator's shared
-/// `templates/neon_law` / `templates/forms` catalog. This mirrors
+/// `templates/notations/neon_law` / `templates/notations/forms` catalog. This mirrors
 /// `store::template_source::persist_from_repo` exactly.
 ///
 /// Three shapes are all valid — templates only, a portal only, or both — and a

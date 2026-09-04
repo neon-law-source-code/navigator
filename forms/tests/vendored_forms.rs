@@ -34,7 +34,10 @@ fn vendored_forms_pin_their_bucket_objects() {
         // The blank's bytes are NOT in the tree — only its pin is. The
         // pin file sits beside the markdown template at the
         // bucket-shaped repo path, and the registry compiles it in.
-        let templates_path = workspace_root().join("templates").join(form.object_path);
+        let templates_path = workspace_root()
+            .join("templates")
+            .join("notations")
+            .join(form.object_path);
         let pin_path = templates_path.with_extension("sha256");
         let pin_on_disk = std::fs::read_to_string(&pin_path).unwrap_or_else(|e| {
             panic!(

@@ -29,23 +29,23 @@ pub const UNMAPPED_PREFIX: &str = "unmapped__";
 const BUNDLED_MANIFESTS: &[(&str, &str)] = &[
     (
         "nv__llc_formation",
-        include_str!("../../templates/forms/united_states/nevada/state/nv__llc_formation.fields"),
+        include_str!("../../templates/notations/forms/united_states/nevada/state/nv__llc_formation.fields"),
     ),
     (
         "nv__profit_corp_formation",
         include_str!(
-            "../../templates/forms/united_states/nevada/state/nv__profit_corp_formation.fields"
+            "../../templates/notations/forms/united_states/nevada/state/nv__profit_corp_formation.fields"
         ),
     ),
     (
         "nv__business_trust_formation",
         include_str!(
-            "../../templates/forms/united_states/nevada/state/nv__business_trust_formation.fields"
+            "../../templates/notations/forms/united_states/nevada/state/nv__business_trust_formation.fields"
         ),
     ),
     (
         "us__naturalization",
-        include_str!("../../templates/forms/united_states/federal/uscis/us__naturalization.fields"),
+        include_str!("../../templates/notations/forms/united_states/federal/uscis/us__naturalization.fields"),
     ),
 ];
 

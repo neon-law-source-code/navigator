@@ -122,7 +122,7 @@ happens; the restriction on production use simply ends, permanently, for that
 version.
 
 GOVERNMENT FORMS ARE NOBODY'S HERE TO LICENSE.  The blank government PDFs under
-`templates/forms/` are works of the issuing state or federal agency.  The Firm
+`templates/notations/forms/` are works of the issuing state or federal agency.  The Firm
 claims no copyright in them and grants none; they are committed so the binary
 embeds the same bytes the repository carries, and for no other reason.  What is
 licensed under BUSL beside each blank form is our own material: the catalog

@@ -537,7 +537,7 @@ fn scans_template_fields_sidecars() {
     let work = TempDir::new().unwrap();
     write_file(
         work.path(),
-        "templates/forms/example.fields",
+        "templates/notations/forms/example.fields",
         "Emergency contact: jane.doe@gmail.com\n",
     );
 
@@ -553,7 +553,7 @@ fn scans_compound_suffix_fields_toml_sidecars() {
     // `toml` for those, which the scanner reads. A leak there must be caught.
     write_file(
         work.path(),
-        "templates/forms/us/nv__trust_formation.fields.toml",
+        "templates/notations/forms/us/nv__trust_formation.fields.toml",
         "emergency_contact = \"jane.doe@gmail.com\"\n",
     );
 

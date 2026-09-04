@@ -202,100 +202,106 @@ fn form_preview_doc(
 /// [`portal::dioxus_app::notation_preview_router`] serves at
 /// `/notations/{slug}`.
 fn notation_preview_docs() -> Vec<webapp::notation_preview::PreviewDoc> {
-    const ONBOARDING: &str = include_str!("../../templates/neon_law/shared/onboarding_letter.md");
-    const OFFBOARDING: &str = include_str!("../../templates/neon_law/shared/offboarding_letter.md");
+    const ONBOARDING: &str =
+        include_str!("../../templates/notations/neon_law/shared/onboarding_letter.md");
+    const OFFBOARDING: &str =
+        include_str!("../../templates/notations/neon_law/shared/offboarding_letter.md");
     const FORM_990: &str =
-        include_str!("../../templates/forms/united_states/federal/irs/us__form_990.md");
-    const NATURALIZATION: &str =
-        include_str!("../../templates/forms/united_states/federal/uscis/us__naturalization.md");
-    const NV_LLC: &str =
-        include_str!("../../templates/forms/united_states/nevada/state/nv__llc_formation.md");
+        include_str!("../../templates/notations/forms/united_states/federal/irs/us__form_990.md");
+    const NATURALIZATION: &str = include_str!(
+        "../../templates/notations/forms/united_states/federal/uscis/us__naturalization.md"
+    );
+    const NV_LLC: &str = include_str!(
+        "../../templates/notations/forms/united_states/nevada/state/nv__llc_formation.md"
+    );
     const NV_PROFIT_CORP: &str = include_str!(
-        "../../templates/forms/united_states/nevada/state/nv__profit_corp_formation.md"
+        "../../templates/notations/forms/united_states/nevada/state/nv__profit_corp_formation.md"
     );
     const NV_BUSINESS_TRUST: &str = include_str!(
-        "../../templates/forms/united_states/nevada/state/nv__business_trust_formation.md"
+        "../../templates/notations/forms/united_states/nevada/state/nv__business_trust_formation.md"
     );
     const NV_NONPROFIT: &str = include_str!(
-        "../../templates/forms/united_states/nevada/state/nv__nonprofit_501c3_formation.md"
+        "../../templates/notations/forms/united_states/nevada/state/nv__nonprofit_501c3_formation.md"
     );
-    const NV_ANNUAL_REPORT: &str =
-        include_str!("../../templates/forms/united_states/nevada/state/nv__annual_report.md");
-    const NV_DISSOLUTION: &str =
-        include_str!("../../templates/forms/united_states/nevada/state/nv__dissolution.md");
+    const NV_ANNUAL_REPORT: &str = include_str!(
+        "../../templates/notations/forms/united_states/nevada/state/nv__annual_report.md"
+    );
+    const NV_DISSOLUTION: &str = include_str!(
+        "../../templates/notations/forms/united_states/nevada/state/nv__dissolution.md"
+    );
     const NV_MODIFIED_BUSINESS_TAX: &str = include_str!(
-        "../../templates/forms/united_states/nevada/state/nv__modified_business_tax.md"
+        "../../templates/notations/forms/united_states/nevada/state/nv__modified_business_tax.md"
     );
     const NV_CHARITABLE: &str = include_str!(
-        "../../templates/forms/united_states/nevada/state/nv__charitable_solicitation_registration.md"
+        "../../templates/notations/forms/united_states/nevada/state/nv__charitable_solicitation_registration.md"
     );
 
     vec![
         letter_preview_doc(
             "onboarding-letter",
-            "neon_law/shared/onboarding_letter.md",
+            "notations/neon_law/shared/onboarding_letter.md",
             ONBOARDING,
         ),
         letter_preview_doc(
             "offboarding-letter",
-            "neon_law/shared/offboarding_letter.md",
+            "notations/neon_law/shared/offboarding_letter.md",
             OFFBOARDING,
         ),
         form_preview_doc(
             "irs-form-990",
-            "forms/united_states/federal/irs/us__form_990.md",
+            "notations/forms/united_states/federal/irs/us__form_990.md",
             FORM_990,
         ),
         form_preview_doc(
             "application-for-naturalization",
-            "forms/united_states/federal/uscis/us__naturalization.md",
+            "notations/forms/united_states/federal/uscis/us__naturalization.md",
             NATURALIZATION,
         ),
         form_preview_doc(
             "nevada-llc-formation",
-            "forms/united_states/nevada/state/nv__llc_formation.md",
+            "notations/forms/united_states/nevada/state/nv__llc_formation.md",
             NV_LLC,
         ),
         form_preview_doc(
             "nevada-profit-corporation-formation",
-            "forms/united_states/nevada/state/nv__profit_corp_formation.md",
+            "notations/forms/united_states/nevada/state/nv__profit_corp_formation.md",
             NV_PROFIT_CORP,
         ),
         form_preview_doc(
             "nevada-business-trust-formation",
-            "forms/united_states/nevada/state/nv__business_trust_formation.md",
+            "notations/forms/united_states/nevada/state/nv__business_trust_formation.md",
             NV_BUSINESS_TRUST,
         ),
         form_preview_doc(
             "nevada-nonprofit-formation",
-            "forms/united_states/nevada/state/nv__nonprofit_501c3_formation.md",
+            "notations/forms/united_states/nevada/state/nv__nonprofit_501c3_formation.md",
             NV_NONPROFIT,
         ),
         form_preview_doc(
             "nevada-annual-list",
-            "forms/united_states/nevada/state/nv__annual_report.md",
+            "notations/forms/united_states/nevada/state/nv__annual_report.md",
             NV_ANNUAL_REPORT,
         ),
         form_preview_doc(
             "nevada-llc-dissolution",
-            "forms/united_states/nevada/state/nv__dissolution.md",
+            "notations/forms/united_states/nevada/state/nv__dissolution.md",
             NV_DISSOLUTION,
         ),
         form_preview_doc(
             "nevada-modified-business-tax",
-            "forms/united_states/nevada/state/nv__modified_business_tax.md",
+            "notations/forms/united_states/nevada/state/nv__modified_business_tax.md",
             NV_MODIFIED_BUSINESS_TAX,
         ),
         form_preview_doc(
             "nevada-charitable-solicitation-registration",
-            "forms/united_states/nevada/state/nv__charitable_solicitation_registration.md",
+            "notations/forms/united_states/nevada/state/nv__charitable_solicitation_registration.md",
             NV_CHARITABLE,
         ),
     ]
 }
 
 /// The public `/notations` catalog: the sample engagement letters and every
-/// government form in `templates/forms/`.
+/// government form in `templates/notations/forms/`.
 fn notations_index_content() -> webapp::catalog_index::CatalogIndexContent {
     webapp::catalog_index::CatalogIndexContent {
         title: NOTATIONS_INDEX_TITLE.to_string(),
@@ -769,17 +775,17 @@ mod formation_engagement_copy_tests {
         (
             "nv__business_trust_formation",
             include_str!(
-                "../../templates/forms/united_states/nevada/state/nv__business_trust_formation.md"
+                "../../templates/notations/forms/united_states/nevada/state/nv__business_trust_formation.md"
             ),
         ),
         (
             "nv__llc_formation",
-            include_str!("../../templates/forms/united_states/nevada/state/nv__llc_formation.md"),
+            include_str!("../../templates/notations/forms/united_states/nevada/state/nv__llc_formation.md"),
         ),
         (
             "nv__profit_corp_formation",
             include_str!(
-                "../../templates/forms/united_states/nevada/state/nv__profit_corp_formation.md"
+                "../../templates/notations/forms/united_states/nevada/state/nv__profit_corp_formation.md"
             ),
         ),
     ];
@@ -880,12 +886,13 @@ mod notation_catalog_tests {
     fn public_notations_catalog_matches_legal_templates() {
         let repository_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
         let templates_root = repository_root.join("templates");
+        let notations_root = templates_root.join("notations");
         let mut intended_paths = BTreeSet::new();
         // These are the legal-template shelves. The GitHub shelf and prose such
         // as templates/README.md are deliberately outside this catalog.
         for shelf in ["forms", "neon_law"] {
             collect_markdown_paths(
-                &templates_root.join(shelf),
+                &notations_root.join(shelf),
                 &templates_root,
                 &mut intended_paths,
             );

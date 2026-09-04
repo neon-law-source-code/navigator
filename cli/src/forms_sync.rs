@@ -5,7 +5,7 @@
 //! diffable text, including a `.sha256` pin per form. `sync` closes the
 //! loop in both directions:
 //!
-//! - a **local working copy** at `templates/<object_path>` (untracked —
+//! - a **local working copy** at `templates/notations/<object_path>` (untracked —
 //!   the human downloads or re-authors it there) is uploaded and its
 //!   repo pin rewritten to match;
 //! - **without** a working copy, the bucket object is pulled and
@@ -34,7 +34,7 @@ const FORM_CACHE_CONTROL: &str = "public, max-age=604800";
 struct SyncItem {
     code: String,
     object_path: String,
-    /// `templates/<object_path>` — the untracked working copy.
+    /// `templates/notations/<object_path>` — the untracked working copy.
     local_blank: PathBuf,
     /// The tracked sibling `.sha256` pin.
     pin_file: PathBuf,
@@ -58,7 +58,10 @@ fn items_from_registry(workspace_root: &Path) -> anyhow::Result<Vec<SyncItem>> {
     Ok(forms::registry()?
         .into_iter()
         .map(|form| {
-            let local_blank = workspace_root.join("templates").join(form.object_path);
+            let local_blank = workspace_root
+                .join("templates")
+                .join("notations")
+                .join(form.object_path);
             let pin_file = local_blank.with_extension("sha256");
             SyncItem {
                 code: form.code.to_string(),
@@ -73,15 +76,16 @@ fn items_from_registry(workspace_root: &Path) -> anyhow::Result<Vec<SyncItem>> {
 
 /// The workspace root: `sync` runs from the checkout (it rewrites pin
 /// files), so walk up from the current directory to the first ancestor
-/// carrying `templates/forms`.
+/// carrying `templates/notations/forms`.
 fn workspace_root() -> anyhow::Result<PathBuf> {
     let cwd = std::env::current_dir()?;
     cwd.ancestors()
-        .find(|p| p.join("templates/forms").is_dir())
+        .find(|p| p.join("templates/notations/forms").is_dir())
         .map(Path::to_path_buf)
         .ok_or_else(|| {
             anyhow::anyhow!(
-                "no `templates/forms` directory above {} — run from the workspace checkout",
+                "no `templates/notations/forms` directory above {} — run from the workspace \
+                 checkout",
                 cwd.display()
             )
         })
@@ -149,7 +153,7 @@ pub fn run_fields(code: &str, bucket: Option<&str>) -> ExitCode {
 /// the form's `.fields.toml` drives every rename, radio merge, and
 /// pre-printed literal, and every unmapped field lands in the
 /// `unmapped__` namespace. Writes the re-authored working copy to
-/// `templates/<object_path>` plus its diffable `.fields` manifest, then
+/// `templates/notations/<object_path>` plus its diffable `.fields` manifest, then
 /// prints the human steps that remain: visual QA of the filled blank,
 /// `navigator template forms sync` to vendor + re-pin, and deleting the
 /// `.fields.toml` the transform just consumed.
@@ -170,7 +174,10 @@ pub fn run_reauthor(code: &str, bucket: Option<&str>) -> ExitCode {
         // The pin file wins over the compiled-in pin, exactly like
         // `sync`, so a re-vendor earlier in this checkout verifies
         // without a rebuild.
-        let local_blank = root.join("templates").join(form.object_path);
+        let local_blank = root
+            .join("templates")
+            .join("notations")
+            .join(form.object_path);
         let pin_file = local_blank.with_extension("sha256");
         let pinned = std::fs::read_to_string(&pin_file).map_or_else(
             |_| form.pinned_sha256().to_string(),
@@ -211,6 +218,7 @@ pub fn run_reauthor(code: &str, bucket: Option<&str>) -> ExitCode {
 fn load_reauthor_map(root: &Path, object_path: &str) -> anyhow::Result<forms::FieldMap> {
     let map_path = root
         .join("templates")
+        .join("notations")
         .join(object_path)
         .with_extension("fields.toml");
     let raw = std::fs::read_to_string(&map_path).map_err(|_| {
@@ -269,6 +277,7 @@ fn questionnaire_states(root: &Path, object_path: &str) -> anyhow::Result<Vec<St
     }
     let md = root
         .join("templates")
+        .join("notations")
         .join(object_path.replace(".pdf", ".md"));
     let contents = std::fs::read_to_string(&md)
         .map_err(|e| anyhow::anyhow!("read notation {}: {e}", md.display()))?;
@@ -905,6 +914,7 @@ mod tests {
         let map_path = root
             .path()
             .join("templates")
+            .join("notations")
             .join(object_path)
             .with_extension("fields.toml");
         std::fs::create_dir_all(map_path.parent().unwrap()).unwrap();

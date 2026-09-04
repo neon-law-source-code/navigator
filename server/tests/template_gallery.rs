@@ -76,7 +76,7 @@ async fn gallery_index_renders_for_a_signed_in_reader() {
 async fn template_detail_has_frontmatter_disclaimer_and_start_a_matter_cta() {
     let resp = get(
         empty_state().await,
-        "/templates/forms/united-states/federal/irs/us--form-990",
+        "/templates/notations/forms/united-states/federal/irs/us--form-990",
     )
     .await;
     assert_eq!(resp.status(), StatusCode::OK);
@@ -89,7 +89,9 @@ async fn template_detail_has_frontmatter_disclaimer_and_start_a_matter_cta() {
     assert!(&body.contains("Start a matter"));
     assert!(body.contains("href=\"mailto:contact@neonlaw.com\""));
     // And the raw-download link — kebab-cased, like every asset URL.
-    assert!(body.contains("/templates/forms/united-states/federal/irs/us--form-990/download"));
+    assert!(
+        body.contains("/templates/notations/forms/united-states/federal/irs/us--form-990/download")
+    );
 }
 
 #[tokio::test]
@@ -99,7 +101,7 @@ async fn template_underscore_url_redirects_to_kebab() {
     // hyphenated home.
     let resp = get(
         empty_state().await,
-        "/templates/forms/united_states/federal/irs/us__form_990",
+        "/templates/notations/forms/united_states/federal/irs/us__form_990",
     )
     .await;
     assert_eq!(resp.status(), StatusCode::PERMANENT_REDIRECT);
@@ -107,13 +109,13 @@ async fn template_underscore_url_redirects_to_kebab() {
         resp.headers()
             .get(axum::http::header::LOCATION)
             .and_then(|v| v.to_str().ok()),
-        Some("/templates/forms/united-states/federal/irs/us--form-990"),
+        Some("/templates/notations/forms/united-states/federal/irs/us--form-990"),
     );
 
     // The download route redirects too, preserving the trailing segment.
     let resp = get(
         empty_state().await,
-        "/templates/forms/united_states/federal/irs/us__form_990/download",
+        "/templates/notations/forms/united_states/federal/irs/us__form_990/download",
     )
     .await;
     assert_eq!(resp.status(), StatusCode::PERMANENT_REDIRECT);
@@ -121,7 +123,7 @@ async fn template_underscore_url_redirects_to_kebab() {
         resp.headers()
             .get(axum::http::header::LOCATION)
             .and_then(|v| v.to_str().ok()),
-        Some("/templates/forms/united-states/federal/irs/us--form-990/download"),
+        Some("/templates/notations/forms/united-states/federal/irs/us--form-990/download"),
     );
 }
 
@@ -137,7 +139,7 @@ async fn legacy_gallery_url_redirects_to_deep_taxonomy_path() {
         resp.headers()
             .get(axum::http::header::LOCATION)
             .and_then(|v| v.to_str().ok()),
-        Some("/templates/forms/united-states/federal/irs/us--form-990"),
+        Some("/templates/notations/forms/united-states/federal/irs/us--form-990"),
     );
 }
 
@@ -145,7 +147,7 @@ async fn legacy_gallery_url_redirects_to_deep_taxonomy_path() {
 async fn template_downloads_verbatim_markdown_as_an_attachment() {
     let resp = get(
         empty_state().await,
-        "/templates/forms/united-states/federal/irs/us--form-990/download",
+        "/templates/notations/forms/united-states/federal/irs/us--form-990/download",
     )
     .await;
     assert_eq!(resp.status(), StatusCode::OK);
@@ -166,7 +168,8 @@ async fn template_downloads_verbatim_markdown_as_an_attachment() {
     let body = body_string(resp).await;
     // Verbatim bytes: the same source the git reader sees, frontmatter
     // fence and all.
-    let source = include_str!("../../templates/forms/united_states/federal/irs/us__form_990.md");
+    let source =
+        include_str!("../../templates/notations/forms/united_states/federal/irs/us__form_990.md");
     assert_eq!(body, source);
 }
 
@@ -200,8 +203,8 @@ async fn gallery_turns_an_anonymous_visitor_back_to_the_login_door() {
     // caller with a parseable document instead.
     for path in [
         "/templates",
-        "/templates/forms/united-states/federal/irs/us--form-990",
-        "/templates/forms/united-states/federal/irs/us--form-990/download",
+        "/templates/notations/forms/united-states/federal/irs/us--form-990",
+        "/templates/notations/forms/united-states/federal/irs/us--form-990/download",
     ] {
         let resp = get_anonymous(empty_state().await, path).await;
         assert_eq!(
@@ -220,7 +223,7 @@ async fn gallery_turns_an_anonymous_visitor_back_to_the_login_door() {
 
     let raw = get_anonymous(
         empty_state().await,
-        "/app/api/templates/forms/united-states/federal/irs/us--form-990",
+        "/app/api/templates/notations/forms/united-states/federal/irs/us--form-990",
     )
     .await;
     assert_eq!(raw.status(), StatusCode::UNAUTHORIZED);

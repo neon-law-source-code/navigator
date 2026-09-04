@@ -87,7 +87,7 @@ var/
 # `.sha256` files. `navigator forms sync` uploads a local blank and
 # records its pin; only text (`.md`, `.fields.toml`, `.sha256`) is
 # committed.
-/templates/forms/**/*.pdf
+/templates/notations/forms/**/*.pdf
 
 # Still no third language.
 pyproject.toml

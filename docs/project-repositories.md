@@ -496,8 +496,9 @@ this Project does not have one yet.
 distinctly rather than failing it. A Project may legitimately open before either half exists.
 
 The template directory is flat. Each `templates/<code>.md` file is a Project-local notation blueprint; it is not part of
-Navigator's shared `templates/neon_law` or `templates/forms` catalog. Navigator reads the file at `main`, validates its
-notation contract, persists its bytes as a content-addressed Asset, and records the imported commit SHA as provenance.
+Navigator's shared `templates/notations/neon_law` or `templates/notations/forms` catalog. Navigator reads the file at
+`main`, validates its notation contract, persists its bytes as a content-addressed Asset, and records the imported
+commit SHA as provenance.
 
 ## Opening a Project from the browser, end to end
 
@@ -680,8 +681,9 @@ different things: a report that hides repositories without saying so fails the s
 
 ## Shared notations
 
-The notations that are not specific to one Project live in **this** repository, under `templates/neon_law/shared/` and
-`templates/forms/`. They are Navigator's own catalog, versioned and validated with its source.
+The notations that are not specific to one Project live in **this** repository, under
+`templates/notations/neon_law/shared/` and `templates/notations/forms/`. They are Navigator's own catalog, versioned and
+validated with its source.
 
 A Project repository's `templates/` directory is separate from that catalog rather than an extension of it: it carries
 the blueprints belonging to that Project, and Navigator imports each one at the commit it reads. A Project-local

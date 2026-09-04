@@ -232,7 +232,7 @@ mod tests {
     fn letter_content() -> NotationPreviewContent {
         NotationPreviewContent {
             title: "Onboarding Letter".to_string(),
-            source_href: "https://github.com/neon-law-source-code/navigator/blob/main/templates/neon_law/shared/onboarding_letter.md".to_string(),
+            source_href: "https://github.com/neon-law-source-code/navigator/blob/main/templates/notations/neon_law/shared/onboarding_letter.md".to_string(),
             frontmatter: "title: Onboarding Letter\ncode: onboarding__letter".to_string(),
             stage_html: "<article class=\"harvard-stage\" data-harvard-outline>\
                     <section class=\"harvard-unit harvard-unit--depth-1\" data-harvard-path=\"I\">\
@@ -247,7 +247,7 @@ mod tests {
     fn form_content() -> NotationPreviewContent {
         NotationPreviewContent {
             title: "Nevada LLC Formation".to_string(),
-            source_href: "https://github.com/neon-law-source-code/navigator/blob/main/templates/forms/united_states/nevada/state/nv__llc_formation.md".to_string(),
+            source_href: "https://github.com/neon-law-source-code/navigator/blob/main/templates/notations/forms/united_states/nevada/state/nv__llc_formation.md".to_string(),
             frontmatter: "title: Nevada LLC Formation\ncode: nv__llc_formation".to_string(),
             stage_html: "<article class=\"harvard-stage\" data-harvard-outline>\
                     <section class=\"harvard-unit harvard-unit--depth-0\" data-harvard-path=\"\">\
@@ -289,7 +289,7 @@ mod tests {
         let out = html();
         assert!(
             out.contains(
-                r#"href="https://github.com/neon-law-source-code/navigator/blob/main/templates/neon_law/shared/onboarding_letter.md""#
+                r#"href="https://github.com/neon-law-source-code/navigator/blob/main/templates/notations/neon_law/shared/onboarding_letter.md""#
             ),
             "github source link: {out}"
         );

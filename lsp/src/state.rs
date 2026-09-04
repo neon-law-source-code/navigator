@@ -818,7 +818,7 @@ Body.
             (17, "web", "browser"),
             (18, "api", "AIDA"),
             (19, "infrastructure", "Kubernetes"),
-            (20, "form", "templates/forms/"),
+            (20, "form", "templates/notations/forms/"),
         ] {
             let body = github_hover(line, 7)
                 .unwrap_or_else(|| panic!("expected a hover for `{key}` on line {line}"));

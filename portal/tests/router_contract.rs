@@ -89,7 +89,7 @@ const CONTRACT: &[(&str, Access)] = &[
     ("/design", Access::PortalPublic),
     ("/templates", Access::ProtectedHuman),
     (
-        "/templates/forms/united-states/federal/irs/us--form-990",
+        "/templates/notations/forms/united-states/federal/irs/us--form-990",
         Access::ProtectedHuman,
     ),
     // The Swagger UI shell at the `/app/api` root, its shorter public-footer

@@ -7,5 +7,5 @@ It serves document and workflow code that must fill the exact government artifac
 bytes, provenance, and mapping together makes rendering reproducible and reviewable instead of depending on a changing
 external download.
 
-The canonical files live under `templates/forms/`. See [government forms](../docs/gov-forms.md) for the sync, mapping,
-validation, and filing lifecycle.
+The canonical files live under `templates/notations/forms/`. See [government forms](../docs/gov-forms.md) for the sync,
+mapping, validation, and filing lifecycle.

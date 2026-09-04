@@ -219,34 +219,38 @@ mod canonical {
     /// shipped catalog is bundled so a fresh cluster carries every
     /// template without an import pass.
     pub const TEMPLATE_ONBOARDING_LETTER: &str =
-        include_str!("../../templates/neon_law/shared/onboarding_letter.md");
+        include_str!("../../templates/notations/neon_law/shared/onboarding_letter.md");
     pub const TEMPLATE_OFFBOARDING_LETTER: &str =
-        include_str!("../../templates/neon_law/shared/offboarding_letter.md");
-    pub const TEMPLATE_ANNUAL_REPORT_NV: &str =
-        include_str!("../../templates/forms/united_states/nevada/state/nv__annual_report.md");
-    pub const TEMPLATE_DISSOLUTION_NV: &str =
-        include_str!("../../templates/forms/united_states/nevada/state/nv__dissolution.md");
+        include_str!("../../templates/notations/neon_law/shared/offboarding_letter.md");
+    pub const TEMPLATE_ANNUAL_REPORT_NV: &str = include_str!(
+        "../../templates/notations/forms/united_states/nevada/state/nv__annual_report.md"
+    );
+    pub const TEMPLATE_DISSOLUTION_NV: &str = include_str!(
+        "../../templates/notations/forms/united_states/nevada/state/nv__dissolution.md"
+    );
     pub const TEMPLATE_FORM990: &str =
-        include_str!("../../templates/forms/united_states/federal/irs/us__form_990.md");
+        include_str!("../../templates/notations/forms/united_states/federal/irs/us__form_990.md");
     pub const TEMPLATE_NONPROFIT_501C3_NV: &str = include_str!(
-        "../../templates/forms/united_states/nevada/state/nv__nonprofit_501c3_formation.md"
+        "../../templates/notations/forms/united_states/nevada/state/nv__nonprofit_501c3_formation.md"
     );
     pub const TEMPLATE_CHARITABLE_SOLICITATION_NV: &str = include_str!(
-        "../../templates/forms/united_states/nevada/state/nv__charitable_solicitation_registration.md"
+        "../../templates/notations/forms/united_states/nevada/state/nv__charitable_solicitation_registration.md"
     );
     pub const TEMPLATE_NV_MBT: &str = include_str!(
-        "../../templates/forms/united_states/nevada/state/nv__modified_business_tax.md"
+        "../../templates/notations/forms/united_states/nevada/state/nv__modified_business_tax.md"
     );
-    pub const TEMPLATE_LLC_NV: &str =
-        include_str!("../../templates/forms/united_states/nevada/state/nv__llc_formation.md");
+    pub const TEMPLATE_LLC_NV: &str = include_str!(
+        "../../templates/notations/forms/united_states/nevada/state/nv__llc_formation.md"
+    );
     pub const TEMPLATE_CORP_NV: &str = include_str!(
-        "../../templates/forms/united_states/nevada/state/nv__profit_corp_formation.md"
+        "../../templates/notations/forms/united_states/nevada/state/nv__profit_corp_formation.md"
     );
     pub const TEMPLATE_BUSINESS_TRUST_NV: &str = include_str!(
-        "../../templates/forms/united_states/nevada/state/nv__business_trust_formation.md"
+        "../../templates/notations/forms/united_states/nevada/state/nv__business_trust_formation.md"
     );
-    pub const TEMPLATE_NATURALIZATION: &str =
-        include_str!("../../templates/forms/united_states/federal/uscis/us__naturalization.md");
+    pub const TEMPLATE_NATURALIZATION: &str = include_str!(
+        "../../templates/notations/forms/united_states/federal/uscis/us__naturalization.md"
+    );
 }
 
 /// One bundled notation template that the canonical seed inserts into the
@@ -266,51 +270,52 @@ pub struct SeededTemplate {
 /// body.
 pub const SEEDED_TEMPLATES: &[SeededTemplate] = &[
     SeededTemplate {
-        label: "neon_law/shared/onboarding_letter.md",
+        label: "notations/neon_law/shared/onboarding_letter.md",
         markdown: canonical::TEMPLATE_ONBOARDING_LETTER,
     },
     SeededTemplate {
-        label: "neon_law/shared/offboarding_letter.md",
+        label: "notations/neon_law/shared/offboarding_letter.md",
         markdown: canonical::TEMPLATE_OFFBOARDING_LETTER,
     },
     SeededTemplate {
-        label: "forms/united_states/nevada/state/nv__annual_report.md",
+        label: "notations/forms/united_states/nevada/state/nv__annual_report.md",
         markdown: canonical::TEMPLATE_ANNUAL_REPORT_NV,
     },
     SeededTemplate {
-        label: "forms/united_states/nevada/state/nv__dissolution.md",
+        label: "notations/forms/united_states/nevada/state/nv__dissolution.md",
         markdown: canonical::TEMPLATE_DISSOLUTION_NV,
     },
     SeededTemplate {
-        label: "forms/united_states/federal/irs/us__form_990.md",
+        label: "notations/forms/united_states/federal/irs/us__form_990.md",
         markdown: canonical::TEMPLATE_FORM990,
     },
     SeededTemplate {
-        label: "forms/united_states/nevada/state/nv__nonprofit_501c3_formation.md",
+        label: "notations/forms/united_states/nevada/state/nv__nonprofit_501c3_formation.md",
         markdown: canonical::TEMPLATE_NONPROFIT_501C3_NV,
     },
     SeededTemplate {
-        label: "forms/united_states/nevada/state/nv__charitable_solicitation_registration.md",
+        label:
+            "notations/forms/united_states/nevada/state/nv__charitable_solicitation_registration.md",
         markdown: canonical::TEMPLATE_CHARITABLE_SOLICITATION_NV,
     },
     SeededTemplate {
-        label: "forms/united_states/nevada/state/nv__modified_business_tax.md",
+        label: "notations/forms/united_states/nevada/state/nv__modified_business_tax.md",
         markdown: canonical::TEMPLATE_NV_MBT,
     },
     SeededTemplate {
-        label: "forms/united_states/nevada/state/nv__llc_formation.md",
+        label: "notations/forms/united_states/nevada/state/nv__llc_formation.md",
         markdown: canonical::TEMPLATE_LLC_NV,
     },
     SeededTemplate {
-        label: "forms/united_states/nevada/state/nv__profit_corp_formation.md",
+        label: "notations/forms/united_states/nevada/state/nv__profit_corp_formation.md",
         markdown: canonical::TEMPLATE_CORP_NV,
     },
     SeededTemplate {
-        label: "forms/united_states/nevada/state/nv__business_trust_formation.md",
+        label: "notations/forms/united_states/nevada/state/nv__business_trust_formation.md",
         markdown: canonical::TEMPLATE_BUSINESS_TRUST_NV,
     },
     SeededTemplate {
-        label: "forms/united_states/federal/uscis/us__naturalization.md",
+        label: "notations/forms/united_states/federal/uscis/us__naturalization.md",
         markdown: canonical::TEMPLATE_NATURALIZATION,
     },
 ];

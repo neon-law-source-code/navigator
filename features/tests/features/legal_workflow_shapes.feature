@@ -13,7 +13,7 @@ Feature: Bundled-template questionnaire composition
   guardrails stay load-bearing.
 
   Scenario: Engagement letter questionnaire walks entity → office → client → lawyer → project → terms → END
-    Given the bundled template "neon_law/shared/onboarding_letter.md"
+    Given the bundled template "notations/neon_law/shared/onboarding_letter.md"
     Then the questionnaire transitions, in BEGIN-first order, are:
       | from                                    | to                                      |
       | BEGIN                                   | entity                                  |
@@ -27,11 +27,11 @@ Feature: Bundled-template questionnaire composition
       | custom_single_choice__governing_law     | END                                     |
 
   Scenario: Engagement letter template with END stripped fails to parse
-    Given the bundled template "neon_law/shared/onboarding_letter.md" with the workflow END declaration removed
+    Given the bundled template "notations/neon_law/shared/onboarding_letter.md" with the workflow END declaration removed
     Then parsing the workflow spec returns a MissingEnd error
 
   Scenario: Closing letter questionnaire walks client → project → summary → fees → file → next → END
-    Given the bundled template "neon_law/shared/offboarding_letter.md"
+    Given the bundled template "notations/neon_law/shared/offboarding_letter.md"
     Then the questionnaire transitions, in BEGIN-first order, are:
       | from                               | to                                 |
       | BEGIN                              | person__client                     |
@@ -43,11 +43,11 @@ Feature: Bundled-template questionnaire composition
       | custom_text__next_obligation       | END                                |
 
   Scenario: Closing letter template with END stripped fails to parse
-    Given the bundled template "neon_law/shared/offboarding_letter.md" with the workflow END declaration removed
+    Given the bundled template "notations/neon_law/shared/offboarding_letter.md" with the workflow END declaration removed
     Then parsing the workflow spec returns a MissingEnd error
 
   Scenario: Nevada LLC formation questionnaire walks client → company → agent → management → members → date → END
-    Given the bundled template "forms/united_states/nevada/state/nv__llc_formation.md"
+    Given the bundled template "notations/forms/united_states/nevada/state/nv__llc_formation.md"
     Then the questionnaire transitions, in BEGIN-first order, are:
       | from                                         | to                                           |
       | BEGIN                                        | person__client                               |
@@ -59,5 +59,5 @@ Feature: Bundled-template questionnaire composition
       | custom_datetime__formation_date              | END                                          |
 
   Scenario: Nevada LLC formation template with END stripped fails to parse
-    Given the bundled template "forms/united_states/nevada/state/nv__llc_formation.md" with the workflow END declaration removed
+    Given the bundled template "notations/forms/united_states/nevada/state/nv__llc_formation.md" with the workflow END declaration removed
     Then parsing the workflow spec returns a MissingEnd error

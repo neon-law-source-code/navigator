@@ -1652,7 +1652,7 @@ mod tests {
     #[test]
     fn yaml_snippet_is_a_real_frontmatter() {
         let crate_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-        let path = crate_root.join("../templates/neon_law/shared/onboarding_letter.md");
+        let path = crate_root.join("../templates/notations/neon_law/shared/onboarding_letter.md");
         let source = std::fs::read_to_string(&path)
             .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
         assert!(

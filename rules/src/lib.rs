@@ -305,7 +305,7 @@ pub fn description_for_code(code: &str) -> &'static str {
         }
         "N108" => "Notation template must declare a stable `code`",
         "N109" => "Notation template `output:` must name a known render format",
-        "N110" => "Notation template must live under neon_law/forms and declare jurisdiction",
+        "N110" => "Notation template must live under notations/ and declare jurisdiction",
         "N111" => "Notation template `code` must be unique across the tree",
         "N112" => "Workflow step is allowed but its automation is not built yet",
         "N113" => "Questionnaire state type must be a registered question type",

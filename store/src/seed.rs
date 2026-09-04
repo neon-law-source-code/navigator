@@ -1013,8 +1013,10 @@ async fn seed_canonical_into(
     seed_jurisdictions(surreal, r).await?;
     seed_entity_types(surreal, r).await?;
     seed_entities(surreal, canonical::ENTITY, "Entity.yaml", r).await?;
+    seed_practice(surreal).await?;
     seed_persons(surreal, r).await?;
     seed_user_roles(surreal, r).await?;
+    seed_firm_memberships(surreal).await?;
     seed_questions(surreal, r).await?;
     seed_person_entity_roles(surreal, r).await?;
     seed_credentials(surreal, r).await?;
@@ -1031,10 +1033,12 @@ async fn seed_sample_portfolio_into(
     r: &mut SeedReport,
 ) -> anyhow::Result<()> {
     seed_role_matrix_sample(surreal, environment, r).await?;
+    seed_firm_memberships(surreal).await?;
     seed_git_repositories(surreal, r).await?;
     seed_letters(surreal, r).await?;
     seed_answers(surreal, r).await?;
     seed_person_project_roles(surreal, r).await?;
+    seed_project_firm_ownership(surreal).await?;
     Ok(())
 }
 
@@ -2269,6 +2273,71 @@ async fn seed_entities(
             Err(error) => return Err(error.into()),
         }
     }
+    Ok(())
+}
+
+/// The one practice this deployment already is: the `Shook Law PLLC` entity,
+/// wearing every registered house-brand key. Idempotent.
+async fn seed_practice(surreal: &SurrealDb) -> anyhow::Result<()> {
+    let entity = crate::entities::find_by_name(surreal, FIRM_ENTITY_NAME)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("canonical seed is missing {FIRM_ENTITY_NAME}"))?;
+    let firm = match crate::firms::find_by_entity_id(surreal, entity.id).await? {
+        Some(firm) => firm,
+        None => {
+            crate::firms::create(
+                surreal,
+                &crate::firms::NewFirm {
+                    name: FIRM_ENTITY_NAME.to_string(),
+                    status: "active".to_string(),
+                    entity_id: entity.id,
+                },
+            )
+            .await?
+        }
+    };
+    for key in crate::firms::CLOSED_BRAND_KEYS {
+        crate::firms::ensure_brand(surreal, firm.id, key).await?;
+    }
+    Ok(())
+}
+
+/// Grant `person_firm_role` to every Admin, Lawyer, and Clerk against the
+/// seeded practice. Owner stays the system-wide tier and gets no row.
+async fn seed_firm_memberships(surreal: &SurrealDb) -> anyhow::Result<()> {
+    let entity = crate::entities::find_by_name(surreal, FIRM_ENTITY_NAME)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("canonical seed is missing {FIRM_ENTITY_NAME}"))?;
+    let Some(firm) = crate::firms::find_by_entity_id(surreal, entity.id).await? else {
+        return Ok(());
+    };
+    for person in crate::persons::list_directory(surreal, "", "", &[]).await? {
+        let Some(membership) = crate::firms::FirmMembership::for_role(person.role) else {
+            continue;
+        };
+        crate::firms::ensure_membership(
+            surreal,
+            &crate::firms::NewPersonFirmRole {
+                person_id: person.id,
+                firm_id: firm.id,
+                membership,
+                is_dri: membership == crate::firms::FirmMembership::Admin,
+            },
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+/// Point every project that still has no owner at the seeded practice.
+async fn seed_project_firm_ownership(surreal: &SurrealDb) -> anyhow::Result<()> {
+    let entity = crate::entities::find_by_name(surreal, FIRM_ENTITY_NAME)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("canonical seed is missing {FIRM_ENTITY_NAME}"))?;
+    let Some(firm) = crate::firms::find_by_entity_id(surreal, entity.id).await? else {
+        return Ok(());
+    };
+    crate::firms::backfill_unowned_projects(surreal, firm.id).await?;
     Ok(())
 }
 

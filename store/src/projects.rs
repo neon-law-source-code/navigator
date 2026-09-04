@@ -648,6 +648,44 @@ pub async fn matter_directory(
         .collect())
 }
 
+/// Owner sees every matter. Admin sees only matters owned by a firm they
+/// belong to. An Admin with no `person_firm_role` row gets an empty
+/// directory rather than the deployment-wide listing.
+pub async fn matter_directory_for(
+    surreal: &SurrealDb,
+    role: Role,
+    viewer_person_id: Option<Uuid>,
+) -> Result<Vec<MatterDirectoryEntry>, ProjectStoreError> {
+    let entries = matter_directory(surreal, role).await?;
+    if role == Role::Owner {
+        return Ok(entries);
+    }
+    if role != Role::Admin {
+        return Ok(entries);
+    }
+    let Some(person_id) = viewer_person_id else {
+        return Ok(Vec::new());
+    };
+    let firm_ids = crate::firms::firm_ids_for_person(surreal, person_id).await?;
+    if firm_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let owned: std::collections::BTreeSet<_> = all(surreal)
+        .await?
+        .into_iter()
+        .filter(|project| {
+            project
+                .firm_id
+                .is_some_and(|firm_id| firm_ids.contains(&firm_id))
+        })
+        .map(|project| project.code)
+        .collect();
+    Ok(entries
+        .into_iter()
+        .filter(|entry| owned.contains(&entry.code))
+        .collect())
+}
+
 /// Every project's names on one DRI side, keyed by project id, for every
 /// project that has at least one. One round trip per table, not one per
 /// matter: every flagged row, then the persons they name — the same batching
@@ -2478,8 +2516,8 @@ pub async fn matter_lifecycle_sets(
 mod surreal_read_tests {
     use super::{
         can_access_as_client_in_surreal, can_access_as_lawyer_in_surreal, classify_project_write,
-        create, designate_dri_in_surreal, dri_digest, find_by_id, matter_directory, record_id,
-        DriSide, NewProject, ProjectStoreError, ENTITY_TABLE,
+        create, designate_dri_in_surreal, dri_digest, find_by_id, matter_directory,
+        matter_directory_for, record_id, DriSide, NewProject, ProjectStoreError, ENTITY_TABLE,
     };
     use crate::persons::Role;
     use crate::schema::apply;
@@ -3072,6 +3110,110 @@ mod surreal_read_tests {
             matter_directory(&surreal, Role::Admin).await.unwrap().len(),
             1
         );
+    }
+
+    /// Owner still reads every matter. Admin reads only matters whose
+    /// `firm_id` is a firm they belong to, and an Admin with no membership
+    /// reads nothing — including matters that still have no owner.
+    #[tokio::test]
+    async fn the_directory_scopes_an_admin_to_their_firms() {
+        let surreal = mem_surreal().await;
+        let firm_a = crate::firms::create(
+            &surreal,
+            &crate::firms::NewFirm {
+                name: "Practice A".into(),
+                status: "active".into(),
+                entity_id: crate::test_support::seed_entity(&surreal).await,
+            },
+        )
+        .await
+        .unwrap();
+        let firm_b = crate::firms::create(
+            &surreal,
+            &crate::firms::NewFirm {
+                name: "Practice B".into(),
+                status: "active".into(),
+                entity_id: crate::test_support::seed_entity(&surreal).await,
+            },
+        )
+        .await
+        .unwrap();
+        let admin_a = crate::persons::create(
+            &surreal,
+            &crate::persons::NewPerson::with_role("Admin A", "admin-a@example.com", Role::Admin),
+        )
+        .await
+        .unwrap();
+        crate::firms::add_membership(
+            &surreal,
+            &crate::firms::NewPersonFirmRole {
+                person_id: admin_a.id,
+                firm_id: firm_a.id,
+                membership: crate::firms::FirmMembership::Admin,
+                is_dri: true,
+            },
+        )
+        .await
+        .unwrap();
+        create(
+            &surreal,
+            &NewProject {
+                code: "matter-a".into(),
+                name: "Matter A".into(),
+                status: "open".into(),
+                entity_id: uuid::Uuid::now_v7(),
+                firm_id: Some(firm_a.id),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        create(
+            &surreal,
+            &NewProject {
+                code: "matter-b".into(),
+                name: "Matter B".into(),
+                status: "open".into(),
+                entity_id: uuid::Uuid::now_v7(),
+                firm_id: Some(firm_b.id),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        create(
+            &surreal,
+            &NewProject {
+                code: "unowned".into(),
+                name: "Unowned".into(),
+                status: "open".into(),
+                entity_id: uuid::Uuid::now_v7(),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        let owner = matter_directory_for(&surreal, Role::Owner, None)
+            .await
+            .unwrap();
+        assert_eq!(
+            owner.iter().map(|e| e.code.as_str()).collect::<Vec<_>>(),
+            vec!["matter-a", "matter-b", "unowned"]
+        );
+
+        let scoped = matter_directory_for(&surreal, Role::Admin, Some(admin_a.id))
+            .await
+            .unwrap();
+        assert_eq!(
+            scoped.iter().map(|e| e.code.as_str()).collect::<Vec<_>>(),
+            vec!["matter-a"]
+        );
+
+        let unscoped = matter_directory_for(&surreal, Role::Admin, None)
+            .await
+            .unwrap();
+        assert!(unscoped.is_empty());
     }
 
     /// A flagged row naming a person who is no longer in the table reads as

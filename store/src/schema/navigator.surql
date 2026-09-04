@@ -409,13 +409,32 @@ DEFINE INDEX OVERWRITE entity_firm_anchor ON entity FIELDS firm_anchor_key UNIQU
 -- still pins exactly one `entity` as the Firm-of-record on the conflict
 -- graph. A deployment may hold several `firm` rows; it still holds at
 -- most one `firm_anchor` claim.
+--
+-- A Firm is an Entity: `entity_id` is the legal person that practice is.
+-- `option<record<entity>>` so a row written before this field existed still
+-- deserializes; writes through `store::firms` require a live entity. The
+-- unique index is the backstop against two firms claiming one entity.
+--
+-- `firm_brand` records which closed house-brand keys that practice wears.
+-- One brand key belongs to at most one firm.
 DEFINE TABLE IF NOT EXISTS firm SCHEMAFULL PERMISSIONS NONE;
 DEFINE FIELD OVERWRITE name ON firm TYPE string;
 DEFINE FIELD OVERWRITE status ON firm TYPE string
     ASSERT $value IN ['active', 'suspended']
     DEFAULT 'active';
+DEFINE FIELD OVERWRITE entity_id ON firm TYPE option<record<entity>>;
 DEFINE FIELD OVERWRITE inserted_at ON firm TYPE string;
 DEFINE FIELD OVERWRITE updated_at ON firm TYPE string;
+DEFINE INDEX OVERWRITE firm_entity ON firm FIELDS entity_id UNIQUE;
+
+DEFINE TABLE IF NOT EXISTS firm_brand SCHEMAFULL PERMISSIONS NONE;
+DEFINE FIELD OVERWRITE firm_id ON firm_brand TYPE record<firm>;
+DEFINE FIELD OVERWRITE brand_key ON firm_brand TYPE string
+    ASSERT $value IN ['neon', 'delete-your-data'];
+DEFINE FIELD OVERWRITE inserted_at ON firm_brand TYPE string;
+DEFINE FIELD OVERWRITE updated_at ON firm_brand TYPE string;
+DEFINE INDEX OVERWRITE firm_brand_pair ON firm_brand FIELDS firm_id, brand_key UNIQUE;
+DEFINE INDEX OVERWRITE firm_brand_key ON firm_brand FIELDS brand_key UNIQUE;
 
 -- `firm_anchor`: the row that serializes minting the anchor, and the
 -- reason the UNIQUE index above is no longer the whole guard.

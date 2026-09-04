@@ -62,8 +62,8 @@ pub async fn create(
         .map(|e| e.id)
         .ok_or_else(|| {
             anyhow::anyhow!(
-                "no entity named `{needle}` — run `navigator db list entities` to see \
-                 what's seeded"
+                "no entity named `{needle}` — check `store/seeds/Entity.yaml` for the \
+                 entities the canonical seed provides"
             )
         })?;
     // The client of record: the pre-existing client this matter is opened for,

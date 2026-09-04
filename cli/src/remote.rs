@@ -348,7 +348,7 @@ pub async fn matter_open(host: Option<&str>, project_code: &str) -> ExitCode {
 /// `navigator site notation create <template-code> --project <code> --client-email …`
 /// — open a notation on an **already-existing** matter and surface the
 /// notation id. Every notation hangs on a pre-existing Project (the matter
-/// is a deliberate prior step, `navigator db project create`), so `--project`
+/// is a deliberate prior step, `navigator project create`), so `--project`
 /// is required: this resolves the human-facing matter **code** to the
 /// Project id, then posts to the project-scoped create route
 /// (`POST /app/projects/<project-code>/notations/new`). The template is read

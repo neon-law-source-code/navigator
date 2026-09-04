@@ -1,4 +1,4 @@
-//! End-to-end tests for `navigator template render <file> --out <pdf>`. Each
+//! End-to-end tests for `navigator notations render <file> --out <pdf>`. Each
 //! test writes a notation fixture to a tempdir, invokes the real
 //! binary, and checks the produced PDF (or the refusal).
 
@@ -140,10 +140,10 @@ fn write(dir: &TempDir, name: &str, body: &str) -> std::path::PathBuf {
 
 fn render(args: &[&std::ffi::OsStr]) -> std::process::Output {
     Command::new(cargo_bin("navigator"))
-        .args(["template", "render"])
+        .args(["notations", "render"])
         .args(args)
         .output()
-        .expect("run navigator template render")
+        .expect("run navigator notations render")
 }
 
 #[test]

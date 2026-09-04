@@ -1,4 +1,4 @@
-//! `navigator template format <file>` — normalize whitespace and bullet style
+//! `navigator notations format <file>` — normalize whitespace and bullet style
 //! in a Markdown notation, preserving YAML frontmatter.
 //!
 //! Column wrapping is intentionally out of scope: pandoc was the only

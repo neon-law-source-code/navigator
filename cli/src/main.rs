@@ -17,7 +17,6 @@ mod github;
 mod import;
 #[allow(dead_code)]
 mod intake;
-mod list;
 mod login;
 mod lsp_publish;
 mod mcp_bridge;
@@ -288,6 +287,9 @@ enum Command {
     // The notation author's workbench: everything here runs offline (or
     // against a local store), no live site required.
     /// Validate Markdown and YAML files in `<dir>` (default `.`).
+    ///
+    /// A Project repository's generated CI gate runs this exact command against its own tree —
+    /// see `docs/project-repositories.md`.
     Validate {
         /// Directory to walk.
         #[arg(default_value = ".")]
@@ -311,22 +313,44 @@ enum Command {
         errors_only: bool,
     },
     /// The notation author's offline workbench for everything under
-    /// `templates/`.
-    Template {
+    /// `templates/notations/`.
+    Notations {
         #[command(subcommand)]
-        action: TemplateCmd,
+        action: NotationsCmd,
+    },
+    /// Vendor, pin, and inspect the blank government forms in the public assets bucket
+    /// (`templates/notations/forms/`).
+    Forms {
+        #[command(subcommand)]
+        action: FormsAction,
+    },
+    /// Render or open an engineering intake notation (`templates/github/`) — an issue or
+    /// pull-request body filled from answers.
+    Github {
+        #[command(subcommand)]
+        action: GithubAction,
     },
 
-    // ─────────────── Local database ───────────────
-    // Load and inspect a local store — the notation registry and the
-    // firm's own reference data.
-    /// Deprecated: use the site and local authoring commands instead.
-    #[command(
-        long_about = "Deprecated: use `navigator site seed` or the local authoring commands instead."
-    )]
-    Db {
+    // ─────────────── Local store ───────────────
+    // Open and write the local store directly — no live site required.
+    /// Print an ERD describing every table in the schema. Default format is a Mermaid
+    /// `erDiagram` block; `--format svg` emits a deterministic, hand-written SVG (suitable for
+    /// piping into `docs/erd.svg`). Introspects `INFO FOR DB` / `INFO FOR TABLE` over the
+    /// `NAVIGATOR_SURREAL_*` connection, applying the schema first: a diagram of a database no
+    /// one has prepared is an empty diagram, not an error worth guessing at.
+    ///
+    /// It sits at the top level rather than under `docs`: it prepares and introspects a
+    /// database, and only its output happens to be documentation.
+    Erd {
+        /// Output format. `mermaid` (default) → GitHub-renderable `erDiagram` block. `svg` → a
+        /// deterministic standalone SVG.
+        #[arg(long, value_enum, default_value_t = erd::OutputFormat::Mermaid)]
+        format: erd::OutputFormat,
+    },
+    /// Insert a new row in the `projects` table.
+    Project {
         #[command(subcommand)]
-        action: DbCmd,
+        action: ProjectAction,
     },
 
     /// Drive a running deployment with the bearer token `navigator site login` stores.
@@ -500,7 +524,7 @@ enum ProjectRepositoryAction {
 }
 
 #[derive(Subcommand)]
-enum TemplateCmd {
+enum NotationsCmd {
     /// Normalize whitespace and bullet style in a Markdown notation.
     /// Frontmatter passes through untouched; the body has `- `
     /// bullets converted to `* ` and trailing spaces stripped.
@@ -610,50 +634,6 @@ enum TemplateCmd {
         /// Pretty-print the JSON output.
         #[arg(long)]
         pretty: bool,
-    },
-    /// Vendored government forms (`templates/notations/forms/`).
-    Forms {
-        #[command(subcommand)]
-        action: FormsAction,
-    },
-    /// Engineering intake notations (`templates/github/`) — render an
-    /// issue or pull-request body from answers, or open the issue.
-    Github {
-        #[command(subcommand)]
-        action: GithubAction,
-    },
-}
-
-#[derive(Subcommand)]
-enum DbCmd {
-    /// List rows from the store, after running the full canonical seed
-    /// pass. The seed is idempotent so re-running list against an
-    /// already-populated database is safe.
-    List {
-        #[command(subcommand)]
-        subject: ListSubject,
-    },
-    /// Insert a new row in the `projects` table.
-    Project {
-        #[command(subcommand)]
-        action: DbProjectAction,
-    },
-    /// Print an ERD describing every table in the schema. Default
-    /// format is a Mermaid `erDiagram` block; `--format svg` emits a
-    /// deterministic, hand-written SVG (suitable for piping into
-    /// `docs/erd.svg`). Introspects `INFO FOR DB` / `INFO FOR TABLE`
-    /// over the `NAVIGATOR_SURREAL_*` connection, applying the schema
-    /// first: a diagram of a database no one has prepared is an empty
-    /// diagram, not an error worth guessing at.
-    ///
-    /// It lives beside the other database commands, not under `docs`:
-    /// it prepares and introspects a database, and only its output
-    /// happens to be documentation.
-    Erd {
-        /// Output format. `mermaid` (default) → GitHub-renderable
-        /// `erDiagram` block. `svg` → deterministic standalone SVG.
-        #[arg(long, value_enum, default_value_t = erd::OutputFormat::Mermaid)]
-        format: erd::OutputFormat,
     },
 }
 
@@ -1598,7 +1578,7 @@ enum NotationAction {
     ///
     /// Every notation hangs on an already-existing Project, so `--project`
     /// (the matter code) is required — open the matter first with
-    /// `navigator db project create`. The template is read from that Project's
+    /// `navigator project create`. The template is read from that Project's
     /// git repo when authored there, else from the bundled firm catalog; the
     /// notation opens pinned to it
     /// (`POST /app/projects/<id>/notations/new`).
@@ -1686,13 +1666,12 @@ enum NotationAction {
 }
 
 #[derive(Subcommand)]
-enum DbProjectAction {
-    /// Insert a new row in the `projects` table. By default runs
-    /// migrate + seed first so the named `--entity-name` can
-    /// resolve against the canonical seed. Pass
-    /// `--skip-migrate-and-seed` when pointing at an
-    /// already-managed store (e.g. a production database) to
-    /// avoid touching the schema or upserting seed rows.
+enum ProjectAction {
+    /// Insert a new row in the `projects` table. By default runs the
+    /// canonical seed first so the named `--entity-name` can resolve
+    /// against it. Pass `--skip-seed` when pointing at an
+    /// already-managed store (e.g. a production database) to avoid
+    /// upserting seed rows.
     Create {
         /// Human-readable matter name, e.g. `"Shook Estate"`.
         #[arg(long)]
@@ -1730,26 +1709,6 @@ enum DbProjectAction {
         #[arg(long)]
         skip_seed: bool,
     },
-}
-
-#[derive(Subcommand)]
-enum ListSubject {
-    /// List every row in the `questions` table.
-    Questions,
-    /// List every row in the `templates` table.
-    Templates,
-    /// List every row in the `jurisdictions` table.
-    Jurisdictions,
-    /// List every row in the `persons` table.
-    Persons,
-    /// List every row in the `entities` table.
-    Entities,
-    /// List every row in the `entity_types` table.
-    EntityTypes,
-    /// List every row in the `projects` table.
-    Projects,
-    /// List every row in the `letters` table.
-    Letters,
 }
 
 #[allow(clippy::too_many_lines)] // one flat dispatch match; splitting it hurts readability
@@ -1802,14 +1761,60 @@ fn main() -> ExitCode {
             DocsAction::List => docs::list(),
             DocsAction::Glossary { term } => docs::glossary(term.as_deref()),
         },
-        Command::Db { action } => {
-            eprintln!("navigator: `db` is deprecated; use `navigator site seed` or local authoring commands");
-            match action {
-                DbCmd::List { subject } => runtime().block_on(run_list(subject)),
-                DbCmd::Project { action } => runtime().block_on(run_db_project(action)),
-                DbCmd::Erd { format } => runtime().block_on(run_erd(format)),
+        Command::Erd { format } => runtime().block_on(run_erd(format)),
+        Command::Project { action } => match action {
+            ProjectAction::Create {
+                name,
+                code,
+                entity_name,
+                client_email,
+                attest,
+                skip_seed,
+            } => runtime().block_on(run_project_create(
+                &name,
+                &code,
+                entity_name.as_deref(),
+                &client_email,
+                attest,
+                skip_seed,
+            )),
+        },
+        Command::Forms { action } => match action {
+            FormsAction::Sync { bucket } => forms_sync::run_sync(bucket.as_deref()),
+            FormsAction::Fields { code, bucket } => {
+                forms_sync::run_fields(&code, bucket.as_deref())
             }
-        }
+            FormsAction::ReAuthor { code, bucket } => {
+                forms_sync::run_reauthor(&code, bucket.as_deref())
+            }
+        },
+        Command::Github { action } => match github::workspace_root() {
+            Err(e) => {
+                eprintln!("navigator: {e}");
+                ExitCode::from(2)
+            }
+            Ok(root) => match action {
+                GithubAction::Render {
+                    notation,
+                    answers,
+                    out,
+                } => github::run_render(&root, notation, &answers, out.as_deref()),
+                GithubAction::OpenIssue {
+                    answers,
+                    repo,
+                    title,
+                    labels,
+                    dry_run,
+                } => runtime().block_on(github::run_open_issue(
+                    &root,
+                    &answers,
+                    repo.as_deref(),
+                    title.as_deref(),
+                    &labels,
+                    dry_run,
+                )),
+            },
+        },
         Command::Site { action } => match action {
             SiteCmd::Import {
                 model_name,
@@ -1835,16 +1840,16 @@ fn main() -> ExitCode {
             SiteCmd::Projects { action } => runtime().block_on(run_projects(action)),
             SiteCmd::Notation { action } => runtime().block_on(run_notation(action)),
         },
-        Command::Template { action } => match action {
-            TemplateCmd::Format { file } => format::run(&file),
-            TemplateCmd::Narrate { file, out } => narrate::run(&file, &out),
-            TemplateCmd::Render {
+        Command::Notations { action } => match action {
+            NotationsCmd::Format { file } => format::run(&file),
+            NotationsCmd::Narrate { file, out } => narrate::run(&file, &out),
+            NotationsCmd::Render {
                 file,
                 out,
                 format,
                 answers,
             } => run_render(&file, &out, format.as_deref(), &answers),
-            TemplateCmd::Scaffold {
+            NotationsCmd::Scaffold {
                 matter,
                 category,
                 jurisdiction,
@@ -1854,7 +1859,7 @@ fn main() -> ExitCode {
                 &category,
                 &jurisdiction,
             ),
-            TemplateCmd::Transcribe {
+            NotationsCmd::Transcribe {
                 template,
                 transcript,
                 audio,
@@ -1875,42 +1880,6 @@ fn main() -> ExitCode {
                 google_model,
                 pretty,
             })),
-            TemplateCmd::Forms { action } => match action {
-                FormsAction::Sync { bucket } => forms_sync::run_sync(bucket.as_deref()),
-                FormsAction::Fields { code, bucket } => {
-                    forms_sync::run_fields(&code, bucket.as_deref())
-                }
-                FormsAction::ReAuthor { code, bucket } => {
-                    forms_sync::run_reauthor(&code, bucket.as_deref())
-                }
-            },
-            TemplateCmd::Github { action } => match github::workspace_root() {
-                Err(e) => {
-                    eprintln!("navigator: {e}");
-                    ExitCode::from(2)
-                }
-                Ok(root) => match action {
-                    GithubAction::Render {
-                        notation,
-                        answers,
-                        out,
-                    } => github::run_render(&root, notation, &answers, out.as_deref()),
-                    GithubAction::OpenIssue {
-                        answers,
-                        repo,
-                        title,
-                        labels,
-                        dry_run,
-                    } => runtime().block_on(github::run_open_issue(
-                        &root,
-                        &answers,
-                        repo.as_deref(),
-                        title.as_deref(),
-                        &labels,
-                        dry_run,
-                    )),
-                },
-            },
         },
         // `lsp publish` and the `assets` pipeline
         // carry operator blast radius but are not cluster lifecycle, so they
@@ -2038,69 +2007,6 @@ async fn open_surreal() -> Result<store::surreal::SurrealDb, ExitCode> {
         Err(e) => {
             eprintln!("navigator: surreal: {e}");
             Err(ExitCode::from(2))
-        }
-    }
-}
-
-async fn run_list(subject: ListSubject) -> ExitCode {
-    let surreal = match open_surreal().await {
-        Ok(d) => d,
-        Err(code) => return code,
-    };
-    // The schema is applied rather than migrated, and idempotently: a
-    // fresh engine (the deploy interop's throwaway container) has no
-    // tables until someone applies them.
-    if let Err(e) = store::schema::apply(&surreal).await {
-        eprintln!("navigator: schema: {e}");
-        return ExitCode::from(2);
-    }
-    let storage = match cloud::from_env().await {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("navigator: storage: {e}");
-            return ExitCode::from(2);
-        }
-    };
-    if let Err(e) = store::seed::seed_canonical(&surreal, &storage).await {
-        eprintln!("navigator: seed: {e}");
-        return ExitCode::from(2);
-    }
-    let result = match subject {
-        ListSubject::Questions => list::list_questions(&surreal).await,
-        ListSubject::Templates => list::list_templates(&surreal).await,
-        ListSubject::Jurisdictions => list::list_jurisdictions(&surreal).await,
-        ListSubject::Persons => list::list_persons(&surreal).await,
-        ListSubject::Entities => list::list_entities(&surreal).await,
-        ListSubject::EntityTypes => list::list_entity_types(&surreal).await,
-        ListSubject::Projects => list::list_projects(&surreal).await,
-        ListSubject::Letters => list::list_letters(&surreal).await,
-    };
-    if let Err(e) = result {
-        eprintln!("navigator: list: {e}");
-        return ExitCode::from(2);
-    }
-    ExitCode::SUCCESS
-}
-
-async fn run_db_project(action: DbProjectAction) -> ExitCode {
-    match action {
-        DbProjectAction::Create {
-            name,
-            code,
-            entity_name,
-            client_email,
-            attest,
-            skip_seed,
-        } => {
-            run_project_create(
-                &name,
-                &code,
-                entity_name.as_deref(),
-                &client_email,
-                attest,
-                skip_seed,
-            )
-            .await
         }
     }
 }

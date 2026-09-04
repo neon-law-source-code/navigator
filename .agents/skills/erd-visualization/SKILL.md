@@ -13,12 +13,12 @@ description: >
 The workspace ships two ERD artifacts — `docs/erd.md` (a GitHub-rendered Mermaid block) and `docs/erd.svg` (a
 deterministic standalone SVG) — both from one introspection in `cli/src/erd.rs`. The full recipe lives in the doc; read
 it and keep it, not this skill, authoritative: [`docs/erd.md`](../../../docs/erd.md) — the two artifacts, the regen
-commands (`navigator db erd --format mermaid` / `--format svg`), the `cli/tests/erd_svg.rs` idempotency guard, the
+commands (`navigator erd --format mermaid` / `--format svg`), the `cli/tests/erd_svg.rs` idempotency guard, the
 prod-diff and SVG-open recipes, and the `cli/src/erd.rs` layout constants.
 
 ## How to treat it (the load-bearing rules)
 
-- **Use the CLI's deterministic renderer; never hand-draw.** `navigator db erd --format svg` introspects
+- **Use the CLI's deterministic renderer; never hand-draw.** `navigator erd --format svg` introspects
   `pg_catalog` and emits byte-stable SVG — same schema in → byte-identical SVG out. A hand-edited or external-tool
   diagram drifts and breaks the guard test.
 - **A migration just landed? Refresh both files in the same PR.** Regenerate `docs/erd.md` (mermaid) **and**

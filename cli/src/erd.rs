@@ -1,4 +1,4 @@
-// `navigator db erd` — introspect the schema in the store and
+// `navigator erd` — introspect the schema in the store and
 // emit a Mermaid `erDiagram` block on stdout. The output renders
 // directly in GitHub markdown and any Mermaid-aware viewer.
 //

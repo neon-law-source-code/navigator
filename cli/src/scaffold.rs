@@ -184,7 +184,7 @@ fn feature_body(matter: &str, code: &str) -> String {
         "Feature: {title} workflow shape\n\
          \n  \
          Placeholder scenario for the `{code}` template scaffolded\n  \
-         by `navigator template scaffold`. Pin down the transition chain here\n  \
+         by `navigator notations scaffold`. Pin down the transition chain here\n  \
          once the workflow spec is finalised — the existing\n  \
          `legal_workflow_shapes.feature` and\n  \
          `compliance_filings_workflow_shapes.feature` are good shapes\n  \

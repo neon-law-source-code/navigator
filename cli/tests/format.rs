@@ -1,4 +1,4 @@
-//! End-to-end tests for `navigator template format <file>`. Each test writes
+//! End-to-end tests for `navigator notations format <file>`. Each test writes
 //! a fixture to a tempdir, invokes the real binary, and reads the
 //! file back to check the transform.
 
@@ -19,10 +19,10 @@ fn format_rewrites_dash_bullets_to_star_bullets() {
     let work = TempDir::new().unwrap();
     let path = write_fixture(&work, "note.md", "# Heading\n\n- one\n- two\n");
     let out = Command::new(cargo_bin("navigator"))
-        .args(["template", "format"])
+        .args(["notations", "format"])
         .arg(&path)
         .output()
-        .expect("run navigator template format");
+        .expect("run navigator notations format");
     assert!(out.status.success(), "exit status: {:?}", out.status);
     let after = fs::read_to_string(&path).unwrap();
     assert_eq!(after, "# Heading\n\n* one\n* two\n");
@@ -33,10 +33,10 @@ fn format_trims_trailing_whitespace() {
     let work = TempDir::new().unwrap();
     let path = write_fixture(&work, "note.md", "trailing   \nclean\n");
     let out = Command::new(cargo_bin("navigator"))
-        .args(["template", "format"])
+        .args(["notations", "format"])
         .arg(&path)
         .output()
-        .expect("run navigator template format");
+        .expect("run navigator notations format");
     assert!(out.status.success());
     let after = fs::read_to_string(&path).unwrap();
     assert_eq!(after, "trailing\nclean\n");
@@ -48,10 +48,10 @@ fn format_preserves_yaml_frontmatter_verbatim() {
     let src = "---\ntitle: Tester   \ncode: T-1\n---\n- item\n";
     let path = write_fixture(&work, "with-frontmatter.md", src);
     let out = Command::new(cargo_bin("navigator"))
-        .args(["template", "format"])
+        .args(["notations", "format"])
         .arg(&path)
         .output()
-        .expect("run navigator template format");
+        .expect("run navigator notations format");
     assert!(out.status.success());
     let after = fs::read_to_string(&path).unwrap();
     // Frontmatter (including stray trailing whitespace on `title:`)
@@ -66,10 +66,10 @@ fn format_is_idempotent_on_clean_input() {
     let clean = "# Heading\n\nA paragraph.\n\n* one\n* two\n";
     let path = write_fixture(&work, "clean.md", clean);
     let out = Command::new(cargo_bin("navigator"))
-        .args(["template", "format"])
+        .args(["notations", "format"])
         .arg(&path)
         .output()
-        .expect("run navigator template format");
+        .expect("run navigator notations format");
     assert!(out.status.success());
     let after = fs::read_to_string(&path).unwrap();
     assert_eq!(after, clean);
@@ -83,10 +83,10 @@ fn format_is_idempotent_on_clean_input() {
 #[test]
 fn format_missing_file_exits_non_zero() {
     let out = Command::new(cargo_bin("navigator"))
-        .args(["template", "format"])
+        .args(["notations", "format"])
         .arg("/tmp/this-file-does-not-exist-please-trust.md")
         .output()
-        .expect("run navigator template format on missing file");
+        .expect("run navigator notations format on missing file");
     assert!(!out.status.success());
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(

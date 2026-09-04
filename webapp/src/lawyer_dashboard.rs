@@ -43,7 +43,7 @@ const CRUD_PAGES: &[(&str, &str)] = &[
 /// Read-only listings — every remaining domain table.
 ///
 /// `entity-types`, `templates`, and `questions` live here because they are
-/// seeded by the workspace (`navigator db import`, `store/seeds/`) rather than
+/// seeded by the workspace (the canonical seed, `store/seeds/`) rather than
 /// authored from the web UI.
 const LISTING_PAGES: &[(&str, &str)] = &[
     ("/app/admin/entity-types", "Entity types"),

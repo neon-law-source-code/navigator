@@ -1,4 +1,4 @@
-//! `navigator template forms sync` / `navigator template forms fields` — vendor, pin,
+//! `navigator forms sync` / `navigator forms fields` — vendor, pin,
 //! and inspect the blank government forms in the public assets bucket.
 //!
 //! The bucket is the only home of the blank bytes; the repo keeps the
@@ -135,7 +135,7 @@ pub fn run_fields(code: &str, bucket: Option<&str>) -> ExitCode {
             .ok_or_else(|| anyhow::anyhow!("`{code}` is not in the vendored forms registry"))?;
         let blank = storage.get(form.object_path).await.map_err(|e| {
             anyhow::anyhow!(
-                "pull `{}`: {e} — vendor the blank with `navigator template forms sync`",
+                "pull `{}`: {e} — vendor the blank with `navigator forms sync`",
                 form.object_path
             )
         })?;
@@ -155,7 +155,7 @@ pub fn run_fields(code: &str, bucket: Option<&str>) -> ExitCode {
 /// `unmapped__` namespace. Writes the re-authored working copy to
 /// `templates/notations/<object_path>` plus its diffable `.fields` manifest, then
 /// prints the human steps that remain: visual QA of the filled blank,
-/// `navigator template forms sync` to vendor + re-pin, and deleting the
+/// `navigator forms sync` to vendor + re-pin, and deleting the
 /// `.fields.toml` the transform just consumed.
 pub fn run_reauthor(code: &str, bucket: Option<&str>) -> ExitCode {
     let code = code.to_string();
@@ -167,7 +167,7 @@ pub fn run_reauthor(code: &str, bucket: Option<&str>) -> ExitCode {
 
         let blank = storage.get(form.object_path).await.map_err(|e| {
             anyhow::anyhow!(
-                "pull `{}`: {e} — vendor the blank with `navigator template forms sync`",
+                "pull `{}`: {e} — vendor the blank with `navigator forms sync`",
                 form.object_path
             )
         })?;
@@ -204,7 +204,7 @@ pub fn run_reauthor(code: &str, bucket: Option<&str>) -> ExitCode {
         println!("  working copy: {}", local_blank.display());
         println!("  manifest:     {}", manifest_path.display());
         println!("  next: fill the working copy with sample answers and visually QA it,");
-        println!("        then `navigator template forms sync` to vendor + re-pin, and delete the");
+        println!("        then `navigator forms sync` to vendor + re-pin, and delete the");
         println!("        `.fields.toml` this transform consumed.");
         Ok(())
     })
@@ -417,7 +417,7 @@ fn verify_manifest(item: &SyncItem, bytes: &[u8]) -> anyhow::Result<()> {
         anyhow::bail!(
             "{}: the blank's own `/T` names diverge from the tracked `.fields` manifest \
              ({} in the bytes vs {} tracked; first missing from the bytes: {:?}; first \
-             absent from the manifest: {:?}) — re-run `navigator template forms re-author {}` so \
+             absent from the manifest: {:?}) — re-run `navigator forms re-author {}` so \
              the manifest mirrors the exact bytes",
             item.code,
             derived.len(),

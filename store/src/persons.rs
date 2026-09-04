@@ -902,7 +902,7 @@ async fn write_row(db: &SurrealDb, id: Uuid, input: &NewPerson) -> Result<Person
 
 /// The person holding this mailbox, creating them if nobody does.
 ///
-/// The canonical seed runs on every boot and every `navigator db list`,
+/// The canonical seed runs on every boot and every `navigator project create`,
 /// so two processes can start together — and `person.role` is the
 /// authorization root, so a mailbox that forks into two rows is one human
 /// carrying two roles.

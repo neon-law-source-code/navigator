@@ -29,13 +29,7 @@ fn a_bucket_override_against_the_fs_backend_is_refused() {
         .env("NAVIGATOR_STORAGE_BACKEND", "fs")
         .env("NAVIGATOR_STORAGE_FS_ROOT", root.path())
         .env_remove("NAVIGATOR_ASSETS_BUCKET")
-        .args([
-            "template",
-            "forms",
-            "sync",
-            "--bucket",
-            "some-object-store-bucket",
-        ])
+        .args(["forms", "sync", "--bucket", "some-object-store-bucket"])
         .assert()
         .failure()
         .code(2)
@@ -54,7 +48,7 @@ fn an_unset_backend_fails_naming_the_storage_selector() {
         .current_dir(cwd.path())
         .env_remove("NAVIGATOR_STORAGE_BACKEND")
         .env_remove("NAVIGATOR_ASSETS_BUCKET")
-        .args(["template", "forms", "fields", "us__naturalization"])
+        .args(["forms", "fields", "us__naturalization"])
         .assert()
         .failure()
         .code(2)
@@ -74,7 +68,7 @@ fn the_fs_backend_reaches_storage_and_surfaces_a_read_miss() {
         .env("NAVIGATOR_STORAGE_BACKEND", "fs")
         .env("NAVIGATOR_STORAGE_FS_ROOT", root.path())
         .env_remove("NAVIGATOR_ASSETS_BUCKET")
-        .args(["template", "forms", "fields", "us__naturalization"])
+        .args(["forms", "fields", "us__naturalization"])
         .assert()
         .failure()
         .code(2)

@@ -144,7 +144,6 @@ The CLI seeds both letters. This workshop still binds the retainer through AIDA 
 with the offboarding letter. Do not bind two onboardings on one Project:
 
 ```bash
-navigator db list templates
 navigator site notation create onboarding__letter \
   --project sample-litigation \
   --client-email client@neonlaw.com

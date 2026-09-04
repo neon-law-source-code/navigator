@@ -7,7 +7,7 @@
 //! reproducible: a freshly prepared database must produce a
 //! byte-identical copy of the committed `docs/erd.svg`.
 //!
-//! `navigator db erd` is a subprocess, which cannot reach an in-process
+//! `navigator erd` is a subprocess, which cannot reach an in-process
 //! engine, so this runs on the server-mode lane and skips when no
 //! endpoint is configured.
 //!
@@ -16,7 +16,7 @@
 //!
 //! ```text
 //! set -a && source .devx/env && set +a
-//! cargo run -p cli -- db erd --format svg > docs/erd.svg
+//! cargo run -p cli -- erd --format svg > docs/erd.svg
 //! git add docs/erd.svg
 //! ```
 //!
@@ -33,7 +33,7 @@ async fn rendered_svg_matches_committed_docs_erd_svg() {
     };
     let mut command = Command::new(cargo_bin("navigator"));
     command
-        .args(["db", "erd", "--format", "svg"])
+        .args(["erd", "--format", "svg"])
         .env(store::surreal::ENDPOINT_ENV, &store.config.endpoint)
         .env(store::surreal::NAMESPACE_ENV, &store.config.namespace)
         .env(store::surreal::DATABASE_ENV, &store.config.database);
@@ -48,11 +48,11 @@ async fn rendered_svg_matches_committed_docs_erd_svg() {
             .env(store::surreal::PASSWORD_ENV, password)
             .env(store::surreal::AUTH_SCOPE_ENV, scope.as_str());
     }
-    let out = command.output().expect("run navigator db erd --format svg");
+    let out = command.output().expect("run navigator erd --format svg");
 
     assert!(
         out.status.success(),
-        "db erd --format svg failed: stderr=\n{}",
+        "erd --format svg failed: stderr=\n{}",
         String::from_utf8_lossy(&out.stderr),
     );
 
@@ -93,7 +93,7 @@ async fn rendered_svg_matches_committed_docs_erd_svg() {
              committed: {} bytes\n\
              {first_diff}\n\n\
              To refresh:\n  set -a && source .devx/env && set +a\n  \
-             cargo run -p cli -- db erd --format svg > docs/erd.svg",
+             cargo run -p cli -- erd --format svg > docs/erd.svg",
             rendered.len(),
             committed.len(),
         );

@@ -43,7 +43,7 @@ pub struct ServerSurreal {
 ///
 /// [`mem_surreal`] lives inside the test process, so a `navigator`
 /// invocation cannot reach it. A test that runs the binary — and every
-/// `navigator db` subcommand touches the person directory, if only through
+/// local-store CLI command touches the person directory, if only through
 /// the canonical seed — needs a real server instead:
 ///
 /// - **`NAVIGATOR_SURREAL_ENDPOINT` set** → connect, on `database` so two

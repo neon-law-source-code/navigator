@@ -76,7 +76,16 @@ fn top_level_help_keeps_orchestration_nested_under_groups() {
             // These, and nothing else. Each names what it owns, so the top
             // layer IS the mental model rather than two dozen flat rows an
             // operator has to scan.
-            "db", "dev", "ops", "site", "template", "validate", "help",
+            "dev",
+            "erd",
+            "forms",
+            "github",
+            "notations",
+            "ops",
+            "project",
+            "site",
+            "validate",
+            "help",
         ]
     );
 
@@ -109,19 +118,19 @@ fn catalog_seed_help_uses_a_headline() {
     );
 }
 
-/// `template` is the notation author's local workbench: every member operates
-/// on files under `templates/`, offline. Pinning the membership keeps a
-/// live-site or database command from drifting into it.
+/// `notations` is the notation author's local workbench: every member
+/// operates on files under `templates/notations/`, offline. Pinning the
+/// membership keeps a live-site command, or the forms-vendoring and
+/// engineering-intake commands (their own top-level homes), from drifting
+/// into it.
 #[test]
-fn template_help_lists_the_notation_authoring_workbench() {
-    let output = help(&["template", "--help"]);
+fn notations_help_lists_the_notation_authoring_workbench() {
+    let output = help(&["notations", "--help"]);
 
     assert_eq!(
         command_names(&output),
         vec![
             "format",
-            "forms",
-            "github",
             "narrate",
             "render",
             "scaffold",
@@ -131,18 +140,26 @@ fn template_help_lists_the_notation_authoring_workbench() {
     );
 }
 
-/// `db` owns the direct store operations. `erd` belongs here rather than
-/// under `docs` because it introspects the schema — only its output is
-/// documentation. Pinning membership keeps a live-site command, which
-/// authenticates to a deployment instead, from drifting in.
+/// `forms` owns vendoring, pinning, and inspecting the blank government
+/// forms in the assets bucket. Pinning membership keeps it from drifting
+/// beyond that one job.
 #[test]
-fn db_help_lists_the_direct_store_operations() {
-    let output = help(&["db", "--help"]);
+fn forms_help_lists_the_vendoring_operations() {
+    let output = help(&["forms", "--help"]);
 
     assert_eq!(
         command_names(&output),
-        vec!["erd", "list", "project", "help",]
+        vec!["fields", "re-author", "sync", "help"]
     );
+}
+
+/// `github` owns rendering and opening engineering-intake notations by
+/// hand. Pinning membership keeps it from drifting beyond that one job.
+#[test]
+fn github_help_lists_the_intake_operations() {
+    let output = help(&["github", "--help"]);
+
+    assert_eq!(command_names(&output), vec!["open-issue", "render", "help"]);
 }
 
 #[test]
@@ -157,12 +174,12 @@ fn site_import_help_requires_the_seed_model_and_file() {
         .stdout(str::contains("--dry-run"));
 }
 
-/// `db project` is write-side and local; `site projects open` drives a running
+/// `project` is write-side and local; `site projects open` drives a running
 /// deployment through the stored bearer token.
 #[test]
-fn db_project_holds_only_the_local_write_side() {
+fn project_help_lists_only_the_local_write_side() {
     assert_eq!(
-        command_names(&help(&["db", "project", "--help"])),
+        command_names(&help(&["project", "--help"])),
         vec!["create", "help"]
     );
     assert_eq!(
@@ -639,7 +656,7 @@ fn notation_create_help_lists_template_and_client_flags() {
         .stdout(str::contains("--project"));
 }
 
-/// `--entity-name` reads as optional to clap, because `db project create`
+/// `--entity-name` reads as optional to clap, because `project create`
 /// resolves it to an id itself and wants to name the missing entity in its own
 /// error rather than clap's. Its doc comment once said so in prose too — "Omit
 /// for a Project not yet bound to any Entity" — and no door in the system
@@ -661,7 +678,7 @@ fn notation_create_help_lists_template_and_client_flags() {
 /// help is deliberately just a scan-friendly headline". The detail layer is
 /// where the drift happened, so the detail layer is what gets pinned.
 #[test]
-fn db_project_create_documents_the_entity_as_required() {
+fn project_create_documents_the_entity_as_required() {
     let source = std::fs::read_to_string(
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/main.rs"),
     )

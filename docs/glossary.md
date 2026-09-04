@@ -555,7 +555,7 @@ Client-English synonym for **[Notation](notation.md#notation) bound to a Project
 sells; under the hood, running an Engagement means creating a Notation, walking its Questionnaire, advancing its
 Workflow, and rendering its document.
 
-The **engagement is a matter's first Notation**: a [Project](#project) is opened first (its own step — `navigator db
+The **engagement is a matter's first Notation**: a [Project](#project) is opened first (its own step — `navigator
 project create` — which seeds the client and lawyer participation), then the engagement is created on it like any other
 Notation (`navigator site notation create <retainer_code> --project <code>`). Opening a Project never opens a Notation
 with it; no door creates a retainer alongside the matter.
@@ -685,7 +685,7 @@ not exist. See [`notation-authoring`](notation-authoring.md#changing-the-workflo
 The numbering used on motions and contracts so a provision is addressable by path (`I`, `I.A`, `1.B`). Depth-1 headings
 are Roman numerals (`I.`, `II.`) on contracts and onboarding letters, or Arabic numerals (`1.`, `2.`) in motion
 practice. Lettered subsections (`A.`, `B.`) are Markdown block quotes. `views::harvard_outline` parses that shape into
-narration units; `navigator template narrate` writes a stage a lawyer can step through while recording, and
+narration units; `navigator notations narrate` writes a stage a lawyer can step through while recording, and
 `/app/outline` shows the bundled onboarding and offboarding letters on the same stage (`?doc=`). A notation the firm has
 given a client is the same stage at `/app/projects/{code}/{notation_id}/outline`.
 

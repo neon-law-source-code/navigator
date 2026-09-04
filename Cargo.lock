@@ -12046,6 +12046,7 @@ dependencies = [
  "opentelemetry_sdk",
  "tokio",
  "tracing",
+ "tracing-core",
  "tracing-opentelemetry",
  "tracing-subscriber",
 ]

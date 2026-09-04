@@ -54,8 +54,11 @@ admin-only at `/app/admin/analytics`.
 
 Traces, metrics, and logs speak OTLP/gRPC directly to the OpenObserve organization and stream named in their
 environment. There is no collector hop and therefore no shared collector credential or backend fan-out to operate. The
-telemetry contract is deliberately fail-closed: identifiers and bounded counts enter the Rust instrumentation; the
-production organization then applies its own stream retention, access, and redaction policy.
+telemetry contract is deliberately fail-closed at the source: the shared subscriber rejects a log event before either
+the stdout formatter or the direct OTLP log bridge sees it when a value is an email address, phone number, government
+identifier, document/body-like string, or an explicitly content-bearing field. Approved opaque identifiers and bounded
+enum/status fields remain unchanged. This control applies to audit and non-audit events alike; OpenObserve's stream
+retention and access policy is a separate deployment control, not the privacy boundary.
 
 The Iceberg archive ([iceberg-archive guide](iceberg-archive.md)) remains distinct. Its nightly `Archives` workflow
 snapshots SurrealDB tables to Parquet on GCS for BigQuery external-table analysis; it is not an operational telemetry

@@ -142,6 +142,7 @@ mod tests {
 
     #[test]
     fn production_endpoint_accepts_only_a_valid_identity_signature() {
+        let _ = restate_jwt::crypto::rust_crypto::DEFAULT_PROVIDER.install_default();
         let (identity_key, token) = signed_request();
         let endpoint = endpoint_with_key(Some(&identity_key));
 

@@ -326,19 +326,19 @@ threads the evaluated Typst source to the **worker** as a `DocumentPayload` on t
 durability. `web` reads the PDF back from storage to hand to the signature provider. This is one-directional: template →
 fresh PDF.
 
-**Rendering a template to PDF offline — `navigator template render`.** For an ad-hoc PDF outside the durable workflow (a
-demand letter to send by hand, a draft for review), `navigator template render <template.md> --out <file.pdf>` takes any
-validation-passing notation template and compiles it in pure Rust. Because templates are authored in **Markdown** but
-the `pdf` crate compiles **Typst**, the body is converted by `pdf::markdown::to_typst` (headings, emphasis, lists, block
-quotes, inline code, links) before rendering. The command validates the file against the same rule set as `navigator
-validate`, refuses to render a template with any violation, and fills placeholders through the same notation evaluator
-used by preview and final PDF generation.
+**Rendering a template to PDF offline — `navigator notations render`.** For an ad-hoc PDF outside the durable workflow
+(a demand letter to send by hand, a draft for review), `navigator notations render <template.md> --out <file.pdf>` takes
+any validation-passing notation template and compiles it in pure Rust. Because templates are authored in **Markdown**
+but the `pdf` crate compiles **Typst**, the body is converted by `pdf::markdown::to_typst` (headings, emphasis, lists,
+block quotes, inline code, links) before rendering. The command validates the file against the same rule set as
+`navigator validate`, refuses to render a template with any violation, and fills placeholders through the same notation
+evaluator used by preview and final PDF generation.
 
 ### Harvard outline
 
 Motions and contracts are walked paragraph by paragraph on a stage so a lawyer can highlight each unit while recording.
 Depth-1 headings take Roman numerals (`## I.`) on contracts and onboarding letters, or Arabic numerals (`## 1.`) in
-motion practice; lettered subsections are block quotes (`> **A. Label.** …`). `navigator template narrate <file.md>
+motion practice; lettered subsections are block quotes (`> **A. Label.** …`). `navigator notations narrate <file.md>
 --out <stage.html>` writes a self-contained HTML file; open it in a browser, step with Arrow keys, J/K, or Space, and
 press H to hide the hint. The same stage is at `/app/outline`, which switches among the bundled onboarding letter and
 offboarding letter (`?doc=onboarding`, `offboarding`). A notation on a matter — the letter given to a client — is

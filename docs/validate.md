@@ -19,6 +19,9 @@ cargo run -p cli --quiet -- validate [dir]
 from the repository root to check everything, or point it at a narrower directory (e.g. `docs`, `templates`) to check
 just that subtree.
 
+This is also the exact command every Project repository's generated CI gate runs against its own tree — see
+[`project-repositories.md`](project-repositories.md) for how `navigator site projects repository scaffold` wires it up.
+
 ## What it runs
 
 Six normal validation passes happen in this order:

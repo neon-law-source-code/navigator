@@ -133,7 +133,7 @@ spec:
             # Public assets bucket — blank government forms are pulled
             # from here at fill/download time and verified against the
             # repo's `.sha256` pins (`cloud::assets_from_env`). Vendored
-            # by `navigator template forms sync`.
+            # by `navigator forms sync`.
             - name: NAVIGATOR_ASSETS_BUCKET
               value: YOUR_ASSETS_BUCKET
             # Public origin `web` resolves blog/marketing image and webfont

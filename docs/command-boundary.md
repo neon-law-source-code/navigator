@@ -20,7 +20,7 @@ own persistence logic.
   embedded Rego checks.
 - **CLI.** A subcommand either calls an authenticated `/app/api/*` route over HTTP (`cli/src/remote.rs`, bearer token)
   or, where it cannot depend on `portal`, calls the **same** shared `store` / `workflows` command the `/app/api` handler
-  calls. Convergence is at the command layer, not necessarily over HTTP: the `navigator db project create` subcommand
+  calls. Convergence is at the command layer, not necessarily over HTTP: the `navigator project create` subcommand
   (`cli/src/project.rs::create`) and `POST /app/api/projects` both call the same `store::projects::open_matter`.
 - **Seed reconciliation.** `navigator site import <MODEL_NAME> <SEED_FILE>` reads seed YAML locally and sends it
   with the bearer from `navigator site login` to `POST /app/api/seed`. The deployment resolves the glossary model and

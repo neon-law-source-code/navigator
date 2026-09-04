@@ -63,7 +63,7 @@ navigator site notation create offboarding__letter \
   --client-email <client@example.com>
 ```
 
-You do not need a site to work locally. Use `navigator validate`, the `navigator template` authoring commands, and the
-KIND-backed `navigator dev` loop. The legacy `navigator db` group remains only as a deprecated local store interface;
-seed a local catalog with `navigator site seed` when that command's local store and storage environment are available,
-or import deployment data with `navigator site import` after logging in.
+You do not need a site to work locally. Use `navigator validate`, the `navigator notations` authoring commands, and the
+KIND-backed `navigator dev` loop. `navigator project create` opens a matter directly against the local store, and
+`navigator erd` introspects its schema; seed a local catalog with `navigator site seed` when that command's local store
+and storage environment are available, or import deployment data with `navigator site import` after logging in.

@@ -1,11 +1,11 @@
-//! `navigator template github` — drive the engineering intake notations under
+//! `navigator github` — drive the engineering intake notations under
 //! `templates/github/`.
 //!
 //! Two commands over one shelf:
 //!
 //! - `render` fills a notation's `{{…}}` placeholders from `--answer`
 //!   pairs and prints the resulting Markdown. Local and DB-free, the way
-//!   `navigator template render` is: it validates the file against the same rule
+//!   `navigator notations render` is: it validates the file against the same rule
 //!   set first, so a notation that would fail `validate` never renders.
 //!   This is the command that produces a pull-request body for a human to
 //!   paste — it opens nothing.
@@ -82,7 +82,7 @@ pub fn workspace_root() -> Result<PathBuf, String> {
 /// Validation uses the same classified rule set as `validate`, so the
 /// GitHub notation is held to `N119` and the questionnaire-grammar rules
 /// before anything is rendered. Warning-severity advisories are printed
-/// but do not block, mirroring `navigator template render`.
+/// but do not block, mirroring `navigator notations render`.
 fn render_body(
     root: &Path,
     notation: Notation,
@@ -177,7 +177,7 @@ fn declared_title(root: &Path, notation: Notation) -> Option<String> {
     rules::frontmatter::field(fm, "title").filter(|t| !t.is_empty())
 }
 
-/// `navigator template github render` — print the filled notation body.
+/// `navigator github render` — print the filled notation body.
 pub fn run_render(
     root: &Path,
     notation: Notation,
@@ -202,7 +202,7 @@ pub fn run_render(
     ExitCode::SUCCESS
 }
 
-/// `navigator template github open-issue` — render `create_issue.md` and open it.
+/// `navigator github open-issue` — render `create_issue.md` and open it.
 ///
 /// `dry_run` renders and reports the target without calling GitHub, so the
 /// exact request can be inspected before anything is created.
@@ -225,7 +225,7 @@ pub async fn run_open_issue(
     if !unfilled.is_empty() {
         eprintln!(
             "navigator: refusing to open an issue with {} unanswered question(s): {}\n\
-             navigator: pass --answer <code>=<value> for each, or use `navigator template github render` \
+             navigator: pass --answer <code>=<value> for each, or use `navigator github render` \
              to inspect the draft",
             unfilled.len(),
             unfilled.join(", "),

@@ -1011,16 +1011,9 @@ jobs:
           webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
           tag: "${{ needs.release-version.outputs.tag }}"
           stage: "integration"
-          step: "interop — cli list / erd / glossary"
-      - name: interop — cli list / erd / glossary
+          step: "interop — cli erd / glossary"
+      - name: interop — cli erd / glossary
         env:
-          # `list` runs the canonical seed, which writes assets through
-          # `cloud::from_env()`. The interop store is a throwaway and nothing
-          # reads the blobs back cross-process, so name the `fs` backend
-          # against a scratch root — since #642 an unset selector fails closed
-          # rather than defaulting to fs (matches cli/tests/list.rs).
-          NAVIGATOR_STORAGE_BACKEND: fs
-          NAVIGATOR_STORAGE_FS_ROOT: /tmp/navigator-interop-storage
           NAVIGATOR_SURREAL_ENDPOINT: ws://127.0.0.1:28000
           NAVIGATOR_SURREAL_NAMESPACE: navigator
           NAVIGATOR_SURREAL_DATABASE: navigator
@@ -1028,8 +1021,7 @@ jobs:
           NAVIGATOR_SURREAL_PASSWORD: root
         run: |
           set -euo pipefail
-          cargo run -p cli --quiet -- db list templates
-          cargo run -p cli --quiet -- db erd > /tmp/navigator-erd.mmd
+          cargo run -p cli --quiet -- erd > /tmp/navigator-erd.mmd
           sed -n '1,5p' /tmp/navigator-erd.mmd
           cargo run -p cli --quiet -- dev docs glossary jurisdiction
 

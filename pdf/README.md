@@ -11,10 +11,10 @@ Keeping persistence outside the crate lets web, workflow, and test code use the 
 Turn any validation-passing notation template into a PDF on your desk with one command:
 
 ```bash
-cargo run -p cli -- template render templates/notations/neon_law/shared/onboarding_letter.md --out /tmp/onboarding.pdf
+cargo run -p cli -- notations render templates/notations/neon_law/shared/onboarding_letter.md --out /tmp/onboarding.pdf
 ```
 
-The command is `navigator template render`, and it takes the template markdown, not a rendered document. It:
+The command is `navigator notations render`, and it takes the template markdown, not a rendered document. It:
 
 1. **Validates first.** The file runs through the same rule set as `navigator validate`. Any `Error`-severity violation
    stops the render, so a broken template never becomes a PDF someone could send. Yellow advisories print and pass.
@@ -25,7 +25,7 @@ The command is `navigator template render`, and it takes the template markdown, 
    by hand:
 
    ```bash
-   cargo run -p cli -- template render templates/notations/neon_law/shared/onboarding_letter.md \
+   cargo run -p cli -- notations render templates/notations/neon_law/shared/onboarding_letter.md \
      --out /tmp/onboarding.pdf \
      --answer person__client.name="Acme, Inc." \
      --answer custom_text__scope.value="Reviewing and revising the master services agreement."
@@ -83,7 +83,7 @@ never grows one back.
 
 Every line comes from `pdf::Letterhead` — `name`, `phone`, `email`, `web` — and the firm's identity is hard-coded once,
 in that struct's `Default`. A letter going out over a lawyer's signature says the same thing every time, so `navigator
-template render` takes the default rather than assembling the identity per render. An empty field drops out cleanly: no
+notations render` takes the default rather than assembling the identity per render. An empty field drops out cleanly: no
 dangling middot, and a line with nothing left in it is not emitted at all, so a deployment that publishes no phone still
 gets a correct letterhead.
 

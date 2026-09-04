@@ -205,11 +205,11 @@ fn client_uploads_and_generated_output_are_refused() {
         .stderr(str::contains("must not be committed"));
 }
 
-/// The retired `template repository` command is gone rather than aliased.
+/// The retired `notations repository` command is gone rather than aliased.
 #[test]
-fn the_template_repository_command_is_gone() {
+fn the_notations_repository_command_is_gone() {
     navigator()
-        .args(["template", "repository", "validate", "."])
+        .args(["notations", "repository", "validate", "."])
         .assert()
         .failure();
 }

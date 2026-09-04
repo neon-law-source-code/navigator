@@ -11,7 +11,7 @@ The model fits depositions, witness interviews, intake interviews, and any other
 ## Feature gating
 
 Today, the Google Speech-to-Text provider (`cloud/src/speech.rs`) compiles in unconditionally as part of the `cloud`
-crate — there is no Cargo feature gate around it, and the `cli -- template transcribe` probe described below already
+crate — there is no Cargo feature gate around it, and the `cli -- notations transcribe` probe described below already
 calls it directly. The offline-first transcript-upload lane remains the shipped default; nothing routes live audio into
 a sitting yet.
 
@@ -112,7 +112,7 @@ document generation, lawyer review, client review, and signing.
 The first executable slice is deliberately local and lawyer/developer-facing:
 
 ```bash
-cargo run -p cli -- template transcribe \
+cargo run -p cli -- notations transcribe \
   --template templates/notations/neon_law/shared/onboarding_letter.md \
   --transcript /tmp/sitting.txt \
   --pretty

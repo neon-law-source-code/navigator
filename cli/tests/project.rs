@@ -79,7 +79,6 @@ async fn create_project_inserts_row_linked_to_seeded_entity() {
     let repo_root = tempfile::tempdir().expect("repo root tempdir");
     let out = navigator_with(&store)
         .args([
-            "db",
             "project",
             "create",
             "--name",
@@ -94,7 +93,7 @@ async fn create_project_inserts_row_linked_to_seeded_entity() {
         ])
         .env("NAVIGATOR_GIT_REPO_ROOT", repo_root.path())
         .output()
-        .expect("run navigator db project create");
+        .expect("run navigator project create");
     assert!(
         out.status.success(),
         "project create failed: stdout=\n{}\nstderr=\n{}",
@@ -107,17 +106,10 @@ async fn create_project_inserts_row_linked_to_seeded_entity() {
         "expected name in stdout: {stdout}"
     );
 
-    let list = navigator_with(&store)
-        .args(["db", "list"])
-        .arg("projects")
-        .output()
-        .expect("run navigator db list projects");
-    assert!(list.status.success(), "list projects failed");
-    let listed = String::from_utf8_lossy(&list.stdout);
-    assert!(
-        listed.contains("Shook Estate"),
-        "expected the new row in list projects: {listed}"
-    );
+    store::projects::find_by_name(&store.db, "Shook Estate")
+        .await
+        .expect("query project")
+        .expect("project row exists");
 }
 
 #[tokio::test]
@@ -135,7 +127,6 @@ async fn create_project_needs_no_repository_configuration() {
     // network available.
     let out = navigator_with(&store)
         .args([
-            "db",
             "project",
             "create",
             "--name",
@@ -149,7 +140,7 @@ async fn create_project_needs_no_repository_configuration() {
             "--attest",
         ])
         .output()
-        .expect("run navigator db project create");
+        .expect("run navigator project create");
     assert!(
         out.status.success(),
         "project create failed: stderr=\n{}",
@@ -175,7 +166,6 @@ async fn create_project_seeds_participation_for_both_dris() {
     let repo_root = tempfile::tempdir().expect("repo root tempdir");
     let out = navigator_with(&store)
         .args([
-            "db",
             "project",
             "create",
             "--name",
@@ -190,7 +180,7 @@ async fn create_project_seeds_participation_for_both_dris() {
         ])
         .env("NAVIGATOR_GIT_REPO_ROOT", repo_root.path())
         .output()
-        .expect("run navigator db project create");
+        .expect("run navigator project create");
     assert!(
         out.status.success(),
         "project create failed: stderr=\n{}",
@@ -240,7 +230,6 @@ async fn create_project_without_entity_link_is_rejected() {
     seed_client(&store.db, "Orphan Client", "orphan.client@example.com").await;
     let out = navigator_with(&store)
         .args([
-            "db",
             "project",
             "create",
             "--name",
@@ -252,7 +241,7 @@ async fn create_project_without_entity_link_is_rejected() {
             "--attest",
         ])
         .output()
-        .expect("run navigator db project create");
+        .expect("run navigator project create");
     assert!(
         !out.status.success(),
         "create without --entity-name should be rejected",
@@ -275,7 +264,6 @@ async fn create_project_with_skip_seed_uses_the_existing_schema() {
     let repo_root = tempfile::tempdir().expect("repo root tempdir");
     let prime = navigator_with(&store)
         .args([
-            "db",
             "project",
             "create",
             "--name",
@@ -302,7 +290,6 @@ async fn create_project_with_skip_seed_uses_the_existing_schema() {
     // already exist from the first pass.
     let out = navigator_with(&store)
         .args([
-            "db",
             "project",
             "create",
             "--name",
@@ -318,7 +305,7 @@ async fn create_project_with_skip_seed_uses_the_existing_schema() {
         ])
         .env("NAVIGATOR_GIT_REPO_ROOT", repo_root.path())
         .output()
-        .expect("run navigator db project create --skip-seed");
+        .expect("run navigator project create --skip-seed");
     assert!(
         out.status.success(),
         "--skip-seed create failed: stderr=\n{}",
@@ -348,7 +335,6 @@ async fn create_project_without_attest_is_refused() {
     .await;
     let out = navigator_with(&store)
         .args([
-            "db",
             "project",
             "create",
             "--name",
@@ -361,7 +347,7 @@ async fn create_project_without_attest_is_refused() {
             "unattested.client@example.com",
         ])
         .output()
-        .expect("run navigator db project create");
+        .expect("run navigator project create");
     assert!(
         !out.status.success(),
         "create without --attest should be refused",
@@ -390,7 +376,6 @@ async fn create_project_rejects_unknown_entity_name() {
     seed_client(&store.db, "Bad Link Client", "badlink.client@example.com").await;
     let out = navigator_with(&store)
         .args([
-            "db",
             "project",
             "create",
             "--name",
@@ -404,7 +389,7 @@ async fn create_project_rejects_unknown_entity_name() {
             "--attest",
         ])
         .output()
-        .expect("run navigator db project create");
+        .expect("run navigator project create");
     assert!(
         !out.status.success(),
         "expected nonzero exit for unknown entity"

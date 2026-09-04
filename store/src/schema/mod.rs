@@ -94,7 +94,7 @@ pub struct TableDefinition {
 }
 
 /// Every table in the database, keyed by name. Ordered, so a consumer
-/// that renders it (`navigator db erd`) is deterministic by
+/// that renders it (`navigator erd`) is deterministic by
 /// construction.
 pub type Introspection = BTreeMap<String, TableDefinition>;
 

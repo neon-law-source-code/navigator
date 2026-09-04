@@ -44,7 +44,7 @@ questionnaire:
     let assert = Command::cargo_bin("navigator")
         .expect("navigator binary")
         .args([
-            "template",
+            "notations",
             "transcribe",
             "--audio",
             audio_path.to_str().expect("audio path utf8"),

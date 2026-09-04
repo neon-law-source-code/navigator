@@ -1,4 +1,4 @@
-//! End-to-end tests for `navigator template narrate <file> --out <html>`.
+//! End-to-end tests for `navigator notations narrate <file> --out <html>`.
 
 use std::fs;
 use std::process::Command;
@@ -20,12 +20,12 @@ fn narrate_writes_a_stage_with_arabic_and_lettered_units() {
     let src = write(&work, "motion.md", MOTION);
     let out = work.path().join("stage.html");
     let result = Command::new(cargo_bin("navigator"))
-        .args(["template", "narrate"])
+        .args(["notations", "narrate"])
         .arg(&src)
         .arg("--out")
         .arg(&out)
         .output()
-        .expect("run navigator template narrate");
+        .expect("run navigator notations narrate");
     assert!(
         result.status.success(),
         "stderr: {}",
@@ -53,7 +53,7 @@ fn narrate_refuses_a_missing_file() {
     let work = TempDir::new().unwrap();
     let out = work.path().join("stage.html");
     let result = Command::new(cargo_bin("navigator"))
-        .args(["template", "narrate", "no-such-file.md", "--out"])
+        .args(["notations", "narrate", "no-such-file.md", "--out"])
         .arg(&out)
         .output()
         .expect("run narrate on missing file");
@@ -69,7 +69,7 @@ fn narrate_refuses_an_empty_body() {
     let src = write(&work, "empty.md", "---\ntitle: Empty\n---\n\n");
     let out = work.path().join("stage.html");
     let result = Command::new(cargo_bin("navigator"))
-        .args(["template", "narrate"])
+        .args(["notations", "narrate"])
         .arg(&src)
         .arg("--out")
         .arg(&out)

@@ -2,11 +2,9 @@
 //!
 //! A remediation message that tells an operator to run a command which does
 //! not exist is unambiguously a defect: following it produces a second error
-//! instead of a fix. `db project create` shipped exactly that — it refused an
+//! instead of a fix. `project create` shipped exactly that — it refused an
 //! unknown client with "create the client first (`cli person create` …)", and
-//! there is no `person` subcommand. Two lines above it, "run `cli list
-//! entities` to see what's seeded" named a bare `list`, when `list` is mounted
-//! under `db`. Both are the same shape: a spelling that reads plausibly and
+//! there is no `person` subcommand: a spelling that reads plausibly and
 //! resolves nowhere, which is the class of thing a reader cannot catch and a
 //! test catches for free.
 //!
@@ -472,7 +470,17 @@ fn the_help_parser_still_reads_the_top_level_commands() {
     let mut cache = BTreeMap::new();
     let root = node_at(&mut cache, &[]);
 
-    for expected in ["db", "dev", "ops", "site", "template", "validate"] {
+    for expected in [
+        "dev",
+        "erd",
+        "forms",
+        "github",
+        "notations",
+        "ops",
+        "project",
+        "site",
+        "validate",
+    ] {
         assert!(
             root.children.iter().any(|name| name == expected),
             "the `Commands:` parser read {:?} at the top level and missed \
@@ -497,13 +505,13 @@ fn the_guard_rejects_a_command_that_does_not_exist() {
         "the failure must name the token and where it was looked up: {why}"
     );
 
-    // The pre-regroup spelling of a command that does still exist, one layer
-    // down. Being real elsewhere must not make it resolve here.
-    let moved = subcommand_path("cli list entities").expect("an invocation");
-    resolve(&mut cache, &moved).expect_err("`list` moved under `db`");
+    // A command that is real, just nested deeper, must not resolve at the
+    // wrong depth. Being real elsewhere must not make it resolve here.
+    let shallow = subcommand_path("cli notation create").expect("an invocation");
+    resolve(&mut cache, &shallow).expect_err("`notation` is nested under `site`");
 
-    let real = subcommand_path("navigator db list entities").expect("an invocation");
-    resolve(&mut cache, &real).expect("`db list entities` resolves");
+    let real = subcommand_path("navigator site notation create").expect("an invocation");
+    resolve(&mut cache, &real).expect("`site notation create` resolves");
 }
 
 /// Tokens after a leaf that takes a positional are arguments. `site import`'s
@@ -575,8 +583,8 @@ fn the_scan_reads_the_cargo_run_spelling() {
 /// remediation that shows the operator what to substitute would fail.
 #[test]
 fn a_placeholder_ends_a_path_instead_of_becoming_a_subcommand() {
-    let path = subcommand_path("navigator db project create --code <CODE>").expect("an invocation");
-    assert_eq!(path, vec!["db", "project", "create"]);
+    let path = subcommand_path("navigator project create --code <CODE>").expect("an invocation");
+    assert_eq!(path, vec!["project", "create"]);
 }
 
 /// Developer prose is out of scope, and staying out of scope is part of the

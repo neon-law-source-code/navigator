@@ -4,7 +4,7 @@ The workspace ships two ERD artifacts, both rendered from the same live `INFO FO
 
 - `docs/erd.md` (this file) — the Mermaid `erDiagram` block under [Schema](#schema). GitHub renders Mermaid natively,
   so this is the "view in the repo" artifact.
-- `docs/erd.svg` — a standalone SVG from `navigator db erd --format svg`. The renderer is **deterministic by
+- `docs/erd.svg` — a standalone SVG from `navigator erd --format svg`. The renderer is **deterministic by
   construction** (alphabetical `BTreeMap` iteration, integer-only arithmetic, no timestamps, no random IDs): same schema
   in → byte-identical SVG out. Use it anywhere Mermaid won't render (slides, design docs, screenshots, links shared
   outside the repo). Unlike Mermaid's own SVG (text in `<foreignObject>`, invisible in many viewers), this renderer uses
@@ -23,10 +23,10 @@ current shape rather than an empty diagram:
 set -a && source .devx/env && set +a   # NAVIGATOR_SURREAL_* for the KIND store
 
 # Mermaid erDiagram block → paste into the fenced block under Schema in docs/erd.md
-cargo run -p cli -- db erd --format mermaid
+cargo run -p cli -- erd --format mermaid
 
 # Deterministic SVG → overwrite the committed file
-cargo run -p cli -- db erd --format svg > docs/erd.svg
+cargo run -p cli -- erd --format svg > docs/erd.svg
 ```
 
 - `--format mermaid` (default) — the GitHub-renderable `erDiagram` block on stdout.
@@ -52,8 +52,8 @@ schema to the target, so it is safe only against a deployment already on the sam
 NAVIGATOR_SURREAL_ENDPOINT=wss://your-deployment.example \
 NAVIGATOR_SURREAL_NAMESPACE=navigator \
 NAVIGATOR_SURREAL_DATABASE=navigator \
-  cargo run -p cli -- db erd --format mermaid > /tmp/prod_mermaid.txt
-diff <(cargo run -p cli -- db erd --format mermaid) /tmp/prod_mermaid.txt   # no output = identical
+  cargo run -p cli -- erd --format mermaid > /tmp/prod_mermaid.txt
+diff <(cargo run -p cli -- erd --format mermaid) /tmp/prod_mermaid.txt   # no output = identical
 ```
 
 See [`test-database.md`](test-database.md) for the local store connection story.
@@ -77,7 +77,7 @@ the priority is *byte-stable, readable enough*. The constants live at the top of
 ## Other lenses on the schema
 
 When you don't need a picture: `INFO FOR DB` (the table list), `INFO FOR TABLE <table>` (fields, types, indexes), or
-`cargo run -p cli -- db erd --format mermaid` (plain text you can grep).
+`cargo run -p cli -- erd --format mermaid` (plain text you can grep).
 
 ## Schema
 

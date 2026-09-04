@@ -142,8 +142,8 @@ async fn applying_the_schema_remotely_is_idempotent_and_reports_in_sync() {
     );
 }
 
-/// Introspection — what `navigator db erd --source surreal` reads —
-/// against a real server rather than an in-process engine.
+/// Introspection — what `navigator erd` reads — against a real server
+/// rather than an in-process engine.
 #[tokio::test]
 async fn the_applied_schema_introspects_back_over_the_wire() {
     let Some(config) = config("test_server_introspect") else {

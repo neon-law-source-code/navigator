@@ -1,4 +1,4 @@
-//! `navigator template narrate <file> --out <stage.html>` — write a
+//! `navigator notations narrate <file> --out <stage.html>` — write a
 //! self-contained Harvard-outline narration stage.
 //!
 //! The file is parsed as Markdown (YAML frontmatter optional). Depth-1

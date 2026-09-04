@@ -443,14 +443,17 @@ impl Kind {
             // Already true in practice before this method existed: every
             // template that declares `output: form` is `kind: filing`.
             Kind::Filing => "form",
-            // An instrument between other parties never carries firm
-            // letterhead. `Agreement` covers the firm's own contractor
-            // agreements too, which override via an explicit `output:`.
-            Kind::Will | Kind::Trust | Kind::Directive | Kind::Agreement => "plain",
-            // Everything else never reaches a render profile: content
-            // pages, matter dashboards, the GitHub intake, and the
-            // asset-lane-only classifications.
-            Kind::Event
+            // Instruments between other parties never carry firm
+            // letterhead. Every other kind below never reaches a render
+            // profile: content pages, matter dashboards, the GitHub intake,
+            // and asset-lane-only classifications. `Agreement` covers the
+            // firm's own contractor agreements too, which override via an
+            // explicit `output:`.
+            Kind::Will
+            | Kind::Trust
+            | Kind::Directive
+            | Kind::Agreement
+            | Kind::Event
             | Kind::Post
             | Kind::Workshop
             | Kind::Github

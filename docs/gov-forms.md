@@ -9,7 +9,7 @@ workflow. The blank PDF bytes live **only** in the public GCS assets bucket — 
 a public bucket is correct — and the repository keeps the diffable text: the markdown catalog card, the field layer's
 text mirror (the `.fields` manifest of the re-authored blank — its `/T` names *are* the answer paths), and a `.sha256`
 pin of the canonical blank. The repository path is still the storage contract: the pin at
-`templates/forms/united_states/nevada/state/nv__llc_formation.sha256` pins the bucket object at
+`templates/notations/forms/united_states/nevada/state/nv__llc_formation.sha256` pins the bucket object at
 `forms/united_states/nevada/state/nv__llc_formation.pdf`.
 
 ## Pipeline
@@ -18,7 +18,7 @@ pin of the canonical blank. The repository path is still the storage contract: t
 government website (`origin_url`)
    │  human downloads / re-authors the blank
    ▼
-templates/forms/<country>/<jurisdiction>/<office>/<code>.pdf   (untracked working copy)
+templates/notations/forms/<country>/<jurisdiction>/<office>/<code>.pdf   (untracked working copy)
    │
    │  navigator template forms sync — uploads, writes the sibling .sha256 pin
    ▼
@@ -60,11 +60,11 @@ provenance.
 
 `navigator template forms sync` closes the loop in both directions, per registry form:
 
-- **With a working copy** at `templates/<object_path>` (untracked — `.gitignore` keeps every `templates/forms/**/*.pdf`
-  out of the tree): upload it to the bucket and rewrite the sibling `.sha256` pin to match. Commit the pin (and any map
-  change) in the same PR; rebuild so the registry bakes the new pin in. For a re-authored form the working copy's own
-  `/T` names must first equal the tracked `.fields` manifest — diverging bytes (say, a pre-re-author blank re-staged at
-  the path) are refused before anything uploads or re-pins.
+- **With a working copy** at `templates/notations/<object_path>` (untracked — `.gitignore` keeps every
+  `templates/notations/forms/**/*.pdf` out of the tree): upload it to the bucket and rewrite the sibling `.sha256` pin
+  to match. Commit the pin (and any map change) in the same PR; rebuild so the registry bakes the new pin in. For a
+  re-authored form the working copy's own `/T` names must first equal the tracked `.fields` manifest — diverging bytes
+  (say, a pre-re-author blank re-staged at the path) are refused before anything uploads or re-pins.
 - **Without one**: pull the bucket object and verify it against the pin — and, for a re-authored form, against the
   `.fields` manifest (the blank's own `/T` names re-derived from the pulled bytes and diffed). A missing object or a
   mismatch on either check exits non-zero — the same bytes the fill path would refuse, or names it would silently never
@@ -217,8 +217,8 @@ notations/<notation-id>/certificate-of-completion.pdf
 
 ## Adding A Form
 
-1. Download the blank from the government `origin_url` to the bucket-shaped repo path under `templates/forms/` (it
-   stays untracked).
+1. Download the blank from the government `origin_url` to the bucket-shaped repo path under
+   `templates/notations/forms/` (it stays untracked).
 2. Run `navigator template forms sync` — it uploads the blank and writes the sibling `.sha256` pin (tracked).
 3. Add a sibling markdown template with matching `code`, `jurisdiction`, `origin_url`, and `form`.
 4. Add a sibling field map if the PDF is fillable — `navigator template forms fields <code>` prints the real `/T` names.

@@ -13,7 +13,7 @@ Feature: Bundled-template workflow composition (compliance filings)
   confirms the parser's MissingEnd guard stays load-bearing.
 
   Scenario: Nevada LLC dissolution questionnaire walks reason → debts → END
-    Given the bundled template "forms/united_states/nevada/state/nv__dissolution.md"
+    Given the bundled template "notations/forms/united_states/nevada/state/nv__dissolution.md"
     Then the questionnaire transitions, in BEGIN-first order, are:
       | from                                | to                                  |
       | BEGIN                               | custom_text__dissolution_reason     |
@@ -21,7 +21,7 @@ Feature: Bundled-template workflow composition (compliance filings)
       | custom_yes_no__final_debts_settled  | END                                 |
 
   Scenario: Nevada LLC dissolution workflow mails articles to the Secretary of State
-    Given the bundled template "forms/united_states/nevada/state/nv__dissolution.md"
+    Given the bundled template "notations/forms/united_states/nevada/state/nv__dissolution.md"
     Then the workflow transitions, in BEGIN-first order, are:
       | from              | to                |
       | BEGIN             | member_signatures |
@@ -30,11 +30,11 @@ Feature: Bundled-template workflow composition (compliance filings)
       | mailroom_send     | END               |
 
   Scenario: Nevada dissolution template with END stripped fails to parse
-    Given the bundled template "forms/united_states/nevada/state/nv__dissolution.md" with the workflow END declaration removed
+    Given the bundled template "notations/forms/united_states/nevada/state/nv__dissolution.md" with the workflow END declaration removed
     Then parsing the workflow spec returns a MissingEnd error
 
   Scenario: Nevada annual report questionnaire walks period → managers → END
-    Given the bundled template "forms/united_states/nevada/state/nv__annual_report.md"
+    Given the bundled template "notations/forms/united_states/nevada/state/nv__annual_report.md"
     Then the questionnaire transitions, in BEGIN-first order, are:
       | from                                    | to                                      |
       | BEGIN                                   | custom_single_choice__annual_or_amended |
@@ -42,7 +42,7 @@ Feature: Bundled-template workflow composition (compliance filings)
       | people__managers                        | END                                     |
 
   Scenario: Nevada annual report workflow mails the list after lawyer review
-    Given the bundled template "forms/united_states/nevada/state/nv__annual_report.md"
+    Given the bundled template "notations/forms/united_states/nevada/state/nv__annual_report.md"
     Then the workflow transitions, in BEGIN-first order, are:
       | from          | to            |
       | BEGIN         | lawyer_review  |
@@ -50,11 +50,11 @@ Feature: Bundled-template workflow composition (compliance filings)
       | mailroom_send | END           |
 
   Scenario: Nevada annual report template with END stripped fails to parse
-    Given the bundled template "forms/united_states/nevada/state/nv__annual_report.md" with the workflow END declaration removed
+    Given the bundled template "notations/forms/united_states/nevada/state/nv__annual_report.md" with the workflow END declaration removed
     Then parsing the workflow spec returns a MissingEnd error
 
   Scenario: Nevada Modified Business Tax questionnaire walks year → revenue → END
-    Given the bundled template "forms/united_states/nevada/state/nv__modified_business_tax.md"
+    Given the bundled template "notations/forms/united_states/nevada/state/nv__modified_business_tax.md"
     Then the questionnaire transitions, in BEGIN-first order, are:
       | from                       | to                         |
       | BEGIN                      | custom_datetime__tax_year         |
@@ -62,7 +62,7 @@ Feature: Bundled-template workflow composition (compliance filings)
       | custom_usd__gross_revenue  | END                        |
 
   Scenario: Nevada Modified Business Tax workflow signs, reviews, and mails the return
-    Given the bundled template "forms/united_states/nevada/state/nv__modified_business_tax.md"
+    Given the bundled template "notations/forms/united_states/nevada/state/nv__modified_business_tax.md"
     Then the workflow transitions, in BEGIN-first order, are:
       | from              | to                |
       | BEGIN             | member_signatures |
@@ -71,5 +71,5 @@ Feature: Bundled-template workflow composition (compliance filings)
       | mailroom_send     | END               |
 
   Scenario: Nevada Modified Business Tax template with END stripped fails to parse
-    Given the bundled template "forms/united_states/nevada/state/nv__modified_business_tax.md" with the workflow END declaration removed
+    Given the bundled template "notations/forms/united_states/nevada/state/nv__modified_business_tax.md" with the workflow END declaration removed
     Then parsing the workflow spec returns a MissingEnd error

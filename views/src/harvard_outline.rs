@@ -496,11 +496,11 @@ mod tests {
 
     const ONBOARDING: &str = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../templates/neon_law/shared/onboarding_letter.md"
+        "/../templates/notations/neon_law/shared/onboarding_letter.md"
     ));
     const OFFBOARDING: &str = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../templates/neon_law/shared/offboarding_letter.md"
+        "/../templates/notations/neon_law/shared/offboarding_letter.md"
     ));
 
     #[test]

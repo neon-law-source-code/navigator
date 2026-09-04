@@ -52,8 +52,8 @@ kind and the keys it must carry:
 - **Notation template** — one of the notation kinds (`letter`, `filing`, `will`, `trust`, `directive`, `agreement`,
   `onboarding`, `offboarding`, `memo`). A complete one carries **both** the `questionnaire:` and `workflow:` machines
   plus `title`, `code`, `respondent_type`, `jurisdiction`, and `confidential`, and the missing ones are flagged. Lives
-  under `templates/forms/` or `templates/neon_law/`; a `templates/` file with no `kind:` is just prose until it declares
-  one.
+  under `templates/notations/forms/` or `templates/notations/neon_law/`; a `templates/` file with no `kind:` is just
+  prose until it declares one.
 - **Blog post** — `kind: post`. Lives under `server/content/blog/`. Needs `title` and `description`, in a file named
   `YYYYMMDD_slug.md`.
 - **Workshop page** — `kind: workshop`. Lives under `server/content/workshops/`. Needs `title` and `description`.
@@ -87,7 +87,7 @@ notation is the same stage at `/app/projects/{code}/{notation_id}/outline`.
 
 A notation template is the document a client eventually signs, plus the questions that fill it in and the path it walks
 to get there. Here is the real frontmatter from the shared onboarding letter,
-`templates/neon_law/shared/onboarding_letter.md` (shown without its surrounding `---` fences):
+`templates/notations/neon_law/shared/onboarding_letter.md` (shown without its surrounding `---` fences):
 
 ```yaml
 kind: onboarding
@@ -233,9 +233,9 @@ values as new layouts are named (a court-specific pleading-paper layout, for ins
 
 ### Government form templates carry two extra keys
 
-A template backed by an official government form (under `templates/forms/`) declares `output: form` and adds `form:`
-(the form's identity) and `origin_url:` (the official `.gov` page the blank form came from), as in
-`templates/forms/united_states/nevada/state/nv__llc_formation.md`:
+A template backed by an official government form (under `templates/notations/forms/`) declares `output: form` and adds
+`form:` (the form's identity) and `origin_url:` (the official `.gov` page the blank form came from), as in
+`templates/notations/forms/united_states/nevada/state/nv__llc_formation.md`:
 
 ```yaml
 kind: filing

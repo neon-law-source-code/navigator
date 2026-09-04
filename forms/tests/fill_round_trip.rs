@@ -67,6 +67,7 @@ fn template_choices(object_path: &str) -> BTreeMap<String, Vec<String>> {
     let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("templates")
+        .join("notations")
         .join(object_path.replace(".pdf", ".md"));
     let contents = std::fs::read_to_string(&path).expect("sibling notation");
     let fm = contents

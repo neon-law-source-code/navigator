@@ -2,15 +2,15 @@
 //! `N110` — notation templates must live in the private catalog and
 //! declare their jurisdiction.
 //!
-//! The legal notation tree has two shelves:
+//! Every notation lives under `notations/`, which has two shelves:
 //!
-//! - `neon_law/` for firm-authored templates.
-//! - `forms/` for government form-backed templates whose repo path
-//!   mirrors their public bucket key.
+//! - `notations/neon_law/` for firm-authored templates.
+//! - `notations/forms/` for government form-backed templates whose repo
+//!   path (below `notations/`) mirrors their public bucket key.
 //!
 //! Jurisdiction is explicit metadata, not a deep practice-area path. A
-//! form template at `templates/forms/united_states/nevada/state/
-//! nv__llc_formation.md` therefore declares `jurisdiction: NV` and
+//! form template at `templates/notations/forms/united_states/nevada/
+//! state/nv__llc_formation.md` therefore declares `jurisdiction: NV` and
 //! `code: nv__llc_formation`; the blank PDF lives in the public assets
 //! bucket at the matching key `forms/united_states/nevada/state/
 //! nv__llc_formation.pdf`, pinned by the sibling `.sha256` file.
@@ -19,7 +19,10 @@ use crate::{frontmatter, line_byte_range, Rule, SourceFile, Violation};
 use std::path::Path;
 use std::sync::LazyLock;
 
-const ROOTS: &[&str] = &["neon_law", "forms"];
+/// The single required top-level directory for every notation.
+const CATALOG_ROOT: &str = "notations";
+/// The shelves `CATALOG_ROOT` holds.
+const SHELVES: &[&str] = &["neon_law", "forms"];
 
 const JURISDICTION_SEED_YAML: &str = include_str!("../../store/seeds/Jurisdiction.yaml");
 
@@ -96,7 +99,7 @@ impl Rule for F110JurisdictionPath {
     }
 
     fn description(&self) -> &'static str {
-        "Notation templates must live under `neon_law/` or `forms/` and declare jurisdiction"
+        "Notation templates must live under `notations/` and declare jurisdiction"
     }
 
     fn lint(&self, file: &SourceFile) -> Vec<Violation> {
@@ -111,11 +114,19 @@ impl Rule for F110JurisdictionPath {
         }
 
         let mut violations = Vec::new();
-        if !ROOTS.contains(first) {
+        let matched_shelf: Option<&str> = if *first == CATALOG_ROOT {
+            rel.get(1)
+                .copied()
+                .filter(|second| SHELVES.contains(second))
+        } else {
+            None
+        };
+        if matched_shelf.is_none() {
             violations.push(Self::violation(
                 file,
                 format!(
-                    "Template must live under `neon_law/` or `forms/`; found `{}`",
+                    "Template must live under `notations/neon_law/` or `notations/forms/`; \
+                     found `{}`",
                     rel.join("/")
                 ),
             ));
@@ -147,7 +158,7 @@ impl Rule for F110JurisdictionPath {
             return violations;
         };
 
-        if *first == "forms" {
+        if matched_shelf == Some("forms") {
             if !frontmatter::field(fm, "origin_url")
                 .is_some_and(|url| url.starts_with("https://") && url.contains(".gov"))
             {
@@ -199,7 +210,7 @@ mod tests {
     #[test]
     fn accepts_a_firm_template_with_jurisdiction() {
         let v = F110JurisdictionPath.lint(&at(
-            "templates/neon_law/shared/onboarding_letter.md",
+            "templates/notations/neon_law/shared/onboarding_letter.md",
             "title: T\ncode: onboarding__letter\njurisdiction: NV",
         ));
         assert!(v.is_empty(), "{v:?}");
@@ -208,7 +219,7 @@ mod tests {
     #[test]
     fn accepts_a_form_template_matching_code_and_origin() {
         let v = F110JurisdictionPath.lint(&at(
-            "templates/forms/united_states/nevada/state/nv__llc_formation.md",
+            "templates/notations/forms/united_states/nevada/state/nv__llc_formation.md",
             "title: T\ncode: nv__llc_formation\njurisdiction: NV\norigin_url: https://www.nvsos.gov/forms",
         ));
         assert!(v.is_empty(), "{v:?}");
@@ -221,7 +232,40 @@ mod tests {
             "title: T\ncode: x\njurisdiction: NV",
         ));
         assert_eq!(v[0].code, "N110");
-        assert!(v[0].message.contains("neon_law"));
+        assert!(v[0].message.contains("notations"));
+    }
+
+    #[test]
+    fn rejects_the_legacy_bare_neon_law_shelf() {
+        let v = F110JurisdictionPath.lint(&at(
+            "templates/neon_law/shared/onboarding_letter.md",
+            "title: T\ncode: onboarding__letter\njurisdiction: NV",
+        ));
+        assert_eq!(v[0].code, "N110");
+        assert!(v[0].message.contains("notations/neon_law"), "{v:?}");
+    }
+
+    #[test]
+    fn rejects_the_legacy_bare_forms_shelf() {
+        let v = F110JurisdictionPath.lint(&at(
+            "templates/forms/united_states/nevada/state/nv__llc_formation.md",
+            "title: T\ncode: nv__llc_formation\njurisdiction: NV\norigin_url: https://www.nvsos.gov/forms",
+        ));
+        assert_eq!(v[0].code, "N110");
+        assert!(v[0].message.contains("notations/forms"), "{v:?}");
+        // Off its real shelf, the file is not held to the forms-specific
+        // checks — only the location violation fires.
+        assert_eq!(v.len(), 1, "{v:?}");
+    }
+
+    #[test]
+    fn rejects_an_unknown_shelf_under_notations() {
+        let v = F110JurisdictionPath.lint(&at(
+            "templates/notations/mutual_nda.md",
+            "title: T\ncode: mutual_nda\njurisdiction: US",
+        ));
+        assert_eq!(v[0].code, "N110");
+        assert!(v[0].message.contains("notations/neon_law"), "{v:?}");
     }
 
     #[test]
@@ -237,7 +281,7 @@ mod tests {
     #[test]
     fn flags_missing_jurisdiction() {
         let v = F110JurisdictionPath.lint(&at(
-            "templates/neon_law/shared/onboarding_letter.md",
+            "templates/notations/neon_law/shared/onboarding_letter.md",
             "title: T\ncode: onboarding__letter",
         ));
         assert_eq!(v[0].code, "N110");
@@ -247,7 +291,7 @@ mod tests {
     #[test]
     fn flags_form_code_that_disagrees_with_filename() {
         let v = F110JurisdictionPath.lint(&at(
-            "templates/forms/united_states/nevada/state/nv__llc_formation.md",
+            "templates/notations/forms/united_states/nevada/state/nv__llc_formation.md",
             "title: T\ncode: nv__profit_corp_formation\njurisdiction: NV\norigin_url: https://www.nvsos.gov/forms",
         ));
         assert!(v.iter().any(|v| v.message.contains("filename stem")));
@@ -256,7 +300,7 @@ mod tests {
     #[test]
     fn flags_unknown_jurisdiction() {
         let v = F110JurisdictionPath.lint(&at(
-            "templates/neon_law/shared/onboarding_letter.md",
+            "templates/notations/neon_law/shared/onboarding_letter.md",
             "title: T\ncode: onboarding__letter\njurisdiction: ZZ",
         ));
         assert_eq!(v[0].code, "N110");
@@ -267,7 +311,7 @@ mod tests {
     fn accepts_every_seeded_jurisdiction_code() {
         for (code, _prefix) in super::JURISDICTIONS.iter() {
             let v = F110JurisdictionPath.lint(&at(
-                "templates/neon_law/shared/onboarding_letter.md",
+                "templates/notations/neon_law/shared/onboarding_letter.md",
                 &format!("title: T\ncode: onboarding__letter\njurisdiction: {code}"),
             ));
             assert!(v.is_empty(), "jurisdiction `{code}` should validate: {v:?}");
@@ -277,7 +321,7 @@ mod tests {
     #[test]
     fn flags_form_template_without_government_origin_url() {
         let v = F110JurisdictionPath.lint(&at(
-            "templates/forms/united_states/nevada/state/nv__llc_formation.md",
+            "templates/notations/forms/united_states/nevada/state/nv__llc_formation.md",
             "title: T\ncode: nv__llc_formation\njurisdiction: NV\norigin_url: http://example.com",
         ));
         assert!(v
@@ -288,7 +332,7 @@ mod tests {
     #[test]
     fn flags_form_code_missing_jurisdiction_prefix() {
         let v = F110JurisdictionPath.lint(&at(
-            "templates/forms/united_states/nevada/state/llc_formation.md",
+            "templates/notations/forms/united_states/nevada/state/llc_formation.md",
             "title: T\ncode: llc_formation\njurisdiction: NV\norigin_url: https://www.nvsos.gov/forms",
         ));
         assert!(v.iter().any(|v| v
@@ -299,7 +343,7 @@ mod tests {
     #[test]
     fn flags_missing_frontmatter() {
         let v = F110JurisdictionPath.lint(&SourceFile {
-            path: PathBuf::from("templates/neon_law/shared/onboarding_letter.md"),
+            path: PathBuf::from("templates/notations/neon_law/shared/onboarding_letter.md"),
             contents: "no frontmatter here\n".to_string(),
         });
         assert_eq!(v[0].code, "N110");

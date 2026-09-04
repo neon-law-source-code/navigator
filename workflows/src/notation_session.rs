@@ -1496,7 +1496,8 @@ mod tests {
         use super::create_notation_from_repo;
         // A Project repo carrying its own template blueprint at HEAD (a
         // corpus body, guaranteed to validate clean).
-        const TEMPLATE: &str = include_str!("../../templates/neon_law/shared/onboarding_letter.md");
+        const TEMPLATE: &str =
+            include_str!("../../templates/notations/neon_law/shared/onboarding_letter.md");
 
         let surreal = db().await;
         let storage: Arc<dyn StorageService> = Arc::new(

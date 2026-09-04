@@ -50,10 +50,11 @@ Nesting them under a real `metadata:` key would be a breaking parser change touc
 
 - Schema: [`template` in `navigator.surql`](../store/src/schema/navigator.surql) Queries:
   [`store::templates`](../store/src/templates.rs) Files: [`templates/`](../templates/) — three top-level shelves:
-  `forms/<country>/<jurisdiction>/<office>/<code>.md` for government forms, `neon_law/shared/<document>.md` for Neon Law
-  firm work, and `github/<notation>.md` for engineering intake. Only the first two are Templates in the sense this doc
-  means: a `kind: github` file declares a questionnaire and a body but is not a legal instrument, is never imported as a
-  `templates` row, and so never becomes a Notation. See [`notation-authoring.md`](notation-authoring.md).
+  `notations/forms/<country>/<jurisdiction>/<office>/<code>.md` for government forms,
+  `notations/neon_law/shared/<document>.md` for Neon Law firm work, and `github/<notation>.md` for engineering intake.
+  Only the first two are Templates in the sense this doc means: a `kind: github` file declares a questionnaire and a
+  body but is not a legal instrument, is never imported as a `templates` row, and so never becomes a Notation. See
+  [`notation-authoring.md`](notation-authoring.md).
 
 > **Storage.** The markdown body lives in [`cloud::StorageService`](../cloud/) like every other artifact: the
   `templates.body` TEXT column is gone; `templates.asset_id` references an [Asset](glossary.md#asset) holding the bytes.

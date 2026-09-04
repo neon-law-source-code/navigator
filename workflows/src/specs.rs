@@ -11,7 +11,7 @@
 //! pins against).
 //!
 //! Adding a new workflow: drop a notation template under
-//! `templates/forms/...` or `templates/neon_law/...`,
+//! `templates/notations/forms/...` or `templates/notations/neon_law/...`,
 //! write the same `workflow:` + `questionnaire:` blocks into
 //! `workflows/specs/<code>.yaml`, and add the file to
 //! [`BUNDLED_SPEC_YAML`] below. Project-scoped onboarding letters may reuse the
@@ -30,7 +30,7 @@ use crate::spec::{QuestionnaireSpec, WorkflowSpec, WorkflowSpecError};
 /// the integrity / coherence tests; the workflow spec itself now
 /// loads from [`RETAINER_INTAKE_SPEC_YAML`].
 pub const RETAINER_INTAKE_TEMPLATE: &str =
-    include_str!("../../templates/neon_law/shared/onboarding_letter.md");
+    include_str!("../../templates/notations/neon_law/shared/onboarding_letter.md");
 
 /// Standalone YAML carrying both `questionnaire:` and `workflow:`
 /// blocks for the onboarding-letter intake template.

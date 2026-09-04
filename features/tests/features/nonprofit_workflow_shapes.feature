@@ -11,7 +11,7 @@ Feature: Bundled-template workflow composition (nonprofit)
   guard catches a hand-mutilated copy with the workflow END dropped.
 
   Scenario: Nevada 501(c)(3) formation questionnaire walks mission → board → agent → END
-    Given the bundled template "forms/united_states/nevada/state/nv__nonprofit_501c3_formation.md"
+    Given the bundled template "notations/forms/united_states/nevada/state/nv__nonprofit_501c3_formation.md"
     Then the questionnaire transitions, in BEGIN-first order, are:
       | from                           | to                             |
       | BEGIN                          | custom_text__mission_statement |
@@ -20,7 +20,7 @@ Feature: Bundled-template workflow composition (nonprofit)
       | person__registered_agent       | END                           |
 
   Scenario: Nevada 501(c)(3) formation workflow signs, reviews, and mails the articles
-    Given the bundled template "forms/united_states/nevada/state/nv__nonprofit_501c3_formation.md"
+    Given the bundled template "notations/forms/united_states/nevada/state/nv__nonprofit_501c3_formation.md"
     Then the workflow transitions, in BEGIN-first order, are:
       | from             | to               |
       | BEGIN            | board_signatures |
@@ -29,11 +29,11 @@ Feature: Bundled-template workflow composition (nonprofit)
       | mailroom_send    | END              |
 
   Scenario: Nevada 501(c)(3) formation template with END stripped fails to parse
-    Given the bundled template "forms/united_states/nevada/state/nv__nonprofit_501c3_formation.md" with the workflow END declaration removed
+    Given the bundled template "notations/forms/united_states/nevada/state/nv__nonprofit_501c3_formation.md" with the workflow END declaration removed
     Then parsing the workflow spec returns a MissingEnd error
 
   Scenario: Form 990 questionnaire walks tax_year → revenue → END
-    Given the bundled template "forms/united_states/federal/irs/us__form_990.md"
+    Given the bundled template "notations/forms/united_states/federal/irs/us__form_990.md"
     Then the questionnaire transitions, in BEGIN-first order, are:
       | from                          | to                            |
       | BEGIN                         | custom_datetime__tax_year            |
@@ -41,7 +41,7 @@ Feature: Bundled-template workflow composition (nonprofit)
       | custom_text__revenue_strategy | END                           |
 
   Scenario: Form 990 workflow signs, reviews, and mails to the IRS
-    Given the bundled template "forms/united_states/federal/irs/us__form_990.md"
+    Given the bundled template "notations/forms/united_states/federal/irs/us__form_990.md"
     Then the workflow transitions, in BEGIN-first order, are:
       | from             | to               |
       | BEGIN            | board_signatures |
@@ -50,11 +50,11 @@ Feature: Bundled-template workflow composition (nonprofit)
       | mailroom_send    | END              |
 
   Scenario: Form 990 template with END stripped fails to parse
-    Given the bundled template "forms/united_states/federal/irs/us__form_990.md" with the workflow END declaration removed
+    Given the bundled template "notations/forms/united_states/federal/irs/us__form_990.md" with the workflow END declaration removed
     Then parsing the workflow spec returns a MissingEnd error
 
   Scenario: Charitable solicitation registration questionnaire walks period → activities → END
-    Given the bundled template "forms/united_states/nevada/state/nv__charitable_solicitation_registration.md"
+    Given the bundled template "notations/forms/united_states/nevada/state/nv__charitable_solicitation_registration.md"
     Then the questionnaire transitions, in BEGIN-first order, are:
       | from                                | to                                  |
       | BEGIN                                   | custom_single_choice__annual_or_amended |
@@ -62,7 +62,7 @@ Feature: Bundled-template workflow composition (nonprofit)
       | custom_text__fundraising_activities     | END                                 |
 
   Scenario: Charitable solicitation registration workflow reviews and mails the statement
-    Given the bundled template "forms/united_states/nevada/state/nv__charitable_solicitation_registration.md"
+    Given the bundled template "notations/forms/united_states/nevada/state/nv__charitable_solicitation_registration.md"
     Then the workflow transitions, in BEGIN-first order, are:
       | from          | to            |
       | BEGIN         | lawyer_review  |
@@ -70,5 +70,5 @@ Feature: Bundled-template workflow composition (nonprofit)
       | mailroom_send | END           |
 
   Scenario: Charitable solicitation template with END stripped fails to parse
-    Given the bundled template "forms/united_states/nevada/state/nv__charitable_solicitation_registration.md" with the workflow END declaration removed
+    Given the bundled template "notations/forms/united_states/nevada/state/nv__charitable_solicitation_registration.md" with the workflow END declaration removed
     Then parsing the workflow spec returns a MissingEnd error

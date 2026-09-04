@@ -22,7 +22,8 @@ use store::test_support::mem_surreal;
 use tower::ServiceExt;
 use workflows::{InMemoryRuntime, NextStep, StartOutcome, StateMachineRuntime};
 
-const VALID_TEMPLATE: &str = include_str!("../../templates/neon_law/shared/onboarding_letter.md");
+const VALID_TEMPLATE: &str =
+    include_str!("../../templates/notations/neon_law/shared/onboarding_letter.md");
 const KEY: &str = "api-notation-answers-test-key";
 
 // Every case configures the process-wide repo root and commits through the

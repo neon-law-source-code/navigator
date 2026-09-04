@@ -31,7 +31,7 @@ fn body_after_frontmatter(contents: &str) -> &str {
 }
 
 fn neon_law_templates() -> Vec<PathBuf> {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../templates/neon_law");
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../templates/notations/neon_law");
     WalkDir::new(&root)
         .into_iter()
         .filter_map(Result::ok)

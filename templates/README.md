@@ -14,24 +14,34 @@ Every notation has YAML frontmatter with `title`, `code`, `jurisdiction`, `respo
 `questionnaire:` / `workflow:` state machines. The body is legal prose with `{{question_code}}` placeholders. Every key
 is explained, in plain English and for attorneys, in [`docs/frontmatter.md`](../docs/frontmatter.md).
 
-## Four shelves
+## Three shelves
 
-The tree has exactly four top-level shelves:
+The tree has exactly three top-level shelves:
 
 ```text
 templates/
-├── forms/
 ├── github/
+├── notations/
+└── README.md
+```
+
+Every legal notation lives under `notations/`, which itself has two shelves — `notations/forms/` and
+`notations/neon_law/`:
+
+```text
+templates/notations/
+├── forms/
 └── neon_law/
 ```
 
-`forms/` holds government form-backed templates. Its paths mirror the public assets bucket. If the blank PDF is stored
-at `gs://<assets-bucket>/forms/united_states/nevada/state/nv__llc_formation.pdf`, the local canonical copy lives at:
+`notations/forms/` holds government form-backed templates. Its paths (below `notations/`) mirror the public assets
+bucket. If the blank PDF is stored at `gs://<assets-bucket>/forms/united_states/nevada/state/nv__llc_formation.pdf`, the
+local canonical copy lives at:
 
 ```text
-templates/forms/united_states/nevada/state/nv__llc_formation.pdf
-templates/forms/united_states/nevada/state/nv__llc_formation.fields.toml
-templates/forms/united_states/nevada/state/nv__llc_formation.md
+templates/notations/forms/united_states/nevada/state/nv__llc_formation.pdf
+templates/notations/forms/united_states/nevada/state/nv__llc_formation.fields.toml
+templates/notations/forms/united_states/nevada/state/nv__llc_formation.md
 ```
 
 The markdown file is the catalog card and workflow. Its `code` is the form identity:
@@ -50,10 +60,10 @@ form: nv__llc_formation
 `origin_url` is the government page where the blank can be obtained. Git records the exact bytes we vendored; the URL
 records where those bytes came from.
 
-`neon_law/` holds the firm's sample onboarding and closing letters:
+`notations/neon_law/` holds the firm's sample onboarding and closing letters:
 
 ```text
-templates/neon_law/
+templates/notations/neon_law/
 └── shared/
     ├── onboarding_letter.md
     └── offboarding_letter.md
@@ -63,8 +73,9 @@ These files are the Firm's confidential work product, and the marks are reserved
 of Shook Law PLLC (U.S. Reg. No. 6,325,650); see the [Trademarks note in the root `README.md`](../README.md#trademarks).
 A rebrand goes through the white-label seam.
 
-`navigator validate` rejects any template outside the shelves above. The shelves are the whole surface: a notation lives
-under `forms/`, `neon_law/`, or `github/`, and nowhere else.
+`navigator validate` rejects any legal template outside `notations/forms/` or `notations/neon_law/`. Those two shelves
+are the whole legal-notation surface; `github/` sits beside `notations/` for engineering intake, and nowhere else
+qualifies.
 
 `github/` holds the engineering intake notations — the questionnaires that gather what a GitHub issue or pull request
 needs before it is opened, and the bodies that render the answers into the text that gets posted. They declare `kind:
@@ -93,7 +104,7 @@ blast radius; the pull request states what changed, the covering test, the gates
 
 The `navigator validate` command enforces these with the N-family notation rules:
 
-1. **Only `forms/`, `github/`, and `neon_law/` are valid top-level shelves.**
+1. **Only `notations/forms/`, `notations/neon_law/`, and `github/` are valid template locations.**
 2. **Every legal template declares `jurisdiction:`**, using a code from `store/seeds/Jurisdiction.yaml` such as `NV`,
    `CA`, or `US`. A `github/` notation declares none — it is engineering intake, not legal work.
 3. **Form codes are jurisdiction-first**: `nv__llc_formation`, `us__form_990`. The filename stem, `code`, and `form`
@@ -132,7 +143,7 @@ attorneys in [`docs/frontmatter.md`](../docs/frontmatter.md); editor setup is in
 ## Adding a form template
 
 1. Put the blank PDF under the bucket-shaped local path:
-   `templates/forms/<country>/<jurisdiction>/<office>/<code>.pdf`.
+   `templates/notations/forms/<country>/<jurisdiction>/<office>/<code>.pdf`.
 2. Add a sibling `<code>.fields.toml` when the form is fillable.
 3. Add a sibling `<code>.md` whose `code` matches the filename stem and whose `origin_url` is the government source.
 4. Add the PDF to `forms/src/lib.rs` so the binary embeds the same bytes the repo carries.
@@ -151,10 +162,10 @@ are the same file here, so a split licence would ask you to work out which half 
 means there is one answer. See [`../LICENSE`](../LICENSE) for the grant and [`../NOTICE`](../NOTICE) for what the
 copyright holder says about it.
 
-**The blank government PDFs under `forms/` are not the Firm's to license.** They are works of the issuing state or
-federal agency, reproduced here so the binary embeds the same bytes the repo carries. The Firm claims no copyright in
-them and grants none. What it does license is its own material beside each one: the catalog card, the `.fields.toml`
-field map, and the workflow that fills the form in.
+**The blank government PDFs under `notations/forms/` are not the Firm's to license.** They are works of the issuing
+state or federal agency, reproduced here so the binary embeds the same bytes the repo carries. The Firm claims no
+copyright in them and grants none. What it does license is its own material beside each one: the catalog card, the
+`.fields.toml` field map, and the workflow that fills the form in.
 
 **A template change is still attorney-reviewed.** The licence makes the prose free to reuse; it does not make the prose
 safe to change unreviewed. A change here alters a document a real client may sign.

@@ -173,8 +173,9 @@ fn reauthor(map: &FieldMap, source: &[u8]) -> Vec<u8> {
 
 /// The committed manifest of the re-authored blank — the field-name
 /// topology this map must reproduce.
-const COMMITTED_MANIFEST: &str =
-    include_str!("../../templates/forms/united_states/federal/uscis/us__naturalization.fields");
+const COMMITTED_MANIFEST: &str = include_str!(
+    "../../templates/notations/forms/united_states/federal/uscis/us__naturalization.fields"
+);
 
 #[test]
 #[ignore = "requires N400_SOURCE_PDF=/path/to/original/n-400.pdf (USCIS 01/20/25, sha 8b33868…)"]

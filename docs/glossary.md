@@ -838,7 +838,7 @@ layers stay in sync because the worker writes them through `ctx.run`.
 The codebase term for the notation that **closes a matter** — `rules::kind::Kind::Offboarding`, classified by
 [`Kind::closes_a_matter`](../rules/src/kind.rs), the mirror of [`Kind::opens_a_matter`](#onboarding). In conversation
 and with clients this is the **closing letter**: the firm-signed letter that confirms the representation is concluded,
-seeded as `neon_law/shared/offboarding_letter.md` (`code: offboarding__letter`).
+seeded as `notations/neon_law/shared/offboarding_letter.md` (`code: offboarding__letter`).
 
 `store::projects::matter_lifecycle_sets` keys the matching lifecycle flag off this classifier — never off the template's
 `code` — so a bespoke closing letter still clears the badge as long as it declares `kind: offboarding`. The

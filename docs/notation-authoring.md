@@ -20,17 +20,18 @@ can do.
 
 ## Where templates live
 
-Every legal template lives under exactly one of three shelves:
+Every legal template lives under exactly one of two shelves under `templates/notations/`:
 
-- `templates/forms/` — government form-backed templates. Paths mirror the public assets bucket, so
-  `templates/forms/united_states/nevada/state/nv__llc_formation.md` corresponds to
+- `templates/notations/forms/` — government form-backed templates. Paths mirror the public assets bucket, so
+  `templates/notations/forms/united_states/nevada/state/nv__llc_formation.md` corresponds to
   `gs://<assets-bucket>/forms/united_states/nevada/state/nv__llc_formation.pdf`.
-- `templates/neon_law/` — the firm's sample onboarding letter and closing letter.
+- `templates/notations/neon_law/` — the firm's sample onboarding letter and closing letter.
 
 Every template declares `jurisdiction:` using a seeded jurisdiction code from `store/seeds/Jurisdiction.yaml`. Form
 templates are stricter: their filename stem, `code`, and `form` binding must match, and that code starts with the
 jurisdiction prefix (`nv__llc_formation`, `us__form_990`, `ca__...`). A retainer may keep a runtime code such as
-`onboarding__letter` while living at an author-friendly path such as `templates/neon_law/shared/onboarding_letter.md`.
+`onboarding__letter` while living at an author-friendly path such as
+`templates/notations/neon_law/shared/onboarding_letter.md`.
 
 ## Anatomy of a template file
 
@@ -39,8 +40,8 @@ jurisdiction prefix (`nv__llc_formation`, `us__form_990`, `ca__...`). A retainer
 
 Every template has two parts: YAML frontmatter (the contract) and a markdown body (the document, with
 `{{question_code}}` placeholders). Here is the shared retainer frontmatter from
-`templates/neon_law/shared/onboarding_letter.md` (the real file wraps this block in `---` fences, then the prose body
-follows):
+`templates/notations/neon_law/shared/onboarding_letter.md` (the real file wraps this block in `---` fences, then the
+prose body follows):
 
 ```yaml
 title: Onboarding Letter
@@ -158,10 +159,10 @@ Feature-first, so the composition is specified before the prose exists:
 1. **Write the composition `.feature` first.** Describe the matter as a sequence or branching graph of reusable workflow
    steps, using only Person / Entity nouns from [`glossary.md`](glossary.md). The feature is the product-level spec; the
    template satisfies it by composing already-known steps.
-2. **Write the template + questionnaire.** Create the markdown file under `templates/forms/...` for a government form,
-   or `templates/neon_law/shared/...` for a firm template. Declare the `questionnaire:` walk and the `workflow:` states.
-   Body prose uses `{{question_code}}` placeholders. If a questionnaire state uses a `custom_*__prompt_key` code, add a
-   sibling `prompts:` map with that English prompt key and the exact prompt to ask.
+2. **Write the template + questionnaire.** Create the markdown file under `templates/notations/forms/...` for a
+   government form, or `templates/notations/neon_law/shared/...` for a firm template. Declare the `questionnaire:` walk
+   and the `workflow:` states. Body prose uses `{{question_code}}` placeholders. If a questionnaire state uses a
+   `custom_*__prompt_key` code, add a sibling `prompts:` map with that English prompt key and the exact prompt to ask.
 3. **Seed the questions.** Add each new question `code` to `store/seeds/Question.yaml` (prompt, `question_type`,
    help text). The questionnaire's state prefixes must resolve to these codes or N104 fails.
 4. **Declare the workflow YAML.** Compose the post-intake flow from the shared step registry (below) — never a one-off
@@ -200,7 +201,7 @@ editor and CI can never disagree. Supported editors ship copy-paste configs unde
 [`lsp/`](https://github.com/neon-law-source-code/navigator/tree/main/lsp) docs: VS Code, Neovim, Helix, Emacs, Zed. The
 authoring loop for a non-engineer legal author:
 
-1. **Type.** Open `templates/neon_law/shared/onboarding_letter.md` in your editor. Write
+1. **Type.** Open `templates/notations/neon_law/shared/onboarding_letter.md` in your editor. Write
    legal prose and frontmatter — no proprietary tool, no markup beyond markdown.
 2. **Live diagnostics.** On every keystroke the LSP lints the buffer and shows squiggles: N101 if `title:` is missing,
    N104 if the questionnaire/workflow shape is broken or a questionnaire state is not in the canonical question seed

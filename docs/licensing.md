@@ -7,7 +7,7 @@ is the only licence file in the tree, and it covers everything the Firm is able 
 | --- | --- | --- |
 | Workspace, CLI, build and deploy tooling | `BUSL-1.1` | Non-production use is free; production use is sold |
 | Notation bodies under `templates/` | `BUSL-1.1` | Same grant; one tree, one answer |
-| Blank government PDFs in `templates/forms/` | None — not ours to license | A Nevada state form belongs to Nevada |
+| Blank PDFs under `templates/notations/forms/` | None — not ours to license | A Nevada form belongs to Nevada |
 
 One grant and one file is the whole design. A reader never has to work out which instrument governs the file in front of
 them, and a fork never has to reconcile two sets of obligations across a directory boundary.
@@ -253,9 +253,9 @@ obliging a modifier to share what they changed.
 
 ## Government forms: nobody's to license
 
-The blank government PDFs under `templates/forms/` are works of the issuing state or federal agency. Nobody here claims
-a copyright in them or grants one; they are committed so the binary embeds the same bytes the repository carries, and
-for no other reason.
+The blank government PDFs under `templates/notations/forms/` are works of the issuing state or federal agency. Nobody
+here claims a copyright in them or grants one; they are committed so the binary embeds the same bytes the repository
+carries, and for no other reason.
 
 This is not a technicality. Claiming a licence over a state's own form would be over-claiming a copyright nobody here
 holds, and an over-claim in a terms file published beside a law practice is the kind of error that gets quoted back.

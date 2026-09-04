@@ -292,6 +292,7 @@ fn notation_choices(object_path: &str) -> std::collections::BTreeMap<String, Vec
     let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("templates")
+        .join("notations")
         .join(object_path.replace(".pdf", ".md"));
     let contents = std::fs::read_to_string(&path).expect("sibling notation");
     let fm = contents

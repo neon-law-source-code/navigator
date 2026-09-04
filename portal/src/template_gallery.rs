@@ -88,7 +88,7 @@ macro_rules! template {
 /// then the two Nevada-specific nonprofit filings, each loudly labeled.
 const MANIFEST: &[ManifestEntry] = &[
     template!(
-        "forms/united_states/federal/irs/us__form_990",
+        "notations/forms/united_states/federal/irs/us__form_990",
         Jurisdiction::Federal,
         "The annual information return every tax-exempt organization files \
          with the IRS (IRC §6033) — the year's revenue, governance, and \
@@ -96,14 +96,14 @@ const MANIFEST: &[ManifestEntry] = &[
          incorporated."
     ),
     template!(
-        "forms/united_states/nevada/state/nv__nonprofit_501c3_formation",
+        "notations/forms/united_states/nevada/state/nv__nonprofit_501c3_formation",
         Jurisdiction::Nevada,
         "Articles of incorporation that form a Nevada nonprofit and set it up \
          to seek 501(c)(3) status — mission, founding board, and registered \
          agent. Written for Nevada filings."
     ),
     template!(
-        "forms/united_states/nevada/state/nv__charitable_solicitation_registration",
+        "notations/forms/united_states/nevada/state/nv__charitable_solicitation_registration",
         Jurisdiction::Nevada,
         "The registration a charity files with the Nevada Secretary of State \
          before soliciting donations in the state. Written for Nevada; other \
@@ -232,15 +232,15 @@ pub fn legacy_alias(path: &str) -> Option<&'static str> {
     [
         (
             "nonprofit/form990_annual_report",
-            "forms/united_states/federal/irs/us__form_990",
+            "notations/forms/united_states/federal/irs/us__form_990",
         ),
         (
             "nonprofit/nevada_501c3_formation",
-            "forms/united_states/nevada/state/nv__nonprofit_501c3_formation",
+            "notations/forms/united_states/nevada/state/nv__nonprofit_501c3_formation",
         ),
         (
             "nonprofit/nevada_charitable_solicitation_registration",
-            "forms/united_states/nevada/state/nv__charitable_solicitation_registration",
+            "notations/forms/united_states/nevada/state/nv__charitable_solicitation_registration",
         ),
     ]
     .into_iter()
@@ -291,16 +291,17 @@ mod tests {
 
     #[test]
     fn title_is_parsed_from_each_template_frontmatter() {
-        let t = find_path("forms/united_states/federal/irs/us__form_990").expect("listed");
+        let t =
+            find_path("notations/forms/united_states/federal/irs/us__form_990").expect("listed");
         assert!(t.title.contains("Form 990"), "got title {:?}", t.title);
     }
 
     #[test]
     fn find_resolves_the_kebab_url_form_to_the_underscore_stem() {
-        let kebab =
-            find_path("forms/united-states/federal/irs/us--form-990").expect("kebab form resolves");
-        let underscore =
-            find_path("forms/united_states/federal/irs/us__form_990").expect("stem form resolves");
+        let kebab = find_path("notations/forms/united-states/federal/irs/us--form-990")
+            .expect("kebab form resolves");
+        let underscore = find_path("notations/forms/united_states/federal/irs/us__form_990")
+            .expect("stem form resolves");
         assert_eq!(kebab.name, "us__form_990");
         assert_eq!(kebab.name, underscore.name);
     }
@@ -309,7 +310,7 @@ mod tests {
     fn legacy_gallery_paths_resolve_to_the_deep_tree() {
         assert_eq!(
             legacy_alias("nonprofit/form990-annual-report"),
-            Some("forms/united_states/federal/irs/us__form_990")
+            Some("notations/forms/united_states/federal/irs/us__form_990")
         );
         assert!(find("nonprofit", "form990_annual_report").is_some());
     }
@@ -319,7 +320,7 @@ mod tests {
         // Retainer + Offboarding Letter are `confidential: true`; they must
         // never be on the list and so must 404 by being absent.
         assert!(find_path("engagements/retainer").is_none());
-        assert!(find_path("neon_law/shared/offboarding_letter").is_none());
+        assert!(find_path("notations/neon_law/shared/offboarding_letter").is_none());
         // A guessed/typo'd path is also absent.
         assert!(find_path("nonprofit/DoesNotExist").is_none());
     }
@@ -334,7 +335,7 @@ mod tests {
 
     #[test]
     fn served_frontmatter_excludes_the_template_body() {
-        let t = find_path("forms/united_states/federal/irs/us__form_990").unwrap();
+        let t = find_path("notations/forms/united_states/federal/irs/us__form_990").unwrap();
         let fm = t.frontmatter();
         assert!(fm.contains("code: us__form_990"));
         assert!(!fm.contains("# IRS Form 990"));

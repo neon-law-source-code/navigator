@@ -5,8 +5,8 @@ publish: true
 # Retainer intake walkthrough
 
 The retainer-intake flow is a pair of durable state machines per [Notation](notation.md#notation), declared in the
-frontmatter of [`templates/neon_law/shared/onboarding_letter.md`](../templates/neon_law/shared/onboarding_letter.md) and
-walked by the [`portal::retainer_walk`](../portal/src/retainer_walk.rs) module:
+frontmatter of the [shared onboarding letter](../templates/notations/neon_law/shared/onboarding_letter.md) and walked by
+the [`portal::retainer_walk`](../portal/src/retainer_walk.rs) module:
 
 1. **Questionnaire walker** — one question per request, one [Answer](notation.md#answer) per advance, one
    [Notation Event](glossary.md#notation-event) per transition. Walks the state chain `BEGIN` → `entity` →

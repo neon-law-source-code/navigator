@@ -1854,7 +1854,7 @@ async fn api_template_raw_serves_non_confidential_markdown_inline() {
     );
     let resp = get_signed_in(
         app.clone(),
-        "/app/api/templates/forms/united-states/nevada/state/nv--llc-formation",
+        "/app/api/templates/notations/forms/united-states/nevada/state/nv--llc-formation",
     )
     .await;
     assert_eq!(resp.status(), StatusCode::OK);

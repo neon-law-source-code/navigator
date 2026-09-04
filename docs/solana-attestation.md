@@ -8,7 +8,7 @@ Neon Law Node is an attorney attestation recorded on-chain: a licensed attorney 
 client provides, and a hash of the signed attestation is written to Solana, binding the firm's wallet, the client's
 wallet, and that hash. Solana is the chain because the workspace is Rust top-to-bottom — Solana programs are written in
 Rust and [Anchor](https://www.anchor-lang.com/) is a framework of Rust macros — so the same workspace speaks to the
-chain natively. The binding engagement letter is `templates/neon_law/shared/onboarding_letter.md`.
+chain natively. The binding engagement letter is `templates/notations/neon_law/shared/onboarding_letter.md`.
 
 ## What is built
 
@@ -59,8 +59,8 @@ struct Attestation { firm: Pubkey, client: Pubkey, sha256: [u8; 32], recorded_at
 The PDA is also the **exactly-once key**: a replayed submit hits "account already in use", which the attestor treats as
 success — the chain itself dedupes, complementing the journaled `ctx.run`.
 
-**3. The workflow edge** — the one-line YAML change in `templates/neon_law/shared/onboarding_letter.md`, routing the
-signature into the new step:
+**3. The workflow edge** — the one-line YAML change in `templates/notations/neon_law/shared/onboarding_letter.md`,
+routing the signature into the new step:
 
 ```yaml
 sent_for_signature__pending:
@@ -101,4 +101,4 @@ contract.
 - Local record: `store::attestations` + the `attestation` table in `store/src/schema/navigator.surql`.
 - Step kind / status table: `workflows::step` and [`docs/notation-authoring.md`](notation-authoring.md) (the `onchain__`
   row).
-- Engagement surface: `templates/neon_law/shared/onboarding_letter.md` (the binding engagement letter).
+- Engagement surface: `templates/notations/neon_law/shared/onboarding_letter.md` (the binding engagement letter).

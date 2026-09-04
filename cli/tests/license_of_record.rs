@@ -954,7 +954,7 @@ fn readme_states_the_license_of_record() {
 /// `templates/`, not at the repository root.
 ///
 /// The carve-out inside the tree is not a licensing choice at all: the blank
-/// government PDFs under `templates/forms/` are the issuing agency's work. An
+/// government PDFs under `templates/notations/forms/` are the issuing agency's work. An
 /// AGPL grant over a Nevada state form would claim a copyright nobody here
 /// holds, and an over-claim in a law firm's own terms file is the kind of error
 /// that is quoted back.
@@ -972,9 +972,9 @@ fn the_single_grant_covers_the_templates_tree() {
          sends a reader looking for a second instrument"
     );
     assert!(
-        flat.contains("templates/forms/"),
+        flat.contains("templates/notations/forms/"),
         "{NOTICE_FILE} must carve out the government forms under \
-         `templates/forms/` — they are the issuing agency's work and nobody \
+         `templates/notations/forms/` — they are the issuing agency's work and nobody \
          here grants anything in them"
     );
 
@@ -985,8 +985,8 @@ fn the_single_grant_covers_the_templates_tree() {
         "{NOTICE_FILE} names `templates/`; that tree must exist"
     );
     assert!(
-        repo_root().join("templates/forms").is_dir(),
-        "{NOTICE_FILE} carves out `templates/forms/`; that tree must exist"
+        repo_root().join("templates/notations/forms").is_dir(),
+        "{NOTICE_FILE} carves out `templates/notations/forms/`; that tree must exist"
     );
 
     // The tree states its own terms, because someone reading a notation is

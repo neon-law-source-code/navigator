@@ -61,10 +61,11 @@ fn validate_exits_nonzero_on_violations_and_prints_each_one() {
 #[test]
 fn validate_marks_each_diagnostic_with_its_severity() {
     let dir = TempDir::new().unwrap();
-    let warning_source = workspace_root().join("templates/neon_law/shared/onboarding_letter.md");
+    let warning_source =
+        workspace_root().join("templates/notations/neon_law/shared/onboarding_letter.md");
     let warning_path = dir
         .path()
-        .join("templates/neon_law/shared/onboarding_letter.md");
+        .join("templates/notations/neon_law/shared/onboarding_letter.md");
     fs::create_dir_all(warning_path.parent().unwrap()).unwrap();
     fs::copy(warning_source, warning_path).unwrap();
     write(
@@ -124,7 +125,7 @@ fn validate_treats_templates_path_without_machine_as_markdown() {
 #[test]
 fn validate_rejects_the_retired_public_template_shelf() {
     let dir = TempDir::new().unwrap();
-    let source = workspace_root().join("templates/neon_law/shared/onboarding_letter.md");
+    let source = workspace_root().join("templates/notations/neon_law/shared/onboarding_letter.md");
     let retired = dir.path().join("templates/open_source/retainer.md");
     fs::create_dir_all(retired.parent().unwrap()).unwrap();
     fs::copy(source, &retired).unwrap();
@@ -137,7 +138,9 @@ fn validate_rejects_the_retired_public_template_shelf() {
         .code(1)
         .stdout(str::contains("N110"))
         .stdout(str::contains("open_source"))
-        .stdout(str::contains("must live under `neon_law/` or `forms/`"));
+        .stdout(str::contains(
+            "must live under `notations/neon_law/` or `notations/forms/`",
+        ));
 }
 
 #[test]

@@ -34,6 +34,7 @@ fn questionnaire_states(object_path: &str) -> Vec<String> {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("templates")
+        .join("notations")
         .join(&md_rel);
     let contents = std::fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("read notation {}: {e}", path.display()));

@@ -1,7 +1,7 @@
 //! `GET /app/api/templates/*path` — raw template markdown, served
 //! inline so a reader on neonlaw.com sees the same bytes a git reader
 //! sees. This backs the repository README's template links (e.g.
-//! `templates/forms/united_states/nevada/state/nv__llc_formation.md`)
+//! `templates/notations/forms/united_states/nevada/state/nv__llc_formation.md`)
 //! without the `templates/` tree leaving the workspace root:
 //! it is still `include_str!`-d by `store::seed` and
 //! scanned by `cli validate`. Here `web` embeds the whole tree a second
@@ -26,21 +26,21 @@ static TEMPLATES: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/../templates"
 const LEGACY_ALIASES: &[(&str, &str)] = &[
     (
         "annual_report/nevada",
-        "forms/united_states/nevada/state/nv__annual_report",
+        "notations/forms/united_states/nevada/state/nv__annual_report",
     ),
     (
         "nonprofit/form990_annual_report",
-        "forms/united_states/federal/irs/us__form_990",
+        "notations/forms/united_states/federal/irs/us__form_990",
     ),
     (
         "nonprofit/nevada_501c3_formation",
-        "forms/united_states/nevada/state/nv__nonprofit_501c3_formation",
+        "notations/forms/united_states/nevada/state/nv__nonprofit_501c3_formation",
     ),
     (
         "nonprofit/nevada_charitable_solicitation_registration",
-        "forms/united_states/nevada/state/nv__charitable_solicitation_registration",
+        "notations/forms/united_states/nevada/state/nv__charitable_solicitation_registration",
     ),
-    ("onboarding/retainer", "neon_law/shared/retainer"),
+    ("onboarding/retainer", "notations/neon_law/shared/retainer"),
 ];
 
 /// Canonical destination for old public links. Values are repository
@@ -137,7 +137,7 @@ mod tests {
 
     #[test]
     fn serves_a_non_confidential_template_verbatim() {
-        let raw = find_raw_path("forms/united-states/nevada/state/nv--llc-formation")
+        let raw = find_raw_path("notations/forms/united-states/nevada/state/nv--llc-formation")
             .expect("Nevada LLC formation is public");
         assert!(raw.starts_with("---\n"), "served the raw markdown file");
         assert!(
@@ -151,10 +151,10 @@ mod tests {
         // The route serves kebab-case URLs; the embedded tree keeps the
         // on-disk underscore names. A kebab `name` segment must resolve to
         // its underscore file…
-        let by_kebab = find_raw_path("forms/united-states/federal/irs/us--form-990")
+        let by_kebab = find_raw_path("notations/forms/united-states/federal/irs/us--form-990")
             .expect("kebab name resolves to us__form_990.md");
         assert!(by_kebab.contains("Form 990"));
-        assert!(find_raw_path("forms/united_states/federal/irs/us__form_990").is_some());
+        assert!(find_raw_path("notations/forms/united_states/federal/irs/us__form_990").is_some());
     }
 
     #[test]
@@ -162,7 +162,7 @@ mod tests {
         // The retainer is `confidential: true` and must never be served
         // over the public API even though the path is valid.
         assert!(
-            find_raw_path("neon_law/shared/retainer").is_none(),
+            find_raw_path("notations/neon_law/shared/retainer").is_none(),
             "confidential templates must 404"
         );
     }
@@ -175,8 +175,8 @@ mod tests {
     #[test]
     fn rejects_path_traversal_segments() {
         assert!(find_raw_path("../nevada").is_none());
-        assert!(find_raw_path("forms/../onboarding/retainer").is_none());
-        assert!(find_raw_path("forms/..").is_none());
+        assert!(find_raw_path("notations/forms/../onboarding/retainer").is_none());
+        assert!(find_raw_path("notations/forms/..").is_none());
         assert!(find_raw_path("").is_none());
     }
 
@@ -184,7 +184,7 @@ mod tests {
     fn legacy_two_segment_links_resolve_to_canonical_paths() {
         assert_eq!(
             legacy_alias("annual_report/nevada"),
-            Some("forms/united_states/nevada/state/nv__annual_report")
+            Some("notations/forms/united_states/nevada/state/nv__annual_report")
         );
         assert!(find_raw("annual_report", "nevada").is_some());
     }

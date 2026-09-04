@@ -1,7 +1,7 @@
 //! Integration test for the retainer-intake workflow.
 //!
 //! The spec lives in the frontmatter of
-//! `templates/neon_law/shared/onboarding_letter.md` so both the template and this
+//! `templates/notations/neon_law/shared/onboarding_letter.md` so both the template and this
 //! test fail together if either drifts. The first test asserts the
 //! parsed state-machine shape; the second drives a notation through
 //! every transition on the in-memory runtime to confirm it reaches
@@ -15,7 +15,7 @@ use workflows::{
 
 const TEMPLATE_PATH: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../templates/neon_law/shared/onboarding_letter.md",
+    "/../templates/notations/neon_law/shared/onboarding_letter.md",
 );
 
 const KIND: MachineKind = MachineKind::Workflow;

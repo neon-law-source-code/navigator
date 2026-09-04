@@ -99,7 +99,7 @@ pub const CHANGE_SURFACES: &[(&str, &str, &str)] = &[
     (
         "form",
         "Government form",
-        "A change that vendors or re-authors a government PDF form under `templates/forms/` — \
+        "A change that vendors or re-authors a government PDF form under `templates/notations/forms/` — \
          the blank PDF, its `.fields.toml` field map, and the catalog card that binds them. \
          Gate: the `forms` crate tests and `navigator validate templates`.",
     ),
@@ -467,7 +467,9 @@ custom_questions:
 
     #[test]
     fn flags_a_github_notation_off_the_shelf() {
-        let v = F119GithubNotation.lint(&valid_at("templates/neon_law/shared/create_issue.md"));
+        let v = F119GithubNotation.lint(&valid_at(
+            "templates/notations/neon_law/shared/create_issue.md",
+        ));
         assert_eq!(v.len(), 1, "{v:?}");
         assert!(v[0].message.contains("templates/github/"), "{v:?}");
     }
@@ -583,8 +585,10 @@ custom_questions:
         // The same frontmatter shape under a legal kind, at a path N119
         // would otherwise reject, must produce nothing.
         let fm = valid_frontmatter().replace("kind: github", "kind: letter");
-        let v =
-            F119GithubNotation.lint(&at("templates/neon_law/shared/offboarding_letter.md", &fm));
+        let v = F119GithubNotation.lint(&at(
+            "templates/notations/neon_law/shared/offboarding_letter.md",
+            &fm,
+        ));
         assert!(v.is_empty(), "{v:?}");
         assert!(F119GithubNotation
             .lint(&at("docs/index.md", "title: Docs\n"))

@@ -131,20 +131,20 @@ mod tests {
     #[test]
     fn template_links_map_to_the_raw_api() {
         assert_eq!(
-            rewrite_link("forms/united_states/nevada/state/nv__llc_formation.md"),
-            "/app/api/templates/forms/united-states/nevada/state/nv--llc-formation"
+            rewrite_link("notations/forms/united_states/nevada/state/nv__llc_formation.md"),
+            "/app/api/templates/notations/forms/united-states/nevada/state/nv--llc-formation"
         );
         assert_eq!(
-            rewrite_link("forms/united_states/nevada/state/nv__annual_report.md"),
-            "/app/api/templates/forms/united-states/nevada/state/nv--annual-report"
+            rewrite_link("notations/forms/united_states/nevada/state/nv__annual_report.md"),
+            "/app/api/templates/notations/forms/united-states/nevada/state/nv--annual-report"
         );
     }
 
     #[test]
     fn other_relative_links_point_at_the_github_source() {
         assert_eq!(
-            rewrite_link("forms/united_states/nevada/state/nv__llc_formation.fields.toml"),
-            "https://github.com/neon-law-source-code/navigator/blob/main/templates/forms/united_states/nevada/state/nv__llc_formation.fields.toml"
+            rewrite_link("notations/forms/united_states/nevada/state/nv__llc_formation.fields.toml"),
+            "https://github.com/neon-law-source-code/navigator/blob/main/templates/notations/forms/united_states/nevada/state/nv__llc_formation.fields.toml"
         );
     }
 }

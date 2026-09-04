@@ -2865,6 +2865,12 @@ pub const TOOLS_WITHOUT_AN_API_OPERATION: &[(&str, &str)] = &[
          existing Project-scoped deadline query, so there is no API operation \
          for the tool to share.",
     ),
+    (
+        "aida_project_status",
+        "No route today. It is an MCP-only aggregate over three existing \
+         Project-scoped queries (deadlines, notation events, participation), \
+         so there is no single API operation for the tool to share.",
+    ),
 ];
 
 /// Every `x-mcp-tool` value in [`document`], paired with the operation

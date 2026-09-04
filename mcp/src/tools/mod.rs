@@ -29,6 +29,7 @@ pub mod list_entities;
 pub mod list_jurisdictions;
 pub mod list_projects;
 pub mod list_tools;
+pub mod project_status;
 pub mod show_person;
 pub mod validate_notation;
 
@@ -47,6 +48,7 @@ pub fn list_tools() -> Vec<Value> {
         close_project::descriptor(),
         list_deadlines::descriptor(),
         list_projects::descriptor(),
+        project_status::descriptor(),
         link_person_project::descriptor(),
         list_tools::descriptor(),
         aida_bulk_import::descriptor(),
@@ -138,6 +140,7 @@ const READ_ONLY_TOOLS: &[&str] = &[
     "aida_validate_notation",
     "aida_list_deadlines",
     "aida_list_projects",
+    "aida_project_status",
     "aida_list_tools",
     "aida_spawn_legal_council",
 ];
@@ -269,6 +272,7 @@ pub async fn call_tool(
         "aida_close_project" => close_project::call(surreal, arguments).await,
         "aida_list_deadlines" => list_deadlines::call(surreal, &scope, arguments).await,
         "aida_list_projects" => list_projects::call(surreal, &scope, arguments).await,
+        "aida_project_status" => project_status::call(surreal, &scope, arguments).await,
         "aida_link_person_project" => link_person_project::call(surreal, arguments).await,
         "aida_bulk_import" => aida_bulk_import::call(surreal, principal, arguments).await,
         "aida_list_tools" => list_tools::call(arguments).await,
@@ -664,6 +668,7 @@ mod tests {
         assert!(names.contains(&"aida_close_project"));
         assert!(names.contains(&"aida_list_deadlines"));
         assert!(names.contains(&"aida_list_projects"));
+        assert!(names.contains(&"aida_project_status"));
         assert!(names.contains(&"aida_link_person_project"));
         assert!(names.contains(&"aida_bulk_import"));
         assert!(names.contains(&"aida_list_tools"));

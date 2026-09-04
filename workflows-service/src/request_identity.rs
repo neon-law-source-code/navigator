@@ -85,7 +85,7 @@ mod tests {
         let private_key = signing_key
             .to_pkcs8_der()
             .expect("test signing key encodes as PKCS#8");
-        let token = jsonwebtoken::encode(
+        let token = restate_jwt::encode(
             &header,
             &claims,
             &EncodingKey::from_ed_der(private_key.as_bytes()),

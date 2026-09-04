@@ -113,6 +113,7 @@ const WORKSPACE_DEPENDENCIES: &[&str] = &[
     "tower-cookies",
     "tower-http",
     "tracing",
+    "tracing-core",
     "tracing-opentelemetry",
     "tracing-subscriber",
     "url",

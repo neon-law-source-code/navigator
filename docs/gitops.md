@@ -429,11 +429,10 @@ candidate binary write the outputs into a scratch file and falls back to a sourc
 is missing. `RELEASE_OUTPUTS` on that step names the set, and `cli/tests/deploy_workflow.rs` holds it to the
 `release-version` job's declared outputs so the two cannot drift. And **the binary is deliberately unpinned**, the one
 exception to [Pin every consumed image, binary, and action](#pin-every-consumed-image-binary-and-action): a checker that
-had to be pinned would freeze at one version and need a
-manual bump to ever move. `/releases/latest` is *not* how it is found — that endpoint excludes prereleases and every
-release here is one, so it answers 404; the job enumerates releases and takes the newest carrying the archive. A
-download that fails falls back to compiling from this tree, because a release lost to a blipped API is the failure this
-pipeline has already paid for once.
+had to be pinned would freeze at one version and need a manual bump to ever move. `/releases/latest` is *not* how it is
+found — that endpoint excludes prereleases and every release here is one, so it answers 404; the job enumerates releases
+and takes the newest carrying the archive. A download that fails falls back to compiling from this tree, because a
+release lost to a blipped API is the failure this pipeline has already paid for once.
 
 The version threads into every image build as the `RELEASE_TAG` build-arg, which each Containerfile turns into the
 runtime environment variable `NAVIGATOR_RELEASE_TAG`.

@@ -1,9 +1,13 @@
 # Scheduled jobs (CronJobs)
 
-How Neon Law Navigator runs anything on a clock. Eight scheduled jobs exist today: the nightly Archives backup, the
-daily Surreal archive export, the daily billing digest, the daily invoice reconciliation, the weekly billing canary, the
-six-hourly engine heartbeat alongside its GitHub-automation counterpart, and the daily `general-nag` post to `#general`.
-Every scheduled job is a **Kubernetes `CronJob`** in the `navigator` namespace. **Kubernetes owns the clock.**
+How Neon Law Navigator runs anything on a clock. Every scheduled job is a **Kubernetes `CronJob`** in the `navigator`
+namespace. **Kubernetes owns the clock.**
+
+Which jobs ship is the `resources:` list in `examples/deploy/k8s/exports/kustomization.yaml`, which is the same list
+that `kubectl kustomize` resolves when `ops ship` reconciles a cluster. A manifest sitting in that directory and named
+by no `resources:` entry renders nowhere. This page deliberately does not restate the list, because prose cannot be
+bound to it by a test: read the kustomization itself, or the lawyer console at `/app/admin/schedules`, which derives its
+table from that list. What this page explains is how a job gets onto it.
 
 GitHub Actions is **not** a scheduler here. CI/CD on GitHub does exactly one thing for the runtime: build and push
 images. Anything that runs on a schedule is a k8s `CronJob` in the cluster — never a GitHub `schedule:` trigger — so the

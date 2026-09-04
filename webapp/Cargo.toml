@@ -5,6 +5,9 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
+# Generates the shipped `CronJob` table the schedules console renders, read out
+# of the deployment's kustomization rather than maintained by hand.
+build = "build.rs"
 
 # The Dioxus fullstack application crate. Its `App` component is linked into
 # `web` and server-side rendered there (see `web::dioxus_app`); the same crate
@@ -109,6 +112,16 @@ uuid = { workspace = true, features = ["js"] }
 # theme classes) without standing up a router. Matches the pinned `dioxus`
 # version, and is unconditional here so tests build without `--features server`.
 dioxus-ssr = "0.7.9"
+# The schedules-console tests re-derive the rendered `CronJob` set from
+# `examples/deploy/k8s/exports/kustomization.yaml` themselves, so a bug in
+# `build.rs` fails the gate instead of being agreed with. A dev-dependency, so
+# it reaches neither the server binary nor the wasm client bundle.
+serde_yaml = { workspace = true }
+
+# `build.rs` reads the same kustomization to generate the shipped `CronJob`
+# table. Build-only for the same reason.
+[build-dependencies]
+serde_yaml = { workspace = true }
 
 [features]
 default = []

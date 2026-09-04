@@ -61,7 +61,8 @@ pub async fn create(
         .map(|e| e.id)
         .ok_or_else(|| {
             anyhow::anyhow!(
-                "no entity named `{needle}` — run `cli list entities` to see what's seeded"
+                "no entity named `{needle}` — run `navigator db list entities` to see \
+                 what's seeded"
             )
         })?;
     // The client of record: the pre-existing client this matter is opened for,
@@ -71,8 +72,10 @@ pub async fn create(
         .await?
         .ok_or_else(|| {
             anyhow::anyhow!(
-                "no person with email `{client_email}` — create the client first \
-                 (`cli person create` / bulk import)"
+                "no person with email `{client_email}` — the client of record must \
+                 exist before the matter opens: add it to the canonical seed under \
+                 `seeds/`, or import it into a running deployment with \
+                 `navigator site import person <seed-file>`"
             )
         })?;
     if client.role != store::persons::Role::Client {

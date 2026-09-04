@@ -925,7 +925,7 @@ fn report_exit(report: &VerifyReport, base_url: &str) -> u8 {
     if !report.missing.is_empty() {
         eprintln!(
             "navigator: assets verify: {} public asset(s) are NOT published at {base_url} \
-             (run `cli assets upload` for an image, `cli assets fonts upload` for a font):",
+             (run `navigator ops assets upload` for an image, `navigator ops assets fonts upload` for a font):",
             report.missing.len()
         );
         for rel in &report.missing {
@@ -1033,7 +1033,7 @@ fn fetch_report_exit(report: &FetchReport, base_url: &str, out: &Path) -> u8 {
     if !report.missing.is_empty() {
         eprintln!(
             "navigator: assets fetch-referenced: {} content image(s) are NOT published at \
-             {base_url} (run `cli assets upload`):",
+             {base_url} (run `navigator ops assets upload`):",
             report.missing.len()
         );
         for rel in &report.missing {
@@ -1441,7 +1441,7 @@ fn content_type_for(ext: &str) -> Option<&'static str> {
 async fn upload(storage: &dyn StorageService, dir: &Path) -> anyhow::Result<usize> {
     anyhow::ensure!(
         dir.is_dir(),
-        "asset directory `{}` does not exist — run `cli assets build` first",
+        "asset directory `{}` does not exist — run `navigator ops assets build` first",
         dir.display()
     );
     let mut uploaded = 0usize;
@@ -1484,7 +1484,7 @@ async fn upload(storage: &dyn StorageService, dir: &Path) -> anyhow::Result<usiz
     // "the photos are live" while the bucket stays empty.
     anyhow::ensure!(
         uploaded > 0,
-        "no image variants under `{}` — run `cli assets build` first",
+        "no image variants under `{}` — run `navigator ops assets build` first",
         dir.display()
     );
     Ok(uploaded)
@@ -1670,7 +1670,7 @@ async fn download(storage: &dyn StorageService, out: &Path) -> anyhow::Result<us
         "{}",
         if listed_under_img == 0 {
             "no objects under `img/` in the bucket — populate it first with \
-             `cli assets build` + `cli assets upload`"
+             `navigator ops assets build` + `navigator ops assets upload`"
         } else {
             "objects exist under `img/`, but none are supported image variants \
              (.avif, .webp, .jpg, .jpeg, .png)"

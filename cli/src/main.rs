@@ -1246,7 +1246,7 @@ enum AssetsAction {
     /// `cloud` crate's `StorageService` (never the GCP SDK directly).
     /// Each file lands under key `img/<slug>/<slug>-<w>w.<ext>` with a
     /// bounded `Cache-Control` (~1 week, no `immutable`). Run after
-    /// `cli assets build`. Auth is ADC; the emulator endpoint is honored
+    /// `navigator ops assets build`. Auth is ADC; the emulator endpoint is honored
     /// via `NAVIGATOR_STORAGE_ENDPOINT`.
     Upload {
         /// Directory holding the built variant tree.
@@ -1698,9 +1698,10 @@ enum DbProjectAction {
         /// in use by another matter is refused, not disambiguated.
         #[arg(long)]
         code: String,
-        /// Exact `entities.name` of the legal organization this
-        /// Project tracks. Omit for a Project not yet bound to any
-        /// Entity.
+        /// Exact `entities.name` of the legal organization this Project
+        /// tracks. Required: `projects.entity_id` is NOT NULL, so a matter
+        /// always opens against an Entity that already exists — create the
+        /// entity first.
         #[arg(long)]
         entity_name: Option<String>,
         /// Email of the pre-existing **client** Person this matter is

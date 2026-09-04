@@ -2550,8 +2550,10 @@ struct QuestionRec {
     /// question. Defaults `both` when the YAML omits it.
     #[serde(default)]
     audience: Option<String>,
-    // `help_text` / `choices` exist in the YAML but the schema has
-    // no column for them — silently dropped.
+    // `help_text` / `choices` exist in the YAML but the schema has no
+    // column for them — dropped here, and read back from the canonical
+    // YAML by [`question_help_text`] / [`question_choices`] at the point
+    // a surface renders the question.
 }
 
 async fn seed_questions(surreal: &SurrealDb, report: &mut SeedReport) -> anyhow::Result<()> {
@@ -2584,14 +2586,17 @@ async fn seed_questions(surreal: &SurrealDb, report: &mut SeedReport) -> anyhow:
 }
 
 /// A question's canonical definition narrowed to its `code` and the
-/// optional `choices:` block — the slice of `Question.yaml` the
-/// [`question_choices`] reader needs. Every other field (prompt,
-/// help_text, audience, …) is ignored.
+/// presentational fields the schema has no column for — the optional
+/// `choices:` block and `help_text:`. This is the slice of
+/// `Question.yaml` the [`question_choices`] and [`question_help_text`]
+/// readers need; every other field (prompt, audience, …) is ignored.
 #[derive(Debug, Deserialize)]
-struct ChoiceQuestionRec {
+struct QuestionPresentationRec {
     code: String,
     #[serde(default)]
     choices: Option<serde_yaml::Mapping>,
+    #[serde(default)]
+    help_text: Option<String>,
 }
 
 /// The attorney-reviewed answer choices for a `radio` question, as
@@ -2608,7 +2613,8 @@ struct ChoiceQuestionRec {
 #[must_use]
 pub fn question_choices(code: &str) -> Vec<(String, String)> {
     let code = code.split_once("__").map_or(code, |(prefix, _)| prefix);
-    let Ok(parsed) = serde_yaml::from_str::<Records<ChoiceQuestionRec>>(canonical::QUESTION) else {
+    let Ok(parsed) = serde_yaml::from_str::<Records<QuestionPresentationRec>>(canonical::QUESTION)
+    else {
         return Vec::new();
     };
     parsed
@@ -2622,6 +2628,33 @@ pub fn question_choices(code: &str) -> Vec<(String, String)> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+/// The attorney-authored guidance for a question — the `help_text:` of
+/// its canonical `Question.yaml` definition. Returns `None` for an
+/// unknown code, and for a question whose `help_text:` is absent or
+/// blank, so a caller can distinguish "no guidance" from empty prose.
+///
+/// Help text sits exactly where [`question_choices`] sits: authored in
+/// the question's canonical seed definition, but with no column on the
+/// `question` table — presentational, and so dropped at seed time (see
+/// [`QuestionRec`]). Reading it back here rather than from the row is
+/// what puts it in front of a caller at all, and keeps the guidance a
+/// surface shows the same bytes the seed defines.
+///
+/// The `__role` suffix a questionnaire state carries (`person__trustee`)
+/// is stripped first, so every role that reuses a question inherits that
+/// question's guidance.
+#[must_use]
+pub fn question_help_text(code: &str) -> Option<String> {
+    let code = code.split_once("__").map_or(code, |(prefix, _)| prefix);
+    serde_yaml::from_str::<Records<QuestionPresentationRec>>(canonical::QUESTION)
+        .ok()?
+        .records
+        .into_iter()
+        .find(|r| r.code == code)
+        .and_then(|r| r.help_text)
+        .filter(|h| !h.trim().is_empty())
 }
 
 #[derive(Debug, Deserialize)]
@@ -4316,6 +4349,52 @@ records:
         assert!(question_choices("custom_single_choice").is_empty());
         assert!(question_choices("custom_text").is_empty());
         assert!(question_choices("no_such_question_code").is_empty());
+    }
+
+    #[test]
+    fn question_help_text_reads_the_authored_guidance() {
+        use super::question_help_text;
+        // Assert the authored string, not `is_some()`: a reader that
+        // resolved to the wrong question, or to a placeholder, would still
+        // satisfy a presence check.
+        assert_eq!(
+            question_help_text("entity").as_deref(),
+            Some("Select the entity record this answer refers to."),
+        );
+        // A `__role` state inherits the base question's guidance, stripping
+        // the suffix exactly as `question_choices` does — so every role that
+        // reuses `person` gets `person`'s help text.
+        assert!(question_help_text("person").is_some());
+        assert_eq!(
+            question_help_text("person__trustee"),
+            question_help_text("person")
+        );
+        // An unknown code answers `None` rather than panicking or inventing
+        // an empty string a surface would render as a blank line.
+        assert_eq!(question_help_text("no_such_question_code"), None);
+    }
+
+    #[test]
+    fn every_seeded_question_resolves_its_help_text() {
+        use super::{canonical, question_help_text, QuestionPresentationRec, Records};
+        // The defect this reader closes is that guidance authored for every
+        // question reached nobody. Pin the whole set rather than a sample: a
+        // question added without `help_text:`, or a reader that quietly
+        // stopped resolving, fails here instead of degrading into a
+        // questionnaire step that silently shows no guidance.
+        let parsed = serde_yaml::from_str::<Records<QuestionPresentationRec>>(canonical::QUESTION)
+            .expect("Question.yaml parses");
+        assert!(
+            !parsed.records.is_empty(),
+            "Question.yaml seeds no questions"
+        );
+        for rec in parsed.records {
+            assert!(
+                question_help_text(&rec.code).is_some(),
+                "question `{}` has no help_text",
+                rec.code,
+            );
+        }
     }
 
     /// The seed vocabulary is exactly the closed registry — every question

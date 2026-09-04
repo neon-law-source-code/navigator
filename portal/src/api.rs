@@ -1621,6 +1621,10 @@ struct NotationQuestion {
     prompt: String,
     answer_type: String,
     choices: Vec<workflows::QuestionChoice>,
+    /// The attorney-authored guidance for this question; omitted when the
+    /// question declares none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    help_text: Option<String>,
 }
 
 /// Success body for `POST /app/api/notations/{id}/answers` — where the
@@ -1645,6 +1649,7 @@ impl From<workflows::NextStep> for NotationStepResponse {
                     prompt: question.prompt,
                     answer_type: question.answer_type,
                     choices: question.choices,
+                    help_text: question.help_text,
                 },
             },
             workflows::NextStep::QuestionnaireComplete => Self::Complete,
@@ -3927,9 +3932,51 @@ fn accepted_asset_kinds() -> Vec<&'static str> {
 
 #[cfg(test)]
 mod tests {
+    use super::NotationStepResponse;
     use super::{api_operation_table, documented_api_operations, routes, ApiError};
     use axum::response::IntoResponse;
     use std::collections::BTreeSet;
+
+    #[test]
+    fn a_step_body_carries_the_questions_help_text() {
+        // End of the pipe: whatever the walk resolved has to survive the
+        // `NextStep` -> `NotationStepResponse` mapping and serde, or the
+        // guidance still reaches no caller. Assert on the serialized JSON
+        // rather than the struct, because that body is the API surface.
+        let step = workflows::NextStep::NeedsAnswer {
+            question: workflows::QuestionDescriptor {
+                id: uuid::Uuid::now_v7(),
+                code: "entity".into(),
+                prompt: "Which entity is the client?".into(),
+                answer_type: "entity".into(),
+                choices: Vec::new(),
+                help_text: Some("Select the entity record this answer refers to.".into()),
+            },
+        };
+        let body = serde_json::to_value(NotationStepResponse::from(step)).unwrap();
+        assert_eq!(
+            body["question"]["help_text"],
+            "Select the entity record this answer refers to.",
+        );
+    }
+
+    #[test]
+    fn a_step_body_omits_help_text_when_the_question_declares_none() {
+        // `None` must drop the key rather than serialize `null`, so a client
+        // reading the body never renders an empty guidance line.
+        let step = workflows::NextStep::NeedsAnswer {
+            question: workflows::QuestionDescriptor {
+                id: uuid::Uuid::now_v7(),
+                code: "entity".into(),
+                prompt: "Which entity is the client?".into(),
+                answer_type: "entity".into(),
+                choices: Vec::new(),
+                help_text: None,
+            },
+        };
+        let body = serde_json::to_value(NotationStepResponse::from(step)).unwrap();
+        assert!(body["question"].get("help_text").is_none());
+    }
 
     // A code collision is caller-correctable — the caller picks another code
     // — so it must surface as 409, never as a 500 that reads as a Navigator

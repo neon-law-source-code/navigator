@@ -44,6 +44,11 @@ pub struct QuestionDescriptor {
     pub prompt: String,
     pub answer_type: String,
     pub choices: Vec<QuestionChoice>,
+    /// The attorney-authored guidance for this question, read from its
+    /// canonical `Question.yaml` definition. `None` when the question
+    /// declares none. Like `choices` it has no column on the `question`
+    /// table, so it comes from the seed bytes rather than the row.
+    pub help_text: Option<String>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -968,6 +973,7 @@ async fn load_question(
         prompt,
         answer_type: row.answer_type,
         choices: choices_for_state(choices, state.as_str()),
+        help_text: store::seed::question_help_text(code),
     })
 }
 
@@ -1411,6 +1417,41 @@ mod tests {
                 panic!("expected NeedsAnswer, got QuestionnaireComplete")
             }
         }
+    }
+
+    #[tokio::test]
+    async fn a_walked_question_carries_its_authored_help_text() {
+        // `help_text` has no column on the `question` table, so a descriptor
+        // built only from the row would carry none and the guidance the firm
+        // wrote would reach nobody. The walk reads it back from the canonical
+        // seed bytes; assert the authored string so a reader resolving to the
+        // wrong question still fails here.
+        let surreal = db().await;
+        seed_retainer_template(&surreal).await;
+        seed_retainer_questions(&surreal).await;
+        let person_id = seed_person(&surreal, "libra@example.com").await;
+        let runtime = InMemoryRuntime::new();
+
+        let outcome = start_notation(
+            &surreal,
+            &runtime,
+            None,
+            "onboarding__letter",
+            person_id,
+            seed_project(&surreal).await,
+            None,
+        )
+        .await
+        .unwrap();
+
+        let NextStep::NeedsAnswer { question } = outcome.next else {
+            panic!("expected NeedsAnswer, got QuestionnaireComplete")
+        };
+        assert_eq!(question.code, "entity");
+        assert_eq!(
+            question.help_text.as_deref(),
+            Some("Select the entity record this answer refers to."),
+        );
     }
 
     #[tokio::test]

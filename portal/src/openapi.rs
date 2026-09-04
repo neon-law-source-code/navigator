@@ -2575,7 +2575,9 @@ pub fn document_with_base(base: &str) -> Value {
               "answer_type": { "type": "string",
                                "description": "How to collect the value (e.g. text, choice, record)." },
               "choices":     { "type": "array", "items": { "$ref": "#/components/schemas/QuestionChoice" },
-                               "description": "The allowed answers for a choice question; empty otherwise." }
+                               "description": "The allowed answers for a choice question; empty otherwise." },
+              "help_text":   { "type": "string",
+                               "description": "Attorney-authored guidance for this question; omitted when it declares none." }
             }
           },
           "QuestionChoice": {

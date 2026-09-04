@@ -427,8 +427,9 @@ by definition one release N-1 never wrote, and an unwritten output is the empty 
 how `26.9.3` skipped its Homebrew hand-off. So the `checker` step no longer trusts a `--help` probe alone: it makes the
 candidate binary write the outputs into a scratch file and falls back to a source build when any key the workflow reads
 is missing. `RELEASE_OUTPUTS` on that step names the set, and `cli/tests/deploy_workflow.rs` holds it to the
-`release-version` job's declared outputs so the two cannot drift. And **the binary is deliberately unpinned**, the one exception to [Pin every consumed image, binary, and
-action](#pin-every-consumed-image-binary-and-action): a checker that had to be pinned would freeze at one version and
+`release-version` job's declared outputs so the two cannot drift. And **the binary is deliberately unpinned**, the one
+exception to [Pin every consumed image, binary, and action](#pin-every-consumed-image-binary-and-action): a checker that
+had to be pinned would freeze at one version and
 need a manual bump to ever move. `/releases/latest` is *not* how it is found — that endpoint excludes prereleases and
 every release here is one, so it answers 404; the job enumerates releases and takes the newest carrying the archive. A
 download that fails falls back to compiling from this tree, because a release lost to a blipped API is the failure this

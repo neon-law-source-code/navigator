@@ -50,6 +50,7 @@ Feature: /app/projects writes — the firm tiers on their own matters, clients g
     Then the response status is 200
     And the response body contains "Borealis Trust"
     And the response body contains "Edit project"
+    And the response body posts its save to "Borealis Trust"
 
   Scenario: A client probing the edit page gets 404 (not 403)
     Given a seeded person "capricorn@example.com" with role "client"
@@ -71,3 +72,24 @@ Feature: /app/projects writes — the firm tiers on their own matters, clients g
     And the response body contains "Capricorn Matter"
     And the response body does not contain "Edit project"
     And the response body does not contain "Upload documents"
+
+  # Every firm tier reaches `POST /app/projects/{code}/people/{role_id}/dri`
+  # through the same handler, gated once (`is_lawyer_tier`) rather than one
+  # scenario per role: Owner and Admin bypass on tier alone, a Lawyer
+  # self-governs because they are already a participant, and a Clerk — a
+  # supervised non-lawyer — never reaches the store layer at all. This is the
+  # mutation a live "Add Lawyer DRI" hit the `project.brand` coercion bug on;
+  # every row here writes the Project itself, so a regression here is a
+  # regression there too.
+  Scenario Outline: A firm tier designates themselves the matter's lawyer DRI
+    Given a seeded person "<email>" with role "<role>"
+    And a project "DRI Matrix Matter" with "<email>" as a participant
+    When "<email>" designates themselves as lawyer DRI on "DRI Matrix Matter"
+    Then the response status is <status>
+
+    Examples:
+      | role   | email                   | status |
+      | owner  | dri-owner@example.com   | 303    |
+      | admin  | dri-admin@example.com   | 303    |
+      | lawyer | dri-lawyer@example.com  | 303    |
+      | clerk  | dri-clerk@example.com   | 404    |

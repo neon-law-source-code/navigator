@@ -325,6 +325,7 @@ mod tests {
             "aida_create_project",
             "aida_close_project",
             "aida_list_projects",
+            "aida_project_status",
             "aida_link_person_project",
             "aida_list_tools",
             "aida_bulk_import",
@@ -336,7 +337,7 @@ mod tests {
             );
         }
 
-        assert_eq!(names.len(), 13, "got {names:?}");
+        assert_eq!(names.len(), 14, "got {names:?}");
         for name in &names {
             assert!(name.starts_with("aida_"), "got `{name}`");
         }

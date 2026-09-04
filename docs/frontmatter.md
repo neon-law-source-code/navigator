@@ -211,11 +211,14 @@ full list of structural checks, is covered in <notation-authoring.md>.
 
 ### How the finished document looks: `output`
 
-A notation template may carry an optional **`output`** key. It is the one place a template declares its **render
-profile** — what comes out and how it is dressed:
+A notation template may carry an optional **`output`** key. It is the one place a template *overrides* its render
+profile — what comes out and how it is dressed. Left off, the profile is derived from the template's `kind:`
+(`Kind::default_output`): `letter`, `onboarding`, `offboarding`, and `memo` default to letterhead; `filing` defaults to
+`form`; every other notation kind — `will`, `trust`, `directive`, `agreement` — defaults to plain. `output:` exists for
+the templates whose default is wrong for them, such as a firm-drafted `agreement` that should carry letterhead.
 
-- **omit it** (the default) and the document renders as a plain page — our standard serif, one-inch margins, no
-  letterhead. The body's `{{placeholders}}` fill from the questionnaire answers.
+- **omit it** and the document renders on its kind's default profile — plain is our standard serif, one-inch margins,
+  no letterhead. The body's `{{placeholders}}` fill from the questionnaire answers.
 - **`output: letter`** renders the same body on Neon Law letterhead: our logo, the firm name and contact line, a rule
   across the top. This is the dressing we use for the documents that go out under the firm's name, such as engagement
   letters and demand letters. It is typeset airily, for a document someone reads once before deciding to sign it.
@@ -228,8 +231,8 @@ profile** — what comes out and how it is dressed:
   them. Conversely a typeset profile (`letter`, `agreement`, or no `output:` at all) must **not** carry a `form:` key.
 
 `letter`, `agreement`, and `form` are the values the checker accepts today (N109); leaving the key off gives you the
-plain page. `output` is the one place a template says what it should look like, and the vocabulary is open to more named
-values as new layouts are named (a court-specific pleading-paper layout, for instance).
+kind's default profile. `output` is where a template overrides what it should look like, and the vocabulary is open to
+more named values as new layouts are named (a court-specific pleading-paper layout, for instance).
 
 ### Government form templates carry two extra keys
 

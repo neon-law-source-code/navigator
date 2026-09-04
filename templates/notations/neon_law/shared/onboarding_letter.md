@@ -5,7 +5,6 @@ respondent_type: person_and_entity
 code: onboarding__letter
 jurisdiction: NV
 confidential: true
-output: letter
 prompts:
   client_name: Who is the Client's directly responsible individual, the one person the Firm takes instructions from?
   project_name: What is the project name for this engagement?

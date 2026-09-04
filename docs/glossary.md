@@ -634,17 +634,30 @@ guide and [`workflows::step::STEP_PREFIXES`](../workflows/src/step.rs).
 
 An owning practice. The `firm` table is the tenancy boundary for [Projects](#project) and for the people who work them:
 `project.firm_id` points at the practice that owns the matter, and [`Person–Firm Role`](#personfirm-role) records who
-belongs to that practice. A Firm is not a [Brand](#brand). Brand is the storefront a request resolved to; Firm is which
-practice owns the matter. Binding a brand key to a firm row is not modeled.
+belongs to that practice. A Firm **is** an [Entity](#entity): `firm.entity_id` is the legal person that practice is (the
+seeded practice is `Shook Law PLLC`). A Firm is not a [Brand](#brand). Brand is the storefront a request resolved to;
+Firm is which practice owns the matter. `firm_brand` records which closed house-brand keys that practice wears.
 
 Distinct from [`firm_anchor`](../store/src/schema/navigator.surql), which still pins exactly one [Entity](#entity) as
 the Firm-of-record on the [Conflict-Check Graph](#conflict-check-graph). A deployment may hold several `firm` rows; it
 still holds at most one `firm_anchor` claim. `person.role = owner` remains the one system-wide Owner tier; it is not a
-value on `person_firm_role`.
+value on `person_firm_role`. Owner reaches `/app/owner` to list every practice and its brands. Admin is scoped to the
+firms they hold a `person_firm_role` row on: the people directory and the matter directory at `/app/admin` list only
+those firms' rows.
 
-Authorization still reads `person.role` and `person_project_role` only. Cross-firm isolation is not yet a Rego rule.
+Embedded Rego still does not isolate every project or person route by firm (`ENG-463`). The Owner listing and the two
+Admin directories named above do.
 
 - Schema: [`firm` in `navigator.surql`](../store/src/schema/navigator.surql) ·
+  [`store::firms`](../store/src/firms.rs)
+
+## Firm Brand
+
+Which closed house-brand keys a [Firm](#firm) wears. The `firm_brand` table is the join: `firm_id`, a `brand_key` of
+`neon` or `delete-your-data`, and timestamps. Unique on the pair, and unique on `brand_key` globally — one storefront
+key belongs to at most one practice. Distinct from [Brand](#brand), which is the storefront a request resolved to.
+
+- Schema: [`firm_brand` in `navigator.surql`](../store/src/schema/navigator.surql) ·
   [`store::firms`](../store/src/firms.rs)
 
 ## Firm Signature

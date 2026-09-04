@@ -379,6 +379,7 @@ erDiagram
     }
     firm {
         record id PK
+        option_record_entity entity_id FK
         string inserted_at
         string name
         string status
@@ -387,6 +388,13 @@ erDiagram
     firm_anchor {
         record id PK
         record_entity entity_id FK
+    }
+    firm_brand {
+        record id PK
+        string brand_key
+        record_firm firm_id FK
+        string inserted_at
+        string updated_at
     }
     git_access_token {
         record id PK
@@ -768,7 +776,9 @@ erDiagram
     person ||--o{ expunge_request : "requested_by_person_id"
     person ||--o{ expunge_request : "resolved_by_person_id"
     notation ||--o{ filing : "notation_id"
+    entity ||--o{ firm : "entity_id"
     entity ||--o{ firm_anchor : "entity_id"
+    firm ||--o{ firm_brand : "firm_id"
     person ||--o{ git_access_token : "person_id"
     project ||--o{ git_access_token : "project_id"
     mailroom ||--o{ letter : "mailroom_id"

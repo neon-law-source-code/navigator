@@ -33,9 +33,10 @@ anonymous, the participation vocabulary, the seeded people, and the OPA allow ru
 - **Owner is the highest tier.** The authority order is `owner > admin > lawyer > clerk > client`. Owner inherits every
   Admin and Lawyer capability. Admin cannot create, edit, or demote Owner identities; only Owner can manage an Owner.
   Person deletion remains client-only, so privileged identities are never deleted through that command.
-- **Owner and Admin bypass project-scoping silently.** `session.role in {"owner", "admin"}` allows every authenticated
-  request with no per-read audit row. Each is a separate enum value, not "lawyer + a flag"; visibility-wise both are
-  supersets of Lawyer.
+- **Owner and Admin bypass project-scoping silently**, except `/app/owner`, which is Owner only. `session.role in
+  {"owner", "admin"}` allows every authenticated request with no per-read audit row, then the Owner-only carve-out
+  denies Admin on that path. Each is a separate enum value, not "lawyer + a flag"; visibility-wise both are supersets of
+  Lawyer on every other route. Admin people and matter directories additionally filter by `person_firm_role`.
 - **`participation` is derived from `persons.role`, never entered.** `store::projects::participation_for_role` is the
   only way one is chosen, so the column holds a tier word and nothing else. No write door takes a participation — not
   the lawyer matter-people form, not `POST /app/api/projects/{id}/participants`, not `aida_link_person_project`. A

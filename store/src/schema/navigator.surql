@@ -60,14 +60,17 @@ DEFINE FIELD OVERWRITE status ON project TYPE string;
 -- Which house brand's storefront this matter was opened through — a closed
 -- key from `views::brand::BrandKey`, written by the server from the
 -- resolved request `Host:`, never accepted from a client-submitted form (see
--- `docs/glossary.md#project`). `DEFAULT 'neon'` is write-time only: it
--- supplies the value for rows written after this field was defined and does
--- not reach rows written before it, which is why `ProjectRow.brand` reads as
--- `option<string>` and collapses an absent value to `'neon'` in Rust rather
--- than relying on this default alone.
-DEFINE FIELD OVERWRITE brand ON project TYPE string
-    ASSERT $value IN ['neon', 'delete-your-data']
-    DEFAULT 'neon';
+-- `docs/glossary.md#project`). `option<string>` rather than a required,
+-- defaulted `string`: a `DEFAULT` is write-time only and never reached the
+-- Projects opened before this field existed, so a required `string` makes
+-- the engine re-validate and reject *any* later partial `UPDATE` against one
+-- of those rows — including something as unrelated as a DRI designation —
+-- with a coercion error, not just the read that first surfaced the gap in
+-- #331. `ProjectRow.brand` stays `option<string>` and `ProjectRow::into_project`
+-- collapses an absent value to `'neon'`, so a historical row is tolerated at
+-- both the read and the write layer with no live data backfill required.
+DEFINE FIELD OVERWRITE brand ON project TYPE option<string>
+    ASSERT $value = NONE OR $value IN ['neon', 'delete-your-data'];
 DEFINE FIELD OVERWRITE entity_id ON project TYPE record<entity>;
 DEFINE FIELD OVERWRITE description ON project TYPE option<string>;
 DEFINE FIELD OVERWRITE drive_folder_id ON project TYPE option<string>;

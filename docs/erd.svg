@@ -1040,7 +1040,7 @@
 <text class="cn" x="12" y="45">id</text>
 <text class="cpk" x="340" y="45" text-anchor="end">record PK</text>
 <text class="cn" x="12" y="67">brand</text>
-<text class="ct" x="340" y="67" text-anchor="end">string</text>
+<text class="ct" x="340" y="67" text-anchor="end">option_string</text>
 <text class="cn" x="12" y="89">closed_at</text>
 <text class="ct" x="340" y="89" text-anchor="end">option_string</text>
 <text class="cn" x="12" y="111">code</text>

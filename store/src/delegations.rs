@@ -536,10 +536,7 @@ pub async fn revoke(
                  RETURN {SELECT}"
             ))
             .bind(("id", record_id(TABLE, id)))
-            .bind((
-                "revoked_by",
-                record_id(PERSON_TABLE, revoked_by_person_id),
-            ))
+            .bind(("revoked_by", record_id(PERSON_TABLE, revoked_by_person_id)))
             .bind(("now", now.clone()))
     })
     .await?;
@@ -611,12 +608,7 @@ pub async fn all_for_delegate(
     surreal: &SurrealDb,
     delegate_person_id: Uuid,
 ) -> Result<Vec<Delegation>, DelegationError> {
-    rows_where(
-        surreal,
-        "delegate_person_id = $person",
-        delegate_person_id,
-    )
-    .await
+    rows_where(surreal, "delegate_person_id = $person", delegate_person_id).await
 }
 
 /// Every delegation row naming this person as the subject, revoked and
@@ -680,7 +672,11 @@ pub async fn live_for_delegate(
     if delegate_role != Role::Client {
         return Ok(Vec::new());
     }
-    retain_live(surreal, all_for_delegate(surreal, delegate_person_id).await?).await
+    retain_live(
+        surreal,
+        all_for_delegate(surreal, delegate_person_id).await?,
+    )
+    .await
 }
 
 /// The delegations currently in force over this person — who may act as
@@ -737,10 +733,7 @@ async fn retain_live(
 }
 
 /// The role of a person who may or may not still exist.
-async fn optional_role_of(
-    surreal: &SurrealDb,
-    id: Uuid,
-) -> Result<Option<Role>, DelegationError> {
+async fn optional_role_of(surreal: &SurrealDb, id: Uuid) -> Result<Option<Role>, DelegationError> {
     Ok(crate::persons::find_by_id(surreal, id)
         .await?
         .map(|person| person.role))
@@ -1342,9 +1335,9 @@ mod tests {
         .unwrap();
 
         let mut live = live_for_subject(&db, h.subject).await.unwrap();
-        live.sort_by(|a, b| a.id.cmp(&b.id));
+        live.sort_by_key(|row| row.id);
         let mut expected = vec![first, second];
-        expected.sort_by(|a, b| a.id.cmp(&b.id));
+        expected.sort_by_key(|row| row.id);
         assert_eq!(
             live, expected,
             "a client must be able to learn who may act as them without \
@@ -1411,7 +1404,9 @@ mod tests {
         let first = grant(&db, &assistant(&h)).await.unwrap();
 
         assert_eq!(
-            find_live_for_pair(&db, h.delegate, h.subject).await.unwrap(),
+            find_live_for_pair(&db, h.delegate, h.subject)
+                .await
+                .unwrap(),
             vec![first.clone()],
         );
 

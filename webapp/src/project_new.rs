@@ -289,8 +289,8 @@ fn open_matter_form(view: &ProjectNewView) -> Element {
         // the corrected submission, so a refused open cannot leave the
         // attestation silently ticked.
         Field::checkbox(
-            "I attest that I have checked for conflicts of interest and that none prevent opening \
-             this matter",
+            "I attest that I have checked for conflicts of interest, and that either none prevent \
+             opening this Project or this Project is not legal advice",
             "attestation",
             "1",
             false,
@@ -592,7 +592,11 @@ mod tests {
     #[test]
     fn a_refused_open_echoes_every_field_but_never_the_attestation() {
         let html = render(&view(ProjectNewQuery {
-            error: Some("Attest that you have checked for and cleared conflicts.".to_string()),
+            error: Some(
+                "Attest that you have checked for conflicts, and that either none prevent \
+                 opening this Project or this Project is not legal advice."
+                    .to_string(),
+            ),
             name: Some("Unattested matter".to_string()),
             code: Some("matter-open-2".to_string()),
             entity_id: Some(ENTITY_ID.to_string()),
@@ -601,7 +605,11 @@ mod tests {
             scope_of_services: Some("Some work".to_string()),
             ..ProjectNewQuery::default()
         }));
-        assert!(html.contains("Attest that you have checked"), "{html}");
+        assert!(
+            html.contains("Attest that you have checked for conflicts"),
+            "{html}"
+        );
+        assert!(html.contains("not legal advice"), "{html}");
         assert!(html.contains(r#"value="Unattested matter""#), "{html}");
         assert!(html.contains(r#"value="matter-open-2""#), "{html}");
         assert!(html.contains("Scope narrative."), "{html}");
@@ -611,8 +619,8 @@ mod tests {
             "{html}"
         );
         // The attorney re-attests on the corrected submission, so the checkbox
-        // never comes back ticked. Match the tag itself — the label prose says
-        // "I have checked for conflicts", which a whole-page search would hit.
+        // never comes back ticked. Match the tag itself — the label prose also
+        // says the attorney has checked for conflicts.
         let attestation = html
             .split("<input")
             .find(|frag| frag.contains(r#"name="attestation""#))
@@ -640,6 +648,18 @@ mod tests {
             html.contains("<details class=\"inline-create\" open"),
             "{html}"
         );
+    }
+
+    /// Every Project is opened by a lawyer. The attestation still requires a
+    /// conflict check; the second limb is the honest statement when the
+    /// Project is not legal advice.
+    #[test]
+    fn the_open_form_attestation_covers_legal_and_non_legal_projects() {
+        let html = render(&view(ProjectNewQuery::default()));
+        assert!(html.contains("conflicts of interest"), "{html}");
+        assert!(html.contains("not legal advice"), "{html}");
+        assert!(html.contains(r#"name="attestation""#), "{html}");
+        assert!(html.contains("required"), "{html}");
     }
 
     /// Every engagement is bespoke: the matter-open form opens a matter

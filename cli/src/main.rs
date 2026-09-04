@@ -1712,10 +1712,11 @@ enum DbProjectAction {
         #[arg(long)]
         client_email: String,
         /// The opening attorney's conflict attestation. Required on every
-        /// matter open: passing `--attest` affirms the attorney has checked
-        /// for and cleared conflicts. Without it the open is refused — it is
-        /// never defaulted. (At this firm the firm principal that opens a
-        /// matter is an attorney; see navigator#355.)
+        /// Project open: passing `--attest` affirms the attorney has checked
+        /// for conflicts, and that either none prevent the open or this
+        /// Project is not legal advice. Without it the open is refused — it
+        /// is never defaulted. (At this firm the firm principal that opens a
+        /// Project is an attorney; see navigator#355.)
         #[arg(long)]
         attest: bool,
         /// Skip the canonical seed — the caller owns the schema. Use

@@ -94,7 +94,7 @@ the writes that touch only the firm's own records:
 | --- | --- |
 | all 7 reads | a lookup changes nothing, and answers through the caller's own lens |
 | `aida_create_person` | a contact row, visible and correctable in `/app/admin` |
-| `aida_create_project` | opens a matter, on the attorney's own conflict attestation |
+| `aida_create_project` | opens a Project; the attorney attests they checked conflicts and that either none prevent the open or the Project is not legal advice |
 | `aida_close_project` | moves a matter to `closed`, on the closing attorney's own attestation |
 | `aida_link_person_project` | participation on a matter |
 | `aida_bulk_import` | a whole contacts document — organizations, people, and the links |

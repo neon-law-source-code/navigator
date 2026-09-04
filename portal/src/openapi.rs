@@ -566,15 +566,17 @@ pub fn document_with_base(base: &str) -> Value {
             "summary": "Open a matter",
             "x-mcp-tool": "aida_create_project",
             "description":
-              "Opens a new matter: it runs the conflict check, requires the opening attorney's \
-               conflict attestation, and designates both DRIs. The matter's Drive ingest folder \
+              "Opens a new Project: it runs the conflict check, requires the opening attorney's \
+               conflict attestation, and designates both DRIs. The Project's Drive ingest folder \
                and source repository are then created or adopted best-effort — a Drive or forge \
-               fault leaves the matter open, and `POST /app/api/project-surfaces/{id}` retries. \
+               fault leaves the Project open, and `POST /app/api/project-surfaces/{id}` retries. \
                The client of record must be a pre-existing \
                `client`-role person (never a firm attorney), and the entity must \
-               already exist. `attestation` must be `true` — a matter open with no attestation is \
-               refused (`attestation_required`). A **blocking** conflict (adverse to a current \
-               client) is a hard `409 conflict_blocked` that no attestation overrides. The \
+               already exist. `attestation` must be `true` — a Project open with no attestation is \
+               refused (`attestation_required`). The attorney attests they have checked for \
+               conflicts, and that either none prevent the open or the Project is not legal \
+               advice. A **blocking** conflict (adverse to a current client) is a hard \
+               `409 conflict_blocked` that no attestation overrides. The \
                attester is the authenticated session's person, recorded on the attestation audit \
                row and designated the accountable lawyer DRI — never taken from the request body. \
                Authorization: the caller's `persons.role` must be `lawyer` or `admin`; at this firm \
@@ -2400,7 +2402,7 @@ pub fn document_with_base(base: &str) -> Value {
                                 "description": "The pre-existing entity the matter opens against." },
               "description":  { "type": ["string", "null"], "description": "The matter's scope narrative." },
               "attestation":  { "type": "boolean",
-                                "description": "The opening attorney's conflict attestation. Must be true; a missing attestation is refused. The attester is the authenticated session's person — never taken from this body." }
+                                "description": "The opening attorney's conflict attestation. Must be true; a missing attestation is refused. Affirms the attorney has checked for conflicts, and that either none prevent opening this Project or this Project is not legal advice. The attester is the authenticated session's person — never taken from this body." }
             },
             "example": {
               "name": "Acme LLC — Formation",

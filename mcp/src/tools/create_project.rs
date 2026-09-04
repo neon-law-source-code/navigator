@@ -49,8 +49,9 @@ pub fn descriptor() -> Value {
                 "attestation": {
                     "type": "boolean",
                     "description": "The opening attorney's conflict attestation. Must be `true`: opening \
-                                    a matter through AIDA affirms the requesting attorney (the lawyer \
-                                    principal on the call) has checked for and cleared conflicts. The \
+                                    a Project through AIDA affirms the requesting attorney (the lawyer \
+                                    principal on the call) has checked for conflicts, and that either \
+                                    none prevent the open or this Project is not legal advice. The \
                                     open is refused without it — it is never defaulted."
                 },
                 "entity_id": {
@@ -243,8 +244,9 @@ fn open_matter_tool_error(err: store::projects::OpenMatterError) -> ToolError {
     use store::projects::OpenMatterError as E;
     match err {
         E::AttestationRequired => ToolError::InvalidArguments(
-            "this matter open requires attestation — pass attestation=true to affirm the \
-             requesting attorney has checked for and cleared conflicts"
+            "this Project open requires attestation — pass attestation=true to affirm the \
+             requesting attorney has checked for conflicts, and that either none prevent \
+             the open or this Project is not legal advice"
                 .into(),
         ),
         E::BlockingConflict(findings) => ToolError::Forbidden(format!(

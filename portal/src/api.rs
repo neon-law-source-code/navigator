@@ -1133,8 +1133,10 @@ struct OpenProjectRequest {
     entity_id: Uuid,
     #[serde(default)]
     description: Option<String>,
-    /// The opening attorney's conflict attestation. Must be `true`: a matter
-    /// open with no attestation is refused.
+    /// The opening attorney's conflict attestation. Must be `true`: a Project
+    /// open with no attestation is refused. The attorney attests they have
+    /// checked for conflicts, and that either none prevent the open or this
+    /// Project is not legal advice.
     #[serde(default)]
     attestation: bool,
 }
@@ -3386,7 +3388,9 @@ impl IntoResponse for ApiError {
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({
                     "error": "attestation_required",
-                    "message": "Opening a matter requires the attorney's conflict attestation."
+                    "message": "Opening a Project requires the attorney's conflict attestation: \
+                                they have checked for conflicts, and either none prevent the \
+                                open or this Project is not legal advice."
                 })),
             )
                 .into_response(),

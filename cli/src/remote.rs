@@ -1018,6 +1018,10 @@ struct StepQuestion {
     /// `(value, label)` choices for a `radio`; empty otherwise.
     #[serde(default)]
     choices: Vec<StepChoice>,
+    /// Attorney-authored guidance for the question; absent when it
+    /// declares none.
+    #[serde(default)]
+    help_text: Option<String>,
     /// DB-backed picker candidates for singular record/reference
     /// questions, empty for primitive and aggregate answers.
     #[serde(default)]
@@ -1152,6 +1156,12 @@ async fn post_transcript_coverage(
 /// record/reference pick-list when the server exposes candidates.
 fn prompt_scalar_fields(question: &StepQuestion) -> Result<Vec<(String, String)>> {
     println!("{}", palette::highlight(&question.prompt));
+    // Guidance sits directly under the prompt it explains, ahead of the
+    // pick-list and the choice table, so the reader has it before the
+    // options rather than after them.
+    if let Some(help) = question.help_text.as_deref().filter(|h| !h.is_empty()) {
+        println!("{}", palette::dim(help));
+    }
     if question.has_candidates() {
         print_candidate_table(question);
     }

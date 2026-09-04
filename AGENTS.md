@@ -51,7 +51,7 @@ rejects the broken-stub form in a temporary fixture.
 - **English only.** Code, comments, `/docs`, portal UI, emails, and legal template bodies are English, and no page
   publishes a translated surface. Firm marketing copy lives in `neon/locales/en/<brand-key>/*.yaml`, one catalog per
   page stem, covering the home page, the practice pages, and the marketing pages — `/navigator`, `/services`, and
-  `/fractional-cto`. [`views::locales::KNOWN_PAGES`](views/src/locales.rs) is the closed list of stems, and `Y002`
+  `/personal-plan`. [`views::locales::KNOWN_PAGES`](views/src/locales.rs) is the closed list of stems, and `Y002`
   refuses any other stem or any locale directory but `en`, so the site still publishes that English catalog only. Other
   copy is written directly in the Rust module that renders it. A visitor is free to machine-translate marketing copy,
   but a translated legal *questionnaire* is a different risk: Spanish intake would be a questionnaire-level decision

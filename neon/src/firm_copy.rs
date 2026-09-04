@@ -10,10 +10,10 @@ use webapp::marketing_page::PageContent;
 
 use crate::locales;
 
-/// `/fractional-cto` — the firm's lead offering: it runs the technology
-/// function for a law firm. See `locales/en/neon/fractional-cto.yaml`.
-pub fn fractional_cto(branding: &views::brand::Branding) -> PageContent {
-    locales::fractional_cto(branding)
+/// `/personal-plan` — the firm's consumer legal plan. See
+/// `locales/en/neon/personal-plan.yaml`.
+pub fn personal_plan(branding: &views::brand::Branding) -> PageContent {
+    locales::personal_plan(branding)
 }
 
 /// `/navigator` — the platform the firms the firm serves work on. See
@@ -400,13 +400,15 @@ mod firm_copy_tests {
         );
     }
 
-    /// The two quoted practices publish no figure.
+    /// Litigation and fractional GC stay off the one-time-matter schedule.
     ///
-    /// Litigation and fractional GC are quoted per engagement because their
-    /// scope is not knowable in advance. The consumer schedule does not license
-    /// a number on those pages: a published litigation "price" would be a floor
-    /// dressed as a fee, which is the misleading-fee-advertising problem the
-    /// flat-fee schedule exists to avoid.
+    /// Litigation is quoted per engagement because its scope is not knowable
+    /// in advance; a published litigation "price" would be a floor dressed as
+    /// a fee, the misleading-fee-advertising problem the flat-fee schedule
+    /// exists to avoid. Fractional GC is different: it now publishes its own
+    /// figures, but on its own page (`/fractional-gc`) as a retainer, not here
+    /// — this schedule is for one-time matters, and a recurring retainer does
+    /// not belong on it regardless of whether it has a public number.
     #[test]
     fn the_services_page_does_not_price_litigation_or_fractional_gc() {
         let content = super::legal_services(&views::brand::DEFAULT_BRANDING);

@@ -140,7 +140,7 @@ async fn site_host_serves_the_firm_surface_and_host_documents() {
 
     for path in [
         "/",
-        "/fractional-cto",
+        "/personal-plan",
         "/services",
         "/litigation",
         "/fractional-gc",
@@ -163,82 +163,63 @@ async fn site_host_serves_the_firm_surface_and_host_documents() {
 }
 
 #[tokio::test]
-async fn the_fractional_cto_page_leads_with_the_offering_and_prices_through_contact() {
-    // The firm's fractional CTO engagement: it runs the technology function for
-    // a law firm. This page now carries the copy the home page used to open on,
-    // which moved here when the site began leading with the litigation
-    // practice. It quotes through `/contact` — the scope of running a firm's
-    // technology is not knowable in advance, so no figure and no turnaround
-    // appear.
+async fn the_personal_plan_page_publishes_its_plan_and_pricing() {
+    // The firm's consumer legal plan: taxes, privacy protection, and credit
+    // monitoring (beta) on one flat annual or daily fee — the personal-side
+    // counterpart to Fractional GC, and (unlike the retired Fractional CTO
+    // page) it publishes a real figure. Estate planning stays off this list:
+    // it is a one-time matter already on the `/services` flat-fee schedule.
     let app = site_app().await;
-    let resp = anon_get(&app, "/fractional-cto").await;
+    let resp = anon_get(&app, "/personal-plan").await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
     assert!(
-        body.contains("<title>Neon Law | Fractional CTO"),
-        "the page titles itself Fractional CTO: {body}"
+        body.contains("<title>Neon Law | Personal Plan"),
+        "the page titles itself Personal Plan: {body}"
     );
-    // The hero, then the engagements prose the home page used to open on, then
-    // the CTA. Asserted as structure: the wording is the firm's to edit.
     assert!(
         body.contains(r#"<h1 class="fm-hero__title""#),
         "the page states its offering in an h1: {body}"
     );
+    for figure in ["$365", "/year", "$1 a day", "leap day is free"] {
+        assert!(body.contains(figure), "{figure} must publish: {body}");
+    }
     assert!(
-        body.contains(r#"class="firm-eyebrow""#),
-        "the hero carries its eyebrow: {body}"
+        body.contains("pricing-card"),
+        "the plan renders with the shared pricing-card styling: {body}"
     );
-    assert_eq!(
-        body.matches(r#"class="fm-band fm-band--statement""#)
-            .count(),
-        1,
-        "one statement band, carrying the engagements prose: {body}"
-    );
-    // The band's opening line is a paragraph inside the card rather than a
-    // large lead above it, so the whole of the prose reads at one size.
+    for included in ["Taxes", "Privacy protection", "Credit monitoring (beta)"] {
+        assert!(body.contains(included), "missing {included}: {body}");
+    }
     assert!(
-        !body.contains(r#"class="fm-statement__lead""#),
-        "the statement carries no large lead above its card: {body}"
-    );
-    assert_eq!(
-        body.matches(r#"class="fm-statement__body""#).count(),
-        1,
-        "the prose sits in the band's body: {body}"
-    );
-    // The hero carries the practice-page header: the accent statement, the lead
-    // under it, and one call to action.
-    assert!(
-        body.contains(r#"class="fm-word fm-word--accent""#),
-        "the hero statement sets its opening words in the firm's colour: {body}"
+        !body.contains("Estate planning"),
+        "estate planning belongs to /services, not the personal plan: {body}"
     );
     assert!(
-        body.contains(r#"class="fm-hero__lead""#),
-        "the hero carries a lead: {body}"
-    );
-    assert!(
-        body.contains(
-            r#"class="nav-btn nav-btn--primary fm-hero__cta" href="mailto:contact@neonlaw.com""#
-        ),
-        "the hero carries one call to action: {body}"
-    );
-    // The prose names Navigator from inside a sentence rather than repeating
-    // that page here.
-    assert!(
-        body.contains(r#"href="/navigator""#),
-        "the prose links the platform inline: {body}"
+        body.contains(r#"href="/fractional-gc""#),
+        "the header nav still reaches the company-side counterpart: {body}"
     );
     assert!(
         body.contains("mailto:"),
-        "the page quotes through a contact CTA: {body}"
+        "the page carries a contact CTA: {body}"
     );
-    // The cards band came off the page when the home copy moved onto it.
+    // Structured to match `/fractional-gc`: a three-word virtue row after the
+    // hero, and a "priced separately" section for the work the flat fee does
+    // not cover, ahead of the closing CTA.
+    for virtue in ["Private", "Simple", "Attentive"] {
+        assert!(body.contains(virtue), "missing the virtue {virtue}: {body}");
+    }
     assert!(
-        !body.contains(r#"class="fm-cards"#),
-        "no cards band renders: {body}"
+        body.contains("Priced separately") && body.contains("One-time matters"),
+        "the plan names what sits outside it, like /fractional-gc does: {body}"
+    );
+    assert!(
+        body.contains(r#"href="/services""#),
+        "priced-separately work routes to the flat-fee schedule: {body}"
     );
 }
 
-/// `/fractional-cto` and `/services` wear the practice-page header.
+/// `/personal-plan` and `/services` wear the practice-page header.
 ///
 /// The same five parts `/litigation` opens on: the ringed mark, the eyebrow
 /// above the statement, the statement with its opening words in the firm's own
@@ -248,7 +229,7 @@ async fn the_fractional_cto_page_leads_with_the_offering_and_prices_through_cont
 #[tokio::test]
 async fn the_practice_pages_wear_the_same_header() {
     let app = site_app().await;
-    for path in ["/fractional-cto", "/services"] {
+    for path in ["/personal-plan", "/services"] {
         let body = body_string(anon_get(&app, path).await).await;
         for part in [
             r#"class="fm-hero fm-hero--page""#,
@@ -659,11 +640,12 @@ async fn litigation_carries_the_regulated_copy_and_no_results_promise() {
 }
 
 #[tokio::test]
-async fn transactional_names_the_fee_structure_and_prices_through_contact() {
-    // The firm's public site publishes no fee. The page says how the fee works
-    // — one flat monthly amount, contracts metered on top — and sends every
-    // number to `/contact`, so no page can go stale against what the firm
-    // charges or read as a binding offer.
+async fn transactional_publishes_its_flat_fee_pricing_cards() {
+    // Fractional GC now publishes its base-package pricing on the page — one
+    // flat annual figure, framed per-day in the card body, plus the DocuSign
+    // per-contract line — rather than quoting it through `/contact`. The MSA
+    // is priced separately (like financings and litigation), not as a second
+    // base-package cadence.
     let app = site_app().await;
     let resp = anon_get(&app, "/fractional-gc").await;
     assert_eq!(resp.status(), StatusCode::OK);
@@ -674,8 +656,19 @@ async fn transactional_names_the_fee_structure_and_prices_through_contact() {
         "the statement: {body}"
     );
     assert!(
-        body.contains("One flat monthly fee"),
+        body.contains("One base package, flat fees for everything else"),
         "the structure: {body}"
+    );
+    for figure in ["$3,650", "/year", "$10 a day", "$5 per contract"] {
+        assert!(body.contains(figure), "{figure} must publish: {body}");
+    }
+    assert!(
+        body.contains("Contracts with revisions") && body.contains("flat $500 each"),
+        "revision work is priced separately, like financings: {body}"
+    );
+    assert!(
+        body.contains("limited number of Fractional GC clients"),
+        "the availability note, not a gate: {body}"
     );
     // The engagement-letter block came off the page: what it said is a term of
     // the engagement, not something the marketing surface has to close on.
@@ -686,26 +679,24 @@ async fn transactional_names_the_fee_structure_and_prices_through_contact() {
 }
 
 #[tokio::test]
-async fn neither_practice_page_publishes_a_currency_amount() {
-    // One guard for the rule behind both pages: the firm describes how a fee
-    // works and quotes the number itself per engagement. A `$` in the page body
-    // is the whole failure mode — a rate, a retainer, or an illustrative figure
-    // a reader would take for a price.
+async fn litigation_still_publishes_no_currency_amount() {
+    // Litigation remains the one practice quoted per engagement: its scope is
+    // not knowable in advance, so a published figure would be a floor dressed
+    // as a fee. Fractional GC and Legal Services both publish real figures
+    // now, so this guard narrowed to the one page that still must not.
     let app = site_app().await;
-    for path in ["/litigation", "/fractional-gc"] {
-        let body = body_string(anon_get(&app, path).await).await;
-        // Measured over the page body: the shared header and footer chrome is
-        // not this page's copy, and a guard that swept them would fail for a
-        // reason no edit here could fix.
-        let main = body
-            .split_once("public-shell__main")
-            .and_then(|(_, rest)| rest.split_once("site-footer"))
-            .map_or(body.as_str(), |(page, _)| page);
-        assert!(
-            !main.contains('$'),
-            "{path} must publish no currency amount: {main}"
-        );
-    }
+    let body = body_string(anon_get(&app, "/litigation").await).await;
+    // Measured over the page body: the shared header and footer chrome is
+    // not this page's copy, and a guard that swept them would fail for a
+    // reason no edit here could fix.
+    let main = body
+        .split_once("public-shell__main")
+        .and_then(|(_, rest)| rest.split_once("site-footer"))
+        .map_or(body.as_str(), |(page, _)| page);
+    assert!(
+        !main.contains('$'),
+        "/litigation must publish no currency amount: {main}"
+    );
 }
 
 #[tokio::test]
@@ -771,7 +762,7 @@ async fn the_firm_nav_leads_with_the_lead_offering_then_the_practices() {
         .map(|(links, _)| links)
         .expect("the header renders its link list");
     for href in [
-        r#"href="/fractional-cto""#,
+        r#"href="/personal-plan""#,
         r#"href="/services""#,
         r#"href="/litigation""#,
         r#"href="/fractional-gc""#,
@@ -786,24 +777,24 @@ async fn the_firm_nav_leads_with_the_lead_offering_then_the_practices() {
         !header.contains(r#"href="/team""#),
         "the team page does not exist, so the header must not link it: {header}"
     );
-    // Litigation leads, then the three engagements beside it. The ordering is a
-    // product decision and is asserted rather than left to the array literal:
-    // the firm leads with the practice the home page opens on.
+    // Litigation leads, then the two plans, then the schedule. The ordering is
+    // a product decision and is asserted rather than left to the array
+    // literal: the firm leads with the practice the home page opens on.
     let litigation = header
         .find(r#"href="/litigation""#)
         .expect("Litigation is in the nav");
-    let cto = header
-        .find(r#"href="/fractional-cto""#)
-        .expect("Fractional CTO is in the nav");
     let transactional = header
         .find(r#"href="/fractional-gc""#)
         .expect("Fractional GC is in the nav");
+    let personal = header
+        .find(r#"href="/personal-plan""#)
+        .expect("Personal Plan is in the nav");
     let services = header
         .find(r#"href="/services""#)
         .expect("Legal Services is in the nav");
     assert!(
-        litigation < cto && cto < transactional && transactional < services,
-        "the lead practice leads, then the two quoted engagements, then the schedule: {header}"
+        litigation < transactional && transactional < personal && personal < services,
+        "the lead practice leads, then the two plans, then the schedule: {header}"
     );
     assert_eq!(
         header.matches("<li").count(),
@@ -1043,24 +1034,22 @@ fn publishes_a_fee(body: &str) -> bool {
         .any(|amount| !(amount.contains("million") || amount.contains("billion")))
 }
 
-/// No page on this host publishes a fee. Any fee.
+/// No page on this host publishes a fee, except the two that now do on
+/// purpose: `/services` and `/fractional-gc`.
 ///
-/// The firm quotes engagements through `/contact` and bills each matter on its
-/// own invoice, because the work is bespoke and a posted number would fit
-/// nobody — the routine, one-time work at `/services` included. `/contact` is
-/// here too because it once named a consultation fee. A fee added to any page
-/// here fails rather than ships.
+/// Litigation, being quoted per engagement, stays unpriced because its scope
+/// is not knowable in advance and a posted number would fit nobody. `/contact`
+/// is here too because it once named a consultation fee. A fee added to any
+/// other page here fails rather than ships.
 #[tokio::test]
-async fn no_firm_page_publishes_a_fee() {
+async fn no_firm_page_publishes_a_fee_except_the_two_that_do() {
     let app = site_app().await;
 
     for unpriced in [
         "/",
-        "/services",
         "/notations",
         "/contact",
         "/litigation",
-        "/fractional-gc",
         "/navigator",
         "/blog",
         "/privacy",
@@ -1069,16 +1058,44 @@ async fn no_firm_page_publishes_a_fee() {
         let body = body_string(anon_get(&app, unpriced).await).await;
         assert!(
             !publishes_a_fee(&body),
-            "{unpriced} must publish no fee — the firm posts no rate anywhere: {body}"
+            "{unpriced} must publish no fee: {body}"
         );
+    }
+}
+
+/// `/services` and `/fractional-gc` are the two pages that publish real fees,
+/// and each figure on them has to be a genuine amount rather than a
+/// placeholder that slipped past review.
+#[tokio::test]
+async fn services_and_fractional_gc_publish_real_fees() {
+    let app = site_app().await;
+
+    for (priced, expected_figures) in [
+        (
+            "/services",
+            vec!["$50", "$350/year", "$100", "$250", "$350", "$500"],
+        ),
+        ("/fractional-gc", vec!["$3,650", "$10", "$1", "$500"]),
+    ] {
+        let body = body_string(anon_get(&app, priced).await).await;
+        assert!(
+            publishes_a_fee(&body),
+            "{priced} must publish a fee: {body}"
+        );
+        for figure in expected_figures {
+            assert!(
+                body.contains(figure),
+                "{priced} must publish {figure}: {body}"
+            );
+        }
     }
 }
 
 /// `/llms.txt` publishes no fee either.
 ///
-/// The machine-readable index is the other place the firm could leak a number.
-/// It lists the Legal Services page, but never with a figure — exactly as the
-/// pages do.
+/// The machine-readable index is the other place the firm could leak a
+/// number. It lists the Legal Services page by title and link only — never
+/// with a figure, even though the page itself now carries one.
 #[tokio::test]
 async fn the_llms_index_publishes_no_fee() {
     let app = site_app().await;
@@ -1430,7 +1447,8 @@ async fn home_publishes_no_amount_in_controversy_and_no_co_counsel_claim() {
 #[tokio::test]
 async fn home_points_at_the_four_practices_from_its_foot() {
     // The page leads with one offering, then four equal doors so litigation,
-    // counsel, technology, and one-time filings are all one click from `/`.
+    // company counsel, personal counsel, and one-time filings are all one
+    // click from `/`.
     let app = site_app().await;
     let body = body_string(anon_get(&app, "/").await).await;
     // The section renders, with its heading wired to the copy rather than
@@ -1445,8 +1463,8 @@ async fn home_points_at_the_four_practices_from_its_foot() {
     );
     for href in [
         "/litigation",
-        "/fractional-cto",
         "/fractional-gc",
+        "/personal-plan",
         "/services",
     ] {
         assert!(
@@ -1850,8 +1868,8 @@ async fn a_talk_hub_renders_under_the_firm_brand() {
     );
     for heading in [
         "Litigation",
-        "Fractional CTO",
         "Fractional GC",
+        "Personal Plan",
         "One-Time Services",
     ] {
         assert!(slides.contains(heading), "missing {heading}: {slides}");

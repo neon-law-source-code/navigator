@@ -1,13 +1,14 @@
 //! The firm fractional general counsel page (`/fractional-gc`) — accurate, efficient, and
-//! speedy company counsel on one flat monthly fee.
+//! speedy company counsel on a published flat fee.
 //!
 //! The page's whole argument is that legal work belongs inside the sales cycle
-//! rather than beside it, so the copy is organised around what the monthly fee
-//! includes, what the practice commits to, and what sits
-//! outside the retainer. The fee itself is quoted through `/contact`; the page
-//! names how it works and sends the figure there. Every turnaround is written
-//! as a commitment about the firm's own work product — never about whether a
-//! deal closes, which the firm does not control.
+//! rather than beside it, so the copy is organised around what the base fee
+//! includes, what the practice commits to, and what sits outside the retainer.
+//! The base fee itself is published on the page as a small set of flat-fee
+//! pricing card (annual cadence, framed daily) rather than
+//! quoted through `/contact`. Every turnaround is written as a commitment
+//! about the firm's own work product — never about whether a deal closes,
+//! which the firm does not control.
 //!
 //! Like [`crate::home`], the only state is the static copy
 //! ([`TransactionalContent`]), resolved by the portal router at router-build
@@ -16,6 +17,7 @@
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::components::pricing::{PricingCard, PricingSection};
 use crate::components::{
     PracticeMark, PracticeMarkGlyph, PublicShell, SiteHeader, SiteNavLink, SocialMeta,
 };
@@ -57,6 +59,18 @@ pub struct SeparateWork {
     pub link_label: Option<String>,
 }
 
+/// One flat-fee pricing card for the base retainer itself. Mapped onto
+/// [`PricingCard`] at render time, which supplies the shared "Navigator-UX"
+/// pricing-card treatment used elsewhere in the app.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+pub struct PricingOffer {
+    pub title: String,
+    pub price: String,
+    pub cadence: Option<String>,
+    pub blurb: String,
+    pub features: Vec<String>,
+}
+
 /// The static transactional copy — resolved brand-safely at router-build time
 /// and injected into the render context.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
@@ -74,10 +88,13 @@ pub struct TransactionalContent {
     pub msa_term: String,
     pub msa_definition: String,
     pub fee_heading: String,
-    /// How the fee works — never what it is. The site publishes no amount; the
-    /// number is quoted per engagement through `/contact` and fixed in the
-    /// engagement letter.
+    /// How the base fee works, alongside the published pricing cards below it.
     pub fee_body: String,
+    /// The base package's own published pricing card.
+    pub pricing: Vec<PricingOffer>,
+    /// A short note on intake capacity. Not a gate: there is no waitlist or
+    /// form behind it, just a plain statement that slots are limited.
+    pub availability_note: Option<String>,
     pub included_heading: String,
     pub included: Vec<Included>,
     pub cycle_heading: String,
@@ -225,9 +242,24 @@ fn VirtueRow(virtues: Vec<Virtue>) -> Element {
     }
 }
 
-/// The flat monthly fee, what it includes, and the term the page defines.
+/// The flat fee — published as pricing cards — what it includes, and the term
+/// the page defines.
 #[component]
 fn FeeSection(content: TransactionalContent) -> Element {
+    let pricing_cards: Vec<PricingCard> = content
+        .pricing
+        .iter()
+        .map(|offer| PricingCard {
+            title: offer.title.clone(),
+            price: offer.price.clone(),
+            cadence: offer.cadence.clone(),
+            blurb: offer.blurb.clone(),
+            features: offer.features.clone(),
+            cta_label: content.cta_label.clone(),
+            cta_href: content.cta_href.clone(),
+            featured_label: None,
+        })
+        .collect();
     rsx! {
         section { class: "neon-card speed-fee", "aria-labelledby": "speed-fee-heading",
             div { class: "speed-fee__head",
@@ -237,6 +269,19 @@ fn FeeSection(content: TransactionalContent) -> Element {
                     dt { class: "speed-definition__term", "{content.msa_term}" }
                     dd { class: "speed-definition__body", "{content.msa_definition}" }
                 }
+            }
+            if !pricing_cards.is_empty() {
+                // One column per card, so a single card fills the row instead
+                // of sitting in a fixed-3-column grid with two empty tracks.
+                // `PricingSection` clamps to 4 anyway, so a length that
+                // cannot fit a `u8` just falls back to that clamp.
+                PricingSection {
+                    cols_lg: u8::try_from(pricing_cards.len()).unwrap_or(4),
+                    cards: pricing_cards,
+                }
+            }
+            if let Some(note) = &content.availability_note {
+                p { class: "speed-paragraph speed-fee__availability", "{note}" }
             }
             div { class: "speed-fee__included",
                 h3 { class: "speed-subheading", "{content.included_heading}" }
@@ -332,9 +377,19 @@ mod tests {
             }],
             msa_term: "MSA — master services agreement".to_string(),
             msa_definition: "The contract that sets the terms once.".to_string(),
-            fee_heading: "One flat monthly fee".to_string(),
-            fee_body: "Fixed, and the same every month. Quoted through contact.".to_string(),
-            included_heading: "What the monthly fee covers".to_string(),
+            fee_heading: "One base package, flat fees for everything else".to_string(),
+            fee_body: "One flat annual fee covers the base package below.".to_string(),
+            pricing: vec![PricingOffer {
+                title: "Base package".to_string(),
+                price: "$3,650".to_string(),
+                cadence: Some("/year".to_string()),
+                blurb: "That's just $10 a day.".to_string(),
+                features: vec!["DocuSign sent & tracked at $5 per contract".to_string()],
+            }],
+            availability_note: Some(
+                "We take on a limited number of Fractional GC clients at a time.".to_string(),
+            ),
+            included_heading: "What the fee covers".to_string(),
             included: vec![Included {
                 name: "Cap table management".to_string(),
                 body: "We keep the ledger current.".to_string(),
@@ -410,16 +465,27 @@ mod tests {
     }
 
     #[test]
-    fn names_the_fee_structure_and_publishes_no_amount() {
-        // The site quotes no price. The page says how the fee works — one flat
-        // monthly amount, the same every month — and sends the number itself to
-        // `/contact`, so nothing here can go stale against what the firm
-        // actually charges or read as a binding offer.
+    fn publishes_its_flat_fee_pricing_cards() {
+        // The base package is now published on the page as one pricing card
+        // rather than quoted through `/contact`: the annual figure, the
+        // per-day framing in its body, and the DocuSign per-contract line.
         let out = html();
-        assert!(out.contains("One flat monthly fee"), "the structure: {out}");
         assert!(
-            !out.contains('$'),
-            "the page must publish no currency amount: {out}"
+            out.contains("One base package, flat fees for everything else"),
+            "the structure: {out}"
+        );
+        assert!(
+            out.contains("pricing-card"),
+            "the pricing card renders: {out}"
+        );
+        for figure in ["$3,650", "/year", "$10 a day", "$5 per contract"] {
+            assert!(out.contains(figure), "{figure} must publish: {out}");
+        }
+        // A single card gets a single grid column, so it fills the row
+        // instead of sitting in a fixed-3-column grid with two empty tracks.
+        assert!(
+            out.contains("--pricing-cols: 1;"),
+            "one card is one column, full width: {out}"
         );
     }
 

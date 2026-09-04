@@ -483,12 +483,12 @@ pub fn firm_public_dioxus_routers(state: &AppState) -> Vec<Router> {
     ));
     // The platform page. It carries a commercial offer, so it sits with the
     // firm's own pages.
-    // The lead offering. A marketing page like the platform page beside it, and
-    // the first thing the header carries: the firm runs the technology function
-    // for the law firms it serves, and the other three practices sit under it.
+    // The consumer legal plan. A marketing page like the platform page beside
+    // it: estate planning, tax filing, privacy protection, and credit
+    // monitoring (beta) on one flat annual or daily fee.
     routers.push(dioxus_app::marketing_page_router(
-        dioxus_app::FIRM_FRACTIONAL_CTO_PATH,
-        firm_copy::fractional_cto(branding),
+        dioxus_app::FIRM_PERSONAL_PLAN_PATH,
+        firm_copy::personal_plan(branding),
     ));
     routers.push(dioxus_app::marketing_page_router(
         dioxus_app::FIRM_NAVIGATOR_PATH,
@@ -746,13 +746,13 @@ pub(crate) fn resolve_litigation_content(
     locales::litigation(branding)
 }
 
-/// Resolve the firm `/fractional-gc` page — the flat-monthly-fee company
-/// counsel practice, the published turnaround, and the work that sits outside
-/// the retainer.
+/// Resolve the firm `/fractional-gc` page — the company counsel practice with
+/// its own published pricing, the published turnaround, and the work that
+/// sits outside the retainer.
 ///
-/// Brand-safe like [`resolve_firm_home_content`]. The page names how the flat
-/// monthly fee works and sends the figure itself to
-/// `mailto:contact@neonlaw.com`; it publishes no amount.
+/// Brand-safe like [`resolve_firm_home_content`]. The base fee is published on
+/// the page as flat-fee pricing cards (annual or daily cadence, plus the MSA
+/// flat fee) rather than quoted through `mailto:contact@neonlaw.com`.
 pub(crate) fn resolve_transactional_content(
     branding: &views::brand::Branding,
 ) -> webapp::transactional_page::TransactionalContent {

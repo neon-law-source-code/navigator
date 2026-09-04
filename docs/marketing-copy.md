@@ -22,7 +22,7 @@ Neon Law (`neon/`):
 | `neon/locales/en/neon/home.yaml` | `/` |
 | `neon/locales/en/neon/litigation.yaml` | `/litigation` |
 | `neon/locales/en/neon/fractional-gc.yaml` | `/fractional-gc` |
-| `neon/locales/en/neon/fractional-cto.yaml` | `/fractional-cto` |
+| `neon/locales/en/neon/personal-plan.yaml` | `/personal-plan` |
 | `neon/locales/en/neon/navigator.yaml` | `/navigator` |
 | `neon/locales/en/neon/services.yaml` | `/services` |
 

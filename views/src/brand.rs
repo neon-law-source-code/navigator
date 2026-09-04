@@ -141,11 +141,12 @@ impl NavLink {
 ///
 /// The three that follow are real engagements with pages of their own, and a
 /// reader who came for one of them must not have to hunt the footer:
-/// `/fractional-cto` the technology function the firm runs for law firms,
-/// `/fractional-gc` (fractional general counsel) the company-counsel work, and
-/// `/services` the flat-fee schedule of routine one-time matters. The two
-/// quoted engagements sit nearer the lead practice than the schedule does,
-/// because a firm reading the lead is the reader those two are for.
+/// `/fractional-gc` (fractional general counsel) the company-counsel plan,
+/// `/personal-plan` the consumer legal plan, and `/services` the
+/// flat-fee schedule of routine one-time matters — which now requires an
+/// active plan on one of the two. The two plans sit nearer the lead practice
+/// than the schedule does, because a firm or a person reading the lead is the
+/// reader those two are for.
 ///
 /// Every entry is the firm's own work, and no label here repeats in
 /// [`FIRM_FOOTER_NAV`] — see the
@@ -155,8 +156,8 @@ impl NavLink {
 /// the firm — stays in [`FIRM_FOOTER_NAV`].
 const FIRM_NAV: &[NavLink] = &[
     NavLink::leaf("Litigation", "/litigation"),
-    NavLink::leaf("Fractional CTO", "/fractional-cto"),
     NavLink::leaf("Fractional GC", "/fractional-gc"),
+    NavLink::leaf("Personal Plan", "/personal-plan"),
     NavLink::leaf("Legal Services", "/services"),
 ];
 
@@ -1453,8 +1454,8 @@ mod tests {
             labels,
             [
                 "Litigation",
-                "Fractional CTO",
                 "Fractional GC",
+                "Personal Plan",
                 "Legal Services"
             ]
         );

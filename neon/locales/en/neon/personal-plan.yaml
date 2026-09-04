@@ -1,0 +1,107 @@
+head_title: "{site_name} | Personal Plan"
+meta_description: >-
+  A personal legal plan from Neon Law: tax filing, privacy protection, and
+  credit monitoring (beta), on one flat annual or daily fee.
+title: Personal Plan
+hero_mark: technology
+tagline: Personal Legal Plan
+hero_lines:
+  - text: Protected.
+    accent_words: 1
+  - text: Personally.
+    accent_words: 0
+hero_lead: >-
+  One flat fee for the legal work a person returns to year after year: taxes
+  filed, your data kept private, and your credit watched.
+hero_cta:
+  href: "mailto:{firm_email}"
+  label: Contact us
+skin: practice
+bands:
+  - kind: cards
+    anchor: virtues
+    overline: Why it works
+    heading: Private. Simple. Attentive.
+    description: ""
+    items:
+      - title: Private
+        body:
+          - - text: >-
+                What you tell us stays between us. We handle your data the
+                way we would want our own handled.
+      - title: Simple
+        body:
+          - - text: >-
+                One flat fee, the same every year. No surprise bill for
+                asking a question.
+      - title: Attentive
+        body:
+          - - text: >-
+                A licensed attorney reviews the work — not a form that fills
+                itself in.
+  - kind: cards
+    anchor: plan
+    overline: Personal Legal Plan
+    heading: One flat annual fee
+    description: >-
+      A one-time matter outside this list is still priced separately on our
+      flat-fee schedule. We take on a limited number of Personal Plan members
+      at a time — reach out early to hold a spot.
+    pricing_style: true
+    items:
+      - title: Personal Legal Plan
+        chips:
+          - "$365"
+        cadence: /year
+        body:
+          - - text: "That's just $1 a day — and every leap day is free."
+        features:
+          - Tax filing and preparation
+          - Privacy protection requests
+          - Credit monitoring (beta)
+        href: "mailto:{firm_email}"
+        href_label: Contact us
+  - kind: cards
+    anchor: included
+    overline: What's included
+    heading: Three areas, one flat fee
+    description: ""
+    items:
+      - title: Taxes
+        body:
+          - - text: >-
+                Personal tax return preparation and filing. A licensed
+                attorney is one of the three professional categories — with
+                CPAs and enrolled agents — authorized to represent a
+                taxpayer before the IRS.
+      - title: Privacy protection
+        body:
+          - - text: >-
+                Requests to companies that hold your personal data, asking
+                them to delete it.
+      - title: Credit monitoring (beta)
+        body:
+          - - text: >-
+                Early access while we build this out. Contact us to join
+                the beta.
+  - kind: cards
+    anchor: separate
+    overline: Priced separately
+    heading: One kind of work sits outside the plan
+    description: >-
+      A one-time matter isn't recurring, so it doesn't fit a flat annual or
+      daily fee.
+    items:
+      - title: One-time matters
+        body:
+          - - text: >-
+                A will, a trust, a name change, a formation. Each its own
+                scope and its own flat fee, agreed before we start.
+        href: /services
+        href_label: The flat-fee schedule
+  - kind: cta
+    heading: Ready to get protected?
+    body: >-
+      Email the firm to start your Personal Legal Plan.
+    email: "{firm_email}"
+    email_subject: Personal Plan

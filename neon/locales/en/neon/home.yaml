@@ -1,6 +1,6 @@
 head_title: "{site_name} | Home"
 meta_description: >-
-  Impact litigation, company counsel, technology for law firms, and one-time
+  Impact litigation, company counsel, a personal legal plan, and one-time
   filings. We take cases of every kind. Come in. We will listen.
 heading: Everyone deserves to be seen.
 lead: >-
@@ -17,7 +17,7 @@ service:
   heading: You have a place here.
   body:
     - - text: "The "
-      - text: litigation practice
+      - text: "litigation practice "
         href: /litigation
       - text: >-
           is plaintiff and defense. We take the case that walks in, as long as
@@ -32,9 +32,9 @@ service:
           work. A person who is not heard loses ground whether or not the case
           is close. Moving early is how we keep that from happening quietly.
     - - text: >-
-          We are also company counsel, the technology function for other law
-          firms, and the lawyers for a will, a formation, or a filing. That
-          work is the rest of the firm, not a sideline. Pick the door that fits.
+          We are also company counsel, a personal legal plan, and the lawyers
+          for a will, a formation, or a filing. That work is the rest of the
+          firm, not a sideline. Pick the door that fits.
 practices_heading: The whole practice
 practices:
   - mark: scales
@@ -43,23 +43,23 @@ practices:
       Impact litigation, and every other dispute that walks in. Plaintiff and
       defense. We listen first.
     href: /litigation
-  - mark: technology
-    heading: Fractional CTO
-    body: >-
-      We run the technology function for law firms: the architecture, the AI
-      tooling, and the privacy and compliance work under both. The same systems
-      we litigate on.
-    href: /fractional-cto
   - mark: handshake
     heading: Fractional GC
     body: >-
-      Ongoing company counsel on one flat monthly fee: contracts, licences,
-      financings, and the advice under them, at the pace the sales cycle
-      already runs.
+      Ongoing company counsel on one flat annual or daily fee: contracts,
+      licences, financings, and the advice under them, at the pace the sales
+      cycle already runs.
     href: /fractional-gc
+  - mark: technology
+    heading: Personal Plan
+    body: >-
+      Tax filing, privacy protection, and credit monitoring (beta), on one
+      flat annual or daily fee.
+    href: /personal-plan
   - mark: gavel
     heading: One-Time Services
     body: >-
       A will, a trust, a formation, a trademark, an annual report. One scope
-      and one flat fee, agreed before we start.
+      and one flat fee, agreed before we start. Requires an active Fractional
+      GC or Personal Plan.
     href: /services

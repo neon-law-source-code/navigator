@@ -1897,15 +1897,16 @@ async fn complete_sign_in(
     .await
     {
         Ok(t) => t,
-        Err(ResolveError::NotPreSeeded) => {
-            // No `person_id` exists to log — the refusal *is* that no row
-            // matched. `sub` is the IdP's opaque subject, which correlates the
-            // attempt without carrying an address; the email itself stays out,
-            // because a sign-in refusal is exactly the line where an
-            // unprovisioned person's address would otherwise be recorded.
+        Err(ResolveError::NotPreSeeded | ResolveError::NotAdmitted) => {
+            // No session is minted when there is no admitted person row to
+            // log in. `sub` is the IdP's opaque subject, which correlates the
+            // attempt without carrying an address; the email itself stays
+            // out, because a sign-in refusal is exactly the line where an
+            // unprovisioned or withdrawn person's address would otherwise be
+            // recorded.
             tracing::info!(
                 sub = %claims.sub,
-                "auth: no pre-seeded persons row for the supplied email; returning 403",
+                "auth: no admitted persons row for the supplied identity; returning 403",
             );
             // Still a 403, but its own page: sign-up here is operator-mediated,
             // so this visitor is not misconfigured — they have not engaged the
@@ -2000,6 +2001,10 @@ enum ResolveError {
     /// caller renders a 403; sign-up is operator-mediated.
     #[error("no pre-seeded persons row for the IdP-supplied email")]
     NotPreSeeded,
+    /// A retained person row was deliberately withdrawn from sign-in
+    /// admission. The caller renders the same non-enumerating 403.
+    #[error("person row is not admitted for sign-in")]
+    NotAdmitted,
     #[error(transparent)]
     Db(#[from] store::persons::PersonError),
 }
@@ -2103,10 +2108,11 @@ pub struct NewSignup {
 /// Resolve the `persons` row that corresponds to the IdP claims.
 ///
 /// Lookup order:
-///   1. Match on `oidc_subject = claims.sub` (already linked).
+///   1. Match on `oidc_subject = claims.sub` (already linked and admitted).
 ///   2. Match on `email = claims.email` and, if the row hasn't been
 ///      linked yet, promote it (existing seeded person logging in
-///      for the first time — the row keeps its pre-assigned role).
+///      for the first time — the row keeps its pre-assigned role —
+///      but only when its admission decision is on.
 ///   3. **No match** → return `ResolveError::NotPreSeeded`, *except*
 ///      when the email matches the configured bootstrap Owner address.
 ///      That single carve-out JIT-creates an `Owner` row so a fresh
@@ -2141,6 +2147,9 @@ async fn resolve_person_from_claims(
     );
 
     if let Some(existing) = persons::find_by_oidc_subject(surreal, &claims.sub).await? {
+        if !persons::is_admitted(surreal, existing.id).await? {
+            return Err(ResolveError::NotAdmitted);
+        }
         let mut role = existing.role;
         if is_bootstrap_owner && role != Role::Owner {
             role = Role::Owner;
@@ -2160,6 +2169,9 @@ async fn resolve_person_from_claims(
     // seeded lawyer (and then collide with `persons_email_lower_key`
     // on the insert below).
     if let Some(existing) = persons::find_by_email_ci(surreal, &email).await? {
+        if !persons::is_admitted(surreal, existing.id).await? {
+            return Err(ResolveError::NotAdmitted);
+        }
         let mut role = existing.role;
         if existing.oidc_subject.is_none() {
             persons::link_oidc_subject(surreal, existing.id, &claims.sub).await?;
@@ -2197,7 +2209,10 @@ async fn resolve_person_from_claims(
             // login as an existing (non-fresh) sign-in.
             Err(insert_err) => {
                 match resolve_existing_after_race(surreal, &claims.sub, &email).await? {
-                    Some(existing) => Ok((existing.id, existing.role, None)),
+                    Some(existing) if persons::is_admitted(surreal, existing.id).await? => {
+                        Ok((existing.id, existing.role, None))
+                    }
+                    Some(_) => Err(ResolveError::NotAdmitted),
                     None => Err(ResolveError::Db(insert_err)),
                 }
             }
@@ -2688,6 +2703,33 @@ mod tests {
                 .is_none(),
             "the 403 path must not create a person",
         );
+    }
+
+    #[tokio::test]
+    async fn an_unadmitted_person_is_refused_even_when_the_subject_is_linked() {
+        let surreal = mem_surreal().await;
+        let claims = unknown_claims("withdrawn@example.com");
+        let person = store::persons::create(
+            &surreal,
+            &store::persons::NewPerson {
+                oidc_subject: Some(claims.sub.clone()),
+                ..store::persons::NewPerson::with_role(
+                    "Withdrawn Person",
+                    "withdrawn@example.com",
+                    Role::Client,
+                )
+            },
+        )
+        .await
+        .expect("seed linked person");
+        store::persons::set_admitted(&surreal, person.id, false)
+            .await
+            .expect("withdraw person");
+
+        let err = resolve_person_from_claims(&surreal, &claims, None, true)
+            .await
+            .expect_err("an unadmitted linked row must not resolve");
+        assert!(matches!(err, ResolveError::NotAdmitted));
     }
 
     #[tokio::test]

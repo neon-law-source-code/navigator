@@ -6,6 +6,11 @@ identity (`sub`, `email`).
 
 > **Role decides the tier; participation decides the scope.**
 
+Sign-in has one separate admission fact: `person.is_admitted` decides whether an otherwise resolved person row may mint
+a session. It defaults to `true` for ordinary and historical rows. Discarding a pending intake sets it to `false` when
+the retained client row has no remaining Project participation; it does not change the person's role, participation
+history, or conflict record.
+
 The two columns:
 
 | Column | Table | Decides |
@@ -136,7 +141,8 @@ needs only the separate supervised capabilities explicitly granted to that role.
 Signing in with the IdP does not, by itself, create a `person` row. The OAuth callback resolves the IdP-authenticated
 subject against the table (`portal::oauth::resolve_person_from_claims`):
 
-- an existing row (matched on `oidc_subject` or, case-insensitively, `email`) signs in with its stored role;
+- an existing **admitted** row (matched on `oidc_subject` or, case-insensitively, `email`) signs in with its stored
+  role;
 - the configured `NAVIGATOR_BOOTSTRAP_OWNER_EMAIL` is JIT-created as `owner` on first login (the carve-out that keeps a
   fresh deploy from locking its Owner out), and role-healed back to `owner` on every subsequent login;
 - **every other unknown email is refused with a `403`** — onboarding is operator-mediated by default.

@@ -486,6 +486,7 @@ erDiagram
         option_string family_name
         option_string given_name
         datetime inserted_at
+        bool is_admitted
         option_string linkedin_url
         option_string middle_name
         string name

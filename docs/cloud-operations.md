@@ -209,6 +209,16 @@ Read-only `SELECT`s are allowed when the user asks for inspection. Before any `C
 The canonical seed is idempotent: it inserts missing rows and does not update existing production rows. A live data fix
 needs a guarded update, a one-shot backfill job, or an app seam.
 
+When a build first ships the explicit person-admission field, materialize its historical default with this idempotent,
+guarded backfill after staging has served the new binary:
+
+```surql
+UPDATE person SET is_admitted = true WHERE is_admitted IS NONE;
+```
+
+The application reads a missing value as admitted during the rollout window, so the backfill is cleanup rather than a
+prerequisite for safe reads. Run it through the approval procedure above; never fold it into the canonical seed.
+
 ## Spend reporting
 
 Report GCP spend from the BigQuery Cloud Billing export, not console guesses or rate-card math. Always show:

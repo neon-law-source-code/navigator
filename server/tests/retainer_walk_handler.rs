@@ -671,6 +671,12 @@ async fn start_post_refuses_a_self_serve_intake_adverse_to_a_current_client() {
             .is_none(),
         "no matter opens on a blocking conflict",
     );
+    assert!(
+        !store::persons::is_admitted(&surreal, proposed)
+            .await
+            .unwrap(),
+        "a retained client row left without a matter must not remain sign-in admitted",
+    );
 }
 
 #[tokio::test]

@@ -1184,6 +1184,42 @@ pub async fn set_email_confirmed(
     .await
 }
 
+/// Read the explicit admission decision for a person.
+///
+/// The field was added after person rows already existed, so a missing value
+/// is the compatible historical shape and means admitted. This is deliberately
+/// separate from [`Role`] and project participation: it answers only whether
+/// the row may mint a session.
+pub async fn is_admitted(db: &SurrealDb, id: Uuid) -> Result<bool, PersonError> {
+    let mut response = db
+        .query("SELECT VALUE is_admitted FROM ONLY $id LIMIT 1")
+        .bind(("id", record_id(TABLE, id)))
+        .await
+        .and_then(surrealdb::IndexedResults::check)?;
+    let value: Option<bool> = response.take(0)?;
+    Ok(value.unwrap_or(true))
+}
+
+/// Set a person's explicit sign-in admission decision. Returns `None` when
+/// the person no longer exists.
+///
+/// This internal lifecycle flag does not change the person's role or any
+/// project participation. It is used when a pending intake is discarded and
+/// the retained directory row must no longer be treated as an admission.
+pub async fn set_admitted(
+    db: &SurrealDb,
+    id: Uuid,
+    admitted: bool,
+) -> Result<Option<Person>, PersonError> {
+    update_one(
+        db,
+        id,
+        "is_admitted = $admitted",
+        vec![bind("admitted", admitted)],
+    )
+    .await
+}
+
 /// Cache the Xero `ContactID` on a person. No-op (`Ok(None)`) when the
 /// person row no longer exists. Idempotent: re-setting the same id just
 /// bumps `updated_at`.
@@ -1279,9 +1315,10 @@ pub async fn delete(db: &SurrealDb, id: Uuid) -> Result<(), PersonError> {
 mod tests {
     use super::{
         create, default_firm_dri, delete, edit, find_by_email_ci, find_by_id, find_by_ids,
-        find_by_oidc_subject, find_or_create, find_team_members, link_oidc_subject, list_directory,
-        retry, search, set_email_confirmed, set_role, set_xero_contact_id, update_contact,
-        ContactUpdate, NewPerson, PersonEdit, PersonError, Role,
+        find_by_oidc_subject, find_or_create, find_team_members, is_admitted, link_oidc_subject,
+        list_directory, retry, search, set_admitted, set_email_confirmed, set_role,
+        set_xero_contact_id, update_contact, ContactUpdate, NewPerson, PersonEdit, PersonError,
+        Role,
     };
     use crate::surreal::test_support::mem;
     use crate::surreal::{record_id, SurrealDb};
@@ -2267,6 +2304,42 @@ mod tests {
             .await
             .unwrap()
             .is_none());
+    }
+
+    #[tokio::test]
+    async fn admission_defaults_on_and_can_be_withdrawn_without_changing_the_person() {
+        let db = mem().await;
+        let row = person(&db, "Stella", "stella-admission@example.com").await;
+
+        assert!(is_admitted(&db, row.id).await.unwrap());
+        let withdrawn = set_admitted(&db, row.id, false).await.unwrap().unwrap();
+        assert_eq!(withdrawn.id, row.id);
+        assert!(!is_admitted(&db, row.id).await.unwrap());
+
+        let restored = set_admitted(&db, row.id, true).await.unwrap().unwrap();
+        assert_eq!(restored.role, Role::Client);
+        assert!(is_admitted(&db, row.id).await.unwrap());
+        assert!(set_admitted(&db, Uuid::now_v7(), false)
+            .await
+            .unwrap()
+            .is_none());
+    }
+
+    #[tokio::test]
+    async fn a_person_written_before_admission_was_defined_reads_as_admitted() {
+        let db = mem().await;
+        db.query("REMOVE FIELD is_admitted ON person")
+            .await
+            .unwrap();
+        let row = person(&db, "Ada", "ada-admission@example.com").await;
+        db.query("DEFINE FIELD OVERWRITE is_admitted ON person TYPE bool DEFAULT true")
+            .await
+            .unwrap();
+
+        assert!(
+            is_admitted(&db, row.id).await.unwrap(),
+            "a legacy row with no admission value remains admitted"
+        );
     }
 
     #[tokio::test]

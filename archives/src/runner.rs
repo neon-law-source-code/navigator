@@ -361,6 +361,7 @@ mod tests {
             "email_lower".into(),
             "id".into(),
             "inserted_at".into(),
+            "is_admitted".into(),
             "name".into(),
             "role".into(),
             "updated_at".into(),

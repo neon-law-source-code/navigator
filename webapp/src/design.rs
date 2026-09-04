@@ -553,18 +553,27 @@ fn AppFooterShowcase() -> Element {
     }
 }
 
-/// The authenticated app's shared global chrome. The gallery supplies a
-/// synthetic host-aware footer and a selected lawyer destination; real route
-/// adapters provide the same model from the authenticated request.
+/// The unified Navigator shell — prepared, but not yet adopted by any real
+/// `/app` page. The eight real pages render `AppNavbar` (see
+/// `AppNavbarShowcase` above) and get `AppFooter` injected once per response
+/// instead; this shell exists so a page migrating onto it has something to
+/// render against. The gallery supplies a synthetic host-aware footer and a
+/// selected lawyer destination; an adopting route would resolve the same
+/// model from the authenticated request.
 #[component]
 fn NavigatorChromeShowcase() -> Element {
     rsx! {
         section {
-            h2 { "Authenticated Navigator chrome" }
+            h2 { "Unified Navigator chrome (not yet adopted)" }
             p {
-                "Every authenticated surface shares one global navbar and footer. "
-                "Routes supply only the destinations the current viewer may see, the active "
-                "destination, and host-specific legal/release footer content."
+                "A prepared global navbar and footer for authenticated surfaces — not what the "
+                "real /app pages render today. Those render "
+                code { "AppNavbar" }
+                " directly and get "
+                code { "AppFooter" }
+                " injected once per response (shown above). A page that adopts this shell would "
+                "supply the same destinations, active state, and host-specific legal/release "
+                "footer content."
             }
             div { class: "navigator-chrome-showcase",
                 // The gallery already owns the page's `<main>` landmark, so the

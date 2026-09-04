@@ -28,9 +28,6 @@ bands:
             company to delete personal data it holds about them. It is an
             attorney advertisement. It is not legal advice, and it is not a
             promise that a company will delete anything.
-      - - text: >-
-            We do not publish a fee here. Email the practice and we will
-            quote the matter before we start.
   - kind: cards
     anchor: work
     overline: The work
@@ -39,12 +36,15 @@ bands:
       Each matter is scoped and quoted on its own facts. Government or
       platform fees, if any, are passed through at cost.
     items:
-      - title: A data-deletion request
+      - title: Removal Request
+        chips:
+          - "$10"
         body:
           - - text: >-
                 We review what you send, draft a request over the firm's
                 signature, and send it to the company you name. A licensed
-                attorney reviews it before it goes out.
+                attorney reviews it before it goes out. Per company, per
+                request.
       - title: Follow-up on that request
         body:
           - - text: >-

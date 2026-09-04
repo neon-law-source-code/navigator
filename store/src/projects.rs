@@ -1900,8 +1900,9 @@ pub struct OpenMatterCommand {
     pub brand: String,
     /// The opening attorney's conflict attestation. Required on **every** open
     /// — at this firm `lawyer` is an attorney, so a lawyer/admin session opening
-    /// a matter is an attorney attesting they have checked for and cleared
-    /// conflicts. A missing attestation is refused; it is never defaulted true.
+    /// a Project is an attorney attesting they have checked for conflicts, and
+    /// that either none prevent the open or the Project is not legal advice.
+    /// A missing attestation is refused; it is never defaulted true.
     pub attestation: bool,
     /// The attesting attorney — the opening `lawyer` (=attorney) person, who
     /// becomes the matter's accountable lawyer DRI and the actor on the
@@ -1929,7 +1930,7 @@ pub enum OpenMatterError {
     /// Carries which one so the adapter can point the caller at it.
     #[error("no such {0}")]
     NotFound(&'static str),
-    /// No conflict attestation was supplied. Every matter open requires the
+    /// No conflict attestation was supplied. Every Project open requires the
     /// opening attorney to attest; there is no default.
     #[error("a matter open requires the attorney's conflict attestation")]
     AttestationRequired,
@@ -2038,7 +2039,7 @@ pub async fn open_matter(
     input: &OpenMatterCommand,
 ) -> Result<Project, OpenMatterError> {
     // The attorney's attestation gates every open, checked first: no amount of
-    // valid form data opens a matter the attorney hasn't attested to.
+    // valid form data opens a Project the attorney hasn't attested to.
     if !input.attestation {
         return Err(OpenMatterError::AttestationRequired);
     }

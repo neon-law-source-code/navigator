@@ -235,7 +235,7 @@ async fn shared_party_is_refused_without_attestation_then_opens_with_it() {
     let resp = post_projects(&app, base.clone()).await;
     assert_refused_with(
         &resp,
-        "Attest that you have checked for and cleared conflicts",
+        "Attest that you have checked for conflicts, and that either none prevent opening this Project or this Project is not legal advice",
     );
     assert!(
         store::projects::find_by_name(&surreal, "Shared entity matter")

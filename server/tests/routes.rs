@@ -5700,6 +5700,11 @@ async fn api_projects_open_requires_the_attorneys_attestation() {
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     let body: serde_json::Value = serde_json::from_str(&body_string(resp).await).unwrap();
     assert_eq!(body["error"], "attestation_required");
+    let message = body["message"].as_str().unwrap_or("");
+    assert!(
+        message.contains("not legal advice"),
+        "the JSON door states the non-legal limb: {message}"
+    );
     assert!(
         store::projects::all(&surreal).await.unwrap().is_empty(),
         "an unattested open writes no matter"

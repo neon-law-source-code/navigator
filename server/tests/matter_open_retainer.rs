@@ -229,7 +229,7 @@ async fn matter_open_without_attestation_is_refused_with_no_matter() {
     let resp = post_projects(&app, body).await;
     assert_refused_with(
         &resp,
-        "Attest that you have checked for and cleared conflicts",
+        "Attest that you have checked for conflicts, and that either none prevent opening this Project or this Project is not legal advice",
     );
     assert!(
         !project_named_exists(&surreal, "Unattested matter").await,

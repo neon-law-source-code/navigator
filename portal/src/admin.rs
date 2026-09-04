@@ -1629,8 +1629,8 @@ fn open_matter_form_error(
 ) -> Response {
     use store::projects::OpenMatterError as E;
     let msg = match err {
-        E::AttestationRequired => "Attest that you have checked for and cleared conflicts before \
-             opening this matter."
+        E::AttestationRequired => "Attest that you have checked for conflicts, and that either \
+             none prevent opening this Project or this Project is not legal advice."
             .to_string(),
         E::BlockingConflict(findings) => format!(
             "Conflict check blocked this matter — it is adverse to a current client. Resolve the \

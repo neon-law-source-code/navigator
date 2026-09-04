@@ -31,8 +31,9 @@ pub struct CreatedProject {
 /// best-effort; a Drive or forge fault leaves the matter open.
 ///
 /// `attest` is the operator's explicit `--attest` affirmation that the
-/// attorney has checked for and cleared conflicts; the command refuses the
-/// open without it (there is no default). A matter always opens as `open`, so
+/// attorney has checked for conflicts, and that either none prevent the
+/// open or this Project is not legal advice; the command refuses the
+/// open without it (there is no default). A Project always opens as `open`, so
 /// there is no status argument — lifecycle transitions are their own commands
 /// (navigator#770).
 ///
@@ -113,8 +114,9 @@ pub async fn create(
     .await
     .map_err(|e| match e {
         store::projects::OpenMatterError::AttestationRequired => anyhow::anyhow!(
-            "this matter open requires attestation — pass --attest to affirm the attorney \
-             has checked for and cleared conflicts for this matter"
+            "this Project open requires attestation — pass --attest to affirm the attorney \
+             has checked for conflicts, and that either none prevent the open or this \
+             Project is not legal advice"
         ),
         store::projects::OpenMatterError::BlockingConflict(findings) => anyhow::anyhow!(
             "conflict check refused this matter — it is adverse to a current client:\n{}",

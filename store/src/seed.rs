@@ -1776,6 +1776,7 @@ async fn ensure_dev_project(
         status: "open".to_string(),
         brand: brand.to_string(),
         entity_id,
+        firm_id: None,
         description: Some(description.to_string()),
     };
     let row = match crate::projects::find_by_code(surreal, code).await? {

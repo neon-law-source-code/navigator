@@ -134,7 +134,8 @@ run loop — its telemetry service name and the public routes and Dioxus routers
 Distinct again from [`views::brand::SiteBrand`](../views/src/brand.rs) (`FIRM_BRAND`), the presentation half: the
 strings, nav links, and footer attribution a page renders for whichever `Branding` is scoped to the request, overridable
 by a mounted `BrandManifest` for the `neon` key alone. `BrandKey` names *which identity a request resolved to*, `Site`
-names *the serving binary's own composition*, and `SiteBrand` names *what the page says*.
+names *the serving binary's own composition*, and `SiteBrand` names *what the page says*. A [Firm](#firm) is none of
+those three: it is the owning practice beneath the brand registry.
 
 - Deployment map: [`environments`](environments.md#why-the-brand-is-the-image)
 
@@ -629,6 +630,23 @@ The workflow prefix `filing` records a named government filing. It is an outboun
 [Lawyer Review](#lawyer-review). See the [`notation-authoring`](notation-authoring.md#changing-the-workflow-composition)
 guide and [`workflows::step::STEP_PREFIXES`](../workflows/src/step.rs).
 
+## Firm
+
+An owning practice. The `firm` table is the tenancy boundary for [Projects](#project) and for the people who work them:
+`project.firm_id` points at the practice that owns the matter, and [`Person–Firm Role`](#personfirm-role) records who
+belongs to that practice. A Firm is not a [Brand](#brand). Brand is the storefront a request resolved to; Firm is which
+practice owns the matter. Binding a brand key to a firm row is not modeled.
+
+Distinct from [`firm_anchor`](../store/src/schema/navigator.surql), which still pins exactly one [Entity](#entity) as
+the Firm-of-record on the [Conflict-Check Graph](#conflict-check-graph). A deployment may hold several `firm` rows; it
+still holds at most one `firm_anchor` claim. `person.role = owner` remains the one system-wide Owner tier; it is not a
+value on `person_firm_role`.
+
+Authorization still reads `person.role` and `person_project_role` only. Cross-firm isolation is not yet a Rego rule.
+
+- Schema: [`firm` in `navigator.surql`](../store/src/schema/navigator.surql) ·
+  [`store::firms`](../store/src/firms.rs)
+
 ## Firm Signature
 
 The workflow prefix `firm_signature` records a lawyer-side signature, usually the firm's countersignature or closing
@@ -892,6 +910,20 @@ There is no surrogate key: a tie's identity is its two endpoints plus its `role`
 - Schema and queries: [`store::entity_roles`](../store/src/entity_roles.rs) (SurrealDB; ENG-120) — Lives in the
   `entity_role` relation
 
+## Person–Firm Role
+
+A Person's membership at a [Firm](#firm). Shaped like [Person–Project Role](#personproject-role): `person_id`,
+`firm_id`, a closed `membership` (`admin`, `lawyer`, `clerk`), `is_dri`, and timestamps. Unique on the
+`person_id`/`firm_id` pair. It does not replace `person.role`. Clients do not get a row here — they reach a matter
+through person–project participation. `owner` is not a membership value: the deployment-wide Owner identity stays on
+`person.role`.
+
+The command seam reads both referenced rows before writing, because a `record<>` link constrains the target table but
+does not prove the row exists.
+
+- Schema: [`store::firms`](../store/src/firms.rs) ·
+  [`store/src/schema/navigator.surql`](../store/src/schema/navigator.surql)
+
 ## Person–Project Role
 
 A Person's participation on a Project. The `participation` column records which side of the matter they are on, and it
@@ -1007,6 +1039,10 @@ this way — and never accepted from a client-submitted form or JSON field; `Upd
 field, so it cannot be changed after open, the same immutability `code` has. `store` does not depend on `views`, so
 `Project::brand` is a plain validated `String`; the SurrealDB schema's `ASSERT` is the single source of truth for which
 values are valid, not a shared Rust enum.
+
+**`firm_id` records which [Firm](#firm) owns the matter.** Optional until a backfill points existing rows at a firm
+record. Distinct from `brand`: the brand is the door, the firm is the house. `UpdateProjectCommand` does not accept
+`firm_id` from a client-submitted form.
 
 Object-storage artifacts (rendered PDFs, signed documents, generated exports) live in
 `gs://YOUR_PROJECT_ID-assets/projects/{id}/` for machine reads, and the nightly store→Parquet snapshots are immutable

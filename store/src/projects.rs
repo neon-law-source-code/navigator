@@ -40,6 +40,9 @@ pub struct Project {
     /// single source of truth for which values are valid.
     pub brand: String,
     pub entity_id: Uuid,
+    /// Owning practice. `None` until the row is pointed at a
+    /// [`crate::firms::Firm`].
+    pub firm_id: Option<Uuid>,
     pub description: Option<String>,
     pub drive_folder_id: Option<String>,
     /// The full URL of the one source repository holding this Project's
@@ -101,6 +104,7 @@ struct ProjectRow {
     /// written.
     brand: Option<String>,
     entity_id: surrealdb::types::RecordId,
+    firm_id: Option<surrealdb::types::RecordId>,
     description: Option<String>,
     drive_folder_id: Option<String>,
     repository_url: Option<String>,
@@ -125,6 +129,10 @@ impl ProjectRow {
             status: self.status,
             brand: self.brand.unwrap_or_else(|| "neon".to_string()),
             entity_id: record_uuid(&self.entity_id)?,
+            firm_id: match self.firm_id.as_ref() {
+                None => None,
+                Some(id) => Some(record_uuid(id)?),
+            },
             description: self.description,
             drive_folder_id: self.drive_folder_id,
             repository_url: self.repository_url,
@@ -146,7 +154,7 @@ pub(crate) const PROJECT_TABLE: &str = "project";
 /// The entities cluster this table links into (ENG-120).
 const ENTITY_TABLE: &str = "entity";
 const PERSON_PROJECT_ROLE_TABLE: &str = "person_project_role";
-const PROJECT_SELECT: &str = "id, code, name, status, brand, entity_id, description, \
+const PROJECT_SELECT: &str = "id, code, name, status, brand, entity_id, firm_id, description, \
                               drive_folder_id, repository_url, git_initialized_at, \
                               forge_provisioned_at, closed_at, \
                               internal_slack_channel_url, external_slack_channel_url, \
@@ -161,6 +169,8 @@ pub enum ProjectStoreError {
     Db(#[from] surrealdb::Error),
     #[error(transparent)]
     Person(#[from] crate::persons::PersonError),
+    #[error(transparent)]
+    Firm(#[from] crate::firms::FirmError),
     #[error("that project code is already in use")]
     CodeTaken,
     /// A direct write tried to change `code` on an existing row. The engine
@@ -177,6 +187,8 @@ pub enum ProjectStoreError {
     NoSuchPerson(Uuid),
     #[error("no project {0}")]
     NoSuchProject(Uuid),
+    #[error("no firm {0}")]
+    NoSuchFirm(Uuid),
 }
 
 fn classify_project_write(error: surrealdb::Error) -> ProjectStoreError {
@@ -225,6 +237,9 @@ pub struct NewProject {
     /// host instead.
     pub brand: String,
     pub entity_id: Uuid,
+    /// Owning practice. `None` on a row that has not yet been pointed at a
+    /// firm — every existing caller that uses [`Default`] keeps that shape.
+    pub firm_id: Option<Uuid>,
     pub description: Option<String>,
 }
 
@@ -236,6 +251,7 @@ impl Default for NewProject {
             status: String::new(),
             brand: "neon".to_string(),
             entity_id: Uuid::nil(),
+            firm_id: None,
             description: None,
         }
     }
@@ -823,6 +839,11 @@ pub async fn clear_dri_in_surreal(
 /// Writes retry only typed Surreal transaction conflicts; a code collision is
 /// a caller-correctable conflict and is never retried as if it were transient.
 pub async fn create(surreal: &SurrealDb, input: &NewProject) -> Result<Project, ProjectStoreError> {
+    if let Some(firm_id) = input.firm_id {
+        if crate::firms::find_by_id(surreal, firm_id).await?.is_none() {
+            return Err(ProjectStoreError::NoSuchFirm(firm_id));
+        }
+    }
     let id = Uuid::now_v7();
     let now = chrono::Utc::now().to_rfc3339();
     let mut response = writing_project(|| {
@@ -831,6 +852,7 @@ pub async fn create(surreal: &SurrealDb, input: &NewProject) -> Result<Project, 
                 "CREATE $id SET code = $code, name = $name, status = $status, \
                  brand = $brand, \
                  entity_id = $entity_id, \
+                 firm_id = $firm_id, \
                  description = $description, inserted_at = $inserted_at, \
                  updated_at = $updated_at RETURN {PROJECT_SELECT}"
             ))
@@ -840,6 +862,12 @@ pub async fn create(surreal: &SurrealDb, input: &NewProject) -> Result<Project, 
             .bind(("status", input.status.clone()))
             .bind(("brand", input.brand.clone()))
             .bind(("entity_id", record_id(ENTITY_TABLE, input.entity_id)))
+            .bind((
+                "firm_id",
+                input
+                    .firm_id
+                    .map(|firm_id| record_id(crate::firms::TABLE, firm_id)),
+            ))
             .bind(("description", input.description.clone()))
             .bind(("inserted_at", now.clone()))
             .bind(("updated_at", now.clone()))
@@ -905,13 +933,24 @@ pub async fn upsert_with_id(
     id: Uuid,
     input: &NewProject,
 ) -> Result<Project, ProjectStoreError> {
+    if let Some(firm_id) = input.firm_id {
+        if crate::firms::find_by_id(surreal, firm_id).await?.is_none() {
+            return Err(ProjectStoreError::NoSuchFirm(firm_id));
+        }
+    }
     let now = chrono::Utc::now().to_rfc3339();
+    let firm_set = if input.firm_id.is_some() {
+        "firm_id = $firm_id,"
+    } else {
+        ""
+    };
     let mut response = writing_project(|| {
         surreal
             .query(format!(
                 "UPSERT $id SET code = $code, name = $name, status = $status, \
                  brand = $brand, \
                  entity_id = $entity_id, \
+                 {firm_set} \
                  description = $description, \
                  inserted_at = IF inserted_at THEN inserted_at ELSE $inserted_at END, \
                  updated_at = $updated_at RETURN {PROJECT_SELECT}"
@@ -922,6 +961,12 @@ pub async fn upsert_with_id(
             .bind(("status", input.status.clone()))
             .bind(("brand", input.brand.clone()))
             .bind(("entity_id", record_id(ENTITY_TABLE, input.entity_id)))
+            .bind((
+                "firm_id",
+                input
+                    .firm_id
+                    .map(|firm_id| record_id(crate::firms::TABLE, firm_id)),
+            ))
             .bind(("description", input.description.clone()))
             .bind(("inserted_at", now.clone()))
             .bind(("updated_at", now.clone()))
@@ -2496,6 +2541,7 @@ mod surreal_read_tests {
                     brand: brand.to_string(),
                     entity_id,
                     description: None,
+                    ..Default::default()
                 }
             };
             let created = create(&db, &input).await.unwrap();

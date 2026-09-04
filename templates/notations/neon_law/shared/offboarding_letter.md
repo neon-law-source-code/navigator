@@ -5,7 +5,6 @@ respondent_type: person_and_entity
 code: offboarding__letter
 jurisdiction: NV
 confidential: true
-output: letter
 prompts:
   client_name: What is the client's full legal name?
   project_name: What is the project name for this engagement?

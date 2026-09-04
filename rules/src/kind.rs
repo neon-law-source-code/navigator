@@ -414,6 +414,66 @@ impl Kind {
         self.is_notation() || self == Kind::Github
     }
 
+    /// The render profile a notation of this kind renders under when its
+    /// template declares no `output:` frontmatter field at all — the
+    /// default `N109`'s optional field falls back to. One of
+    /// [`crate::F109OutputFormat::VALID`] (`"letter"`, `"agreement"`,
+    /// `"form"`) or `"plain"`, the implicit default `output:` itself
+    /// never declares. A template's own `output:` is still an explicit
+    /// override: whatever resolves it (`cli::run_render`'s `--format` →
+    /// `output:` → this default → plain chain) tries the declared value
+    /// first and only falls back to this default when the field is
+    /// absent.
+    ///
+    /// Only a notation-family kind ([`Kind::is_notation`]) ever reaches
+    /// a render profile — `output:` means nothing for a content page, a
+    /// dashboard, `github`, or an asset-lane classification, so every
+    /// other kind returns `"plain"` without endorsing a render surface
+    /// for it.
+    ///
+    /// Deliberately an exhaustive `match`: adding a [`Kind`] fails to
+    /// compile until it declares which default format it falls under.
+    #[must_use]
+    pub fn default_output(self) -> &'static str {
+        match self {
+            // The firm is speaking in its own voice: a letter, the
+            // engagement that opens a matter, the letter that closes
+            // one, and an analytical memo all go out on letterhead.
+            Kind::Letter | Kind::Onboarding | Kind::Offboarding | Kind::Memo => "letter",
+            // Already true in practice before this method existed: every
+            // template that declares `output: form` is `kind: filing`.
+            Kind::Filing => "form",
+            // Instruments between other parties never carry firm
+            // letterhead. Every other kind below never reaches a render
+            // profile: content pages, matter dashboards, the GitHub intake,
+            // and asset-lane-only classifications. `Agreement` covers the
+            // firm's own contractor agreements too, which override via an
+            // explicit `output:`.
+            Kind::Will
+            | Kind::Trust
+            | Kind::Directive
+            | Kind::Agreement
+            | Kind::Event
+            | Kind::Post
+            | Kind::Workshop
+            | Kind::Github
+            | Kind::Transcript
+            | Kind::InboundContract
+            | Kind::CertificateOfNaturalization
+            | Kind::Unclassified
+            | Kind::ReviewQueueWorkbench
+            | Kind::VerifierSplitView
+            | Kind::MatterStatusConsole
+            | Kind::DocketDeadlineBoard
+            | Kind::DocumentWorkbench
+            | Kind::AuthorityLibrary
+            | Kind::DiscoveryCockpit
+            | Kind::HearingConsole
+            | Kind::DeliverablePackage
+            | Kind::EngagementBillingRecords => "plain",
+        }
+    }
+
     /// True when this kind may be declared in `lane`.
     ///
     /// One vocabulary spans both of Navigator's document lanes, but not
@@ -852,6 +912,79 @@ mod tests {
             Kind::parse("certificate_of_naturalization"),
             Some(Kind::CertificateOfNaturalization)
         );
+    }
+
+    #[test]
+    fn default_output_is_always_a_declarable_value_or_plain() {
+        // Every kind's default must be either one of N109's declarable
+        // values or "plain" — the same closed vocabulary `output:` itself
+        // is held to, so a caller can always feed this straight into the
+        // same parser it feeds an explicit `output:` value through.
+        for kind in Kind::ALL {
+            let default = kind.default_output();
+            assert!(
+                default == "plain" || crate::F109OutputFormat::VALID.contains(&default),
+                "{} defaults to unrecognized profile `{default}`",
+                kind.as_str()
+            );
+        }
+    }
+
+    #[test]
+    fn letterhead_kinds_default_to_letter() {
+        // The firm speaks in its own voice: a letter, the engagement that
+        // opens a matter, the letter that closes one, and an analytical
+        // memo all go out on letterhead by default.
+        for kind in [
+            Kind::Letter,
+            Kind::Onboarding,
+            Kind::Offboarding,
+            Kind::Memo,
+        ] {
+            assert_eq!(
+                kind.default_output(),
+                "letter",
+                "{} should default to letterhead",
+                kind.as_str()
+            );
+        }
+    }
+
+    #[test]
+    fn filing_defaults_to_form() {
+        // Already true in practice: every template that declares
+        // `output: form` is `kind: filing`.
+        assert_eq!(Kind::Filing.default_output(), "form");
+    }
+
+    #[test]
+    fn instruments_between_other_parties_default_to_plain() {
+        // A will, a trust, a directive, and a private agreement never
+        // carry firm letterhead by default; the firm's own contractor
+        // agreements override via an explicit `output:`.
+        for kind in [Kind::Will, Kind::Trust, Kind::Directive, Kind::Agreement] {
+            assert_eq!(
+                kind.default_output(),
+                "plain",
+                "{} should default to plain",
+                kind.as_str()
+            );
+        }
+    }
+
+    #[test]
+    fn non_notation_kinds_default_to_plain() {
+        // `output:` means nothing for a content page, a dashboard,
+        // `github`, or an asset-lane classification — none of them ever
+        // reaches a render profile, so none endorses a render surface.
+        for kind in Kind::ALL.iter().filter(|k| !k.is_notation()) {
+            assert_eq!(
+                kind.default_output(),
+                "plain",
+                "{} is not notation-family and should default to plain",
+                kind.as_str()
+            );
+        }
     }
 
     #[test]

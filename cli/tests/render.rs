@@ -42,6 +42,65 @@ Pay the sum of `{{amount}}` to **NEON LAW** without delay.
 - Second point
 ";
 
+/// Same fixture as `VALID` but with no `output:` declared at all — the
+/// regression case: a `kind: letter` template must still render on
+/// letterhead by default, derived from `Kind::default_output`.
+const VALID_NO_OUTPUT: &str = "\
+---
+kind: letter
+title: Test Demand
+respondent_type: entity
+code: test__demand
+confidential: true
+questionnaire:
+  BEGIN:
+    _: END
+  END: {}
+workflow:
+  BEGIN:
+    intake_submitted: lawyer_review
+  lawyer_review:
+    approved: END
+    rejected: END
+  END: {}
+---
+
+# Demand
+
+Pay the sum of `{{amount}}` to **NEON LAW** without delay.
+
+- First point
+- Second point
+";
+
+/// Same shape, `kind: will` — a kind whose default is `plain`, so this
+/// proves the derivation does not blanket every notation kind in
+/// letterhead.
+const VALID_WILL_NO_OUTPUT: &str = "\
+---
+kind: will
+title: Test Will
+respondent_type: person
+code: test__will
+confidential: true
+questionnaire:
+  BEGIN:
+    _: END
+  END: {}
+workflow:
+  BEGIN:
+    intake_submitted: lawyer_review
+  lawyer_review:
+    approved: END
+    rejected: END
+  END: {}
+---
+
+# Last Will and Testament
+
+I hereby revoke all prior wills.
+";
+
 const VALID_TYPED: &str = "\
 ---
 kind: letter
@@ -133,6 +192,68 @@ fn cli_format_overrides_frontmatter_and_letter_is_larger_than_plain() {
     assert!(
         letter_len > plain_len,
         "letterhead PDF ({letter_len}) should exceed plain ({plain_len}) — logo missing?"
+    );
+}
+
+#[test]
+fn a_letter_kind_renders_on_letterhead_with_no_output_declared() {
+    // The regression case: a `kind: letter` template with no `output:`
+    // field must still derive letterhead by default, not silently fall
+    // back to plain.
+    let work = TempDir::new().unwrap();
+    let src = write(&work, "demand.md", VALID_NO_OUTPUT);
+
+    let derived_out = work.path().join("derived.pdf");
+    let derived = render(&[src.as_os_str(), "--out".as_ref(), derived_out.as_ref()]);
+    assert!(
+        derived.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&derived.stderr)
+    );
+
+    let plain_out = work.path().join("plain.pdf");
+    let plain = render(&[
+        src.as_os_str(),
+        "--out".as_ref(),
+        plain_out.as_ref(),
+        "--format".as_ref(),
+        "plain".as_ref(),
+    ]);
+    assert!(plain.status.success());
+
+    let derived_len = fs::read(&derived_out).unwrap().len();
+    let plain_len = fs::read(&plain_out).unwrap().len();
+    assert!(
+        derived_len > plain_len,
+        "a `kind: letter` template with no `output:` should default to \
+         letterhead ({derived_len}) rather than plain ({plain_len}) — logo missing?"
+    );
+
+    // An explicit `--format` still overrides the derived default.
+    let stdout = String::from_utf8_lossy(&plain.stdout);
+    assert!(
+        stdout.contains("Plain"),
+        "override should report Plain, got: {stdout}"
+    );
+}
+
+#[test]
+fn a_plain_default_kind_renders_plain_with_no_output_declared() {
+    // The mirror case: `kind: will` defaults to plain, so a template
+    // declaring no `output:` must not pick up letterhead by accident.
+    let work = TempDir::new().unwrap();
+    let src = write(&work, "will.md", VALID_WILL_NO_OUTPUT);
+    let out = work.path().join("will.pdf");
+    let result = render(&[src.as_os_str(), "--out".as_ref(), out.as_os_str()]);
+    assert!(
+        result.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    assert!(
+        stdout.contains("Plain"),
+        "a `kind: will` template with no `output:` should render Plain, got: {stdout}"
     );
 }
 

@@ -529,10 +529,14 @@ enum TemplateCmd {
     /// The file is validated against the same notation rule set as
     /// `validate` first — a template with any violation is refused. The
     /// output format is taken from the template's `output:` frontmatter
-    /// field, overridable with `--format`; absent both, it renders
-    /// plain. Markdown is converted to Typst and compiled in pure Rust
-    /// (no shell-out). `{{placeholder}}` tokens render verbatim unless
-    /// filled with `--answer code=value`.
+    /// field, overridable with `--format`; absent an explicit value
+    /// either way, it falls back to the default `Kind::default_output`
+    /// derives from the template's declared `kind:` (a `letter` renders
+    /// on letterhead by default, for instance), and to plain when even
+    /// that has no Typst counterpart or no `kind:` is declared. Markdown
+    /// is converted to Typst and compiled in pure Rust (no shell-out).
+    /// `{{placeholder}}` tokens render verbatim unless filled with
+    /// `--answer code=value`.
     Render {
         /// Path to the notation template (`.md`).
         file: PathBuf,
@@ -2828,8 +2832,9 @@ const DOCUMENT_UPLOAD_KIND_HELP: &str = "Accepted --kind values: letter, filing,
 
 /// Render one notation template to a PDF. Validates the file against the
 /// notation rule set, resolves the output format (CLI override →
-/// `output:` frontmatter → plain), fills any `{{code}}` placeholders
-/// from `answers`, and writes the compiled PDF to `out`.
+/// `output:` frontmatter → the `kind:`-derived default → plain), fills
+/// any `{{code}}` placeholders from `answers`, and writes the compiled
+/// PDF to `out`.
 fn run_render(
     file: &std::path::Path,
     out: &std::path::Path,
@@ -2869,15 +2874,24 @@ fn run_render(
         return ExitCode::from(1);
     }
 
-    // Resolve the output format: explicit flag wins, else the
-    // template's `output:` field, else plain.
+    // Resolve the output format: explicit flag wins, else the template's
+    // `output:` field, else the default `Kind::default_output` derives
+    // from its declared `kind:`, else plain.
     let declared = rules::frontmatter::extract(&contents)
         .and_then(|fm| rules::frontmatter::field(fm, "output"))
         .filter(|s| !s.is_empty());
     let format_name = format_override.map(str::to_string).or(declared);
     let format = match format_name.as_deref().map(pdf::OutputFormat::parse) {
-        // No format declared anywhere: render a plain document.
-        None => pdf::OutputFormat::Plain,
+        // No explicit format anywhere: derive a default from the
+        // template's declared `kind:`. A kind whose default is
+        // unrecognized here (`filing` → `form`, the AcroForm mode this
+        // Typst-only preview never renders) falls back to plain, the
+        // same as a template that declares no `kind:` at all.
+        None => rules::frontmatter::extract(&contents)
+            .and_then(|fm| rules::frontmatter::field(fm, "kind"))
+            .and_then(|k| rules::Kind::parse(&k))
+            .and_then(|k| pdf::OutputFormat::parse(k.default_output()))
+            .unwrap_or_default(),
         Some(Some(f)) => f,
         Some(None) => {
             let name = format_name.unwrap_or_default();

@@ -721,4 +721,25 @@ mod tests {
         assert_eq!(display_type("UUID"), "uuid");
         assert_eq!(display_type("option_Datetime"), "option_datetime");
     }
+
+    #[tokio::test]
+    async fn mermaid_diagram_includes_firm_and_membership() {
+        let db = store::test_support::mem_surreal().await;
+        let schema = fetch_surreal_schema(&db)
+            .await
+            .expect("introspect the applied schema");
+        let mermaid = render_mermaid(&schema);
+        assert!(
+            mermaid.contains("    firm {"),
+            "firm table missing from ERD"
+        );
+        assert!(
+            mermaid.contains("    person_firm_role {"),
+            "person_firm_role table missing from ERD"
+        );
+        assert!(
+            mermaid.contains("option_record_firm firm_id FK"),
+            "project.firm_id missing from ERD"
+        );
+    }
 }

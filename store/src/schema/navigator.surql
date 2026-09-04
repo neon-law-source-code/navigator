@@ -72,6 +72,11 @@ DEFINE FIELD OVERWRITE status ON project TYPE string;
 DEFINE FIELD OVERWRITE brand ON project TYPE option<string>
     ASSERT $value = NONE OR $value IN ['neon', 'delete-your-data'];
 DEFINE FIELD OVERWRITE entity_id ON project TYPE record<entity>;
+-- Owning practice. Optional until the one-shot backfill points existing
+-- rows at a `firm` record: `DEFAULT` is write-time only and does not
+-- reach rows written before this field existed, so the store reads
+-- `option<record<firm>>` and treats absence as "not yet owned".
+DEFINE FIELD OVERWRITE firm_id ON project TYPE option<record<firm>>;
 DEFINE FIELD OVERWRITE description ON project TYPE option<string>;
 DEFINE FIELD OVERWRITE drive_folder_id ON project TYPE option<string>;
 -- The full URL of the one source repository this Project's templates and
@@ -136,6 +141,22 @@ DEFINE FIELD OVERWRITE is_client_dri ON person_project_role TYPE bool DEFAULT fa
 DEFINE FIELD OVERWRITE inserted_at ON person_project_role TYPE string;
 DEFINE FIELD OVERWRITE updated_at ON person_project_role TYPE string;
 DEFINE INDEX OVERWRITE person_project_role_pair ON person_project_role FIELDS person_id, project_id UNIQUE;
+
+-- Firm membership is a join table, not a second value of `person.role`.
+-- The system-wide Owner tier stays on `person`; this row records which
+-- practice a person belongs to and which membership they hold there.
+-- Clients do not get a row here — they reach a matter through
+-- `person_project_role`. `owner` is not a membership value: the
+-- deployment-wide Owner identity is unique to `person.role`.
+DEFINE TABLE IF NOT EXISTS person_firm_role SCHEMAFULL PERMISSIONS NONE;
+DEFINE FIELD OVERWRITE person_id ON person_firm_role TYPE record<person>;
+DEFINE FIELD OVERWRITE firm_id ON person_firm_role TYPE record<firm>;
+DEFINE FIELD OVERWRITE membership ON person_firm_role TYPE string
+    ASSERT $value IN ['admin', 'lawyer', 'clerk'];
+DEFINE FIELD OVERWRITE is_dri ON person_firm_role TYPE bool DEFAULT false;
+DEFINE FIELD OVERWRITE inserted_at ON person_firm_role TYPE string;
+DEFINE FIELD OVERWRITE updated_at ON person_firm_role TYPE string;
+DEFINE INDEX OVERWRITE person_firm_role_pair ON person_firm_role FIELDS person_id, firm_id UNIQUE;
 
 DEFINE TABLE IF NOT EXISTS project_module SCHEMAFULL PERMISSIONS NONE;
 DEFINE FIELD OVERWRITE project_id ON project_module TYPE record<project>;
@@ -383,6 +404,18 @@ DEFINE FIELD OVERWRITE firm_anchor_key ON entity TYPE option<string>;
 DEFINE FIELD OVERWRITE inserted_at ON entity TYPE datetime DEFAULT time::now();
 DEFINE FIELD OVERWRITE updated_at ON entity TYPE datetime DEFAULT time::now();
 DEFINE INDEX OVERWRITE entity_firm_anchor ON entity FIELDS firm_anchor_key UNIQUE;
+
+-- `firm`: the owning practice. Distinct from `firm_anchor` below, which
+-- still pins exactly one `entity` as the Firm-of-record on the conflict
+-- graph. A deployment may hold several `firm` rows; it still holds at
+-- most one `firm_anchor` claim.
+DEFINE TABLE IF NOT EXISTS firm SCHEMAFULL PERMISSIONS NONE;
+DEFINE FIELD OVERWRITE name ON firm TYPE string;
+DEFINE FIELD OVERWRITE status ON firm TYPE string
+    ASSERT $value IN ['active', 'suspended']
+    DEFAULT 'active';
+DEFINE FIELD OVERWRITE inserted_at ON firm TYPE string;
+DEFINE FIELD OVERWRITE updated_at ON firm TYPE string;
 
 -- `firm_anchor`: the row that serializes minting the anchor, and the
 -- reason the UNIQUE index above is no longer the whole guard.

@@ -11,16 +11,22 @@ a session. It defaults to `true` for ordinary and historical rows. Discarding a 
 the retained client row has no remaining Project participation; it does not change the person's role, participation
 history, or conflict record.
 
-The two columns:
+The stored columns:
 
 | Column | Table | Decides |
 | --- | --- | --- |
 | `role` | `person` | The tier: `owner`, `admin`, `lawyer`, `clerk`, or `client`. Anonymous = no row. |
 | `participation` | `person_project_role` | Which side of a Project a person is on. Derived from `role`. |
+| `membership` | `person_firm_role` | Which practice a person belongs to. Not read by Rego yet. |
 
-The two columns are independent. A Clerk who is *also* a client of the firm for their own LLC carries the Clerk role on
-the person row (their firm work) and a `person_project_role` row on their personal matter with the client participation.
-The system answers "what can this person do" by reading both.
+The first two columns are independent. A Clerk who is *also* a client of the firm for their own LLC carries the Clerk
+role on the person row (their firm work) and a `person_project_role` row on their personal matter with the client
+participation. The system answers "what can this person do" by reading both.
+
+`person_firm_role` is the ownership join: a person may belong to a [`firm`](glossary.md#firm) as `admin`, `lawyer`, or
+`clerk`, with an optional `is_dri` marker. It does not overload `person.role`. Owner remains the one system-wide
+super-owner tier; clients do not get a firm-membership row. Embedded Rego still does not read this table — a schema row
+is not an authorization decision.
 
 ## The five stored tiers
 

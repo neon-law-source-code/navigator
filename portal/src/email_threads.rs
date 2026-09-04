@@ -1711,6 +1711,7 @@ mod tests {
                 brand: "neon".into(),
                 entity_id,
                 description: None,
+                ..Default::default()
             },
         )
         .await

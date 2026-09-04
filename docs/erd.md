@@ -377,6 +377,13 @@ erDiagram
         string summary
         datetime updated_at
     }
+    firm {
+        record id PK
+        string inserted_at
+        string name
+        string status
+        string updated_at
+    }
     firm_anchor {
         record id PK
         record_entity entity_id FK
@@ -507,6 +514,15 @@ erDiagram
         string system
         datetime updated_at
     }
+    person_firm_role {
+        record id PK
+        record_firm firm_id FK
+        string inserted_at
+        bool is_dri
+        string membership
+        record_person person_id FK
+        string updated_at
+    }
     person_mailbox {
         record id PK
         record_person person_id FK
@@ -539,6 +555,7 @@ erDiagram
         option_string drive_folder_id
         record_entity entity_id FK
         option_string external_slack_channel_url
+        option_record_firm firm_id FK
         option_string forge_provisioned_at
         option_string git_initialized_at
         string inserted_at
@@ -769,11 +786,14 @@ erDiagram
     notation ||--o{ notation_event : "notation_id"
     template ||--o{ notation_event : "template_version_id"
     person ||--o{ person_external_identity : "person_id"
+    firm ||--o{ person_firm_role : "firm_id"
+    person ||--o{ person_firm_role : "person_id"
     person ||--o{ person_mailbox : "person_id"
     person ||--o{ person_project_role : "person_id"
     project ||--o{ person_project_role : "project_id"
     entity ||--o{ playbook : "entity_id"
     entity ||--o{ project : "entity_id"
+    firm ||--o{ project : "firm_id"
     person ||--o{ project_module : "enabled_by_person_id"
     project ||--o{ project_module : "project_id"
     person ||--o{ relationship : "in"

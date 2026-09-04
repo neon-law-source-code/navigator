@@ -201,6 +201,8 @@ pub enum FirmError {
     WriteReturnedNothing,
     #[error("no person {0}")]
     NoSuchPerson(Uuid),
+    #[error("person {0} is a client and cannot hold a firm membership")]
+    ClientCannotJoinFirm(Uuid),
     #[error("no firm {0}")]
     NoSuchFirm(Uuid),
     #[error("no entity {0}")]
@@ -308,16 +310,19 @@ pub async fn all(surreal: &SurrealDb) -> Result<Vec<Firm>, FirmError> {
 /// Record one person's membership at a firm.
 ///
 /// Reads both referenced rows before writing: a `record<>` link constrains
-/// the target table but does not prove the row exists.
+/// the target table but does not prove the row exists. A client-tier person
+/// reaches a matter through `person_project_role`, never through firm
+/// membership, so this refuses to write a row for one regardless of the
+/// requested `membership` value.
 pub async fn add_membership(
     surreal: &SurrealDb,
     input: &NewPersonFirmRole,
 ) -> Result<PersonFirmRole, FirmError> {
-    if crate::persons::find_by_id(surreal, input.person_id)
+    let person = crate::persons::find_by_id(surreal, input.person_id)
         .await?
-        .is_none()
-    {
-        return Err(FirmError::NoSuchPerson(input.person_id));
+        .ok_or(FirmError::NoSuchPerson(input.person_id))?;
+    if person.role == Role::Client {
+        return Err(FirmError::ClientCannotJoinFirm(input.person_id));
     }
     if find_by_id(surreal, input.firm_id).await?.is_none() {
         return Err(FirmError::NoSuchFirm(input.firm_id));
@@ -641,6 +646,84 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn add_membership_refuses_a_client_but_allows_every_firm_tier() {
+        let db = mem_surreal().await;
+        let firm = practice(&db, "Tier Practice").await;
+
+        for (tag, role, membership) in [
+            ("owner", Role::Owner, FirmMembership::Admin),
+            ("admin", Role::Admin, FirmMembership::Admin),
+            ("lawyer", Role::Lawyer, FirmMembership::Lawyer),
+            ("clerk", Role::Clerk, FirmMembership::Clerk),
+        ] {
+            let person = crate::persons::create(
+                &db,
+                &NewPerson::with_role(format!("{tag} Person"), format!("{tag}@example.com"), role),
+            )
+            .await
+            .unwrap();
+            add_membership(
+                &db,
+                &NewPersonFirmRole {
+                    person_id: person.id,
+                    firm_id: firm.id,
+                    membership,
+                    is_dri: false,
+                },
+            )
+            .await
+            .unwrap_or_else(|error| panic!("{tag} should be allowed to join a firm: {error}"));
+        }
+
+        let client = crate::persons::create(
+            &db,
+            &NewPerson::with_role("Client Person", "client-tier@example.com", Role::Client),
+        )
+        .await
+        .unwrap();
+        let err = add_membership(
+            &db,
+            &NewPersonFirmRole {
+                person_id: client.id,
+                firm_id: firm.id,
+                membership: FirmMembership::Lawyer,
+                is_dri: false,
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(err, FirmError::ClientCannotJoinFirm(id) if id == client.id));
+        assert!(membership_for_person(&db, client.id, firm.id)
+            .await
+            .unwrap()
+            .is_none());
+    }
+
+    #[tokio::test]
+    async fn ensure_membership_refuses_a_client() {
+        let db = mem_surreal().await;
+        let firm = practice(&db, "Ensure Practice").await;
+        let client = crate::persons::create(
+            &db,
+            &NewPerson::with_role("Client Person", "ensure-client@example.com", Role::Client),
+        )
+        .await
+        .unwrap();
+        let err = ensure_membership(
+            &db,
+            &NewPersonFirmRole {
+                person_id: client.id,
+                firm_id: firm.id,
+                membership: FirmMembership::Clerk,
+                is_dri: false,
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(err, FirmError::ClientCannotJoinFirm(id) if id == client.id));
+    }
+
+    #[tokio::test]
     async fn membership_refuses_a_dangling_person_or_firm() {
         let db = mem_surreal().await;
         let firm = practice(&db, "Practice Two").await;
@@ -901,6 +984,55 @@ mod tests {
         assert!(visible.contains(&admin_a.id));
         assert!(visible.contains(&lawyer_a.id));
         assert!(!visible.contains(&lawyer_b.id));
+    }
+
+    #[tokio::test]
+    async fn visible_person_ids_never_surfaces_a_client_through_a_firm_row() {
+        let db = mem_surreal().await;
+        let firm = practice(&db, "No Client Members Practice").await;
+        let admin = crate::persons::create(
+            &db,
+            &NewPerson::with_role("Admin Only", "admin-only@example.com", Role::Admin),
+        )
+        .await
+        .unwrap();
+        add_membership(
+            &db,
+            &NewPersonFirmRole {
+                person_id: admin.id,
+                firm_id: firm.id,
+                membership: FirmMembership::Admin,
+                is_dri: true,
+            },
+        )
+        .await
+        .unwrap();
+
+        let client = crate::persons::create(
+            &db,
+            &NewPerson::with_role(
+                "Would Be Member",
+                "would-be-member@example.com",
+                Role::Client,
+            ),
+        )
+        .await
+        .unwrap();
+        add_membership(
+            &db,
+            &NewPersonFirmRole {
+                person_id: client.id,
+                firm_id: firm.id,
+                membership: FirmMembership::Lawyer,
+                is_dri: false,
+            },
+        )
+        .await
+        .unwrap_err();
+
+        let visible = visible_person_ids(&db, admin.id).await.unwrap();
+        assert!(visible.contains(&admin.id));
+        assert!(!visible.contains(&client.id));
     }
 
     #[tokio::test]

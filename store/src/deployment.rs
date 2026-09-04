@@ -154,6 +154,10 @@ pub static WEB_REQUIREMENTS: &[Requirement] = &[
         project_id: Some(GITHUB_AUTOMATION_HOME_PROJECT),
     },
     required!(integration "NAVIGATOR_CREDENTIAL_ENVIRONMENT"),
+    // Restate Cloud signs requests to the production worker. The public key
+    // is deployment configuration, not secret material, and KIND remains
+    // keyless through the CI-harness integration relaxation.
+    required!(integration "RESTATE_IDENTITY_KEY"),
     // Target-aware Slack Web API delivery for per-Project private channels.
     // The bot token is required for both staging and production once this
     // feature is enabled; local/KIND uses the capturing backend when absent.

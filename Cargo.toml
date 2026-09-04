@@ -113,6 +113,8 @@ rgb = "0.8"
 # format + codec. MPL-2.0 (file-level copyleft; does not affect our code).
 symphonia = { version = "0.6", features = ["all"] }
 base64 = "0.23"
+bs58 = "0.5"
+ed25519-dalek = "2"
 hmac = "0.13"
 jsonwebtoken = { version = "11", default-features = false, features = ["use_pem", "rust_crypto"] }
 # P-256 ECDSA — verifies SendGrid's Signed Event Webhook signature. Already
@@ -211,6 +213,7 @@ webapp = { path = "webapp" }
 wiremock = "0.6"
 workflows = { path = "workflows" }
 restate-sdk = "0.11"
+restate-jwt = { package = "jsonwebtoken", version = "10.4", default-features = false, features = ["rust_crypto"] }
 serde_yaml = "0.9"
 chrono = { version = "0.4", default-features = false, features = ["serde", "clock", "std"] }
 cucumber = "0.23"

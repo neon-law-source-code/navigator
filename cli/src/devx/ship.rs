@@ -139,6 +139,7 @@ pub(super) const INLINE_ENV_WEB_KEYS: &[&str] = &[
     "NAVIGATOR_APPLICATIONS_BUCKET", // inline env → the applications bucket coordinate
     "NAVIGATOR_EMAIL_BACKEND",       // inline env
     "GOOGLE_OAUTH_CLIENT_IDS",       // inline env allowlist
+    "RESTATE_IDENTITY_KEY",          // public Restate Cloud request key
 ];
 
 /// The Secret keys a `SecretProviderClass` actually projects. A
@@ -246,6 +247,7 @@ where
         ("NAVIGATOR_WEB_IMAGE", "NAVIGATOR_WEB_IMAGE"),
         ("NAVIGATOR_PUBLIC_HOST", "NAVIGATOR_PUBLIC_HOST"),
         ("NAVIGATOR_WORKFLOWS_HOST", "NAVIGATOR_WORKFLOWS_HOST"),
+        ("YOUR_RESTATE_IDENTITY_KEY", "RESTATE_IDENTITY_KEY"),
         ("YOUR_DOCUMENTS_BUCKET", "NAVIGATOR_DOCUMENTS_BUCKET"),
         ("YOUR_APPLICATIONS_BUCKET", "NAVIGATOR_APPLICATIONS_BUCKET"),
         ("YOUR_ASSETS_BUCKET", "NAVIGATOR_ASSETS_BUCKET"),
@@ -3256,6 +3258,7 @@ mod tests {
         ("NAVIGATOR_WEB_IMAGE", "neon-server"),
         ("NAVIGATOR_PUBLIC_HOST", "www.neonlaw.com"),
         ("NAVIGATOR_WORKFLOWS_HOST", "workflows.neonlaw.com"),
+        ("RESTATE_IDENTITY_KEY", "publickeyv1_test-identity-key"),
         ("NAVIGATOR_DOCUMENTS_BUCKET", "neon-production-documents"),
         (
             "NAVIGATOR_APPLICATIONS_BUCKET",
@@ -3292,6 +3295,7 @@ mod tests {
         ("NAVIGATOR_WEB_IMAGE", "neon-server"),
         ("NAVIGATOR_PUBLIC_HOST", "staging.neonlaw.com"),
         ("NAVIGATOR_WORKFLOWS_HOST", "workflows-staging.neonlaw.com"),
+        ("RESTATE_IDENTITY_KEY", "publickeyv1_test-identity-key"),
         ("NAVIGATOR_DOCUMENTS_BUCKET", "neon-law-stg-documents"),
         ("NAVIGATOR_APPLICATIONS_BUCKET", "neon-law-stg-applications"),
         ("NAVIGATOR_ASSETS_BUCKET", "neon-law-stg-assets"),
@@ -3344,6 +3348,7 @@ mod tests {
         "NAVIGATOR_IMAGE_REGISTRY",
         "NAVIGATOR_PUBLIC_HOST",
         "NAVIGATOR_WORKFLOWS_HOST",
+        "YOUR_RESTATE_IDENTITY_KEY",
         "YOUR_DOCUMENTS_BUCKET",
         "YOUR_APPLICATIONS_BUCKET",
         "YOUR_ASSETS_BUCKET",

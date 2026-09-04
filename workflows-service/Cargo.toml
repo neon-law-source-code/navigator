@@ -49,6 +49,9 @@ views.workspace = true
 # convention and the template convention can never drift. Dev-only keeps the
 # markdown rules engine out of the shipped worker binary.
 rules = { workspace = true }
+bs58.workspace = true
+ed25519-dalek.workspace = true
+restate-jwt.workspace = true
 store = { workspace = true, features = ["test-support"] }
 tokio = { workspace = true, features = ["macros", "rt"] }
 tower = { workspace = true }

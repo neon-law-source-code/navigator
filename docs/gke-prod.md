@@ -281,7 +281,9 @@ These are operator-managed resources you maintain via gcloud / console, not via 
    `navigator-oauth-client-secret`.
 4. **Restate Cloud tenant** — register at <https://cloud.restate.dev>. The tenant URL and bearer token go into Secret
    Manager as `navigator-restate-broker-url` (consumed as `RESTATE_BROKER_URL`) and `navigator-restate-auth-token`
-   (consumed as `RESTATE_AUTH_TOKEN`).
+   (consumed as `RESTATE_AUTH_TOKEN`). Store the public request-signing key as `RESTATE_IDENTITY_KEY` in
+   `deployments/<name>/config.toml`; `ops ship` renders it inline into both workloads. It is verification material, not
+   a Secret.
 5. **DNS A records** for `www.<navigator-domain>` and `workflows.<navigator-domain>` → the static IP reserved as
    `navigator-gateway-ip`. GitHub posts its webhooks to the `workflows` host at `/webhooks/github/{secret}`, the same
    host Restate Cloud uses.

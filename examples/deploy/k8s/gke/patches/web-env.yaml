@@ -57,6 +57,10 @@ spec:
               value: NAVIGATOR_PUBLIC_HOST
             - name: NAVIGATOR_EMAIL_BACKEND
               value: sendgrid
+            - name: RESTATE_IDENTITY_KEY
+              # Public key used to verify Restate Cloud request signatures.
+              # `ops ship` renders it from the deployment config.
+              value: YOUR_RESTATE_IDENTITY_KEY
             - name: NAVIGATOR_CLAMD_ADDR
               value: clamav.navigator.svc.cluster.local:3310
             - name: NAVIGATOR_BOOTSTRAP_COMPANY

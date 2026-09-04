@@ -76,6 +76,11 @@ spec:
               # through 9081, and the Service publishes only 9081,
               # so nothing outside the pod actually opens 9080.
               value: "0.0.0.0:9080"
+            - name: RESTATE_IDENTITY_KEY
+              # Restate Cloud signs every request to the worker. This is public
+              # verification material, rendered from the deployment config by
+              # `ops ship`, not a Secret Manager credential.
+              value: YOUR_RESTATE_IDENTITY_KEY
             - name: WORKFLOWS_WEBHOOK_LISTEN
               # The GitHub webhook receiver's own listener, separate from the
               # Restate endpoint above. Envoy routes /webhooks/github/* here over

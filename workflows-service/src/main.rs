@@ -22,6 +22,7 @@ use workflows::{EmailService, SlackOpsDelivery};
 use workflows_service::dri_digest::DriDigestService;
 use workflows_service::github_automation_heartbeat::GitHubAutomationHeartbeatService;
 use workflows_service::heartbeat::HeartbeatService;
+use workflows_service::request_identity::apply_identity_key;
 use workflows_service::{
     email_from_env, notifier_from_env, project_slack::ProjectSlackService,
     repository_correlation::ProjectRepositoryResolver, slack_bot_from_env, NotationService,
@@ -62,6 +63,11 @@ async fn main() -> anyhow::Result<()> {
 
     let environment =
         store::DeploymentEnvironment::from_env().context("parse NAVIGATOR_ENVIRONMENT")?;
+    let endpoint_builder = apply_identity_key(Endpoint::builder(), environment, |key| {
+        std::env::var(key).ok()
+    })
+    .map_err(anyhow::Error::msg)
+    .context("configure Restate request identity")?;
     // Branding is Neon Law by default; NAVIGATOR_CUSTOM_BRANDING opts into a
     // mounted white-label bundle (fail closed when set but absent).
     let brand_bundle = views::brand_bundle::BrandBundle::from_env()
@@ -163,7 +169,7 @@ async fn main() -> anyhow::Result<()> {
             GuardrailConfig::from_env().context("read GitHub automation spending guardrails")?;
         HttpServer::new(
             bind_common_services!(
-                Endpoint::builder()
+                endpoint_builder
                     // GitHub webhook durable notices (folded in from the former
                     // standalone DevX worker): the receiver submits only in the
                     // authoritative automation-home deployment.
@@ -187,7 +193,7 @@ async fn main() -> anyhow::Result<()> {
     } else {
         HttpServer::new(
             bind_common_services!(
-                Endpoint::builder(),
+                endpoint_builder,
                 surreal,
                 email,
                 storage,

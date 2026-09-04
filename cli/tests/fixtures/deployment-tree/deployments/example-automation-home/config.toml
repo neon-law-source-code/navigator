@@ -58,6 +58,8 @@ NAV_BASE_URL = "https://home.example.com"
 NAVIGATOR_ASSET_BASE_URL = "https://home.example.com/assets"
 NAVIGATOR_WORKFLOWS_HOST = "workflows.home.example.com"
 NAVIGATOR_WORKFLOWS_URL = "https://workflows.home.example.com/"
+# Public Restate Cloud request-signing key; synthetic fixture value.
+RESTATE_IDENTITY_KEY = "publickeyv1_test-identity-key"
 SLACK_GENERAL_CHANNEL_ID = "C012GENERAL"
 
 # --- Sign-in ---------------------------------------------------------------

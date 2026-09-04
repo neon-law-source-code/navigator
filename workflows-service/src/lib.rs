@@ -25,6 +25,7 @@ pub mod notify_config;
 pub mod project_slack;
 pub mod registry;
 pub mod repository_correlation;
+pub mod request_identity;
 pub mod webhook;
 
 pub use email_config::{from_env as email_from_env, EmailConfigError};

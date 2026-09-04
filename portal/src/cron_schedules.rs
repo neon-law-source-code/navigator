@@ -213,4 +213,21 @@ mod tests {
         assert!(normalize_broker_url(Some("///".to_string())).is_none());
         assert!(normalize_broker_url(None).is_none());
     }
+
+    #[test]
+    fn every_run_now_button_the_console_renders_has_a_handler_here() {
+        // `webapp::schedules` derives its rows from the deployment render, so a
+        // manifest landing in the exports kustomization puts a job on the page
+        // without touching this file. A row carrying a slug this dispatch table
+        // does not know would render a button that answers 404, so bind the two
+        // rather than trusting them to be edited together.
+        for job in webapp::schedules::cron_jobs() {
+            let Some(slug) = job.slug else { continue };
+            assert!(
+                MANUAL_JOBS.iter().any(|manual| manual.slug == slug),
+                "the console offers `Run now` for {} (slug {slug}), which no MANUAL_JOBS entry starts",
+                job.name
+            );
+        }
+    }
 }

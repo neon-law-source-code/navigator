@@ -14022,6 +14022,7 @@ dependencies = [
  "rules",
  "serde",
  "serde_json",
+ "serde_yaml",
  "store",
  "tokio",
  "tracing",

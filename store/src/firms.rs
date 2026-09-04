@@ -284,13 +284,13 @@ pub async fn find_by_entity_id(
 ) -> Result<Option<Firm>, FirmError> {
     let mut response = surreal
         .query(format!(
-            "SELECT {FIRM_SELECT} FROM ONLY {TABLE} WHERE entity_id = $entity_id LIMIT 1"
+            "SELECT {FIRM_SELECT} FROM {TABLE} WHERE entity_id = $entity_id LIMIT 1"
         ))
         .bind(("entity_id", record_id(ENTITY_TABLE, entity_id)))
         .await
         .and_then(surrealdb::IndexedResults::check)?;
-    let row: Option<FirmRow> = response.take(0)?;
-    Ok(row.and_then(FirmRow::into_firm))
+    let rows: Vec<FirmRow> = response.take(0)?;
+    Ok(rows.into_iter().find_map(FirmRow::into_firm))
 }
 
 /// Every firm, name then id.
@@ -487,7 +487,18 @@ pub async fn ensure_brand(
     if existing.iter().any(|key| key == brand_key) {
         return Ok(());
     }
-    attach_brand(surreal, firm_id, brand_key).await
+    match attach_brand(surreal, firm_id, brand_key).await {
+        Ok(()) => Ok(()),
+        Err(FirmError::DuplicateBrand) => {
+            let keys = brand_keys_for_firm(surreal, firm_id).await?;
+            if keys.iter().any(|key| key == brand_key) {
+                Ok(())
+            } else {
+                Err(FirmError::DuplicateBrand)
+            }
+        }
+        Err(error) => Err(error),
+    }
 }
 
 /// House-brand keys this firm wears, in registry order.

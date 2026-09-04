@@ -2284,20 +2284,32 @@ async fn seed_practice(surreal: &SurrealDb) -> anyhow::Result<()> {
         .ok_or_else(|| anyhow::anyhow!("canonical seed is missing {FIRM_ENTITY_NAME}"))?;
     let firm = match crate::firms::find_by_entity_id(surreal, entity.id).await? {
         Some(firm) => firm,
-        None => {
-            crate::firms::create(
-                surreal,
-                &crate::firms::NewFirm {
-                    name: FIRM_ENTITY_NAME.to_string(),
-                    status: "active".to_string(),
-                    entity_id: entity.id,
-                },
-            )
-            .await?
-        }
+        None => match crate::firms::create(
+            surreal,
+            &crate::firms::NewFirm {
+                name: FIRM_ENTITY_NAME.to_string(),
+                status: "active".to_string(),
+                entity_id: entity.id,
+            },
+        )
+        .await
+        {
+            Ok(firm) => firm,
+            Err(crate::firms::FirmError::DuplicateEntity) => {
+                crate::firms::find_by_entity_id(surreal, entity.id)
+                    .await?
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("firm for {FIRM_ENTITY_NAME} exists but did not read")
+                    })?
+            }
+            Err(error) => return Err(error.into()),
+        },
     };
     for key in crate::firms::CLOSED_BRAND_KEYS {
-        crate::firms::ensure_brand(surreal, firm.id, key).await?;
+        match crate::firms::ensure_brand(surreal, firm.id, key).await {
+            Ok(()) | Err(crate::firms::FirmError::DuplicateBrand) => {}
+            Err(error) => return Err(error.into()),
+        }
     }
     Ok(())
 }

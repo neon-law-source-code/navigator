@@ -113,7 +113,7 @@ async fn admin_people_component_ssrs_directory_from_the_database() {
     let (status, html) = render_people_as(
         &surreal,
         "/app/admin/people",
-        webapp::people::ViewerRole::Admin,
+        webapp::people::ViewerRole::Owner,
     )
     .await;
 
@@ -132,7 +132,7 @@ async fn admin_people_renders_role_display_labels_not_raw_tokens() {
     let (status, html) = render_people_as(
         &surreal,
         "/app/admin/people",
-        webapp::people::ViewerRole::Admin,
+        webapp::people::ViewerRole::Owner,
     )
     .await;
     assert_eq!(status, StatusCode::OK);
@@ -158,7 +158,7 @@ async fn admin_people_honors_jsonapi_sort_descending_by_name() {
     let (status, html) = render_people_as(
         &surreal,
         "/app/admin/people?sort=-name",
-        webapp::people::ViewerRole::Admin,
+        webapp::people::ViewerRole::Owner,
     )
     .await;
     assert_eq!(status, StatusCode::OK);
@@ -174,6 +174,26 @@ async fn admin_people_honors_jsonapi_sort_descending_by_name() {
         html.contains("/app/admin/people?sort=name")
             || html.contains("/app/admin/people?sort=-name"),
         "sort header must be an anchor with a ?sort= toggle; got: {html}",
+    );
+}
+
+/// An Admin with no `person_id` (and therefore no `person_firm_role`) sees
+/// an empty directory rather than every person in the deployment.
+#[tokio::test]
+async fn admin_people_without_membership_renders_no_rows() {
+    let surreal = store::test_support::mem_surreal().await;
+    insert_person(&surreal, "Hidden Person", "hidden@test.invalid").await;
+
+    let (status, html) = render_people_as(
+        &surreal,
+        "/app/admin/people",
+        webapp::people::ViewerRole::Admin,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        !html.contains("Hidden Person"),
+        "an unscoped Admin listing would leak every person; got: {html}",
     );
 }
 

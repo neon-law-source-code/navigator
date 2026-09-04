@@ -295,6 +295,48 @@ textarea {
   padding: 2rem;
 }
 
+/* Accordion — a native `<details>` disclosure, styled as a bordered surface
+   so a stack of them reads as distinct sections rather than a bare list of
+   headings. `::-webkit-details-marker` is hidden the same way
+   `.workshop-sections__toggle` hides it, and a plain `::after` triangle
+   replaces it so every engine shows the same affordance. */
+.nav-accordion {
+  border: 1px solid var(--nav-color-border);
+  border-radius: var(--nav-radius);
+  margin-bottom: 1rem;
+  overflow: hidden;
+}
+
+.nav-accordion__toggle {
+  padding: 0.75rem 1rem;
+  background: var(--nav-color-surface-raised);
+  color: var(--nav-color-text);
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+
+.nav-accordion__toggle::-webkit-details-marker {
+  display: none;
+}
+
+.nav-accordion__toggle::after {
+  content: " ▾";
+}
+
+.nav-accordion[open] > .nav-accordion__toggle::after {
+  content: " ▴";
+}
+
+.nav-accordion__toggle:focus-visible {
+  outline: 2px solid var(--nav-color-primary);
+  outline-offset: -2px;
+}
+
+.nav-accordion__body {
+  padding: 1rem;
+}
+
 /* Toast — the same four tones the `Toast` carries. */
 .nav-toast {
   display: flex;

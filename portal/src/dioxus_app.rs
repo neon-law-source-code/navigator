@@ -2813,6 +2813,7 @@ async fn inject_notation_preview(
         stage_html: found.stage_html.clone(),
         origin_url: found.origin_url.clone(),
         demo_questions: found.demo_questions.clone(),
+        demo_workflow: found.demo_workflow.clone(),
     };
     req.extensions_mut()
         .insert(webapp::notation_preview::InjectedNotationPreview(content));

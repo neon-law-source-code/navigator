@@ -439,6 +439,103 @@
   gap: 0.75rem;
 }
 
+/* The sample workflow runs — an Airflow-Grid-flavored row per run, each a
+   strip of openable task chips. Illustrative only; see
+   `webapp::notation_workflow`'s module doc for why nothing here is live. */
+.notation-workflow__run {
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  border: 1px solid var(--nav-color-border);
+  border-radius: 0.75rem;
+}
+
+.notation-workflow__run:last-child {
+  margin-bottom: 0;
+}
+
+.notation-workflow__run-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.notation-workflow__run-label {
+  font-weight: 600;
+}
+
+.notation-workflow__run-outcome {
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  color: var(--nav-color-on-primary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.notation-workflow__run-outcome--completed {
+  background: var(--nav-color-success);
+}
+
+.notation-workflow__run-outcome--ended-early {
+  background: var(--nav-color-warning);
+}
+
+.notation-workflow__run-outcome--in-progress {
+  background: var(--nav-color-primary);
+}
+
+.notation-workflow__tasks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.notation-workflow__task {
+  border: 1px solid var(--nav-color-border);
+  border-radius: 0.5rem;
+  background: var(--nav-color-surface);
+}
+
+.notation-workflow__task-toggle {
+  padding: 0.4rem 0.75rem;
+  border-left: 3px solid var(--nav-color-border);
+  border-radius: 0.5rem;
+  cursor: pointer;
+  font-size: 0.875rem;
+  list-style: none;
+  white-space: nowrap;
+}
+
+.notation-workflow__task-toggle::-webkit-details-marker {
+  display: none;
+}
+
+.notation-workflow__task--success .notation-workflow__task-toggle {
+  border-left-color: var(--nav-color-success);
+}
+
+.notation-workflow__task--running .notation-workflow__task-toggle {
+  border-left-color: var(--nav-color-primary);
+}
+
+.notation-workflow__task--skipped .notation-workflow__task-toggle {
+  color: var(--nav-color-text-muted);
+  opacity: 0.65;
+}
+
+.notation-workflow__task-log {
+  padding: 0.5rem 0.75rem 0.75rem;
+  border-top: 1px solid var(--nav-color-border);
+  color: var(--nav-color-text-muted);
+  font-size: 0.875rem;
+}
+
+.notation-workflow__task-log p {
+  margin: 0.25rem 0;
+}
+
 /* The material's own lede reads as body copy, not the hero treatment the
    `.catalog-hero .lede` rule gives the landing wordmark. */
 .material-page .lede,

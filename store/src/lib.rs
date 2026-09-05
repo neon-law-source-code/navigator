@@ -34,6 +34,7 @@ pub mod config;
 pub mod conflicts;
 pub mod contract_reviews;
 pub mod credentials;
+pub mod delegations;
 pub mod deployment;
 pub mod disclosures;
 pub mod document_comments;

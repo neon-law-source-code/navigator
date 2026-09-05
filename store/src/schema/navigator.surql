@@ -274,6 +274,86 @@ DEFINE INDEX OVERWRITE person_oidc_subject ON person FIELDS oidc_subject UNIQUE;
 DEFINE TABLE IF NOT EXISTS person_mailbox SCHEMAFULL PERMISSIONS NONE;
 DEFINE FIELD OVERWRITE person_id ON person_mailbox TYPE record<person>;
 
+-- `person_delegate`: the recorded fact that one Person helps another with
+-- their matters. A mailbox is how we reach you. It is not who you are,
+-- and it is not permission to be someone else.
+--
+-- The problem it exists for: `person.email` is required and
+-- `person_email_lower` is UNIQUE, so the address on a Person row doubles
+-- as that Person's login identifier. A client who has no email address —
+-- routinely an elderly one — cannot be reached by the portal at all, and
+-- the workaround of sharing a relative's address would make one
+-- credential silently resolve to whichever row it matched. This table is
+-- the alternative: the link is written deliberately, by a named firm
+-- member, on a stated basis, and it is auditable.
+--
+-- **This table records a relationship. It does not grant anything.** No
+-- authorization path reads it, exactly as `person_external_identity`
+-- below is inert, and `store/tests/person_delegate_is_inert.rs` holds
+-- that against the authorization surfaces by name. What a delegate may
+-- *do* is a separate decision that has not been made: in particular
+-- `MatterViewer::ClientDri` carries plan approval, so a session acting
+-- through a delegation must never reach it without its own explicit,
+-- separately recorded grant. That is why there is no `may_act` column —
+-- an unread permission flag is what gets wired up carelessly later.
+--
+-- Both sides are confined to `person.role = 'client'`. Firm-side people
+-- get exactly one profile: themselves. Without that confinement the
+-- mechanism would let a clerk act as an admin, or one lawyer act as
+-- another, turning a convenience for clients into privilege escalation
+-- across the firm. `store::delegations` refuses a non-client on either
+-- side at the write path, and — because `person.role` is written through
+-- three doors (`persons::set_role`, `persons::edit`, `persons::create`) —
+-- re-checks both roles at *read* time. A cascade hooked to one of those
+-- three doors would look like the control without being it. Read-time
+-- re-validation cannot be bypassed by a door that does not exist yet, nor
+-- by a direct database write. A grant whose parties are no longer both
+-- clients is *dormant*, which is deliberately distinct from revoked: a
+-- surface can say "dormant because this person is now firm-side" rather
+-- than hiding the row.
+--
+-- A client's helper who works at the firm therefore cannot be linked.
+-- That is correct rather than a limitation — it is a conflicts question
+-- for a lawyer, not a portal feature.
+--
+-- `basis` is the legal shape of the relationship, not a capability, and
+-- it is a stored string gated by an ASSERT, the same shape `person.role`
+-- uses. `instrument_reference` is where the attorney cites the document a
+-- basis claims to rest on: a row reading `power_of_attorney` asserts that
+-- a valid instrument exists, and the firm should not assert that about
+-- its own client without naming what it read.
+--
+-- Revocation is `revoked_at`, never a delete — the same choice
+-- `person.is_admitted` makes. "This link existed and was withdrawn on
+-- this date" is the fact a later inquiry needs; a deleted row answers
+-- nothing. Re-granting after a revocation is therefore ordinary, so the
+-- pair index is NOT unique; `store::delegations` reads back and refuses a
+-- second *live* grant, the same convention `authority_use` documents.
+--
+-- `subject_notified_at` records that the subject was told, on a channel
+-- the subject actually has. A grant whose only notice channel is the
+-- grantee's mailbox leaves the subject structurally unable to learn about
+-- their own grant, so the channel is recorded rather than assumed.
+DEFINE TABLE IF NOT EXISTS person_delegate SCHEMAFULL PERMISSIONS NONE;
+DEFINE FIELD OVERWRITE delegate_person_id ON person_delegate TYPE record<person>;
+DEFINE FIELD OVERWRITE subject_person_id ON person_delegate TYPE record<person>;
+DEFINE FIELD OVERWRITE basis ON person_delegate TYPE string
+    ASSERT $value IN ['assistant', 'power_of_attorney', 'guardian', 'executor', 'trustee', 'parent_of_minor'];
+DEFINE FIELD OVERWRITE instrument_reference ON person_delegate TYPE option<string>;
+DEFINE FIELD OVERWRITE granted_by_person_id ON person_delegate TYPE record<person>;
+DEFINE FIELD OVERWRITE granted_at ON person_delegate TYPE string;
+DEFINE FIELD OVERWRITE subject_notified_at ON person_delegate TYPE option<string>;
+DEFINE FIELD OVERWRITE subject_notified_channel ON person_delegate TYPE option<string>
+    ASSERT $value = NONE OR $value IN ['in_person', 'telephone', 'post', 'email'];
+DEFINE FIELD OVERWRITE revoked_at ON person_delegate TYPE option<string>;
+DEFINE FIELD OVERWRITE revoked_by_person_id ON person_delegate TYPE option<record<person>>;
+DEFINE FIELD OVERWRITE inserted_at ON person_delegate TYPE string;
+DEFINE FIELD OVERWRITE updated_at ON person_delegate TYPE string;
+-- Not UNIQUE: a revoked grant stays on the table, so a pair may hold
+-- several rows over time and at most one of them live.
+DEFINE INDEX OVERWRITE person_delegate_pair ON person_delegate
+    FIELDS delegate_person_id, subject_person_id;
+
 -- `person_external_identity`: the id a third-party system issues for a
 -- Person, so Navigator can name them in an API call. An address book and
 -- nothing more — no credential, no grant, and no authorization path

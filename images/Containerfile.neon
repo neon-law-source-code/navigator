@@ -144,6 +144,13 @@ COPY billing-workflows billing-workflows
 # live outside any crate dir, so they must be staged explicitly or the
 # builder fails to resolve the include paths.
 COPY docs              docs
+# `webapp/build.rs` reads `../examples/deploy/k8s/exports/kustomization.yaml`
+# at build time to derive the schedules console's CronJob table, and `neon`
+# depends on `webapp`. That tree lives outside any crate dir, so it must be
+# staged explicitly or the build fails at "reading
+# ../examples/deploy/k8s/exports/kustomization.yaml: No such file or
+# directory".
+COPY examples          examples
 
 RUN cargo build --release --target "$(cat /tmp/rust-target)" -p neon \
     && cp "target/$(cat /tmp/rust-target)/release/neon" /usr/local/bin/neon

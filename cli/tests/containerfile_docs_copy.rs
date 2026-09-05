@@ -164,6 +164,148 @@ fn every_containerfile_that_copies_views_also_copies_docs() {
     );
 }
 
+/// `Cargo.lock`'s package dependency graph: crate name -> the names of the
+/// crates it depends on. `dependencies` entries disambiguate a duplicate crate
+/// name with a trailing " <version>" (e.g. `"base64 0.23.1"`); only the bare
+/// name identifies the workspace member, so that suffix is dropped.
+fn lockfile_dependency_graph() -> std::collections::HashMap<String, Vec<String>> {
+    let lock = workspace_root().join("Cargo.lock");
+    let body = fs::read_to_string(&lock).unwrap_or_else(|e| panic!("read {}: {e}", lock.display()));
+
+    let mut graph: std::collections::HashMap<String, Vec<String>> =
+        std::collections::HashMap::new();
+    let mut current: Option<String> = None;
+    let mut in_deps = false;
+    for line in body.lines() {
+        let line = line.trim();
+        if line == "[[package]]" {
+            current = None;
+            in_deps = false;
+            continue;
+        }
+        if in_deps {
+            if line == "]" {
+                in_deps = false;
+                continue;
+            }
+            let Some(current) = &current else { continue };
+            if let Some(dep) = line.strip_prefix('"') {
+                // Each entry is `"name",` (trailing comma) except a lockfile's
+                // last dependency before the closing `]`, which has none.
+                let dep = dep.strip_suffix(',').unwrap_or(dep);
+                let dep = dep.strip_suffix('"').unwrap_or(dep);
+                let dep_name = dep.split_whitespace().next().unwrap_or(dep);
+                graph
+                    .entry(current.clone())
+                    .or_default()
+                    .push(dep_name.to_string());
+            }
+            continue;
+        }
+        if let Some(name) = line
+            .strip_prefix("name = \"")
+            .and_then(|s| s.strip_suffix('"'))
+        {
+            if current.is_none() {
+                current = Some(name.to_string());
+                graph.entry(name.to_string()).or_default();
+            }
+            continue;
+        }
+        if line == "dependencies = [" {
+            in_deps = true;
+        }
+    }
+    graph
+}
+
+/// Every crate name that depends on `target`, directly or transitively — a
+/// reverse reachability closure over the lockfile dependency graph.
+fn crates_depending_on(
+    graph: &std::collections::HashMap<String, Vec<String>>,
+    target: &str,
+) -> std::collections::HashSet<String> {
+    let mut dependents = std::collections::HashSet::new();
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for (name, deps) in graph {
+            if dependents.contains(name) {
+                continue;
+            }
+            if deps
+                .iter()
+                .any(|dep| dep == target || dependents.contains(dep))
+            {
+                dependents.insert(name.clone());
+                changed = true;
+            }
+        }
+    }
+    dependents
+}
+
+/// `webapp/build.rs` reads `../examples/deploy/k8s/exports/kustomization.yaml`
+/// at build time to derive the schedules console's `CronJob` table (#349). Any
+/// Containerfile whose `cargo build -p <crate>` compiles `webapp` itself, or a
+/// crate that depends on it (`neon` directly; `portal` and, through it, `cli`
+/// transitively), must stage `examples` too — or the build fails at "reading
+/// .../kustomization.yaml: No such file or directory". `Containerfile.trigger`
+/// and `Containerfile.runner` already stage `examples` for an unrelated reason
+/// (`cli`'s own `include_dir!` of it), which is why only `Containerfile.neon`
+/// was exposed.
+///
+/// No PR check builds an image, so this gap rode from the PR that added the
+/// build script through several merges, only failing once a release deploy
+/// finally exercised a real image build (run 33934682600).
+#[test]
+fn every_containerfile_that_builds_a_webapp_dependent_crate_also_copies_examples() {
+    let graph = lockfile_dependency_graph();
+    assert!(
+        graph.contains_key("webapp"),
+        "Cargo.lock has no `webapp` package — this guard has lost its subject"
+    );
+    let dependents = crates_depending_on(&graph, "webapp");
+
+    let dir = images_dir();
+    let mut checked = 0;
+    let mut offenders = Vec::new();
+    for entry in fs::read_dir(&dir).unwrap_or_else(|e| panic!("read {}: {e}", dir.display())) {
+        let path = entry.expect("dir entry").path();
+        let name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or_default()
+            .to_string();
+        if !name.starts_with("Containerfile") {
+            continue;
+        }
+        let body =
+            fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        for target in regex_lite_build_targets(&body) {
+            if target != "webapp" && !dependents.contains(&target) {
+                continue;
+            }
+            checked += 1;
+            if !copies_crate(&body, "examples") {
+                offenders.push(format!("{name} builds `-p {target}`"));
+            }
+        }
+    }
+
+    assert!(
+        checked > 0,
+        "no Containerfile builds `webapp` or a crate depending on it — this guard has lost its subject"
+    );
+    assert!(
+        offenders.is_empty(),
+        "these Containerfiles build a crate whose graph compiles `webapp`'s build.rs but \
+         do not stage `examples`, so the build fails reading \
+         examples/deploy/k8s/exports/kustomization.yaml; add `COPY examples examples`: \
+         {offenders:?}"
+    );
+}
+
 /// The site image publishes its content from disk, so it must stage the bundled
 /// content tree and point the binary at it.
 ///

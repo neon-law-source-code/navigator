@@ -316,7 +316,7 @@ pub fn analyze(repositories: &[ScannedRepository], live_codes: &[String]) -> Rep
     // than letting one checkout silently shadow another.
     let mut claimants: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
     for repository in repositories {
-        if repository.manifest_error.is_none() {
+        if repository.manifest_error.is_none() && repository.declared_code.is_some() {
             claimants
                 .entry(repository.code())
                 .or_default()
@@ -334,9 +334,12 @@ pub fn analyze(repositories: &[ScannedRepository], live_codes: &[String]) -> Rep
             continue;
         }
         match &repository.declared_code {
-            None => findings.push(Finding::NoManifest {
-                repository: repository.directory.clone(),
-            }),
+            None => {
+                findings.push(Finding::NoManifest {
+                    repository: repository.directory.clone(),
+                });
+                continue;
+            }
             Some(declared) if declared != &repository.directory => {
                 findings.push(Finding::ManifestDisagreesWithName {
                     repository: repository.directory.clone(),
@@ -825,11 +828,28 @@ mod tests {
             ..repository("acme")
         };
 
-        let report = analyze(&[bare], &live(&["acme"]));
+        let report = analyze(&[bare], &live(&[]));
 
         assert_eq!(kinds(&report.findings), vec!["no-manifest"]);
+        assert_eq!(report.findings.len(), 1);
         assert_eq!(report.findings[0].status(), Status::Warn);
         assert!(report.is_reconciled());
+    }
+
+    #[test]
+    fn a_checkout_with_no_manifest_does_not_claim_its_directory_name() {
+        let bare = ScannedRepository {
+            declared_code: None,
+            ..repository("acme")
+        };
+
+        let report = analyze(&[bare, declaring("acme-fork", "acme")], &live(&["acme"]));
+
+        assert_eq!(
+            kinds(&report.findings),
+            vec!["no-manifest", "manifest-disagrees-with-name"]
+        );
+        assert!(!kinds(&report.findings).contains(&"duplicate-code"));
     }
 
     // ── The URL to repository rule ─────────────────────────────────────────

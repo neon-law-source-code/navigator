@@ -128,7 +128,7 @@ pub enum PlaybookError {
 }
 
 fn is_duplicate_name(error: &surrealdb::Error) -> bool {
-    error.to_string().contains("playbook_entity_name")
+    crate::surreal::retry::unique_violation(error) == Some("playbook_entity_name")
 }
 
 /// What to record for one new playbook.

@@ -72,9 +72,10 @@ pub enum CredentialError {
 /// Turn a write failure into the caller-correctable conflict it names,
 /// or leave it as a database fault. A unique violation carries **no
 /// typed detail** — the index name in the message is the only
-/// discriminator (see `store::persons::classify_write`).
+/// discriminator, identified by the shared classifier in
+/// [`crate::surreal::retry`].
 fn classify_write(error: surrealdb::Error) -> CredentialError {
-    if error.to_string().contains("credential_person_jurisdiction") {
+    if crate::surreal::retry::unique_violation(&error) == Some("credential_person_jurisdiction") {
         CredentialError::AlreadyGranted
     } else {
         CredentialError::Db(error)

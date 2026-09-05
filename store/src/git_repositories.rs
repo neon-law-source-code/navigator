@@ -12,8 +12,8 @@
 //!
 //! The unique `git_repository_remote_hash` index is what enforces one row
 //! per remote; a violation has no typed detail, so
-//! [`classify_write`] discriminates on that index name (see
-//! `store::persons::classify_write` for the full account).
+//! [`crate::surreal::retry::unique_violation`] discriminates on that index
+//! name.
 
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -89,7 +89,7 @@ pub enum GitRepositoryError {
 /// typed detail** — the index name in the message is the only
 /// discriminator.
 fn classify_write(error: surrealdb::Error) -> GitRepositoryError {
-    if error.to_string().contains("git_repository_remote_hash") {
+    if crate::surreal::retry::unique_violation(&error) == Some("git_repository_remote_hash") {
         GitRepositoryError::RemoteTaken
     } else {
         GitRepositoryError::Db(error)

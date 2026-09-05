@@ -29,7 +29,8 @@
 //! **A unique violation carries no typed detail.** It arrives as
 //! [`surrealdb::types::ErrorDetails::Internal`] with the index name in
 //! the message and nothing structured to match on, so
-//! [`classify_write`] discriminates on the index name — the one part of
+//! [`crate::surreal::retry::unique_violation`] discriminates on the index
+//! name — the one part of
 //! the text the schema pins — and
 //! [`a_duplicate_email_is_reported_as_the_email_being_taken`] holds it
 //! against a real engine.
@@ -341,13 +342,10 @@ pub enum PersonError {
 /// one against a real engine so a rename cannot silently reclassify a
 /// conflict as a server fault.
 fn classify_write(error: surrealdb::Error) -> PersonError {
-    let message = error.to_string();
-    if message.contains("person_email_lower") {
-        PersonError::EmailTaken
-    } else if message.contains("person_oidc_subject") {
-        PersonError::OidcSubjectTaken
-    } else {
-        PersonError::Db(error)
+    match crate::surreal::retry::unique_violation(&error) {
+        Some("person_email_lower") => PersonError::EmailTaken,
+        Some("person_oidc_subject") => PersonError::OidcSubjectTaken,
+        _ => PersonError::Db(error),
     }
 }
 
@@ -415,7 +413,8 @@ const SETTLE_BACKOFF_CEILING: std::time::Duration = std::time::Duration::from_mi
 /// The claim collision is **typed**: `CREATE` onto a taken record id
 /// reports [`AlreadyExistsError::Record`] carrying that id, so the
 /// discriminator is a structured value rather than prose — unlike the
-/// UNIQUE-index violation [`classify_write`] has to read the message for.
+/// UNIQUE-index violation [`crate::surreal::retry::unique_violation`] has to
+/// read the message for.
 fn claims_a_mailbox(error: &surrealdb::Error) -> bool {
     matches!(
         error.details(),
@@ -1793,7 +1792,7 @@ mod tests {
         );
     }
 
-    /// Why [`classify_write`] reads the message rather than the typed
+    /// Why [`crate::surreal::retry::unique_violation`] reads the message rather than the typed
     /// detail, held against the engine so a future SDK that *does* type
     /// this fails here and the workaround can go.
     ///

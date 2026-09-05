@@ -167,7 +167,7 @@ pub enum TemplateError {
 /// this matches on `template_current_key`, a `DEFINE INDEX` identifier this
 /// workspace chose in `store/src/schema/navigator.surql`, not prose.
 fn classify_write(error: surrealdb::Error) -> TemplateError {
-    if error.to_string().contains("template_current_key") {
+    if crate::surreal::retry::unique_violation(&error) == Some("template_current_key") {
         TemplateError::CurrentVersionTaken
     } else {
         TemplateError::Db(error)

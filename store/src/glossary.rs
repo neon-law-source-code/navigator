@@ -18,8 +18,8 @@
 //! `glossary_terms` is a leaf reference table nothing links to and that
 //! links to nothing. The unique `glossary_term_slug` index is what
 //! enforces one row per slug; a violation has no typed detail, so
-//! [`classify_write`] discriminates on that index name (see
-//! `store::persons::classify_write` for the full account).
+//! [`crate::surreal::retry::unique_violation`] discriminates on that index
+//! name.
 //!
 //! # The distinction that must not be collapsed
 //!
@@ -129,9 +129,9 @@ pub enum GlossaryError {
 /// Turn a write failure into the caller-correctable conflict it names,
 /// or leave it as a database fault. A unique violation carries **no
 /// typed detail** — the index name in the message is the only
-/// discriminator.
+/// discriminator through the shared classifier in [`crate::surreal::retry`].
 fn classify_write(error: surrealdb::Error) -> GlossaryError {
-    if error.to_string().contains("glossary_term_slug") {
+    if crate::surreal::retry::unique_violation(&error) == Some("glossary_term_slug") {
         GlossaryError::SlugTaken
     } else {
         GlossaryError::Db(error)

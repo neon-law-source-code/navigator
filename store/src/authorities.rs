@@ -68,7 +68,7 @@ pub enum AuthorityError {
 }
 
 fn is_authority_citation_conflict(error: &surrealdb::Error) -> bool {
-    error.to_string().contains("authority_citation")
+    crate::surreal::retry::unique_violation(error) == Some("authority_citation")
 }
 
 /// Run a write under the shared retry policy

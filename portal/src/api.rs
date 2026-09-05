@@ -3851,6 +3851,22 @@ impl IntoResponse for ApiError {
                 )
                     .into_response()
             }
+            Self::Person(store::persons::PersonError::EmailTaken) => (
+                StatusCode::CONFLICT,
+                Json(serde_json::json!({
+                    "error": "conflict",
+                    "message": "That email is already in use."
+                })),
+            )
+                .into_response(),
+            Self::Person(store::persons::PersonError::OidcSubjectTaken) => (
+                StatusCode::CONFLICT,
+                Json(serde_json::json!({
+                    "error": "conflict",
+                    "message": "That IdP identity is already linked to another person."
+                })),
+            )
+                .into_response(),
             Self::Person(e) => {
                 tracing::error!(error = %e, "api: person directory error");
                 (
@@ -3859,6 +3875,14 @@ impl IntoResponse for ApiError {
                 )
                     .into_response()
             }
+            Self::Jurisdictions(store::jurisdictions::JurisdictionError::CodeTaken) => (
+                StatusCode::CONFLICT,
+                Json(serde_json::json!({
+                    "error": "conflict",
+                    "message": "That jurisdiction code is already in use."
+                })),
+            )
+                .into_response(),
             Self::Jurisdictions(e) => {
                 tracing::error!(error = %e, "api: jurisdictions error");
                 (
@@ -3867,6 +3891,14 @@ impl IntoResponse for ApiError {
                 )
                     .into_response()
             }
+            Self::EntityTypes(store::entity_types::EntityTypeError::NameTaken) => (
+                StatusCode::CONFLICT,
+                Json(serde_json::json!({
+                    "error": "conflict",
+                    "message": "That entity type name is already in use."
+                })),
+            )
+                .into_response(),
             Self::EntityTypes(e) => {
                 tracing::error!(error = %e, "api: entity types error");
                 (
@@ -3987,6 +4019,19 @@ mod tests {
         let response =
             ApiError::OpenMatter(store::projects::OpenMatterError::CodeConflict).into_response();
         assert_eq!(response.status(), axum::http::StatusCode::CONFLICT);
+    }
+
+    #[tokio::test]
+    async fn a_person_email_unique_violation_is_409_with_a_field_message() {
+        let response = ApiError::Person(store::persons::PersonError::EmailTaken).into_response();
+
+        assert_eq!(response.status(), axum::http::StatusCode::CONFLICT);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("the conflict response body should be readable");
+        let json: serde_json::Value =
+            serde_json::from_slice(&body).expect("the conflict response should be JSON");
+        assert_eq!(json["message"], "That email is already in use.");
     }
 
     #[test]

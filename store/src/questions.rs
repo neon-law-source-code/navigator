@@ -16,8 +16,9 @@
 //! # Engine facts this module is shaped around
 //!
 //! **A unique violation carries no typed detail.** It arrives as an
-//! internal error with the index name in the message, so [`classify_write`]
-//! discriminates on `question_code` — a `DEFINE INDEX` identifier this
+//! internal error with the index name in the message, so
+//! [`crate::surreal::retry::unique_violation`] discriminates on
+//! `question_code` — a `DEFINE INDEX` identifier this
 //! workspace chose in `store/src/schema/navigator.surql`, not prose.
 //!
 //! **The key-value layer is optimistic, so a write can lose a race.**
@@ -131,10 +132,10 @@ pub enum QuestionError {
 
 /// Turn a write failure into the caller-correctable conflict it names, or
 /// leave it as a database fault. A unique violation carries **no typed
-/// detail** — the index name in the message is the only discriminator (see
-/// `store::persons::classify_write` for the full account).
+/// detail** — the index name in the message is the only discriminator,
+/// identified by the shared classifier in [`crate::surreal::retry`].
 fn classify_write(error: surrealdb::Error) -> QuestionError {
-    if error.to_string().contains("question_code") {
+    if crate::surreal::retry::unique_violation(&error) == Some("question_code") {
         QuestionError::CodeTaken
     } else {
         QuestionError::Db(error)

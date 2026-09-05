@@ -84,7 +84,7 @@ pub enum EntityRoleError {
 }
 
 fn is_duplicate_tie(error: &surrealdb::Error) -> bool {
-    error.to_string().contains("entity_role_tie")
+    crate::surreal::retry::unique_violation(error) == Some("entity_role_tie")
 }
 
 fn many(mut response: surrealdb::IndexedResults) -> Result<Vec<EntityRole>, EntityRoleError> {

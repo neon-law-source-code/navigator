@@ -114,7 +114,7 @@ pub enum XeroInvoiceError {
 /// against the real engine, keeping an index rename from becoming an opaque
 /// database failure.
 fn classify_write(error: surrealdb::Error) -> XeroInvoiceError {
-    if error.to_string().contains("xero_invoice_project") {
+    if crate::surreal::retry::unique_violation(&error) == Some("xero_invoice_project") {
         XeroInvoiceError::ProjectTaken
     } else {
         XeroInvoiceError::Db(error)

@@ -414,6 +414,15 @@ them with semver's own ordering. Three answers:
 | equal to the newest | already released — the run ends in seconds. Almost every merge |
 | older than the newest | **the job fails.** A bad bump, or a rebase that resurrected an old manifest |
 
+**A duplicate `push` for the same commit is refused before any of that runs.** `main` has, on rare occasions, been
+pushed twice for one `head_sha` in the same second — GitHub's own delivery, not this repository's automation. The
+`deploy-release` concurrency group below only serializes *different* commits against each other, so two runs racing for
+the identical sha can both list the tags before either has tagged, and both answer "releasable" — which is how one push
+built and integrated the same version twice. Before the checker or the compile, a `dedup` step lists this workflow's own
+runs for `github.sha` and answers `publishable=false` when another one already exists, the same way a `kind-ci/**`
+branch iteration does. A legitimate "re-run failed jobs" reuses that same run rather than creating a new one, so it is
+never caught by this check.
+
 **`release-version` runs a published `navigator`, not one it compiles.** Answering a yes/no question by building the CLI
 cost ~8 minutes of latency on every merge to `main`, at the very front of the train where nothing else can start. The
 job downloads the newest release that carries a Linux CLI archive, and runs `ops release check` with it. `ci.yml` still

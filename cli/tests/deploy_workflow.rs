@@ -1056,6 +1056,118 @@ fn the_release_decision_job_writes_no_actions_cache() {
     }
 }
 
+/// A DUPLICATE PUSH FOR THE SAME COMMIT MUST NOT REPEAT THE RELEASE DECISION.
+///
+/// `main` has, on rare occasions, been pushed twice for the identical
+/// `head_sha` — run 33969761074 duplicated 33969761152, both created the same
+/// second for one commit. The `deploy-release` concurrency group only
+/// serializes DIFFERENT commits against each other, so two runs racing for the
+/// same sha can both read the tag list before either has tagged and both
+/// conclude "releasable" — which is how the same version's build and KIND
+/// integration ran twice for one push.
+///
+/// The `dedup` step answers this before the checker or the compile: it lists
+/// this workflow's own runs for `github.sha` and refuses when another one
+/// already exists, and every step that would otherwise do real work is gated
+/// on its answer.
+#[test]
+fn a_duplicate_trigger_for_the_same_commit_is_refused_before_any_real_work() {
+    let workflow = deploy_workflow();
+    let parsed: serde_yaml::Value =
+        serde_yaml::from_str(&workflow).expect("deploy.yml parses as YAML");
+    let steps = parsed["jobs"]["release-version"]["steps"]
+        .as_sequence()
+        .expect("release-version must declare steps");
+
+    let dedup_index = steps
+        .iter()
+        .position(|step| step["id"].as_str() == Some("dedup"))
+        .expect("release-version must declare a `dedup` step");
+    let dedup = &steps[dedup_index];
+    assert_eq!(
+        dedup["if"].as_str(),
+        Some("github.ref_name == 'main'"),
+        "the dedup check only makes sense on `main`; a `kind-ci/**` iteration already \
+         reports publishable=false without it"
+    );
+    let script = dedup["run"].as_str().expect("the dedup step runs a script");
+    assert!(
+        script.contains("/actions/workflows/deploy.yml/runs")
+            && script.contains("head_sha=")
+            && script.contains("event=push"),
+        "the dedup step must list THIS workflow's own runs for this exact commit, not every \
+         workflow or every commit: {script}"
+    );
+    assert!(
+        script.contains(".id != ${GITHUB_RUN_ID}"),
+        "the dedup step must exclude its own run from the count, or every run would see \
+         itself as a duplicate"
+    );
+
+    let checkout_index = steps
+        .iter()
+        .position(|step| {
+            step["uses"]
+                .as_str()
+                .unwrap_or_default()
+                .starts_with("actions/checkout")
+        })
+        .expect("release-version must check out the tree it reads");
+    assert!(
+        dedup_index > checkout_index,
+        "the dedup step reads github.sha, which is available without a checkout, but it must \
+         still run before the checker so a duplicate never installs one"
+    );
+
+    let checker_index = steps
+        .iter()
+        .position(|step| step["id"].as_str() == Some("checker"))
+        .expect("release-version must declare the `checker` step");
+    assert!(
+        dedup_index < checker_index,
+        "the dedup step must run before `checker`, or a duplicate trigger still pays for the \
+         binary install it exists to skip"
+    );
+    assert_eq!(
+        steps[checker_index]["if"].as_str(),
+        Some("github.ref_name == 'main' && steps.dedup.outputs.duplicate != 'true'"),
+        "the checker step must skip on a duplicate trigger, not just on a non-`main` ref"
+    );
+
+    let toolchain = steps
+        .iter()
+        .find(|step| step["name"].as_str() == Some("install rust toolchain"))
+        .expect("release-version must keep the fallback toolchain step");
+    let toolchain_guard = toolchain["if"]
+        .as_str()
+        .expect("the toolchain step must be conditional");
+    assert!(
+        toolchain_guard.contains("steps.dedup.outputs.duplicate != 'true'"),
+        "the fallback toolchain must not install on a duplicate trigger either — a skipped \
+         `checker` step's `ready` output is empty, which without this guard reads as \
+         `!= 'true'` and installs the toolchain anyway: {toolchain_guard}"
+    );
+
+    let version_step = steps
+        .iter()
+        .find(|step| step["id"].as_str() == Some("version"))
+        .expect("release-version must declare the `version` step");
+    let version_script = version_step["run"]
+        .as_str()
+        .expect("the version step runs a script");
+    assert!(
+        version_script.contains(r#"if [ "${DUPLICATE}" = "true" ]; then"#),
+        "the version step must short-circuit on a duplicate trigger rather than falling \
+         through to the checker or a compile"
+    );
+    assert!(
+        version_script.contains("publishable=false")
+            && version_script.matches("publishable=false").count() >= 2,
+        "a duplicate trigger must report publishable=false, same as a non-`main` branch \
+         iteration"
+    );
+}
+
 /// The `release-version` job's CONFIGURATION, re-serialised from the parsed
 /// YAML. Two properties matter: it is scoped to this one job, so an assertion
 /// cannot accidentally read another job's steps; and YAML comments are dropped,

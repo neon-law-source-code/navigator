@@ -18,6 +18,9 @@
 use std::fs;
 use std::path::PathBuf;
 
+#[cfg(unix)]
+use std::process::Command;
+
 use cloud::workspace::{PORTAL_MOUNT_SEGMENT, RESERVED_PROJECT_CODES, SLUG_MAX_LEN};
 
 /// The workspace root (`CARGO_MANIFEST_DIR` points at `cli/`).
@@ -31,6 +34,55 @@ fn workspace_root() -> PathBuf {
 fn action_source() -> String {
     let path = workspace_root().join(".github/actions/validate/action.yml");
     fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
+}
+
+#[cfg(unix)]
+fn mount_script() -> String {
+    let action: serde_yaml::Value =
+        serde_yaml::from_str(&action_source()).expect("action.yml parses as YAML");
+    action
+        .get("runs")
+        .and_then(|runs| runs.get("steps"))
+        .and_then(serde_yaml::Value::as_sequence)
+        .expect("the composite declares steps")
+        .iter()
+        .find(|step| {
+            step.get("name")
+                .and_then(serde_yaml::Value::as_str)
+                .is_some_and(|name| name.starts_with("the built"))
+        })
+        .and_then(|step| step.get("run"))
+        .and_then(serde_yaml::Value::as_str)
+        .expect("the mount step runs a script")
+        .to_string()
+}
+
+#[cfg(unix)]
+fn write_built_app(root: &std::path::Path, relative: &str, mount: &str) {
+    let app = root.join(relative);
+    fs::create_dir_all(app.join("dist/assets")).expect("create built app");
+    fs::create_dir_all(app.join("src")).expect("create app source");
+    fs::write(app.join("package.json"), "{}\n").expect("write package manifest");
+    fs::write(
+        app.join("dist/index.html"),
+        format!(r#"<script src="{mount}assets/app.js"></script>"#),
+    )
+    .expect("write built index");
+}
+
+#[cfg(unix)]
+fn run_mount_script(root: &std::path::Path) -> std::process::Output {
+    let script = root.join("mount.sh");
+    fs::write(&script, mount_script()).expect("write mount script");
+    Command::new("bash")
+        .arg(script)
+        .current_dir(root)
+        .env("DIR", ".")
+        .env("PROJECT_REPOSITORY", "true")
+        .env("REPOSITORY", "sample-project")
+        .env("PORTAL_DIST", "dist")
+        .output()
+        .expect("run mount script")
 }
 
 /// One gate, one action. The Project-repository half and the generic content
@@ -138,17 +190,73 @@ fn the_action_neither_composes_nor_splits_a_repository_name() {
 /// the slashed form, so the slashed spelling is where a browser ends up
 /// regardless.
 #[test]
-fn the_action_verifies_the_navigator_mount_with_its_literal_segment_and_slash() {
+fn the_action_derives_each_application_mount_without_an_apps_url_segment() {
     let source = action_source();
-    let expected = format!("base=\"/app/projects/${{code}}/{PORTAL_MOUNT_SEGMENT}/\"");
+    let expected = "base=\"/app/projects/${code}/${app}/\"";
     assert!(
-        source.contains(&expected),
+        source.contains(expected),
         "the action does not compose the mount Navigator serves: expected {expected}",
     );
-    // And it matches what Rust composes for a real code.
+    assert!(
+        !source.contains("/app/projects/${code}/apps/${app}/"),
+        "`apps/` groups source in the repository and must not become a product route",
+    );
+    // The legacy portal remains the generic rule with `app=portal`.
     assert_eq!(
         cloud::workspace::WorkspaceConfig::portal_mount("kizuna"),
-        "/app/projects/kizuna/portal/",
+        format!("/app/projects/kizuna/{PORTAL_MOUNT_SEGMENT}/"),
+    );
+}
+
+/// The real mount shell must inspect every direct app. A source-presence test
+/// cannot prove the loop continues past the first package manifest, so this
+/// executes the composite step with one correct app and one mismounted app.
+#[cfg(unix)]
+#[test]
+fn the_mount_gate_fails_when_any_discovered_app_is_mismounted() {
+    let tmp = tempfile::tempdir().expect("fixture checkout");
+    write_built_app(
+        tmp.path(),
+        "apps/portal",
+        "/app/projects/sample-project/portal/",
+    );
+    write_built_app(
+        tmp.path(),
+        "apps/exchange",
+        "/app/projects/sample-project/wrong/",
+    );
+
+    let output = run_mount_script(tmp.path());
+    assert!(
+        !output.status.success(),
+        "a mismounted second app was silently skipped: {}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    );
+    let message = String::from_utf8_lossy(&output.stdout).to_string()
+        + &String::from_utf8_lossy(&output.stderr);
+    assert!(message.contains("apps/exchange"), "{message}");
+    assert!(message.contains("is not mounted at"), "{message}");
+}
+
+#[cfg(unix)]
+#[test]
+fn the_mount_gate_rejects_two_portal_workspaces_for_one_route() {
+    let tmp = tempfile::tempdir().expect("fixture checkout");
+    write_built_app(tmp.path(), "portal", "/app/projects/sample-project/portal/");
+    write_built_app(
+        tmp.path(),
+        "apps/portal",
+        "/app/projects/sample-project/portal/",
+    );
+
+    let output = run_mount_script(tmp.path());
+    assert!(!output.status.success());
+    let message = String::from_utf8_lossy(&output.stdout).to_string()
+        + &String::from_utf8_lossy(&output.stderr);
+    assert!(
+        message.contains("claim the same application route"),
+        "{message}"
     );
 }
 
@@ -201,7 +309,7 @@ fn each_half_no_ops_rather_than_being_filtered_out() {
         "the action must not carry a path filter",
     );
     assert!(
-        source.contains("no portal in this repository — nothing to mount"),
+        source.contains("no applications in this repository — nothing to mount"),
         "the mount half must no-op over a repository with no portal",
     );
 }

@@ -1,14 +1,20 @@
 //! End-to-end tests for the one Project repository scaffold and validator.
 //!
 //! One repository per Project code, holding notation templates under
-//! `templates/` and the client portal under `portal/`. There is one scaffold and
-//! one validator for both, and the validator takes the Project code from the
-//! repository name. A repository may also carry a root manifest declaring that
-//! code — the layout admits one — but the scaffold does not write it and these
-//! tests do not depend on it.
+//! `templates/` and application source under `apps/<app>/`. There is one
+//! scaffold and one validator for both, and the validator takes the Project
+//! code from the repository name. A legacy root `portal/` remains valid during
+//! the source-layout transition. A repository may also carry a root manifest
+//! declaring that code — the layout admits one — but the scaffold does not
+//! write it and these tests do not depend on it.
 
 use std::fs;
 use std::path::Path;
+
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+#[cfg(unix)]
+use std::process::Command as ProcessCommand;
 
 use assert_cmd::Command;
 use predicates::str;
@@ -54,12 +60,34 @@ fn validate(dir: &Path, repository: &str) -> assert_cmd::assert::Assert {
 /// A minimal Vite workspace, which is the whole portal contract: a
 /// `package.json`, an `index.html`, and a lockfile of any flavor. There is
 /// deliberately no dependency allowlist.
+fn write_vite_workspace(dir: &Path, relative: &str) {
+    let app = dir.join(relative);
+    fs::create_dir_all(app.join("src")).unwrap();
+    fs::write(app.join("package.json"), "{}\n").unwrap();
+    fs::write(app.join("index.html"), "<!doctype html>\n").unwrap();
+    fs::write(app.join("pnpm-lock.yaml"), "lockfileVersion: '9.0'\n").unwrap();
+}
+
 fn write_portal(dir: &Path) {
-    let portal = dir.join("portal");
-    fs::create_dir_all(portal.join("src")).unwrap();
-    fs::write(portal.join("package.json"), "{}\n").unwrap();
-    fs::write(portal.join("index.html"), "<!doctype html>\n").unwrap();
-    fs::write(portal.join("pnpm-lock.yaml"), "lockfileVersion: '9.0'\n").unwrap();
+    write_vite_workspace(dir, "portal");
+}
+
+#[cfg(unix)]
+fn generated_step_script(root: &Path, step_name: &str) -> String {
+    let source = fs::read_to_string(root.join(".github/workflows/gate.yml")).unwrap();
+    let workflow: serde_yaml::Value = serde_yaml::from_str(&source).unwrap();
+    workflow
+        .get("jobs")
+        .and_then(|jobs| jobs.get("verify"))
+        .and_then(|job| job.get("steps"))
+        .and_then(serde_yaml::Value::as_sequence)
+        .unwrap()
+        .iter()
+        .find(|step| step.get("name").and_then(serde_yaml::Value::as_str) == Some(step_name))
+        .and_then(|step| step.get("run"))
+        .and_then(serde_yaml::Value::as_str)
+        .unwrap()
+        .to_string()
 }
 
 #[test]
@@ -69,12 +97,15 @@ fn the_scaffold_produces_a_repository_that_validates_and_is_idempotent() {
 
     validate(dir.path(), "example-project")
         .success()
-        .stdout(str::contains("1 template(s), 0 portal, 0 error(s)"));
+        .stdout(str::contains("1 template(s), 0 application(s), 0 error(s)"));
 
     assert!(dir.path().join("README.md").is_file());
     assert!(dir.path().join("AGENTS.md").is_file());
     assert!(dir.path().join("CLAUDE.md").is_file());
     let instructions = fs::read_to_string(dir.path().join("CLAUDE.md")).unwrap();
+    assert!(instructions.contains("`apps/<app>/`"));
+    assert!(instructions.contains("source grouping is not a URL segment"));
+    assert!(instructions.contains("root `portal/` is also"));
     assert!(instructions.contains("A Project code names a matter and its repository."));
     assert!(instructions.contains("It identifies a client, so it is client"));
     assert!(
@@ -121,7 +152,7 @@ fn templates_only_a_portal_only_and_both_all_validate() {
     scaffold(templates_only.path(), "example-project").success();
     validate(templates_only.path(), "example-project")
         .success()
-        .stdout(str::contains("1 template(s), 0 portal"));
+        .stdout(str::contains("1 template(s), 0 application(s)"));
 
     // Both halves in one repository, which is the point of the collapse.
     let both = TempDir::new().unwrap();
@@ -129,7 +160,7 @@ fn templates_only_a_portal_only_and_both_all_validate() {
     write_portal(both.path());
     validate(both.path(), "example-project")
         .success()
-        .stdout(str::contains("1 template(s), 1 portal"));
+        .stdout(str::contains("1 template(s), 1 application(s)"));
 
     // A portal only: no `templates/` at all.
     let portal_only = TempDir::new().unwrap();
@@ -138,7 +169,147 @@ fn templates_only_a_portal_only_and_both_all_validate() {
     write_portal(portal_only.path());
     validate(portal_only.path(), "example-project")
         .success()
-        .stdout(str::contains("0 template(s), 1 portal"));
+        .stdout(str::contains("0 template(s), 1 application(s)"));
+}
+
+/// Direct `apps/<app>/package.json` files are the app declarations. Every
+/// discovered directory is validated as its own Vite workspace, while a
+/// directory under `apps/` with no package manifest is ordinary source rather
+/// than a second declaration the repository has to keep synchronized.
+#[test]
+fn direct_apps_are_discovered_and_each_is_validated() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "example-project").success();
+    fs::remove_dir_all(dir.path().join("templates")).unwrap();
+    write_vite_workspace(dir.path(), "apps/portal");
+    write_vite_workspace(dir.path(), "apps/exchange");
+    fs::create_dir_all(dir.path().join("apps/shared")).unwrap();
+    fs::write(dir.path().join("apps/shared/routes.ts"), "export {};\n").unwrap();
+
+    validate(dir.path(), "example-project")
+        .success()
+        .stdout(str::contains("2 application(s)"));
+
+    fs::remove_file(dir.path().join("apps/exchange/index.html")).unwrap();
+    validate(dir.path(), "example-project")
+        .failure()
+        .code(1)
+        .stderr(str::contains("apps/exchange"))
+        .stderr(str::contains("is not a Vite workspace"))
+        .stderr(str::contains("index.html"));
+
+    fs::write(
+        dir.path().join("apps/exchange/.env.production"),
+        "SECRET=synthetic\n",
+    )
+    .unwrap();
+    validate(dir.path(), "example-project")
+        .failure()
+        .code(1)
+        .stderr(str::contains("apps/exchange/.env.production"))
+        .stderr(str::contains("must not be committed"));
+}
+
+/// Existing Project repositories can move one application at a time: a root
+/// `portal/` and a new `apps/exchange/` are both discovered and checked during
+/// the transition instead of either layout silently shadowing the other.
+#[test]
+fn a_legacy_root_portal_and_new_apps_can_transition_together() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "example-project").success();
+    fs::remove_dir_all(dir.path().join("templates")).unwrap();
+    write_portal(dir.path());
+    write_vite_workspace(dir.path(), "apps/exchange");
+
+    validate(dir.path(), "example-project")
+        .success()
+        .stdout(str::contains("2 application(s)"));
+}
+
+#[test]
+fn the_legacy_and_new_portal_locations_cannot_claim_the_same_route() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "example-project").success();
+    write_portal(dir.path());
+    write_vite_workspace(dir.path(), "apps/portal");
+
+    validate(dir.path(), "example-project")
+        .failure()
+        .code(1)
+        .stderr(str::contains("apps/portal"))
+        .stderr(str::contains("claim the same application route"));
+}
+
+/// Execute the generated build step rather than only looking for a glob in
+/// its source: every direct app and the compatibility root portal must reach
+/// pnpm exactly once.
+#[cfg(unix)]
+#[test]
+fn the_generated_build_step_runs_every_discovered_application() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "example-project").success();
+    write_vite_workspace(dir.path(), "apps/intake");
+    write_vite_workspace(dir.path(), "apps/exchange");
+    write_portal(dir.path());
+
+    let bin = dir.path().join("bin");
+    fs::create_dir_all(&bin).unwrap();
+    let log = dir.path().join("pnpm.log");
+    let pnpm = bin.join("pnpm");
+    fs::write(
+        &pnpm,
+        format!(
+            "#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" >> \"{}\"\n",
+            log.display()
+        ),
+    )
+    .unwrap();
+    fs::set_permissions(&pnpm, fs::Permissions::from_mode(0o755)).unwrap();
+
+    let script = dir.path().join("build.sh");
+    fs::write(
+        &script,
+        generated_step_script(dir.path(), "Build applications"),
+    )
+    .unwrap();
+    let path = format!(
+        "{}:{}",
+        bin.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let output = ProcessCommand::new("bash")
+        .arg(script)
+        .current_dir(dir.path())
+        .env("PATH", path)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        fs::read_to_string(log).unwrap().lines().collect::<Vec<_>>(),
+        [
+            "--dir apps/exchange build",
+            "--dir apps/intake build",
+            "--dir portal build",
+        ]
+    );
+}
+
+#[test]
+fn an_application_directory_name_must_be_a_route_safe_slug() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "example-project").success();
+    write_vite_workspace(dir.path(), "apps/Client_Exchange");
+
+    validate(dir.path(), "example-project")
+        .failure()
+        .code(1)
+        .stderr(str::contains("Client_Exchange"))
+        .stderr(str::contains("is not a valid application name"));
 }
 
 /// A Project carrying neither half is reported distinctly and is not a failure.

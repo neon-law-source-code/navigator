@@ -1,16 +1,18 @@
 //! One Project, one repository: scaffold and validation.
 //!
-//! A Project's repository is named for its Project code and holds two kinds of
-//! source side by side — that Project's notation templates under `templates/`,
-//! and its client portal under `portal/`. There is one layout and one command
-//! for both, because there is one repository.
+//! A Project's repository is named for its Project code and holds notation
+//! templates under `templates/` plus zero or more applications under
+//! `apps/<app>/`. There is one layout and one command for both, because there
+//! is one repository. A root `portal/` remains accepted while existing
+//! repositories move that application to `apps/portal/`.
 //!
 //! ```text
 //! <organization>/<project-code>
 //! ├── .github/workflows/gate.yml
 //! ├── .github/workflows/publish.yml
 //! ├── .claude/skills/    # synced from Navigator via `sync-skills`
-//! ├── portal/            # React + Vite; the client's portal
+//! ├── apps/              # React + Vite workspaces, discovered by package.json
+//! │   └── portal/
 //! ├── templates/         # *.md notation blueprints
 //! ├── AGENTS.md
 //! ├── CLAUDE.md
@@ -21,8 +23,8 @@
 //! # Where the Project code comes from
 //!
 //! [`validate`] still takes it from the repository name, and CI has that name
-//! as `github.event.repository.name`. The mount is that name plus the literal
-//! `portal`.
+//! as `github.event.repository.name`. Each application mount is that name plus
+//! the application directory name.
 //!
 //! A repository also declares its Project in a root manifest — `navigator.yaml`,
 //! `project:` — and that manifest is part of the layout. So the code is
@@ -59,13 +61,13 @@
 //! exemption file, which would make the gate advisory and let a repository
 //! quietly exempt the thing the gate exists to catch.
 //!
-//! # The scaffold does not write the portal
+//! # The scaffold does not write applications
 //!
-//! It writes the repository shell and the templates half. `portal/` arrives
-//! from the vibe-coding lane, which is what knows how to make a Vite
-//! application and which released `@neon-law/ux` to pin. That keeps [`validate`]
-//! unambiguous: `portal/` present means there is a portal to hold to the Vite
-//! contract, and absent means this Project does not have one yet.
+//! It writes the repository shell and the templates half. `apps/` arrives from
+//! the vibe-coding lane, which is what knows how to make a Vite application and
+//! which released `@neon-law/ux` to pin. An application is discovered from a
+//! direct `apps/<app>/package.json`; the tree, not a second manifest list,
+//! declares what the repository carries.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -76,13 +78,13 @@ use crate::devx::github_setup::REQUIRED_CHECK;
 
 /// The notation blueprints Navigator imports.
 const TEMPLATE_DIRECTORY: &str = "templates";
-/// The client portal's Vite workspace.
+/// The legacy client portal's Vite workspace.
 ///
-/// `pub(crate)` because [`super::super::devx::github_setup`] checks for a
-/// portal the same way `scaffold` gates a portal-specific step: by the
-/// presence of `portal/package.json`, never by a second flag that could
-/// disagree with it.
+/// `pub(crate)` because [`super::super::devx::github_setup`] still uses its
+/// presence to decide whether the legacy single-portal publisher is applicable.
 pub(crate) const PORTAL_DIRECTORY: &str = "portal";
+/// Application workspaces, each declared by `apps/<app>/package.json`.
+const APPLICATIONS_DIRECTORY: &str = "apps";
 /// `pub(crate)` because [`super::super::devx::github_setup`] reconciles the
 /// live file at this path against [`workflow`]'s output, the same template
 /// `scaffold` writes, read back rather than duplicated.
@@ -114,6 +116,7 @@ const ALLOWED_ROOTS: &[&str] = &[
     // at all, so refusing it here made the layout unsatisfiable for that shape.
     "LICENSE.md",
     "README.md",
+    APPLICATIONS_DIRECTORY,
     "fixtures",
     // The manifest a Project repository declares its Project code in. Refusing
     // it made the layout unsatisfiable for every repository that carries one,
@@ -160,7 +163,7 @@ const FORBIDDEN_COMPONENTS: &[&str] = &[
 const FORBIDDEN_CREDENTIAL_EXTENSIONS: &[&str] = &["env", "key", "pem", "p12", "pfx"];
 const FORBIDDEN_DOCUMENT_EXTENSIONS: &[&str] = &["doc", "docx", "odt", "pdf"];
 
-/// The files a Vite-built portal must have at the root of its directory.
+/// The files a Vite-built application must have at the root of its directory.
 ///
 /// Deliberately **no dependency allowlist**: third-party libraries are the
 /// point of a Project carrying a Vite portal, so the contract is the build
@@ -328,9 +331,9 @@ pub fn sync_skills(root: &Path) -> ExitCode {
 /// `templates/notations/neon_law` / `templates/notations/forms` catalog. This mirrors
 /// `store::template_source::persist_from_repo` exactly.
 ///
-/// Three shapes are all valid — templates only, a portal only, or both — and a
-/// repository carrying neither is reported distinctly rather than failed. A
-/// Project may legitimately have opened before either half exists.
+/// Templates and applications are independently optional, and a repository
+/// carrying neither is reported distinctly rather than failed. A Project may
+/// legitimately have opened before either half exists.
 pub fn validate(root: &Path, repository: Option<&str>) -> ExitCode {
     let mut errors = Vec::new();
     let mut warnings = Vec::new();
@@ -364,23 +367,20 @@ pub fn validate(root: &Path, repository: Option<&str>) -> ExitCode {
         ));
     }
 
-    let has_templates = root.join(TEMPLATE_DIRECTORY).is_dir();
-    let has_portal = root.join(PORTAL_DIRECTORY).is_dir();
-
     validate_layout(root, &mut errors);
     validate_skills(root, &mut errors);
+    let has_templates = root.join(TEMPLATE_DIRECTORY).is_dir();
+    let applications = application_workspaces(root, &mut errors);
     let templates = if has_templates {
         validate_templates(root, &mut errors, &mut warnings)
     } else {
         0
     };
-    if has_portal {
-        validate_portal(root, &mut errors);
+    for application in &applications {
+        validate_application(application, &mut errors);
     }
-    if !has_templates && !has_portal {
-        println!(
-            "note: {code} carries neither `{TEMPLATE_DIRECTORY}/` nor `{PORTAL_DIRECTORY}/` yet"
-        );
+    if !has_templates && applications.is_empty() {
+        println!("note: {code} carries neither `{TEMPLATE_DIRECTORY}/` nor an application yet");
     }
 
     for warning in &warnings {
@@ -390,8 +390,8 @@ pub fn validate(root: &Path, repository: Option<&str>) -> ExitCode {
         eprintln!("{}: error: {}", error.path.display(), error.message);
     }
     println!(
-        "Validated Project repository `{code}`: {templates} template(s), {} portal, {} error(s), {} warning(s)",
-        if has_portal { "1" } else { "0" },
+        "Validated Project repository `{code}`: {templates} template(s), {} application(s), {} error(s), {} warning(s)",
+        applications.len(),
         errors.len(),
         warnings.len()
     );
@@ -538,25 +538,78 @@ fn validate_skills(root: &Path, errors: &mut Vec<Finding>) {
     }
 }
 
-/// The portal's build shape, where a portal exists.
-fn validate_portal(root: &Path, errors: &mut Vec<Finding>) {
-    let portal = root.join(PORTAL_DIRECTORY);
+/// Discover direct application workspaces from the tree.
+///
+/// The legacy root `portal/` is directory-discovered so a half-migrated,
+/// malformed portal still receives the Vite finding it always did. New
+/// applications are declared only by a direct `apps/<app>/package.json`;
+/// unrelated shared source below `apps/` is not another declaration.
+fn application_workspaces(root: &Path, errors: &mut Vec<Finding>) -> Vec<PathBuf> {
+    let mut applications = Vec::new();
+    let legacy_portal = root.join(PORTAL_DIRECTORY);
+    let has_legacy_portal = legacy_portal.is_dir();
+    if has_legacy_portal {
+        applications.push(legacy_portal);
+    }
+
+    let apps = root.join(APPLICATIONS_DIRECTORY);
+    if !apps.is_dir() {
+        return applications;
+    }
+    let Ok(entries) = fs::read_dir(&apps) else {
+        errors.push(Finding::at(apps, "could not read application directory"));
+        return applications;
+    };
+    let mut discovered = Vec::new();
+    for entry in entries {
+        let Ok(entry) = entry else {
+            errors.push(Finding::at(&apps, "could not read application entry"));
+            continue;
+        };
+        let path = entry.path();
+        if path.is_dir() && path.join("package.json").is_file() {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if !cloud::workspace::is_valid_slug(&name) {
+                errors.push(Finding::at(
+                    &path,
+                    format!(
+                        "`{name}` is not a valid application name; use lowercase letters, digits, and single hyphens"
+                    ),
+                ));
+            }
+            if name == PORTAL_DIRECTORY && has_legacy_portal {
+                errors.push(Finding::at(
+                    &path,
+                    "`apps/portal/` and the legacy root `portal/` claim the same application route; move the portal instead of keeping both",
+                ));
+            }
+            discovered.push(path);
+        }
+    }
+    discovered.sort();
+    applications.extend(discovered);
+    applications
+}
+
+/// One discovered application's build shape.
+fn validate_application(application: &Path, errors: &mut Vec<Finding>) {
     let mut missing: Vec<&str> = VITE_ENTRYPOINTS
         .iter()
         .copied()
-        .filter(|file| !portal.join(file).is_file())
+        .filter(|file| !application.join(file).is_file())
         .collect();
     if !VITE_LOCKFILES
         .iter()
-        .any(|file| portal.join(file).is_file())
+        .any(|file| application.join(file).is_file())
     {
         missing.push("a lockfile");
     }
     if !missing.is_empty() {
         errors.push(Finding::at(
-            &portal,
+            application,
             format!(
-                "`{PORTAL_DIRECTORY}/` is present but is not a Vite workspace: missing {}",
+                "application is not a Vite workspace: missing {}",
                 missing.join(", ")
             ),
         ));
@@ -806,10 +859,11 @@ fn validate_templates(
 fn readme(project_code: &str) -> String {
     format!(
         "# {project_code}\n\nThis repository holds source-only material for Project `{project_code}`: its notation\n\
-         templates under `templates/`, and its client portal under `portal/`.\n\n\
+         templates under `templates/`, and its application workspaces under `apps/<app>/`.\n\n\
          The repository name *is* the Project code. Nothing in here declares it, so nothing can\n\
-         disagree with it: Navigator's portal mount is `/app/projects/{project_code}/portal/`, derived from\n\
-         the repository name plus one literal segment.\n\n\
+         disagree with it. Each app name comes from its directory and builds for\n\
+         `/app/projects/{project_code}/<app>/`; `apps/` is not part of that URL.\n\n\
+         A root `portal/` is also accepted while repositories move it to `apps/portal/`.\n\n\
          Navigator imports each direct `templates/<code>.md` file at the current commit, preserving both\n\
          that commit SHA and the template body's content hash as provenance.\n\n\
          Do not commit client uploads, answers, generated documents, secrets, dependencies, or build\n\
@@ -824,10 +878,12 @@ fn agents(project_code: &str) -> String {
          This is one Project's repository. It holds two kinds of source and nothing else.\n\n\
          * `templates/` — notation blueprints, one `templates/<code>.md` per notation. Navigator\n\
            imports them and records the commit SHA as provenance.\n\
-         * `portal/` — the client's React + Vite portal. Build it for the base\n\
-           `/app/projects/{project_code}/portal/`, and derive every in-app path from\n\
+         * `apps/<app>/` — React + Vite applications, each discovered from its direct\n\
+           `package.json`. Build each for `/app/projects/{project_code}/<app>/`; the `apps/`\n\
+           source grouping is not a URL segment. Derive every in-app path from\n\
            `import.meta.env.BASE_URL` rather than writing an absolute path by hand: a Vite base\n\
-           rewrites module and asset URLs and never an `href` in source.\n\n\
+           rewrites module and asset URLs and never an `href` in source. A root `portal/` is also\n\
+           accepted while repositories move that workspace to `apps/portal/`.\n\n\
          ## Project codes are client identifiers\n\n\
          A Project code names a matter and its repository. It identifies a client, so it is client\n\
          data. The one legitimate use here is this repository naming itself, as in `navigator.yaml`,\n\
@@ -885,13 +941,14 @@ const CHECKOUT_ACTION: &str = "actions/checkout@3d3c42e5aac5ba805825da76410c1812
 const APPLICATION_PUBLISH_ACTION: &str =
     "neon-law-source-code/navigator/.github/actions/application-publish@";
 
-/// The condition every portal-specific step in a generated workflow carries.
+/// The tree-derived condition for generated application steps.
 ///
-/// `scaffold` never writes `portal/` — it arrives later from the vibe-coding
-/// lane, onto a `gate.yml` that is already written and never regenerated. So
-/// whether a portal exists cannot be decided once at generation time; it has
-/// to be asked at every run, which is what this expression does.
-const IF_PORTAL_PRESENT: &str = "hashFiles('portal/package.json') != ''";
+/// Both patterns are load-bearing: the first discovers every direct app and
+/// the second keeps the root-portal transition green. This gates tool setup on
+/// repositories that actually need Node; the shell loop below still derives
+/// the complete list independently rather than trusting a declared matrix.
+const IF_APPLICATION_PRESENT: &str =
+    "hashFiles('apps/*/package.json', 'portal/package.json') != ''";
 
 /// The standard install/lint/typecheck/build/test sequence, one line per
 /// script, package-manager-agnostic in what it checks but pnpm in what it
@@ -900,15 +957,29 @@ const IF_PORTAL_PRESENT: &str = "hashFiles('portal/package.json') != ''";
 /// generated file, the same way it is already free to add anything else.
 fn pnpm_step(name: &str, script: &str) -> String {
     format!(
-        "      - name: {name}\n        if: {IF_PORTAL_PRESENT}\n        run: pnpm --dir portal {script}\n"
+        r#"      - name: {name}
+        if: {IF_APPLICATION_PRESENT}
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          package_manifests=(apps/*/package.json)
+          if [ -f portal/package.json ]; then
+              package_manifests+=(portal/package.json)
+          fi
+          for package_json in "${{package_manifests[@]}}"; do
+              app_dir="${{package_json%/package.json}}"
+              pnpm --dir "${{app_dir}}" {script}
+          done
+"#
     )
 }
 
 fn setup_steps() -> String {
     format!(
         "      - uses: {CHECKOUT_ACTION}\n      \
-         - uses: {SETUP_NODE_ACTION}\n        if: {IF_PORTAL_PRESENT}\n        with:\n          node-version: \"22\"\n      \
-         - uses: {PNPM_SETUP_ACTION}\n        if: {IF_PORTAL_PRESENT}\n"
+         - uses: {SETUP_NODE_ACTION}\n        if: {IF_APPLICATION_PRESENT}\n        with:\n          node-version: \"22\"\n      \
+         - uses: {PNPM_SETUP_ACTION}\n        if: {IF_APPLICATION_PRESENT}\n"
     )
 }
 
@@ -919,9 +990,10 @@ fn setup_steps() -> String {
 /// # Fan-in, not one flat job
 ///
 /// `lint`, `verify`, and `notation` each run unconditionally and no-op
-/// internally over a half this repository does not carry ([`IF_PORTAL_PRESENT`]
-/// gates every portal-specific step; the pinned validate action already no-ops
-/// over an absent portal on its own). [`REQUIRED_CHECK`] is the one job the
+/// internally over a half this repository does not carry (each application
+/// step loops over the package manifests discovered from the tree; the pinned
+/// validate action already no-ops over an absent application on its own).
+/// [`REQUIRED_CHECK`] is the one job the
 /// ruleset actually binds to, and it asserts each dependency's `result`
 /// explicitly rather than trusting a bare `needs:` — a **skipped** job reports
 /// no result at all, so a bare `needs:` would read that as success and leave a
@@ -949,7 +1021,10 @@ fn setup_steps() -> String {
 /// free to drift from it.
 pub(crate) fn workflow(action_version: &str) -> String {
     let setup = setup_steps();
-    let install = pnpm_step("Install portal dependencies", "install --frozen-lockfile");
+    let install = pnpm_step(
+        "Install application dependencies",
+        "install --frozen-lockfile",
+    );
     format!(
         r#"name: {REQUIRED_CHECK}
 
@@ -989,10 +1064,10 @@ jobs:
           test "${{{{ needs.verify.result }}}}" = "success"
           test "${{{{ needs.notation.result }}}}" = "success"
 "#,
-        lint_step = pnpm_step("Lint the portal", "lint"),
-        typecheck_step = pnpm_step("Typecheck the portal", "typecheck"),
-        test_step = pnpm_step("Test the portal", "test"),
-        build_step = pnpm_step("Build the portal", "build"),
+        lint_step = pnpm_step("Lint applications", "lint"),
+        typecheck_step = pnpm_step("Typecheck applications", "typecheck"),
+        test_step = pnpm_step("Test applications", "test"),
+        build_step = pnpm_step("Build applications", "build"),
     )
 }
 
@@ -1012,7 +1087,10 @@ jobs:
 /// `pub(crate)` for the same reason as [`workflow`].
 pub(crate) fn cd_workflow(action_version: &str) -> String {
     let setup = setup_steps();
-    let install = pnpm_step("Install portal dependencies", "install --frozen-lockfile");
+    let install = pnpm_step(
+        "Install application dependencies",
+        "install --frozen-lockfile",
+    );
     format!(
         r#"name: publish
 
@@ -1032,18 +1110,21 @@ jobs:
         with:
           version: "{action_version}"
           project_repository: true
-      - name: Publish the built portal
-        if: {IF_PORTAL_PRESENT}
+      # Multi-application publication needs a separate prefix/IAM and runtime
+      # authorization decision. This preserves only the existing root portal
+      # publisher during the source-layout transition.
+      - name: Publish the legacy root portal
+        if: hashFiles('portal/package.json') != ''
         uses: {APPLICATION_PUBLISH_ACTION}{action_version}
         with:
           applications_bucket: ${{{{ secrets.NAVIGATOR_APPLICATIONS_BUCKET }}}}
           workload_identity_provider: ${{{{ secrets.NAVIGATOR_APP_PUBLISHER_WIF_PROVIDER }}}}
           service_account: ${{{{ secrets.NAVIGATOR_APP_PUBLISHER_SERVICE_ACCOUNT }}}}
 "#,
-        lint_step = pnpm_step("Lint the portal", "lint"),
-        typecheck_step = pnpm_step("Typecheck the portal", "typecheck"),
-        test_step = pnpm_step("Test the portal", "test"),
-        build_step = pnpm_step("Build the portal", "build"),
+        lint_step = pnpm_step("Lint applications", "lint"),
+        typecheck_step = pnpm_step("Typecheck applications", "typecheck"),
+        test_step = pnpm_step("Test applications", "test"),
+        build_step = pnpm_step("Build applications", "build"),
     )
 }
 
@@ -1411,34 +1492,49 @@ jobs:
         }
     }
 
-    /// The portal-specific steps no-op at run time rather than being decided
-    /// once at generation time: `scaffold` never writes `portal/`, so a gate
-    /// written before the portal exists must still work once it arrives
-    /// later. The validate action no-ops internally over an absent portal
-    /// already, so its own step must not carry a second, redundant
-    /// condition.
+    /// Application steps discover workspaces at run time rather than being
+    /// generated from the tree `scaffold` happened to see. The condition wakes
+    /// for either direct apps or the root-portal transition, and every command
+    /// independently loops over the full discovered set.
     #[test]
-    fn the_portal_steps_are_conditioned_not_generated_away() {
+    fn the_application_steps_discover_every_workspace_at_run_time() {
         let generated = workflow(FIXTURE_PIN);
+        assert_eq!(
+            generated
+                .matches("package_manifests=(apps/*/package.json)")
+                .count(),
+            6,
+            "every application command must discover the tree for itself:\n{generated}"
+        );
+        assert_eq!(
+            generated.matches("pnpm --dir \"${app_dir}\"").count(),
+            6,
+            "every application command must run once per discovered workspace:\n{generated}"
+        );
+        assert!(
+            generated.contains("hashFiles('apps/*/package.json', 'portal/package.json') != ''"),
+            "tool setup and commands must wake for either supported source root:\n{generated}"
+        );
         for step in [
-            "Install portal dependencies",
-            "Lint the portal",
-            "Typecheck the portal",
-            "Test the portal",
-            "Build the portal",
+            "Install application dependencies",
+            "Lint applications",
+            "Typecheck applications",
+            "Test applications",
+            "Build applications",
         ] {
+            let marker = format!("- name: {step}\n");
+            let start = generated.find(&marker).expect("generated step exists");
+            let body = &generated[start..];
+            assert!(body.contains("apps/*/package.json"), "{step}:\n{body}");
+            assert!(body.contains("portal/package.json"), "{step}:\n{body}");
             assert!(
-                generated.contains(&format!(
-                    "- name: {step}\n        if: hashFiles('portal/package.json') != ''\n"
-                )),
-                "`{step}` is missing its run-time no-op condition:\n{generated}"
+                body.contains("pnpm --dir \"${app_dir}\""),
+                "{step} does not run against each discovered app:\n{body}"
             );
         }
         assert!(
-            !generated.contains(
-                "if: hashFiles('portal/package.json') != ''\n        uses: neon-law-source-code/navigator"
-            ),
-            "{generated}"
+            !generated.contains("hashFiles('portal/package.json')"),
+            "the root portal must not be the only condition that can make the gate run:\n{generated}"
         );
     }
 

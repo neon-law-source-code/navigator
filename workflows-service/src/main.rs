@@ -29,7 +29,7 @@ use workflows_service::{
 };
 
 macro_rules! bind_common_services {
-    ($endpoint:expr, $surreal:expr, $email:expr, $storage:expr, $notifier:expr, $ops_delivery:expr, $slack_bot:expr) => {
+    ($endpoint:expr, $surreal:expr, $email:expr, $storage:expr, $notifier:expr, $ops_delivery:expr, $slack_bot:expr, $simulated_matters:expr) => {
         $endpoint
             .bind(NotationService::new(
                 $surreal.clone(),
@@ -45,7 +45,11 @@ macro_rules! bind_common_services {
             .bind(BillingCanaryService::new($ops_delivery.clone()))
             .bind(BillingDigestService::new($ops_delivery))
             .bind(ReconcileInvoicesService::new($surreal.clone()))
-            .bind(DriDigestService::new($surreal, $notifier))
+            .bind(DriDigestService::new(
+                $surreal,
+                $notifier,
+                $simulated_matters,
+            ))
     };
 }
 
@@ -63,6 +67,11 @@ async fn main() -> anyhow::Result<()> {
 
     let environment =
         store::DeploymentEnvironment::from_env().context("parse NAVIGATOR_ENVIRONMENT")?;
+    // Drives the `DriDigest` workflow's staging disclosure and open-matters
+    // follow-up gate — the same flag the site-wide "simulated projects"
+    // banner reads.
+    let simulated_matters =
+        store::sample_matters(environment).context("resolve NAVIGATOR_SIMULATED_MATTERS")?;
     let endpoint_builder = apply_identity_key(Endpoint::builder(), environment, |key| {
         std::env::var(key).ok()
     })
@@ -185,7 +194,8 @@ async fn main() -> anyhow::Result<()> {
                 storage,
                 notifier,
                 ops_delivery,
-                slack_bot
+                slack_bot,
+                simulated_matters
             )
             .build(),
         )
@@ -199,7 +209,8 @@ async fn main() -> anyhow::Result<()> {
                 storage,
                 notifier,
                 ops_delivery,
-                slack_bot
+                slack_bot,
+                simulated_matters
             )
             .build(),
         )

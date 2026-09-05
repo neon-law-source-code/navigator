@@ -15,6 +15,19 @@
 //!    projects as a bulleted list, not a fixed-width table, so it needs no
 //!    fencing.
 //!
+//! A deployment that discloses simulated matters (`store::sample_matters`,
+//! the same flag driving the site-wide banner) gets that disclosure folded
+//! into the digest header instead — see [`dri_digest_message`]. A deployment
+//! that does not gets two further steps a simulated run never runs, because
+//! the count they post is a real-matter-only signal:
+//!
+//! 3. `ctx.run("counts")` — [`store::projects::matter_open_pitch_counts`]:
+//!    how many of the firm's own `"neon"`-brand matters are open, and how
+//!    many of those are still pitches.
+//! 4. `ctx.run("notify_counts")` — post those counts as a second, separate
+//!    Slack message, journaled independently from steps 1-2 so a retry of
+//!    either pair never re-runs the other.
+//!
 //! **Internal operations signal**, not client correspondence: it names
 //! matters and the firm's own people by their already-internal DRI markers,
 //! posted only to the firm ops Slack channel — never emailed to a client or
@@ -47,11 +60,24 @@ pub struct DriDigestReport {
 /// one bulleted line per project — code, name, and each DRI side, "none" when
 /// a side is unassigned so the gap reads as a gap rather than a blank. Pure
 /// and exposed so the message is unit-tested without a workflow context.
+///
+/// `simulated` appends the staging disclosure to the header — the same
+/// signal the site-wide banner gives a browsing visitor, given here to a
+/// reader of the firm-ops Slack channel who has no other way to tell a
+/// persistent-staging post from a real production one.
 #[must_use]
-pub fn dri_digest_message(projects: &[ProjectDriSummary]) -> String {
+pub fn dri_digest_message(projects: &[ProjectDriSummary], simulated: bool) -> String {
     use std::fmt::Write as _;
 
-    let mut out = format!("*Project DRI digest — {} projects*\n", projects.len());
+    let suffix = if simulated {
+        " (from the staging account)"
+    } else {
+        ""
+    };
+    let mut out = format!(
+        "*Project DRI digest — {} projects*{suffix}\n",
+        projects.len()
+    );
     for project in projects {
         let lawyer = names_or_none(&project.lawyer_dris);
         let client = names_or_none(&project.client_dris);
@@ -72,19 +98,44 @@ fn names_or_none(names: &[String]) -> String {
     }
 }
 
+/// The nightly open-matters/pitches follow-up post, or `None` when this
+/// deployment discloses simulated matters — that count is a real-matter-only
+/// signal, so a staging run posts nothing here rather than a number nobody
+/// should read as real.
+///
+/// Pure and exposed so the simulated/production branch is unit-tested
+/// without a workflow context, the same seam [`dri_digest_message`] uses for
+/// its own header text.
+#[must_use]
+pub fn open_matters_followup(simulated: bool, open: usize, pitches: usize) -> Option<String> {
+    if simulated {
+        return None;
+    }
+    Some(format!("Total open matters: {open}, pitches: {pitches}"))
+}
+
 /// Service registered with the Restate endpoint. Holds a `SurrealDB` clone (the
 /// same connection the worker opened at boot, same shape as
-/// `ReconcileInvoicesService`) and the worker-side Slack [`Notifier`].
+/// `ReconcileInvoicesService`), the worker-side Slack [`Notifier`], and
+/// whether this deployment discloses simulated matters
+/// (`store::sample_matters`) — resolved once at boot in
+/// `workflows-service/src/main.rs`, not re-read from the environment on
+/// every run.
 #[derive(Clone)]
 pub struct DriDigestService {
     surreal: SurrealDb,
     notifier: Arc<dyn Notifier>,
+    simulated: bool,
 }
 
 impl DriDigestService {
     #[must_use]
-    pub fn new(surreal: SurrealDb, notifier: Arc<dyn Notifier>) -> Self {
-        Self { surreal, notifier }
+    pub fn new(surreal: SurrealDb, notifier: Arc<dyn Notifier>, simulated: bool) -> Self {
+        Self {
+            surreal,
+            notifier,
+            simulated,
+        }
     }
 }
 
@@ -107,11 +158,42 @@ impl DriDigestService {
 
         // Step 2 — render + post, journaled separately so a query retry never
         // re-posts and a notify retry never re-reads the database.
-        let message = dri_digest_message(&projects);
+        let message = dri_digest_message(&projects, self.simulated);
         let notifier = Arc::clone(&self.notifier);
         ctx.run(move || async move { notifier.notify(message).await.map_err(HandlerError::from) })
             .name("notify")
             .await?;
+
+        // Steps 3-4 — a real deployment's open-matters/pitches follow-up.
+        // Never runs for a simulated-matters deployment: that count is a
+        // real-matter-only signal, so there is nothing to query or post.
+        if !self.simulated {
+            let surreal = self.surreal.clone();
+            let (open, pitches) = ctx
+                .run(move || async move {
+                    store::projects::matter_open_pitch_counts(&surreal)
+                        .await
+                        .map(Json)
+                        .map_err(|error| {
+                            HandlerError::from(TerminalError::new(format!("counts: {error}")))
+                        })
+                })
+                .name("counts")
+                .await?
+                .into_inner();
+
+            // `simulated` is `false` in this branch, so this is always `Some`;
+            // the shared helper still owns the decision so its own unit tests
+            // are the single place that predicate is pinned.
+            if let Some(followup) = open_matters_followup(self.simulated, open, pitches) {
+                let notifier = Arc::clone(&self.notifier);
+                ctx.run(move || async move {
+                    notifier.notify(followup).await.map_err(HandlerError::from)
+                })
+                .name("notify_counts")
+                .await?;
+            }
+        }
 
         Ok(Json(DriDigestReport {
             projects: projects.len(),
@@ -121,7 +203,7 @@ impl DriDigestService {
 
 #[cfg(test)]
 mod tests {
-    use super::{dri_digest_message, ProjectDriSummary};
+    use super::{dri_digest_message, open_matters_followup, ProjectDriSummary};
 
     fn project(
         code: &str,
@@ -140,12 +222,15 @@ mod tests {
 
     #[test]
     fn digest_names_both_dri_sides_per_project() {
-        let msg = dri_digest_message(&[project(
-            "sample-litigation",
-            "open",
-            &["Jane Roe"],
-            &["Cruller Client"],
-        )]);
+        let msg = dri_digest_message(
+            &[project(
+                "sample-litigation",
+                "open",
+                &["Jane Roe"],
+                &["Cruller Client"],
+            )],
+            false,
+        );
         assert!(msg.starts_with("*Project DRI digest — 1 projects*"));
         assert!(
             msg.contains(
@@ -157,7 +242,7 @@ mod tests {
 
     #[test]
     fn an_unassigned_side_reads_as_none_rather_than_blank() {
-        let msg = dri_digest_message(&[project("sample-estate", "open", &[], &[])]);
+        let msg = dri_digest_message(&[project("sample-estate", "open", &[], &[])], false);
         assert!(
             msg.contains("Lawyer DRI: none; Client DRI: none"),
             "an empty side must say so: {msg}"
@@ -166,21 +251,27 @@ mod tests {
 
     #[test]
     fn multiple_dris_on_one_side_are_comma_joined() {
-        let msg = dri_digest_message(&[project(
-            "sample-transactional",
-            "open",
-            &["Jane Roe", "John Doe"],
-            &[],
-        )]);
+        let msg = dri_digest_message(
+            &[project(
+                "sample-transactional",
+                "open",
+                &["Jane Roe", "John Doe"],
+                &[],
+            )],
+            false,
+        );
         assert!(msg.contains("Lawyer DRI: Jane Roe, John Doe"), "{msg}");
     }
 
     #[test]
     fn header_counts_every_project_and_body_lists_each_one() {
-        let msg = dri_digest_message(&[
-            project("a", "open", &["Lawyer A"], &[]),
-            project("b", "closed", &[], &["Client B"]),
-        ]);
+        let msg = dri_digest_message(
+            &[
+                project("a", "open", &["Lawyer A"], &[]),
+                project("b", "closed", &[], &["Client B"]),
+            ],
+            false,
+        );
         assert!(msg.starts_with("*Project DRI digest — 2 projects*"));
         assert!(msg.contains("• *a* (open)"));
         assert!(msg.contains("• *b* (closed)"));
@@ -188,7 +279,56 @@ mod tests {
 
     #[test]
     fn no_projects_still_renders_a_clean_header() {
-        let msg = dri_digest_message(&[]);
+        let msg = dri_digest_message(&[], false);
         assert_eq!(msg, "*Project DRI digest — 0 projects*");
+    }
+
+    /// The staging disclosure — a deployment that discloses simulated
+    /// matters gets the same signal in the digest header that the site-wide
+    /// banner gives a browsing visitor, so a reader of the firm-ops channel
+    /// can't mistake a staging post for a real production one.
+    #[test]
+    fn a_simulated_run_discloses_the_staging_account_in_the_header() {
+        let msg = dri_digest_message(&[], true);
+        assert_eq!(
+            msg,
+            "*Project DRI digest — 0 projects* (from the staging account)"
+        );
+    }
+
+    /// A non-simulated run's header carries no staging suffix at all.
+    #[test]
+    fn a_non_simulated_run_carries_no_staging_suffix() {
+        let msg = dri_digest_message(&[], false);
+        assert!(
+            !msg.contains("staging"),
+            "a real production run must not disclose a staging account: {msg}"
+        );
+    }
+
+    /// The whole point of the follow-up: a simulated deployment's open/pitch
+    /// count is not a real-matter signal, so it must post nothing.
+    #[test]
+    fn a_simulated_deployment_posts_no_open_matters_followup() {
+        assert_eq!(open_matters_followup(true, 3, 1), None);
+    }
+
+    /// A real deployment always posts the follow-up, with both counts named.
+    #[test]
+    fn a_real_deployment_posts_the_open_matters_followup() {
+        assert_eq!(
+            open_matters_followup(false, 3, 1),
+            Some("Total open matters: 3, pitches: 1".to_string())
+        );
+    }
+
+    /// Zero open matters (and so zero pitches) still posts — a quiet
+    /// portfolio is still a real answer, not the simulated no-op.
+    #[test]
+    fn a_real_deployment_with_no_open_matters_still_posts_zero_counts() {
+        assert_eq!(
+            open_matters_followup(false, 0, 0),
+            Some("Total open matters: 0, pitches: 0".to_string())
+        );
     }
 }

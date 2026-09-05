@@ -189,6 +189,11 @@ pub enum ProjectStoreError {
     NoSuchProject(Uuid),
     #[error("no firm {0}")]
     NoSuchFirm(Uuid),
+    /// [`matter_lifecycle_sets`]'s batched onboarding/offboarding-artifact
+    /// read failed. Kept distinct from [`ProjectStoreError::Db`] because that
+    /// read spans four tables, not one.
+    #[error("matter lifecycle: {0}")]
+    Lifecycle(String),
 }
 
 fn classify_project_write(error: surrealdb::Error) -> ProjectStoreError {
@@ -2514,12 +2519,63 @@ pub async fn matter_lifecycle_sets(
     Ok((has_engagement, has_closing))
 }
 
+/// From each matter's `(brand, status, missing_onboarding)`, how many
+/// `"neon"`-brand matters are open (`status != "closed"`), and how many of
+/// those are still pitches — the [`MatterLifecycle::NeedsOnboarding`]
+/// subset, no onboarding artifact on file yet. Scoped to the firm's own root
+/// brand: never another house brand, and never another firm's matters on a
+/// licensed fork.
+///
+/// Pure and exposed so the nightly `DriDigest` follow-up post's counts are
+/// unit-tested without a database — see [`matter_open_pitch_counts`] for the
+/// database-backed caller that supplies `missing_onboarding` from
+/// [`matter_lifecycle_sets`].
+#[must_use]
+pub fn open_pitch_counts(rows: &[(&str, &str, bool)]) -> (usize, usize) {
+    rows.iter().fold(
+        (0, 0),
+        |(open, pitches), (brand, status, missing_onboarding)| {
+            if *brand != "neon" || *status == "closed" {
+                return (open, pitches);
+            }
+            (open + 1, pitches + usize::from(*missing_onboarding))
+        },
+    )
+}
+
+/// Every `"neon"`-brand matter's open/pitch counts, for the nightly
+/// `DriDigest` follow-up post. Reads every project, then
+/// [`matter_lifecycle_sets`] for the onboarding-artifact facts
+/// [`open_pitch_counts`] needs — the same two-query shape
+/// `webapp::project_list::get_project_list` already uses to badge the
+/// lawyer matter list.
+pub async fn matter_open_pitch_counts(
+    surreal: &SurrealDb,
+) -> Result<(usize, usize), ProjectStoreError> {
+    let projects = all(surreal).await?;
+    let (has_engagement, _has_closing) = matter_lifecycle_sets(surreal, &projects)
+        .await
+        .map_err(ProjectStoreError::Lifecycle)?;
+    let rows: Vec<(&str, &str, bool)> = projects
+        .iter()
+        .map(|project| {
+            (
+                project.brand.as_str(),
+                project.status.as_str(),
+                !has_engagement.contains(&project.id),
+            )
+        })
+        .collect();
+    Ok(open_pitch_counts(&rows))
+}
+
 #[cfg(test)]
 mod surreal_read_tests {
     use super::{
         can_access_as_client_in_surreal, can_access_as_lawyer_in_surreal, classify_project_write,
         create, designate_dri_in_surreal, dri_digest, find_by_id, matter_directory,
-        matter_directory_for, record_id, DriSide, NewProject, ProjectStoreError, ENTITY_TABLE,
+        matter_directory_for, open_pitch_counts, record_id, DriSide, NewProject, ProjectStoreError,
+        ENTITY_TABLE,
     };
     use crate::persons::Role;
     use crate::schema::apply;
@@ -2678,6 +2734,34 @@ mod surreal_read_tests {
         designate_dri_in_surreal(&db, project_id, lawyer.id, DriSide::Lawyer)
             .await
             .expect("designating a DRI must not fail on a project row that predates `brand`");
+    }
+
+    /// An empty portfolio counts nothing.
+    #[test]
+    fn open_pitch_counts_of_an_empty_slice_is_zero_and_zero() {
+        assert_eq!(open_pitch_counts(&[]), (0, 0));
+    }
+
+    /// Every matter closed: none of them are open, so there is nothing left
+    /// to call a pitch either.
+    #[test]
+    fn open_pitch_counts_with_every_matter_closed_is_zero_and_zero() {
+        let rows = [("neon", "closed", true), ("neon", "closed", false)];
+        assert_eq!(open_pitch_counts(&rows), (0, 0));
+    }
+
+    /// Only `"neon"`-brand rows count, whatever their status or onboarding
+    /// state — a `"delete-your-data"` matter (or any other house brand) never
+    /// moves either number.
+    #[test]
+    fn open_pitch_counts_ignores_every_brand_but_neon() {
+        let rows = [
+            ("neon", "open", true),  // open + pitch
+            ("neon", "open", false), // open, not a pitch
+            ("delete-your-data", "open", true),
+            ("delete-your-data", "closed", false),
+        ];
+        assert_eq!(open_pitch_counts(&rows), (2, 1));
     }
 
     /// A repository URL may name any forge, in any organization.

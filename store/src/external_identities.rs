@@ -204,17 +204,17 @@ pub enum ExternalIdentityError {
 /// Turn a write failure into the caller-correctable conflict it names,
 /// or leave it as a database fault. A unique violation carries **no**
 /// typed detail — the index name in the message is the only
-/// discriminator (see `store::persons::classify_write`), and the two
+/// discriminator through the shared classifier in [`crate::surreal::retry`],
+/// and the two
 /// indexes on this table mean two different corrections, so they are
 /// separated here rather than collapsed into one "taken".
 fn classify_write(error: surrealdb::Error, system: ExternalSystem) -> ExternalIdentityError {
-    let message = error.to_string();
-    if message.contains("person_external_identity_account") {
-        ExternalIdentityError::AccountTaken { system }
-    } else if message.contains("person_external_identity_person_system") {
-        ExternalIdentityError::SystemAlreadyLinked { system }
-    } else {
-        ExternalIdentityError::Db(error)
+    match crate::surreal::retry::unique_violation(&error) {
+        Some("person_external_identity_account") => ExternalIdentityError::AccountTaken { system },
+        Some("person_external_identity_person_system") => {
+            ExternalIdentityError::SystemAlreadyLinked { system }
+        }
+        _ => ExternalIdentityError::Db(error),
     }
 }
 

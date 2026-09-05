@@ -281,9 +281,7 @@ pub async fn ingest(db: &SurrealDb, args: &IngestArgs<'_>) -> Result<Ingested, C
 /// unclassified failure also uses, so the index name — which the workspace
 /// owns and no other failure mentions — is the only reliable signal.
 fn is_duplicate_source_ref(error: &surrealdb::Error) -> bool {
-    error
-        .to_string()
-        .contains("communication_channel_source_ref")
+    crate::surreal::retry::unique_violation(error) == Some("communication_channel_source_ref")
 }
 
 /// The row a `(channel, source_ref)` pair already resolves to, if any.

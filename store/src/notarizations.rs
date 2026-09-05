@@ -92,7 +92,7 @@ pub enum NotarizationError {
 }
 
 fn is_provider_request_conflict(error: &surrealdb::Error) -> bool {
-    error.to_string().contains("notarization_provider_request")
+    crate::surreal::retry::unique_violation(error) == Some("notarization_provider_request")
 }
 
 /// Run a write under the shared retry policy

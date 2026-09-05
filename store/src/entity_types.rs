@@ -15,7 +15,7 @@
 //!
 //! **A unique violation carries no typed detail.** It arrives as
 //! [`surrealdb::types::ErrorDetails::Internal`] with the index name in
-//! the message, so [`classify_write`] discriminates on
+//! the message, so the shared classifier discriminates on
 //! `entity_type_name` — a `DEFINE INDEX` identifier this workspace
 //! chose in `store/src/schema/navigator.surql`, not prose.
 //!
@@ -100,10 +100,10 @@ pub enum EntityTypeError {
 /// Turn a write failure into the caller-correctable conflict it names,
 /// or leave it as a database fault. A unique violation carries **no
 /// typed detail** — the index name in the message is the only
-/// discriminator (see `store::persons::classify_write` for the full
-/// account).
+/// discriminator, identified by the shared classifier in
+/// [`crate::surreal::retry`].
 fn classify_write(error: surrealdb::Error) -> EntityTypeError {
-    if error.to_string().contains("entity_type_name") {
+    if crate::surreal::retry::unique_violation(&error) == Some("entity_type_name") {
         EntityTypeError::NameTaken
     } else {
         EntityTypeError::Db(error)

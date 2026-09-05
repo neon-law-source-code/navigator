@@ -101,6 +101,67 @@ pub fn is_retryable(error: &surrealdb::Error) -> bool {
     )
 }
 
+/// The unique indexes whose names SurrealDB includes in an untyped
+/// uniqueness violation. Keep this list beside the one message match so an
+/// index rename is a test failure rather than a silent change from a caller
+/// conflict to a database fault.
+const UNIQUE_INDEX_NAMES: &[&str] = &[
+    "project_code",
+    "xero_invoice_project",
+    "person_project_role_pair",
+    "person_firm_role_pair",
+    "project_module_pair",
+    "statutory_deadline_replay",
+    "git_access_token_hash",
+    "testimonial_replay",
+    "person_external_identity_account",
+    "person_external_identity_person_system",
+    "credential_person_jurisdiction",
+    "person_email_lower",
+    "person_oidc_subject",
+    "jurisdiction_code",
+    "entity_type_name",
+    "entity_firm_anchor",
+    "firm_entity",
+    "firm_brand_pair",
+    "firm_brand_key",
+    "entity_role_tie",
+    "git_repository_remote_hash",
+    "glossary_term_slug",
+    "email_token_hash",
+    "mailroom_name",
+    "question_code",
+    "template_current_key",
+    "review_document_notation_kind",
+    "signature_provider_request",
+    "notarization_provider_request",
+    "authority_citation",
+    "playbook_entity_name",
+    "email_conversation_token",
+    "communication_channel_source_ref",
+    "visitor_route_count_bucket",
+];
+
+/// Return the schema index named by SurrealDB's untyped uniqueness error.
+///
+/// SurrealDB currently reports a duplicate index entry as
+/// [`ErrorDetails::Internal`] and puts the index name in its display text.
+/// The match is intentionally isolated here: callers receive a stable,
+/// structured discriminator and never need to inspect or render the engine
+/// message. When the engine gains a typed uniqueness detail, this is the one
+/// place that should change.
+#[must_use]
+pub fn unique_violation(error: &surrealdb::Error) -> Option<&'static str> {
+    if !matches!(error.details(), ErrorDetails::Internal) {
+        return None;
+    }
+    let message = error.to_string();
+    UNIQUE_INDEX_NAMES
+        .iter()
+        .copied()
+        .find(|index| message.contains(index))
+}
+
 /// Run `attempt`, re-running it while the engine reports a conflict, for
 /// up to [`WRITE_BUDGET`]. Any other error returns immediately.
 ///
@@ -159,7 +220,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{is_retryable, retrying, WRITE_BUDGET};
+    use super::{is_retryable, retrying, unique_violation, UNIQUE_INDEX_NAMES, WRITE_BUDGET};
     use std::cell::Cell;
     use std::time::Duration;
     use surrealdb::types::QueryError;
@@ -283,5 +344,36 @@ mod tests {
 
         assert!(!is_retryable(&result.unwrap_err()));
         assert_eq!(attempts.get(), 1);
+    }
+
+    #[test]
+    fn a_unique_violation_returns_its_schema_index_name() {
+        let error = surrealdb::Error::internal(
+            "Database index `person_email_lower` already contains this value".to_string(),
+        );
+
+        assert_eq!(unique_violation(&error), Some("person_email_lower"));
+    }
+
+    #[test]
+    fn only_internal_errors_are_classified_as_unique_violations() {
+        let error = surrealdb::Error::query(
+            "Database index `person_email_lower` already contains this value".to_string(),
+            QueryError::Cancelled,
+        );
+
+        assert_eq!(unique_violation(&error), None);
+    }
+
+    #[test]
+    fn every_classifier_index_name_is_defined_in_the_schema() {
+        let schema = include_str!("../schema/navigator.surql");
+
+        for index in UNIQUE_INDEX_NAMES {
+            assert!(
+                schema.contains(&format!("DEFINE INDEX OVERWRITE {index}")),
+                "unique violation classifier names an index absent from the schema: {index}"
+            );
+        }
     }
 }

@@ -15,7 +15,7 @@
 //!
 //! **A unique violation carries no typed detail.** It arrives as
 //! [`surrealdb::types::ErrorDetails::Internal`] with the index name in
-//! the message, so [`classify_write`] discriminates on
+//! the message, so the shared classifier discriminates on
 //! `jurisdiction_code` — a `DEFINE INDEX` identifier this workspace
 //! chose in `store/src/schema/navigator.surql`, not prose.
 //!
@@ -124,9 +124,9 @@ pub enum JurisdictionError {
 /// or leave it as a database fault. A unique violation carries **no
 /// typed detail** — the index name in the message is the only
 /// discriminator, and it is a `DEFINE INDEX` identifier this workspace
-/// chose (see `store::persons::classify_write` for the full account).
+/// chose, through the shared classifier in [`crate::surreal::retry`].
 fn classify_write(error: surrealdb::Error) -> JurisdictionError {
-    if error.to_string().contains("jurisdiction_code") {
+    if crate::surreal::retry::unique_violation(&error) == Some("jurisdiction_code") {
         JurisdictionError::CodeTaken
     } else {
         JurisdictionError::Db(error)

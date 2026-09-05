@@ -168,7 +168,9 @@ pub async fn enable(
             row.and_then(ProjectModuleRow::into_project_module)
                 .ok_or(ModuleError::WriteReturnedNothing)?
         }
-        Err(error) if error.to_string().contains("project_module_pair") => {
+        Err(error)
+            if crate::surreal::retry::unique_violation(&error) == Some("project_module_pair") =>
+        {
             find(surreal, project_id, module)
                 .await?
                 .ok_or(ModuleError::WriteReturnedNothing)?

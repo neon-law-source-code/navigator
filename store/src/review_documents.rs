@@ -120,7 +120,7 @@ pub enum ReviewDocumentError {
 /// A unique violation on `review_document_notation_kind` — the other
 /// writer's insert won the `(notation_id, kind)` slot.
 fn is_notation_kind_conflict(error: &surrealdb::Error) -> bool {
-    error.to_string().contains("review_document_notation_kind")
+    crate::surreal::retry::unique_violation(error) == Some("review_document_notation_kind")
 }
 
 /// How many times [`upsert_draft`] re-reads after losing the

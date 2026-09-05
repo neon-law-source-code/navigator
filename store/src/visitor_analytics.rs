@@ -79,9 +79,10 @@ struct TotalRow {
 /// Whether a create lost the `visitor_route_count_bucket` unique index —
 /// a concurrent visit created the same bucket first. A unique violation
 /// carries **no typed detail**, so the index name in the message is the
-/// only discriminator (see `store::persons::classify_write`).
+/// only discriminator, through the shared classifier in
+/// [`crate::surreal::retry`].
 fn is_bucket_taken(error: &surrealdb::Error) -> bool {
-    error.to_string().contains("visitor_route_count_bucket")
+    crate::surreal::retry::unique_violation(error) == Some("visitor_route_count_bucket")
 }
 
 /// One increment, then one create if there was nothing to increment.

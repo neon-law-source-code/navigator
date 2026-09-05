@@ -91,9 +91,10 @@ pub enum MailroomError {
 /// Turn a write failure into the caller-correctable conflict it names,
 /// or leave it as a database fault. A unique violation carries **no
 /// typed detail** — the index name in the message is the only
-/// discriminator (see `store::persons::classify_write`).
+/// discriminator, identified by the shared classifier in
+/// [`crate::surreal::retry`].
 fn classify_write(error: surrealdb::Error) -> MailroomError {
-    if error.to_string().contains("mailroom_name") {
+    if crate::surreal::retry::unique_violation(&error) == Some("mailroom_name") {
         MailroomError::NameTaken
     } else {
         MailroomError::Db(error)

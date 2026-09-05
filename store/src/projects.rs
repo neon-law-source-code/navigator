@@ -192,13 +192,15 @@ pub enum ProjectStoreError {
 }
 
 fn classify_project_write(error: surrealdb::Error) -> ProjectStoreError {
-    let message = error.to_string();
-    if message.contains("project_code") {
+    if crate::surreal::retry::unique_violation(&error) == Some("project_code") {
         ProjectStoreError::CodeTaken
-    } else if message.contains("field `code`") && message.contains("readonly") {
-        ProjectStoreError::CodeImmutable
     } else {
-        ProjectStoreError::Db(error)
+        let message = error.to_string();
+        if message.contains("field `code`") && message.contains("readonly") {
+            ProjectStoreError::CodeImmutable
+        } else {
+            ProjectStoreError::Db(error)
+        }
     }
 }
 

@@ -268,7 +268,7 @@ pub async fn open(
 /// caller can act on — mint another token and retry — so it must not
 /// arrive as an opaque database error.
 fn classify_open(error: surrealdb::Error) -> EmailConversationError {
-    if error.to_string().contains("email_conversation_token") {
+    if crate::surreal::retry::unique_violation(&error) == Some("email_conversation_token") {
         return EmailConversationError::TokenTaken;
     }
     EmailConversationError::Db(error)

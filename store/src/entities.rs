@@ -196,7 +196,7 @@ const RELEASE: &str = "DELETE firm_anchor WHERE entity_id = $id;";
 /// reports [`AlreadyExistsError::Record`] carrying that id, so the
 /// discriminator is a structured value rather than prose — the same
 /// standard [`crate::surreal::retry::is_retryable`] holds itself to, and
-/// the one `store::persons::classify_write` could not meet.
+/// the shared classifier in [`crate::surreal::retry`] could not meet.
 ///
 /// The UNIQUE `entity_firm_anchor` index is still a backstop for a fork
 /// that is not a race, and it *is* untyped, so its arm still reads the
@@ -205,7 +205,9 @@ const RELEASE: &str = "DELETE firm_anchor WHERE entity_id = $id;";
 /// against a real engine, so an upstream reword fails there rather than
 /// silently turning a refusal into a server fault.
 fn classify_write(error: surrealdb::Error) -> EntityError {
-    if claims_the_firm_anchor(&error) || error.to_string().contains("entity_firm_anchor") {
+    if claims_the_firm_anchor(&error)
+        || crate::surreal::retry::unique_violation(&error) == Some("entity_firm_anchor")
+    {
         EntityError::FirmAnchorTaken
     } else {
         EntityError::Db(error)

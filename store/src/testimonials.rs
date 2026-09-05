@@ -95,7 +95,9 @@ pub async fn find_or_create(
         .and_then(surrealdb::IndexedResults::check);
     match written {
         Ok(_) => Ok(()),
-        Err(error) if error.to_string().contains("testimonial_replay") => {
+        Err(error)
+            if crate::surreal::retry::unique_violation(&error) == Some("testimonial_replay") =>
+        {
             find_replay(surreal, input)
                 .await?
                 .ok_or(TestimonialError::WriteReturnedNothing)

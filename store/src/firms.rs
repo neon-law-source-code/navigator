@@ -218,15 +218,11 @@ pub enum FirmError {
 }
 
 fn classify_write(error: surrealdb::Error) -> FirmError {
-    let message = error.to_string();
-    if message.contains("person_firm_role_pair") {
-        FirmError::DuplicateMembership
-    } else if message.contains("firm_entity") {
-        FirmError::DuplicateEntity
-    } else if message.contains("firm_brand_key") || message.contains("firm_brand_pair") {
-        FirmError::DuplicateBrand
-    } else {
-        FirmError::Db(error)
+    match crate::surreal::retry::unique_violation(&error) {
+        Some("person_firm_role_pair") => FirmError::DuplicateMembership,
+        Some("firm_entity") => FirmError::DuplicateEntity,
+        Some("firm_brand_key" | "firm_brand_pair") => FirmError::DuplicateBrand,
+        _ => FirmError::Db(error),
     }
 }
 

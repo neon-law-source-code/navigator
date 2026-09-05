@@ -7,8 +7,8 @@ Each Navigator [Project](glossary.md#project) coordinates five distinct surfaces
 | Documents bucket | Working files | Path-like keys under `projects/<code>` in the private documents bucket |
 | Google Drive | Ingest dropbox | Files people drop in; Navigator copies them into the documents bucket |
 | Navigator | Matter record | Project identity, participation, Notations, and asset provenance |
-| Project repository | Source control | Notation templates and client-portal source only |
-| Served client portal | Authorized application | The Project's client-facing surface |
+| Project repository | Source control | Notation templates and Project-application source only |
+| Served application | Authorized application | One Project-specific client-facing surface |
 
 Git never stores legal files or client data. Navigator-managed systems and approved file stores do. A Project's deletion
 handoff contains legal files only; it does not include the repository, portal source, CI output, or operational history.
@@ -18,12 +18,13 @@ an experiment: source control and external planning surfaces carry only firm-own
 ## One repository per Project, recorded as a URL
 
 A Project has **one** repository, and the Project records **where it is** as a whole URL in `project.repository_url`. It
-holds that Project's notation templates and its client portal side by side:
+holds that Project's notation templates and application workspaces side by side:
 
 ```text
 <the Project's repository>
 ├── .github/workflows/gate.yml
-├── portal/            # React + Vite; the client's portal
+├── apps/
+│   └── portal/        # React + Vite; discovered by its package.json
 ├── templates/         # *.md notation blueprints
 ├── AGENTS.md
 ├── CLAUDE.md
@@ -118,9 +119,15 @@ the entrypoint a fallback — without it a multi-page build answers every page w
 is served `no-store`, because it names the build's content-hashed assets and is never hashed itself; those assets cache
 for a year.
 
-**The extra `portal` segment is the point.** Navigator's matter show page is `/app/projects/<code>` and the client
-application is `/app/projects/<code>/portal/`. The Project code is the stable lowercase-kebab URL slug; the internal
-UUID is not exposed in the show-page route.
+**The application segment is the point.** Navigator's matter show page is `/app/projects/<code>` and an application
+builds for `/app/projects/<code>/<app>/`. The application name comes from the direct `apps/<app>/package.json`; the
+repository-side `apps/` grouping is not another URL segment. A portal therefore keeps `/app/projects/<code>/portal/`.
+The Project code is the stable lowercase-kebab URL slug; the internal UUID is not exposed in the show-page route.
+
+A root `portal/` remains a valid application workspace during the layout transition. It is discovered and checked
+alongside direct `apps/<app>/package.json` workspaces, so adding `apps/` cannot make the existing portal disappear from
+validation. It may coexist with differently named applications, but not with `apps/portal/`: those two source roots
+claim the same application route, so the gate requires the move to remove the legacy root.
 
 During local development, `navigator dev up` and `navigator dev worktree-env up` clone, build, and stage each sample
 project before writing `.devx/env`. The host `web` process therefore starts against the same refreshed portal bundle for
@@ -221,29 +228,37 @@ forge.
 
 ## The CI gate
 
-One composite action verifies the layout, the portal build, and the mount, consumed identically by every Project
-repository in every organization:
+One composite action verifies the layout, every application build, and every mount, consumed identically by every
+Project repository in every organization:
 
 ```yaml
 - uses: actions/checkout@<sha>  # v7
-- run: pnpm --dir portal build
+- run: |
+    shopt -s nullglob
+    package_manifests=(apps/*/package.json)
+    if [ -f portal/package.json ]; then
+      package_manifests+=(portal/package.json)
+    fi
+    for package_json in "${package_manifests[@]}"; do
+      pnpm --dir "${package_json%/package.json}" build
+    done
 - uses: neon-law-source-code/navigator/.github/actions/validate@YY.M.D
   with:
     version: "YY.M.D"
     project_repository: true
 ```
 
-It carries no organization, host, deployment, or client name, because none of those vary: the mount is the repository
-name, which is the Project code, plus a literal segment. A forge host never appears in a Vite base, which is why a
-repository may move between forges without touching the gate. `cli/tests/project_gate.rs` pins the shell against the
-Rust definitions it transcribes, because bash cannot call Rust.
+It carries no organization, host, deployment, or client name, because none of those vary: a mount is the repository
+name, which is the Project code, plus the discovered application name. A forge host never appears in a Vite base, which
+is why a repository may move between forges without touching the gate. `cli/tests/project_gate.rs` pins the shell
+against the Rust definitions it transcribes, because bash cannot call Rust.
 
 `navigator site projects repository scaffold` generates the shape every Project repository converged on by hand before
 this generator caught up: three feeder jobs — `lint`, `verify` (typecheck, test, build), and `notation` (the snippet
 above) — fanned into one required check. Each feeder job runs unconditionally and no-ops over a half this repository
-does not carry: every portal-specific step carries a run-time `hashFiles('portal/package.json') != ''` condition,
-because `scaffold` writes the gate before the portal exists and the same file must keep working once the portal arrives
-later from the vibe-coding lane.
+does not carry. Application steps discover direct `apps/*/package.json` manifests at run time and also include a root
+`portal/package.json` during the transition; the same gate therefore works before the first application exists and
+cannot silently skip a later one.
 
 **There is no path filter, and that is deliberate.** A filtered job that skips reports success for work it never did,
 and a required check a skip can satisfy is not a gate. So every job always runs and each half no-ops over a repository
@@ -256,15 +271,16 @@ What the gate proves:
 - The layout is source-only. Client uploads, answers, generated documents, secrets, dependencies, and build output are
   refused by path and by extension.
 - Every direct `templates/<code>.md` passes the notation rules, and each template's `code` equals its filename stem.
-- Where a `portal/` exists, it is a Vite workspace — a `package.json`, an `index.html`, and a lockfile. The lockfile
-  flavor is not constrained and there is deliberately **no dependency allowlist**: third-party libraries are the point,
-  and Node never enters the Navigator workspace.
-- The built `index.html` is mounted at `/app/projects/<code>/portal/`, so a base that never reached the build fails here
+- Every direct `apps/<app>/package.json` declares a Vite workspace with an `index.html` and a lockfile. A root
+  `portal/` has the same contract during the transition. The lockfile flavor is not constrained and there is
+  deliberately **no dependency allowlist**: third-party libraries are the point, and Node never enters the Navigator
+  workspace.
+- Every built `index.html` is mounted at `/app/projects/<code>/<app>/`, so a base that never reached a build fails here
   rather than in production.
-- No absolute path in `portal/src/` escapes the mount. A Vite base rewrites module and asset URLs and never an `href`
-  written by hand, so a literal in-app path survives the build pointing at whatever Navigator serves there instead.
-  Navigator's own namespaces, `/app/` and `/auth/`, are the deliberate exception: a portal links back to `/app/projects`
-  and out through `/auth/logout`, and those are outside the mount on purpose.
+- No absolute path in an application's `src/` escapes its mount. A Vite base rewrites module and asset URLs and never an
+  `href` written by hand, so a literal in-app path survives the build pointing at whatever Navigator serves there
+  instead. Navigator's own namespaces, `/app/` and `/auth/`, are the deliberate exception: a portal links back to
+  `/app/projects` and out through `/auth/logout`, and those are outside the mount on purpose.
 
 Pin the action to an exact immutable release tag (`YY.M.D`, or `YY.M.D-hotfix.N`), never `main` or `latest`. Publishing
 a rolling pointer is allowed; consuming one is not. The tag must also be one this repository actually published: a
@@ -283,6 +299,11 @@ repository's own `navigator.yaml` manifest, falling back to `github.event.reposi
 only when no manifest is present. The mount check the same step runs against the built `index.html` is what keeps a
 wrong or malformed declared code from silently publishing: the object prefix must match the Vite base the portal was
 actually built with, wherever the repository is hosted.
+
+That publisher remains limited to the compatibility root `portal/`. The PR gate builds and proves every `apps/<app>/`,
+but publishing or serving a second application requires the application-specific authorization decision and a
+corresponding change to the prefix-conditioned IAM grant. This source-layout change does not widen that grant or guess
+which audience a new application should inherit.
 
 It carries no organization, host, or client. The three coordinates it cannot derive are passed as repository
 **secrets**:
@@ -487,13 +508,13 @@ days before the matching tag exists), so it carries no default at all, and `--ac
 A value that is not an exact release tag — including no value, when this binary cannot vouch for one — is refused before
 any file is written, so a gate that could never resolve is never created.
 
-It does **not** write `portal/`. That arrives from the vibe-coding lane ([`vibe-coding`](vibe-coding.md)), which knows
-how to make a Vite application and which released `@neon-law/ux` version to pin. Keeping it out of the scaffold is what
-lets `validate` be unambiguous: `portal/` present means there is a portal to hold to the Vite contract, and absent means
-this Project does not have one yet.
+It does **not** write `apps/`. That arrives from the vibe-coding lane ([`vibe-coding`](vibe-coding.md)), which knows how
+to make a Vite application and which released `@neon-law/ux` version to pin. A direct `apps/<app>/package.json` is the
+declaration the validator and generated gate discover. A root `portal/` remains valid during the layout transition and
+is checked by the same rules.
 
-`validate` accepts all three shapes — templates only, a portal only, or both — and reports a repository carrying neither
-distinctly rather than failing it. A Project may legitimately open before either half exists.
+`validate` accepts templates, applications, either, or both, and reports a repository carrying neither distinctly rather
+than failing it. A Project may legitimately open before either half exists.
 
 The template directory is flat. Each `templates/<code>.md` file is a Project-local notation blueprint; it is not part of
 Navigator's shared `templates/notations/neon_law` or `templates/notations/forms` catalog. Navigator reads the file at
@@ -530,8 +551,8 @@ experiences them as one sequence, not five, so this section threads them togethe
 
    Commit and push what it writes — that push is what makes `.github/workflows/gate.yml` live on the new repository.
 
-4. **Build a portal, if this Project needs one.** A separate, later decision made in the `vibe-react` lane against a
-   pinned `@neon-law/ux` release; `scaffold` deliberately does not write `portal/`.
+4. **Build an application, if this Project needs one.** A separate, later decision made in the `vibe-react` lane
+   against a pinned `@neon-law/ux` release; `scaffold` deliberately does not write `apps/`.
 
 5. **Wire the publish secrets** described in [Publishing the built bundle](#publishing-the-built-bundle) — one
    publisher identity per Project, provisioned by `cli/src/devx/gcp/app_publisher.rs`.

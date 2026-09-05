@@ -2,10 +2,10 @@
 
 Neon Law Navigator's marketing, presentation, workshop, and blog pages render public images through the shared asset
 lane. Responsive photos use `views::assets::responsive_picture`; hand-authored heroes and slide media can be dropped
-directly under `server/public/img/<slug>/` as PNGs or JPEGs. The bytes are **never** stored in git. Production serves
-them from the Google Cloud Storage origin, while local development and the ephemeral KIND integration image hydrate
-`server/public/img/` from that same origin. That keeps the repository small (a clone is code, not megabytes of binaries)
-without making the local test harness depend on a runtime GCP mount.
+directly under `server/public/img/<slug>/` as PNGs or JPEGs. The bytes are **never** stored in git. The staging
+deployment serves them through its public `/assets` route, while local development and the ephemeral KIND integration
+image hydrate `server/public/img/` from the local `/public` route. That keeps the repository small (a clone is code, not
+megabytes of binaries) without making the local test harness depend on a runtime GCP mount.
 
 ## The four commands
 
@@ -23,10 +23,10 @@ its final `server/public/img/<slug>/<name>` path, then use `assets upload` to pu
 | `assets pull` | bucket → `server/public/img/` | Download the published image files back for local development. |
 | `assets fetch-referenced` | origin → `server/public/` | Hydrate content `img/…` refs over public HTTPS (no ADC). |
 | `assets stub-referenced` | refs → output root | Write tiny placeholders for content `img/…` paths. |
-| `assets verify` | `server/content` refs → chosen origin | Fetch every content `img/…` reference; fail if any 404s. |
+| `assets verify` | published refs → chosen origin | Fetch every published image and font; fail if any are missing. |
 
 `build` and `upload` are the publish path for responsive photos, run by whoever curates the gallery. For a finished PNG
-hero, only `upload` is needed. `pull` is the restore path every developer runs. `verify` is the pre-ship guardrail.
+hero, only `upload` is needed. `pull` is the restore path every developer runs. `verify` is the post-roll guardrail.
 
 When restoring a public photo from a local library, copy it to the ignored final path only after confirming it is
 firm-owned or rights-cleared and removing EXIF metadata such as GPS coordinates, device identifiers, and capture times.
@@ -58,7 +58,7 @@ Reference the bucket key without `/public`:
 ![A concise description of the picture](img/rust-in-peace/example.jpg)
 ```
 
-Then preview locally, publish to staging, and confirm the exact object before production:
+Then preview locally, publish to staging, and confirm the exact object at the staging origin:
 
 ```bash
 cargo run -p cli -- ops assets verify --base-url http://localhost:<web-port>/public
@@ -66,23 +66,14 @@ cargo run -p cli -- ops assets upload --dir server/public/img --bucket neon-law-
 gcloud storage ls -L gs://neon-law-stg-assets/img/<deck-slug>/<filename>
 ```
 
-Production is a separate cloud write, not a consequence of staging. An authorized operator uploads and checks the same
-key in the production bucket:
+An agent that cannot perform the staging write must report it as pending and provide the exact command; it must not
+describe the image as published. After the staging origin is reachable, run `assets verify` against that origin as the
+browser-level publication check. Because the local directory is ignored, another checkout restores the cloud copy with
+`assets pull` or `assets fetch-referenced`.
 
-```bash
-cargo run -p cli -- ops assets upload --dir server/public/img --bucket <production>-assets
-gcloud storage ls -L gs://<production>-assets/img/<deck-slug>/<filename>
-```
-
-An agent that cannot perform the production write must report it as pending and provide the exact command; it must not
-describe the image as published everywhere. After the deployed origin is reachable, run `assets verify` against that
-origin as the browser-level publication check. Because the local directory is ignored, another checkout restores the
-cloud copy with `assets pull` or `assets fetch-referenced`.
-
-Exact-key checks must report the same byte length and hashes in staging and production. During a full or image-only
-roll, `ops ship` opens the selected `NAVIGATOR_ASSETS_BUCKET` directly and refuses to continue if any embedded
-presentation or workshop media key is absent. Restart-only skips that preflight because it changes no content or image
-version.
+Exact-key checks must report the expected byte length and hashes in staging. During a full or image-only roll, `ops`
+`ship` opens the selected `NAVIGATOR_ASSETS_BUCKET` directly and refuses to continue if any embedded presentation or
+workshop media key is absent. Restart-only skips that preflight because it changes no content or image version.
 
 ## Publishing one photo to every deployment
 
@@ -92,14 +83,12 @@ all three read. The buckets are `NAVIGATOR_ASSETS_BUCKET` in each `deployments/<
 | Deployment | Bucket | Public origin (`NAVIGATOR_ASSET_BASE_URL`) |
 | --- | --- | --- |
 | `neon-law-stg` | `neon-law-stg-assets` | `https://staging.neonlaw.com/assets` |
-| the production deployment | its `<deployment>-assets` | its public host's `/assets` |
 
-The origin is the app's own `/assets/{key}` route, not a raw `storage.googleapis.com` URL, which is why the browser
-never leaves the site's origin for an image. Publish to staging, verify, then production:
+The origin is the app's own `/assets/{key}` route, not a raw storage URL, so the browser stays on the site's origin.
+Publish to staging, then verify the staging origin:
 
 ```bash
 cargo run -p cli -- ops assets upload --bucket neon-law-stg-assets
-cargo run -p cli -- ops assets upload --bucket <production>-assets
 ```
 
 ## Licensed webfonts
@@ -159,65 +148,66 @@ development and tests resolve the same fallback `/public/fonts/plus-jakarta-sans
 per request from the resolved `views::brand::BrandKey`, so a `delete-your-data` page never declares GORP Serif and a
 firm page never declares Plus Jakarta Sans.
 
-Publication is not verified by CI. `deploy.yml` builds and publishes images; it never probes a rolled deployment's asset
-origin, so an empty bucket reaches production silently. Run `assets verify` against the deployment's own public host
-after its roll — that is the only check that looks at what a browser would actually receive:
+Publication is not verified by CI. `deploy.yml` builds and publishes images, and its local KIND gate proves only the
+placeholder image. A full or image-only `ops ship` run verifies the selected deployment's public asset origin after the
+rollout has completed and the worker has re-registered with Restate; a missing or unreachable key fails the command
+before it can report the ship complete. Restart-only skips this check because it changes no image or content version.
+That post-roll check is the only one that looks at what a browser would actually receive:
 
 ```bash
 cargo run -p cli -- ops assets verify --base-url https://staging.neonlaw.com/assets
-cargo run -p cli -- ops assets verify --base-url https://<production>/assets
 ```
 
 `verify` probes the same key set `orphans` treats as reachable — every markdown `](img/…)` reference, every
 `views::assets::GALLERY` variant, and both licensed GORP faces — and exits `2` naming whatever the origin does not
 serve.
 
-## Verify before shipping
+## Verify after shipping
 
-Because the bytes live only in the bucket, a post can merge and reach a release with a hero that 404s in production —
-the rendered-HTML test only checks the `src` string, not that the object exists. `assets verify` closes that gap: it
-walks every `img/…` image reference under `server/content`, fetches each one from the public origin (auth-free `HEAD`
-against `NAVIGATOR_ASSET_BASE_URL`, exactly as a browser would), and exits non-zero listing any that are missing.
+A live deployment can serve a 404 hero when the bucket is missing bytes — the rendered-HTML test only checks the `src`
+string, not that the object exists. `assets verify` closes that gap: it walks image refs under `server/content`, every
+responsive gallery variant and both licensed webfont families, then fetches each one from the public origin (auth-free
+`HEAD` against `NAVIGATOR_ASSET_BASE_URL`, exactly as a browser would). It exits non-zero listing whatever the origin
+does not serve. `ops ship` invokes the same verifier after a full or image-only roll.
 
 ```bash
-NAVIGATOR_ASSET_BASE_URL=https://storage.googleapis.com/<project>-assets cargo run -p cli -- ops assets verify
+NAVIGATOR_ASSET_BASE_URL=https://staging.neonlaw.com/assets cargo run -p cli -- ops assets verify
 ```
 
-Run it after `assets upload`, before you ship. The `deploy` workflow's `build` job runs `assets stub-referenced` before
-baking the ephemeral `navigator-web` image used by KIND, writing placeholders under `server/public`; those placeholder
-files carry the same paths as the real objects, but not the real photo bytes. After `dev e2e`, the KIND `integration`
-job runs `assets verify` against the local host — the serve gate proving the stubbed KIND image serves every referenced
-path:
+Run it after `assets upload`, or let `ops ship` run it after the rollout. The `deploy` workflow's `build` job runs
+`assets stub-referenced` before baking the ephemeral `navigator-web` image used by KIND, writing placeholders under
+`server/public`; those placeholder files carry the same paths as the real objects, but not the real photo bytes. After
+`dev e2e`, the KIND `integration` job runs `assets verify` against the local host — the serve gate proving the stubbed
+KIND image serves every referenced path:
 
 ```bash
 navigator ops assets verify --base-url http://localhost:8080/public
 ```
 
-No public origin is probed in CI: publication of the real bytes is the operator upload lane described above, plus the
-live site's `/assets` proxy. A release blocks until that local gate passes. Locally, run the same gate against a
-host-side server:
+CI does not probe a public origin: publication of the real bytes is the operator upload lane described above. The live
+site's `/assets` proxy is checked after a roll, and `ops ship` blocks completion if that check fails. Locally, run the
+same gate against a host-side server:
 
 ```bash
 navigator ops assets verify --base-url http://localhost:<web-port>/public
 ```
 
-### The production origin
+### The deployed origin
 
-In the deployment's `deployments/<name>/config.toml`, set `NAVIGATOR_ASSET_BASE_URL` to the public origin of the assets
-bucket — `https://storage.googleapis.com/<project>-assets`, the same bucket as `NAVIGATOR_ASSETS_BUCKET`, with no
-`gs://` prefix and no trailing slash. The `img/` prefix comes from the reference path, so the browser fetches
-`…/<project>-assets/img/<slug>/<file>`. `navigator ops ship` enforces this: it aborts before any rollout if the value is
-unset, so a prod deploy can never roll a `web` that resolves images against an empty same-origin `/public`.
+In the deployment's `deployments/<name>/config.toml`, set `NAVIGATOR_ASSET_BASE_URL` to that deployment's public asset
+origin, normally its same-origin `/assets` route (for example, `https://staging.neonlaw.com/assets`). The bucket stays
+private; `web` proxies the request, so the browser never needs a raw storage URL. `navigator ops ship` requires this
+coordinate before any rollout and verifies it after a full or image-only roll, so a deployment cannot report success
+while its public assets are missing.
 
 ## Why the images aren't in git
 
 `server/public/img/` is ignored by `.gitignore`. A fresh clone has **empty image slots** — the rest of `server/public`
 (Bootstrap, brand SVGs, vendored JS/CSS) stays tracked and still ships in the image, but page images do not. The
-production app resolves image URLs through `views::assets::asset_url`, which prefixes `NAVIGATOR_ASSET_BASE_URL` (the
-bucket's public origin), so browsers fetch images straight from the bucket. The single cross-origin allowance in the
-Content-Security-Policy (`img-src`) is exactly this. The CI KIND image is the exception: it bakes temporary placeholders
-under `/public` so browser tests exercise the local static-file path without requiring GCP credentials or real photo
-bytes.
+deployed app resolves image URLs through `views::assets::asset_url`, which prefixes `NAVIGATOR_ASSET_BASE_URL`; the
+staging deployment uses its same-origin `/assets` proxy, while local development defaults to `/public`. The CI KIND
+image is the exception: it bakes temporary placeholders under `/public` so browser tests exercise the local path without
+requiring GCP credentials or real photo bytes.
 
 ## CI placeholders and local development
 

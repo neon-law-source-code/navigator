@@ -202,12 +202,13 @@ permissions:
 # There is deliberately no published-asset origin probe (and no `env:` block)
 # in this workflow. Every deployment's assets bucket is private and served
 # same-origin through the live site's `/assets` proxy, so the only URL that
-# could verify publication is the deployment's own public host — which does
-# not exist until the first roll this workflow feeds. Publication correctness
-# lives with the operator lane (`ops assets upload` / `ops assets fonts
-# upload`) and `ops ship`'s direct slide-media NAVIGATOR_ASSETS_BUCKET
-# preflight; the KIND image bakes stubbed placeholders and the integration job
-# verifies KIND serves them.
+# can verify publication is the deployment's own public host. That host is
+# checked by `ops ship` after a full or image-only roll, once the rollout and
+# Restate re-registration have completed; a failed check prevents ship from
+# reporting success. The operator upload lane and `ops ship`'s direct
+# slide-media NAVIGATOR_ASSETS_BUCKET preflight still catch missing bytes
+# before mutation, while the KIND image bakes stubbed placeholders and the
+# integration job verifies KIND serves them.
 
 concurrency:
   # Releases share one serialized lane so two merges to `main` — or a merge and a

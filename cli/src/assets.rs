@@ -989,6 +989,41 @@ async fn verify_content(content_dir: &Path, base_url: Option<String>) -> u8 {
     report_exit(&report, &base_url)
 }
 
+/// Verify the public asset origin and return an error for a missing or
+/// unreachable key. `ops ship` uses this Result-returning seam after a live
+/// roll; the CLI command above keeps its process-exit-code interface.
+pub(crate) fn verify_public_asset_origin(content_dir: &Path, base_url: &str) -> anyhow::Result<()> {
+    anyhow::ensure!(!base_url.trim().is_empty(), "public asset origin is blank");
+    let runtime = tokio::runtime::Runtime::new().context("create asset verification runtime")?;
+    runtime.block_on(async {
+        let refs = published_asset_refs(content_dir)?;
+        let client = reqwest::Client::builder()
+            .build()
+            .context("build the public asset verification client")?;
+        let report = verify_refs(&HttpProbe { client }, base_url, &refs).await;
+        if report.missing.is_empty() && report.unknown.is_empty() {
+            eprintln!(
+                "==> post-roll asset verification OK ({} public asset(s) at {base_url})",
+                report.checked
+            );
+            return Ok(());
+        }
+
+        let mut detail = String::new();
+        for key in &report.missing {
+            let _ = writeln!(detail, "\n  missing: {}", join_public_url(base_url, key));
+        }
+        for unknown in &report.unknown {
+            let _ = writeln!(detail, "\n  unknown: {unknown}");
+        }
+        anyhow::bail!(
+            "post-roll public asset verification failed at {base_url}: {} missing, {} could not be checked.{detail}",
+            report.missing.len(),
+            report.unknown.len()
+        )
+    })
+}
+
 /// Entry point for `cli assets verify` — reconcile everything the site
 /// loads from the public origin against what is actually published there.
 /// That is every `![](img/…)` reference under `content_dir`, every
@@ -1690,8 +1725,9 @@ mod tests {
         run_orphans, run_pull, run_upload, run_upload_desktop_fonts, run_upload_fonts, select,
         storage_report_result, stub_referenced_content, upload, upload_font_family,
         upload_gorp_otf_zip, verify_bundled_slide_assets, verify_bundled_slide_assets_bucket,
-        verify_content, verify_refs, verify_storage_refs, AssetProbe, FetchReport, VerifyReport,
-        ASSET_CACHE_CONTROL, GORP_OTF_ZIP_KEY, GORP_SERIF, PLUS_JAKARTA_SANS,
+        verify_content, verify_public_asset_origin, verify_refs, verify_storage_refs, AssetProbe,
+        FetchReport, VerifyReport, ASSET_CACHE_CONTROL, GORP_OTF_ZIP_KEY, GORP_SERIF,
+        PLUS_JAKARTA_SANS,
     };
     use cloud::{FsStorage, ObjectListing, StorageError, StorageService, StoredObject};
     use std::collections::BTreeSet;
@@ -2455,6 +2491,44 @@ Inline raw-HTML tile: <div>![Team](img/thanks-apple/team-lunch.jpg)</div>\n";
             .await;
         let dir = content_dir_referencing("img/demo/hero.png");
         assert_eq!(verify_content(dir.path(), Some(server.uri())).await, 0);
+    }
+
+    #[tokio::test]
+    async fn verify_public_asset_origin_returns_ok_for_a_complete_origin() {
+        let server = MockServer::start().await;
+        mount_published_fonts(&server).await;
+        mount_published_gallery(&server).await;
+        Mock::given(method("HEAD"))
+            .and(path("/img/demo/hero.png"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+        let dir = content_dir_referencing("img/demo/hero.png");
+        let content_dir = dir.path().to_path_buf();
+        let base_url = server.uri();
+        let result =
+            std::thread::spawn(move || verify_public_asset_origin(&content_dir, &base_url))
+                .join()
+                .expect("asset verification thread should not panic");
+        assert!(
+            result.is_ok(),
+            "complete public origin should pass: {result:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn verify_public_asset_origin_reports_missing_keys() {
+        let server = MockServer::start().await;
+        let dir = content_dir_referencing("img/demo/hero.png");
+        let content_dir = dir.path().to_path_buf();
+        let base_url = server.uri();
+        let error = std::thread::spawn(move || verify_public_asset_origin(&content_dir, &base_url))
+            .join()
+            .expect("asset verification thread should not panic")
+            .expect_err("an origin missing referenced assets must fail");
+        let message = format!("{error:#}");
+        assert!(message.contains("post-roll public asset verification failed"));
+        assert!(message.contains("missing:"));
     }
 
     #[tokio::test]

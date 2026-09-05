@@ -19,8 +19,9 @@
 //!   embedded GKE tree with the deployer's `NAVIGATOR_*` values **and the
 //!   tag** → confirm the prod Secret satisfies the new binary's boot
 //!   invariants against that rendered tree → `kubectl apply -k` it → wait
-//!   out the rollouts → re-register the worker with Restate. Every service
-//!   deployment lands on the **same** tag — never a version skew.
+//!   out the rollouts → re-register the worker with Restate → verify the
+//!   public asset origin. Every service deployment lands on the **same** tag —
+//!   never a version skew.
 //!
 //!   The order is the safety property, not an implementation detail.
 //!   Everything before the apply is local or read-only, so an unsatisfied
@@ -55,12 +56,11 @@
 //!
 //! ## Testing
 //!
-//! The shell-out orchestration needs a real cluster, so it isn't
-//! unit-tested. The pure pieces — env-driven config, the registry
-//! image-URL formulas, the required-key parser, the missing-key diff, and the
-//! embedded-manifest render (zero placeholders after substitution; a
-//! missing substitution var fails by name) — are
-//! covered by the `tests` module below.
+//! The shell-out orchestration needs a real cluster. Its completion boundary
+//! is kept pure and injected with a verifier so the ordering and failure path
+//! are covered alongside the other pure pieces — env-driven config, registry
+//! image-URL formulas, required-key parser, missing-key diff, and
+//! embedded-manifest render — by the `tests` module below.
 
 #[cfg(test)]
 use std::collections::BTreeMap;
@@ -836,6 +836,9 @@ pub struct ShipConfig {
     pub web_image_name: String,
     /// Exact public hostname (`NAVIGATOR_PUBLIC_HOST`) used for smoke checks.
     pub public_host: String,
+    /// Public asset origin (`NAVIGATOR_ASSET_BASE_URL`) checked after a live
+    /// roll, normally the selected deployment's same-origin `/assets` route.
+    pub asset_base_url: String,
     /// Google service-account id bound to the runtime Kubernetes service
     /// accounts (`NAVIGATOR_GCP_SERVICE_ACCOUNT_ID`).
     pub google_service_account_id: String,
@@ -888,6 +891,7 @@ impl ShipConfig {
             );
         }
         let public_host = required_coordinate(name, "NAVIGATOR_PUBLIC_HOST", &get)?;
+        let asset_base_url = get(ASSET_BASE_URL_KEY).unwrap_or_default();
         let google_service_account_id = non_empty_env("NAVIGATOR_GCP_SERVICE_ACCOUNT_ID", &get)
             .unwrap_or_else(|| "navigator-web".into());
         let secret_name = non_empty_env("NAVIGATOR_WEB_SECRET_NAME", &get)
@@ -905,6 +909,7 @@ impl ShipConfig {
             namespace,
             web_image_name,
             public_host,
+            asset_base_url,
             google_service_account_id,
             primary_domain,
             secret_name,
@@ -1351,7 +1356,7 @@ pub fn run_ship(opts: &ShipOpts) -> Result<()> {
     match lane {
         ShipLane::ImageOnly => image_only(&cfg, opts, &root),
         ShipLane::RestartOnly => restart_only(&cfg, opts.dry_run),
-        ShipLane::Roll => roll(&cfg, &deployment, opts),
+        ShipLane::Roll => roll(&cfg, &deployment, opts, &root),
     }
 }
 
@@ -1382,6 +1387,46 @@ fn ship_lane(opts: &ShipOpts) -> ShipLane {
 
 fn lane_requires_asset_preflight(lane: ShipLane) -> bool {
     matches!(lane, ShipLane::ImageOnly | ShipLane::Roll)
+}
+
+fn lane_requires_post_roll_asset_verification(lane: ShipLane) -> bool {
+    matches!(lane, ShipLane::ImageOnly | ShipLane::Roll)
+}
+
+/// Finish a lane that changed the deployed image: Restate must see the new
+/// handler list first, then the public origin must prove every asset the
+/// rolled binary can request. The verifier is injected so this ordering and
+/// its failure boundary stay unit-testable without a cluster or network.
+fn finish_roll<R, F>(
+    lane: ShipLane,
+    cfg: &ShipConfig,
+    root: &Path,
+    dry_run: bool,
+    reregister: R,
+    verify: F,
+) -> Result<()>
+where
+    R: FnOnce() -> Result<()>,
+    F: FnOnce(&Path, &str) -> Result<()>,
+{
+    reregister()?;
+    if lane_requires_post_roll_asset_verification(lane) {
+        if dry_run {
+            eprintln!(
+                "DRY-RUN: would verify public assets at {} after the roll",
+                cfg.asset_base_url
+            );
+        } else {
+            let content_root = root.join("server/content");
+            verify(&content_root, &cfg.asset_base_url).with_context(|| {
+                format!(
+                    "post-roll public asset verification failed for deployment `{}`",
+                    cfg.name
+                )
+            })?;
+        }
+    }
+    Ok(())
 }
 
 /// The no-rebuild push: restart service deployments so the pods re-read
@@ -1467,7 +1512,14 @@ fn image_only_steps(cfg: &ShipConfig, tag: &str, dry_run: bool, root: &Path) -> 
 
     pin_cronjob_images(cfg, tag, dry_run)?;
     wait_rollouts(cfg, dry_run, "300s", rollout_wait_deployments())?;
-    reregister(cfg, dry_run)?;
+    finish_roll(
+        ShipLane::ImageOnly,
+        cfg,
+        root,
+        dry_run,
+        || reregister(cfg, dry_run),
+        crate::assets::verify_public_asset_origin,
+    )?;
 
     eprintln!(
         "==> image-only roll complete: {tag} live in {}",
@@ -1574,6 +1626,7 @@ fn roll(
     cfg: &ShipConfig,
     deployment: &super::deployments::Deployment,
     opts: &ShipOpts,
+    root: &Path,
 ) -> Result<()> {
     require_tools(&["kubectl"])?;
     // Authenticated, not just installed: gcloud carries the GKE
@@ -1698,10 +1751,19 @@ fn roll(
     //     run — so there is nothing to wait on.
     pin_cronjob_images(cfg, &tag, dry_run)?;
 
-    // 6. Re-register the workers with Restate. The DevX notification worker
-    // must register successfully: unlike the established workflows service,
-    // it has no prior deployment to preserve on its first ship.
-    reregister(cfg, dry_run)?;
+    // 6. Re-register the workers with Restate, then verify every public asset
+    // after the new pods are live. The DevX notification worker must register
+    // successfully: unlike the established workflows service, it has no prior
+    // deployment to preserve on its first ship. A failed asset check returns
+    // before the completion line below.
+    finish_roll(
+        ShipLane::Roll,
+        cfg,
+        root,
+        dry_run,
+        || reregister(cfg, dry_run),
+        crate::assets::verify_public_asset_origin,
+    )?;
 
     // 7. Smoke-check the public surface (best-effort).
     smoke_check(cfg, dry_run);
@@ -3133,6 +3195,7 @@ mod tests {
             namespace: "navigator".into(),
             web_image_name: "neon-server".into(),
             public_host: "www.example.com".into(),
+            asset_base_url: "https://www.example.com/assets".into(),
             google_service_account_id: "navigator-web".into(),
             primary_domain: "example.com".into(),
             secret_name: "navigator-web-secrets".into(),
@@ -6657,5 +6720,81 @@ spec:
     fn a_restart_only_dry_run_walks_its_steps_without_a_cluster() {
         // The sibling lane behind the same seam: rollout restart, then wait.
         restart_only_steps(&sample_config(), true).expect("a dry-run restart needs no cluster");
+    }
+
+    #[test]
+    fn a_completed_roll_verifies_public_assets_after_re_registering() {
+        let root = tempfile::tempdir().expect("create a test workspace");
+        let events = std::cell::RefCell::new(Vec::new());
+
+        finish_roll(
+            ShipLane::Roll,
+            &sample_config(),
+            root.path(),
+            false,
+            || {
+                events.borrow_mut().push("restate");
+                Ok(())
+            },
+            |content_root, base_url| {
+                events.borrow_mut().push("assets");
+                assert_eq!(content_root, root.path().join("server/content"));
+                assert_eq!(base_url, "https://www.example.com/assets");
+                Ok(())
+            },
+        )
+        .expect("a live completed roll should verify its public origin");
+
+        assert_eq!(*events.borrow(), ["restate", "assets"]);
+    }
+
+    #[test]
+    fn a_failed_post_roll_asset_check_blocks_ship_completion() {
+        let root = tempfile::tempdir().expect("create a test workspace");
+        let events = std::cell::RefCell::new(Vec::new());
+
+        let error = finish_roll(
+            ShipLane::ImageOnly,
+            &sample_config(),
+            root.path(),
+            false,
+            || {
+                events.borrow_mut().push("restate");
+                Ok(())
+            },
+            |_, _| {
+                events.borrow_mut().push("assets");
+                Err(anyhow!("public origin is unreachable"))
+            },
+        )
+        .expect_err("an unreachable public origin must block completion");
+
+        assert_eq!(*events.borrow(), ["restate", "assets"]);
+        assert!(error
+            .to_string()
+            .contains("post-roll public asset verification"));
+        assert!(format!("{error:#}").contains("public origin is unreachable"));
+    }
+
+    #[test]
+    fn restart_only_never_runs_the_post_roll_asset_check() {
+        let root = tempfile::tempdir().expect("create a test workspace");
+        let events = std::cell::RefCell::new(Vec::new());
+        finish_roll(
+            ShipLane::RestartOnly,
+            &sample_config(),
+            root.path(),
+            false,
+            || {
+                events.borrow_mut().push("restate");
+                Ok(())
+            },
+            |_, _| {
+                events.borrow_mut().push("assets");
+                Ok(())
+            },
+        )
+        .expect("restart-only completion does not need asset verification");
+        assert_eq!(*events.borrow(), ["restate"]);
     }
 }

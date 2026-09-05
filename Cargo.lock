@@ -312,7 +312,7 @@ dependencies = [
 
 [[package]]
 name = "archives"
-version = "26.9.5"
+version = "26.9.6-rc.1"
 dependencies = [
  "anyhow",
  "arrow",
@@ -1478,7 +1478,7 @@ dependencies = [
 
 [[package]]
 name = "billing"
-version = "26.9.5"
+version = "26.9.6-rc.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1496,7 +1496,7 @@ dependencies = [
 
 [[package]]
 name = "billing-workflows"
-version = "26.9.5"
+version = "26.9.6-rc.1"
 dependencies = [
  "anyhow",
  "billing",
@@ -2126,7 +2126,7 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
 name = "cli"
-version = "26.9.5"
+version = "26.9.6-rc.1"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -2187,7 +2187,7 @@ dependencies = [
 
 [[package]]
 name = "cloud"
-version = "26.9.5"
+version = "26.9.6-rc.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4324,7 +4324,7 @@ checksum = "b97b65636e5b9ef369943878ac74335ba1c55c1cb6adbf1e2c293c624248d693"
 
 [[package]]
 name = "features"
-version = "26.9.5"
+version = "26.9.6-rc.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4519,7 +4519,7 @@ dependencies = [
 
 [[package]]
 name = "forms"
-version = "26.9.5"
+version = "26.9.6-rc.1"
 dependencies = [
  "cloud",
  "pdf",
@@ -4651,7 +4651,7 @@ dependencies = [
 
 [[package]]
 name = "gateway"
-version = "26.9.5"
+version = "26.9.6-rc.1"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -4856,7 +4856,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "github-runner"
-version = "26.9.5"
+version = "26.9.6-rc.1"
 dependencies = [
  "async-trait",
  "k8s-openapi",
@@ -4867,7 +4867,7 @@ dependencies = [
 
 [[package]]
 name = "github_webhooks"
-version = "26.9.5"
+version = "26.9.6-rc.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -6203,7 +6203,7 @@ checksum = "89194689a993ab15268672e99e7b0e19da2da3268ac682e8f02d29d4d1434cd7"
 
 [[package]]
 name = "import"
-version = "26.9.5"
+version = "26.9.6-rc.1"
 dependencies = [
  "anyhow",
  "serde",
@@ -6967,7 +6967,7 @@ checksum = "11d3d7f243d5c5a8b9bb5d6dd2b1602c0cb0b9db1621bafc7ed66e35ff9fe092"
 
 [[package]]
 name = "live-inquiry"
-version = "26.9.5"
+version = "26.9.6-rc.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -7065,7 +7065,7 @@ checksum = "112b39cec0b298b6c1999fee3e31427f74f676e4cb9879ed1a121b43661a4154"
 
 [[package]]
 name = "lsp"
-version = "26.9.5"
+version = "26.9.6-rc.1"
 dependencies = [
  "anyhow",
  "lsp-types",
@@ -7236,7 +7236,7 @@ dependencies = [
 
 [[package]]
 name = "mcp"
-version = "26.9.5"
+version = "26.9.6-rc.1"
 dependencies = [
  "async-trait",
  "axum",
@@ -7536,7 +7536,7 @@ dependencies = [
 
 [[package]]
 name = "neon"
-version = "26.9.5"
+version = "26.9.6-rc.1"
 dependencies = [
  "anyhow",
  "axum",
@@ -8240,7 +8240,7 @@ dependencies = [
 
 [[package]]
 name = "pdf"
-version = "26.9.5"
+version = "26.9.6-rc.1"
 dependencies = [
  "lopdf",
  "pulldown-cmark",
@@ -8808,7 +8808,7 @@ dependencies = [
 
 [[package]]
 name = "portal"
-version = "26.9.5"
+version = "26.9.6-rc.1"
 dependencies = [
  "anyhow",
  "arrow",
@@ -9620,7 +9620,7 @@ dependencies = [
 
 [[package]]
 name = "repos"
-version = "26.9.5"
+version = "26.9.6-rc.1"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -10061,7 +10061,7 @@ dependencies = [
 
 [[package]]
 name = "rules"
-version = "26.9.5"
+version = "26.9.6-rc.1"
 dependencies = [
  "chrono",
  "serde",
@@ -10775,7 +10775,7 @@ dependencies = [
 
 [[package]]
 name = "server"
-version = "26.9.5"
+version = "26.9.6-rc.1"
 dependencies = [
  "anyhow",
  "arrow",
@@ -11196,7 +11196,7 @@ dependencies = [
 
 [[package]]
 name = "store"
-version = "26.9.5"
+version = "26.9.6-rc.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -12037,7 +12037,7 @@ checksum = "55937e1799185b12863d447f42597ed69d9928686b8d88a1df17376a097d8369"
 
 [[package]]
 name = "telemetry"
-version = "26.9.5"
+version = "26.9.6-rc.1"
 dependencies = [
  "base64 0.23.1",
  "opentelemetry",
@@ -13741,7 +13741,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "views"
-version = "26.9.5"
+version = "26.9.6-rc.1"
 dependencies = [
  "chrono",
  "pulldown-cmark",
@@ -14010,7 +14010,7 @@ dependencies = [
 
 [[package]]
 name = "webapp"
-version = "26.9.5"
+version = "26.9.6-rc.1"
 dependencies = [
  "axum",
  "cloud",
@@ -14494,7 +14494,7 @@ dependencies = [
 
 [[package]]
 name = "workflows"
-version = "26.9.5"
+version = "26.9.6-rc.1"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -14526,7 +14526,7 @@ dependencies = [
 
 [[package]]
 name = "workflows-service"
-version = "26.9.5"
+version = "26.9.6-rc.1"
 dependencies = [
  "anyhow",
  "archives",

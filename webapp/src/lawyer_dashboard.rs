@@ -9,10 +9,12 @@
 //!
 //! **The project list is the caller's workload, not the firm's.** The loader
 //! reads the injected `person_id` and role and goes through
-//! [`store::access::visible_projects_as_lawyer`], so a lawyer sees the
-//! matters they are on and an admin sees everything. Both the counts and the
-//! list derive from that one collection, so the page can never disclose the
-//! name of a matter the caller may not see.
+//! [`store::access::visible_projects_as_lawyer`], so every firm tier sees only
+//! matters where it holds a firm-side participation row. Owner/Admin route
+//! admission and administrative-listing reach do not bypass the matter-surface
+//! participation gate. Both the counts and the list derive from that one
+//! collection, so the page can never disclose the name of a matter the caller
+//! may not see.
 //!
 //! **The calendar is a deliberate placeholder.** It has rendered empty since
 //! the dashboard shipped (#350), and its covering test asserts it stays that

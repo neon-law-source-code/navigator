@@ -114,13 +114,42 @@ async fn upload(
         .unwrap()
 }
 
+async fn set_visibility(
+    fx: &Fixture,
+    auth: Option<&str>,
+    asset_id: Uuid,
+    visibility: &str,
+) -> axum::http::Response<Body> {
+    let mut req = Request::builder()
+        .method("PATCH")
+        .uri(format!(
+            "/app/api/projects/{}/documents/{asset_id}",
+            fx.project_id
+        ))
+        .header("content-type", "application/json");
+    if let Some(auth) = auth {
+        req = req.header("authorization", auth);
+    }
+    fx.app
+        .clone()
+        .oneshot(
+            req.body(Body::from(
+                serde_json::json!({ "visibility": visibility }).to_string(),
+            ))
+            .unwrap(),
+        )
+        .await
+        .unwrap()
+}
+
 fn doc_body() -> serde_json::Value {
     // "test document" base64-encoded.
     serde_json::json!({
         "filename": "note.txt",
         "content_base64": "dGVzdCBkb2N1bWVudA==",
         "content_type": "text/plain",
-        "kind": "unclassified"
+        "kind": "unclassified",
+        "slug": "notes/note.txt"
     })
 }
 
@@ -131,13 +160,93 @@ async fn a_participant_lawyer_files_a_document() {
     assert_eq!(resp.status(), StatusCode::CREATED);
     let bytes = resp.into_body().collect().await.unwrap().to_bytes();
     let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-    let document_id: Uuid = json["document_id"].as_str().unwrap().parse().unwrap();
+    assert_eq!(json["kind"], "unclassified");
+    assert_eq!(json["visibility"], "internal");
+    assert_eq!(json["current_version"]["version"], 1);
+    let document_id: Uuid = json["current_version"]["asset_id"]
+        .as_str()
+        .unwrap()
+        .parse()
+        .unwrap();
     assert!(
         store::assets::find_by_id(&fx.surreal, document_id)
             .await
             .unwrap()
             .is_some(),
         "the filed document is a real asset"
+    );
+}
+
+#[tokio::test]
+async fn a_repeated_slug_is_one_idempotent_revision_chain() {
+    let fx = build_fixture().await;
+    let first = upload(&fx, Some(&fx.lawyer), doc_body()).await;
+    assert_eq!(first.status(), StatusCode::CREATED);
+    let first_json: serde_json::Value =
+        serde_json::from_slice(&first.into_body().collect().await.unwrap().to_bytes()).unwrap();
+
+    let unchanged = upload(&fx, Some(&fx.lawyer), doc_body()).await;
+    assert_eq!(unchanged.status(), StatusCode::OK);
+    let unchanged_json: serde_json::Value =
+        serde_json::from_slice(&unchanged.into_body().collect().await.unwrap().to_bytes()).unwrap();
+    assert_eq!(unchanged_json, first_json);
+
+    let mut revised = doc_body();
+    revised["content_base64"] = serde_json::json!(base64_of("revised document"));
+    let second = upload(&fx, Some(&fx.lawyer), revised).await;
+    assert_eq!(second.status(), StatusCode::CREATED);
+    let second_json: serde_json::Value =
+        serde_json::from_slice(&second.into_body().collect().await.unwrap().to_bytes()).unwrap();
+    assert_eq!(second_json["current_version"]["version"], 2);
+    assert_eq!(
+        second_json["previous_version"],
+        first_json["current_version"]["asset_id"]
+    );
+    assert_eq!(
+        store::assets::revisions(&fx.surreal, fx.project_id, "notes/note.txt")
+            .await
+            .unwrap()
+            .len(),
+        2
+    );
+}
+
+#[tokio::test]
+async fn a_pointer_visibility_edit_is_scoped_and_idempotent() {
+    let fx = build_fixture().await;
+    let filed = upload(&fx, Some(&fx.lawyer), doc_body()).await;
+    let json: serde_json::Value =
+        serde_json::from_slice(&filed.into_body().collect().await.unwrap().to_bytes()).unwrap();
+    let asset_id = json["current_version"]["asset_id"]
+        .as_str()
+        .unwrap()
+        .parse()
+        .unwrap();
+
+    let changed = set_visibility(&fx, Some(&fx.lawyer), asset_id, "client").await;
+    assert_eq!(changed.status(), StatusCode::OK);
+    let asset = store::assets::find_by_id(&fx.surreal, asset_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(asset.visibility, "client");
+
+    let unchanged = set_visibility(&fx, Some(&fx.lawyer), asset_id, "client").await;
+    let body: serde_json::Value =
+        serde_json::from_slice(&unchanged.into_body().collect().await.unwrap().to_bytes()).unwrap();
+    assert_eq!(body["changed"], false);
+
+    assert_eq!(
+        set_visibility(&fx, Some(&fx.outsider), asset_id, "internal")
+            .await
+            .status(),
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        set_visibility(&fx, Some(&fx.client), asset_id, "internal")
+            .await
+            .status(),
+        StatusCode::FORBIDDEN
     );
 }
 
@@ -215,6 +324,7 @@ async fn a_kind_outside_the_asset_lane_is_400_naming_the_accepted_values() {
         "onboarding",
         "unclassified",
         "certificate_of_naturalization",
+        "exhibit",
     ] {
         assert!(
             message.contains(accepted),
@@ -305,6 +415,7 @@ async fn every_accepted_kind_still_files_a_document() {
     {
         let mut body = doc_body();
         body["kind"] = serde_json::json!(kind.as_str());
+        body["slug"] = serde_json::json!(format!("examples/{}.txt", kind.as_str()));
         // Distinct bytes per kind so each is a fresh ingest rather than a dedup.
         body["content_base64"] = serde_json::json!(base64_of(kind.as_str()));
         let resp = upload(&fx, Some(&fx.lawyer), body).await;

@@ -815,6 +815,39 @@ pub async fn revisions(
     many(response)
 }
 
+/// Set the visibility of one asset that belongs to `project_id`.
+///
+/// Returns `None` when the asset does not belong to that Project, otherwise
+/// whether the stored value changed. The Project scope is part of the write so
+/// an asset id is never an authorization bypass.
+///
+/// # Errors
+/// Propagates any database error.
+pub async fn set_visibility(
+    db: &SurrealDb,
+    project_id: Uuid,
+    asset_id: Uuid,
+    visibility: &str,
+) -> Result<Option<bool>, AssetError> {
+    let current = find_by_id(db, asset_id).await?;
+    let Some(asset) = current.filter(|asset| asset.project_id == Some(project_id)) else {
+        return Ok(None);
+    };
+    if asset.visibility == visibility {
+        return Ok(Some(false));
+    }
+    let response = writing(|| {
+        db.query("UPDATE $id SET visibility = $visibility, updated_at = time::now()")
+            .bind(("id", record_id(TABLE, asset_id)))
+            .bind(("visibility", visibility.to_string()))
+    })
+    .await?;
+    if one(response)?.is_none() {
+        return Err(AssetError::WriteReturnedNothing);
+    }
+    Ok(Some(true))
+}
+
 /// Why a [`file_revision`] call wrote nothing.
 #[derive(Debug, thiserror::Error)]
 pub enum RevisionError {

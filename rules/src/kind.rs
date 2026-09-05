@@ -86,6 +86,9 @@ pub enum Kind {
     /// `document_intake__certificate_of_naturalization` step receives it.
     /// Same asset-lane-only caveat as [`Kind::Transcript`].
     CertificateOfNaturalization,
+    /// Evidence filed on a matter, including images and court exhibits.
+    /// Asset-lane only: the source repository carries only its pointer.
+    Exhibit,
     /// A filed artifact nobody has classified yet — an inbound email
     /// attachment, a blank-kind lawyer upload, an expunge tombstone.
     ///
@@ -150,6 +153,7 @@ impl Kind {
         Kind::Transcript,
         Kind::InboundContract,
         Kind::CertificateOfNaturalization,
+        Kind::Exhibit,
         Kind::Unclassified,
         Kind::ReviewQueueWorkbench,
         Kind::VerifierSplitView,
@@ -183,6 +187,7 @@ impl Kind {
             Kind::Transcript => "transcript",
             Kind::InboundContract => "inbound_contract",
             Kind::CertificateOfNaturalization => "certificate_of_naturalization",
+            Kind::Exhibit => "exhibit",
             Kind::Unclassified => "unclassified",
             Kind::ReviewQueueWorkbench => "review_queue_workbench",
             Kind::VerifierSplitView => "verifier_split_view",
@@ -225,6 +230,7 @@ impl Kind {
             Kind::CertificateOfNaturalization => {
                 "An issued USCIS Certificate of Naturalization (Form N-550, asset-lane only)"
             }
+            Kind::Exhibit => "Evidence or an exhibit filed on a matter (asset-lane only)",
             Kind::Unclassified => "A filed artifact nobody has classified yet (asset-lane only)",
             Kind::ReviewQueueWorkbench => {
                 "A matter dashboard: a filterable item rail, a detail pane, and a per-item status"
@@ -296,6 +302,7 @@ impl Kind {
             | Kind::Transcript
             | Kind::InboundContract
             | Kind::CertificateOfNaturalization
+            | Kind::Exhibit
             | Kind::Unclassified
             | Kind::ReviewQueueWorkbench
             | Kind::VerifierSplitView
@@ -342,6 +349,7 @@ impl Kind {
             | Kind::Transcript
             | Kind::InboundContract
             | Kind::CertificateOfNaturalization
+            | Kind::Exhibit
             | Kind::Unclassified
             | Kind::ReviewQueueWorkbench
             | Kind::VerifierSplitView
@@ -460,6 +468,7 @@ impl Kind {
             | Kind::Transcript
             | Kind::InboundContract
             | Kind::CertificateOfNaturalization
+            | Kind::Exhibit
             | Kind::Unclassified
             | Kind::ReviewQueueWorkbench
             | Kind::VerifierSplitView
@@ -523,6 +532,7 @@ impl Kind {
                 Kind::Transcript
                 | Kind::InboundContract
                 | Kind::CertificateOfNaturalization
+                | Kind::Exhibit
                 | Kind::Unclassified => false,
             },
             // Everything that can be *filed on a matter*: the three
@@ -545,6 +555,7 @@ impl Kind {
                 | Kind::Transcript
                 | Kind::InboundContract
                 | Kind::CertificateOfNaturalization
+                | Kind::Exhibit
                 | Kind::Unclassified => true,
                 Kind::Event
                 | Kind::Post
@@ -668,6 +679,7 @@ mod tests {
             Kind::Transcript,
             Kind::InboundContract,
             Kind::CertificateOfNaturalization,
+            Kind::Exhibit,
             Kind::Unclassified,
         ] {
             assert!(!kind.valid_for(Lane::Template), "{}", kind.as_str());

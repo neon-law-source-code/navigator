@@ -6216,15 +6216,22 @@ async fn lawyer_dashboard_leads_with_project_kpis_and_calendar() {
     .unwrap();
     let other_dri = store::test_support::dri_person(&surreal).await;
 
-    for (name, status, lawyer_dri, lawyer_participates) in [
-        ("Estate sitting matter", "open", Some(lawyer.id), true),
-        ("Acme contract review", "open", Some(other_dri), true),
-        ("Closed formation cleanup", "closed", Some(lawyer.id), true),
+    for (name, status, lawyer_dri, lawyer_participates, file_onboarding) in [
+        ("Estate sitting matter", "open", Some(lawyer.id), true, true),
+        ("Acme contract review", "open", Some(other_dri), true, false),
+        (
+            "Closed formation cleanup",
+            "closed",
+            Some(lawyer.id),
+            true,
+            false,
+        ),
         (
             "Archived formation record",
             "archived",
             Some(lawyer.id),
             true,
+            false,
         ),
     ] {
         let project = test_project(&surreal, name, status).await;
@@ -6236,6 +6243,27 @@ async fn lawyer_dashboard_leads_with_project_kpis_and_calendar() {
         }
         if lawyer_participates && lawyer_dri != Some(lawyer.id) {
             participate(&state.surreal, lawyer.id, project.id, "attorney").await;
+        }
+        // One open matter carries an onboarding artifact so the pie must split
+        // pitch from active rather than counting every `open` row as one slice.
+        if file_onboarding {
+            store::documents::ingest_bytes(
+                &state.surreal,
+                &state.storage,
+                &store::documents::IngestArgs {
+                    project_id: project.id,
+                    source: store::documents::source::UPLOAD,
+                    filename: "engagement.pdf",
+                    kind: "onboarding",
+                    content_type: "application/pdf",
+                    description: None,
+                    secondary_storage_key: None,
+                    visibility: store::documents::visibility::INTERNAL,
+                },
+                b"uploaded bytes",
+            )
+            .await
+            .unwrap();
         }
     }
 
@@ -6266,7 +6294,11 @@ async fn lawyer_dashboard_leads_with_project_kpis_and_calendar() {
     // strip them and assert the pairing a reader actually sees.
     let plain = strip_hydration_markers(&body);
     assert!(
-        plain.contains("<strong>Open projects: </strong>2"),
+        plain.contains("<strong>Pitch projects: </strong>1"),
+        "{plain}"
+    );
+    assert!(
+        plain.contains("<strong>Active projects: </strong>1"),
         "{plain}"
     );
     assert!(
@@ -6274,9 +6306,11 @@ async fn lawyer_dashboard_leads_with_project_kpis_and_calendar() {
         "{plain}"
     );
     assert!(
-        body.contains("aria-label=\"3 total projects: 2 open, 1 closed\""),
+        body.contains("aria-label=\"3 total projects: 1 pitch, 1 active, 1 closed\""),
         "{body}"
     );
+    assert!(body.contains("--project-pitch-end:33.3333%"), "{body}");
+    assert!(body.contains("--project-active-end:66.6667%"), "{body}");
     assert!(body.contains("Project calendar"), "{body}");
     assert!(
         body.contains("No project calendar events scheduled."),
@@ -6313,7 +6347,11 @@ async fn lawyer_dashboard_project_list_is_paginated_and_lawyer_scoped() {
     let body = body_string(active_first_page).await;
     let plain = strip_hydration_markers(&body);
     assert!(
-        plain.contains("<strong>Open projects: </strong>6"),
+        plain.contains("<strong>Pitch projects: </strong>6"),
+        "{plain}"
+    );
+    assert!(
+        plain.contains("<strong>Active projects: </strong>0"),
         "{plain}"
     );
     assert!(

@@ -25,7 +25,7 @@
 
 use dioxus::prelude::*;
 
-use crate::components::{Choice, Field};
+use crate::components::{Choice, Field, Progress};
 
 /// A clearly-synthetic sample matter, named in the demo's chrome so the walk
 /// never reads as scoped to nothing — every real Notation has a Project.
@@ -69,12 +69,10 @@ pub fn QuestionnaireDemo(questions: Vec<DemoQuestion>) -> Element {
             p { class: "nav-muted",
                 "{SAMPLE_PROJECT_LABEL} — nothing you type below is saved anywhere."
             }
-            div {
-                role: "progressbar",
-                "aria-label": "Demo question progress",
-                "aria-valuenow": "{position}",
-                "aria-valuemin": "0",
-                "aria-valuemax": "{total}",
+            Progress {
+                label: "Demo question progress".to_string(),
+                value: Some(position),
+                max: total,
             }
             div { class: "notation-demo__step", key: "{question.code}",
                 {demo_field(question)}

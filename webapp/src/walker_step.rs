@@ -19,7 +19,7 @@ use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::components::{
-    question_fields, FormCard, PeopleListInputs, PersonChoice, QuestionFieldContext,
+    question_fields, FormCard, PeopleListInputs, PersonChoice, Progress, QuestionFieldContext,
 };
 use crate::people::ViewerRole;
 
@@ -192,12 +192,10 @@ fn step_body(view: &WalkerStepView) -> Element {
             a { class: "nav-link", href: "/auth/logout", "Sign out" }
         }
         main { id: "walker-step", class: "nav-theme",
-            div {
-                role: "progressbar",
-                "aria-label": "Intake progress",
-                "aria-valuenow": "{step.position}",
-                "aria-valuemin": "0",
-                "aria-valuemax": "{step.total}",
+            Progress {
+                label: "Intake progress".to_string(),
+                value: Some(step.position),
+                max: step.total,
             }
             FormCard {
                 title,
@@ -303,6 +301,7 @@ mod tests {
     #[test]
     fn the_step_exposes_accessible_progress_semantics() {
         let html = render(&view("string", "", &[]));
+        assert!(html.contains("nav-progress"), "{html}");
         assert!(html.contains(r#"role="progressbar""#), "{html}");
         assert!(html.contains(r#"aria-label="Intake progress""#), "{html}");
         assert!(html.contains(r#"aria-valuenow="2""#), "{html}");

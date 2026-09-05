@@ -20,7 +20,7 @@ use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::components::{
-    question_fields, FormCard, PeopleListInputs, PersonChoice, QuestionFieldContext,
+    question_fields, FormCard, PeopleListInputs, PersonChoice, Progress, QuestionFieldContext,
 };
 
 /// The current intake step, shaped by the portal pre-layer into plain fields
@@ -223,12 +223,10 @@ fn step_body(step: &IntakeStepData, view: &ClientIntakeView) -> Element {
             if let Some(error) = view.error.as_ref() {
                 p { class: "nav-form-error", role: "alert", "{error}" }
             }
-            div {
-                role: "progressbar",
-                "aria-label": "Intake progress",
-                "aria-valuenow": "{step.position}",
-                "aria-valuemin": "0",
-                "aria-valuemax": "{step.total}",
+            Progress {
+                label: "Intake progress".to_string(),
+                value: Some(step.position),
+                max: step.total,
             }
             FormCard {
                 title,
@@ -345,6 +343,7 @@ mod tests {
     #[test]
     fn a_step_exposes_accessible_progress_semantics() {
         let html = render(&step("string", "", &[]));
+        assert!(html.contains("nav-progress"), "{html}");
         assert!(html.contains(r#"role="progressbar""#), "{html}");
         assert!(html.contains(r#"aria-label="Intake progress""#), "{html}");
         assert!(html.contains(r#"aria-valuenow="3""#), "{html}");

@@ -51,6 +51,7 @@ pub mod person_picker;
 pub mod platform_mark;
 pub mod practice_card;
 pub mod pricing;
+pub mod progress;
 pub mod public_shell;
 pub mod resource_mark;
 pub mod row_actions;
@@ -101,6 +102,7 @@ pub(crate) use platform_mark::PlatformMarkGlyph;
 pub use practice_card::PracticeMark;
 pub(crate) use practice_card::{PracticeCard, PracticeMarkGlyph};
 pub use pricing::{PricingCard, PricingSection};
+pub use progress::Progress;
 pub use public_shell::{PublicShell, PUBLIC_SHELL_MARKER};
 pub use row_actions::RowActions;
 #[cfg(feature = "server")]

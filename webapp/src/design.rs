@@ -36,10 +36,10 @@ use crate::components::{
     GitHubStars, Hero, HeroAlign, HeroLevel, Icon, IconName, ImpersonationBanner,
     ImpersonationView, LawyerPortalBreadcrumb, LegalBlueprintDisclaimer, NavigatorDestination,
     NavigatorFooter, NavigatorFooterLink, NavigatorNavbar, NavigatorShell, Pagination,
-    PeopleListInputs, PersonChoice, PersonPicker, PricingCard, PricingSection, PublicShell,
-    RowActions, RunParagraph, SampleMattersBanner, SiteFooterLegal, SiteHeader, SiteNavLink,
-    SocialMeta, SortState, Stage, StageWidth, StepMeta, Stepper, StepperPanel, TestimonialCard,
-    TestimonialSection, Toast, ToastTone, THEME_STYLESHEET_HREF,
+    PeopleListInputs, PersonChoice, PersonPicker, PricingCard, PricingSection, Progress,
+    PublicShell, RowActions, RunParagraph, SampleMattersBanner, SiteFooterLegal, SiteHeader,
+    SiteNavLink, SocialMeta, SortState, Stage, StageWidth, StepMeta, Stepper, StepperPanel,
+    TestimonialCard, TestimonialSection, Toast, ToastTone, THEME_STYLESHEET_HREF,
 };
 // The vendor marks come from their own module rather than the theme root: they
 // are the one component whose colours are a third party's rather than the
@@ -448,6 +448,7 @@ pub fn DesignGallery() -> Element {
             SiteFooterShowcase {}
             PublicShellShowcase {}
             FocusSetShowcase {}
+            ProgressShowcase {}
             FormShowcase {}
             PeopleListShowcase {}
             AppNavbarShowcase {}
@@ -1298,6 +1299,27 @@ fn FocusSetShowcase() -> Element {
     }
 }
 
+/// A determinate bar (a questionnaire's position) beside an indeterminate one
+/// (an operation with no reportable position) — the two variants `Progress`
+/// renders (ENG-502).
+#[component]
+fn ProgressShowcase() -> Element {
+    rsx! {
+        section { id: "progress",
+            h2 { "Progress" }
+            p {
+                "A determinate "
+                code { "Progress" }
+                " reports a position out of a total — the questionnaire walkers use \
+                 this for \"step n of N\". An indeterminate one has motion but no \
+                 reportable position, for an operation whose length is not known."
+            }
+            Progress { label: "Intake progress".to_string(), value: Some(2), max: 4, show_value: true }
+            Progress { label: "Running the conflicts check".to_string(), value: None }
+        }
+    }
+}
+
 /// The create/edit form card. The plain-textarea field kind is the composer for
 /// long-form input: the theme ships no rich-text editor.
 ///
@@ -1696,6 +1718,7 @@ mod tests {
             "Pagination",
             "PeopleListInputs",
             "PricingSection",
+            "Progress",
             "PublicShell",
             "RowActions",
             "SampleMattersBanner",

@@ -254,6 +254,36 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+      # A DUPLICATE PUSH EVENT FOR THIS EXACT COMMIT must not repeat the release
+      # decision. `main` has, on rare occasions, been pushed twice for the same
+      # `head_sha` — run 33969761074 duplicated 33969761152, both created the
+      # same second for commit ba9190a8ba77a8766792b7eb5fefb3e40032bd13 — which
+      # is GitHub's own delivery, not this repository's automation. The
+      # `deploy-release` concurrency group below only serializes DIFFERENT
+      # commits; two runs racing for the identical sha can both read the tag
+      # list before either has tagged, and both conclude "releasable". Refusing
+      # here, before the checker or the compile, is what stops the second run
+      # from spending a full build and KIND integration proving a release the
+      # first run is already proving. A legitimate "re-run failed jobs" reuses
+      # this SAME run rather than creating a new one, so it is never caught by
+      # this check.
+      - name: refuse a duplicate trigger for this commit
+        id: dedup
+        if: github.ref_name == 'main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          other="$(gh api "/repos/${REPO}/actions/workflows/deploy.yml/runs" \
+              -f head_sha="${GITHUB_SHA}" -f event=push --paginate \
+              --jq "[.workflow_runs[] | select(.id != ${GITHUB_RUN_ID})] | length")"
+          if [ "${other}" -gt 0 ]; then
+              echo "::notice::${other} other 'deploy' run(s) already target ${GITHUB_SHA}; refusing this duplicate trigger"
+              echo "duplicate=true" >> "$GITHUB_OUTPUT"
+          else
+              echo "duplicate=false" >> "$GITHUB_OUTPUT"
+          fi
       # ANSWER THE QUESTION WITH A PUBLISHED BINARY RATHER THAN A COMPILE.
       #
       # This job reads one TOML field, compares it against the tag list, and on
@@ -292,7 +322,9 @@ jobs:
         id: checker
         # A `kind-ci/**` branch iteration answers `publishable=false` from its
         # ref name without consulting a checker at all, so it fetches nothing.
-        if: github.ref_name == 'main'
+        # A duplicate trigger for this commit answers `publishable=false` too,
+        # from the `dedup` step above, without installing anything.
+        if: github.ref_name == 'main' && steps.dedup.outputs.duplicate != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -380,7 +412,9 @@ jobs:
       # far worse — answering "not a release" by default. It costs the compile
       # only when it actually fires.
       - name: install rust toolchain
-        if: github.ref_name == 'main' && steps.checker.outputs.ready != 'true'
+        if: >-
+          github.ref_name == 'main' && steps.dedup.outputs.duplicate != 'true'
+          && steps.checker.outputs.ready != 'true'
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.98.0
@@ -411,6 +445,7 @@ jobs:
         env:
           REF_NAME: ${{ github.ref_name }}
           CHECKER_READY: ${{ steps.checker.outputs.ready }}
+          DUPLICATE: ${{ steps.dedup.outputs.duplicate }}
         run: |
           set -euo pipefail
           if [ "${REF_NAME}" != "main" ]; then
@@ -420,6 +455,16 @@ jobs:
                   echo "prerelease=false"
               } >> "$GITHUB_OUTPUT"
               echo "branch iteration ${REF_NAME}: integration only, nothing publishes"
+              exit 0
+          fi
+
+          if [ "${DUPLICATE}" = "true" ]; then
+              {
+                  echo "tag=${GITHUB_SHA}"
+                  echo "publishable=false"
+                  echo "prerelease=false"
+              } >> "$GITHUB_OUTPUT"
+              echo "another 'deploy' run already targets ${GITHUB_SHA}: this duplicate trigger will not repeat the release decision"
               exit 0
           fi
 

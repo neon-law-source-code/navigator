@@ -228,8 +228,15 @@ jobs:
     # manifest and the tag list, answers one question, and writes nothing. The
     # ref that names this release is created by `release-tag`, after integration
     # has proved the tree.
+    #
+    # `actions: read` is the dedup step's requirement, not release-check's: the
+    # `permissions:` block below zeroes every scope it does not name, and the
+    # dedup step's `gh api .../actions/workflows/deploy.yml/runs` call needs this
+    # one to authenticate. Without it every push to `main` 404s here before the
+    # release decision ever runs (run 33979407990).
     permissions:
       contents: read
+      actions: read
     outputs:
       # The release version, read out of `[workspace.package].version`. Threaded
       # into every image build as `RELEASE_TAG`, used as the ref `release-tag`

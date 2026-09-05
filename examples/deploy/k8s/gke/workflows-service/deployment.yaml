@@ -227,8 +227,11 @@ metadata:
   namespace: navigator
 spec:
   # HTTP/1.1 health check against the envoy sidecar's listener.
-  # `/restate/health` is proxied through to the worker's own
-  # health endpoint, so a 200 here proves the full pod is up.
+  # Envoy answers `/restate/health` itself (see envoy-config.yaml)
+  # rather than proxying to the worker's identity-gated Restate SDK
+  # endpoint, so a 200 here proves envoy — and thus the LB's network
+  # path to the pod — is up. The worker container's own tcpSocket
+  # probes (below) independently gate the worker process itself.
   healthCheck:
     type: HTTP
     port: 9081

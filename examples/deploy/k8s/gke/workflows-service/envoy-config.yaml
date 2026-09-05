@@ -57,6 +57,18 @@ data:
                     route:
                       cluster: webhook_receiver
                       timeout: 30s
+                  # kubelet's readiness probe and the GCE LB BackendConfig health
+                  # check both hit this exact path. Once the worker configures a
+                  # real RESTATE_IDENTITY_KEY, its Restate SDK endpoint requires a
+                  # valid Restate Cloud signature on every request it serves,
+                  # /restate/health included — a check neither kubelet nor the LB
+                  # ever signs, so proxying this path to the worker 401s forever
+                  # and the pod can never become Ready. Envoy answers it directly
+                  # instead. Must precede the catch-all below; Envoy matches in
+                  # order.
+                  - match: { path: "/restate/health" }
+                    direct_response:
+                      status: 200
                   - match: { prefix: "/" }
                     route:
                       cluster: restate_worker

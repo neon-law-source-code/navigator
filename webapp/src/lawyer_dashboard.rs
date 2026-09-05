@@ -193,19 +193,8 @@ pub async fn get_lawyer_dashboard() -> Result<DashboardView, ServerFnError> {
             );
             ServerFnError::new(e.clone())
         })?;
-    let mut pitch_projects = 0_u64;
-    let mut active_projects = 0_u64;
-    let mut closed_projects = 0_u64;
-    for project in &projects {
-        match project.status.as_str() {
-            "closed" => closed_projects = closed_projects.saturating_add(1),
-            "open" if has_engagement.contains(&project.id) => {
-                active_projects = active_projects.saturating_add(1);
-            }
-            "open" => pitch_projects = pitch_projects.saturating_add(1),
-            _ => {}
-        }
-    }
+    let (pitch_projects, active_projects, closed_projects) =
+        kpi_lifecycle_counts(&projects, &has_engagement);
 
     // Both the counts and the list come from `projects`, which is already
     // filtered through the lawyer lens, so the page cannot name an unrelated
@@ -254,6 +243,29 @@ pub async fn get_lawyer_dashboard() -> Result<DashboardView, ServerFnError> {
         logo: crate::app_chrome::app_logo_from_context().await,
         tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
     })
+}
+
+/// Pitch / active / closed counts for the KPI pie. Archived matters are
+/// excluded. An open matter is pitch until an onboarding artifact is on file.
+#[cfg(feature = "server")]
+fn kpi_lifecycle_counts(
+    projects: &[store::projects::Project],
+    has_engagement: &std::collections::HashSet<uuid::Uuid>,
+) -> (u64, u64, u64) {
+    let mut pitch = 0_u64;
+    let mut active = 0_u64;
+    let mut closed = 0_u64;
+    for project in projects {
+        match project.status.as_str() {
+            "closed" => closed = closed.saturating_add(1),
+            "open" if has_engagement.contains(&project.id) => {
+                active = active.saturating_add(1);
+            }
+            "open" => pitch = pitch.saturating_add(1),
+            _ => {}
+        }
+    }
+    (pitch, active, closed)
 }
 
 /// The lawyer workbench. Server-side rendered; every control is a real anchor,

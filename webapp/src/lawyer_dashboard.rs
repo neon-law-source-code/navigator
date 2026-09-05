@@ -86,7 +86,10 @@ pub struct ProjectLink {
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct DashboardView {
     pub total_projects: u64,
-    pub open_projects: u64,
+    /// Open matters with no onboarding artifact on file (`MatterLifecycle` pitch).
+    pub pitch_projects: u64,
+    /// Open matters with onboarding on file (`MatterLifecycle` active).
+    pub active_projects: u64,
     pub closed_projects: u64,
     /// The current page of the status-filtered list.
     pub rows: Vec<ProjectLink>,
@@ -177,8 +180,21 @@ pub async fn get_lawyer_dashboard() -> Result<DashboardView, ServerFnError> {
     } else {
         "open"
     };
-    let open_projects = projects.iter().filter(|p| p.status == "open").count();
-    let closed_projects = projects.iter().filter(|p| p.status == "closed").count();
+    // The pie splits the same three states the matter-row lifecycle pill uses.
+    // Archived matters stay out of the chart; an open matter is pitch until
+    // an onboarding artifact is on file.
+    let (has_engagement, _) = store::projects::matter_lifecycle_sets(&surreal, &projects)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "dashboard: matter_lifecycle_sets failed");
+            dioxus_fullstack_core::FullstackContext::commit_http_status(
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                None,
+            );
+            ServerFnError::new(e.clone())
+        })?;
+    let (pitch_projects, active_projects, closed_projects) =
+        kpi_lifecycle_counts(&projects, &has_engagement);
 
     // Both the counts and the list come from `projects`, which is already
     // filtered through the lawyer lens, so the page cannot name an unrelated
@@ -208,10 +224,12 @@ pub async fn get_lawyer_dashboard() -> Result<DashboardView, ServerFnError> {
 
     Ok(DashboardView {
         firm_name: crate::app_chrome::firm_name_from_context().await,
-        total_projects: u64::try_from(open_projects.saturating_add(closed_projects))
-            .unwrap_or(u64::MAX),
-        open_projects: u64::try_from(open_projects).unwrap_or(u64::MAX),
-        closed_projects: u64::try_from(closed_projects).unwrap_or(u64::MAX),
+        total_projects: pitch_projects
+            .saturating_add(active_projects)
+            .saturating_add(closed_projects),
+        pitch_projects,
+        active_projects,
+        closed_projects,
         rows,
         status: status.to_string(),
         page: u64::try_from(page).unwrap_or(u64::MAX),
@@ -225,6 +243,29 @@ pub async fn get_lawyer_dashboard() -> Result<DashboardView, ServerFnError> {
         logo: crate::app_chrome::app_logo_from_context().await,
         tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
     })
+}
+
+/// Pitch / active / closed counts for the KPI pie. Archived matters are
+/// excluded. An open matter is pitch until an onboarding artifact is on file.
+#[cfg(feature = "server")]
+fn kpi_lifecycle_counts(
+    projects: &[store::projects::Project],
+    has_engagement: &std::collections::HashSet<uuid::Uuid>,
+) -> (u64, u64, u64) {
+    let mut pitch = 0_u64;
+    let mut active = 0_u64;
+    let mut closed = 0_u64;
+    for project in projects {
+        match project.status.as_str() {
+            "closed" => closed = closed.saturating_add(1),
+            "open" if has_engagement.contains(&project.id) => {
+                active = active.saturating_add(1);
+            }
+            "open" => pitch = pitch.saturating_add(1),
+            _ => {}
+        }
+    }
+    (pitch, active, closed)
 }
 
 /// The lawyer workbench. Server-side rendered; every control is a real anchor,
@@ -289,33 +330,38 @@ fn lawyer_dashboard_body(view: &DashboardView) -> Element {
     }
 }
 
+/// Format a pie-share CSS percentage with integer maths to four decimals so
+/// the emitted style (and its test) is architecture-independent.
+fn pie_share_css(part: u64, total: u64) -> String {
+    let units = part
+        .saturating_mul(1_000_000)
+        .saturating_add(total / 2)
+        .checked_div(total)
+        .unwrap_or(0);
+    format!("{}.{:04}%", units / 10_000, units % 10_000)
+}
+
 /// The status pie beside the caller's paginated matter list.
 #[component]
 fn ProjectKpiOverview(view: DashboardView) -> Element {
-    // The open share drives the conic-gradient stop. Integer maths to four
-    // decimals keeps the rendered value stable across platforms — a float
-    // would make the emitted style (and its test) architecture-dependent.
-    let open_share_units = view
-        .open_projects
-        .saturating_mul(1_000_000)
-        .saturating_add(view.total_projects / 2)
-        .checked_div(view.total_projects)
-        .unwrap_or(0);
-    let open_share = format!(
-        "{}.{:04}%",
-        open_share_units / 10_000,
-        open_share_units % 10_000
+    // Two cumulative stops: pitch (yellow) from 0, then active (green), then
+    // closed (red) fills the remainder. Rounding each end from a running
+    // count keeps the stops monotonic.
+    let pitch_end = pie_share_css(view.pitch_projects, view.total_projects);
+    let active_end = pie_share_css(
+        view.pitch_projects.saturating_add(view.active_projects),
+        view.total_projects,
     );
     let chart_label = format!(
-        "{} total projects: {} open, {} closed",
-        view.total_projects, view.open_projects, view.closed_projects
+        "{} total projects: {} pitch, {} active, {} closed",
+        view.total_projects, view.pitch_projects, view.active_projects, view.closed_projects
     );
     let pie_class = if view.total_projects == 0 {
         "project-status-pie project-status-pie-empty"
     } else {
         "project-status-pie"
     };
-    let pie_style = format!("--project-open-share:{open_share}");
+    let pie_style = format!("--project-pitch-end:{pitch_end};--project-active-end:{active_end}");
 
     rsx! {
         div { class: "project-kpi-overview",
@@ -335,11 +381,19 @@ fn ProjectKpiOverview(view: DashboardView) -> Element {
                             ul { class: "project-status-legend",
                                 li {
                                     span {
-                                        class: "project-status-key project-status-key-open",
+                                        class: "project-status-key project-status-key-pitch",
                                         aria_hidden: "true",
                                     }
-                                    strong { "Open projects: " }
-                                    "{view.open_projects}"
+                                    strong { "Pitch projects: " }
+                                    "{view.pitch_projects}"
+                                }
+                                li {
+                                    span {
+                                        class: "project-status-key project-status-key-active",
+                                        aria_hidden: "true",
+                                    }
+                                    strong { "Active projects: " }
+                                    "{view.active_projects}"
                                 }
                                 li {
                                     span {
@@ -501,7 +555,8 @@ mod tests {
             tokens_href: String::new(),
             firm_name: "Neon Law".to_string(),
             total_projects: 3,
-            open_projects: 2,
+            pitch_projects: 1,
+            active_projects: 1,
             closed_projects: 1,
             rows: vec![ProjectLink {
                 id: "00000000-0000-0000-0000-000000000001".to_string(),
@@ -519,32 +574,38 @@ mod tests {
     }
 
     #[test]
-    fn the_kpi_pie_reports_the_open_share_and_names_itself_for_a_screen_reader() {
+    fn the_kpi_pie_reports_pitch_active_and_closed_shares_and_names_itself_for_a_screen_reader() {
         let html = dioxus_ssr::render_element(lawyer_dashboard_body(&view()));
         // The pie is decorative geometry, so the counts must also be readable:
         // the aria-label is the only thing a screen reader gets from it.
         assert!(
-            html.contains("aria-label=\"3 total projects: 2 open, 1 closed\""),
+            html.contains("aria-label=\"3 total projects: 1 pitch, 1 active, 1 closed\""),
             "{html}"
         );
-        // 2/3 open, to the four decimals the integer maths produces.
-        assert!(html.contains("--project-open-share:66.6667%"), "{html}");
-        assert!(html.contains(">2<"), "{html}");
-        assert!(html.contains(">1<"), "{html}");
+        // Equal thirds: pitch ends at 1/3, active at 2/3.
+        assert!(html.contains("--project-pitch-end:33.3333%"), "{html}");
+        assert!(html.contains("--project-active-end:66.6667%"), "{html}");
+        assert!(html.contains("project-status-key-pitch"), "{html}");
+        assert!(html.contains("project-status-key-active"), "{html}");
+        assert!(html.contains("Pitch projects:"), "{html}");
+        assert!(html.contains("Active projects:"), "{html}");
+        assert!(html.contains("Closed projects:"), "{html}");
     }
 
     #[test]
     fn an_empty_workload_renders_the_pie_in_its_empty_state() {
         let html = dioxus_ssr::render_element(lawyer_dashboard_body(&DashboardView {
             total_projects: 0,
-            open_projects: 0,
+            pitch_projects: 0,
+            active_projects: 0,
             closed_projects: 0,
             rows: vec![],
             ..view()
         }));
         assert!(html.contains("project-status-pie-empty"), "{html}");
         // Dividing by a zero total must not panic or emit a bogus share.
-        assert!(html.contains("--project-open-share:0.0000%"), "{html}");
+        assert!(html.contains("--project-pitch-end:0.0000%"), "{html}");
+        assert!(html.contains("--project-active-end:0.0000%"), "{html}");
         assert!(
             html.contains("No active projects in your workload."),
             "{html}"

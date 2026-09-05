@@ -3096,22 +3096,11 @@ a.nav-link:hover {
 }
 
 .project-kpi-chart {
-  /* The firm logo anchors this triad at rgb(0, 181, 216) / #00b5d8. Keeping its
-     HSL saturation and lightness, the companions sit 120 degrees apart on the
-     color wheel: green #23d800 (+120deg) and red #d80023 (-120deg). Archived
-     projects are intentionally outside this chart, so the green remains
-     available for a future third represented status.
-
-     ENG-372 claimed that third status — but on the matter *row*
-     (`.matter-lifecycle`), not this pie. The row's green means "open, with
-     its onboarding letter on file"; this pie's cyan means "open" full stop,
-     with no engagement-letter distinction. Splitting the pie to match would
-     be the better product answer, but it is a dashboard change riding along
-     a lifecycle-badge fix, so the smaller diff won: this pie still answers
-     "open vs closed" portfolio-wide, and the row separately answers "where
-     is this one matter in its lifecycle." Two colour languages on one tier,
-     accepted deliberately rather than reconciled here. */
-  --project-status-cyan: rgb(0, 181, 216);
+  /* The pie uses the same three lifecycle colours as the matter-row pills:
+     yellow pitch, green active, red closed. Archived matters sit outside
+     the chart. Yellow is the shared warning token the pitch pill already
+     uses; green and red keep the firm-logo triad companions. */
+  --project-status-yellow: var(--nav-color-warning);
   --project-status-green: rgb(35, 216, 0);
   --project-status-red: rgb(216, 0, 35);
 }
@@ -3137,8 +3126,9 @@ a.nav-link:hover {
   border: 1px solid var(--nav-color-border);
   border-radius: 50%;
   background: conic-gradient(
-    var(--project-status-cyan) 0 var(--project-open-share),
-    var(--project-status-red) var(--project-open-share) 100%
+    var(--project-status-yellow) 0 var(--project-pitch-end),
+    var(--project-status-green) var(--project-pitch-end) var(--project-active-end),
+    var(--project-status-red) var(--project-active-end) 100%
   );
 }
 
@@ -3171,8 +3161,12 @@ a.nav-link:hover {
   border-radius: 50%;
 }
 
-.project-status-key-open {
-  background: var(--project-status-cyan);
+.project-status-key-pitch {
+  background: var(--project-status-yellow);
+}
+
+.project-status-key-active {
+  background: var(--project-status-green);
 }
 
 .project-status-key-closed {

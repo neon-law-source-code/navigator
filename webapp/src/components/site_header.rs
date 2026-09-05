@@ -24,6 +24,8 @@
 
 use dioxus::prelude::*;
 
+use crate::components::ExternalLink;
+
 /// One navigation destination. `current` marks the active page so the anchor
 /// carries `aria-current="page"` and the active-link styling.
 #[derive(Clone, PartialEq, Eq)]
@@ -163,6 +165,11 @@ pub fn SiteHeader(
 
 /// One rendered nav `<li>`. The active page carries `aria-current="page"` and
 /// the `--active` modifier; the rest are plain links.
+///
+/// A destination that leaves our domains — GitHub, the docs, a portal on a
+/// different origin — renders through [`ExternalLink`] instead of a plain
+/// anchor, so it opens in a new tab, carries the OWASP `rel` pair, and shows
+/// the off-site glyph, exactly like an off-site footer link.
 #[component]
 fn SiteHeaderLink(link: SiteNavLink) -> Element {
     let class = if link.current {
@@ -172,11 +179,15 @@ fn SiteHeaderLink(link: SiteNavLink) -> Element {
     };
     rsx! {
         li {
-            a {
-                class: "{class}",
-                href: "{link.href}",
-                "aria-current": if link.current { Some("page") } else { None },
-                "{link.label}"
+            if link.href.starts_with("http") {
+                ExternalLink { class: class.to_string(), href: link.href.clone(), current: link.current, "{link.label}" }
+            } else {
+                a {
+                    class: "{class}",
+                    href: "{link.href}",
+                    "aria-current": if link.current { Some("page") } else { None },
+                    "{link.label}"
+                }
             }
         }
     }
@@ -312,6 +323,73 @@ mod tests {
         // No script, on a page that could not run one.
         assert!(!out.contains("<script"), "no script: {out}");
         assert!(!out.contains("onclick"), "no inline handler: {out}");
+    }
+
+    /// An off-site utility destination (e.g. Source, on GitHub) opens in a new
+    /// tab, carries the OWASP `rel` pair, and shows the off-site glyph — the
+    /// same treatment every other off-site link on the site already carries.
+    #[test]
+    fn an_off_site_destination_gets_the_external_link_treatment() {
+        fn app() -> Element {
+            rsx! {
+                SiteHeader {
+                    brand_name: "Lawyer Shook".to_string(),
+                    home_href: "/".to_string(),
+                    logo_href: "/public/img/logo.svg".to_string(),
+                    destinations: vec![SiteNavLink::new("Blog", "/blog")],
+                    utility: vec![SiteNavLink::new(
+                        "Source",
+                        "https://github.com/neon-law-source-code/navigator",
+                    )],
+                }
+            }
+        }
+        let out = ssr(app);
+        assert!(
+            out.contains(r#"href="https://github.com/neon-law-source-code/navigator""#),
+            "the off-site destination renders: {out}"
+        );
+        assert!(out.contains(r#"target="_blank""#), "opens a new tab: {out}");
+        assert!(
+            out.contains(r#"rel="noopener noreferrer""#),
+            "carries the OWASP rel pair: {out}"
+        );
+        assert!(
+            out.contains("<title>opens in a new tab</title>"),
+            "shows the off-site glyph's accessible name: {out}"
+        );
+        // The internal destination beside it carries none of that.
+        let blog = out.find("/blog").expect("the internal link renders");
+        assert!(
+            !out[..blog + 20].contains("target=\"_blank\""),
+            "the internal destination is a plain link: {out}"
+        );
+    }
+
+    /// An off-site destination can still be the active page, carrying
+    /// `aria-current="page"` alongside its off-site treatment.
+    #[test]
+    fn an_off_site_destination_can_be_the_current_page() {
+        fn app() -> Element {
+            rsx! {
+                SiteHeader {
+                    brand_name: "Lawyer Shook".to_string(),
+                    home_href: "/".to_string(),
+                    logo_href: "/public/img/logo.svg".to_string(),
+                    destinations: vec![
+                        SiteNavLink::new("Docs", "https://neon-law-source-code.github.io/navigator-ux/")
+                            .current(),
+                    ],
+                }
+            }
+        }
+        let out = ssr(app);
+        assert!(out.contains(r#"aria-current="page""#), "{out}");
+        assert!(
+            out.contains("site-header__link site-header__link--active"),
+            "the active modifier still applies: {out}"
+        );
+        assert!(out.contains(r#"target="_blank""#), "{out}");
     }
 
     /// Two headers on one page carry two distinct menu ids.

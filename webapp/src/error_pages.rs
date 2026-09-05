@@ -473,8 +473,11 @@ mod tests {
                 html.contains("<html lang=\"en\">"),
                 "{name}: a screen reader picks the voice from `lang`: {html}"
             );
+            let head = html
+                .split_once("</head>")
+                .map_or(html.as_str(), |(head, _)| head);
             assert_eq!(
-                html.matches("<title>").count(),
+                head.matches("<title>").count(),
                 1,
                 "{name}: exactly one document title: {html}"
             );

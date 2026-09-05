@@ -1474,7 +1474,7 @@ a.nav-pagination__link:hover {
   border-top: 1px solid var(--nav-color-border);
   padding-top: var(--footer-strip-gap);
   color: var(--nav-color-text-muted);
-  font-size: 0.78rem;
+  font-size: 0.875rem;
   line-height: 1.55;
 }
 

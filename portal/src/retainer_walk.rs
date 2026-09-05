@@ -769,6 +769,22 @@ async fn prior_answer_row(
         .flatten()
 }
 
+async fn person_choices(
+    state: &AdminState,
+    answer_type: &str,
+    notation_id: Uuid,
+) -> Vec<webapp::components::PersonChoice> {
+    crate::intake::reference_candidates(&state.surreal, answer_type, notation_id)
+        .await
+        .unwrap_or_else(|e| {
+            tracing::error!(error = %e, %notation_id, "walker: reference_candidates failed");
+            Vec::new()
+        })
+        .into_iter()
+        .map(|c| webapp::components::PersonChoice::new(c.id.to_string(), c.name, c.email))
+        .collect()
+}
+
 /// Resolve the current walker step for `GET /app/lawyer/notations/:id/step`, in the
 /// wasm-safe shape the Dioxus page renders (#956 Phase 4).
 ///
@@ -876,20 +892,9 @@ pub(crate) async fn resolve_walker_step(
         .into_iter()
         .map(|c| (c.value, c.label))
         .collect();
-    // The read-only step display tolerates a candidate-lookup failure — show
-    // an empty list (the free-text path) rather than failing the whole step;
-    // `step_post`'s `resolve_reference_answer` is where a lookup error must
-    // be loud, exactly as `step_json` already treats it.
-    let person_candidates =
-        crate::intake::reference_candidates(&state.surreal, &question.answer_type, notation_id)
-            .await
-            .unwrap_or_else(|e| {
-                tracing::error!(error = %e, %notation_id, "walker: reference_candidates failed");
-                Vec::new()
-            })
-            .into_iter()
-            .map(|c| webapp::components::PersonChoice::new(c.id.to_string(), c.name, c.email))
-            .collect();
+    // The read-only display tolerates a candidate-lookup failure; submission
+    // remains loud through `resolve_reference_answer`.
+    let person_candidates = person_choices(state, &question.answer_type, notation_id).await;
     Ok(webapp::walker_step::WalkerStepData {
         notation_id: notation_id.to_string(),
         flow_label,

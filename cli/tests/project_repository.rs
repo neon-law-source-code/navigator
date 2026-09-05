@@ -74,6 +74,17 @@ fn the_scaffold_produces_a_repository_that_validates_and_is_idempotent() {
     assert!(dir.path().join("README.md").is_file());
     assert!(dir.path().join("AGENTS.md").is_file());
     assert!(dir.path().join("CLAUDE.md").is_file());
+    let instructions = fs::read_to_string(dir.path().join("CLAUDE.md")).unwrap();
+    assert!(instructions.contains("A Project code names a matter and its repository."));
+    assert!(instructions.contains("It identifies a client, so it is client"));
+    assert!(
+        instructions.contains("data. The one legitimate use here is this repository naming itself")
+    );
+    assert!(
+        instructions.contains("commit message, code comment, branch name, or pull-request body")
+    );
+    assert!(instructions.contains("A precedent"));
+    assert!(instructions.contains("citation is still a breach"));
     assert!(dir.path().join("templates/project_template.md").is_file());
     let workflow = fs::read_to_string(dir.path().join(".github/workflows/gate.yml")).unwrap();
     assert!(workflow.contains("project_repository: true"));

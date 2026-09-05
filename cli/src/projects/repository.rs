@@ -828,6 +828,12 @@ fn agents(project_code: &str) -> String {
            `/app/projects/{project_code}/portal/`, and derive every in-app path from\n\
            `import.meta.env.BASE_URL` rather than writing an absolute path by hand: a Vite base\n\
            rewrites module and asset URLs and never an `href` in source.\n\n\
+         ## Project codes are client identifiers\n\n\
+         A Project code names a matter and its repository. It identifies a client, so it is client\n\
+         data. The one legitimate use here is this repository naming itself, as in `navigator.yaml`,\n\
+         its paths, and its portal mount. Do not copy a Project code from another repository into this\n\
+         codebase or into a commit message, code comment, branch name, or pull-request body. A precedent\n\
+         citation is still a breach; cite the governing issue by its bare identifier instead.\n\n\
          Read matter data through Navigator's `/api` read surfaces and write through its one REST\n\
          command boundary. Do not add a second backend, and do not put a legal file, a client upload,\n\
          an answer, a generated document, or a secret in this repository.\n"

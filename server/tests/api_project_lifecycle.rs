@@ -59,10 +59,10 @@ async fn build_fixture() -> Fixture {
             .id,
         );
     }
-    transition_project(&surreal, ids[1], Transition::Close)
+    transition_project(&surreal, ids[1], Transition::Close, None)
         .await
         .unwrap();
-    transition_project(&surreal, ids[2], Transition::Archive)
+    transition_project(&surreal, ids[2], Transition::Archive, None)
         .await
         .unwrap();
 

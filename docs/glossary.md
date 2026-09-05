@@ -1002,7 +1002,10 @@ Lifecycle status changes move through the shared transition command (`store::pro
 door is `POST /app/api/projects/{id}/lifecycle`, which the CLI's `site projects close` calls, and the
 `aida_close_project` MCP tool calls the command directly. The descriptive `PATCH /app/api/projects/{id}` never touches
 `status`; it rejects the field outright rather than accepting and forwarding it, so `closed_at` — derived only inside
-the transition command — cannot be bypassed by a partial update reaching it through a second door.
+the transition command — cannot be bypassed by a partial update reaching it through a second door. Close and archive
+transitions may carry an RFC 3339 `effective_at` between matter-open and now; the command derives `closed_at` from that
+value so an existing retention start can be corrected. Without it, a new close starts at the server's current time and
+an existing stamp is preserved. Reopen accepts no effective time and clears `closed_at`.
 
 **Every Notation belongs to exactly one Project.** The schema enforces this with a `NOT NULL` `project_id` FK on
 `notations`. A Notation without a Project is a bug.

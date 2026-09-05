@@ -2,8 +2,8 @@
 //!
 //! Closes an existing Project through the shared lifecycle command. The
 //! attestation is explicit because closing is a firm-policy decision, and the
-//! store derives `closed_at` from the transition rather than accepting a date
-//! supplied by the caller.
+//! store derives the coupled `closed_at` from the transition and optional
+//! effective time.
 
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -27,6 +27,11 @@ pub fn descriptor() -> Value {
                 "attestation": {
                     "type": "boolean",
                     "description": "The closing attorney's explicit attestation that the matter is ready to close. Must be true."
+                },
+                "effective_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Optional RFC 3339 time when the matter actually closed. Must not be in the future or precede matter-open."
                 }
             },
             "required": ["project_id", "attestation"],
@@ -41,6 +46,7 @@ struct Args {
     project_id: Uuid,
     #[serde(default)]
     attestation: Option<bool>,
+    effective_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 pub async fn call(
@@ -58,6 +64,7 @@ pub async fn call(
         surreal,
         args.project_id,
         store::projects::Transition::Close,
+        args.effective_at,
     )
     .await
     .map_err(|error| match error {
@@ -123,19 +130,36 @@ mod tests {
             json!(["project_id", "attestation"])
         );
         assert_eq!(d["inputSchema"]["additionalProperties"], false);
+        assert_eq!(
+            d["inputSchema"]["properties"]["effective_at"]["format"],
+            "date-time"
+        );
     }
 
     #[tokio::test]
     async fn closes_project_and_stamps_date() {
         let surreal = mem_surreal().await;
         let id = project(&surreal).await;
+        let effective_at = chrono::Utc::now();
 
-        let result = call(&surreal, &json!({"project_id": id, "attestation": true}))
-            .await
-            .expect("close project");
+        let result = call(
+            &surreal,
+            &json!({
+                "project_id": id,
+                "attestation": true,
+                "effective_at": effective_at,
+            }),
+        )
+        .await
+        .expect("close project");
 
         assert_eq!(result["structuredContent"]["status"], "closed");
-        assert!(result["structuredContent"]["closed_at"].is_string());
+        let closed_at: chrono::DateTime<chrono::Utc> = result["structuredContent"]["closed_at"]
+            .as_str()
+            .expect("close time")
+            .parse()
+            .expect("RFC 3339 close time");
+        assert_eq!(closed_at, effective_at);
     }
 
     #[tokio::test]

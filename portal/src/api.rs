@@ -1199,15 +1199,16 @@ async fn update_project(
     Ok(Json(updated))
 }
 
-/// Request body for `POST /app/api/projects/{id}/lifecycle` — the one field a
-/// caller may set. `status` and `closed_at` are never independently
-/// settable: `closed_at` is derived from `transition` inside
-/// `store::projects::transition_project`, which is why the descriptive
-/// `PATCH /app/api/projects/{id}` refuses both fields outright rather than
-/// exposing a second way to write them.
+/// Request body for `POST /app/api/projects/{id}/lifecycle`. `status` and
+/// `closed_at` are never independently settable: the transition owns both,
+/// while `effective_at` may state when a close or archive actually took
+/// effect. The shared command validates that timestamp before deriving the
+/// coupled `closed_at` value.
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct TransitionProjectRequest {
     transition: store::projects::Transition,
+    effective_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 /// `POST /app/api/projects/{id}/lifecycle` — move a matter directly through
@@ -1226,7 +1227,13 @@ async fn transition_matter(
     Path(id): Path<Uuid>,
     JsonOrForm(input): JsonOrForm<TransitionProjectRequest>,
 ) -> Result<Json<store::projects::Project>, ApiError> {
-    let updated = store::projects::transition_project(&state.surreal, id, input.transition).await?;
+    let updated = store::projects::transition_project(
+        &state.surreal,
+        id,
+        input.transition,
+        input.effective_at,
+    )
+    .await?;
     Ok(Json(updated))
 }
 

@@ -12,6 +12,7 @@ path = "src/lib.rs"
 [dependencies]
 async-trait.workspace = true
 axum.workspace = true
+chrono.workspace = true
 cloud.workspace = true
 import.workspace = true
 reqwest.workspace = true
@@ -28,7 +29,6 @@ uuid.workspace = true
 workflows.workspace = true
 
 [dev-dependencies]
-chrono.workspace = true
 http-body-util.workspace = true
 store = { workspace = true, features = ["test-support"] }
 tempfile.workspace = true

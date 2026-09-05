@@ -8,8 +8,9 @@
 //!
 //! 1. Verify the authorizer is an **admin** (the gate is baked into the
 //!    primitive, not left to the caller).
-//! 2. Rewrite the repo's history to remove the path
-//!    ([`repos::RepoStore::expunge_path_code`]).
+//! 2. Rewrite legacy repo history when that Project already has a repository
+//!    containing the path ([`repos::RepoStore::expunge_path_code`]). Current
+//!    document filing never writes raw bytes to Git.
 //! 3. Delete the file's bytes from object storage — **every** key holding
 //!    them (`blobs/<sha>`, `lfs/<oid>`, and any secondary notation key a
 //!    dual-write left, e.g. `notations/<id>/document.pdf`) so no copy of the
@@ -132,12 +133,20 @@ pub async fn expunge(
         .await?
         .ok_or(ExpungeError::ProjectNotFound(req.project_id))?
         .code;
-    let repo_store = repos::RepoStore::from_env()?;
     let path = req.path.to_string();
-    let outcome =
-        tokio::task::spawn_blocking(move || repo_store.expunge_path_code(&project_code, &path))
-            .await
-            .map_err(|e| ExpungeError::Join(e.to_string()))??;
+    let outcome = match repos::RepoStore::from_env() {
+        Ok(repo_store) if repo_store.path_for_code(&project_code).exists() => {
+            tokio::task::spawn_blocking(move || repo_store.expunge_path_code(&project_code, &path))
+                .await
+                .map_err(|e| ExpungeError::Join(e.to_string()))??
+        }
+        Ok(_) | Err(repos::RepoError::RootUnset) => repos::ExpungeOutcome {
+            head_before: None,
+            head_after: None,
+            path,
+        },
+        Err(error) => return Err(error.into()),
+    };
 
     // (3) Delete the bytes from object storage — every key holding them, so
     //     no copy of a dual-written document survives. A missing object is

@@ -1004,6 +1004,28 @@ test_anonymous_denied_upload_document if {
 	not authz.allow with input as {"path": ["app", "api", "projects", "p1", "documents"], "method": "POST", "session": null}
 }
 
+# ---------- PATCH /app/api/projects/{id}/documents/{asset_id} visibility (lawyer tier only) ----------
+
+test_lawyer_can_reconcile_document_visibility if {
+	authz.allow with input as {"path": ["app", "api", "projects", "p1", "documents", "a1"], "method": "PATCH", "session": lawyer_session}
+}
+
+test_admin_can_reconcile_document_visibility if {
+	authz.allow with input as {"path": ["app", "api", "projects", "p1", "documents", "a1"], "method": "PATCH", "session": admin_session}
+}
+
+test_client_denied_reconcile_document_visibility if {
+	not authz.allow with input as {"path": ["app", "api", "projects", "p1", "documents", "a1"], "method": "PATCH", "session": client_session}
+}
+
+test_clerk_denied_reconcile_document_visibility if {
+	not authz.allow with input as {"path": ["app", "api", "projects", "p1", "documents", "a1"], "method": "PATCH", "session": clerk_session}
+}
+
+test_anonymous_denied_reconcile_document_visibility if {
+	not authz.allow with input as {"path": ["app", "api", "projects", "p1", "documents", "a1"], "method": "PATCH", "session": null}
+}
+
 # ---------- POST /app/api/notations/{id}/transcript coverage pass (lawyer tier only) ----------
 
 test_lawyer_can_run_transcript_coverage if {

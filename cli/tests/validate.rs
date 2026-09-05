@@ -401,6 +401,75 @@ fn validate_rejects_yaml_parse_errors() {
 }
 
 #[test]
+fn validate_checks_document_pointer_shape_only_in_a_project_repository() {
+    let dir = TempDir::new().unwrap();
+    write(
+        dir.path(),
+        "navigator.yaml",
+        "project: acme\nhost: staging.example.com\n",
+    );
+    write(
+        dir.path(),
+        "documents/agreements/terms.pdf.yml",
+        "kind: agreement\nvisibility: internal\ncurrent_verison: {}\n",
+    );
+    navigator()
+        .arg("validate")
+        .arg(dir.path())
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(str::contains("Y003"))
+        .stdout(str::contains("current_version"));
+
+    let unrelated = TempDir::new().unwrap();
+    write(
+        unrelated.path(),
+        "documents/agreements/terms.pdf.yml",
+        "belongs: to-another-tool\n",
+    );
+    navigator()
+        .arg("validate")
+        .arg(unrelated.path())
+        .assert()
+        .success();
+}
+
+#[test]
+fn validate_accepts_a_complete_document_pointer_and_rejects_chain_mismatches() {
+    let dir = TempDir::new().unwrap();
+    write(dir.path(), "navigator.yaml", "project: acme\n");
+    let path = "documents/agreements/terms.pdf.yml";
+    write(
+        dir.path(),
+        path,
+        "kind: agreement\nvisibility: internal\ncurrent_version:\n  version: 1\n  asset_id: 0199b9e4-14b7-7ad0-87a5-71ef24a46d40\n  created_at: 2026-09-05T12:00:00Z\n  sha256: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n  size_bytes: 42\n",
+    );
+    navigator()
+        .arg("validate")
+        .arg(dir.path())
+        .assert()
+        .success()
+        .stdout(str::contains(
+            "Validated 1 document pointer(s), found 0 error(s)",
+        ));
+
+    write(
+        dir.path(),
+        path,
+        "kind: agreement\nvisibility: public\ncurrent_version:\n  version: 2\n  asset_id: 0199b9e4-14b7-7ad0-87a5-71ef24a46d40\n  created_at: 2026-09-05T08:00:00-04:00\n  sha256: ABCD\n  size_bytes: 0\nunknown: true\n",
+    );
+    navigator()
+        .arg("validate")
+        .arg(dir.path())
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(str::contains("Y003"))
+        .stdout(str::contains("unknown"));
+}
+
+#[test]
 fn validate_checks_seed_documents_before_any_deployment_write() {
     let dir = TempDir::new().unwrap();
     write(

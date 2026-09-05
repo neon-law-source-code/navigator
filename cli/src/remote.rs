@@ -95,26 +95,17 @@ struct VisibleProject {
     code: String,
 }
 
-/// `navigator site document upload --project <code> --file … --kind …`
-/// — file a local document into a matter through the REST door
-/// (`POST /app/api/projects/{id}/documents`). `--kind` is required and must
-/// be an asset-lane classification; the CLI does not default it.
-pub async fn document_upload(
-    host: Option<&str>,
-    project_code: &str,
-    file: &Path,
-    kind: &str,
-    visibility: Option<&str>,
-    description: Option<&str>,
-    content_type: Option<&str>,
-) -> ExitCode {
-    run(async {
-        let bytes = std::fs::read(file).with_context(|| format!("read {}", file.display()))?;
-        let filename = file
-            .file_name()
-            .and_then(|n| n.to_str())
-            .filter(|n| !n.is_empty())
-            .ok_or_else(|| anyhow!("file path has no filename"))?;
+/// Authenticated client for the one Project's document-sync operations.
+pub(crate) struct DocumentClient {
+    base: String,
+    token: String,
+    client: reqwest::Client,
+    project_id: Uuid,
+}
+
+impl DocumentClient {
+    /// Resolve a logged-in host and one visible Project code.
+    pub(crate) async fn connect(host: Option<&str>, project_code: &str) -> Result<Self> {
         let (base, token) = resolve(host)?;
         let client = reqwest::Client::new();
         let list = client
@@ -123,48 +114,129 @@ pub async fn document_upload(
             .send()
             .await
             .context("GET /app/api/projects")?;
-        let list_status = list.status();
-        let list_body = list.text().await.unwrap_or_default();
-        if !list_status.is_success() {
+        let status = list.status();
+        let body = list.text().await.unwrap_or_default();
+        if !status.is_success() {
             return Err(anyhow!(
-                "list projects failed: {list_status}: {}",
-                first_line(&list_body)
+                "list projects failed: {status}: {}",
+                first_line(&body)
             ));
         }
         let projects: Vec<VisibleProject> =
-            serde_json::from_str(&list_body).context("parse GET /app/api/projects")?;
-        let project = projects
+            serde_json::from_str(&body).context("parse GET /app/api/projects")?;
+        let project_id = projects
             .iter()
-            .find(|p| p.code == project_code)
+            .find(|project| project.code == project_code)
+            .map(|project| project.id)
             .ok_or_else(|| anyhow!("no visible matter with code `{project_code}`"))?;
-        let content_base64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+        Ok(Self {
+            base,
+            token,
+            client,
+            project_id,
+        })
+    }
+
+    /// Upload one revision and return the source-safe pointer.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) async fn upload(
+        &self,
+        file: &Path,
+        kind: &str,
+        visibility: Option<&str>,
+        description: Option<&str>,
+        content_type: Option<&str>,
+        slug: Option<&str>,
+    ) -> Result<store::document_pointers::DocumentPointer> {
+        let bytes = std::fs::read(file).with_context(|| format!("read {}", file.display()))?;
+        let filename = file
+            .file_name()
+            .and_then(|name| name.to_str())
+            .filter(|name| !name.is_empty())
+            .ok_or_else(|| anyhow!("file path has no filename"))?;
         let mut body = serde_json::json!({
             "filename": filename,
-            "content_base64": content_base64,
+            "content_base64": base64::engine::general_purpose::STANDARD.encode(&bytes),
             "content_type": content_type.unwrap_or("application/octet-stream"),
             "kind": kind,
             "visibility": visibility.unwrap_or("internal"),
         });
-        if let Some(description) = description.map(str::trim).filter(|s| !s.is_empty()) {
+        if let Some(description) = description.map(str::trim).filter(|value| !value.is_empty()) {
             body["description"] = serde_json::Value::String(description.to_string());
         }
-        let url = format!("{base}/app/api/projects/{}/documents", project.id);
-        let response = client
+        if let Some(slug) = slug.map(str::trim).filter(|value| !value.is_empty()) {
+            body["slug"] = serde_json::Value::String(slug.to_string());
+        }
+        let url = format!(
+            "{}/app/api/projects/{}/documents",
+            self.base, self.project_id
+        );
+        let response = self
+            .client
             .post(&url)
-            .bearer_auth(&token)
+            .bearer_auth(&self.token)
             .json(&body)
             .send()
             .await
             .with_context(|| format!("POST {url}"))?;
         let status = response.status();
         let text = response.text().await.unwrap_or_default();
-        if status.as_u16() != 201 {
+        if !matches!(status.as_u16(), 200 | 201) {
             return Err(anyhow!(
                 "document upload failed: {status}: {}",
                 first_line(&text)
             ));
         }
-        println!("{text}");
+        serde_json::from_str(&text).context("parse document pointer response")
+    }
+
+    /// Reconcile the desired pointer visibility through Navigator's API.
+    pub(crate) async fn set_visibility(&self, asset_id: Uuid, visibility: &str) -> Result<()> {
+        let url = format!(
+            "{}/app/api/projects/{}/documents/{asset_id}",
+            self.base, self.project_id
+        );
+        let response = self
+            .client
+            .patch(&url)
+            .bearer_auth(&self.token)
+            .json(&serde_json::json!({ "visibility": visibility }))
+            .send()
+            .await
+            .with_context(|| format!("PATCH {url}"))?;
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(anyhow!(
+                "document visibility failed: {status}: {}",
+                first_line(&text)
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// `navigator site document upload --project <code> --file … --kind …`
+/// — file a local document into a matter through the REST door
+/// (`POST /app/api/projects/{id}/documents`). `--kind` is required and must
+/// be an asset-lane classification; the CLI does not default it.
+#[allow(clippy::too_many_arguments)]
+pub async fn document_upload(
+    host: Option<&str>,
+    project_code: &str,
+    file: &Path,
+    kind: &str,
+    visibility: Option<&str>,
+    description: Option<&str>,
+    content_type: Option<&str>,
+    slug: Option<&str>,
+) -> ExitCode {
+    run(async {
+        let client = DocumentClient::connect(host, project_code).await?;
+        let pointer = client
+            .upload(file, kind, visibility, description, content_type, slug)
+            .await?;
+        print!("{}", pointer.to_yaml()?);
         Ok(())
     })
     .await
@@ -1706,10 +1778,17 @@ mod tests {
                 "kind": "unclassified",
                 "visibility": "internal"
             })))
-            .respond_with(
-                ResponseTemplate::new(201)
-                    .set_body_json(serde_json::json!({ "document_id": document_id })),
-            )
+            .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+                "kind": "unclassified",
+                "visibility": "internal",
+                "current_version": {
+                    "version": 1,
+                    "asset_id": document_id,
+                    "created_at": "2026-09-05T12:00:00Z",
+                    "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                    "size_bytes": 13
+                }
+            })))
             .expect(1)
             .mount(&server)
             .await;
@@ -1727,6 +1806,7 @@ mod tests {
                 None,
                 None,
                 Some("text/plain"),
+                None,
             )
             .await,
             ExitCode::SUCCESS
@@ -1758,6 +1838,7 @@ mod tests {
                 "not-a-matter",
                 &named,
                 "unclassified",
+                None,
                 None,
                 None,
                 None,

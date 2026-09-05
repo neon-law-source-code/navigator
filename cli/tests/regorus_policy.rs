@@ -178,9 +178,13 @@ fn regorus_matches_every_checked_in_policy_decision() {
     // + 6 for `/app/owner`: Owner admitted; Admin, Lawyer, Clerk, client, and
     //   anonymous denied.
     // 398 + 6 = 404.
+    //
+    // + 5 for pointer visibility reconciliation: Lawyer and Admin admitted;
+    // Client, Clerk, and anonymous denied.
+    // 404 + 5 = 409.
     assert_eq!(
         test_names.len(),
-        404,
+        409,
         "the policy decision inventory changed; review every new or removed rule"
     );
 

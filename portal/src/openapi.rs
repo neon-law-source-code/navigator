@@ -1883,7 +1883,8 @@ pub fn document_with_base(base: &str) -> Value {
             "description":
               "Files a document into a matter — the REST mirror of the lawyer upload control, \
                converging on the same command. The browser uploads via multipart; this door takes \
-               the bytes base64-encoded. `201 Created` with the new document id. Authorization: \
+               the bytes base64-encoded. `201 Created` with a source-safe revision pointer, or \
+               `200 OK` when an identical retry changes nothing. Authorization: \
                lawyer or admin, and the caller must participate in the matter (out-of-scope → 404). \
                A blank filename, a missing or blank `kind`, undecodable base64, or a `kind` \
                outside the accepted set is `400`. `kind` is required and must be one of the \
@@ -1902,10 +1903,11 @@ pub fn document_with_base(base: &str) -> Value {
                     "filename": { "type": "string" },
                     "content_base64": { "type": "string", "description": "Base64-encoded file bytes" },
                     "content_type": { "type": "string" },
+                    "slug": { "type": "string", "description": "Stable document identity; defaults to filename" },
                     "kind": {
                       "type": "string",
                       "description": "Required asset-lane document classification (`rules::kind::Kind` values valid for `Lane::Asset`). A missing or blank value is refused with `400 kind_required`; a value outside this set is refused with `400 invalid_kind`. Both messages name the accepted values; nothing is silently coerced to `unclassified`.",
-                      "enum": ["letter", "filing", "will", "trust", "directive", "agreement", "onboarding", "offboarding", "memo", "transcript", "inbound_contract", "certificate_of_naturalization", "unclassified"]
+                      "enum": ["letter", "filing", "will", "trust", "directive", "agreement", "onboarding", "offboarding", "memo", "transcript", "inbound_contract", "certificate_of_naturalization", "exhibit", "unclassified"]
                     },
                     "visibility": { "type": "string", "enum": ["client", "internal"] },
                     "description": { "type": "string" }
@@ -1914,14 +1916,43 @@ pub fn document_with_base(base: &str) -> Value {
               } }
             },
             "responses": {
-              "201": { "description": "The document was filed", "content": { "application/json": {
-                "schema": { "type": "object", "required": ["document_id"], "properties": { "document_id": { "type": "string", "format": "uuid" } } }
+              "200": { "description": "An identical retry returned the existing revision pointer", "content": { "application/json": {
+                "schema": { "type": "object" }
+              } } },
+              "201": { "description": "The document revision was filed and its pointer returned", "content": { "application/json": {
+                "schema": { "type": "object", "required": ["kind", "visibility", "current_version"], "properties": {
+                  "kind": { "type": "string" },
+                  "visibility": { "type": "string", "enum": ["client", "internal"] },
+                  "current_version": { "type": "object", "required": ["version", "asset_id", "created_at", "sha256", "size_bytes"] },
+                  "previous_version": { "type": "string", "format": "uuid" }
+                } }
               } } },
               "400": { "description": "Blank filename, missing or blank `kind` (error `kind_required`), undecodable base64, or an unaccepted `kind` (error `invalid_kind`). Both kind errors name the accepted values.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
               "401": { "description": "No authenticated session", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
               "403": { "description": "Authenticated caller is not Lawyer/admin", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
               "404": { "description": "No such matter, or out of scope", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
               "500": { "description": "The document could not be filed — a storage or database fault, never a rejected field", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } }
+            }
+          }
+        },
+        "/app/api/projects/{id}/documents/{asset_id}": {
+          "patch": {
+            "summary": "Reconcile a document's visibility",
+            "description": "Sets the visibility declared by a committed Project pointer. Authorization: lawyer or admin, and both the matter and asset are scoped (out-of-scope → 404). The API audit records the actor and operation.",
+            "parameters": [
+              { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+              { "name": "asset_id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+            ],
+            "requestBody": { "required": true, "content": { "application/json": { "schema": {
+              "type": "object", "required": ["visibility"], "properties": { "visibility": { "type": "string", "enum": ["client", "internal"] } }
+            } } } },
+            "responses": {
+              "200": { "description": "Visibility reconciled" },
+              "400": { "description": "Invalid visibility", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+              "401": { "description": "No authenticated session", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+              "403": { "description": "Authenticated caller is not Lawyer/admin", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+              "404": { "description": "No such matter or asset, or out of scope", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+              "500": { "description": "Visibility could not be reconciled", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } }
             }
           }
         },

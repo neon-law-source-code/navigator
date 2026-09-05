@@ -38,6 +38,7 @@ pub mod delegations;
 pub mod deployment;
 pub mod disclosures;
 pub mod document_comments;
+pub mod document_pointers;
 pub mod documents;
 pub mod email_conversations;
 pub mod email_tokens;

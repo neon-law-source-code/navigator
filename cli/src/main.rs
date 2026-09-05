@@ -9,6 +9,7 @@ mod assets;
 mod credentials;
 mod devx;
 mod docs;
+mod document_sync;
 mod erd;
 mod format;
 mod forms_sync;
@@ -639,6 +640,12 @@ enum NotationsCmd {
 
 #[derive(Subcommand)]
 enum SiteCmd {
+    /// Upload staged `documents/` bytes through Navigator and retain YAML pointers.
+    Sync {
+        /// List staged uploads without logging in or changing files.
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Import a seed-shaped YAML document through the logged-in deployment.
     Import {
         /// Singular glossary term and Surreal table, such as `person` or
@@ -1560,14 +1567,17 @@ enum DocumentAction {
         #[arg(long, value_parser = parse_asset_kind)]
         kind: String,
         /// `client` makes the document client-visible; default is `internal`.
-        #[arg(long, value_parser = parse_document_visibility)]
-        visibility: Option<String>,
+        #[arg(long, value_parser = parse_document_visibility, default_value = "internal")]
+        visibility: String,
         /// Optional description stored with the document.
         #[arg(long)]
         description: Option<String>,
         /// MIME type. Defaults to `application/octet-stream`.
         #[arg(long)]
         content_type: Option<String>,
+        /// Stable document identity. Defaults to the local filename.
+        #[arg(long)]
+        slug: Option<String>,
     },
 }
 
@@ -1816,6 +1826,9 @@ fn main() -> ExitCode {
             },
         },
         Command::Site { action } => match action {
+            SiteCmd::Sync { dry_run } => {
+                runtime().block_on(document_sync::run(std::path::Path::new("."), dry_run))
+            }
             SiteCmd::Import {
                 model_name,
                 seed_file,
@@ -2164,15 +2177,17 @@ async fn run_document(action: DocumentAction) -> ExitCode {
             visibility,
             description,
             content_type,
+            slug,
         } => {
             remote::document_upload(
                 host.host.as_deref(),
                 &project,
                 &file,
                 &kind,
-                visibility.as_deref(),
+                Some(&visibility),
                 description.as_deref(),
                 content_type.as_deref(),
+                slug.as_deref(),
             )
             .await
         }
@@ -2241,6 +2256,97 @@ const SEED_DOCUMENT_CODE: &str = "Y001";
 
 /// `Y002` — a `locales/<locale>/[<brand-key>/]<page>.yaml` catalog must deserialize as that page.
 const LOCALE_DOCUMENT_CODE: &str = "Y002";
+
+/// `Y003` — a `documents/**/*.yml` pointer in a Project repository must name a valid asset revision.
+const DOCUMENT_POINTER_CODE: &str = "Y003";
+
+fn is_project_repository(dir: &std::path::Path) -> bool {
+    let Ok(raw) = std::fs::read_to_string(dir.join("navigator.yaml")) else {
+        return false;
+    };
+    serde_yaml::from_str::<serde_yaml::Value>(&raw).is_ok_and(|value| {
+        value
+            .get("project")
+            .and_then(serde_yaml::Value::as_str)
+            .map(str::trim)
+            .is_some_and(|project| !project.is_empty())
+    })
+}
+
+fn document_pointer_path(
+    root: &std::path::Path,
+    path: &std::path::Path,
+) -> Option<std::path::PathBuf> {
+    let relative = path.strip_prefix(root).ok()?;
+    let mut components = relative.components();
+    (components.next()?.as_os_str() == "documents"
+        && path.extension().and_then(std::ffi::OsStr::to_str) == Some("yml"))
+    .then(|| relative.to_path_buf())
+}
+
+/// Validate committed document pointers only when the walked root declares a
+/// Project. An unrelated tool may have its own `documents/` YAML tree.
+fn document_pointer_pass(dir: &std::path::Path) -> std::io::Result<Vec<GateError>> {
+    let mut errors = Vec::new();
+    let mut files_scanned = 0usize;
+    if is_project_repository(dir) {
+        for entry in walkdir::WalkDir::new(dir.join("documents"))
+            .into_iter()
+            .filter_entry(|entry| entry.file_name() != ".git")
+        {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(error)
+                    if error
+                        .io_error()
+                        .is_some_and(|io| io.kind() == std::io::ErrorKind::NotFound) =>
+                {
+                    break;
+                }
+                Err(error) => return Err(std::io::Error::other(error)),
+            };
+            let path = entry.path();
+            if !entry.file_type().is_file() || document_pointer_path(dir, path).is_none() {
+                continue;
+            }
+            files_scanned += 1;
+            let raw = std::fs::read_to_string(path)?;
+            let validation =
+                store::document_pointers::DocumentPointer::from_yaml(&raw).and_then(|pointer| {
+                    let without_yml = path.with_extension("");
+                    let has_document_extension = without_yml
+                        .extension()
+                        .and_then(std::ffi::OsStr::to_str)
+                        .is_some_and(|extension| !extension.is_empty());
+                    if has_document_extension {
+                        Ok(pointer)
+                    } else {
+                        anyhow::bail!(
+                            "pointer filename must retain the document extension before `.yml`"
+                        )
+                    }
+                });
+            if let Err(error) = validation {
+                print_violation(
+                    &path.display().to_string(),
+                    1,
+                    DOCUMENT_POINTER_CODE,
+                    &error.to_string(),
+                );
+                errors.push(GateError::new(
+                    format!("{}:1", path.display()),
+                    Some(DOCUMENT_POINTER_CODE),
+                    error.to_string(),
+                ));
+            }
+        }
+    }
+    println!(
+        "Validated {files_scanned} document pointer(s), found {} error(s)",
+        errors.len()
+    );
+    Ok(errors)
+}
 
 fn seed_model_for_path(path: &std::path::Path) -> Option<anyhow::Result<store::seed::SeedModel>> {
     let parent = path.parent()?;
@@ -2585,6 +2691,7 @@ fn standalone_tree_passes(dir: &std::path::Path) -> std::io::Result<Vec<GateErro
     let mut errors = yaml_pass(dir)?;
     errors.append(&mut seed_document_pass(dir)?);
     errors.append(&mut locale_document_pass(dir)?);
+    errors.append(&mut document_pointer_pass(dir)?);
     errors.append(&mut mutable_tag_pass(dir)?);
     Ok(errors)
 }
@@ -2734,7 +2841,7 @@ fn parse_document_visibility(value: &str) -> Result<String, String> {
     }
 }
 
-const DOCUMENT_UPLOAD_KIND_HELP: &str = "Accepted --kind values: letter, filing, will, trust, directive, agreement, onboarding, offboarding, memo, transcript, inbound_contract, certificate_of_naturalization, unclassified.";
+const DOCUMENT_UPLOAD_KIND_HELP: &str = "Accepted --kind values: letter, filing, will, trust, directive, agreement, onboarding, offboarding, memo, transcript, inbound_contract, certificate_of_naturalization, exhibit, unclassified.";
 
 /// Render one notation template to a PDF. Validates the file against the
 /// notation rule set, resolves the output format (CLI override →

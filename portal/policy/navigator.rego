@@ -86,6 +86,20 @@ allow if {
     is_lawyer(input.session)
 }
 
+# Reconcile one committed pointer's visibility against its asset. The handler
+# repeats the lawyer-tier matter-scope check and collapses an out-of-scope asset
+# to 404. Six segments distinguishes this exact asset command from collection
+# upload and all other Project subpaths.
+allow if {
+    input.path[0] == "app"
+    input.path[1] == "api"
+    input.path[2] == "projects"
+    input.path[4] == "documents"
+    count(input.path) == 6
+    input.method == "PATCH"
+    is_lawyer(input.session)
+}
+
 # /app/outline is the bundled Harvard-outline recording stage. Lawyer-tier
 # only. A notation the firm has given a client is a different page
 # (`/app/projects/{code}/{notation_id}/outline`) and rides the matter-surface

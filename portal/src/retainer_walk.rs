@@ -1049,7 +1049,7 @@ async fn resolved_scalar_answer(
     state: &AdminState,
     answer_type: &str,
     notation_id: Uuid,
-    body: &std::collections::BTreeMap<String, String>,
+    body: &[(String, String)],
 ) -> Result<(String, Option<Uuid>), Response> {
     match crate::intake::resolve_reference_answer(&state.surreal, answer_type, notation_id, body)
         .await
@@ -1069,8 +1069,12 @@ pub async fn step_post(
     State(state): State<AdminState>,
     AxumPath(notation_id): AxumPath<Uuid>,
     session: Option<Extension<SessionData>>,
-    Form(body): Form<std::collections::BTreeMap<String, String>>,
+    // Ordered pairs, not a `BTreeMap`: a `multiple_choice` question posts
+    // several same-named `value` fields (one per checked card), and a map
+    // can hold only the last of any repeated key.
+    Form(pairs): Form<Vec<(String, String)>>,
 ) -> Response {
+    let body: std::collections::BTreeMap<String, String> = pairs.iter().cloned().collect();
     tracing::info!(%notation_id, field_count = body.len(), "step_post: enter");
     // The admin walker is lawyer entering the answer on the client's
     // behalf: the typist is the logged-in lawyer/admin person, the source
@@ -1095,7 +1099,7 @@ pub async fn step_post(
         if store::question_registry::answer_type_is_aggregate(&question.answer_type) {
             (crate::people_list_answer::assemble(&body), None)
         } else {
-            match resolved_scalar_answer(&state, &question.answer_type, notation_id, &body).await {
+            match resolved_scalar_answer(&state, &question.answer_type, notation_id, &pairs).await {
                 Ok(pair) => pair,
                 Err(resp) => return resp,
             }

@@ -883,6 +883,18 @@ pub fn question_fields(
             Some(prior).filter(|v| !v.is_empty()).map(str::to_string),
         )
         .required()],
+        // ENG-505: the checkbox-group sibling of `radio` — `prior` is the
+        // stored JSON array of previously selected keys, not a single value.
+        "multiple_choice" => vec![Field::multi_choice_cards(
+            prompt,
+            "value",
+            context
+                .choices
+                .iter()
+                .map(|(value, label)| Choice::new(value.clone(), label.clone()))
+                .collect(),
+            serde_json::from_str(prior).unwrap_or_default(),
+        )],
         // ENG-454: a `person` question with a real, project-scoped candidate
         // list (`portal::intake::reference_candidates`) — the people already
         // on this matter. Offered only when there is nothing to lose: no
@@ -1434,6 +1446,50 @@ mod tests {
         assert!(
             html[yes..].contains("checked"),
             "the prior answer stays selected: {html}"
+        );
+    }
+
+    #[test]
+    fn eng_505_a_multiple_choice_answer_type_renders_a_checkbox_choice_group() {
+        fn app() -> Element {
+            let fields = question_fields(
+                "multiple_choice",
+                "Which options apply?",
+                r#"["ein"]"#,
+                &QuestionFieldContext {
+                    country_options: Vec::new(),
+                    choices: vec![
+                        ("name".to_string(), "A name in mind".to_string()),
+                        ("ein".to_string(), "An EIN".to_string()),
+                    ],
+                    person_candidates: Vec::new(),
+                },
+            );
+            rsx! {
+                FormCard {
+                    title: "Step".to_string(),
+                    action: "/step".to_string(),
+                    submit_label: "Continue".to_string(),
+                    fields,
+                }
+            }
+        }
+        let html = ssr(app);
+        assert!(html.contains("nav-choice-group"), "{html}");
+        assert_eq!(html.matches(r#"type="checkbox""#).count(), 2, "{html}");
+        let ein = html.find("value=\"ein\"").expect("the EIN card renders");
+        assert!(
+            html[ein..].contains("checked"),
+            "the prior selection stays checked: {html}"
+        );
+        let name = html.find("value=\"name\"").expect("the name card renders");
+        let name_card_end = html[name..]
+            .find("</label>")
+            .map(|i| name + i)
+            .unwrap_or(html.len());
+        assert!(
+            !html[name..name_card_end].contains("checked"),
+            "the un-selected card stays unchecked: {html}"
         );
     }
 

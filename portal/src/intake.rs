@@ -446,7 +446,17 @@ pub(crate) async fn resolve_intake_state(
             prior_value,
             position,
             total,
+            steps,
         } => {
+            let steps = steps
+                .iter()
+                .map(|code| {
+                    webapp::components::StepMeta::new(
+                        code.as_str(),
+                        crate::retainer_walk::humanize_state_label(code),
+                    )
+                })
+                .collect();
             let country_options =
                 jurisdiction_option_names(&state.surreal, &question.answer_type).await;
             let choices = question
@@ -478,10 +488,12 @@ pub(crate) async fn resolve_intake_state(
                     question_code: question.code,
                     question_prompt: question.prompt,
                     answer_type: question.answer_type,
+                    help_text: question.help_text,
                     prior_value: prior_value.unwrap_or_default(),
                     country_options,
                     choices,
                     person_candidates,
+                    steps,
                     position,
                     total,
                 },

@@ -16,7 +16,8 @@ Feature: Closing letter walk
     Then the response status is 200
     And the page asks the "person__client" question
     And the page shows "What is the client's full legal name?"
-    And the page shows "Closing Letter — step 1 of 6"
+    And the page shows "Closing Letter"
+    And the page shows "Step 1 of 6"
 
   Scenario: Walking all six questions drives the questionnaire through END
     When the lawyer submits the full questionnaire:

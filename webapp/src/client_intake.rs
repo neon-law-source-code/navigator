@@ -20,7 +20,7 @@ use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::components::{
-    question_fields, FormCard, PeopleListInputs, PersonChoice, Progress, QuestionFieldContext,
+    question_fields, PeopleListInputs, PersonChoice, QuestionFieldContext, QuestionStage, StepMeta,
 };
 
 /// The current intake step, shaped by the portal pre-layer into plain fields
@@ -39,6 +39,11 @@ pub struct IntakeStepData {
     pub question_prompt: String,
     /// `string`, `text`, `int`, `bool`, … — selects the input shape.
     pub answer_type: String,
+    /// The attorney-authored guidance for this question
+    /// (`Question.yaml`'s `help_text`), rendered as the `Hero` lede.
+    /// `None` when the question declares none.
+    #[serde(default)]
+    pub help_text: Option<String>,
     /// Any current answer to pre-fill — including one lawyer entered on the
     /// client's behalf, which the client confirms or corrects.
     pub prior_value: String,
@@ -54,6 +59,9 @@ pub struct IntakeStepData {
     /// or when the matter has no participants yet.
     #[serde(default)]
     pub person_candidates: Vec<PersonChoice>,
+    /// The full client-facing chain, for the `StepList` progress rail.
+    #[serde(default)]
+    pub steps: Vec<StepMeta>,
     /// `(current, total)` — client-facing progress.
     pub position: usize,
     pub total: usize,
@@ -184,10 +192,6 @@ fn step_body(step: &IntakeStepData, view: &ClientIntakeView) -> Element {
         step.project_code, step.notation_id
     );
     let cancel = format!("/app/projects/{}", step.project_code);
-    let title = format!(
-        "{} — step {} of {}",
-        step.flow_label, step.position, step.total
-    );
     let page_title = format!("Your {} — Neon Law Navigator", step.flow_label);
 
     let is_people_list = step.answer_type == "people_list";
@@ -214,6 +218,9 @@ fn step_body(step: &IntakeStepData, view: &ClientIntakeView) -> Element {
         "anything that's wrong, then continue — your answers save as you go, "
         "so you can finish later if you need to."
     };
+    let footer = rsx! {
+        p { a { href: "{cancel}", "Finish later" } }
+    };
 
     rsx! {
         document::Title { "{page_title}" }
@@ -223,21 +230,21 @@ fn step_body(step: &IntakeStepData, view: &ClientIntakeView) -> Element {
             if let Some(error) = view.error.as_ref() {
                 p { class: "nav-form-error", role: "alert", "{error}" }
             }
-            Progress {
-                label: "Intake progress".to_string(),
-                value: Some(step.position),
-                max: step.total,
-            }
-            FormCard {
-                title,
+            QuestionStage {
+                eyebrow: step.flow_label.clone(),
+                prompt: prompt.to_string(),
+                help_text: step.help_text.clone(),
+                steps: step.steps.clone(),
+                position: step.position,
+                total: step.total,
                 action,
+                csrf_token: view.csrf_token.clone(),
                 submit_label: "Save and continue".to_string(),
-                csrf_token: Some(view.csrf_token.clone()),
                 intro: Some(intro),
                 extra_fields: extra,
+                footer: Some(footer),
                 fields,
             }
-            p { a { href: "{cancel}", "Finish later" } }
         }
     }
 }
@@ -295,6 +302,7 @@ mod tests {
                 question_code: "country__of_birth".to_string(),
                 question_prompt: "In what country were you born?".to_string(),
                 answer_type: answer_type.to_string(),
+                help_text: None,
                 prior_value: prior.to_string(),
                 country_options: country_options.iter().map(|s| (*s).to_string()).collect(),
                 choices: choices
@@ -302,6 +310,11 @@ mod tests {
                     .map(|(v, l)| ((*v).to_string(), (*l).to_string()))
                     .collect(),
                 person_candidates: Vec::new(),
+                steps: vec![
+                    StepMeta::new("s1", "First"),
+                    StepMeta::new("s2", "Second"),
+                    StepMeta::new("country__of_birth", "Of birth"),
+                ],
                 position: 3,
                 total: 10,
             })),
@@ -336,8 +349,32 @@ mod tests {
         assert!(html.contains("value=\"TOK\""), "{html}");
         assert!(html.contains("name=\"value\""), "{html}");
         // The client sees where they are without having to guess.
-        assert!(html.contains("step 3 of 10"), "{html}");
+        assert!(html.contains("Step 3 of 10"), "{html}");
         assert_forms_accessible(&html, "client_intake::step");
+    }
+
+    #[test]
+    fn the_step_renders_the_full_chain_with_the_current_step_marked() {
+        let html = render(&step("string", "", &[]));
+        assert!(html.contains("nav-stage"), "{html}");
+        assert_eq!(html.matches("nav-steps__item").count(), 3, "{html}");
+        assert!(html.contains(r#"aria-current="step""#), "{html}");
+    }
+
+    #[test]
+    fn help_text_renders_as_the_hero_lede_when_the_question_declares_one() {
+        let mut view = step("string", "", &[]);
+        if let IntakeState::NeedsAnswer(data) = &mut view.state {
+            data.help_text = Some("Use the address on the engagement letter.".to_string());
+        }
+        let html = render(&view);
+        assert!(html.contains("nav-hero__lede"), "{html}");
+    }
+
+    #[test]
+    fn no_help_text_omits_the_hero_lede() {
+        let html = render(&step("string", "", &[]));
+        assert!(!html.contains("nav-hero__lede"), "{html}");
     }
 
     #[test]

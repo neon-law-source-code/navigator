@@ -53,6 +53,7 @@ pub mod practice_card;
 pub mod pricing;
 pub mod progress;
 pub mod public_shell;
+pub mod question_stage;
 pub mod resource_mark;
 pub mod row_actions;
 pub mod sample_matters_banner;
@@ -104,6 +105,7 @@ pub(crate) use practice_card::{PracticeCard, PracticeMarkGlyph};
 pub use pricing::{PricingCard, PricingSection};
 pub use progress::Progress;
 pub use public_shell::{PublicShell, PUBLIC_SHELL_MARKER};
+pub use question_stage::QuestionStage;
 pub use row_actions::RowActions;
 #[cfg(feature = "server")]
 pub use sample_matters_banner::render_sample_matters_banner;

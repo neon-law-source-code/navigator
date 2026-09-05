@@ -324,7 +324,7 @@ pub fn ChoiceGroup(
 /* --------------------------------------------------------------- StepList -- */
 
 /// One entry in a [`StepList`] or [`Stepper`] progress rail.
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct StepMeta {
     /// Stable identifier, also the [`Stepper`] panel's `key`.
     pub id: String,

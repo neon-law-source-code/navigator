@@ -19,7 +19,7 @@ use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::components::{
-    question_fields, FormCard, PeopleListInputs, PersonChoice, Progress, QuestionFieldContext,
+    question_fields, PeopleListInputs, PersonChoice, QuestionFieldContext, QuestionStage, StepMeta,
 };
 use crate::people::ViewerRole;
 
@@ -39,6 +39,11 @@ pub struct WalkerStepData {
     pub question_prompt: String,
     /// `string`, `text`, `int`, `bool`, … — selects the input shape.
     pub answer_type: String,
+    /// The attorney-authored guidance for this question
+    /// (`Question.yaml`'s `help_text`), rendered as the `Hero` lede.
+    /// `None` when the question declares none.
+    #[serde(default)]
+    pub help_text: Option<String>,
     /// Prior answer to pre-fill, so navigating back re-displays it without
     /// mutating durable state.
     pub prior_answer: String,
@@ -56,6 +61,9 @@ pub struct WalkerStepData {
     /// participants yet.
     #[serde(default)]
     pub person_candidates: Vec<PersonChoice>,
+    /// The full questionnaire chain, for the `StepList` progress rail.
+    #[serde(default)]
+    pub steps: Vec<StepMeta>,
     /// `(current, total)` — the lawyer-visible progress indicator.
     pub position: usize,
     pub total: usize,
@@ -139,10 +147,6 @@ fn step_body(view: &WalkerStepView) -> Element {
     let action = format!("/app/lawyer/notations/{}/step", step.notation_id);
     let send_intake = format!("/app/lawyer/notations/{}/send-intake", step.notation_id);
     let clauses = format!("/app/lawyer/notations/{}/clauses", step.notation_id);
-    let title = format!(
-        "{} — step {} of {}",
-        step.flow_label, step.position, step.total
-    );
     let page_title = format!(
         "{} | Lawyer | Notations | {}",
         view.firm_name, step.flow_label
@@ -176,6 +180,28 @@ fn step_body(view: &WalkerStepView) -> Element {
             p { "{prompt}" }
         }
     };
+    let footer = rsx! {
+        p {
+            a { href: "/app/lawyer", "Save and exit" }
+        }
+        // Hand off to the client: they answer the client-facing questions
+        // themselves, pre-filled with anything entered here, and both
+        // authorships interleave on this notation.
+        form {
+            method: "post",
+            action: "{send_intake}",
+            "aria-label": "Send the client their intake link",
+            input { r#type: "hidden", name: "_csrf", value: "{csrf}" }
+            button { class: "nav-btn nav-btn--secondary", r#type: "submit",
+                "Send the client their intake link"
+            }
+        }
+        // Add per-matter custom prose before sending — any clause routes the
+        // document back through attorney review.
+        p {
+            a { href: "{clauses}", "Add custom clauses to this matter →" }
+        }
+    };
 
     rsx! {
         document::Title { "{page_title}" }
@@ -192,39 +218,20 @@ fn step_body(view: &WalkerStepView) -> Element {
             a { class: "nav-link", href: "/auth/logout", "Sign out" }
         }
         main { id: "walker-step", class: "nav-theme",
-            Progress {
-                label: "Intake progress".to_string(),
-                value: Some(step.position),
-                max: step.total,
-            }
-            FormCard {
-                title,
+            QuestionStage {
+                eyebrow: step.flow_label.clone(),
+                prompt: prompt.to_string(),
+                help_text: step.help_text.clone(),
+                steps: step.steps.clone(),
+                position: step.position,
+                total: step.total,
                 action,
+                csrf_token: csrf,
                 submit_label: "Continue".to_string(),
-                csrf_token: Some(csrf.clone()),
                 intro: Some(intro),
                 extra_fields: extra,
+                footer: Some(footer),
                 fields,
-            }
-            p {
-                a { href: "/app/lawyer", "Save and exit" }
-            }
-            // Hand off to the client: they answer the client-facing questions
-            // themselves, pre-filled with anything entered here, and both
-            // authorships interleave on this notation.
-            form {
-                method: "post",
-                action: "{send_intake}",
-                "aria-label": "Send the client their intake link",
-                input { r#type: "hidden", name: "_csrf", value: "{csrf}" }
-                button { class: "nav-btn nav-btn--secondary", r#type: "submit",
-                    "Send the client their intake link"
-                }
-            }
-            // Add per-matter custom prose before sending — any clause routes the
-            // document back through attorney review.
-            p {
-                a { href: "{clauses}", "Add custom clauses to this matter →" }
             }
         }
     }
@@ -256,6 +263,7 @@ mod tests {
                 question_code: "client_email".to_string(),
                 question_prompt: "What is the client's email address?".to_string(),
                 answer_type: answer_type.to_string(),
+                help_text: None,
                 prior_answer: prior.to_string(),
                 country_options: country_options.iter().map(|s| (*s).to_string()).collect(),
                 choices: choices
@@ -263,6 +271,12 @@ mod tests {
                     .map(|(v, l)| ((*v).to_string(), (*l).to_string()))
                     .collect(),
                 person_candidates: Vec::new(),
+                steps: vec![
+                    StepMeta::new("s1", "First"),
+                    StepMeta::new("s2", "Second"),
+                    StepMeta::new("client_email", "Client email"),
+                    StepMeta::new("s4", "Fourth"),
+                ],
                 position: 2,
                 total: 4,
             },
@@ -290,12 +304,40 @@ mod tests {
         );
         assert!(html.contains("client_email"), "{html}");
         // The chrome is template-driven, not hard-coded to the retainer.
-        assert!(html.contains("Closing letter — step 2 of 4"), "{html}");
+        assert!(html.contains("Closing letter"), "{html}");
+        assert!(html.contains("Step 2 of 4"), "{html}");
         assert!(html.contains("What is the client"), "{html}");
         assert!(html.contains("email address?"), "{html}");
         assert!(html.contains(">Continue</button>"), "{html}");
         assert!(html.contains("type=\"text\""), "{html}");
         assert_forms_accessible(&html, "walker_step");
+    }
+
+    #[test]
+    fn the_step_renders_the_full_chain_with_the_current_step_marked() {
+        let html = render(&view("string", "", &[]));
+        assert!(html.contains("nav-stage"), "{html}");
+        assert_eq!(html.matches("nav-steps__item").count(), 4, "{html}");
+        assert!(html.contains(r#"aria-current="step""#), "{html}");
+        assert!(html.contains("Client email"), "{html}");
+    }
+
+    #[test]
+    fn help_text_renders_as_the_hero_lede_when_the_question_declares_one() {
+        let mut view = view("string", "", &[]);
+        view.step.help_text = Some("Use the address on the engagement letter.".to_string());
+        let html = render(&view);
+        assert!(html.contains("nav-hero__lede"), "{html}");
+        assert!(
+            html.contains("Use the address on the engagement letter."),
+            "{html}"
+        );
+    }
+
+    #[test]
+    fn no_help_text_omits_the_hero_lede() {
+        let html = render(&view("string", "", &[]));
+        assert!(!html.contains("nav-hero__lede"), "{html}");
     }
 
     #[test]

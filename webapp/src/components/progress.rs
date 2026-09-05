@@ -31,8 +31,7 @@ pub fn Progress(
     } else {
         "nav-progress__track nav-progress__track--indeterminate"
     };
-    let percent =
-        value.map(|v| v.min(max).saturating_mul(100).checked_div(max).unwrap_or(0));
+    let percent = value.map(|v| v.min(max).saturating_mul(100).checked_div(max).unwrap_or(0));
     let fill_style = percent.map(|p| format!("width: {p}%;"));
     let value_text = value.map(|v| format!("{v} of {max}"));
 

@@ -577,6 +577,10 @@ pub enum ClientIntakeStep {
         position: usize,
         /// Count of client-facing questions on this notation.
         total: usize,
+        /// The client-facing question codes, BEGIN → END order — the chain a
+        /// step-list progress rail walks. The same ordering `position`/`total`
+        /// are computed from, so a caller wanting both never re-derives it.
+        steps: Vec<String>,
     },
     /// The client has answered every client-facing question; the rest is
     /// the firm's to finish.
@@ -684,6 +688,7 @@ pub async fn client_intake_step(
                 .cloned(),
             position: idx + 1,
             total,
+            steps: client_codes.clone(),
         });
     }
     Ok(ClientIntakeStep::Complete { total })
@@ -2594,6 +2599,7 @@ mod tests {
             prior_value,
             position,
             total,
+            ..
         } = step
         else {
             panic!("expected second notation to still need person__client");
@@ -2721,6 +2727,7 @@ mod tests {
             prior_value,
             position,
             total,
+            ..
         } = step
         else {
             panic!("expected mission statement question");
@@ -2745,6 +2752,7 @@ mod tests {
             prior_value,
             position,
             total,
+            ..
         } = step
         else {
             panic!("expected revenue strategy question");
@@ -2818,6 +2826,7 @@ mod tests {
             prior_value,
             position,
             total,
+            ..
         } = step
         else {
             panic!("expected entity__subsidiary");

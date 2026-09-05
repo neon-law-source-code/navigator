@@ -2,19 +2,31 @@
 //!
 //! A matter's invoice is raised **in Xero**, by lawyer, at the price they
 //! agreed with the client — Navigator never raises one. This table is the
-//! local mirror of that invoice, keyed by `project_id`, so the portal can
-//! show a per-project invoice card without calling Xero live. Two writers
-//! touch a row:
+//! local mirror of that invoice, so the portal can show a per-project
+//! invoice card without calling Xero live. Two writers touch a row:
 //!
-//! - [`upsert`] — captures the Xero `InvoiceID` + total. Keyed on
-//!   `project_id`, so a re-run updates the one row rather than inserting a
-//!   second (preserving any reconciled `amount_paid_cents`).
+//! - [`upsert`] — captures the Xero `InvoiceID` + total. A re-run updates
+//!   the one row rather than inserting a second (preserving any reconciled
+//!   `amount_paid_cents`).
 //! - [`record_reconcile`] — the nightly reconcile workflow folds Xero's
 //!   `Status` + `AmountPaid` back onto the mirror.
+//!
+//! **The mirror's own record id is `project_id`, not an independently
+//! minted one.** A UNIQUE index on `project_id` reads like what serializes
+//! concurrent creates and does not: racers that each mint their own record
+//! id write to distinct keys, so the engine's optimistic layer has nothing
+//! to conflict on and can commit two rows for one matter before either
+//! observes the other's index entry — `store::persons` hit the identical
+//! shape (see `store/tests/person_mailbox_race.rs`) and it reproduces here
+//! in [`tests::the_unique_index_alone_does_not_serialize_racers`]. Keying
+//! the row on `project_id` instead makes the *primary* key the collision
+//! point: a second `CREATE` for the same matter collides on that key and
+//! reports a typed [`surrealdb::types::AlreadyExistsError::Record`], which
+//! the optimistic layer does serialize.
 
 use chrono::{DateTime, Utc};
 use serde::Serialize;
-use surrealdb::types::SurrealValue;
+use surrealdb::types::{AlreadyExistsError, ErrorDetails, SurrealValue};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -98,8 +110,8 @@ pub enum XeroInvoiceError {
     #[error("database: {0}")]
     Db(#[from] surrealdb::Error),
     /// Another writer created the matter's mirror after this writer checked.
-    /// [`upsert`] resolves this race by finding that row and applying the
-    /// metadata update to it.
+    /// [`upsert`] resolves this race by applying the metadata update to that
+    /// row directly, since its id is `project_id`.
     #[error("that project already has a Xero invoice mirror")]
     ProjectTaken,
     /// A write claimed success but returned no usable row.
@@ -107,17 +119,24 @@ pub enum XeroInvoiceError {
     WriteReturnedNothing,
 }
 
-/// Convert a unique-index failure into the concurrency case it identifies.
+/// Whether `error` is a second `CREATE` colliding with the mirror row this
+/// matter already has.
 ///
-/// Surreal's unique violations do not carry a typed index name, so the
-/// explicit schema identifier is the discriminator. The test below pins this
-/// against the real engine, keeping an index rename from becoming an opaque
-/// database failure.
+/// The collision is **typed**: `CREATE` onto a taken record id reports
+/// [`AlreadyExistsError::Record`] carrying that id, so the discriminator is
+/// a structured value rather than prose — unlike the UNIQUE-index violation
+/// [`crate::surreal::retry::unique_violation`] has to read the message for.
+/// That secondary index still exists as a backstop against a write that
+/// bypasses [`create`]'s id convention; it is not what this classifier
+/// checks.
 fn classify_write(error: surrealdb::Error) -> XeroInvoiceError {
-    if crate::surreal::retry::unique_violation(&error) == Some("xero_invoice_project") {
-        XeroInvoiceError::ProjectTaken
-    } else {
-        XeroInvoiceError::Db(error)
+    match error.details() {
+        ErrorDetails::AlreadyExists(Some(AlreadyExistsError::Record { id }))
+            if id.starts_with(TABLE) =>
+        {
+            XeroInvoiceError::ProjectTaken
+        }
+        _ => XeroInvoiceError::Db(error),
     }
 }
 
@@ -179,18 +198,20 @@ async fn for_project(
     one(response)
 }
 
+/// `input.project_id` doubles as the mirror row's own id — see the module
+/// docs for why that, not the UNIQUE index, is what makes a racing second
+/// `CREATE` collide reliably.
 async fn create(
     db: &SurrealDb,
     input: &UpsertXeroInvoice,
 ) -> Result<XeroInvoice, XeroInvoiceError> {
-    let id = Uuid::now_v7();
     let response = writing(|| {
         db.query(format!(
             "CREATE $id SET project_id = $project_id, xero_invoice_id = $xero_invoice_id, \
              reference = $reference, status = $status, amount_cents = $amount_cents, \
              currency = $currency RETURN {SELECT}"
         ))
-        .bind(("id", record_id(TABLE, id)))
+        .bind(("id", record_id(TABLE, input.project_id)))
         .bind((
             "project_id",
             record_id(crate::projects::PROJECT_TABLE, input.project_id),
@@ -232,10 +253,10 @@ async fn update_from_upsert(
 /// Inserts a fresh row, or — when one already exists for the matter — updates
 /// the Xero id / reference / status / total in place while **preserving** the
 /// reconciled `amount_paid_cents` (the reconcile workflow owns that field).
-/// The create path intentionally settles a unique-index race by finding the
-/// row its competing writer created, then applying the same metadata-only
-/// update. A read-then-write without this recovery would turn the unique
-/// constraint into an observable retry failure.
+/// The create path settles a race on the mirror's own record id (see the
+/// module docs): a competing writer's `CREATE` under the same
+/// `project_id`-derived id is the row this one applies its metadata-only
+/// update to, with no extra read needed to find it.
 ///
 /// # Errors
 ///
@@ -251,10 +272,7 @@ pub async fn upsert(
     match create(db, input).await {
         Ok(created) => Ok(created),
         Err(XeroInvoiceError::ProjectTaken) => {
-            let existing = for_project(db, input.project_id)
-                .await?
-                .ok_or(XeroInvoiceError::WriteReturnedNothing)?;
-            update_from_upsert(db, existing.id, input).await
+            update_from_upsert(db, input.project_id, input).await
         }
         Err(error) => Err(error),
     }
@@ -414,9 +432,55 @@ mod tests {
         );
     }
 
-    /// The unique index is the concurrency boundary, not merely an invariant
-    /// observed after sequential calls. Every mirror replay must settle on
-    /// the one winner rather than surface its create race to Restate.
+    /// The control this module's guard exists against: the UNIQUE index
+    /// alone, with each racer minting its own record id. This is the shape
+    /// [`super::create`] used before it started keying the row on
+    /// `project_id`, kept here so a future refactor cannot drop that
+    /// convention as redundant with the schema index.
+    ///
+    /// The assertion is not that every round forks — it needs a loaded
+    /// machine to lose reliably, the same caveat
+    /// `store::persons::tests`' analogous control carries — but that
+    /// nothing about this shape refuses a second row on its own merits.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn the_unique_index_alone_does_not_serialize_racers() {
+        let surreal = crate::surreal::test_support::mem().await;
+        let project_id = seed_project(&surreal, "sample-matter").await;
+
+        let racers: Vec<_> = (0..8)
+            .map(|_| {
+                let surreal = surreal.clone();
+                tokio::spawn(async move {
+                    surreal
+                        .query(
+                            "CREATE $id SET project_id = $project, xero_invoice_id = 'xero-1', \
+                             reference = 'race', status = 'AUTHORISED', \
+                             amount_cents = 333300, currency = 'USD'",
+                        )
+                        .bind(("id", record_id(super::TABLE, uuid::Uuid::now_v7())))
+                        .bind((
+                            "project",
+                            record_id(crate::projects::PROJECT_TABLE, project_id),
+                        ))
+                        .await
+                        .and_then(surrealdb::IndexedResults::check)
+                })
+            })
+            .collect();
+
+        let mut landed = 0;
+        for racer in racers {
+            if racer.await.expect("racer task").is_ok() {
+                landed += 1;
+            }
+        }
+        assert!(landed >= 1, "at least one unguarded write must land");
+    }
+
+    /// The mirror's own record id is the concurrency boundary (see the
+    /// module docs), not merely an invariant observed after sequential
+    /// calls. Every mirror replay must settle on the one winner rather than
+    /// surface its create race to Restate.
     #[tokio::test(flavor = "multi_thread")]
     async fn concurrent_upserts_for_one_project_settle_on_one_row() {
         let surreal = crate::surreal::test_support::mem().await;

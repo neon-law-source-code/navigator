@@ -37,7 +37,7 @@ use fantoccini::key::Key;
 use fantoccini::Locator;
 use features::webdriver::{
     base_url, click_and_reach, login_as_admin, login_as_client, login_as_lawyer,
-    new_client_or_skip, require_harness, scroll_and_js_click, wait_for_text,
+    new_client_or_skip, require_harness, scroll_and_js_click, wait_for_path, wait_for_text,
     wait_for_text_reloading,
 };
 use uuid::Uuid;
@@ -699,11 +699,17 @@ async fn admin_adds_a_person_through_the_people_form() {
     // Drives the full browser create path end-to-end: the Dioxus "Add person"
     // form (#641 Phase 3) is a native `POST /app/admin/people` carrying the session
     // cookie plus the hidden `_csrf` field, and the handler answers a 303 back to
-    // the list where the new row shows. This exercises the whole credential-keyed
-    // CSRF path in a real browser — the thing rendering tests can't prove.
+    // the list. This exercises the whole credential-keyed CSRF path in a real
+    // browser — the thing rendering tests can't prove.
     //
     // Admin, not Lawyer: ENG-304 deleted the `/app/lawyer/people` mirror, so this is
     // the only browser form that creates a Person.
+    //
+    // The people directory has been firm-scoped for Admin since #361 (a viewer
+    // sees only people bound to a firm or project they belong to), and a
+    // freshly created person carries neither binding — so the new row does not
+    // necessarily render in this same session's list. The database read below
+    // is the proof of the write; the DOM no longer is.
     let Some(c) = new_client_or_skip().await else {
         return;
     };
@@ -752,15 +758,20 @@ async fn admin_adds_a_person_through_the_people_form() {
     // WebDriver click can be intercepted when the button sits below the fold).
     scroll_and_js_click(&c, "form.admin-form button[type=\"submit\"]").await;
 
-    // The 303 lands us on the list; the new row must be there — proof the
-    // cookie + hidden `_csrf` write went through the native create handler.
-    wait_for_text(&c, &email, Duration::from_secs(10)).await;
-    let url = c.current_url().await.unwrap();
-    assert_eq!(
-        url.path(),
-        "/app/admin/people",
-        "a successful create should redirect to the people list, got {url}",
-    );
+    // The 303 lands us on the list — proof the cookie + hidden `_csrf` write
+    // reached the native create handler and it accepted the command.
+    wait_for_path(&c, "/app/admin/people", Duration::from_secs(10)).await;
+
+    // The list may not show the row (firm scoping, see above), so read the
+    // store directly for the proof that the POST actually wrote the person.
+    let surreal = store::surreal::connect_from_env()
+        .await
+        .expect("connect to the port-forwarded SurrealDB");
+    let created = store::persons::find_by_email_ci(&surreal, &email)
+        .await
+        .expect("look up the created person")
+        .expect("the native form POST wrote the person row");
+    assert_eq!(created.name, "E2E Person");
 
     c.close().await.unwrap();
 }

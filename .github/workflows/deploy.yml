@@ -234,6 +234,12 @@ jobs:
     # dedup step's `gh api .../actions/workflows/deploy.yml/runs` call needs this
     # one to authenticate. Without it every push to `main` 404s here before the
     # release decision ever runs (run 33979407990).
+    #
+    # A SEPARATE 404, same symptom, was the `-f`/`--paginate` call itself: `gh
+    # api` switches to `POST` the moment any `-f` field is given unless
+    # `--method GET` is passed explicitly, and a POST to this GET-only endpoint
+    # 404s regardless of scope (run 33987946885). The dedup step below passes
+    # `--method GET` for exactly that reason.
     permissions:
       contents: read
       actions: read
@@ -283,7 +289,7 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          other="$(gh api "/repos/${REPO}/actions/workflows/deploy.yml/runs" \
+          other="$(gh api --method GET "/repos/${REPO}/actions/workflows/deploy.yml/runs" \
               -f head_sha="${GITHUB_SHA}" -f event=push --paginate \
               --jq "[.workflow_runs[] | select(.id != ${GITHUB_RUN_ID})] | length")"
           if [ "${other}" -gt 0 ]; then

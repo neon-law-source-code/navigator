@@ -1103,6 +1103,12 @@ fn a_duplicate_trigger_for_the_same_commit_is_refused_before_any_real_work() {
         "the dedup step must exclude its own run from the count, or every run would see \
          itself as a duplicate"
     );
+    assert!(
+        script.contains("gh api --method GET"),
+        "the dedup step passes `-f` fields to `gh api`, which switches the request to POST \
+         unless `--method GET` is given explicitly — a POST to this GET-only endpoint 404s \
+         regardless of `actions: read` scope (run 33987946885): {script}"
+    );
 
     let checkout_index = steps
         .iter()

@@ -10,9 +10,11 @@
 //! Owner and Admin read every matter here (`store::projects::all`), not only
 //! their own: this is the administrative *listing* surface
 //! (`webapp::admin_listing::MatterScope::Unscoped` names the same idea
-//! elsewhere), not the matter surface `store::access` gates — that surface
-//! still admits no privileged bypass (ENG-81). A Lawyer without that tier
-//! keeps the scoped read, `store::access::visible_projects_as_lawyer`.
+//! elsewhere), not the matter surface. Every firm tier needs a firm-side
+//! participation row before `/app/projects/{code}` renders matter content;
+//! Owner/Admin route admission and administrative-listing reach do not bypass
+//! that gate. `store::access::visible_projects_as_lawyer` is the scoped read
+//! for the matter surface.
 //! The resolved entity-name column and the pill are computed server-side, so
 //! all four sort columns (`code` / `name` / `status` / `entity_name`) sort in
 //! one in-memory composite comparator. The "Add project" control links to the

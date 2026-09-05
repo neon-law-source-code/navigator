@@ -216,6 +216,86 @@ fn docs_glossary_term_lookup_accepts_anchor_slug() {
     assert!(stdout.contains("## Lawyer Review"));
 }
 
+const PROJECT_LIST_RS: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../webapp/src/project_list.rs"
+));
+const LAWYER_DASHBOARD_RS: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../webapp/src/lawyer_dashboard.rs"
+));
+const ACCESS_MODEL_MD: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../docs/access-model.md"
+));
+const GLOSSARY_MD: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/glossary.md"));
+const AUTHORIZATION_SKILL_MD: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../.agents/skills/authorization-model/SKILL.md"
+));
+
+#[test]
+fn access_teaching_surfaces_keep_route_and_matter_scope_distinct() {
+    for stale_phrase in ["admin sees all", "admin sees everything"] {
+        assert!(
+            !PROJECT_LIST_RS.contains(stale_phrase),
+            "project list must not teach the old scope rule: {stale_phrase}"
+        );
+        assert!(
+            !LAWYER_DASHBOARD_RS.contains(stale_phrase),
+            "lawyer dashboard must not teach the old scope rule: {stale_phrase}"
+        );
+    }
+
+    assert!(
+        PROJECT_LIST_RS.contains("Every firm tier")
+            && PROJECT_LIST_RS.contains("firm-side")
+            && PROJECT_LIST_RS.contains("participation row")
+            && PROJECT_LIST_RS.contains("matter surface"),
+        "project list must distinguish administrative listings from the scoped matter surface"
+    );
+    assert!(
+        LAWYER_DASHBOARD_RS.contains("every firm tier")
+            && LAWYER_DASHBOARD_RS.contains("firm-side")
+            && LAWYER_DASHBOARD_RS.contains("participation row")
+            && LAWYER_DASHBOARD_RS.contains("route")
+            && LAWYER_DASHBOARD_RS.contains("admission"),
+        "lawyer dashboard must teach participation scope and route admission separately"
+    );
+
+    let clerk_section = ACCESS_MODEL_MD
+        .split_once("### `clerk`")
+        .and_then(|(_, rest)| rest.split_once("### `lawyer`"))
+        .map(|(section, _)| section)
+        .expect("access model must have a Clerk section between Clerk and Lawyer headings");
+    assert!(
+        clerk_section.contains("`/app/projects`"),
+        "the Clerk lens must be documented on the shared matter route"
+    );
+    assert!(
+        !clerk_section.contains("dedicated `/clerk`")
+            && !clerk_section.contains("`/clerk` coordination surface"),
+        "the retired dedicated Clerk route must not be documented as live"
+    );
+    assert!(
+        !GLOSSARY_MD.contains("dedicated `/clerk` surface")
+            && GLOSSARY_MD.contains("Clerk's read-only lens under `/app/projects`"),
+        "the glossary must describe the shared Clerk lens"
+    );
+
+    let authorization_scope = AUTHORIZATION_SKILL_MD
+        .split_once("- **Owner and Admin")
+        .and_then(|(_, rest)| rest.split_once("- **`participation`"))
+        .map(|(section, _)| section)
+        .expect("authorization skill must document the Owner/Admin rule");
+    assert!(
+        authorization_scope.contains("route admission")
+            && authorization_scope.contains("matter surface")
+            && authorization_scope.contains("participation"),
+        "authorization skill must qualify the Owner/Admin bypass"
+    );
+}
+
 #[test]
 fn docs_glossary_unknown_term_exits_non_zero_with_helpful_stderr() {
     let out = Command::new(cargo_bin("navigator"))

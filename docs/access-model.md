@@ -56,13 +56,16 @@ Clients do not receive Git clone URLs, Git PATs, branch names, commit SHAs, or d
 
 ### `clerk`
 
-A supervised **non-lawyer** firm worker. Clerk enters only the dedicated `/clerk` coordination surface, never
-`/app/lawyer`, MCP, A2A, Git, person administration, legal drafting, approval, or advice. `/clerk` is read-only and
-lists only Projects where the Clerk has firm-side participation and one of the matter's `is_lawyer_dri` rows names a
-licensed `lawyer`, `admin`, or `owner` lawyer. It shows the matter's name, status, supervising lawyer, and a link to the
-Project's client portal—but no firm documents, legal work, or write control on this surface. The portal is
+A supervised **non-lawyer** firm worker. Clerk enters `/app/projects` with everyone else, where the supervised lens is
+read-only and lists only Projects where the Clerk has firm-side participation and one of the matter's `is_lawyer_dri`
+rows names a licensed `lawyer`, `admin`, or `owner` lawyer. It shows the matter's name, status, supervising lawyer, and
+a link to the Project's client portal—but no firm documents, legal work, or write control on this surface. The portal is
 participation-gated identically for every viewer (`store::access::can_see_project`, which is
 `matter_viewer(...).is_some()`), so admitting a Clerk to it grants nothing the matter page's own visibility does not.
+
+There is no separate Clerk route: the shared matter route selects this supervised lens from the Clerk's role and
+participation. The Clerk's access is therefore the same matter-surface participation fact described below, not a second
+coordination-surface grant.
 
 On an assigned matter, the `View as Client` control starts the established client-lens session for that matter's client
 DRI and takes the Clerk to the client rendering. The impersonation banner names the effective client and provides the

@@ -421,6 +421,15 @@ mod tests {
             html.contains("Nevada") && html.contains("California"),
             "{html}"
         );
+        // ENG-504: cards, not a compact radio list.
+        assert!(html.contains("nav-choice-group"), "{html}");
+    }
+
+    #[test]
+    fn eng_504_a_bool_question_renders_a_two_card_yes_no_choice() {
+        let html = render(&step("bool", "false", &[]));
+        assert!(html.contains("nav-choice-group"), "{html}");
+        assert!(html.contains(">Yes<") && html.contains(">No<"), "{html}");
     }
 
     #[test]

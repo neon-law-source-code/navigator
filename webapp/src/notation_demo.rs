@@ -25,7 +25,7 @@
 
 use dioxus::prelude::*;
 
-use crate::components::{Choice, Field};
+use crate::components::{Choice, Field, Progress, StepList, StepMeta};
 
 /// A clearly-synthetic sample matter, named in the demo's chrome so the walk
 /// never reads as scoped to nothing — every real Notation has a Project.
@@ -62,6 +62,10 @@ pub fn QuestionnaireDemo(questions: Vec<DemoQuestion>) -> Element {
     let index = *step.read();
     let question = &questions[index];
     let position = index + 1;
+    let steps: Vec<StepMeta> = questions
+        .iter()
+        .map(|q| StepMeta::new(q.code.clone(), q.prompt.clone()))
+        .collect();
 
     rsx! {
         section { class: "notation-demo", "aria-label": "Try answering this",
@@ -69,15 +73,23 @@ pub fn QuestionnaireDemo(questions: Vec<DemoQuestion>) -> Element {
             p { class: "nav-muted",
                 "{SAMPLE_PROJECT_LABEL} — nothing you type below is saved anywhere."
             }
-            div {
-                role: "progressbar",
-                "aria-label": "Demo question progress",
-                "aria-valuenow": "{position}",
-                "aria-valuemin": "0",
-                "aria-valuemax": "{total}",
-            }
-            div { class: "notation-demo__step", key: "{question.code}",
-                {demo_field(question)}
+            div { class: "nav-stepper",
+                StepList {
+                    steps,
+                    current: index,
+                    label: "Demo question progress".to_string(),
+                }
+                p { class: "nav-stepper__count", "Step {position} of {total}" }
+                Progress {
+                    label: "Demo question progress".to_string(),
+                    value: Some(position),
+                    max: total,
+                }
+                div {
+                    class: "nav-stepper__body notation-demo__step",
+                    key: "{question.code}",
+                    {demo_field(question)}
+                }
             }
             div { class: "notation-demo__actions",
                 if index > 0 {
@@ -121,8 +133,15 @@ fn demo_field(question: &DemoQuestion) -> Element {
         "custom_phone" => {
             Field::input(&question.prompt, "value", "", "tel").placeholder("(702) 555-0100")
         }
-        "custom_yes_no" => Field::checkbox(&question.prompt, "value", "true", false),
-        "custom_single_choice" => Field::radio(
+        // ENG-506: cards, matching the real walkers' ENG-504 treatment of
+        // the same answer types.
+        "custom_yes_no" => Field::choice_cards(
+            &question.prompt,
+            "value",
+            vec![Choice::new("true", "Yes"), Choice::new("false", "No")],
+            None,
+        ),
+        "custom_single_choice" => Field::choice_cards(
             &question.prompt,
             "value",
             question
@@ -211,6 +230,32 @@ mod tests {
             out.contains("Nevada") && out.contains("California"),
             "{out}"
         );
+        // ENG-506: cards, not a compact radio list — matching the real
+        // walkers' own ENG-504 treatment.
+        assert!(out.contains("nav-choice-group"), "{out}");
+    }
+
+    #[test]
+    fn custom_yes_no_renders_a_two_card_yes_no_choice() {
+        let out = render(vec![interactive(
+            "custom_yes_no",
+            "Do you have counsel?",
+            vec![],
+        )]);
+        assert!(out.contains("nav-choice-group"), "{out}");
+        assert!(out.contains(">Yes<") && out.contains(">No<"), "{out}");
+    }
+
+    #[test]
+    fn the_step_list_names_every_question_with_the_current_one_marked() {
+        let out = render(vec![
+            interactive("custom_text", "First?", vec![]),
+            interactive("custom_text", "Second?", vec![]),
+        ]);
+        assert!(out.contains("nav-stepper"), "{out}");
+        assert_eq!(out.matches("nav-steps__item").count(), 2, "{out}");
+        assert!(out.contains(r#"aria-current="step""#), "{out}");
+        assert!(out.contains("Step 1 of 2"), "{out}");
     }
 
     #[test]

@@ -577,6 +577,10 @@ pub enum ClientIntakeStep {
         position: usize,
         /// Count of client-facing questions on this notation.
         total: usize,
+        /// The client-facing question codes, BEGIN → END order — the chain a
+        /// step-list progress rail walks. The same ordering `position`/`total`
+        /// are computed from, so a caller wanting both never re-derives it.
+        steps: Vec<String>,
     },
     /// The client has answered every client-facing question; the rest is
     /// the firm's to finish.
@@ -684,6 +688,7 @@ pub async fn client_intake_step(
                 .cloned(),
             position: idx + 1,
             total,
+            steps: client_codes.clone(),
         });
     }
     Ok(ClientIntakeStep::Complete { total })
@@ -1133,7 +1138,21 @@ fn stores_one_declared_choice(state: &str) -> bool {
     use store::question_registry::QuestionType;
     matches!(
         QuestionType::from_state_name(state),
-        Some(QuestionType::CustomSingleChoice | QuestionType::CustomYesNo)
+        Some(
+            QuestionType::CustomSingleChoice
+                | QuestionType::CustomYesNo
+                | QuestionType::CustomMultipleChoice
+        )
+    )
+}
+
+/// Whether `state` stores several selections as one JSON array answer
+/// (`multiple_choice`), rather than one scalar choice key.
+fn is_multi_valued_choice(state: &str) -> bool {
+    use store::question_registry::QuestionType;
+    matches!(
+        QuestionType::from_state_name(state),
+        Some(QuestionType::CustomMultipleChoice)
     )
 }
 
@@ -1171,13 +1190,28 @@ fn ensure_declared_choice(
     let Some(declared) = metadata_lookup(choices, state).filter(|d| !d.is_empty()) else {
         return Ok(());
     };
+    let undeclared = || NotationSessionError::UndeclaredChoice {
+        state: state.to_string(),
+        declared: declared.keys().cloned().collect(),
+    };
+    if is_multi_valued_choice(state) {
+        // `value` is the JSON array `record_answer_value`/`answer_step` were
+        // handed — every selection must be declared, or the whole answer is
+        // refused (an empty selection, `[]`, is a real "chose none of these"
+        // and always accepted). Malformed JSON cannot have come from this
+        // question's own control, so it is refused the same as an
+        // off-list value.
+        let selected: Vec<String> = serde_json::from_str(value).map_err(|_| undeclared())?;
+        return selected
+            .iter()
+            .all(|v| declared.contains_key(v))
+            .then_some(())
+            .ok_or_else(undeclared);
+    }
     if declared.contains_key(value) {
         return Ok(());
     }
-    Err(NotationSessionError::UndeclaredChoice {
-        state: state.to_string(),
-        declared: declared.keys().cloned().collect(),
-    })
+    Err(undeclared())
 }
 
 /// The merged `value → label` choice metadata for a bundled spec YAML,
@@ -2594,6 +2628,7 @@ mod tests {
             prior_value,
             position,
             total,
+            ..
         } = step
         else {
             panic!("expected second notation to still need person__client");
@@ -2721,6 +2756,7 @@ mod tests {
             prior_value,
             position,
             total,
+            ..
         } = step
         else {
             panic!("expected mission statement question");
@@ -2745,6 +2781,7 @@ mod tests {
             prior_value,
             position,
             total,
+            ..
         } = step
         else {
             panic!("expected revenue strategy question");
@@ -2818,6 +2855,7 @@ mod tests {
             prior_value,
             position,
             total,
+            ..
         } = step
         else {
             panic!("expected entity__subsidiary");
@@ -3058,23 +3096,53 @@ mod tests {
     }
 
     #[test]
-    fn multiple_choice_answers_are_left_open() {
+    fn multiple_choice_stores_one_declared_choice_too() {
         use super::stores_one_declared_choice;
-        // A `custom_multiple_choice` answer is a set of keys, not one key,
-        // so closing it against a single-key lookup would reject a
-        // legitimate multi-value answer. It needs the checkbox-group field
-        // shape ENG-454 tracks, and is deliberately left open here.
+        // ENG-505: a `custom_multiple_choice` answer is a set of keys, not one
+        // key, so it cannot close against a single-key lookup the way
+        // single-choice/yes-no do — `ensure_declared_choice` branches on
+        // `is_multi_valued_choice` to check each selected key instead. It is
+        // no longer left open.
         assert!(stores_one_declared_choice(
             "custom_single_choice__governing_law"
         ));
         assert!(stores_one_declared_choice("custom_yes_no__has_counsel"));
-        assert!(!stores_one_declared_choice(
+        assert!(stores_one_declared_choice(
             "custom_multiple_choice__practice_areas"
         ));
         // A record/reference pick is closed against the database candidate
         // list where the pick resolves, not against YAML choices.
         assert!(!stores_one_declared_choice("country__of_birth"));
         assert!(!stores_one_declared_choice("person__client"));
+    }
+
+    #[test]
+    fn ensure_declared_choice_checks_every_selected_key_for_a_multiple_choice_state() {
+        use super::ensure_declared_choice;
+        let state = "custom_multiple_choice__practice_areas";
+        let mut declared = BTreeMap::new();
+        // Keyed by the role suffix (`metadata_lookup`/`role_key_for_state`),
+        // not the full state name — the same key `custom_questions.<key>`
+        // uses in template frontmatter.
+        declared.insert(
+            "practice_areas".to_string(),
+            BTreeMap::from([
+                ("estate".to_string(), "Estate planning".to_string()),
+                ("litigation".to_string(), "Litigation".to_string()),
+            ]),
+        );
+        // Every selection declared: accepted.
+        assert!(ensure_declared_choice(&declared, state, r#"["estate","litigation"]"#).is_ok());
+        // No selection: a real "chose none of these", accepted.
+        assert!(ensure_declared_choice(&declared, state, "[]").is_ok());
+        // One undeclared selection among declared ones: the whole answer is
+        // refused.
+        assert!(
+            ensure_declared_choice(&declared, state, r#"["estate","not_a_practice_area"]"#)
+                .is_err()
+        );
+        // Malformed JSON cannot have come from this question's own control.
+        assert!(ensure_declared_choice(&declared, state, "estate").is_err());
     }
 
     #[test]

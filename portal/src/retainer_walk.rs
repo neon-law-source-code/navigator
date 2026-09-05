@@ -769,6 +769,22 @@ async fn prior_answer_row(
         .flatten()
 }
 
+async fn person_choices(
+    state: &AdminState,
+    answer_type: &str,
+    notation_id: Uuid,
+) -> Vec<webapp::components::PersonChoice> {
+    crate::intake::reference_candidates(&state.surreal, answer_type, notation_id)
+        .await
+        .unwrap_or_else(|e| {
+            tracing::error!(error = %e, %notation_id, "walker: reference_candidates failed");
+            Vec::new()
+        })
+        .into_iter()
+        .map(|c| webapp::components::PersonChoice::new(c.id.to_string(), c.name, c.email))
+        .collect()
+}
+
 /// Resolve the current walker step for `GET /app/lawyer/notations/:id/step`, in the
 /// wasm-safe shape the Dioxus page renders (#956 Phase 4).
 ///
@@ -796,11 +812,9 @@ pub(crate) async fn resolve_walker_step(
         notation_id,
     )
     .await;
-
     if format == Some("json") {
         return Err(step_json(state, notation_id, step).await);
     }
-
     let question = match step {
         Ok(NextStep::NeedsAnswer { question }) => question,
         Ok(NextStep::QuestionnaireComplete) => {
@@ -860,7 +874,8 @@ pub(crate) async fn resolve_walker_step(
     )
     .await
     .unwrap_or_else(StateName::begin);
-    let (position, total) = walker_progress(state, notation_id, &current_state).await;
+    let (position, total, chain) = walker_progress(state, notation_id, &current_state).await;
+    let steps = step_metas(&chain);
     tracing::info!(
         %notation_id,
         rendered_question = %question.code,
@@ -877,30 +892,21 @@ pub(crate) async fn resolve_walker_step(
         .into_iter()
         .map(|c| (c.value, c.label))
         .collect();
-    // The read-only step display tolerates a candidate-lookup failure — show
-    // an empty list (the free-text path) rather than failing the whole step;
-    // `step_post`'s `resolve_reference_answer` is where a lookup error must
-    // be loud, exactly as `step_json` already treats it.
-    let person_candidates =
-        crate::intake::reference_candidates(&state.surreal, &question.answer_type, notation_id)
-            .await
-            .unwrap_or_else(|e| {
-                tracing::error!(error = %e, %notation_id, "walker: reference_candidates failed");
-                Vec::new()
-            })
-            .into_iter()
-            .map(|c| webapp::components::PersonChoice::new(c.id.to_string(), c.name, c.email))
-            .collect();
+    // The read-only display tolerates a candidate-lookup failure; submission
+    // remains loud through `resolve_reference_answer`.
+    let person_candidates = person_choices(state, &question.answer_type, notation_id).await;
     Ok(webapp::walker_step::WalkerStepData {
         notation_id: notation_id.to_string(),
         flow_label,
         question_code: question.code,
         question_prompt: question.prompt,
         answer_type: question.answer_type,
+        help_text: question.help_text,
         prior_answer,
         country_options,
         choices,
         person_candidates,
+        steps,
         position,
         total,
     })
@@ -1046,7 +1052,7 @@ async fn resolved_scalar_answer(
     state: &AdminState,
     answer_type: &str,
     notation_id: Uuid,
-    body: &std::collections::BTreeMap<String, String>,
+    body: &[(String, String)],
 ) -> Result<(String, Option<Uuid>), Response> {
     match crate::intake::resolve_reference_answer(&state.surreal, answer_type, notation_id, body)
         .await
@@ -1066,8 +1072,12 @@ pub async fn step_post(
     State(state): State<AdminState>,
     AxumPath(notation_id): AxumPath<Uuid>,
     session: Option<Extension<SessionData>>,
-    Form(body): Form<std::collections::BTreeMap<String, String>>,
+    // Ordered pairs, not a `BTreeMap`: a `multiple_choice` question posts
+    // several same-named `value` fields (one per checked card), and a map
+    // can hold only the last of any repeated key.
+    Form(pairs): Form<Vec<(String, String)>>,
 ) -> Response {
+    let body: std::collections::BTreeMap<String, String> = pairs.iter().cloned().collect();
     tracing::info!(%notation_id, field_count = body.len(), "step_post: enter");
     // The admin walker is lawyer entering the answer on the client's
     // behalf: the typist is the logged-in lawyer/admin person, the source
@@ -1092,7 +1102,7 @@ pub async fn step_post(
         if store::question_registry::answer_type_is_aggregate(&question.answer_type) {
             (crate::people_list_answer::assemble(&body), None)
         } else {
-            match resolved_scalar_answer(&state, &question.answer_type, notation_id, &body).await {
+            match resolved_scalar_answer(&state, &question.answer_type, notation_id, &pairs).await {
                 Ok(pair) => pair,
                 Err(resp) => return resp,
             }
@@ -2887,50 +2897,58 @@ fn questionnaire_chain(spec: &workflows::QuestionnaireSpec) -> Vec<StateName> {
     order
 }
 
-/// `(current, total)` for the progress indicator.
-///
-/// `total` is the length of the [`questionnaire_chain`] — equal to the
-/// count of every declared state except `BEGIN` and `END` by
-/// construction: `QuestionnaireSpec` validation rejects any spec whose
-/// `_` chain doesn't cover every state and terminate at END. `current` is
-/// `1 + index of the next question after `current_state` on that
-/// chain. If `current_state` is `BEGIN`, we're on question 1.
-fn progress_for(spec: &workflows::QuestionnaireSpec, current_state: &StateName) -> (usize, usize) {
-    progress_from_chain(&questionnaire_chain(spec), current_state)
-}
-
-/// Progress `(current, total)` for the walker's chrome, sourced from the
-/// notation's frozen questionnaire snapshot — the scoped questionnaire the
-/// client actually answers when the pinned template carried its own blob, not
-/// the compile-time bundled spec. Falls back to the shipped retainer spec held
-/// in `AppState` if the snapshot can't be read, so the retainer flow is
-/// unchanged.
+/// Progress `(current, total)` for the walker's chrome, plus the ordered
+/// chain itself — the same `StepList` a `QuestionStage` renders — sourced
+/// from the notation's frozen questionnaire snapshot — the scoped
+/// questionnaire the client actually answers when the pinned template
+/// carried its own blob, not the compile-time bundled spec. Falls back to
+/// the shipped retainer spec held in `AppState` if the snapshot can't be
+/// read, so the retainer flow is unchanged.
 async fn walker_progress(
     state: &AdminState,
     notation_id: Uuid,
     current_state: &StateName,
-) -> (usize, usize) {
-    match notation_session::questionnaire_chain_for_notation(
+) -> (usize, usize, Vec<StateName>) {
+    let order = match notation_session::questionnaire_chain_for_notation(
         &state.surreal,
         Some(&state.storage),
         notation_id,
     )
     .await
     {
-        Ok(codes) => {
-            let order: Vec<StateName> = codes
-                .into_iter()
-                .map(|c| StateName::from(c.as_str()))
-                .collect();
-            progress_from_chain(&order, current_state)
-        }
-        Err(_) => progress_for(&state.retainer_intake_questionnaire, current_state),
+        Ok(codes) => codes
+            .into_iter()
+            .map(|c| StateName::from(c.as_str()))
+            .collect(),
+        Err(_) => questionnaire_chain(&state.retainer_intake_questionnaire),
+    };
+    let (position, total) = progress_from_chain(&order, current_state);
+    (position, total, order)
+}
+
+/// Humanize a questionnaire state's `<type>__<role>` grammar into a short
+/// `StepList` marker label — `address__principal_office` → "Principal
+/// office", `entity` → "Entity" (no `__`, so the whole name is humanized).
+pub(crate) fn humanize_state_label(code: &str) -> String {
+    let role = code.rsplit("__").next().unwrap_or(code);
+    let mut label = role.replace('_', " ");
+    if let Some(first) = label.get_mut(0..1) {
+        first.make_ascii_uppercase();
     }
+    label
+}
+
+/// The chain as `StepList` entries, one per question state.
+pub(crate) fn step_metas(order: &[StateName]) -> Vec<webapp::components::StepMeta> {
+    order
+        .iter()
+        .map(|s| webapp::components::StepMeta::new(s.as_str(), humanize_state_label(s.as_str())))
+        .collect()
 }
 
 /// Progress `(current, total)` for a `current_state` within an ordered
-/// question chain (BEGIN → … → END, minus the terminals). Split out from
-/// [`progress_for`] so the walker can feed it the chain sourced from the
+/// question chain (BEGIN → … → END, minus the terminals). Takes the chain
+/// rather than a spec so the walker can feed it the chain sourced from the
 /// notation's frozen snapshot — the scoped questionnaire the client actually
 /// answers — rather than re-deriving it from the template code.
 fn progress_from_chain(order: &[StateName], current_state: &StateName) -> (usize, usize) {
@@ -2950,7 +2968,8 @@ fn progress_from_chain(order: &[StateName], current_state: &StateName) -> (usize
 #[cfg(test)]
 mod tests {
     use super::{
-        context_from_answers, progress_for, render_context_from_answers, substitute_template_body,
+        context_from_answers, progress_from_chain, questionnaire_chain,
+        render_context_from_answers, substitute_template_body,
     };
     use std::collections::BTreeMap;
     use uuid::Uuid;
@@ -2988,7 +3007,10 @@ mod tests {
         // governing law (N120 grounded the four bare placeholders the
         // retainer body used to leave undeclared).
         let spec = retainer_intake_questionnaire();
-        assert_eq!(progress_for(&spec, &StateName::begin()), (1, 8));
+        assert_eq!(
+            progress_from_chain(&questionnaire_chain(&spec), &StateName::begin()),
+            (1, 8)
+        );
     }
 
     #[test]
@@ -2997,15 +3019,18 @@ mod tests {
         // entity's principal office — the walker should display "step 2 of
         // 8."
         let spec = retainer_intake_questionnaire();
-        assert_eq!(progress_for(&spec, &StateName::from("entity")), (2, 8));
+        assert_eq!(
+            progress_from_chain(&questionnaire_chain(&spec), &StateName::from("entity")),
+            (2, 8)
+        );
     }
 
     #[test]
     fn progress_for_last_answered_question_caps_at_total() {
         let spec = retainer_intake_questionnaire();
         assert_eq!(
-            progress_for(
-                &spec,
+            progress_from_chain(
+                &questionnaire_chain(&spec),
                 &StateName::from("custom_single_choice__governing_law")
             ),
             (8, 8)

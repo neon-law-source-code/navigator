@@ -3909,6 +3909,57 @@ a.nav-steps__step:focus-visible {
   }
 }
 
+/* --------------------------------------------------------------- Progress -- */
+
+.nav-progress {
+  display: flex;
+  align-items: center;
+  gap: var(--nav-space-3);
+  margin: var(--nav-space-3) 0 var(--nav-space-4);
+}
+
+.nav-progress__track {
+  flex: 1 1 auto;
+  overflow: hidden;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--nav-color-surface-raised);
+}
+
+.nav-progress__fill {
+  height: 100%;
+  background: var(--nav-color-primary);
+  transition: width 0.15s ease-out;
+}
+
+/* No known position: the fill sweeps back and forth rather than sitting at a
+   width the bar cannot honestly report. */
+.nav-progress__track--indeterminate .nav-progress__fill {
+  width: 40%;
+  animation: nav-progress-indeterminate 1.4s ease-in-out infinite;
+}
+
+@keyframes nav-progress-indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(250%);
+  }
+}
+
+.nav-progress__value {
+  flex: 0 0 auto;
+  font-size: 0.9rem;
+  color: var(--nav-color-text-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-progress__track--indeterminate .nav-progress__fill {
+    animation: none;
+  }
+}
+
 /* -------------------------------------------------- Button sizes, for these -- */
 
 /* The 44px target. */

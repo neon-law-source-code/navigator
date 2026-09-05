@@ -463,9 +463,9 @@ async fn lawyer_walks_the_full_retainer_questionnaire_end_to_end() {
     let mut submitted: Vec<String> = answers.iter().map(|s| (*s).to_string()).collect();
     let mut journal_values: Vec<String> = answers.iter().map(|s| (*s).to_string()).collect();
     for (i, value) in answers.iter().enumerate() {
-        // Each step renders "step N of 8" — wait for the right
-        // one to be sure we're looking at the form we expect.
-        wait_for_text(&c, &format!("step {} of 8", i + 1), Duration::from_secs(10)).await;
+        // Each step renders "Step N of 8" (`nav-stepper__count`) — wait for
+        // the right one to be sure we're looking at the form we expect.
+        wait_for_text(&c, &format!("Step {} of 8", i + 1), Duration::from_secs(10)).await;
 
         // Set the answer value and submit in one JS round trip (chromedriver
         // send_keys is unreliable on freshly-rendered forms, and a separate

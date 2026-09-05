@@ -13,7 +13,7 @@ Feature: Retainer intake walk
     When the lawyer visits /app/lawyer/notations/:id/step
     Then the response status is 200
     And the page asks the "entity" question
-    And the page shows "step 1 of 8"
+    And the page shows "Step 1 of 8"
 
   Scenario: Answering the first question advances to address__principal_office
     When the lawyer submits "Libra Holdings LLC" to /app/lawyer/notations/:id/step

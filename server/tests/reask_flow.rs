@@ -83,7 +83,7 @@ async fn lawyer_sends_a_retainer_back_for_changes_and_it_loops_to_review() {
 
     // Walk the two retainer questions (person__client, project__engagement).
     for (i, value) in ["Libra", "Estate Plan — Libra"].iter().enumerate() {
-        wait_for_text(&c, &format!("step {} of 2", i + 1), Duration::from_secs(15)).await;
+        wait_for_text(&c, &format!("Step {} of 2", i + 1), Duration::from_secs(15)).await;
         set_input(&c, "input[name=\"value\"], textarea[name=\"value\"]", value).await;
         submit(&c, "form.admin-form").await;
     }

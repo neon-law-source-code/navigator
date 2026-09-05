@@ -158,6 +158,23 @@ Name the pair on Cruller v. Prine. The onboarding letter is `onboarding__letter`
 `offboarding__letter`. The Projects-list badge reads presence — `onboarding on file` — not execution. A bespoke letter
 still counts if it declares `kind: onboarding` or `kind: offboarding`.
 
+### Walk the retainer intake one question at a time
+
+AIDA binds the retainer in one call, but a lawyer can also walk it by hand at `/app/lawyer/notations/{notation_id}/step`
+— one question per screen, the same focus-set chrome the client's own self-serve intake shares: a step list naming the
+whole chain, a progress bar, and the question's own control below it. A closed choice — the engagement's governing law,
+or a yes/no — renders as cards to choose between, not a bare checkbox or a compact radio list. Completed steps show as
+plain markers; there is no revisit route today.
+
+The client-facing half of the same chain is `/app/projects/{code}/intake/{notation_id}` — the client confirms or
+corrects whatever the lawyer already entered, through the identical chrome.
+
+---
+
+Start a retainer walk from `/app/lawyer/retainers/new` and step through a few questions live. Point out that the step
+list names every question up front, not just the current one, and that the governing-law question at the end offers its
+three choices as cards.
+
 ### The other notations on a matter
 
 After the engagement is on file, the matter accumulates the work itself. Those later notations are not unique. A

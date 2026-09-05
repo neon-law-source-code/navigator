@@ -309,15 +309,35 @@ pub(crate) async fn resolve_reference_answer(
     surreal: &store::surreal::SurrealDb,
     answer_type: &str,
     notation_id: uuid::Uuid,
-    body: &std::collections::BTreeMap<String, String>,
+    body: &[(String, String)],
 ) -> Result<ReferenceResolution, CandidateError> {
+    // ENG-505: a `multiple_choice` answer posts several `value` fields, one
+    // per checked card — an ordered-pairs body (rather than a `BTreeMap`,
+    // which can hold only the last of any repeated key) is what lets this
+    // read every one of them. Stored as one JSON array; the closed-choice
+    // guard (`workflows::notation_session::ensure_declared_choice`) checks
+    // each selected key against the question's declared set on write.
+    if answer_type == "multiple_choice" {
+        let selected: Vec<&str> = body
+            .iter()
+            .filter(|(k, _)| k == "value")
+            .map(|(_, v)| v.as_str())
+            .collect();
+        let value = serde_json::to_string(&selected).unwrap_or_else(|_| "[]".to_string());
+        return Ok(ReferenceResolution::Resolved { value, id: None });
+    }
     // Propagate a candidate-lookup failure as an error (the caller maps it to
     // a `500`) rather than validating a pick against a silently-empty list.
     let candidates = reference_candidates(surreal, answer_type, notation_id).await?;
     // A picker selection: `id` names the chosen row. Validate it against the
     // in-scope candidates so a hand-crafted POST can't smuggle an
     // out-of-scope id (an unrelated matter's person, a made-up uuid).
-    if let Some(id_str) = body.get("id").map(|s| s.trim()).filter(|s| !s.is_empty()) {
+    if let Some(id_str) = body
+        .iter()
+        .find(|(k, _)| k == "id")
+        .map(|(_, v)| v.trim())
+        .filter(|s| !s.is_empty())
+    {
         let Ok(id) = uuid::Uuid::parse_str(id_str) else {
             return Ok(ReferenceResolution::Rejected(
                 "Choose an option from the list.",
@@ -332,7 +352,11 @@ pub(crate) async fn resolve_reference_answer(
         });
     }
     // No `id`: the display-name path. `value` names the row.
-    let value = body.get("value").cloned().unwrap_or_default();
+    let value = body
+        .iter()
+        .find(|(k, _)| k == "value")
+        .map(|(_, v)| v.clone())
+        .unwrap_or_default();
     if reference_requires_pick(answer_type) {
         // A `country` must match a seeded row; resolve its id from the name
         // and reject an off-list value, exactly as the `<select>` enforced —
@@ -446,7 +470,17 @@ pub(crate) async fn resolve_intake_state(
             prior_value,
             position,
             total,
+            steps,
         } => {
+            let steps = steps
+                .iter()
+                .map(|code| {
+                    webapp::components::StepMeta::new(
+                        code.as_str(),
+                        crate::retainer_walk::humanize_state_label(code),
+                    )
+                })
+                .collect();
             let country_options =
                 jurisdiction_option_names(&state.surreal, &question.answer_type).await;
             let choices = question
@@ -478,10 +512,12 @@ pub(crate) async fn resolve_intake_state(
                     question_code: question.code,
                     question_prompt: question.prompt,
                     answer_type: question.answer_type,
+                    help_text: question.help_text,
                     prior_value: prior_value.unwrap_or_default(),
                     country_options,
                     choices,
                     person_candidates,
+                    steps,
                     position,
                     total,
                 },
@@ -503,8 +539,12 @@ pub async fn intake_save(
     State(state): State<AdminState>,
     Path((project_code, notation_id)): Path<(String, Uuid)>,
     session: Option<Extension<SessionData>>,
-    axum::Form(body): axum::Form<std::collections::BTreeMap<String, String>>,
+    // Ordered pairs, not a `BTreeMap`: a `multiple_choice` question posts
+    // several same-named `value` fields (one per checked card), and a map
+    // can hold only the last of any repeated key.
+    axum::Form(pairs): axum::Form<Vec<(String, String)>>,
 ) -> Response {
+    let body: std::collections::BTreeMap<String, String> = pairs.iter().cloned().collect();
     let Some(Extension(session)) = session else {
         return not_found();
     };
@@ -554,7 +594,7 @@ pub async fn intake_save(
             &state.surreal,
             &question.answer_type,
             notation_id,
-            &body,
+            &pairs,
         )
         .await
         {
@@ -636,4 +676,47 @@ fn not_found() -> Response {
         webapp::error_pages::not_found_signed_in(),
     )
         .into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// ENG-505: a `multiple_choice` question posts several same-named
+    /// `value` fields, one per checked card — the reason
+    /// [`resolve_reference_answer`] takes ordered pairs rather than a
+    /// `BTreeMap`, which can hold only the last of any repeated key. This
+    /// branch never touches `surreal` (no candidate lookup applies to a
+    /// closed choice set), so an unseeded in-memory handle is enough.
+    #[tokio::test]
+    async fn multiple_choice_assembles_every_selected_value_into_one_json_array() {
+        let surreal = store::test_support::mem_surreal().await;
+        let body = vec![
+            ("value".to_string(), "ein".to_string()),
+            ("value".to_string(), "name".to_string()),
+        ];
+        let resolved = resolve_reference_answer(&surreal, "multiple_choice", Uuid::nil(), &body)
+            .await
+            .expect("no candidate lookup for multiple_choice");
+        let ReferenceResolution::Resolved { value, id } = resolved else {
+            panic!("expected Resolved");
+        };
+        assert_eq!(value, r#"["ein","name"]"#);
+        assert_eq!(id, None);
+    }
+
+    /// No card checked posts no `value` field at all — a real "chose none of
+    /// these", not an error.
+    #[tokio::test]
+    async fn multiple_choice_with_no_selection_resolves_to_an_empty_array() {
+        let surreal = store::test_support::mem_surreal().await;
+        let resolved = resolve_reference_answer(&surreal, "multiple_choice", Uuid::nil(), &[])
+            .await
+            .expect("no candidate lookup for multiple_choice");
+        let ReferenceResolution::Resolved { value, id } = resolved else {
+            panic!("expected Resolved");
+        };
+        assert_eq!(value, "[]");
+        assert_eq!(id, None);
+    }
 }

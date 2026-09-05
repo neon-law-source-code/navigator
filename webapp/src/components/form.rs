@@ -1485,8 +1485,7 @@ mod tests {
         let name = html.find("value=\"name\"").expect("the name card renders");
         let name_card_end = html[name..]
             .find("</label>")
-            .map(|i| name + i)
-            .unwrap_or(html.len());
+            .map_or(html.len(), |i| name + i);
         assert!(
             !html[name..name_card_end].contains("checked"),
             "the un-selected card stays unchecked: {html}"

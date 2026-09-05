@@ -796,11 +796,9 @@ pub(crate) async fn resolve_walker_step(
         notation_id,
     )
     .await;
-
     if format == Some("json") {
         return Err(step_json(state, notation_id, step).await);
     }
-
     let question = match step {
         Ok(NextStep::NeedsAnswer { question }) => question,
         Ok(NextStep::QuestionnaireComplete) => {

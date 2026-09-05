@@ -347,3 +347,38 @@ fn production_overlay_excludes_the_local_rauthy_fixture() {
         );
     }
 }
+
+/// Once a real `RESTATE_IDENTITY_KEY` is configured, the worker's Restate SDK
+/// endpoint requires a valid Restate Cloud signature on every request it
+/// serves, including its own `/restate/health`. Neither kubelet's readiness
+/// probe nor the GCE LB's `BackendConfig` health check ever carries that
+/// signature, so a health check proxied through to the worker 401s forever.
+/// Envoy must answer this specific path itself instead of forwarding it.
+#[test]
+fn workflows_service_envoy_answers_the_health_probe_without_proxying_to_the_worker() {
+    let Some(resources) = render(GKE) else {
+        return;
+    };
+    let config_map = resource(&resources, "ConfigMap", "workflows-service-envoy");
+    let envoy_yaml = config_map["data"]["envoy.yaml"]
+        .as_str()
+        .expect("envoy.yaml embedded config");
+    let envoy_config: Value = serde_yaml::from_str(envoy_yaml).expect("valid envoy config YAML");
+    let routes = envoy_config["static_resources"]["listeners"][0]["filter_chains"][0]["filters"][0]
+        ["typed_config"]["route_config"]["virtual_hosts"][0]["routes"]
+        .as_sequence()
+        .expect("configured routes");
+    let health_route = routes
+        .iter()
+        .find(|route| route["match"]["path"].as_str() == Some("/restate/health"))
+        .expect("a dedicated /restate/health route");
+    assert!(
+        health_route["direct_response"]["status"].as_u64() == Some(200),
+        "envoy must answer /restate/health itself with a direct_response, not a proxy"
+    );
+    assert_ne!(
+        health_route["route"]["cluster"].as_str(),
+        Some("restate_worker"),
+        "the health check must never reach the identity-gated worker endpoint"
+    );
+}

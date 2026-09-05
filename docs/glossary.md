@@ -483,11 +483,11 @@ A matter document — a project-scoped [Asset](#asset) carrying the metadata cal
 `navigator site document upload` require it; omitted or blank is `400 kind_required`. Inbound email attachments still
 file as `unclassified`.
 
-> **Source of truth = the assets row.** When the application generates or proxies a document (a rendered retainer PDF, a
-  raw inbound email body), the bytes land in object storage via [`cloud::StorageService`](../cloud/) and the `assets`
-  row is the canonical record. A planned sync writes a mirror copy into the Project's archive folder so the lawyer's
-  "open the matter" view stays complete — but the assets row, not the archive copy, is the row the schema, the audit
-  trail, and the application's read path point at.
+> **Source of truth = object storage plus the assets row.** When the application generates or proxies a document (a
+> rendered retainer PDF, a raw inbound email body), the bytes land in object storage via
+> [`cloud::StorageService`](../cloud/) and the `assets` row is the canonical pointer. `navigator site sync` uses a
+> Project repository's `documents/` directory only as transient local staging, then replaces each staged file with a
+> committed YAML pointer to that revision. Raw legal-document bytes never enter Project Git.
 
 - Schema: [`asset` in `navigator.surql`](../store/src/schema/navigator.surql) Queries:
   [`store::assets`](../store/src/assets.rs) Lives in: the `asset` table in SurrealDB (document-shaped rows)

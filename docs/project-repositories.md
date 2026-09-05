@@ -7,7 +7,7 @@ Each Navigator [Project](glossary.md#project) coordinates five distinct surfaces
 | Documents bucket | Working files | Path-like keys under `projects/<code>` in the private documents bucket |
 | Google Drive | Ingest dropbox | Files people drop in; Navigator copies them into the documents bucket |
 | Navigator | Matter record | Project identity, participation, Notations, and asset provenance |
-| Project repository | Source control | Notation templates and client-portal source only |
+| Project repository | Source control | Notation templates, client-portal source, and document pointer YAML only |
 | Served client portal | Authorized application | The Project's client-facing surface |
 
 Git never stores legal files or client data. Navigator-managed systems and approved file stores do. A Project's deletion
@@ -25,6 +25,7 @@ holds that Project's notation templates and its client portal side by side:
 ├── .github/workflows/gate.yml
 ├── portal/            # React + Vite; the client's portal
 ├── templates/         # *.md notation blueprints
+├── documents/         # *.yml asset pointers; staged bytes are ignored and removed after sync
 ├── AGENTS.md
 ├── CLAUDE.md
 ├── LICENSE.md
@@ -89,6 +90,30 @@ and the same reader serve both a Project repository and a staged sample-project 
 `store::sample_project::MANIFEST_FILE` and `cli/src/projects/repository.rs`'s `PROJECT_MANIFEST` name the identical
 string on purpose, so a rename of one cannot leave the other stale. Unknown keys, such as `host:`, are ignored rather
 than refused, so a downstream deployment table can add its own without breaking this gate.
+
+## Document staging and pointers
+
+`documents/` is a transient staging surface, not a second document store. Drop a local file below it and run:
+
+```bash
+navigator site sync
+```
+
+The command derives the document slug from its path below `documents/`, uploads the bytes through Navigator's
+authenticated API, writes `<filename>.yml` only after the upload succeeds, and then removes the staged file. Object
+storage and the `assets` revision chain remain authoritative. A retry of identical bytes is a no-op at the API and
+returns the same pointer, so an interrupted run can safely continue. `--dry-run` lists pending uploads without logging
+in or changing the checkout.
+
+The pointer records `kind`, desired `visibility`, current revision metadata, and the previous asset id when the chain
+has one. It never contains an object-storage coordinate or legal-document bytes. Editing a pointer's visibility and
+running sync reconciles that value through the same authorized API; the normal API audit records the actor and
+operation. Folder conventions infer `filing` for `pleadings/`, `exhibit` for `exhibits/`, and `agreement` for
+`agreements/`; other paths use `unclassified`. Visibility defaults to `internal`.
+
+The command creates `documents/.gitignore` without overwriting an existing file. The repository gate admits that file
+and `documents/**/*.yml` only; every other file below `documents/` is rejected. Raw legal-document bytes must never be
+committed to a Project repository.
 
 **The manifest is what `.github/actions/application-publish` reads.** `cli/src/projects/repository.rs`'s own
 [`validate`] still takes the code from the checkout directory — it runs inside one repository's own CI with no access to

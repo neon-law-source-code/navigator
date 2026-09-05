@@ -289,14 +289,6 @@ async fn archive_completed_documents(
         .fetch_completed_documents(&SignatureRequestId(envelope_id.to_string()))
         .await?;
 
-    // Additively file the executed PDFs into the matter repo with
-    // attribution (one commit, both files), then capture the commit
-    // event to the data lake. This borrows the bytes *before* the
-    // fixed-key puts below move them, and is non-fatal: a failure here
-    // never blocks archival, since the retrieval path reads the fixed
-    // keys, not the repo. See docs/project-repositories.md §8.
-    commit_executed_to_repo(state, notation_id, &docs.signed_pdf, &docs.certificate_pdf).await;
-
     let put = |key: String, bytes: Vec<u8>| async move {
         state
             .storage
@@ -316,49 +308,6 @@ async fn archive_completed_documents(
     .await?;
     tracing::info!(%envelope_id, "esignature webhook: archived signed retainer + certificate");
     Ok(())
-}
-
-/// Commit the executed document PDF + Certificate of Completion into the
-/// matter's repo, authored as the signing client, so `git log` records
-/// the execution. Template-agnostic — the retainer, the trust, and any
-/// future signed template land here. Best-effort: the executed documents
-/// already live at their fixed storage keys (the retrieval path's source
-/// of truth), so any failure here is logged and swallowed.
-async fn commit_executed_to_repo(
-    state: &crate::AppState,
-    notation_id: uuid::Uuid,
-    signed_pdf: &[u8],
-    certificate_pdf: &[u8],
-) {
-    let Ok(Some(n)) = store::notations::find_by_id(&state.surreal, notation_id).await else {
-        return;
-    };
-    // Attribute to the client who signed; fall back to the matter itself
-    // if the persons row can't be loaded.
-    let (name, email) = match store::persons::find_by_id(&state.surreal, n.person_id).await {
-        Ok(Some(p)) => (p.name, p.email),
-        _ => (
-            "Neon Law Navigator".to_string(),
-            "matter@localhost".to_string(),
-        ),
-    };
-    crate::matter_documents::commit_files(
-        &state.surreal,
-        &state.storage,
-        n.project_id,
-        repos::Author {
-            name: &name,
-            email: &email,
-        },
-        "esignature",
-        "executed",
-        "esignature: executed signed document + certificate of completion",
-        &[
-            ("signed-document.pdf", signed_pdf),
-            ("certificate-of-completion.pdf", certificate_pdf),
-        ],
-    )
-    .await;
 }
 
 #[cfg(test)]

@@ -31,7 +31,9 @@ own persistence logic.
   database credentials.
 - **Document upload.** `navigator site document upload --project <code> --file <path> --kind <kind>` reads the file
   locally and sends it with the same bearer to `POST /app/api/projects/{id}/documents`. `--kind` is required and must be
-  an asset-lane value — the same enum OpenAPI publishes on that operation. The CLI never writes the store itself.
+  an asset-lane value — the same enum OpenAPI publishes on that operation. `navigator site sync` uses this door for each
+  staged file and the scoped document `PATCH` door for pointer visibility; it never calls object storage or writes the
+  store itself.
 - **MCP.** A tool in `mcp/src/tools/` translates its arguments into a shared command. The `mcp` crate cannot depend on
   `portal`, so it converges at the `store` / `workflows` layer — e.g. `aida_link_person_project` calls
   `store::participation::add_participant` / `update_participant`, the same commands the participation `/app/api` door

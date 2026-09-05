@@ -271,6 +271,11 @@ fn api_operation_table() -> Vec<(&'static str, &'static str, MethodRouter<ApiSta
         ),
         (
             "PATCH",
+            "/app/api/projects/{id}/documents/{asset_id}",
+            patch(update_document_visibility_door),
+        ),
+        (
+            "PATCH",
             "/app/api/notations/{id}/clauses/{clause_id}",
             patch(edit_clause),
         ),
@@ -2530,6 +2535,9 @@ pub struct ValidationViolation {
 #[derive(Deserialize)]
 struct UploadDocumentRequest {
     filename: String,
+    /// Stable identity below a Project repository's `documents/` directory.
+    /// Defaults to `filename` for the one-file upload command.
+    slug: Option<String>,
     /// Base64-encoded file bytes.
     content_base64: String,
     content_type: Option<String>,
@@ -2543,9 +2551,10 @@ struct UploadDocumentRequest {
 }
 
 /// `POST /app/api/projects/{id}/documents` — file a document into a matter, the
-/// REST mirror of the lawyer upload control. Both converge on
-/// `matter_documents::record_document`. Lawyer-tier only and matter-scoped
-/// (out-of-scope → 404). `201` with the new document id; a blank filename,
+/// REST mirror of the lawyer upload control. Bytes go to authoritative object
+/// storage and the response is the source-safe pointer that may be committed.
+/// Lawyer-tier only and matter-scoped (out-of-scope → 404). `201` for a new
+/// revision and `200` for an identical retry; a blank filename,
 /// a missing or blank `kind`, undecodable base64, or a `kind` the asset lane
 /// does not accept is `400`.
 ///
@@ -2604,18 +2613,12 @@ async fn upload_document_door(
     } else {
         store::documents::visibility::INTERNAL
     };
-    // File under the acting lawyer for git attribution, mirroring the form.
-    let (author_name, author_email) = match lawyer.0.person_id {
-        Some(pid) => match store::persons::find_by_id(&state.surreal, pid)
-            .await
-            .ok()
-            .flatten()
-        {
-            Some(p) => (p.name, p.email),
-            None => ("Navigator API".to_string(), "api@neonlaw.com".to_string()),
-        },
-        None => ("Navigator API".to_string(), "api@neonlaw.com".to_string()),
-    };
+    let slug = input
+        .slug
+        .as_deref()
+        .map(str::trim)
+        .filter(|slug| !slug.is_empty())
+        .unwrap_or(filename);
     let args = store::documents::IngestArgs {
         project_id: id,
         source: store::documents::source::UPLOAD,
@@ -2635,23 +2638,98 @@ async fn upload_document_door(
         secondary_storage_key: None,
         visibility,
     };
-    let ingested = crate::matter_documents::record_document(
+    let filed = store::assets::file_revision(
         &state.surreal,
         &state.storage,
-        repos::Author {
-            name: &author_name,
-            email: &author_email,
-        },
         &args,
+        &store::documents::DocumentIdentity {
+            slug: Some(slug),
+            published_at: None,
+            metadata: None,
+        },
         &bytes,
     )
     .await
-    .map_err(ApiError::Ingest)?;
-    Ok((
-        StatusCode::CREATED,
-        Json(serde_json::json!({ "document_id": ingested.asset_id })),
+    .map_err(ApiError::Revision)?;
+    let status = match filed {
+        store::assets::Filed::Revision(_) => StatusCode::CREATED,
+        store::assets::Filed::Unchanged { .. } => StatusCode::OK,
+    };
+    let pointer = document_pointer(&state.surreal, id, slug, kind).await?;
+    Ok((status, Json(pointer)).into_response())
+}
+
+async fn document_pointer(
+    surreal: &store::surreal::SurrealDb,
+    project_id: Uuid,
+    slug: &str,
+    kind: &str,
+) -> Result<store::document_pointers::DocumentPointer, ApiError> {
+    let revisions = store::assets::revisions(surreal, project_id, slug)
+        .await
+        .map_err(ApiError::Asset)?;
+    let current = revisions.first().ok_or_else(|| {
+        ApiError::Db("a filed document revision could not be read back".to_string())
+    })?;
+    Ok(store::document_pointers::DocumentPointer {
+        kind: kind.to_string(),
+        visibility: current.visibility.clone(),
+        current_version: store::document_pointers::PointerVersion {
+            version: revisions.len(),
+            asset_id: current.id,
+            created_at: current
+                .inserted_at
+                .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+            sha256: current.sha256_hex.clone(),
+            size_bytes: current.byte_size,
+        },
+        previous_version: revisions.get(1).map(|asset| asset.id),
+    })
+}
+
+#[derive(Deserialize)]
+struct UpdateDocumentVisibilityRequest {
+    visibility: String,
+}
+
+/// Reconcile a committed pointer's desired visibility with its current asset.
+/// The standard API audit middleware records the actor, scoped path, method,
+/// status, and request id for every attempt.
+async fn update_document_visibility_door(
+    State(state): State<ApiState>,
+    lawyer: LawyerSession,
+    Path((project_id, asset_id)): Path<(Uuid, Uuid)>,
+    JsonOrForm(input): JsonOrForm<UpdateDocumentVisibilityRequest>,
+) -> Result<Response, ApiError> {
+    let in_scope = store::access::can_see_project_as_lawyer(
+        &state.surreal,
+        lawyer.0.person_id,
+        lawyer.0.role,
+        project_id,
     )
-        .into_response())
+    .await
+    .unwrap_or(false);
+    if !in_scope {
+        return Err(ApiError::NotFound);
+    }
+    let visibility = input.visibility.trim();
+    if !matches!(
+        visibility,
+        store::documents::visibility::INTERNAL | store::documents::visibility::CLIENT
+    ) {
+        return Ok(bad_request(
+            "invalid_visibility",
+            "visibility must be `internal` or `client`.",
+        ));
+    }
+    let Some(changed) =
+        store::assets::set_visibility(&state.surreal, project_id, asset_id, visibility)
+            .await
+            .map_err(ApiError::Asset)?
+    else {
+        return Err(ApiError::NotFound);
+    };
+    Ok(Json(serde_json::json!({ "changed": changed })).into_response())
 }
 
 /// Map a contract-review action outcome onto an API response: `204` on success,
@@ -3056,6 +3134,8 @@ pub enum ApiError {
     /// (a 400) from a database or storage fault (a 500) by matching the
     /// variant — never by matching the message text.
     Ingest(store::documents::IngestError),
+    Revision(store::assets::RevisionError),
+    Asset(store::assets::AssetError),
 }
 
 impl From<store::persons::PersonError> for ApiError {
@@ -3929,13 +4009,16 @@ impl IntoResponse for ApiError {
             // one is matched and the rest fall through to 500 below — a
             // catch-all 400 here would report a storage outage as the
             // caller's mistake.
-            Self::Ingest(store::documents::IngestError::InvalidKind(kind)) => bad_request(
-                "invalid_kind",
-                &format!(
-                    "`{kind}` is not a document kind. Accepted values are: {}.",
-                    accepted_asset_kinds().join(", ")
-                ),
-            ),
+            Self::Ingest(store::documents::IngestError::InvalidKind(kind))
+            | Self::Revision(store::assets::RevisionError::KindNotFilable(kind)) => {
+                bad_request(
+                    "invalid_kind",
+                    &format!(
+                        "`{kind}` is not a document kind. Accepted values are: {}.",
+                        accepted_asset_kinds().join(", ")
+                    ),
+                )
+            }
             Self::Ingest(e) => {
                 tracing::error!(error = %e, "api: document ingest error");
                 (
@@ -3943,6 +4026,18 @@ impl IntoResponse for ApiError {
                     Json(serde_json::json!({ "error": "internal" })),
                 )
                     .into_response()
+            }
+            Self::Revision(store::assets::RevisionError::KindChanged { .. }) => bad_request(
+                "kind_changed",
+                "A document revision cannot change the document kind.",
+            ),
+            Self::Revision(e) => {
+                tracing::error!(error = %e, "api: document revision error");
+                (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": "internal" }))).into_response()
+            }
+            Self::Asset(e) => {
+                tracing::error!(error = %e, "api: asset error");
+                (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": "internal" }))).into_response()
             }
         }
     }

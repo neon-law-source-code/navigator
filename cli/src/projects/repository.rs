@@ -76,6 +76,8 @@ use crate::devx::github_setup::REQUIRED_CHECK;
 
 /// The notation blueprints Navigator imports.
 const TEMPLATE_DIRECTORY: &str = "templates";
+/// Ephemeral document staging plus committed pointer YAML.
+pub(crate) const DOCUMENT_DIRECTORY: &str = "documents";
 /// The client portal's Vite workspace.
 ///
 /// `pub(crate)` because [`super::super::devx::github_setup`] checks for a
@@ -115,6 +117,7 @@ const ALLOWED_ROOTS: &[&str] = &[
     "LICENSE.md",
     "README.md",
     "fixtures",
+    DOCUMENT_DIRECTORY,
     // The manifest a Project repository declares its Project code in. Refusing
     // it made the layout unsatisfiable for every repository that carries one,
     // which is why the pinned validate action had to be pulled from all six
@@ -148,7 +151,6 @@ const FORBIDDEN_COMPONENTS: &[&str] = &[
     "client_uploads",
     "dependencies",
     "dist",
-    "documents",
     "generated",
     "node_modules",
     "output",
@@ -471,6 +473,20 @@ fn validate_layout(root: &Path, errors: &mut Vec<Finding>) {
                 entry.path(),
                 "path is outside the source-only Project repository layout",
             ));
+        }
+        if first == DOCUMENT_DIRECTORY && entry.file_type().is_file() {
+            let is_pointer = entry
+                .path()
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .is_some_and(|extension| extension == "yml");
+            let is_guard = components.len() == 2 && components[1] == ".gitignore";
+            if !is_pointer && !is_guard {
+                errors.push(Finding::at(
+                    entry.path(),
+                    "legal documents and raw document bytes must not be committed; keep only `*.yml` pointers under `documents/`",
+                ));
+            }
         }
         if let Some(component) = components
             .iter()

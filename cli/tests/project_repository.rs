@@ -216,6 +216,40 @@ fn client_uploads_and_generated_output_are_refused() {
         .stderr(str::contains("must not be committed"));
 }
 
+#[test]
+fn document_pointers_are_source_but_document_bytes_are_refused() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "example-project").success();
+    fs::create_dir_all(dir.path().join("documents/exhibits/2026-09-05")).unwrap();
+    fs::write(
+        dir.path()
+            .join("documents/exhibits/2026-09-05/screenshot.png.yml"),
+        "kind: exhibit\nvisibility: internal\ncurrent_version:\n  version: 1\n  asset_id: 0199b9e4-14b7-7ad0-87a5-71ef24a46d40\n  created_at: 2026-09-05T12:00:00Z\n  sha256: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n  size_bytes: 42\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("documents/.gitignore"),
+        "*\n!*/\n!*.yml\n!.gitignore\n",
+    )
+    .unwrap();
+
+    validate(dir.path(), "example-project")
+        .success()
+        .stdout(str::contains("0 error(s)"));
+
+    let binary = dir
+        .path()
+        .join("documents/exhibits/2026-09-05/screenshot.png");
+    fs::write(&binary, b"synthetic image bytes").unwrap();
+    validate(dir.path(), "example-project")
+        .failure()
+        .code(1)
+        .stderr(str::contains(binary.display().to_string()))
+        .stderr(str::contains(
+            "legal documents and raw document bytes must not be committed",
+        ));
+}
+
 /// The retired `notations repository` command is gone rather than aliased.
 #[test]
 fn the_notations_repository_command_is_gone() {

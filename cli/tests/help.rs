@@ -459,7 +459,7 @@ fn site_help_lists_the_live_deployment_members() {
     assert_eq!(
         command_names(&output),
         vec![
-            "document", "import", "login", "logout", "mcp", "notation", "projects", "seed",
+            "document", "import", "login", "logout", "mcp", "notation", "projects", "seed", "sync",
             "whoami", "help",
         ]
     );
@@ -486,6 +486,10 @@ fn site_document_upload_help_requires_kind() {
             kind.as_str()
         );
     }
+    assert!(
+        output.contains("default: internal"),
+        "long help must state the default visibility, got: {output}"
+    );
 }
 
 #[test]

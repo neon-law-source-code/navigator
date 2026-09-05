@@ -74,8 +74,8 @@ The cluster lane refuses to start unless all four of these are on `PATH` — `cl
 with `require_tools(&["kind", "kubectl", "docker", "helm"])`. Docker and `kubectl` are already above and both arrive
 with Docker Desktop, which is exactly why the remaining two are easy to miss:
 
-- **`kind`, at v0.32.0** — the version `.github/workflows/deploy.yml:807` pins for the KIND integration gate, in
-  lockstep with the `kindest/node:v1.36.1` digest pinned at `.github/workflows/deploy.yml:814`. Take that version rather
+- **`kind`, at v0.32.0** — the version `.github/workflows/deploy.yml:852` pins for the KIND integration gate, in
+  lockstep with the `kindest/node:v1.36.1` digest pinned at `.github/workflows/deploy.yml:859`. Take that version rather
   than the latest release: the workflow records that v0.32.0's `kind load` is what understands the containerd config v4
   the v1.36.1 node writes, and that the two are meant to be bumped together.
 - **`helm`, any release with OCI registry support** — the lane uses it for one thing, `helm upgrade --install` of the

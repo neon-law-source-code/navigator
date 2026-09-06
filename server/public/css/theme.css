@@ -1641,6 +1641,30 @@ a.nav-pagination__link:hover {
   font-weight: 700;
 }
 
+/* The day-rate badge: a small bill glyph beside a bold "$N a day" caption, so
+   the flat fee's day rate reads at a glance instead of only in the blurb
+   sentence beneath it. */
+.pricing-card__day-rate {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--nav-radius-lg);
+  background: var(--nav-color-surface-subtle);
+}
+
+.pricing-card__day-rate-mark {
+  width: 3.5rem;
+  height: auto;
+  flex-shrink: 0;
+}
+
+.pricing-card__day-rate-label {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--nav-color-primary);
+}
+
 .pricing-card__features {
   list-style: none;
   padding: 0;

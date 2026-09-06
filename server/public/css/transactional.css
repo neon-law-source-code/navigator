@@ -120,7 +120,40 @@
   background: var(--firm-brand-strong);
 }
 
-/* ---- The turnaround dial ----------------------------------------------- */
+/* ---- The day-rate mark -------------------------------------------------- */
+
+/* Fills the hero's second grid column — the slot the retired turnaround dial
+   used to occupy — with the base package's published day rate, drawn as a
+   bill glyph rather than only stated in the fee section's blurb sentence. */
+.speed-hero__rate {
+  position: relative;
+  z-index: 1;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  justify-self: center;
+}
+
+@media (min-width: 60rem) {
+  .speed-hero__rate {
+    display: flex;
+  }
+}
+
+.speed-hero__rate-mark {
+  width: clamp(9rem, 16vw, 13rem);
+  height: auto;
+  filter: drop-shadow(0 1rem 2rem var(--firm-brand-glow));
+}
+
+.speed-hero__rate-caption {
+  margin: 0;
+  font-family: var(--firm-serif);
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--firm-brand);
+}
 
 /* ---- Accurate · Efficient · Speedy ------------------------------------- */
 

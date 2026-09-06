@@ -32,14 +32,15 @@ use serde::{Deserialize, Serialize};
 use crate::components::{
     wire_runs, Accordion, AppFooter, AppLogo, AppNavbar, Avatar, BackBreadcrumb, Card, CatalogHero,
     Choice, ChoiceGroup, ChoiceGroupOption, CodeBlock, Column, ConfirmDelete, DataTable,
-    ExternalLink, Field, FooterAttorney, FooterBarLicense, FooterNavLink, FooterOffice, FormCard,
-    GitHubStars, Hero, HeroAlign, HeroLevel, Icon, IconName, ImpersonationBanner,
-    ImpersonationView, LawyerPortalBreadcrumb, LegalBlueprintDisclaimer, NavigatorDestination,
-    NavigatorFooter, NavigatorFooterLink, NavigatorNavbar, NavigatorShell, Pagination,
-    PeopleListInputs, PersonChoice, PersonPicker, PricingCard, PricingSection, Progress,
-    PublicShell, QuestionStage, RowActions, RunParagraph, SampleMattersBanner, SiteFooterLegal,
-    SiteHeader, SiteNavLink, SocialMeta, SortState, Stage, StageWidth, StepMeta, Stepper,
-    StepperPanel, TestimonialCard, TestimonialSection, Toast, ToastTone, THEME_STYLESHEET_HREF,
+    DayRateBadge, ExternalLink, Field, FooterAttorney, FooterBarLicense, FooterNavLink,
+    FooterOffice, FormCard, GitHubStars, Hero, HeroAlign, HeroLevel, Icon, IconName,
+    ImpersonationBanner, ImpersonationView, LawyerPortalBreadcrumb, LegalBlueprintDisclaimer,
+    NavigatorDestination, NavigatorFooter, NavigatorFooterLink, NavigatorNavbar, NavigatorShell,
+    Pagination, PeopleListInputs, PersonChoice, PersonPicker, PricingCard, PricingSection,
+    Progress, PublicShell, QuestionStage, RowActions, RunParagraph, SampleMattersBanner,
+    SiteFooterLegal, SiteHeader, SiteNavLink, SocialMeta, SortState, Stage, StageWidth, StepMeta,
+    Stepper, StepperPanel, TestimonialCard, TestimonialSection, Toast, ToastTone,
+    THEME_STYLESHEET_HREF,
 };
 // The vendor marks come from their own module rather than the theme root: they
 // are the one component whose colours are a third party's rather than the
@@ -770,6 +771,7 @@ fn PricingShowcase() -> Element {
             cta_label: "Start a matter".to_string(),
             cta_href: "mailto:contact@neonlaw.com".to_string(),
             featured_label: Some("$1,000, once".to_string()),
+            day_rate: None,
         },
         PricingCard {
             title: "Living trust".to_string(),
@@ -783,6 +785,10 @@ fn PricingShowcase() -> Element {
             cta_label: "Book a call".to_string(),
             cta_href: "https://cal.example/book".to_string(),
             featured_label: Some("$3,500, once".to_string()),
+            day_rate: Some(DayRateBadge {
+                amount: 10,
+                image_src: "/public/img/ten-dollar-bill/ten-dollar-bill.jpg".to_string(),
+            }),
         },
     ];
     rsx! {

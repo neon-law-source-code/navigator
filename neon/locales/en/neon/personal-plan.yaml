@@ -61,6 +61,7 @@ bands:
           - Credit monitoring (beta)
         href: "mailto:{firm_email}"
         href_label: Contact us
+        day_rate_bill: 1
   - kind: cards
     anchor: included
     overline: What's included

@@ -17,9 +17,10 @@
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::components::pricing::{PricingCard, PricingSection};
+use crate::components::pricing::{DayRateBadge, PricingCard, PricingSection};
 use crate::components::{
-    PracticeMark, PracticeMarkGlyph, PublicShell, SiteHeader, SiteNavLink, SocialMeta,
+    BillMarkGlyph, PracticeMark, PracticeMarkGlyph, PublicShell, SiteHeader, SiteNavLink,
+    SocialMeta,
 };
 use crate::litigation_page::HeroWord;
 use crate::public_chrome::{PublicChrome, PublicFooter};
@@ -69,6 +70,9 @@ pub struct PricingOffer {
     pub cadence: Option<String>,
     pub blurb: String,
     pub features: Vec<String>,
+    /// The flat fee's published day rate. See
+    /// [`crate::components::pricing::PricingCard::day_rate`].
+    pub day_rate: Option<DayRateBadge>,
 }
 
 /// The static transactional copy — resolved brand-safely at router-build time
@@ -189,9 +193,16 @@ pub fn TransactionalPage(chrome: PublicChrome, content: TransactionalContent) ->
 ///
 /// It carried a turnaround dial beside it — the published figure drawn as a ring
 /// with its qualifier beneath — which stated in a graphic what the Speedy virtue
-/// below states in a sentence.
+/// below states in a sentence. That second grid column now carries the base
+/// package's day rate instead, drawn from the same published [`PricingOffer`]
+/// the fee section renders — the flat annual fee is what the numeral states in
+/// a graphic what the fee section states in a sentence.
 #[component]
 fn SpeedHero(content: TransactionalContent) -> Element {
+    let day_rate = content
+        .pricing
+        .first()
+        .and_then(|offer| offer.day_rate.clone());
     rsx! {
         section { class: "speed-hero", "aria-labelledby": "speed-heading",
             div { class: "firm-glow speed-hero__glow", "aria-hidden": "true" }
@@ -217,6 +228,15 @@ fn SpeedHero(content: TransactionalContent) -> Element {
                     class: "nav-btn nav-btn--primary speed-hero__cta",
                     href: "{content.cta_href}",
                     "{content.cta_label}"
+                }
+            }
+            if let Some(badge) = day_rate {
+                div { class: "speed-hero__rate", "aria-hidden": "true",
+                    BillMarkGlyph {
+                        src: badge.image_src.clone(),
+                        class: "speed-hero__rate-mark".to_string(),
+                    }
+                    p { class: "speed-hero__rate-caption", "${badge.amount} a day" }
                 }
             }
         }
@@ -258,6 +278,7 @@ fn FeeSection(content: TransactionalContent) -> Element {
             cta_label: content.cta_label.clone(),
             cta_href: content.cta_href.clone(),
             featured_label: None,
+            day_rate: offer.day_rate.clone(),
         })
         .collect();
     rsx! {
@@ -385,6 +406,10 @@ mod tests {
                 cadence: Some("/year".to_string()),
                 blurb: "That's just $10 a day.".to_string(),
                 features: vec!["DocuSign sent & tracked at $5 per contract".to_string()],
+                day_rate: Some(DayRateBadge {
+                    amount: 10,
+                    image_src: "/public/img/ten-dollar-bill/ten-dollar-bill.jpg".to_string(),
+                }),
             }],
             availability_note: Some(
                 "We take on a limited number of Fractional GC clients at a time.".to_string(),
@@ -453,6 +478,35 @@ mod tests {
         for gone in ["speed-dial", "Measured from a complete intake"] {
             assert!(!out.contains(gone), "{gone} is gone: {out}");
         }
+    }
+
+    /// The dial's old grid slot now carries the base package's day rate,
+    /// drawn from the same figure the fee section publishes as a pricing
+    /// card, so a fresh copy edit cannot let the two drift apart.
+    #[test]
+    fn the_hero_states_the_published_day_rate_as_a_graphic() {
+        let out = html();
+        assert!(
+            out.contains("speed-hero__rate") && out.contains("ten-dollar-bill.jpg"),
+            "the hero draws the $10 bill photo: {out}"
+        );
+        assert!(out.contains("$10 a day"), "{out}");
+    }
+
+    /// A page with no published pricing card has no figure to draw, so the
+    /// hero renders no bill photo rather than a bare or stale one.
+    #[test]
+    fn no_pricing_card_means_no_hero_bill_mark() {
+        fn app() -> Element {
+            let mut view = content();
+            view.pricing.clear();
+            rsx! { TransactionalPage { chrome: PublicChrome::default(), content: view } }
+        }
+        let mut dom = VirtualDom::new(app);
+        dom.rebuild_in_place();
+        let out = dioxus_ssr::render(&dom);
+        assert!(!out.contains("speed-hero__rate"), "{out}");
+        assert!(!out.contains("ten-dollar-bill.jpg"), "{out}");
     }
 
     #[test]

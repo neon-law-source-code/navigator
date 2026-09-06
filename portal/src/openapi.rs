@@ -2307,7 +2307,7 @@ pub fn document_with_base(base: &str) -> Value {
             "type": "object",
             "required": ["model", "yaml"],
             "properties": {
-              "model": { "type": "string", "description": "Supported singular glossary term, currently `person` or `entity`." },
+              "model": { "type": "string", "description": "Supported singular glossary term: `person`, `entity`, `person_project_role`, or `person_entity_role`." },
               "yaml": { "type": "string", "description": "Seed YAML with `lookup_fields` and `records`." },
               "overwrite": { "type": "boolean", "default": false },
               "dry_run": { "type": "boolean", "default": false, "description": "Return the reconciliation plan without writing." }

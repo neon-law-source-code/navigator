@@ -45,13 +45,13 @@ pub enum SessionSource {
     #[default]
     Browser,
     Cli,
+    Ci,
 }
 
 /// Restricts a session to one endpoint, a closed set of seed models, and one
-/// project's records. Minted only for a CI-obtained token (ENG-345); every
-/// interactive login leaves [`SessionData::scope`] `None`, meaning
-/// unrestricted — the session may do everything its `role` allows, exactly
-/// as before this field existed. See ENG-344.
+/// project's records. Minted by `POST /auth/ci/seed-token`; every interactive
+/// login leaves [`SessionData::scope`] `None`, meaning unrestricted — the
+/// session may do everything its `role` allows.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SeedScope {
     /// The one route this session may reach, e.g. `/app/api/seed`.
@@ -125,9 +125,9 @@ pub struct SessionData {
     /// for restoring the admin session.
     #[serde(default)]
     pub impersonation: Option<Impersonation>,
-    /// A CI-minted session's write scope (ENG-344/ENG-345). `None` for every
-    /// interactive login and every session minted before this field existed —
-    /// an unrestricted session, same as today.
+    /// A CI-minted session's write scope. `None` for every interactive login and
+    /// every session minted before this field existed — an unrestricted session,
+    /// same as today.
     #[serde(default)]
     pub scope: Option<SeedScope>,
 }

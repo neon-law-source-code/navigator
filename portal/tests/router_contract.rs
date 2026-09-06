@@ -130,6 +130,7 @@ const CONTRACT: &[(&str, Access)] = &[
     ("/auth/callback", Access::PublicIngress),
     ("/auth/logout", Access::PublicIngress),
     ("/auth/cli/start", Access::PublicIngress),
+    ("/auth/ci/seed-token", Access::PublicIngress),
     ("/docusign/consent-callback", Access::PublicIngress),
     ("/assets/img/router-contract.svg", Access::PublicIngress),
 ];

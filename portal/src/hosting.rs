@@ -363,6 +363,7 @@ pub async fn build_from_env(brand_seed: store::seed::BrandSeed) -> anyhow::Resul
         canonical_host,
         portal_only,
         sessions,
+        github_oidc: crate::github_oidc::GitHubOidc::github_actions(),
         oauth,
         storage,
         assets_storage,

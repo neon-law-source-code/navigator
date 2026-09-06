@@ -41,6 +41,10 @@ async fn generate_pdf_persists_the_render_as_a_document_asset() {
         .unwrap()
         .expect("seeded notation")
         .project_id;
+    let project = store::projects::find_by_id(&surreal, project_id)
+        .await
+        .unwrap()
+        .expect("notation project");
 
     let storage = fs_storage().await;
     let deps = deps(surreal.clone(), storage.clone());
@@ -93,10 +97,6 @@ async fn generate_pdf_persists_the_render_as_a_document_asset() {
         serde_json::from_str(&recorded).expect("payload is a GeneratedPdfRef");
     assert_eq!(pdf_ref.asset_id, doc.id);
     assert_eq!(pdf_ref.storage_key, doc.storage_key);
-    let project = store::projects::find_by_id(&surreal, project_id)
-        .await
-        .unwrap()
-        .expect("notation project");
     assert_eq!(
         pdf_ref.storage_key,
         format!("projects/{}/documents/{}", project.code, pdf_ref.sha256)

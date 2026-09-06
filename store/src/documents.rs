@@ -167,7 +167,7 @@ pub struct DocumentIdentity<'a> {
 pub struct IngestedDocument {
     /// The `assets` row id for this document.
     pub asset_id: Uuid,
-    /// Project-scoped content-addressed key holding the document bytes.
+    /// Project-scoped content-addressed object key written for this document.
     pub storage_key: String,
     pub sha256_hex: String,
     pub byte_size: i64,

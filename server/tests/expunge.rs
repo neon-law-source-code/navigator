@@ -169,9 +169,9 @@ async fn governed_expunge_rewrites_deletes_and_records() {
 
 /// A `generate_pdf` step dual-writes the same bytes to two object-storage
 /// keys — the caller's notation key (`notations/<id>/document.pdf`, what
-/// the attest/signature steps and the portal read back) and the Project-scoped
-/// content-addressed key the `assets` row points at. A governed
-/// expunge must remove **both**, or a copy of the privileged bytes
+/// the attest/signature steps and the portal read back) and the
+/// Project-scoped content-addressed object the `assets` row points at. A
+/// governed expunge must remove **both**, or a copy of the privileged bytes
 /// survives outside the asset lifecycle (#470).
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[allow(clippy::too_many_lines)]
@@ -333,10 +333,17 @@ async fn governed_expunge_removes_every_key_of_a_generated_pdf() {
     );
 }
 
-/// Two matters can legitimately reference the same object — a shared exhibit,
-/// filed order, or blank government form. Expunge retains an object that an
-/// asset row on **another** matter still references, because deleting it on
-/// one matter's authority could violate the other's preservation duty.
+/// Two matters can legitimately hold the same bytes — a shared exhibit, a
+/// filed order, a blank government form. Before dedup was scoped to a matter
+/// (`store::documents::ingest_bytes_as`), one content-addressed object backed
+/// asset rows across matters, and expunge deleted it unconditionally. A
+/// sealing order on one matter therefore emptied an unrelated matter's
+/// document; if that matter was under a preservation duty, the deletion was
+/// spoliation caused by a case with no connection to it.
+///
+/// Scoping ingest stops new rows from sharing an object. Rows that already
+/// share one must still be safe, so expunge retains an object that an asset
+/// row on **another** matter still references.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn governed_expunge_retains_an_object_another_matter_still_references() {
     let repo_root = &*REPO_ROOT;
@@ -383,9 +390,10 @@ async fn governed_expunge_retains_an_object_another_matter_still_references() {
         )
         .unwrap();
 
-    // Model two existing rows that reference one shared object directly. New
-    // document ingests use Project-scoped keys, but the retain guard applies
-    // to every stored row regardless of how its key was assigned.
+    // One object, two asset rows — the pre-scoping corpus shape. Both
+    // ingests hash the same bytes, so both rows point at the same
+    // content-addressed key, which is exactly the shape the retain guard
+    // has to recognize.
     let shared_bytes: &[u8] = b"an exhibit on two matters";
     let shared_key = format!("blobs/{}", store::documents::sha256_hex(shared_bytes));
     storage
@@ -410,12 +418,12 @@ async fn governed_expunge_retains_an_object_another_matter_still_references() {
         )
         .await
         .unwrap();
+        // Build the historical flat-key corpus deliberately. New ingests use
+        // Project-scoped keys; this row rewrite isolates the legacy retain
+        // guard that must keep protecting records written before that change.
         surreal
-            .query("UPDATE $asset SET storage_key = $storage_key")
-            .bind((
-                "asset",
-                store::surreal::record_id("asset", ingested.asset_id),
-            ))
+            .query("UPDATE $id SET storage_key = $storage_key")
+            .bind(("id", store::surreal::record_id("asset", ingested.asset_id)))
             .bind(("storage_key", shared_key.clone()))
             .await
             .unwrap()

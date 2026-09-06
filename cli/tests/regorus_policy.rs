@@ -184,9 +184,15 @@ fn regorus_matches_every_checked_in_policy_decision() {
     // + 5 for pointer visibility reconciliation: Lawyer and Admin admitted;
     // Client, Clerk, and anonymous denied.
     // 404 + 5 = 409.
+    //
+    // + 5 for reading a document's revision chain (GET
+    //   /app/api/projects/{id}/documents/revisions), for `navigator document
+    //   log`/`get` (#485): every authenticated tier admitted (the handler
+    //   applies the caller's lens), anonymous denied.
+    // 409 + 5 = 414.
     assert_eq!(
         test_names.len(),
-        409,
+        414,
         "the policy decision inventory changed; review every new or removed rule"
     );
 

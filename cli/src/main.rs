@@ -9,6 +9,7 @@ mod assets;
 mod credentials;
 mod devx;
 mod docs;
+mod document_read;
 mod document_sync;
 mod erd;
 mod firms_doctor;
@@ -352,6 +353,16 @@ enum Command {
     Site {
         #[command(subcommand)]
         action: SiteCmd,
+    },
+
+    /// Read a matter document's revision chain from a checkout.
+    ///
+    /// The offline workbench for a filed document, the way `navigator
+    /// notations` is for `templates/notations/`. Uploading stays `navigator
+    /// site document upload`; these are read-only.
+    Document {
+        #[command(subcommand)]
+        action: DocumentReadAction,
     },
 
     // ─────────────── Operator ───────────────
@@ -1668,6 +1679,40 @@ enum DocumentAction {
     },
 }
 
+/// Read one matter document's revision chain from a checkout.
+///
+/// Each verb takes a pointer path below `documents/` (the committed `.yml`,
+/// or the staged binary it names) and resolves the Project from
+/// `navigator.yaml` at `.` and the document slug from that path, so a lawyer
+/// names a file rather than an id.
+#[derive(Subcommand)]
+enum DocumentReadAction {
+    /// The revision chain, newest first, marking the operative row.
+    Log {
+        /// Path below `documents/`, such as `documents/pleadings/motion.pdf.yml`.
+        pointer: PathBuf,
+    },
+    /// Fetch one revision to a local path, verified by `sha256` and size
+    /// before success is reported. Refuses a destination inside `documents/`.
+    Get {
+        pointer: PathBuf,
+        /// Revision number to fetch. Defaults to the operative revision under
+        /// your lens.
+        #[arg(long)]
+        version: Option<usize>,
+        /// Where to write the fetched bytes. Must be outside `documents/`.
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// A text redline between two revision numbers. PDF and plain text only;
+    /// any other type is reported unsupported rather than diffed as bytes.
+    Diff {
+        pointer: PathBuf,
+        a: usize,
+        b: usize,
+    },
+}
+
 #[derive(Subcommand)]
 enum NotationAction {
     /// Create a questionnaire-driven notation on an existing matter and
@@ -1891,6 +1936,17 @@ fn main() -> ExitCode {
             SiteCmd::Document { action } => runtime().block_on(run_document(action)),
             SiteCmd::Projects { action } => runtime().block_on(run_projects(action)),
             SiteCmd::Notation { action } => runtime().block_on(run_notation(action)),
+        },
+        Command::Document { action } => match action {
+            DocumentReadAction::Log { pointer } => runtime().block_on(document_read::log(&pointer)),
+            DocumentReadAction::Get {
+                pointer,
+                version,
+                out,
+            } => runtime().block_on(document_read::get(&pointer, version, &out)),
+            DocumentReadAction::Diff { pointer, a, b } => {
+                runtime().block_on(document_read::diff(&pointer, a, b))
+            }
         },
         Command::Notations { action } => match action {
             NotationsCmd::Format { file } => format::run(&file),

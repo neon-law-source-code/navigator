@@ -1026,6 +1026,28 @@ test_anonymous_denied_reconcile_document_visibility if {
 	not authz.allow with input as {"path": ["app", "api", "projects", "p1", "documents", "a1"], "method": "PATCH", "session": null}
 }
 
+# ---------- GET /app/api/projects/{id}/documents/revisions?slug= (any authenticated tier) ----------
+
+test_lawyer_can_read_document_revisions if {
+	authz.allow with input as {"path": ["app", "api", "projects", "p1", "documents", "revisions"], "method": "GET", "session": lawyer_session}
+}
+
+test_admin_can_read_document_revisions if {
+	authz.allow with input as {"path": ["app", "api", "projects", "p1", "documents", "revisions"], "method": "GET", "session": admin_session}
+}
+
+test_client_can_read_document_revisions if {
+	authz.allow with input as {"path": ["app", "api", "projects", "p1", "documents", "revisions"], "method": "GET", "session": client_session}
+}
+
+test_clerk_can_read_document_revisions if {
+	authz.allow with input as {"path": ["app", "api", "projects", "p1", "documents", "revisions"], "method": "GET", "session": clerk_session}
+}
+
+test_anonymous_denied_read_document_revisions if {
+	not authz.allow with input as {"path": ["app", "api", "projects", "p1", "documents", "revisions"], "method": "GET", "session": null}
+}
+
 # ---------- POST /app/api/notations/{id}/transcript coverage pass (lawyer tier only) ----------
 
 test_lawyer_can_run_transcript_coverage if {

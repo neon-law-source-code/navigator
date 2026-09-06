@@ -106,6 +106,24 @@ allow if {
     is_lawyer(input.session)
 }
 
+# Read one document's revision chain (the slug travels as `?slug=`, never a path
+# segment — it may itself contain `/`): GET
+# /app/api/projects/{id}/documents/revisions. Any authenticated caller; the
+# handler applies the caller's lens (a client never learns a lawyer-only
+# revision exists) and collapses out-of-scope to 404. Own literal segment
+# distinguishes it from the PATCH asset-item rule above, which shares the
+# `documents` segment but not the six-segment `revisions` literal.
+allow if {
+    input.path[0] == "app"
+    input.path[1] == "api"
+    input.path[2] == "projects"
+    input.path[4] == "documents"
+    input.path[5] == "revisions"
+    count(input.path) == 6
+    input.method == "GET"
+    is_authenticated(input.session)
+}
+
 # /app/outline is the bundled Harvard-outline recording stage. Lawyer-tier
 # only. A notation the firm has given a client is a different page
 # (`/app/projects/{code}/{notation_id}/outline`) and rides the matter-surface

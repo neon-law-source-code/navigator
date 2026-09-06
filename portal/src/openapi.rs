@@ -1966,6 +1966,41 @@ pub fn document_with_base(base: &str) -> Value {
             }
           }
         },
+        "/app/api/projects/{id}/documents/revisions": {
+          "get": {
+            "summary": "A document's revision chain",
+            "description":
+              "The revision chain of one slugged document, newest first — what `navigator document \
+               log` and `navigator document get --version` read. The slug travels as `?slug=`, never \
+               a path segment, because a slug may itself contain `/`. Authorization: any authenticated \
+               session, applied as the caller's lens — a client sees only published, client-visible \
+               revisions, renumbered over that visible subset so a lawyer-only revision between two \
+               visible ones never shows as a gap. Out-of-scope matter, or a slug with no visible \
+               revision, is `404`.",
+            "parameters": [
+              { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+              { "name": "slug", "in": "query", "required": true, "schema": { "type": "string" } }
+            ],
+            "responses": {
+              "200": { "description": "The revision chain under the caller's lens", "content": { "application/json": { "schema": {
+                "type": "object", "required": ["kind", "revisions"], "properties": {
+                  "kind": { "type": "string" },
+                  "revisions": { "type": "array", "items": { "type": "object", "required": ["version", "asset_id", "created_at", "sha256", "size_bytes", "filename", "operative"], "properties": {
+                    "version": { "type": "integer" },
+                    "asset_id": { "type": "string", "format": "uuid" },
+                    "created_at": { "type": "string" },
+                    "sha256": { "type": "string" },
+                    "size_bytes": { "type": "integer" },
+                    "filename": { "type": "string" },
+                    "operative": { "type": "boolean" }
+                  } } }
+                }
+              } } } },
+              "401": { "description": "No authenticated session", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+              "404": { "description": "No such matter, out of scope, or no visible revision under this slug", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } }
+            }
+          }
+        },
         "/app/api/notations/{id}/transcript": {
           "post": {
             "summary": "Run a transcript against a notation's questionnaire",

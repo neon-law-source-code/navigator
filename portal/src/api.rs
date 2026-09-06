@@ -7,7 +7,9 @@
 
 use std::sync::Arc;
 
-use axum::extract::{FromRef, FromRequest, FromRequestParts, Multipart, Path, Request, State};
+use axum::extract::{
+    FromRef, FromRequest, FromRequestParts, Multipart, Path, Query, Request, State,
+};
 use axum::http::request::Parts;
 use axum::http::StatusCode;
 use axum::middleware::Next;
@@ -152,6 +154,11 @@ fn api_operation_table() -> Vec<(&'static str, &'static str, MethodRouter<ApiSta
             "GET",
             "/app/api/projects/{id}/documents",
             get(list_documents_door),
+        ),
+        (
+            "GET",
+            "/app/api/projects/{id}/documents/revisions",
+            get(list_document_revisions_door),
         ),
         (
             "GET",
@@ -2778,6 +2785,98 @@ async fn document_pointer(
     })
 }
 
+/// `GET /app/api/projects/{id}/documents/revisions?slug=`, the query, not a
+/// path segment — a slug may itself contain `/` (`navigator site sync`
+/// derives it from a path below `documents/`), so it cannot be a single
+/// route segment the way `asset_id` is.
+#[derive(Deserialize)]
+struct RevisionsQuery {
+    slug: String,
+}
+
+/// One revision as `log`/`get` (the CLI's read verbs, #485) report it.
+#[derive(Debug, Serialize)]
+struct RevisionSummary {
+    /// 1-based, oldest first — `1` is the first revision ever filed under
+    /// this slug (as the caller's lens sees it; see `operative` below for
+    /// why a client's numbering never reveals a hidden revision).
+    version: usize,
+    asset_id: Uuid,
+    created_at: String,
+    sha256: String,
+    size_bytes: i64,
+    filename: String,
+    /// Whether this is the operative revision for the caller's lens — the
+    /// lawyer's newest row, or the client's newest published+client-visible
+    /// row. At most one `true` per response.
+    operative: bool,
+}
+
+#[derive(Serialize)]
+struct DocumentRevisionsResponse {
+    kind: String,
+    /// Newest first, matching `store::assets::revisions`.
+    revisions: Vec<RevisionSummary>,
+}
+
+/// `GET /app/api/projects/{id}/documents/revisions?slug=` — a document's
+/// revision chain under the caller's own lens, for `navigator document log`
+/// and the version lookup `navigator document get --version` needs.
+///
+/// A client lens sees only published, client-visible revisions, filtered
+/// *before* numbering — so version numbers are renumbered over the visible
+/// subset rather than the true chain, and a gap (a lawyer-only revision
+/// between two client-visible ones) never appears. That is what keeps a
+/// client-lens caller from learning a lawyer-only revision exists at all,
+/// matching the guarantee `store::assets::current`'s `Lens::Client` already
+/// gives the single-row read.
+async fn list_document_revisions_door(
+    State(state): State<ApiState>,
+    authed: AuthedSession,
+    Path(id): Path<Uuid>,
+    Query(query): Query<RevisionsQuery>,
+) -> Result<Response, ApiError> {
+    if !can_see(&state, &authed, id).await {
+        return Err(ApiError::NotFound);
+    }
+    let slug = query.slug.trim();
+    if slug.is_empty() {
+        return Err(ApiError::NotFound);
+    }
+    let mut revisions = store::assets::revisions(&state.surreal, id, slug)
+        .await
+        .map_err(ApiError::Asset)?;
+    if matches!(authed.0.role, store::persons::Role::Client) {
+        revisions.retain(|asset| {
+            asset.visibility == store::documents::visibility::CLIENT && asset.published_at.is_some()
+        });
+    }
+    if revisions.is_empty() {
+        return Err(ApiError::NotFound);
+    }
+    let kind = revisions[0].kind.clone().unwrap_or_default();
+    let total = revisions.len();
+    let body = DocumentRevisionsResponse {
+        kind,
+        revisions: revisions
+            .into_iter()
+            .enumerate()
+            .map(|(index, asset)| RevisionSummary {
+                version: total - index,
+                asset_id: asset.id,
+                created_at: asset
+                    .inserted_at
+                    .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+                sha256: asset.sha256_hex,
+                size_bytes: asset.byte_size,
+                filename: asset.filename.unwrap_or_default(),
+                operative: index == 0,
+            })
+            .collect(),
+    };
+    Ok((StatusCode::OK, Json(body)).into_response())
+}
+
 #[derive(Deserialize)]
 struct UpdateDocumentVisibilityRequest {
     visibility: String,
@@ -4175,7 +4274,11 @@ fn accepted_asset_kinds() -> Vec<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::NotationStepResponse;
-    use super::{api_operation_table, documented_api_operations, routes, ApiError};
+    use super::{
+        api_operation_table, documented_api_operations, list_document_revisions_door, routes,
+        ApiError, ApiState, AuthedSession, RevisionsQuery,
+    };
+    use axum::extract::{Path, Query, State};
     use axum::response::IntoResponse;
     use std::collections::BTreeSet;
 
@@ -4242,6 +4345,211 @@ mod tests {
         let json: serde_json::Value =
             serde_json::from_slice(&body).expect("the conflict response should be JSON");
         assert_eq!(json["message"], "That email is already in use.");
+    }
+
+    /// Seed one slug with three revisions: an internal draft, a published
+    /// client-visible copy, then a newer internal redline — the shape ENG-497
+    /// calls normal ("an internal draft and a shared executed copy under one
+    /// slug") extended with one more lawyer-only row on top, so the test can
+    /// prove a client learns about neither internal revision.
+    async fn seed_three_revisions(
+        surreal: &store::surreal::SurrealDb,
+        project_id: uuid::Uuid,
+        storage: &std::sync::Arc<dyn cloud::StorageService>,
+    ) {
+        let args = |visibility: &'static str| store::documents::IngestArgs {
+            project_id,
+            source: store::documents::source::UPLOAD,
+            filename: "agreement.pdf",
+            kind: "agreement",
+            content_type: "application/pdf",
+            description: None,
+            secondary_storage_key: None,
+            visibility,
+        };
+        let identity = |published_at: Option<&'static str>| store::documents::DocumentIdentity {
+            slug: Some("agreement.pdf"),
+            published_at,
+            metadata: None,
+        };
+        store::documents::ingest_bytes_as(
+            surreal,
+            storage,
+            &args(store::documents::visibility::INTERNAL),
+            &identity(None),
+            b"v1 internal draft",
+        )
+        .await
+        .expect("seed v1");
+        store::documents::ingest_bytes_as(
+            surreal,
+            storage,
+            &args(store::documents::visibility::CLIENT),
+            &identity(Some("2026-01-01T00:00:00Z")),
+            b"v2 executed copy",
+        )
+        .await
+        .expect("seed v2");
+        store::documents::ingest_bytes_as(
+            surreal,
+            storage,
+            &args(store::documents::visibility::INTERNAL),
+            &identity(None),
+            b"v3 newer redline",
+        )
+        .await
+        .expect("seed v3");
+    }
+
+    #[tokio::test]
+    async fn a_client_sees_only_the_published_client_visible_revision_renumbered() {
+        let db = store::surreal::test_support::mem().await;
+        let project_id =
+            store::test_support::seed_project_surreal(&db, "revisions-lens-client").await;
+        let app = crate::test_support::app_state(db.clone()).await;
+        seed_three_revisions(&db, project_id, &app.storage).await;
+
+        let client_person = store::test_support::ensure_person(
+            &db,
+            &store::persons::NewPerson {
+                email: "libra@example.com".to_string(),
+                name: "Libra Client".to_string(),
+                role: store::persons::Role::Client,
+                ..Default::default()
+            },
+        )
+        .await;
+        store::projects::designate_dri_in_surreal(
+            &db,
+            project_id,
+            client_person.id,
+            store::projects::DriSide::Client,
+        )
+        .await
+        .expect("seed the client's participation row");
+
+        let state = ApiState {
+            surreal: app.surreal.clone(),
+            email: app.email.clone(),
+            bootstrap_owner_email: app.bootstrap_owner_email.clone(),
+            bootstrap_company: "Test Firm".to_string(),
+            questionnaire_runtime: app.questionnaire_runtime.clone(),
+            storage: app.storage.clone(),
+            workflow_runtime: app.workflow_runtime.clone(),
+            assets_storage: app.assets_storage.clone(),
+            forms_registry: app.forms_registry.clone(),
+            signature_provider: app.signature_provider.clone(),
+            contract_reviewer: app.contract_reviewer.clone(),
+        };
+        let session = crate::SessionData {
+            person_id: Some(client_person.id),
+            ..crate::SessionData::fresh("client-sub", store::persons::Role::Client)
+        };
+
+        let response = list_document_revisions_door(
+            State(state),
+            AuthedSession(session),
+            Path(project_id),
+            Query(RevisionsQuery {
+                slug: "agreement.pdf".to_string(),
+            }),
+        )
+        .await
+        .expect("a client on the matter can read the chain under their lens");
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let revisions = json["revisions"].as_array().expect("revisions array");
+        assert_eq!(
+            revisions.len(),
+            1,
+            "the client sees only the one published, client-visible revision: {json}"
+        );
+        assert_eq!(revisions[0]["version"], 1, "renumbered to 1 of 1: {json}");
+        assert_eq!(revisions[0]["operative"], true, "{json}");
+        assert_eq!(
+            revisions[0]["sha256"],
+            store::documents::sha256_hex(b"v2 executed copy"),
+            "{json}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_lawyer_sees_every_revision_newest_first_with_the_newest_operative() {
+        let db = store::surreal::test_support::mem().await;
+        let project_id =
+            store::test_support::seed_project_surreal(&db, "revisions-lens-lawyer").await;
+        let app = crate::test_support::app_state(db.clone()).await;
+        seed_three_revisions(&db, project_id, &app.storage).await;
+
+        let state = ApiState {
+            surreal: app.surreal.clone(),
+            email: app.email.clone(),
+            bootstrap_owner_email: app.bootstrap_owner_email.clone(),
+            bootstrap_company: "Test Firm".to_string(),
+            questionnaire_runtime: app.questionnaire_runtime.clone(),
+            storage: app.storage.clone(),
+            workflow_runtime: app.workflow_runtime.clone(),
+            assets_storage: app.assets_storage.clone(),
+            forms_registry: app.forms_registry.clone(),
+            signature_provider: app.signature_provider.clone(),
+            contract_reviewer: app.contract_reviewer.clone(),
+        };
+        // Owner/Admin bypass project-scoping only at route admission; a
+        // matter-content route like this one still applies the participation
+        // gate (`docs/glossary.md#role`), so the lawyer lens needs a real
+        // participation row like the client test above.
+        let lawyer_person = store::test_support::ensure_person(
+            &db,
+            &store::persons::NewPerson {
+                email: "avery@neonlaw.com".to_string(),
+                name: "Avery Attorney".to_string(),
+                role: store::persons::Role::Lawyer,
+                ..Default::default()
+            },
+        )
+        .await;
+        store::projects::designate_dri_in_surreal(
+            &db,
+            project_id,
+            lawyer_person.id,
+            store::projects::DriSide::Lawyer,
+        )
+        .await
+        .expect("seed the lawyer's participation row");
+        let session = crate::SessionData {
+            person_id: Some(lawyer_person.id),
+            ..crate::SessionData::fresh("lawyer-sub", store::persons::Role::Lawyer)
+        };
+
+        let response = list_document_revisions_door(
+            State(state),
+            AuthedSession(session),
+            Path(project_id),
+            Query(RevisionsQuery {
+                slug: "agreement.pdf".to_string(),
+            }),
+        )
+        .await
+        .expect("a lawyer on the matter can read the full chain");
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let revisions = json["revisions"].as_array().expect("revisions array");
+        assert_eq!(revisions.len(), 3, "every revision is visible: {json}");
+        assert_eq!(revisions[0]["version"], 3, "newest first: {json}");
+        assert_eq!(revisions[0]["operative"], true, "{json}");
+        assert_eq!(revisions[1]["operative"], false, "{json}");
+        assert_eq!(revisions[2]["operative"], false, "{json}");
+        assert_eq!(
+            revisions[0]["sha256"],
+            store::documents::sha256_hex(b"v3 newer redline"),
+            "{json}"
+        );
     }
 
     #[test]

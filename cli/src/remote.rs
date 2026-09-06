@@ -255,12 +255,34 @@ struct VisibleProject {
     code: String,
 }
 
+/// One revision as reported by `GET
+/// /app/api/projects/{id}/documents/revisions?slug=` — what `navigator
+/// document log`/`get`/`diff` (#485) read.
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct RevisionSummary {
+    pub(crate) version: usize,
+    pub(crate) asset_id: Uuid,
+    pub(crate) created_at: String,
+    pub(crate) sha256: String,
+    pub(crate) size_bytes: i64,
+    pub(crate) filename: String,
+    pub(crate) operative: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct RevisionsResponse {
+    pub(crate) kind: String,
+    /// Newest first, matching `store::assets::revisions`.
+    pub(crate) revisions: Vec<RevisionSummary>,
+}
+
 /// Authenticated client for the one Project's document-sync operations.
 pub(crate) struct DocumentClient {
     base: String,
     token: String,
     client: reqwest::Client,
     project_id: Uuid,
+    project_code: String,
 }
 
 impl DocumentClient {
@@ -294,7 +316,66 @@ impl DocumentClient {
             token,
             client,
             project_id,
+            project_code: project_code.to_string(),
         })
+    }
+
+    /// The revision chain of `slug` under the caller's own lens
+    /// (`GET /app/api/projects/{id}/documents/revisions?slug=`).
+    pub(crate) async fn list_revisions(&self, slug: &str) -> Result<RevisionsResponse> {
+        let url = format!(
+            "{}/app/api/projects/{}/documents/revisions",
+            self.base, self.project_id
+        );
+        let response = self
+            .client
+            .get(&url)
+            .query(&[("slug", slug)])
+            .bearer_auth(&self.token)
+            .send()
+            .await
+            .with_context(|| format!("GET {url}"))?;
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(anyhow!(
+                "no revision of `{slug}` is visible on this matter: {status}: {}",
+                first_line(&text)
+            ));
+        }
+        serde_json::from_str(&text).context("parse document revisions response")
+    }
+
+    /// Fetch one revision's bytes through the existing Project-scoped download
+    /// route — the same cross-project and caller-lens guards the browser's
+    /// download link applies. `reqwest`'s default client follows the redirect
+    /// to a signed storage URL (production) transparently; `FsStorage`
+    /// (local dev) streams bytes directly from the same route.
+    pub(crate) async fn download_revision(&self, asset_id: Uuid) -> Result<Vec<u8>> {
+        let url = format!(
+            "{}/app/projects/{}/documents/{asset_id}/download",
+            self.base, self.project_code
+        );
+        let response = self
+            .client
+            .get(&url)
+            .bearer_auth(&self.token)
+            .send()
+            .await
+            .with_context(|| format!("GET {url}"))?;
+        let status = response.status();
+        if !status.is_success() {
+            let text = response.text().await.unwrap_or_default();
+            return Err(anyhow!(
+                "download of revision {asset_id} failed: {status}: {}",
+                first_line(&text)
+            ));
+        }
+        Ok(response
+            .bytes()
+            .await
+            .context("read revision bytes")?
+            .to_vec())
     }
 
     /// Upload one revision from a local file and return the source-safe

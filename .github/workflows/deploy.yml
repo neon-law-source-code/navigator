@@ -2046,12 +2046,6 @@ jobs:
             build-args: |
               CRATE=cli
               BIN=navigator
-          - image: navigator-reconcile-invoices-trigger
-            dockerfile: images/Containerfile.trigger
-            runner: ubuntu-latest
-            build-args: |
-              CRATE=billing-workflows
-              BIN=reconcile-trigger
           - image: navigator-billing-digest-trigger
             dockerfile: images/Containerfile.trigger
             runner: ubuntu-latest
@@ -3027,7 +3021,7 @@ jobs:
           • \`navigator-web\` — alias tag, byte-identical to \`neon-server\`; retires with #796
 
           *Scheduled-job images*
-          • \`navigator-heartbeat-trigger\`, \`navigator-archives-trigger\`, \`navigator-surreal-archive\`, \`navigator-reconcile-invoices-trigger\`, \`navigator-billing-digest-trigger\`, \`navigator-dri-digest-trigger\`, \`navigator-general-nag\`
+          • \`navigator-heartbeat-trigger\`, \`navigator-archives-trigger\`, \`navigator-surreal-archive\`, \`navigator-billing-digest-trigger\`, \`navigator-dri-digest-trigger\`, \`navigator-general-nag\`
           • \`navigator-runner\` — the CI/devx runner image
 
           All 13 tagged \`${TAG}\` + \`latest\` on \`ghcr.io/${{ github.repository_owner }}\`.

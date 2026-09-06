@@ -155,7 +155,6 @@ jobs:
           navigator-heartbeat-trigger
           navigator-archives-trigger
           navigator-surreal-archive
-          navigator-reconcile-invoices-trigger
           navigator-billing-digest-trigger
           navigator-dri-digest-trigger
           navigator-general-nag

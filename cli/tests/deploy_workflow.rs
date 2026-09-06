@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::path::Path;
 
 fn deploy_workflow() -> String {
@@ -34,6 +35,31 @@ fn has_trigger(name: &str) -> bool {
     deploy_triggers().contains_key(serde_yaml::Value::String(name.to_string()))
 }
 
+fn rendered_trigger_images() -> BTreeSet<String> {
+    ["examples/deploy/k8s/exports", "k8s/components/automation-home"]
+        .into_iter()
+        .flat_map(|root| {
+            walkdir::WalkDir::new(repo_file_path(root))
+                .into_iter()
+                .filter_map(Result::ok)
+                .filter(|entry| entry.file_type().is_file())
+                .filter_map(|entry| std::fs::read_to_string(entry.path()).ok())
+                .collect::<Vec<_>>()
+        })
+        .flat_map(|source| source.lines().map(str::to_string).collect::<Vec<_>>())
+        .filter_map(|line| {
+            let image = line.trim().strip_prefix("image:")?.trim();
+            let image = image.trim_matches(|character| character == '"' || character == '\'');
+            let image = image.strip_prefix("YOUR_IMAGE_REGISTRY/")?;
+            Some(image.rsplit_once(':').map_or(image, |(name, _)| name).to_string())
+        })
+        .collect()
+}
+
+fn repo_file_path(path: &str) -> std::path::PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join(path)
+}
+
 #[test]
 fn deploy_workflow_has_no_pull_request_trigger() {
     let workflow = deploy_workflow();
@@ -42,6 +68,26 @@ fn deploy_workflow_has_no_pull_request_trigger() {
         !workflow.contains("\n  pull_request:\n"),
         "deploy.yml must not trigger on pull_request — UI/browser proof runs on the \
          release train and locally, never on a PR"
+    );
+}
+
+#[test]
+fn trigger_build_matrix_matches_rendered_trigger_manifests() {
+    let workflow: serde_yaml::Value =
+        serde_yaml::from_str(&deploy_workflow()).expect("deploy.yml parses as YAML");
+    let matrix = workflow["jobs"]["publish-triggers"]["strategy"]["matrix"]["include"]
+        .as_sequence()
+        .expect("publish-triggers must declare an include matrix");
+    let built: BTreeSet<String> = matrix
+        .iter()
+        .filter(|leg| leg["dockerfile"].as_str() == Some("images/Containerfile.trigger"))
+        .filter_map(|leg| leg["image"].as_str().map(str::to_string))
+        .collect();
+
+    assert_eq!(
+        built,
+        rendered_trigger_images(),
+        "every trigger image built by publish-triggers must be named by a rendered CronJob, and every rendered trigger must be built"
     );
 }
 

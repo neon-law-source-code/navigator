@@ -298,6 +298,13 @@ does not carry. Application steps discover direct `apps/*/package.json` manifest
 `portal/package.json` during the transition; the same gate therefore works before the first application exists and
 cannot silently skip a later one.
 
+A fourth job, `documents`, validates every `documents/` pointer — offline on every event, and additionally against the
+live asset record on a push to `main` with `vars.NAVIGATOR_HOST` set (through the same GitHub Actions OIDC exchange
+`seed-import` uses, at `POST /auth/ci/document-token`). It runs unconditionally alongside the other three and no-ops
+over a repository carrying no `documents/`, but it is deliberately **not** one of the required check's dependencies: its
+live half needs a reachable deployment, and the always-required check must never depend on that. A failing `documents`
+job is visible on the pull request without blocking the merge the other three jobs gate.
+
 **There is no path filter, and that is deliberate.** A filtered job that skips reports success for work it never did,
 and a required check a skip can satisfy is not a gate. So every job always runs and each half no-ops over a repository
 that does not carry it, rather than being skipped. The required job is spelled `ci`, which is the one context `navigator

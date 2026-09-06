@@ -1,10 +1,14 @@
-//! Mint a project-scoped seed session from a GitHub Actions OIDC token.
+//! Mint a project-scoped CI session from a GitHub Actions OIDC token.
 //!
-//! `POST /auth/ci/seed-token` is the CI counterpart of `/auth/cli/start`.
-//! A Project repository's job presents GitHub's JWT; this door verifies it,
-//! binds the run to the live Project whose `repository_url` is that
-//! repository, and returns an HMAC-signed [`SessionData`] scoped to
-//! `POST /app/api/seed` for that Project's code.
+//! `POST /auth/ci/seed-token` and `POST /auth/ci/document-token` are the CI
+//! counterparts of `/auth/cli/start`. A Project repository's job presents
+//! GitHub's JWT; the door verifies it, binds the run to the live Project
+//! whose `repository_url` is that repository, and returns an HMAC-signed
+//! [`SessionData`] attributed to that Project's own lawyer DRI. The seed
+//! mint additionally scopes the session to `POST /app/api/seed`, because it
+//! writes; the document mint leaves the session unscoped, because
+//! `navigator document verify` (#486) only reads and the resolved actor
+//! already bounds it to that person's own participation.
 
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -46,6 +50,7 @@ struct MintResponse {
 pub fn routes(state: CiAuthState) -> Router {
     Router::new()
         .route("/auth/ci/seed-token", post(mint_seed_token))
+        .route("/auth/ci/document-token", post(mint_document_token))
         .with_state(state)
 }
 
@@ -53,7 +58,25 @@ async fn mint_seed_token(
     State(state): State<CiAuthState>,
     Json(input): Json<MintRequest>,
 ) -> Response {
-    match mint_inner(&state, &input.token).await {
+    match mint_inner(&state, &input.token, "ci.seed_token.minted", true).await {
+        Ok(body) => (StatusCode::OK, Json(body)).into_response(),
+        Err(error) => error.into_response(),
+    }
+}
+
+/// `POST /auth/ci/document-token` — the `navigator document verify --ci`
+/// counterpart (#486). Verifies the same GitHub Actions OIDC token, binds to
+/// the same live Project, and attributes to the same lawyer DRI actor; the
+/// only difference is the minted session carries no [`SeedScope`] at all.
+/// Verification only reads, and the resolved actor is always that Project's
+/// own lawyer DRI, so an unscoped session already reaches no more than that
+/// person's ordinary login would — there is no write surface here to bound
+/// further the way `/app/api/seed` needs to.
+async fn mint_document_token(
+    State(state): State<CiAuthState>,
+    Json(input): Json<MintRequest>,
+) -> Response {
+    match mint_inner(&state, &input.token, "ci.document_token.minted", false).await {
         Ok(body) => (StatusCode::OK, Json(body)).into_response(),
         Err(error) => error.into_response(),
     }
@@ -86,7 +109,12 @@ impl IntoResponse for MintError {
     }
 }
 
-async fn mint_inner(state: &CiAuthState, github_token: &str) -> Result<MintResponse, MintError> {
+async fn mint_inner(
+    state: &CiAuthState,
+    github_token: &str,
+    audit_event: &'static str,
+    scoped: bool,
+) -> Result<MintResponse, MintError> {
     let Some(host) = state.canonical_host.host() else {
         return Err(MintError::Unavailable(
             "CANONICAL_HOST is required to mint CI seed tokens",
@@ -119,7 +147,7 @@ async fn mint_inner(state: &CiAuthState, github_token: &str) -> Result<MintRespo
         source: SessionSource::Ci,
         provider: None,
         viewing_as_dri: None,
-        scope: Some(SeedScope {
+        scope: scoped.then(|| SeedScope {
             endpoint: crate::api::SEED_ENDPOINT.to_string(),
             models: SeedModel::ALL.to_vec(),
             project_code: project.code.clone(),
@@ -128,11 +156,11 @@ async fn mint_inner(state: &CiAuthState, github_token: &str) -> Result<MintRespo
     let token = state.sessions.encode(&session);
     tracing::info!(
         target: "audit",
-        event = "ci.seed_token.minted",
+        event = audit_event,
         project_code = %project.code,
         person_id = %actor.id,
         repository = %claims.repository,
-        "ci: minted a project-scoped seed token",
+        "ci: minted a project-scoped session",
     );
     Ok(MintResponse {
         token,

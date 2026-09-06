@@ -1711,6 +1711,19 @@ enum DocumentReadAction {
         a: usize,
         b: usize,
     },
+    /// Validate every pointer offline, or against the live record with `--ci`.
+    Verify {
+        /// Directory to walk.
+        #[arg(default_value = ".")]
+        dir: PathBuf,
+        /// Verify against the live asset record via GitHub Actions OIDC,
+        /// rather than only checking pointer shape offline.
+        #[arg(long, requires = "host")]
+        ci: bool,
+        /// Host to mint a CI session against. Required with `--ci`.
+        #[arg(long)]
+        host: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1946,6 +1959,9 @@ fn main() -> ExitCode {
             } => runtime().block_on(document_read::get(&pointer, version, &out)),
             DocumentReadAction::Diff { pointer, a, b } => {
                 runtime().block_on(document_read::diff(&pointer, a, b))
+            }
+            DocumentReadAction::Verify { dir, ci, host } => {
+                runtime().block_on(document_read::verify(&dir, ci, host.as_deref()))
             }
         },
         Command::Notations { action } => match action {

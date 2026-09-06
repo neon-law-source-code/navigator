@@ -77,11 +77,21 @@ fn manifest_at(root: &Path) -> Result<(String, Option<String>)> {
     Ok((manifest.project, manifest.host))
 }
 
-/// The check `log`, `get`, and the ENG-486 `navigator document verify` gate
-/// step all reuse: a committed pointer's `current_version.asset_id` must
-/// still be a row in the live chain. A pointer surviving a governed expunge
-/// of exactly that revision, or hand-edited to name a foreign id, is drift —
-/// named explicitly rather than silently falling back to whatever the live
+/// The check `log`, `get`, and `navigator document verify`'s live mode
+/// (#486) all reuse — one implementation called every way this drift can be
+/// asked about:
+///
+/// 1. The committed pointer's `current_version.asset_id` must still be a row
+///    in the live chain. A pointer surviving a governed expunge of exactly
+///    that revision, or hand-edited to name a foreign id, is drift.
+/// 2. That row's `sha256` and `size_bytes` must match the pointer's — a
+///    disagreement means the object storage bytes are not what the checked-in
+///    index claims.
+/// 3. That row must be the chain's own operative (newest) revision — a
+///    pointer left pointing at a superseded revision, because a browser
+///    upload landed a newer one without a re-sync, is drift too.
+///
+/// Named explicitly rather than silently falling back to whatever the live
 /// chain's own newest row is.
 pub(crate) fn check_pointer_drift(
     local: Option<&DocumentPointer>,
@@ -90,24 +100,50 @@ pub(crate) fn check_pointer_drift(
     let Some(pointer) = local else {
         return Ok(());
     };
-    if live
+    let found = live
         .iter()
-        .any(|revision| revision.asset_id == pointer.current_version.asset_id)
-    {
-        return Ok(());
+        .find(|revision| revision.asset_id == pointer.current_version.asset_id);
+    let Some(found) = found else {
+        let live_ids: Vec<String> = live.iter().map(|r| r.asset_id.to_string()).collect();
+        return Err(anyhow!(
+            "drift: the committed pointer names current revision {} (version {}), which is not \
+             in the live chain (live revisions: {})",
+            pointer.current_version.asset_id,
+            pointer.current_version.version,
+            if live_ids.is_empty() {
+                "none".to_string()
+            } else {
+                live_ids.join(", ")
+            }
+        ));
+    };
+    if found.sha256 != pointer.current_version.sha256 {
+        return Err(anyhow!(
+            "drift: sha256 mismatch on revision {}: the pointer says {}, the live record says {}",
+            pointer.current_version.asset_id,
+            pointer.current_version.sha256,
+            found.sha256
+        ));
     }
-    let live_ids: Vec<String> = live.iter().map(|r| r.asset_id.to_string()).collect();
-    Err(anyhow!(
-        "drift: the committed pointer names current revision {} (version {}), which is not in \
-         the live chain (live revisions: {})",
-        pointer.current_version.asset_id,
-        pointer.current_version.version,
-        if live_ids.is_empty() {
-            "none".to_string()
-        } else {
-            live_ids.join(", ")
+    if found.size_bytes != pointer.current_version.size_bytes {
+        return Err(anyhow!(
+            "drift: size mismatch on revision {}: the pointer says {} bytes, the live record says {} bytes",
+            pointer.current_version.asset_id,
+            pointer.current_version.size_bytes,
+            found.size_bytes
+        ));
+    }
+    if let Some(operative) = live.iter().find(|revision| revision.operative) {
+        if operative.asset_id != pointer.current_version.asset_id {
+            return Err(anyhow!(
+                "drift: the pointer's current revision {} is not the chain's operative revision \
+                 {} — a newer upload landed without a re-sync",
+                pointer.current_version.asset_id,
+                operative.asset_id
+            ));
         }
-    ))
+    }
+    Ok(())
 }
 
 /// Fetch the live chain and check it against the local pointer, if one is
@@ -178,7 +214,9 @@ fn select_version(live: &RevisionsResponse, version: Option<usize>) -> Result<&R
                 let (min, max) = available
                     .clone()
                     .fold((usize::MAX, 0), |(lo, hi), v| (lo.min(v), hi.max(v)));
-                anyhow!("version {wanted} is not visible under your lens (available: {min}..={max})")
+                anyhow!(
+                    "version {wanted} is not visible under your lens (available: {min}..={max})"
+                )
             }),
         None => live
             .revisions
@@ -391,14 +429,113 @@ pub(crate) async fn diff(pointer: &Path, a: usize, b: usize) -> ExitCode {
     .await
 }
 
+/// Every committed pointer (`*.yml`) below `<root>/documents/`, as paths
+/// relative to `root`, sorted for a stable report order. `root` carrying no
+/// `documents/` at all yields an empty list rather than an error — the
+/// common case for every repository that has not adopted the asset lane.
+fn discover_pointers(root: &Path) -> Result<Vec<PathBuf>> {
+    let documents = root.join("documents");
+    if !documents.is_dir() {
+        return Ok(Vec::new());
+    }
+    let mut pointers = Vec::new();
+    for entry in walkdir::WalkDir::new(&documents).follow_links(false) {
+        let entry = entry.with_context(|| format!("walk {}", documents.display()))?;
+        if entry.file_type().is_file()
+            && entry.path().extension().and_then(|ext| ext.to_str()) == Some("yml")
+        {
+            let relative = entry
+                .path()
+                .strip_prefix(root)
+                .unwrap_or(entry.path())
+                .to_path_buf();
+            pointers.push(relative);
+        }
+    }
+    pointers.sort();
+    Ok(pointers)
+}
+
+/// `navigator document verify [dir]` — the same drift check `log`/`get` use,
+/// called two ways (#486):
+///
+/// - **Offline** (the default, what a pull request runs): every pointer below
+///   `<dir>/documents/` must parse as a valid [`store::document_pointers::DocumentPointer`].
+///   No token is minted, so this never needs network access or a login.
+/// - **Live** (`--ci`, what a push to `main` runs): exchanges this GitHub
+///   Actions run's own OIDC token for a Navigator session
+///   (`navigator document verify`'s counterpart to `navigator site import
+///   --ci`), then checks every pointer against the live asset record —
+///   [`check_pointer_drift`], the exact function `log`/`get` already call.
+///
+/// A repository carrying no `documents/` succeeds trivially in either mode —
+/// the common case for every repository today.
+pub(crate) async fn verify(dir: &Path, ci: bool, host: Option<&str>) -> ExitCode {
+    run(async {
+        let pointers = discover_pointers(dir)?;
+        if pointers.is_empty() {
+            println!("no documents/ pointers to verify");
+            return Ok(());
+        }
+
+        if !ci {
+            for relative in &pointers {
+                let path = dir.join(relative);
+                let raw = std::fs::read_to_string(&path)
+                    .with_context(|| format!("read {}", path.display()))?;
+                DocumentPointer::from_yaml(&raw).with_context(|| {
+                    format!("{} is not a valid document pointer", path.display())
+                })?;
+            }
+            println!("{} pointer(s) valid", pointers.len());
+            return Ok(());
+        }
+
+        let host = host.ok_or_else(|| anyhow!("--ci requires --host"))?;
+        let (project_code, _) = manifest_at(dir)?;
+        let (base, token) = crate::remote::resolve_ci_document(host).await?;
+        let client = DocumentClient::with_credential(base, token, &project_code).await?;
+
+        let mut failures = Vec::new();
+        for relative in &pointers {
+            let path = dir.join(relative);
+            let raw = std::fs::read_to_string(&path)
+                .with_context(|| format!("read {}", path.display()))?;
+            let pointer = DocumentPointer::from_yaml(&raw)
+                .with_context(|| format!("{} is not a valid document pointer", path.display()))?;
+            let slug = slug_from_pointer(dir, relative)?;
+            let live = client.list_revisions(&slug).await?;
+            if let Err(error) = check_pointer_drift(Some(&pointer), &live.revisions) {
+                failures.push(format!("{}: {error}", path.display()));
+            }
+        }
+        if !failures.is_empty() {
+            for failure in &failures {
+                eprintln!("{failure}");
+            }
+            return Err(anyhow!(
+                "{} of {} pointer(s) failed live verification",
+                failures.len(),
+                pointers.len()
+            ));
+        }
+        println!(
+            "{} pointer(s) verified against the live record",
+            pointers.len()
+        );
+        Ok(())
+    })
+    .await
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        check_pointer_drift, extract_text, lexical, line_diff, pointer_yaml_path,
-        refuse_destination_in_documents, select_version, slug_from_pointer,
+        check_pointer_drift, discover_pointers, extract_text, lexical, line_diff,
+        pointer_yaml_path, refuse_destination_in_documents, select_version, slug_from_pointer,
     };
     use crate::remote::{RevisionSummary, RevisionsResponse};
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
     use uuid::Uuid;
 
     fn revision(version: usize, asset_id: Uuid, operative: bool) -> RevisionSummary {
@@ -501,6 +638,7 @@ mod tests {
 
     #[test]
     fn drift_passes_when_the_pointers_asset_is_still_live() {
+        let live_revision = revision(1, Uuid::max(), true);
         let pointer = store::document_pointers::DocumentPointer {
             kind: "agreement".to_string(),
             visibility: "internal".to_string(),
@@ -508,13 +646,79 @@ mod tests {
                 version: 1,
                 asset_id: Uuid::max(),
                 created_at: "2026-09-06T00:00:00Z".to_string(),
-                sha256: "a".repeat(64),
-                size_bytes: 1,
+                sha256: live_revision.sha256.clone(),
+                size_bytes: live_revision.size_bytes,
             },
             previous_version: None,
         };
-        let live = [revision(1, Uuid::max(), true)];
+        let live = [live_revision];
         assert!(check_pointer_drift(Some(&pointer), &live).is_ok());
+    }
+
+    #[test]
+    fn drift_names_both_hashes_on_a_sha256_mismatch() {
+        let live_revision = revision(1, Uuid::max(), true);
+        let pointer = store::document_pointers::DocumentPointer {
+            kind: "agreement".to_string(),
+            visibility: "internal".to_string(),
+            current_version: store::document_pointers::PointerVersion {
+                version: 1,
+                asset_id: Uuid::max(),
+                created_at: "2026-09-06T00:00:00Z".to_string(),
+                sha256: "0".repeat(64),
+                size_bytes: live_revision.size_bytes,
+            },
+            previous_version: None,
+        };
+        let live = [live_revision.clone()];
+        let error = check_pointer_drift(Some(&pointer), &live).unwrap_err();
+        assert!(error.to_string().contains("sha256 mismatch"), "{error}");
+        assert!(error.to_string().contains(&"0".repeat(64)), "{error}");
+        assert!(error.to_string().contains(&live_revision.sha256), "{error}");
+    }
+
+    #[test]
+    fn drift_flags_a_size_mismatch() {
+        let live_revision = revision(1, Uuid::max(), true);
+        let pointer = store::document_pointers::DocumentPointer {
+            kind: "agreement".to_string(),
+            visibility: "internal".to_string(),
+            current_version: store::document_pointers::PointerVersion {
+                version: 1,
+                asset_id: Uuid::max(),
+                created_at: "2026-09-06T00:00:00Z".to_string(),
+                sha256: live_revision.sha256.clone(),
+                size_bytes: live_revision.size_bytes + 1,
+            },
+            previous_version: None,
+        };
+        let live = [live_revision];
+        let error = check_pointer_drift(Some(&pointer), &live).unwrap_err();
+        assert!(error.to_string().contains("size mismatch"), "{error}");
+    }
+
+    #[test]
+    fn drift_flags_a_pointer_that_is_no_longer_the_operative_revision() {
+        let stale = revision(1, Uuid::max(), false);
+        let pointer = store::document_pointers::DocumentPointer {
+            kind: "agreement".to_string(),
+            visibility: "internal".to_string(),
+            current_version: store::document_pointers::PointerVersion {
+                version: 1,
+                asset_id: Uuid::max(),
+                created_at: "2026-09-06T00:00:00Z".to_string(),
+                sha256: stale.sha256.clone(),
+                size_bytes: stale.size_bytes,
+            },
+            previous_version: None,
+        };
+        // A newer revision landed (e.g. a browser upload) without a re-sync.
+        let live = [revision(2, Uuid::nil(), true), stale];
+        let error = check_pointer_drift(Some(&pointer), &live).unwrap_err();
+        assert!(
+            error.to_string().contains("not the chain's operative"),
+            "{error}"
+        );
     }
 
     #[test]
@@ -561,5 +765,78 @@ mod tests {
         assert!(out.contains("- b\n"));
         assert!(out.contains("+ x\n"));
         assert!(out.contains("  c\n"));
+    }
+
+    #[test]
+    fn discover_pointers_is_empty_without_a_documents_directory() {
+        let root = tempfile::tempdir().unwrap();
+        assert!(discover_pointers(root.path()).unwrap().is_empty());
+    }
+
+    #[test]
+    fn discover_pointers_finds_every_yml_below_documents_sorted() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path().join("documents/pleadings")).unwrap();
+        std::fs::write(root.path().join("documents/pleadings/b.pdf.yml"), "").unwrap();
+        std::fs::write(root.path().join("documents/a.pdf.yml"), "").unwrap();
+        // A staged binary is not a pointer and must not be reported as one.
+        std::fs::write(root.path().join("documents/a.pdf"), "").unwrap();
+
+        let found = discover_pointers(root.path()).unwrap();
+        assert_eq!(
+            found,
+            vec![
+                PathBuf::from("documents/a.pdf.yml"),
+                PathBuf::from("documents/pleadings/b.pdf.yml"),
+            ]
+        );
+    }
+
+    fn write_pointer(path: &Path, asset_id: Uuid) {
+        let pointer = store::document_pointers::DocumentPointer {
+            kind: "agreement".to_string(),
+            visibility: "internal".to_string(),
+            current_version: store::document_pointers::PointerVersion {
+                version: 1,
+                asset_id,
+                created_at: "2026-09-06T00:00:00Z".to_string(),
+                sha256: "a".repeat(64),
+                size_bytes: 10,
+            },
+            previous_version: None,
+        };
+        std::fs::write(path, pointer.to_yaml().unwrap()).unwrap();
+    }
+
+    #[tokio::test]
+    async fn verify_offline_accepts_every_valid_pointer_and_mints_no_token() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path().join("documents")).unwrap();
+        write_pointer(
+            &root.path().join("documents/agreement.pdf.yml"),
+            Uuid::max(),
+        );
+
+        // No host is supplied and `ci` is false, so a live call would panic on
+        // a missing `~/.navigator.json` login; offline mode must never reach it.
+        let exit_code = super::verify(root.path(), false, None).await;
+        assert_eq!(exit_code, std::process::ExitCode::SUCCESS);
+    }
+
+    #[tokio::test]
+    async fn verify_offline_rejects_a_malformed_pointer() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path().join("documents")).unwrap();
+        std::fs::write(root.path().join("documents/broken.pdf.yml"), "not: [valid").unwrap();
+
+        let exit_code = super::verify(root.path(), false, None).await;
+        assert_eq!(exit_code, std::process::ExitCode::from(2));
+    }
+
+    #[tokio::test]
+    async fn verify_succeeds_trivially_with_no_documents_directory() {
+        let root = tempfile::tempdir().unwrap();
+        let exit_code = super::verify(root.path(), false, None).await;
+        assert_eq!(exit_code, std::process::ExitCode::SUCCESS);
     }
 }

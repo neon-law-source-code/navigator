@@ -187,16 +187,52 @@ async fn resolve_seed_credential(credential: &SeedCredential) -> Result<(String,
 /// minted Navigator token is held in memory for this process only.
 async fn resolve_ci(host: &str) -> Result<(String, String)> {
     let base = credentials::base_url(host);
+    let client = reqwest::Client::new();
+    let github_token = github_actions_oidc_token(&client, &base).await?;
+    let minted = mint_ci_token(&client, &base, "/auth/ci/seed-token", &github_token).await?;
+    eprintln!(
+        "{}",
+        palette::dim(format!(
+            "minted a project-scoped seed session for {}",
+            minted.project_code
+        ))
+    );
+    Ok((base, minted.token))
+}
+
+/// Exchange the GitHub Actions OIDC ID token for a Navigator session bound to
+/// this repository's live Project, for `navigator document verify --ci`
+/// (#486). Unlike [`resolve_ci`], this session carries no restricting
+/// `scope` — verification only reads, and the resolved actor is always that
+/// Project's own lawyer DRI, so the session already reaches no more than that
+/// person's ordinary login would.
+pub(crate) async fn resolve_ci_document(host: &str) -> Result<(String, String)> {
+    let base = credentials::base_url(host);
+    let client = reqwest::Client::new();
+    let github_token = github_actions_oidc_token(&client, &base).await?;
+    let minted = mint_ci_token(&client, &base, "/auth/ci/document-token", &github_token).await?;
+    eprintln!(
+        "{}",
+        palette::dim(format!(
+            "minted a project-scoped document-verify session for {}",
+            minted.project_code
+        ))
+    );
+    Ok((base, minted.token))
+}
+
+/// Fetch this GitHub Actions run's own OIDC ID token, audienced to `base` —
+/// shared by every `/auth/ci/*` mint.
+async fn github_actions_oidc_token(client: &reqwest::Client, base: &str) -> Result<String> {
     let request_url = std::env::var("ACTIONS_ID_TOKEN_REQUEST_URL").context(
-        "ACTIONS_ID_TOKEN_REQUEST_URL is unset — `navigator site import --ci` runs on GitHub Actions with `id-token: write`",
+        "ACTIONS_ID_TOKEN_REQUEST_URL is unset — this command runs on GitHub Actions with `id-token: write`",
     )?;
     let request_token = std::env::var("ACTIONS_ID_TOKEN_REQUEST_TOKEN").context(
-        "ACTIONS_ID_TOKEN_REQUEST_TOKEN is unset — `navigator site import --ci` runs on GitHub Actions with `id-token: write`",
+        "ACTIONS_ID_TOKEN_REQUEST_TOKEN is unset — this command runs on GitHub Actions with `id-token: write`",
     )?;
-    let client = reqwest::Client::new();
     let github = client
         .get(&request_url)
-        .query(&[("audience", base.as_str())])
+        .query(&[("audience", base)])
         .bearer_auth(&request_token)
         .header(reqwest::header::ACCEPT, "application/json")
         .send()
@@ -212,30 +248,32 @@ async fn resolve_ci(host: &str) -> Result<(String, String)> {
     }
     let github_token: GitHubOidcResponse =
         serde_json::from_str(&github_body).context("parse GitHub Actions OIDC token response")?;
+    Ok(github_token.value)
+}
+
+/// Exchange `github_token` for a Navigator session at one `/auth/ci/*` mint
+/// endpoint.
+async fn mint_ci_token(
+    client: &reqwest::Client,
+    base: &str,
+    mint_path: &str,
+    github_token: &str,
+) -> Result<CiSeedTokenResponse> {
     let minted = client
-        .post(format!("{base}/auth/ci/seed-token"))
-        .json(&serde_json::json!({ "token": github_token.value }))
+        .post(format!("{base}{mint_path}"))
+        .json(&serde_json::json!({ "token": github_token }))
         .send()
         .await
-        .context("POST /auth/ci/seed-token")?;
+        .with_context(|| format!("POST {mint_path}"))?;
     let minted_status = minted.status();
     let minted_body = minted.text().await.unwrap_or_default();
     if !minted_status.is_success() {
         return Err(anyhow!(
-            "CI seed-token mint failed: {minted_status}: {}",
+            "CI token mint at {mint_path} failed: {minted_status}: {}",
             first_line(&minted_body)
         ));
     }
-    let minted: CiSeedTokenResponse =
-        serde_json::from_str(&minted_body).context("parse /auth/ci/seed-token response")?;
-    eprintln!(
-        "{}",
-        palette::dim(format!(
-            "minted a project-scoped seed session for {}",
-            minted.project_code
-        ))
-    );
-    Ok((base, minted.token))
+    serde_json::from_str(&minted_body).with_context(|| format!("parse {mint_path} response"))
 }
 
 #[derive(Debug, Deserialize)]
@@ -289,6 +327,17 @@ impl DocumentClient {
     /// Resolve a logged-in host and one visible Project code.
     pub(crate) async fn connect(host: Option<&str>, project_code: &str) -> Result<Self> {
         let (base, token) = resolve(host)?;
+        Self::with_credential(base, token, project_code).await
+    }
+
+    /// Build a client from an already-minted `(base, token)` pair — the
+    /// `navigator document verify --ci` path (#486), which authenticates via
+    /// GitHub Actions OIDC rather than a stored `~/.navigator.json` login.
+    pub(crate) async fn with_credential(
+        base: String,
+        token: String,
+        project_code: &str,
+    ) -> Result<Self> {
         let client = reqwest::Client::new();
         let list = client
             .get(format!("{base}/app/api/projects"))

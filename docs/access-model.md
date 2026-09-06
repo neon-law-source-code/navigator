@@ -26,8 +26,35 @@ participation. The system answers "what can this person do" by reading both.
 `person_firm_role` is the ownership join: a person may belong to a [`firm`](glossary.md#firm) as `admin`, `lawyer`, or
 `clerk`, with an optional `is_dri` marker. It does not overload `person.role`. Owner remains the one system-wide
 super-owner tier; clients do not get a firm-membership row. `/app/owner` is Owner only. An Admin's people directory and
-matter directory list only rows in firms they belong to. Embedded Rego does not yet isolate every project or person
-route by firm.
+matter directory list only rows in firms they belong to.
+
+## Route admission versus Firm data authorization
+
+Rego cannot query `person_firm_role`, and making it the data-authorization engine would split the source of truth from
+`store`. So the split for Firm-scoped surfaces is the same one the Project surface already draws: **Rego admits the
+route** (a session exists, its tier may reach `/app/admin/*`); **`store::firm_capability` decides the Firm-scoped data**
+(which Firm's rows that session may read or change). Embedded Rego carries no Firm dimension at all today — it reads
+`person.role` only — so every Firm boundary lives on the `store`/handler side of that split, not in policy.
+
+[`store::firm_capability`](../store/src/firm_capability.rs) is the one resolver every Firm-scoped read or command routes
+through, rather than each call site deriving its own `person_firm_role` filter:
+
+- [`FirmCapability`](../store/src/firm_capability.rs) is a narrow, closed enum — one variant per Firm-scoped command,
+  not a blanket "is admin" boolean. `ViewDirectory` gates the Admin-tier people and matter directories
+  (`store::firms::visible_person_ids`, `store::projects::matter_directory_for`); `ManageMembership` gates writing a
+  `person_firm_role` row (`store::firms::add_membership`, `ensure_membership`).
+- `resolve` answers one `(actor, target Firm, capability)` question with a typed
+  [`FirmCapabilityDecision`](../store/src/firm_capability.rs) — `Allowed`, `Forbidden`, or `FirmNotFound` — so a future
+  single-Firm surface can render `Forbidden` and `FirmNotFound` identically and never disclose that another Firm's row
+  exists. `allowed_firm_ids` is its batch counterpart, for a directory that scopes itself to every Firm the caller may
+  act on.
+- Owner holds every capability on every Firm with no membership row — the system-wide governance tier
+  `docs/glossary.md#firm` describes. Client holds none. Admin, Lawyer, and Clerk need a `person_firm_role` row on the
+  target Firm, and only some capabilities admit a non-Admin membership (`ManageMembership` is Admin-only).
+- Firm capability does not replace Project participation. A Firm-scoped capability answers "may this actor act on this
+  Firm's own rows" (its people, its matters-as-a-list, its membership); it says nothing about a specific matter's
+  documents or notations, which stay gated by [`store::access::matter_viewer`](../store/src/access.rs) and the
+  Project-side command rules.
 
 ## The five stored tiers
 

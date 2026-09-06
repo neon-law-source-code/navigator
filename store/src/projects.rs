@@ -658,6 +658,11 @@ pub async fn matter_directory(
 /// Owner sees every matter. Admin sees only matters owned by a firm they
 /// belong to. An Admin with no `person_firm_role` row gets an empty
 /// directory rather than the deployment-wide listing.
+///
+/// Routes through [`crate::firm_capability::allowed_firm_ids`] with
+/// [`crate::firm_capability::FirmCapability::ViewDirectory`] (ENG-463) rather
+/// than deriving its own membership set, so this stays in step with every
+/// other Firm-scoped directory read.
 pub async fn matter_directory_for(
     surreal: &SurrealDb,
     role: Role,
@@ -673,7 +678,13 @@ pub async fn matter_directory_for(
     let Some(person_id) = viewer_person_id else {
         return Ok(Vec::new());
     };
-    let firm_ids = crate::firms::firm_ids_for_person(surreal, person_id).await?;
+    let firm_ids = crate::firm_capability::allowed_firm_ids(
+        surreal,
+        Role::Admin,
+        Some(person_id),
+        crate::firm_capability::FirmCapability::ViewDirectory,
+    )
+    .await?;
     if firm_ids.is_empty() {
         return Ok(Vec::new());
     }

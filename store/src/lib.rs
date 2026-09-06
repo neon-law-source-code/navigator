@@ -50,6 +50,7 @@ pub mod expunge_records;
 pub mod expunge_requests;
 pub mod external_identities;
 pub mod filings;
+pub mod firm_capability;
 pub mod firms;
 pub mod git_access_tokens;
 pub mod git_repositories;

@@ -44,6 +44,13 @@ use crate::people::ViewerRole;
 #[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct ProjectRepositoryPointer(pub Option<String>);
 
+/// The document-upload form's `?error=` flash query.
+#[derive(Deserialize, Default)]
+pub struct DocumentsQuery {
+    #[serde(default)]
+    pub error: Option<String>,
+}
+
 /// One revision in a grouped lawyer document history.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct LawyerDocRevision {
@@ -110,6 +117,10 @@ pub struct LawyerDetailView {
     pub repository_url: Option<String>,
     pub participations: Vec<ParticipationRow>,
     pub documents: Vec<LawyerDocRow>,
+    /// The document-upload form's `?error=` flash, set when a re-upload's
+    /// kind conflicts with the chain it would join.
+    #[serde(default)]
+    pub error: Option<String>,
     /// The upload form's Kind select, as `(value, label)` pairs — every
     /// `rules::kind::Kind::valid_for(Lane::Asset)` value, computed
     /// server-side so the wasm client never needs the `rules` crate.
@@ -195,6 +206,16 @@ pub async fn get_lawyer_project_detail() -> Result<LawyerDetailView, ServerFnErr
         crate::project_calendar::MATTER_COLUMNS,
     );
     let calendar_dir = crate::project_calendar::sort_dir(calendar_query.dir.as_deref());
+    // The document-upload form's `?error=` flash — set when the upload
+    // handler's redirect-on-refusal carries a message (a kind-changed
+    // revision refusal today).
+    let error = dioxus_fullstack_core::FullstackContext::extract::<
+        axum::extract::Query<DocumentsQuery>,
+        _,
+    >()
+    .await
+    .map_or_else(|_| DocumentsQuery::default(), |axum::extract::Query(q)| q)
+    .error;
     let role = dioxus_fullstack_core::FullstackContext::extract::<axum::Extension<ViewerRole>, _>()
         .await
         .map(|axum::Extension(role)| role)
@@ -366,6 +387,7 @@ pub async fn get_lawyer_project_detail() -> Result<LawyerDetailView, ServerFnErr
         repository_url,
         participations,
         documents,
+        error,
         asset_kind_choices: asset_kind_choices(),
         csrf_token,
         calendar_sort,
@@ -604,6 +626,9 @@ pub fn LawyerProjectDetail() -> Element {
 
             section { class: "lawyer-detail__section project-documents",
                 h2 { "Documents" }
+                if let Some(error) = view.error.as_ref() {
+                    p { class: "nav-form-error", role: "alert", "{error}" }
+                }
                 if view.documents.is_empty() {
                     p { class: "projects-empty", "No documents yet." }
                 } else {

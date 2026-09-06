@@ -1,9 +1,11 @@
 //! Project-document HTTP surface:
 //!
 //! - `POST /app/projects/{project_code}/documents/upload` — multipart upload
-//!   that pipes bytes through [`store::documents::ingest_bytes`]. The
-//!   picker is `multiple`, so one submission may carry a batch of
-//!   files; each becomes its own document.
+//!   that pipes bytes through [`store::assets::file_revision`], filing each
+//!   file as a revision of the document its trimmed filename names. The
+//!   picker is `multiple`, so one submission may carry a batch of files;
+//!   each becomes its own document (or the next revision of an existing
+//!   one).
 //! - `GET /app/projects/{project_code}/documents/:doc_id` — per-document
 //!   detail page showing full provenance.
 //! - `GET /app/projects/{project_code}/documents/:doc_id/download` — issues
@@ -46,7 +48,7 @@ use axum::body::Body;
 use axum::extract::{Extension, Multipart, Path as AxumPath, State};
 use axum::http::{header, StatusCode};
 use axum::response::{IntoResponse, Redirect, Response};
-use store::documents::{source, IngestArgs};
+use store::documents::{source, DocumentIdentity, IngestArgs};
 use tower_cookies::Cookies;
 use uuid::Uuid;
 
@@ -174,34 +176,28 @@ pub async fn upload(
     } = batch;
     let description_trimmed = description.as_deref();
 
-    // File the upload as the lawyer/admin who uploaded it, so the matter
-    // repo's `git log` attributes it to them.
-    let (author_name, author_email) = uploader_identity(&state.surreal, Some(session_data)).await;
-
-    // Ingest sequentially: each file is its own `assets` row and its own
-    // commit in the matter repo, so a batch of five reads in `git log` the
-    // same way five single uploads would. A failure part-way through
-    // leaves the already-filed documents in place rather than rolling the
-    // batch back — the lawyer sees what landed and can re-send the
-    // rest, which beats silently discarding good uploads.
+    // Ingest sequentially: each file is its own `assets` row, so a batch of
+    // five files a matter as five single uploads would. A failure part-way
+    // through leaves the already-filed documents in place rather than
+    // rolling the batch back — the lawyer sees what landed and can re-send
+    // the rest, which beats silently discarding good uploads.
     //
     // That only works because re-sending is safe: `already_filed` skips a
     // file this project already holds under the same name and content
     // hash, so retrying the whole batch tops up the missing documents
     // instead of duplicating the ones that landed the first time.
     for upload in &uploads {
-        if let Err(status) = file_one(
+        if let Err(response) = file_one(
             &state,
             project_id,
             upload,
             &kind,
             description_trimmed,
             visibility,
-            (&author_name, &author_email),
         )
         .await
         {
-            return status.into_response();
+            return response;
         }
     }
 
@@ -210,7 +206,7 @@ pub async fn upload(
 }
 
 /// File one document from a batch, skipping it when the matter already
-/// holds it. `Err(status)` is the response the caller must return.
+/// holds it. `Err(response)` is the response the caller must return.
 async fn file_one(
     state: &AdminState,
     project_id: Uuid,
@@ -218,8 +214,7 @@ async fn file_one(
     kind: &str,
     description: Option<&str>,
     visibility: &str,
-    author: (&str, &str),
-) -> Result<(), StatusCode> {
+) -> Result<(), Response> {
     let file_name = upload
         .file_name
         .as_deref()
@@ -261,14 +256,14 @@ async fn file_one(
                     error = %e, %project_id, filename = %file_name,
                     "failed to sync visibility on a re-upload of an existing document"
                 );
-                return Err(StatusCode::INTERNAL_SERVER_ERROR);
+                return Err(StatusCode::INTERNAL_SERVER_ERROR.into_response());
             }
             return Ok(());
         }
         Ok(None) => {}
         Err(e) => {
             tracing::error!(error = %e, %project_id, filename = %file_name, "dedup lookup failed");
-            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+            return Err(StatusCode::INTERNAL_SERVER_ERROR.into_response());
         }
     }
 
@@ -282,38 +277,81 @@ async fn file_one(
         secondary_storage_key: None,
         visibility,
     };
-    let (author_name, author_email) = author;
-    let author = repos::Author {
-        name: author_name,
-        email: author_email,
-    };
 
-    crate::matter_documents::record_document(
+    // The document identity a browser upload files under: the trimmed
+    // filename, the same default the CLI's `--slug` documents. That makes a
+    // re-upload of `notice.pdf` the next revision of the same document
+    // instead of an unrelated one-off row — the same lane rules
+    // `store::assets::file_revision` already enforces for the CLI's own
+    // `navigator site sync` path.
+    let identity = DocumentIdentity {
+        slug: Some(&file_name),
+        published_at: None,
+        metadata: None,
+    };
+    let result = store::assets::file_revision(
         &state.surreal,
         &state.storage,
-        author,
         &args,
+        &identity,
         &upload.bytes,
     )
-    .await
-    .map_err(|e| {
+    .await;
+    file_revision_response(state, project_id, &file_name, result).await
+}
+
+/// Turn a [`store::assets::file_revision`] result into what `file_one` must
+/// return: `Ok` for a filed (or no-op identical) revision, `Err(response)`
+/// otherwise.
+async fn file_revision_response(
+    state: &AdminState,
+    project_id: Uuid,
+    file_name: &str,
+    result: Result<store::assets::Filed, store::assets::RevisionError>,
+) -> Result<(), Response> {
+    match result {
+        Ok(_filed) => Ok(()),
+        // Rule 2 of `file_revision`: kind is immutable across a chain. This is
+        // the one lane rule that can reject a file the form previously always
+        // accepted, so it renders as a flash the lawyer can act on rather than
+        // a bare 500.
+        Err(store::assets::RevisionError::KindChanged {
+            slug,
+            existing,
+            attempted,
+        }) => {
+            let message = format!(
+                "`{slug}` is already filed as `{existing}`; a `{attempted}` upload is a different document."
+            );
+            let path = crate::dioxus_app::project_show_path(&state.surreal, project_id).await;
+            Err(Redirect::to(&format!(
+                "{path}?error={}",
+                crate::admin::encode_query_value(&message)
+            ))
+            .into_response())
+        }
         // An invalid kind is a bad request, not a server fault: the upload
         // form's `<select>` cannot produce one, so this only fires for a
         // direct/bearer caller sending an unrecognized asset-lane kind.
-        let status = if matches!(e, store::documents::IngestError::InvalidKind(_)) {
-            StatusCode::BAD_REQUEST
-        } else {
-            StatusCode::INTERNAL_SERVER_ERROR
-        };
-        tracing::error!(
-            project_id = %project_id,
-            filename = %file_name,
-            error = %e,
-            "project document upload failed"
-        );
-        status
-    })?;
-    Ok(())
+        Err(e @ store::assets::RevisionError::KindNotFilable(_)) => {
+            tracing::warn!(
+                project_id = %project_id,
+                filename = %file_name,
+                error = %e,
+                "project document upload rejected an unrecognized kind"
+            );
+            Err(StatusCode::BAD_REQUEST.into_response())
+        }
+        Err(e) => {
+            tracing::error!(
+                project_id = %project_id,
+                filename = %file_name,
+                error = %e,
+                "project document upload failed"
+            );
+            Err(StatusCode::INTERNAL_SERVER_ERROR.into_response())
+        }
+    }
 }
 
 /// Why a multipart upload body could not be turned into an
@@ -470,30 +508,6 @@ async fn read_upload_batch(multipart: &mut Multipart) -> Result<UploadBatch, Bat
             _ => store::documents::visibility::INTERNAL,
         },
     })
-}
-
-/// Resolve the uploader's `(name, email)` for git authorship from their
-/// session. Prefers the linked `persons` row (faithful name + email);
-/// falls back to the session email, then to a neutral placeholder so a
-/// commit is never blocked on a missing identity.
-pub(crate) async fn uploader_identity(
-    surreal: &store::surreal::SurrealDb,
-    session: Option<SessionData>,
-) -> (String, String) {
-    if let Some(session) = session {
-        if let Some(pid) = session.person_id {
-            if let Ok(Some(p)) = store::persons::find_by_id(surreal, pid).await {
-                return (p.name, p.email);
-            }
-        }
-        if let Some(email) = session.email {
-            return (email.clone(), email);
-        }
-    }
-    (
-        "Neon Law Navigator lawyer".to_string(),
-        "lawyer@localhost".to_string(),
-    )
 }
 
 /// `GET /app/projects/{project_code}/documents/:doc_id/download`. Resolves
@@ -669,5 +683,142 @@ async fn stream_through(
             tracing::error!(error = %e, key, "storage get failed for project document");
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{file_one, UploadedFile};
+    use crate::admin::AdminState;
+    use store::documents::visibility;
+    use store::surreal::test_support::mem;
+    use store::test_support::seed_project_surreal;
+
+    /// An [`AdminState`] wired against a fresh embedded engine, plus the one
+    /// matter `file_one` files against.
+    async fn fixtures(code: &str) -> (AdminState, uuid::Uuid) {
+        let db = mem().await;
+        let project_id = seed_project_surreal(&db, code).await;
+        let app = crate::test_support::app_state(db).await;
+        let state = AdminState {
+            surreal: app.surreal,
+            workflow_runtime: app.workflow_runtime,
+            signature_provider: app.signature_provider,
+            retainer_intake_questionnaire: workflows::retainer_intake_questionnaire(),
+            questionnaire_runtime: app.questionnaire_runtime,
+            storage: app.storage,
+            assets_storage: app.assets_storage,
+            forms_registry: app.forms_registry,
+            email: app.email,
+            billing_provider: app.billing_provider,
+            contract_reviewer: app.contract_reviewer,
+            bootstrap_owner_email: app.bootstrap_owner_email,
+            bootstrap_company: crate::admin::bootstrap_company_from_env(),
+            sessions: app.sessions,
+            secure_cookies: false,
+        };
+        (state, project_id)
+    }
+
+    fn uploaded(name: &str, bytes: &[u8]) -> UploadedFile {
+        UploadedFile {
+            file_name: Some(name.to_string()),
+            content_type: Some("application/pdf".to_string()),
+            bytes: bytes.to_vec(),
+        }
+    }
+
+    /// The chain-building half of the fix: two uploads of the same filename
+    /// under the same kind, with different bytes, become one document with
+    /// two revisions in the grouped history rather than two unrelated rows.
+    #[tokio::test]
+    async fn a_reupload_under_the_same_kind_becomes_the_next_revision() {
+        let (state, project_id) = fixtures("documents-lane-revision").await;
+
+        file_one(
+            &state,
+            project_id,
+            &uploaded("notice.pdf", b"first version"),
+            "unclassified",
+            None,
+            visibility::INTERNAL,
+        )
+        .await
+        .expect("first upload files cleanly");
+        file_one(
+            &state,
+            project_id,
+            &uploaded("notice.pdf", b"second version"),
+            "unclassified",
+            None,
+            visibility::INTERNAL,
+        )
+        .await
+        .expect("second upload files as the next revision");
+
+        let groups = store::assets::grouped_for_project(&state.surreal, project_id)
+            .await
+            .expect("grouped documents");
+        assert_eq!(groups.len(), 1, "one document, not two unrelated rows");
+        assert_eq!(
+            groups[0].revisions.len(),
+            2,
+            "the grouped history carries both revisions of the one document"
+        );
+    }
+
+    /// The refusal half of the fix: a same-filename re-upload that tries to
+    /// change the document's kind is refused with a redirect naming both
+    /// kinds, not a bare 500.
+    #[tokio::test]
+    async fn a_conflicting_kind_is_refused_with_a_flash_naming_both_kinds() {
+        let (state, project_id) = fixtures("documents-lane-kind-conflict").await;
+
+        file_one(
+            &state,
+            project_id,
+            &uploaded("notice.pdf", b"first version"),
+            "unclassified",
+            None,
+            visibility::INTERNAL,
+        )
+        .await
+        .expect("first upload files cleanly");
+
+        let refusal = file_one(
+            &state,
+            project_id,
+            &uploaded("notice.pdf", b"second version"),
+            "agreement",
+            None,
+            visibility::INTERNAL,
+        )
+        .await
+        .expect_err("a kind change on an existing chain is refused");
+
+        assert_eq!(refusal.status(), axum::http::StatusCode::SEE_OTHER);
+        let location = refusal
+            .headers()
+            .get(axum::http::header::LOCATION)
+            .expect("a redirect carries a Location header")
+            .to_str()
+            .expect("Location is a valid header value");
+        assert!(location.contains("error="), "{location}");
+        assert!(
+            location.contains("unclassified") && location.contains("agreement"),
+            "the flash names both the existing and the attempted kind: {location}"
+        );
+
+        // The chain is unchanged: the refused upload never wrote a second
+        // revision.
+        let groups = store::assets::grouped_for_project(&state.surreal, project_id)
+            .await
+            .expect("grouped documents");
+        assert_eq!(groups.len(), 1);
+        assert_eq!(
+            groups[0].revisions.len(),
+            1,
+            "the refused write left the chain at its original one revision"
+        );
     }
 }

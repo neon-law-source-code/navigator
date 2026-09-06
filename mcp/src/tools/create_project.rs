@@ -723,8 +723,11 @@ mod tests {
             .find(|p| p.is_lawyer_dri)
             .map(|p| p.person_id)
             .expect("lawyer DRI assigned");
+        // `seed_firm_principal` is the only firm-tier person, so
+        // `default_firm_dri` names them as the attester and their own tier —
+        // `admin` — is the word `open_matter` derives, not a fixed one.
         assert!(
-            rows.contains(&(lawyer_dri, "attorney".to_string())),
+            rows.contains(&(lawyer_dri, "admin".to_string())),
             "the lawyer DRI needs its membership disclosure: {rows:?}"
         );
         assert!(

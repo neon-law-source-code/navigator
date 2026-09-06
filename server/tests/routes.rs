@@ -178,7 +178,7 @@ async fn admin_on_project(
     )
     .await
     .unwrap();
-    participate(surreal, admin.id, project_id, "attorney").await;
+    participate(surreal, admin.id, project_id, "admin").await;
     session_cookie_and_csrf_for_person(&admin)
 }
 
@@ -305,7 +305,7 @@ async fn lawyer_project_fixture(
     )
     .await
     .unwrap();
-    store::projects::add_participation(surreal, project.id, lawyer.id, "attorney")
+    store::projects::add_participation(surreal, project.id, lawyer.id, "lawyer")
         .await
         .unwrap();
     let (cookie, csrf) = session_cookie_and_csrf_for_person(&lawyer);
@@ -6411,7 +6411,7 @@ async fn lawyer_dashboard_leads_with_project_kpis_and_calendar() {
             disclose_lawyer_dri(&state.surreal, dri, project.id).await;
         }
         if lawyer_participates && lawyer_dri != Some(lawyer.id) {
-            participate(&state.surreal, lawyer.id, project.id, "attorney").await;
+            participate(&state.surreal, lawyer.id, project.id, "lawyer").await;
         }
         // One open matter carries an onboarding artifact so the pie must split
         // pitch from active rather than counting every `open` row as one slice.
@@ -10295,7 +10295,7 @@ async fn every_firm_tier_can_view_an_assigned_matter_as_its_client() {
         .await
         .unwrap();
         if role == store::persons::Role::Clerk {
-            store::projects::add_participation(&surreal, project.id, supervisor.id, "attorney")
+            store::projects::add_participation(&surreal, project.id, supervisor.id, "lawyer")
                 .await
                 .unwrap();
             store::projects::designate_dri_in_surreal(
@@ -10310,7 +10310,7 @@ async fn every_firm_tier_can_view_an_assigned_matter_as_its_client() {
                 .await
                 .unwrap();
         } else {
-            store::projects::add_participation(&surreal, project.id, actor.id, "attorney")
+            store::projects::add_participation(&surreal, project.id, actor.id, role.as_str())
                 .await
                 .unwrap();
         }
@@ -11529,7 +11529,7 @@ async fn admin_generic_listings_render_row_cells_from_the_database() {
     .await
     .unwrap();
     let ppr_project = test_project(&surreal, "Role matter", "open").await;
-    store::projects::add_participation(&surreal, ppr_project.id, ppr_person.id, "paralegal")
+    store::projects::add_participation(&surreal, ppr_project.id, ppr_person.id, "clerk")
         .await
         .unwrap();
 
@@ -11607,7 +11607,7 @@ async fn admin_generic_listings_render_row_cells_from_the_database() {
             vec![
                 ppr_person.id.to_string(),
                 ppr_project.id.to_string(),
-                "paralegal".to_string(),
+                "clerk".to_string(),
             ],
         ),
         (
@@ -11681,7 +11681,7 @@ async fn seed_matter_content(surreal: &store::surreal::SurrealDb) -> MatterConte
     .unwrap();
     let visible = test_project(surreal, "Visible Content Matter", "open").await;
     let hidden = test_project(surreal, "Hidden Content Matter", "open").await;
-    participate(surreal, lawyer.id, visible.id, "attorney").await;
+    participate(surreal, lawyer.id, visible.id, "lawyer").await;
 
     // assets → one document per matter, plus a bare content asset whose
     // `project_id` is NONE.
@@ -13573,7 +13573,7 @@ async fn lawyer_projects_csv_is_scoped_to_lawyer_lens() {
     .await
     .unwrap();
     let visible = test_project(&surreal, "Visible Lawyer Matter", "open").await;
-    store::projects::add_participation(&surreal, visible.id, lawyer.id, "paralegal")
+    store::projects::add_participation(&surreal, visible.id, lawyer.id, "lawyer")
         .await
         .unwrap();
     let hidden = test_project(&surreal, "Hidden Matter", "open").await;
@@ -14415,7 +14415,7 @@ async fn contract_review_upload_without_csrf_is_forbidden() {
     )
     .await
     .unwrap();
-    participate(&surreal, admin.id, project_id, "attorney").await;
+    participate(&surreal, admin.id, project_id, "admin").await;
     let (cookie, _csrf) = session_cookie_and_csrf_for_person(&admin);
 
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
@@ -17955,6 +17955,12 @@ async fn the_app_dashboards_keep_their_tier_gates() {
 /// lens. They must never reach the firm workbench. `counterparty` is the only
 /// participation whose *value* carries that distinction, and one shared handler
 /// is exactly where it could be lost.
+///
+/// ENG-478 closed the schema to the five role-derived words, so nothing can
+/// write `counterparty` through the ordinary path any more — the row is
+/// seeded the way a row already on disk from before that migration would
+/// read: [`store::test_support::seed_legacy_participation`] writes it, which
+/// is exactly the legacy handling this test exists to prove survives.
 #[tokio::test]
 async fn a_counterparty_is_denied_the_firm_lens_on_the_shared_path() {
     let (state, surreal) = state_with_engines().await;
@@ -17964,14 +17970,24 @@ async fn a_counterparty_is_denied_the_firm_lens_on_the_shared_path() {
 
     // A lawyer-tier person recorded as the adverse party: the tier alone would
     // admit them, so only the participation value keeps them out.
-    let cookie = tiered_participant(
+    let adverse = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "Tier Fixture",
+            "adverse-counsel@example.com",
+            store::persons::Role::Lawyer,
+        ),
+    )
+    .await
+    .unwrap();
+    store::test_support::seed_legacy_participation(
         &surreal,
         project_id,
-        store::persons::Role::Lawyer,
-        "adverse-counsel@example.com",
-        Some("counterparty"),
+        adverse.id,
+        "counterparty",
     )
     .await;
+    let (cookie, _csrf) = session_cookie_and_csrf_for_person(&adverse);
     let body =
         body_string(get_with_cookie(app, &format!("/app/projects/{project_code}"), &cookie).await)
             .await;
@@ -17997,7 +18013,7 @@ async fn the_workbench_points_every_firm_participant_at_email_to_close_a_matter(
         project_id,
         store::persons::Role::Lawyer,
         "paralegal-on-close@neonlaw.com",
-        Some("paralegal"),
+        Some("lawyer"),
     )
     .await;
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));

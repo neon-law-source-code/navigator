@@ -1491,7 +1491,7 @@ async fn open_sample_matter(
         // Client side and firm side. The disclosed lawyer is what lets the
         // supervised Clerk resolve the matter.
         ensure_participation(surreal, report, project_id, client_id, "client").await?;
-        ensure_participation(surreal, report, project_id, lawyer_id, "attorney").await?;
+        ensure_participation(surreal, report, project_id, lawyer_id, "lawyer").await?;
         ensure_participation(surreal, report, project_id, clerk_id, "clerk").await?;
         // Owner gets a firm-side row so the demo matters appear in the Owner's
         // own list: since ENG-81 the whole matter surface — `/app/projects` and

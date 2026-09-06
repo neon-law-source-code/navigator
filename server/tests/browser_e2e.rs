@@ -1113,7 +1113,7 @@ async fn seed_lawyer_upload_project(surreal: &store::surreal::SurrealDb) -> Stri
     )
     .await
     .expect("seed the upload project");
-    store::projects::add_participation(surreal, project.id, lawyer.id, "attorney")
+    store::projects::add_participation(surreal, project.id, lawyer.id, "lawyer")
         .await
         .expect("scope the harness lawyer person onto the project");
 
@@ -1144,7 +1144,7 @@ async fn seed_portal_project(surreal: &store::surreal::SurrealDb) -> (Uuid, Stri
     )
     .await
     .expect("seed the portal project");
-    store::projects::add_participation(surreal, project.id, lawyer.id, "attorney")
+    store::projects::add_participation(surreal, project.id, lawyer.id, "lawyer")
         .await
         .expect("scope the harness lawyer person onto the project");
 

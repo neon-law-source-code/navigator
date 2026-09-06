@@ -135,7 +135,16 @@ DEFINE INDEX OVERWRITE xero_invoice_project ON xero_invoice FIELDS project_id UN
 DEFINE TABLE IF NOT EXISTS person_project_role SCHEMAFULL PERMISSIONS NONE;
 DEFINE FIELD OVERWRITE person_id ON person_project_role TYPE record<person>;
 DEFINE FIELD OVERWRITE project_id ON person_project_role TYPE record<project>;
-DEFINE FIELD OVERWRITE participation ON person_project_role TYPE string;
+-- ENG-478: closed to the same five role-derived words `person.role` itself
+-- admits (`:230`). `store::projects::participation_for_role` already derives
+-- every write from a Person's tier; this closes the boundary a privileged
+-- direct write could still get around. A row written before this line
+-- shipped is unaffected until it is next written — `ASSERT` validates a
+-- write, never a value already on disk — which is why a legacy word survives
+-- as a read (see `store::projects::PARTICIPATION_CLIENT_SIDE`) and is only
+-- ever reported, never rewritten (`store::participation::unsupported_participation_report`).
+DEFINE FIELD OVERWRITE participation ON person_project_role TYPE string
+    ASSERT $value IN ['owner', 'admin', 'lawyer', 'clerk', 'client'];
 DEFINE FIELD OVERWRITE is_lawyer_dri ON person_project_role TYPE bool DEFAULT false;
 DEFINE FIELD OVERWRITE is_client_dri ON person_project_role TYPE bool DEFAULT false;
 DEFINE FIELD OVERWRITE inserted_at ON person_project_role TYPE string;

@@ -124,7 +124,7 @@ async fn build_fixture() -> Fixture {
     .await
     .unwrap();
     let assigned_role =
-        store::projects::add_participation(&surreal, project.id, lawyer.id, "paralegal")
+        store::projects::add_participation(&surreal, project.id, lawyer.id, "lawyer")
             .await
             .unwrap();
 
@@ -241,7 +241,7 @@ async fn admin_manages_project_participation_from_the_matter_workbench() {
     assert!(html.contains("Matter people"), "html: {html}");
     assert!(html.contains("Lawyer Member"), "html: {html}");
     assert!(html.contains("System tier"), "html: {html}");
-    assert!(html.contains("paralegal"), "html: {html}");
+    assert!(html.contains("lawyer"), "html: {html}");
     assert!(!html.contains("Add person"), "html: {html}");
     assert!(!html.contains(&format!(
         "/app/projects/{}/people/{}/edit",
@@ -311,7 +311,7 @@ async fn admin_manages_project_participation_from_the_matter_workbench() {
     assert_eq!(response.status(), StatusCode::OK);
     let html = body_string(response).await;
     assert!(html.contains("Edit matter person"), "html: {html}");
-    assert!(html.contains("paralegal"), "html: {html}");
+    assert!(html.contains("lawyer"), "html: {html}");
 
     let response = fixture
         .app
@@ -451,7 +451,7 @@ async fn admin_manages_project_participation_from_the_matter_workbench() {
         &fixture.surreal,
         fixture.project_id,
         fixture.replacement_id,
-        "attorney",
+        "lawyer",
     )
     .await
     .unwrap();

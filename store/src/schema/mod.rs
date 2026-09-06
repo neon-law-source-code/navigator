@@ -32,7 +32,7 @@ use crate::surreal::SurrealDb;
 /// The version this build of Navigator applies. Bump it whenever
 /// `navigator.surql` changes so a database prepared by another build
 /// reports as drifted instead of silently disagreeing.
-pub const SCHEMA_VERSION: u32 = 27;
+pub const SCHEMA_VERSION: u32 = 28;
 
 /// The table holding the applied version.
 const VERSION_TABLE: &str = "schema_version";
@@ -348,7 +348,7 @@ mod tests {
         .unwrap();
         db.query(
             "CREATE person_project_role:one SET person_id = person:lawyer, \
-             project_id = project:matter, participation = 'attorney', \
+             project_id = project:matter, participation = 'lawyer', \
              inserted_at = '2026-08-04T00:00:00Z', updated_at = '2026-08-04T00:00:00Z'",
         )
         .await
@@ -359,13 +359,106 @@ mod tests {
         let duplicate = db
             .query(
                 "CREATE person_project_role:two SET person_id = person:lawyer, \
-                 project_id = project:matter, participation = 'paralegal', \
+                 project_id = project:matter, participation = 'client', \
                  inserted_at = '2026-08-04T00:00:00Z', updated_at = '2026-08-04T00:00:00Z'",
             )
             .await
             .unwrap()
             .check();
         assert!(duplicate.is_err(), "duplicate participation was accepted");
+    }
+
+    /// ENG-478: the schema closes `participation` to the same five
+    /// role-derived words `person.role` admits. Every one of them must still
+    /// write — this is defense in depth, not a narrower vocabulary than the
+    /// one `store::projects::participation_for_role` already derives from.
+    #[tokio::test]
+    async fn participation_schema_accepts_every_role_derived_value() {
+        let db = unmigrated().await;
+        apply(&db).await.unwrap();
+        let entity_id = uuid::Uuid::parse_str("0198a36a-55cc-7fd0-8af7-4f30e72b761c").unwrap();
+        db.query(
+            "CREATE project:role_matter SET code = 'role-matter', name = 'Role Matter', \
+             status = 'open', entity_id = $entity_id, \
+             inserted_at = '2026-08-04T00:00:00Z', updated_at = '2026-08-04T00:00:00Z'",
+        )
+        .bind(("entity_id", crate::surreal::record_id("entity", entity_id)))
+        .await
+        .unwrap()
+        .check()
+        .unwrap();
+
+        // A distinct Person per value, keyed by the value itself: the unique
+        // `person_project_role_pair` index refuses a second row for the same
+        // (person, project), which is the invariant
+        // `projects_cluster_schema_rejects_a_duplicate_participation` already
+        // covers — this test's own row per value must not collide with it.
+        for value in ["owner", "admin", "lawyer", "clerk", "client"] {
+            db.query(format!(
+                "CREATE person:{value}_role_person SET name = '{value}', \
+                 email = '{value}-role-person@example.com', role = 'lawyer'"
+            ))
+            .await
+            .unwrap()
+            .check()
+            .unwrap();
+            db.query(format!(
+                "CREATE person_project_role SET person_id = person:{value}_role_person, \
+                 project_id = project:role_matter, participation = $participation, \
+                 inserted_at = '2026-08-04T00:00:00Z', updated_at = '2026-08-04T00:00:00Z'"
+            ))
+            .bind(("participation", value.to_string()))
+            .await
+            .unwrap()
+            .check()
+            .unwrap_or_else(|error| panic!("{value} must be an accepted participation: {error}"));
+        }
+    }
+
+    /// The other half of the same boundary: a word outside the five is
+    /// refused, whatever wrote it — a privileged direct write included, since
+    /// this is exactly the write path the typed `store::participation`
+    /// commands never take.
+    #[tokio::test]
+    async fn participation_schema_rejects_an_unsupported_value() {
+        let db = unmigrated().await;
+        apply(&db).await.unwrap();
+        db.query(
+            "CREATE person:role_person SET name = 'Person', \
+             email = 'role-person@example.com', role = 'lawyer'",
+        )
+        .await
+        .unwrap()
+        .check()
+        .unwrap();
+        let entity_id = uuid::Uuid::parse_str("0198a36a-55cc-7fd0-8af7-4f30e72b761c").unwrap();
+        db.query(
+            "CREATE project:unsupported_matter SET code = 'unsupported-matter', \
+             name = 'Unsupported Matter', status = 'open', entity_id = $entity_id, \
+             inserted_at = '2026-08-04T00:00:00Z', updated_at = '2026-08-04T00:00:00Z'",
+        )
+        .bind(("entity_id", crate::surreal::record_id("entity", entity_id)))
+        .await
+        .unwrap()
+        .check()
+        .unwrap();
+
+        for value in ["counterparty", "attorney", "paralegal", "co_counsel", ""] {
+            let rejected = db
+                .query(
+                    "CREATE person_project_role SET person_id = person:role_person, \
+                     project_id = project:unsupported_matter, participation = $participation, \
+                     inserted_at = '2026-08-04T00:00:00Z', updated_at = '2026-08-04T00:00:00Z'",
+                )
+                .bind(("participation", value.to_string()))
+                .await
+                .unwrap()
+                .check();
+            assert!(
+                rejected.is_err(),
+                "{value:?} must not be an accepted participation"
+            );
+        }
     }
 
     /// Re-applying must converge definitions without touching rows —

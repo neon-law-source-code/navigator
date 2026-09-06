@@ -232,6 +232,13 @@ a participation: the lawyer matter-people form, `POST /app/api/projects/{id}/par
 `aida_link_person_project` each name a person and nothing else. A `participation` sent to any of them is surplus and
 unread.
 
+ENG-478 closed the same rule at the schema boundary: the `person_project_role.participation` column now carries its own
+`ASSERT $value IN ['owner', 'admin', 'lawyer', 'clerk', 'client']`, mirroring the one `person.role` already carries.
+This is defense in depth, not a second vocabulary — a privileged direct write is now refused the same word the
+application-level derivation never produces. `ASSERT` validates a write, never a value already on disk, so a row written
+before this line shipped keeps reading; `store::participation::unsupported_participation_report` finds any such row
+deployment-wide, by row id and word only, and never rewrites or deletes one.
+
 This is why there is no separate vocabulary. A matter-side word that could disagree with the tier was a way to get the
 access decision wrong — a `client` recorded as `attorney` is a firm-side row, which is the matter's own client reading
 `/app/lawyer`. The kinds that used to need their own word are not participants at all:

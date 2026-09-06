@@ -2134,10 +2134,13 @@ fn person_lookup_failed(err: &crate::persons::PersonError) -> OpenMatterError {
     OpenMatterError::Db(format!("resolve a matter-open reference: {err}"))
 }
 
+/// Validate every reference the open depends on, and return the attester's
+/// tier — the caller needs it to derive the lawyer role's own participation
+/// word rather than writing a fixed one.
 async fn validate_open_references(
     surreal: &SurrealDb,
     input: &OpenMatterCommand,
-) -> Result<(), OpenMatterError> {
+) -> Result<Role, OpenMatterError> {
     let client = lock_person(surreal, input.client_id)
         .await?
         .ok_or(OpenMatterError::NotFound("client"))?;
@@ -2164,7 +2167,7 @@ async fn validate_open_references(
     if !attester.role.is_lawyer_tier() {
         return Err(OpenMatterError::AttesterNotAllowed);
     }
-    Ok(())
+    Ok(attester.role)
 }
 
 pub async fn open_matter(
@@ -2200,7 +2203,8 @@ pub async fn open_matter(
     // participations commit in the explicit SurrealDB transaction below;
     // transaction conflicts retry with jitter. `lock_person` remains the
     // accepted narrowing.
-    validate_open_references(surreal, input).await?;
+    let attester_participation =
+        participation_for_role(validate_open_references(surreal, input).await?);
 
     // Conflict check, before any write. The relationship graph is advisory to
     // clear but authoritative to block: a confident adverse link to a current
@@ -2224,7 +2228,7 @@ pub async fn open_matter(
                     brand = $brand,
                     entity_id = $entity_id, description = $description,
                     inserted_at = $now, updated_at = $now RETURN {PROJECT_SELECT};
-                 CREATE $lawyer_role SET person_id = $attester, project_id = $project, participation = 'attorney',
+                 CREATE $lawyer_role SET person_id = $attester, project_id = $project, participation = $attester_participation,
                     is_lawyer_dri = true, inserted_at = $now, updated_at = $now;
                  CREATE $client_role SET person_id = $client, project_id = $project, participation = 'client',
                     is_client_dri = true, inserted_at = $now, updated_at = $now;
@@ -2239,6 +2243,7 @@ pub async fn open_matter(
             .bind(("entity_id", record_id(ENTITY_TABLE, input.entity_id)))
             .bind(("description", description.clone()))
             .bind(("attester", record_id("person", input.acting_person_id)))
+            .bind(("attester_participation", attester_participation.to_string()))
             .bind(("client", record_id("person", input.client_id)))
             .bind(("now", now.clone()))
     })
@@ -2989,7 +2994,7 @@ mod surreal_read_tests {
         .unwrap()
         .check()
         .unwrap();
-        for (person_id, participation) in [(lawyer_id, "attorney"), (client_id, "client")] {
+        for (person_id, participation) in [(lawyer_id, "lawyer"), (client_id, "client")] {
             db.query(
                 "CREATE $id SET person_id = $person_id, project_id = $project_id, \
                  participation = $participation, inserted_at = '2026-08-04T00:00:00Z', \
@@ -3054,7 +3059,7 @@ mod surreal_read_tests {
         .check()
         .unwrap();
         for (person_id, participation, is_client_dri) in
-            [(client_id, "client", false), (lawyer_id, "attorney", true)]
+            [(client_id, "client", false), (lawyer_id, "lawyer", true)]
         {
             db.query(
                 "CREATE $id SET person_id = $person_id, project_id = $project_id, \
@@ -3479,7 +3484,7 @@ mod surreal_read_tests {
         )
         .await
         .unwrap();
-        let created = super::add_participation(&surreal, project.id, person.id, "attorney")
+        let created = super::add_participation(&surreal, project.id, person.id, "lawyer")
             .await
             .unwrap();
         assert_eq!(created.person_id, person.id);

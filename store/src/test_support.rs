@@ -272,6 +272,59 @@ pub async fn ensure_person(
     person
 }
 
+/// Write a `person_project_role` row carrying a participation word ENG-478's
+/// schema `ASSERT` no longer admits, for a test proving a legacy row survives
+/// the migration that closed the vocabulary.
+///
+/// This deliberately goes around [`crate::projects::add_participation`],
+/// which cannot write such a word once the schema refuses it — that refusal
+/// is the invariant ENG-478 exists to add. It loosens the field, writes the
+/// row, then restores the real definition by re-running [`crate::schema::apply`]
+/// rather than repeating the `ASSERT`'s word list here, so the two can never
+/// quietly say something different from one another. That is exactly what a
+/// live migration does to a row already on disk: `ASSERT` validates a write,
+/// never a value already stored, so a row written before this line shipped
+/// keeps reading — it is only ever reported, never rewritten.
+///
+/// # Panics
+///
+/// If loosening the field, writing the row, or restoring the schema fails.
+pub async fn seed_legacy_participation(
+    surreal: &crate::surreal::SurrealDb,
+    project_id: Uuid,
+    person_id: Uuid,
+    participation: &str,
+) {
+    surreal
+        .query("DEFINE FIELD OVERWRITE participation ON person_project_role TYPE string;")
+        .await
+        .and_then(surrealdb::IndexedResults::check)
+        .expect("loosen the participation field");
+    let now = chrono::Utc::now().to_rfc3339();
+    surreal
+        .query(
+            "CREATE $id SET person_id = $person_id, project_id = $project_id, \
+             participation = $participation, inserted_at = $now, updated_at = $now",
+        )
+        .bind((
+            "id",
+            crate::surreal::record_id("person_project_role", Uuid::now_v7()),
+        ))
+        .bind(("person_id", crate::surreal::record_id("person", person_id)))
+        .bind((
+            "project_id",
+            crate::surreal::record_id("project", project_id),
+        ))
+        .bind(("participation", participation.to_string()))
+        .bind(("now", now))
+        .await
+        .and_then(surrealdb::IndexedResults::check)
+        .expect("write the legacy participation row");
+    crate::schema::apply(surreal)
+        .await
+        .expect("restore the participation field's schema");
+}
+
 pub async fn dri_person(surreal: &crate::surreal::SurrealDb) -> Uuid {
     use crate::persons::{self, NewPerson};
 

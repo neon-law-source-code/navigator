@@ -382,7 +382,7 @@ fn local_rauthy_presenter_accounts_match_the_dev_seed_contract() {
         "SAMPLE_LITIGATION_CODE: &str = \"sample-litigation\"",
         "lawyer@neonlaw.com",
         "\"client@neonlaw.com\"",
-        "lawyer_id, \"attorney\"",
+        "lawyer_id, \"lawyer\"",
     ] {
         assert!(
             seed.contains(token),

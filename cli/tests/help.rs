@@ -77,6 +77,7 @@ fn top_level_help_keeps_orchestration_nested_under_groups() {
             // layer IS the mental model rather than two dozen flat rows an
             // operator has to scan.
             "dev",
+            "document",
             "erd",
             "forms",
             "github",
@@ -448,8 +449,8 @@ fn site_help_lists_the_live_deployment_members() {
     assert_eq!(
         command_names(&output),
         vec![
-            "document", "import", "login", "logout", "mcp", "notation", "projects", "seed", "sync",
-            "whoami", "help",
+            "document", "import", "login", "logout", "mail", "mcp", "notation", "projects", "seed",
+            "sync", "whoami", "help",
         ]
     );
 }

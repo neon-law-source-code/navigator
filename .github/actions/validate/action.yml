@@ -21,19 +21,20 @@ description: >-
 # Set `project_repository: true` and this becomes the whole gate for a Project's
 # one repository, holding both kinds of source. It runs
 # `navigator site projects repository validate`, which covers whichever halves are
-# present, and then verifies the built portal is mounted where Navigator will
-# serve it.
+# present, and then verifies every built application is mounted where Navigator
+# will serve it.
 #
 # It carries no organization, host, or client name, because none of those vary:
-# the repository name is the Project code and the mount is that name plus the
-# literal `portal`, identically in every deployment. Only the *host* differs
+# the repository name is the Project code and each mount is that name plus the
+# direct `apps/<app>/` directory name, identically in every deployment. The
+# repository-side `apps/` grouping is not a URL segment. Only the *host* differs
 # between deployments, and a host never appears in a Vite base.
 #
 # There is deliberately **no path filter**. Each half no-ops when this
 # repository does not carry it, so the one job always runs — a required check
 # that can be satisfied by being skipped is not a gate.
 #
-#     - run: pnpm --dir portal build
+#     - run: for app in apps/*; do pnpm --dir "$app" build; done
 #     - uses: neon-law-source-code/navigator/.github/actions/validate@YY.M.D
 #       with:
 #         version: "YY.M.D"
@@ -76,9 +77,9 @@ inputs:
   project_repository:
     description: >-
       Validate the checked-out directory as one Project's repository: enforce
-      the source-only layout, lint its notation templates, hold its portal to
-      the Vite contract, and verify the built portal is mounted where Navigator
-      serves it.
+      the source-only layout, lint its notation templates, hold every discovered
+      application to the Vite contract, and verify each build is mounted where
+      Navigator serves it.
     required: false
     default: "false"
   repository:
@@ -90,8 +91,8 @@ inputs:
     default: ${{ github.event.repository.name }}
   portal_dist:
     description: >-
-      The portal's build output directory, relative to `portal/`. Verified only
-      when a portal is present.
+      Each application's build output directory, relative to its workspace.
+      The legacy input name is retained while root `portal/` remains accepted.
     required: false
     default: "dist"
 
@@ -211,10 +212,12 @@ runs:
                 ;;
         esac
 
-    # The mount half of a Project repository's gate. It no-ops when this
-    # repository carries no portal, which is why the one job can always run
-    # rather than being skipped by a path filter.
-    - name: the built portal is mounted where Navigator serves it
+    # The mount half of a Project repository's gate. It discovers the same
+    # direct package manifests as the Rust validator and generated workflow,
+    # then proves every build. It no-ops only when the repository carries no
+    # application, which is why the one job can always run rather than being
+    # skipped by a path filter.
+    - name: the built applications are mounted where Navigator serves them
       shell: bash
       env:
         DIR: ${{ inputs.dir }}
@@ -227,11 +230,6 @@ runs:
         if [ "${PROJECT_REPOSITORY}" != "true" ]; then
             exit 0
         fi
-        if [ ! -d "${DIR}/portal" ]; then
-            echo "no portal in this repository — nothing to mount"
-            exit 0
-        fi
-
         # cloud::workspace::is_valid_slug, transcribed. Lowercase letters,
         # digits, and single hyphens; alphanumeric at both ends; at most 80.
         # Bash cannot call Rust, so cli/tests/project_gate.rs pins this block
@@ -259,43 +257,56 @@ runs:
             exit 1
         fi
 
-        # cloud::workspace::WorkspaceConfig::portal_mount. Nothing is composed
-        # and nothing is parsed: the repository name is the code, and `portal` is
-        # a literal. The trailing slash is load-bearing twice — Vite joins asset
-        # URLs directly onto the base, and Navigator redirects the bare mount to
-        # this form.
-        base="/app/projects/${code}/portal/"
-
-        index="${DIR}/portal/${PORTAL_DIST}/index.html"
-        if [ ! -f "${index}" ]; then
-            echo "::error::${index} is missing; build the portal before this gate runs."
-            exit 1
+        shopt -s nullglob
+        package_manifests=("${DIR}"/apps/*/package.json)
+        if [ -f "${DIR}/portal/package.json" ]; then
+            package_manifests+=("${DIR}/portal/package.json")
         fi
-        if ! grep -q "\"${base}assets/" "${index}"; then
-            echo "::error::${index} is not mounted at ${base} — the base did not reach the build."
-            grep -o 'src="[^"]*"' "${index}" >&2 || true
-            exit 1
+        if [ "${#package_manifests[@]}" -eq 0 ]; then
+            echo "no applications in this repository — nothing to mount"
+            exit 0
         fi
 
-        # A Vite base rewrites module and asset URLs; it does not rewrite an
-        # href string in source. An absolute path written by hand therefore
-        # survives the build pointing outside the mount, where Navigator serves
-        # something else entirely — so an in-app path must be built from
-        # `import.meta.env.BASE_URL`.
-        #
-        # Navigator's own namespaces are the deliberate exception: a portal
-        # links back to `/app/projects` and out through `/auth/logout`, and
-        # those are outside the mount on purpose. Anything absolute that is
-        # neither under the mount nor under `/app/` or `/auth/` is an in-app
-        # path that will not survive the base.
-        if matches="$(grep -rnE "(href|src|to)=\"/" \
-            --include='*.ts' --include='*.tsx' --include='*.jsx' --include='*.js' \
-            "${DIR}/portal/src/" 2>/dev/null \
-            | grep -v "\"${base}" \
-            | grep -vE "\"/(app|auth)/")"; then
-            echo "::error::absolute path in source that is neither under ${base} nor a Navigator route; build an in-app path from import.meta.env.BASE_URL."
-            printf '%s\n' "${matches}" >&2
-            exit 1
-        fi
+        for package_json in "${package_manifests[@]}"; do
+            app_dir="${package_json%/package.json}"
+            app="$(basename "${app_dir}")"
+            if [ "${app}" = "portal" ] && [ "${app_dir}" != "${DIR}/portal" ] \
+                && [ -f "${DIR}/portal/package.json" ]; then
+                echo "::error::${app_dir} and ${DIR}/portal claim the same application route; move the portal instead of keeping both."
+                exit 1
+            fi
+            if ! printf '%s' "${app}" | grep -Eq '^[a-z0-9]([a-z0-9-]{0,78}[a-z0-9])?$' \
+                || printf '%s' "${app}" | grep -q -- '--'; then
+                echo "::error::'${app}' is not a valid application name: use lowercase letters, digits, and single hyphens, alphanumeric at both ends, at most 80 characters."
+                exit 1
+            fi
 
-        echo "mount ${base} — portal built and no in-app absolute path escapes it"
+            # `apps/` groups source in the repository; it is deliberately not
+            # part of the product route. The trailing slash remains load-bearing.
+            base="/app/projects/${code}/${app}/"
+            index="${app_dir}/${PORTAL_DIST}/index.html"
+            if [ ! -f "${index}" ]; then
+                echo "::error::${index} is missing; build the application before this gate runs."
+                exit 1
+            fi
+            if ! grep -q "\"${base}assets/" "${index}"; then
+                echo "::error::${index} is not mounted at ${base} — the base did not reach the build."
+                grep -o 'src="[^"]*"' "${index}" >&2 || true
+                exit 1
+            fi
+
+            # A Vite base rewrites module and asset URLs; it does not rewrite
+            # an href string in source. Navigator's `/app/` and `/auth/`
+            # namespaces remain the deliberate exceptions.
+            if matches="$(grep -rnE "(href|src|to)=\"/" \
+                --include='*.ts' --include='*.tsx' --include='*.jsx' --include='*.js' \
+                "${app_dir}/src/" 2>/dev/null \
+                | grep -v "\"${base}" \
+                | grep -vE "\"/(app|auth)/")"; then
+                echo "::error::absolute path in source that is neither under ${base} nor a Navigator route; build an in-app path from import.meta.env.BASE_URL."
+                printf '%s\n' "${matches}" >&2
+                exit 1
+            fi
+
+            echo "mount ${base} — application built and no in-app absolute path escapes it"
+        done

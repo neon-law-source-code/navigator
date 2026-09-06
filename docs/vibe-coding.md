@@ -84,9 +84,10 @@ Two hard rules survive into the repository, and both are mechanical:
 - **No legal files, no client data.** Git never stores legal files; Navigator-managed systems and approved file stores
   do. Fixtures are synthetic or firm-owned, non-firm email addresses use a reserved example domain, and no phone numbers
   or production identifiers ship.
-- **The mount is derived, not declared.** The repository's name is the Project code and the segment is the literal
-  `portal`, so the base is `/app/projects/<code>/portal/`. Nothing names it twice. Absolute paths in source are refused,
-  with one deliberate exception — the link back to `/app/projects` — so build the rest from `import.meta.env.BASE_URL`.
+- **The mount is derived, not declared.** The repository's name is the Project code and each direct
+  `apps/<app>/package.json` contributes its directory name, so the base is `/app/projects/<code>/<app>/`. The
+  repository-side `apps/` grouping is not a URL segment. Absolute paths in source are refused, with one deliberate
+  exception — the link back to `/app/projects` — so build the rest from `import.meta.env.BASE_URL`.
 
 ## Stage 2 — write the issue, after you have seen it work
 
@@ -123,9 +124,9 @@ Grounding a Project-application issue means reading, in this order:
 navigator site projects doctor --project <project-code>
 ```
 
-There is nothing to register. A Project has one repository, named for its code, and one portal, mounted at that name
-plus the literal `portal`. `navigator site projects doctor` reports both coordinates; whether the repository exists yet
-is a separate question, and a coordinate that names nothing is a legitimate state rather than an error.
+There is no application list to register. A Project has one repository, named for its code, and the direct
+`apps/<app>/package.json` entries are its application declarations. The PR gate derives and proves each corresponding
+`/app/projects/<code>/<app>/` build. Publication and runtime authorization remain separate concerns.
 
 The deprecated [`triage-issue`](../.claude/skills/triage-issue/SKILL.md) compatibility command remains available only
 when the user explicitly wants a Linear plan without implementation. It posts the plan and stops before code.
@@ -155,11 +156,11 @@ is not negotiable, and a Project's portal reading matter data is close enough to
 Two lanes take a prototype and produce a shipped screen, and they are not interchangeable. The question is not how you
 built the prototype — it is **which surface the finished screen lives on**.
 
-| | A Project's portal | Navigator's own screens |
+| | A Project's application | Navigator's own screens |
 | --- | --- | --- |
 | Ships as | The React you wrote | Rust, rendered by Dioxus |
-| Lives in | `<org>/<code>`, under `portal/` | The `webapp` crate |
-| Served at | `/app/projects/<code>/portal/` | A Navigator route |
+| Lives in | `<org>/<code>`, under `apps/<app>/` | The `webapp` crate |
+| Builds for | `/app/projects/<code>/<app>/` | A Navigator route |
 | Prototype is | The implementation | Reference material, never merged |
 | Intake | A Linear issue | A `design-mockup` issue |
 | Read | This document | [`design-mockups`](design-mockups.md) |
@@ -169,24 +170,14 @@ Project's portal and you are in the right document. If it is part of Navigator i
 a marketing page, anything at a Navigator route — the React is a prototype and it will be translated to Dioxus by
 [`design-mockup-translation`](../.claude/skills/design-mockup-translation/SKILL.md).
 
-## What is not built yet
+## Publication boundary
 
-This loop is honest about its own seams. Today the repository shape, the scaffold, the CI gate, and the route ship: one
-Each Project repository holds `templates/` and `portal/` side by side. `navigator site projects repository` scaffolds
-and validates it; `.github/actions/validate` is the one gate, `navigator site projects doctor` verifies a machine, and
-Navigator routes `/app/projects/{code}/portal` through Project participation authorization.
+Each Project repository holds `templates/` and `apps/<app>/` side by side. `navigator site projects repository`
+scaffolds and validates it, and `.github/actions/validate` is the one PR gate. A root `portal/` remains accepted during
+the layout transition and keeps its existing `/app/projects/{code}/portal/` build base. It can coexist with differently
+named apps, but the gate rejects a simultaneous `apps/portal/` because both would claim that route.
 
-The CI publish wiring now exists: `.github/actions/application-publish` uploads a built bundle to `<code>/portal/` in
-the deployment's private applications bucket — see
-[`project-repositories`](project-repositories.md#publishing-the-built-bundle). Two pieces are still open, and an issue
-in this lane should reference them rather than assume them:
-
-- **Provisioning the publish target.** The applications bucket and the Project's own `nav-pub-<code>` publisher identity
-  are not yet provisioned for any deployment, and the shared reusable-workflow home in `ux/core` is not yet wired, so
-  the caller transcribes the job for now.
-- **Serving that bundle.** The route resolves and authorizes, and then answers 404, because there is nothing published
-  to stream. A participant and a nonparticipant get the same non-disclosing response, so the status code discloses
-  nothing about which one they are.
-
-Until those land, a portal builds, tests, and passes the mount gate in CI, and its bundle is not yet served by a
-deployment.
+The existing CI publisher remains specific to that root `portal/`: `.github/actions/application-publish` uploads its
+bundle to `<code>/portal/` in the deployment's private applications bucket. The PR gate can build and verify additional
+apps, but publishing and serving one requires its own authorization decision and a compatible prefix-conditioned IAM
+grant. Do not infer either from the source directory.

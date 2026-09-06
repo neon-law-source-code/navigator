@@ -119,6 +119,14 @@ key it serves. One repository, one running process, N house brands — adding on
 key, its hosts, its `Branding`) with a covering test, which is the right cost for a legal identity, and there is no
 runtime flag that can move a page from one brand's hosts to another's.
 
+**Distinct from the data-driven `brand` table** (`store::brands`, ENG-496) — a name, a unique key, and an
+authorization/identity record, not a routing registry entry. `firm_id: None` is system-wide (Owner-created, every Firm
+sees it); a live `firm_id` is scoped to that Firm (created only by its Admin DRI). It carries no host: `hosts()` and
+`registered_brand_key` keep resolving only the compiled `BrandKey` enum above, and a runtime `brand` row publishes no
+marketing page. The two compiled keys (`neon`, `delete-your-data`) migrate into system-wide rows on first boot so the
+one authorization table names every brand a Firm may attach, but their real presentation — hosts, colours, fonts, logos,
+copy — stays exactly where this entry describes it, unchanged.
+
 `portal::canonical_host::resolve_brand_and_enforce_host` resolves the key early in the middleware stack from the
 incoming `Host:` header and stashes it as a request extension; `scope_branding` reads that extension and scopes the
 resolved `Branding` for the rest of the request, the same [`views::brand::scope`](../views/src/brand.rs) task-local
@@ -678,9 +686,14 @@ Admin-DRI standing, and every person on it.
 
 ## Firm Brand
 
-Which closed house-brand keys a [Firm](#firm) wears. The `firm_brand` table is the join: `firm_id`, a `brand_key` of
-`neon` or `delete-your-data`, and timestamps. Unique on the pair, and unique on `brand_key` globally — one storefront
-key belongs to at most one practice. Distinct from [Brand](#brand), which is the storefront a request resolved to.
+Which house-brand keys a [Firm](#firm) wears. The `firm_brand` table is the join: `firm_id`, a `brand_key`, and
+timestamps. Unique on the pair, and unique on `brand_key` globally — one storefront key belongs to at most one practice.
+Distinct from [Brand](#brand), which is the storefront a request resolved to.
+
+`store::firms::attach_brand` validates `brand_key` against the `brand` table (`store::brands`, ENG-496) — a live row
+carrying that key, not the closed `CLOSED_BRAND_KEYS` array directly — so a Firm may wear any brand a `brand` row now
+names, not only the two compiled ones. `store::firms::CLOSED_BRAND_KEYS` still names those two, and is what
+`store::seed` migrates into `brand` rows on first boot so the validation has something to check against from the start.
 
 - Schema: [`firm_brand` in `navigator.surql`](../store/src/schema/navigator.surql) ·
   [`store::firms`](../store/src/firms.rs)

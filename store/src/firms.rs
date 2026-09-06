@@ -28,10 +28,30 @@ const FIRM_SELECT: &str = "id, name, status, entity_id, inserted_at, updated_at"
 const MEMBERSHIP_SELECT: &str =
     "id, person_id, firm_id, membership, is_dri, inserted_at, updated_at";
 
-/// Closed house-brand keys a firm may wear. Matches the `ASSERT` on
-/// `firm_brand.brand_key` and `project.brand`. `store` does not depend on
-/// `views`, so this is the string form of `BrandKey::ALL`.
+/// The compiled house-brand keys `store::seed` migrates into `brand` rows
+/// on first boot (ENG-496). Matches the `ASSERT` on `firm_brand.brand_key`
+/// and `project.brand`. `store` does not depend on `views`, so this is the
+/// string form of `BrandKey::ALL`. [`attach_brand`] no longer validates
+/// against this list directly — it reads the `brand` table
+/// ([`brand_key_exists`]), which this constant seeds — so a Firm may wear
+/// any key a `brand` row now names, runtime-created ones included.
 pub const CLOSED_BRAND_KEYS: &[&str] = &["neon", "delete-your-data"];
+
+/// Whether a `brand` row exists carrying this key — the live check
+/// [`attach_brand`] replaced its closed-list `ASSERT` with (ENG-496).
+async fn brand_key_exists(surreal: &SurrealDb, brand_key: &str) -> Result<bool, FirmError> {
+    #[derive(SurrealValue)]
+    struct BrandKeyRow {
+        brand_key: String,
+    }
+    let mut response = surreal
+        .query("SELECT brand_key FROM brand WHERE brand_key = $brand_key LIMIT 1")
+        .bind(("brand_key", brand_key.to_string()))
+        .await
+        .and_then(surrealdb::IndexedResults::check)?;
+    let rows: Vec<BrandKeyRow> = response.take(0)?;
+    Ok(!rows.is_empty())
+}
 
 /// A practice that owns Projects and firm-side people.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -740,7 +760,7 @@ pub async fn attach_brand(
     firm_id: Uuid,
     brand_key: &str,
 ) -> Result<(), FirmError> {
-    if !CLOSED_BRAND_KEYS.contains(&brand_key) {
+    if !brand_key_exists(surreal, brand_key).await? {
         return Err(FirmError::UnknownBrand(brand_key.to_string()));
     }
     if find_by_id(surreal, firm_id).await?.is_none() {
@@ -1775,6 +1795,18 @@ mod tests {
     async fn attaches_closed_brand_keys_and_refuses_an_unknown_or_taken_key() {
         let db = mem_surreal().await;
         let firm = practice(&db, "Brand Holder").await;
+        crate::brands::create(
+            &db,
+            Role::Owner,
+            None,
+            &crate::brands::NewBrand {
+                name: "Neon Law".to_string(),
+                key: "neon".to_string(),
+                ..crate::brands::NewBrand::default()
+            },
+        )
+        .await
+        .unwrap();
         attach_brand(&db, firm.id, "neon").await.unwrap();
         assert_eq!(
             brand_keys_for_firm(&db, firm.id).await.unwrap(),
@@ -1878,6 +1910,18 @@ mod tests {
         let db = mem_surreal().await;
         let admin = admin_dri_person(&db).await;
         let firm = practice_with_admin(&db, "Deletable Practice", admin).await;
+        crate::brands::create(
+            &db,
+            Role::Owner,
+            None,
+            &crate::brands::NewBrand {
+                name: "Neon Law".to_string(),
+                key: "neon".to_string(),
+                ..crate::brands::NewBrand::default()
+            },
+        )
+        .await
+        .unwrap();
         attach_brand(&db, firm.id, "neon").await.unwrap();
 
         let entity_id = seed_entity(&db).await;

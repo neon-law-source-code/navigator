@@ -1272,6 +1272,11 @@ async fn seed_canonical_into(
     // roles must be seeded first.
     seed_persons(surreal, r).await?;
     seed_user_roles(surreal, r).await?;
+    // The compiled house-brand keys migrate into `brand` rows before any
+    // Firm attaches one: `store::firms::attach_brand` validates a key
+    // against this table now, not the closed `CLOSED_BRAND_KEYS` array
+    // (ENG-496).
+    seed_brands(surreal).await?;
     seed_practice(surreal).await?;
     seed_firm_memberships(surreal).await?;
     seed_questions(surreal, r).await?;
@@ -2530,6 +2535,43 @@ async fn seed_entities(
         // identity, so this one has nothing left to do.
         match crate::entities::set_firm_anchor_key(surreal, id, Some(key)).await {
             Ok(_) | Err(crate::entities::EntityError::FirmAnchorTaken) => {}
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Ok(())
+}
+
+/// Migrate the two compiled house-brand keys into system-wide `brand` rows
+/// (ENG-496), with the identity `views::brand::DEFAULT_BRANDING` and
+/// `DELETE_YOUR_DATA_BRANDING` already carry. `store` cannot depend on
+/// `views`, so these values are copied rather than read from it; a
+/// migrated row's `primary_color`/`accent_color`/`typeface` stay unset —
+/// this pair's real presentation stays on the existing static stylesheet
+/// path, not on these columns. Idempotent: a name or key already taken is
+/// this same migration having already run.
+async fn seed_brands(surreal: &SurrealDb) -> anyhow::Result<()> {
+    for (name, key) in [
+        ("Neon Law", "neon"),
+        ("DeleteYourData.com", "delete-your-data"),
+    ] {
+        match crate::brands::create(
+            surreal,
+            crate::persons::Role::Owner,
+            None,
+            &crate::brands::NewBrand {
+                name: name.to_string(),
+                key: key.to_string(),
+                is_law_firm: true,
+                legal_entity: Some(FIRM_ENTITY_NAME.to_string()),
+                ..crate::brands::NewBrand::default()
+            },
+        )
+        .await
+        {
+            Ok(_)
+            | Err(
+                crate::brands::BrandError::DuplicateName | crate::brands::BrandError::DuplicateKey,
+            ) => {}
             Err(error) => return Err(error.into()),
         }
     }

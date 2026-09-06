@@ -166,6 +166,19 @@ erDiagram
         option_string role
         datetime updated_at
     }
+    brand {
+        record id PK
+        option_string accent_color
+        string brand_key
+        option_record_firm firm_id FK
+        string inserted_at
+        bool is_law_firm
+        option_string legal_entity
+        string name
+        option_string primary_color
+        option_string typeface
+        string updated_at
+    }
     case {
         record id PK
         string caption
@@ -759,6 +772,7 @@ erDiagram
     asset ||--o{ authority : "archived_asset_id"
     authority ||--o{ authority_use : "authority_id"
     project ||--o{ authority_use : "project_id"
+    firm ||--o{ brand : "firm_id"
     project ||--o{ case : "project_id"
     case ||--o{ case_docket_entry : "case_id"
     asset ||--o{ case_docket_entry : "document_asset_id"

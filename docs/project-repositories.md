@@ -120,6 +120,16 @@ The command creates `documents/.gitignore` without overwriting an existing file.
 and `documents/**/*.yml` only; every other file below `documents/` is rejected. Raw legal-document bytes must never be
 committed to a Project repository.
 
+**Visibility and key change through a reviewed diff, and only through one — that is settled, not open.** A lawyer
+Project page renders a document's visibility (a plain-word column) but offers no control that changes it, and nothing
+anywhere offers a control that changes a document's key (`slug`, the chain identity a revision belongs to). Both stay
+committed-pointer edits, replayed by `navigator site sync` through the same authorized API that already audits the actor
+and operation. The alternative — a button on the Project page — was considered and rejected: sharing a privileged
+document with a client is the exact failure this design is shaped to prevent, and a one-click, one-confirm control
+removes the second reader a pull request review gives it. A key edit is not a rename in any case — it moves a revision
+between documents, splitting one chain or merging two — so it is a re-filing, not a field a form should offer. Decided
+2026-09-06.
+
 **The manifest is what `.github/actions/application-publish` reads.** `cli/src/projects/repository.rs`'s own
 [`validate`] still takes the code from the checkout directory — it runs inside one repository's own CI with no access to
 the live row, so it cannot referee a disagreement between the two, and `navigator site projects drift` is where that

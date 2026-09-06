@@ -80,6 +80,7 @@ const WORKSPACE_DEPENDENCIES: &[&str] = &[
     "p256",
     "parquet",
     "pdf",
+    "pdf-extract",
     "percent-encoding",
     "portal",
     "predicates",

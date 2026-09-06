@@ -20,12 +20,12 @@ Pick the path that fits the time and craft you have:
 
 ---
 
-Neon Law Navigator is copyright Shook Law PLLC, which produces it, operates it, and publishes it as source-available
-software under BUSL-1.1. This workshop is about contributing to the **product**: issues, templates, government PDF
-forms, tests, and the shared corpus every installation uses. Anything that lands in the repository assigns to the firm,
-and it reaches every reader on the same terms the project ships under. The mission — putting the rights already written
-into law within reach of the people they belong to — only moves if that corpus keeps getting better. There are five ways
-to contribute; pick the one that fits the time you have.
+Neon Law Navigator is copyright Neon Law IP LLC, which publishes it as source-available software under BUSL-1.1; Shook
+Law PLLC produces and operates it under a licence from Neon Law IP LLC. This workshop is about contributing to the
+**product**: issues, templates, government PDF forms, tests, and the shared corpus every installation uses. Anything
+that lands in the repository assigns to Neon Law IP LLC, and it reaches every reader on the same terms the project ships
+under. The mission — putting the rights already written into law within reach of the people they belong to — only moves
+if that corpus keeps getting better. There are five ways to contribute; pick the one that fits the time you have.
 
 Outside pull requests are closed for now, so the ways below run through issues, conversation, and use rather than the
 merge queue. Anyone may write to <contact@neonlaw.org>.
@@ -43,10 +43,10 @@ authorized lawyers contribute inside the firm. The most useful corpus contributi
 ---
 
 Everything you have seen in these workshops — the `web` app, the `navigator` CLI, the durable workflows — lives in one
-public monorepo anyone can read, run, and fork under BUSL-1.1. Production use needs a commercial licence from Shook Law
-PLLC. Start by standing it up yourself with the [Operating Neon Law Navigator](/workshops/deploy-the-navigator) workshop
-or the local KIND loop, then write to <contact@neonlaw.org> with what you find. A contribution that lands in the
-repository assigns to Shook Law PLLC — all right, title, and interest, including every copyright in it — under the
+public monorepo anyone can read, run, and fork under BUSL-1.1. Production use needs a commercial licence from Neon Law
+IP LLC. Start by standing it up yourself with the [Operating Neon Law Navigator](/workshops/deploy-the-navigator)
+workshop or the local KIND loop, then write to <contact@neonlaw.org> with what you find. A contribution that lands in
+the repository assigns to Neon Law IP LLC — all right, title, and interest, including every copyright in it — under the
 contributor licence agreement. Firm authors signed that before their first commit; an outside author would sign the same
 before a merge, and outside merges are closed for now. The grant out is BUSL-1.1, the same terms the rest of the tree
 ships under.
@@ -177,8 +177,8 @@ You do not need a GitHub account or a single line of code to make Neon Law Navig
 Navigator](/workshops/use-the-navigator) workshop closes by asking you to send the markdown of the template you built
 and the one kaizen improvement you found — that is this contribution. Every template a lawyer shares raises the floor of
 competence for the next lawyer who joins. Send the craft, never a client's file: sharing a template or a checklist
-grants Shook Law PLLC a license to use it, and anything that lands in the repository is the source intellectual property
-of Shook Law PLLC.
+grants Neon Law IP LLC a license to use it, and anything that lands in the repository is the source intellectual
+property of Neon Law IP LLC.
 
 ### Join a presentation
 

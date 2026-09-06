@@ -170,8 +170,8 @@ async fn governed_expunge_rewrites_deletes_and_records() {
 /// A `generate_pdf` step dual-writes the same bytes to two object-storage
 /// keys — the caller's notation key (`notations/<id>/document.pdf`, what
 /// the attest/signature steps and the portal read back) and the
-/// content-addressed `blobs/<sha>` the `assets` row points at. A governed
-/// expunge must remove **both**, or a copy of the privileged bytes
+/// Project-scoped content-addressed object the `assets` row points at. A
+/// governed expunge must remove **both**, or a copy of the privileged bytes
 /// survives outside the asset lifecycle (#470).
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[allow(clippy::too_many_lines)]
@@ -241,7 +241,7 @@ async fn governed_expunge_removes_every_key_of_a_generated_pdf() {
     .expect("dispatch succeeds")
     .expect("db present → an asset is filed");
     let pdf_ref: GeneratedPdfRef = serde_json::from_str(&ref_json).unwrap();
-    let blob_key = format!("blobs/{}", pdf_ref.sha256);
+    let document_key = pdf_ref.storage_key.clone();
 
     // Both copies are present up front.
     assert!(
@@ -249,7 +249,7 @@ async fn governed_expunge_removes_every_key_of_a_generated_pdf() {
         "notation key stored"
     );
     assert!(
-        storage.get(&blob_key).await.is_ok(),
+        storage.get(&document_key).await.is_ok(),
         "content-addressed key stored"
     );
 
@@ -319,7 +319,7 @@ async fn governed_expunge_removes_every_key_of_a_generated_pdf() {
     // Neither copy of the bytes survives.
     assert!(
         matches!(
-            storage.get(&blob_key).await,
+            storage.get(&document_key).await,
             Err(cloud::StorageError::NotFound(_))
         ),
         "content-addressed copy must be gone"
@@ -396,8 +396,12 @@ async fn governed_expunge_retains_an_object_another_matter_still_references() {
     // has to recognize.
     let shared_bytes: &[u8] = b"an exhibit on two matters";
     let shared_key = format!("blobs/{}", store::documents::sha256_hex(shared_bytes));
+    storage
+        .put(&shared_key, shared_bytes, "application/pdf")
+        .await
+        .unwrap();
     for project in [sealed, unrelated] {
-        store::documents::ingest_bytes(
+        let ingested = store::documents::ingest_bytes(
             &surreal,
             &storage,
             &store::documents::IngestArgs {
@@ -414,6 +418,17 @@ async fn governed_expunge_retains_an_object_another_matter_still_references() {
         )
         .await
         .unwrap();
+        // Build the historical flat-key corpus deliberately. New ingests use
+        // Project-scoped keys; this row rewrite isolates the legacy retain
+        // guard that must keep protecting records written before that change.
+        surreal
+            .query("UPDATE $id SET storage_key = $storage_key")
+            .bind(("id", store::surreal::record_id("asset", ingested.asset_id)))
+            .bind(("storage_key", shared_key.clone()))
+            .await
+            .unwrap()
+            .check()
+            .unwrap();
     }
 
     portal::expunge::expunge(

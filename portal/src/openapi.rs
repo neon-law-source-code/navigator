@@ -521,7 +521,7 @@ pub fn document_with_base(base: &str) -> Value {
             "summary": "Create or adopt a Project's Drive ingest folder and source repository (admin)",
             "description":
               "Creates or adopts the three handles a Project opens with: the documents-bucket \
-               prefix `projects/<code>` (a key convention; nothing is written), the Drive ingest \
+               prefix `projects/<code>/documents` (a key convention; nothing is written), the Drive ingest \
                folder named for the code, and one private source repository named for the code. \
                Each step is idempotent — an existing folder or repository is adopted, a recorded \
                `repository_url` is left alone, and missing Drive or forge configuration skips \

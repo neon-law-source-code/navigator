@@ -4,9 +4,10 @@
 //!   kept private in GCS and served anonymously only through the site's
 //!   `/assets/*` application route. Standard.
 //! - `<project>-documents` — **private** client documents; holds the
-//!   content-addressed `blobs/<sha>` objects `web` writes. Standard,
-//!   no public binding. Kept separate from `-assets` so confidential
-//!   client data is never co-mingled into the public bucket.
+//!   Project-scoped content-addressed `projects/<code>/documents/<sha>`
+//!   objects `web` writes. Standard, no public binding. Kept separate from
+//!   `-assets` so confidential client data is never co-mingled into the
+//!   public bucket.
 //! - `<project>-exports` — nightly Parquet/Iceberg archives. Standard.
 //! - `<project>-logs` — long-lived audit / access logs. Nearline.
 //!

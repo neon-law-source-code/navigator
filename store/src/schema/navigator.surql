@@ -868,10 +868,11 @@ DEFINE INDEX OVERWRITE answer_question_person ON answer FIELDS question_id, pers
 -- `source`/`received_at`/`description` are populated, and a **bare content
 -- asset** (a template body, a raw `.eml`), where they are NONE.
 --
--- `storage_key` is content-addressed (`blobs/<sha>`) but deliberately not
--- unique: identical bytes are stored once and may be referenced by several
--- rows. `sha256_hex` is the dedup key, and its index is non-unique for the
--- same reason.
+-- A document asset stores its bytes at the Project-scoped content-addressed
+-- key `projects/<code>/documents/<sha>`; a bare content asset uses
+-- `blobs/<sha>`. `storage_key` is deliberately not unique: one Project may
+-- file identical bytes under several asset rows, and bare content can be
+-- reused across its own lane. `sha256_hex` is non-unique for the same reason.
 --
 -- `project_id` is a real `record<project>` link. The engine constrains its
 -- target table but does not validate that the row exists, so the ingest seam

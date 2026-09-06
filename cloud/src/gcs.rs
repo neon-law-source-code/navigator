@@ -61,8 +61,8 @@ impl GcsStorageConfig {
         //
         // 1. `NAVIGATOR_DOCUMENTS_BUCKET` — the private documents bucket
         //    `web` (and the worker's `generate_pdf__*` render lane) write
-        //    client documents + `blobs/<sha>` to. Set on the `web` pod and
-        //    the `workflows-service` worker.
+        //    client documents to their Project-scoped storage keys. Set on
+        //    the `web` pod and the `workflows-service` worker.
         // 2. `NAVIGATOR_STORAGE_BUCKET` — the generic fallback. The
         //    `archives` exports lane (via `exports_from_env`) points it at
         //    the exports bucket; tests may point it at a Rust-local endpoint.

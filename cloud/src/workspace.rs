@@ -208,12 +208,12 @@ pub fn is_valid_slug(value: &str) -> bool {
 
 /// The documents-bucket key prefix for one Project.
 ///
-/// The prefix *is* the Project code. Navigator does not create a bucket per
-/// Project; working-file keys live under this prefix in the deployment's
-/// private documents bucket.
+/// Navigator does not create a bucket per Project; its document objects live
+/// beneath this Project-scoped prefix in the deployment's private documents
+/// bucket.
 #[must_use]
 pub fn documents_prefix(project_code: &str) -> String {
-    format!("projects/{project_code}")
+    format!("projects/{project_code}/documents")
 }
 
 /// The Drive coordinates selected from a deployment-owned workspace map.
@@ -697,9 +697,9 @@ mod tests {
         );
         assert_eq!(
             documents_prefix("sample-litigation"),
-            "projects/sample-litigation"
+            "projects/sample-litigation/documents"
         );
-        assert_eq!(documents_prefix("acme"), "projects/acme");
+        assert_eq!(documents_prefix("acme"), "projects/acme/documents");
     }
 
     /// The default host is composed in exactly as a configured one is, so a

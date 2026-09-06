@@ -6,10 +6,10 @@
 //! a project, bytes, and provenance, it:
 //!
 //! 1. Computes a SHA-256 of the bytes.
-//! 2. If an `asset` row **on this project** already references that
-//!    content, the object is already stored (`blobs/<sha>`,
-//!    content-addressed) — the storage write is skipped. Otherwise it
-//!    writes the bytes through [`cloud::StorageService`].
+//! 2. If an `asset` row **on this project** already references that content,
+//!    the object is already stored beneath
+//!    `projects/<code>/documents/<sha>` — the storage write is skipped.
+//!    Otherwise it writes the bytes through [`cloud::StorageService`].
 //! 3. Inserts one `asset` row carrying the byte pointer plus the
 //!    inbound-channel provenance (`source`, `received_at`), the
 //!    `filename`/`kind`, and the optional lawyer-view `description`.
@@ -22,13 +22,13 @@
 //! that does not exist", and that is a property of the **order**: the
 //! object is written before the row that names it, so a failure between
 //! them leaves an unreferenced object rather than a dangling row. An
-//! unreferenced object at a content-addressed key is inert — the next
-//! ingest of the same bytes reuses it.
+//! unreferenced object at a Project-scoped content-addressed key is inert —
+//! the next ingest of the same bytes reuses it.
 //!
 //! The dedup probe losing a race is equally benign: both writers then
-//! `put` identical bytes to the same content-addressed key, and `put` is
-//! idempotent on both `FsStorage` and `GcsStorage`. The only observable
-//! difference is a redundant write, never a wrong byte.
+//! `put` identical bytes to the same Project-scoped content-addressed key,
+//! and `put` is idempotent on both `FsStorage` and `GcsStorage`. The only
+//! observable difference is a redundant write, never a wrong byte.
 //!
 //! The bare-content lane (template bodies, raw `.eml`) is
 //! [`crate::assets::ingest_content`], which writes an `asset` row with
@@ -79,6 +79,8 @@ pub enum IngestError {
     Storage(#[from] StorageError),
     #[error(transparent)]
     Asset(#[from] crate::assets::AssetError),
+    #[error(transparent)]
+    Project(#[from] crate::projects::ProjectStoreError),
     /// The insert reported success but returned no row this module could
     /// read back.
     #[error("writing a document asset returned no usable row")]
@@ -165,11 +167,12 @@ pub struct DocumentIdentity<'a> {
 pub struct IngestedDocument {
     /// The `assets` row id for this document.
     pub asset_id: Uuid,
+    /// Project-scoped content-addressed object key written for this document.
+    pub storage_key: String,
     pub sha256_hex: String,
     pub byte_size: i64,
-    /// `true` when the bytes were already stored under another asset —
-    /// no new storage write happened (the content-addressed object was
-    /// reused).
+    /// `true` when this Project already stored the bytes under another asset,
+    /// so no new storage write happened.
     pub reused: bool,
 }
 
@@ -210,7 +213,15 @@ pub async fn ingest_bytes_as(
 
     let sha_hex = sha256_hex(bytes);
     let byte_size = i64::try_from(bytes.len()).unwrap_or(i64::MAX);
-    let storage_key = format!("blobs/{sha_hex}");
+    let project = crate::projects::find_by_id(db, args.project_id)
+        .await?
+        .ok_or(crate::projects::ProjectStoreError::NoSuchProject(
+            args.project_id,
+        ))?;
+    let storage_key = format!(
+        "{}/{sha_hex}",
+        cloud::workspace::documents_prefix(&project.code)
+    );
 
     // Storage dedup, scoped to this matter: if an asset **on this project**
     // already references this content, the object is stored; otherwise write
@@ -219,11 +230,10 @@ pub async fn ingest_bytes_as(
     // ordering is what carries that, not a transaction (see the module doc).
     //
     // The `project_id` filter is the whole point: deduping across matters
-    // made one matter's governed expunge destroy another's document, because
-    // `portal::expunge` deletes the asset's `blobs/<sha>` and a second
-    // matter's row pointed at that same object. Two matters holding the same
-    // exhibit is ordinary; a sealing order on one silently emptying the other
-    // is not. Bytes are cheap, cross-matter coupling is not.
+    // made one matter's governed expunge destroy another's document. Two
+    // matters holding the same exhibit is ordinary; a sealing order on one
+    // silently emptying the other is not. Bytes are cheap, cross-matter
+    // coupling is not.
     let reused = project_holds_content(db, args.project_id, &sha_hex).await?;
     if !reused {
         storage.put(&storage_key, bytes, args.content_type).await?;
@@ -233,6 +243,7 @@ pub async fn ingest_bytes_as(
 
     Ok(IngestedDocument {
         asset_id,
+        storage_key,
         sha256_hex: sha_hex,
         byte_size,
         reused,
@@ -382,7 +393,14 @@ mod tests {
             .expect("asset row");
         assert_eq!(a.content_type, "application/pdf");
         assert_eq!(a.byte_size, 11);
-        assert_eq!(a.storage_key, format!("blobs/{}", out.sha256_hex));
+        let project = crate::projects::find_by_id(&db, project_id)
+            .await
+            .unwrap()
+            .expect("project row");
+        assert_eq!(
+            a.storage_key,
+            format!("projects/{}/documents/{}", project.code, out.sha256_hex)
+        );
         assert_eq!(a.filename.as_deref(), Some("retainer.pdf"));
         assert_eq!(a.kind.as_deref(), Some("onboarding"));
         assert_eq!(a.project_id, Some(project_id));
@@ -396,6 +414,30 @@ mod tests {
 
         let stored = storage.get(&a.storage_key).await.unwrap();
         assert_eq!(stored.bytes, b"hello world");
+    }
+
+    #[tokio::test]
+    async fn ingest_refuses_an_unknown_project_before_writing() {
+        let (db, storage, _tmp, _project_id) = fixtures().await;
+        let missing_project = Uuid::now_v7();
+        let args = IngestArgs {
+            project_id: missing_project,
+            source: source::UPLOAD,
+            filename: "retainer.pdf",
+            kind: "onboarding",
+            content_type: "application/pdf",
+            description: None,
+            secondary_storage_key: None,
+            visibility: visibility::INTERNAL,
+        };
+
+        let error = ingest_bytes(&db, &storage, &args, b"hello world")
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            IngestError::Project(crate::projects::ProjectStoreError::NoSuchProject(id)) if id == missing_project
+        ));
     }
 
     #[tokio::test]
@@ -441,10 +483,8 @@ mod tests {
         // identical bytes each get their own storage write.
         //
         // Global dedup made one matter's governed expunge destroy another's
-        // document: `portal::expunge` deletes the asset's `blobs/<sha>`, and a
-        // second matter's row pointed at that same object. Two clients sharing
-        // a common exhibit is ordinary; one client's sealing order silently
-        // emptying an unrelated matter is not.
+        // document. Two clients sharing a common exhibit is ordinary; one
+        // client's sealing order silently emptying an unrelated matter is not.
         let (db, storage, _tmp, first) = fixtures().await;
         let second = crate::test_support::seed_project_surreal(&db, "Second Matter").await;
         let bytes = b"an exhibit filed on two matters";
@@ -472,10 +512,21 @@ mod tests {
             "a second matter must own its copy, not reuse the first matter's object"
         );
 
-        // Same content hash, so the same content-addressed key — but the write
-        // happened once per matter, which is what `reused: false` records.
+        // The same hash is stored at two Project-scoped keys. Each matter owns
+        // its copy, which is what `reused: false` records.
         assert_eq!(a.sha256_hex, b.sha256_hex);
         assert_ne!(a.asset_id, b.asset_id);
+        let first_asset = find_by_id(&db, a.asset_id)
+            .await
+            .unwrap()
+            .expect("first asset");
+        let second_asset = find_by_id(&db, b.asset_id)
+            .await
+            .unwrap()
+            .expect("second asset");
+        assert_ne!(first_asset.storage_key, second_asset.storage_key);
+        assert!(first_asset.storage_key.ends_with(&a.sha256_hex));
+        assert!(second_asset.storage_key.ends_with(&b.sha256_hex));
     }
 
     #[tokio::test]
@@ -525,8 +576,17 @@ mod tests {
 
         let row = find_by_id(&db, ingested.asset_id).await.unwrap().unwrap();
         assert_eq!(row.secondary_storage_key.as_deref(), Some(notation_key));
-        // The canonical content-addressed key is unchanged.
-        assert_eq!(row.storage_key, format!("blobs/{}", ingested.sha256_hex));
+        let project = crate::projects::find_by_id(&db, project_id)
+            .await
+            .unwrap()
+            .expect("project row");
+        assert_eq!(
+            row.storage_key,
+            format!(
+                "projects/{}/documents/{}",
+                project.code, ingested.sha256_hex
+            )
+        );
     }
 
     #[tokio::test]

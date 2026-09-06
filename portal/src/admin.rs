@@ -1079,7 +1079,11 @@ async fn stop_viewing_as_dri(
         state.sessions.encode(&restored),
         state.secure_cookies,
     ));
-    Redirect::to("/app/admin").into_response()
+    // Every firm tier that can start a DRI view — Clerk, Lawyer, Admin, or
+    // Owner — lands on the shared team home on exit, the same destination
+    // `oauth::post_login_landing` sends every firm tier to. `/app/admin` is
+    // Owner/Admin only and would 403 a restored Clerk or Lawyer.
+    Redirect::to("/app/team").into_response()
 }
 
 // ---- Entities ----

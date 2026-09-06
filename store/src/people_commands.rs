@@ -56,6 +56,13 @@ impl CreatePersonCommand {
 
 /// Request body for updating a Person through the command boundary.
 ///
+/// Every field is optional, and an absent one leaves its column exactly as
+/// it was — `name` and `email` included, matching the partial-update
+/// contract [`crate::projects::UpdateProjectCommand`] documents. A caller
+/// that wants to correct only `linkedin_url`, say, sends only that field.
+/// `#[serde(deny_unknown_fields)]` refuses a field this struct does not
+/// name rather than silently dropping it.
+///
 /// A blank/absent `role` preserves the row's existing role rather than
 /// resetting it. The structured name parts use a **double option** so an
 /// *omitted* field (outer `None`) is left untouched, while a *present*
@@ -64,21 +71,25 @@ impl CreatePersonCommand {
 /// client following the nullable schema clear a stale legal-name part,
 /// which a single `Option` (where `null` and "omitted" collapse to the
 /// same `None`) could not express.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 // `Option<Option<String>>` is deliberate here: the outer option is
 // "field present?" and the inner is "null vs a value", which is exactly
 // the PATCH clear-vs-preserve distinction. That's the sanctioned use the
 // `option_option` lint warns is usually a mistake — it isn't one here.
 #[allow(clippy::option_option)]
+#[serde(deny_unknown_fields)]
 pub struct UpdatePersonCommand {
-    pub name: String,
-    /// Defaults to blank when omitted: the bootstrap Owner's email field
-    /// renders `disabled` (see `webapp::person_show`), and a disabled HTML
-    /// control submits nothing at all. `update_person` ignores this value
-    /// for that row regardless, so a missing key is never mistaken for a
-    /// blank-out on an ordinary person either.
+    /// Absent leaves the name unchanged; present but blank is refused — a
+    /// person with no name is not a state a patch may produce.
     #[serde(default)]
-    pub email: String,
+    pub name: Option<String>,
+    /// Absent leaves the email unchanged. The bootstrap Owner's email is
+    /// pinned regardless of what is submitted here (see
+    /// [`update_person`]), so a missing key is never mistaken for a
+    /// blank-out on that row either. Present but blank is refused, the
+    /// same rule `name` follows — an email is required to contain an `@`.
+    #[serde(default)]
+    pub email: Option<String>,
     #[serde(default)]
     pub role: String,
     #[serde(default, deserialize_with = "double_option")]
@@ -335,13 +346,16 @@ pub async fn create_person(
     Ok(created)
 }
 
-/// Update one Person by id. The bootstrap Owner's email and role are pinned —
-/// any submitted change to either is silently dropped rather than rejecting
-/// the whole write — while its name and legal-name parts edit normally.
-/// Otherwise rejects callers attempting to edit a higher-ranked person, and
-/// preserves the existing role when the caller can't change roles or submits
-/// a blank role; leaves an omitted structured-name part untouched and nulls a
-/// present-but-blank one.
+/// Update one Person by id. Every field is a partial update: an absent
+/// `name` or `email` leaves the column unchanged, and a present-but-blank
+/// one is refused (a person cannot go nameless, and an email must contain
+/// an `@`). The bootstrap Owner's email and role are pinned on top of
+/// that — any submitted change to either is silently dropped rather than
+/// rejecting the whole write — while its name and legal-name parts edit
+/// normally. Otherwise rejects callers attempting to edit a higher-ranked
+/// person, and preserves the existing role when the caller can't change
+/// roles or submits a blank role; leaves an omitted structured-name part
+/// untouched and nulls a present-but-blank one.
 pub async fn update_person(
     db: &SurrealDb,
     id: Uuid,
@@ -365,10 +379,20 @@ pub async fn update_person(
     let email = if is_bootstrap {
         existing.email.clone()
     } else {
-        input.email.trim().to_string()
+        input
+            .email
+            .as_deref()
+            .map_or_else(|| existing.email.clone(), |email| email.trim().to_string())
     };
+    // Absent leaves the name unchanged, like every other omitted field here;
+    // present-but-blank falls through to the validation below, which
+    // refuses it the same way it always has.
+    let name = input
+        .name
+        .as_deref()
+        .map_or_else(|| existing.name.clone(), |name| name.trim().to_string());
 
-    if let Some(message) = validate_name_email(&input.name, &email) {
+    if let Some(message) = validate_name_email(&name, &email) {
         return Err(PeopleCommandError::Invalid(message));
     }
     if existing.role.authority_rank() > ctx.actor_role.authority_rank() {
@@ -397,7 +421,7 @@ pub async fn update_person(
         db,
         id,
         &PersonEdit {
-            name: Some(input.name.trim().to_string()),
+            name: Some(name),
             email: Some(email),
             role: Some(new_role),
             // Only touch a name part when the request carried it (outer
@@ -796,8 +820,8 @@ mod tests {
             &db,
             row.id,
             &UpdatePersonCommand {
-                name: row.name.clone(),
-                email: row.email.clone(),
+                name: Some(row.name.clone()),
+                email: Some(row.email.clone()),
                 role: String::new(),
                 given_name: None,
                 family_name: None,
@@ -872,8 +896,8 @@ mod tests {
         let row = create_person(&db, &cmd).await.unwrap();
 
         let input = UpdatePersonCommand {
-            name: "Capricorn".into(),
-            email: "cap@example.com".into(),
+            name: Some("Capricorn".into()),
+            email: Some("cap@example.com".into()),
             role: "admin".into(),
             given_name: None,
             family_name: None,
@@ -892,6 +916,52 @@ mod tests {
         assert_eq!(updated.role, Role::Lawyer);
     }
 
+    /// ENG-518: a `PATCH` naming only `linkedin_url` must succeed rather
+    /// than being refused for omitting `name` and `email` — the same shape
+    /// of body the entity command boundary now accepts.
+    #[tokio::test]
+    async fn update_accepts_a_linkedin_only_body_and_preserves_name_and_email() {
+        let db = db().await;
+        let row = create_person(&db, &create("Gem", "gem@example.com"))
+            .await
+            .unwrap();
+
+        let input = UpdatePersonCommand {
+            name: None,
+            email: None,
+            role: String::new(),
+            given_name: None,
+            family_name: None,
+            middle_name: None,
+            notion_user_id: None,
+            linkedin_url: Some(Some("https://linkedin.example/gem".into())),
+        };
+        let ctx = UpdateContext {
+            bootstrap_owner_email: None,
+            actor_role: Role::Owner,
+            may_change_roles: true,
+        };
+        let updated = update_person(&db, row.id, &input, &ctx).await.unwrap();
+
+        assert_eq!(updated.name, "Gem");
+        assert_eq!(updated.email, "gem@example.com");
+        assert_eq!(
+            updated.linkedin_url.as_deref(),
+            Some("https://linkedin.example/gem")
+        );
+    }
+
+    /// `deny_unknown_fields` refuses a body naming a field this command does
+    /// not carry, and the error names it — never the caller-opaque
+    /// "Malformed JSON body." a missing-field rejection used to share with
+    /// every other deserialize failure.
+    #[test]
+    fn an_unrecognized_field_is_refused_naming_it() {
+        let error =
+            serde_json::from_str::<UpdatePersonCommand>(r#"{"bogus_field": true}"#).unwrap_err();
+        assert!(error.to_string().contains("bogus_field"), "{error}");
+    }
+
     #[tokio::test]
     async fn update_leaves_omitted_name_parts_untouched() {
         let db = db().await;
@@ -900,8 +970,8 @@ mod tests {
         let row = create_person(&db, &cmd).await.unwrap();
 
         let input = UpdatePersonCommand {
-            name: "Gemini".into(),
-            email: "gem@example.com".into(),
+            name: Some("Gemini".into()),
+            email: Some("gem@example.com".into()),
             role: String::new(),
             given_name: None, // omitted → preserved
             family_name: None,
@@ -926,8 +996,8 @@ mod tests {
         let row = create_person(&db, &cmd).await.unwrap();
 
         let input = UpdatePersonCommand {
-            name: "Gemini".into(),
-            email: "gem@example.com".into(),
+            name: Some("Gemini".into()),
+            email: Some("gem@example.com".into()),
             role: String::new(),
             given_name: Some(Some(String::new())), // present blank → clear
             family_name: None,
@@ -956,8 +1026,8 @@ mod tests {
         // silently drops the other two rather than rejecting the whole
         // write.
         let input = UpdatePersonCommand {
-            name: "Renamed".into(),
-            email: "attacker@example.com".into(),
+            name: Some("Renamed".into()),
+            email: Some("attacker@example.com".into()),
             role: "client".into(),
             given_name: None,
             family_name: None,
@@ -986,8 +1056,8 @@ mod tests {
             .await
             .unwrap();
         let owner_input = UpdatePersonCommand {
-            name: "Owner Changed".into(),
-            email: owner.email.clone(),
+            name: Some("Owner Changed".into()),
+            email: Some(owner.email.clone()),
             role: "admin".into(),
             given_name: None,
             family_name: None,
@@ -1006,8 +1076,8 @@ mod tests {
         ));
 
         let promote_input = UpdatePersonCommand {
-            name: client.name.clone(),
-            email: client.email.clone(),
+            name: Some(client.name.clone()),
+            email: Some(client.email.clone()),
             role: "owner".into(),
             given_name: None,
             family_name: None,

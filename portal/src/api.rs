@@ -625,16 +625,14 @@ where
             .and_then(|v| v.to_str().ok())
             .is_some_and(|ct| ct.starts_with("application/json"));
         if is_json {
-            let Json(value) = Json::<T>::from_request(req, state).await.map_err(|_| {
-                ApiError::Command(PeopleCommandError::Invalid("Malformed JSON body."))
-            })?;
+            let Json(value) = Json::<T>::from_request(req, state)
+                .await
+                .map_err(|rejection| ApiError::MalformedBody(rejection.to_string()))?;
             Ok(Self(value))
         } else {
             let axum::extract::Form(value) = axum::extract::Form::<T>::from_request(req, state)
                 .await
-                .map_err(|_| {
-                    ApiError::Command(PeopleCommandError::Invalid("Malformed form body."))
-                })?;
+                .map_err(|rejection| ApiError::MalformedBody(rejection.to_string()))?;
             Ok(Self(value))
         }
     }
@@ -1109,9 +1107,11 @@ async fn reconcile_seed(
 }
 
 /// `PATCH /app/api/entities/{id}` — the Entity update command. Same lawyer-tier
-/// gate as create. Every field is a full replacement; the firm anchor's
-/// *name* is immutable while its type and jurisdiction stay editable, and a
-/// rename into the anchor's name is refused. Those rules live in
+/// gate as create. Every field is optional and a partial update: an absent
+/// field leaves its column unchanged, so a caller correcting only
+/// `jurisdiction_id` sends only that field. The firm anchor's *name* is
+/// immutable while its type and jurisdiction stay editable, and a rename
+/// into the anchor's name is refused. Those rules live in
 /// `store::entity_commands::update_entity`, which the `/app/admin/entities/{id}`
 /// edit form calls too.
 async fn update_entity(
@@ -3164,6 +3164,14 @@ pub enum ApiError {
     Ingest(store::documents::IngestError),
     Revision(store::assets::RevisionError),
     Asset(store::assets::AssetError),
+    /// A [`JsonOrForm`] body was well-formed for its content type but failed
+    /// deserialization — a missing required field, or (with a command's own
+    /// `#[serde(deny_unknown_fields)]`) an unrecognized one. Carries the
+    /// extractor's own rejection text, which names the field, so
+    /// `PATCH /app/api/entities/{id}` with `{"jurisdiction_id":…}` reports
+    /// what is missing rather than the opaque "Malformed JSON body." every
+    /// deserialize failure used to share (ENG-518).
+    MalformedBody(String),
 }
 
 impl From<store::persons::PersonError> for ApiError {
@@ -4031,6 +4039,14 @@ impl IntoResponse for ApiError {
                 )
                     .into_response()
             }
+            Self::MalformedBody(message) => (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": "invalid_request",
+                    "message": message
+                })),
+            )
+                .into_response(),
             Self::Notation(e) => {
                 tracing::error!(error = %e, "api: notation error");
                 (

@@ -1232,16 +1232,22 @@ fn back_to_entity_form(
     let mut query = String::new();
     push_query(&mut query, "error", message);
     if let Some(values) = values {
-        push_query(&mut query, "name", &values.name);
+        push_query(&mut query, "name", values.name.as_deref().unwrap_or(""));
         push_query(
             &mut query,
             "entity_type_id",
-            &values.entity_type_id.to_string(),
+            &values
+                .entity_type_id
+                .map(|id| id.to_string())
+                .unwrap_or_default(),
         );
         push_query(
             &mut query,
             "jurisdiction_id",
-            &values.jurisdiction_id.to_string(),
+            &values
+                .jurisdiction_id
+                .map(|id| id.to_string())
+                .unwrap_or_default(),
         );
     }
     if query.is_empty() {
@@ -1256,10 +1262,14 @@ async fn entities_update(
     Path(id): Path<Uuid>,
     Form(input): Form<EntityInput>,
 ) -> Response {
+    // The admin form always submits every field, so this door's own
+    // "partial" is always the full triple — the JSON command's genuine
+    // partial-update semantics (ENG-518) exist for the API caller, not for
+    // this browser form.
     let command = store::entity_commands::UpdateEntityCommand {
-        name: input.name,
-        entity_type_id: input.entity_type_id,
-        jurisdiction_id: input.jurisdiction_id,
+        name: Some(input.name),
+        entity_type_id: Some(input.entity_type_id),
+        jurisdiction_id: Some(input.jurisdiction_id),
     };
     match store::entity_commands::update_entity(&s.surreal, id, &s.bootstrap_company, &command)
         .await

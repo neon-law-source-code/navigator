@@ -360,9 +360,11 @@ pub fn document_with_base(base: &str) -> Value {
           "patch": {
             "summary": "Update an entity",
             "description":
-              "Replaces the name, entity type, and jurisdiction of one Entity row. The name is \
-               required and the type and jurisdiction must reference existing rows. The firm's own \
-               anchor Entity (`NAVIGATOR_BOOTSTRAP_COMPANY`, falling back to the shipped firm) has \
+              "Partial update for one Entity row: every field is optional, and an absent one \
+               leaves its column unchanged — a caller correcting only `jurisdiction_id` sends only \
+               that field. A present `name` must not be blank, and `entity_type_id`/`jurisdiction_id` \
+               must reference existing rows. The firm's own anchor Entity \
+               (`NAVIGATOR_BOOTSTRAP_COMPANY`, falling back to the shipped firm) has \
                an immutable name — its type and jurisdiction remain editable — and renaming any \
                other Entity *into* the anchor's name is refused; both return 409. The name is \
                compared byte for byte, so a case or whitespace variant of the anchor's name counts \
@@ -2359,10 +2361,11 @@ pub fn document_with_base(base: &str) -> Value {
           },
           "UpdatePersonRequest": {
             "type": "object",
-            "required": ["name", "email"],
             "properties": {
-              "name":        { "type": "string" },
-              "email":       { "type": "string", "format": "email" },
+              "name":        { "type": "string",
+                               "description": "Omit to leave unchanged; present must not be blank." },
+              "email":       { "type": "string", "format": "email",
+                               "description": "Omit to leave unchanged; present must not be blank." },
               "role":        { "allOf": [ { "$ref": "#/components/schemas/PersonRole" } ],
                                "description": "Blank/absent preserves the current role; honored only for Owner/Admin callers up to their own authority, and the bootstrap Owner is always `owner`." },
               "given_name":  { "type": ["string", "null"],
@@ -2750,14 +2753,13 @@ pub fn document_with_base(base: &str) -> Value {
           },
           "UpdateEntityRequest": {
             "type": "object",
-            "required": ["name", "entity_type_id", "jurisdiction_id"],
             "properties": {
               "name":            { "type": "string",
-                                   "description": "Full replacement; must not be blank. Immutable for the firm anchor row." },
+                                   "description": "Omit to leave unchanged; present must not be blank. Immutable for the firm anchor row." },
               "entity_type_id":  { "type": "string", "format": "uuid",
-                                   "description": "An existing `/app/api/entity-types` row." },
+                                   "description": "Omit to leave unchanged. An existing `/app/api/entity-types` row." },
               "jurisdiction_id": { "type": "string", "format": "uuid",
-                                   "description": "An existing `/app/api/jurisdictions` row." }
+                                   "description": "Omit to leave unchanged. An existing `/app/api/jurisdictions` row." }
             },
             "example": {
               "name": "Example Holdings LLC",

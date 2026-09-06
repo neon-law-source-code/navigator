@@ -287,12 +287,14 @@ async fn stamp_forge_provisioned_at(
 
 #[cfg(test)]
 mod tests {
-    use super::{reconcile, source_state, ProjectSurfaces, SourceState, SurfaceError, SurfaceStatus};
+    use super::{
+        reconcile, source_state, ProjectSurfaces, SourceState, SurfaceError, SurfaceStatus,
+    };
     use crate::persons::{self, NewPerson, Role};
     use crate::projects::{self, OpenMatterCommand};
     use crate::test_support::{mem_surreal, seed_entity};
     use cloud::drive::{DriveMemberKind, DriveRole, DriveService, FakeDrive};
-    use cloud::forge::{ForgeError, ForgeRepository, ForgeService, FakeForge};
+    use cloud::forge::{FakeForge, ForgeError, ForgeRepository, ForgeService};
     use cloud::workspace::documents_prefix;
 
     /// A forge that always refuses `ensure_repository` — for proving that a

@@ -57,7 +57,7 @@ pub struct PersonRow {
 /// server-rendered page can show the same role-appropriate lawyer nav chrome the
 /// `PageLayout` carried. Plain and wasm-safe so it also crosses to the
 /// client and hydration re-renders identical nav markup.
-#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ViewerRole {
     Owner,
     Admin,

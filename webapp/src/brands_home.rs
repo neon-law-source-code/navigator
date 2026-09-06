@@ -1,15 +1,15 @@
 //! The `/app/brands` house-of-brands home — every registered brand's typeface,
 //! in one place.
 //!
-//! A firm person (Owner, Admin, Lawyer, or Clerk) sees each brand's own font
-//! family and, where the family is licensed rather than open, the desktop
-//! download the team already relies on. A `client` is answered 403 at the
-//! route, so this page never renders for one — a house brand's fonts are a
-//! firm-operations asset, not something a client's own matter needs.
+//! Owner only (ENG-493), narrowed from every firm tier: a lawyer who works
+//! under a brand still sees it on every page they render, just not this
+//! registry view. Admin, Lawyer, and Clerk are answered 403 at the route, so
+//! this page never renders for any of them.
 //!
-//! Gated exactly like [`crate::team_home`]: `require_auth` then
-//! `require_policy`, so an anonymous request is a redirect to sign-in rather
-//! than a policy denial.
+//! Gated exactly like [`crate::owner_home`]: `require_auth` then
+//! `require_policy` at the router, `require_owner` in the loader — so an
+//! anonymous request is a redirect to sign-in, and an authenticated non-Owner
+//! is a `403` rather than a rendered page.
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -80,11 +80,16 @@ pub struct BrandsHomeView {
     pub firm_name: String,
 }
 
-/// Resolve the authenticated viewer and the request-scoped brand for the home.
+/// Resolve the Owner viewer and the request-scoped brand for the home.
+///
+/// ENG-493: Owner only, narrowed from every firm person. A hidden link is not
+/// an authorization boundary, so this handler-level gate — like
+/// `webapp::owner_home`'s — refuses Lawyer, Clerk, and Admin alike, the same
+/// tiers the Rego rule now excludes from the Owner/Admin route bypass.
 #[server]
 pub async fn brands_home_view() -> Result<BrandsHomeView, ServerFnError> {
     Ok(BrandsHomeView {
-        role: crate::admin_listing::require_firm_person().await?,
+        role: crate::admin_listing::require_owner().await?,
         logo: crate::app_chrome::app_logo_from_context().await,
         tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
         firm_name: crate::app_chrome::firm_name_from_context().await,

@@ -3322,11 +3322,12 @@ pub const APP_BRANDS_PATH: &str = "/app/brands";
 
 /// `/app/brands` — the house-of-brands home.
 ///
-/// Gated exactly like [`app_team_router`]: `require_auth` then
-/// `require_policy`, so an anonymous request is a redirect to sign-in rather
-/// than a policy denial. The Rego rule admits Lawyer and Clerk explicitly and
-/// Owner/Admin through the route bypass — `client` is the one authenticated
-/// tier denied, matching `/app/team`'s audience.
+/// Owner only (ENG-493), narrowed from every firm tier. Gated exactly like
+/// [`app_owner_router`]: `require_auth` then `require_policy` here, and
+/// `require_owner` in the handler's own loader
+/// (`webapp::brands_home::brands_home_view`). The Rego rule carves this path
+/// out of the Owner/Admin route bypass the same way `/app/owner` is carved
+/// out — Admin is denied here, not admitted through the bypass.
 pub fn app_brands_router(
     sessions: crate::session::SessionStore,
     policy: crate::policy::PolicyClient,

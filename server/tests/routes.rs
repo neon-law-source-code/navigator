@@ -1741,6 +1741,37 @@ async fn owner_lists_the_seeded_practice_and_its_brands() {
     );
 }
 
+/// ENG-493: `/app/brands` narrowed to Owner only. A hidden link is not an
+/// authorization boundary, so this proves the route itself refuses a Lawyer
+/// — the same shape `owner_lists_the_seeded_practice_and_its_brands` proves
+/// for `/app/owner`, immediately above.
+#[tokio::test]
+async fn app_brands_is_owner_only() {
+    let (state, surreal) = state_with_engines().await;
+    store::seed::seed_canonical(&surreal, &state.storage)
+        .await
+        .unwrap();
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+
+    let owner = get_with_role(app.clone(), "/app/brands", store::persons::Role::Owner).await;
+    assert_eq!(owner.status(), StatusCode::OK);
+    let html = body_string(owner).await;
+    assert!(html.contains("Brands"), "{html}");
+
+    for (label, role) in [
+        ("admin", store::persons::Role::Admin),
+        ("lawyer", store::persons::Role::Lawyer),
+        ("clerk", store::persons::Role::Clerk),
+    ] {
+        let resp = get_with_role(app.clone(), "/app/brands", role).await;
+        assert_eq!(
+            resp.status(),
+            StatusCode::FORBIDDEN,
+            "{label} must not reach the brand registry"
+        );
+    }
+}
+
 #[tokio::test]
 async fn the_design_gallery_reads_anonymously() {
     // `/design` is a public reference surface: it mounts outside the session

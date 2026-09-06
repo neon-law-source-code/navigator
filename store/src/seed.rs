@@ -1344,9 +1344,8 @@ struct SampleMatter {
     /// The deterministic document published when no built bundle is staged.
     portal_index: &'static str,
     /// Which house brand's storefront this matter was opened through — a
-    /// closed key from `views::brand::BrandKey`. Two of the three matters
-    /// carry the default `"neon"`; one carries `"delete-your-data"` so the
-    /// local fixture exercises both registered values.
+    /// closed key from `views::brand::BrandKey`. The sample matters carry
+    /// registered values so the local fixture exercises the brand registry.
     brand: &'static str,
 }
 
@@ -2566,18 +2565,18 @@ async fn seed_entities(
     Ok(())
 }
 
-/// Migrate the two compiled house-brand keys into system-wide `brand` rows
-/// (ENG-496), with the identity `views::brand::DEFAULT_BRANDING` and
-/// `DELETE_YOUR_DATA_BRANDING` already carry. `store` cannot depend on
-/// `views`, so these values are copied rather than read from it; a
-/// migrated row's `primary_color`/`accent_color`/`typeface` stay unset —
-/// this pair's real presentation stays on the existing static stylesheet
-/// path, not on these columns. Idempotent: a name or key already taken is
-/// this same migration having already run.
+/// Migrate the three compiled house-brand keys into system-wide `brand` rows
+/// (ENG-496), with the identity values their compiled `Branding` entries
+/// carry. `store` cannot depend on `views`, so these values are copied rather
+/// than read from it; migrated rows' `primary_color`/`accent_color`/`typeface`
+/// stay unset — the compiled brands' real presentation stays on the existing
+/// static stylesheet path, not on these columns. Idempotent: a name or key
+/// already taken is this same migration having already run.
 async fn seed_brands(surreal: &SurrealDb) -> anyhow::Result<()> {
     for (name, key) in [
         ("Neon Law", "neon"),
         ("DeleteYourData.com", "delete-your-data"),
+        ("Lawyer Shook", "lawyer-shook"),
     ] {
         match crate::brands::create(
             surreal,

@@ -32,10 +32,10 @@ const MEMBERSHIP_SELECT: &str =
 /// on first boot (ENG-496). Matches the `ASSERT` on `firm_brand.brand_key`
 /// and `project.brand`. `store` does not depend on `views`, so this is the
 /// string form of `BrandKey::ALL`. [`attach_brand`] no longer validates
-/// against this list directly — it reads the `brand` table
-/// ([`brand_key_exists`]), which this constant seeds — so a Firm may wear
+/// against this list directly: it reads the `brand` table
+/// ([`brand_key_exists`]), which this constant seeds, so a Firm may wear
 /// any key a `brand` row now names, runtime-created ones included.
-pub const CLOSED_BRAND_KEYS: &[&str] = &["neon", "delete-your-data"];
+pub const CLOSED_BRAND_KEYS: &[&str] = &["neon", "delete-your-data", "lawyer-shook"];
 
 /// Whether a `brand` row exists carrying this key — the live check
 /// [`attach_brand`] replaced its closed-list `ASSERT` with (ENG-496).

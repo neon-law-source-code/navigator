@@ -9133,12 +9133,12 @@ async fn assert_unregistered_host_redirects(
 /// and every redirect is followed to its actual target rather than trusted
 /// on the `Location` header alone.
 ///
-/// |                    | default host    | `delete-your-data` host     | unknown host  |
-/// | ------------------ | --------------- | ---------------------------- | ------------- |
-/// | marketing path     | 200, own chrome | 200, own chrome              | 301 → default |
-/// | `/app`             | 303 → login     | 303 → login (no brand leak)  | 301 → default |
-/// | `/public/*` asset  | 200             | 200                          | 301 → default |
-/// | `/health`          | 200             | 200                          | 200           |
+/// |                    | default host    | `delete-your-data` host     | `lawyer-shook` host | unknown host  |
+/// | ------------------ | --------------- | ---------------------------- | ------------------ | ------------- |
+/// | marketing path     | 200, own chrome | 200, own chrome              | 200, own chrome     | 301 → default |
+/// | `/app`             | 303 → login     | 303 → login (no brand leak)  | 303 → login         | 301 → default |
+/// | `/public/*` asset  | 200             | 200                          | 200                | 301 → default |
+/// | `/health`          | 200             | 200                          | 200                | 200           |
 ///
 /// The `/app` row's brand assertion lives in
 /// `a_server_fn_backed_app_page_on_the_non_default_host_renders_its_own_brand`
@@ -9149,31 +9149,32 @@ async fn assert_unregistered_host_redirects(
 async fn host_brand_path_matrix_resolves_every_combination() {
     let default_host = "www.neonlaw.com";
     let delete_your_data_host = "staging.deleteyourdata.com";
+    let lawyer_shook_host = "staging.lawyershook.com";
     let unknown_host = "unregistered.example";
     let state =
         empty_state_with_canonical_host(CanonicalHost::new(Some(default_host.into()))).await;
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
 
-    // Marketing path: 200 on both registered hosts with their own
+    // Marketing path: 200 on every registered host with its own
     // `og:site_name`; the unknown host's redirect target renders the
     // default brand's chrome, not merely a 301.
     for (host, brand) in [
         (default_host, "Neon Law"),
         (delete_your_data_host, "DeleteYourData.com"),
+        (lawyer_shook_host, "Lawyer Shook"),
     ] {
         let resp = get_on_host(&app, "/contact", host).await;
         assert_eq!(resp.status(), StatusCode::OK, "{host} /contact");
         let body = body_string(resp).await;
         assert!(page_declares_og_site_name(&body, brand), "{host}: {body}");
-        let other_brand = if brand == "Neon Law" {
-            "DeleteYourData.com"
-        } else {
-            "Neon Law"
-        };
-        assert!(
-            !page_declares_og_site_name(&body, other_brand),
-            "{host}: page must not declare {other_brand:?} as its og:site_name: {body}"
-        );
+        for other_brand in ["Neon Law", "DeleteYourData.com", "Lawyer Shook"] {
+            if other_brand != brand {
+                assert!(
+                    !page_declares_og_site_name(&body, other_brand),
+                    "{host}: page must not declare {other_brand:?} as its og:site_name: {body}"
+                );
+            }
+        }
     }
     let followed =
         assert_unregistered_host_redirects(&app, "/contact", default_host, unknown_host).await;
@@ -9184,14 +9185,15 @@ async fn host_brand_path_matrix_resolves_every_combination() {
         "{followed_body}"
     );
     assert!(
-        !page_declares_og_site_name(&followed_body, "DeleteYourData.com"),
+        !page_declares_og_site_name(&followed_body, "DeleteYourData.com")
+            && !page_declares_og_site_name(&followed_body, "Lawyer Shook"),
         "{followed_body}"
     );
 
     // `/app`: session-gated on every host. The host layer runs outside the
     // session boundary, so the unauthenticated status is identical on both
     // registered hosts — no brand leaks through an anonymous redirect.
-    for host in [default_host, delete_your_data_host] {
+    for host in [default_host, delete_your_data_host, lawyer_shook_host] {
         let resp = get_on_host(&app, "/app/projects", host).await;
         assert_eq!(resp.status(), StatusCode::SEE_OTHER, "{host} /app/projects");
         assert_eq!(
@@ -9212,7 +9214,7 @@ async fn host_brand_path_matrix_resolves_every_combination() {
 
     // `/public/*` asset: served on every registered host; the unknown host's
     // redirect target actually serves the file.
-    for host in [default_host, delete_your_data_host] {
+    for host in [default_host, delete_your_data_host, lawyer_shook_host] {
         let resp = get_on_host(&app, "/public/favicon.svg", host).await;
         assert_eq!(resp.status(), StatusCode::OK, "{host} /public/favicon.svg");
     }
@@ -9227,7 +9229,12 @@ async fn host_brand_path_matrix_resolves_every_combination() {
 
     // `/health`: a probe target, not a public hostname — every host answers,
     // registered or not, and never redirects.
-    for host in [default_host, delete_your_data_host, unknown_host] {
+    for host in [
+        default_host,
+        delete_your_data_host,
+        lawyer_shook_host,
+        unknown_host,
+    ] {
         let resp = get_on_host(&app, "/health", host).await;
         assert_eq!(resp.status(), StatusCode::OK, "{host} /health");
         assert!(

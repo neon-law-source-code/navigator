@@ -508,6 +508,41 @@ pub static DELETE_YOUR_DATA_BRANDING: Branding = Branding {
     brand_key: BrandKey::DeleteYourData,
 };
 
+/// The Lawyer Shook house brand. Its public catalog lives in
+/// `neon/locales/en/lawyer-shook/`, and its web face is selected by the
+/// per-brand asset head and token stylesheet.
+pub static LAWYER_SHOOK_BRANDING: Branding = Branding {
+    firm: SiteBrand {
+        site_name: "Lawyer Shook",
+        home_href: "/",
+        tagline: "A Shook Law PLLC practice.",
+        postal_address: "5150 Mae Anne Ave Ste 405-9002, Reno, NV 89523",
+        logo_href: "",
+        social_image: "",
+        nav: &[],
+        is_law_firm: true,
+        legal_entity: "Shook Law PLLC",
+    },
+    firm_email: "contact@lawyershook.com",
+    support_domain: "lawyershook.com",
+    firm_phone: "+1 510 800 2080",
+    firm_offices: &[],
+    firm_attorneys: &[],
+    firm_trademark: "LAWYER SHOOK",
+    firm_trademark_registration: "",
+    firm_trademark_record_url: "",
+    consultation_url: "https://calendar.app.google/GueqKHiAuqXEwkRG8",
+    terms_url: "/terms",
+    privacy_url: "/privacy",
+    base_url: "",
+    primary_domain: "lawyershook.com",
+    firm_disclaimer: "Attorney advertisement. Nothing here is legal advice without a signed retainer for an active project. Past results do not guarantee future outcomes.",
+    mission_description: "Lawyer Shook is a practice of Shook Law PLLC. A licensed attorney reviews each matter. Fees are quoted before work begins. This is an attorney advertisement, not a promise about a result.",
+    service_description: "Legal services from Lawyer Shook, a practice of Shook Law PLLC. A licensed attorney reviews the work. Fees are quoted before work begins.",
+    portal_only: false,
+    brand_key: BrandKey::LawyerShook,
+};
+
 /// A closed key naming which house brand a request resolves to. Distinct
 /// from `portal::hosting::Site`, which names the *binary*: a `BrandKey`
 /// names one request's resolved identity, and one running binary can resolve
@@ -519,17 +554,19 @@ pub enum BrandKey {
     #[default]
     Neon,
     DeleteYourData,
+    LawyerShook,
 }
 
 impl BrandKey {
     /// Every key the registry serves, in registry order.
-    pub const ALL: &'static [Self] = &[Self::Neon, Self::DeleteYourData];
+    pub const ALL: &'static [Self] = &[Self::Neon, Self::DeleteYourData, Self::LawyerShook];
 
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Neon => "neon",
             Self::DeleteYourData => "delete-your-data",
+            Self::LawyerShook => "lawyer-shook",
         }
     }
 
@@ -542,7 +579,7 @@ impl BrandKey {
     pub fn catalog_pages(self) -> &'static [&'static str] {
         match self {
             Self::Neon => crate::locales::KNOWN_PAGES,
-            Self::DeleteYourData => &["home", "services"],
+            Self::DeleteYourData | Self::LawyerShook => &["home", "services"],
         }
     }
 
@@ -556,7 +593,9 @@ impl BrandKey {
     pub fn publishes_firm_path(self, path: &str) -> bool {
         match self {
             Self::Neon => true,
-            Self::DeleteYourData => matches!(path, "/" | "/services" | "/contact"),
+            Self::DeleteYourData | Self::LawyerShook => {
+                matches!(path, "/" | "/services" | "/contact")
+            }
         }
     }
 
@@ -568,6 +607,7 @@ impl BrandKey {
         match self {
             Self::Neon => &["www.neonlaw.com", "staging.neonlaw.com"],
             Self::DeleteYourData => &["www.deleteyourdata.com", "staging.deleteyourdata.com"],
+            Self::LawyerShook => &["www.lawyershook.com", "staging.lawyershook.com"],
         }
     }
 
@@ -581,6 +621,7 @@ impl BrandKey {
         match self {
             Self::Neon => default_branding,
             Self::DeleteYourData => &DELETE_YOUR_DATA_BRANDING,
+            Self::LawyerShook => &LAWYER_SHOOK_BRANDING,
         }
     }
 
@@ -602,6 +643,7 @@ impl BrandKey {
         match self {
             Self::Neon => None,
             Self::DeleteYourData => Some("NAVIGATOR_LOCAL_DELETE_YOUR_DATA_PORT"),
+            Self::LawyerShook => Some("NAVIGATOR_LOCAL_LAWYER_SHOOK_PORT"),
         }
     }
 }
@@ -1708,7 +1750,7 @@ mod tests {
         assert_eq!(n.children.len(), 1);
     }
 
-    use super::{registered_brand_key, BrandKey, DELETE_YOUR_DATA_BRANDING};
+    use super::{registered_brand_key, BrandKey, DELETE_YOUR_DATA_BRANDING, LAWYER_SHOOK_BRANDING};
 
     /// Every host a key claims resolves back to that same key.
     #[test]
@@ -1788,12 +1830,16 @@ mod tests {
             BrandKey::DeleteYourData.local_port_env_var(),
             Some("NAVIGATOR_LOCAL_DELETE_YOUR_DATA_PORT")
         );
+        assert_eq!(
+            BrandKey::LawyerShook.local_port_env_var(),
+            Some("NAVIGATOR_LOCAL_LAWYER_SHOOK_PORT")
+        );
     }
 
-    /// The two brands render distinct chrome: a different name and a
-    /// different logo, which is the whole point of a second registry entry.
+    /// The registry brands render distinct chrome, which is the whole point
+    /// of separate house-brand entries.
     #[test]
-    fn the_two_brands_carry_distinct_chrome() {
+    fn registry_brands_carry_distinct_chrome() {
         assert_ne!(
             DEFAULT_BRANDING.firm.site_name,
             DELETE_YOUR_DATA_BRANDING.firm.site_name
@@ -1802,6 +1848,14 @@ mod tests {
             DEFAULT_BRANDING.firm.logo_href,
             DELETE_YOUR_DATA_BRANDING.firm.logo_href
         );
+        assert_ne!(
+            DEFAULT_BRANDING.firm.site_name,
+            LAWYER_SHOOK_BRANDING.firm.site_name
+        );
+        assert_eq!(LAWYER_SHOOK_BRANDING.firm.legal_entity, "Shook Law PLLC");
+        assert_eq!(LAWYER_SHOOK_BRANDING.support_domain, "lawyershook.com");
+        assert_eq!(LAWYER_SHOOK_BRANDING.firm_trademark, "LAWYER SHOOK");
+        assert!(LAWYER_SHOOK_BRANDING.firm_trademark_registration.is_empty());
     }
 
     /// Every compiled `Branding` carries the registry key that produced it, so
@@ -1853,10 +1907,15 @@ mod tests {
             BrandKey::DeleteYourData.catalog_pages(),
             &["home", "services"]
         );
+        assert_eq!(BrandKey::LawyerShook.catalog_pages(), &["home", "services"]);
         assert!(BrandKey::DeleteYourData.publishes_firm_path("/"));
         assert!(BrandKey::DeleteYourData.publishes_firm_path("/services"));
         assert!(BrandKey::DeleteYourData.publishes_firm_path("/contact"));
         assert!(!BrandKey::DeleteYourData.publishes_firm_path("/litigation"));
+        assert!(BrandKey::LawyerShook.publishes_firm_path("/"));
+        assert!(BrandKey::LawyerShook.publishes_firm_path("/services"));
+        assert!(BrandKey::LawyerShook.publishes_firm_path("/contact"));
+        assert!(!BrandKey::LawyerShook.publishes_firm_path("/litigation"));
         assert!(BrandKey::Neon.publishes_firm_path("/litigation"));
     }
 

@@ -193,6 +193,7 @@ async fn dioxus_document_head(req: Request, next: Next) -> Response {
     let font_head: &str = match views::brand::brand_key() {
         views::brand::BrandKey::Neon => &GORP_HEAD,
         views::brand::BrandKey::DeleteYourData => &PLUS_JAKARTA_SANS_HEAD,
+        views::brand::BrandKey::LawyerShook => &GORP_HEAD,
     };
     let html = stamp_document_title(&stamp_html_lang(&rendered, lang), &path)
         .replace("<script>", &format!("<script nonce=\"{nonce}\">"))

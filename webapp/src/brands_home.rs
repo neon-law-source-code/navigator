@@ -39,12 +39,12 @@ struct BrandFontCard {
 
 /// The registered brands' font cards, in registry order.
 ///
-/// The GORP Serif and Plus Jakarta Sans facts here mirror the match arms in
+/// The GORP Serif, Plus Jakarta Sans, and Tinos facts here mirror the match arms in
 /// `portal::dioxus_app::dioxus_document_head` and `docs/assets.md`'s
 /// "Licensed webfonts" section. This client-rendered data stays independent of
 /// the server-only `views` crate so the WASM build does not pull server brand
 /// resolution into the browser bundle.
-fn brand_font_cards() -> [BrandFontCard; 2] {
+fn brand_font_cards() -> [BrandFontCard; 3] {
     [
         BrandFontCard {
             id: "brand-card-neon",
@@ -61,6 +61,14 @@ fn brand_font_cards() -> [BrandFontCard; 2] {
             license_note: "SIL Open Font License 1.1 — the desktop family is the same public font anyone can install from Google Fonts.",
             download: None,
             href: "https://fonts.google.com/specimen/Plus+Jakarta+Sans",
+        },
+        BrandFontCard {
+            id: "brand-card-lawyer-shook",
+            brand_label: "Lawyer Shook",
+            family_name: "Tinos",
+            license_note: "Apache License 2.0 — the web faces are served from Navigator's public asset origin.",
+            download: None,
+            href: "https://fonts.google.com/specimen/Tinos",
         },
     ]
 }
@@ -196,7 +204,7 @@ mod tests {
         );
     }
 
-    /// Every firm tier sees both brands' cards — a house brand's font is not
+    /// Every firm tier sees every registered brand's card — a house brand's font is not
     /// gated further than the page itself.
     #[test]
     fn every_firm_tier_sees_every_brand_card() {
@@ -215,6 +223,11 @@ mod tests {
             assert!(
                 html.contains(r#"id="brand-card-delete-your-data""#),
                 "rank {} must see the DeleteYourData card: {html}",
+                role.authority_rank()
+            );
+            assert!(
+                html.contains(r#"id="brand-card-lawyer-shook""#),
+                "rank {} must see the Lawyer Shook card: {html}",
                 role.authority_rank()
             );
         }
@@ -252,7 +265,7 @@ mod tests {
         );
     }
 
-    /// The rendered page carries the heading and both cards.
+    /// The rendered page carries the heading and registered brand cards.
     #[test]
     fn the_home_composes_heading_and_cards() {
         let html = render(ViewerRole::Owner);

@@ -269,3 +269,43 @@ async fn the_delete_your_data_sitemap_lists_only_that_brands_pages_under_its_hos
         );
     }
 }
+
+#[tokio::test]
+async fn the_lawyer_shook_sitemap_lists_only_that_brands_pages_under_its_host() {
+    let app = app().await;
+    let host = "staging.lawyershook.com";
+    let (status, body) = get_on_host(&app, "/sitemap.xml", Some(host)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains(&format!("https://{host}/</loc>")), "{body}");
+    assert!(!body.contains("neonlaw.com"), "{body}");
+    let paths: Vec<String> = body
+        .split("<loc>")
+        .skip(1)
+        .filter_map(|rest| rest.split("</loc>").next())
+        .map(|loc| {
+            let after_scheme = loc.split_once("://").expect("an absolute URL").1;
+            let path = after_scheme
+                .find('/')
+                .map_or("/", |slash| &after_scheme[slash..]);
+            path.to_string()
+        })
+        .collect();
+    for required in [
+        "/",
+        "/services",
+        "/contact",
+        "/privacy",
+        "/terms",
+        "/llms.txt",
+    ] {
+        assert!(
+            paths.iter().any(|path| path == required),
+            "missing {required}: {paths:?}"
+        );
+    }
+    assert!(!paths.iter().any(|path| path == "/litigation"));
+    for path in &paths {
+        let (status, _) = get_on_host(&app, path, Some(host)).await;
+        assert_eq!(status, StatusCode::OK, "{host} sitemap advertises {path}");
+    }
+}

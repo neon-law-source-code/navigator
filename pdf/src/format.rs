@@ -321,7 +321,10 @@ impl OutputFormat {
 /// "is this block present" test every optional [`LetterBlocks`] field
 /// uses so a field holding only whitespace is treated as absent.
 fn present(field: Option<&String>) -> Option<&str> {
-    field.map(String::as_str).map(str::trim).filter(|s| !s.is_empty())
+    field
+        .map(String::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
 }
 
 /// [`OutputFormat::Letter`]'s above-the-body blocks, in order: date,

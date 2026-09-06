@@ -11594,7 +11594,7 @@ async fn admin_generic_listings_render_row_cells_from_the_database() {
             // real ingest seam, so the key and the digest are derived rather
             // than hand-written.
             vec![
-                format!("blobs/{asset_sha}"),
+                format!("projects/{}/documents/{asset_sha}", asset_project.code),
                 "retainer.pdf".to_string(),
                 "onboarding".to_string(),
                 "application/pdf".to_string(),

@@ -167,6 +167,8 @@ pub struct DocumentIdentity<'a> {
 pub struct IngestedDocument {
     /// The `assets` row id for this document.
     pub asset_id: Uuid,
+    /// Project-scoped content-addressed key holding the document bytes.
+    pub storage_key: String,
     pub sha256_hex: String,
     pub byte_size: i64,
     /// `true` when this Project already stored the bytes under another asset,
@@ -241,6 +243,7 @@ pub async fn ingest_bytes_as(
 
     Ok(IngestedDocument {
         asset_id,
+        storage_key,
         sha256_hex: sha_hex,
         byte_size,
         reused,

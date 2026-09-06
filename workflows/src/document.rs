@@ -100,7 +100,7 @@ pub struct GeneratedPdfRef {
     /// The `assets` row id for the persisted PDF.
     pub asset_id: uuid::Uuid,
     pub sha256: String,
-    /// Content-addressed storage key of the asset (`blobs/<sha>`).
+    /// Project-scoped content-addressed storage key of the asset.
     pub storage_key: String,
     pub byte_size: i64,
 }
@@ -181,7 +181,7 @@ pub async fn dispatch_generate_pdf(
     // row — the same lane the inbound `document_intake` step writes
     // through.
     let filename = storage_key.rsplit('/').next().unwrap_or("document.pdf");
-    // The bytes live at two keys: the content-addressed `blobs/<sha>` the
+    // The bytes live at two keys: the Project-scoped content-addressed key the
     // asset points at, and `storage_key` (the notation key the attest /
     // signature steps and the portal read back). Record that second location
     // on the asset row — in the same insert — so every asset row for these
@@ -211,7 +211,7 @@ pub async fn dispatch_generate_pdf(
 
     let pdf_ref = GeneratedPdfRef {
         asset_id: ingested.asset_id,
-        storage_key: format!("blobs/{}", ingested.sha256_hex),
+        storage_key: ingested.storage_key,
         sha256: ingested.sha256_hex,
         byte_size: ingested.byte_size,
     };

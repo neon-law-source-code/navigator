@@ -1182,7 +1182,10 @@ reaches neither the markup nor the hydration payload.
 **An unset resource is absent, never an empty slot.** A matter with no shared Notion page and a matter whose firm keeps
 one privately look identical to the client, which is the same toggle-blindness a [Module](#module) gets from having no
 row. Reading the private half is every firm tier ([Clerk](#role) included); *configuring* any of them is the lawyer
-tiers, through the matter edit form — the panel renders no inputs of its own, so there is one write path.
+tiers, through the matter edit form — the panel renders no inputs of its own, so there is one write path. Slack and
+Notion each render as their own card there, private field beside a "Share a separate resource with the client" toggle
+that reveals the shared field (ENG-477): the toggle is a real submitted checkbox the handler reads directly, so
+unchecking it and saving is what clears the shared column, whatever text is left in the field it hid.
 
 Four of the six are stored URLs on the `project` row (`internal_slack_channel_url`, `external_slack_channel_url`,
 `private_notion_page_url`, `shared_notion_page_url`), each validated by

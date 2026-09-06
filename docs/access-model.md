@@ -45,13 +45,18 @@ through, rather than each call site deriving its own `person_firm_role` filter:
 
 - [`FirmCapability`](../store/src/firm_capability.rs) is a narrow, closed enum — one variant per Firm-scoped command,
   not a blanket "is admin" boolean. `ViewDirectory` gates the Admin-tier people and matter directories
-  (`store::firms::visible_person_ids`, `store::projects::matter_directory_for`); `ManageMembership` gates writing a
-  `person_firm_role` row (`store::firms::add_membership`, `ensure_membership`).
+  (`store::firms::visible_person_ids`, `store::projects::matter_directory_for`) and the Firm detail view
+  (`webapp::firm_show`); `ManageMembership` gates writing a `person_firm_role` row and a Firm's own settings
+  (`store::firms::add_membership`, `ensure_membership`, `update`, `delete`, `update_membership`, `remove_membership`,
+  `detach_brand`); `ManageAdminDri` admits no membership tier at all — only Owner ever holds it — and gates
+  `store::firms::appoint_admin_dri` (ENG-499).
 - `resolve` answers one `(actor, target Firm, capability)` question with a typed
   [`FirmCapabilityDecision`](../store/src/firm_capability.rs) — `Allowed`, `Forbidden`, or `FirmNotFound` — so a future
   single-Firm surface can render `Forbidden` and `FirmNotFound` identically and never disclose that another Firm's row
   exists. `allowed_firm_ids` is its batch counterpart, for a directory that scopes itself to every Firm the caller may
-  act on.
+  act on. `resolve` emits one `firm_capability.resolve` telemetry event per call — capability, Firm id, actor person id,
+  outcome, and a stable reason code, ids only (ENG-464) — so every Firm-scoped allow/deny decision is auditable from the
+  one place every caller already routes through.
 - Owner holds every capability on every Firm with no membership row — the system-wide governance tier
   `docs/glossary.md#firm` describes. Client holds none. Admin, Lawyer, and Clerk need a `person_firm_role` row on the
   target Firm, and only some capabilities admit a non-Admin membership (`ManageMembership` is Admin-only).

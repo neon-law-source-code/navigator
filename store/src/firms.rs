@@ -904,6 +904,40 @@ pub async fn appoint_admin_dri(
     firm_id: Uuid,
     person_id: Uuid,
 ) -> Result<PersonFirmRole, FirmError> {
+    let result =
+        appoint_admin_dri_inner(surreal, actor_role, actor_person_id, firm_id, person_id).await;
+    // ENG-464: the appointment/transfer outcome, distinct from
+    // `firm_capability.resolve`'s own event above it — this names *who was
+    // appointed* and *why it did or did not happen*, ids only.
+    let reason = match &result {
+        Ok(_) => "appointed",
+        Err(FirmError::NotAuthorized) => "not_authorized",
+        Err(FirmError::NoSuchFirm(_)) => "no_such_firm",
+        Err(FirmError::NoSuchPerson(_)) => "no_such_person",
+        Err(FirmError::IneligibleAdminDriTier(_)) => "ineligible_tier",
+        Err(FirmError::AdminDriCrossFirm(_, _)) => "cross_firm",
+        Err(FirmError::WrongAdminDriMembership(_, _)) => "wrong_membership",
+        Err(_) => "error",
+    };
+    tracing::info!(
+        target: "firm.appoint_admin_dri",
+        firm_id = %firm_id,
+        person_id = %person_id,
+        actor_person_id = actor_person_id.map(|id| id.to_string()),
+        succeeded = result.is_ok(),
+        reason,
+        "admin DRI appointment/transfer",
+    );
+    result
+}
+
+async fn appoint_admin_dri_inner(
+    surreal: &SurrealDb,
+    actor_role: Role,
+    actor_person_id: Option<Uuid>,
+    firm_id: Uuid,
+    person_id: Uuid,
+) -> Result<PersonFirmRole, FirmError> {
     match crate::firm_capability::resolve(
         surreal,
         actor_role,
@@ -1291,6 +1325,136 @@ mod tests {
         let report = admin_dri_invariant_report(&db).await.unwrap();
         let status = report.iter().find(|s| s.firm_id == firm.id).unwrap();
         assert_eq!(status.problem, None);
+    }
+
+    #[derive(Clone)]
+    struct TelemetryBuf(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+    impl std::io::Write for TelemetryBuf {
+        fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(b);
+            Ok(b.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for TelemetryBuf {
+        type Writer = TelemetryBuf;
+        fn make_writer(&'a self) -> TelemetryBuf {
+            self.clone()
+        }
+    }
+
+    /// `appoint_admin_dri` emits its own outcome event — distinct from
+    /// `firm_capability.resolve`'s own, which the same call also fires —
+    /// naming the Firm, the appointee, the actor, and a stable reason code
+    /// for both success and every typed refusal (ENG-464). Never carries an
+    /// email or name.
+    #[tokio::test]
+    async fn appoint_admin_dri_emits_a_reasoned_outcome_event_for_success_and_every_refusal() {
+        crate::test_tracing::ensure_callsite_interest();
+        let db = mem_surreal().await;
+        let first_admin = admin_dri_person(&db).await;
+        let firm = practice_with_admin(&db, "Telemetry Transfer Practice", first_admin).await;
+        let second_admin = crate::persons::create(
+            &db,
+            &NewPerson::with_role(
+                "Telemetry Second Admin",
+                "telemetry-second-admin@example.com",
+                Role::Admin,
+            ),
+        )
+        .await
+        .unwrap();
+        add_membership(
+            &db,
+            &NewPersonFirmRole {
+                person_id: second_admin.id,
+                firm_id: firm.id,
+                membership: FirmMembership::Admin,
+                is_dri: false,
+            },
+        )
+        .await
+        .unwrap();
+        let lawyer = crate::persons::create(
+            &db,
+            &NewPerson::with_role(
+                "Telemetry DRI Lawyer",
+                "telemetry-dri-lawyer@example.com",
+                Role::Lawyer,
+            ),
+        )
+        .await
+        .unwrap();
+
+        let buf = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let subscriber = tracing_subscriber::fmt()
+            .json()
+            .with_max_level(tracing::Level::INFO)
+            .with_writer(TelemetryBuf(buf.clone()))
+            .finish();
+        {
+            let _guard = tracing::subscriber::set_default(subscriber);
+            // Not authorized: an Admin, not Owner.
+            appoint_admin_dri(
+                &db,
+                Role::Admin,
+                Some(first_admin),
+                firm.id,
+                second_admin.id,
+            )
+            .await
+            .unwrap_err();
+            // Ineligible tier: a Lawyer named as the proposed DRI.
+            appoint_admin_dri(&db, Role::Owner, None, firm.id, lawyer.id)
+                .await
+                .unwrap_err();
+            // Success.
+            appoint_admin_dri(&db, Role::Owner, None, firm.id, second_admin.id)
+                .await
+                .unwrap();
+        }
+
+        let logged = String::from_utf8(buf.lock().unwrap().clone()).unwrap();
+        let events: Vec<&str> = logged
+            .lines()
+            .filter(|line| line.contains("admin DRI appointment/transfer"))
+            .collect();
+        assert_eq!(events.len(), 3, "one event per attempt: {logged}");
+
+        assert!(
+            events.iter().any(
+                |line| line.contains(&format!("\"firm_id\":\"{}\"", firm.id))
+                    && line.contains("\"reason\":\"not_authorized\"")
+                    && line.contains("\"succeeded\":false")
+            ),
+            "{logged}"
+        );
+        assert!(
+            events
+                .iter()
+                .any(|line| line.contains("\"reason\":\"ineligible_tier\"")
+                    && line.contains(&format!("\"person_id\":\"{}\"", lawyer.id))),
+            "{logged}"
+        );
+        assert!(
+            events
+                .iter()
+                .any(|line| line.contains("\"reason\":\"appointed\"")
+                    && line.contains("\"succeeded\":true")
+                    && line.contains(&format!("\"person_id\":\"{}\"", second_admin.id))),
+            "{logged}"
+        );
+
+        assert!(
+            !logged.contains("@example.com"),
+            "no email may reach telemetry: {logged}"
+        );
+        assert!(
+            !logged.contains("Telemetry Second Admin") && !logged.contains("Telemetry DRI Lawyer"),
+            "no name may reach telemetry: {logged}"
+        );
     }
 
     /// Appointment refuses ineligible tiers, a person with no membership on

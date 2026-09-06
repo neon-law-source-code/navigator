@@ -73,8 +73,67 @@ impl Default for Letterhead {
     }
 }
 
+/// The signed closing of a letter: valediction, then the signer, printed
+/// under blank space for a pen signature — a letter is signed by one
+/// person and never routes to e-signature (contrast
+/// [`crate::signature_render`], which anchors an e-signature tab inside a
+/// notation *body* for the documents that do route there).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Closing {
+    /// e.g. `Sincerely,`.
+    pub valediction: String,
+    /// The signer's printed name.
+    pub signer_name: String,
+    /// The signer's printed title, e.g. `Attorney for Client`.
+    pub signer_title: Option<String>,
+}
+
+/// The blocks a firm letter carries above and below its body — date,
+/// delivery method, recipient, `Re:` line, salutation above; closing,
+/// enclosures, and `cc:` below. Parameters on [`OutputFormat::Letter`]
+/// rather than notation body content: they are chrome, like the
+/// letterhead itself, so a notation's questionnaire state fills them in
+/// per render rather than the template body carrying a
+/// `{{placeholder}}` for each.
+///
+/// Every field is optional (`recipient`/`enclosures`/`cc` empty meaning
+/// absent), and an absent block leaves no trace in the rendered page —
+/// no blank line, no stray label — because [`OutputFormat::preamble`] and
+/// [`OutputFormat::postamble`] only ever emit a block's Typst when its
+/// field is present.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct LetterBlocks {
+    /// The date line, e.g. `September 6, 2026`.
+    pub date: Option<String>,
+    /// Shouted above the recipient block, e.g. `VIA CERTIFIED MAIL` or
+    /// `VIA EMAIL`.
+    pub delivery_method: Option<String>,
+    /// The recipient's name and address, one Typst line per entry.
+    pub recipient: Vec<String>,
+    /// The `Re:` line's text, without the leading `Re:` itself (the
+    /// renderer adds it) — the subject, and a matter reference where one
+    /// exists.
+    pub re_line: Option<String>,
+    /// The complete salutation, e.g. `Dear Ms. Smith:`.
+    pub salutation: Option<String>,
+    /// The signed closing. `None` renders no closing at all — a letter
+    /// that ends with the body, no signature block appended.
+    pub closing: Option<Closing>,
+    /// Enclosure descriptions; empty means no `Enclosures:` line at all.
+    pub enclosures: Vec<String>,
+    /// `cc:` recipients; empty means no `cc:` line at all.
+    pub cc: Vec<String>,
+}
+
 /// How a rendered notation is framed on the page.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+///
+/// [`OutputFormat::Letter`] carries a full [`LetterBlocks`] while every
+/// other variant is data-free or a bare `Copy` enum, so the size gap is
+/// inherent to the format, not an oversight — boxing the one large variant
+/// would only move the allocation, and this type is never held in a hot
+/// loop (one render, one format).
+#[allow(clippy::large_enum_variant)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum OutputFormat {
     /// No letterhead: page geometry and the firm typeface only. The
     /// default when a template declares no `output:` field.
@@ -82,12 +141,13 @@ pub enum OutputFormat {
     Plain,
     /// A firm letter on the firm's letterhead — the mark, the wordmark,
     /// a rule across the page, and the contact line head the first page;
-    /// the body flows beneath and every page is numbered.
+    /// the body flows beneath and every page is numbered. Carries the
+    /// [`LetterBlocks`] a letter needs above and below that body.
     ///
     /// Typeset **airily**: wide margins, open leading, generous space
     /// around headings. An engagement letter is read once, carefully, by
     /// someone deciding whether to sign it.
-    Letter,
+    Letter(LetterBlocks),
     /// An executed contract on the firm's letterhead. Same chrome as
     /// [`OutputFormat::Letter`], deliberately **curt** typesetting: a
     /// contract between represented parties is a reference document,
@@ -128,7 +188,11 @@ impl OutputFormat {
     /// Parse a format name as it appears in `output:` frontmatter or on
     /// the CLI `--format` flag. Accepts `plain`, `letter`, and
     /// `agreement`; returns `None` for anything else so callers can
-    /// report it.
+    /// report it. A parsed [`OutputFormat::Letter`] carries
+    /// [`LetterBlocks::default`] (every block absent) — a caller with
+    /// questionnaire state to fill those blocks from constructs
+    /// `OutputFormat::Letter(blocks)` directly rather than through this
+    /// bare-name parse.
     ///
     /// Never returns [`OutputFormat::Pleading`] — its calibration comes
     /// from a jurisdiction, not the bare format name, so a caller that
@@ -139,19 +203,21 @@ impl OutputFormat {
     pub fn parse(name: &str) -> Option<Self> {
         match name.trim() {
             "plain" => Some(Self::Plain),
-            "letter" => Some(Self::Letter),
+            "letter" => Some(Self::Letter(LetterBlocks::default())),
             "agreement" => Some(Self::Agreement),
             _ => None,
         }
     }
 
     /// The Typst chrome preamble for this format — page geometry, sizing,
-    /// and any letterhead. Prepended to the body's Typst markup before
-    /// [`render`]. The font family is set separately by [`render`].
+    /// and any letterhead, followed by [`OutputFormat::Letter`]'s above-
+    /// the-body blocks (date, delivery method, recipient, `Re:`,
+    /// salutation) where present. Prepended to the body's Typst markup
+    /// before [`render`]. The font family is set separately by [`render`].
     /// `letterhead` is used by [`OutputFormat::Letter`] and
     /// [`OutputFormat::Agreement`]; [`OutputFormat::Plain`] ignores it.
     #[must_use]
-    pub fn preamble(self, letterhead: &Letterhead) -> String {
+    pub fn preamble(&self, letterhead: &Letterhead) -> String {
         // Shared page sizing; the letterhead leaves extra top margin so
         // the mark clears the body.
         match self {
@@ -166,11 +232,17 @@ impl OutputFormat {
             // above headings. An engagement letter is read once, carefully,
             // by someone deciding whether to sign it, so it is typeset for
             // reading rather than for fitting.
-            Self::Letter => format!(
+            Self::Letter(blocks) => format!(
                 concat!(
                     "#set page(\n",
                     "  paper: \"us-letter\",\n",
                     "  margin: (x: 1.15in, top: 1.15in, bottom: 1.15in),\n",
+                    // A page separated from the rest of the letter should
+                    // say which letter (and whose) it belongs to. Silent on
+                    // page one, where the letterhead already carries it.
+                    "  header: context if counter(page).get().first() > 1 [",
+                    "#align(right)[#text(size: 8pt, fill: luma(45%))[",
+                    "{continuation}Page #counter(page).display()]]],\n",
                     "  footer: context align(center)[#text(size: 8pt, fill: luma(45%))[",
                     "Page #counter(page).display() of #counter(page).final().first()]],\n",
                     ")\n",
@@ -179,8 +251,11 @@ impl OutputFormat {
                     "#show heading: set text(size: 11pt, weight: \"bold\")\n",
                     "#show heading: set block(above: 2.1em, below: 1.1em)\n",
                     "{head}",
+                    "{blocks}",
                 ),
+                continuation = letter_continuation_prefix(blocks),
                 head = letterhead_block(letterhead, "1.6em"),
+                blocks = letter_header_blocks(blocks),
             ),
             // The agreement is the mirror image of the letter: same
             // chrome, tightened everywhere the letter is open. Narrower
@@ -223,8 +298,122 @@ impl OutputFormat {
             // no shared page-chrome constants, calibrated per jurisdiction.
             // `pleading::preamble` is the one place that geometry is
             // produced; delegate rather than duplicating it here.
-            Self::Pleading(variant) => crate::pleading::preamble(variant),
+            Self::Pleading(variant) => crate::pleading::preamble(*variant),
         }
+    }
+
+    /// The Typst chrome appended *after* the body's Typst markup —
+    /// [`OutputFormat::Letter`]'s below-the-body blocks (closing and
+    /// signature, enclosures, `cc:`) where present. Every other format
+    /// appends nothing: a contract's signature block and an ordinary
+    /// document's closing, if any, are the notation body's own content,
+    /// not chrome.
+    #[must_use]
+    pub fn postamble(&self) -> String {
+        match self {
+            Self::Letter(blocks) => letter_footer_blocks(blocks),
+            Self::Plain | Self::Agreement | Self::Pleading(_) => String::new(),
+        }
+    }
+}
+
+/// A block's text, trimmed, or `None` when absent or blank — the shared
+/// "is this block present" test every optional [`LetterBlocks`] field
+/// uses so a field holding only whitespace is treated as absent.
+fn present(field: Option<&String>) -> Option<&str> {
+    field.map(String::as_str).map(str::trim).filter(|s| !s.is_empty())
+}
+
+/// [`OutputFormat::Letter`]'s above-the-body blocks, in order: date,
+/// delivery method, recipient, `Re:`, salutation. Each is emitted only
+/// when present, so an absent block leaves no trace — no blank paragraph,
+/// no stray label — rather than a conditional gap in otherwise-static
+/// Typst markup.
+fn letter_header_blocks(blocks: &LetterBlocks) -> String {
+    let mut out = String::new();
+    if let Some(date) = present(blocks.date.as_ref()) {
+        out.push_str(&esc(date));
+        out.push_str("\n\n");
+    }
+    if let Some(delivery) = present(blocks.delivery_method.as_ref()) {
+        out.push_str("#strong[#upper[");
+        out.push_str(&esc(delivery));
+        out.push_str("]]\n\n");
+    }
+    if !blocks.recipient.is_empty() {
+        let lines: Vec<String> = blocks.recipient.iter().map(|l| esc(l)).collect();
+        out.push_str(&lines.join(" \\\n"));
+        out.push_str("\n\n");
+    }
+    if let Some(re) = present(blocks.re_line.as_ref()) {
+        out.push_str("#strong[Re:] ");
+        out.push_str(&esc(re));
+        out.push_str("\n\n");
+    }
+    if let Some(salutation) = present(blocks.salutation.as_ref()) {
+        out.push_str(&esc(salutation));
+        out.push_str("\n\n");
+    }
+    out
+}
+
+/// [`OutputFormat::Letter`]'s below-the-body blocks, in order: closing and
+/// signature, then `Enclosures:` and `cc:`. Same absence contract as
+/// [`letter_header_blocks`].
+fn letter_footer_blocks(blocks: &LetterBlocks) -> String {
+    let mut out = String::new();
+    if let Some(closing) = &blocks.closing {
+        out.push_str("\n#v(1.5em)\n\n");
+        out.push_str(&esc(&closing.valediction));
+        out.push_str("\n\n#v(2.5em)\n\n"); // blank space for a pen signature
+        out.push_str(&esc(&closing.signer_name));
+        out.push_str("\n\n");
+        if let Some(title) = present(closing.signer_title.as_ref()) {
+            out.push_str(&esc(title));
+            out.push_str("\n\n");
+        }
+    }
+    if !blocks.enclosures.is_empty() {
+        out.push_str("#strong[Enclosures:]\n");
+        for item in &blocks.enclosures {
+            out.push_str("- ");
+            out.push_str(&esc(item));
+            out.push('\n');
+        }
+        out.push('\n');
+    }
+    if !blocks.cc.is_empty() {
+        let names: Vec<String> = blocks.cc.iter().map(|c| esc(c)).collect();
+        out.push_str("#strong[cc:] ");
+        out.push_str(&names.join(", "));
+        out.push_str("\n\n");
+    }
+    out
+}
+
+/// The static (non-page-counter) portion of [`OutputFormat::Letter`]'s
+/// continuation-page header: the recipient's first line and the date,
+/// each present only when [`LetterBlocks`] carries one, joined ahead of
+/// the page number the Typst `context` block computes per page. Returns
+/// an empty string when neither is set, so the header still shows the
+/// page number alone rather than a stray leading separator.
+fn letter_continuation_prefix(blocks: &LetterBlocks) -> String {
+    let mut parts = Vec::new();
+    if let Some(first) = blocks
+        .recipient
+        .first()
+        .map(|l| l.trim())
+        .filter(|s| !s.is_empty())
+    {
+        parts.push(esc(first));
+    }
+    if let Some(date) = present(blocks.date.as_ref()) {
+        parts.push(esc(date));
+    }
+    if parts.is_empty() {
+        String::new()
+    } else {
+        format!("{}  ·  ", parts.join("  ·  "))
     }
 }
 
@@ -293,40 +482,54 @@ fn esc(s: &str) -> String {
 
 /// Render a notation's Markdown `body` to PDF bytes, framed by `format`.
 ///
-/// Converts the Markdown to Typst ([`crate::markdown::to_typst`]),
-/// prepends the format's chrome ([`OutputFormat::preamble`]), and
-/// compiles ([`render`]). `letterhead` supplies the firm identity for
-/// [`OutputFormat::Letter`] and [`OutputFormat::Agreement`] (ignored by
-/// [`OutputFormat::Plain`]). Placeholder tokens
-/// are the caller's responsibility — substitute them in `body` first.
+/// Converts the Markdown to Typst ([`crate::markdown::to_typst`]), wraps
+/// it in the format's chrome ([`OutputFormat::preamble`] before,
+/// [`OutputFormat::postamble`] after), and compiles ([`render`]).
+/// `letterhead` supplies the firm identity for [`OutputFormat::Letter`]
+/// and [`OutputFormat::Agreement`] (ignored by [`OutputFormat::Plain`]).
+/// Placeholder tokens are the caller's responsibility — substitute them
+/// in `body` first.
 ///
 /// # Errors
 ///
 /// Returns [`PdfError::Compile`] / [`PdfError::Export`] when the
 /// converted document fails to compile or export.
+///
+/// `format` is taken by value for the ergonomics of the common case — a
+/// caller that just resolved a format (`OutputFormat::parse`,
+/// `Kind::default_output`) and renders once — even though neither
+/// `preamble` nor `postamble` needs to own it.
+#[allow(clippy::needless_pass_by_value)]
 pub fn render_document(
     body: &str,
     format: OutputFormat,
     letterhead: &Letterhead,
 ) -> Result<Vec<u8>, PdfError> {
     let source = format!(
-        "{}{}",
+        "{}{}{}",
         format.preamble(letterhead),
-        crate::markdown::to_typst(body)
+        crate::markdown::to_typst(body),
+        format.postamble(),
     );
     render(&source)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Letterhead, OutputFormat};
+    use super::{Closing, LetterBlocks, Letterhead, OutputFormat};
     use std::fmt::Write as _;
 
     #[test]
     fn parse_accepts_known_names_and_rejects_others() {
         assert_eq!(OutputFormat::parse("plain"), Some(OutputFormat::Plain));
-        assert_eq!(OutputFormat::parse("letter"), Some(OutputFormat::Letter));
-        assert_eq!(OutputFormat::parse(" letter "), Some(OutputFormat::Letter));
+        assert_eq!(
+            OutputFormat::parse("letter"),
+            Some(OutputFormat::Letter(LetterBlocks::default()))
+        );
+        assert_eq!(
+            OutputFormat::parse(" letter "),
+            Some(OutputFormat::Letter(LetterBlocks::default()))
+        );
         assert_eq!(
             OutputFormat::parse("agreement"),
             Some(OutputFormat::Agreement)
@@ -403,7 +606,7 @@ mod tests {
         // never broken; the line just ends early.
         for format in [
             OutputFormat::Plain,
-            OutputFormat::Letter,
+            OutputFormat::Letter(LetterBlocks::default()),
             OutputFormat::Agreement,
         ] {
             let preamble = format.preamble(&Letterhead::default());
@@ -427,11 +630,11 @@ mod tests {
                     between the parties to this representation.";
         for format in [
             OutputFormat::Plain,
-            OutputFormat::Letter,
+            OutputFormat::Letter(LetterBlocks::default()),
             OutputFormat::Agreement,
         ] {
-            let pdf =
-                super::render_document(body, format, &Letterhead::default()).expect("renders");
+            let pdf = super::render_document(body, format.clone(), &Letterhead::default())
+                .expect("renders");
             // A hyphenated word is split across two text runs with a `-`
             // between, so it stops matching in the text layer entirely.
             for (word, expected) in [
@@ -483,7 +686,7 @@ mod tests {
                 "`{v}` is the implicit default and must not be declarable"
             );
             assert!(!seen.contains(&format), "`{v}` duplicates {format:?}");
-            seen.push(format);
+            seen.push(format.clone());
             super::render_document("# Clause\n\nBody.", format, &Letterhead::default())
                 .unwrap_or_else(|e| panic!("declarable `{v}` does not render: {e}"));
         }
@@ -507,7 +710,7 @@ mod tests {
         let lh = Letterhead::default();
         let pdf = super::render_document(
             "Dear Counsel,\n\nThis letter concerns **NEON LAW**.",
-            OutputFormat::Letter,
+            OutputFormat::Letter(LetterBlocks::default()),
             &lh,
         )
         .expect("letter renders with embedded logo");
@@ -531,7 +734,7 @@ mod tests {
     #[test]
     fn letter_preamble_prints_the_whole_identity_and_plain_does_not() {
         let lh = Letterhead::default();
-        let letter = OutputFormat::Letter.preamble(&lh);
+        let letter = OutputFormat::Letter(LetterBlocks::default()).preamble(&lh);
         assert!(
             letter.contains("www.neonlaw.com"),
             "letterhead must carry the website: {letter}"
@@ -565,7 +768,7 @@ mod tests {
         // letter must not point the reader at it. Its home is the website
         // footer. This guards the whole struct: there is no address field
         // to leak, and none of the remaining fields may smuggle one in.
-        let letter = OutputFormat::Letter.preamble(&Letterhead::default());
+        let letter = OutputFormat::Letter(LetterBlocks::default()).preamble(&Letterhead::default());
         for street in ["Mae Anne", "Ste ", "Suite ", "89523", "Reno"] {
             assert!(
                 !letter.contains(street),
@@ -579,7 +782,7 @@ mod tests {
         // A reader should find the phone, the mailbox, and the website in
         // one place rather than scanning a block, so there is exactly one
         // grey line and it carries all three.
-        let letter = OutputFormat::Letter.preamble(&Letterhead::default());
+        let letter = OutputFormat::Letter(LetterBlocks::default()).preamble(&Letterhead::default());
         assert_eq!(
             letter.matches("fill: luma(40%)").count(),
             1,
@@ -604,14 +807,18 @@ mod tests {
             phone: "   ".into(),
             ..Letterhead::default()
         };
-        let letter = OutputFormat::Letter.preamble(&no_phone);
+        let letter = OutputFormat::Letter(LetterBlocks::default()).preamble(&no_phone);
         assert!(
             !letter.contains("[  ·") && !letter.contains("·  ]"),
             "a dropped field left its separator behind: {letter}"
         );
         assert!(letter.contains("www.neonlaw.com"), "{letter}");
-        super::render_document("Body.", OutputFormat::Letter, &no_phone)
-            .expect("a letterhead with no voice line must still render");
+        super::render_document(
+            "Body.",
+            OutputFormat::Letter(LetterBlocks::default()),
+            &no_phone,
+        )
+        .expect("a letterhead with no voice line must still render");
 
         // Nothing left to print at all: emit no line rather than a blank
         // grey gap under the rule.
@@ -625,22 +832,26 @@ mod tests {
         // appears — matching the rule's `luma(35%)` here would pass no
         // matter what `contact_line` emitted.
         assert_eq!(
-            OutputFormat::Letter
+            OutputFormat::Letter(LetterBlocks::default())
                 .preamble(&bare)
                 .matches("fill: luma(40%)")
                 .count(),
             0,
             "an empty contact line still emitted itself"
         );
-        super::render_document("Body.", OutputFormat::Letter, &bare)
-            .expect("a letterhead with no coordinates must still render");
+        super::render_document(
+            "Body.",
+            OutputFormat::Letter(LetterBlocks::default()),
+            &bare,
+        )
+        .expect("a letterhead with no coordinates must still render");
     }
 
     #[test]
     fn letter_pages_are_numbered_out_of_the_total() {
         // An engagement letter runs several pages and gets signed; a
         // reader must be able to tell a page is missing.
-        let letter = OutputFormat::Letter.preamble(&Letterhead::default());
+        let letter = OutputFormat::Letter(LetterBlocks::default()).preamble(&Letterhead::default());
         assert!(letter.contains("counter(page).display()"), "{letter}");
         assert!(letter.contains("counter(page).final().first()"), "{letter}");
         assert!(!OutputFormat::Plain
@@ -719,7 +930,7 @@ mod tests {
         // byte-identical apart from the trailing air beneath them.
         let lh = Letterhead::default();
         let agreement = OutputFormat::Agreement.preamble(&lh);
-        let letter = OutputFormat::Letter.preamble(&lh);
+        let letter = OutputFormat::Letter(LetterBlocks::default()).preamble(&lh);
         for element in [
             "logo-neon-law.png",         // the embedded mark
             "width: 0.34in",             // at the agreed size
@@ -777,7 +988,7 @@ mod tests {
         // fails if someone loosens that dimension back toward the letter.
         let lh = Letterhead::default();
         let agreement = OutputFormat::Agreement.preamble(&lh);
-        let letter = OutputFormat::Letter.preamble(&lh);
+        let letter = OutputFormat::Letter(LetterBlocks::default()).preamble(&lh);
 
         // Margins: narrower on all three edges than the letter's 1.15in.
         assert!(
@@ -832,7 +1043,8 @@ mod tests {
         let agreement_pdf =
             super::render_document(&body, OutputFormat::Agreement, &lh).expect("agreement renders");
         let letter_pdf =
-            super::render_document(&body, OutputFormat::Letter, &lh).expect("letter renders");
+            super::render_document(&body, OutputFormat::Letter(LetterBlocks::default()), &lh)
+                .expect("letter renders");
         let dense = crate::passage::page_count(&agreement_pdf).expect("agreement page count");
         let airy = crate::passage::page_count(&letter_pdf).expect("letter page count");
         assert!(
@@ -897,7 +1109,298 @@ mod tests {
             ..Letterhead::default()
         };
         // Must still compile (escaped), not error.
-        super::render_document("Body.", OutputFormat::Letter, &lh)
+        super::render_document("Body.", OutputFormat::Letter(LetterBlocks::default()), &lh)
             .expect("letterhead with a sigil must render");
+    }
+
+    /// A `LetterBlocks` with every above-the-body field set, so a test can
+    /// pin exact presence without repeating the fixture at every call site.
+    fn every_header_block() -> LetterBlocks {
+        LetterBlocks {
+            date: Some("September 6, 2026".to_string()),
+            delivery_method: Some("VIA CERTIFIED MAIL".to_string()),
+            recipient: vec!["Jane Client".to_string(), "123 Main St".to_string()],
+            re_line: Some("Termination of Tenancy".to_string()),
+            salutation: Some("Dear Ms. Client:".to_string()),
+            ..LetterBlocks::default()
+        }
+    }
+
+    #[test]
+    fn every_present_header_block_renders_in_order() {
+        let lh = Letterhead::default();
+        let pdf = super::render_document(
+            "Body of the letter.",
+            OutputFormat::Letter(every_header_block()),
+            &lh,
+        )
+        .expect("renders");
+        for needle in [
+            "September 6, 2026",
+            "VIA CERTIFIED MAIL",
+            "Jane Client",
+            "123 Main St",
+            "Re: Termination of Tenancy",
+            "Dear Ms. Client:",
+        ] {
+            assert_eq!(
+                crate::passage::occurrence_count(&pdf, needle).expect("counts"),
+                1,
+                "{needle}"
+            );
+        }
+        // Order: date, delivery method, recipient, Re:, salutation, each
+        // strictly below the previous — a reordered block is wrong even
+        // if every piece of text is still present.
+        let order = [
+            "September 6, 2026",
+            "VIA CERTIFIED MAIL",
+            "Jane Client",
+            "Re: Termination of Tenancy",
+            "Dear Ms. Client:",
+        ];
+        let mut previous_top = 0.0_f64;
+        for needle in order {
+            let loc = crate::passage::locate(&pdf, needle, 1).expect(needle);
+            let top = loc.rects[0].rect.y;
+            assert!(
+                top >= previous_top,
+                "{needle} rendered above the previous block (y={top}, was {previous_top})"
+            );
+            previous_top = top;
+        }
+    }
+
+    #[test]
+    fn every_absent_header_block_leaves_no_trace() {
+        // The negative half: a bare letter (only the letterhead) must not
+        // print a stray label for any of the blocks it was not given.
+        let lh = Letterhead::default();
+        let pdf = super::render_document(
+            "Body of the letter.",
+            OutputFormat::Letter(LetterBlocks::default()),
+            &lh,
+        )
+        .expect("renders");
+        for label in [
+            "VIA CERTIFIED MAIL",
+            "VIA EMAIL",
+            "Re:",
+            "Dear",
+            "Jane Client",
+        ] {
+            assert_eq!(
+                crate::passage::occurrence_count(&pdf, label).expect("counts"),
+                0,
+                "an absent block must leave no trace of `{label}`"
+            );
+        }
+        // The absent case that matters most (per ENG-106): the body must
+        // start right after the letterhead, at the same vertical position
+        // a bare letter with no blocks at all would use — not shifted down
+        // by a blank paragraph or stray spacing left behind by a block
+        // that rendered nothing.
+        let with_blocks = super::render_document(
+            "Body of the letter.",
+            OutputFormat::Letter(every_header_block()),
+            &lh,
+        )
+        .expect("renders");
+        let bare_body = crate::passage::locate(&pdf, "Body of the letter.", 1).expect("body");
+        let dressed_body =
+            crate::passage::locate(&with_blocks, "Body of the letter.", 1).expect("body");
+        assert!(
+            bare_body.rects[0].rect.y < dressed_body.rects[0].rect.y,
+            "a letter with every block present must push the body lower than a bare one \
+             (bare y={}, dressed y={})",
+            bare_body.rects[0].rect.y,
+            dressed_body.rects[0].rect.y
+        );
+    }
+
+    #[test]
+    fn closing_renders_valediction_signer_and_optional_title() {
+        let lh = Letterhead::default();
+        let with_title = LetterBlocks {
+            closing: Some(Closing {
+                valediction: "Sincerely,".to_string(),
+                signer_name: "Jane Attorney".to_string(),
+                signer_title: Some("Attorney for Client".to_string()),
+            }),
+            ..LetterBlocks::default()
+        };
+        let pdf = super::render_document("Body.", OutputFormat::Letter(with_title), &lh)
+            .expect("renders");
+        for needle in ["Sincerely,", "Jane Attorney", "Attorney for Client"] {
+            assert_eq!(
+                crate::passage::occurrence_count(&pdf, needle).expect("counts"),
+                1,
+                "{needle}"
+            );
+        }
+
+        // No closing at all: none of it appears, and no title with no
+        // closing either.
+        let none_pdf =
+            super::render_document("Body.", OutputFormat::Letter(LetterBlocks::default()), &lh)
+                .expect("renders");
+        for needle in ["Sincerely,", "Jane Attorney", "Attorney for Client"] {
+            assert_eq!(
+                crate::passage::occurrence_count(&none_pdf, needle).expect("counts"),
+                0,
+                "no closing means no trace of `{needle}`"
+            );
+        }
+
+        // A closing with no title: the name shows, the title does not.
+        let no_title = LetterBlocks {
+            closing: Some(Closing {
+                valediction: "Sincerely,".to_string(),
+                signer_name: "Jane Attorney".to_string(),
+                signer_title: None,
+            }),
+            ..LetterBlocks::default()
+        };
+        let no_title_pdf =
+            super::render_document("Body.", OutputFormat::Letter(no_title), &lh).expect("renders");
+        assert_eq!(
+            crate::passage::occurrence_count(&no_title_pdf, "Jane Attorney").expect("counts"),
+            1
+        );
+        assert_eq!(
+            crate::passage::occurrence_count(&no_title_pdf, "Attorney for Client").expect("counts"),
+            0,
+            "no title on the closing must leave no trace of one"
+        );
+    }
+
+    #[test]
+    fn enclosures_and_cc_each_vanish_independently_when_empty() {
+        let lh = Letterhead::default();
+        let both = LetterBlocks {
+            enclosures: vec!["Exhibit A".to_string(), "Exhibit B".to_string()],
+            cc: vec!["John Cc".to_string()],
+            ..LetterBlocks::default()
+        };
+        let pdf =
+            super::render_document("Body.", OutputFormat::Letter(both), &lh).expect("renders");
+        for needle in ["Enclosures:", "Exhibit A", "Exhibit B", "cc:", "John Cc"] {
+            assert_eq!(
+                crate::passage::occurrence_count(&pdf, needle).expect("counts"),
+                1,
+                "{needle}"
+            );
+        }
+
+        let neither_pdf =
+            super::render_document("Body.", OutputFormat::Letter(LetterBlocks::default()), &lh)
+                .expect("renders");
+        for needle in ["Enclosures:", "Exhibit A", "cc:", "John Cc"] {
+            assert_eq!(
+                crate::passage::occurrence_count(&neither_pdf, needle).expect("counts"),
+                0,
+                "{needle}"
+            );
+        }
+
+        // Enclosures alone, no cc: — the two vanish independently of
+        // each other.
+        let only_enclosures = LetterBlocks {
+            enclosures: vec!["Exhibit A".to_string()],
+            ..LetterBlocks::default()
+        };
+        let enclosures_pdf =
+            super::render_document("Body.", OutputFormat::Letter(only_enclosures), &lh)
+                .expect("renders");
+        assert_eq!(
+            crate::passage::occurrence_count(&enclosures_pdf, "Enclosures:").expect("counts"),
+            1
+        );
+        assert_eq!(
+            crate::passage::occurrence_count(&enclosures_pdf, "cc:").expect("counts"),
+            0
+        );
+    }
+
+    #[test]
+    fn letter_carries_no_outline_numbering() {
+        // ENG-104: a letter needing Harvard numbering is a contract
+        // wearing a letter's clothes — not a template feature here.
+        let letter = OutputFormat::Letter(LetterBlocks::default()).preamble(&Letterhead::default());
+        assert!(
+            !letter.contains("outline-groups"),
+            "a letter must not carry the contract's outline machinery: {letter}"
+        );
+    }
+
+    #[test]
+    fn continuation_header_carries_recipient_date_and_page_number() {
+        let lh = Letterhead::default();
+        let blocks = LetterBlocks {
+            date: Some("September 6, 2026".to_string()),
+            recipient: vec!["Jane Client".to_string()],
+            ..LetterBlocks::default()
+        };
+
+        // One page: the continuation header never fires at all — it is
+        // conditioned on `counter(page).get().first() > 1`.
+        let one_page =
+            super::render_document("Short body.", OutputFormat::Letter(blocks.clone()), &lh)
+                .expect("renders");
+        assert_eq!(crate::passage::page_count(&one_page).expect("count"), 1);
+
+        // A document spanning several pages: the header repeats once per
+        // continuation page, carrying the recipient and date set above.
+        let mut body = String::new();
+        for n in 1..=60 {
+            write!(
+                body,
+                "Paragraph {n}. Filler text long enough to help fill out the page and force it \
+                 to break onto the next one eventually.\n\n"
+            )
+            .expect("writing to a String never fails");
+        }
+        let many_pages =
+            super::render_document(&body, OutputFormat::Letter(blocks), &lh).expect("renders");
+        let pages = crate::passage::page_count(&many_pages).expect("count");
+        assert!(pages > 1, "fixture must actually span pages: {pages}");
+        let continuation_pages = pages - 1;
+        assert_eq!(
+            crate::passage::occurrence_count(&many_pages, "Jane Client").expect("counts"),
+            // Once in the recipient block on page one, plus once per
+            // continuation page's header.
+            1 + continuation_pages,
+            "the recipient must repeat once per continuation page"
+        );
+        assert_eq!(
+            crate::passage::occurrence_count(&many_pages, "September 6, 2026").expect("counts"),
+            1 + continuation_pages,
+            "the date must repeat once per continuation page"
+        );
+    }
+
+    #[test]
+    fn continuation_header_shows_only_the_page_number_with_no_recipient_or_date() {
+        let lh = Letterhead::default();
+        let mut body = String::new();
+        for n in 1..=60 {
+            write!(
+                body,
+                "Paragraph {n}. Filler text long enough to help fill out the page and force it \
+                 to break onto the next one eventually.\n\n"
+            )
+            .expect("writing to a String never fails");
+        }
+        let pdf = super::render_document(&body, OutputFormat::Letter(LetterBlocks::default()), &lh)
+            .expect("renders");
+        let pages = crate::passage::page_count(&pdf).expect("count");
+        assert!(pages > 1, "fixture must actually span pages: {pages}");
+        // No stray leading separator when neither recipient nor date is
+        // set — the header shows the page number alone.
+        assert_eq!(
+            crate::passage::occurrence_count(&pdf, "  ·  Page").expect("counts"),
+            0,
+            "an absent recipient/date must not leave a stray separator before the page number"
+        );
     }
 }

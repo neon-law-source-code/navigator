@@ -2978,6 +2978,7 @@ fn run_render(
     // rather than to whatever bundle happens to be mounted at render time.
     // Restore the plumbing here, not somewhere new, if that call changes.
     let letterhead = pdf::Letterhead::default();
+    let format_debug = format!("{format:?}");
     let bytes = match pdf::render_document(&body, format, &letterhead) {
         Ok(b) => b,
         Err(e) => {
@@ -2992,7 +2993,7 @@ fn run_render(
     println!(
         "{}",
         palette::dim(format!(
-            "Rendered {} ({format:?}, {} bytes) → {}",
+            "Rendered {} ({format_debug}, {} bytes) → {}",
             file.display(),
             bytes.len(),
             out.display()

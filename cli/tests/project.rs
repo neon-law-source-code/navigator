@@ -208,8 +208,10 @@ async fn create_project_seeds_participation_for_both_dris() {
         parts.contains(&"client".to_string()),
         "client must participate: {parts:?}",
     );
+    // The canonical seed's only firm-tier person is Nick, seeded ADMIN — the
+    // word `open_matter` derives is that tier's own, not a fixed one.
     assert!(
-        parts.iter().any(|p| p == "attorney"),
+        parts.iter().any(|p| p == "admin"),
         "lawyer DRI must participate: {parts:?}",
     );
 }

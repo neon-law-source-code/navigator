@@ -584,12 +584,64 @@ pub async fn remove_participant(
         .map_err(|error| RemoveParticipantError::Db(error.to_string()))
 }
 
+/// One `person_project_role` row whose participation predates ENG-478's
+/// schema `ASSERT` — a word none of the five current tiers derive, and the
+/// schema now refuses on any write going forward.
+///
+/// Carries the row id and the offending word, and nothing else. Never the
+/// Project or the person: a Project code is a client identifier, and this
+/// exists to be read by an operator, not pasted into an issue or a commit —
+/// see the workspace's no-client-data rule.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct UnsupportedParticipation {
+    pub role_id: Uuid,
+    pub participation: String,
+}
+
+/// Whether the schema's `ASSERT` would admit this value today.
+///
+/// Reads straight off [`crate::persons::Role::parse`] so this report and the
+/// schema's own vocabulary — both derived from the same five tiers — can
+/// never quietly say something different from one another.
+#[must_use]
+fn is_supported_participation(value: &str) -> bool {
+    crate::persons::Role::parse(value).is_some()
+}
+
+/// Find every row whose participation the schema would refuse if written
+/// today. Pure, so a synthetic row proves the filter without writing a row
+/// the schema now refuses to store.
+#[must_use]
+fn find_unsupported(rows: &[PersonProjectRole]) -> Vec<UnsupportedParticipation> {
+    rows.iter()
+        .filter(|row| !is_supported_participation(&row.participation))
+        .map(|row| UnsupportedParticipation {
+            role_id: row.id,
+            participation: row.participation.clone(),
+        })
+        .collect()
+}
+
+/// Deployment-wide report of legacy participation values — rows a direct
+/// write would be refused today, surviving only because they were written
+/// before ENG-478 closed the vocabulary. Report-only: this never rewrites or
+/// deletes a row. A legacy row's client-side handling
+/// ([`projects::PARTICIPATION_CLIENT_SIDE`]) is unaffected by it existing;
+/// reconciling one is a decision about a matter, not a mechanical fix.
+pub async fn unsupported_participation_report(
+    surreal: &SurrealDb,
+) -> Result<Vec<UnsupportedParticipation>, projects::ProjectStoreError> {
+    let rows = projects::all_participations(surreal).await?;
+    Ok(find_unsupported(&rows))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        add_participant, remove_participant, update_participant, AddParticipantCommand,
-        AddParticipantError, DriActor, DriError, DriRequest, RemoveParticipantError,
-        UpdateParticipantCommand, UpdateParticipantError,
+        add_participant, find_unsupported, remove_participant, unsupported_participation_report,
+        update_participant, AddParticipantCommand, AddParticipantError, DriActor, DriError,
+        DriRequest, RemoveParticipantError, UnsupportedParticipation, UpdateParticipantCommand,
+        UpdateParticipantError,
     };
     use crate::persons::{self, NewPerson, Role};
     use crate::projects::{self, DriSide, NewProject};
@@ -1407,5 +1459,117 @@ mod tests {
             .await
             .unwrap()
             .is_empty());
+    }
+
+    // ── ENG-478: the legacy-value report ───────────────────────────────────
+
+    /// A row with no Project or person on it — every field but the row id and
+    /// the participation word is filler, because [`find_unsupported`] must
+    /// never need them.
+    fn synthetic_row(participation: &str) -> projects::PersonProjectRole {
+        projects::PersonProjectRole {
+            id: Uuid::now_v7(),
+            person_id: Uuid::now_v7(),
+            project_id: Uuid::now_v7(),
+            participation: participation.to_string(),
+            is_lawyer_dri: false,
+            is_client_dri: false,
+            inserted_at: "2026-08-04T00:00:00Z".to_string(),
+            updated_at: "2026-08-04T00:00:00Z".to_string(),
+        }
+    }
+
+    /// Every one of the five words the schema's `ASSERT` admits reports
+    /// nothing — the report and the schema must agree on what is current.
+    #[test]
+    fn every_role_derived_value_reports_as_supported() {
+        let rows: Vec<_> = ["owner", "admin", "lawyer", "clerk", "client"]
+            .map(synthetic_row)
+            .into();
+        assert_eq!(find_unsupported(&rows), Vec::new());
+    }
+
+    /// A retired word — never written by any door today — is exactly what
+    /// the report exists to surface, carrying only the row id and the word.
+    #[test]
+    fn a_legacy_word_is_reported_with_no_project_or_person() {
+        let legacy = synthetic_row("counterparty");
+        let reported = find_unsupported(std::slice::from_ref(&legacy));
+
+        assert_eq!(
+            reported,
+            vec![UnsupportedParticipation {
+                role_id: legacy.id,
+                participation: "counterparty".to_string(),
+            }]
+        );
+    }
+
+    /// A deployment-wide scan reports only the rows that need it, mixed in
+    /// among current ones — proving the filter, not just one row at a time.
+    #[test]
+    fn the_report_finds_only_the_unsupported_rows_in_a_mixed_set() {
+        let current = synthetic_row("lawyer");
+        let legacy_one = synthetic_row("attorney");
+        let legacy_two = synthetic_row("paralegal");
+        let rows = vec![current, legacy_one.clone(), legacy_two.clone()];
+
+        let mut reported = find_unsupported(&rows);
+        reported.sort_by_key(|row| row.participation.clone());
+
+        assert_eq!(
+            reported,
+            vec![
+                UnsupportedParticipation {
+                    role_id: legacy_one.id,
+                    participation: "attorney".to_string(),
+                },
+                UnsupportedParticipation {
+                    role_id: legacy_two.id,
+                    participation: "paralegal".to_string(),
+                },
+            ]
+        );
+    }
+
+    /// The live door: a deployment carrying no legacy rows reports an empty
+    /// set, and a matter's own participation — added through the ordinary
+    /// command — never reports as unsupported.
+    #[tokio::test]
+    async fn a_deployment_with_no_legacy_rows_reports_nothing() {
+        let surreal = crate::test_support::mem_surreal().await;
+        let matter = project(&surreal, "report-clean").await;
+        let lawyer = person(&surreal, "lawyer", Role::Lawyer).await;
+        add(
+            &surreal,
+            matter,
+            lawyer,
+            DriRequest::Unchanged,
+            DriActor::System,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            unsupported_participation_report(&surreal).await.unwrap(),
+            Vec::new()
+        );
+    }
+
+    /// A row written before the schema closed the vocabulary still reads —
+    /// the `ASSERT` validates a write, never a value already on disk — and
+    /// the report is precisely what surfaces it, by row id and word only.
+    #[tokio::test]
+    async fn a_legacy_row_written_before_the_assert_is_reported() {
+        let surreal = crate::test_support::mem_surreal().await;
+        let matter = project(&surreal, "report-legacy").await;
+        let adverse = person(&surreal, "adverse", Role::Client).await;
+        crate::test_support::seed_legacy_participation(&surreal, matter, adverse, "counterparty")
+            .await;
+
+        let report = unsupported_participation_report(&surreal).await.unwrap();
+
+        assert_eq!(report.len(), 1);
+        assert_eq!(report[0].participation, "counterparty");
     }
 }

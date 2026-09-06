@@ -361,7 +361,7 @@ async fn internal_document_is_excluded_from_the_client_zip_but_included_for_lawy
     )
     .await
     .expect("seed the acting admin");
-    store::projects::add_participation(&f.surreal, f.project_id, admin_person.id, "attorney")
+    store::projects::add_participation(&f.surreal, f.project_id, admin_person.id, "admin")
         .await
         .expect("put the acting admin on the matter");
     let admin_sessions = SessionStore::new(KEY);

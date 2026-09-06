@@ -123,7 +123,7 @@ async fn build_fixture() -> Fixture {
     )
     .await
     .expect("seed the acting admin");
-    store::projects::add_participation(&surreal, proj.id, admin_person.id, "attorney")
+    store::projects::add_participation(&surreal, proj.id, admin_person.id, "admin")
         .await
         .expect("put the acting admin on the matter");
     let mut admin = SessionData::fresh("lawyer-sub", Role::Admin);

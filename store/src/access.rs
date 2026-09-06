@@ -489,7 +489,7 @@ mod tests {
         let libra = seed_person(&surreal, "libra@example.com").await;
         let lawyer_side = seed_project(&surreal, "lawyer-side").await;
         let client_side = seed_project(&surreal, "client-side").await;
-        link(&surreal, libra, lawyer_side, "paralegal").await;
+        link(&surreal, libra, lawyer_side, "lawyer").await;
         link(&surreal, libra, client_side, "client").await;
 
         let rows = visible_projects_as_client(&surreal, Some(libra))
@@ -516,7 +516,7 @@ mod tests {
         let client_side = seed_project(&surreal, "client-side").await;
         let lawyer_side = seed_project(&surreal, "lawyer-side").await;
         link(&surreal, libra, client_side, "client").await;
-        link(&surreal, libra, lawyer_side, "paralegal").await;
+        link(&surreal, libra, lawyer_side, "lawyer").await;
 
         let rows = visible_projects_as_lawyer(&surreal, Some(libra), Role::Lawyer)
             .await
@@ -550,7 +550,7 @@ mod tests {
         .unwrap();
         let assigned = seed_project(&surreal, "assigned legal-aid matter").await;
         let unassigned = seed_project(&surreal, "unassigned matter").await;
-        link(&surreal, lawyer.id, assigned, "legal_aid_provider").await;
+        link(&surreal, lawyer.id, assigned, "lawyer").await;
 
         let visible = visible_projects_as_lawyer(&surreal, Some(lawyer.id), lawyer.role)
             .await
@@ -577,7 +577,7 @@ mod tests {
         let surreal = mem_surreal().await;
         let libra = seed_person(&surreal, "libra@example.com").await;
         let lawyer_side = seed_project(&surreal, "lawyer-side").await;
-        link(&surreal, libra, lawyer_side, "paralegal").await;
+        link(&surreal, libra, lawyer_side, "lawyer").await;
 
         let rows = visible_projects_as_lawyer(&surreal, Some(libra), Role::Client)
             .await
@@ -642,12 +642,25 @@ mod tests {
 
     /// The hole #629 correctly identified: an adverse party is on the matter
     /// but must never reach it through the firm lens.
+    ///
+    /// ENG-478 closed the schema to the five role-derived words, so nothing
+    /// can write `counterparty` through the ordinary path any more — the row
+    /// is seeded the way a row already on disk from before that migration
+    /// would read: [`crate::test_support::seed_legacy_participation`] writes
+    /// it, which is exactly the legacy handling this test exists to prove
+    /// survives.
     #[tokio::test]
     async fn a_counterparty_row_does_not_grant_lawyer_lens_visibility() {
         let surreal = mem_surreal().await;
         let adverse = seed_person(&surreal, "adverse@example.com").await;
         let project_id = seed_project(&surreal, "adverse-matter").await;
-        link(&surreal, adverse, project_id, "counterparty").await;
+        crate::test_support::seed_legacy_participation(
+            &surreal,
+            project_id,
+            adverse,
+            "counterparty",
+        )
+        .await;
 
         assert!(
             visible_projects_as_lawyer(&surreal, Some(adverse), Role::Lawyer)
@@ -664,15 +677,23 @@ mod tests {
     }
 
     /// The firm lens is the complement of the client-side set, not an
-    /// allowlist — so participation kinds the firm has not coined yet still
-    /// reach `/app/lawyer`. Closing this vocabulary would silently drop each new
-    /// kind out of the firm lens the day it was coined.
+    /// allowlist — so a legacy row predating ENG-478's schema `ASSERT` still
+    /// reaches `/app/lawyer` if its word was never client-side. `guardian_ad_litem`
+    /// is not one of the five words the schema admits going forward — seeded
+    /// via [`crate::test_support::seed_legacy_participation`], the same way a
+    /// row already on disk from before that migration would read.
     #[tokio::test]
     async fn firm_side_visibility_survives_an_unforeseen_participation_kind() {
         let surreal = mem_surreal().await;
         let helper = seed_person(&surreal, "helper@example.com").await;
         let project_id = seed_project(&surreal, "open-vocabulary").await;
-        link(&surreal, helper, project_id, "guardian_ad_litem").await;
+        crate::test_support::seed_legacy_participation(
+            &surreal,
+            project_id,
+            helper,
+            "guardian_ad_litem",
+        )
+        .await;
 
         assert!(
             can_see_project_as_lawyer(&surreal, Some(helper), Role::Lawyer, project_id)
@@ -866,7 +887,7 @@ mod tests {
         let libra = seed_person(&surreal, "libra@example.com").await;
         let assigned = seed_project(&surreal, "alpha").await;
         let _unassigned = seed_project(&surreal, "bravo").await;
-        link(&surreal, libra, assigned, "attorney").await;
+        link(&surreal, libra, assigned, "lawyer").await;
 
         for role in [Role::Owner, Role::Admin] {
             let rows = visible_projects(&surreal, Some(libra), role).await.unwrap();
@@ -923,7 +944,7 @@ mod tests {
         let libra = seed_person(&surreal, "libra@example.com").await;
         let visible = seed_project(&surreal, "alpha").await;
         let _hidden = seed_project(&surreal, "bravo").await;
-        link(&surreal, libra, visible, "paralegal").await;
+        link(&surreal, libra, visible, "lawyer").await;
 
         let rows = visible_projects(&surreal, Some(libra), Role::Lawyer)
             .await
@@ -1065,8 +1086,8 @@ mod tests {
         let second = seed_project(&surreal, "Acme contract review").await;
         // Every firm tier is participation-scoped now, so the ordering the
         // dashboard pages through is the ordering of the caller's own matters.
-        link(&surreal, admin, first, "attorney").await;
-        link(&surreal, admin, second, "attorney").await;
+        link(&surreal, admin, first, "lawyer").await;
+        link(&surreal, admin, second, "lawyer").await;
         let (lo, hi) = if first < second {
             (first, second)
         } else {

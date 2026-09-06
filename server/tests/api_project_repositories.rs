@@ -124,7 +124,7 @@ async fn build_fixture() -> Fixture {
 
     // The lawyer participates in one matter; the admin participates in none.
     // That asymmetry is the point of `an_unassigned_admin_still_reconciles_every_row`.
-    store::projects::add_participation(&surreal, created[0], lawyer_id, "attorney")
+    store::projects::add_participation(&surreal, created[0], lawyer_id, "lawyer")
         .await
         .unwrap();
 

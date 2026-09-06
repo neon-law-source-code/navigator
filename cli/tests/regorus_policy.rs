@@ -171,8 +171,10 @@ fn regorus_matches_every_checked_in_policy_decision() {
     //   tiers and anonymous denied, plus one noun-isolation case.
     // 385 + 7 = 392.
     //
-    // + 6 for `/app/brands`: the four firm tiers admitted, with client and
-    //   anonymous callers denied, matching `/app/team`.
+    // + 6 for `/app/brands`: Owner admitted; Admin, Lawyer, Clerk, client,
+    //   and anonymous denied (ENG-493 narrowed this from every firm tier —
+    //   see the `/app/owner` shape immediately below, which this now matches
+    //   instead of `/app/team`).
     // 392 + 6 = 398.
     //
     // + 6 for `/app/owner`: Owner admitted; Admin, Lawyer, Clerk, client, and

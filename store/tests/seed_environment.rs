@@ -165,7 +165,7 @@ async fn the_fixture_opens_the_three_sample_matters_with_dris() {
         assert!(
             participations
                 .iter()
-                .any(|row| { row.person_id == lawyer.id && row.participation == "attorney" }),
+                .any(|row| { row.person_id == lawyer.id && row.participation == "lawyer" }),
             "{code} discloses a licensed lawyer"
         );
         assert!(
@@ -296,7 +296,7 @@ async fn the_fixture_is_idempotent_and_repairs_participation_drift() {
         .into_iter()
         .find(|row| row.person_id == client.id)
         .expect("client participation");
-    projects::update_participation(&surreal, role.id, client.id, "paralegal")
+    projects::update_participation(&surreal, role.id, client.id, "lawyer")
         .await
         .unwrap();
     let before = projects::all(&surreal).await.unwrap().len();

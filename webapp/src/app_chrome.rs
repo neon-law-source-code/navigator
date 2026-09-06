@@ -25,11 +25,14 @@ pub const APP_PROJECTS_HREF: &str = "/app/projects";
 /// tier both here and in the route's Rego rule.
 pub const APP_TEAM_HREF: &str = "/app/team";
 
-/// The house-of-brands home: every registered brand's typeface. Firm tier
-/// only, same audience as the Team home.
+/// The house-of-brands home: every registered brand's typeface. Owner only
+/// (ENG-493) — a lawyer who works under a brand still sees it on every page
+/// they render, just not this registry view.
 pub const APP_BRANDS_HREF: &str = "/app/brands";
 
 /// The Owner listing of practices and the brands they wear. Owner only.
+/// Labeled "Firms" on the navbar row (ENG-493): the destination is the Firm
+/// registry, and "Owner" was never a name for what it shows.
 pub const APP_OWNER_HREF: &str = "/app/owner";
 
 /// The firm workbench. Lawyer tier and up; the handler gates it too.
@@ -48,11 +51,11 @@ pub const APP_SIGN_OUT_HREF: &str = "/auth/logout";
 /// stay authoritative. This decides only what the navbar advertises, so a client
 /// is not shown a door that answers 403.
 ///
-/// The row is deliberately short: Projects, the firm's Team home, Brands, and
-/// Sign out. Owner also sees `/app/owner`. The Workbench and Admin doors are
-/// not here — they are cards on the Team home, which every firm tier lands on
-/// at sign-in, so the tier-gated surfaces are one click from the row rather
-/// than two more items in it.
+/// The row is deliberately short: Projects, the firm's Team home, and Sign
+/// out. Owner also sees Firms and Brands (ENG-493). The Workbench and Admin
+/// doors are not here — they are cards on the Team home, which every firm
+/// tier lands on at sign-in, so the tier-gated surfaces are one click from
+/// the row rather than two more items in it.
 ///
 /// Pure, so the role→destinations mapping is unit-tested directly rather than
 /// through nine rendered pages.
@@ -61,10 +64,10 @@ pub fn app_destinations(role: ViewerRole) -> Vec<AppNavLink> {
     let mut destinations = vec![AppNavLink::new("Projects", APP_PROJECTS_HREF)];
     if role.is_firm_tier() {
         destinations.push(AppNavLink::new("Team", APP_TEAM_HREF));
-        destinations.push(AppNavLink::new("Brands", APP_BRANDS_HREF));
     }
     if role.is_owner() {
-        destinations.push(AppNavLink::new("Owner", APP_OWNER_HREF));
+        destinations.push(AppNavLink::new("Firms", APP_OWNER_HREF));
+        destinations.push(AppNavLink::new("Brands", APP_BRANDS_HREF));
     }
     destinations.push(AppNavLink::new("Sign out", APP_SIGN_OUT_HREF));
     destinations
@@ -206,33 +209,31 @@ mod tests {
     #[test]
     fn a_client_is_offered_no_firm_workspace() {
         assert_eq!(labels(ViewerRole::Client), ["Projects", "Sign out"]);
-        assert_eq!(
-            labels(ViewerRole::Clerk),
-            ["Projects", "Team", "Brands", "Sign out"]
-        );
+        assert_eq!(labels(ViewerRole::Clerk), ["Projects", "Team", "Sign out"]);
     }
 
-    /// Firm tiers share Projects, Team, and Brands. Owner also gets the Owner
-    /// listing of practices.
+    /// Firm tiers share Projects and Team. Neither Clerk, Lawyer, nor Admin
+    /// gets Firms or Brands — ENG-493 moved both behind Owner alone.
     #[test]
     fn every_firm_tier_is_offered_the_same_row() {
         for role in [ViewerRole::Clerk, ViewerRole::Lawyer, ViewerRole::Admin] {
             assert_eq!(
                 labels(role),
-                ["Projects", "Team", "Brands", "Sign out"],
+                ["Projects", "Team", "Sign out"],
                 "rank {}",
                 role.authority_rank()
             );
         }
         assert_eq!(
             labels(ViewerRole::Owner),
-            ["Projects", "Team", "Brands", "Owner", "Sign out"]
+            ["Projects", "Team", "Firms", "Brands", "Sign out"]
         );
     }
 
     /// The workbench and admin doors are not navbar items at any tier. They are
     /// cards on `/app/team`, which every firm tier lands on at sign-in — so the
-    /// row must not carry them even for an Owner. Owner does carry `/app/owner`.
+    /// row must not carry them even for an Owner. Owner does carry `/app/owner`
+    /// (labeled "Firms") and `/app/brands`.
     #[test]
     fn the_row_carries_neither_workbench_nor_admin() {
         let hrefs: Vec<String> = app_destinations(ViewerRole::Owner)
@@ -244,11 +245,32 @@ mod tests {
             [
                 "/app/projects",
                 "/app/team",
-                "/app/brands",
                 "/app/owner",
+                "/app/brands",
                 "/auth/logout"
             ]
         );
+    }
+
+    /// Neither Clerk, Lawyer, nor Admin reaches Firms or Brands — only Owner
+    /// does. ENG-493's whole point: this **removes** the brand style
+    /// reference clerks and lawyers could reach before.
+    #[test]
+    fn only_owner_is_offered_firms_or_brands() {
+        for role in [ViewerRole::Clerk, ViewerRole::Lawyer, ViewerRole::Admin] {
+            let labels = labels(role);
+            assert!(
+                !labels.contains(&"Firms".to_string()),
+                "{role:?}: {labels:?}"
+            );
+            assert!(
+                !labels.contains(&"Brands".to_string()),
+                "{role:?}: {labels:?}"
+            );
+        }
+        let owner_labels = labels(ViewerRole::Owner);
+        assert!(owner_labels.contains(&"Firms".to_string()));
+        assert!(owner_labels.contains(&"Brands".to_string()));
     }
 
     /// The mapping reaches the rendered row: a firm viewer's navbar carries the
@@ -274,6 +296,13 @@ mod tests {
             assert!(!out.contains(r#"href="/app/lawyer""#), "{out}");
             assert!(!out.contains(r#"href="/app/admin""#), "{out}");
         }
+
+        for role in [ViewerRole::Lawyer, ViewerRole::Admin] {
+            let out = render(role);
+            assert!(!out.contains(r#"href="/app/brands""#), "{out}");
+        }
+        let owner = render(ViewerRole::Owner);
+        assert!(owner.contains(r#"href="/app/brands""#), "{owner}");
 
         let client = render(ViewerRole::Client);
         assert!(!client.contains(r#"href="/app/team""#), "{client}");

@@ -732,7 +732,7 @@ async fn participating_admin(surreal: &store::surreal::SurrealDb, projects: &[Uu
     .await
     .expect("seed the acting admin");
     for project_id in projects {
-        store::projects::add_participation(surreal, *project_id, admin.id, "attorney")
+        store::projects::add_participation(surreal, *project_id, admin.id, "admin")
             .await
             .expect("put the acting admin on the matter");
     }

@@ -30,12 +30,18 @@ is_admin(session) if {
 }
 
 # Owner/Admin bypass: an authenticated Owner or Admin reaches every route the
-# other rules below don't otherwise allow, except `/app/owner`, which is the
-# deployment-wide firm inventory and is Owner only. Per docs/access-model.md
-# this bypass is silent — no per-read audit row.
+# other rules below don't otherwise allow, except `/app/owner` (the
+# deployment-wide firm inventory) and `/app/brands` (the house-of-brands
+# home, ENG-493) — both Owner only. Per docs/access-model.md this bypass is
+# silent — no per-read audit row.
 owner_only_path if {
     input.path[0] == "app"
     input.path[1] == "owner"
+}
+
+owner_only_path if {
+    input.path[0] == "app"
+    input.path[1] == "brands"
 }
 
 allow if {
@@ -175,22 +181,11 @@ allow if {
 }
 
 # /app/brands is the house-of-brands home: every registered brand's typeface.
-# Same audience as /app/team, admitted the same way: Lawyer and Clerk by the
-# two rules below, Owner and Admin through the route bypass at the top of this
-# policy. A brand's font is a firm brand asset, not lawyer work — a Clerk gets
-# its own rule rather than being folded into `lawyer_tier`, for the reason
-# stated at the top of this file.
-allow if {
-    input.path[0] == "app"
-    input.path[1] == "brands"
-    is_lawyer(input.session)
-}
-
-allow if {
-    input.path[0] == "app"
-    input.path[1] == "brands"
-    is_clerk(input.session)
-}
+# Owner only (ENG-493) — narrowed from every firm tier, a deliberate removal
+# of the brand style reference Lawyer and Clerk could reach before. Owner
+# reaches it through `owner_only_path` below, not the route bypass at the top
+# of this policy: Admin must not inherit it the way it inherits everything
+# else, so it needs the same exclusion `/app/owner` already has.
 
 # /app/admin is Owner/Admin only at the hub, the matter directory
 # (`/app/admin/projects`), Person CRUD (`/app/admin/people`), and visitor

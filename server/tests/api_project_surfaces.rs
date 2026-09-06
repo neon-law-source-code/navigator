@@ -82,7 +82,7 @@ async fn build_fixture() -> Fixture {
     let client_id = person(&surreal, "Client", Role::Client).await;
     let clerk_id = person(&surreal, "Clerk", Role::Clerk).await;
 
-    store::projects::add_participation(&surreal, project.id, lawyer_id, "attorney")
+    store::projects::add_participation(&surreal, project.id, lawyer_id, "lawyer")
         .await
         .unwrap();
 

@@ -37,6 +37,14 @@ pub struct CreatePersonCommand {
     /// table, never on the Person row.
     #[serde(default)]
     pub notion_user_id: Option<String>,
+    /// Which Firm a new Lawyer or Clerk joins (ENG-495). Omitted or blank
+    /// defaults to the deployment's anchor Firm
+    /// ([`crate::firms::anchor_firm`]); a creating surface names a different
+    /// one by supplying it. Read only for a `lawyer`/`clerk` role — Owner and
+    /// Admin membership stays explicit and out of scope, and a `client`
+    /// reaches a matter through `person_project_role`, never this join.
+    #[serde(default)]
+    pub firm_id: Option<Uuid>,
 }
 
 impl CreatePersonCommand {
@@ -140,6 +148,10 @@ pub enum PeopleCommandError {
     /// store rejected the update. No identity value is included in the user
     /// message.
     ExternalIdentity,
+    /// ENG-495: granting the default Firm membership on create failed for a
+    /// reason other than a bad `firm_id` (mapped to [`Self::Invalid`]
+    /// instead, since a caller naming one can correct it).
+    FirmMembership(String),
 }
 
 impl PeopleCommandError {
@@ -158,6 +170,9 @@ impl PeopleCommandError {
             PeopleCommandError::Db(_) => "Something went wrong. Please try again.".to_string(),
             PeopleCommandError::ExternalIdentity => {
                 "That Notion user is already linked to another person.".to_string()
+            }
+            PeopleCommandError::FirmMembership(_) => {
+                "Something went wrong. Please try again.".to_string()
             }
         }
     }
@@ -224,6 +239,62 @@ fn classify_external_identity(_error: ExternalIdentityError) -> PeopleCommandErr
     PeopleCommandError::ExternalIdentity
 }
 
+fn classify_firm_write(error: crate::firms::FirmError) -> PeopleCommandError {
+    match error {
+        crate::firms::FirmError::NoSuchFirm(_) => PeopleCommandError::Invalid("No such firm."),
+        other => PeopleCommandError::FirmMembership(other.to_string()),
+    }
+}
+
+/// ENG-495: a newly created Lawyer or Clerk joins a Firm the same way the
+/// one-time backfill (#ENG-462) pointed every *existing* person at one —
+/// except this runs on every create, not once. `input.firm_id` lets the
+/// creating surface name a different Firm; omitted, it defaults to
+/// [`crate::firms::anchor_firm`]. Owner and Admin are untouched (their
+/// membership stays explicit), and a Client never reaches this branch at
+/// all — `store::firms::add_membership` would refuse it, but a Client should
+/// never even attempt the write.
+///
+/// A deployment with no anchor Firm yet (no other Firm named either) grants
+/// nothing rather than failing the person create over it: the omission is
+/// exactly what this issue reports being invisible, but it is not this door's
+/// place to invent a Firm.
+async fn grant_default_firm_membership(
+    db: &SurrealDb,
+    person: &Person,
+    firm_id: Option<Uuid>,
+) -> Result<(), PeopleCommandError> {
+    // Matched on the tier itself, not on whether `FirmMembership::for_role`
+    // returns `Some` — that also holds for Admin, whose membership this
+    // issue explicitly leaves explicit and out of scope.
+    let membership = match person.role {
+        Role::Lawyer => crate::firms::FirmMembership::Lawyer,
+        Role::Clerk => crate::firms::FirmMembership::Clerk,
+        Role::Owner | Role::Admin | Role::Client => return Ok(()),
+    };
+    let firm_id = match firm_id {
+        Some(id) => Some(id),
+        None => crate::firms::anchor_firm(db)
+            .await
+            .map_err(classify_firm_write)?
+            .map(|firm| firm.id),
+    };
+    let Some(firm_id) = firm_id else {
+        return Ok(());
+    };
+    crate::firms::ensure_membership(
+        db,
+        &crate::firms::NewPersonFirmRole {
+            person_id: person.id,
+            firm_id,
+            membership,
+            is_dri: false,
+        },
+    )
+    .await
+    .map_err(classify_firm_write)
+}
+
 pub async fn create_person(
     db: &SurrealDb,
     input: &CreatePersonCommand,
@@ -255,6 +326,10 @@ pub async fn create_person(
             let _ = persons::delete(db, created.id).await;
             return Err(classify_external_identity(error));
         }
+    }
+    if let Err(error) = grant_default_firm_membership(db, &created, input.firm_id).await {
+        let _ = persons::delete(db, created.id).await;
+        return Err(error);
     }
     Ok(created)
 }
@@ -457,7 +532,69 @@ mod tests {
             family_name: None,
             middle_name: None,
             notion_user_id: None,
+            firm_id: None,
         }
+    }
+
+    /// An Entity carrying `firm_anchor_key`, wrapped in a Firm — the shape
+    /// [`crate::firms::anchor_firm`] resolves. No test here sets
+    /// `NAVIGATOR_BOOTSTRAP_COMPANY` (a process-wide variable every parallel
+    /// test would race on), so the default fallback,
+    /// [`crate::seed::FIRM_ENTITY_NAME`], is always the key.
+    async fn anchor_firm(db: &SurrealDb) -> crate::firms::Firm {
+        let entity_id = crate::entities::create(
+            db,
+            &crate::entities::NewEntity {
+                name: crate::seed::FIRM_ENTITY_NAME.to_string(),
+                entity_type_id: crate::test_support::SEED_ENTITY_TYPE_ID,
+                jurisdiction_id: crate::test_support::SEED_ENTITY_JURISDICTION_ID,
+                phone: None,
+                url: None,
+                firm_anchor_key: Some(crate::seed::FIRM_ENTITY_NAME.to_lowercase()),
+            },
+        )
+        .await
+        .unwrap()
+        .id;
+        crate::firms::create(
+            db,
+            &crate::firms::NewFirm {
+                name: crate::seed::FIRM_ENTITY_NAME.to_string(),
+                status: "active".to_string(),
+                entity_id,
+            },
+        )
+        .await
+        .unwrap()
+    }
+
+    /// An ordinary Firm — no `firm_anchor_key` on its Entity — for the
+    /// two-firm case: a deployment holding this one *and* the anchor.
+    async fn ordinary_firm(db: &SurrealDb, name: &str) -> crate::firms::Firm {
+        let entity_id = crate::test_support::seed_entity(db).await;
+        crate::firms::create(
+            db,
+            &crate::firms::NewFirm {
+                name: name.to_string(),
+                status: "active".to_string(),
+                entity_id,
+            },
+        )
+        .await
+        .unwrap()
+    }
+
+    /// Every Firm id `person_id` holds a membership row on (ENG-463 removed
+    /// the narrower `firms::firm_ids_for_person` in favor of the full rows
+    /// `memberships_for_person` returns; this maps down to ids for the tests
+    /// below, which only ever ask "which Firms, if any").
+    async fn firm_ids_for(db: &SurrealDb, person_id: uuid::Uuid) -> Vec<uuid::Uuid> {
+        crate::firms::memberships_for_person(db, person_id)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|row| row.firm_id)
+            .collect()
     }
 
     #[tokio::test]
@@ -492,6 +629,131 @@ mod tests {
             .unwrap();
         assert_eq!(row.name, "Libra");
         assert_eq!(row.email, "libra@example.com");
+    }
+
+    // ── ENG-495: a newly created Lawyer or Clerk joins a Firm ──────────────
+
+    /// A newly created Lawyer appears in the anchor Firm's membership with no
+    /// manual step — the standing rule the one-time #ENG-462 backfill never
+    /// was.
+    #[tokio::test]
+    async fn create_grants_a_new_lawyers_membership_on_the_anchor_firm() {
+        let db = db().await;
+        let anchor = anchor_firm(&db).await;
+        let mut command = create("New Lawyer", "new-lawyer@neonlaw.com");
+        command.role = "lawyer".into();
+
+        let row = create_person(&db, &command).await.unwrap();
+
+        let membership = crate::firms::membership_for_person(&db, row.id, anchor.id)
+            .await
+            .unwrap()
+            .expect("the new lawyer's membership row");
+        assert_eq!(membership.membership, crate::firms::FirmMembership::Lawyer);
+        assert!(!membership.is_dri);
+    }
+
+    /// Same rule, the other supervised firm-side tier.
+    #[tokio::test]
+    async fn create_grants_a_new_clerks_membership_on_the_anchor_firm() {
+        let db = db().await;
+        let anchor = anchor_firm(&db).await;
+        let mut command = create("New Clerk", "new-clerk@neonlaw.com");
+        command.role = "clerk".into();
+
+        let row = create_person(&db, &command).await.unwrap();
+
+        let membership = crate::firms::membership_for_person(&db, row.id, anchor.id)
+            .await
+            .unwrap()
+            .expect("the new clerk's membership row");
+        assert_eq!(membership.membership, crate::firms::FirmMembership::Clerk);
+    }
+
+    /// A new Client gets no Firm row — a client reaches a matter through
+    /// `person_project_role`, never through firm membership.
+    #[tokio::test]
+    async fn create_grants_no_firm_row_for_a_new_client() {
+        let db = db().await;
+        anchor_firm(&db).await;
+        let row = create_person(&db, &create("Libra", "libra@example.com"))
+            .await
+            .unwrap();
+
+        assert!(firm_ids_for(&db, row.id).await.is_empty());
+    }
+
+    /// Owner and Admin membership stays explicit: creating either grants no
+    /// Firm row, unlike Lawyer and Clerk.
+    #[tokio::test]
+    async fn create_grants_no_firm_row_for_a_new_owner_or_admin() {
+        let db = db().await;
+        anchor_firm(&db).await;
+        for (tag, role) in [("owner", "owner"), ("admin", "admin")] {
+            let mut command = create(&format!("New {tag}"), &format!("new-{tag}@neonlaw.com"));
+            command.role = role.into();
+
+            let row = create_person(&db, &command).await.unwrap();
+
+            assert!(
+                firm_ids_for(&db, row.id).await.is_empty(),
+                "{tag} must get no firm row"
+            );
+        }
+    }
+
+    /// The two-firm case: a deployment holding the anchor Firm *and* an
+    /// ordinary one still lands the new lawyer on the anchor specifically —
+    /// the assertion that would pass vacuously against a single seeded firm
+    /// and is the whole point of ENG-495.
+    #[tokio::test]
+    async fn create_lands_a_new_lawyer_on_the_anchor_when_two_firms_exist() {
+        let db = db().await;
+        let anchor = anchor_firm(&db).await;
+        let other = ordinary_firm(&db, "Other Practice").await;
+        let mut command = create("Two Firm Lawyer", "two-firm-lawyer@neonlaw.com");
+        command.role = "lawyer".into();
+
+        let row = create_person(&db, &command).await.unwrap();
+
+        assert_eq!(firm_ids_for(&db, row.id).await, vec![anchor.id]);
+        assert!(crate::firms::membership_for_person(&db, row.id, other.id)
+            .await
+            .unwrap()
+            .is_none());
+    }
+
+    /// The override: a creating surface names a different Firm than the
+    /// anchor, and that Firm — not the anchor — is the one that gets the row.
+    #[tokio::test]
+    async fn create_honors_an_explicit_firm_id_over_the_anchor() {
+        let db = db().await;
+        let anchor = anchor_firm(&db).await;
+        let other = ordinary_firm(&db, "Named Practice").await;
+        let mut command = create("Named Lawyer", "named-lawyer@neonlaw.com");
+        command.role = "lawyer".into();
+        command.firm_id = Some(other.id);
+
+        let row = create_person(&db, &command).await.unwrap();
+
+        assert_eq!(firm_ids_for(&db, row.id).await, vec![other.id]);
+        assert!(crate::firms::membership_for_person(&db, row.id, anchor.id)
+            .await
+            .unwrap()
+            .is_none());
+    }
+
+    /// No anchor Firm exists yet and none was named: the create still
+    /// succeeds, granting nothing — this door does not invent a Firm.
+    #[tokio::test]
+    async fn create_succeeds_with_no_firm_row_when_no_anchor_firm_exists() {
+        let db = db().await;
+        let mut command = create("Homeless Lawyer", "homeless-lawyer@neonlaw.com");
+        command.role = "lawyer".into();
+
+        let row = create_person(&db, &command).await.unwrap();
+
+        assert!(firm_ids_for(&db, row.id).await.is_empty());
     }
 
     #[tokio::test]

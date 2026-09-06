@@ -81,6 +81,7 @@ pub async fn call(
         family_name: None,
         middle_name: None,
         notion_user_id: None,
+        firm_id: None,
     };
     let inserted = create_person(surreal, &command).await?;
 

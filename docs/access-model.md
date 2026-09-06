@@ -56,6 +56,13 @@ through, rather than each call site deriving its own `person_firm_role` filter:
   documents or notations, which stay gated by [`store::access::matter_viewer`](../store/src/access.rs) and the
   Project-side command rules.
 
+A Lawyer or Clerk gets this row the moment they are created, not only once: `store::people_commands::create_person`
+grants it right after the Person write, defaulting to the deployment's anchor Firm (`store::firms::anchor_firm`) unless
+the creating surface names a different one (ENG-495). Before this, only a one-time backfill (ENG-462) pointed *existing*
+people at the seeded practice, so a lawyer or clerk created afterward was silently missing from `visible_person_ids` and
+therefore from the Admin people directory. Owner and Admin membership is unaffected — it stays explicit — and a Client
+is never offered the write.
+
 ## The five stored tiers
 
 `person.role` is a `string` field with `ASSERT $value IN ['owner','admin','lawyer','clerk','client']`. Rust models it as
@@ -231,6 +238,13 @@ All three write doors go through `store::participation::add_participant` / `upda
 a participation: the lawyer matter-people form, `POST /app/api/projects/{id}/participants`, and
 `aida_link_person_project` each name a person and nothing else. A `participation` sent to any of them is surplus and
 unread.
+
+ENG-478 closed the same rule at the schema boundary: the `person_project_role.participation` column now carries its own
+`ASSERT $value IN ['owner', 'admin', 'lawyer', 'clerk', 'client']`, mirroring the one `person.role` already carries.
+This is defense in depth, not a second vocabulary — a privileged direct write is now refused the same word the
+application-level derivation never produces. `ASSERT` validates a write, never a value already on disk, so a row written
+before this line shipped keeps reading; `store::participation::unsupported_participation_report` finds any such row
+deployment-wide, by row id and word only, and never rewrites or deletes one.
 
 This is why there is no separate vocabulary. A matter-side word that could disagree with the tier was a way to get the
 access decision wrong — a `client` recorded as `attorney` is a firm-side row, which is the matter's own client reading

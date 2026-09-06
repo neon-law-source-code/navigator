@@ -1087,7 +1087,7 @@ pub fn bootstrap(
     // echoes the bearer caller's identity. Both live under the
     // private-mode-exempt `/auth/*` prefix.
     let cli_auth = cli_auth::routes(state.sessions.clone());
-    let ci_auth = ci_auth::routes(ci_auth::CiAuthState {
+    let seed_token_auth = ci_auth::routes(ci_auth::CiAuthState {
         sessions: state.sessions.clone(),
         surreal: state.surreal.clone(),
         github_oidc: state.github_oidc.clone(),
@@ -1599,7 +1599,7 @@ pub fn bootstrap(
         .merge(a2a_card)
         .merge(a2a_rpc)
         .merge(cli_auth)
-        .merge(ci_auth);
+        .merge(seed_token_auth);
     if let Some(oauth) = oauth_routes {
         router = router.merge(oauth);
     }

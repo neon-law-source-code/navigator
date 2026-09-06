@@ -416,37 +416,6 @@ OIDC token for this repository on `refs/heads/main`; Navigator verifies it, bind
 code. A missing or empty `seeds/` directory is a no-op. Seed YAML uses nested natural keys for join tables
 (`person.email` + `project.code`, `person.email` + `entity.name`) rather than stored UUIDs.
 
-```yaml
-# <organization>/<project-code>/.github/workflows/publish.yml — an example of what a
-# Project repository contains, not a file in this repository.
-name: publish
-on:
-  push:
-    branches: [main]
-permissions:
-  contents: read
-  id-token: write            # required to mint the OIDC token WIF federates
-jobs:
-  publish:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@<sha>            # v7
-      - run: pnpm --dir portal install --frozen-lockfile
-      - run: pnpm --dir portal lint
-      - run: pnpm --dir portal typecheck
-      - run: pnpm --dir portal test
-      - run: pnpm --dir portal build            # Vite base /app/projects/<code>/portal/
-      - uses: neon-law-source-code/navigator/.github/actions/validate@YY.M.D
-        with:
-          version: "YY.M.D"
-          project_repository: true              # the one gate: source-only, no legal files, mounted
-      - uses: neon-law-source-code/navigator/.github/actions/application-publish@YY.M.D
-        with:
-          applications_bucket: ${{ secrets.NAVIGATOR_APPLICATIONS_BUCKET }}
-          workload_identity_provider: ${{ secrets.NAVIGATOR_APP_PUBLISHER_WIF_PROVIDER }}
-          service_account: ${{ secrets.NAVIGATOR_APP_PUBLISHER_SERVICE_ACCOUNT }}
-```
-
 ### The publisher's grant is prefix-conditioned, and one identity cannot serve two Projects
 
 The applications bucket is **shared**: every Project's portal lives in it under its own `<code>/portal/` prefix, and

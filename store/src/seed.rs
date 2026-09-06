@@ -1011,32 +1011,27 @@ async fn reconcile_person_project_roles(
             }
         }
         let participation = crate::projects::participation_for_role(person.role);
-        match crate::projects::participation_for_person(surreal, person.id, project.id).await? {
-            Some(_) => {
-                report.unchanged += 1;
-                report.records.push(ReconcileRecord {
-                    key,
-                    action: ReconcileAction::Unchanged,
-                    ..ReconcileRecord::default()
-                });
-            }
-            None => {
-                if !actor.dry_run {
-                    crate::projects::add_participation(
-                        surreal,
-                        project.id,
-                        person.id,
-                        participation,
-                    )
+        if crate::projects::participation_for_person(surreal, person.id, project.id)
+            .await?
+            .is_some()
+        {
+            report.unchanged += 1;
+            report.records.push(ReconcileRecord {
+                key,
+                action: ReconcileAction::Unchanged,
+                ..ReconcileRecord::default()
+            });
+        } else {
+            if !actor.dry_run {
+                crate::projects::add_participation(surreal, project.id, person.id, participation)
                     .await?;
-                }
-                report.created += 1;
-                report.records.push(ReconcileRecord {
-                    key,
-                    action: ReconcileAction::New,
-                    ..ReconcileRecord::default()
-                });
             }
+            report.created += 1;
+            report.records.push(ReconcileRecord {
+                key,
+                action: ReconcileAction::New,
+                ..ReconcileRecord::default()
+            });
         }
     }
     Ok(report)
@@ -1079,26 +1074,26 @@ async fn reconcile_person_entity_roles(
                 return Err(anyhow::Error::new(ScopeViolation::CrossProject));
             }
         }
-        match crate::entity_roles::find(surreal, person.id, entity.id, &rec.role).await? {
-            Some(_) => {
-                report.unchanged += 1;
-                report.records.push(ReconcileRecord {
-                    key,
-                    action: ReconcileAction::Unchanged,
-                    ..ReconcileRecord::default()
-                });
+        if crate::entity_roles::find(surreal, person.id, entity.id, &rec.role)
+            .await?
+            .is_some()
+        {
+            report.unchanged += 1;
+            report.records.push(ReconcileRecord {
+                key,
+                action: ReconcileAction::Unchanged,
+                ..ReconcileRecord::default()
+            });
+        } else {
+            if !actor.dry_run {
+                crate::entity_roles::grant(surreal, person.id, entity.id, &rec.role).await?;
             }
-            None => {
-                if !actor.dry_run {
-                    crate::entity_roles::grant(surreal, person.id, entity.id, &rec.role).await?;
-                }
-                report.created += 1;
-                report.records.push(ReconcileRecord {
-                    key,
-                    action: ReconcileAction::New,
-                    ..ReconcileRecord::default()
-                });
-            }
+            report.created += 1;
+            report.records.push(ReconcileRecord {
+                key,
+                action: ReconcileAction::New,
+                ..ReconcileRecord::default()
+            });
         }
     }
     Ok(report)

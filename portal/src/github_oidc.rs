@@ -144,6 +144,19 @@ async fn verify_jwks(
     Ok(token.claims)
 }
 
+impl Default for GitHubActionsClaims {
+    fn default() -> Self {
+        Self {
+            sub: String::new(),
+            iss: GITHUB_ACTIONS_ISSUER.to_string(),
+            repository: String::new(),
+            repository_owner: String::new(),
+            git_ref: "refs/heads/main".to_string(),
+            event_name: "push".to_string(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{GitHubActionsClaims, GitHubOidc, GitHubOidcError};
@@ -164,18 +177,5 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(err, GitHubOidcError::Missing));
-    }
-}
-
-impl Default for GitHubActionsClaims {
-    fn default() -> Self {
-        Self {
-            sub: String::new(),
-            iss: GITHUB_ACTIONS_ISSUER.to_string(),
-            repository: String::new(),
-            repository_owner: String::new(),
-            git_ref: "refs/heads/main".to_string(),
-            event_name: "push".to_string(),
-        }
     }
 }

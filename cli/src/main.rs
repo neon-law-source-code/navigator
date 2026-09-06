@@ -664,12 +664,12 @@ enum SiteCmd {
         /// Show the per-record reconciliation plan without writing anything.
         #[arg(long)]
         dry_run: bool,
-        /// Exchange a GitHub Actions OIDC token for a project-scoped seed session.
+        /// Exchange a GitHub Actions OIDC token for a project-scoped seed session
+        ///
         /// Requires `--host`. Does not read or write `~/.navigator.json`.
         #[arg(long, requires = "host")]
         ci: bool,
-        /// Import every `*.yaml` / `*.yml` document in this directory whose stem
-        /// is a supported seed model, in model order.
+        /// Import every yaml document in DIR whose stem is a supported seed model
         #[arg(long)]
         dir: Option<PathBuf>,
         #[command(flatten)]

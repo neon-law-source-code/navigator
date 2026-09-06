@@ -247,15 +247,19 @@ mod tests {
 
     #[test]
     fn a_pull_request_run_is_not_a_seed_write() {
-        let mut claims = GitHubActionsClaims::default();
-        claims.event_name = "pull_request".into();
+        let claims = GitHubActionsClaims {
+            event_name: "pull_request".into(),
+            ..GitHubActionsClaims::default()
+        };
         assert!(authorize_github_run(&claims).is_err());
     }
 
     #[test]
     fn a_non_main_ref_is_not_a_seed_write() {
-        let mut claims = GitHubActionsClaims::default();
-        claims.git_ref = "refs/heads/topic".into();
+        let claims = GitHubActionsClaims {
+            git_ref: "refs/heads/topic".into(),
+            ..GitHubActionsClaims::default()
+        };
         assert!(authorize_github_run(&claims).is_err());
     }
 }

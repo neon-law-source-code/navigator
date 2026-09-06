@@ -62,6 +62,7 @@ async fn mint(app: &axum::Router, github_token: &str) -> axum::http::Response<Bo
             Request::builder()
                 .method("POST")
                 .uri("/auth/ci/seed-token")
+                .header(header::HOST, "staging.neonlaw.com")
                 .header(header::CONTENT_TYPE, "application/json")
                 .body(Body::from(
                     serde_json::to_vec(&serde_json::json!({ "token": github_token })).unwrap(),
@@ -90,6 +91,7 @@ async fn minting_a_ci_token_scopes_it_to_seed_and_the_named_project() {
             Request::builder()
                 .method("POST")
                 .uri("/app/api/seed")
+                .header(header::HOST, "staging.neonlaw.com")
                 .header(header::AUTHORIZATION, format!("Bearer {token}"))
                 .header(header::CONTENT_TYPE, "application/json")
                 .body(Body::from(
@@ -113,6 +115,7 @@ async fn minting_a_ci_token_scopes_it_to_seed_and_the_named_project() {
             Request::builder()
                 .method("GET")
                 .uri("/app/api/people")
+                .header(header::HOST, "staging.neonlaw.com")
                 .header(header::AUTHORIZATION, format!("Bearer {token}"))
                 .body(Body::empty())
                 .unwrap(),

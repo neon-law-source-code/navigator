@@ -504,13 +504,56 @@ fn validate_fails_on_a_drifted_synced_skill() {
         .stderr(str::contains("sync-skills"));
 }
 
-/// A repository that has never synced skills at all is not failed for it:
-/// syncing is opt-in per repository, the same policy `templates/`/`portal/`
-/// get.
+/// A repository with no `.claude/` directory is not failed for having no
+/// skills. It has not adopted agent tooling, and the catalog is a statement
+/// about what an agent working here must be told — which is nothing at all if
+/// no agent works here.
 #[test]
 fn validate_passes_when_no_skills_have_been_synced() {
     let dir = TempDir::new().unwrap();
     scaffold(dir.path(), "example-project").success();
+    assert!(
+        !dir.path().join(".claude").exists(),
+        "scaffold must not create `.claude/`, or this asserts the wrong branch"
+    );
+
+    validate(dir.path(), "example-project")
+        .success()
+        .stdout(str::contains("0 error(s)"));
+}
+
+/// `.claude/` is the opt-in, and it opts into the whole catalog.
+///
+/// The moment a repository has one, an agent is working in it under whatever
+/// skills it happens to find, and the ones it does not find are precisely the
+/// conventions nobody told it about. `portal-chrome` is why this is a finding
+/// rather than a suggestion: "the portal wears the library's teal and never
+/// repaints it" lived for months as a header comment inside the very file
+/// that violated it, in sixteen repositories, claiming a fleet-wide
+/// uniformity that had already broken in two directions.
+#[test]
+fn validate_fails_when_claude_exists_without_the_catalog() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "example-project").success();
+    fs::create_dir_all(dir.path().join(".claude")).unwrap();
+
+    validate(dir.path(), "example-project")
+        .failure()
+        .code(1)
+        .stderr(str::contains("missing synced skill `portal-chrome`"))
+        .stderr(str::contains("missing synced skill `server`"))
+        .stderr(str::contains("sync-skills"));
+}
+
+/// And syncing is the fix, not an exemption list: the same repository passes
+/// once `sync-skills` has run. A check whose only remedy is deleting the
+/// directory that triggered it would just teach people to delete it.
+#[test]
+fn validate_passes_when_claude_exists_and_the_catalog_is_synced() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "example-project").success();
+    fs::create_dir_all(dir.path().join(".claude")).unwrap();
+    sync_skills(dir.path()).success();
 
     validate(dir.path(), "example-project")
         .success()

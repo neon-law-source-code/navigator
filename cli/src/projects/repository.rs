@@ -224,6 +224,14 @@ const SYNCED_SKILLS: &[(&str, &str)] = &[
         "stay-in-repo",
         include_str!("../../../.agents/skills/stay-in-repo/SKILL.md"),
     ),
+    (
+        "portal-chrome",
+        include_str!("../../../.agents/skills/portal-chrome/SKILL.md"),
+    ),
+    (
+        "server",
+        include_str!("../../../.agents/skills/server/SKILL.md"),
+    ),
 ];
 
 #[derive(Debug)]
@@ -568,18 +576,43 @@ fn validate_manifest(root: &Path, errors: &mut Vec<Finding>) {
     }
 }
 
-/// A synced skill whose content has drifted from the canonical copy.
+/// A synced skill that is missing, or whose content has drifted from the
+/// canonical copy.
 ///
 /// Freshness is judged against the copy compiled into *this* binary, not a
 /// live `.agents/skills` clone or a fetch of the pinned release. That mirrors
 /// [`validate_workflow`]'s own pin check exactly (see ENG-356): CI runs the
 /// validate action at the version the gate pins, so the binary performing
 /// this comparison already *is* "the canonical copy at the pinned CLI
-/// version" in the one place this check runs for real. A skill that has not
-/// been synced yet is not a finding — sync is opt-in per repository, the same
-/// policy `templates/` and `portal/` get: absent means "hasn't adopted this,"
-/// not "broken."
+/// version" in the one place this check runs for real.
+///
+/// ## `.claude/` is the opt-in, and it is opt-in to the whole catalog
+///
+/// Absence used to be silent everywhere, on the same reasoning `templates/`
+/// and `portal/` get: not adopted is not broken. That reasoning stops holding
+/// the moment a repository has a `.claude/` directory, because then an agent
+/// *is* working in it under whatever skills it happens to find — and the ones
+/// it does not find are the conventions nobody told it about.
+///
+/// The catalog is the fleet's answer to conventions that live only in a
+/// comment. `portal-chrome` is the worked example: the rule that a portal
+/// wears the library's teal and never repaints it existed for months as a
+/// header comment inside the very file that violated it, in sixteen
+/// repositories, claiming a fleet-wide uniformity that had already broken in
+/// two directions. A convention an agent cannot see is a convention that
+/// drifts.
+///
+/// So: no `.claude/` directory, no findings — a repository that has not
+/// adopted agent tooling is not failed for it. With one, every skill in the
+/// catalog is required, and `sync-skills` is how a repository gets them.
+///
+/// This only reaches a repository when it bumps the validate action's pin, so
+/// adoption stays staged rather than turning the fleet red at once.
 fn validate_skills(root: &Path, errors: &mut Vec<Finding>) {
+    let agent_directory = root.join(".claude");
+    if !agent_directory.is_dir() {
+        return;
+    }
     for (name, canonical) in SYNCED_SKILLS {
         let path = root.join(".claude/skills").join(name).join("SKILL.md");
         match fs::read_to_string(&path) {
@@ -591,7 +624,13 @@ fn validate_skills(root: &Path, errors: &mut Vec<Finding>) {
                      run `navigator site projects repository sync-skills`"
                 ),
             )),
-            Err(_) => {}
+            Err(_) => errors.push(Finding::at(
+                &path,
+                format!(
+                    "this repository has a `.claude/` directory but is missing synced skill \
+                     `{name}`; run `navigator site projects repository sync-skills`"
+                ),
+            )),
         }
     }
 }

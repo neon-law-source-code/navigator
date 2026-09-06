@@ -515,7 +515,7 @@ DEFINE INDEX OVERWRITE entity_firm_anchor ON entity FIELDS firm_anchor_key UNIQU
 DEFINE TABLE IF NOT EXISTS firm SCHEMAFULL PERMISSIONS NONE;
 DEFINE FIELD OVERWRITE name ON firm TYPE string;
 DEFINE FIELD OVERWRITE status ON firm TYPE string
-    ASSERT $value IN ['active', 'suspended']
+    ASSERT $value IN ['active', 'suspended', 'archived']
     DEFAULT 'active';
 DEFINE FIELD OVERWRITE entity_id ON firm TYPE option<record<entity>>;
 DEFINE FIELD OVERWRITE inserted_at ON firm TYPE string;

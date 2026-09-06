@@ -245,6 +245,14 @@ pub enum FirmError {
     /// first with [`appoint_admin_dri`].
     #[error("firm {0} would be left without an Admin DRI")]
     WouldLeaveFirmWithoutAdminDri(Uuid),
+    /// This Firm still owns one or more Projects; deletion is refused
+    /// rather than orphaning a matter's owning practice (ENG-494).
+    #[error("firm {0} still owns one or more projects and cannot be deleted")]
+    FirmOwnsProjects(Uuid),
+    /// The person holds no `person_firm_role` row on this Firm — there is
+    /// nothing for [`update_membership`] or [`remove_membership`] to change.
+    #[error("person {0} is not a member of firm {1}")]
+    NotAMember(Uuid, Uuid),
 }
 
 fn classify_write(error: surrealdb::Error) -> FirmError {
@@ -356,6 +364,136 @@ pub async fn all(surreal: &SurrealDb) -> Result<Vec<Firm>, FirmError> {
     Ok(rows.into_iter().filter_map(FirmRow::into_firm).collect())
 }
 
+/// A partial edit to a [`Firm`]'s own fields (ENG-494). Absent fields are
+/// left untouched; this never touches `person_firm_role` or `firm_brand`.
+#[derive(Debug, Clone, Default)]
+pub struct FirmEdit {
+    pub name: Option<String>,
+    /// `active`, `suspended`, or `archived`.
+    pub status: Option<String>,
+    pub entity_id: Option<Uuid>,
+}
+
+/// Gate a Firm-scoped settings/membership/brand write through
+/// [`crate::firm_capability::FirmCapability::ManageMembership`] — the same
+/// capability that already gates who may add a member, since editing a
+/// Firm's own settings, its people's memberships, and the brands it wears
+/// are one administrative surface (ENG-494). Owner passes on every Firm;
+/// only the Admin membership tier passes on its own.
+async fn authorize_manage_firm(
+    surreal: &SurrealDb,
+    actor_role: Role,
+    actor_person_id: Option<Uuid>,
+    firm_id: Uuid,
+) -> Result<(), FirmError> {
+    use crate::firm_capability::{resolve, FirmCapability, FirmCapabilityDecision};
+    match resolve(
+        surreal,
+        actor_role,
+        actor_person_id,
+        firm_id,
+        FirmCapability::ManageMembership,
+    )
+    .await?
+    {
+        FirmCapabilityDecision::Allowed => Ok(()),
+        FirmCapabilityDecision::FirmNotFound => Err(FirmError::NoSuchFirm(firm_id)),
+        FirmCapabilityDecision::Forbidden => Err(FirmError::NotAuthorized),
+    }
+}
+
+/// Edit a Firm's own fields. Owner, or that Firm's own Admin membership,
+/// only (`authorize_manage_firm`). Refuses an `entity_id` that does not
+/// resolve, the same guarantee [`create`] gives; leaves the Admin DRI and
+/// every membership row untouched — those move only through
+/// [`appoint_admin_dri`], [`update_membership`], and [`remove_membership`].
+pub async fn update(
+    surreal: &SurrealDb,
+    actor_role: Role,
+    actor_person_id: Option<Uuid>,
+    firm_id: Uuid,
+    input: &FirmEdit,
+) -> Result<Firm, FirmError> {
+    authorize_manage_firm(surreal, actor_role, actor_person_id, firm_id).await?;
+    if let Some(entity_id) = input.entity_id {
+        if crate::entities::find_by_id(surreal, entity_id)
+            .await?
+            .is_none()
+        {
+            return Err(FirmError::NoSuchEntity(entity_id));
+        }
+    }
+
+    let mut assignments: Vec<&str> = vec!["updated_at = $updated_at"];
+    if input.name.is_some() {
+        assignments.push("name = $name");
+    }
+    if input.status.is_some() {
+        assignments.push("status = $status");
+    }
+    if input.entity_id.is_some() {
+        assignments.push("entity_id = $entity_id");
+    }
+
+    let now = chrono::Utc::now().to_rfc3339();
+    let mut response = writing(|| {
+        surreal
+            .query(format!(
+                "UPDATE $id SET {} RETURN {FIRM_SELECT}",
+                assignments.join(", ")
+            ))
+            .bind(("id", record_id(TABLE, firm_id)))
+            .bind(("updated_at", now.clone()))
+            .bind(("name", input.name.clone()))
+            .bind(("status", input.status.clone()))
+            .bind((
+                "entity_id",
+                input.entity_id.map(|id| record_id(ENTITY_TABLE, id)),
+            ))
+    })
+    .await?;
+    let row: Option<FirmRow> = response.take(0)?;
+    row.and_then(FirmRow::into_firm)
+        .ok_or(FirmError::WriteReturnedNothing)
+}
+
+/// Delete a Firm. Owner, or that Firm's own Admin membership, only
+/// (`authorize_manage_firm`). Refused when any Project still names it as
+/// `firm_id`: a matter must never lose its owning practice. Its
+/// `person_firm_role` and `firm_brand` rows are removed in the same
+/// transaction — nothing is left pointing at a Firm that no longer exists.
+pub async fn delete(
+    surreal: &SurrealDb,
+    actor_role: Role,
+    actor_person_id: Option<Uuid>,
+    firm_id: Uuid,
+) -> Result<(), FirmError> {
+    authorize_manage_firm(surreal, actor_role, actor_person_id, firm_id).await?;
+    let mut projects = surreal
+        .query("SELECT id FROM project WHERE firm_id = $firm_id LIMIT 1")
+        .bind(("firm_id", record_id(TABLE, firm_id)))
+        .await
+        .and_then(surrealdb::IndexedResults::check)?;
+    let owned: Vec<ProjectIdRow> = projects.take(0)?;
+    if !owned.is_empty() {
+        return Err(FirmError::FirmOwnsProjects(firm_id));
+    }
+
+    writing(|| {
+        surreal
+            .query(
+                "BEGIN; \
+                 DELETE person_firm_role WHERE firm_id = $firm_id; \
+                 DELETE firm_brand WHERE firm_id = $firm_id; \
+                 DELETE $firm_id; \
+                 COMMIT;",
+            )
+            .bind(("firm_id", record_id(TABLE, firm_id)))
+    })
+    .await?;
+    Ok(())
+}
+
 /// Record one person's membership at a firm.
 ///
 /// Reads both referenced rows before writing: a `record<>` link constrains
@@ -434,6 +572,102 @@ pub async fn memberships_for_person(
         .into_iter()
         .filter_map(PersonFirmRoleRow::into_role)
         .collect())
+}
+
+/// Every membership row on this Firm — the inverse of
+/// [`memberships_for_person`], for a Firm detail view listing who belongs to
+/// it rather than which Firms one person belongs to.
+pub async fn memberships_for_firm(
+    surreal: &SurrealDb,
+    firm_id: Uuid,
+) -> Result<Vec<PersonFirmRole>, FirmError> {
+    let mut response = surreal
+        .query(format!(
+            "SELECT {MEMBERSHIP_SELECT} FROM {MEMBERSHIP_TABLE} \
+             WHERE firm_id = $firm_id ORDER BY inserted_at, id"
+        ))
+        .bind(("firm_id", record_id(TABLE, firm_id)))
+        .await
+        .and_then(surrealdb::IndexedResults::check)?;
+    let rows: Vec<PersonFirmRoleRow> = response.take(0)?;
+    Ok(rows
+        .into_iter()
+        .filter_map(PersonFirmRoleRow::into_role)
+        .collect())
+}
+
+/// Change a person's `membership` at a Firm. Owner, or that Firm's own Admin
+/// membership, only (`authorize_manage_firm`). Leaves `is_dri` untouched — a
+/// membership form must never write that marker; only [`appoint_admin_dri`]
+/// does. Refused with [`FirmError::WouldLeaveFirmWithoutAdminDri`] when the
+/// person is the Firm's current sole Admin DRI and `membership` is not
+/// `admin` (ENG-499's guard, [`refuse_admin_dri_orphaning`]).
+pub async fn update_membership(
+    surreal: &SurrealDb,
+    actor_role: Role,
+    actor_person_id: Option<Uuid>,
+    person_id: Uuid,
+    firm_id: Uuid,
+    membership: FirmMembership,
+) -> Result<PersonFirmRole, FirmError> {
+    authorize_manage_firm(surreal, actor_role, actor_person_id, firm_id).await?;
+    if membership_for_person(surreal, person_id, firm_id)
+        .await?
+        .is_none()
+    {
+        return Err(FirmError::NotAMember(person_id, firm_id));
+    }
+    refuse_admin_dri_orphaning(surreal, firm_id, person_id, Some(membership)).await?;
+
+    let now = chrono::Utc::now().to_rfc3339();
+    writing(|| {
+        surreal
+            .query(
+                "UPDATE person_firm_role SET membership = $membership, updated_at = $now \
+                 WHERE person_id = $person_id AND firm_id = $firm_id",
+            )
+            .bind(("person_id", record_id(PERSON_TABLE, person_id)))
+            .bind(("firm_id", record_id(TABLE, firm_id)))
+            .bind(("membership", membership.as_str().to_string()))
+            .bind(("now", now.clone()))
+    })
+    .await?;
+
+    membership_for_person(surreal, person_id, firm_id)
+        .await?
+        .ok_or(FirmError::WriteReturnedNothing)
+}
+
+/// Remove a person's membership at a Firm entirely. Owner, or that Firm's
+/// own Admin membership, only (`authorize_manage_firm`). Refused with
+/// [`FirmError::WouldLeaveFirmWithoutAdminDri`] when the person is the
+/// Firm's current sole Admin DRI (ENG-499's guard,
+/// [`refuse_admin_dri_orphaning`]) — transfer the designation first with
+/// [`appoint_admin_dri`].
+pub async fn remove_membership(
+    surreal: &SurrealDb,
+    actor_role: Role,
+    actor_person_id: Option<Uuid>,
+    person_id: Uuid,
+    firm_id: Uuid,
+) -> Result<(), FirmError> {
+    authorize_manage_firm(surreal, actor_role, actor_person_id, firm_id).await?;
+    if membership_for_person(surreal, person_id, firm_id)
+        .await?
+        .is_none()
+    {
+        return Err(FirmError::NotAMember(person_id, firm_id));
+    }
+    refuse_admin_dri_orphaning(surreal, firm_id, person_id, None).await?;
+
+    writing(|| {
+        surreal
+            .query("DELETE person_firm_role WHERE person_id = $person_id AND firm_id = $firm_id")
+            .bind(("person_id", record_id(PERSON_TABLE, person_id)))
+            .bind(("firm_id", record_id(TABLE, firm_id)))
+    })
+    .await?;
+    Ok(())
 }
 
 /// Person ids an Admin of these firms may see: members of those firms, plus
@@ -572,6 +806,29 @@ pub async fn brand_keys_for_firm(
         .and_then(surrealdb::IndexedResults::check)?;
     let rows: Vec<BrandRow> = response.take(0)?;
     Ok(rows.into_iter().map(|row| row.brand_key).collect())
+}
+
+/// Detach a house-brand key from a firm. Owner, or that Firm's own Admin
+/// membership, only (`authorize_manage_firm`). A key the firm does not wear
+/// is a no-op — there is nothing to remove and nothing to refuse.
+pub async fn detach_brand(
+    surreal: &SurrealDb,
+    actor_role: Role,
+    actor_person_id: Option<Uuid>,
+    firm_id: Uuid,
+    brand_key: &str,
+) -> Result<(), FirmError> {
+    authorize_manage_firm(surreal, actor_role, actor_person_id, firm_id).await?;
+    writing(|| {
+        surreal
+            .query(format!(
+                "DELETE {BRAND_TABLE} WHERE firm_id = $firm_id AND brand_key = $brand_key"
+            ))
+            .bind(("firm_id", record_id(TABLE, firm_id)))
+            .bind(("brand_key", brand_key.to_string()))
+    })
+    .await?;
+    Ok(())
 }
 
 /// Point every project that still has no owner at `firm_id`. Idempotent.
@@ -1241,6 +1498,13 @@ mod tests {
         .await
         .unwrap_err();
         assert!(matches!(duplicate, FirmError::DuplicateMembership));
+
+        // The inverse read: every membership on this Firm, including the
+        // atomic Admin DRI `practice` granted.
+        let on_firm = memberships_for_firm(&db, firm.id).await.unwrap();
+        let ids: Vec<Uuid> = on_firm.iter().map(|row| row.person_id).collect();
+        assert!(ids.contains(&person.id));
+        assert_eq!(on_firm.len(), 2, "the DRI plus Pat Lawyer: {on_firm:?}");
     }
 
     #[tokio::test]
@@ -1523,6 +1787,373 @@ mod tests {
         let other = practice(&db, "Other Practice").await;
         let taken = attach_brand(&db, other.id, "neon").await.unwrap_err();
         assert!(matches!(taken, FirmError::DuplicateBrand));
+
+        detach_brand(&db, Role::Owner, None, firm.id, "neon")
+            .await
+            .unwrap();
+        assert!(brand_keys_for_firm(&db, firm.id).await.unwrap().is_empty());
+        // Detaching a key the firm never wore is a no-op, not an error.
+        detach_brand(&db, Role::Owner, None, firm.id, "neon")
+            .await
+            .unwrap();
+    }
+
+    /// ENG-494: `update` edits name/status/entity_id and leaves the Admin
+    /// DRI and every membership row untouched. `archived` is now an
+    /// admitted status (the schema `ASSERT` grew a third value alongside
+    /// `active`/`suspended`).
+    #[tokio::test]
+    async fn update_edits_firm_fields_and_leaves_membership_alone() {
+        let db = mem_surreal().await;
+        let admin = admin_dri_person(&db).await;
+        let firm = practice_with_admin(&db, "Editable Practice", admin).await;
+        let new_entity = seed_entity(&db).await;
+
+        let edited = update(
+            &db,
+            Role::Owner,
+            None,
+            firm.id,
+            &FirmEdit {
+                name: Some("Renamed Practice".to_string()),
+                status: Some("archived".to_string()),
+                entity_id: Some(new_entity),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(edited.name, "Renamed Practice");
+        assert_eq!(edited.status, "archived");
+        assert_eq!(edited.entity_id, Some(new_entity));
+
+        let membership = membership_for_person(&db, admin, firm.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(membership.membership, FirmMembership::Admin);
+        assert!(membership.is_dri, "editing the firm must not touch the DRI");
+
+        // A partial edit touches only the named fields.
+        let partial = update(
+            &db,
+            Role::Owner,
+            None,
+            firm.id,
+            &FirmEdit {
+                status: Some("active".to_string()),
+                ..FirmEdit::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(partial.name, "Renamed Practice");
+        assert_eq!(partial.status, "active");
+
+        let missing = Uuid::now_v7();
+        let err = update(&db, Role::Owner, None, missing, &FirmEdit::default())
+            .await
+            .unwrap_err();
+        assert!(matches!(err, FirmError::NoSuchFirm(id) if id == missing));
+
+        let missing_entity = Uuid::now_v7();
+        let err = update(
+            &db,
+            Role::Owner,
+            None,
+            firm.id,
+            &FirmEdit {
+                entity_id: Some(missing_entity),
+                ..FirmEdit::default()
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(err, FirmError::NoSuchEntity(id) if id == missing_entity));
+    }
+
+    /// `delete` refuses a Firm that still owns Projects, and otherwise
+    /// removes it along with its membership and brand rows.
+    #[tokio::test]
+    async fn delete_refuses_when_projects_reference_the_firm_else_cascades_memberships() {
+        let db = mem_surreal().await;
+        let admin = admin_dri_person(&db).await;
+        let firm = practice_with_admin(&db, "Deletable Practice", admin).await;
+        attach_brand(&db, firm.id, "neon").await.unwrap();
+
+        let entity_id = seed_entity(&db).await;
+        let project = projects::create(
+            &db,
+            &NewProject {
+                code: "owning-matter".to_string(),
+                name: "Owning Matter".to_string(),
+                status: "open".to_string(),
+                entity_id,
+                firm_id: Some(firm.id),
+                ..NewProject::default()
+            },
+        )
+        .await
+        .unwrap();
+        let err = delete(&db, Role::Owner, None, firm.id).await.unwrap_err();
+        assert!(matches!(err, FirmError::FirmOwnsProjects(id) if id == firm.id));
+
+        // Once the matter no longer exists, deletion proceeds and cascades
+        // the membership and brand rows with it.
+        projects::delete_project_with_surreal(&db, project.id)
+            .await
+            .unwrap();
+        delete(&db, Role::Owner, None, firm.id).await.unwrap();
+        assert!(find_by_id(&db, firm.id).await.unwrap().is_none());
+        assert!(membership_for_person(&db, admin, firm.id)
+            .await
+            .unwrap()
+            .is_none());
+        assert!(brand_keys_for_firm(&db, firm.id).await.unwrap().is_empty());
+
+        let missing = Uuid::now_v7();
+        let err = delete(&db, Role::Owner, None, missing).await.unwrap_err();
+        assert!(matches!(err, FirmError::NoSuchFirm(id) if id == missing));
+    }
+
+    /// `update_membership` changes only `membership`, never `is_dri`, and is
+    /// refused for the current sole DRI unless the new membership is still
+    /// `admin`.
+    #[tokio::test]
+    async fn update_membership_changes_tier_never_is_dri_and_guards_the_sole_dri() {
+        let db = mem_surreal().await;
+        let admin = admin_dri_person(&db).await;
+        let firm = practice_with_admin(&db, "Membership Practice", admin).await;
+        let lawyer = crate::persons::create(
+            &db,
+            &NewPerson::with_role("Lawyer", "membership-lawyer@example.com", Role::Lawyer),
+        )
+        .await
+        .unwrap();
+        add_membership(
+            &db,
+            &NewPersonFirmRole {
+                person_id: lawyer.id,
+                firm_id: firm.id,
+                membership: FirmMembership::Lawyer,
+                is_dri: false,
+            },
+        )
+        .await
+        .unwrap();
+
+        let updated = update_membership(
+            &db,
+            Role::Owner,
+            None,
+            lawyer.id,
+            firm.id,
+            FirmMembership::Clerk,
+        )
+        .await
+        .unwrap();
+        assert_eq!(updated.membership, FirmMembership::Clerk);
+        assert!(!updated.is_dri);
+
+        let err = update_membership(
+            &db,
+            Role::Owner,
+            None,
+            admin,
+            firm.id,
+            FirmMembership::Lawyer,
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(err, FirmError::WouldLeaveFirmWithoutAdminDri(id) if id == firm.id));
+
+        // Reassigning the sole DRI's own row to `admin` again is a no-op the
+        // guard admits.
+        let reaffirmed = update_membership(
+            &db,
+            Role::Owner,
+            None,
+            admin,
+            firm.id,
+            FirmMembership::Admin,
+        )
+        .await
+        .unwrap();
+        assert!(reaffirmed.is_dri);
+
+        let stranger = Uuid::now_v7();
+        let err = update_membership(
+            &db,
+            Role::Owner,
+            None,
+            stranger,
+            firm.id,
+            FirmMembership::Lawyer,
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            matches!(err, FirmError::NotAMember(person, f) if person == stranger && f == firm.id)
+        );
+    }
+
+    /// `remove_membership` deletes the row and is refused for the current
+    /// sole DRI.
+    #[tokio::test]
+    async fn remove_membership_deletes_the_row_and_guards_the_sole_dri() {
+        let db = mem_surreal().await;
+        let admin = admin_dri_person(&db).await;
+        let firm = practice_with_admin(&db, "Removal Practice", admin).await;
+        let clerk = crate::persons::create(
+            &db,
+            &NewPerson::with_role("Clerk", "removal-clerk@example.com", Role::Clerk),
+        )
+        .await
+        .unwrap();
+        add_membership(
+            &db,
+            &NewPersonFirmRole {
+                person_id: clerk.id,
+                firm_id: firm.id,
+                membership: FirmMembership::Clerk,
+                is_dri: false,
+            },
+        )
+        .await
+        .unwrap();
+
+        remove_membership(&db, Role::Owner, None, clerk.id, firm.id)
+            .await
+            .unwrap();
+        assert!(membership_for_person(&db, clerk.id, firm.id)
+            .await
+            .unwrap()
+            .is_none());
+
+        let err = remove_membership(&db, Role::Owner, None, admin, firm.id)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, FirmError::WouldLeaveFirmWithoutAdminDri(id) if id == firm.id));
+
+        let err = remove_membership(&db, Role::Owner, None, clerk.id, firm.id)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, FirmError::NotAMember(person, f) if person == clerk.id && f == firm.id)
+        );
+    }
+
+    /// The authorization matrix ENG-494 asks for: Owner passes on every
+    /// Firm; an Admin who is a member of *this* Firm passes; an Admin who
+    /// is not (a member elsewhere or nowhere), and every Lawyer/Clerk,
+    /// is refused — for every write door this issue adds.
+    #[tokio::test]
+    async fn write_doors_admit_owner_and_the_firm_s_own_admin_only() {
+        let db = mem_surreal().await;
+        let admin_on_firm = admin_dri_person(&db).await;
+        let firm = practice_with_admin(&db, "Matrix Practice", admin_on_firm).await;
+        let other_firm = practice(&db, "Other Matrix Practice").await;
+
+        let admin_off_firm = crate::persons::create(
+            &db,
+            &NewPerson::with_role("Admin Off Firm", "admin-off-firm@example.com", Role::Admin),
+        )
+        .await
+        .unwrap();
+        add_membership(
+            &db,
+            &NewPersonFirmRole {
+                person_id: admin_off_firm.id,
+                firm_id: other_firm.id,
+                membership: FirmMembership::Admin,
+                is_dri: false,
+            },
+        )
+        .await
+        .unwrap();
+        let lawyer = crate::persons::create(
+            &db,
+            &NewPerson::with_role("Matrix Lawyer", "matrix-lawyer@example.com", Role::Lawyer),
+        )
+        .await
+        .unwrap();
+        add_membership(
+            &db,
+            &NewPersonFirmRole {
+                person_id: lawyer.id,
+                firm_id: firm.id,
+                membership: FirmMembership::Lawyer,
+                is_dri: false,
+            },
+        )
+        .await
+        .unwrap();
+        let clerk = crate::persons::create(
+            &db,
+            &NewPerson::with_role("Matrix Clerk", "matrix-clerk@example.com", Role::Clerk),
+        )
+        .await
+        .unwrap();
+        add_membership(
+            &db,
+            &NewPersonFirmRole {
+                person_id: clerk.id,
+                firm_id: firm.id,
+                membership: FirmMembership::Clerk,
+                is_dri: false,
+            },
+        )
+        .await
+        .unwrap();
+
+        // Every actor below asks the same question: may they change
+        // `lawyer`'s membership on `firm`? Owner and the Firm's own Admin
+        // may; an Admin scoped to a different Firm, a Lawyer, and a Clerk
+        // may not.
+        let allowed = [(Role::Owner, None), (Role::Admin, Some(admin_on_firm))];
+        let forbidden = [
+            (Role::Admin, Some(admin_off_firm.id)),
+            (Role::Lawyer, Some(lawyer.id)),
+            (Role::Clerk, Some(clerk.id)),
+        ];
+
+        for (role, person_id) in allowed {
+            update_membership(
+                &db,
+                role,
+                person_id,
+                lawyer.id,
+                firm.id,
+                FirmMembership::Lawyer,
+            )
+            .await
+            .unwrap_or_else(|error| panic!("{role:?} should be allowed: {error}"));
+            update(&db, role, person_id, firm.id, &FirmEdit::default())
+                .await
+                .unwrap_or_else(|error| panic!("{role:?} should be allowed to edit: {error}"));
+        }
+        for (role, person_id) in forbidden {
+            let err = update_membership(
+                &db,
+                role,
+                person_id,
+                lawyer.id,
+                firm.id,
+                FirmMembership::Lawyer,
+            )
+            .await
+            .unwrap_err();
+            assert!(
+                matches!(err, FirmError::NotAuthorized),
+                "{role:?} must be refused: {err}"
+            );
+            let err = update(&db, role, person_id, firm.id, &FirmEdit::default())
+                .await
+                .unwrap_err();
+            assert!(
+                matches!(err, FirmError::NotAuthorized),
+                "{role:?} must be refused to edit: {err}"
+            );
+        }
     }
 
     #[tokio::test]

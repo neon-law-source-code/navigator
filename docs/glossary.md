@@ -664,6 +664,15 @@ those firms' rows.
 Embedded Rego still does not isolate every project or person route by firm (`ENG-463`). The Owner listing and the two
 Admin directories named above do.
 
+`firm.status` is `active`, `suspended`, or `archived` (ENG-494). Owner, or a Firm's own Admin membership, edits a Firm's
+name/status/entity (`store::firms::update`), changes or removes a person's membership (`store::firms::update_membership`
+/ `remove_membership`), and detaches a brand key (`store::firms::detach_brand`) — each gated through the same
+`FirmCapability::ManageMembership` check `add_membership` already used. None of these write `is_dri`; only
+[`appoint_admin_dri`](#personfirm-role) does, and each membership-removal door refuses a change that would leave an
+active Firm without one. Deleting a Firm that still owns Projects is refused. The Firm detail view at
+`/app/admin/firms/{id}` (`webapp::firm_show`) is where these are read together: a Firm's own fields, its brands, its
+Admin-DRI standing, and every person on it.
+
 - Schema: [`firm` in `navigator.surql`](../store/src/schema/navigator.surql) ·
   [`store::firms`](../store/src/firms.rs)
 

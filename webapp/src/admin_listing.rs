@@ -386,7 +386,7 @@ impl MatterScope {
 /// endpoint need not run behind the route's injection layer, and a session may
 /// have no linked person at all. Both fail closed at [`MatterScope::admits`].
 #[cfg(feature = "server")]
-async fn injected_person_id() -> Option<uuid::Uuid> {
+pub(crate) async fn injected_person_id() -> Option<uuid::Uuid> {
     dioxus_fullstack_core::FullstackContext::extract::<
         axum::Extension<crate::portal_project_list::PersonId>,
         _,

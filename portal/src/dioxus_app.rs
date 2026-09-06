@@ -3383,6 +3383,43 @@ pub fn app_owner_router(
         .route_layer(from_fn_with_state(auth, crate::auth::require_auth))
 }
 
+/// The Firm detail view path with its `{id}` placeholder (ENG-494).
+pub const FIRM_SHOW_PATH: &str = "/app/admin/firms/{id}";
+
+/// `{FIRM_SHOW_PATH}` — Admin-tier, not Owner-only: it lives under
+/// `/app/admin` rather than `/app/owner` specifically so embedded Rego's
+/// `owner_only_path` (which carves out every `/app/owner/*` path) does not
+/// apply to it. Owner and Admin both pass the Rego route bypass; which Firms
+/// an Admin may actually see is the fine-grained
+/// `store::firm_capability::FirmCapability::ViewDirectory` check inside the
+/// handler (`webapp::firm_show::get_firm_show`), not the route.
+pub fn firm_show_router(
+    sessions: crate::session::SessionStore,
+    policy: crate::policy::PolicyClient,
+    auth: crate::auth::AuthConfig,
+    surreal: store::surreal::SurrealDb,
+) -> Router {
+    let cfg = ServeConfig::new().context_providers(std::sync::Arc::new(vec![Box::new(move || {
+        Box::new(surreal.clone()) as Box<dyn std::any::Any>
+    })
+        as Box<dyn Fn() -> Box<dyn std::any::Any> + Send + Sync>]));
+    Router::<FullstackState>::new()
+        .route(
+            FIRM_SHOW_PATH,
+            get(render_handler)
+                .layer(from_fn(dioxus_document_head))
+                .layer(from_fn(inject_viewer_role))
+                .layer(from_fn(inject_person_id))
+                .layer(from_fn(inject_app_brand_mark)),
+        )
+        .with_state(FullstackState::new(cfg, webapp::firm_show::FirmShow))
+        .route_layer(from_fn_with_state(
+            (sessions, policy),
+            crate::policy::require_policy,
+        ))
+        .route_layer(from_fn_with_state(auth, crate::auth::require_auth))
+}
+
 /// The `/docs` and `/docs/{slug}` pre-layer: canonicalize the slug, 404 an
 /// unknown one, or inject the matched doc for the render. This reproduces the
 /// `docs_page` / `render_doc_page` control flow.

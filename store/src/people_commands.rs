@@ -123,8 +123,9 @@ pub struct UpdateContext<'a> {
     /// The caller's stored system role. A caller cannot edit a higher-ranked
     /// person, even when the surrounding route is otherwise writable.
     pub actor_role: Role,
-    /// The caller may set roles (Owner/Admin, not impersonating). When false,
-    /// a submitted role is ignored and the existing role is preserved.
+    /// The caller may set roles (Owner/Admin, not in a read-only DRI view).
+    /// When false, a submitted role is ignored and the existing role is
+    /// preserved.
     pub may_change_roles: bool,
 }
 

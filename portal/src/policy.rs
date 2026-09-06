@@ -183,7 +183,7 @@ pub async fn require_policy(
                 csrf_token: String::new(),
                 source: crate::session::SessionSource::Browser,
                 provider: None,
-                impersonation: None,
+                viewing_as_dri: None,
                 scope: None,
             });
         }
@@ -197,16 +197,28 @@ pub async fn require_policy(
         .map(ToString::to_string)
         .collect();
     if req.method() == axum::http::Method::POST
-        && path == "/app/impersonation/stop"
+        && path == "/app/view-as-client/stop"
         && session
             .as_ref()
-            .is_some_and(|session| session.impersonation.is_some())
+            .is_some_and(|session| session.viewing_as_dri.is_some())
     {
         let mut req = req;
         if let Some(session) = session {
             req.extensions_mut().insert(session);
         }
         return Ok(next.run(req).await);
+    }
+    // A read-only client-DRI view refuses every mutating request outright,
+    // ahead of the ordinary OPA decision: the session's role is the real
+    // client's, which would otherwise be free to write like any client.
+    if session
+        .as_ref()
+        .is_some_and(|session| session.viewing_as_dri.is_some())
+        && req.method() != axum::http::Method::GET
+        && req.method() != axum::http::Method::HEAD
+        && req.method() != axum::http::Method::OPTIONS
+    {
+        return Ok(deny_response(&path, true, swagger_ui_request));
     }
     let input = serde_json::json!({
         "path": path_segments,

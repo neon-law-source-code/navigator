@@ -27,7 +27,7 @@ struct AdminLink {
 const ADMIN_LINKS: &[AdminLink] = &[
     AdminLink {
         title: "People",
-        blurb: "Administer every person: roles, records, impersonation, and removal. \
+        blurb: "Administer every person: roles, records, and removal. \
                 The bootstrap Owner record's email and role are pinned.",
         href: "/app/admin/people",
         cta: "Manage people",

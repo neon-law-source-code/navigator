@@ -16,8 +16,8 @@
 //! Admin-only, and hidden rather than refused: lawyer and clients get the same
 //! `404` the handler returned. That is deliberate — the participation
 //! ledger is the project-scope ACL, so granting it stays with the administrative
-//! owner rather than with ordinary lawyer. Impersonation cannot reach it either:
-//! an impersonating session carries the `client` tier.
+//! owner rather than with ordinary lawyer. A read-only client-DRI view cannot
+//! reach it either: that session carries the `client` tier.
 //!
 //! Project and participation reads come from the `SurrealDB` projects cluster,
 //! and people live in that same cluster, so the matter lookup and the

@@ -1906,11 +1906,12 @@ main#letter-detail {
   color: var(--nav-color-text);
 }
 
-/* Impersonation banner. Sits above the nav on every page an impersonating
- * admin sees, so "you are acting as someone else" is never off-screen. Amber
- * rather than the danger red: this is a persistent state, not an error, and it
- * must stay legible for the whole session without reading as a failure. */
-.impersonation-banner {
+/* Client-DRI-view banner. Sits above the nav on every page a firm member sees
+ * while viewing a matter as its client DRI, so "you are viewing as someone
+ * else, read-only" is never off-screen. Amber rather than the danger red:
+ * this is a persistent state, not an error, and it must stay legible for the
+ * whole session without reading as a failure. */
+.dri-view-banner {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -1921,13 +1922,20 @@ main#letter-detail {
   color: #78350f;
 }
 
-.impersonation-banner__email {
+.dri-view-banner__email {
   color: #92400e;
+}
+
+.dri-view-banner__readonly {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 0.75rem;
 }
 
 /* Pushes the stop control to the trailing edge, so the way out is always in
  * the same place regardless of how long the name and email are. */
-.impersonation-banner__stop {
+.dri-view-banner__stop {
   margin-left: auto;
   margin-bottom: 0;
 }

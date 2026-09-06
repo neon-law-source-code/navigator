@@ -14,7 +14,7 @@ use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum::{Form, Router};
 
-use crate::session::{Impersonation, SessionData};
+use crate::session::{DriView, SessionData};
 // Every Entity write — create, update, delete — belongs to
 // `store::entity_commands`, including the firm-anchor rules and the advisory
 // locks that make check-then-write atomic. This module only authorizes and
@@ -134,8 +134,8 @@ pub struct AdminState {
     /// Legal name of the firm anchor Entity. The matching row is never
     /// deletable by application users, including admins.
     pub bootstrap_company: String,
-    /// Session signer used when admin impersonation swaps the browser
-    /// cookie into a client lens and when the banner exits back to admin.
+    /// Session signer used when a firm member switches the browser cookie
+    /// into a read-only client-DRI view and when the banner exits back.
     pub sessions: crate::SessionStore,
     /// Whether session cookies should carry `Secure`.
     pub secure_cookies: bool,
@@ -188,8 +188,8 @@ pub fn routes(
         .route("/app/admin/people", post(admin_people_create))
         // `/app/admin/people/{id}` (+ its `/edit` alias) — the show/edit render
         // serves through Dioxus (`dioxus_app::admin_person_show_router`). Its
-        // native-form actions post here: update, welcome-email send, delete,
-        // and impersonate. axum merges the Dioxus GET and these POSTs on each path.
+        // native-form actions post here: update, welcome-email send, delete.
+        // axum merges the Dioxus GET and these POSTs on each path.
         .route("/app/admin/people/{id}", post(admin_person_update))
         .route(
             "/app/admin/people/{id}/avatar",
@@ -203,11 +203,7 @@ pub fn routes(
                 .layer(DefaultBodyLimit::max(MAX_AVATAR_BYTES)),
         )
         .route("/app/admin/people/{id}/welcome", post(admin_person_welcome))
-        .route("/app/admin/people/{id}/delete", post(admin_person_delete))
-        .route(
-            "/app/admin/people/{id}/impersonate",
-            post(people_impersonate),
-        );
+        .route("/app/admin/people/{id}/delete", post(admin_person_delete));
     r = register_firm_matter_routes(r, "/app/lawyer");
     r = register_firm_admin_routes(r, "/app/admin");
     // Firm brand fonts — the licensed GORP Serif desktop family, served as one
@@ -403,7 +399,7 @@ fn register_firm_matter_routes(r: Router<AdminState>, prefix: &str) -> Router<Ad
             &format!("{prefix}/expunge-requests/{{id}}/deny"),
             post(crate::expunge_request_route::admin_deny),
         )
-        .route("/app/impersonation/stop", post(stop_impersonation))
+        .route("/app/view-as-client/stop", post(stop_viewing_as_dri))
         // Attorney review screen for an inbound contract review: act on
         // each finding, edit the risk summary, then approve (assemble +
         // deliver the memo) or reject. Row-scoped to the matter in the
@@ -618,12 +614,12 @@ pub(crate) fn is_lawyer_tier(session: Option<&SessionData>) -> bool {
 }
 
 fn can_change_roles(session: Option<&SessionData>) -> bool {
-    session.is_none_or(|s| s.role.is_admin_tier() && s.impersonation.is_none())
+    session.is_none_or(|s| s.role.is_admin_tier() && s.viewing_as_dri.is_none())
 }
 
 fn can_assign_role(session: Option<&SessionData>, requested: store::persons::Role) -> bool {
     session.is_none_or(|s| {
-        s.impersonation.is_none()
+        s.viewing_as_dri.is_none()
             && s.role.is_admin_tier()
             && requested.authority_rank() <= s.role.authority_rank()
     })
@@ -632,7 +628,7 @@ fn can_assign_role(session: Option<&SessionData>, requested: store::persons::Rol
 /// Project participation controls the next caller's project scope, so it is
 /// privileged membership administration rather than an ordinary lawyer write.
 fn can_manage_project_participation(session: Option<&SessionData>) -> bool {
-    session.is_some_and(|s| s.role.is_admin_tier() && s.impersonation.is_none())
+    session.is_some_and(|s| s.role.is_admin_tier() && s.viewing_as_dri.is_none())
 }
 
 /// Returns `true` for Owner and Admin. These tiers see internal DB-error
@@ -1002,90 +998,17 @@ async fn admin_person_welcome(
     Redirect::to(&format!("/app/admin/people/{id}?notice={notice}")).into_response()
 }
 
-async fn people_impersonate(
-    State(state): State<AdminState>,
-    session: Option<Extension<SessionData>>,
-    cookies: tower_cookies::Cookies,
-    Path(id): Path<Uuid>,
-) -> Response {
-    let Some(Extension(session)) = session else {
-        return (
-            StatusCode::FORBIDDEN,
-            webapp::error_pages::forbidden(webapp::error_pages::Viewer::Anonymous),
-        )
-            .into_response();
-    };
-    if !session.role.is_admin_tier() || session.impersonation.is_some() {
-        return (
-            StatusCode::FORBIDDEN,
-            webapp::error_pages::forbidden(webapp::error_pages::Viewer::SignedIn),
-        )
-            .into_response();
-    }
-    let target = match store::persons::find_by_id(&state.surreal, id).await {
-        Ok(Some(p)) => p,
-        Ok(None) => {
-            return (StatusCode::NOT_FOUND, webapp::error_pages::not_found()).into_response()
-        }
-        Err(e) => {
-            tracing::error!(error = %e, person_id = %id, "admin: load person for impersonation failed");
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                webapp::error_pages::server_error(),
-            )
-                .into_response();
-        }
-    };
-    if target.role != store::persons::Role::Client {
-        tracing::warn!(
-            person_id = %id,
-            role = target.role.as_str(),
-            "admin: blocked impersonation of non-client person",
-        );
-        return (
-            StatusCode::CONFLICT,
-            "Only client users can be impersonated.",
-        )
-            .into_response();
-    }
-
-    let mut effective = SessionData::fresh(
-        target
-            .oidc_subject
-            .clone()
-            .unwrap_or_else(|| format!("person:{}", target.id)),
-        store::persons::Role::Client,
-    );
-    effective.email = Some(target.email.clone());
-    effective.person_id = Some(target.id);
-    effective.source = session.source;
-    effective.impersonation = Some(Impersonation {
-        actor_sub: session.sub,
-        actor_email: session.email,
-        actor_person_id: session.person_id,
-        target_name: target.name,
-        target_email: target.email,
-    });
-    cookies.add(crate::oauth::session_cookie(
-        state.sessions.encode(&effective),
-        state.secure_cookies,
-    ));
-    // The actor now holds the impersonated client's session, so land them on
-    // the client matter view they are standing in.
-    Redirect::to("/app/projects").into_response()
-}
-
 /// `POST /app/projects/{project_code}/view-as-client` — let a firm member who
-/// can already open this matter inspect its client rendering. The target is the
-/// matter's first client DRI in stable participation order, never a person id
-/// supplied by the browser. Matters open with that DRI, and if a later edit has
-/// left none, the preview is unavailable rather than guessing a client.
+/// can already open this matter inspect its client rendering, read-only. The
+/// target is the matter's first client DRI in stable participation order,
+/// never a person id supplied by the browser. Matters open with that DRI, and
+/// if a later edit has left none, the preview is unavailable rather than
+/// guessing a client.
 ///
-/// This is deliberately narrower than the admin people-directory impersonation
-/// route above: it requires matter membership and can only select this matter's
-/// accountable client. It still uses the standard impersonation session so every
-/// downstream client-lens read and the exit banner retain their established
-/// behavior.
+/// The resulting session carries `viewing_as_dri`, which [`crate::policy`]'s
+/// `require_policy` middleware uses to refuse every mutating request outright
+/// (except the exit action) — the DRI view is read-only regardless of what
+/// the underlying client role would otherwise be allowed to write.
 #[allow(clippy::too_many_lines)]
 async fn project_view_as_client(
     State(state): State<AdminState>,
@@ -1096,9 +1019,9 @@ async fn project_view_as_client(
     let Some(Extension(session)) = session else {
         return not_found_response();
     };
-    // The client tier has no separate preview to enter, and an impersonating
+    // The client tier has no separate preview to enter, and a DRI-view
     // session must never nest or choose another client.
-    if session.role == store::persons::Role::Client || session.impersonation.is_some() {
+    if session.role == store::persons::Role::Client || session.viewing_as_dri.is_some() {
         return not_found_response();
     }
     let Some(project) = (match store::projects::find_by_code(&state.surreal, &project_code).await {
@@ -1191,7 +1114,7 @@ async fn project_view_as_client(
     effective.email = Some(target.email.clone());
     effective.person_id = Some(target.id);
     effective.source = session.source;
-    effective.impersonation = Some(Impersonation {
+    effective.viewing_as_dri = Some(DriView {
         actor_sub: session.sub,
         actor_email: session.email,
         actor_person_id: session.person_id,
@@ -1205,7 +1128,7 @@ async fn project_view_as_client(
     Redirect::to(&format!("/app/projects/{}", project.code)).into_response()
 }
 
-async fn stop_impersonation(
+async fn stop_viewing_as_dri(
     State(state): State<AdminState>,
     session: Option<Extension<SessionData>>,
     cookies: tower_cookies::Cookies,
@@ -1217,20 +1140,20 @@ async fn stop_impersonation(
         )
             .into_response();
     };
-    let Some(impersonation) = session.impersonation else {
+    let Some(viewing_as_dri) = session.viewing_as_dri else {
         // Nothing to stop: bounce the firm person back to their own home.
         return Redirect::to("/app/team").into_response();
     };
-    let (person_id, email, role) = match impersonation.actor_person_id {
+    let (person_id, email, role) = match viewing_as_dri.actor_person_id {
         Some(id) => match store::persons::find_by_id(&state.surreal, id).await {
             Ok(Some(actor)) => (Some(actor.id), Some(actor.email), actor.role),
             Ok(None) => (
                 None,
-                impersonation.actor_email,
+                viewing_as_dri.actor_email,
                 store::persons::Role::Client,
             ),
             Err(e) => {
-                tracing::error!(error = %e, person_id = %id, "admin: load impersonation actor failed");
+                tracing::error!(error = %e, person_id = %id, "admin: load DRI-view actor failed");
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     webapp::error_pages::server_error(),
@@ -1240,11 +1163,11 @@ async fn stop_impersonation(
         },
         None => (
             None,
-            impersonation.actor_email,
+            viewing_as_dri.actor_email,
             store::persons::Role::Client,
         ),
     };
-    let mut restored = SessionData::fresh(impersonation.actor_sub, role);
+    let mut restored = SessionData::fresh(viewing_as_dri.actor_sub, role);
     restored.email = email;
     restored.person_id = person_id;
     restored.source = session.source;
@@ -1252,7 +1175,11 @@ async fn stop_impersonation(
         state.sessions.encode(&restored),
         state.secure_cookies,
     ));
-    Redirect::to("/app/admin").into_response()
+    // Every firm tier that can start a DRI view — Clerk, Lawyer, Admin, or
+    // Owner — lands on the shared team home on exit, the same destination
+    // `oauth::post_login_landing` sends every firm tier to. `/app/admin` is
+    // Owner/Admin only and would 403 a restored Clerk or Lawyer.
+    Redirect::to("/app/team").into_response()
 }
 
 // ---- Entities ----
@@ -1996,7 +1923,7 @@ fn dri_actor(session: Option<&SessionData>) -> store::participation::DriActor {
     )
 }
 
-/// Require a non-impersonating admin before changing a project's participation
+/// Require an admin who is not in a read-only DRI view before changing a project's participation
 /// ledger. This avoids exposing the firm-wide people directory to ordinary
 /// lawyer and keeps project-scope grants with the administrative ACL owner.
 ///

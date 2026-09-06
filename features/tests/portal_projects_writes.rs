@@ -378,7 +378,7 @@ async fn session_cookie_for(world: &mut WritesWorld, email: &str) -> String {
         csrf_token: CSRF.into(),
         source: portal::session::SessionSource::Browser,
         provider: None,
-        impersonation: None,
+        viewing_as_dri: None,
         scope: None,
     };
     format!(

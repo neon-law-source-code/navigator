@@ -7,7 +7,7 @@
 //! The registry is not a database query — it is `Arc<Vec<forms::FormMeta>>` on
 //! `portal`'s router state, which `webapp` cannot see and must not depend on.
 //! So `portal` shapes it into [`GovFormRows`] and injects that as a wasm-safe
-//! request extension, the same seam `PersonId` and `Impersonating` use. The
+//! request extension, the same seam `PersonId` and `ViewingAsDri` use. The
 //! download route (`/app/forms/{code}.pdf`) is untouched and still Axum-side.
 
 use dioxus::prelude::*;
@@ -37,9 +37,9 @@ pub struct GovFormsView {
     pub tokens_href: String,
     pub rows: Vec<GovFormRow>,
     pub role: ViewerRole,
-    /// Who the viewer is acting as, when an admin is impersonating a client.
+    /// Who the viewer is acting as, when a firm member is viewing this matter as its client DRI (read-only).
     #[serde(default)]
-    pub impersonation: Option<crate::components::ImpersonationView>,
+    pub viewing_as_dri: Option<crate::components::ClientDriView>,
     /// The deploy's firm name, for the document title. Resolved from the
     /// request-scoped branding rather than written into the copy, so a
     /// white-label deploy's tab reads its own name.
@@ -61,9 +61,9 @@ pub async fn list_gov_forms() -> Result<GovFormsView, ServerFnError> {
         .map(|axum::Extension(role)| role)
         .unwrap_or_default();
 
-    let crate::components::Impersonating(impersonation) =
+    let crate::components::ViewingAsDri(viewing_as_dri) =
         dioxus_fullstack_core::FullstackContext::extract::<
-            axum::Extension<crate::components::Impersonating>,
+            axum::Extension<crate::components::ViewingAsDri>,
             _,
         >()
         .await
@@ -75,7 +75,7 @@ pub async fn list_gov_forms() -> Result<GovFormsView, ServerFnError> {
         firm_name: crate::app_chrome::firm_name_from_context().await,
         rows,
         role,
-        impersonation,
+        viewing_as_dri,
     })
 }
 
@@ -103,7 +103,7 @@ pub fn GovForms() -> Element {
         document::Title { "{view.firm_name} | Blank government forms" }
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
         document::Stylesheet { href: "{view.tokens_href}" }
-        crate::components::ImpersonationBanner { view: view.impersonation.clone() }
+        crate::components::ClientDriViewBanner { view: view.viewing_as_dri.clone() }
         nav { class: "lawyer-nav",
             a { class: "nav-link", href: "/app/projects", "Projects" }
             a { class: "nav-link", href: "/auth/logout", "Sign out" }

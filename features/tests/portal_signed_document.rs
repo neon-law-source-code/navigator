@@ -275,7 +275,7 @@ async fn open_detail(world: &mut SignedDocumentWorld, email: String, project_nam
         csrf_token: "test-csrf".into(),
         source: portal::session::SessionSource::Browser,
         provider: None,
-        impersonation: None,
+        viewing_as_dri: None,
         scope: None,
     };
     let cookie = format!(

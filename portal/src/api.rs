@@ -593,10 +593,11 @@ where
 }
 
 /// Whether the caller may set another person's role: Owner/Admin, and not
-/// currently impersonating (an impersonating privileged caller acts with the
-/// impersonated client's reach). Mirrors the lawyer form's role lock.
+/// currently in a read-only client-DRI view (that session already acts with
+/// the DRI's reach, and every mutation from it is refused regardless).
+/// Mirrors the lawyer form's role lock.
 fn may_change_roles(session: &SessionData) -> bool {
-    session.role.is_admin_tier() && session.impersonation.is_none()
+    session.role.is_admin_tier() && session.viewing_as_dri.is_none()
 }
 
 /// Render a command failure as the typed JSON [`ApiError`] with its

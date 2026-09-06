@@ -101,7 +101,7 @@ mod tests {
             csrf_token: String::new(),
             source: crate::session::SessionSource::Browser,
             provider: None,
-            impersonation: None,
+            viewing_as_dri: None,
             scope: None,
         }
     }

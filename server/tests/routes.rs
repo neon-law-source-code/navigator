@@ -1291,8 +1291,8 @@ async fn lawyer_people_mirror_paths_are_gone() {
         "the surviving people surface is the admin console's: {html}",
     );
     assert!(
-        html.contains("/app/admin/people/") && html.contains("/impersonate"),
-        "the admin surface keeps its per-row Edit / Delete / Impersonate actions: {html}",
+        html.contains("/app/admin/people/") && html.contains("/edit"),
+        "the admin surface keeps its per-row Edit / Delete actions: {html}",
     );
 }
 
@@ -10146,136 +10146,11 @@ async fn admin_people_page_renders_directory() {
     assert!(body.contains("libra@example.com"));
 }
 
-#[tokio::test]
-#[allow(clippy::too_many_lines)]
-async fn admin_can_impersonate_client_and_exit_from_banner() {
-    let (state, surreal) = state_with_engines().await;
-    let admin = store::persons::create(
-        &surreal,
-        &store::persons::NewPerson::with_role(
-            "Admin",
-            "admin@neonlaw.com",
-            store::persons::Role::Admin,
-        ),
-    )
-    .await
-    .unwrap();
-    let client = store::persons::create(
-        &surreal,
-        &store::persons::NewPerson::with_role(
-            "Libra",
-            "libra@example.com",
-            store::persons::Role::Client,
-        ),
-    )
-    .await
-    .unwrap();
-    let (admin_cookie, admin_csrf) = session_cookie_and_csrf_for_person(&admin);
-    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
-
-    let start = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri(format!("/app/admin/people/{}/impersonate", client.id))
-                .header(header::COOKIE, admin_cookie)
-                .header("content-type", "application/x-www-form-urlencoded")
-                .body(Body::from(format!("_csrf={admin_csrf}")))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert!(matches!(
-        start.status(),
-        StatusCode::SEE_OTHER | StatusCode::TEMPORARY_REDIRECT
-    ));
-    let impersonated_cookie = session_cookie_pair(&start);
-    let impersonated = decode_session_cookie_pair(&impersonated_cookie);
-    assert_eq!(impersonated.role, store::persons::Role::Client);
-    assert_eq!(impersonated.person_id, Some(client.id));
-    assert_eq!(
-        impersonated
-            .impersonation
-            .as_ref()
-            .map(|i| i.actor_person_id),
-        Some(Some(admin.id)),
-    );
-
-    let forms = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                // The impersonation banner rides the authenticated app chrome
-                // rather than a public page; the migrated forms index carries it
-                // from the same session state.
-                .uri("/app/forms")
-                .header(header::COOKIE, &impersonated_cookie)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    let forms_body = body_string(forms).await;
-    assert!(forms_body.contains("Impersonating Libra"));
-    assert!(forms_body.contains("libra@example.com"));
-    assert!(forms_body.contains("/app/impersonation/stop"));
-    assert!(forms_body.contains("End impersonation"));
-
-    // The banner must not depend on which pages happen to have migrated: the
-    // Dioxus client dashboard carries it too, from the same session state.
-    let dioxus_page = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri("/app/projects")
-                .header(header::COOKIE, &impersonated_cookie)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    let dioxus_body = body_string(dioxus_page).await;
-    assert!(
-        dioxus_body.contains("Impersonating Libra"),
-        "the Dioxus dashboard must name who the admin is acting as: {dioxus_body}",
-    );
-    assert!(
-        dioxus_body.contains("/app/impersonation/stop"),
-        "…and offer the way out: {dioxus_body}",
-    );
-    assert!(
-        dioxus_body.contains("End impersonation"),
-        "…with the same labelled control: {dioxus_body}",
-    );
-
-    let stop = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/app/impersonation/stop")
-                .header(header::COOKIE, impersonated_cookie)
-                .header("content-type", "application/x-www-form-urlencoded")
-                .body(Body::from(format!("_csrf={}", impersonated.csrf_token)))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert!(matches!(
-        stop.status(),
-        StatusCode::SEE_OTHER | StatusCode::TEMPORARY_REDIRECT
-    ));
-    let restored_cookie = session_cookie_pair(&stop);
-    let restored = decode_session_cookie_pair(&restored_cookie);
-    assert_eq!(restored.role, store::persons::Role::Admin);
-    assert_eq!(restored.person_id, Some(admin.id));
-    assert!(restored.impersonation.is_none());
-}
-
 /// The matter workbench exposes the client lens to every firm tier, but only
 /// after the handler has verified that the caller already belongs to this
-/// matter. The preview is a real client session (so downstream reads use their
-/// ordinary client guards) and the exit banner can restore the precise actor.
+/// matter. The preview is a real client session for reads (so downstream reads
+/// use their ordinary client guards), but every mutation is refused outright —
+/// the view is read-only — and the exit banner can restore the precise actor.
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn every_firm_tier_can_view_an_assigned_matter_as_its_client() {
@@ -10420,18 +10295,19 @@ async fn every_firm_tier_can_view_an_assigned_matter_as_its_client() {
         assert_eq!(effective.person_id, Some(client.id), "{role:?}");
         assert_eq!(
             effective
-                .impersonation
+                .viewing_as_dri
                 .as_ref()
-                .map(|impersonation| impersonation.actor_person_id),
+                .map(|viewing_as_dri| viewing_as_dri.actor_person_id),
             Some(Some(actor.id)),
             "{role:?}"
         );
+        let effective_cookie = session_cookie_pair(&preview);
         let client_detail = app
             .clone()
             .oneshot(
                 Request::builder()
                     .uri(format!("/app/projects/{}", project.code))
-                    .header(header::COOKIE, session_cookie_pair(&preview))
+                    .header(header::COOKIE, &effective_cookie)
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -10440,25 +10316,72 @@ async fn every_firm_tier_can_view_an_assigned_matter_as_its_client() {
         assert_eq!(client_detail.status(), StatusCode::OK, "{role:?}");
         let client_detail_body = body_string(client_detail).await;
         assert!(
-            client_detail_body.contains("Impersonating Preview client"),
+            client_detail_body.contains("Viewing as Preview client"),
             "{role:?}: {client_detail_body}"
         );
         assert!(
-            client_detail_body.contains("End impersonation"),
+            client_detail_body.contains("Stop viewing as client"),
             "{role:?}: {client_detail_body}"
         );
+
+        // The view is strictly read-only: an ordinary client-writable action
+        // (posting to the matter conversation) is refused outright, even
+        // though the effective session's role is a real, otherwise-writable
+        // `Client`.
+        let write_attempt = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!(
+                        "/app/projects/{}/conversation/messages",
+                        project.code
+                    ))
+                    .header(header::COOKIE, &effective_cookie)
+                    .header("content-type", "application/x-www-form-urlencoded")
+                    .body(Body::from(format!(
+                        "_csrf={}&body=Hello",
+                        effective.csrf_token
+                    )))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            write_attempt.status(),
+            StatusCode::FORBIDDEN,
+            "{role:?}: a read-only DRI view must refuse every mutation"
+        );
+
+        // Nor may the view be nested: a second `view-as-client` POST from an
+        // active DRI-view session is itself a mutation, and is refused the
+        // same way.
+        let second_view = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/app/projects/{}/view-as-client", project.code))
+                    .header(header::COOKIE, &effective_cookie)
+                    .header("content-type", "application/x-www-form-urlencoded")
+                    .body(Body::from(format!("_csrf={}", effective.csrf_token)))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(second_view.status(), StatusCode::FORBIDDEN, "{role:?}");
     }
 }
 
 #[tokio::test]
-async fn impersonation_exit_bypasses_policy_for_active_impersonation() {
+async fn view_as_client_stop_bypasses_policy_for_an_active_dri_view() {
     let (state, surreal) = state_with_engines().await;
-    let admin = store::persons::create(
+    let lawyer = store::persons::create(
         &surreal,
         &store::persons::NewPerson::with_role(
-            "Admin",
-            "admin@neonlaw.com",
-            store::persons::Role::Admin,
+            "Lawyer",
+            "lawyer@neonlaw.com",
+            store::persons::Role::Lawyer,
         ),
     )
     .await
@@ -10473,7 +10396,34 @@ async fn impersonation_exit_bypasses_policy_for_active_impersonation() {
     )
     .await
     .unwrap();
-    let (admin_cookie, admin_csrf) = session_cookie_and_csrf_for_person(&admin);
+    let entity_id = store::test_support::seed_entity(&surreal).await;
+    let project = store::projects::create(
+        &surreal,
+        &store::projects::NewProject {
+            code: format!("dri-view-stop-{}", uuid::Uuid::now_v7()),
+            name: "DRI view stop".to_string(),
+            status: "open".into(),
+            entity_id,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    store::projects::add_participation(&surreal, project.id, client.id, "client")
+        .await
+        .unwrap();
+    store::projects::designate_dri_in_surreal(
+        &surreal,
+        project.id,
+        client.id,
+        store::projects::DriSide::Client,
+    )
+    .await
+    .unwrap();
+    store::projects::add_participation(&surreal, project.id, lawyer.id, "attorney")
+        .await
+        .unwrap();
+    let (lawyer_cookie, lawyer_csrf) = session_cookie_and_csrf_for_person(&lawyer);
     let start_app = server::neon_router(
         state.clone(),
         std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
@@ -10483,10 +10433,10 @@ async fn impersonation_exit_bypasses_policy_for_active_impersonation() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/app/admin/people/{}/impersonate", client.id))
-                .header(header::COOKIE, admin_cookie)
+                .uri(format!("/app/projects/{}/view-as-client", project.code))
+                .header(header::COOKIE, lawyer_cookie)
                 .header("content-type", "application/x-www-form-urlencoded")
-                .body(Body::from(format!("_csrf={admin_csrf}")))
+                .body(Body::from(format!("_csrf={lawyer_csrf}")))
                 .unwrap(),
         )
         .await
@@ -10495,9 +10445,9 @@ async fn impersonation_exit_bypasses_policy_for_active_impersonation() {
         start.status(),
         StatusCode::SEE_OTHER | StatusCode::TEMPORARY_REDIRECT
     ));
-    let impersonated_cookie = session_cookie_pair(&start);
-    let impersonated = decode_session_cookie_pair(&impersonated_cookie);
-    assert!(impersonated.impersonation.is_some());
+    let viewing_cookie = session_cookie_pair(&start);
+    let viewing = decode_session_cookie_pair(&viewing_cookie);
+    assert!(viewing.viewing_as_dri.is_some());
 
     let deny_app = server::neon_router(
         AppState {
@@ -10511,10 +10461,10 @@ async fn impersonation_exit_bypasses_policy_for_active_impersonation() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/app/impersonation/stop")
-                .header(header::COOKIE, impersonated_cookie)
+                .uri("/app/view-as-client/stop")
+                .header(header::COOKIE, viewing_cookie)
                 .header("content-type", "application/x-www-form-urlencoded")
-                .body(Body::from(format!("_csrf={}", impersonated.csrf_token)))
+                .body(Body::from(format!("_csrf={}", viewing.csrf_token)))
                 .unwrap(),
         )
         .await
@@ -10524,257 +10474,9 @@ async fn impersonation_exit_bypasses_policy_for_active_impersonation() {
         StatusCode::SEE_OTHER | StatusCode::TEMPORARY_REDIRECT
     ));
     let restored = decode_session_cookie_pair(&session_cookie_pair(&stop));
-    assert_eq!(restored.role, store::persons::Role::Admin);
-    assert_eq!(restored.person_id, Some(admin.id));
-    assert!(restored.impersonation.is_none());
-}
-
-#[tokio::test]
-async fn admin_cannot_impersonate_lawyer_person() {
-    let (state, surreal) = state_with_engines().await;
-    let admin = store::persons::create(
-        &surreal,
-        &store::persons::NewPerson::with_role(
-            "Admin",
-            "admin@neonlaw.com",
-            store::persons::Role::Admin,
-        ),
-    )
-    .await
-    .unwrap();
-    let lawyer = store::persons::create(
-        &surreal,
-        &store::persons::NewPerson::with_role(
-            "Lawyer",
-            "lawyer@neonlaw.com",
-            store::persons::Role::Lawyer,
-        ),
-    )
-    .await
-    .unwrap();
-    let (cookie, csrf) = session_cookie_and_csrf_for_person(&admin);
-    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
-
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri(format!("/app/admin/people/{}/impersonate", lawyer.id))
-                .header(header::COOKIE, cookie)
-                .header("content-type", "application/x-www-form-urlencoded")
-                .body(Body::from(format!("_csrf={csrf}")))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::CONFLICT);
-}
-
-#[tokio::test]
-async fn admin_cannot_impersonate_admin_person() {
-    let (state, surreal) = state_with_engines().await;
-    let admin = store::persons::create(
-        &surreal,
-        &store::persons::NewPerson::with_role(
-            "Admin",
-            "admin@neonlaw.com",
-            store::persons::Role::Admin,
-        ),
-    )
-    .await
-    .unwrap();
-    let other_admin = store::persons::create(
-        &surreal,
-        &store::persons::NewPerson::with_role(
-            "Other Admin",
-            "other-admin@neonlaw.com",
-            store::persons::Role::Admin,
-        ),
-    )
-    .await
-    .unwrap();
-    let (cookie, csrf) = session_cookie_and_csrf_for_person(&admin);
-    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
-
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri(format!("/app/admin/people/{}/impersonate", other_admin.id))
-                .header(header::COOKIE, cookie)
-                .header("content-type", "application/x-www-form-urlencoded")
-                .body(Body::from(format!("_csrf={csrf}")))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::CONFLICT);
-    let body = body_string(resp).await;
-    assert!(body.contains("Only client users can be impersonated."));
-}
-
-#[tokio::test]
-async fn lawyer_cannot_impersonate_client_person() {
-    let (state, surreal) = state_with_engines().await;
-    let lawyer = store::persons::create(
-        &surreal,
-        &store::persons::NewPerson::with_role(
-            "Lawyer",
-            "lawyer@neonlaw.com",
-            store::persons::Role::Lawyer,
-        ),
-    )
-    .await
-    .unwrap();
-    let client = store::persons::create(
-        &surreal,
-        &store::persons::NewPerson::with_role(
-            "Libra",
-            "libra@example.com",
-            store::persons::Role::Client,
-        ),
-    )
-    .await
-    .unwrap();
-    let (cookie, csrf) = session_cookie_and_csrf_for_person(&lawyer);
-    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
-
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri(format!("/app/admin/people/{}/impersonate", client.id))
-                .header(header::COOKIE, cookie)
-                .header("content-type", "application/x-www-form-urlencoded")
-                .body(Body::from(format!("_csrf={csrf}")))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
-}
-
-#[tokio::test]
-async fn impersonating_admin_cannot_start_second_impersonation() {
-    let (state, surreal) = state_with_engines().await;
-    let admin = store::persons::create(
-        &surreal,
-        &store::persons::NewPerson::with_role(
-            "Admin",
-            "admin@neonlaw.com",
-            store::persons::Role::Admin,
-        ),
-    )
-    .await
-    .unwrap();
-    let client = store::persons::create(
-        &surreal,
-        &store::persons::NewPerson::with_role(
-            "Libra",
-            "libra@example.com",
-            store::persons::Role::Client,
-        ),
-    )
-    .await
-    .unwrap();
-    let other_client = store::persons::create(
-        &surreal,
-        &store::persons::NewPerson::with_role(
-            "Taurus",
-            "taurus@example.com",
-            store::persons::Role::Client,
-        ),
-    )
-    .await
-    .unwrap();
-    let (admin_cookie, admin_csrf) = session_cookie_and_csrf_for_person(&admin);
-    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
-
-    let start = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri(format!("/app/admin/people/{}/impersonate", client.id))
-                .header(header::COOKIE, admin_cookie)
-                .header("content-type", "application/x-www-form-urlencoded")
-                .body(Body::from(format!("_csrf={admin_csrf}")))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    let impersonated_cookie = session_cookie_pair(&start);
-    let impersonated = decode_session_cookie_pair(&impersonated_cookie);
-
-    let second = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri(format!("/app/admin/people/{}/impersonate", other_client.id))
-                .header(header::COOKIE, impersonated_cookie)
-                .header("content-type", "application/x-www-form-urlencoded")
-                .body(Body::from(format!("_csrf={}", impersonated.csrf_token)))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(second.status(), StatusCode::FORBIDDEN);
-}
-
-#[tokio::test]
-async fn admin_people_index_shows_impersonate_only_for_client_rows() {
-    let (state, surreal) = state_with_engines().await;
-    let owner = store::persons::create(
-        &surreal,
-        &store::persons::NewPerson::with_role(
-            "Owner",
-            "owner@neonlaw.com",
-            store::persons::Role::Owner,
-        ),
-    )
-    .await
-    .unwrap();
-    let client = store::persons::create(
-        &surreal,
-        &store::persons::NewPerson::with_role(
-            "Libra",
-            "libra@example.com",
-            store::persons::Role::Client,
-        ),
-    )
-    .await
-    .unwrap();
-    let lawyer = store::persons::create(
-        &surreal,
-        &store::persons::NewPerson::with_role(
-            "Lawyer",
-            "lawyer@neonlaw.com",
-            store::persons::Role::Lawyer,
-        ),
-    )
-    .await
-    .unwrap();
-    let (cookie, _) = session_cookie_and_csrf_for_person(&owner);
-    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
-
-    // Impersonation lives on the admin console surface (`/app/admin/people`),
-    // not the de-scoped lawyer workbench list. Owner lists every person;
-    // Admin without firm membership does not.
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .uri("/app/admin/people")
-                .header(header::COOKIE, cookie)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body = body_string(resp).await;
-    assert!(body.contains(&format!("/app/admin/people/{}/impersonate", client.id)));
-    assert!(!body.contains(&format!("/app/admin/people/{}/impersonate", lawyer.id)));
-    assert!(!body.contains(&format!("/app/admin/people/{}/impersonate", owner.id)));
+    assert_eq!(restored.role, store::persons::Role::Lawyer);
+    assert_eq!(restored.person_id, Some(lawyer.id));
+    assert!(restored.viewing_as_dri.is_none());
 }
 
 #[tokio::test]
@@ -16204,7 +15906,7 @@ async fn migrated_dioxus_forms_pass_structural_a11y() {
     let cookie = admin_session_cookie_with_person();
     let owner_cookie = session_cookie_for_role(store::persons::Role::Owner);
 
-    // The people directory's only `<form>`s are per-row Delete / Impersonate.
+    // The people directory's only `<form>`s are the per-row Delete forms.
     // Admin's directory is firm-scoped and empty without a `person_firm_role`
     // row, so the listing is exercised as Owner. Create and person pages still
     // render through the shared `webapp::FormCard` for Admin.

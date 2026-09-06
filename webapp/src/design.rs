@@ -31,16 +31,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::components::{
     wire_runs, Accordion, AppFooter, AppLogo, AppNavbar, Avatar, BackBreadcrumb, Card, CatalogHero,
-    Choice, ChoiceGroup, ChoiceGroupOption, CodeBlock, Column, ConfirmDelete, DataTable,
-    DayRateBadge, ExternalLink, Field, FooterAttorney, FooterBarLicense, FooterNavLink,
-    FooterOffice, FormCard, GitHubStars, Hero, HeroAlign, HeroLevel, Icon, IconName,
-    ImpersonationBanner, ImpersonationView, LawyerPortalBreadcrumb, LegalBlueprintDisclaimer,
-    NavigatorDestination, NavigatorFooter, NavigatorFooterLink, NavigatorNavbar, NavigatorShell,
-    Pagination, PeopleListInputs, PersonChoice, PersonPicker, PricingCard, PricingSection,
-    Progress, PublicShell, QuestionStage, RowActions, RunParagraph, SampleMattersBanner,
-    SiteFooterLegal, SiteHeader, SiteNavLink, SocialMeta, SortState, Stage, StageWidth, StepMeta,
-    Stepper, StepperPanel, TestimonialCard, TestimonialSection, Toast, ToastTone,
-    THEME_STYLESHEET_HREF,
+    Choice, ChoiceGroup, ChoiceGroupOption, ClientDriView, ClientDriViewBanner, CodeBlock, Column,
+    ConfirmDelete, DataTable, DayRateBadge, ExternalLink, Field, FooterAttorney, FooterBarLicense,
+    FooterNavLink, FooterOffice, FormCard, GitHubStars, Hero, HeroAlign, HeroLevel, Icon, IconName,
+    LawyerPortalBreadcrumb, LegalBlueprintDisclaimer, NavigatorDestination, NavigatorFooter,
+    NavigatorFooterLink, NavigatorNavbar, NavigatorShell, Pagination, PeopleListInputs,
+    PersonChoice, PersonPicker, PricingCard, PricingSection, Progress, PublicShell, QuestionStage,
+    RowActions, RunParagraph, SampleMattersBanner, SiteFooterLegal, SiteHeader, SiteNavLink,
+    SocialMeta, SortState, Stage, StageWidth, StepMeta, Stepper, StepperPanel, TestimonialCard,
+    TestimonialSection, Toast, ToastTone, THEME_STYLESHEET_HREF,
 };
 // The vendor marks come from their own module rather than the theme root: they
 // are the one component whose colours are a third party's rather than the
@@ -440,7 +439,7 @@ pub fn DesignGallery() -> Element {
             TestimonialShowcase {}
             AvatarShowcase {}
             DisclaimerShowcase {}
-            ImpersonationShowcase {}
+            ClientDriViewShowcase {}
             SampleMattersShowcase {}
             CopyRunsShowcase {}
             ResourceMarkShowcase {}
@@ -914,26 +913,27 @@ fn PublicShellShowcase() -> Element {
     }
 }
 
-/// The impersonation banner an admin sees on every page while acting as a
-/// client. Shown with a live view because the component renders nothing at all
-/// for `None`, and a component that renders nothing is a component the
-/// accessibility gate cannot audit.
+/// The read-only client-DRI-view banner a firm member sees on every page while
+/// viewing a matter as its client DRI. Shown with a live view because the
+/// component renders nothing at all for `None`, and a component that renders
+/// nothing is a component the accessibility gate cannot audit.
 ///
 /// The stop control is a real `POST` form. The demo carries no CSRF token, so
 /// the hidden field is absent exactly as it is on a middleware-free path.
 #[component]
-fn ImpersonationShowcase() -> Element {
+fn ClientDriViewShowcase() -> Element {
     rsx! {
         section {
-            h2 { "Impersonation banner" }
+            h2 { "Client DRI view banner" }
             p {
-                "When an admin acts as a client, every page says so and offers the way \
-                 out. It is a "
+                "When a firm member views a matter as its client DRI, every page says so \
+                 and offers the way out. The view is strictly read-only — every mutation \
+                 is refused while it is active. It is a "
                 code { "role=\"status\"" }
                 " region — ambient state, announced without interrupting."
             }
-            ImpersonationBanner {
-                view: ImpersonationView {
+            ClientDriViewBanner {
+                view: ClientDriView {
                     target_name: "Virgo Ramirez".to_string(),
                     target_email: "virgo@example.com".to_string(),
                     csrf_token: String::new(),

@@ -78,7 +78,7 @@ pub fn app_destinations(role: ViewerRole) -> Vec<AppNavLink> {
 ///
 /// `portal` injects this on the request task, where the brand `task_local` is
 /// live, and a page's `#[server]` loader reads it back — the same seam
-/// [`crate::components::Impersonating`] and [`crate::csrf::CsrfToken`] use. A
+/// [`crate::components::ViewingAsDri`] and [`crate::csrf::CsrfToken`] use. A
 /// distinct type rather than a bare `Option<AppLogo>` so no other injector
 /// can collide with it.
 ///

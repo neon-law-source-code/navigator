@@ -11,8 +11,8 @@
 //! welcome-email action (a native `<details>` disclosure whose confirm button
 //! `POST`s the send; the surface confirmed through HTMX's `hx-confirm`,
 //! which this no-JS form cannot use under its strict CSP, and the disclosure
-//! stays on the page so unsaved edits are not discarded), the Xero contact link,
-//! and (for a client) the native impersonate form.
+//! stays on the page so unsaved edits are not discarded), and the Xero contact
+//! link.
 //!
 //! The read-only legal-name parts and a locked role select disable rather than
 //! submit. A caller viewing a record that outranks them (`read_only`) gets the
@@ -101,8 +101,6 @@ pub struct PersonShowView {
     /// The prefilled fields; `None` when the id resolves to no person (a 404).
     pub fields: Option<PersonFields>,
     pub edit_lock: EditLock,
-    /// This person can be impersonated — only a `client` record.
-    pub can_impersonate: bool,
     /// The Xero contact id when synced (an external link); `None` renders the
     /// "not synced yet" note.
     pub xero_contact_id: Option<String>,
@@ -229,8 +227,6 @@ async fn load_person_show(role: ViewerRole) -> Result<PersonShowView, ServerFnEr
 
     let notice = flash_notice(&query, &p.email);
 
-    // Only a client can be impersonated.
-    let can_impersonate = p.role == store::persons::Role::Client;
     // The authority-rank lock takes priority: a caller viewing a
     // higher-ranked record can't touch it at all, even if that record also
     // happens to be the bootstrap Owner. Only when ranks are equal (an Owner
@@ -264,7 +260,6 @@ async fn load_person_show(role: ViewerRole) -> Result<PersonShowView, ServerFnEr
                 .then(|| format!("{DETAIL_PATH}/{id}/avatar")),
         }),
         edit_lock,
-        can_impersonate,
         xero_contact_id: p.xero_contact_id,
         notice,
         csrf_token,
@@ -387,12 +382,10 @@ pub fn AdminPersonShow() -> Element {
 }
 
 /// The per-record actions panel below the edit form: the welcome-email
-/// confirmation disclosure, the Xero contact link, and — for a client — the
-/// impersonate form. `welcome_recipient` is the person's email, named in the
-/// confirmation prompt.
+/// confirmation disclosure and the Xero contact link. `welcome_recipient` is
+/// the person's email, named in the confirmation prompt.
 fn person_actions(view: &PersonShowView, welcome_recipient: &str) -> Element {
     let welcome_action = format!("{DETAIL_PATH}/{}/welcome", view.id);
-    let impersonate_action = format!("{DETAIL_PATH}/{}/impersonate", view.id);
     let csrf_token = view.csrf_token.clone();
     let xero_contact_id = view.xero_contact_id.clone();
     rsx! {
@@ -432,13 +425,6 @@ fn person_actions(view: &PersonShowView, welcome_recipient: &str) -> Element {
                         }
                     },
                 }
-                if view.can_impersonate {
-                    form { method: "post", action: impersonate_action,
-                        "aria-label": "Impersonate client",
-                        input { r#type: "hidden", name: "_csrf", value: "{csrf_token}" }
-                        button { class: "nav-btn nav-btn--secondary", r#type: "submit", "Impersonate client" }
-                    }
-                }
             }
         }
     }
@@ -477,7 +463,7 @@ fn avatar_upload_card(view: &PersonShowView, fields: &PersonFields) -> Element {
 
 /// Render the resolved person show/edit page: the prefilled edit form posting to
 /// the native `POST /app/admin/people/{id}` update route, then the per-record
-/// actions (welcome email, Xero link, and — for a client — impersonate).
+/// actions (welcome email and the Xero link).
 fn render_person_show(resource: &Resource<Result<PersonShowView, ServerFnError>>) -> Element {
     let view = match &*resource.read() {
         Some(Ok(view)) => view.clone(),

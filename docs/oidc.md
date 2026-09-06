@@ -362,28 +362,31 @@ decision semantics (admin bypass, lawyer-tier writes, project-scoped reads), see
 `persons.role` was at callback time, so a user demoted to `client` in the database is denied at their next login — no
 IdP coordination required.
 
-## Admin client impersonation
+## Read-only client-DRI view
 
-Navigator's admin impersonation is modeled after OAuth 2.0 Token Exchange's actor/subject split, not after IdP-side role
-mapping. During impersonation, the browser's signed `SessionData` changes its effective top-level identity to the target
-client person (`sub`, `email`, `person_id`, `role = client`) and carries an `impersonation` actor block with the admin
-who initiated it. That mirrors the RFC 8693 shape where the token's top-level subject is the represented user and the
-`act` claim identifies the current actor.
+Navigator's client-DRI view is modeled after OAuth 2.0 Token Exchange's actor/subject split, not after IdP-side role
+mapping. While viewing, the browser's signed `SessionData` changes its effective top-level identity to the matter's
+client DRI (`sub`, `email`, `person_id`, `role = client`) and carries a `viewing_as_dri` actor block with the firm
+member who started the view. That mirrors the RFC 8693 shape where the token's top-level subject is the represented user
+and the `act` claim identifies the current actor.
 
 The practical rules are:
 
-1. Only an `admin` session may start impersonation.
-2. The target must be a `client` person. Owner and Admin cannot impersonate Clerk, Lawyer, Admin, or Owner.
-3. Embedded Rego and route-layer project visibility evaluate the effective client session, so portal reads use the same
+1. Only a firm member who already belongs to the matter (Clerk, Lawyer, or a matter's lawyer DRI) may start the view,
+   from that matter's own workbench page — there is no admin console control that lets one person view as an arbitrary
+   client. The target is always the matter's client DRI, resolved server-side; the browser never supplies a target.
+2. Embedded Rego and route-layer project visibility evaluate the effective client session, so portal reads use the same
    client ACLs as a real client login.
-4. Every shared-layout page renders a persistent impersonation banner with the target name/email and a POST-only exit
-   control.
-5. Exiting impersonation reloads the admin actor's `persons` row before restoring the session, so a demotion during an
-   impersonation window is honored immediately.
+3. Every mutating request — every method but `GET`/`HEAD`/`OPTIONS` — is refused outright while `viewing_as_dri` is set,
+   ahead of the ordinary Rego decision, with the single exception of the exit action. The view is read-only regardless
+   of what the underlying client role would otherwise be allowed to write.
+4. Every shared-layout page renders a persistent banner naming the DRI being viewed and a POST-only exit control.
+5. Exiting the view reloads the firm member's `persons` row before restoring the session, so a demotion during the view
+   is honored immediately.
 
-This is still application-session impersonation, not a Rauthy-specific feature. Rauthy remains a KIND-only identity
-provider and production may use Google OIDC; both only need to provide the login identity. The DB-owned `persons.role`
-and signed Navigator session own the impersonation state.
+This is still application-session state, not a Rauthy-specific feature. Rauthy remains a KIND-only identity provider and
+production may use Google OIDC; both only need to provide the login identity. The DB-owned `persons.role` and signed
+Navigator session own the view state.
 
 ## Verified end-to-end
 

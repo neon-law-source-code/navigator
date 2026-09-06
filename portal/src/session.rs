@@ -67,13 +67,14 @@ pub struct SeedScope {
     pub project_code: String,
 }
 
-/// Original admin actor retained while the session acts as a client.
+/// Original viewer actor retained while the session is scoped to a
+/// project's client DRI in read-only view.
 ///
 /// This mirrors OAuth token-exchange actor semantics: authorization checks
 /// see the effective top-level subject, while the application can still
-/// identify the admin who initiated the impersonation.
+/// identify the person who started the DRI view.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Impersonation {
+pub struct DriView {
     pub actor_sub: String,
     #[serde(default)]
     pub actor_email: Option<String>,
@@ -124,12 +125,13 @@ pub struct SessionData {
     /// decoding — they simply fall back to the primary provider.
     #[serde(default)]
     pub provider: Option<String>,
-    /// Present only when an admin has switched the browser session into a
-    /// client lens. The session's `sub`/`email`/`person_id`/`role` are the
-    /// effective client; this field preserves the actor for the banner and
-    /// for restoring the admin session.
+    /// Present only when the browser session has been switched into a
+    /// read-only view of a project's client DRI. The session's
+    /// `sub`/`email`/`person_id`/`role` are the effective client, but every
+    /// mutating request is refused while this is set; this field preserves
+    /// the actor for the banner and for restoring the original session.
     #[serde(default)]
-    pub impersonation: Option<Impersonation>,
+    pub viewing_as_dri: Option<DriView>,
     /// A CI-minted session's write scope. `None` for every interactive login and
     /// every session minted before this field existed — an unrestricted session,
     /// same as today.
@@ -156,7 +158,7 @@ impl SessionData {
             csrf_token: random_token_32(),
             source: SessionSource::Browser,
             provider: None,
-            impersonation: None,
+            viewing_as_dri: None,
             scope: None,
         }
     }

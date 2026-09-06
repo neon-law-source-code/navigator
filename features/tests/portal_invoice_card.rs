@@ -194,7 +194,7 @@ async fn open_detail(world: &mut CardWorld, email: String, project_name: String)
         csrf_token: "test-csrf".into(),
         source: portal::session::SessionSource::Browser,
         provider: None,
-        impersonation: None,
+        viewing_as_dri: None,
         scope: None,
     };
     let cookie = format!(

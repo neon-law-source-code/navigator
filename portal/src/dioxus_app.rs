@@ -573,31 +573,31 @@ async fn inject_pending_client_intake(
     next.run(req).await
 }
 
-/// Inject the session's impersonation state as the wasm-safe
-/// [`webapp::components::ImpersonationView`] request extension, so a Dioxus page
-/// can render the banner that says who the viewer is acting as and offer the way
-/// out. `SessionData` lives in `portal` and `webapp` cannot see it, so the
-/// already-decided values cross as their own type — a component never infers
-/// that a session is impersonating.
+/// Inject the session's read-only client-DRI-view state as the wasm-safe
+/// [`webapp::components::ClientDriView`] request extension, so a Dioxus page
+/// can render the banner that says who the viewer is viewing the app as and
+/// offer the way out. `SessionData` lives in `portal` and `webapp` cannot see
+/// it, so the already-decided values cross as their own type — a component
+/// never infers that a session is in this view.
 ///
 /// The extension is always inserted; `None` is the ordinary case and renders no
 /// banner.
-async fn inject_impersonation(mut req: Request, next: Next) -> Response {
+async fn inject_dri_view(mut req: Request, next: Next) -> Response {
     let view = req
         .extensions()
         .get::<crate::session::SessionData>()
         .and_then(|session| {
             session
-                .impersonation
+                .viewing_as_dri
                 .as_ref()
-                .map(|i| webapp::components::ImpersonationView {
+                .map(|i| webapp::components::ClientDriView {
                     target_name: i.target_name.clone(),
                     target_email: i.target_email.clone(),
                     csrf_token: session.csrf_token.clone(),
                 })
         });
     req.extensions_mut()
-        .insert(webapp::components::Impersonating(view));
+        .insert(webapp::components::ViewingAsDri(view));
     next.run(req).await
 }
 
@@ -815,8 +815,8 @@ async fn reject_unadvertised_projects_sort(request: Request, next: Next) -> Resp
 ///
 /// It carries the union of what the two former mounts needed: the sort
 /// pre-handler (the `400` contract the sortable firm directory advertises), the
-/// injected `person_id` (to scope the visible matters), and impersonation, on
-/// top of the auth + embedded Rego policy gate and nonce CSP.
+/// injected `person_id` (to scope the visible matters), and the client-DRI-view
+/// banner, on top of the auth + embedded Rego policy gate and nonce CSP.
 ///
 /// The render adapts to the caller's tier (a client sees their own matters, a
 /// firm tier the workbench), so the retired `/portal` client landing folded into
@@ -840,7 +840,7 @@ pub fn projects_router(
             .layer(from_fn(inject_viewer_role))
             .layer(from_fn(inject_app_brand_mark))
             .layer(from_fn(inject_person_id))
-            .layer(from_fn(inject_impersonation))
+            .layer(from_fn(inject_dri_view))
             .layer(from_fn(dioxus_document_head))
             .layer(from_fn(reject_unadvertised_projects_sort))
     };
@@ -888,7 +888,7 @@ pub fn lawyer_dashboard_router(
                 .layer(from_fn(inject_viewer_role))
                 .layer(from_fn(inject_app_brand_mark))
                 .layer(from_fn(inject_person_id))
-                .layer(from_fn(inject_impersonation))
+                .layer(from_fn(inject_dri_view))
                 .layer(from_fn(dioxus_document_head)),
         )
         .with_state(FullstackState::new(
@@ -1041,7 +1041,7 @@ pub fn app_forms_router(
             get(render_handler)
                 .layer(from_fn(inject_viewer_role))
                 .layer(from_fn(inject_app_brand_mark))
-                .layer(from_fn(inject_impersonation))
+                .layer(from_fn(inject_dri_view))
                 .layer(from_fn(dioxus_document_head)),
         )
         .with_state(FullstackState::new(cfg, webapp::gov_forms::GovForms))
@@ -1096,7 +1096,7 @@ pub fn project_detail_router(
                 .layer(from_fn(inject_app_brand_mark))
                 .layer(from_fn(inject_person_id))
                 .layer(from_fn(inject_csrf_token))
-                .layer(from_fn(inject_impersonation))
+                .layer(from_fn(inject_dri_view))
                 .layer(from_fn_with_state(
                     pending_intake_state,
                     inject_pending_client_intake,
@@ -2106,9 +2106,8 @@ pub const ADMIN_MATTER_DIRECTORY_SORT: &[&str] = webapp::matter_directory::MATTE
 /// Build the gated Dioxus router for the admin person show/edit page (#641
 /// Phase 3): the same [`csrf_page_router`] as the other CRUD forms, mounted at
 /// both [`ADMIN_PERSON_PATH`] and its `/edit` alias so the surface's two
-/// URLs keep resolving. `POST /app/admin/people/{id}` (update), `.../welcome`, and
-/// `.../impersonate` stay on the admin router; axum merges the same-path
-/// methods.
+/// URLs keep resolving. `POST /app/admin/people/{id}` (update) and `.../welcome`
+/// stay on the admin router; axum merges the same-path methods.
 ///
 /// `bootstrap_owner_email` (the configured `NAVIGATOR_BOOTSTRAP_OWNER_EMAIL`) is
 /// injected as a request extension so the page's `#[server]` function can
@@ -2215,10 +2214,10 @@ pub fn entity_list_router(
 pub const ADMIN_PEOPLE_PATH: &str = "/app/admin/people";
 
 /// The gated Dioxus admin console people list (#641 Phase 3). The admin sibling
-/// of the lawyer [`people_router`], adding the per-row Edit/Delete/Impersonate
-/// action column — so it carries the `inject_csrf_token` layer (for the Delete /
-/// Impersonate forms) and the injected bootstrap-Owner email (to resolve which
-/// client rows are deletable), on top of the usual sort pre-handler, auth + embedded Rego policy
+/// of the lawyer [`people_router`], adding the per-row Edit/Delete action
+/// column — so it carries the `inject_csrf_token` layer (for the Delete form)
+/// and the injected bootstrap-Owner email (to resolve which client rows are
+/// deletable), on top of the usual sort pre-handler, auth + embedded Rego policy
 /// gate, and nonce CSP. It reuses [`reject_unadvertised_sort`] (name / email).
 pub fn admin_people_router(
     bootstrap_owner_email: Option<String>,

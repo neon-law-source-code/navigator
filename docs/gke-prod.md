@@ -103,9 +103,9 @@ The public edge reaches three service Deployments:
 - `navigator-web` serves the portal, AIDA/API routes, and client-facing matter views.
 - `workflows-service` hosts the Restate durable worker and, on the automation-home deployment, the `POST
   /webhooks/github/{secret}` receiver on its own listener behind the Envoy sidecar — GitHub posts to the public
-  `workflows` host because `www` goes behind the tailnet. The receiver verifies signatures and submits identifier-only
-  commands to the Restate ingress. Alongside the legal workflows it also binds the DevX Slack-notice services
-  `DevxIssueTriage` and `devx-pr`, which alone receive `SLACK_WEBHOOK_URL` and send the engineering notices.
+  `workflows` host because `www` remains behind the tailnet perimeter. The receiver verifies signatures and submits
+  identifier-only commands to the Restate ingress. Alongside the legal workflows it also binds the DevX Slack-notice
+  services `DevxIssueTriage` and `devx-pr`, which alone receive `SLACK_WEBHOOK_URL` and send the engineering notices.
 
 The storage buckets sit behind those services. `NAVIGATOR_ASSETS_BUCKET` is the only public bucket.
 `NAVIGATOR_DOCUMENTS_BUCKET` is private and holds content-addressed client documents through `cloud::StorageService`;

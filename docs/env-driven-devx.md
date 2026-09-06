@@ -43,32 +43,6 @@ Variables are named `NAVIGATOR_<scope>_<thing>` so `.env.example` reads as one c
 - **Overlay paths generalize.** `NAVIGATOR_KIND_OVERLAY` (full local stack) and `NAVIGATOR_GKE_OVERLAY` are the same
   idea at two scopes; a fork points either at its own kustomize overlay.
 
-## Private mode
-
-`NAVIGATOR_PRIVATE_MODE` toggles whether the Kubernetes setup puts Navigator's Pingora gateway in front of `web`. It is
-the one flag both halves of the orchestration read, so a deployment is private the same way locally and in production:
-
-- `navigator dev up` and `navigator dev deploy` apply `k8s/overlays/kind-private` instead of `k8s/overlays/kind`.
-- `navigator ops ship` appends the `k8s/components/private-mode` component to the rendered GKE tree before `kubectl
-  apply -k`, and says so on stderr.
-
-The component is one sidecar and two patches: the workspace's `gateway` crate joins the `navigator-web` pod, and
-`Service/navigator-web` stops targeting the application port and starts targeting the Pingora sidecar, which proxies
-over pod loopback. Both the KIND Ingress and the GKE load balancer route through that one Service, so neither needs
-editing. `/health` is the single unauthenticated route because it is what the kubelet probes and what the GKE load
-balancer derives its health check from. Every other route is checked in order: the explicit client-network allowlist
-(403), then the shared basic credential (401), then `web`. The gateway refuses a missing or empty allowlist and trusts
-`X-Forwarded-For` only when the component explicitly configures it for the ingress/load-balancer path.
-
-The credential is `go` / `bears`, committed in the component and therefore not a secret. Private mode keeps a staged
-deployment from being crawled or wandered into; it is not an authorization boundary. Authentication is still OIDC and
-authorization remains `persons.role` plus embedded Rego ([`access-model.md`](access-model.md)). Machine callers that
-reach `web` over the public host — SendGrid inbound parse, GitHub webhooks, DocuSign Connect — receive 401 while it is
-on. The browser e2e gate does not send the header, so leave it unset for a verification run.
-
-The end state is a VPN rather than a shared password. Issue #1116 will narrow the explicit allowlist to the tailnet
-egress ranges; it is deliberately not implemented here.
-
 ## Host ports
 
 The host ports split into two categories with very different blast radius:

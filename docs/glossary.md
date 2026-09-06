@@ -408,11 +408,11 @@ The workspace has no Makefile — the `navigator` CLI is the only entry point.
 
 The GitHub-driven issue-to-PR ingress system in the [`github_webhooks`](../github_webhooks/) library crate, shared by
 two binaries. The receiver is the `POST /webhooks/github/{secret}` route on `workflows-service`, the public `workflows`
-host (GitHub cannot reach `www`, which goes behind the tailnet): it verifies signed GitHub deliveries and submits typed,
-body-free commands to the Restate ingress. The durable Slack-notice services `DevxIssueTriage` and `devx-pr` bind into
-`workflows-service` alongside the other durable workflows and turn those commands into engineering notices; they alone
-read `SLACK_WEBHOOK_URL`. The GitHub App client, Kubernetes orchestration, and fuller durable workflows are distinct
-components.
+host (GitHub cannot reach `www`, which stays behind the tailnet perimeter): it verifies signed GitHub deliveries and
+submits typed, body-free commands to the Restate ingress. The durable Slack-notice services `DevxIssueTriage` and
+`devx-pr` bind into `workflows-service` alongside the other durable workflows and turn those commands into engineering
+notices; they alone read `SLACK_WEBHOOK_URL`. The GitHub App client, Kubernetes orchestration, and fuller durable
+workflows are distinct components.
 
 ## Directly Responsible Individual (DRI)
 

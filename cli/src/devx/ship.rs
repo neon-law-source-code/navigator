@@ -117,10 +117,8 @@ static EXPORTS_MANIFESTS: Dir<'static> =
 static K8S_BASE_MANIFESTS: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/../k8s/base");
 
 /// The shared Kustomize components, embedded and extracted next to
-/// [`K8S_BASE_MANIFESTS`] so [`PRIVATE_MODE_COMPONENT`] resolves. Only
-/// referenced when private mode is on, but embedded unconditionally: a
-/// release binary has no workspace checkout to read them from later, and
-/// the whole directory costs a few kilobytes.
+/// [`K8S_BASE_MANIFESTS`] so deployment-selected components resolve. A release
+/// binary has no workspace checkout to read them from later.
 static K8S_COMPONENT_MANIFESTS: Dir<'static> =
     include_dir!("$CARGO_MANIFEST_DIR/../k8s/components");
 
@@ -199,13 +197,9 @@ pub(super) fn secret_provider_class_keys() -> BTreeSet<String> {
 const K8S_BASE_SUBPATH: &str = "k8s/base";
 
 /// Where [`K8S_COMPONENT_MANIFESTS`] is extracted, relative to the temp-dir
-/// root — the repo-relative offset [`PRIVATE_MODE_COMPONENT`] assumes.
+/// root — the repo-relative offset selected components assume.
 const K8S_COMPONENTS_SUBPATH: &str = "k8s/components";
 
-/// The private-mode component, as referenced FROM the GKE kustomization
-/// root. Four levels up out of `examples/deploy/k8s/gke`, matching how the
-/// same file already reaches `../../../../k8s/base`.
-const PRIVATE_MODE_COMPONENT: &str = "../../../../k8s/components/private-mode";
 const AUTOMATION_HOME_COMPONENT: &str = "../../../../k8s/components/automation-home";
 
 /// One placeholder → real-value substitution the render applies to every
@@ -604,11 +598,8 @@ fn render_embedded_dir(dir: &Dir, dest: &Path, subs: &[Substitution]) -> Result<
 /// dir with `subs` applied, returning the owned [`TempDir`] — dropping it
 /// removes the rendered files, so the caller holds it only for the span of
 /// the `kubectl` calls. The relative paths reproduce the repository layout
-/// the kustomization references. The private-mode decision is passed in —
-/// resolved from the deployment's own `config.toml`, never the process
-/// environment — so the toggle is unit-tested without a `set_var` that would
-/// leak into whatever else shares the process.
-fn render_manifests_with(subs: &[Substitution], private_mode: bool) -> Result<TempDir> {
+/// the kustomization references.
+fn render_manifests_with(subs: &[Substitution]) -> Result<TempDir> {
     let tmp = tempfile::Builder::new()
         .prefix("navigator-ship-manifests-")
         .tempdir()
@@ -632,7 +623,7 @@ fn render_manifests_with(subs: &[Substitution], private_mode: bool) -> Result<Te
         substitution.env == "NAVIGATOR_GCP_PROJECT_ID"
             && github_webhooks::authority::is_automation_home(Some(&substitution.value))
     });
-    if private_mode || automation_home {
+    if automation_home {
         render_embedded_dir(
             &K8S_COMPONENT_MANIFESTS,
             &tmp.path().join(K8S_COMPONENTS_SUBPATH),
@@ -644,11 +635,6 @@ fn render_manifests_with(subs: &[Substitution], private_mode: bool) -> Result<Te
             .join("kustomization.yaml");
         let kustomization = fs::read_to_string(&root)
             .with_context(|| format!("read rendered kustomization {}", root.display()))?;
-        let kustomization = if private_mode {
-            enable_private_mode(&kustomization, subs)?
-        } else {
-            kustomization
-        };
         let kustomization = if automation_home {
             enable_automation_home(&kustomization)?
         } else {
@@ -656,10 +642,6 @@ fn render_manifests_with(subs: &[Substitution], private_mode: bool) -> Result<Te
         };
         fs::write(&root, kustomization)
             .with_context(|| format!("write rendered kustomization {}", root.display()))?;
-        eprintln!(
-            "==> NAVIGATOR_PRIVATE_MODE is on — this ship puts the Pingora network + basic-auth gateway in \
-             front of navigator-web (k8s/components/private-mode)"
-        );
     }
     Ok(tmp)
 }
@@ -668,45 +650,20 @@ fn enable_automation_home(kustomization: &str) -> Result<String> {
     append_component(kustomization, AUTOMATION_HOME_COMPONENT)
 }
 
-/// Append the private-mode component to the rendered GKE kustomization.
-///
-/// Text append rather than a YAML round-trip: the kustomization is dense
-/// with load-bearing comments (the commented-out CSI block, the `$patch:
-/// delete` rationale) that a serialize/deserialize cycle would silently
-/// drop. Bails rather than guesses if the file ever grows its own
-/// `components:` key, since a second one is a duplicate mapping key and
-/// kustomize would reject the tree only after the ship had already
-/// started.
-fn enable_private_mode(kustomization: &str, subs: &[Substitution]) -> Result<String> {
-    let gateway_image = apply_substitutions(
-        &format!("{IMAGE_REGISTRY_TOKEN}/navigator-gateway:{RELEASE_TAG_TOKEN}"),
-        subs,
-    );
-    let Some((gateway_name, gateway_tag)) = gateway_image.rsplit_once(':') else {
-        bail!("gateway image ref {gateway_image:?} has no tag to pin");
-    };
-    let with_component = append_component(kustomization, PRIVATE_MODE_COMPONENT)?;
-    Ok(format!(
-        "{}\n\nimages:\n  - name: navigator-gateway\n    newName: {gateway_name}\n    newTag: \"{gateway_tag}\"\n",
-        with_component.trim_end()
-    ))
-}
-
 fn append_component(kustomization: &str, component: &str) -> Result<String> {
     if let Some((head, tail)) = kustomization.split_once("\ncomponents:\n") {
-        if tail.lines().any(|line| line.trim() == format!("- {component}")) {
-            bail!(
-                "the GKE kustomization already declares `{component}` in `components:`"
-            );
+        if tail
+            .lines()
+            .any(|line| line.trim() == format!("- {component}"))
+        {
+            bail!("the GKE kustomization already declares `{component}` in `components:`");
         }
         if let Some((before_images, after_images)) = tail.split_once("\n\nimages:") {
             return Ok(format!(
                 "{head}\ncomponents:{before_images}\n  - {component}\n\nimages:{after_images}"
             ));
         }
-        return Ok(format!(
-            "{head}\ncomponents:{tail}  - {component}\n"
-        ));
+        return Ok(format!("{head}\ncomponents:{tail}  - {component}\n"));
     }
     Ok(format!(
         "{}\n\n# Added by `navigator ops ship` for `{component}`.\ncomponents:\n  - {component}\n",
@@ -730,8 +687,8 @@ const SECRET_PROVIDER_CLASS: &str = "secrets/secret-provider-class.yaml";
 /// declines outright (`DocuSign`), so the list is rendered per deployment from the
 /// same `skipped` set `ops secrets apply` reports.
 ///
-/// In place on the rendered copy, exactly like [`enable_private_mode`]: the
-/// embedded tree is never touched, so the omission lasts for the span of one
+/// In place on the rendered copy: the embedded tree is never touched, so the
+/// omission lasts for the span of one
 /// ship and is visible in the `kubectl diff` that precedes the apply.
 fn omit_unwritten_objects(gke_root: &Path, skipped: &BTreeSet<String>) -> Result<()> {
     if skipped.is_empty() {
@@ -755,7 +712,7 @@ fn omit_unwritten_objects(gke_root: &Path, skipped: &BTreeSet<String>) -> Result
 /// object in `omitted`.
 ///
 /// A line filter rather than a YAML round-trip, for the reason
-/// [`enable_private_mode`] gives: this manifest carries load-bearing comments
+/// the embedded manifest carries: this manifest carries load-bearing comments
 /// (which objects were trimmed and why, which keys are boot invariants) that a
 /// serialize/deserialize cycle would silently drop. Every entry is a head line
 /// plus its one continuation, so the shape is asserted rather than assumed — an
@@ -1622,7 +1579,7 @@ fn refuse_on_manifest_drift(cfg: &ShipConfig, tag: &str, dry_run: bool, root: &P
     let deployment = super::deployments::Deployment::load(root, &cfg.name)?;
     let coordinate = |key: &str| deployment.coordinates.get(key).cloned();
     let subs = resolve_substitutions_for_deployment(&cfg.name, tag, coordinate)?;
-    let rendered = render_manifests_with(&subs, false)?;
+    let rendered = render_manifests_with(&subs)?;
     let target = rendered.path().join(GKE_KUSTOMIZE_SUBPATH);
     let status = kubectl_ctx(cfg)
         .arg("diff")
@@ -1711,21 +1668,19 @@ fn roll(
         cfg.project_id, cfg.context
     );
 
-    // 2b. The published-image check used to sit here, over a hard-coded list of
-    //     the two Deployments plus the private-mode gateway. It now runs at
-    //     step 4a over the BUILT manifest stream, which names the trigger
-    //     CronJobs this list never did. Everything between here and step 4a is
+    // 2b. The published-image check runs at step 4a over the BUILT manifest
+    //     stream, which names the trigger CronJobs as well as the Deployments.
+    //     Everything between here and step 4a is
     //     local work — render, prune, `kubectl kustomize` — so an unpublished
     //     tag still aborts before the first cluster read.
     let coordinate = |key: &str| deployment.coordinates.get(key).cloned();
-    let private_mode = super::private_mode(coordinate("NAVIGATOR_PRIVATE_MODE").as_deref());
 
     // 3. Render the embedded manifest tree with the deployment's NAVIGATOR_*
     //    coordinates and the tag being rolled. Pure local work — nothing
     //    reaches the cluster until step 5, which is what lets step 4 abort
     //    for free.
     let subs = resolve_substitutions_for_deployment(&deployment.name, &tag, coordinate)?;
-    let rendered = render_manifests_with(&subs, private_mode)?;
+    let rendered = render_manifests_with(&subs)?;
     let target = rendered.path().join(GKE_KUSTOMIZE_SUBPATH);
 
     // 3b. Render the projected object list for THIS deployment: drop every
@@ -1760,8 +1715,7 @@ fn roll(
     //     set of image names. That is the whole point: the reconcile applies
     //     this stream, so checking it cannot drift from what is about to be
     //     written — a trigger added to `../exports` is covered with no edit
-    //     here, and private mode needs no special case because the gateway
-    //     only renders when its component is in the build. Reading the built
+    //     here. Reading the built
     //     stream rather than the manifest files is also what picks up the
     //     `web-image` patch, which overrides the base's registry-less tag.
     ensure_manifest_images_published(cfg, dry_run, &manifests, &tag)?;
@@ -2384,9 +2338,7 @@ fn secret_patch_stringdata(keys: &[String]) -> String {
 /// patches — notably `patches/web-env.yaml`, which `$patch: replace`s the
 /// whole env list — resolve exactly as the apply will.
 ///
-/// `pub(super)` because the KIND overlays need the same treatment for the
-/// same reason: `mod.rs`'s render tests build `k8s/overlays/kind-private`
-/// to prove the private-mode component actually merges there too.
+/// `pub(super)` because the devx render tests use the same built-stream reader.
 pub(super) fn kustomize_build(target: &Path) -> Result<String> {
     let out = Command::new("kubectl")
         .arg("kustomize")
@@ -3446,15 +3398,11 @@ mod tests {
 
     #[test]
     fn bootstrap_owner_email_is_required_for_a_ship() {
-        let err = resolve_substitutions_for_deployment(
-            "example-deployment",
-            "26.9.6",
-            |key| {
-                (key != "NAVIGATOR_BOOTSTRAP_OWNER_EMAIL")
-                    .then(|| env_getter(FULL_ENV)(key))
-                    .flatten()
-            },
-        )
+        let err = resolve_substitutions_for_deployment("example-deployment", "26.9.6", |key| {
+            (key != "NAVIGATOR_BOOTSTRAP_OWNER_EMAIL")
+                .then(|| env_getter(FULL_ENV)(key))
+                .flatten()
+        })
         .expect_err("a deployment without a bootstrap Owner must not render");
         assert!(err.to_string().contains("NAVIGATOR_BOOTSTRAP_OWNER_EMAIL"));
         assert!(err
@@ -3529,7 +3477,7 @@ mod tests {
             env_getter(FULL_ENV),
         )
         .expect("full env resolves");
-        let rendered = render_manifests_with(&subs, false).expect("render succeeds");
+        let rendered = render_manifests_with(&subs).expect("render succeeds");
 
         let gke = rendered.path().join(GKE_KUSTOMIZE_SUBPATH);
         assert!(
@@ -3757,7 +3705,7 @@ mod tests {
         let subs =
             resolve_substitutions_for_deployment("neon-law-stg", "26.7.15", env_getter(HUB_ENV))
                 .expect("hub env resolves");
-        let rendered = render_manifests_with(&subs, false).expect("render succeeds");
+        let rendered = render_manifests_with(&subs).expect("render succeeds");
         let gke = rendered.path().join(GKE_KUSTOMIZE_SUBPATH);
         let cert_manifest =
             fs::read_to_string(gke.join("ingress/managed-certificate.yaml")).unwrap();
@@ -3831,7 +3779,7 @@ mod tests {
             env_getter(FULL_ENV),
         )
         .expect("full env resolves");
-        let rendered = render_manifests_with(&subs, false).expect("render succeeds");
+        let rendered = render_manifests_with(&subs).expect("render succeeds");
         let projected = secret_provider_class_keys();
         // The render substitutes the Secret's name per deployment, so the
         // reference has to follow it — a trigger pinned to the literal
@@ -3901,13 +3849,13 @@ mod tests {
             }
         }
 
-        // The six trigger CronJobs each carry RESTATE_INGRESS_URL and
+        // The four Restate trigger CronJobs each carry RESTATE_INGRESS_URL and
         // RESTATE_AUTH_TOKEN. A floor rather than an equality so a new trigger
-        // does not fail this, while a file that quietly drops the reference —
+        // does not fail this, while a file that quietly drops the references —
         // the state that would make the loop above vacuous — does.
         assert!(
-            sourced_from_secret >= 12,
-            "expected at least the six triggers' two Restate keys to be sourced from the Secret, \
+            sourced_from_secret >= 8,
+            "expected at least the four Restate triggers' two keys to be sourced from the Secret, \
              saw {sourced_from_secret}"
         );
 
@@ -3947,7 +3895,7 @@ mod tests {
             env_getter(FULL_ENV),
         )
         .expect("full env resolves");
-        let rendered = render_manifests_with(&subs, false).expect("render succeeds");
+        let rendered = render_manifests_with(&subs).expect("render succeeds");
         let gke = rendered.path().join(GKE_KUSTOMIZE_SUBPATH);
 
         // (1) The patch file pins the KSA on the pod spec.
@@ -4182,7 +4130,7 @@ mod tests {
             env_getter(FULL_ENV),
         )
         .unwrap();
-        let rendered = render_manifests_with(&subs, false).unwrap();
+        let rendered = render_manifests_with(&subs).unwrap();
         let path = rendered.path().to_path_buf();
         assert!(path.join(GKE_KUSTOMIZE_SUBPATH).exists());
         drop(rendered);
@@ -4274,7 +4222,7 @@ mod tests {
             subs.iter().all(|s| s.env != "NAVIGATOR_GKE_OVERLAY_DIR"),
             "the retired overlay-dir var is not part of the substitution table"
         );
-        render_manifests_with(&subs, false).expect("render needs no overlay folder on disk");
+        render_manifests_with(&subs).expect("render needs no overlay folder on disk");
     }
 
     #[test]
@@ -4638,7 +4586,7 @@ spec:
         let subs =
             resolve_substitutions_for_deployment("neon-law-stg", "26.7.28", env_getter(HUB_ENV))
                 .expect("hub env resolves");
-        let rendered = render_manifests_with(&subs, false).expect("render succeeds");
+        let rendered = render_manifests_with(&subs).expect("render succeeds");
 
         let mut stream = String::new();
         for entry in walkdir::WalkDir::new(rendered.path()) {
@@ -4679,7 +4627,7 @@ spec:
             env_getter(FULL_ENV),
         )
         .expect("full env resolves");
-        let rendered = render_manifests_with(&subs, false).expect("render succeeds");
+        let rendered = render_manifests_with(&subs).expect("render succeeds");
         let gke = rendered.path().join(GKE_KUSTOMIZE_SUBPATH);
 
         let mut images = Vec::new();
@@ -4727,7 +4675,7 @@ spec:
         let subs =
             resolve_substitutions_for_deployment("neon-law-stg", "26.7.28", env_getter(HUB_ENV))
                 .expect("hub env resolves");
-        let rendered = render_manifests_with(&subs, false).expect("render succeeds");
+        let rendered = render_manifests_with(&subs).expect("render succeeds");
 
         let mut images = Vec::new();
         let mut saw_environment_project = false;
@@ -5174,7 +5122,7 @@ spec:
             env_getter(FULL_ENV),
         )
         .expect("full env resolves");
-        let rendered = render_manifests_with(&subs, false).expect("render succeeds");
+        let rendered = render_manifests_with(&subs).expect("render succeeds");
         let spc = fs::read_to_string(
             rendered
                 .path()
@@ -5223,7 +5171,7 @@ spec:
             let subs =
                 resolve_substitutions_for_deployment("neon-production", "26.7.29", env_getter(env))
                     .expect("env resolves");
-            let rendered = render_manifests_with(&subs, false).expect("render succeeds");
+            let rendered = render_manifests_with(&subs).expect("render succeeds");
             fs::read_to_string(
                 rendered
                     .path()
@@ -5506,7 +5454,7 @@ spec:
             env_getter(FULL_ENV),
         )
         .expect("full environment resolves");
-        let rendered = render_manifests_with(&subs, false).expect("render succeeds");
+        let rendered = render_manifests_with(&subs).expect("render succeeds");
         let manifests = kustomize_build(&rendered.path().join(GKE_KUSTOMIZE_SUBPATH))
             .expect("rendered GKE manifests build");
 
@@ -5634,7 +5582,7 @@ spec:
             env_getter(FULL_ENV),
         )
         .expect("full environment resolves");
-        let rendered = render_manifests_with(&subs, false).expect("render succeeds");
+        let rendered = render_manifests_with(&subs).expect("render succeeds");
         let manifests = kustomize_build(&rendered.path().join(GKE_KUSTOMIZE_SUBPATH))
             .expect("rendered GKE manifests build");
         let deployment_envs =
@@ -5653,92 +5601,11 @@ spec:
     }
 
     #[test]
-    fn private_mode_puts_the_basic_auth_gateway_in_front_of_web() {
-        // The whole point of the flag: with it on, the Service must stop
-        // targeting the app port and start targeting nginx, and the pod
-        // must carry the gateway. Assert on the BUILT stream, not on the
-        // component files, because the component only works if kustomize
-        // actually merges it into the GKE tree — a wrong `components:`
-        // path or a patch that misses its target would leave the files
-        // correct and the deployment public.
-        let subs = resolve_substitutions_for_deployment(
-            "neon-production",
-            "26.7.19.20",
-            env_getter(FULL_ENV),
-        )
-        .expect("full environment resolves");
-        let rendered = render_manifests_with(&subs, true).expect("render succeeds");
-        let manifests = kustomize_build(&rendered.path().join(GKE_KUSTOMIZE_SUBPATH))
-            .expect("rendered GKE manifests build with the private-mode component");
-
-        let service = manifest_doc(&manifests, "Service", "navigator-web");
-        let target_port = service["spec"]["ports"][0]["targetPort"].as_u64();
-        assert_eq!(
-            target_port,
-            Some(8080),
-            "the Service must reach `web` through the gateway, not directly: {:?}",
-            service["spec"]["ports"]
-        );
-
-        let deployment = manifest_doc(&manifests, "Deployment", "navigator-web");
-        let containers = deployment["spec"]["template"]["spec"]["containers"]
-            .as_sequence()
-            .expect("the web pod has containers");
-        let gateway = containers
-            .iter()
-            .find(|c| c["name"].as_str() == Some("private-gateway"))
-            .expect("private mode adds the Pingora sidecar");
-        assert_eq!(
-            gateway["readinessProbe"]["httpGet"]["path"].as_str(),
-            Some("/health"),
-            "the probe must target the one unauthenticated location, or the LB health check 401s"
-        );
-        assert_eq!(
-            gateway["ports"][0]["containerPort"].as_u64(),
-            target_port,
-            "the gateway must listen on the port the Service targets. A numeric `targetPort` is \
-             published for every selected pod whether or not anything there listens, so a \
-             disagreement here is not a routing miss that fails closed — it is a live upstream \
-             where nothing answers, and the load balancer turns it into a 502."
-        );
-        assert_eq!(
-            gateway["image"].as_str(),
-            Some("ghcr.io/neon-law-source-code/navigator-gateway:26.7.19.20")
-        );
-        assert!(
-            manifests.contains("navigator-private-basic-auth"),
-            "the basic-auth Secret must be part of the applied tree"
-        );
-    }
-
-    #[test]
-    fn the_default_ship_stays_public() {
-        // The other half of the toggle, and the one that matters more: a
-        // ship with private mode off must render the tree it always did.
-        let subs = resolve_substitutions_for_deployment(
-            "neon-production",
-            "26.7.19.20",
-            env_getter(FULL_ENV),
-        )
-        .expect("full environment resolves");
-        let rendered = render_manifests_with(&subs, false).expect("render succeeds");
-        let manifests = kustomize_build(&rendered.path().join(GKE_KUSTOMIZE_SUBPATH))
-            .expect("rendered GKE manifests build");
-
-        assert!(!manifests.contains("private-gateway"), "{manifests}");
-        let service = manifest_doc(&manifests, "Service", "navigator-web");
-        assert_eq!(
-            service["spec"]["ports"][0]["targetPort"].as_u64(),
-            Some(3001)
-        );
-    }
-
-    #[test]
     fn automation_heartbeat_is_rendered_only_for_the_automation_home() {
         let render = |env| {
             let subs = resolve_substitutions_for_deployment("example", "26.9.6", env_getter(env))
                 .expect("full environment resolves");
-            let rendered = render_manifests_with(&subs, false).expect("render succeeds");
+            let rendered = render_manifests_with(&subs).expect("render succeeds");
             kustomize_build(&rendered.path().join(GKE_KUSTOMIZE_SUBPATH))
                 .expect("rendered GKE manifests build")
         };
@@ -5748,26 +5615,6 @@ spec:
 
         let automation_home = render(HUB_ENV);
         assert!(automation_home.contains("github-automation-heartbeat-trigger"));
-    }
-
-    #[test]
-    fn enabling_private_mode_twice_is_refused() {
-        // `enable_private_mode` appends a top-level key. If the GKE
-        // kustomization ever grows its own `components:`, appending a
-        // second one yields a duplicate mapping key that kustomize
-        // rejects — mid-ship, after the preflight has passed. Fail here
-        // instead, naming the fix.
-        let subs = resolve_substitutions_for_deployment(
-            "neon-production",
-            "26.7.19.20",
-            env_getter(FULL_ENV),
-        )
-        .expect("full environment resolves");
-        let once =
-            enable_private_mode("resources:\n  - clamav.yaml\n", &subs).expect("first append");
-        assert!(once.contains(PRIVATE_MODE_COMPONENT));
-        let err = enable_private_mode(&once, &subs).expect_err("a second append must abort");
-        assert!(err.to_string().contains("already declares"), "{err}");
     }
 
     #[test]
@@ -5781,7 +5628,7 @@ spec:
             env_getter(FULL_ENV),
         )
         .expect("full env resolves");
-        let rendered = render_manifests_with(&subs, false).expect("render succeeds");
+        let rendered = render_manifests_with(&subs).expect("render succeeds");
         let web_image = fs::read_to_string(
             rendered
                 .path()
@@ -5801,7 +5648,7 @@ spec:
             env_getter(FULL_ENV),
         )
         .expect("full env resolves");
-        let rendered = render_manifests_with(&subs, false).expect("render succeeds");
+        let rendered = render_manifests_with(&subs).expect("render succeeds");
         let web_image = fs::read_to_string(
             rendered
                 .path()
@@ -6527,7 +6374,7 @@ spec:
     fn rendered_object_names(deployment: &str, env: &'static [(&str, &str)]) -> BTreeSet<String> {
         let subs = resolve_substitutions_for_deployment(deployment, "26.8.9", env_getter(env))
             .expect("env resolves");
-        let rendered = render_manifests_with(&subs, false).expect("render succeeds");
+        let rendered = render_manifests_with(&subs).expect("render succeeds");
         let gke = rendered.path().join(GKE_KUSTOMIZE_SUBPATH);
         let root = super::super::deployments::Deployment::load(&fixture_tree(), deployment)
             .expect("the deployment loads");

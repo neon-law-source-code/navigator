@@ -1,14 +1,14 @@
 # Cloud operations
 
-This page replaces the old private cloud runbooks with one common operating model. Public docs are the shared surface
-every LLM and human maintainer should read first.
+This page describes the common cloud operating model. Public docs are the shared surface every LLM and human maintainer
+should read first.
 
 Neon Law Navigator is GCP-wired and provider-agnostic. The production path uses GKE Autopilot, a hosted SurrealDB, GCS,
 Secret Manager, OpenObserve for direct OTLP telemetry, BigQuery billing export, and Restate Cloud. The application code
 keeps the cloud boundary behind traits, protocols, and env vars: `cloud::StorageService`, SurrealDB, OIDC, embedded
 Rego, Restate, SendGrid, Kubernetes, and `portal::agent_router::AgentRouter`.
 
-## Former private-runbook coverage
+## Coverage
 
 - **KIND local dev** — source of truth: [`AGENTS.md`](../AGENTS.md#local-kind-development) and
   [`test-database.md`](test-database.md).
@@ -140,7 +140,7 @@ Code reaches production through PRs and dated images:
    `YY.M.D-hotfix.N`, which starts `deploy.yml`. The workflow fetches `origin/main` and rejects a tag on an unmerged
    side branch before it publishes anything.
 3. The deploy workflow builds and publishes the service images to GHCR: the brand server image,
-   `navigator-workflows-service`, and `navigator-gateway`.
+   `navigator-workflows-service`.
 4. The same run proves those images in KIND and pushes them to GHCR, then posts ship instructions to `#navigator`. It
    rolls nothing itself: every rollout is a deliberate operator act, run from the operator's own machine with `navigator
    ops ship --deployment <row> --deployments-dir . --tag YY.M.D`.

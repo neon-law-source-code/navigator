@@ -339,9 +339,9 @@ carries the public site, the signed-in portal, and the telemetry identity togeth
 
 That thinness is the customization story. A custom Navigator changes minimal surface area: write your own brand crate in
 the `neon` shape — a `Brand` value and a call to the shared run loop, nothing more — build it into your own
-`<brand>-server` image, and interact with the remaining published images (`navigator-workflows-service`,
-`navigator-gateway`, and the trigger images) unchanged. The two brand Containerfiles are deliberately identical modulo
-the brand name, so the image recipe for a new brand is the existing one with your crate's name.
+`<brand>-server` image, and interact with the remaining published images (`navigator-workflows-service`, the trigger
+images) unchanged. The two brand Containerfiles are deliberately identical modulo the brand name, so the image recipe
+for a new brand is the existing one with your crate's name.
 
 ---
 
@@ -793,7 +793,6 @@ development with no `.env`; add only the sandbox values you actually intend to o
 | Dependency overlay | `NAVIGATOR_KIND_DEPS_OVERLAY` | deps-only KIND |
 | Full KIND overlay | `NAVIGATOR_KIND_OVERLAY` | full KIND |
 | GKE overlay | `NAVIGATOR_GKE_OVERLAY` | example GKE manifests |
-| Private mode gateway | `NAVIGATOR_PRIVATE_MODE` | off; on puts Pingora network + basic auth before `web` |
 | Second store port | `NAVIGATOR_KIND_SURREAL_PORT` | `18000` |
 | Restate ports | `NAVIGATOR_KIND_RESTATE_INGRESS_PORT`, `NAVIGATOR_KIND_RESTATE_ADMIN_PORT` | `9080`, `9070` |
 | Identity port | `NAVIGATOR_KIND_RAUTHY_PORT` | `30080` |
@@ -1084,11 +1083,11 @@ The GitHub webhook receiver is the exception to that degrade-quietly pattern, an
 served at `POST workflows.<domain>/webhooks/github/{secret}` by `workflows-service`, on its own Axum listener
 (`WORKFLOWS_WEBHOOK_LISTEN`, `9082`) beside the worker's Restate endpoint; the Envoy sidecar routes `/webhooks/github/*`
 to that listener and every other path to the Restate leg. It runs on the `workflows` host, not on `www`, because `www`
-goes entirely behind the firm's Tailscale tailnet — and GitHub, an external sender that cannot join a tailnet, can only
-reach a public host. That split is the rule worth remembering: the VPN protects the human surface (`www`, the portal,
-the workbench), while a machine caller's endpoint stays public and is authenticated by the signature it carries, not by
-the network it arrives from. GitHub signs each delivery, so the receiver verifies `X-Hub-Signature-256` against the raw
-body — which is why the Envoy leg to it stays HTTP/1.1 end to end and forwards the bytes unaltered.
+remains behind the firm's Tailscale tailnet perimeter — and GitHub, an external sender that cannot join a tailnet, can
+only reach a public host. That split is the rule worth remembering: the tailnet protects the human surface (`www`, the
+portal, the workbench), while a machine caller's endpoint stays public and is authenticated by the signature it carries,
+not by the network it arrives from. GitHub signs each delivery, so the receiver verifies `X-Hub-Signature-256` against
+the raw body — which is why the Envoy leg to it stays HTTP/1.1 end to end and forwards the bytes unaltered.
 
 Startup still requires the webhook secret, canonical repository, GitHub org, and app login, and `RESTATE_INGRESS_URL`
 plus `RESTATE_AUTH_TOKEN`: a receiver that cannot verify a delivery or reach the Restate ingress has no safe reduced
@@ -1257,12 +1256,12 @@ One environment variable answers which person is the protected bootstrap Owner:
 NAVIGATOR_BOOTSTRAP_OWNER_EMAIL=owner@example.com
 ```
 
-Set `NAVIGATOR_BOOTSTRAP_OWNER_EMAIL` in the deployment `config.toml`; `ops ship` renders it into the web pod.
-Do not copy the deployed value into Git. A missing, empty, or whitespace-only value refuses the ship. On a fresh
-installation, the first successful OIDC login with the configured email JIT-creates its `persons` row as `owner`; later
-sign-ins restore that
-role if the database has drifted. Its entire Person record is immutable in Navigator so an administrator cannot rename,
-demote, or delete the installation's recovery identity by accident.
+Set `NAVIGATOR_BOOTSTRAP_OWNER_EMAIL` in the deployment `config.toml`; `ops ship` renders it into the web pod. Do not
+copy the deployed value into Git. An unset, empty, or whitespace-only value disables bootstrap-Owner creation and
+refuses the ship. On a fresh installation, the first successful OIDC login with the configured email JIT-creates its
+`persons` row as `owner`; later sign-ins restore that role if the database has drifted. Its entire Person record is
+immutable in Navigator so an administrator cannot rename, demote, or delete the installation's recovery identity by
+accident.
 
 After signing in as Owner or Admin, open `/app/admin/people` to manage the directory and change another Person's
 system-wide role among `owner`, `admin`, `lawyer`, `clerk`, and `client`. Owner appears first because it owns the

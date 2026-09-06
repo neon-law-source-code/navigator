@@ -25,9 +25,7 @@ fn environment_keys(env_example: &str) -> BTreeSet<String> {
             let (key, _) = assignment.split_once('=')?;
             (!key.is_empty()
                 && key.chars().all(|character| {
-                    character == '_'
-                        || character.is_ascii_uppercase()
-                        || character.is_ascii_digit()
+                    character == '_' || character.is_ascii_uppercase() || character.is_ascii_digit()
                 }))
             .then_some(key.to_string())
         })
@@ -44,7 +42,10 @@ fn collect_environment_read_sources(path: &Path, sources: &mut Vec<(PathBuf, Str
             collect_environment_read_sources(&path, sources);
             continue;
         }
-        let file_name = path.file_name().and_then(|name| name.to_str()).unwrap_or_default();
+        let file_name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or_default();
         let is_source = path
             .extension()
             .and_then(|extension| extension.to_str())
@@ -121,7 +122,11 @@ fn committed_environment_reads(keys: &BTreeSet<String>) -> BTreeSet<String> {
     let sources = environment_read_sources();
     let mut reads = keys
         .iter()
-        .filter(|key| sources.iter().any(|(_, source)| source.contains(key.as_str())))
+        .filter(|key| {
+            sources
+                .iter()
+                .any(|(_, source)| source.contains(key.as_str()))
+        })
         .cloned()
         .collect::<BTreeSet<_>>();
 
@@ -158,7 +163,6 @@ const LOCAL_CONTROL_VARS: &[&str] = &[
     "NAVIGATOR_KIND_DEPS_OVERLAY",
     "NAVIGATOR_KIND_OVERLAY",
     "NAVIGATOR_GKE_OVERLAY",
-    "NAVIGATOR_PRIVATE_MODE",
     "NAVIGATOR_KIND_SURREAL_PORT",
     "NAVIGATOR_KIND_RESTATE_INGRESS_PORT",
     "NAVIGATOR_KIND_RESTATE_ADMIN_PORT",
@@ -366,7 +370,10 @@ fn operating_workshop_lists_every_committed_environment_variable() {
 fn every_committed_environment_variable_is_read_or_explicitly_allowlisted() {
     let keys = environment_keys(&repo_file(".env.example"));
     let reads = committed_environment_reads(&keys);
-    let allowlist = INTENTIONAL_ENV_ALLOWLIST.iter().copied().collect::<BTreeSet<_>>();
+    let allowlist = INTENTIONAL_ENV_ALLOWLIST
+        .iter()
+        .copied()
+        .collect::<BTreeSet<_>>();
     let unread = keys
         .difference(&reads)
         .filter(|key| !allowlist.contains(key.as_str()))

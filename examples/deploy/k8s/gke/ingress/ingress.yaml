@@ -39,7 +39,7 @@
 # The second hostname is the public endpoint Restate Cloud uses to reach the
 # workflow worker, which also hosts the GitHub webhook receiver and the notice
 # services folded in from the former standalone DevX worker. The receiver moved
-# off `www` so that host can go behind the tailnet — GitHub, an external sender,
+# off `www` so that host remains behind the tailnet perimeter — GitHub, an external sender,
 # cannot reach a tailnet-only host, so it posts to the public workflows host.
 #
 # Naming this `navigator-web-gke` to avoid colliding with the

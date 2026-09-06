@@ -191,7 +191,6 @@ pub(crate) const WORKFLOWS_PUBLIC_URL: &str = "https://workflows.example.com/";
 // cluster, so they need no local tag constant here.
 const WEB_IMAGE: &str = "navigator-web:dev";
 const WORKFLOWS_SERVICE_IMAGE: &str = "navigator-workflows-service:dev";
-const GATEWAY_IMAGE: &str = "navigator-gateway:dev";
 
 // Kustomize overlay roots. `Up` applies the deps-only overlay (no
 // in-cluster `web`). `Deploy` applies the full overlay including
@@ -199,13 +198,6 @@ const GATEWAY_IMAGE: &str = "navigator-gateway:dev";
 // production — `dev kustomize gke` renders it locally for inspection.
 const DEFAULT_KUSTOMIZE_KIND_DEPS: &str = "k8s/overlays/kind-deps";
 const DEFAULT_KUSTOMIZE_KIND: &str = "k8s/overlays/kind";
-// The full overlay again, plus the `private-mode` component: a Pingora
-// sidecar in front of `web` that checks network then HTTP basic auth. Selected
-// instead of the plain full overlay when `NAVIGATOR_PRIVATE_MODE` is
-// affirmative. `kubectl kustomize` has no "add a component" flag, so the
-// toggle is overlay selection — which keeps `dev kustomize kind` rendering
-// exactly what `dev deploy` would apply.
-const DEFAULT_KUSTOMIZE_KIND_PRIVATE: &str = "k8s/overlays/kind-private";
 // GKE overlay lives under `examples/deploy/k8s/gke/` (moved out of
 // the canonical `k8s/` tree for the product release — the prod
 // overlay is now an example users adapt, not a hard-coded part of
@@ -310,14 +302,7 @@ impl KindConfig {
             cluster: env_string("NAVIGATOR_KIND_CLUSTER", DEFAULT_CLUSTER_NAME),
             namespace: env_string("NAVIGATOR_K8S_NAMESPACE", DEFAULT_NAMESPACE),
             deps_overlay: env_string("NAVIGATOR_KIND_DEPS_OVERLAY", DEFAULT_KUSTOMIZE_KIND_DEPS),
-            full_overlay: env_string(
-                "NAVIGATOR_KIND_OVERLAY",
-                if private_mode_from_env() {
-                    DEFAULT_KUSTOMIZE_KIND_PRIVATE
-                } else {
-                    DEFAULT_KUSTOMIZE_KIND
-                },
-            ),
+            full_overlay: env_string("NAVIGATOR_KIND_OVERLAY", DEFAULT_KUSTOMIZE_KIND),
             gke_overlay: env_string("NAVIGATOR_GKE_OVERLAY", DEFAULT_KUSTOMIZE_GKE),
             ingress_http_port: env_port(
                 "NAVIGATOR_KIND_INGRESS_HTTP_PORT",
@@ -391,31 +376,6 @@ fn env_string(key: &str, default: &str) -> String {
         .ok()
         .filter(|v| !v.trim().is_empty())
         .unwrap_or_else(|| default.to_string())
-}
-
-/// Private mode — put a Pingora gateway in front of `web`. `/health` stays
-/// open; every other request passes network allowlisting then HTTP basic auth.
-/// The one flag both halves of the
-/// orchestration read: `KindConfig::from_env` selects the
-/// `kind-private` overlay with it, and `ship` appends the
-/// `private-mode` component to the rendered GKE tree with it, so a
-/// deployment is private in the same way locally and in production.
-///
-/// Off unless affirmatively on: unset, empty, `0`, and `false` all leave
-/// the public topology alone, because a typo in this var must never
-/// silently un-gate a deployment someone believes is private. The
-/// affirmative set matches `portal::oauth::self_signup_enabled`.
-pub(super) fn private_mode_from_env() -> bool {
-    private_mode(env::var("NAVIGATOR_PRIVATE_MODE").ok().as_deref())
-}
-
-/// The parse behind [`private_mode_from_env`], split from the `env` read
-/// so it is unit-tested without mutating the process environment.
-fn private_mode(value: Option<&str>) -> bool {
-    matches!(
-        value.map(str::trim).map(str::to_ascii_lowercase).as_deref(),
-        Some("1" | "true" | "yes" | "on")
-    )
 }
 
 /// Read a `u16` port env var, falling back to `default` when unset,
@@ -2574,7 +2534,7 @@ mod tests {
         assert_eq!(kind_web_image_family("no image here\n"), None);
 
         let wrong_family = "      - name: stub public assets for the KIND web image\n        \
-                        if: matrix.image == 'navigator-gateway'\n        run: |\n";
+                        if: matrix.image == 'navigator-workflows-service'\n        run: |\n";
         let err = stub_step_covers_image(wrong_family, "navigator-web")
             .expect_err("a gate missing the served image must be flagged");
         assert!(
@@ -2607,8 +2567,7 @@ mod tests {
     fn build_leg_resolution_follows_an_alias_tag_to_the_leg_that_compiles_it() {
         let matrix = "jobs:\n  build:\n    strategy:\n      matrix:\n        include:\n\
                       \x20         - image: neon-server\n            dockerfile: images/Containerfile.neon\n\
-                      \x20           alias: navigator-web\n\
-                      \x20         - image: navigator-gateway\n            dockerfile: images/Containerfile.gateway\n";
+                      \x20           alias: navigator-web\n";
 
         assert_eq!(
             build_leg_for_image(matrix, "navigator-web").as_deref(),
@@ -2618,11 +2577,6 @@ mod tests {
         assert_eq!(
             build_leg_for_image(matrix, "neon-server").as_deref(),
             Some("neon-server")
-        );
-        assert_eq!(
-            build_leg_for_image(matrix, "navigator-gateway").as_deref(),
-            Some("navigator-gateway"),
-            "a leg with no alias still resolves to itself"
         );
         assert_eq!(build_leg_for_image(matrix, "navigator-git"), None);
         assert_eq!(
@@ -2665,7 +2619,6 @@ mod tests {
         "NAVIGATOR_LOCAL_DELETE_YOUR_DATA_PORT",
         "NAVIGATOR_KIND_OPENOBSERVE_PORT",
         "NAVIGATOR_KIND_OPENOBSERVE_OTLP_PORT",
-        "NAVIGATOR_PRIVATE_MODE",
     ];
 
     // Process env is global; `from_env` reads all of it. Serialize the
@@ -2890,42 +2843,6 @@ mod tests {
         assert_eq!(cfg.gke_overlay, "my/gke");
     }
 
-    #[test]
-    fn private_mode_is_off_unless_affirmatively_on() {
-        // The failure this guards is asymmetric: reading a stray value as
-        // "on" costs a developer a basic-auth prompt, while reading a real
-        // value as "off" publishes a deployment someone believes is
-        // private. Everything outside the affirmative set is off, and
-        // everything inside it is on regardless of case or padding.
-        for on in ["1", "true", "TRUE", "yes", "on", "  true  "] {
-            assert!(private_mode(Some(on)), "{on:?} must enable private mode");
-        }
-        for off in ["", "  ", "0", "false", "no", "off", "private", "maybe"] {
-            assert!(!private_mode(Some(off)), "{off:?} must not enable it");
-        }
-        assert!(!private_mode(None), "unset must not enable it");
-    }
-
-    #[test]
-    fn private_mode_selects_the_private_kind_overlay() {
-        let _guard = lock();
-        clear_kind_env();
-        env::set_var("NAVIGATOR_PRIVATE_MODE", "1");
-        let private = KindConfig::from_env();
-        // An explicit overlay still wins — private mode only changes which
-        // overlay is the DEFAULT, so a fork pointing at its own tree keeps
-        // pointing at it.
-        env::set_var("NAVIGATOR_KIND_OVERLAY", "my/full");
-        let explicit = KindConfig::from_env();
-        clear_kind_env();
-
-        assert_eq!(private.full_overlay, DEFAULT_KUSTOMIZE_KIND_PRIVATE);
-        // Nothing else about the topology moves.
-        assert_eq!(private.deps_overlay, DEFAULT_KUSTOMIZE_KIND_DEPS);
-        assert_eq!(private.gke_overlay, DEFAULT_KUSTOMIZE_GKE);
-        assert_eq!(explicit.full_overlay, "my/full");
-    }
-
     /// An overlay in this repository, built the way `dev deploy` applies it.
     ///
     /// Straight off disk, unlike the GKE pair in `ship.rs`: the KIND
@@ -2977,74 +2894,6 @@ mod tests {
         assert!(
             manifests.contains("openobserve_endpoint: http://openobserve:5081"),
             "the staging coordinates must point binaries directly at OpenObserve"
-        );
-    }
-
-    #[test]
-    fn private_mode_puts_the_basic_auth_gateway_in_front_of_kind_web() {
-        // The KIND half of what `ship.rs`'s
-        // `private_mode_puts_the_basic_auth_gateway_in_front_of_web`
-        // proves for GKE. `private_mode_selects_the_private_kind_overlay`
-        // above only proves the CLI names this path; it never builds it, so
-        // a wrong `resources:`/`components:` path or a patch that missed
-        // its target would leave both that test and every other per-PR
-        // check green while `dev up` applied a public stack.
-        let manifests = kind_overlay("kind-private");
-
-        let service = ship::manifest_doc(&manifests, "Service", "navigator-web");
-        assert_eq!(
-            service["spec"]["ports"][0]["targetPort"].as_u64(),
-            Some(8080),
-            "the Service must reach `web` through the gateway, not directly: {:?}",
-            service["spec"]["ports"]
-        );
-
-        let deployment = ship::manifest_doc(&manifests, "Deployment", "navigator-web");
-        let containers = deployment["spec"]["template"]["spec"]["containers"]
-            .as_sequence()
-            .expect("the web pod has containers");
-        let gateway = containers
-            .iter()
-            .find(|c| c["name"].as_str() == Some("private-gateway"))
-            .expect("private mode adds the Pingora sidecar");
-        assert_eq!(
-            gateway["readinessProbe"]["httpGet"]["path"].as_str(),
-            Some("/health"),
-            "the probe must target the one unauthenticated location, or every probe 401s and \
-             private mode reads as an outage rather than a password prompt"
-        );
-        assert_eq!(
-            gateway["ports"][0]["containerPort"].as_u64(),
-            service["spec"]["ports"][0]["targetPort"].as_u64(),
-            "the gateway must listen on the port the Service targets. A numeric `targetPort` is \
-             published for every selected pod whether or not anything there listens, so a \
-             disagreement here is not a routing miss that fails closed — it is a live upstream \
-             where nothing answers, and the ingress turns it into a 502."
-        );
-        assert!(
-            manifests.contains("navigator-private-basic-auth"),
-            "the basic-auth Secret must be part of the applied tree"
-        );
-    }
-
-    #[test]
-    fn the_default_kind_overlay_stays_public() {
-        // The half that matters more: the overlay `dev up` applies without
-        // `NAVIGATOR_PRIVATE_MODE` must be the stack it always was. A
-        // component leaking into `../kind` would put a basic-auth prompt in
-        // front of every local loop and the browser e2e gate, which sends
-        // no `Authorization` header.
-        let manifests = kind_overlay("kind");
-
-        assert!(
-            !manifests.contains("private-gateway"),
-            "the plain overlay must not carry the gateway"
-        );
-        let service = ship::manifest_doc(&manifests, "Service", "navigator-web");
-        assert_eq!(
-            service["spec"]["ports"][0]["targetPort"].as_u64(),
-            Some(3001),
-            "the Service must reach the app directly"
         );
     }
 

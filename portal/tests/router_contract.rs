@@ -381,9 +381,9 @@ async fn verified_webhook_ingress_stays_anonymous() {
     }
 }
 
-/// The GitHub webhook receiver no longer lives in `web`. It moved to
-/// `workflows-service` on the public `workflows` host so `www` can go behind the
-/// tailnet, and GitHub — which cannot join the tailnet — reaches it there. `web`
+/// The GitHub webhook receiver lives in `workflows-service` on the public
+/// `workflows` host because `www` is behind the tailnet perimeter, and GitHub —
+/// which cannot join the tailnet — reaches it there. `web`
 /// must 404 the path rather than accept a signed delivery meant for the worker.
 #[tokio::test]
 async fn web_does_not_serve_the_github_webhook_receiver() {

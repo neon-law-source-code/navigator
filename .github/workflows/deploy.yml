@@ -532,10 +532,7 @@ jobs:
     # Per-image runner: the Rust-workspace image exhausts the tenant
     # `ubuntu-latest` disk before rustup even finishes (run 142012686,
     # "No space left on device" at `rustup target add`), so it builds on
-    # a wide runner. The gateway image compiles
-    # one small crate and stays on `ubuntu-latest` — a wide runner caps
-    # at two concurrent jobs and bills per-minute, so light builds must not
-    # queue behind heavy ones.
+    # a wide runner. The worker stays on `ubuntu-latest`.
     runs-on: ${{ matrix.runner }}
     # Cold workspace compile; cap so a stuck build can't hang the run.
     #
@@ -613,10 +610,6 @@ jobs:
             dockerfile: images/Containerfile.workflows-service
             runner: ubuntu-latest
             ci_cache_scope: navigator-workflows-service-amd64
-          - image: navigator-gateway
-            dockerfile: images/Containerfile.gateway
-            runner: ubuntu-latest
-            ci_cache_scope: navigator-gateway-amd64
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
@@ -710,9 +703,8 @@ jobs:
           #
           #   neon-server                   3.78 GB   read by nothing
           #   navigator-workflows-service   1.81 GB   read by publish-service
-          #   navigator-gateway             0.54 GB   read by publish-service
           #
-          # Exporting all three left no room for `ci.yml`'s ~1.7 GB Rust
+          # Exporting both service caches left no room for `ci.yml`'s ~1.7 GB Rust
           # dependency cache: it uploaded successfully at the end of a `main` run
           # and was evicted before the next PR could restore it, so the gate
           # logged `No cache found.` every time. Dropping the one export with no
@@ -897,7 +889,7 @@ jobs:
       - name: load service images into kind
         run: |
           set -euo pipefail
-          for img in navigator-web neon-server navigator-workflows-service navigator-gateway; do
+          for img in navigator-web neon-server navigator-workflows-service; do
               echo "::group::load ${img}"
               docker load -i "/tmp/ci-images/${img}.tar"
               docker tag "${img}:ci-${{ github.sha }}" "${img}:dev"
@@ -1385,105 +1377,6 @@ jobs:
           fi
           echo "confirmed: no 'skipping browser test:' line — every browser/accessibility test executed for real"
 
-      - uses: ./.github/actions/slack-progress
-        with:
-          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
-          tag: "${{ needs.release-version.outputs.tag }}"
-          stage: "integration"
-          step: "verify private mode gates the deployment"
-      # ---------- private mode ----------
-      # `NAVIGATOR_PRIVATE_MODE` gates BOTH topologies through one component
-      # (`k8s/components/private-mode`): KIND selects it by swapping to the
-      # `kind-private` overlay, and `ops ship` appends that same component to
-      # the rendered GKE kustomization. Two patches, one mechanism — so
-      # exercising it here really does verify what a private cloud deploy
-      # gets, and this is the only place that verification can run without
-      # standing up a cloud cluster.
-      #
-      # It runs LAST because it is destructive to the plain topology: it
-      # repoints `Service/navigator-web` from the app (3001) at the Pingora
-      # sidecar (8080), and the browser/e2e gate above sends no Authorization
-      # header, so every one of its requests would 401 from here on.
-      - name: verify private mode gates the deployment
-        run: |
-          set -euo pipefail
-          kubectl apply -k k8s/overlays/kind-private
-          kubectl --namespace navigator rollout status deployment/navigator-web --timeout=300s
-
-          # Response code only — never the body. A private-mode failure is
-          # diagnosed from the status code, and dumping a page body here would
-          # put application content in a public log.
-          probe() {
-              curl --silent --show-error --output /dev/null \
-                  --write-out '%{http_code}' --max-time 30 "$@"
-          }
-
-          # Wait for the ingress upstream to converge on the gateway before
-          # asserting anything about it. `rollout status` returns as soon as
-          # the new ReplicaSet is available, which is NOT the same instant
-          # the old pod stops being routable: the run that first shipped this
-          # step logged "1 old replicas are pending termination" and then
-          # reported success 21 ms before the probe ran.
-          #
-          # That gap is a 502 rather than a stale page because private mode
-          # retargets `Service/navigator-web` at a NUMERIC port. A numeric
-          # `targetPort` publishes every selected pod on 8080 whether or not
-          # anything there listens — verified directly: a pod serving only
-          # 3001 is still admitted to the EndpointSlice as `ready` on 8080.
-          # The outgoing pod carries no gateway sidecar, so while it remains
-          # an upstream, ingress-nginx can forward to a port nothing answers
-          # and return 502.
-          #
-          # Poll rather than sleep a fixed interval, and leave the assertions
-          # below authoritative: if private mode is genuinely broken this
-          # loop simply runs out and assertion 1 reports the real code.
-          deadline=$((SECONDS + 120))
-          waited=0
-          while [ "$SECONDS" -lt "$deadline" ]; do
-              if [ "$(probe http://localhost:8080/)" = "401" ]; then
-                  break
-              fi
-              waited=1
-              sleep 2
-          done
-          if [ "$waited" = "1" ]; then
-              echo "note: the ingress upstream took a moment to converge on the gateway"
-          fi
-
-          # 1. The door is shut to an anonymous caller.
-          code="$(probe http://localhost:8080/)"
-          if [ "$code" != "401" ]; then
-              echo "::error::private mode did not challenge an anonymous request: expected 401, got ${code}"
-              exit 1
-          fi
-          echo "confirmed: an anonymous request is challenged (401)"
-
-          # 2. The configured credential opens it. Asserting "not 401" rather
-          #    than a specific success code deliberately: what is under test is
-          #    that the gateway ACCEPTED the credential and proxied through.
-          #    Whether the app then renders or redirects is the app's business,
-          #    and the e2e suite above already covers it.
-          code="$(probe --user go:bears http://localhost:8080/)"
-          if [ "$code" = "401" ]; then
-              echo "::error::private mode rejected the configured credential"
-              exit 1
-          fi
-          echo "confirmed: the configured credential is accepted (${code})"
-
-          # 3. `/health` stays OPEN, and this is the assertion that matters
-          #    most. In private mode `Service/navigator-web` targets the
-          #    gateway, so a GKE backend's health check resolves against this
-          #    path. If it ever slips behind `auth_basic`, every probe 401s,
-          #    the backend leaves rotation, and private mode reads as a total
-          #    outage instead of a password prompt — a failure that would only
-          #    ever surface in production.
-          code="$(probe http://localhost:8080/health)"
-          if [ "$code" != "200" ]; then
-              echo "::error::/health is not reachable unauthenticated (got ${code}) — a private-mode deploy would fail its load-balancer health check and drop out of rotation"
-              exit 1
-          fi
-          echo "confirmed: /health answers unauthenticated (200) — health checks survive private mode"
-
       # Always publish the JUnit report so the FLAKY trend is visible even on
       # a green deploy (a flake papered over by a retry still shows here); on
       # failure the screenshots + streamed log make the next intermittent
@@ -1665,9 +1558,8 @@ jobs:
     # Tag only. A `kind-ci/**` branch run stops after integration — it
     # must never push branch-tagged images to the registry.
     if: needs.release-version.outputs.publishable == 'true'
-    # Per-image runner, same split as `build`: Rust-workspace images need
-    # the wide runner's disk; the light gateway stays on `ubuntu-latest` so it
-    # never queues behind the heavies on the two-slot large pool.
+    # Per-image runner, same split as `build`: the Rust-workspace image needs
+    # the wide runner's disk; the worker stays on `ubuntu-latest`.
     runs-on: ${{ matrix.runner }}
     # `contents: read` to check out, `packages: write` to push. Nothing here
     # requests an OIDC token, because nothing here talks to a cloud provider.
@@ -1734,8 +1626,8 @@ jobs:
           # byte-identical inputs: same image name, same context, and nothing
           # release-specific above `RUN cargo build`. That holds for these two —
           # `RELEASE_TAG` is declared in the *runtime* stage
-          # (`Containerfile.workflows-service:114`) and `Containerfile.gateway`
-          # never declares it, so neither reaches the builder's cache key.
+          # (`Containerfile.workflows-service:114`), so it does not reach the
+          # builder's cache key.
           #
           # The two public-host legs deliberately have no scope. `build` runs a
           # stub-assets step that rewrites `server/public` and `.dockerignore`,
@@ -1746,10 +1638,6 @@ jobs:
             dockerfile: images/Containerfile.workflows-service
             runner: ubuntu-latest
             ci_cache_scope: navigator-workflows-service-amd64
-          - image: navigator-gateway
-            dockerfile: images/Containerfile.gateway
-            runner: ubuntu-latest
-            ci_cache_scope: navigator-gateway-amd64
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
@@ -3017,7 +2905,6 @@ jobs:
 
           *Service images*
           • \`navigator-workflows-service\` — the durable-execution worker
-          • \`navigator-gateway\` — private-mode Pingora gateway
           • \`navigator-web\` — alias tag, byte-identical to \`neon-server\`; retires with #796
 
           *Scheduled-job images*
@@ -3089,10 +2976,9 @@ jobs:
       # compromise rolls production; `ops ship` moves that authority to a human
       # holding short-lived ADC.
       #
-      # THIS REPOSITORY NAMES NO DEPLOYMENT. The tree moved to a private
-      # repository with the credential that rolls it, so this step has nothing
-      # to enumerate — it once listed the tree and read each row's public host
-      # out of its config.toml, and both are gone.
+      # THIS REPOSITORY NAMES NO DEPLOYMENT. The deployment tree lives in a
+      # private repository with the credential that rolls it, so this step has
+      # nothing to enumerate.
       #
       # It does not follow that the message should hardcode the names instead.
       # A row is rollable because its directory exists, and this repository can

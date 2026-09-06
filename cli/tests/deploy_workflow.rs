@@ -36,28 +36,39 @@ fn has_trigger(name: &str) -> bool {
 }
 
 fn rendered_trigger_images() -> BTreeSet<String> {
-    ["examples/deploy/k8s/exports", "k8s/components/automation-home"]
-        .into_iter()
-        .flat_map(|root| {
-            walkdir::WalkDir::new(repo_file_path(root))
-                .into_iter()
-                .filter_map(Result::ok)
-                .filter(|entry| entry.file_type().is_file())
-                .filter_map(|entry| std::fs::read_to_string(entry.path()).ok())
-                .collect::<Vec<_>>()
-        })
-        .flat_map(|source| source.lines().map(str::to_string).collect::<Vec<_>>())
-        .filter_map(|line| {
-            let image = line.trim().strip_prefix("image:")?.trim();
-            let image = image.trim_matches(|character| character == '"' || character == '\'');
-            let image = image.strip_prefix("YOUR_IMAGE_REGISTRY/")?;
-            Some(image.rsplit_once(':').map_or(image, |(name, _)| name).to_string())
-        })
-        .collect()
+    [
+        "examples/deploy/k8s/exports",
+        "k8s/components/automation-home",
+    ]
+    .into_iter()
+    .flat_map(|root| {
+        walkdir::WalkDir::new(repo_file_path(root))
+            .into_iter()
+            .filter_map(Result::ok)
+            .filter(|entry| entry.file_type().is_file())
+            .filter_map(|entry| std::fs::read_to_string(entry.path()).ok())
+            .collect::<Vec<_>>()
+    })
+    .flat_map(|source| source.lines().map(str::to_string).collect::<Vec<_>>())
+    .filter_map(|line| {
+        let image = line.trim().strip_prefix("image:")?.trim();
+        let image = image.trim_matches(|character| character == '"' || character == '\'');
+        let image = image.strip_prefix("YOUR_IMAGE_REGISTRY/")?;
+        Some(
+            image
+                .rsplit_once(':')
+                .map_or(image, |(name, _)| name)
+                .to_string(),
+        )
+    })
+    .collect()
 }
 
 fn repo_file_path(path: &str) -> std::path::PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join(path)
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join(path)
 }
 
 #[test]
@@ -576,7 +587,7 @@ fn browser_accessibility_uses_the_shipped_images() {
 
     for required in [
         "          - image: neon-server\n            dockerfile: images/Containerfile.neon",
-        "for img in navigator-web neon-server navigator-workflows-service navigator-gateway; do",
+        "for img in navigator-web neon-server navigator-workflows-service; do",
     ] {
         assert!(
             workflow.contains(required),
@@ -907,8 +918,8 @@ fn standalone_wasm_workflow_stays_retired() {
 /// budget is shared with `ci.yml`'s Rust dependency cache, and `mode=max` over a
 /// Rust builder stage exports the whole `target` directory. Joining each `build`
 /// leg's exported layer digests against the cache listing for run 32487939326
-/// measured 3.78 GB for `neon-server`, 1.81 GB for `navigator-workflows-service`
-/// and 0.54 GB for `navigator-gateway` — and `publish-service` gives
+/// measured 3.78 GB for `neon-server` and 1.81 GB for
+/// `navigator-workflows-service` — and `publish-service` gives
 /// `neon-server` no `ci_cache_scope`, so the largest of the three was read by
 /// nothing. Together they left no room for the gate's ~1.7 GB dependency cache,
 /// which uploaded at the end of a `main` run and was evicted before the next PR

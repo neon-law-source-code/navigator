@@ -70,16 +70,16 @@ compile without it.
 
 **To run the local KIND cluster** (`navigator dev up`, and the per-worktree `dev worktree-env up`):
 
-The cluster lane refuses to start unless all four of these are on `PATH` — `cli/src/devx/orchestrate.rs:43` opens it
+The cluster lane refuses to start unless all four of these are on `PATH` — `cli/src/devx/orchestrate.rs:42` opens it
 with `require_tools(&["kind", "kubectl", "docker", "helm"])`. Docker and `kubectl` are already above and both arrive
 with Docker Desktop, which is exactly why the remaining two are easy to miss:
 
-- **`kind`, at v0.32.0** — the version `.github/workflows/deploy.yml:866` pins for the KIND integration gate, in
-  lockstep with the `kindest/node:v1.36.1` digest pinned at `.github/workflows/deploy.yml:873`. Take that version rather
+- **`kind`, at v0.32.0** — the version `.github/workflows/deploy.yml:858` pins for the KIND integration gate, in
+  lockstep with the `kindest/node:v1.36.1` digest pinned at `.github/workflows/deploy.yml:865`. Take that version rather
   than the latest release: the workflow records that v0.32.0's `kind load` is what understands the containerd config v4
   the v1.36.1 node writes, and that the two are meant to be bumped together.
 - **`helm`, any release with OCI registry support** — the lane uses it for one thing, `helm upgrade --install` of the
-  Restate Operator chart from `oci://ghcr.io/restatedev/restate-operator-helm` at `cli/src/devx/orchestrate.rs:525`.
+  Restate Operator chart from `oci://ghcr.io/restatedev/restate-operator-helm` at `cli/src/devx/orchestrate.rs:502`.
   Nothing in this repository pins it and CI takes whatever its runner image ships, so there is no version to cite here
   the way there is for the tools above; v4.2.4 is known to pull the pinned chart.
 

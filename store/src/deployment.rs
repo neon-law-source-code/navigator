@@ -133,7 +133,7 @@ pub static WEB_REQUIREMENTS: &[Requirement] = &[
         project_id: None,
     },
     // The GitHub webhook receiver, hosted by `workflows-service` on the public
-    // workflows host (`www` goes behind the tailnet): the HMAC secret, the
+    // workflows host (`www` remains behind the tailnet perimeter): the HMAC secret, the
     // watched product code repo, the App bot login (echo suppression), and the
     // Restate ingress endpoint + bearer the receiver submits through. Still
     // project-scoped to the automation home and preflighted here so `ops ship`

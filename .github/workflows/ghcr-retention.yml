@@ -151,7 +151,6 @@ jobs:
           neon-server
           navigator-web
           navigator-workflows-service
-          navigator-gateway
           navigator-heartbeat-trigger
           navigator-archives-trigger
           navigator-surreal-archive

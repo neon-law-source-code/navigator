@@ -35,6 +35,7 @@ NAVIGATOR_WEB_SECRET_NAME = "example-automation-home-web-secrets"
 
 # --- Sign-in client --------------------------------------------------------
 NAVIGATOR_OAUTH_CLIENT_ID_BROWSER = "000000000001-examplehome.apps.googleusercontent.com"
+NAVIGATOR_BOOTSTRAP_OWNER_EMAIL = "owner@example.com"
 
 # --- Storage ---------------------------------------------------------------
 NAVIGATOR_ASSETS_BUCKET = "example-automation-home-assets"

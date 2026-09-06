@@ -992,7 +992,7 @@ roles. Complete the global Workspace attachment once:
 | Bearer JWKS | `OIDC_JWKS_URL`, `OIDC_AUDIENCE`, `OIDC_ISSUER` | Deployed JWT verification |
 | Bearer HMAC | `OIDC_HS256_SECRET` | Local/test verifier path |
 | Dev bypass | `OIDC_DISABLED` | Off; the dev profile and production reject `true` / `1` |
-| Bootstrap Owner | `NAVIGATOR_BOOTSTRAP_OWNER_EMAIL` | No identity is JIT-created |
+| Bootstrap Owner | `NAVIGATOR_BOOTSTRAP_OWNER_EMAIL` (`config.toml`) | Missing: ship refused; unset: no JIT identity |
 | Protected firm Entity | `NAVIGATOR_BOOTSTRAP_COMPANY` | `Shook Law PLLC` is protected either way |
 | Self-signup | `NAVIGATOR_SELF_SIGNUP_ENABLED` | Off; an unknown email is refused (403) |
 | Google token policy | `GOOGLE_OAUTH_CLIENT_IDS`, `GOOGLE_OAUTH_REQUIRED_HD` | No client/domain pin |
@@ -1257,10 +1257,10 @@ One environment variable answers which person is the protected bootstrap Owner:
 NAVIGATOR_BOOTSTRAP_OWNER_EMAIL=owner@example.com
 ```
 
-Read `NAVIGATOR_BOOTSTRAP_OWNER_EMAIL` from the environment or secret source that supplies your deployment to determine
-the protected identity. Do not copy the deployed value into Git. An unset, empty, or whitespace-only value disables the
-bootstrap carve-out, so every person must already have a row before signing in. On a fresh installation, the first
-successful OIDC login with the configured email JIT-creates its `persons` row as `owner`; later sign-ins restore that
+Set `NAVIGATOR_BOOTSTRAP_OWNER_EMAIL` in the deployment `config.toml`; `ops ship` renders it into the web pod.
+Do not copy the deployed value into Git. A missing, empty, or whitespace-only value refuses the ship. On a fresh
+installation, the first successful OIDC login with the configured email JIT-creates its `persons` row as `owner`; later
+sign-ins restore that
 role if the database has drifted. Its entire Person record is immutable in Navigator so an administrator cannot rename,
 demote, or delete the installation's recovery identity by accident.
 

@@ -273,6 +273,10 @@ where
             "YOUR_OAUTH_CLIENT_ID_BROWSER",
             "NAVIGATOR_OAUTH_CLIENT_ID_BROWSER",
         ),
+        (
+            "YOUR_BOOTSTRAP_OWNER_EMAIL",
+            "NAVIGATOR_BOOTSTRAP_OWNER_EMAIL",
+        ),
     ];
     let mut substitutions = base_substitutions(deployment, tag, &get)?;
     substitutions.extend(
@@ -3345,6 +3349,7 @@ mod tests {
             "NAVIGATOR_OAUTH_CLIENT_ID_GEMINI",
             "222-gemini.apps.googleusercontent.com",
         ),
+        ("NAVIGATOR_BOOTSTRAP_OWNER_EMAIL", "owner@example.com"),
     ];
 
     /// The two-project shape every real environment now runs: images in the
@@ -3398,6 +3403,24 @@ mod tests {
         }
     }
 
+    #[test]
+    fn bootstrap_owner_email_is_required_for_a_ship() {
+        let err = resolve_substitutions_for_deployment(
+            "example-deployment",
+            "26.9.6",
+            |key| {
+                (key != "NAVIGATOR_BOOTSTRAP_OWNER_EMAIL")
+                    .then(|| env_getter(FULL_ENV)(key))
+                    .flatten()
+            },
+        )
+        .expect_err("a deployment without a bootstrap Owner must not render");
+        assert!(err.to_string().contains("NAVIGATOR_BOOTSTRAP_OWNER_EMAIL"));
+        assert!(err
+            .to_string()
+            .contains("deployments/example-deployment/config.toml"));
+    }
+
     /// The placeholder tokens that must be gone from every rendered file.
     ///
     /// Enumerating them catches a substitution that stopped firing, but it
@@ -3423,6 +3446,7 @@ mod tests {
         "YOUR_GOOGLE_OAUTH_REQUIRED_HD",
         "YOUR_OAUTH_CLIENT_ID_BROWSER",
         "YOUR_OAUTH_CLIENT_ID_GEMINI",
+        "YOUR_BOOTSTRAP_OWNER_EMAIL",
         "YOUR_CHATWOOT_WEBSITE_TOKEN",
         "YOUR_OAUTH_MICROSOFT_CLIENT_ID",
         "YOUR_OAUTH_MICROSOFT_ALLOWED_TENANTS",
@@ -3616,7 +3640,7 @@ mod tests {
             "bootstrap Owner environment-variable name is preserved"
         );
         assert!(
-            web_env.contains("value: nick@neonlaw.com"),
+            web_env.contains("value: owner@example.com"),
             "bootstrap Owner identity reaches the pod"
         );
         assert!(

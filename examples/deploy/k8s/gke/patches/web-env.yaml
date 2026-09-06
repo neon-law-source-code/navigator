@@ -72,13 +72,11 @@ spec:
             # all — nobody can seed the first Person because seeding requires
             # an authenticated Owner.
             #
-            # A literal rather than a per-deployment coordinate, exactly like
-            # NAVIGATOR_BOOTSTRAP_COMPANY above: both rows are the same
-            # firm with the same GOOGLE_OAUTH_REQUIRED_HD (`neonlaw.com`), so
-            # they share one Owner. The domain gate still applies — this
+            # The deployment's own bootstrap identity, resolved from its
+            # config.toml by `ops ship`. The domain gate still applies — this
             # carve-out cannot admit an address the IdP would not issue.
             - name: NAVIGATOR_BOOTSTRAP_OWNER_EMAIL
-              value: nick@neonlaw.com
+              value: YOUR_BOOTSTRAP_OWNER_EMAIL
             # Whether this deployment's matters are simulated rather than
             # real. `false` for every deployment that does not say otherwise,
             # including production — `ops ship` renders that default when the

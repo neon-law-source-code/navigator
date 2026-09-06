@@ -383,25 +383,24 @@ pub async fn memberships_for_person(
         .collect())
 }
 
-/// Firm ids this person belongs to.
-pub async fn firm_ids_for_person(
-    surreal: &SurrealDb,
-    person_id: Uuid,
-) -> Result<Vec<Uuid>, FirmError> {
-    Ok(memberships_for_person(surreal, person_id)
-        .await?
-        .into_iter()
-        .map(|row| row.firm_id)
-        .collect())
-}
-
 /// Person ids an Admin of these firms may see: members of those firms, plus
 /// anyone with a `person_project_role` on a matter those firms own.
+///
+/// Routes through [`crate::firm_capability::allowed_firm_ids`] with
+/// [`crate::firm_capability::FirmCapability::ViewDirectory`] (ENG-463) rather
+/// than deriving its own membership set, so this stays in step with every
+/// other Firm-scoped directory read.
 pub async fn visible_person_ids(
     surreal: &SurrealDb,
     admin_person_id: Uuid,
 ) -> Result<Vec<Uuid>, FirmError> {
-    let firm_ids = firm_ids_for_person(surreal, admin_person_id).await?;
+    let firm_ids = crate::firm_capability::allowed_firm_ids(
+        surreal,
+        Role::Admin,
+        Some(admin_person_id),
+        crate::firm_capability::FirmCapability::ViewDirectory,
+    )
+    .await?;
     if firm_ids.is_empty() {
         return Ok(Vec::new());
     }

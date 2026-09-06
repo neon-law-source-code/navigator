@@ -640,9 +640,8 @@ async fn load_doc_for_project(
 
 /// Stream bytes through the app — fallback when the storage backend
 /// has no signed-URL concept (`FsStorage` in local dev). Sets a
-/// `Content-Disposition: attachment` so the browser downloads with
-/// the original filename rather than the content-addressed
-/// `blobs/<sha>` key.
+/// `Content-Disposition: attachment` so the browser downloads with the
+/// original filename rather than an opaque storage key.
 async fn stream_through(
     state: AdminState,
     key: &str,

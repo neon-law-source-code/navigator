@@ -12,9 +12,10 @@
 //!    containing the path ([`repos::RepoStore::expunge_path_code`]). Current
 //!    document filing never writes raw bytes to Git.
 //! 3. Delete the file's bytes from object storage — **every** key holding
-//!    them (`blobs/<sha>`, `lfs/<oid>`, and any secondary notation key a
-//!    dual-write left, e.g. `notations/<id>/document.pdf`) so no copy of the
-//!    content survives in the data lake.
+//!    them (the document asset's Project-scoped key, `lfs/<oid>`, and any
+//!    secondary notation key a dual-write left, e.g.
+//!    `notations/<id>/document.pdf`) so no copy of the content survives in
+//!    the data lake.
 //! 4. Record the expunge itself — who, when, category — but **not** the
 //!    content, so the redaction stays auditable
 //!    ([`store::expunge_records`]).
@@ -75,22 +76,21 @@ pub struct ExpungeRequest<'a> {
     /// The admin authorizing the expunge.
     pub authorized_by: Uuid,
     /// Every `StorageService` key holding the file's bytes — each is
-    /// deleted so no copy survives. Typically the asset's content-addressed
-    /// `blobs/<sha>` plus any secondary key a dual-write left (a generated
-    /// PDF's `notations/<id>/document.pdf`); may instead be an `lfs/<oid>`
-    /// object or a fixed notation key. Use [`storage_keys_for_asset`] to
-    /// derive the full set from an asset row. Empty when there is nothing to
-    /// remove from object storage.
+    /// deleted so no copy survives. Typically the asset's Project-scoped
+    /// content-addressed key plus any secondary key a dual-write left (a
+    /// generated PDF's `notations/<id>/document.pdf`); may instead be an
+    /// `lfs/<oid>` object or a fixed notation key. Use
+    /// [`storage_keys_for_asset`] to derive the full set from an asset row.
+    /// Empty when there is nothing to remove from object storage.
     pub storage_keys: Vec<String>,
     /// Optional non-content note (e.g. a docket reference).
     pub note: Option<&'a str>,
 }
 
-/// Every object-storage key holding an asset's bytes: its canonical
-/// content-addressed `storage_key` plus any `secondary_storage_key` a
-/// dual-write left (a generated PDF's notation key). A governed expunge must
-/// delete all of them, or a copy of the bytes survives outside the asset
-/// lifecycle (#470).
+/// Every object-storage key holding an asset's bytes: its canonical storage
+/// key plus any `secondary_storage_key` a dual-write left (a generated PDF's
+/// notation key). A governed expunge must delete all of them, or a copy of
+/// the bytes survives outside the asset lifecycle (#470).
 #[must_use]
 pub fn storage_keys_for_asset(asset: &store::assets::Asset) -> Vec<String> {
     let mut keys = vec![asset.storage_key.clone()];
@@ -153,13 +153,11 @@ pub async fn expunge(
     //     fine (already gone); anything else is a hard error.
     //
     //     An object that an asset row on **another matter** still points at is
-    //     retained. Content-addressed keys were deduped workspace-wide before
-    //     dedup was scoped to a matter (`store::documents::ingest_bytes_as`),
-    //     so the existing corpus still has rows on different matters sharing
-    //     one `blobs/<sha>`. Deleting it here would empty an unrelated
-    //     matter's document on the authority of an order that never named it,
-    //     and if that matter is under a preservation duty, that is spoliation
-    //     caused by a case with no connection to it.
+    //     retained. Legacy content-addressed keys may be shared across
+    //     matters, and deleting one would empty an unrelated matter's
+    //     document on the authority of an order that never named it. If that
+    //     matter is under a preservation duty, that is spoliation caused by a
+    //     case with no connection to it.
     //
     //     A row with no `project_id` does **not** block: it is unattached, not
     //     another matter, and treating it as a referent would let a stray row

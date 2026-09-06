@@ -3,8 +3,9 @@
 //! Opening a Project records its identity. This module then creates or adopts
 //! the three external surfaces that identity names:
 //!
-//! 1. **Working files** — the documents-bucket prefix `projects/<code>`. The
-//!    prefix is a key convention, not a bucket; nothing here writes an object.
+//! 1. **Working files** — the documents-bucket prefix
+//!    `projects/<code>/documents`. The prefix is a key convention, not a
+//!    bucket; nothing here writes an object.
 //! 2. **Ingest** — the Drive folder named for the code, recorded as
 //!    `drive_folder_id`. Drive is import-only: membership lets people drop
 //!    files in; Navigator never treats the folder as a live store.
@@ -37,8 +38,9 @@ const PROJECT_TABLE: &str = "project";
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct ProjectSurfaces {
     pub code: String,
-    /// Always `projects/<code>`. Not stored as its own column: the code is the
-    /// prefix, and a second field would be a second spelling to keep in step.
+    /// Always `projects/<code>/documents`. Not stored as its own column: the
+    /// code is the prefix input, and a second field would be a second spelling
+    /// to keep in step.
     pub documents_prefix: String,
     pub drive_folder_id: Option<String>,
     pub repository_url: Option<String>,
@@ -240,7 +242,7 @@ mod tests {
 
     #[test]
     fn the_documents_prefix_is_the_project_code() {
-        assert_eq!(documents_prefix("acme"), "projects/acme");
+        assert_eq!(documents_prefix("acme"), "projects/acme/documents");
     }
 
     #[test]
@@ -275,7 +277,7 @@ mod tests {
             surfaces,
             ProjectSurfaces {
                 code: project.code.clone(),
-                documents_prefix: format!("projects/{}", project.code),
+                documents_prefix: format!("projects/{}/documents", project.code),
                 drive_folder_id: Some("folder-1".into()),
                 repository_url: Some(format!(
                     "https://forge.example/an-organization/{}",
@@ -384,7 +386,7 @@ mod tests {
             .expect("skip");
         assert_eq!(
             surfaces.documents_prefix,
-            format!("projects/{}", project.code)
+            format!("projects/{}/documents", project.code)
         );
         assert_eq!(surfaces.drive_folder_id, None);
         assert_eq!(surfaces.repository_url, None);

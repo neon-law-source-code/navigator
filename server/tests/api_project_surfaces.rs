@@ -129,7 +129,10 @@ async fn an_unassigned_admin_reconciles_the_documents_prefix() {
     assert_eq!(resp.status(), StatusCode::OK);
     let body = json(resp).await;
     assert_eq!(body["code"], fx.code);
-    assert_eq!(body["documents_prefix"], format!("projects/{}", fx.code));
+    assert_eq!(
+        body["documents_prefix"],
+        format!("projects/{}/documents", fx.code)
+    );
     assert!(body["drive_folder_id"].is_null(), "{body}");
     assert!(body["repository_url"].is_null(), "{body}");
 }

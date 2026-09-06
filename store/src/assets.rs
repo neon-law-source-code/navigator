@@ -55,8 +55,10 @@ pub(crate) const TABLE: &str = "asset";
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Asset {
     pub id: Uuid,
-    /// Object-storage key (`blobs/<sha>`). Not unique: two asset rows may
-    /// point at one content-addressed object.
+    /// Object-storage key. Document assets use
+    /// `projects/<code>/documents/<sha>`; bare content uses `blobs/<sha>`.
+    /// It is not unique: compatible asset rows may point at one
+    /// content-addressed object.
     pub storage_key: String,
     /// A second object-storage key holding the **same bytes**, written
     /// outside content-addressing — a generated PDF's notation key

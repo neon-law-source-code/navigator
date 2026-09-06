@@ -468,11 +468,11 @@ enum ProjectsCmd {
     },
     /// Create or adopt the three handles a Project opens with.
     ///
-    /// The documents-bucket prefix `projects/<code>`, the Drive ingest folder
-    /// named for the code, and one private source repository named for the
-    /// code. Matter-open already runs this pass best-effort; this command is
-    /// the operator retry when Drive or the forge was down, or when a legacy
-    /// row never received one.
+    /// The documents-bucket prefix `projects/<code>/documents`, the Drive
+    /// ingest folder named for the code, and one private source repository
+    /// named for the code. Matter-open already runs this pass best-effort; this
+    /// command is the operator retry when Drive or the forge was down, or when
+    /// a legacy row never received one.
     Surfaces {
         #[command(subcommand)]
         action: SurfacesAction,

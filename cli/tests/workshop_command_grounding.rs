@@ -329,7 +329,7 @@ fn deployment_workshop_describes_deployment_scoped_bucket_lanes() {
         "optional archive and telemetry lanes",
         "never creates a cloud bucket per Project",
         "`{project-code}/portal/` prefix",
-        "content-addressed `blobs/<sha>` objects",
+        "Project-scoped content-addressed `projects/<code>/documents/<sha>` objects",
         "Surreal asset rows carry the Project association",
         "does not grant `allUsers`",
     ] {

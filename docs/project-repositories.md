@@ -4,7 +4,7 @@ Each Navigator [Project](glossary.md#project) coordinates five distinct surfaces
 
 | Surface | Authority | Contains |
 | --- | --- | --- |
-| Documents bucket | Working files | Path-like keys under `projects/<code>` in the private documents bucket |
+| Documents bucket | Working files | Content-addressed keys under `projects/<code>/documents/<sha256>` |
 | Google Drive | Ingest dropbox | Files people drop in; Navigator copies them into the documents bucket |
 | Navigator | Matter record | Project identity, participation, Notations, and asset provenance |
 | Project repository | Source control | Notation templates, Project-application source, and document pointer YAML only |
@@ -44,13 +44,13 @@ host and path, no whitespace, and no embedded credential. That URL is handed to 
 a link, so a `file://` value would read the serving host's disk and a `user:token@` value would put a secret in a column
 that is rendered into a page and logged.
 
-The Project code is the stable Navigator `projects.code`, and the documents-bucket prefix is `projects/<code>`. It is
-also the repository's own directory name, by the convention the next section states — that equality is why the slug
-rules are what they are: lowercase letters, digits, and single hyphens, alphanumeric at both ends, at most 80
-characters. A checkout and macOS are case-insensitive, so uppercase would let one directory answer to two codes; one
-separator keeps the mapping an equality check rather than a normalization. The code no longer names a Drive folder —
-per-matter Drive folders are being retired (see [the glossary](glossary.md#project)) — and `project.repository_url`
-itself remains a stored URL Navigator never composes from the code (above).
+The Project code is the stable Navigator `projects.code`, and the documents-bucket prefix is
+`projects/<code>/documents`. It is also the repository's own directory name, by the convention the next section states —
+that equality is why the slug rules are what they are: lowercase letters, digits, and single hyphens, alphanumeric at
+both ends, at most 80 characters. A checkout and macOS are case-insensitive, so uppercase would let one directory answer
+to two codes; one separator keeps the mapping an equality check rather than a normalization. The code no longer names a
+Drive folder — per-matter Drive folders are being retired (see [the glossary](glossary.md#project)) — and
+`project.repository_url` itself remains a stored URL Navigator never composes from the code (above).
 
 `new` is refused as a Project code. `/app/projects/new` is Navigator's matter-open form, so a Project coded `new` would
 collide with a literal route. Which side of a genuine collision wins depends on route registration order, so the code is
@@ -239,12 +239,11 @@ reads what it needs by name rather than parsing a sentence.
 
 ### Provisioning the three handles
 
-Opening a Project records its identity, then `store::project_surfaces` creates or adopts the three external surfaces
-that identity names: the documents-bucket prefix `projects/<code>` (a key convention; nothing is written), the Drive
-ingest folder named for the code, and one private source repository named for the code. Each step is idempotent. A
-folder or repository that already exists is adopted. A recorded `repository_url` is left alone, so a Project whose
-source lives on another forge is not moved. Missing Drive or forge configuration skips that surface rather than failing
-the matter open.
+Opening a Project records its identity, then `store::project_surfaces` creates or adopts its three external surfaces:
+the documents-bucket prefix `projects/<code>/documents` (a key convention; nothing is written), the Drive ingest folder
+named for the code, and one private source repository named for the code. Each step is idempotent. A folder or
+repository that already exists is adopted. A recorded `repository_url` is left alone, so a Project whose source lives on
+another forge is not moved. Missing Drive or forge configuration skips that surface rather than failing the matter open.
 
 `POST /app/api/project-surfaces/{id}` is the admin retry for a failed or legacy row. It carries its own noun rather than
 sitting under `/app/api/projects/`, because that prefix's GET rule admits any authenticated caller up to five segments.

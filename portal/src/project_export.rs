@@ -60,10 +60,10 @@ pub async fn download_all(
     };
 
     // The durable index: every document filed to this matter. The store is
-    // the only thing that maps a matter to its blobs — `storage_key` is
-    // content-addressed (`blobs/<sha>`), flat and matter-agnostic, so no
-    // storage prefix can attribute bytes to a project. A bare content
-    // asset has `project_id IS NULL` and never matches this filter.
+    // the authorization and provenance source even though document keys are
+    // Project-scoped: it resolves the exact asset revisions and applies the
+    // client visibility lens. A bare content asset has `project_id IS NULL`
+    // and never matches this filter.
     //
     // The client lens additionally gates on `visibility` — this archive
     // hands back full bytes, so it carries the same #782 exposure the

@@ -1093,7 +1093,7 @@ mod tests {
             "optional archive and telemetry lanes",
             "never creates a cloud bucket per Project",
             "Each portal lives under its `{project-code}/portal/` prefix",
-            "The documents bucket stores content-addressed `blobs/<sha>` objects",
+            "The documents bucket stores Project-scoped content-addressed `projects/<code>/documents/<sha>` objects",
             "Surreal asset rows carry the Project association",
         ] {
             assert!(

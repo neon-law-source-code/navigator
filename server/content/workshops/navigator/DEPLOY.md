@@ -357,9 +357,9 @@ The rollout checkpoint is the repository's deployment contract:
 Five unconditional private buckets — assets, documents, exports, logs, and applications — plus optional archive and
 telemetry lanes when named. Project growth adds rows and logical key space; it never creates a cloud bucket per Project.
 Each portal lives under its `{project-code}/portal/` prefix in the applications bucket. The documents bucket stores
-content-addressed `blobs/<sha>` objects, while Surreal asset rows carry the Project association, visibility, and
-provenance used for authorization. Marketing bytes remain available through the same-origin `/assets/*` application
-route while the bucket itself stays private and does not grant `allUsers`.
+Project-scoped content-addressed `projects/<code>/documents/<sha>` objects, while Surreal asset rows carry the Project
+association, visibility, and provenance used for authorization. Marketing bytes remain available through the same-origin
+`/assets/*` application route while the bucket itself stays private and does not grant `allUsers`.
 
 New clusters are created with `--enable-fleet`; the subsequent idempotent reconciliation can therefore report `Changing
 existing fleet membership is not supported`. Navigator treats only that exact response as already reconciled and

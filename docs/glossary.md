@@ -75,9 +75,10 @@ One row in the `assets` table: the canonical store for a static byte artifact. I
 byte size, SHA-256, and the storage key from [`cloud::StorageService`](../cloud/); the bytes live in object storage)
 plus, for a matter document, its metadata. Two shapes: a **document asset** (project-scoped, with
 `filename`/`kind`/`source`/`received_at`) and a **bare content asset** (a template body or raw `.eml`, those columns
-null). Storage is content-addressed (`blobs/<sha>`), deduped by `sha256_hex`. Merges the former `blobs` + `documents`
-split (#449). `visibility` (`internal`, the default, or `client`) gates whether a document asset reaches the client
-portal's matter-detail listing and "download all documents" archive; every ingest call site states it explicitly (#782).
+null). Document storage uses Project-scoped content-addressed keys (`projects/<code>/documents/<sha>`); bare content
+uses `blobs/<sha>`. Each write lane dedupes by `sha256_hex`. Merges the former `blobs` + `documents` split (#449).
+`visibility` (`internal`, the default, or `client`) gates whether a document asset reaches the client portal's
+matter-detail listing and "download all documents" archive; every ingest call site states it explicitly (#782).
 
 - Schema: [`asset` in `navigator.surql`](../store/src/schema/navigator.surql) (SurrealDB; #1093, ENG-121) · Write lanes:
   [`store::documents::ingest_bytes`](../store/src/documents.rs) (document assets),
@@ -1017,10 +1018,10 @@ matter, and AIDA's `aida_create_notation` names the Project it acts on rather th
 
 Each Project has **one** deployment-scoped source repository, named for its `code`, holding that Project's notation
 templates under `templates/` and its client portal under `portal/`. It contains source only; legal files, client
-material, answers, and produced documents remain in the deployment's private documents bucket (prefix `projects/<code>`)
-and Navigator [Assets](#asset). Google Drive stays as a per-Project ingest dropbox — Workspace users drop files in;
-Navigator copies them into the documents bucket and never treats the folder as a live store.
-[`project-repositories`](project-repositories.md) is the canonical deployment map and source boundary.
+material, answers, and produced documents remain in the deployment's private documents bucket (prefix
+`projects/<code>/documents`) and Navigator [Assets](#asset). Google Drive stays as a per-Project ingest dropbox —
+Workspace users drop files in; Navigator copies them into the documents bucket and never treats the folder as a live
+store. [`project-repositories`](project-repositories.md) is the canonical deployment map and source boundary.
 
 `project.code` is **lowercase letters, digits, and single hyphens**, alphanumeric at both ends, at most 80 characters —
 enforced by [`store::projects::is_valid_code`](../store/src/projects.rs) and the SurrealDB `project_code` unique index.

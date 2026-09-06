@@ -51,6 +51,8 @@ async fn fixture_app() -> (axum::Router, String) {
         repository_owner: "neon-law-staging".into(),
         git_ref: "refs/heads/main".into(),
         event_name: "push".into(),
+        jti: "jti-acme-main".into(),
+        exp: 4_000_000_000,
         ..GitHubActionsClaims::default()
     });
     (portal::router(state), "github-jwt".into())
@@ -83,6 +85,18 @@ async fn minting_a_ci_token_scopes_it_to_seed_and_the_named_project() {
         .unwrap();
     let minted: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(minted["project_code"], "acme");
+    let exp = minted["exp"].as_i64().expect("exp");
+    let now = i64::try_from(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+    )
+    .unwrap();
+    assert!(
+        (now + 9 * 60..now + 11 * 60).contains(&exp),
+        "CI seed tokens last ten minutes, got exp {exp} at now {now}"
+    );
     let token = minted["token"].as_str().expect("minted token");
 
     let seed = app
@@ -128,6 +142,104 @@ async fn minting_a_ci_token_scopes_it_to_seed_and_the_named_project() {
         .unwrap();
     let document: serde_json::Value = serde_json::from_slice(&people_body).unwrap();
     assert_eq!(document["error"], "scope_violation");
+}
+
+#[tokio::test]
+async fn a_replayed_oidc_token_is_refused() {
+    let (app, github_token) = fixture_app().await;
+    assert_eq!(mint(&app, &github_token).await.status(), StatusCode::OK);
+    let replay = mint(&app, &github_token).await;
+    assert_eq!(replay.status(), StatusCode::UNAUTHORIZED);
+    let body = axum::body::to_bytes(replay.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let document: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(document["error"], "unauthorized");
+}
+
+#[tokio::test]
+async fn an_unbound_repository_is_refused_without_naming_a_project() {
+    let surreal = mem_surreal().await;
+    let mut state = portal::test_support::app_state(surreal).await;
+    state.canonical_host = portal::CanonicalHost::new(Some("staging.neonlaw.com".into()));
+    state.github_oidc = GitHubOidc::fixed(GitHubActionsClaims {
+        repository: "neon-law-staging/missing".into(),
+        repository_owner: "neon-law-staging".into(),
+        jti: "jti-missing".into(),
+        exp: 4_000_000_000,
+        ..GitHubActionsClaims::default()
+    });
+    let app = portal::router(state);
+    let response = mint(&app, "github-jwt").await;
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let text = String::from_utf8_lossy(&body);
+    assert!(text.contains("not bound to a live project"), "{text}");
+    assert!(!text.contains("missing"), "{text}");
+}
+
+#[tokio::test]
+async fn two_projects_sharing_one_repository_url_are_refused() {
+    let surreal = mem_surreal().await;
+    let first = store::projects::create(
+        &surreal,
+        &store::projects::NewProject {
+            code: "acme".into(),
+            name: "Acme".into(),
+            status: "open".into(),
+            entity_id: store::test_support::seed_entity(&surreal).await,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let second = store::projects::create(
+        &surreal,
+        &store::projects::NewProject {
+            code: "widgets".into(),
+            name: "Widgets".into(),
+            status: "open".into(),
+            entity_id: store::test_support::seed_entity(&surreal).await,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    store::projects::set_repository_url(
+        &surreal,
+        first.id,
+        Some("https://github.com/neon-law-staging/acme"),
+    )
+    .await
+    .unwrap();
+    store::projects::set_repository_url(
+        &surreal,
+        second.id,
+        Some("https://github.com/neon-law-staging/acme.git"),
+    )
+    .await
+    .unwrap();
+    let mut state = portal::test_support::app_state(surreal).await;
+    state.canonical_host = portal::CanonicalHost::new(Some("staging.neonlaw.com".into()));
+    state.github_oidc = GitHubOidc::fixed(GitHubActionsClaims {
+        repository: "neon-law-staging/acme".into(),
+        repository_owner: "neon-law-staging".into(),
+        jti: "jti-ambiguous".into(),
+        exp: 4_000_000_000,
+        ..GitHubActionsClaims::default()
+    });
+    let app = portal::router(state);
+    let response = mint(&app, "github-jwt").await;
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let text = String::from_utf8_lossy(&body);
+    assert!(text.contains("not bound to a live project"), "{text}");
+    assert!(!text.contains("acme"), "{text}");
+    assert!(!text.contains("widgets"), "{text}");
 }
 
 #[tokio::test]

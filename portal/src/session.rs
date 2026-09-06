@@ -34,6 +34,11 @@ pub const DEFAULT_SESSION_TTL_SECS: i64 = 8 * 60 * 60;
 /// blast radius until granular server-side revocation lands.
 pub const CLI_SESSION_TTL_SECS: i64 = 60 * 60;
 
+/// CI seed-token lifetime — 10 minutes. A seed reconcile needs far less
+/// than a laptop login, and a replayed GitHub OIDC JWT must not yield a
+/// long-lived Navigator session.
+pub const CI_SESSION_TTL_SECS: i64 = 10 * 60;
+
 /// Which front door minted a session — a browser cookie or a portable
 /// CLI bearer token. Lets audit logs tell them apart and lets policy
 /// treat a file-backed CLI credential differently from a cookie.

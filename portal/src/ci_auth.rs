@@ -17,7 +17,7 @@ use store::seed::SeedModel;
 use crate::github_oidc::{GitHubActionsClaims, GitHubOidc};
 use crate::session::{
     now_unix_secs, random_token_32, SeedScope, SessionData, SessionSource, SessionStore,
-    CLI_SESSION_TTL_SECS,
+    CI_SESSION_TTL_SECS,
 };
 use crate::CanonicalHost;
 
@@ -99,9 +99,13 @@ async fn mint_inner(state: &CiAuthState, github_token: &str) -> Result<MintRespo
         .await
         .map_err(|error| MintError::Unauthorized(error.to_string()))?;
     authorize_github_run(&claims)?;
+    state
+        .github_oidc
+        .spend_jti(&claims.jti, claims.exp)
+        .map_err(|error| MintError::Unauthorized(error.to_string()))?;
     let project = resolve_project(&state.surreal, &claims).await?;
     let actor = lawyer_dri_actor(&state.surreal, &project).await?;
-    let exp = now_unix_secs() + CLI_SESSION_TTL_SECS;
+    let exp = now_unix_secs() + CI_SESSION_TTL_SECS;
     let session = SessionData {
         sub: actor
             .oidc_subject
@@ -151,41 +155,41 @@ fn authorize_github_run(claims: &GitHubActionsClaims) -> Result<(), MintError> {
     Ok(())
 }
 
+/// Shared refusal when this GitHub run cannot be bound to exactly one live
+/// Project. The message names nothing about whether a repository or row
+/// exists.
+const UNBOUND: &str = "this GitHub Actions run is not bound to a live project";
+
 async fn resolve_project(
     surreal: &store::surreal::SurrealDb,
     claims: &GitHubActionsClaims,
 ) -> Result<store::projects::Project, MintError> {
     let Some((owner, code)) = claims.repository.split_once('/') else {
-        return Err(MintError::Forbidden(
-            "GitHub Actions OIDC repository claim is not owner/name".into(),
-        ));
+        return Err(MintError::Forbidden(UNBOUND.into()));
     };
-    if owner != claims.repository_owner {
-        return Err(MintError::Forbidden(
-            "GitHub Actions OIDC repository owner does not match repository".into(),
-        ));
+    if owner != claims.repository_owner || code.is_empty() {
+        return Err(MintError::Forbidden(UNBOUND.into()));
     }
-    let project = store::projects::find_by_code(surreal, code)
+    let matches: Vec<store::projects::Project> = store::projects::all(surreal)
         .await
         .map_err(|error| MintError::Internal(error.to_string()))?
-        .ok_or_else(|| MintError::Forbidden(format!("no live project carries code {code:?}")))?;
-    let Some(url) = project.repository_url.as_deref() else {
-        return Err(MintError::Forbidden(
-            "the live project has no repository_url; CI cannot bind this run".into(),
-        ));
+        .into_iter()
+        .filter(|project| {
+            project
+                .repository_url
+                .as_deref()
+                .and_then(github_repository_from_url)
+                .as_deref()
+                == Some(claims.repository.as_str())
+        })
+        .collect();
+    let [project] = matches.as_slice() else {
+        return Err(MintError::Forbidden(UNBOUND.into()));
     };
-    let Some(named) = github_repository_from_url(url) else {
-        return Err(MintError::Forbidden(
-            "the live project's repository_url is not a GitHub owner/name URL".into(),
-        ));
-    };
-    if named != claims.repository {
-        return Err(MintError::Forbidden(
-            "GitHub Actions OIDC repository does not match the live project's repository_url"
-                .into(),
-        ));
+    if project.code != code {
+        return Err(MintError::Forbidden(UNBOUND.into()));
     }
-    Ok(project)
+    Ok(project.clone())
 }
 
 async fn lawyer_dri_actor(

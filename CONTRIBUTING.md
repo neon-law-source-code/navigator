@@ -2,10 +2,11 @@
 
 **Neon Law Navigator is source-available, and it is currently closed to outside contributions.**
 
-Shook Law PLLC, trading as Neon Law, holds the copyright and operates this software. Issues and pull requests from
-outside the firm are not being accepted right now. This is a capacity decision rather than a licensing one: the software
-runs a live legal practice, every change to it needs review by someone who can weigh the practice consequences, and
-there is not review capacity to offer an outside contributor today.
+Shook Law PLLC, trading as Neon Law, operates this software under a licence from Neon Law IP LLC, the
+intellectual-property holding company that holds the copyright. Issues and pull requests from outside the firm are not
+being accepted right now. This is a capacity decision rather than a licensing one: the software runs a live legal
+practice, every change to it needs review by someone who can weigh the practice consequences, and there is not review
+capacity to offer an outside contributor today.
 
 **Write to [contact@neonlaw.org](mailto:contact@neonlaw.org).** Anyone is welcome to — a bug you hit, a security
 concern, a fork you are running, a question about the licences, or an interest in contributing when this reopens. The
@@ -16,21 +17,21 @@ over the whole tree, `templates/` included. You may read, build, fork, modify, r
 use of it with no permission to ask for. **Production use is the obligation to know before you deploy:** the Additional
 Use Grant lets you run Navigator anywhere — the cloud included — to evaluate, develop against, test, or demonstrate it,
 for so long as it performs no work anybody relies on. Running it where somebody relies on what it does, and marketing to
-customers a product or service that relies on it, needs a commercial licence from the firm. The test is reliance rather
-than where the software runs. Each version converts to `Apache-2.0` four years after it is published, and the
+customers a product or service that relies on it, needs a commercial licence from Neon Law IP LLC. The test is reliance
+rather than where the software runs. Each version converts to `Apache-2.0` four years after it is published, and the
 restriction on production use simply ends — Apache-2.0 asks nothing of a modifier going forward, unlike the
 `AGPL-3.0-only` Change License this project carried earlier. See [`LICENSE`](LICENSE) for the grant, [`NOTICE`](NOTICE)
-for what the firm says about it, and [`docs/licensing.md`](docs/licensing.md).
+for what the copyright holder says about it, and [`docs/licensing.md`](docs/licensing.md).
 
 ## The contributor licence agreement
 
-**A contribution assigns to Shook Law PLLC — all right, title, and interest in it, including every copyright in it,
+**A contribution assigns to Neon Law IP LLC — all right, title, and interest in it, including every copyright in it,
 worldwide and for the full term.** That assignment is the contributor licence agreement, and it sits here so the terms
 are knowable before anyone writes a line rather than at a merge.
 
 Inside the firm the instrument is the employment or contractor agreement each author signed before their first commit,
-so the work is the firm's on creation. An outside contributor signs a contributor licence agreement on the same footing
-before a contribution merges, and that is worth saying in advance.
+structured so the work reaches Neon Law IP LLC on creation. An outside contributor signs a contributor licence agreement
+on the same footing before a contribution merges, and that is worth saying in advance.
 
 Assignment is the mechanism; the grant to you is the result. Everything an author writes reaches you under `BUSL-1.1` on
 the same terms as the rest of the tree, `templates/` included — one grant over the tree means there is no second answer

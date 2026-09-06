@@ -14,15 +14,15 @@ Then get started with an agentic session and prompt "spin up the server" which s
 ## License
 
 Navigator is source-available under the [Business Source License 1.1](LICENSE): `BUSL-1.1`. Production use needs a
-commercial licence. Four years after a version is published, that version converts to `Apache-2.0` and the restriction
-ends for it permanently.
+commercial licence from Neon Law IP LLC. Four years after a version is published, that version converts to `Apache-2.0`
+and the restriction ends for it permanently.
 
-Copyright (C) 2026 **Shook Law PLLC**.
+Copyright (C) 2026 **Neon Law IP LLC**.
 
 ## Trademarks
 
-**NEON LAW** is a registered trademark, U.S. Reg. No. 6,325,650, owned by **Shook Law PLLC**. Use is unauthorized unless
-we grant you written permission.
+**NEON LAW** is a registered trademark, U.S. Reg. No. 6,325,650, owned by **Neon Law IP LLC**. Use is unauthorized
+unless we grant you written permission.
 
 ## No legal advice
 

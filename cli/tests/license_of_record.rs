@@ -1,7 +1,7 @@
 //! Pin the licence of record: one holder, one source-available grant with its
 //! four parameters filled in, and two files that divide the work between them.
 //!
-//! Root `LICENSE` governs everything the Firm can license — the Rust
+//! Root `LICENSE` governs everything Neon Law IP LLC can license — the Rust
 //! workspace, the `navigator` CLI, the build and deployment tooling, and the
 //! drafted legal prose under `templates/`. One grant covers the tree, so a
 //! reader never has to work out which instrument applies to the file in front of
@@ -20,14 +20,14 @@
 //! BUSL is a *template*, which makes this a narrower rule than it looks. Its
 //! four parameters — Licensor, Licensed Work, Additional Use Grant, Change Date,
 //! Change License — are filled in by the licensor and are part of the
-//! instrument, so the Firm's own name legitimately appears in `LICENSE` where
-//! under the FSF's text it never could. Everything *outside* that block is
+//! instrument, so Neon Law IP LLC's own name legitimately appears in `LICENSE`
+//! where under the FSF's text it never could. Everything *outside* that block is
 //! copied unaltered, which is what BUSL's fourth Covenant of Licensor requires.
 //!
 //! **`NOTICE` is where this work meets that text.** The copyright line, the SPDX
 //! tag, what the four parameters mean in this project's own voice, the
 //! production boundary, the government forms nobody here can license, the marks
-//! the Firm reserves, and the terms a contribution arrives under. `LICENSE` is
+//! Neon Law IP LLC reserves, and the terms a contribution arrives under. `LICENSE` is
 //! the instrument; `NOTICE` says how it applies here and neither widens nor
 //! narrows it.
 //!
@@ -48,8 +48,9 @@
 //! effect, and every copy distributed then is still an `AGPL-3.0-only` copy,
 //! permanently. A licence already granted cannot be withdrawn, so the relicence
 //! governs versions published from here on and reaches nothing already given.
-//! The Firm is the copyright holder and the sole Licensor. A second
-//! organization entitled to publish would make that untrue while every other
+//! Neon Law IP LLC is the copyright holder and the sole Licensor; Shook Law
+//! PLLC, the law firm that operates Navigator, does so under a licence from it
+//! rather than as owner. A second organization entitled to publish would make that untrue while every other
 //! check here stayed green, so its absence is asserted below rather than
 //! assumed.
 //!
@@ -102,8 +103,9 @@ const NOTICE_FILE: &str = "NOTICE";
 /// A rename edits this constant and root `NOTICE` together, and nothing else in
 /// this file. It is the legal person rather than the trade name on purpose: a
 /// copyright notice has to name someone who can hold a copyright, and "Neon Law"
-/// alone is a brand.
-const OWNER: &str = "Shook Law PLLC";
+/// alone is a brand. This is the IP holding company, not the law firm that
+/// operates Navigator under a licence from it — see `docs/licensing.md`.
+const OWNER: &str = "Neon Law IP LLC";
 
 /// The trademark registrant, which is currently the *same* organization as the
 /// copyright holder above — and is kept a separate constant anyway.
@@ -114,7 +116,7 @@ const OWNER: &str = "Shook Law PLLC";
 /// is gone. What still makes the constants worth keeping apart is that they name
 /// two different facts about the same organization: the mark is registered, the
 /// copyright is held, and either could move without the other.
-const REGISTRANT: &str = "Shook Law PLLC";
+const REGISTRANT: &str = "Neon Law IP LLC";
 
 /// The workspace root (this test crate is `cli`).
 fn repo_root() -> PathBuf {
@@ -787,8 +789,8 @@ fn no_document_promises_a_contributor_keeps_the_copyright() {
 ///
 /// The defect this catches is one that shipped. The deck that teaches a room how
 /// to stand Navigator up opened by telling them a *foundation* ran it and gave
-/// the recipe away. The Firm is the copyright holder and the sole Licensor, so a
-/// deck that hands that role to a nonprofit sends a reader who wants a
+/// the recipe away. Neon Law IP LLC is the copyright holder and the sole
+/// Licensor, so a deck that hands that role to a nonprofit sends a reader who wants a
 /// production licence to an organization that cannot grant one — and the retired
 /// nonprofit it evoked cannot grant anything at all, because it no longer exists.
 ///
@@ -876,11 +878,11 @@ fn no_workshop_deck_attributes_the_grant_to_a_foundation() {
 /// This inverts an assertion that used to sit here, and the inversion is the
 /// point. A second organization once held a perpetual, irrevocable,
 /// royalty-free right to publish this work under `AGPL-3.0-only` that bound the
-/// Firm's successors, and while it was in force a repository naming `BUSL-1.1`
-/// as its sole grant would have been describing terms that were not the only
-/// ones in effect. Nothing holds such a right now, and the tree does not
-/// discuss it: the Firm is the copyright holder and the sole Licensor, which is
-/// a complete statement without a history lesson attached.
+/// copyright holder's successors, and while it was in force a repository naming
+/// `BUSL-1.1` as its sole grant would have been describing terms that were not
+/// the only ones in effect. Nothing holds such a right now, and the tree does
+/// not discuss it: Neon Law IP LLC is the copyright holder and the sole
+/// Licensor, which is a complete statement without a history lesson attached.
 ///
 /// What survives is the guard, because the failure mode did not go away. A
 /// second organization entitled to publish is exactly the claim that makes a
@@ -1457,10 +1459,10 @@ fn the_trademark_reservation_restates_the_licences_own_carve_out() {
     }
 }
 
-/// Public surfaces that name the NEON LAW registration attribute it to the Firm.
+/// Public surfaces that name the NEON LAW registration attribute it to Neon Law IP LLC.
 ///
-/// U.S. Reg. No. 6,325,650 belongs to the Firm, and the Firm licenses it to the
-/// nobody else. A trademark notice that names
+/// U.S. Reg. No. 6,325,650 belongs to Neon Law IP LLC, which licenses it to
+/// Shook Law PLLC and nobody else. A trademark notice that names
 /// the wrong owner is worse than none at all, because it is the notice a reader
 /// relies on for permission — and under an outbound grant that reliance is no
 /// longer hypothetical, since the licence invites forks and the mark is the one
@@ -1474,6 +1476,18 @@ fn the_trademark_reservation_restates_the_licences_own_carve_out() {
 /// making, that a surface citing the number names the registrant, and the reader
 /// who needs to know a copyright licence does not reach a mark is served by
 /// `docs/licensing.md` rather than by a string comparison here.
+///
+/// **`neon/content/terms.md` is deliberately not in this list**, unlike before.
+/// The live `/terms` page and the site footer (`views/src/brand.rs`'s
+/// `SiteBrand::legal_entity`) render from one shared field that also names the
+/// legal person a client's retainer names — renaming it wholesale would make the
+/// live site claim a client's attorney-client relationship is with a
+/// non-practising IP holding company. `server/tests/host_legal_pages.rs` guards
+/// that surface instead, and deliberately still pins Shook Law PLLC there until
+/// `legal_entity` is split into a retainer identity and a separate
+/// copyright/trademark-notice field (tracked in ENG-158). Moving this file back
+/// into this list without that split ships a contradiction: this test would pass
+/// while the live page's footer and Terms body assert two different owners.
 #[test]
 fn trademark_notices_name_the_firm_as_the_registrant() {
     /// The registration itself, used as the anchor for "this line claims
@@ -1490,8 +1504,6 @@ fn trademark_notices_name_the_firm_as_the_registrant() {
         // claim the licence deliberately does not grant.
         "docs/licensing.md",
         "templates/README.md",
-        // The bundled terms file carries the citation for the served site.
-        "neon/content/terms.md",
     ] {
         // Prose wraps at the Markdown line width, so a claim routinely straddles
         // a line break, and "U.S. Reg. No." defeats splitting on sentence ends.

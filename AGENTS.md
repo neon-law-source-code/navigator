@@ -1,21 +1,22 @@
 # Neon Law Navigator
 
-**Neon Law Navigator** is copyright **Shook Law PLLC** (the Firm), which trades as **Neon Law**, operates it, owns the
-NEON LAW mark, and is the sole Licensor. **This is a public, source-available repository — not open source** — at
+**Neon Law Navigator** is copyright **Neon Law IP LLC**, an intellectual-property holding company that owns the NEON LAW
+mark and is the sole Licensor. **Shook Law PLLC** (the Firm) trades as **Neon Law**, operates Navigator, and practises
+law under a licence from Neon Law IP LLC. **This is a public, source-available repository — not open source** — at
 [github.com/neon-law-source-code/navigator](https://github.com/neon-law-source-code/navigator): one grant, `BUSL-1.1`,
 over the whole tree including the legal prose under `templates/`. Root [`LICENSE`](LICENSE) holds that grant — the
 Business Source License 1.1 with its parameters filled in and its terms otherwise unaltered, so every licence scanner
-names it; [`NOTICE`](NOTICE) beside it carries the copyright line and the Firm's own statements, and is where any
+names it; [`NOTICE`](NOTICE) beside it carries the copyright line and Neon Law IP LLC's own statements, and is where any
 wording of ours belongs. **The parameter that matters operationally is the `Additional Use Grant`** — it pins what you
 may run without buying anything: Navigator, anywhere including the cloud, to evaluate, develop against, test, or
 demonstrate it, for so long as it performs no work anyone relies on. Running it where somebody relies on what it does,
-and marketing to customers a product or service that relies on it, needs a commercial licence from the Firm. The test is
-reliance, not where the software runs. Each version converts to `Apache-2.0` four years after it is published, matching
-what SurrealDB and Restate specify for their own BUSL grants — the restriction on production use simply ends, with no
-duty to share modifications ever attaching. A version already published with the `AGPL-3.0-only` Change License this
-project carried earlier keeps that parameter instead. Outside contributions are **currently closed** — point anyone
-asking at `contact@neonlaw.org` — though the work in here assigns to the Firm. The marks are reserved. This monorepo
-holds one website — the firm at the root — and the delivery stack for legal services. See
+and marketing to customers a product or service that relies on it, needs a commercial licence from Neon Law IP LLC. The
+test is reliance, not where the software runs. Each version converts to `Apache-2.0` four years after it is published,
+matching what SurrealDB and Restate specify for their own BUSL grants — the restriction on production use simply ends,
+with no duty to share modifications ever attaching. A version already published with the `AGPL-3.0-only` Change License
+this project carried earlier keeps that parameter instead. Outside contributions are **currently closed** — point anyone
+asking at `contact@neonlaw.org` — though the work in here assigns to Neon Law IP LLC. The marks are reserved. This
+monorepo holds one website — the firm at the root — and the delivery stack for legal services. See
 [`docs/licensing.md`](docs/licensing.md).
 
 **Everything you write here is published.** The no-client-data rule below is what stands between a live legal practice

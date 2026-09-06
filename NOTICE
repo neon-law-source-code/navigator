@@ -1,6 +1,6 @@
 Neon Law Navigator — NOTICE
 
-Copyright (C) 2026 Shook Law PLLC
+Copyright (C) 2026 Neon Law IP LLC
 
 SPDX-License-Identifier: BUSL-1.1
 
@@ -10,8 +10,8 @@ make any non-production use of it.  What you may run without a commercial
 licence is pinned in LICENSE itself, in the Additional Use Grant: you may
 operate this program anywhere, the cloud included, to evaluate, develop
 against, test, or demonstrate it, for so long as nobody relies on what it
-does.  Beyond that, production use requires a commercial licence from Shook
-Law PLLC.  Four years after a given version is published, that version
+does.  Beyond that, production use requires a commercial licence from Neon
+Law IP LLC.  Four years after a given version is published, that version
 converts to the Apache License, Version 2.0, and the restriction ends for it
 permanently.
 
@@ -26,24 +26,27 @@ What follows is the copyright holder's own account of how it applies to this
 work: nothing here widens the grant, nothing here narrows it, and nothing here
 is a second licence.
 
-WHO HOLDS THIS.  Copyright in this work belongs to Shook Law PLLC, the law firm
-that operates it under the NEON LAW mark.  The Firm is the Licensor named in
-LICENSE, and it is the sole Licensor: it is the only party that can license this
-work, grant a production exception, or set the parameters above.  No second
+WHO HOLDS THIS.  Copyright in this work belongs to Neon Law IP LLC, an
+intellectual-property holding company that does not practise law.  Neon Law IP
+LLC is the Licensor named in LICENSE, and it is the sole Licensor: it is the
+only party that can license this work, grant a production exception, or set
+the parameters above.  Shook Law PLLC, the law firm that operates this
+software and practises law under the NEON LAW mark, does so under a licence
+from Neon Law IP LLC rather than as the copyright holder.  No second
 organization holds a right to publish it.
 
 WHAT THE FOUR PARAMETERS SAY.  BUSL is a template, and the parameters in LICENSE
 are the whole of what makes it this project's licence rather than somebody
 else's.
 
-  Licensor is Shook Law PLLC.  Licensed Work is Neon Law Navigator.
+  Licensor is Neon Law IP LLC.  Licensed Work is Neon Law Navigator.
 
   Additional Use Grant pins the free use, in a paragraph shared word-for-word
   with Navigator UX and the Homebrew tap.  It was `None` until this version.
   `None` was never a restriction added to the licence, only the absence of an
   extra permission — but it left BUSL's undefined term, "production use",
   carrying the entire commercial boundary, and an undefined term in a licence
-  is read against the party that drafted it.  That party is the Firm.
+  is read against the party that drafted it.  That party is Neon Law IP LLC.
 
   So the grant now says affirmatively what you may run: this program, on
   infrastructure you control or rent, to evaluate, develop against, test, or
@@ -55,10 +58,10 @@ else's.
   not impose any additional restriction on the right granted in this License".
   A clause defining "production use" broadly would shrink the base grant's
   non-production use and risk being exactly that restriction, which would put
-  the Firm outside the permission that lets it use BUSL at all.  A clause that
-  only adds permission cannot.  The free zone is therefore operative text;
-  what lies outside it stays BUSL's own term, and what the Firm makes of that
-  is below, where it binds nobody.
+  Neon Law IP LLC outside the permission that lets it use BUSL at all.  A
+  clause that only adds permission cannot.  The free zone is therefore
+  operative text; what lies outside it stays BUSL's own term, and what Neon
+  Law IP LLC makes of that is below, where it binds nobody.
 
   Change Date is four years from the date the Licensed Work is published.  It
   applies per version, as BUSL's terms require: each release carries its own
@@ -80,7 +83,7 @@ else's.
   express permission to combine a GPL-3.0 work with an AGPL-3.0 one; a version
   already published under that parameter keeps it.
 
-ONE LICENCE, OVER EVERYTHING THE FIRM CAN LICENSE.  The Rust workspace, the
+ONE LICENCE, OVER EVERYTHING NEON LAW IP LLC CAN LICENSE.  The Rust workspace, the
 `navigator` CLI, the build and deployment tooling, and the drafted legal prose
 under `templates/` are all BUSL-1.1.  One grant covers the tree, so there is
 nothing to look up per directory: a reader of a notation body holds the same
@@ -93,7 +96,7 @@ answerable from the instrument: you may run this program to evaluate, develop
 against, test, or demonstrate it, wherever you like, for so long as nobody
 relies on what it does.  Inside that, you need nothing from us.
 
-Outside it, this is the Firm's reading, and it is offered as our own account
+Outside it, this is Neon Law IP LLC's reading, and it is offered as our own account
 rather than as a term.  Running Navigator where it performs work you or
 anybody else relies on — a portal, a matter, a filing pipeline — is production
 use, and so is marketing to customers a product or service that relies on it.
@@ -122,8 +125,8 @@ happens; the restriction on production use simply ends, permanently, for that
 version.
 
 GOVERNMENT FORMS ARE NOBODY'S HERE TO LICENSE.  The blank government PDFs under
-`templates/notations/forms/` are works of the issuing state or federal agency.  The Firm
-claims no copyright in them and grants none; they are committed so the binary
+`templates/notations/forms/` are works of the issuing state or federal agency.  Neon Law
+IP LLC claims no copyright in them and grants none; they are committed so the binary
 embeds the same bytes the repository carries, and for no other reason.  What is
 licensed under BUSL beside each blank form is our own material: the catalog
 card, the field map, and the workflow that fills the form in.
@@ -131,28 +134,30 @@ card, the field map, and the workflow that fills the form in.
 TRADEMARKS.  The licence grants rights in copyright, not in trademarks.  BUSL
 says so itself — it grants no right in any trademark or logo of the Licensor —
 and this paragraph is the detail rather than an additional term.  NEON LAW is a
-registered trademark, U.S. Reg. No. 6,325,650, owned by Shook Law PLLC; that
-mark, the Neon Law wordmark, and the Neon Law logos are the Firm's.  That the
-Firm holds the copyright as well changes nothing about it: a copyright licence
-does not reach a mark, so no amount of permission in LICENSE lets you trade
-under this name.
+registered trademark, U.S. Reg. No. 6,325,650, owned by Neon Law IP LLC; that
+mark, the Neon Law wordmark, and the Neon Law logos are Neon Law IP LLC's.
+That Neon Law IP LLC holds the copyright as well changes nothing about it: a
+copyright licence does not reach a mark, so no amount of permission in LICENSE
+lets you trade under this name.
 
 Why the marks matter more than usual here: a law firm's mark is how a client
 identifies who is accountable for their legal work, and a deployment wearing it
-would misdirect exactly the person least able to check.  So within what the
-licence permits you may run, fork, and modify this software — but you may not
-present your deployment as Neon Law.  Nominative reference remains available to
-you: you may state, accurately, that your work is based on Neon Law Navigator.
+would misdirect exactly the person least able to check.  Shook Law PLLC, the
+law firm that practises under the mark, holds it under licence from Neon Law
+IP LLC rather than as owner.  So within what the licence permits you may run,
+fork, and modify this software — but you may not present your deployment as
+Neon Law.  Nominative reference remains available to you: you may state,
+accurately, that your work is based on Neon Law Navigator.
 Rename your deployment through the brand manifest (see `views::brand_bundle`)
 rather than by editing sources; that seam exists for this.
 
-COMMERCIAL LICENCES.  Production use needs one, and only Shook Law PLLC can
+COMMERCIAL LICENCES.  Production use needs one, and only Neon Law IP LLC can
 grant it.  That is not a policy choice that could have gone another way: a
 production exception is carved out of the copyright, so the holder of the
 copyright is the only party with anything to carve.  Write to
 contact@neonlaw.org.
 
-CONTRIBUTIONS.  A contribution assigns to Shook Law PLLC — all right, title,
+CONTRIBUTIONS.  A contribution assigns to Neon Law IP LLC — all right, title,
 and interest in it, including every copyright in it, worldwide and for the full
 term — and that assignment is the contributor licence agreement a contributor
 signs.  Every contribution in this repository arrived under one, signed before

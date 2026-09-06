@@ -262,7 +262,7 @@ pub fn render(notices: &Notices) -> String {
     out.push_str(
         "THIRD-PARTY NOTICES\n\
          ===================\n\n\
-         The Neon Law Navigator `navigator` binary is copyright Shook Law PLLC and is\n\
+         The Neon Law Navigator `navigator` binary is copyright Neon Law IP LLC and is\n\
          licensed under BUSL-1.1; see LICENSE. It incorporates the third-party\n\
          open-source components listed below, each governed by its own licence, reproduced\n\
          here in full.\n\n\
@@ -649,7 +649,7 @@ source = "git+https://example.invalid/repo"
     ///
     /// A holder of this binary may have neither the repository nor a release
     /// archive, so the header is where they learn whose work it is and under
-    /// what terms. That is the copyright holder — Shook Law PLLC — because the
+    /// what terms. That is the copyright holder — Neon Law IP LLC — because the
     /// notice a recipient relies on for permission has to name whoever can give
     /// it. `cli/tests/license_of_record.rs` holds the same claim across the
     /// terms files.
@@ -657,7 +657,7 @@ source = "git+https://example.invalid/repo"
     fn rendered_header_names_the_owner_and_points_at_the_licence() {
         let notices = collect(&[], &[]);
         let out = render(&notices);
-        assert!(out.contains("Shook Law PLLC"), "{out}");
+        assert!(out.contains("Neon Law IP LLC"), "{out}");
         assert!(
             !out.contains(&["Neon", "Law", "Foundation"].join(" ")),
             "{out}"

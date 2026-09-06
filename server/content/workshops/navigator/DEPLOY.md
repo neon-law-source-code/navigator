@@ -17,7 +17,7 @@ storage buckets, with optional archive and telemetry lanes — so it is not free
 you begin. This is a deployment guide for admin users standing up infrastructure. With that said: you can run the same
 stack we run. Let's stand it up.
 
-> **Bring your own typeface license.** Neon Law Navigator source code is owned by Shook Law PLLC.
+> **Bring your own typeface license.** Neon Law Navigator source code is owned by Neon Law IP LLC.
 > [GORP Serif](https://trashtype.com/fonts/gorp) is proprietary font software licensed separately from TrashType and is
 > not covered by the repository's code licenses.
 > If your deployment serves GORP, obtain and maintain the appropriate TrashType license, keep its license notice with

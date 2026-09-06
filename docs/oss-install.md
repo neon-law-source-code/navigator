@@ -22,7 +22,7 @@ Navigator is source-available under `BUSL-1.1` ([`LICENSE`](../LICENSE)), and th
 walkthrough. Standing a deployment up to evaluate Navigator, develop against it, or demonstrate it is **non-production
 use** and needs no permission. Running it as a law practice you charge clients for is **production use**, which the
 licence does not grant: the Additional Use Grant reaches evaluation, development, testing, and demonstration only, so
-that needs a commercial licence from the Firm first. Where you run it makes no difference either way — a cloud
+that needs a commercial licence from Neon Law IP LLC first. Where you run it makes no difference either way — a cloud
 deployment nobody relies on is still non-production use, and on-prem operation somebody relies on is still not. Each
 version converts to `Apache-2.0` four years after it is published, and from then on that version may be run in
 production by anyone, modified, and redistributed — including keeping those modifications entirely private, since

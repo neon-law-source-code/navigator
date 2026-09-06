@@ -1,7 +1,9 @@
 # Licensing
 
 Navigator is **source-available software, not open source**. Root [`LICENSE`](../LICENSE) is the licence of record, it
-is the only licence file in the tree, and it covers everything the Firm is able to license:
+is the only licence file in the tree, and it covers everything Neon Law IP LLC — the intellectual-property holding
+company that owns Navigator's copyright and the NEON LAW mark, and licenses both to Shook Law PLLC, the law firm that
+operates Navigator and practises under the mark — is able to license:
 
 | What | Licence | Why |
 | --- | --- | --- |
@@ -20,7 +22,7 @@ tells you almost nothing.
 
 | Parameter | Value | What it decides |
 | --- | --- | --- |
-| Licensor | **Shook Law PLLC** | Who sells a production licence, and who may set every other parameter |
+| Licensor | **Neon Law IP LLC** | Who sells a production licence, and who may set every other parameter |
 | Licensed Work | Neon Law Navigator | What is licensed |
 | Additional Use Grant | Unrelied-on evaluation, development, testing, and demonstration | Free operation |
 | Change Date | Four years from each version's publication | When the restriction ends, per version |
@@ -30,16 +32,16 @@ tells you almost nothing.
 redistribution, and *non-production use*; the Additional Use Grant is the slot a licensor uses to permit some **limited
 production** use on top of that. This parameter was `None` until 2026 — not a restriction, just the absence of the extra
 permission — and `None` left BUSL's undefined term, "production use", carrying the entire commercial boundary. An
-undefined term in a licence is read against the party that drafted it, and that party is the Firm. So the slot now
-states affirmatively what you may run: Navigator, on infrastructure you control or rent, to evaluate, develop against,
-test, or demonstrate it, for so long as it performs no work anybody relies on.
+undefined term in a licence is read against the party that drafted it, and that party is Neon Law IP LLC. So the slot
+now states affirmatively what you may run: Navigator, on infrastructure you control or rent, to evaluate, develop
+against, test, or demonstrate it, for so long as it performs no work anybody relies on.
 
 **It is written as a grant and not as a definition, deliberately.** BUSL's second covenant allows only two things in
 that slot: a grant that imposes no additional restriction on the base grant, or the literal word `None`. A clause
 *defining* "production use" broadly would narrow the base grant's non-production use and risk being exactly such a
-restriction — which would breach the covenant the Firm's permission to use BUSL is conditioned on. A clause that only
-adds permission cannot. So the free zone is operative text; what lies outside it remains BUSL's own undefined term, and
-the Firm's reading of that lives in [`NOTICE`](../NOTICE) and below, where it binds nobody.
+restriction — which would breach the covenant Neon Law IP LLC's permission to use BUSL is conditioned on. A clause that
+only adds permission cannot. So the free zone is operative text; what lies outside it remains BUSL's own undefined term,
+and Neon Law IP LLC's reading of that lives in [`NOTICE`](../NOTICE) and below, where it binds nobody.
 
 The same paragraph opens the grant in `navigator-ux` and in the Homebrew tap. A legal review that has cleared one of the
 three has cleared all three.
@@ -65,10 +67,10 @@ keeps it, per the Change Date rule above.
 
 [`LICENSE`](../LICENSE) is the licence text and its parameters, and nothing else: it opens on the licence's own title,
 ends on its last covenant, and carries no prose of ours in between. The parameters block is part of the instrument —
-BUSL is filled in by its licensor — so the Firm's own name appears there legitimately, where under the FSF's text it
-never could. [`NOTICE`](../NOTICE) beside it carries everything we have to *say* — the copyright line, what each
+BUSL is filled in by its licensor — so Neon Law IP LLC's own name appears there legitimately, where under the FSF's text
+it never could. [`NOTICE`](../NOTICE) beside it carries everything we have to *say* — the copyright line, what each
 parameter means, where the production boundary falls, the SPDX tag, the government forms nobody here can license, the
-marks the Firm reserves, and the terms a contribution arrives under.
+marks Neon Law IP LLC reserves, and the terms a contribution arrives under.
 
 The split is what every other project does, and there is a mechanical reason for it. A licence file is read by machines
 as well as people: GitHub's repository page, `cargo deny`, SBOM generators, and a corporate review team's scanner all
@@ -85,32 +87,34 @@ an added clause to sit and no way to move the deal without failing a test.
 
 ## Who holds what
 
-Two facts, one organization.
+Two facts, one organization — but that organization is not the one that practises law.
 
 | Held | By | Which is why |
 | --- | --- | --- |
-| Copyright in this repository | **Shook Law PLLC**, the law firm | Only the holder can grant the whole work |
-| **NEON LAW**, U.S. Reg. No. 6,325,650 | **Shook Law PLLC**, the law firm | The mark is not licensed here at all |
+| Copyright in this repository | **Neon Law IP LLC**, the IP holder | Only the holder can grant the whole work |
+| **NEON LAW**, U.S. Reg. No. 6,325,650 | **Neon Law IP LLC**, the IP holder | The mark is not licensed here at all |
 
-**Why the Firm holds it.** The Firm writes this software, engages the people who write the rest of it, and operates a
-legal practice on it under the NEON LAW mark. A mark on legal services is how a client identifies who is accountable for
-their legal work, and that accountability belongs to the entity holding the bar licence — so the mark was always going
-to be the Firm's, and putting the copyright in the same hands is what lets one signature grant the whole work.
+**Why Neon Law IP LLC holds it, and Shook Law PLLC does not.** Shook Law PLLC is the law firm that writes this software,
+engages the people who write the rest of it, and operates a legal practice under the NEON LAW mark — but the copyright
+in the software and the registration for the mark sit with Neon Law IP LLC, a separate entity that does not practise
+law. Putting both in the same non-practising hands is what lets one signature grant the whole work, and it keeps the
+entity holding the bar licence separate from the entity that owns and licenses the IP. Shook Law PLLC operates Navigator
+and practises under the mark under a licence from Neon Law IP LLC, the same way any other licensee would.
 
-**The Firm is the sole Licensor**, and no other party is entitled to publish this work. That is worth stating rather
-than leaving to inference, because the alternative — a second organization holding its own right to publish — would make
-a stated licence untrue while the repository looked exactly the same.
+**Neon Law IP LLC is the sole Licensor**, and no other party is entitled to publish this work. That is worth stating
+rather than leaving to inference, because the alternative — a second organization holding its own right to publish —
+would make a stated licence untrue while the repository looked exactly the same.
 
 **What that costs, stated plainly.** A sole Licensor may stop publishing, or change these parameters, whenever it
-chooses; nothing here promises otherwise. What a reader can rely on is narrower and does not depend on the Firm's later
-goodwill, or on the Firm still existing: every copy already distributed keeps the terms it came with, and every version
-published under BUSL converts on its own Change Date — to `Apache-2.0`, or to `AGPL-3.0-only` for a version published
-while that was the Change License — because the conversion is a term of the licence each of those copies already
-carries.
+chooses; nothing here promises otherwise. What a reader can rely on is narrower and does not depend on Neon Law IP LLC's
+later goodwill, or on Neon Law IP LLC still existing: every copy already distributed keeps the terms it came with, and
+every version published under BUSL converts on its own Change Date — to `Apache-2.0`, or to `AGPL-3.0-only` for a
+version published while that was the Change License — because the conversion is a term of the licence each of those
+copies already carries.
 
 **The practical consequence** is the sentence to read if you read only one: read it, build it, fork it, change it, and
 redistribute it — none of that needs anyone's permission. Running it to deliver legal services to other people is
-production use and needs a commercial licence. Calling the result "Neon Law" needs the Firm's permission, and the Firm
+production use and needs a commercial licence. Calling the result "Neon Law" needs Neon Law IP LLC's permission, and it
 does not give it.
 
 ## Chain of title
@@ -162,13 +166,15 @@ application states that the claimant obtained the work by written agreement and 
 
 ### This is not necessarily the last link
 
-Moving Navigator's copyright to a separate entity that does not practise law is under consideration. If that happens
-this section gains a row rather than being rewritten. A transferee would take the copyright unencumbered, and would
-become the Licensor who sets these parameters — so the transfer is a decision about who controls the licence, not only
-about who owns the work.
+The move this section once flagged as under consideration — Navigator's copyright and the NEON LAW mark going to a
+separate entity that does not practise law — is the current state: both now sit with **Neon Law IP LLC**, per [Who holds
+what](#who-holds-what). Neon Law IP LLC is the Licensor who sets these parameters. The instrument recording that
+transfer is held and recorded outside this repository rather than reproduced here — the same way the instrument in [The
+instruments](#the-instruments) is neither reproduced nor quoted, only recorded that it exists and between whom — so this
+section gains that row when there is one to add, rather than being rewritten now.
 
-So read the holder named here as the holder of record today, and read this section — rather than any single sentence
-elsewhere — as the place the answer lives.
+So read [Who holds what](#who-holds-what) as the holder of record today, and read this section as the place a further
+transfer, if any, would be recorded.
 
 ## The grant: BUSL-1.1
 
@@ -307,38 +313,40 @@ question from either licence.
 
 ## Commercial licensing
 
-**Production use needs a commercial licence, and only the copyright holder can grant one.** That holder is **Shook Law
-PLLC**.
+**Production use needs a commercial licence, and only the copyright holder can grant one.** That holder is **Neon Law IP
+LLC**.
 
 **What is on offer is the right to run Navigator in production.** The Additional Use Grant reaches evaluation,
 development, testing, and demonstration only, so operating Navigator where somebody relies on what it does takes a
-licence from the Firm.
+licence from Neon Law IP LLC.
 
 **Non-production use needs no licence.** Reading the source, building it, running the tests, standing up the local tier,
 evaluating it, and developing against it are all granted by the licence itself.
 
-**Only the Firm can grant it.** This is not a policy choice that could have gone another way. A production exception is
-a permission carved out of the copyright, and a permission can only be given by whoever holds the right. The Firm holds
-it, and no other party holds anything to carve from.
+**Only Neon Law IP LLC can grant it.** This is not a policy choice that could have gone another way. A production
+exception is a permission carved out of the copyright, and a permission can only be given by whoever holds the right.
+Neon Law IP LLC holds it, and no other party — including Shook Law PLLC, the law firm that operates Navigator under a
+licence from Neon Law IP LLC — holds anything to carve from.
 
 **No price is published here or anywhere on the website.** A deployment's scope is not knowable in advance, so a figure
 would be a floor dressed as a fee — the same reason litigation and fractional general counsel carry none while the
 consumer flat fees are published in full. Write to [contact@neonlaw.org](mailto:contact@neonlaw.org).
 
-**Legal aid and nonprofit deployments should write.** There is no standing programme with published terms, but the Firm
-can license a legal aid office directly, and the reason such a programme would exist has not gone away. Ask.
+**Legal aid and nonprofit deployments should write.** There is no standing programme with published terms, but Neon Law
+IP LLC can license a legal aid office directly, and the reason such a programme would exist has not gone away. Ask.
 
 ## Trademarks
 
-**NEON LAW** is a registered trademark, U.S. Reg. No. 6,325,650, owned by Shook Law PLLC. The licence grants rights in
+**NEON LAW** is a registered trademark, U.S. Reg. No. 6,325,650, owned by Neon Law IP LLC. The licence grants rights in
 copyright, not in trademarks, and [`NOTICE`](../NOTICE) says so explicitly — a reader deciding whether they may ship a
 fork called "Neon Law" reads the terms that shipped with the code, so the answer has to be there rather than only in a
 doc. It is also the reason `NOTICE` travels in every archive and image: the reservation is the one thing the grant does
 not hand a fork.
 
 The registrant and the copyright holder are the same organization — see [Who holds what](#who-holds-what) — and that
-changes nothing. A copyright licence conveys rights in copyright. It does not reach a mark, so the Firm granting you
-everything it can grant under `BUSL-1.1` still leaves you without the name.
+changes nothing. A copyright licence conveys rights in copyright. It does not reach a mark, so Neon Law IP LLC granting
+you everything it can grant under `BUSL-1.1` still leaves you without the name. Shook Law PLLC, the law firm that
+practises under the mark, holds it under licence from Neon Law IP LLC rather than as owner, same as any other licensee.
 
 This is the one reservation this project genuinely needs. A client identifies who is accountable for their legal work by
 the name on the door, so a fork trading as Neon Law would misdirect the person least able to check. Anyone may run,
@@ -351,11 +359,11 @@ deployment as Neon Law.
 [contact@neonlaw.org](mailto:contact@neonlaw.org) instead. That is a capacity decision about pull requests: every copy
 already cloned keeps its rights whatever the contribution policy says.
 
-**A contribution assigns to Shook Law PLLC — all right, title, and interest in it, including every copyright in it,
+**A contribution assigns to Neon Law IP LLC — all right, title, and interest in it, including every copyright in it,
 worldwide and for the full term.** That assignment is the contributor licence agreement, and the terms sit here so they
 are knowable before anyone writes a line rather than at a merge. Inside the firm the instrument is the employment or
-contractor agreement each author signed before their first commit, so the work is the Firm's on creation; an outside
-contributor signs a contributor licence agreement on the same footing before a contribution merges.
+contractor agreement each author signed before their first commit, structured so the work reaches Neon Law IP LLC on
+creation; an outside contributor signs a contributor licence agreement on the same footing before a contribution merges.
 
 Assignment is the mechanism and the grant to you is the result: the work reaches you under `BUSL-1.1`, the same terms
 the project ships under, wherever in the tree it lands. What it buys is a single holder able to grant the whole work,

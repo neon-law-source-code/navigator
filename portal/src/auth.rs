@@ -391,7 +391,7 @@ pub async fn require_session(
 /// extension absent and lets the request through unchanged, with no `303` to
 /// login.
 ///
-/// The firm's public marketing pages (`/team`, `/team/{slug}`) mount *outside*
+/// The firm's public marketing pages (`/team` included) mount *outside*
 /// [`crate::session_boundary`], so they never receive the `SessionData`
 /// extension `require_session` inserts. Without this layer their auth-aware
 /// header resolver (`dioxus_app::inject_public_utility`) always reads an absent

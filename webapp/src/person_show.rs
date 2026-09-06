@@ -53,9 +53,9 @@ pub struct PersonFields {
     pub notion_user_id: String,
     /// The public `LinkedIn` profile URL shown on `/team`. Blank when unset.
     pub linkedin_url: String,
-    /// The current avatar's public URL (an app-relative `/assets/{key}`
-    /// path), for the preview above the upload form. `None` until an
-    /// avatar has been uploaded.
+    /// The admin-only route for the current avatar's preview
+    /// (`/app/admin/people/{id}/avatar`), streamed from the private
+    /// documents bucket. `None` until an avatar has been uploaded.
     pub avatar_url: Option<String>,
 }
 
@@ -258,7 +258,10 @@ async fn load_person_show(role: ViewerRole) -> Result<PersonShowView, ServerFnEr
             middle_name: p.middle_name.unwrap_or_default(),
             notion_user_id,
             linkedin_url: p.linkedin_url.unwrap_or_default(),
-            avatar_url: p.profile_image_url,
+            avatar_url: p
+                .profile_image_url
+                .is_some()
+                .then(|| format!("{DETAIL_PATH}/{id}/avatar")),
         }),
         edit_lock,
         can_impersonate,
@@ -359,7 +362,7 @@ fn edit_fields(fields: &PersonFields, edit_lock: EditLock, viewer_role: ViewerRo
         fields.linkedin_url.clone(),
         "url",
     )
-    .help("Shown on the public /team page. Leave blank to hide it there.");
+    .help("The person's LinkedIn profile, for reference on this admin page.");
     if edit_lock == EditLock::HigherRank {
         linkedin_url = linkedin_url.disabled();
     }
@@ -595,7 +598,9 @@ mod tests {
     }
 
     fn app_with_image() -> Element {
-        let (view, fields) = sample_view(Some("/assets/avatars/x.png".to_string()));
+        let (view, fields) = sample_view(Some(format!(
+            "{DETAIL_PATH}/00000000-0000-7000-8000-000000000000/avatar"
+        )));
         avatar_upload_card(&view, &fields)
     }
 
@@ -622,7 +627,12 @@ mod tests {
     #[test]
     fn the_avatar_preview_shows_the_image_or_falls_back_to_initials() {
         let out = ssr(app_with_image);
-        assert!(out.contains(r#"src="/assets/avatars/x.png""#), "{out}");
+        assert!(
+            out.contains(&format!(
+                r#"src="{DETAIL_PATH}/00000000-0000-7000-8000-000000000000/avatar""#
+            )),
+            "{out}"
+        );
 
         let out = ssr(app_none);
         assert!(

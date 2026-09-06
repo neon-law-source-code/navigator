@@ -1,7 +1,7 @@
 //! A small profile picture, rendered as an `<img>` when a URL is set, or a
 //! generated-initials circle otherwise. Shared by [`crate::components::
-//! testimonial`], [`crate::team_page`], and the admin [`crate::person_show`]
-//! avatar preview, so the three surfaces agree on one fallback.
+//! testimonial`] and the admin [`crate::person_show`]/[`crate::entity_edit`]
+//! avatar previews, so every surface agrees on one fallback.
 
 use dioxus::prelude::*;
 

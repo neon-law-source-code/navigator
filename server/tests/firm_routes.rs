@@ -871,8 +871,8 @@ async fn the_footer_carries_the_pages_the_header_does_not() {
 async fn the_firm_footer_publishes_no_bar_number_and_no_qualified_office() {
     // The firm's regulated footer strip names the entity, the disclaimer, and
     // the offices — and nothing about who is licensed under what number.
-    // `views::brand::FIRM_ATTORNEYS` is empty today; `/team` names a contact
-    // card per attorney, not a bar-credential disclosure.
+    // `views::brand::FIRM_ATTORNEYS` is empty today, and `/team` is a static
+    // statement with no per-attorney bar-credential disclosure at all.
     //
     // Both halves are the assertion. A bar number reappearing means
     // `views::brand::FIRM_ATTORNEYS` was refilled; an office note reappearing
@@ -2587,55 +2587,28 @@ async fn every_public_page_links_the_source_repository() {
     }
 }
 
-/// Seed a firm-side `Person` with a confirmed email, so they qualify for the
-/// live `/team` roster ([`store::persons::find_team_members`]) the way a
-/// real sign-in or email confirmation would mark them.
-async fn seed_confirmed_team_member(surreal: &store::surreal::SurrealDb, name: &str, email: &str) {
-    let person = store::persons::create(
-        surreal,
-        &store::persons::NewPerson::with_role(name, email, store::persons::Role::Lawyer),
-    )
-    .await
-    .expect("seed team member");
-    store::persons::set_email_confirmed(surreal, person.id, true)
-        .await
-        .expect("confirm team member email");
-}
-
-/// The `/team` surface is live: the index and one profile per confirmed,
-/// non-client `Person`, each at a slug derived from their name (`/team/nick`
-/// for a person named "Nick"). A slug naming nobody on the current roster
-/// still answers `404` rather than a stray redirect — a crawler or a
-/// bookmark holding a typo must not land on a page that claims to be
-/// someone.
+/// `/team` is a static page now — one statement, no roster and no per-person
+/// profile. A slug that used to resolve to a live team member (`/team/nick`,
+/// `/team/jask`) names nothing any more and must 404 rather than fall through
+/// to anything.
 ///
 /// `/app/team` is a different surface and is deliberately NOT checked here. It
 /// is the authenticated matter-side roster inside the portal, and conflating
 /// the two is how a working page gets deleted next.
 #[tokio::test]
-async fn the_team_surface_publishes_the_index_and_each_attorneys_profile() {
-    let state = site_state().await;
-    seed_confirmed_team_member(&state.surreal, "Nick", "nick@neonlaw.com").await;
-    seed_confirmed_team_member(&state.surreal, "Jask", "jask@neonlaw.com").await;
-    let app = site_router(state);
-    for path in ["/team", "/team/nick", "/team/jask"] {
-        let resp = app
-            .clone()
-            .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-        assert_eq!(resp.status(), StatusCode::OK, "{path} is published");
-    }
-    for path in ["/team/jacob", "/team/nobody"] {
-        let resp = app
-            .clone()
-            .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
-            .await
-            .unwrap();
+async fn the_team_page_publishes_the_one_statement_and_no_profile() {
+    let app = site_app().await;
+    let body = body_string(anon_get(&app, "/team").await).await;
+    assert!(
+        body.contains(webapp::team_page::STATEMENT),
+        "the page states the one sentence: {body}"
+    );
+    for path in ["/team/nick", "/team/jask"] {
+        let resp = anon_get(&app, path).await;
         assert_eq!(
             resp.status(),
             StatusCode::NOT_FOUND,
-            "{path} names nobody on the roster and must not redirect anywhere"
+            "{path} named a live profile the roster no longer has; now it names nothing"
         );
     }
 }

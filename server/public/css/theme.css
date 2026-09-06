@@ -750,109 +750,14 @@ a.nav-pagination__link:hover {
   margin: 1.5rem 0;
 }
 
-/* Team index — the `/team` listing: a heading/intro over a grid of profile
-   cards, each a photo beside the name/role/summary linking to the full bio. */
-.team-index__lead {
-  font-size: 1.15rem;
-  color: var(--nav-color-text-muted);
-  max-width: 48rem;
-}
-
-.team-index__cards {
-  list-style: none;
-  margin: 1.5rem 0 0;
-  padding: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
-  gap: 1rem;
-}
-
-.team-index__card {
-  display: flex;
-  gap: 1rem;
-  align-items: flex-start;
-  border: 1px solid var(--nav-color-border);
-  border-radius: var(--nav-radius);
-  padding: 1.25rem;
-}
-
-.team-index__photo {
-  border-radius: 50%;
-  object-fit: cover;
-  flex: none;
-}
-
-.team-index__name {
-  font-size: 1.15rem;
-  margin: 0 0 0.25rem;
-}
-
-.team-index__role {
-  color: var(--nav-color-primary);
-  font-weight: 600;
-  margin: 0 0 0.5rem;
-}
-
-.team-index__summary {
-  color: var(--nav-color-text-muted);
-  margin: 0;
-}
-
-/* Team profile — the `/team/nick` attorney bio: a photo/links card beside the
-   summary and bio prose, with a breadcrumb back to the team index. */
-.team-profile__back {
-  margin-bottom: 1.5rem;
-}
-
-.team-profile__grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 2rem;
-  align-items: start;
-}
-
-@media (min-width: 62rem) {
-  .team-profile__grid {
-    grid-template-columns: minmax(0, 20rem) minmax(0, 1fr);
-  }
-}
-
-.team-profile__card {
-  border: 1px solid var(--nav-color-border);
-  border-radius: var(--nav-radius);
-  background: var(--nav-color-surface-raised);
-  padding: 1.5rem;
-}
-
-.team-profile__photo {
-  display: block;
-  border-radius: 50%;
-  object-fit: cover;
-  margin-bottom: 1.5rem;
-}
-
-.team-profile__name {
-  font-size: 1.5rem;
-  margin: 0 0 0.25rem;
-}
-
-.team-profile__role {
-  color: var(--nav-color-primary);
-  font-weight: 600;
-  margin: 0 0 1.25rem;
-}
-
-.team-profile__links {
-  display: grid;
-  gap: 0.5rem;
-}
-
-/* The bio reads as body text: no size bump, no muted colour. The lead line was
-   1.15rem and grey, which made a lawyer's own words the lightest type on their
-   page — and made the bio look like a caption rather than the thing the page is
-   for. Nothing here overrides the body font now, so the whole bio is one voice. */
-.team-profile__summary {
-  margin-bottom: 1rem;
+/* `/team`: one centered statement, no roster. */
+.team-statement {
+  max-width: 65ch;
+  margin: 0 auto;
+  padding-block: clamp(3rem, 10vw, 6rem);
+  font-size: 1.25rem;
+  line-height: 1.6;
+  text-align: center;
 }
 
 /* Public page shell — the skeleton every migrated public page wraps its

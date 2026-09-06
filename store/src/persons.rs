@@ -224,11 +224,16 @@ pub struct Person {
     /// Xero Contacts via the billing seam (one-way, Neon Law Navigator →
     /// Xero). `None` until first synced.
     pub xero_contact_id: Option<String>,
-    /// Optional public profile image URL. Used only on consented public
-    /// attribution surfaces such as testimonials.
+    /// This person's avatar, shown only on the admin Person page — never a
+    /// public surface, since `/team` stopped being a per-person roster. Two
+    /// shapes: a bare private documents-bucket key
+    /// (`people/{id}/avatars/…`, written by the admin avatar-upload route),
+    /// or a directly-fetchable URL (an old-style `/assets/…` path from
+    /// before that route moved off the public bucket, or an external photo
+    /// URL a directory-sync seed reconciliation supplied).
     pub profile_image_url: Option<String>,
-    /// Optional public `LinkedIn` profile URL, shown on the public `/team`
-    /// page. `None` until set by an admin edit.
+    /// Optional `LinkedIn` profile URL, shown on the admin Person page.
+    /// `None` until set by an admin edit.
     pub linkedin_url: Option<String>,
     /// Whether this person's email has been confirmed — either by the IdP
     /// carrying `email_verified: true` at sign-in, or by completing the
@@ -544,12 +549,15 @@ pub struct PersonEdit {
     pub given_name: Option<Option<String>>,
     pub family_name: Option<Option<String>>,
     pub middle_name: Option<Option<String>>,
-    /// A seed reconciliation may replace the optional directory image while
-    /// leaving identity and authority untouched. Browser-facing commands do
-    /// not populate this field, so their existing PATCH contract is unchanged.
+    /// The admin-only avatar route for this person's photo in the private
+    /// documents bucket (`people/{id}/avatars/…`), or `None` when they have
+    /// none. A seed reconciliation may replace it while leaving identity and
+    /// authority untouched; browser-facing commands do not populate this
+    /// field directly, so their existing PATCH contract is unchanged.
     pub profile_image_url: Option<Option<String>>,
-    /// The public `LinkedIn` profile URL shown on `/team`. Edited through the
-    /// ordinary admin Person form, same clear-vs-leave-alone semantics as
+    /// The person's `LinkedIn` profile URL, shown on their admin Person page.
+    /// Edited through the ordinary admin Person form, same
+    /// clear-vs-leave-alone semantics as
     /// [`profile_image_url`](Self::profile_image_url).
     pub linkedin_url: Option<Option<String>>,
 }
@@ -655,27 +663,6 @@ pub async fn find_by_role(db: &SurrealDb, role: Role) -> Result<Vec<Person>, Per
     let response = db
         .query(format!("SELECT {SELECT} FROM person WHERE role = $role"))
         .bind(("role", role.as_str().to_string()))
-        .await
-        .and_then(surrealdb::IndexedResults::check)?;
-    many(response)
-}
-
-/// Every person eligible for the public `/team` roster: any firm-side role
-/// (owner, admin, lawyer, or clerk — anyone but [`Role::Client`]) whose
-/// email is confirmed, alphabetized by name. No email-domain restriction —
-/// a team member's mailbox may live anywhere.
-///
-/// # Errors
-///
-/// [`PersonError::Db`] if the lookup fails.
-pub async fn find_team_members(db: &SurrealDb) -> Result<Vec<Person>, PersonError> {
-    let response = db
-        .query(format!(
-            "SELECT {SELECT} FROM person \
-             WHERE role != $client AND email_confirmed = true \
-             ORDER BY name ASC"
-        ))
-        .bind(("client", Role::Client.as_str().to_string()))
         .await
         .and_then(surrealdb::IndexedResults::check)?;
     many(response)
@@ -1314,10 +1301,9 @@ pub async fn delete(db: &SurrealDb, id: Uuid) -> Result<(), PersonError> {
 mod tests {
     use super::{
         create, default_firm_dri, delete, edit, find_by_email_ci, find_by_id, find_by_ids,
-        find_by_oidc_subject, find_or_create, find_team_members, is_admitted, link_oidc_subject,
-        list_directory, retry, search, set_admitted, set_email_confirmed, set_role,
-        set_xero_contact_id, update_contact, ContactUpdate, NewPerson, PersonEdit, PersonError,
-        Role,
+        find_by_oidc_subject, find_or_create, is_admitted, link_oidc_subject, list_directory,
+        retry, search, set_admitted, set_email_confirmed, set_role, set_xero_contact_id,
+        update_contact, ContactUpdate, NewPerson, PersonEdit, PersonError, Role,
     };
     use crate::surreal::test_support::mem;
     use crate::surreal::{record_id, SurrealDb};
@@ -2379,43 +2365,6 @@ mod tests {
             .unwrap()
             .unwrap();
         assert!(confirmed.email_confirmed);
-    }
-
-    #[tokio::test]
-    async fn find_team_members_excludes_clients_and_unconfirmed_emails_any_domain() {
-        let db = mem().await;
-
-        let client_confirmed =
-            person_at(&db, "Zeta Client", "zeta@example.com", Role::Client).await;
-        set_email_confirmed(&db, client_confirmed.id, true)
-            .await
-            .unwrap();
-
-        let owner_unconfirmed = person_at(&db, "Owen Owner", "owen@neonlaw.com", Role::Owner).await;
-        // deliberately left unconfirmed
-
-        let lawyer_confirmed_offsite =
-            person_at(&db, "Ada Lawyer", "ada@example.org", Role::Lawyer).await;
-        set_email_confirmed(&db, lawyer_confirmed_offsite.id, true)
-            .await
-            .unwrap();
-
-        let clerk_confirmed = person_at(&db, "Bea Clerk", "bea@neonlaw.com", Role::Clerk).await;
-        set_email_confirmed(&db, clerk_confirmed.id, true)
-            .await
-            .unwrap();
-
-        let members = find_team_members(&db).await.unwrap();
-        let names: Vec<&str> = members.iter().map(|p| p.name.as_str()).collect();
-
-        assert_eq!(
-            names,
-            vec!["Ada Lawyer", "Bea Clerk"],
-            "alphabetical, excludes the unconfirmed owner and the confirmed client"
-        );
-        assert!(!names.contains(&"Zeta Client"));
-        assert!(!names.contains(&"Owen Owner"));
-        let _ = owner_unconfirmed;
     }
 
     #[tokio::test]

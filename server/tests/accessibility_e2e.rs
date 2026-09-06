@@ -39,7 +39,7 @@
 //!    is what finally puts the shared nav and footer under axe rather than the
 //!    four-selector spot check `assert_public_shell` performs.
 //! 3. **Content routes.** Pages whose *prose* is the thing under audit: the
-//!    marketing and legal copy, the blog, a team profile, the talks. Their
+//!    marketing and legal copy, the blog, the talks. Their
 //!    headings, links, and contrast live in the page rather than in a
 //!    component, so they are enumerated — scoped to `main`, because the shell
 //!    around them is layer 2's job and repeating it here would report one
@@ -127,14 +127,6 @@ const PARAMETERISED: &[(&str, &[&str])] = &[
         &["/blog/thanks-apple", "/blog/going-all-in-on-rust"],
     ),
     ("/notations/{slug}", &["/notations/onboarding-letter"]),
-    // The roster is live, so the sample must be someone this suite actually
-    // confirms: every caller of `audit_urls(neon::PUBLIC_PATHS)` signs in
-    // via `login_as_lawyer` first, which drives the `lawyer@neonlaw.com`
-    // fixture (seeded display name `"Lawyer"`, `cli/src/devx/e2e.rs`)
-    // through the real sign-in flow — the same path that now flips
-    // `Person.email_confirmed`. A different name here would 404: nothing
-    // else in this harness confirms an email before the loop runs.
-    ("/team/{slug}", &["/team/lawyer"]),
     ("/workshops/{slug}", &["/workshops/use-the-navigator"]),
     (
         "/workshops/{slug}/slides",
@@ -757,12 +749,10 @@ async fn the_error_pages_pass_axe_wcag_a_and_aa() {
 /// The public surface's two interactive image affordances: the home page's call
 /// to action, and the blog collage's lightbox dialog.
 ///
-/// There is deliberately no `/team` leg here. The live roster
-/// (`/team`, `/team/{slug}`) is audited via `PARAMETERISED`'s
-/// `/team/lawyer` sample by every caller of `audit_urls(neon::PUBLIC_PATHS)`
-/// like every other declared path — this test stays scoped to the two
-/// interactive image affordances its name promises, on markup that ships
-/// regardless of the roster.
+/// There is deliberately no `/team` leg here. It is a static page now, audited
+/// by every caller of `audit_urls(neon::PUBLIC_PATHS)` like every other
+/// declared path — this test stays scoped to the two interactive image
+/// affordances its name promises.
 #[tokio::test]
 async fn public_navigation_images_and_collage_dialog_are_accessible() {
     let site_base_url = base_url();

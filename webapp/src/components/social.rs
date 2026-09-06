@@ -25,14 +25,48 @@ pub fn SocialMeta(title: String, description: String, site_name: String, image: 
         document::Meta { property: "og:site_name", content: "{site_name}" }
         document::Meta { property: "og:title", content: "{title}" }
         document::Meta { property: "og:description", content: "{description}" }
-        document::Meta { property: "og:image", content: "{image}" }
-        document::Meta { property: "og:image:alt", content: "{image_alt}" }
+        if !image.is_empty() {
+            document::Meta { property: "og:image", content: "{image}" }
+            document::Meta { property: "og:image:alt", content: "{image_alt}" }
+        }
         // Twitter / X. `summary` renders the square logo as a small thumbnail;
         // the wide card expects a 1.91:1 banner, which a square mark would
         // letterbox.
         document::Meta { name: "twitter:card", content: "summary" }
         document::Meta { name: "twitter:title", content: "{title}" }
         document::Meta { name: "twitter:description", content: "{description}" }
-        document::Meta { name: "twitter:image", content: "{image}" }
+        if !image.is_empty() {
+            document::Meta { name: "twitter:image", content: "{image}" }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_text_wordmark_does_not_emit_social_image_metadata() {
+        fn app() -> Element {
+            rsx! {
+                SocialMeta {
+                    title: "Lawyer Shook".to_string(),
+                    description: "A Shook Law PLLC practice.".to_string(),
+                    site_name: "Lawyer Shook".to_string(),
+                    image: String::new(),
+                }
+            }
+        }
+        let mut dom = VirtualDom::new(app);
+        dom.rebuild_in_place();
+        let out = dioxus_ssr::render(&dom);
+        assert!(
+            !out.contains("og:image"),
+            "no empty Open Graph image: {out}"
+        );
+        assert!(
+            !out.contains("twitter:image"),
+            "no empty Twitter image: {out}"
+        );
     }
 }

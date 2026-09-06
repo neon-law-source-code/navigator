@@ -117,6 +117,10 @@ The SIL OPEN FONT LICENSE Version 1.1 applies to the following fonts:
 - fonts/NotoSansCJKsc-Regular.otf
 - fonts/Syne-Regular_subset.oft (Copyright 2017 The Syne Project Authors (https://gitlab.com/bonjour-monde/fonderie/syne-typeface))
 
+The SIL OPEN FONT LICENSE Version 1.1 applies to the following font assets:
+- fonts/tinos/Tinos-Regular.woff2
+- fonts/tinos/Tinos-Bold.woff2
+
 -----------------------------------------------------------
 SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
 -----------------------------------------------------------
@@ -33933,4 +33937,3 @@ wasmparser 0.239.0  —  Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT
 webdriver 0.53.0  —  MPL-2.0
 winapi-i686-pc-windows-gnu 0.4.0  —  MIT/Apache-2.0
 winapi-x86_64-pc-windows-gnu 0.4.0  —  MIT/Apache-2.0
-

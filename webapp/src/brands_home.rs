@@ -66,7 +66,7 @@ fn brand_font_cards() -> [BrandFontCard; 3] {
             id: "brand-card-lawyer-shook",
             brand_label: "Lawyer Shook",
             family_name: "Tinos",
-            license_note: "Apache License 2.0 — the web faces are served from Navigator's public asset origin.",
+            license_note: "SIL Open Font License 1.1 — the web faces are served from Navigator's public asset origin.",
             download: None,
             href: "https://fonts.google.com/specimen/Tinos",
         },

@@ -4918,6 +4918,88 @@ async fn api_projects_update_sets_and_clears_the_slack_channel_links() {
     );
 }
 
+/// The lawyer edit form turns an unchecked sharing toggle into an explicit
+/// clear at the native form boundary. The private Slack and Notion resources
+/// remain untouched, and the independently checked Notion card still saves.
+#[tokio::test]
+async fn lawyer_project_edit_toggles_clear_only_the_shared_resource() {
+    let (state, surreal) = state_with_engines().await;
+    let (project_id, _lawyer, cookie, csrf) = lawyer_project_fixture(&surreal).await;
+    let before = store::projects::find_by_id(&surreal, project_id)
+        .await
+        .unwrap()
+        .unwrap();
+    store::projects::update_project(
+        &surreal,
+        project_id,
+        &store::projects::UpdateProjectCommand {
+            internal_slack_channel_url: Some("https://neonlaw.slack.com/archives/C0PRIVATE".into()),
+            external_slack_channel_url: Some("https://neonlaw.slack.com/archives/C0SHARED".into()),
+            private_notion_page_url: Some("https://www.notion.so/neonlaw/Private-abc123".into()),
+            shared_notion_page_url: Some("https://www.notion.so/neonlaw/Old-def456".into()),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+    let mut form = url::form_urlencoded::Serializer::new(String::new());
+    for (name, value) in [
+        ("_csrf", csrf.as_str()),
+        ("name", before.name.as_str()),
+        ("entity_id", &before.entity_id.to_string()),
+        ("description", ""),
+        (
+            "internal_slack_channel_url",
+            "https://neonlaw.slack.com/archives/C0PRIVATE",
+        ),
+        (
+            "private_notion_page_url",
+            "https://www.notion.so/neonlaw/Private-abc123",
+        ),
+        (
+            "shared_notion_page_url",
+            "https://www.notion.so/neonlaw/New-def456",
+        ),
+        ("share_notion", "1"),
+        ("repository_url", ""),
+    ] {
+        form.append_pair(name, value);
+    }
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/app/projects/{}", before.code))
+                .header(header::COOKIE, cookie)
+                .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                .body(Body::from(form.finish()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+
+    let saved = store::projects::find_by_id(&surreal, project_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        saved.internal_slack_channel_url.as_deref(),
+        Some("https://neonlaw.slack.com/archives/C0PRIVATE")
+    );
+    assert_eq!(saved.external_slack_channel_url, None);
+    assert_eq!(
+        saved.private_notion_page_url.as_deref(),
+        Some("https://www.notion.so/neonlaw/Private-abc123")
+    );
+    assert_eq!(
+        saved.shared_notion_page_url.as_deref(),
+        Some("https://www.notion.so/neonlaw/New-def456")
+    );
+}
+
 #[tokio::test]
 async fn api_projects_update_rejects_a_cross_site_origin() {
     let (state, surreal) = state_with_engines().await;

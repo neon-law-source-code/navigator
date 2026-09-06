@@ -321,3 +321,48 @@ async fn a_client_sees_the_shared_resources_and_none_of_the_firms() {
     // A client configures nothing.
     assert!(!html.contains("Configure resources"));
 }
+
+/// Clearing a shared resource removes the client-facing row, rather than
+/// leaving an empty link or falling back to the private resource.
+#[tokio::test]
+async fn clearing_a_shared_resource_removes_it_from_the_client_view() {
+    const PRIVATE: &str = "https://neonlaw.slack.com/archives/C0PRIVATE";
+    const SHARED: &str = "https://neonlaw.slack.com/archives/C0SHARED";
+    let f = build_fixture().await;
+    store::projects::update_project(
+        &f.surreal,
+        f.project_id,
+        &store::projects::UpdateProjectCommand {
+            name: Some("Libra integrations".into()),
+            internal_slack_channel_url: Some(PRIVATE.into()),
+            external_slack_channel_url: Some(SHARED.into()),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let before = get_as(&f.app, &f.project_code, &f.client_cookie).await;
+    assert!(
+        before.contains(SHARED),
+        "the configured shared row is visible"
+    );
+
+    store::projects::update_project(
+        &f.surreal,
+        f.project_id,
+        &store::projects::UpdateProjectCommand {
+            external_slack_channel_url: Some(String::new()),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let after = get_as(&f.app, &f.project_code, &f.client_cookie).await;
+    assert!(!after.contains(SHARED), "the cleared shared URL leaked");
+    assert!(!after.contains(r#"data-resource="shared-slack-channel""#));
+    assert!(
+        !after.contains(PRIVATE),
+        "the private URL became a fallback"
+    );
+    assert!(after.contains(r#"data-resource="client-portal""#));
+}

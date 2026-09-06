@@ -1498,11 +1498,6 @@ struct ProjectInput {
     /// descriptive-update handler; the open-matter form has no field for it.
     #[serde(default)]
     external_slack_channel_url: String,
-    /// Present when Navigator should offer the separate Slack resource to the
-    /// client. An absent checkbox is an explicit request to clear the shared
-    /// URL; the private URL is never derived from it.
-    #[serde(default)]
-    share_slack: Option<String>,
     /// The Project's source repository, as a whole URL on any forge — where
     /// its notation templates and client portal are sourced from. Only read by
     /// the descriptive-update handler; the open-matter form has no field for
@@ -1517,10 +1512,18 @@ struct ProjectInput {
     /// descriptive-update handler; the open-matter form has no field for it.
     #[serde(default)]
     shared_notion_page_url: String,
-    /// Present when Navigator should offer the separate Notion resource to the
-    /// client. An absent checkbox clears only the shared URL.
+    /// The Slack card's "Share a separate resource with the client" toggle
+    /// (ENG-477), `Some("1")` when ticked and absent when not — an unchecked
+    /// HTML checkbox never posts a value at all. Only read by the
+    /// descriptive-update handler, which uses it to decide whether
+    /// `external_slack_channel_url` is honored or force-cleared; see
+    /// [`projects_update_lawyer_only`].
     #[serde(default)]
-    share_notion: Option<String>,
+    share_external_slack_channel: Option<String>,
+    /// The Notion counterpart of `share_external_slack_channel`, gating
+    /// `shared_notion_page_url` on the same terms.
+    #[serde(default)]
+    share_shared_notion_page: Option<String>,
     /// Set (to `"1"`) when the opening attorney ticks the required conflict
     /// attestation checkbox. The shared `open_matter` command refuses the open
     /// without it (`AttestationRequired`) — every open is attested, never
@@ -2237,17 +2240,15 @@ async fn projects_update_lawyer_only(
         return not_found_response();
     }
     // The descriptive update owns name, entity, the scope narrative, the two
-    // Slack channel links, the two Notion page links, and the source repository
-    // URL only. The edit form no
-    // longer renders a status control: changing a matter's lifecycle
-    // (open/closed/archived) and its coupled retention `closed_at` is a
-    // transition with firm-policy semantics, handled by dedicated lifecycle
-    // commands (navigator#770), not this general edit. So `status` is neither
-    // posted by the form nor forwarded here. The form always sends the private
-    // resource fields and the repository URL, so pass each as `Some` to keep
-    // the blank-clears behavior. The shared URL is explicit:
-    // an unchecked sharing toggle is a clear, while a checked toggle carries
-    // the separately entered shared URL. The private URL is never copied.
+    // Slack channel links, the two Notion page links, and the source
+    // repository URL only. The edit form no longer renders a status control:
+    // changing a matter's lifecycle (open/closed/archived) and its coupled
+    // retention `closed_at` is a transition with firm-policy semantics, handled
+    // by dedicated lifecycle commands (navigator#770), not this general edit.
+    // So `status` is neither posted by the form nor forwarded here. The form
+    // always sends `description`, the two Slack fields, the two Notion fields,
+    // and the repository URL, so pass each as `Some` to keep the
+    // blank-clears behavior.
     let Some(project) = store::projects::find_by_code(&surreal, &code)
         .await
         .ok()
@@ -2256,6 +2257,15 @@ async fn projects_update_lawyer_only(
         return (StatusCode::NOT_FOUND, webapp::error_pages::not_found()).into_response();
     };
     let project_id = project.id;
+    // ENG-477: each shared resource's own card carries a "Share a separate
+    // resource with the client" toggle. An unchecked toggle forces the shared
+    // column blank regardless of whatever text a lawyer left in that (hidden)
+    // field — so unchecking the box and saving is what actually removes the
+    // client's access, and a stale value sitting in a hidden field can never be
+    // resubmitted as if sharing were still on. This never touches the private
+    // half of either card.
+    let share_external_slack = input.share_external_slack_channel.as_deref() == Some("1");
+    let share_shared_notion = input.share_shared_notion_page.as_deref() == Some("1");
     let command = store::projects::UpdateProjectCommand {
         // The form always posts every field, so it is a full replacement even
         // though the command is a patch. A blank name still fails the command's
@@ -2264,22 +2274,18 @@ async fn projects_update_lawyer_only(
         entity_id: input.entity_id,
         description: Some(input.description),
         internal_slack_channel_url: Some(input.internal_slack_channel_url),
-        external_slack_channel_url: Some(
-            input
-                .share_slack
-                .as_deref()
-                .filter(|value| *value == "1")
-                .map_or_else(String::new, |_| input.external_slack_channel_url),
-        ),
+        external_slack_channel_url: Some(if share_external_slack {
+            input.external_slack_channel_url
+        } else {
+            String::new()
+        }),
         repository_url: Some(input.repository_url),
         private_notion_page_url: Some(input.private_notion_page_url),
-        shared_notion_page_url: Some(
-            input
-                .share_notion
-                .as_deref()
-                .filter(|value| *value == "1")
-                .map_or_else(String::new, |_| input.shared_notion_page_url),
-        ),
+        shared_notion_page_url: Some(if share_shared_notion {
+            input.shared_notion_page_url
+        } else {
+            String::new()
+        }),
     };
     match store::projects::update_project(&surreal, project_id, &command).await {
         Ok(_) => Redirect::to("/app/projects").into_response(),
@@ -2473,11 +2479,11 @@ mod tests {
             scope_of_services: String::new(),
             internal_slack_channel_url: String::new(),
             external_slack_channel_url: String::new(),
-            share_slack: None,
             repository_url: String::new(),
             private_notion_page_url: String::new(),
             shared_notion_page_url: String::new(),
-            share_notion: None,
+            share_external_slack_channel: None,
+            share_shared_notion_page: None,
             attestation: None,
         }
     }

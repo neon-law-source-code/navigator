@@ -4918,25 +4918,40 @@ async fn api_projects_update_sets_and_clears_the_slack_channel_links() {
     );
 }
 
-/// The lawyer edit form turns an unchecked sharing toggle into an explicit
-/// clear at the native form boundary. The private Slack and Notion resources
-/// remain untouched, and the independently checked Notion card still saves.
+/// ENG-477: the native edit form's Slack and Notion cards each carry a "Share
+/// a separate resource with the client" toggle, and the handler behind
+/// `POST /app/projects/{code}` reads it directly rather than trusting
+/// whatever text sits in the (CSS-hidden) shared field. This is the case the
+/// toggle exists for: a lawyer unchecks Slack's box but the browser still
+/// resubmits the shared field's old value (nothing erases it client-side,
+/// since the box is a real, unhidden HTML control and the field is only
+/// hidden by CSS) — the unchecked toggle must still win, clearing the shared
+/// Slack channel. The Notion card's toggle stays on in the same submission,
+/// so its shared page — and both private fields — must be completely
+/// unaffected by the Slack card's change.
 #[tokio::test]
-async fn lawyer_project_edit_toggles_clear_only_the_shared_resource() {
+async fn unchecking_the_share_toggle_clears_only_that_cards_shared_value() {
+    const PRIVATE_SLACK: &str = "https://neonlaw.slack.com/archives/C0PRIVATE";
+    const SHARED_SLACK: &str = "https://neonlaw.slack.com/archives/C0SHARED";
+    const PRIVATE_NOTION: &str = "https://www.notion.so/neonlaw/Private-abc123";
+    const SHARED_NOTION: &str = "https://www.notion.so/neonlaw/Shared-def456";
+
     let (state, surreal) = state_with_engines().await;
-    let (project_id, _lawyer, cookie, csrf) = lawyer_project_fixture(&surreal).await;
-    let before = store::projects::find_by_id(&surreal, project_id)
+    let matter = seeded_matter(&surreal).await;
+    let code = store::projects::find_by_id(&surreal, matter)
         .await
         .unwrap()
-        .unwrap();
+        .unwrap()
+        .code;
     store::projects::update_project(
         &surreal,
-        project_id,
+        matter,
         &store::projects::UpdateProjectCommand {
-            internal_slack_channel_url: Some("https://neonlaw.slack.com/archives/C0PRIVATE".into()),
-            external_slack_channel_url: Some("https://neonlaw.slack.com/archives/C0SHARED".into()),
-            private_notion_page_url: Some("https://www.notion.so/neonlaw/Private-abc123".into()),
-            shared_notion_page_url: Some("https://www.notion.so/neonlaw/Old-def456".into()),
+            name: Some("Seeded Matter".into()),
+            internal_slack_channel_url: Some(PRIVATE_SLACK.into()),
+            external_slack_channel_url: Some(SHARED_SLACK.into()),
+            private_notion_page_url: Some(PRIVATE_NOTION.into()),
+            shared_notion_page_url: Some(SHARED_NOTION.into()),
             ..Default::default()
         },
     )
@@ -4944,59 +4959,59 @@ async fn lawyer_project_edit_toggles_clear_only_the_shared_resource() {
     .unwrap();
 
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
-    let mut form = url::form_urlencoded::Serializer::new(String::new());
-    for (name, value) in [
-        ("_csrf", csrf.as_str()),
-        ("name", before.name.as_str()),
-        ("entity_id", &before.entity_id.to_string()),
-        ("description", ""),
-        (
-            "internal_slack_channel_url",
-            "https://neonlaw.slack.com/archives/C0PRIVATE",
-        ),
-        (
-            "private_notion_page_url",
-            "https://www.notion.so/neonlaw/Private-abc123",
-        ),
-        (
-            "shared_notion_page_url",
-            "https://www.notion.so/neonlaw/New-def456",
-        ),
-        ("share_notion", "1"),
-        ("repository_url", ""),
-    ] {
-        form.append_pair(name, value);
-    }
+    let (cookie, csrf) = session_cookie_and_csrf_for_role(store::persons::Role::Lawyer);
+    // `:` and `/` need no percent-encoding in a form body — only `&`, `=`,
+    // and whitespace do, and none of these fixture URLs carry any.
+    let body = format!(
+        "name=Seeded%20Matter\
+         &internal_slack_channel_url={PRIVATE_SLACK}\
+         &external_slack_channel_url={SHARED_SLACK}\
+         &private_notion_page_url={PRIVATE_NOTION}\
+         &shared_notion_page_url={SHARED_NOTION}\
+         &share_shared_notion_page=1\
+         &_csrf={csrf}"
+    );
+    // Deliberately omits `share_external_slack_channel` — an unchecked HTML
+    // checkbox posts nothing at all — while still resubmitting the stale
+    // `external_slack_channel_url` text, the exact shape a browser produces
+    // when a lawyer unticks the box without also hand-clearing the hidden
+    // field underneath it.
     let resp = app
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/app/projects/{}", before.code))
+                .uri(format!("/app/projects/{code}"))
                 .header(header::COOKIE, cookie)
                 .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
-                .body(Body::from(form.finish()))
+                .body(Body::from(body))
                 .unwrap(),
         )
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::SEE_OTHER);
 
-    let saved = store::projects::find_by_id(&surreal, project_id)
+    let saved = store::projects::find_by_id(&surreal, matter)
         .await
         .unwrap()
         .unwrap();
     assert_eq!(
-        saved.internal_slack_channel_url.as_deref(),
-        Some("https://neonlaw.slack.com/archives/C0PRIVATE")
+        saved.external_slack_channel_url, None,
+        "the unchecked toggle wins over the stale resubmitted text"
     );
-    assert_eq!(saved.external_slack_channel_url, None);
     assert_eq!(
-        saved.private_notion_page_url.as_deref(),
-        Some("https://www.notion.so/neonlaw/Private-abc123")
+        saved.internal_slack_channel_url.as_deref(),
+        Some(PRIVATE_SLACK),
+        "the private Slack channel is untouched by the shared one clearing"
     );
     assert_eq!(
         saved.shared_notion_page_url.as_deref(),
-        Some("https://www.notion.so/neonlaw/New-def456")
+        Some(SHARED_NOTION),
+        "the Notion card's own toggle stayed on, so its shared page survives"
+    );
+    assert_eq!(
+        saved.private_notion_page_url.as_deref(),
+        Some(PRIVATE_NOTION),
+        "the private Notion page is untouched"
     );
 }
 

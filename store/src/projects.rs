@@ -347,6 +347,24 @@ pub async fn participations_for_project(
         .collect())
 }
 
+/// People currently designated lawyer DRI on a matter, in insertion order.
+pub async fn lawyer_dri_people(
+    surreal: &SurrealDb,
+    project_id: Uuid,
+) -> Result<Vec<crate::persons::Person>, ProjectStoreError> {
+    let mut people = Vec::new();
+    for row in participations_for_project(surreal, project_id)
+        .await?
+        .into_iter()
+        .filter(|row| row.is_lawyer_dri)
+    {
+        if let Some(person) = crate::persons::find_by_id(surreal, row.person_id).await? {
+            people.push(person);
+        }
+    }
+    Ok(people)
+}
+
 /// Every participation row, ordered for the lawyer directory.
 pub async fn all_participations(
     surreal: &SurrealDb,

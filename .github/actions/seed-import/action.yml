@@ -1,0 +1,139 @@
+name: navigator seed import
+description: >-
+  Exchange this GitHub Actions OIDC identity for a project-scoped Navigator
+  seed session and import `seeds/` through `navigator site import --ci`.
+
+# A Project repository's `publish.yml` runs this after validate, when
+# `vars.NAVIGATOR_HOST` names the deployment. The job must have
+# `id-token: write`. The minted Navigator session never appears in argv,
+# logs, or repository secrets — GitHub's OIDC token is requested from the
+# runner environment and exchanged at `POST /auth/ci/seed-token`.
+#
+# Consuming repository:
+#
+#     permissions:
+#       contents: read
+#       id-token: write
+#     steps:
+#       - uses: neon-law-source-code/navigator/.github/actions/seed-import@YY.M.D
+#         with:
+#           version: "YY.M.D"
+#           host: ${{ vars.NAVIGATOR_HOST }}
+#
+# `version` is required and must be an exact tag. An empty or missing
+# `seeds/` directory is a no-op, so a repository without seed documents
+# still satisfies a required check.
+
+inputs:
+  version:
+    description: >-
+      Exact immutable release tag to download, shaped `YY.M.D` or
+      `YY.M.D-hotfix.N`. Required and never `latest`.
+    required: true
+  host:
+    description: >-
+      Deployment host the job mints against, such as `staging.neonlaw.com`.
+      The OIDC audience is `https://` plus this host (loopback `http://` is
+      honored only for a local origin).
+    required: true
+  dir:
+    description: Directory of `lookup_fields` / `records` YAML documents.
+    required: false
+    default: "seeds"
+  token:
+    description: >-
+      Token used to download the release asset. The default `github.token` is
+      enough when the Navigator repository is public or the caller lives in the
+      same organization.
+    required: false
+    default: ${{ github.token }}
+
+runs:
+  using: composite
+  steps:
+    - name: download and install the navigator CLI
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        GH_TOKEN: ${{ inputs.token }}
+        ACTION_REPO: ${{ github.action_repository }}
+      run: |
+        set -euo pipefail
+
+        if [ -z "${VERSION}" ]; then
+            echo "::error::'version' is required — pass the exact immutable release tag."
+            exit 1
+        fi
+        case "${VERSION}" in
+            latest|main|HEAD)
+                echo "::error::'version' must be an exact release tag, not '${VERSION}'."
+                exit 1
+                ;;
+        esac
+
+        case "${RUNNER_OS}" in
+            Linux)  platform=linux  ;;
+            macOS)  platform=macos  ;;
+            *)
+                echo "::error::unsupported runner OS '${RUNNER_OS}' — use a Linux or macOS runner."
+                exit 1
+                ;;
+        esac
+
+        repo="${ACTION_REPO:-neon-law-source-code/navigator}"
+        asset="navigator-${VERSION}-${platform}.tar.gz"
+        tmp="$(mktemp -d)"
+
+        echo "Downloading ${asset} from ${repo}@${VERSION}"
+        if ! gh release download "${VERSION}" \
+            --repo "${repo}" \
+            --pattern "${asset}" \
+            --dir "${tmp}" \
+            --clobber; then
+            echo "::error::could not download ${asset} from ${repo}. If ${repo} is private and this workflow lives in another organization, pass a PAT with contents:read as the 'token' input."
+            exit 1
+        fi
+
+        tar -xzf "${tmp}/${asset}" -C "${tmp}" navigator
+        install -d "${RUNNER_TEMP}/navigator-bin"
+        install -m 0755 "${tmp}/navigator" "${RUNNER_TEMP}/navigator-bin/navigator"
+        echo "${RUNNER_TEMP}/navigator-bin" >> "${GITHUB_PATH}"
+
+    - name: verify the installed CLI reports the pinned tag
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        reported="$(navigator --version)"
+        echo "navigator --version → ${reported}"
+        case "${reported}" in
+            *"${VERSION}"*) ;;
+            *)
+                echo "::error::expected navigator ${VERSION}, got '${reported}'."
+                exit 1
+                ;;
+        esac
+
+    - name: navigator site import --ci
+      shell: bash
+      env:
+        HOST: ${{ inputs.host }}
+        DIR: ${{ inputs.dir }}
+      run: |
+        set -euo pipefail
+        if [ -z "${HOST}" ]; then
+            echo "::error::'host' is required."
+            exit 1
+        fi
+        if [ ! -d "${DIR}" ]; then
+            echo "no ${DIR} directory — nothing to import"
+            exit 0
+        fi
+        shopt -s nullglob
+        files=("${DIR}"/*.yaml "${DIR}"/*.yml)
+        if [ "${#files[@]}" -eq 0 ]; then
+            echo "no seed documents in ${DIR} — nothing to import"
+            exit 0
+        fi
+        navigator site import --ci --host "${HOST}" --dir "${DIR}"

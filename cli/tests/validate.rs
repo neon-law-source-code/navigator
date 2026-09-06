@@ -482,13 +482,18 @@ fn validate_checks_seed_documents_before_any_deployment_write() {
         "seeds/Entity.yaml",
         "lookup_fields:\n  - name\n  - entity_type_id\nrecords: []\n",
     );
+    write(
+        dir.path(),
+        "seeds/PersonProjectRole.yaml",
+        "lookup_fields:\n  - person_id\n  - project_id\nrecords:\n  - person:\n      email: person@example.com\n    project:\n      code: acme\n",
+    );
     navigator()
         .arg("validate")
         .arg(dir.path())
         .assert()
         .success()
         .stdout(str::contains(
-            "Validated 2 seed document(s), found 0 error(s)",
+            "Validated 3 seed document(s), found 0 error(s)",
         ));
 }
 

@@ -23,10 +23,12 @@ holds that Project's notation templates and application workspaces side by side:
 ```text
 <the Project's repository>
 ├── .github/workflows/gate.yml
+├── .github/workflows/publish.yml
 ├── apps/
 │   └── portal/        # React + Vite; discovered by its package.json
 ├── templates/         # *.md notation blueprints
 ├── documents/         # *.yml asset pointers; staged bytes are ignored and removed after sync
+├── seeds/             # lookup_fields / records YAML for `navigator site import`
 ├── AGENTS.md
 ├── CLAUDE.md
 ├── LICENSE.md
@@ -367,8 +369,8 @@ deploys an hour later and somewhere else.
 
 The thin caller workflow lives in the Project repository. `navigator site projects repository scaffold` writes
 `.github/workflows/publish.yml`, so a scaffolded repository never hand-copies it. It grants `id-token: write`, installs
-with a locked dependency graph, lints, typechecks, tests, and builds with the derived Vite base, runs the gate, then
-then publishes:
+with a locked dependency graph, lints, typechecks, tests, and builds with the derived Vite base, runs the gate, imports
+`seeds/` when `vars.NAVIGATOR_HOST` is set, then publishes:
 
 ```yaml
 # <organization>/<project-code>/.github/workflows/publish.yml — an example of what a
@@ -379,7 +381,7 @@ on:
     branches: [main]
 permissions:
   contents: read
-  id-token: write            # required to mint the OIDC token WIF federates
+  id-token: write            # WIF for the publisher, and GitHub OIDC for seed import
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -394,12 +396,25 @@ jobs:
         with:
           version: "YY.M.D"
           project_repository: true              # the one gate: source-only, no legal files, mounted
+      - name: Import seed documents
+        if: vars.NAVIGATOR_HOST != ''
+        uses: neon-law-source-code/navigator/.github/actions/seed-import@YY.M.D
+        with:
+          version: "YY.M.D"
+          host: ${{ vars.NAVIGATOR_HOST }}
       - uses: neon-law-source-code/navigator/.github/actions/application-publish@YY.M.D
         with:
           applications_bucket: ${{ secrets.NAVIGATOR_APPLICATIONS_BUCKET }}
           workload_identity_provider: ${{ secrets.NAVIGATOR_APP_PUBLISHER_WIF_PROVIDER }}
           service_account: ${{ secrets.NAVIGATOR_APP_PUBLISHER_SERVICE_ACCOUNT }}
 ```
+
+`NAVIGATOR_HOST` is a repository variable naming the deployment (`staging.neonlaw.com` on staging). The seed-import
+action downloads the pinned `navigator` CLI and runs `navigator site import --ci --host … --dir seeds`. GitHub mints an
+OIDC token for this repository on `refs/heads/main`; Navigator verifies it, binds the run to the live Project whose
+`repository_url` is that GitHub repository, and returns a session scoped to `POST /app/api/seed` for that Project's
+code. A missing or empty `seeds/` directory is a no-op. Seed YAML uses nested natural keys for join tables
+(`person.email` + `project.code`, `person.email` + `entity.name`) rather than stored UUIDs.
 
 ### The publisher's grant is prefix-conditioned, and one identity cannot serve two Projects
 

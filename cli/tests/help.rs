@@ -163,15 +163,17 @@ fn github_help_lists_the_intake_operations() {
 }
 
 #[test]
-fn site_import_help_requires_the_seed_model_and_file() {
+fn site_import_help_lists_the_seed_arguments() {
     Command::cargo_bin("navigator")
         .unwrap()
         .args(["site", "import", "--help"])
         .assert()
         .success()
-        .stdout(str::contains("<MODEL_NAME> <SEED_FILE>"))
+        .stdout(str::contains("[MODEL_NAME] [SEED_FILE]"))
         .stdout(str::contains("--overwrite"))
-        .stdout(str::contains("--dry-run"));
+        .stdout(str::contains("--dry-run"))
+        .stdout(str::contains("--ci"))
+        .stdout(str::contains("--dir"));
 }
 
 /// `project` is write-side and local; `site projects open` drives a running

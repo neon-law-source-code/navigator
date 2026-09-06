@@ -154,6 +154,7 @@ pub async fn app_state_with_email(
         canonical_host: CanonicalHost::new(None),
         portal_only: portal::PortalOnly::default(),
         sessions,
+        github_oidc: portal::github_oidc::GitHubOidc::rejecting(),
         oauth,
         storage,
         policy: policy_client,

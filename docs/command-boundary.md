@@ -28,7 +28,10 @@ own persistence logic.
   seed model. Add `--dry-run` to perform the same natural-key and foreign-reference checks without writing. It returns a
   per-record plan: each record is `new`, `unchanged`, or `changed`, and changed records name the fields that
   `--overwrite` would replace. The flags compose, so `--dry-run --overwrite` previews updates. The CLI never reads
-  database credentials.
+  database credentials. GitHub Actions runs `navigator site import --ci --host <host> --dir seeds` and exchanges OIDC at
+  `POST /auth/ci/seed-token` for a project-scoped seed session, without reading `~/.navigator.json`. Supported models
+  are `person`, `entity`, `person_project_role`, and `person_entity_role`. Join-table documents use nested natural keys
+  (`person.email` with `project.code`, or `person.email` with `entity.name`) rather than UUIDs.
 - **Document upload.** `navigator site document upload --project <code> --file <path> --kind <kind>` reads the file
   locally and sends it with the same bearer to `POST /app/api/projects/{id}/documents`. `--kind` is required and must be
   an asset-lane value — the same enum OpenAPI publishes on that operation. `navigator site sync` uses this door for each

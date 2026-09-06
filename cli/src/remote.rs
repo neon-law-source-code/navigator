@@ -14,7 +14,7 @@
 //! | `projects close` | `POST /app/api/projects/{id}/lifecycle` |
 //! | `document upload` | `POST /app/api/projects/{id}/documents` |
 //! | `notation create`  | `POST /app/projects/{project_code}/notations/new` |
-//! | `notation status`  | `GET /app/lawyer/notations/:id/review?format=json` |
+//! | `navigator site import` | `POST /app/api/seed` (optional `POST /auth/ci/seed-token`) |
 
 use std::collections::VecDeque;
 use std::io::{BufRead, Write};
@@ -47,13 +47,21 @@ pub(crate) fn resolve(host: Option<&str>) -> Result<(String, String)> {
     Ok((base, cred.token.clone()))
 }
 
+/// How `navigator site import` authenticates to the deployment.
+pub enum SeedCredential {
+    /// Bearer from `navigator site login` (`~/.navigator.json`).
+    Stored { host: Option<String> },
+    /// GitHub Actions OIDC exchanged at `POST /auth/ci/seed-token`.
+    Ci { host: String },
+}
+
 /// `navigator site import <model> <file> [--overwrite] [--dry-run]` — submit
 /// one standard seed YAML document to the logged-in deployment. The CLI
 /// deliberately reads no `SurrealDB` environment: authentication,
 /// authorization, lookup, and the typed write boundary all belong to the
 /// server.
 pub async fn seed(
-    host: Option<&str>,
+    credential: SeedCredential,
     model: &str,
     file: &Path,
     overwrite: bool,
@@ -62,31 +70,182 @@ pub async fn seed(
     run(async {
         let yaml = std::fs::read_to_string(file)
             .with_context(|| format!("read seed file {}", file.display()))?;
-        let (base, token) = resolve(host)?;
-        let response = reqwest::Client::new()
-            .post(format!("{base}/app/api/seed"))
-            .bearer_auth(token)
-            .json(&serde_json::json!({
-                "model": model,
-                "yaml": yaml,
-                "overwrite": overwrite,
-                "dry_run": dry_run,
-            }))
-            .send()
-            .await
-            .context("POST /app/api/seed")?;
-        let status = response.status();
-        let body = response.text().await.unwrap_or_default();
-        if !status.is_success() {
-            return Err(anyhow!(
-                "seed {model} failed: {status}: {}",
-                first_line(&body)
-            ));
-        }
-        println!("{body}");
+        post_seed(&credential, model, &yaml, overwrite, dry_run).await?;
         Ok(())
     })
     .await
+}
+
+/// `navigator site import --dir <path>` — submit every supported seed document
+/// in that directory, in [`store::seed::SeedModel::ALL`] order.
+pub async fn seed_directory(
+    credential: SeedCredential,
+    dir: &Path,
+    overwrite: bool,
+    dry_run: bool,
+) -> ExitCode {
+    run(async {
+        let documents = seed_documents_in(dir)?;
+        if documents.is_empty() {
+            eprintln!("no seed documents in {} — nothing to import", dir.display());
+            return Ok(());
+        }
+        for (model, path) in documents {
+            let yaml = std::fs::read_to_string(&path)
+                .with_context(|| format!("read seed file {}", path.display()))?;
+            post_seed(&credential, model.term(), &yaml, overwrite, dry_run).await?;
+        }
+        Ok(())
+    })
+    .await
+}
+
+fn seed_documents_in(dir: &Path) -> Result<Vec<(store::seed::SeedModel, std::path::PathBuf)>> {
+    let mut documents = Vec::new();
+    let entries =
+        std::fs::read_dir(dir).with_context(|| format!("read seed directory {}", dir.display()))?;
+    for entry in entries {
+        let entry = entry.with_context(|| format!("read seed directory {}", dir.display()))?;
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let Some(ext) = path.extension().and_then(|ext| ext.to_str()) else {
+            continue;
+        };
+        if !matches!(ext, "yaml" | "yml") {
+            continue;
+        }
+        let stem = path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .ok_or_else(|| anyhow!("seed file {} has no UTF-8 stem", path.display()))?;
+        let model = store::seed::SeedModel::parse(stem).with_context(|| {
+            format!(
+                "seed file {} is not a supported `navigator site import` model",
+                path.display()
+            )
+        })?;
+        documents.push((model, path));
+    }
+    documents.sort_by(|(left_model, left_path), (right_model, right_path)| {
+        let left = store::seed::SeedModel::ALL
+            .iter()
+            .position(|model| model == left_model)
+            .unwrap_or(usize::MAX);
+        let right = store::seed::SeedModel::ALL
+            .iter()
+            .position(|model| model == right_model)
+            .unwrap_or(usize::MAX);
+        left.cmp(&right).then_with(|| left_path.cmp(right_path))
+    });
+    Ok(documents)
+}
+
+async fn post_seed(
+    credential: &SeedCredential,
+    model: &str,
+    yaml: &str,
+    overwrite: bool,
+    dry_run: bool,
+) -> Result<()> {
+    let (base, token) = resolve_seed_credential(credential).await?;
+    let response = reqwest::Client::new()
+        .post(format!("{base}/app/api/seed"))
+        .bearer_auth(token)
+        .json(&serde_json::json!({
+            "model": model,
+            "yaml": yaml,
+            "overwrite": overwrite,
+            "dry_run": dry_run,
+        }))
+        .send()
+        .await
+        .context("POST /app/api/seed")?;
+    let status = response.status();
+    let body = response.text().await.unwrap_or_default();
+    if !status.is_success() {
+        return Err(anyhow!(
+            "seed {model} failed: {status}: {}",
+            first_line(&body)
+        ));
+    }
+    println!("{body}");
+    Ok(())
+}
+
+async fn resolve_seed_credential(credential: &SeedCredential) -> Result<(String, String)> {
+    match credential {
+        SeedCredential::Stored { host } => resolve(host.as_deref()),
+        SeedCredential::Ci { host } => resolve_ci(host).await,
+    }
+}
+
+/// Exchange the GitHub Actions OIDC ID token for a project-scoped Navigator
+/// seed bearer. The GitHub token is read from the runner environment; the
+/// minted Navigator token is held in memory for this process only.
+async fn resolve_ci(host: &str) -> Result<(String, String)> {
+    let base = credentials::base_url(host);
+    let request_url = std::env::var("ACTIONS_ID_TOKEN_REQUEST_URL").context(
+        "ACTIONS_ID_TOKEN_REQUEST_URL is unset — `navigator site import --ci` runs on GitHub Actions with `id-token: write`",
+    )?;
+    let request_token = std::env::var("ACTIONS_ID_TOKEN_REQUEST_TOKEN").context(
+        "ACTIONS_ID_TOKEN_REQUEST_TOKEN is unset — `navigator site import --ci` runs on GitHub Actions with `id-token: write`",
+    )?;
+    let client = reqwest::Client::new();
+    let github = client
+        .get(&request_url)
+        .query(&[("audience", base.as_str())])
+        .bearer_auth(&request_token)
+        .header(reqwest::header::ACCEPT, "application/json")
+        .send()
+        .await
+        .context("request GitHub Actions OIDC token")?;
+    let github_status = github.status();
+    let github_body = github.text().await.unwrap_or_default();
+    if !github_status.is_success() {
+        return Err(anyhow!(
+            "GitHub Actions OIDC token request failed: {github_status}: {}",
+            first_line(&github_body)
+        ));
+    }
+    let github_token: GitHubOidcResponse =
+        serde_json::from_str(&github_body).context("parse GitHub Actions OIDC token response")?;
+    let minted = client
+        .post(format!("{base}/auth/ci/seed-token"))
+        .json(&serde_json::json!({ "token": github_token.value }))
+        .send()
+        .await
+        .context("POST /auth/ci/seed-token")?;
+    let minted_status = minted.status();
+    let minted_body = minted.text().await.unwrap_or_default();
+    if !minted_status.is_success() {
+        return Err(anyhow!(
+            "CI seed-token mint failed: {minted_status}: {}",
+            first_line(&minted_body)
+        ));
+    }
+    let minted: CiSeedTokenResponse =
+        serde_json::from_str(&minted_body).context("parse /auth/ci/seed-token response")?;
+    eprintln!(
+        "{}",
+        palette::dim(format!(
+            "minted a project-scoped seed session for {}",
+            minted.project_code
+        ))
+    );
+    Ok((base, minted.token))
+}
+
+#[derive(Debug, Deserialize)]
+struct GitHubOidcResponse {
+    value: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct CiSeedTokenResponse {
+    token: String,
+    project_code: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1644,13 +1803,13 @@ mod tests {
         notation_approve, notation_create, notation_document, notation_request_changes,
         notation_status, notation_update, parse_scripted_selection, picker_selection_fields,
         projects_lifecycle, projects_list, retainer_approve, retainer_send,
-        scripted_picker_selection_fields, seed, select_candidate, CoverageSummary, StepQuestion,
-        StepResponse,
+        scripted_picker_selection_fields, seed, seed_directory, select_candidate, CoverageSummary,
+        SeedCredential, StepQuestion, StepResponse,
     };
     use super::{fetch_step, first_line, json_reason, parse_csv, server_error};
     use crate::credentials::{self, Credentials, HostCredential};
     use uuid::Uuid;
-    use wiremock::matchers::{body_json, method, path};
+    use wiremock::matchers::{body_json, method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     static CREDENTIALS_ENV_LOCK: LazyLock<tokio::sync::Mutex<()>> =
@@ -1756,7 +1915,157 @@ mod tests {
             .await;
 
         assert_eq!(
-            seed(Some(&server_uri), "person", &file, true, true).await,
+            seed(
+                SeedCredential::Stored {
+                    host: Some(server_uri),
+                },
+                "person",
+                &file,
+                true,
+                true,
+            )
+            .await,
+            ExitCode::SUCCESS
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn seed_ci_exchanges_github_oidc_then_posts_the_seed() {
+        let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+        let github = MockServer::start().await;
+        let navigator = MockServer::start().await;
+        let navigator_uri = navigator.uri();
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("Person.yaml");
+        let yaml = "lookup_fields:\n  - email\nrecords: []\n";
+        std::fs::write(&file, yaml).unwrap();
+
+        let previous_url = std::env::var("ACTIONS_ID_TOKEN_REQUEST_URL").ok();
+        let previous_token = std::env::var("ACTIONS_ID_TOKEN_REQUEST_TOKEN").ok();
+        std::env::set_var("ACTIONS_ID_TOKEN_REQUEST_URL", github.uri());
+        std::env::set_var("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "github-oidc-request");
+
+        Mock::given(method("GET"))
+            .and(path("/"))
+            .and(query_param("audience", navigator_uri.as_str()))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "value": "github-jwt"
+            })))
+            .expect(1)
+            .mount(&github)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/auth/ci/seed-token"))
+            .and(body_json(serde_json::json!({ "token": "github-jwt" })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "token": "navigator-ci-token",
+                "exp": 1,
+                "project_code": "acme"
+            })))
+            .expect(1)
+            .mount(&navigator)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/app/api/seed"))
+            .and(body_json(serde_json::json!({
+                "model": "person",
+                "yaml": yaml,
+                "overwrite": false,
+                "dry_run": false,
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "model": "person",
+                "created": 0,
+                "updated": 0,
+                "unchanged": 0,
+                "records": [],
+            })))
+            .expect(1)
+            .mount(&navigator)
+            .await;
+
+        let result = seed(
+            SeedCredential::Ci {
+                host: navigator_uri,
+            },
+            "person",
+            &file,
+            false,
+            false,
+        )
+        .await;
+
+        match previous_url {
+            Some(value) => std::env::set_var("ACTIONS_ID_TOKEN_REQUEST_URL", value),
+            None => std::env::remove_var("ACTIONS_ID_TOKEN_REQUEST_URL"),
+        }
+        match previous_token {
+            Some(value) => std::env::set_var("ACTIONS_ID_TOKEN_REQUEST_TOKEN", value),
+            None => std::env::remove_var("ACTIONS_ID_TOKEN_REQUEST_TOKEN"),
+        }
+
+        assert_eq!(result, ExitCode::SUCCESS);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn seed_directory_imports_supported_stems_in_model_order() {
+        let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+        let server = MockServer::start().await;
+        let server_uri = server.uri();
+        let _env = CredentialsEnv::new(&server_uri);
+        let dir = tempfile::tempdir().unwrap();
+        let person = "lookup_fields:\n  - email\nrecords: []\n";
+        let roles = "lookup_fields:\n  - person_id\n  - project_id\nrecords: []\n";
+        std::fs::write(dir.path().join("PersonProjectRole.yaml"), roles).unwrap();
+        std::fs::write(dir.path().join("Person.yaml"), person).unwrap();
+
+        Mock::given(method("POST"))
+            .and(path("/app/api/seed"))
+            .and(body_json(serde_json::json!({
+                "model": "person",
+                "yaml": person,
+                "overwrite": false,
+                "dry_run": false,
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "model": "person",
+                "created": 0,
+                "updated": 0,
+                "unchanged": 0,
+                "records": [],
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/app/api/seed"))
+            .and(body_json(serde_json::json!({
+                "model": "person_project_role",
+                "yaml": roles,
+                "overwrite": false,
+                "dry_run": false,
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "model": "person_project_role",
+                "created": 0,
+                "updated": 0,
+                "unchanged": 0,
+                "records": [],
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        assert_eq!(
+            seed_directory(
+                SeedCredential::Stored {
+                    host: Some(server_uri),
+                },
+                dir.path(),
+                false,
+                false,
+            )
+            .await,
             ExitCode::SUCCESS
         );
     }

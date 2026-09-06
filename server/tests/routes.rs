@@ -511,6 +511,7 @@ async fn state_with_workshops(materials: Vec<WorkshopMaterial>) -> AppState {
         canonical_host: CanonicalHost::new(None),
         portal_only: portal::PortalOnly::default(),
         sessions: test_sessions(),
+        github_oidc: portal::github_oidc::GitHubOidc::rejecting(),
         oauth: None,
         oauth_microsoft: None,
         storage: std::sync::Arc::new(
@@ -1823,6 +1824,7 @@ async fn health_returns_503_when_the_store_is_down() {
         canonical_host: CanonicalHost::new(None),
         portal_only: portal::PortalOnly::default(),
         sessions: test_sessions(),
+        github_oidc: portal::github_oidc::GitHubOidc::rejecting(),
         oauth: None,
         oauth_microsoft: None,
         storage: std::sync::Arc::new(

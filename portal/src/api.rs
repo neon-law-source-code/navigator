@@ -10,6 +10,7 @@ use std::sync::Arc;
 use axum::extract::{FromRef, FromRequest, FromRequestParts, Multipart, Path, Request, State};
 use axum::http::request::Parts;
 use axum::http::StatusCode;
+use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum::routing::MethodRouter;
 use axum::{Json, Router};
@@ -1014,7 +1015,26 @@ struct SeedRequest {
 /// This route's own address, matched against a scoped session's
 /// [`crate::session::SeedScope::endpoint`]. A session scoped to a different
 /// endpoint string is refused before the body is even parsed further.
-const SEED_ENDPOINT: &str = "/app/api/seed";
+pub(crate) const SEED_ENDPOINT: &str = "/app/api/seed";
+
+/// A CI-minted session may only reach its scoped endpoint on `/app/api`.
+pub(crate) async fn refuse_scoped_elsewhere(request: Request, next: Next) -> Response {
+    if let Some(session) = request.extensions().get::<SessionData>() {
+        if let Some(scope) = &session.scope {
+            if request.uri().path() != scope.endpoint {
+                return (
+                    StatusCode::FORBIDDEN,
+                    Json(serde_json::json!({
+                        "error": "scope_violation",
+                        "message": store::seed::ScopeViolation::EndpointNotScoped.to_string(),
+                    })),
+                )
+                    .into_response();
+            }
+        }
+    }
+    next.run(request).await
+}
 
 async fn reconcile_seed(
     State(state): State<ApiState>,

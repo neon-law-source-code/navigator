@@ -121,6 +121,7 @@ pub async fn app_state(surreal: store::surreal::SurrealDb) -> AppState {
         canonical_host: CanonicalHost::new(None),
         portal_only: crate::PortalOnly::default(),
         sessions: SessionStore::new(TEST_SESSION_KEY),
+        github_oidc: crate::github_oidc::GitHubOidc::rejecting(),
         oauth: None,
         oauth_microsoft: None,
         // One shared root for both lanes, mirroring dev/KIND. A test

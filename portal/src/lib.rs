@@ -92,6 +92,7 @@ pub mod admin_contract_reviews;
 pub mod admin_playbooks;
 pub mod canonical_host;
 pub mod chatwoot;
+pub mod ci_auth;
 pub mod clauses;
 pub mod cli_auth;
 pub mod config;
@@ -113,6 +114,7 @@ pub mod esignature_webhook;
 pub mod expunge;
 pub mod expunge_request_route;
 pub mod expunge_route;
+pub mod github_oidc;
 pub mod google_oauth;
 pub mod gov_forms;
 pub mod hosting;
@@ -316,6 +318,8 @@ pub struct AppState {
     /// the mounted brand manifest. See [`portal_only`].
     pub portal_only: PortalOnly,
     pub sessions: SessionStore,
+    /// Verifier for GitHub Actions OIDC tokens presented to `/auth/ci/seed-token`.
+    pub github_oidc: github_oidc::GitHubOidc,
     pub oauth: Option<OAuthConfig>,
     /// Microsoft Entra ID as a **second** browser sign-in provider, alongside
     /// (never instead of) [`Self::oauth`]. `None` — the default, and every
@@ -790,6 +794,9 @@ pub fn bootstrap(
                 (state.sessions.clone(), crate::csrf::CsrfMode::Strict),
                 crate::csrf::require_csrf,
             ))
+            .route_layer(axum::middleware::from_fn(
+                crate::api::refuse_scoped_elsewhere,
+            ))
             .route_layer(axum::middleware::from_fn_with_state(
                 (state.sessions.clone(), state.policy.clone()),
                 crate::policy::require_policy,
@@ -1080,6 +1087,16 @@ pub fn bootstrap(
     // echoes the bearer caller's identity. Both live under the
     // private-mode-exempt `/auth/*` prefix.
     let cli_auth = cli_auth::routes(state.sessions.clone());
+    let seed_token_auth = ci_auth::routes(ci_auth::CiAuthState {
+        sessions: state.sessions.clone(),
+        surreal: state.surreal.clone(),
+        github_oidc: state.github_oidc.clone(),
+        canonical_host: state.canonical_host.clone(),
+    })
+    .layer(axum::middleware::from_fn_with_state(
+        state.rate_limit.clone(),
+        crate::rate_limit::enforce,
+    ));
     let host_layer = axum::middleware::from_fn_with_state(
         state.canonical_host.clone(),
         canonical_host::resolve_brand_and_enforce_host,
@@ -1581,7 +1598,8 @@ pub fn bootstrap(
         .merge(mcp)
         .merge(a2a_card)
         .merge(a2a_rpc)
-        .merge(cli_auth);
+        .merge(cli_auth)
+        .merge(seed_token_auth);
     if let Some(oauth) = oauth_routes {
         router = router.merge(oauth);
     }

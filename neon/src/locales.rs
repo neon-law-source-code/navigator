@@ -27,6 +27,8 @@ const NEON_SERVICES_YAML: &str = include_str!("../locales/en/neon/services.yaml"
 const DELETE_YOUR_DATA_HOME_YAML: &str = include_str!("../locales/en/delete-your-data/home.yaml");
 const DELETE_YOUR_DATA_SERVICES_YAML: &str =
     include_str!("../locales/en/delete-your-data/services.yaml");
+const LAWYER_SHOOK_HOME_YAML: &str = include_str!("../locales/en/lawyer-shook/home.yaml");
+const LAWYER_SHOOK_SERVICES_YAML: &str = include_str!("../locales/en/lawyer-shook/services.yaml");
 
 /// The shipped YAML for `key`'s `page` stem, if that brand publishes it.
 #[must_use]
@@ -40,6 +42,8 @@ pub fn catalog_yaml(key: BrandKey, page: &str) -> Option<&'static str> {
         (BrandKey::Neon, "services") => Some(NEON_SERVICES_YAML),
         (BrandKey::DeleteYourData, "home") => Some(DELETE_YOUR_DATA_HOME_YAML),
         (BrandKey::DeleteYourData, "services") => Some(DELETE_YOUR_DATA_SERVICES_YAML),
+        (BrandKey::LawyerShook, "home") => Some(LAWYER_SHOOK_HOME_YAML),
+        (BrandKey::LawyerShook, "services") => Some(LAWYER_SHOOK_SERVICES_YAML),
         _ => None,
     }
 }
@@ -581,5 +585,17 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["Data-deletion requests"]
         );
+    }
+
+    #[test]
+    fn lawyer_shook_catalogs_are_brand_keyed_and_attributed() {
+        let branding = &views::brand::LAWYER_SHOOK_BRANDING;
+        let home_content = home(branding);
+        let services_content = legal_services(branding);
+        assert!(home_content.head_title.contains(branding.firm.site_name));
+        assert!(home_content.lead.contains("Shook Law PLLC"));
+        assert!(services_content.hero_lead.contains("Shook Law PLLC"));
+        assert!(!home_content.lead.contains("DeleteYourData.com"));
+        assert!(!services_content.meta_description.contains("flat-fee"));
     }
 }

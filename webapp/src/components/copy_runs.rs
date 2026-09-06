@@ -1,12 +1,9 @@
 //! Run-marked prose: a paragraph the firm sets partly in bold, carried as data
 //! rather than as raw HTML.
 //!
-//! The wire shape of a marked-up paragraph, kept wasm-safe. Both surfaces that
-//! render a team bio — the `/team` index card and the `/team/{slug}` profile
-//! page — render it through [`RunParagraph`], so the same copy reaches both
-//! with the same typography. Team bios themselves are plain prose, one
-//! unemphasised run per paragraph; the emphasis flag is the seam the marketing
-//! prose on `/design` and the practice pages set.
+//! The wire shape of a marked-up paragraph, kept wasm-safe. Marketing prose —
+//! `/design`'s showcase and the practice pages — sets the emphasis flag on a
+//! run to bold a phrase without accepting raw HTML.
 
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};

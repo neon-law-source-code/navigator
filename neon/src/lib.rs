@@ -49,7 +49,6 @@ pub const PUBLIC_PATHS: &[&str] = &[
     "/notations/{slug}",
     "/contact",
     "/team",
-    "/team/{slug}",
     "/blog",
     "/blog/{slug}",
     // The talks catalog and every talk beneath it. Anonymous like the rest of
@@ -89,13 +88,6 @@ pub const PUBLIC_PATHS: &[&str] = &[
 /// A talk's projector face (`/display/{step}`) and its certificate confirmation
 /// are left out for the same reason a crawler is not sent to a print dialog:
 /// they are states of a session, not documents.
-///
-/// `/team/{slug}` is not expanded here the way `/blog/{slug}` is: the blog
-/// roster is loaded once into `state.blog` at boot, so listing it is a plain
-/// sync read, while the team roster is a live `Person` query this function's
-/// `fn` (not `async fn`) signature cannot make. `/team` itself is listed, and
-/// its index page links every current profile, so a crawler still reaches
-/// them — just not with their own sitemap `<url>` entry.
 #[must_use]
 pub fn sitemap_paths(state: &AppState, key: BrandKey) -> std::collections::BTreeSet<String> {
     match key {

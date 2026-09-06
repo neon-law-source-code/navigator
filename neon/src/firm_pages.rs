@@ -455,16 +455,9 @@ pub fn firm_public_dioxus_routers(state: &AppState) -> Vec<Router> {
         dioxus_app::contact_router("/contact", resolve_firm_contact_content(branding)),
         contact_copy,
     ));
-    // The firm's `/team` roster: the index and one generic `/team/{slug}`
-    // profile route, both live — every request queries the current
-    // confirmed, non-client `Person` rows, rather than a roster fixed at
-    // boot. `state.surreal` moves through by field access; this crate never
-    // names a `store` type itself (`cli/tests/brand_crate_dependencies.rs`).
-    routers.push(dioxus_app::team_index_router(
-        "/team",
-        state.surreal.clone(),
-    ));
-    routers.push(dioxus_app::team_profile_router(state.surreal.clone()));
+    // The firm's `/team` page: one static statement, no roster and no store
+    // read.
+    routers.push(dioxus_app::team_index_router("/team"));
     let home = resolve_firm_home_content(branding);
     // The home page (`/`): a static statement of the practice, no per-request
     // data. The practice boxes on `/` are the YAML catalog workshop slides

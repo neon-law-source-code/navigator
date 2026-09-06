@@ -105,6 +105,23 @@ pub(crate) const CD_WORKFLOW: &str = ".github/workflows/publish.yml";
 /// manifest and a staged sample bundle's manifest are the same file, read by
 /// different tools, not two schemas that happen to overlap.
 pub(crate) const PROJECT_MANIFEST: &str = "navigator.yaml";
+/// Manifest keys the CLI once might have read and never did, each retired for
+/// its own reason. [`validate`] refuses a manifest carrying one of these
+/// outright, naming the key and why — the one exception to `docs/project-repositories.md`'s
+/// "unknown keys are ignored" policy, which stays true for every key not on
+/// this closed list (`host:` included). A per-repository exemption is not a
+/// gap this list can be extended to close: see "Exemptions live here, not per
+/// repository" above.
+const RETIRED_MANIFEST_KEYS: &[(&str, &str)] = &[
+    (
+        "exempt_roots",
+        "the layout gate has no per-repository exemption mechanism; a new root is admitted in ALLOWED_ROOTS, reviewed once, for every repository",
+    ),
+    (
+        "exempt_paths",
+        "the layout gate has no per-repository exemption mechanism; move the exempted material or admit its root in ALLOWED_ROOTS instead",
+    ),
+];
 /// Seed-shaped YAML documents for `navigator site import`, one file per model.
 const SEED_DIRECTORY: &str = "seeds";
 const ALLOWED_ROOTS: &[&str] = &[
@@ -433,6 +450,8 @@ fn validate_layout(root: &Path, errors: &mut Vec<Finding>) {
         ));
     }
 
+    validate_manifest(root, errors);
+
     let workflow_path = root.join(WORKFLOW);
     match fs::read_to_string(&workflow_path) {
         Ok(contents) => validate_workflow(&workflow_path, &contents, errors),
@@ -522,6 +541,29 @@ fn validate_layout(root: &Path, errors: &mut Vec<Finding>) {
                     "legal documents and rendered output must not be committed",
                 ));
             }
+        }
+    }
+}
+
+/// Refuse [`RETIRED_MANIFEST_KEYS`] by name, and nothing else: a manifest
+/// missing entirely, or one that fails to parse as YAML, reports nothing here
+/// — [`validate_workflow`]-style content checks elsewhere already cover a
+/// missing or broken file, and this function's only job is the retired-key
+/// gate.
+fn validate_manifest(root: &Path, errors: &mut Vec<Finding>) {
+    let manifest_path = root.join(PROJECT_MANIFEST);
+    let Ok(contents) = fs::read_to_string(&manifest_path) else {
+        return;
+    };
+    let Ok(document) = serde_yaml::from_str::<serde_yaml::Value>(&contents) else {
+        return;
+    };
+    for (key, reason) in RETIRED_MANIFEST_KEYS {
+        if document.get(key).is_some() {
+            errors.push(Finding::at(
+                &manifest_path,
+                format!("`{key}` is retired: {reason}"),
+            ));
         }
     }
 }
@@ -1404,6 +1446,45 @@ jobs:
         std::fs::write(
             root.path().join("navigator.yaml"),
             "host: www.neonlaw.com\nproject: acme\n",
+        )
+        .unwrap();
+
+        assert_eq!(layout_findings(root.path()), Vec::<String>::new());
+    }
+
+    /// ENG-490: `exempt_roots` is declared and read by nothing, which lets a
+    /// dead exemption look effective to anyone opening the manifest. `validate`
+    /// refuses it by name instead of silently ignoring it.
+    #[test]
+    fn a_manifest_carrying_a_retired_key_produces_the_named_error() {
+        let root = tempfile::tempdir().unwrap();
+        scaffold_minimal(root.path());
+        std::fs::write(
+            root.path().join("navigator.yaml"),
+            "project: acme\nexempt_roots:\n  - documents\n  - evidence\n",
+        )
+        .unwrap();
+
+        let found = layout_findings(root.path());
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].contains("`exempt_roots` is retired"), "{found:?}");
+        assert!(
+            found[0].contains("per-repository exemption"),
+            "the error should name why the key is retired: {found:?}"
+        );
+    }
+
+    /// The guard against reintroducing wholesale unknown-key rejection: ENG-290
+    /// deliberately leaves keys like `host:` ignored so a downstream deployment
+    /// table can add its own, and only the closed `RETIRED_MANIFEST_KEYS` list
+    /// is refused. An arbitrary unknown key must keep validating clean.
+    #[test]
+    fn a_manifest_carrying_an_arbitrary_unknown_key_still_validates_clean() {
+        let root = tempfile::tempdir().unwrap();
+        scaffold_minimal(root.path());
+        std::fs::write(
+            root.path().join("navigator.yaml"),
+            "project: acme\ntotally_made_up_key: whatever\n",
         )
         .unwrap();
 

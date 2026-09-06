@@ -651,17 +651,27 @@ enum SiteCmd {
     },
     /// Import a seed-shaped YAML document through the logged-in deployment.
     Import {
-        /// Singular glossary term and Surreal table, such as `person` or
-        /// `entity`.
-        model_name: String,
+        /// Singular glossary term, such as `person`, `entity`,
+        /// `person_project_role`, or `person_entity_role`.
+        #[arg(required_unless_present = "dir", conflicts_with = "dir")]
+        model_name: Option<String>,
         /// YAML document using the standard `lookup_fields` / `records` shape.
-        seed_file: PathBuf,
+        #[arg(required_unless_present = "dir", conflicts_with = "dir")]
+        seed_file: Option<PathBuf>,
         /// Replace every field represented in each matching seed record.
         #[arg(long)]
         overwrite: bool,
         /// Show the per-record reconciliation plan without writing anything.
         #[arg(long)]
         dry_run: bool,
+        /// Exchange a GitHub Actions OIDC token for a project-scoped seed session.
+        /// Requires `--host`. Does not read or write `~/.navigator.json`.
+        #[arg(long, requires = "host")]
+        ci: bool,
+        /// Import every `*.yaml` / `*.yml` document in this directory whose stem
+        /// is a supported seed model, in model order.
+        #[arg(long)]
+        dir: Option<PathBuf>,
         #[command(flatten)]
         host: HostOpt,
     },
@@ -1837,14 +1847,29 @@ fn main() -> ExitCode {
                 seed_file,
                 overwrite,
                 dry_run,
+                ci,
+                dir,
                 host,
-            } => runtime().block_on(remote::seed(
-                host.host.as_deref(),
-                &model_name,
-                &seed_file,
-                overwrite,
-                dry_run,
-            )),
+            } => {
+                let credential = if ci {
+                    remote::SeedCredential::Ci {
+                        host: host.host.expect("clap requires --host with --ci"),
+                    }
+                } else {
+                    remote::SeedCredential::Stored { host: host.host }
+                };
+                match dir {
+                    Some(dir) => runtime()
+                        .block_on(remote::seed_directory(credential, &dir, overwrite, dry_run)),
+                    None => runtime().block_on(remote::seed(
+                        credential,
+                        &model_name.expect("clap requires MODEL_NAME without --dir"),
+                        &seed_file.expect("clap requires SEED_FILE without --dir"),
+                        overwrite,
+                        dry_run,
+                    )),
+                }
+            }
             SiteCmd::Login { host, no_browser } => {
                 runtime().block_on(login::run_login(&host, no_browser))
             }

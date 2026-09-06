@@ -14,6 +14,7 @@
 //! ├── apps/              # React + Vite workspaces, discovered by package.json
 //! │   └── portal/
 //! ├── templates/         # *.md notation blueprints
+//! ├── seeds/             # lookup_fields / records YAML for `navigator site import`
 //! ├── AGENTS.md
 //! ├── CLAUDE.md
 //! ├── README.md
@@ -998,6 +999,7 @@ const CHECKOUT_ACTION: &str = "actions/checkout@3d3c42e5aac5ba805825da76410c1812
 /// The pinned publish action a Project repository's CD workflow calls.
 const APPLICATION_PUBLISH_ACTION: &str =
     "neon-law-source-code/navigator/.github/actions/application-publish@";
+const SEED_IMPORT_ACTION: &str = "neon-law-source-code/navigator/.github/actions/seed-import@";
 
 /// The tree-derived condition for generated application steps.
 ///
@@ -1168,6 +1170,12 @@ jobs:
         with:
           version: "{action_version}"
           project_repository: true
+      - name: Import seed documents
+        if: vars.NAVIGATOR_HOST != ''
+        uses: {SEED_IMPORT_ACTION}{action_version}
+        with:
+          version: "{action_version}"
+          host: ${{{{ vars.NAVIGATOR_HOST }}}}
       # Multi-application publication needs a separate prefix/IAM and runtime
       # authorization decision. This preserves only the existing root portal
       # publisher during the source-layout transition.
@@ -1652,6 +1660,12 @@ jobs:
             ),
             "{generated}"
         );
+        assert!(
+            generated
+                .contains("neon-law-source-code/navigator/.github/actions/seed-import@26.8.23"),
+            "{generated}"
+        );
+        assert!(generated.contains("vars.NAVIGATOR_HOST"), "{generated}");
         for secret in [
             "secrets.NAVIGATOR_APPLICATIONS_BUCKET",
             "secrets.NAVIGATOR_APP_PUBLISHER_WIF_PROVIDER",
@@ -1673,6 +1687,11 @@ jobs:
             generated.contains(
                 "neon-law-source-code/navigator/.github/actions/application-publish@26.8.23"
             ),
+            "{generated}"
+        );
+        assert!(
+            generated
+                .contains("neon-law-source-code/navigator/.github/actions/seed-import@26.8.23"),
             "{generated}"
         );
         assert!(

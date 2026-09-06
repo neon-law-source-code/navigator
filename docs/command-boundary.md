@@ -23,8 +23,12 @@ own persistence logic.
   calls. Convergence is at the command layer, not necessarily over HTTP: the `navigator project create` subcommand
   (`cli/src/project.rs::create`) and `POST /app/api/projects` both call the same `store::projects::open_matter`.
 - **Seed reconciliation.** `navigator site import <MODEL_NAME> <SEED_FILE>` reads seed YAML locally and sends it
-  with the bearer from `navigator site login` to `POST /app/api/seed`. The deployment resolves the glossary model and
-  validates its `lookup_fields`, then performs lookup/create there; `--overwrite` changes only fields represented in the
+  with the bearer from `navigator site login` to `POST /app/api/seed`. On GitHub Actions, `navigator site import --ci
+  --host <host> --dir seeds` exchanges the job's OIDC identity at `POST /auth/ci/seed-token` for a session scoped to
+  that Project and the seed door; it does not read `~/.navigator.json`. Supported models are `person`, `entity`,
+  `person_project_role`, and `person_entity_role`. Join-table documents name related rows with nested natural keys
+  (`person.email` with `project.code`, or `person.email` with `entity.name`) rather than UUIDs. The deployment
+  validates `lookup_fields`, then performs lookup/create there; `--overwrite` changes only fields represented in the
   seed model. Add `--dry-run` to perform the same natural-key and foreign-reference checks without writing. It returns a
   per-record plan: each record is `new`, `unchanged`, or `changed`, and changed records name the fields that
   `--overwrite` would replace. The flags compose, so `--dry-run --overwrite` previews updates. The CLI never reads

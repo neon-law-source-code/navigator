@@ -102,11 +102,12 @@ spec:
             # Committed in clear like OAUTH_CLIENT_ID below: a Chatwoot website
             # token is a public identifier that appears in the HTML every
             # visitor's browser receives, so it rides inline env rather than the
-            # projected Secret. NAVIGATOR_CHATWOOT_BASE_URL is deliberately
-            # omitted — unset means Chatwoot Cloud, the installation the firm
-            # uses; set it only for a self-hosted one.
+            # projected Secret. NAVIGATOR_CHATWOOT_BASE_URL defaults to
+            # Chatwoot Cloud; set it in the deployment config for self-hosting.
             - name: NAVIGATOR_CHATWOOT_WEBSITE_TOKEN
               value: "YOUR_CHATWOOT_WEBSITE_TOKEN"
+            - name: NAVIGATOR_CHATWOOT_BASE_URL
+              value: "YOUR_CHATWOOT_BASE_URL"
             # NAVIGATOR_STORAGE_ENDPOINT is deliberately omitted in prod:
             # it is a local/test override that the KIND base may set, and
             # the `$patch: replace` above drops the base's whole env list.

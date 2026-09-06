@@ -73,7 +73,9 @@ use anyhow::{anyhow, bail, ensure, Context, Result};
 use include_dir::{include_dir, Dir};
 use tempfile::TempDir;
 
-use portal::chatwoot::NAVIGATOR_CHATWOOT_WEBSITE_TOKEN;
+use portal::chatwoot::{
+    DEFAULT_CHATWOOT_BASE_URL, NAVIGATOR_CHATWOOT_BASE_URL, NAVIGATOR_CHATWOOT_WEBSITE_TOKEN,
+};
 use store::NAVIGATOR_SIMULATED_MATTERS;
 use views::brand::BrandKey;
 
@@ -336,6 +338,12 @@ where
         token: "YOUR_CHATWOOT_WEBSITE_TOKEN",
         env: NAVIGATOR_CHATWOOT_WEBSITE_TOKEN,
         value: non_empty_env(NAVIGATOR_CHATWOOT_WEBSITE_TOKEN, &get).unwrap_or_default(),
+    });
+    substitutions.push(Substitution {
+        token: "YOUR_CHATWOOT_BASE_URL",
+        env: NAVIGATOR_CHATWOOT_BASE_URL,
+        value: non_empty_env(NAVIGATOR_CHATWOOT_BASE_URL, &get)
+            .unwrap_or_else(|| DEFAULT_CHATWOOT_BASE_URL.to_string()),
     });
     // Optional, same shape as Chatwoot above: Sign in with Microsoft is a
     // second provider next to Google, off by default. An empty
@@ -3481,6 +3489,7 @@ mod tests {
         "YOUR_OAUTH_CLIENT_ID_GEMINI",
         "YOUR_BOOTSTRAP_OWNER_EMAIL",
         "YOUR_CHATWOOT_WEBSITE_TOKEN",
+        "YOUR_CHATWOOT_BASE_URL",
         "YOUR_OAUTH_MICROSOFT_CLIENT_ID",
         "YOUR_OAUTH_MICROSOFT_ALLOWED_TENANTS",
         RELEASE_TAG_TOKEN,
@@ -3662,6 +3671,11 @@ mod tests {
         assert!(
             web_env.contains(&format!("name: {NAVIGATOR_CHATWOOT_WEBSITE_TOKEN}")),
             "support-chat environment-variable name is preserved"
+        );
+        assert!(
+            web_env.contains("name: NAVIGATOR_CHATWOOT_BASE_URL")
+                && web_env.contains("value: \"https://app.chatwoot.com\""),
+            "the optional Chatwoot base URL reaches the pod with its Cloud default"
         );
         // The break-glass Owner must reach the pod for the same reason the
         // asset origin must: `$patch: replace` drops the base env list, so an

@@ -4198,4 +4198,26 @@ mod tests {
         // proves the fold merges rather than re-registers.
         let _router = routes();
     }
+
+    // Viewing a matter must never provision a repository or Drive folder —
+    // only `open_project` (create) and the explicit admin retry door call
+    // reconcile. A source scan rather than a live-service test: the
+    // invariant is "this handler never calls that function," which a
+    // running test can prove absent but never prove present.
+    #[test]
+    fn viewing_a_project_never_calls_project_surfaces_reconcile() {
+        let src = include_str!("api.rs");
+        let handler = src
+            .split("async fn get_project_door(")
+            .nth(1)
+            .expect("get_project_door is defined in this file")
+            .split("\n}\n")
+            .next()
+            .expect("the handler body ends at its closing brace");
+        assert!(
+            !handler.contains("reconcile"),
+            "GET /app/api/projects/{{id}} must stay read-only with respect to \
+             repository/Drive provisioning"
+        );
+    }
 }

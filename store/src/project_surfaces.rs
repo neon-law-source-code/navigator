@@ -52,6 +52,68 @@ pub enum SurfaceStatus {
     Skipped,
 }
 
+/// A Project's repository-provisioning state, read from
+/// [`crate::projects::Project::repository_url`],
+/// [`crate::projects::Project::forge_provisioned_at`], and
+/// [`crate::projects::Project::git_initialized_at`] together rather than one
+/// column at a time — a caller reading only `repository_url` cannot tell
+/// "never requested" from "requested but the forge failed" from "attached
+/// but no source has landed yet."
+///
+/// Pure derivation ([`source_state`]): no database write, no forge or Drive
+/// call, and no timestamp is invented for a state the columns do not already
+/// record. A row with every column null reports [`SourceState::NotEnabled`],
+/// never [`SourceState::Pending`] or [`SourceState::Failed`] — an absent
+/// repository is a legitimate, common resting state, not a stalled or broken
+/// one (see `docs/project-repositories.md#an-absent-repository-is-legitimate`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SourceState {
+    /// No repository is recorded and reconcile has never stamped a failed
+    /// attempt either. The default resting state for a matter that has not
+    /// asked for one — [`crate::projects::Project::repository_url`] is
+    /// nullable exactly so this can be true forever.
+    NotEnabled,
+    /// A repository has been requested but reconcile has not yet resolved
+    /// it. No writer in this codebase leaves a row in this state today:
+    /// [`reconcile`] either records a repository in the same pass that asks
+    /// for one, or does not attempt one at all. Reserved for a future
+    /// asynchronous provisioning path.
+    Pending,
+    /// A repository URL is recorded, but not stamped by this deployment's
+    /// own provisioning pass — `forge_provisioned_at` is unset, exactly the
+    /// shape a direct `PATCH` of `repository_url` or a row written before
+    /// that column existed produces. The columns cannot say which, so this
+    /// is reported for human reconciliation rather than guessed.
+    Unknown,
+    /// Recorded and stamped provisioned; no validated source has been
+    /// committed or imported yet.
+    Attached,
+    /// Recorded, provisioned, and carrying validated source.
+    Initialized,
+    /// Reconcile attempted a repository and the attempt did not succeed.
+    /// Today a failed attempt leaves every column exactly as it was —
+    /// indistinguishable from never having tried — so no writer produces
+    /// this state yet. Reserved for a future persisted failure marker.
+    Failed,
+}
+
+/// Derive [`SourceState`] from one Project's own columns. See the type's own
+/// documentation for why each state is or is not reachable today.
+#[must_use]
+pub fn source_state(project: &crate::projects::Project) -> SourceState {
+    match (
+        project.repository_url.is_some(),
+        project.forge_provisioned_at.is_some(),
+        project.git_initialized_at.is_some(),
+    ) {
+        (false, _, _) => SourceState::NotEnabled,
+        (true, false, _) => SourceState::Unknown,
+        (true, true, false) => SourceState::Attached,
+        (true, true, true) => SourceState::Initialized,
+    }
+}
+
 /// What one reconcile pass recorded or confirmed.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct ProjectSurfaces {
@@ -225,13 +287,36 @@ async fn stamp_forge_provisioned_at(
 
 #[cfg(test)]
 mod tests {
-    use super::{reconcile, ProjectSurfaces, SurfaceError, SurfaceStatus};
+    use super::{reconcile, source_state, ProjectSurfaces, SourceState, SurfaceError, SurfaceStatus};
     use crate::persons::{self, NewPerson, Role};
     use crate::projects::{self, OpenMatterCommand};
     use crate::test_support::{mem_surreal, seed_entity};
     use cloud::drive::{DriveMemberKind, DriveRole, DriveService, FakeDrive};
-    use cloud::forge::FakeForge;
+    use cloud::forge::{ForgeError, ForgeRepository, ForgeService, FakeForge};
     use cloud::workspace::documents_prefix;
+
+    /// A forge that always refuses `ensure_repository` — for proving that a
+    /// failed provisioning attempt leaves `forge_provisioned_at` (and
+    /// `repository_url`) untouched rather than stamping a repository that
+    /// was never actually recorded.
+    struct FailingForge;
+
+    #[async_trait::async_trait]
+    impl ForgeService for FailingForge {
+        async fn find_repository(
+            &self,
+            _project_code: &str,
+        ) -> Result<Option<ForgeRepository>, ForgeError> {
+            Ok(None)
+        }
+
+        async fn ensure_repository(
+            &self,
+            _project_code: &str,
+        ) -> Result<ForgeRepository, ForgeError> {
+            Err(ForgeError::Authentication)
+        }
+    }
 
     async fn open_acme(surreal: &crate::surreal::SurrealDb) -> projects::Project {
         let entity_id = seed_entity(surreal).await;
@@ -448,5 +533,124 @@ mod tests {
         .await
         .unwrap_err();
         assert!(matches!(error, SurfaceError::NotFound));
+    }
+
+    #[tokio::test]
+    async fn a_failed_forge_attempt_stamps_nothing() {
+        let surreal = mem_surreal().await;
+        let project = open_acme(&surreal).await;
+        let forge = FailingForge;
+
+        let error = reconcile(&surreal, project.id, None::<&FakeDrive>, Some(&forge))
+            .await
+            .unwrap_err();
+        assert!(matches!(error, SurfaceError::Forge(_)));
+
+        let reloaded = projects::find_by_id(&surreal, project.id)
+            .await
+            .expect("load")
+            .expect("exists");
+        assert_eq!(reloaded.repository_url, None);
+        assert_eq!(
+            reloaded.forge_provisioned_at, None,
+            "a failed create/adopt attempt must never stamp forge_provisioned_at"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_retry_never_moves_the_first_success_stamp() {
+        let surreal = mem_surreal().await;
+        let project = open_acme(&surreal).await;
+        let forge = FakeForge::new();
+
+        reconcile(&surreal, project.id, None::<&FakeDrive>, Some(&forge))
+            .await
+            .expect("first reconcile stamps forge_provisioned_at");
+        let first_stamp = projects::find_by_id(&surreal, project.id)
+            .await
+            .expect("load")
+            .expect("exists")
+            .forge_provisioned_at
+            .expect("stamped on first success");
+
+        // A second reconcile finds `repository_url` already recorded and
+        // takes the "present" branch, never the forge, so nothing re-stamps.
+        reconcile(&surreal, project.id, None::<&FakeDrive>, Some(&forge))
+            .await
+            .expect("second reconcile is a no-op adopt");
+        let second_stamp = projects::find_by_id(&surreal, project.id)
+            .await
+            .expect("load")
+            .expect("exists")
+            .forge_provisioned_at
+            .expect("still stamped");
+
+        assert_eq!(first_stamp, second_stamp);
+    }
+
+    #[test]
+    fn source_state_reports_no_repository_as_not_enabled() {
+        let project = test_project(None, None, None);
+        assert_eq!(source_state(&project), SourceState::NotEnabled);
+    }
+
+    #[test]
+    fn source_state_reports_an_unstamped_url_as_unknown() {
+        let project = test_project(Some("https://forge.example/acme"), None, None);
+        assert_eq!(source_state(&project), SourceState::Unknown);
+    }
+
+    #[test]
+    fn source_state_reports_a_stamped_url_with_no_source_as_attached() {
+        let project = test_project(
+            Some("https://forge.example/acme"),
+            Some("2026-09-01T00:00:00Z"),
+            None,
+        );
+        assert_eq!(source_state(&project), SourceState::Attached);
+    }
+
+    #[test]
+    fn source_state_reports_a_stamped_url_with_source_as_initialized() {
+        let project = test_project(
+            Some("https://forge.example/acme"),
+            Some("2026-09-01T00:00:00Z"),
+            Some("2026-09-02T00:00:00Z"),
+        );
+        assert_eq!(source_state(&project), SourceState::Initialized);
+    }
+
+    /// A minimal in-memory [`projects::Project`] carrying only the three
+    /// columns [`source_state`] reads — the other fields do not vary
+    /// across these table-driven cases, so this stays a plain constructor
+    /// rather than dragging every test through [`open_acme`] and a real
+    /// database.
+    fn test_project(
+        repository_url: Option<&str>,
+        forge_provisioned_at: Option<&str>,
+        git_initialized_at: Option<&str>,
+    ) -> projects::Project {
+        projects::Project {
+            id: uuid::Uuid::now_v7(),
+            code: "acme".to_string(),
+            name: "Acme matter".to_string(),
+            status: "open".to_string(),
+            brand: "neon".to_string(),
+            entity_id: uuid::Uuid::now_v7(),
+            firm_id: None,
+            description: None,
+            drive_folder_id: None,
+            repository_url: repository_url.map(str::to_string),
+            git_initialized_at: git_initialized_at.map(str::to_string),
+            forge_provisioned_at: forge_provisioned_at.map(str::to_string),
+            closed_at: None,
+            internal_slack_channel_url: None,
+            external_slack_channel_url: None,
+            internal_slack_channel_id: None,
+            private_notion_page_url: None,
+            shared_notion_page_url: None,
+            inserted_at: "2026-01-01T00:00:00Z".to_string(),
+            updated_at: "2026-01-01T00:00:00Z".to_string(),
+        }
     }
 }

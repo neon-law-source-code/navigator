@@ -118,7 +118,7 @@ async fn mint_inner(state: &CiAuthState, github_token: &str) -> Result<MintRespo
         csrf_token: random_token_32(),
         source: SessionSource::Ci,
         provider: None,
-        impersonation: None,
+        viewing_as_dri: None,
         scope: Some(SeedScope {
             endpoint: crate::api::SEED_ENDPOINT.to_string(),
             models: SeedModel::ALL.to_vec(),

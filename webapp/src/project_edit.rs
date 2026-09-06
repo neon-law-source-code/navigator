@@ -240,12 +240,11 @@ pub(crate) const DESCRIPTION_HELP: &str =
 
 /// The help line under the internal Slack channel field.
 pub(crate) const INTERNAL_SLACK_HELP: &str =
-    "The lawyer-only Slack channel for this matter. Firm-only: a client never sees it.";
+    "Private firm resource. Navigator never offers this Slack channel to the client.";
 
 /// The help line under the external Slack channel field.
 pub(crate) const EXTERNAL_SLACK_HELP: &str =
-    "Optional — the Slack channel shared with the client, if this matter has one. \
-     Visible to the client.";
+    "Navigator controls whether it offers this separate Slack channel to the client. Manage Slack permissions in Slack too.";
 
 /// The help line under the private Notion page field.
 ///
@@ -254,15 +253,11 @@ pub(crate) const EXTERNAL_SLACK_HELP: &str =
 /// Navigator neither reads nor enforces — so a page left on a workspace default
 /// is readable by everyone in that workspace no matter what this label says.
 pub(crate) const PRIVATE_NOTION_HELP: &str =
-    "The firm-only Notion page for this matter — internal write-up and working notes. \
-     Navigator never shows it to a client, but Notion\u{2019}s own sharing is what restricts \
-     who can open it: share the page to the firm\u{2019}s Notion group rather than leaving it on \
-     the workspace default.";
+    "Private firm resource. Navigator never offers this Notion page to the client. Manage Notion permissions in Notion too.";
 
 /// The help line under the shared Notion page field.
 pub(crate) const SHARED_NOTION_HELP: &str =
-    "Optional — the Notion page shared with the client, if this matter has one. \
-     Visible to the client, so share it to them in Notion too.";
+    "Navigator controls whether it offers this separate Notion page to the client. Manage Notion permissions in Notion too.";
 
 /// The help line under the source repository field.
 ///
@@ -274,7 +269,138 @@ pub(crate) const REPOSITORY_URL_HELP: &str =
      holding its notation templates and client portal. Any host: GitHub, GitLab, or a self-hosted \
      remote.";
 
-/// The loaded edit form.
+#[derive(Props, Clone, PartialEq)]
+struct ProjectResourceCardProps {
+    service: String,
+    private_field_name: String,
+    private_label: String,
+    private_url: String,
+    private_help: String,
+    shared_field_name: String,
+    shared_label: String,
+    shared_url: String,
+    shared_placeholder: String,
+    shared_help: String,
+}
+
+/// One private resource and its separately-addressed, optionally client-shared
+/// counterpart. The private input is always present; the shared input exists
+/// only while its explicit Navigator sharing toggle is on.
+#[component]
+fn ProjectResourceCard(props: ProjectResourceCardProps) -> Element {
+    let initially_shared = !props.shared_url.trim().is_empty();
+    let mut sharing = use_signal(|| initially_shared);
+    let mut shared_value = use_signal(|| props.shared_url.clone());
+    let mut clear_pending = use_signal(|| false);
+
+    let toggle_id = format!("share-{}", props.service.to_lowercase());
+    let toggle_name = format!("share_{}", props.service.to_lowercase());
+    let toggle_help_id = format!("{toggle_id}-help");
+    let shared_help_id = format!("{}-help", props.shared_field_name);
+    let confirmation_id = format!("{toggle_id}-confirmation");
+    let service = props.service.clone();
+    let private_field = Field::text(
+        props.private_label.clone(),
+        props.private_field_name.clone(),
+        props.private_url.clone(),
+    )
+    .placeholder(props.shared_placeholder.clone())
+    .help(props.private_help.clone());
+    let shared_field_name = props.shared_field_name.clone();
+    let shared_placeholder = props.shared_placeholder.clone();
+    let shared_help = props.shared_help.clone();
+    let toggle_help =
+        format!("When on, Navigator offers this separate {service} resource to the client.");
+
+    rsx! {
+        section {
+            class: "nav-card project-resource-card",
+            "data-resource-card": props.service.to_lowercase(),
+            "aria-labelledby": "{toggle_id}-title",
+            div { class: "nav-card__body",
+                h2 { class: "project-resource-card__title", id: "{toggle_id}-title", "{service}" }
+                {private_field.render()}
+                div { class: "project-resource-card__sharing",
+                    input {
+                        class: "nav-checkbox",
+                        r#type: "checkbox",
+                        id: "{toggle_id}",
+                        name: "{toggle_name}",
+                        value: "1",
+                        checked: sharing(),
+                        "aria-controls": sharing().then(|| props.shared_field_name.clone()),
+                        "aria-expanded": sharing().to_string(),
+                        "aria-describedby": toggle_help_id.clone(),
+                        onclick: move |_| {
+                            if sharing() {
+                                if shared_value().trim().is_empty() {
+                                    sharing.set(false);
+                                } else {
+                                    clear_pending.set(true);
+                                }
+                            } else {
+                                sharing.set(true);
+                                clear_pending.set(false);
+                            }
+                        },
+                    }
+                    label { class: "nav-label", r#for: "{toggle_id}",
+                        "Share a separate {service} resource with the client"
+                    }
+                    div { class: "nav-field__help", id: "{toggle_help_id}", "{toggle_help}" }
+                }
+                if *clear_pending.read() {
+                    div {
+                        class: "project-resource-card__confirmation",
+                        role: "alertdialog",
+                        "aria-describedby": confirmation_id.clone(),
+                        "aria-label": "Confirm stopping client sharing",
+                        p { id: "{confirmation_id}",
+                            "Stop sharing this {service} resource with the client?"
+                        }
+                        button {
+                            class: "nav-btn nav-btn--danger",
+                            r#type: "button",
+                            onclick: move |_| {
+                                shared_value.set(String::new());
+                                sharing.set(false);
+                                clear_pending.set(false);
+                            },
+                            "Stop sharing"
+                        }
+                        button {
+                            class: "nav-btn nav-btn--secondary",
+                            r#type: "button",
+                            onclick: move |_| clear_pending.set(false),
+                            "Keep sharing"
+                        }
+                    }
+                }
+                if sharing() {
+                    div { class: "project-resource-card__shared",
+                        label { class: "nav-label", r#for: "{shared_field_name}",
+                            "{props.shared_label}"
+                        }
+                        input {
+                            class: "nav-input",
+                            r#type: "text",
+                            id: "{shared_field_name}",
+                            name: "{shared_field_name}",
+                            value: "{shared_value}",
+                            placeholder: "{shared_placeholder}",
+                            "aria-describedby": shared_help_id.clone(),
+                            oninput: move |event| shared_value.set(event.value()),
+                        }
+                        div { class: "nav-field__help", id: "{shared_help_id}", "{shared_help}" }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// The loaded edit form. Slack and Notion stay inside the one native save
+/// form, but each resource has its own accessible card and sharing state.
 fn edit_body(view: &ProjectEditView) -> Element {
     let action = format!("/app/projects/{}", view.project_code);
     let fields = vec![
@@ -289,42 +415,43 @@ fn edit_body(view: &ProjectEditView) -> Element {
         .help(ENTITY_HELP),
         Field::textarea("Description", "description", view.description.clone(), 3)
             .help(DESCRIPTION_HELP),
-        Field::text(
-            "Internal Slack channel",
-            "internal_slack_channel_url",
-            view.internal_slack_channel_url.clone(),
-        )
-        .placeholder("https://neonlaw.slack.com/archives/C0123456789")
-        .help(INTERNAL_SLACK_HELP),
-        Field::text(
-            "External Slack channel",
-            "external_slack_channel_url",
-            view.external_slack_channel_url.clone(),
-        )
-        .placeholder("https://neonlaw.slack.com/archives/C0123456789")
-        .help(EXTERNAL_SLACK_HELP),
-        Field::text(
-            "Private Notion page",
-            "private_notion_page_url",
-            view.private_notion_page_url.clone(),
-        )
-        .placeholder("https://www.notion.so/an-organization/A-matter-abc123")
-        .help(PRIVATE_NOTION_HELP),
-        Field::text(
-            "Shared Notion page",
-            "shared_notion_page_url",
-            view.shared_notion_page_url.clone(),
-        )
-        .placeholder("https://www.notion.so/an-organization/A-matter-def456")
-        .help(SHARED_NOTION_HELP),
-        Field::text(
-            "Source repository",
-            "repository_url",
-            view.repository_url.clone(),
-        )
-        .placeholder("https://github.com/an-organization/a-project")
-        .help(REPOSITORY_URL_HELP),
     ];
+    let repository = Field::text(
+        "Source repository",
+        "repository_url",
+        view.repository_url.clone(),
+    )
+    .placeholder("https://github.com/an-organization/a-project")
+    .help(REPOSITORY_URL_HELP);
+    let extra_fields = rsx! {
+        div { class: "project-resource-cards",
+            ProjectResourceCard {
+                service: "Slack".to_string(),
+                private_field_name: "internal_slack_channel_url".to_string(),
+                private_label: "Private Slack channel".to_string(),
+                private_url: view.internal_slack_channel_url.clone(),
+                private_help: INTERNAL_SLACK_HELP.to_string(),
+                shared_field_name: "external_slack_channel_url".to_string(),
+                shared_label: "Shared Slack channel".to_string(),
+                shared_url: view.external_slack_channel_url.clone(),
+                shared_placeholder: "https://neonlaw.slack.com/archives/C0123456789".to_string(),
+                shared_help: EXTERNAL_SLACK_HELP.to_string(),
+            }
+            ProjectResourceCard {
+                service: "Notion".to_string(),
+                private_field_name: "private_notion_page_url".to_string(),
+                private_label: "Private Notion page".to_string(),
+                private_url: view.private_notion_page_url.clone(),
+                private_help: PRIVATE_NOTION_HELP.to_string(),
+                shared_field_name: "shared_notion_page_url".to_string(),
+                shared_label: "Shared Notion page".to_string(),
+                shared_url: view.shared_notion_page_url.clone(),
+                shared_placeholder: "https://www.notion.so/an-organization/A-matter-def456".to_string(),
+                shared_help: SHARED_NOTION_HELP.to_string(),
+            }
+        }
+        {repository.render()}
+    };
     rsx! {
         document::Title { "{view.firm_name} | Lawyer | Projects | Edit project" }
         header { class: "page-header",
@@ -341,6 +468,7 @@ fn edit_body(view: &ProjectEditView) -> Element {
             heading: Heading::H2,
             csrf_token: Some(view.csrf_token.clone()),
             fields,
+            extra_fields: Some(extra_fields),
         }
         p { class: "project-form-cancel",
             a { class: "nav-btn nav-btn--secondary", href: "/app/projects", "Cancel" }
@@ -445,7 +573,9 @@ mod tests {
     /// box a client will be able to open.
     #[test]
     fn offers_both_notion_page_fields_with_their_audience_named() {
-        let html = render(&view());
+        let mut v = view();
+        v.shared_notion_page_url = "https://www.notion.so/neonlaw/Shared-def456".to_string();
+        let html = render(&v);
         assert!(html.contains(r#"name="private_notion_page_url""#), "{html}");
         assert!(html.contains(r#"name="shared_notion_page_url""#), "{html}");
         assert!(
@@ -484,7 +614,9 @@ mod tests {
 
     #[test]
     fn offers_both_slack_channel_fields_with_the_internal_one_prefilled() {
-        let html = render(&view());
+        let mut v = view();
+        v.external_slack_channel_url = "https://neonlaw.slack.com/archives/C0000000002".to_string();
+        let html = render(&v);
         assert!(
             html.contains(r#"name="internal_slack_channel_url""#)
                 && html.contains("https://neonlaw.slack.com/archives/C0000000001"),
@@ -493,6 +625,102 @@ mod tests {
         assert!(
             html.contains(r#"name="external_slack_channel_url""#),
             "{html}"
+        );
+    }
+
+    #[test]
+    fn renders_slack_and_notion_as_separate_audience_cards() {
+        let mut v = view();
+        v.external_slack_channel_url = "https://neonlaw.slack.com/archives/C0000000002".to_string();
+        v.shared_notion_page_url = "https://www.notion.so/neonlaw/Shared-def456".to_string();
+        let html = render(&v);
+
+        for card in ["slack", "notion"] {
+            assert_eq!(
+                html.matches(&format!(r#"data-resource-card="{card}""#))
+                    .count(),
+                1,
+                "{card} must be its own card: {html}"
+            );
+        }
+        assert!(html.contains("Private Slack channel"), "{html}");
+        assert!(html.contains("Private Notion page"), "{html}");
+        assert!(
+            html.contains("Share a separate Slack resource with the client")
+                && html.contains("Share a separate Notion resource with the client"),
+            "each card needs an explicit sharing toggle: {html}"
+        );
+        assert!(
+            html.contains(r#"name="internal_slack_channel_url""#),
+            "{html}"
+        );
+        assert!(html.contains(r#"name="private_notion_page_url""#), "{html}");
+        assert!(
+            html.contains(r#"name="external_slack_channel_url""#),
+            "{html}"
+        );
+        assert!(html.contains(r#"name="shared_notion_page_url""#), "{html}");
+    }
+
+    #[test]
+    fn sharing_controls_follow_existing_shared_values_and_hide_unshared_fields() {
+        let html = render(&view());
+        assert!(
+            !html.contains(r#"name="share_slack" checked"#),
+            "an absent shared Slack value starts off: {html}"
+        );
+        assert!(
+            !html.contains(r#"name="share_notion" checked"#),
+            "an absent shared Notion value starts off: {html}"
+        );
+        assert!(
+            !html.contains(r#"name="external_slack_channel_url""#)
+                && !html.contains(r#"name="shared_notion_page_url""#),
+            "an off toggle hides its shared input: {html}"
+        );
+
+        let mut shared = view();
+        shared.external_slack_channel_url =
+            "https://neonlaw.slack.com/archives/C0000000002".to_string();
+        shared.shared_notion_page_url = "https://www.notion.so/neonlaw/Shared-def456".to_string();
+        let html = render(&shared);
+        assert!(
+            html.contains(r#"name="share_slack" value="1" checked=true"#),
+            "{html}"
+        );
+        assert!(
+            html.contains(r#"name="share_notion" value="1" checked=true"#),
+            "{html}"
+        );
+        assert!(
+            html.contains("Manage Slack permissions in Slack too."),
+            "{html}"
+        );
+        assert!(
+            html.contains("Manage Notion permissions in Notion too."),
+            "{html}"
+        );
+    }
+
+    #[test]
+    fn independent_card_values_survive_an_error_render() {
+        let mut v = view();
+        v.external_slack_channel_url = "https://neonlaw.slack.com/archives/C0000000002".to_string();
+        v.shared_notion_page_url = "https://www.notion.so/neonlaw/Shared-def456".to_string();
+        v.error = Some("The resource URL is invalid.".to_string());
+        let html = render(&v);
+        assert!(html.contains("The resource URL is invalid."), "{html}");
+        assert!(
+            html.contains("C0000000002"),
+            "Slack's value was lost: {html}"
+        );
+        assert!(
+            html.contains("Shared-def456"),
+            "Notion's value was lost: {html}"
+        );
+        assert!(
+            html.contains("Private-abc123"),
+            "private value was lost: {html}"
         );
     }
 

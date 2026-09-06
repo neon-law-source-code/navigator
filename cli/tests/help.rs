@@ -198,6 +198,14 @@ fn project_help_lists_only_the_local_write_side() {
     );
 }
 
+#[test]
+fn site_projects_close_accepts_an_effective_time() {
+    let output = help(&["site", "projects", "close", "--help"]);
+
+    assert!(output.contains("--effective-at <EFFECTIVE_AT>"));
+    assert!(unwrapped(&output).contains("RFC 3339 time when the matter actually closed."));
+}
+
 /// `site projects` is the Project workspace group: the verbs that operate on
 /// the Drive folder plus the one repository a code names live with the site's
 /// project list and workbench.

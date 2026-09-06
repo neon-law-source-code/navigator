@@ -755,9 +755,11 @@ pub fn document_with_base(base: &str) -> Value {
                `store::projects::transition_project`. Distinct from `POST /app/api/projects/{id}/close`: \
                that door opens the firm-signed closing-letter notation and leaves the status flip to \
                the walk that follows, while this one flips `status`/`closed_at` immediately and opens \
-               no notation. `closed_at` is derived from `transition`, never posted directly. Idempotent: \
-               re-applying a transition the matter already made returns `200` with the matter \
-               unchanged. `archived` is terminal — every transition off it, other than a repeated \
+               no notation. `closed_at` is derived from `transition` and optional `effective_at`, never \
+               posted directly. An effective time must be RFC 3339, not be in the future, and not \
+               precede matter-open. Without one, an existing close stamp is preserved. Re-applying \
+               the same transition and effective time is idempotent; supplying a different valid \
+               effective time corrects the retention start. `archived` is terminal — every transition off it, other than a repeated \
                archive, is refused as `400`. Authorization: the caller's `persons.role` must be \
                `lawyer` or `admin`; anonymous, `client`, and non-lawyer `clerk` callers are rejected \
                — the same tier gate as the bare `PATCH`/`DELETE` matter path, not scoped to the \
@@ -776,7 +778,7 @@ pub fn document_with_base(base: &str) -> Value {
               "200": { "description": "The matter, in its new (or unchanged) lifecycle state", "content": { "application/json": {
                 "schema": { "$ref": "#/components/schemas/Project" }
               } } },
-              "400": { "description": "Malformed body, an unrecognized `transition`, or a transition refused because the matter is archived", "content": { "application/json": {
+              "400": { "description": "Malformed or unknown fields, an invalid effective time, an unrecognized `transition`, or a transition refused because the matter is archived", "content": { "application/json": {
                 "schema": { "$ref": "#/components/schemas/ApiError" }
               } } },
               "401": { "description": "No authenticated session", "content": { "application/json": {
@@ -2485,7 +2487,8 @@ pub fn document_with_base(base: &str) -> Value {
           "TransitionProjectRequest": {
             "type": "object",
             "required": ["transition"],
-            "description": "The one field `POST /app/api/projects/{id}/lifecycle` accepts.",
+            "additionalProperties": false,
+            "description": "A lifecycle move and its optional effective time.",
             "properties": {
               "transition": {
                 "type": "string",
@@ -2495,10 +2498,18 @@ pub fn document_with_base(base: &str) -> Value {
                                 restarting the retention window); `reopen` clears it. `archive` is \
                                 terminal — every transition off it besides a repeated `archive` is \
                                 refused."
+              },
+              "effective_at": {
+                "type": ["string", "null"],
+                "format": "date-time",
+                "description": "When a close or archive actually took effect. Optional; rejected for \
+                                reopen, in the future, or before matter-open. A supplied valid value \
+                                replaces an existing close stamp so the retention start can be corrected."
               }
             },
             "example": {
-              "transition": "close"
+              "transition": "close",
+              "effective_at": "2026-01-15T00:00:00Z"
             }
           },
           "AddParticipantRequest": {

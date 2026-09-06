@@ -5438,7 +5438,76 @@ async fn api_projects_lifecycle_closes_reopens_and_archives() {
 }
 
 #[tokio::test]
-async fn api_projects_lifecycle_rejects_an_unrecognized_transition() {
+async fn api_projects_lifecycle_persists_the_supplied_effective_date() {
+    let (state, surreal) = state_with_engines().await;
+    store::seed::seed_canonical(&state.surreal, &state.storage)
+        .await
+        .unwrap();
+    let matter = seeded_matter(&surreal).await;
+    let mut response = surreal
+        .query("UPDATE $id SET inserted_at = $inserted_at")
+        .bind(("id", store::surreal::record_id("project", matter)))
+        .bind(("inserted_at", "2000-01-01T00:00:00Z"))
+        .await
+        .unwrap();
+    let _: Option<serde_json::Value> = response.take(0).unwrap();
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+
+    let effective_at = "2001-02-03T04:05:06Z";
+    let resp = transition(
+        &app,
+        matter,
+        serde_json::json!({ "transition": "close", "effective_at": effective_at }),
+        Some(store::persons::Role::Lawyer),
+    )
+    .await;
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body: serde_json::Value = serde_json::from_str(&body_string(resp).await).unwrap();
+    assert_eq!(body["status"], "closed");
+    assert_eq!(body["closed_at"], effective_at);
+    let saved = store::projects::find_by_id(&surreal, matter)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(saved.status, "closed");
+    assert_eq!(saved.closed_at.as_deref(), Some(effective_at));
+}
+
+#[tokio::test]
+async fn api_projects_lifecycle_rejects_invalid_effective_dates_without_writing() {
+    let (state, surreal) = state_with_engines().await;
+    store::seed::seed_canonical(&state.surreal, &state.storage)
+        .await
+        .unwrap();
+    let matter = seeded_matter(&surreal).await;
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+    let lawyer = Some(store::persons::Role::Lawyer);
+
+    for effective_at in [
+        serde_json::json!("1900-01-01T00:00:00Z"),
+        serde_json::json!("9999-01-01T00:00:00Z"),
+        serde_json::json!("not-a-time"),
+    ] {
+        let resp = transition(
+            &app,
+            matter,
+            serde_json::json!({ "transition": "close", "effective_at": effective_at }),
+            lawyer,
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let saved = store::projects::find_by_id(&surreal, matter)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(saved.status, "open");
+        assert!(saved.closed_at.is_none());
+    }
+}
+
+#[tokio::test]
+async fn api_projects_lifecycle_rejects_unrecognized_fields_and_transition() {
     let (state, surreal) = state_with_engines().await;
     store::seed::seed_canonical(&state.surreal, &state.storage)
         .await
@@ -5462,6 +5531,24 @@ async fn api_projects_lifecycle_rejects_an_unrecognized_transition() {
         saved.status, "open",
         "a rejected transition leaves the matter unchanged"
     );
+
+    let resp = transition(
+        &app,
+        matter,
+        serde_json::json!({
+            "transition": "close",
+            "closed_at": "2001-02-03T04:05:06Z"
+        }),
+        Some(store::persons::Role::Lawyer),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let saved = store::projects::find_by_id(&surreal, matter)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(saved.status, "open", "an unknown field changes nothing");
+    assert!(saved.closed_at.is_none());
 }
 
 #[tokio::test]

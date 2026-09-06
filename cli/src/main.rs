@@ -375,6 +375,9 @@ enum ProjectsCmd {
     Close {
         /// Project code, resolved only against Projects visible to the login.
         project_code: String,
+        /// RFC 3339 time when the matter actually closed.
+        #[arg(long)]
+        effective_at: Option<chrono::DateTime<chrono::Utc>>,
         #[command(flatten)]
         host: HostOpt,
     },
@@ -2080,9 +2083,11 @@ async fn run_project_create(
 
 async fn run_projects(action: ProjectsCmd) -> ExitCode {
     match action {
-        ProjectsCmd::Close { project_code, host } => {
-            remote::matter_close(host.host.as_deref(), &project_code).await
-        }
+        ProjectsCmd::Close {
+            project_code,
+            effective_at,
+            host,
+        } => remote::matter_close(host.host.as_deref(), &project_code, effective_at).await,
         ProjectsCmd::List { host, json } => remote::projects_list(host.host.as_deref(), json).await,
         ProjectsCmd::Lifecycle { host, json } => {
             remote::projects_lifecycle(host.host.as_deref(), json).await

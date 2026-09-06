@@ -1266,6 +1266,7 @@ mod tests {
                 &surreal,
                 matter.id,
                 crate::projects::Transition::Archive,
+                None,
             )
             .await
             .unwrap();

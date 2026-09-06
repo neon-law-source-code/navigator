@@ -1379,14 +1379,16 @@ impl Transition {
 ///
 /// - Landing on `open` clears `closed_at`.
 /// - Landing on `closed` or `archived` guarantees exactly one
-///   `closed_at`, preserving an existing stamp rather than restarting
-///   the retention window.
+///   `closed_at`. Without `effective_at`, an existing stamp is preserved;
+///   a valid supplied time records when the transition actually took effect
+///   and may correct an existing stamp.
 ///
 /// **`archived` is terminal.** An archived matter refuses every
 /// transition except a no-op re-archive; reopening one would resurrect a
 /// matter whose retention clock is already running. Re-applying a
 /// transition the matter has already made is a no-op rather than an
-/// error, so a double-submitted lawyer form does not churn the row.
+/// error, so a double-submitted lawyer form does not churn the row unless it
+/// supplies a different valid effective time.
 ///
 /// This is the direct lawyer path. [`close_for_notation`] remains the
 /// *ceremonial* path — the closing-letter workflow side effect — and is
@@ -1394,16 +1396,42 @@ impl Transition {
 ///
 /// # Errors
 /// [`ProjectCommandError::NotFound`] when no matter has that id, and
-/// [`ProjectCommandError::Invalid`] for a transition out of `archived`.
+/// [`ProjectCommandError::Invalid`] for a transition out of `archived`, an
+/// effective time on reopen, or an effective time outside the interval from
+/// matter-open through now.
 pub async fn transition_project(
     surreal: &SurrealDb,
     id: Uuid,
     transition: Transition,
+    effective_at: Option<chrono::DateTime<chrono::Utc>>,
 ) -> Result<Project, ProjectCommandError> {
     let row = find_by_id(surreal, id)
         .await
         .map_err(|error| ProjectCommandError::Db(error.to_string()))?
         .ok_or(ProjectCommandError::NotFound)?;
+
+    if effective_at.is_some() && transition == Transition::Reopen {
+        return Err(ProjectCommandError::Invalid(
+            "An effective date applies only to close and archive transitions.",
+        ));
+    }
+
+    let now = chrono::Utc::now();
+    if let Some(effective_at) = effective_at {
+        if effective_at > now {
+            return Err(ProjectCommandError::Invalid(
+                "An effective date cannot be in the future.",
+            ));
+        }
+        let inserted_at = chrono::DateTime::parse_from_rfc3339(&row.inserted_at)
+            .map_err(|error| ProjectCommandError::Db(error.to_string()))?
+            .with_timezone(&chrono::Utc);
+        if effective_at < inserted_at {
+            return Err(ProjectCommandError::Invalid(
+                "An effective date cannot precede the matter's opened date.",
+            ));
+        }
+    }
 
     // Terminal means terminal. Re-archiving is the one no-op allowed,
     // because a repeated request should not fail.
@@ -1413,25 +1441,29 @@ pub async fn transition_project(
         ));
     }
 
-    let target = transition.target_status();
     let existing_close = row.closed_at.clone();
-
-    // Already there: nothing to write. Guarded *after* the terminal
-    // check so reopening an archived matter still reports why.
-    if row.status == target {
-        return Ok(row);
-    }
-
     let closed_at = match transition {
         // Open matters carry no close date at all.
         Transition::Reopen => None,
-        // Preserve an existing stamp: a matter closed, reopened, and
-        // closed again starts a fresh retention window, but one merely
-        // archived after closing keeps the date retention already knows.
-        Transition::Close | Transition::Archive => {
-            Some(existing_close.unwrap_or_else(|| chrono::Utc::now().to_rfc3339()))
-        }
+        // An explicitly supplied date corrects the retention start even
+        // when the matter already occupies the target state. Without one,
+        // preserve an existing stamp; a close after reopen gets a fresh one.
+        Transition::Close | Transition::Archive => Some(
+            effective_at
+                .map(|timestamp| timestamp.to_rfc3339_opts(chrono::SecondsFormat::AutoSi, true))
+                .or(existing_close)
+                .unwrap_or_else(|| now.to_rfc3339()),
+        ),
     };
+    let target = transition.target_status();
+
+    // Already there with the requested stamp: nothing to write. Guarded
+    // after the terminal check so reopening an archived matter still
+    // reports why. A supplied correction is a write only when it differs.
+    if row.status == target && row.closed_at == closed_at {
+        return Ok(row);
+    }
+
     let mut response = surreal
         .query(format!(
             "UPDATE $id SET status = $status, closed_at = $closed_at, updated_at = $updated_at \
@@ -1440,7 +1472,7 @@ pub async fn transition_project(
         .bind(("id", record_id(PROJECT_TABLE, id)))
         .bind(("status", target.to_string()))
         .bind(("closed_at", closed_at))
-        .bind(("updated_at", chrono::Utc::now().to_rfc3339()))
+        .bind(("updated_at", now.to_rfc3339()))
         .await
         .and_then(surrealdb::IndexedResults::check)
         .map_err(|error| ProjectCommandError::Db(error.to_string()))?;

@@ -330,11 +330,15 @@ pub async fn projects_lifecycle(host: Option<&str>, json: bool) -> ExitCode {
 /// `surfaces reconcile` style commands that require a
 /// `NAVIGATOR_SURREAL_ENDPOINT`. Resolves the human-facing code to the matter
 /// id the same way `document upload` does, through the visible-projects
-/// list, then posts the transition. The server derives `closed_at` from the
-/// transition; idempotent server-side, so closing an already-`closed` matter
-/// succeeds and reports it unchanged, while an `archived` matter refuses with
-/// a caller-readable error.
-pub async fn matter_close(host: Option<&str>, project_code: &str) -> ExitCode {
+/// list, then posts the transition and optional effective time. The server
+/// derives `closed_at` from those command inputs; without an effective time,
+/// closing an already-`closed` matter reports it unchanged, while an
+/// `archived` matter refuses with a caller-readable error.
+pub async fn matter_close(
+    host: Option<&str>,
+    project_code: &str,
+    effective_at: Option<chrono::DateTime<chrono::Utc>>,
+) -> ExitCode {
     run(async {
         let (base, token) = resolve(host)?;
         let client = reqwest::Client::new();
@@ -359,10 +363,14 @@ pub async fn matter_close(host: Option<&str>, project_code: &str) -> ExitCode {
             .find(|project| project.code == project_code)
             .ok_or_else(|| anyhow!("no visible matter with code `{project_code}`"))?;
         let url = format!("{base}/app/api/projects/{}/lifecycle", project.id);
+        let mut payload = serde_json::json!({ "transition": "close" });
+        if let Some(effective_at) = effective_at {
+            payload["effective_at"] = serde_json::json!(effective_at);
+        }
         let response = client
             .post(&url)
             .bearer_auth(token)
-            .json(&serde_json::json!({ "transition": "close" }))
+            .json(&payload)
             .send()
             .await
             .with_context(|| format!("POST {url}"))?;
@@ -1864,7 +1872,7 @@ mod tests {
             .await;
 
         assert_eq!(
-            matter_close(Some(server_uri.as_str()), "not-a-matter").await,
+            matter_close(Some(server_uri.as_str()), "not-a-matter", None).await,
             ExitCode::from(2)
         );
     }
@@ -1961,8 +1969,46 @@ mod tests {
             .await;
 
         assert_eq!(
-            matter_close(Some(server_uri.as_str()), "acme").await,
+            matter_close(Some(server_uri.as_str()), "acme", None).await,
             ExitCode::from(2)
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn matter_close_posts_the_effective_time_to_the_lifecycle_api() {
+        let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+        let server = MockServer::start().await;
+        let server_uri = server.uri();
+        let _env = CredentialsEnv::new(&server_uri);
+        let project_id = Uuid::now_v7();
+        let effective_at: chrono::DateTime<chrono::Utc> = "2001-02-03T04:05:06Z".parse().unwrap();
+
+        Mock::given(method("GET"))
+            .and(path("/app/api/projects"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"id": project_id, "code": "acme"}
+            ])))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path(format!("/app/api/projects/{project_id}/lifecycle")))
+            .and(body_json(serde_json::json!({
+                "transition": "close",
+                "effective_at": "2001-02-03T04:05:06Z"
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": project_id,
+                "code": "acme",
+                "status": "closed",
+                "closed_at": "2001-02-03T04:05:06Z"
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        assert_eq!(
+            matter_close(Some(server_uri.as_str()), "acme", Some(effective_at)).await,
+            ExitCode::SUCCESS
         );
     }
 
@@ -2102,7 +2148,7 @@ mod tests {
     async fn exercise_project_commands(host: Option<&str>) {
         assert_eq!(projects_list(host, true).await, ExitCode::SUCCESS);
         assert_eq!(matter_open(host, "acme").await, ExitCode::SUCCESS);
-        assert_eq!(matter_close(host, "acme").await, ExitCode::SUCCESS);
+        assert_eq!(matter_close(host, "acme", None).await, ExitCode::SUCCESS);
     }
 
     async fn exercise_notation_commands(host: Option<&str>, server_uri: &str, ids: LawyerRouteIds) {

@@ -204,6 +204,7 @@ const K8S_COMPONENTS_SUBPATH: &str = "k8s/components";
 /// root. Four levels up out of `examples/deploy/k8s/gke`, matching how the
 /// same file already reaches `../../../../k8s/base`.
 const PRIVATE_MODE_COMPONENT: &str = "../../../../k8s/components/private-mode";
+const AUTOMATION_HOME_COMPONENT: &str = "../../../../k8s/components/automation-home";
 
 /// One placeholder → real-value substitution the render applies to every
 /// embedded manifest file. `token` is the literal string in the placeholder
@@ -619,7 +620,11 @@ fn render_manifests_with(subs: &[Substitution], private_mode: bool) -> Result<Te
         &tmp.path().join(K8S_BASE_SUBPATH),
         subs,
     )?;
-    if private_mode {
+    let automation_home = subs.iter().any(|substitution| {
+        substitution.env == "NAVIGATOR_GCP_PROJECT_ID"
+            && github_webhooks::authority::is_automation_home(Some(&substitution.value))
+    });
+    if private_mode || automation_home {
         render_embedded_dir(
             &K8S_COMPONENT_MANIFESTS,
             &tmp.path().join(K8S_COMPONENTS_SUBPATH),
@@ -631,7 +636,17 @@ fn render_manifests_with(subs: &[Substitution], private_mode: bool) -> Result<Te
             .join("kustomization.yaml");
         let kustomization = fs::read_to_string(&root)
             .with_context(|| format!("read rendered kustomization {}", root.display()))?;
-        fs::write(&root, enable_private_mode(&kustomization, subs)?)
+        let kustomization = if private_mode {
+            enable_private_mode(&kustomization, subs)?
+        } else {
+            kustomization
+        };
+        let kustomization = if automation_home {
+            enable_automation_home(&kustomization)?
+        } else {
+            kustomization
+        };
+        fs::write(&root, kustomization)
             .with_context(|| format!("write rendered kustomization {}", root.display()))?;
         eprintln!(
             "==> NAVIGATOR_PRIVATE_MODE is on — this ship puts the Pingora network + basic-auth gateway in \
@@ -639,6 +654,10 @@ fn render_manifests_with(subs: &[Substitution], private_mode: bool) -> Result<Te
         );
     }
     Ok(tmp)
+}
+
+fn enable_automation_home(kustomization: &str) -> Result<String> {
+    append_component(kustomization, AUTOMATION_HOME_COMPONENT)
 }
 
 /// Append the private-mode component to the rendered GKE kustomization.
@@ -651,16 +670,6 @@ fn render_manifests_with(subs: &[Substitution], private_mode: bool) -> Result<Te
 /// kustomize would reject the tree only after the ship had already
 /// started.
 fn enable_private_mode(kustomization: &str, subs: &[Substitution]) -> Result<String> {
-    if kustomization
-        .lines()
-        .any(|line| line.trim_start().starts_with("components:"))
-    {
-        bail!(
-            "the GKE kustomization already declares `components:` — add \
-             `{PRIVATE_MODE_COMPONENT}` to that list and delete this append, rather than \
-             emitting a duplicate key"
-        );
-    }
     let gateway_image = apply_substitutions(
         &format!("{IMAGE_REGISTRY_TOKEN}/navigator-gateway:{RELEASE_TAG_TOKEN}"),
         subs,
@@ -668,8 +677,31 @@ fn enable_private_mode(kustomization: &str, subs: &[Substitution]) -> Result<Str
     let Some((gateway_name, gateway_tag)) = gateway_image.rsplit_once(':') else {
         bail!("gateway image ref {gateway_image:?} has no tag to pin");
     };
+    let with_component = append_component(kustomization, PRIVATE_MODE_COMPONENT)?;
     Ok(format!(
-        "{}\n\n# Added by `navigator ops ship` because NAVIGATOR_PRIVATE_MODE is on.\ncomponents:\n  - {PRIVATE_MODE_COMPONENT}\n\nimages:\n  - name: navigator-gateway\n    newName: {gateway_name}\n    newTag: \"{gateway_tag}\"\n",
+        "{}\n\nimages:\n  - name: navigator-gateway\n    newName: {gateway_name}\n    newTag: \"{gateway_tag}\"\n",
+        with_component.trim_end()
+    ))
+}
+
+fn append_component(kustomization: &str, component: &str) -> Result<String> {
+    if let Some((head, tail)) = kustomization.split_once("\ncomponents:\n") {
+        if tail.lines().any(|line| line.trim() == format!("- {component}")) {
+            bail!(
+                "the GKE kustomization already declares `{component}` in `components:`"
+            );
+        }
+        if let Some((before_images, after_images)) = tail.split_once("\n\nimages:") {
+            return Ok(format!(
+                "{head}\ncomponents:{before_images}\n  - {component}\n\nimages:{after_images}"
+            ));
+        }
+        return Ok(format!(
+            "{head}\ncomponents:{tail}  - {component}\n"
+        ));
+    }
+    Ok(format!(
+        "{}\n\n# Added by `navigator ops ship` for `{component}`.\ncomponents:\n  - {component}\n",
         kustomization.trim_end()
     ))
 }
@@ -3387,6 +3419,7 @@ mod tests {
             "NAVIGATOR_OAUTH_CLIENT_ID_GEMINI",
             "222-gemini.apps.googleusercontent.com",
         ),
+        ("NAVIGATOR_BOOTSTRAP_OWNER_EMAIL", "owner@example.com"),
     ];
 
     /// A getter over an in-memory `(key, value)` slice — the test analogue
@@ -5685,6 +5718,23 @@ spec:
             service["spec"]["ports"][0]["targetPort"].as_u64(),
             Some(3001)
         );
+    }
+
+    #[test]
+    fn automation_heartbeat_is_rendered_only_for_the_automation_home() {
+        let render = |env| {
+            let subs = resolve_substitutions_for_deployment("example", "26.9.6", env_getter(env))
+                .expect("full environment resolves");
+            let rendered = render_manifests_with(&subs, false).expect("render succeeds");
+            kustomize_build(&rendered.path().join(GKE_KUSTOMIZE_SUBPATH))
+                .expect("rendered GKE manifests build")
+        };
+
+        let ordinary = render(FULL_ENV);
+        assert!(!ordinary.contains("github-automation-heartbeat-trigger"));
+
+        let automation_home = render(HUB_ENV);
+        assert!(automation_home.contains("github-automation-heartbeat-trigger"));
     }
 
     #[test]

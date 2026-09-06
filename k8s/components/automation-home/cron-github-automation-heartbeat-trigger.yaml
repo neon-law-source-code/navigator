@@ -1,8 +1,7 @@
 # GitHub automation authority canary — starts one body-free
-# `GitHubAutomationHeartbeat` workflow every six hours. Apply this manifest
-# only to neon-law-stg, the one deployment where the worker binds that
-# authority-only workflow. Other Navigator environments deliberately do not
-# register the service and must not schedule the canary.
+# `GitHubAutomationHeartbeat` workflow every six hours. This component is
+# selected only for the automation-home deployment, where the worker registers
+# the authority-only workflow.
 #
 # The workflow journals `beat` then sends the one-line GitHub-automation
 # authority notice through the ops notifier. It never receives a webhook,
@@ -35,11 +34,9 @@ spec:
               image: YOUR_IMAGE_REGISTRY/navigator-heartbeat-trigger:YY.M.D
               imagePullPolicy: Always
               env:
-                # Restate Cloud ingress endpoint. Sourced from the Secret rather
-                # than written inline — see the `RESTATE_INGRESS_URL` note in
-                # kustomization.yaml for why a literal here blocks every manifest
-                # change. The trigger POSTs
-                # `${RESTATE_INGRESS_URL}/GitHubAutomationHeartbeat/<date-hour>/run`.
+                # Restate Cloud ingress endpoint. Sourced from the Secret
+                # rather than written inline so manifest reconciliation can
+                # update the deployment without an invalid env merge.
                 - name: RESTATE_INGRESS_URL
                   valueFrom:
                     secretKeyRef:

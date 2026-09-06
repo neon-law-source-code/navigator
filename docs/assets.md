@@ -249,11 +249,12 @@ cargo run -p cli -- ops assets fetch-referenced --base-url https://staging.neonl
 **This covers content images only, and that difference bites.** `fetch-referenced` scans `server/content` Markdown for
 `img/…` references, so it restores blog and workshop images and not the photos the `views::assets::GALLERY` manifest
 declares. The firm home page's `berkeley-bay` hero is a manifest entry, referenced from Rust rather than from Markdown,
-so on a fresh clone with no ADC the blog fills in and the home page's hero stays a broken image. A team member's `/team`
-avatar is neither: it is uploaded at runtime through `/app/admin/people/{id}/avatar` into the assets bucket at
-`avatars/{id}.{ext}`, so it has no manifest entry to pull in the first place — `/team` falls back to an initials circle
-until someone uploads one. Until `fetch-referenced` learns the manifest, fetch a manifest photo's variants directly; the
-widths and formats are the ones `views::assets` generates:
+so on a fresh clone with no ADC the blog fills in and the home page's hero stays a broken image. A person or entity
+avatar is neither: it is uploaded at runtime through `/app/admin/people/{id}/avatar` or
+`/app/admin/entities/{id}/avatar` into the **private documents** bucket (`people/{id}/avatars/…`,
+`entities/{id}/avatars/…`), so it has no manifest entry to pull in the first place, is not public HTTPS content at all,
+and falls back to an initials circle until someone uploads one. Until `fetch-referenced` learns the manifest, fetch a
+manifest photo's variants directly; the widths and formats are the ones `views::assets` generates:
 
 ```bash
 mkdir -p server/public/img/berkeley-bay

@@ -14,7 +14,7 @@
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::components::{Choice, Field, FormCard};
+use crate::components::{Avatar, Choice, Field, FormCard, Heading};
 use crate::entity_new::FormChoice;
 use crate::people::ViewerRole;
 
@@ -24,6 +24,9 @@ pub struct EntityFields {
     pub name: String,
     pub selected_type: String,
     pub selected_jurisdiction: String,
+    /// The admin-only route for the current avatar's preview (`/app/admin/
+    /// entities/{id}/avatar`), or `None` until one has been uploaded.
+    pub avatar_url: Option<String>,
 }
 
 /// The rendered "edit entity" form: the entity id (for the form action), its
@@ -104,6 +107,10 @@ pub async fn get_entity_edit_form() -> Result<EntityEditView, ServerFnError> {
         selected_jurisdiction: query
             .jurisdiction_id
             .unwrap_or_else(|| e.jurisdiction_id.to_string()),
+        avatar_url: e
+            .avatar_url
+            .is_some()
+            .then(|| format!("/app/admin/entities/{id}/avatar")),
     });
 
     // A valid UUID that resolves to no row is a missing resource: set the SSR
@@ -187,6 +194,38 @@ pub fn LawyerEntityEdit() -> Element {
     entity_edit_body(&view)
 }
 
+/// The avatar preview and upload form, a sibling `FormCard` to the main edit
+/// form rather than folded into it — the two need different `enctype`s, and
+/// `FormCard` only supports one per `<form>`. Mirrors
+/// `crate::person_show::avatar_upload_card`.
+fn avatar_upload_card(id: &str, csrf_token: &str, fields: &EntityFields) -> Element {
+    let action = format!("/app/admin/entities/{id}/avatar");
+    rsx! {
+        section { id: "entity-avatar", class: "entity-avatar",
+            h2 { "Avatar" }
+            Avatar {
+                name: fields.name.clone(),
+                image_url: fields.avatar_url.clone(),
+                size: 96,
+                class: "entity-avatar__preview".to_string(),
+            }
+            FormCard {
+                title: "Upload avatar".to_string(),
+                action,
+                submit_label: "Upload".to_string(),
+                heading: Heading::H2,
+                multipart: true,
+                csrf_token: Some(csrf_token.to_string()),
+                fields: vec![
+                    Field::file("Avatar", "file")
+                        .required()
+                        .help("PNG, JPEG, or WebP, up to 5 MB. Replaces any existing avatar."),
+                ],
+            }
+        }
+    }
+}
+
 /// The loaded form (or the not-found state). Split from the component so the
 /// tests render a fixed view without standing up the server function.
 fn entity_edit_body(view: &EntityEditView) -> Element {
@@ -206,6 +245,7 @@ fn entity_edit_body(view: &EntityEditView) -> Element {
             }
             match view.fields {
                 Some(fields) => {
+                    let avatar_card = avatar_upload_card(&view.id, &view.csrf_token, &fields);
                     let type_opts = options_with_placeholder(&view.types);
                     let jur_opts = options_with_placeholder(&view.jurisdictions);
                     let form_fields = vec![
@@ -234,6 +274,7 @@ fn entity_edit_body(view: &EntityEditView) -> Element {
                             csrf_token: Some(view.csrf_token.clone()),
                             fields: form_fields,
                         }
+                        {avatar_card}
                         p { a { href: "/app/admin/entities", "← Cancel" } }
                     }
                 }
@@ -284,6 +325,7 @@ mod tests {
             name: "Acme".to_string(),
             selected_type: "00000000-0000-0000-0000-000000000001".to_string(),
             selected_jurisdiction: "00000000-0000-0000-0000-000000000001".to_string(),
+            avatar_url: None,
         }))));
         assert_forms_accessible(&html, "entity_edit::LawyerEntityEdit");
         assert!(
@@ -304,6 +346,7 @@ mod tests {
                 name: "Neon Law".to_string(),
                 selected_type: "00000000-0000-0000-0000-000000000001".to_string(),
                 selected_jurisdiction: "00000000-0000-0000-0000-000000000001".to_string(),
+                avatar_url: None,
             }),
             error: Some("That name is reserved for the firm.".to_string()),
             ..view(None)
@@ -325,5 +368,41 @@ mod tests {
         let html = dioxus_ssr::render_element(entity_edit_body(&view(None)));
         assert!(html.contains("Entity not found"), "{html}");
         assert!(!html.contains("<form"), "{html}");
+    }
+
+    #[test]
+    fn the_avatar_card_is_a_sibling_multipart_form_posting_to_the_entity_avatar_route() {
+        let html = dioxus_ssr::render_element(entity_edit_body(&view(Some(EntityFields {
+            name: "Acme".to_string(),
+            selected_type: "00000000-0000-0000-0000-000000000001".to_string(),
+            selected_jurisdiction: "00000000-0000-0000-0000-000000000001".to_string(),
+            avatar_url: None,
+        }))));
+        assert!(
+            html.contains(r#"enctype="multipart/form-data""#),
+            "the avatar form must be multipart: {html}"
+        );
+        assert!(
+            html.contains(&format!("action=\"/app/admin/entities/{ID}/avatar\"")),
+            "posts to the per-entity avatar route: {html}"
+        );
+        assert!(
+            html.contains("entity-avatar__preview--initials"),
+            "no avatar_url falls back to initials: {html}"
+        );
+    }
+
+    #[test]
+    fn the_avatar_preview_shows_the_image_when_one_is_uploaded() {
+        let html = dioxus_ssr::render_element(entity_edit_body(&view(Some(EntityFields {
+            name: "Acme".to_string(),
+            selected_type: "00000000-0000-0000-0000-000000000001".to_string(),
+            selected_jurisdiction: "00000000-0000-0000-0000-000000000001".to_string(),
+            avatar_url: Some(format!("/app/admin/entities/{ID}/avatar")),
+        }))));
+        assert!(
+            html.contains(&format!(r#"src="/app/admin/entities/{ID}/avatar""#)),
+            "{html}"
+        );
     }
 }

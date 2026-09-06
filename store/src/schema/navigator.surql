@@ -480,6 +480,12 @@ DEFINE FIELD OVERWRITE entity_type_id ON entity TYPE record<entity_type>;
 DEFINE FIELD OVERWRITE jurisdiction_id ON entity TYPE record<jurisdiction>;
 DEFINE FIELD OVERWRITE phone ON entity TYPE option<string>;
 DEFINE FIELD OVERWRITE url ON entity TYPE option<string>;
+-- The admin-only avatar route for this entity's photo in the private
+-- documents bucket, mirroring `person.profile_image_url`. `option<string>` so
+-- a row written before this field existed still deserializes, and no
+-- backfill is needed: an absent avatar reads as `NONE`, exactly what an
+-- entity that has never had one should report.
+DEFINE FIELD OVERWRITE avatar_url ON entity TYPE option<string>;
 DEFINE FIELD OVERWRITE firm_anchor_key ON entity TYPE option<string>;
 DEFINE FIELD OVERWRITE inserted_at ON entity TYPE datetime DEFAULT time::now();
 DEFINE FIELD OVERWRITE updated_at ON entity TYPE datetime DEFAULT time::now();

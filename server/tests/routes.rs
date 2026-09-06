@@ -15566,11 +15566,14 @@ fn avatar_multipart_body(
     body
 }
 
-/// `POST /app/admin/people/{id}/avatar` writes the image to the public assets
-/// bucket (never the private documents lane), points `profile_image_url` at
-/// the app's own `/assets/{key}` route, and redirects back to the show page.
+/// `POST /app/admin/people/{id}/avatar` writes the image to the **private**
+/// documents bucket (never the public assets lane — nothing shows a
+/// person's avatar to a signed-out visitor now that `/team` is a static
+/// page), points `profile_image_url` at the bucket key, and redirects back
+/// to the show page. `GET` on the same path then streams it back, admin-gated
+/// like the upload.
 #[tokio::test]
-async fn admin_person_avatar_upload_writes_the_asset_and_sets_profile_image_url() {
+async fn admin_person_avatar_upload_writes_the_private_bucket_and_download_streams_it_back() {
     let (state, surreal) = state_with_engines().await;
     let libra = store::persons::create(
         &surreal,
@@ -15591,6 +15594,7 @@ async fn admin_person_avatar_upload_writes_the_asset_and_sets_profile_image_url(
     let body = avatar_multipart_body(boundary, &csrf, "me.png", "image/png", ONE_PIXEL_PNG);
 
     let resp = app
+        .clone()
         .oneshot(
             Request::builder()
                 .method("POST")
@@ -15617,15 +15621,165 @@ async fn admin_person_avatar_upload_writes_the_asset_and_sets_profile_image_url(
         .await
         .unwrap()
         .expect("row still present");
-    let url = row
+    let key = row
         .profile_image_url
         .expect("the upload must set profile_image_url");
-    assert_eq!(url, format!("/assets/avatars/{}.png", libra.id));
+    assert_eq!(key, format!("people/{}/avatars/{}.png", libra.id, libra.id));
 
-    let key = format!("avatars/{}.png", libra.id);
-    let stored = state.assets_storage.get(&key).await.unwrap();
+    let stored = state.storage.get(&key).await.unwrap();
     assert_eq!(stored.bytes, ONE_PIXEL_PNG);
     assert_eq!(stored.content_type, "image/png");
+
+    let download = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/app/admin/people/{}/avatar", libra.id))
+                .header(header::COOKIE, &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(download.status(), StatusCode::OK);
+    assert_eq!(
+        download
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok()),
+        Some("image/png")
+    );
+    let bytes = axum::body::to_bytes(download.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert_eq!(bytes.as_ref(), ONE_PIXEL_PNG);
+}
+
+/// A non-admin (lawyer) session is refused on the download route, matching
+/// the upload's own gate.
+#[tokio::test]
+async fn admin_person_avatar_download_requires_admin() {
+    let (state, surreal) = state_with_engines().await;
+    let libra = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "Libra",
+            "libra@example.com",
+            store::persons::Role::Lawyer,
+        ),
+    )
+    .await
+    .unwrap();
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+    let session = portal::SessionData::fresh("lawyer@example.com", store::persons::Role::Lawyer);
+    let cookie = format!(
+        "{}={}",
+        portal::session::SESSION_COOKIE_NAME,
+        test_sessions().encode(&session)
+    );
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/app/admin/people/{}/avatar", libra.id))
+                .header(header::COOKIE, &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+}
+
+/// `POST /app/admin/entities/{id}/avatar` writes the image to the private
+/// documents bucket at `entities/{id}/avatars/…` and redirects to the edit
+/// page; `GET` on the same path streams it back. A **lawyer** session
+/// succeeds here — unlike the person avatar route, `entities` is one of
+/// embedded Rego policy's `admin_lawyer_resources`, so this door carries no
+/// `admin_gate` and admits the lawyer tier, not just Owner/Admin.
+#[tokio::test]
+async fn entities_avatar_upload_writes_the_private_bucket_and_download_streams_it_back() {
+    let (state, surreal) = state_with_engines().await;
+    let et = store::entity_types::create(&state.surreal, "LLC")
+        .await
+        .unwrap();
+    let jur = store::jurisdictions::create(
+        &state.surreal,
+        &store::jurisdictions::NewJurisdiction::new("Nevada", "US-NV9", "state"),
+    )
+    .await
+    .unwrap();
+    let entity = store::entities::create(
+        &surreal,
+        &store::entities::NewEntity {
+            name: "Acme LLC".into(),
+            entity_type_id: et.id,
+            jurisdiction_id: jur.id,
+            phone: None,
+            url: None,
+            firm_anchor_key: None,
+        },
+    )
+    .await
+    .unwrap();
+    let app = server::neon_router(
+        state.clone(),
+        std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
+    );
+    let (cookie, csrf) = session_cookie_and_csrf_for_role(store::persons::Role::Lawyer);
+    let boundary = "----navigator-test-entity-avatar-boundary";
+    let body = avatar_multipart_body(boundary, &csrf, "logo.png", "image/png", ONE_PIXEL_PNG);
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/app/admin/entities/{}/avatar", entity.id))
+                .header(header::COOKIE, &cookie)
+                .header(
+                    header::CONTENT_TYPE,
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::SEE_OTHER, "{:?}", resp.status());
+    assert_eq!(
+        resp.headers()
+            .get(header::LOCATION)
+            .and_then(|v| v.to_str().ok()),
+        Some(format!("/app/admin/entities/{}/edit", entity.id).as_str()),
+    );
+
+    let row = store::entities::find_by_id(&surreal, entity.id)
+        .await
+        .unwrap()
+        .expect("row still present");
+    let key = row.avatar_url.expect("the upload must set avatar_url");
+    assert_eq!(
+        key,
+        format!("entities/{}/avatars/{}.png", entity.id, entity.id)
+    );
+    let stored = state.storage.get(&key).await.unwrap();
+    assert_eq!(stored.bytes, ONE_PIXEL_PNG);
+
+    let download = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/app/admin/entities/{}/avatar", entity.id))
+                .header(header::COOKIE, &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(download.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(download.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert_eq!(bytes.as_ref(), ONE_PIXEL_PNG);
 }
 
 /// A disallowed content type (not PNG/JPEG/WebP) is refused with `400`, and

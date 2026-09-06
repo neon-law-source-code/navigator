@@ -322,6 +322,7 @@ erDiagram
     }
     entity {
         record id PK
+        option_string avatar_url
         record_entity_type entity_type_id FK
         option_string firm_anchor_key
         datetime inserted_at

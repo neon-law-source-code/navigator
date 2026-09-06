@@ -78,6 +78,11 @@ pub struct Entity {
     pub phone: Option<String>,
     /// Canonical website URL (https), canonicalized by the importer.
     pub url: Option<String>,
+    /// The admin-only avatar route for this entity's photo in the private
+    /// documents bucket (`entities/{id}/avatars/…`), or `None` when it has
+    /// none. Set only by [`set_avatar_url`], never by [`create`] or
+    /// [`update`].
+    pub avatar_url: Option<String>,
     pub inserted_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     /// The lowercased name when this row is the firm anchor, `None`
@@ -105,6 +110,7 @@ struct EntityRow {
     jurisdiction_id: surrealdb::types::RecordId,
     phone: Option<String>,
     url: Option<String>,
+    avatar_url: Option<String>,
     firm_anchor_key: Option<String>,
     inserted_at: surrealdb::types::Datetime,
     updated_at: surrealdb::types::Datetime,
@@ -122,6 +128,7 @@ impl EntityRow {
             jurisdiction_id: record_uuid(&self.jurisdiction_id)?,
             phone: self.phone,
             url: self.url,
+            avatar_url: self.avatar_url,
             inserted_at: self.inserted_at.into(),
             updated_at: self.updated_at.into(),
             firm_anchor_key: self.firm_anchor_key,
@@ -131,8 +138,8 @@ impl EntityRow {
 
 /// The projection every read shares, so one field list describes the
 /// row and a new column cannot reach [`EntityRow`] from only one query.
-const SELECT: &str = "id, name, entity_type_id, jurisdiction_id, phone, url, firm_anchor_key, \
-                      inserted_at, updated_at";
+const SELECT: &str = "id, name, entity_type_id, jurisdiction_id, phone, url, avatar_url, \
+                      firm_anchor_key, inserted_at, updated_at";
 
 /// What a write stores. `firm_anchor_key` is computed by
 /// `entity_commands`, never supplied by a request body.
@@ -471,6 +478,31 @@ pub async fn repoint_jurisdiction(
             "jurisdiction_id",
             record_id("jurisdiction", jurisdiction_id),
         ))
+    })
+    .await?;
+    let row: Option<EntityRow> = response.take(0)?;
+    Ok(row.and_then(EntityRow::into_entity))
+}
+
+/// Set — or clear — the entity's avatar route, leaving every other field
+/// alone. Narrow like [`repoint_jurisdiction`]: the avatar upload handler has
+/// no opinion about the entity's name, type, or jurisdiction, so it should
+/// not have to restate them through [`update`].
+///
+/// # Errors
+///
+/// [`EntityError::Db`] if the write fails.
+pub async fn set_avatar_url(
+    db: &SurrealDb,
+    id: Uuid,
+    avatar_url: Option<String>,
+) -> Result<Option<Entity>, EntityError> {
+    let mut response = writing(|| {
+        db.query(format!(
+            "UPDATE $id SET avatar_url = $avatar_url, updated_at = time::now() RETURN {SELECT}"
+        ))
+        .bind(("id", record_id(TABLE, id)))
+        .bind(("avatar_url", avatar_url.clone()))
     })
     .await?;
     let row: Option<EntityRow> = response.take(0)?;
@@ -826,8 +858,8 @@ mod tests {
     use super::classify_write;
     use super::{
         all, create, delete_unless_firm_anchor, dependents, find_by_id, find_by_ids, find_by_name,
-        firm_anchor_exists, update, AlreadyExistsError, EntityError, ErrorDetails, NewEntity,
-        CLAIM, CLAIM_TABLE, RELEASE, TABLE, WRITE_FIELDS,
+        firm_anchor_exists, set_avatar_url, update, AlreadyExistsError, EntityError, ErrorDetails,
+        NewEntity, CLAIM, CLAIM_TABLE, RELEASE, TABLE, WRITE_FIELDS,
     };
     use crate::surreal::test_support::mem;
     use crate::surreal::{record_id, retry, SurrealDb};
@@ -866,6 +898,47 @@ mod tests {
         );
         assert_eq!(find_by_name(&db, "Beta LLC").await.unwrap(), Some(created));
         assert_eq!(find_by_name(&db, "Nothing Co").await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn set_avatar_url_writes_and_clears_leaving_every_other_field_alone() {
+        let db = mem().await;
+        let created = create(&db, &input("Delta LLC")).await.unwrap();
+        assert_eq!(created.avatar_url, None);
+
+        let key = format!("entities/{}/avatars/{}.jpg", created.id, created.id);
+        let with_avatar = set_avatar_url(&db, created.id, Some(key.clone()))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(with_avatar.avatar_url.as_deref(), Some(key.as_str()));
+        assert_eq!(with_avatar.name, "Delta LLC", "no other field moved");
+
+        let cleared = set_avatar_url(&db, created.id, None)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(cleared.avatar_url, None);
+    }
+
+    #[tokio::test]
+    async fn reads_an_entity_row_written_before_avatar_url_was_defined() {
+        let db = mem().await;
+        db.query("REMOVE FIELD avatar_url ON entity").await.unwrap();
+        let created = create(&db, &input("Epsilon LLC")).await.unwrap();
+        db.query("DEFINE FIELD OVERWRITE avatar_url ON entity TYPE option<string>")
+            .await
+            .unwrap();
+
+        assert_eq!(
+            find_by_id(&db, created.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .avatar_url,
+            None,
+            "an absent value reads as no avatar, not a deserialization failure"
+        );
     }
 
     /// The reference ids are `record<>` links in the engine but plain

@@ -9,8 +9,21 @@
 //! link.
 
 use dioxus::prelude::*;
+use serde::{Deserialize, Serialize};
 
-use crate::components::{Icon, IconName};
+use crate::components::{BillMarkGlyph, Icon, IconName};
+
+/// A flat fee's published day rate: the whole-dollar amount it comes out to,
+/// and the photo of that denomination's bill. `image_src` is resolved
+/// server-side (`neon::locales`, the same seam `webapp::home::HeroPicture`
+/// uses) rather than built here — this crate also compiles for the browser
+/// (`web` feature), where the server-only `views` asset resolver is not
+/// available.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct DayRateBadge {
+    pub amount: u16,
+    pub image_src: String,
+}
 
 /// One pricing / offer card. Owned strings so it crosses the server→client
 /// boundary; the owning marketing content is mapped onto this per request.
@@ -25,6 +38,10 @@ pub struct PricingCard {
     pub cta_href: String,
     /// Label for the cyan band; falls back to the price when `None`.
     pub featured_label: Option<String>,
+    /// The flat fee's published day rate, e.g. "$10 a day" beside a photo of
+    /// a $10 bill, so the day rate reads at a glance instead of only in the
+    /// blurb sentence. `None` renders no badge.
+    pub day_rate: Option<DayRateBadge>,
 }
 
 /// A responsive row of pricing cards. `cols_lg` is the desktop column count
@@ -60,6 +77,15 @@ fn pricing_card(card: &PricingCard) -> Element {
                     if let Some(cadence) = &card.cadence {
                         " "
                         span { class: "pricing-card__cadence nav-text-muted", "{cadence}" }
+                    }
+                }
+                if let Some(badge) = &card.day_rate {
+                    div { class: "pricing-card__day-rate",
+                        BillMarkGlyph {
+                            src: badge.image_src.clone(),
+                            class: "pricing-card__day-rate-mark".to_string(),
+                        }
+                        span { class: "pricing-card__day-rate-label", "just ${badge.amount} a day" }
                     }
                 }
                 p { class: "nav-text-muted", "{card.blurb}" }
@@ -117,6 +143,7 @@ mod tests {
             cta_label: "Get started".to_string(),
             cta_href: "https://cal.example/book".to_string(),
             featured_label: Some("$3,500, once".to_string()),
+            day_rate: None,
         }
     }
 
@@ -163,5 +190,30 @@ mod tests {
         assert!(!html.contains(r#"target="_blank""#), "{html}");
         // On-site CTAs stay plain: no off-site arrow cue.
         assert!(!html.contains("M8.636 3.5"), "no external arrow: {html}");
+    }
+
+    #[test]
+    fn a_day_rate_renders_the_bill_photo_and_amount() {
+        fn app() -> Element {
+            let mut card = sample();
+            card.day_rate = Some(DayRateBadge {
+                amount: 10,
+                image_src: "/public/img/ten-dollar-bill/ten-dollar-bill.jpg".to_string(),
+            });
+            rsx! { PricingSection { cards: vec![card], cols_lg: 1 } }
+        }
+        let html = ssr(app);
+        assert!(html.contains("pricing-card__day-rate"), "{html}");
+        assert!(html.contains("ten-dollar-bill.jpg"), "{html}");
+        assert!(html.contains("just $10 a day"), "{html}");
+    }
+
+    #[test]
+    fn no_day_rate_omits_the_bill_photo() {
+        fn app() -> Element {
+            rsx! { PricingSection { cards: vec![sample()], cols_lg: 1 } }
+        }
+        let html = ssr(app);
+        assert!(!html.contains("pricing-card__day-rate"), "{html}");
     }
 }

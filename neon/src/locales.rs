@@ -13,6 +13,7 @@ use views::locales::{
     PracticeMark, PricingCardCopy, ProjectNetworkNodeCopy, SalesStageCopy, SeparateWorkCopy,
     ServiceSectionCopy, StepCopy, TransactionalCopy, VirtueCopy,
 };
+use webapp::components::DayRateBadge;
 use webapp::marketing_page::{
     Band, Card, Download, HeroCta, PackageInstall, PageContent, ProjectNetworkNode, Run, Step,
 };
@@ -117,6 +118,26 @@ fn page_skin(skin: PageSkin) -> webapp::marketing_page::PageSkin {
     }
 }
 
+/// The photo `views::assets::asset_url` resolves for a published day rate,
+/// if this amount has one. `webapp` cannot resolve this itself — it also
+/// compiles for the browser, where the server-only `views` crate is not
+/// available — so this is the one place a whole-dollar amount becomes the
+/// badge the page actually renders. An amount with no photo (any value other
+/// than the two denominations the firm has published so far) renders no
+/// badge at all, same as no amount.
+fn resolve_day_rate(amount: Option<u16>) -> Option<DayRateBadge> {
+    let amount = amount?;
+    let key = match amount {
+        10 => "img/ten-dollar-bill/ten-dollar-bill.jpg",
+        1 => "img/one-dollar-bill/one-dollar-bill.jpg",
+        _ => return None,
+    };
+    Some(DayRateBadge {
+        amount,
+        image_src: views::assets::asset_url(key),
+    })
+}
+
 fn card(copy: CardCopy) -> Card {
     Card {
         title: copy.title,
@@ -126,6 +147,7 @@ fn card(copy: CardCopy) -> Card {
         href_label: copy.href_label,
         cadence: copy.cadence,
         features: copy.features,
+        day_rate: resolve_day_rate(copy.day_rate_bill),
     }
 }
 
@@ -379,12 +401,14 @@ pub fn fractional_gc(
                      cadence,
                      blurb,
                      features,
+                     day_rate_bill,
                  }| webapp::transactional_page::PricingOffer {
                     title,
                     price,
                     cadence,
                     blurb,
                     features,
+                    day_rate: resolve_day_rate(day_rate_bill),
                 },
             )
             .collect(),
@@ -493,6 +517,50 @@ mod tests {
                 "Personal Plan",
                 "One-Time Services",
             ]
+        );
+    }
+
+    /// `/fractional-gc` publishes its base package as a $10-a-day retainer;
+    /// the bill photo the hero and fee section draw reads that same figure
+    /// and resolves through the asset seam rather than a bare filename.
+    #[test]
+    fn fractional_gc_publishes_its_ten_dollar_day_rate() {
+        let content = fractional_gc(&views::brand::DEFAULT_BRANDING);
+        let badge = content
+            .pricing
+            .first()
+            .and_then(|offer| offer.day_rate.clone());
+        assert_eq!(
+            badge.as_ref().map(|badge| badge.amount),
+            Some(10),
+            "the base package states its day rate as a figure, not only in the blurb sentence"
+        );
+        assert!(
+            badge.is_some_and(|badge| badge.image_src.contains("ten-dollar-bill")),
+            "the badge resolves the $10 bill photo"
+        );
+    }
+
+    /// `/personal-plan` publishes its one flat fee as a $1-a-day plan.
+    #[test]
+    fn personal_plan_publishes_its_one_dollar_day_rate() {
+        let content = personal_plan(&views::brand::DEFAULT_BRANDING);
+        let day_rate = content.bands.iter().find_map(|band| match band {
+            webapp::marketing_page::Band::Cards { items, .. } => {
+                items.first().and_then(|card| card.day_rate.clone())
+            }
+            _ => None,
+        });
+        assert!(
+            day_rate
+                .as_ref()
+                .is_some_and(|badge| badge.image_src.contains("one-dollar-bill")),
+            "the badge resolves the $1 bill photo"
+        );
+        assert_eq!(
+            day_rate.map(|badge| badge.amount),
+            Some(1),
+            "the plan states its day rate as a figure, not only in the blurb sentence"
         );
     }
 

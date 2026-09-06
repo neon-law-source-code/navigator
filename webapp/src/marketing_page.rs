@@ -16,7 +16,7 @@
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::components::pricing::{PricingCard, PricingSection};
+use crate::components::pricing::{DayRateBadge, PricingCard, PricingSection};
 use crate::components::{
     PlatformMark, PlatformMarkGlyph, PracticeMark, PracticeMarkGlyph, PublicShell, SiteHeader,
     SiteNavLink, SocialMeta,
@@ -93,6 +93,9 @@ pub struct Card {
     pub cadence: Option<String>,
     /// Bullet features, read only in the pricing-card style.
     pub features: Vec<String>,
+    /// The flat fee's published day rate, read only in the pricing-card
+    /// style. See [`crate::components::pricing::PricingCard::day_rate`].
+    pub day_rate: Option<DayRateBadge>,
 }
 
 /// One entry in a numbered walk.
@@ -546,6 +549,7 @@ fn Bands(items: Vec<Band>) -> Element {
                                             cta_label: card.href_label.clone().unwrap_or_default(),
                                             cta_href: card.href.clone().unwrap_or_default(),
                                             featured_label: None,
+                                            day_rate: card.day_rate.clone(),
                                         })
                                         .collect();
                                     rsx! {
@@ -1113,6 +1117,7 @@ mod tests {
                         href_label: Some("See the practice".to_string()),
                         cadence: None,
                         features: Vec::new(),
+                        day_rate: None,
                     }],
                     pricing_style: false,
                 },
@@ -1448,5 +1453,45 @@ mod tests {
             "a marketing page opens on its argument, and no page carries a badge \
              now that the renderer draws no hero badge at all: {out}"
         );
+    }
+
+    /// A pricing-style Cards band maps each card's `day_rate` onto the shared
+    /// `PricingCard`, the same field `/fractional-gc` publishes through — one
+    /// bill photo for both surfaces rather than a second drawing.
+    #[test]
+    fn a_pricing_style_card_carries_its_day_rate_through() {
+        fn app() -> Element {
+            rsx! {
+                Bands {
+                    items: vec![Band::Cards {
+                        anchor: "plan".to_string(),
+                        overline: "Personal Legal Plan".to_string(),
+                        heading: "One flat annual fee".to_string(),
+                        description: None,
+                        items: vec![Card {
+                            title: "Personal Legal Plan".to_string(),
+                            chips: vec!["$365".to_string()],
+                            body: vec![vec![Run::plain(
+                                "That's just $1 a day — and every leap day is free.",
+                            )]],
+                            href: Some("mailto:contact@neonlaw.com".to_string()),
+                            href_label: Some("Contact us".to_string()),
+                            cadence: Some("/year".to_string()),
+                            features: vec!["Tax filing and preparation".to_string()],
+                            day_rate: Some(DayRateBadge {
+                                amount: 1,
+                                image_src: "/public/img/one-dollar-bill/one-dollar-bill.jpg"
+                                    .to_string(),
+                            }),
+                        }],
+                        pricing_style: true,
+                    }],
+                }
+            }
+        }
+        let out = render(app);
+        assert!(out.contains("pricing-card__day-rate"), "{out}");
+        assert!(out.contains("one-dollar-bill.jpg"), "{out}");
+        assert!(out.contains("just $1 a day"), "{out}");
     }
 }

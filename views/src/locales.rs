@@ -172,6 +172,11 @@ pub struct PricingCardCopy {
     pub blurb: String,
     #[serde(default)]
     pub features: Vec<String>,
+    /// Whole-dollar day rate the flat fee works out to, e.g. `10` for a fee
+    /// that comes out to $10 a day. Draws a small banknote glyph beside the
+    /// price. Absent renders no glyph.
+    #[serde(default)]
+    pub day_rate_bill: Option<u16>,
 }
 
 /// The `/fractional-gc` catalog.
@@ -229,6 +234,10 @@ pub struct CardCopy {
     /// Bullet features, rendered only in the pricing-card style.
     #[serde(default)]
     pub features: Vec<String>,
+    /// Whole-dollar day rate the flat fee works out to, read only in the
+    /// pricing-card style. See [`PricingCardCopy::day_rate_bill`].
+    #[serde(default)]
+    pub day_rate_bill: Option<u16>,
 }
 
 /// One entry in a numbered walk.

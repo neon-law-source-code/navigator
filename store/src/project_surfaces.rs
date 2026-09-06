@@ -34,6 +34,24 @@ use crate::surreal::{record_id, SurrealDb};
 
 const PROJECT_TABLE: &str = "project";
 
+/// What a reconcile pass did about one provisioned surface (Drive folder or
+/// source repository) — distinct from merely reporting the resulting value,
+/// because a caller reading only the value cannot tell "this call did the
+/// work" from "nothing needed doing" from "nothing was attempted".
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SurfaceStatus {
+    /// This call is what recorded the value: the Project row's column was
+    /// null coming in, and the call created or adopted the external resource
+    /// and wrote it.
+    Created,
+    /// Already recorded on the Project row before this call; nothing changed.
+    Present,
+    /// No Drive or forge service is configured for this deployment, so the
+    /// surface was never attempted.
+    Skipped,
+}
+
 /// What one reconcile pass recorded or confirmed.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct ProjectSurfaces {
@@ -43,7 +61,9 @@ pub struct ProjectSurfaces {
     /// to keep in step.
     pub documents_prefix: String,
     pub drive_folder_id: Option<String>,
+    pub drive_status: SurfaceStatus,
     pub repository_url: Option<String>,
+    pub repository_status: SurfaceStatus,
 }
 
 #[derive(Debug, Error)]
@@ -83,40 +103,44 @@ where
         .map_err(|error| SurfaceError::Db(error.to_string()))?
         .ok_or(SurfaceError::NotFound)?;
 
-    let drive_folder_id = if let Some(existing) = project.drive_folder_id.as_deref() {
-        Some(existing.to_string())
+    let (drive_folder_id, drive_status) = if let Some(existing) = project.drive_folder_id.as_deref()
+    {
+        (Some(existing.to_string()), SurfaceStatus::Present)
     } else if let Some(drive) = drive {
         let folder = drive.create_folder(&project.code).await?;
         set_drive_folder_id(surreal, project_id, Some(&folder.id))
             .await?
             .ok_or(SurfaceError::NotFound)?;
-        Some(folder.id)
+        (Some(folder.id), SurfaceStatus::Created)
     } else {
-        None
+        (None, SurfaceStatus::Skipped)
     };
 
     if let (Some(drive), Some(folder_id)) = (drive, drive_folder_id.as_deref()) {
         grant_drive_ingest_membership(surreal, project_id, drive, folder_id).await?;
     }
 
-    let repository_url = if let Some(existing) = project.repository_url.as_deref() {
-        Some(existing.to_string())
-    } else if let Some(forge) = forge {
-        let repository = forge.ensure_repository(&project.code).await?;
-        set_repository_url(surreal, project_id, Some(&repository.url))
-            .await?
-            .ok_or(SurfaceError::NotFound)?;
-        stamp_forge_provisioned_at(surreal, project_id).await?;
-        Some(repository.url)
-    } else {
-        None
-    };
+    let (repository_url, repository_status) =
+        if let Some(existing) = project.repository_url.as_deref() {
+            (Some(existing.to_string()), SurfaceStatus::Present)
+        } else if let Some(forge) = forge {
+            let repository = forge.ensure_repository(&project.code).await?;
+            set_repository_url(surreal, project_id, Some(&repository.url))
+                .await?
+                .ok_or(SurfaceError::NotFound)?;
+            stamp_forge_provisioned_at(surreal, project_id).await?;
+            (Some(repository.url), SurfaceStatus::Created)
+        } else {
+            (None, SurfaceStatus::Skipped)
+        };
 
     Ok(ProjectSurfaces {
         code: project.code.clone(),
         documents_prefix: documents_prefix(&project.code),
         drive_folder_id,
+        drive_status,
         repository_url,
+        repository_status,
     })
 }
 
@@ -201,7 +225,7 @@ async fn stamp_forge_provisioned_at(
 
 #[cfg(test)]
 mod tests {
-    use super::{reconcile, ProjectSurfaces, SurfaceError};
+    use super::{reconcile, ProjectSurfaces, SurfaceError, SurfaceStatus};
     use crate::persons::{self, NewPerson, Role};
     use crate::projects::{self, OpenMatterCommand};
     use crate::test_support::{mem_surreal, seed_entity};
@@ -279,10 +303,12 @@ mod tests {
                 code: project.code.clone(),
                 documents_prefix: format!("projects/{}/documents", project.code),
                 drive_folder_id: Some("folder-1".into()),
+                drive_status: SurfaceStatus::Created,
                 repository_url: Some(format!(
                     "https://forge.example/an-organization/{}",
                     project.code
                 )),
+                repository_status: SurfaceStatus::Created,
             }
         );
 
@@ -324,7 +350,16 @@ mod tests {
             .await
             .expect("second");
 
-        assert_eq!(first, second);
+        assert_eq!(first.drive_folder_id, second.drive_folder_id);
+        assert_eq!(first.repository_url, second.repository_url);
+        assert_eq!(first.drive_status, SurfaceStatus::Created);
+        assert_eq!(first.repository_status, SurfaceStatus::Created);
+        assert_eq!(
+            second.drive_status,
+            SurfaceStatus::Present,
+            "the second pass found the folder already recorded rather than creating it again"
+        );
+        assert_eq!(second.repository_status, SurfaceStatus::Present);
         assert_eq!(forge.repository_count(), 1);
         let folders = drive.list_folders().await.expect("list");
         assert_eq!(folders.len(), 1);
@@ -348,6 +383,12 @@ mod tests {
         assert_eq!(
             surfaces.drive_folder_id.as_deref(),
             Some(already.id.as_str())
+        );
+        assert_eq!(
+            surfaces.drive_status,
+            SurfaceStatus::Created,
+            "adopting an untracked external folder is this call's own work, \
+             so it is reported the same as a fresh create"
         );
         let folders = drive.list_folders().await.expect("list");
         assert_eq!(folders.len(), 1);
@@ -374,6 +415,7 @@ mod tests {
             surfaces.repository_url.as_deref(),
             Some("https://git.example.internal/client-org/acme")
         );
+        assert_eq!(surfaces.repository_status, SurfaceStatus::Present);
         assert_eq!(forge.repository_count(), 0);
     }
 
@@ -389,7 +431,9 @@ mod tests {
             format!("projects/{}/documents", project.code)
         );
         assert_eq!(surfaces.drive_folder_id, None);
+        assert_eq!(surfaces.drive_status, SurfaceStatus::Skipped);
         assert_eq!(surfaces.repository_url, None);
+        assert_eq!(surfaces.repository_status, SurfaceStatus::Skipped);
     }
 
     #[tokio::test]

@@ -148,6 +148,7 @@ IP LLC rather than as owner.  So within what the licence permits you may run,
 fork, and modify this software — but you may not present your deployment as
 Neon Law.  Nominative reference remains available to you: you may state,
 accurately, that your work is based on Neon Law Navigator.
+DELETEYOURDATA.COM and LAWYER SHOOK are common-law marks of Shook Law PLLC.
 Rename your deployment through the brand manifest (see `views::brand_bundle`)
 rather than by editing sources; that seam exists for this.
 

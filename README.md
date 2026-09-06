@@ -24,6 +24,9 @@ Copyright (C) 2026 **Neon Law IP LLC**.
 **NEON LAW** is a registered trademark, U.S. Reg. No. 6,325,650, owned by **Neon Law IP LLC**. Use is unauthorized
 unless we grant you written permission.
 
+**DELETEYOURDATA.COM™** and **LAWYER SHOOK™** are common-law marks of **Shook Law PLLC**. The licence covers copyright,
+not these marks. A fork must choose its own name and identity rather than present itself as any of these brands.
+
 ## No legal advice
 
 This repository is not legal advice, and using it does not create an attorney-client relationship.

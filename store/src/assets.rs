@@ -89,6 +89,13 @@ pub struct Asset {
     /// metadata only — insertion order, not this field, decides which
     /// revision is current.
     pub published_at: Option<String>,
+    /// Inbound-mail provenance (ENG-517), unset for every other ingest lane.
+    /// The `email_conversation_message.id` an attachment was filed from — a
+    /// hand-download loses this and the three fields below it.
+    pub source_message_id: Option<String>,
+    pub source_sender: Option<String>,
+    pub source_received_at: Option<String>,
+    pub source_subject: Option<String>,
     /// Free-form JSON carrying per-kind detail. The ported JSONB column;
     /// the schema types it `any`, which is what lets it hold an object, a
     /// nested object, or an array. Validators belong in the `rules` crate
@@ -129,6 +136,10 @@ struct AssetRow {
     visibility: String,
     slug: Option<String>,
     published_at: Option<String>,
+    source_message_id: Option<String>,
+    source_sender: Option<String>,
+    source_received_at: Option<String>,
+    source_subject: Option<String>,
     metadata: Option<Json>,
     inserted_at: surrealdb::types::Datetime,
     updated_at: surrealdb::types::Datetime,
@@ -158,6 +169,10 @@ impl AssetRow {
             visibility: self.visibility,
             slug: self.slug,
             published_at: self.published_at,
+            source_message_id: self.source_message_id,
+            source_sender: self.source_sender,
+            source_received_at: self.source_received_at,
+            source_subject: self.source_subject,
             metadata: self.metadata,
             inserted_at: self.inserted_at.into(),
             updated_at: self.updated_at.into(),
@@ -169,7 +184,8 @@ impl AssetRow {
 /// and a new field cannot reach [`AssetRow`] from only one query.
 pub(crate) const SELECT: &str = "id, storage_key, secondary_storage_key, content_type, byte_size, \
      sha256_hex, project_id, filename, kind, source, received_at, description, visibility, slug, \
-     published_at, metadata, inserted_at, updated_at";
+     published_at, source_message_id, source_sender, source_received_at, source_subject, metadata, \
+     inserted_at, updated_at";
 
 /// Errors from [`ingest_content`] / [`fetch`].
 #[derive(Debug, thiserror::Error)]
@@ -915,6 +931,35 @@ pub async fn file_revision(
     identity: &crate::documents::DocumentIdentity<'_>,
     bytes: &[u8],
 ) -> Result<Filed, RevisionError> {
+    file_revision_inner(db, storage, args, identity, None, bytes).await
+}
+
+/// [`file_revision`], additionally stamping [`crate::documents::MailProvenance`]
+/// onto a newly-inserted revision (ENG-517). The one caller is `navigator
+/// site mail file`'s server-side handler.
+///
+/// # Errors
+/// [`RevisionError`] when a rule rejects the write, or on a storage or
+/// database failure.
+pub async fn file_revision_with_provenance(
+    db: &SurrealDb,
+    storage: &Arc<dyn StorageService>,
+    args: &crate::documents::IngestArgs<'_>,
+    identity: &crate::documents::DocumentIdentity<'_>,
+    provenance: &crate::documents::MailProvenance<'_>,
+    bytes: &[u8],
+) -> Result<Filed, RevisionError> {
+    file_revision_inner(db, storage, args, identity, Some(provenance), bytes).await
+}
+
+async fn file_revision_inner(
+    db: &SurrealDb,
+    storage: &Arc<dyn StorageService>,
+    args: &crate::documents::IngestArgs<'_>,
+    identity: &crate::documents::DocumentIdentity<'_>,
+    provenance: Option<&crate::documents::MailProvenance<'_>>,
+    bytes: &[u8],
+) -> Result<Filed, RevisionError> {
     // Rule 1 — the lane is closed. An unrecognized string is rejected by
     // the same arm as a valid-but-wrong-lane one: neither classifies a
     // document that can be filed on a matter.
@@ -925,7 +970,8 @@ pub async fn file_revision(
     // An unslugged artifact is a one-off: it is a revision of nothing, so
     // rules 2 and 3 have no chain to consult.
     let Some(slug) = identity.slug else {
-        let doc = crate::documents::ingest_bytes_as(db, storage, args, identity, bytes).await?;
+        let doc =
+            ingest_with_optional_provenance(db, storage, args, identity, provenance, bytes).await?;
         return Ok(Filed::Revision(doc));
     };
 
@@ -948,8 +994,28 @@ pub async fn file_revision(
         }
     }
 
-    let doc = crate::documents::ingest_bytes_as(db, storage, args, identity, bytes).await?;
+    let doc =
+        ingest_with_optional_provenance(db, storage, args, identity, provenance, bytes).await?;
     Ok(Filed::Revision(doc))
+}
+
+async fn ingest_with_optional_provenance(
+    db: &SurrealDb,
+    storage: &Arc<dyn StorageService>,
+    args: &crate::documents::IngestArgs<'_>,
+    identity: &crate::documents::DocumentIdentity<'_>,
+    provenance: Option<&crate::documents::MailProvenance<'_>>,
+    bytes: &[u8],
+) -> Result<crate::documents::IngestedDocument, crate::documents::IngestError> {
+    match provenance {
+        Some(provenance) => {
+            crate::documents::ingest_bytes_with_mail_provenance(
+                db, storage, args, identity, provenance, bytes,
+            )
+            .await
+        }
+        None => crate::documents::ingest_bytes_as(db, storage, args, identity, bytes).await,
+    }
 }
 
 /// Every asset in the database, for tests that count rows without a

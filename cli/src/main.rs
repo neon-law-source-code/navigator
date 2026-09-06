@@ -750,6 +750,11 @@ enum SiteCmd {
         #[command(subcommand)]
         action: DocumentAction,
     },
+    /// File an inbound email's attachments on a live site.
+    Mail {
+        #[command(subcommand)]
+        action: MailAction,
+    },
     /// Authenticate to a live Neon Law Navigator site via a browser-loopback
     /// flow and store a short-lived (1h) bearer token at
     /// `~/.navigator.json` (mode `0600`).
@@ -1679,6 +1684,32 @@ enum DocumentAction {
     },
 }
 
+#[derive(Subcommand)]
+enum MailAction {
+    /// File one inbound message's attachments into a matter, without the
+    /// bytes ever touching this checkout.
+    #[command(after_long_help = DOCUMENT_UPLOAD_KIND_HELP)]
+    File {
+        #[command(flatten)]
+        host: HostOpt,
+        /// Matter code (human-facing) to file into.
+        #[arg(long)]
+        project: String,
+        /// `email_conversation_message` row id naming the inbound hop.
+        #[arg(long)]
+        message: uuid::Uuid,
+        /// Required asset-lane kind, applied to every attachment.
+        #[arg(long, value_parser = parse_asset_kind)]
+        kind: String,
+        /// `client` makes every filed attachment client-visible; default `internal`.
+        #[arg(long, value_parser = parse_document_visibility, default_value = "internal")]
+        visibility: String,
+        /// List what would be filed, with size and content type; write nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
+}
+
 /// Read one matter document's revision chain from a checkout.
 ///
 /// Each verb takes a pointer path below `documents/` (the committed `.yml`,
@@ -1947,6 +1978,24 @@ fn main() -> ExitCode {
             SiteCmd::Whoami { host } => login::run_whoami(host.as_deref()),
             SiteCmd::Mcp { host } => runtime().block_on(mcp_bridge::run(host.as_deref())),
             SiteCmd::Document { action } => runtime().block_on(run_document(action)),
+            SiteCmd::Mail { action } => match action {
+                MailAction::File {
+                    host,
+                    project,
+                    message,
+                    kind,
+                    visibility,
+                    dry_run,
+                } => runtime().block_on(remote::mail_file(
+                    std::path::Path::new("."),
+                    host.host.as_deref(),
+                    &project,
+                    message,
+                    &kind,
+                    &visibility,
+                    dry_run,
+                )),
+            },
             SiteCmd::Projects { action } => runtime().block_on(run_projects(action)),
             SiteCmd::Notation { action } => runtime().block_on(run_notation(action)),
         },

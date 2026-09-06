@@ -176,7 +176,7 @@ fn display_relative(root: &Path, path: &Path) -> String {
         .unwrap_or_else(|| path.display().to_string())
 }
 
-fn write_pointer_atomically(path: &Path, yaml: &str) -> Result<()> {
+pub(crate) fn write_pointer_atomically(path: &Path, yaml: &str) -> Result<()> {
     let temp = PathBuf::from(format!("{}.tmp-{}", path.display(), uuid::Uuid::now_v7()));
     std::fs::write(&temp, yaml).with_context(|| format!("write {}", temp.display()))?;
     std::fs::rename(&temp, path).with_context(|| format!("publish {}", path.display()))

@@ -953,6 +953,14 @@ DEFINE FIELD OVERWRITE visibility ON asset TYPE string DEFAULT 'internal'
     ASSERT $value IN ['internal', 'client'];
 DEFINE FIELD OVERWRITE slug ON asset TYPE option<string>;
 DEFINE FIELD OVERWRITE published_at ON asset TYPE option<string>;
+-- Inbound-mail provenance (ENG-517): unset for every other ingest lane.
+-- `source_message_id` is the `email_conversation_message.id` the attachment
+-- was filed from, so a filed document can be traced back to the message that
+-- carried it — a hand-download loses exactly this.
+DEFINE FIELD OVERWRITE source_message_id ON asset TYPE option<string>;
+DEFINE FIELD OVERWRITE source_sender ON asset TYPE option<string>;
+DEFINE FIELD OVERWRITE source_received_at ON asset TYPE option<string>;
+DEFINE FIELD OVERWRITE source_subject ON asset TYPE option<string>;
 DEFINE FIELD OVERWRITE metadata ON asset TYPE any;
 DEFINE FIELD OVERWRITE inserted_at ON asset TYPE datetime DEFAULT time::now();
 DEFINE FIELD OVERWRITE updated_at ON asset TYPE datetime DEFAULT time::now();

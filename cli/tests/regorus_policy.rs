@@ -190,9 +190,15 @@ fn regorus_matches_every_checked_in_policy_decision() {
     //   log`/`get` (#485): every authenticated tier admitted (the handler
     //   applies the caller's lens), anonymous denied.
     // 409 + 5 = 414.
+    //
+    // + 5 for filing an inbound message's attachments (POST
+    //   /app/api/projects/{id}/mail/file), for `navigator site mail file`
+    //   (#517): Lawyer and Admin admitted; Client, Clerk, and anonymous
+    //   denied.
+    // 414 + 5 = 419.
     assert_eq!(
         test_names.len(),
-        414,
+        419,
         "the policy decision inventory changed; review every new or removed rule"
     );
 

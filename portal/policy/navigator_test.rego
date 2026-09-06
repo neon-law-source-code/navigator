@@ -1026,6 +1026,28 @@ test_anonymous_denied_reconcile_document_visibility if {
 	not authz.allow with input as {"path": ["app", "api", "projects", "p1", "documents", "a1"], "method": "PATCH", "session": null}
 }
 
+# ---------- POST /app/api/projects/{id}/mail/file (lawyer tier only) ----------
+
+test_lawyer_can_file_mail_attachments if {
+	authz.allow with input as {"path": ["app", "api", "projects", "p1", "mail", "file"], "method": "POST", "session": lawyer_session}
+}
+
+test_admin_can_file_mail_attachments if {
+	authz.allow with input as {"path": ["app", "api", "projects", "p1", "mail", "file"], "method": "POST", "session": admin_session}
+}
+
+test_client_denied_file_mail_attachments if {
+	not authz.allow with input as {"path": ["app", "api", "projects", "p1", "mail", "file"], "method": "POST", "session": client_session}
+}
+
+test_clerk_denied_file_mail_attachments if {
+	not authz.allow with input as {"path": ["app", "api", "projects", "p1", "mail", "file"], "method": "POST", "session": clerk_session}
+}
+
+test_anonymous_denied_file_mail_attachments if {
+	not authz.allow with input as {"path": ["app", "api", "projects", "p1", "mail", "file"], "method": "POST", "session": null}
+}
+
 # ---------- GET /app/api/projects/{id}/documents/revisions?slug= (any authenticated tier) ----------
 
 test_lawyer_can_read_document_revisions if {

@@ -406,6 +406,26 @@ pub async fn messages(
         .collect())
 }
 
+/// Resolve one message by its own row id, independent of which conversation
+/// it belongs to — the lookup `navigator site mail file` (ENG-517) needs: an
+/// operator names the message they are looking at, not its thread.
+///
+/// # Errors
+///
+/// Propagates any database error.
+pub async fn message_by_id(
+    db: &SurrealDb,
+    id: Uuid,
+) -> Result<Option<EmailConversationMessage>, EmailConversationError> {
+    let mut response = db
+        .query(format!("SELECT {MESSAGE_SELECT} FROM ONLY $id"))
+        .bind(("id", record_id(MESSAGE_TABLE, id)))
+        .await
+        .and_then(surrealdb::IndexedResults::check)?;
+    let row: Option<MessageRow> = response.take(0)?;
+    Ok(row.and_then(MessageRow::into_message))
+}
+
 /// Move a conversation to a new `status`. Returns the updated row, or
 /// `Ok(None)` if no row matched.
 ///

@@ -106,6 +106,22 @@ allow if {
     is_lawyer(input.session)
 }
 
+# File one inbound message's attachments into a matter: POST
+# /app/api/projects/{id}/mail/file (#517). Firm-side matter write, lawyer/admin
+# only; the handler re-checks matter participation and collapses out-of-scope
+# to 404. Own literal `mail`/`file` segments distinguish this from the
+# documents collection POST above. Six segments and POST.
+allow if {
+    input.path[0] == "app"
+    input.path[1] == "api"
+    input.path[2] == "projects"
+    input.path[4] == "mail"
+    input.path[5] == "file"
+    count(input.path) == 6
+    input.method == "POST"
+    is_lawyer(input.session)
+}
+
 # Read one document's revision chain (the slug travels as `?slug=`, never a path
 # segment — it may itself contain `/`): GET
 # /app/api/projects/{id}/documents/revisions. Any authenticated caller; the

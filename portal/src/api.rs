@@ -283,6 +283,11 @@ fn api_operation_table() -> Vec<(&'static str, &'static str, MethodRouter<ApiSta
             patch(update_document_visibility_door),
         ),
         (
+            "POST",
+            "/app/api/projects/{id}/mail/file",
+            post(mail_file_door),
+        ),
+        (
             "PATCH",
             "/app/api/notations/{id}/clauses/{clause_id}",
             patch(edit_clause),
@@ -2785,6 +2790,212 @@ async fn document_pointer(
     })
 }
 
+/// Request body for `POST /app/api/projects/{id}/mail/file` (ENG-517).
+#[derive(Deserialize)]
+struct MailFileRequest {
+    /// The `email_conversation_message` row naming the inbound hop to file
+    /// attachments from.
+    message_id: Uuid,
+    /// Required asset-lane kind, applied to every attachment in this
+    /// message — a decision, never a default, matching `POST .../documents`.
+    kind: Option<String>,
+    /// `"client"` makes every filed attachment client-visible; anything else
+    /// (the default) files them as internal work product.
+    visibility: Option<String>,
+    /// List what would be filed, writing nothing.
+    #[serde(default)]
+    dry_run: bool,
+}
+
+/// One attachment as `navigator site mail file` reports it, filed or not.
+#[derive(Serialize)]
+struct MailFileAttachment {
+    filename: String,
+    content_type: String,
+    size_bytes: usize,
+}
+
+#[derive(Serialize)]
+struct MailFileResponse {
+    message_id: Uuid,
+    dry_run: bool,
+    attachments: Vec<MailFileAttachment>,
+    /// One pointer per filed attachment, in message-part order. Empty when
+    /// `dry_run`, or when the message carried no attachments.
+    filed: Vec<store::document_pointers::DocumentPointer>,
+}
+
+/// `POST /app/api/projects/{id}/mail/file` — file one inbound message's
+/// attachments into the matter (ENG-517), entirely server-side: the raw
+/// MIME is read from object storage and parsed here, so the bytes never
+/// reach the caller's disk, let alone a Project repository checkout.
+///
+/// Lawyer-tier and matter-scoped, same as the upload door (out-of-scope →
+/// 404); a missing or blank `kind` is `400 kind_required`; a message with no
+/// `raw_storage_key` (nothing generated in-house has one) is
+/// `400 no_raw_message`. A message with no attachments returns `200` with an
+/// empty `attachments`/`filed` list rather than an error.
+///
+/// Each attachment's slug is derived from the message id and its position
+/// (`mail/<message_id>/<index>`), never from an operator's path choice, so
+/// re-running against the same message is a no-op: `file_revision`'s
+/// identical-bytes rule (#511) makes a retry — or resuming after a partial
+/// failure — safe, and a failed attachment leaves no pointer and no partial
+/// asset because each is filed as its own independent write.
+async fn mail_file_door(
+    State(state): State<ApiState>,
+    lawyer: LawyerSession,
+    Path(id): Path<Uuid>,
+    Json(input): Json<MailFileRequest>,
+) -> Result<Response, ApiError> {
+    let in_scope = store::access::can_see_project_as_lawyer(
+        &state.surreal,
+        lawyer.0.person_id,
+        lawyer.0.role,
+        id,
+    )
+    .await
+    .unwrap_or(false);
+    if !in_scope {
+        return Err(ApiError::NotFound);
+    }
+    let kind = input
+        .kind
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    let Some(kind) = kind else {
+        return Ok(bad_request(
+            "kind_required",
+            &format!(
+                "A document kind is required. Accepted values are: {}.",
+                accepted_asset_kinds().join(", ")
+            ),
+        ));
+    };
+    let visibility = if input.visibility.as_deref() == Some(store::documents::visibility::CLIENT) {
+        store::documents::visibility::CLIENT
+    } else {
+        store::documents::visibility::INTERNAL
+    };
+
+    let message = store::email_conversations::message_by_id(&state.surreal, input.message_id)
+        .await
+        .map_err(|e| ApiError::Db(e.to_string()))?
+        .ok_or(ApiError::NotFound)?;
+    let Some(raw_key) = message.raw_storage_key.as_deref() else {
+        return Ok(bad_request(
+            "no_raw_message",
+            "This message has no archived raw MIME to file attachments from.",
+        ));
+    };
+    let raw = state
+        .storage
+        .get(raw_key)
+        .await
+        .map_err(|e| ApiError::Db(e.to_string()))?;
+    let attachments = crate::inbound_email::attachments_from_raw(&raw.bytes);
+    let summaries: Vec<MailFileAttachment> = attachments
+        .iter()
+        .map(|attachment| MailFileAttachment {
+            filename: attachment.filename.clone(),
+            content_type: attachment.content_type.clone(),
+            size_bytes: attachment.bytes.len(),
+        })
+        .collect();
+
+    if input.dry_run || attachments.is_empty() {
+        return Ok((
+            StatusCode::OK,
+            Json(MailFileResponse {
+                message_id: input.message_id,
+                dry_run: input.dry_run,
+                attachments: summaries,
+                filed: Vec::new(),
+            }),
+        )
+            .into_response());
+    }
+
+    let filed = file_mail_attachments(
+        &state,
+        id,
+        kind,
+        visibility,
+        &input.message_id,
+        &message,
+        &attachments,
+    )
+    .await?;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(MailFileResponse {
+            message_id: input.message_id,
+            dry_run: false,
+            attachments: summaries,
+            filed,
+        }),
+    )
+        .into_response())
+}
+
+/// File every parsed attachment as its own slugged revision
+/// (`mail/<message_id>/<index>`), stamping [`store::documents::MailProvenance`]
+/// onto each, and return one pointer per attachment in message-part order.
+/// Each attachment is filed as its own independent write, so a failure here
+/// leaves every earlier attachment filed and no pointer or partial asset for
+/// the one that failed.
+async fn file_mail_attachments(
+    state: &ApiState,
+    project_id: Uuid,
+    kind: &str,
+    visibility: &str,
+    message_id: &Uuid,
+    message: &store::email_conversations::EmailConversationMessage,
+    attachments: &[crate::inbound_email::InboundAttachment],
+) -> Result<Vec<store::document_pointers::DocumentPointer>, ApiError> {
+    let message_id_str = message_id.to_string();
+    let received_at = message.inserted_at.to_rfc3339();
+    let mut filed = Vec::with_capacity(attachments.len());
+    for (index, attachment) in attachments.iter().enumerate() {
+        let slug = format!("mail/{message_id_str}/{index}");
+        let args = store::documents::IngestArgs {
+            project_id,
+            source: store::documents::source::EMAIL,
+            filename: &attachment.filename,
+            kind,
+            content_type: &attachment.content_type,
+            description: None,
+            secondary_storage_key: None,
+            visibility,
+        };
+        let identity = store::documents::DocumentIdentity {
+            slug: Some(&slug),
+            published_at: None,
+            metadata: None,
+        };
+        let provenance = store::documents::MailProvenance {
+            message_id: &message_id_str,
+            sender: &message.from_addr,
+            received_at: &received_at,
+            subject: &message.subject,
+        };
+        store::assets::file_revision_with_provenance(
+            &state.surreal,
+            &state.storage,
+            &args,
+            &identity,
+            &provenance,
+            &attachment.bytes,
+        )
+        .await
+        .map_err(ApiError::Revision)?;
+        filed.push(document_pointer(&state.surreal, project_id, &slug, kind).await?);
+    }
+    Ok(filed)
+}
+
 /// `GET /app/api/projects/{id}/documents/revisions?slug=`, the query, not a
 /// path segment — a slug may itself contain `/` (`navigator site sync`
 /// derives it from a path below `documents/`), so it cannot be a single
@@ -4275,11 +4486,13 @@ fn accepted_asset_kinds() -> Vec<&'static str> {
 mod tests {
     use super::NotationStepResponse;
     use super::{
-        api_operation_table, documented_api_operations, list_document_revisions_door, routes,
-        ApiError, ApiState, AuthedSession, RevisionsQuery,
+        api_operation_table, documented_api_operations, list_document_revisions_door,
+        mail_file_door, routes, ApiError, ApiState, AuthedSession, LawyerSession, MailFileRequest,
+        RevisionsQuery,
     };
     use axum::extract::{Path, Query, State};
     use axum::response::IntoResponse;
+    use axum::Json;
     use std::collections::BTreeSet;
 
     #[test]
@@ -4549,6 +4762,221 @@ mod tests {
             revisions[0]["sha256"],
             store::documents::sha256_hex(b"v3 newer redline"),
             "{json}"
+        );
+    }
+
+    /// A raw MIME fixture carrying exactly one attachment — the same shape
+    /// `portal::inbound_email`'s own tests use — plus the
+    /// `email_conversation_message` row and its raw storage object
+    /// `mail_file_door` reads.
+    async fn seed_inbound_message(
+        db: &store::surreal::SurrealDb,
+        storage: &std::sync::Arc<dyn cloud::StorageService>,
+    ) -> uuid::Uuid {
+        let raw: &[u8] = b"From: pisces@example.com\r\nTo: support@example.com\r\nSubject: Intake\r\n\
+Content-Type: multipart/mixed; boundary=nav\r\n\r\n--nav\r\nContent-Type: text/plain\r\n\r\nhello\r\n\
+--nav\r\nContent-Type: application/pdf\r\nContent-Disposition: attachment; \
+filename*=UTF-8''signed%20intake.pdf\r\nContent-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjc=\r\n\
+--nav--\r\n";
+        let raw_key = "inbound/mail-file-test.eml";
+        storage
+            .put(raw_key, raw, "message/rfc822")
+            .await
+            .expect("seed the raw MIME object");
+
+        let conversation_id = store::email_conversations::open(
+            db,
+            &store::email_conversations::NewConversation {
+                token: "tok-mail-file-test",
+                external_email: "pisces@example.com",
+                external_name: None,
+                subject: "Intake",
+                person_id: None,
+                notation_id: None,
+            },
+        )
+        .await
+        .expect("open a conversation");
+
+        store::email_conversations::append(
+            db,
+            &store::email_conversations::NewMessage {
+                conversation_id,
+                direction: store::email_conversations::DIRECTION_FROM_EXTERNAL,
+                from_addr: "pisces@example.com",
+                to_addr: "support@example.com",
+                subject: "Intake",
+                body_text: "hello",
+                raw_storage_key: Some(raw_key),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("append the inbound hop")
+    }
+
+    #[tokio::test]
+    async fn mail_file_door_files_the_attachment_with_provenance() {
+        let db = store::surreal::test_support::mem().await;
+        let project_id = store::test_support::seed_project_surreal(&db, "mail-file").await;
+        let app = crate::test_support::app_state(db.clone()).await;
+        let message_id = seed_inbound_message(&db, &app.storage).await;
+
+        let lawyer_person = store::test_support::ensure_person(
+            &db,
+            &store::persons::NewPerson {
+                email: "avery@neonlaw.com".to_string(),
+                name: "Avery Attorney".to_string(),
+                role: store::persons::Role::Lawyer,
+                ..Default::default()
+            },
+        )
+        .await;
+        store::projects::designate_dri_in_surreal(
+            &db,
+            project_id,
+            lawyer_person.id,
+            store::projects::DriSide::Lawyer,
+        )
+        .await
+        .expect("seed the lawyer's participation row");
+
+        let state = ApiState {
+            surreal: app.surreal.clone(),
+            email: app.email.clone(),
+            bootstrap_owner_email: app.bootstrap_owner_email.clone(),
+            bootstrap_company: "Test Firm".to_string(),
+            questionnaire_runtime: app.questionnaire_runtime.clone(),
+            storage: app.storage.clone(),
+            workflow_runtime: app.workflow_runtime.clone(),
+            assets_storage: app.assets_storage.clone(),
+            forms_registry: app.forms_registry.clone(),
+            signature_provider: app.signature_provider.clone(),
+            contract_reviewer: app.contract_reviewer.clone(),
+        };
+        let session = crate::SessionData {
+            person_id: Some(lawyer_person.id),
+            ..crate::SessionData::fresh("lawyer-sub", store::persons::Role::Lawyer)
+        };
+
+        let response = mail_file_door(
+            State(state),
+            LawyerSession(session),
+            Path(project_id),
+            Json(MailFileRequest {
+                message_id,
+                kind: Some("exhibit".to_string()),
+                visibility: None,
+                dry_run: false,
+            }),
+        )
+        .await
+        .expect("a lawyer on the matter can file the message's attachments");
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let filed = json["filed"].as_array().expect("filed array");
+        assert_eq!(filed.len(), 1, "one attachment, one pointer: {json}");
+        assert_eq!(filed[0]["kind"], "exhibit", "{json}");
+        assert_eq!(filed[0]["visibility"], "internal", "{json}");
+
+        let asset_id: uuid::Uuid = filed[0]["current_version"]["asset_id"]
+            .as_str()
+            .and_then(|s| s.parse().ok())
+            .expect("asset_id is a uuid");
+        let asset = store::assets::find_by_id(&db, asset_id)
+            .await
+            .expect("read the filed asset")
+            .expect("the asset exists");
+        assert_eq!(asset.filename.as_deref(), Some("signed intake.pdf"));
+        assert_eq!(
+            asset.source_message_id.as_deref(),
+            Some(message_id.to_string().as_str()),
+            "provenance is readable back"
+        );
+        assert_eq!(asset.source_sender.as_deref(), Some("pisces@example.com"));
+        assert_eq!(asset.source_subject.as_deref(), Some("Intake"));
+        assert!(asset.source_received_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn mail_file_door_dry_run_lists_without_writing() {
+        let db = store::surreal::test_support::mem().await;
+        let project_id = store::test_support::seed_project_surreal(&db, "mail-file-dry").await;
+        let app = crate::test_support::app_state(db.clone()).await;
+        let message_id = seed_inbound_message(&db, &app.storage).await;
+
+        let lawyer_person = store::test_support::ensure_person(
+            &db,
+            &store::persons::NewPerson {
+                email: "avery2@neonlaw.com".to_string(),
+                name: "Avery Attorney".to_string(),
+                role: store::persons::Role::Lawyer,
+                ..Default::default()
+            },
+        )
+        .await;
+        store::projects::designate_dri_in_surreal(
+            &db,
+            project_id,
+            lawyer_person.id,
+            store::projects::DriSide::Lawyer,
+        )
+        .await
+        .expect("seed the lawyer's participation row");
+
+        let state = ApiState {
+            surreal: app.surreal.clone(),
+            email: app.email.clone(),
+            bootstrap_owner_email: app.bootstrap_owner_email.clone(),
+            bootstrap_company: "Test Firm".to_string(),
+            questionnaire_runtime: app.questionnaire_runtime.clone(),
+            storage: app.storage.clone(),
+            workflow_runtime: app.workflow_runtime.clone(),
+            assets_storage: app.assets_storage.clone(),
+            forms_registry: app.forms_registry.clone(),
+            signature_provider: app.signature_provider.clone(),
+            contract_reviewer: app.contract_reviewer.clone(),
+        };
+        let session = crate::SessionData {
+            person_id: Some(lawyer_person.id),
+            ..crate::SessionData::fresh("lawyer-sub", store::persons::Role::Lawyer)
+        };
+
+        let response = mail_file_door(
+            State(state),
+            LawyerSession(session),
+            Path(project_id),
+            Json(MailFileRequest {
+                message_id,
+                kind: Some("exhibit".to_string()),
+                visibility: None,
+                dry_run: true,
+            }),
+        )
+        .await
+        .expect("a dry run still succeeds");
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["dry_run"], true, "{json}");
+        let attachments = json["attachments"].as_array().expect("attachments array");
+        assert_eq!(attachments.len(), 1, "{json}");
+        assert_eq!(attachments[0]["filename"], "signed intake.pdf", "{json}");
+        assert!(
+            json["filed"].as_array().unwrap().is_empty(),
+            "a dry run files nothing: {json}"
+        );
+        assert!(
+            store::assets::for_project(&db, project_id)
+                .await
+                .unwrap()
+                .is_empty(),
+            "a dry run writes no asset row"
         );
     }
 

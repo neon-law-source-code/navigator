@@ -539,6 +539,63 @@ impl DocumentClient {
         }
         Ok(())
     }
+
+    /// File one inbound message's attachments into the matter
+    /// (`POST /app/api/projects/{id}/mail/file`, #517). Entirely
+    /// server-side: only this JSON response travels back, never the
+    /// attachment bytes.
+    pub(crate) async fn file_mail(
+        &self,
+        message_id: Uuid,
+        kind: &str,
+        visibility: &str,
+        dry_run: bool,
+    ) -> Result<MailFileResponse> {
+        let url = format!(
+            "{}/app/api/projects/{}/mail/file",
+            self.base, self.project_id
+        );
+        let response = self
+            .client
+            .post(&url)
+            .bearer_auth(&self.token)
+            .json(&serde_json::json!({
+                "message_id": message_id,
+                "kind": kind,
+                "visibility": visibility,
+                "dry_run": dry_run,
+            }))
+            .send()
+            .await
+            .with_context(|| format!("POST {url}"))?;
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(anyhow!(
+                "filing message {message_id} failed: {status}: {}",
+                first_line(&text)
+            ));
+        }
+        serde_json::from_str(&text).context("parse mail-file response")
+    }
+}
+
+/// One attachment as `POST /app/api/projects/{id}/mail/file` reports it,
+/// filed or not.
+#[derive(Debug, Deserialize)]
+pub(crate) struct MailFileAttachment {
+    pub(crate) filename: String,
+    pub(crate) content_type: String,
+    pub(crate) size_bytes: usize,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct MailFileResponse {
+    pub(crate) dry_run: bool,
+    pub(crate) attachments: Vec<MailFileAttachment>,
+    /// One pointer per filed attachment, in message-part order. Empty when
+    /// `dry_run`, or when the message carried no attachments.
+    pub(crate) filed: Vec<store::document_pointers::DocumentPointer>,
 }
 
 /// `navigator site document upload --project <code> --file … --kind …`
@@ -615,6 +672,63 @@ pub async fn archive_repository(host: Option<&str>, project_code: &str, dir: &Pa
             palette::dim("asset id:"),
             pointer.current_version.asset_id
         );
+        Ok(())
+    })
+    .await
+}
+
+/// `navigator site mail file --message <id> --project <code> --kind …`
+/// — file one inbound message's attachments into a matter, entirely
+/// server-side (`POST /app/api/projects/{id}/mail/file`, #517). The
+/// attachment bytes never reach this process; only the pointer YAML this
+/// prints and stages under `documents/mail/<message>/` does, so the result
+/// is committable without the bytes ever having transited the checkout.
+/// `--dry-run` writes nothing and only lists what would be filed.
+#[allow(clippy::too_many_arguments)]
+pub async fn mail_file(
+    root: &Path,
+    host: Option<&str>,
+    project_code: &str,
+    message: Uuid,
+    kind: &str,
+    visibility: &str,
+    dry_run: bool,
+) -> ExitCode {
+    run(async {
+        let client = DocumentClient::connect(host, project_code).await?;
+        let response = client.file_mail(message, kind, visibility, dry_run).await?;
+
+        if response.attachments.is_empty() {
+            println!("message {message} has no attachments — nothing to file");
+            return Ok(());
+        }
+
+        if dry_run {
+            for attachment in &response.attachments {
+                println!(
+                    "would file {} ({}, {} bytes)",
+                    attachment.filename, attachment.content_type, attachment.size_bytes
+                );
+            }
+            println!(
+                "{} attachment(s) would be filed",
+                response.attachments.len()
+            );
+            return Ok(());
+        }
+
+        let documents_dir = root
+            .join("documents")
+            .join("mail")
+            .join(message.to_string());
+        std::fs::create_dir_all(&documents_dir)
+            .with_context(|| format!("create {}", documents_dir.display()))?;
+        for (index, pointer) in response.filed.iter().enumerate() {
+            let path = documents_dir.join(format!("{index}.yml"));
+            crate::document_sync::write_pointer_atomically(&path, &pointer.to_yaml()?)?;
+            println!("staged {}", path.display());
+        }
+        println!("{} attachment(s) filed", response.filed.len());
         Ok(())
     })
     .await
@@ -2378,8 +2492,8 @@ mod tests {
 
     use super::{
         archive_repository, candidate_by_name, canonical_choice_value, clause_add, clause_edit,
-        clause_list, document_upload, ensure_no_unused_selections, fetch_status, matter_close,
-        matter_open, notation_approve, notation_create, notation_document,
+        clause_list, document_upload, ensure_no_unused_selections, fetch_status, mail_file,
+        matter_close, matter_open, notation_approve, notation_create, notation_document,
         notation_request_changes, notation_status, notation_update, parse_scripted_selection,
         picker_selection_fields, projects_create, projects_lifecycle, projects_list,
         retainer_approve, retainer_send, scripted_picker_selection_fields, seed, seed_directory,
@@ -2707,6 +2821,183 @@ mod tests {
             .await,
             ExitCode::SUCCESS
         );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn mail_file_dry_run_lists_attachments_and_writes_nothing() {
+        let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+        let server = MockServer::start().await;
+        let server_uri = server.uri();
+        let _env = CredentialsEnv::new(&server_uri);
+        let project_id = Uuid::now_v7();
+        let message_id = Uuid::now_v7();
+
+        Mock::given(method("GET"))
+            .and(path("/app/api/projects"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"id": project_id, "code": "acme"}
+            ])))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path(format!("/app/api/projects/{project_id}/mail/file")))
+            .and(body_json(serde_json::json!({
+                "message_id": message_id,
+                "kind": "exhibit",
+                "visibility": "internal",
+                "dry_run": true,
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "message_id": message_id,
+                "dry_run": true,
+                "attachments": [
+                    {"filename": "photo.png", "content_type": "image/png", "size_bytes": 42}
+                ],
+                "filed": [],
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let root = tempfile::tempdir().unwrap();
+        assert_eq!(
+            mail_file(
+                root.path(),
+                Some(server_uri.as_str()),
+                "acme",
+                message_id,
+                "exhibit",
+                "internal",
+                true,
+            )
+            .await,
+            ExitCode::SUCCESS
+        );
+        assert!(
+            !root.path().join("documents").exists(),
+            "a dry run must write nothing"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn mail_file_stages_one_pointer_per_filed_attachment() {
+        let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+        let server = MockServer::start().await;
+        let server_uri = server.uri();
+        let _env = CredentialsEnv::new(&server_uri);
+        let project_id = Uuid::now_v7();
+        let message_id = Uuid::now_v7();
+        let asset_id = Uuid::now_v7();
+
+        Mock::given(method("GET"))
+            .and(path("/app/api/projects"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"id": project_id, "code": "acme"}
+            ])))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path(format!("/app/api/projects/{project_id}/mail/file")))
+            .and(body_json(serde_json::json!({
+                "message_id": message_id,
+                "kind": "exhibit",
+                "visibility": "internal",
+                "dry_run": false,
+            })))
+            .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+                "message_id": message_id,
+                "dry_run": false,
+                "attachments": [
+                    {"filename": "photo.png", "content_type": "image/png", "size_bytes": 42}
+                ],
+                "filed": [
+                    {
+                        "kind": "exhibit",
+                        "visibility": "internal",
+                        "current_version": {
+                            "version": 1,
+                            "asset_id": asset_id,
+                            "created_at": "2026-09-06T00:00:00Z",
+                            "sha256": "a".repeat(64),
+                            "size_bytes": 42
+                        }
+                    }
+                ],
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let root = tempfile::tempdir().unwrap();
+        assert_eq!(
+            mail_file(
+                root.path(),
+                Some(server_uri.as_str()),
+                "acme",
+                message_id,
+                "exhibit",
+                "internal",
+                false,
+            )
+            .await,
+            ExitCode::SUCCESS
+        );
+        let staged = root
+            .path()
+            .join("documents/mail")
+            .join(message_id.to_string())
+            .join("0.yml");
+        assert!(staged.is_file(), "{}", staged.display());
+        let pointer = store::document_pointers::DocumentPointer::from_yaml(
+            &std::fs::read_to_string(&staged).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(pointer.current_version.asset_id, asset_id);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn mail_file_with_no_attachments_writes_nothing_and_exits_cleanly() {
+        let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+        let server = MockServer::start().await;
+        let server_uri = server.uri();
+        let _env = CredentialsEnv::new(&server_uri);
+        let project_id = Uuid::now_v7();
+        let message_id = Uuid::now_v7();
+
+        Mock::given(method("GET"))
+            .and(path("/app/api/projects"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"id": project_id, "code": "acme"}
+            ])))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path(format!("/app/api/projects/{project_id}/mail/file")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "message_id": message_id,
+                "dry_run": false,
+                "attachments": [],
+                "filed": [],
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let root = tempfile::tempdir().unwrap();
+        assert_eq!(
+            mail_file(
+                root.path(),
+                Some(server_uri.as_str()),
+                "acme",
+                message_id,
+                "exhibit",
+                "internal",
+                false,
+            )
+            .await,
+            ExitCode::SUCCESS
+        );
+        assert!(!root.path().join("documents").exists());
     }
 
     #[tokio::test(flavor = "current_thread")]

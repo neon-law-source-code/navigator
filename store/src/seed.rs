@@ -359,17 +359,29 @@ where
 pub enum SeedModel {
     Person,
     Entity,
+    PersonProjectRole,
+    PersonEntityRole,
 }
 
 impl SeedModel {
-    /// Resolve the singular glossary term and Surreal table name supplied by
-    /// `navigator site import`.
+    /// Every model a CI-minted seed session may reconcile.
+    pub const ALL: [Self; 4] = [
+        Self::Person,
+        Self::Entity,
+        Self::PersonProjectRole,
+        Self::PersonEntityRole,
+    ];
+
+    /// Resolve the singular glossary term, Surreal table name, or PascalCase
+    /// `seeds/<Model>.yaml` stem supplied by `navigator site import`.
     pub fn parse(value: &str) -> anyhow::Result<Self> {
-        match value.trim().to_ascii_lowercase().as_str() {
+        match glossary_token(value).as_str() {
             "person" => Ok(Self::Person),
             "entity" => Ok(Self::Entity),
+            "person_project_role" => Ok(Self::PersonProjectRole),
+            "person_entity_role" => Ok(Self::PersonEntityRole),
             _ => anyhow::bail!(
-                "unsupported seed model `{value}`; supported glossary terms: person, entity"
+                "unsupported seed model `{value}`; supported glossary terms: person, entity, person_project_role, person_entity_role"
             ),
         }
     }
@@ -379,8 +391,29 @@ impl SeedModel {
         match self {
             Self::Person => "person",
             Self::Entity => "entity",
+            Self::PersonProjectRole => "person_project_role",
+            Self::PersonEntityRole => "person_entity_role",
         }
     }
+}
+
+/// Lowercase snake_case for a glossary term or a PascalCase seed filename stem.
+fn glossary_token(value: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed.contains('_')
+        || trimmed.contains('-')
+        || trimmed.chars().all(|character| !character.is_uppercase())
+    {
+        return trimmed.replace('-', "_").to_ascii_lowercase();
+    }
+    let mut out = String::new();
+    for (index, character) in trimmed.chars().enumerate() {
+        if character.is_uppercase() && index > 0 {
+            out.push('_');
+        }
+        out.push(character.to_ascii_lowercase());
+    }
+    out
 }
 
 /// The action the reconciler would take for one seed record.
@@ -511,6 +544,12 @@ pub async fn reconcile_yaml(
             )
             .await
         }
+        SeedModel::PersonProjectRole => {
+            reconcile_person_project_roles(surreal, yaml, actor, scope_project.as_ref()).await
+        }
+        SeedModel::PersonEntityRole => {
+            reconcile_person_entity_roles(surreal, yaml, actor, scope_project.as_ref()).await
+        }
     }
 }
 
@@ -541,6 +580,43 @@ pub fn validate_yaml(model: SeedModel, yaml: &str) -> anyhow::Result<()> {
                         "{}\u{0}{}",
                         record.name.to_ascii_lowercase(),
                         record.entity_type.name.to_ascii_lowercase()
+                    )
+                }),
+            )
+        }
+        SeedModel::PersonProjectRole => {
+            let records = parse_seed::<OperatorPersonProjectRoleRec>(
+                yaml,
+                model,
+                &["person_id", "project_id"],
+            )?;
+            require_unique(
+                model,
+                "person.email and project.code",
+                records.iter().map(|record| {
+                    format!(
+                        "{}\u{0}{}",
+                        record.person.email.to_ascii_lowercase(),
+                        record.project.code.to_ascii_lowercase()
+                    )
+                }),
+            )
+        }
+        SeedModel::PersonEntityRole => {
+            let records = parse_seed::<OperatorPersonEntityRoleRec>(
+                yaml,
+                model,
+                &["person_id", "entity_id"],
+            )?;
+            require_unique(
+                model,
+                "person.email, entity.name, and role",
+                records.iter().map(|record| {
+                    format!(
+                        "{}\u{0}{}\u{0}{}",
+                        record.person.email.to_ascii_lowercase(),
+                        record.entity.name.to_ascii_lowercase(),
+                        record.role.to_ascii_lowercase()
                     )
                 }),
             )
@@ -862,6 +938,170 @@ async fn update_entity_from_seed(
     .await
     .map_err(|error| anyhow::anyhow!(error.user_message()))?;
     Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OperatorPersonRef {
+    email: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OperatorProjectRef {
+    code: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OperatorEntityNameRef {
+    name: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OperatorPersonProjectRoleRec {
+    person: OperatorPersonRef,
+    project: OperatorProjectRef,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OperatorPersonEntityRoleRec {
+    person: OperatorPersonRef,
+    entity: OperatorEntityNameRef,
+    role: String,
+}
+
+async fn reconcile_person_project_roles(
+    surreal: &SurrealDb,
+    yaml: &str,
+    actor: &ReconcileActor<'_>,
+    scope_project: Option<&crate::projects::Project>,
+) -> anyhow::Result<ReconcileReport> {
+    let mut report = ReconcileReport {
+        model: SeedModel::PersonProjectRole.term().to_string(),
+        ..ReconcileReport::default()
+    };
+    for rec in parse_seed::<OperatorPersonProjectRoleRec>(
+        yaml,
+        SeedModel::PersonProjectRole,
+        &["person_id", "project_id"],
+    )? {
+        let key = format!("{} / {}", rec.person.email, rec.project.code);
+        let person = crate::persons::find_by_email_ci(surreal, &rec.person.email)
+            .await?
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "person_project_role seed references unknown person email {:?}",
+                    rec.person.email
+                )
+            })?;
+        let project = crate::projects::find_by_code(surreal, &rec.project.code)
+            .await?
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "person_project_role seed references unknown project code {:?}",
+                    rec.project.code
+                )
+            })?;
+        if let Some(scope) = scope_project {
+            if project.id != scope.id {
+                return Err(anyhow::Error::new(ScopeViolation::CrossProject));
+            }
+        }
+        let participation = crate::projects::participation_for_role(person.role);
+        match crate::projects::participation_for_person(surreal, person.id, project.id).await? {
+            Some(_) => {
+                report.unchanged += 1;
+                report.records.push(ReconcileRecord {
+                    key,
+                    action: ReconcileAction::Unchanged,
+                    ..ReconcileRecord::default()
+                });
+            }
+            None => {
+                if !actor.dry_run {
+                    crate::projects::add_participation(
+                        surreal,
+                        project.id,
+                        person.id,
+                        participation,
+                    )
+                    .await?;
+                }
+                report.created += 1;
+                report.records.push(ReconcileRecord {
+                    key,
+                    action: ReconcileAction::New,
+                    ..ReconcileRecord::default()
+                });
+            }
+        }
+    }
+    Ok(report)
+}
+
+async fn reconcile_person_entity_roles(
+    surreal: &SurrealDb,
+    yaml: &str,
+    actor: &ReconcileActor<'_>,
+    scope_project: Option<&crate::projects::Project>,
+) -> anyhow::Result<ReconcileReport> {
+    let mut report = ReconcileReport {
+        model: SeedModel::PersonEntityRole.term().to_string(),
+        ..ReconcileReport::default()
+    };
+    for rec in parse_seed::<OperatorPersonEntityRoleRec>(
+        yaml,
+        SeedModel::PersonEntityRole,
+        &["person_id", "entity_id"],
+    )? {
+        let key = format!("{} / {} / {}", rec.person.email, rec.entity.name, rec.role);
+        let person = crate::persons::find_by_email_ci(surreal, &rec.person.email)
+            .await?
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "person_entity_role seed references unknown person email {:?}",
+                    rec.person.email
+                )
+            })?;
+        let entity = crate::entities::find_by_name(surreal, &rec.entity.name)
+            .await?
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "person_entity_role seed references unknown entity {:?}",
+                    rec.entity.name
+                )
+            })?;
+        if let Some(scope) = scope_project {
+            if entity.id != scope.entity_id {
+                return Err(anyhow::Error::new(ScopeViolation::CrossProject));
+            }
+        }
+        match crate::entity_roles::find(surreal, person.id, entity.id, &rec.role).await? {
+            Some(_) => {
+                report.unchanged += 1;
+                report.records.push(ReconcileRecord {
+                    key,
+                    action: ReconcileAction::Unchanged,
+                    ..ReconcileRecord::default()
+                });
+            }
+            None => {
+                if !actor.dry_run {
+                    crate::entity_roles::grant(surreal, person.id, entity.id, &rec.role).await?;
+                }
+                report.created += 1;
+                report.records.push(ReconcileRecord {
+                    key,
+                    action: ReconcileAction::New,
+                    ..ReconcileRecord::default()
+                });
+            }
+        }
+    }
+    Ok(report)
 }
 
 fn person_changed_fields(existing: &crate::persons::Person, incoming: &PersonRec) -> Vec<String> {
@@ -3464,6 +3704,176 @@ records:
             v,
             ScopeViolation::CrossProject
         )));
+    }
+
+    fn person_project_role_yaml(email: &str, code: &str) -> String {
+        format!(
+            "lookup_fields:\n  - person_id\n  - project_id\nrecords:\n  - person:\n      email: {email}\n    project:\n      code: {code}\n"
+        )
+    }
+
+    fn person_entity_role_yaml(email: &str, entity: &str, role: &str) -> String {
+        format!(
+            "lookup_fields:\n  - person_id\n  - entity_id\nrecords:\n  - person:\n      email: {email}\n    entity:\n      name: {entity}\n    role: {role}\n"
+        )
+    }
+
+    #[test]
+    fn seed_model_parse_accepts_glossary_terms_and_pascal_case_file_stems() {
+        assert_eq!(SeedModel::parse("person").unwrap(), SeedModel::Person);
+        assert_eq!(
+            SeedModel::parse("PersonProjectRole").unwrap(),
+            SeedModel::PersonProjectRole
+        );
+        assert_eq!(
+            SeedModel::parse("person_entity_role").unwrap(),
+            SeedModel::PersonEntityRole
+        );
+        assert!(SeedModel::parse("question").is_err());
+    }
+
+    #[tokio::test]
+    async fn person_project_role_seed_resolves_email_and_code_lookups() {
+        let surreal = mem_surreal().await;
+        let project = project_fixture(&surreal, "acme").await;
+        persons::create(
+            &surreal,
+            &NewPerson::new("Jane Example", "jane@example.com"),
+        )
+        .await
+        .unwrap();
+
+        let report = reconcile_yaml(
+            &surreal,
+            SeedModel::PersonProjectRole,
+            &person_project_role_yaml("jane@example.com", "acme"),
+            "Firm",
+            false,
+            &unrestricted_actor(),
+        )
+        .await
+        .expect("nested lookups resolve");
+        assert_eq!((report.created, report.unchanged), (1, 0));
+        let person = persons::find_by_email_ci(&surreal, "jane@example.com")
+            .await
+            .unwrap()
+            .unwrap();
+        let row = projects::participation_for_person(&surreal, person.id, project.id)
+            .await
+            .unwrap()
+            .expect("participation written from nested keys");
+        assert_eq!(row.participation, "client");
+
+        let again = reconcile_yaml(
+            &surreal,
+            SeedModel::PersonProjectRole,
+            &person_project_role_yaml("jane@example.com", "acme"),
+            "Firm",
+            false,
+            &unrestricted_actor(),
+        )
+        .await
+        .expect("re-seed is a no-op");
+        assert_eq!((again.created, again.unchanged), (0, 1));
+    }
+
+    #[tokio::test]
+    async fn scoped_person_project_role_refuses_a_different_project_code() {
+        let surreal = mem_surreal().await;
+        project_fixture(&surreal, "acme").await;
+        project_fixture(&surreal, "widget-works").await;
+        persons::create(
+            &surreal,
+            &NewPerson::new("Jane Example", "jane@example.com"),
+        )
+        .await
+        .unwrap();
+
+        let error = reconcile_yaml(
+            &surreal,
+            SeedModel::PersonProjectRole,
+            &person_project_role_yaml("jane@example.com", "widget-works"),
+            "Firm",
+            false,
+            &scoped_actor("acme"),
+        )
+        .await
+        .expect_err("a scoped session cannot write another project's participation");
+        assert!(downcasts_to::<ScopeViolation>(&error, |v| matches!(
+            v,
+            ScopeViolation::CrossProject
+        )));
+    }
+
+    #[tokio::test]
+    async fn person_entity_role_seed_resolves_email_and_name_lookups() {
+        let surreal = mem_surreal().await;
+        let project = project_fixture(&surreal, "acme").await;
+        let entity = entities::find_by_id(&surreal, project.entity_id)
+            .await
+            .unwrap()
+            .unwrap();
+        persons::create(
+            &surreal,
+            &NewPerson::new("Jane Example", "jane@example.com"),
+        )
+        .await
+        .unwrap();
+
+        let report = reconcile_yaml(
+            &surreal,
+            SeedModel::PersonEntityRole,
+            &person_entity_role_yaml("jane@example.com", &entity.name, "manages"),
+            "Firm",
+            false,
+            &unrestricted_actor(),
+        )
+        .await
+        .expect("nested entity lookup resolves");
+        assert_eq!(report.created, 1);
+        let person = persons::find_by_email_ci(&surreal, "jane@example.com")
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(
+            crate::entity_roles::find(&surreal, person.id, entity.id, "manages")
+                .await
+                .unwrap()
+                .is_some()
+        );
+    }
+
+    #[tokio::test]
+    async fn scoped_person_entity_role_refuses_an_entity_the_project_does_not_name() {
+        let surreal = mem_surreal().await;
+        let project = project_fixture(&surreal, "acme").await;
+        let other = crate::test_support::seed_entity(&surreal).await;
+        let other_entity = entities::find_by_id(&surreal, other)
+            .await
+            .unwrap()
+            .unwrap();
+        persons::create(
+            &surreal,
+            &NewPerson::new("Jane Example", "jane@example.com"),
+        )
+        .await
+        .unwrap();
+
+        let error = reconcile_yaml(
+            &surreal,
+            SeedModel::PersonEntityRole,
+            &person_entity_role_yaml("jane@example.com", &other_entity.name, "manages"),
+            "Firm",
+            false,
+            &scoped_actor("acme"),
+        )
+        .await
+        .expect_err("a scoped session cannot grant a role on another project's entity");
+        assert!(downcasts_to::<ScopeViolation>(&error, |v| matches!(
+            v,
+            ScopeViolation::CrossProject
+        )));
+        let _ = project;
     }
 
     #[tokio::test]

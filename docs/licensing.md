@@ -355,9 +355,9 @@ the name on the door, so a fork trading as Neon Law would misdirect the person l
 fork, and redistribute the software, and may say their work is built on Neon Law Navigator; nobody may present their
 deployment as Neon Law.
 
-**DELETEYOURDATA.COM™** and **LAWYER SHOOK™** are common-law marks of Shook Law PLLC. The same copyright licence does not
-grant either mark. A deployment using either house brand must be the Firm's own deployment; a fork chooses a different
-name and identity.
+**DELETEYOURDATA.COM™** and **LAWYER SHOOK™** are common-law marks of Shook Law PLLC. The same copyright licence does
+not grant either mark. A deployment using either house brand must be the Firm's own deployment; a fork chooses a
+different name and identity.
 
 ## Contributions
 

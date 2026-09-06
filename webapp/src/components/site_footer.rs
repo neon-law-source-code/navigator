@@ -684,6 +684,16 @@ mod tests {
                 }
             }
         }
+        fn common_law() -> Element {
+            rsx! {
+                SiteFooterLegal {
+                    copyright_holder: "Shook Law PLLC".to_string(),
+                    disclaimer: "This is an attorney advertisement.".to_string(),
+                    copyright_year: 2026,
+                    trademark: "LAWYER SHOOK".to_string(),
+                }
+            }
+        }
 
         let out = ssr(unregistered);
         assert!(
@@ -701,16 +711,6 @@ mod tests {
             "with no link to a record it does not have: {out}"
         );
 
-        fn common_law() -> Element {
-            rsx! {
-                SiteFooterLegal {
-                    copyright_holder: "Shook Law PLLC".to_string(),
-                    disclaimer: "This is an attorney advertisement.".to_string(),
-                    copyright_year: 2026,
-                    trademark: "LAWYER SHOOK".to_string(),
-                }
-            }
-        }
         let out = ssr(common_law);
         assert!(out.contains("LAWYER SHOOK") && out.contains("™"), "{out}");
         assert!(out.contains("common-law mark of Shook Law PLLC"), "{out}");

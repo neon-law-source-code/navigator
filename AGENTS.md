@@ -176,11 +176,11 @@ cluster. `worktree-env up` creates the same topology in its own cluster. Restart
 changing routes, handlers, views, or content.
 
 `dev up` uses Restate ingress `9080`, Restate admin `9070`, Rauthy `30080`, Garage `30900`, and SurrealDB `18000`; `web`
-binds `3001` for the default brand and `3011` for the `delete-your-data` house brand — locally there is no DNS standing
-in for that brand's real hostname, so `web` answers it on this second port instead of a `Host:` header. A worktree
+binds `3001` for the default brand, `3011` for `delete-your-data`, and `3021` for lawyer-shook. Locally there is no DNS
+standing in for those brand hostnames, so `web` answers them on their own ports instead of a `Host:` header. A worktree
 selects a free slot in the `20000`–`21299` ranges, including slots held by stopped or orphaned KIND clusters, so
-worktrees never share a slot; its own `web` and `delete-your-data` ports move together with that slot. Always read the
-selected values from that worktree's `.devx/env`.
+worktrees never share a slot; its own `web`, `delete-your-data`, and `lawyer-shook` ports move together with that slot.
+Always read the selected values from that worktree's `.devx/env`.
 
 SurrealDB is the store (#1093). Its connection contract is `NAVIGATOR_SURREAL_ENDPOINT`, `_NAMESPACE`, and `_DATABASE`,
 written into `.devx/env`, and its schema is applied rather than migrated: one idempotent `DEFINE` file
@@ -272,9 +272,8 @@ driving a topology it did not generate:
 cargo run -p cli -- dev browser-e2e --base-url http://localhost:3001
 ```
 
-The accessibility suite audits the public shell against the one host `browser-e2e` already starts. It needed a second
-base URL while the site served two brands from separate deployments; one binary serves one face now, so there is nothing
-extra to start.
+The accessibility suite audits the public shell against the one host that `browser-e2e` already starts. It serves
+multiple brands from separate deployments; one binary serves one face per host, so there is nothing extra to start.
 
 The Rust test suite needs no database, no container, and no configuration: each test opens its own embedded,
 memory-backed SurrealDB. Run it through nextest — the default profile prints failures only, so a green run is the

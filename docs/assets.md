@@ -164,10 +164,10 @@ serve.
 
 ### Lawyer Shook's Tinos
 
-The `lawyer-shook` house brand uses Tinos under the Apache License 2.0. The repository carries the Regular and Bold
-WOFF2 faces under `server/public/fonts/tinos/`; no raster mark is required because the public header and footer render
-the LAWYER SHOOK wordmark as text. `portal::dioxus_app` selects these faces for the Lawyer Shook host, while the Neon
-Law and DeleteYourData faces retain their existing head fragments.
+The `lawyer-shook` house brand uses Tinos under the SIL Open Font License 1.1. The repository carries the Regular and
+Bold WOFF2 faces under `server/public/fonts/tinos/`; no raster mark is required because the public header and footer
+render the LAWYER SHOOK wordmark as text. `portal::dioxus_app` selects these faces for the Lawyer Shook host, while the
+Neon Law and DeleteYourData faces retain their existing head fragments.
 
 ## Verify after shipping
 

@@ -703,14 +703,23 @@ struct ProjectLifecycleEntry {
     code: String,
     status: String,
     closed_at: Option<String>,
+    /// Derived, never a stored column — see
+    /// [`store::project_surfaces::SourceState`]. Carries no repository
+    /// content: not the URL, not the Drive folder id, only which of six
+    /// states the three provisioning columns describe together.
+    source_state: store::project_surfaces::SourceState,
 }
 
 /// `GET /app/api/project-lifecycle` — read every Project's lifecycle fields.
 ///
 /// Admin-tier only. This is an oversight read rather than a matter read: it
-/// deliberately reads every row and returns only the stable code and the two
-/// fields that describe its lifecycle, so an operator can compare deployment
-/// state without receiving matter content or needing participation rows.
+/// deliberately reads every row and returns only the stable code, the two
+/// fields that describe its lifecycle, and a derived `source_state`, so an
+/// operator can compare deployment state without receiving matter content
+/// or needing participation rows. `source_state` is computed here rather
+/// than widening the row itself with `repository_url` or `drive_folder_id`
+/// — this route stays a minimal oversight read, and a repository URL names
+/// a matter's source per matter (ENG-466).
 async fn project_lifecycle_door(
     State(state): State<ApiState>,
     authed: AuthedSession,
@@ -724,6 +733,7 @@ async fn project_lifecycle_door(
     let lifecycle = projects
         .into_iter()
         .map(|project| ProjectLifecycleEntry {
+            source_state: store::project_surfaces::source_state(&project),
             code: project.code,
             status: project.status,
             closed_at: project.closed_at,

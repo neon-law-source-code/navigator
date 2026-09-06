@@ -1063,6 +1063,14 @@ transitions may carry an RFC 3339 `effective_at` between matter-open and now; th
 value so an existing retention start can be corrected. Without it, a new close starts at the server's current time and
 an existing stamp is preserved. Reopen accepts no effective time and clears `closed_at`.
 
+**`source_state`** is a *derived* read-only signal on the lifecycle projection (`GET /app/api/projects/lifecycle`),
+never a stored column — [`store::project_surfaces::source_state`](../store/src/project_surfaces.rs) computes it purely
+from `repository_url`, `forge_provisioned_at`, and `git_initialized_at`. `not_enabled` (no repository requested),
+`unknown` (a repository URL is recorded but this deployment's own provisioning pass never stamped it — a direct edit or
+a pre-stamp row), `attached` (provisioned, no validated source committed or imported yet), and `initialized`
+(provisioned and carrying validated source) are the states a row can reach today; `pending` and `failed` are reserved
+for an asynchronous provisioning path nothing in this codebase writes yet.
+
 **Every Notation belongs to exactly one Project.** The schema enforces this with a `NOT NULL` `project_id` FK on
 `notations`. A Notation without a Project is a bug.
 

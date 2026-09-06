@@ -494,16 +494,19 @@ pub fn document_with_base(base: &str) -> Value {
           "get": {
             "summary": "Read every matter's lifecycle fields (admin)",
             "description":
-              "Returns one minimal row per matter with its `code`, `status`, and `closed_at`. \
-               This is a deployment-wide oversight read, not a participation-scoped matter \
-               read, and returns no matter content. Authorization: admin-tier only \
-               (`owner`/`admin`).",
+              "Returns one minimal row per matter with its `code`, `status`, `closed_at`, and \
+               derived `source_state`. This is a deployment-wide oversight read, not a \
+               participation-scoped matter read, and returns no matter content — no repository \
+               URL, no Drive folder id. Authorization: admin-tier only (`owner`/`admin`).",
             "responses": {
               "200": { "description": "The lifecycle rows", "content": { "application/json": {
-                "schema": { "type": "array", "items": { "type": "object", "required": ["code", "status", "closed_at"], "properties": {
+                "schema": { "type": "array", "items": { "type": "object", "required": ["code", "status", "closed_at", "source_state"], "properties": {
                   "code": { "type": "string" },
                   "status": { "type": "string", "enum": ["open", "closed", "archived"] },
-                  "closed_at": { "type": ["string", "null"], "format": "date-time" }
+                  "closed_at": { "type": ["string", "null"], "format": "date-time" },
+                  "source_state": { "type": "string",
+                    "enum": ["not_enabled", "pending", "unknown", "attached", "initialized", "failed"],
+                    "description": "Derived from repository_url/forge_provisioned_at/git_initialized_at — never a stored column. See docs/glossary.md#project." }
                 } } }
               } } },
               "401": { "description": "No authenticated session", "content": { "application/json": {
@@ -2419,7 +2422,13 @@ pub fn document_with_base(base: &str) -> Value {
                                       "description": "Which house brand's storefront this matter was opened through — `neon` or `delete-your-data` today. Written by the server from the resolved request host at matter-open; never accepted from a client-submitted field." },
               "entity_id":          { "type": "string", "format": "uuid" },
               "description":        { "type": ["string", "null"] },
+              "drive_folder_id":    { "type": ["string", "null"],
+                                      "description": "The Project's Drive ingest folder id, or `null` before it is provisioned." },
+              "repository_url":     { "type": ["string", "null"],
+                                      "description": "The Project's one source repository, as a whole URL on any forge, or `null` when none is recorded." },
               "git_initialized_at": { "type": ["string", "null"] },
+              "forge_provisioned_at": { "type": ["string", "null"],
+                                      "description": "Stamped only once `repository_url` was created or adopted; `null` means not done or unknown." },
               "closed_at":          { "type": ["string", "null"] },
               "inserted_at":        { "type": "string" },
               "updated_at":         { "type": "string" }

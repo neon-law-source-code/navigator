@@ -20,10 +20,12 @@ const PATH: &str = "/app/api/project-lifecycle";
 
 struct Fixture {
     app: axum::Router,
+    surreal: store::surreal::SurrealDb,
     admin: String,
     lawyer: String,
     client: String,
     codes: [String; 3],
+    ids: [Uuid; 3],
 }
 
 fn bearer(role: Role) -> String {
@@ -66,16 +68,19 @@ async fn build_fixture() -> Fixture {
         .await
         .unwrap();
 
+    let ids: [Uuid; 3] = ids.try_into().unwrap();
     let state = AppState {
         sessions: SessionStore::new(KEY),
-        ..portal::test_support::app_state(surreal).await
+        ..portal::test_support::app_state(surreal.clone()).await
     };
     Fixture {
         app: server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR)),
+        surreal,
         admin: bearer(Role::Admin),
         lawyer: bearer(Role::Lawyer),
         client: bearer(Role::Client),
         codes,
+        ids,
     }
 }
 
@@ -110,7 +115,10 @@ async fn admin_reads_every_project_lifecycle_without_matter_content() {
         .keys()
         .map(String::as_str)
         .collect();
-    assert_eq!(fields, BTreeSet::from(["code", "status", "closed_at"]));
+    assert_eq!(
+        fields,
+        BTreeSet::from(["code", "status", "closed_at", "source_state"])
+    );
 
     let by_code = rows
         .into_iter()
@@ -122,6 +130,36 @@ async fn admin_reads_every_project_lifecycle_without_matter_content() {
     assert!(by_code[&fx.codes[1]]["closed_at"].is_string());
     assert_eq!(by_code[&fx.codes[2]]["status"], "archived");
     assert!(by_code[&fx.codes[2]]["closed_at"].is_string());
+
+    // None of the three fixture matters ever recorded a repository, which is
+    // a legitimate resting state distinct from a stalled or failed one.
+    for code in &fx.codes {
+        assert_eq!(by_code[code]["source_state"], "not_enabled");
+    }
+}
+
+/// A repository recorded outside reconcile's own provisioning pass — a
+/// direct `PATCH` or a legacy row — reads as `unknown` rather than
+/// `attached`, because `forge_provisioned_at` was never stamped and the
+/// columns cannot say why.
+#[tokio::test]
+async fn a_repository_url_with_no_provisioned_stamp_reads_as_unknown() {
+    let fx = build_fixture().await;
+    store::projects::set_repository_url(
+        &fx.surreal,
+        fx.ids[0],
+        Some("https://forge.example/an-organization/acme"),
+    )
+    .await
+    .unwrap();
+
+    let rows = json(get(&fx, Some(&fx.admin)).await)
+        .await
+        .as_array()
+        .unwrap()
+        .clone();
+    let open_row = rows.iter().find(|row| row["code"] == fx.codes[0]).unwrap();
+    assert_eq!(open_row["source_state"], "unknown");
 }
 
 #[tokio::test]

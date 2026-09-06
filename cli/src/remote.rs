@@ -438,6 +438,10 @@ struct ProjectLifecycle {
     code: String,
     status: String,
     closed_at: Option<String>,
+    /// Derived by the server from `repository_url`/`forge_provisioned_at`/
+    /// `git_initialized_at` — never a stored column. See
+    /// `store::project_surfaces::SourceState`.
+    source_state: store::project_surfaces::SourceState,
 }
 
 /// `navigator site projects lifecycle [--host h] [--json]` — read the
@@ -468,13 +472,19 @@ pub async fn projects_lifecycle(host: Option<&str>, json: bool) -> ExitCode {
                         row.code.clone(),
                         row.status.clone(),
                         row.closed_at.clone().unwrap_or_default(),
+                        row.source_state.as_str().to_string(),
                     ]
                 })
                 .collect::<Vec<_>>();
             print_projects(
-                &std::iter::once(vec!["code".into(), "status".into(), "closed_at".into()])
-                    .chain(table_rows)
-                    .collect::<Vec<_>>(),
+                &std::iter::once(vec![
+                    "code".into(),
+                    "status".into(),
+                    "closed_at".into(),
+                    "source_state".into(),
+                ])
+                .chain(table_rows)
+                .collect::<Vec<_>>(),
                 false,
             )?;
         }
@@ -2196,8 +2206,8 @@ mod tests {
         Mock::given(method("GET"))
             .and(path("/app/api/project-lifecycle"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
-                {"code": "acme", "status": "closed", "closed_at": "2026-09-02T00:00:00Z"},
-                {"code": "sample", "status": "open", "closed_at": null}
+                {"code": "acme", "status": "closed", "closed_at": "2026-09-02T00:00:00Z", "source_state": "attached"},
+                {"code": "sample", "status": "open", "closed_at": null, "source_state": "not_enabled"}
             ])))
             .expect(2)
             .mount(&server)

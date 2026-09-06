@@ -66,7 +66,7 @@ pub enum SurfaceStatus {
 /// never [`SourceState::Pending`] or [`SourceState::Failed`] — an absent
 /// repository is a legitimate, common resting state, not a stalled or broken
 /// one (see `docs/project-repositories.md#an-absent-repository-is-legitimate`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SourceState {
     /// No repository is recorded and reconcile has never stamped a failed
@@ -96,6 +96,23 @@ pub enum SourceState {
     /// indistinguishable from never having tried — so no writer produces
     /// this state yet. Reserved for a future persisted failure marker.
     Failed,
+}
+
+impl SourceState {
+    /// The wire spelling — the same string [`serde::Serialize`] produces,
+    /// exposed as a plain method so a CLI table or log line can print it
+    /// without round-tripping through JSON.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            SourceState::NotEnabled => "not_enabled",
+            SourceState::Pending => "pending",
+            SourceState::Unknown => "unknown",
+            SourceState::Attached => "attached",
+            SourceState::Initialized => "initialized",
+            SourceState::Failed => "failed",
+        }
+    }
 }
 
 /// Derive [`SourceState`] from one Project's own columns. See the type's own
@@ -620,6 +637,23 @@ mod tests {
             Some("2026-09-02T00:00:00Z"),
         );
         assert_eq!(source_state(&project), SourceState::Initialized);
+    }
+
+    /// `as_str` and `serde::Serialize` must agree, or a CLI table and the
+    /// JSON a caller parses would name the same state two different ways.
+    #[test]
+    fn as_str_matches_the_serialized_wire_spelling() {
+        for state in [
+            SourceState::NotEnabled,
+            SourceState::Pending,
+            SourceState::Unknown,
+            SourceState::Attached,
+            SourceState::Initialized,
+            SourceState::Failed,
+        ] {
+            let serialized = serde_json::to_value(state).expect("serialize");
+            assert_eq!(serialized, state.as_str(), "{state:?}");
+        }
     }
 
     /// A minimal in-memory [`projects::Project`] carrying only the three

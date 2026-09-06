@@ -2834,6 +2834,30 @@ a.nav-link:hover {
  * Matter document + project forms (#956 Phase 4)
  * ==========================================================================*/
 
+/* ENG-477: the Slack and Notion cards on the matter edit form. Each is a
+ * bounded `.nav-fieldset` carrying a private field, a "share with the client"
+ * toggle, and the shared field the toggle reveals. The reveal is pure CSS —
+ * `:has()` on the toggle's own `.nav-field--check` wrapper — so it works
+ * before hydration and needs no script, matching the form's own native-POST,
+ * no-JavaScript save path. `.nav-field--check` and `.project-edit__reveal`
+ * are siblings inside the same fieldset, which is what the sibling
+ * combinator below depends on. */
+.project-edit__reveal {
+  display: none;
+}
+
+.project-edit__resource-card .nav-field--check:has(.nav-checkbox:checked)
+  ~ .project-edit__reveal {
+  display: block;
+}
+
+.project-edit__resource-card-mark {
+  width: 1.25rem;
+  height: 1.25rem;
+  vertical-align: text-bottom;
+  margin-right: 0.375rem;
+}
+
 /* The Download row above a filed document's provenance. */
 .document-actions {
   margin: 1.25rem 0;
@@ -2849,51 +2873,6 @@ a.nav-link:hover {
 .participation-intro {
   color: var(--nav-color-text-muted);
   margin: 0 0 1rem;
-}
-
-/* Project collaboration resources are separate audience cards inside the
- * descriptive edit form. The private field is always visible; the client
- * field appears only after the lawyer enables its explicit Navigator toggle. */
-.project-resource-cards {
-  display: grid;
-  gap: 1rem;
-  max-width: 42rem;
-  margin-bottom: 1rem;
-}
-
-.project-resource-card {
-  max-width: none;
-}
-
-.project-resource-card__title {
-  margin-top: 0;
-}
-
-.project-resource-card__sharing {
-  margin: 1.25rem 0 1rem;
-}
-
-.project-resource-card__sharing .nav-label {
-  display: inline;
-  margin-left: 0.35rem;
-}
-
-.project-resource-card__shared {
-  margin-top: 1rem;
-}
-
-.project-resource-card__confirmation {
-  padding: 1rem;
-  border-left: 0.25rem solid var(--nav-color-danger);
-  background: var(--nav-color-surface-muted);
-}
-
-.project-resource-card__confirmation p {
-  margin-top: 0;
-}
-
-.project-resource-card__confirmation .nav-btn {
-  margin-right: 0.5rem;
 }
 
 /* Inline record creation on the matter-open form. The two HTMX-swapped

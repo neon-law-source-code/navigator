@@ -208,6 +208,42 @@ impl Variant {
     }
 }
 
+/// The calibration a notation's `jurisdiction:` selects — jurisdiction as a
+/// parameter to one geometry, not a fork (see the module-level docs).
+/// `jurisdiction` is a code from `store/seeds/Jurisdiction.yaml`
+/// (`rules::F110JurisdictionPath::JURISDICTIONS`); `pdf` does not depend on
+/// `rules`, so the table is keyed on the bare code string rather than a
+/// shared type.
+///
+/// Only the jurisdictions a template actually needs are mapped:
+///
+/// - **`NV`** → [`Variant::NumberedRailTrial`]. Eighth Judicial District
+///   Court (Clark County) Rule EDCR 7.20 requires lines numbered in the
+///   left margin.
+/// - **`CA`** → [`Variant::NumberedRailTrial`]. California Rules of Court
+///   2.108(4) requires "at least 3 lines numbered for each vertical inch"
+///   — the rule [`Calibration::DEFAULT`]'s grid is calibrated against.
+/// - **`US`** → [`Variant::NoRailTrial`]. Federal district local rules are
+///   not uniform on the numbered rail: S.D. Cal. `CivLR` 5.1(a) requires
+///   one, but nothing in the Federal Rules of Civil Procedure does, and
+///   most districts run no rail at all. `US` is deliberately the
+///   lowest-common-denominator calibration rather than a rail every
+///   federal filer would need to strip.
+/// - Every other code (including a real jurisdiction this table has not
+///   yet been extended to, and [`Variant::Appellate`], which no
+///   jurisdiction has needed) returns `None` — there is no default
+///   calibration a caller may silently fall back to; an unmapped
+///   jurisdiction is a template that cannot render as a pleading yet, not
+///   a reason to guess.
+#[must_use]
+pub fn variant_for_jurisdiction(jurisdiction: &str) -> Option<Variant> {
+    match jurisdiction.trim() {
+        "NV" | "CA" => Some(Variant::NumberedRailTrial),
+        "US" => Some(Variant::NoRailTrial),
+        _ => None,
+    }
+}
+
 /// Vertical space, expressible **only** in whole grid units of
 /// [`Calibration::DEFAULT`].
 ///
@@ -357,7 +393,8 @@ stroke: 0.5pt))\n\
 #[cfg(test)]
 mod tests {
     use super::{
-        authority_entry, grid_skip, page_limit_warning, preamble, Calibration, Leading, Variant,
+        authority_entry, grid_skip, page_limit_warning, preamble, variant_for_jurisdiction,
+        Calibration, Leading, Variant,
     };
 
     /// The single derivation the layout hangs off. If this drifts, every
@@ -463,6 +500,45 @@ mod tests {
         assert!(!entry.contains("#emph[5 U.S. 137]"));
         assert!(entry.contains("repeat[.]"), "dotfill to the page number");
         assert!(entry.ends_with("12]\n"));
+    }
+
+    /// The jurisdiction→`Variant` table, asserted rather than assumed: a
+    /// transposed row would silently render the wrong court's paper.
+    #[test]
+    fn the_jurisdiction_table_matches_its_specified_mapping() {
+        let table = [
+            ("NV", Some(Variant::NumberedRailTrial)),
+            ("CA", Some(Variant::NumberedRailTrial)),
+            ("US", Some(Variant::NoRailTrial)),
+        ];
+        for (jurisdiction, expected) in table {
+            assert_eq!(
+                variant_for_jurisdiction(jurisdiction),
+                expected,
+                "{jurisdiction}"
+            );
+        }
+    }
+
+    /// `Variant::Appellate` is unmapped until a jurisdiction needs it, and
+    /// an unrecognized or not-yet-mapped jurisdiction code returns `None`
+    /// rather than guessing a calibration.
+    #[test]
+    fn appellate_and_unmapped_jurisdictions_return_none() {
+        assert_eq!(variant_for_jurisdiction("US"), Some(Variant::NoRailTrial));
+        for jurisdiction in ["NY", "TX", "GMBH", "ZZ", "", "  "] {
+            assert_eq!(
+                variant_for_jurisdiction(jurisdiction),
+                None,
+                "{jurisdiction} must not silently resolve to a calibration"
+            );
+        }
+        // Nothing in the table maps to Appellate at all — it stays
+        // unreachable from a jurisdiction code until a future variant adds
+        // an appellate row.
+        assert_ne!(variant_for_jurisdiction("NV"), Some(Variant::Appellate));
+        assert_ne!(variant_for_jurisdiction("CA"), Some(Variant::Appellate));
+        assert_ne!(variant_for_jurisdiction("US"), Some(Variant::Appellate));
     }
 
     /// A party name carrying Typst sigils must render verbatim.

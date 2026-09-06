@@ -97,19 +97,44 @@ pub enum OutputFormat {
     /// sit at body size so a section number reads as a label rather
     /// than a title.
     Agreement,
+    /// Court paper — a complaint, motion, or brief — rendered through
+    /// [`crate::pleading`]'s calibrated geometry rather than this module's
+    /// own page-chrome constants. Carries the calibration a template's
+    /// `jurisdiction:` selects
+    /// ([`crate::pleading::variant_for_jurisdiction`]); the caller resolves
+    /// that mapping and constructs this variant directly; `parse` does not
+    /// produce it (see [`OutputFormat::parse`]). No letterhead — a
+    /// pleading's typeface, margins, and rail are a court-rule compliance
+    /// decision, never the firm's own brand chrome.
+    Pleading(crate::pleading::Variant),
 }
 
 impl OutputFormat {
-    /// The `output:` frontmatter values that map to a non-default
-    /// format. `Plain` is the implicit default and is not declared, so
-    /// it is absent here. The `rules` `N109` validator accepts exactly
-    /// these strings.
+    /// The `output:` frontmatter values that map to a non-default,
+    /// data-free format constructible from the bare name alone. `Plain` is
+    /// the implicit default and is not declared, so it is absent here.
+    ///
+    /// `pleading` is deliberately **absent**, even though `rules`' `N109`
+    /// validator accepts it as a declarable `output:` value
+    /// (`F109OutputFormat::VALID`): [`OutputFormat::Pleading`] carries a
+    /// [`crate::pleading::Variant`] a bare format name cannot supply — the
+    /// calibration comes from the template's `jurisdiction:`, a second
+    /// field `parse` never sees. This is the same decoupling `N109`'s own
+    /// docs describe for `form` (a render *mode*, not a Typst format at
+    /// all): the two lists name what each layer can accept, not one
+    /// mirrored set.
     pub const FRONTMATTER_VALUES: &'static [&'static str] = &["letter", "agreement"];
 
     /// Parse a format name as it appears in `output:` frontmatter or on
     /// the CLI `--format` flag. Accepts `plain`, `letter`, and
     /// `agreement`; returns `None` for anything else so callers can
     /// report it.
+    ///
+    /// Never returns [`OutputFormat::Pleading`] — its calibration comes
+    /// from a jurisdiction, not the bare format name, so a caller that
+    /// wants pleading paper resolves
+    /// [`crate::pleading::variant_for_jurisdiction`] itself and constructs
+    /// `OutputFormat::Pleading(variant)` directly.
     #[must_use]
     pub fn parse(name: &str) -> Option<Self> {
         match name.trim() {
@@ -183,6 +208,11 @@ impl OutputFormat {
                 ),
                 head = letterhead_block(letterhead, "1.1em"),
             ),
+            // Court paper is a different geometry entirely — no letterhead,
+            // no shared page-chrome constants, calibrated per jurisdiction.
+            // `pleading::preamble` is the one place that geometry is
+            // produced; delegate rather than duplicating it here.
+            Self::Pleading(variant) => crate::pleading::preamble(variant),
         }
     }
 }
@@ -297,6 +327,56 @@ mod tests {
         assert_eq!(OutputFormat::parse("demand_letter"), None);
         assert_eq!(OutputFormat::parse("contract"), None);
         assert_eq!(OutputFormat::parse(""), None);
+        // Pleading's calibration comes from a jurisdiction `parse` never
+        // sees — it is never producible from a bare format name.
+        assert_eq!(OutputFormat::parse("pleading"), None);
+    }
+
+    #[test]
+    fn pleading_delegates_its_preamble_to_the_pleading_module() {
+        // The whole point of the variant: it renders through
+        // `pleading::preamble`'s calibrated geometry, not this module's own
+        // page-chrome constants, and ignores the letterhead entirely — a
+        // pleading's typeface and margins are a court-rule decision, never
+        // the firm's brand chrome.
+        let lh = Letterhead::default();
+        for variant in crate::pleading::Variant::ALL {
+            let format_preamble = OutputFormat::Pleading(*variant).preamble(&lh);
+            assert_eq!(format_preamble, crate::pleading::preamble(*variant));
+            assert!(
+                !format_preamble.contains("logo-neon-law.png"),
+                "{variant:?} must carry no firm letterhead: {format_preamble}"
+            );
+        }
+        // The rail is the visible difference between the calibrations:
+        // present for the numbered-rail trial variant, absent otherwise.
+        assert!(
+            OutputFormat::Pleading(crate::pleading::Variant::NumberedRailTrial)
+                .preamble(&lh)
+                .contains("#let rail(")
+        );
+        assert!(
+            !OutputFormat::Pleading(crate::pleading::Variant::NoRailTrial)
+                .preamble(&lh)
+                .contains("#let rail(")
+        );
+    }
+
+    #[test]
+    fn a_pleading_kind_document_renders_through_the_pleading_geometry() {
+        // ENG-103's acceptance bar: a document declaring the court-paper
+        // format actually compiles through pleading.rs, not merely
+        // produces a plausible preamble string.
+        let variant =
+            crate::pleading::variant_for_jurisdiction("NV").expect("NV is a mapped jurisdiction");
+        let body = "Plaintiff alleges as follows.";
+        let pdf = super::render_document(
+            body,
+            OutputFormat::Pleading(variant),
+            &Letterhead::default(),
+        )
+        .expect("pleading renders");
+        assert_eq!(&pdf[..4], b"%PDF", "not a PDF");
     }
 
     #[test]

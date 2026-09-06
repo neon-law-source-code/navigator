@@ -38,6 +38,14 @@ pub enum Kind {
     /// A private agreement between the client and a third party
     /// (employment, contractor, LLC operating agreement).
     Agreement,
+    /// Court paper — a complaint, motion, or brief — filed with a court.
+    /// Distinct from [`Kind::Filing`], which is a document filed with a
+    /// government body (formation, annual report, tax return, application)
+    /// and pairs with `output: form` and the `AcroForm` fill path; a
+    /// pleading is a legal instrument the firm drafts, pairs with
+    /// `output: pleading`, and renders through `pdf::pleading`'s
+    /// jurisdiction-calibrated geometry rather than a fillable form.
+    Pleading,
     /// The engagement that opens a matter — a lawyer creates it on the
     /// Project like any other notation (opening the Project does not open
     /// it) and it is the one kind the self-serve doors accept as a
@@ -143,6 +151,7 @@ impl Kind {
         Kind::Trust,
         Kind::Directive,
         Kind::Agreement,
+        Kind::Pleading,
         Kind::Onboarding,
         Kind::Offboarding,
         Kind::Memo,
@@ -177,6 +186,7 @@ impl Kind {
             Kind::Trust => "trust",
             Kind::Directive => "directive",
             Kind::Agreement => "agreement",
+            Kind::Pleading => "pleading",
             Kind::Onboarding => "onboarding",
             Kind::Offboarding => "offboarding",
             Kind::Memo => "memo",
@@ -213,6 +223,7 @@ impl Kind {
             Kind::Trust => "A trust instrument",
             Kind::Directive => "An advance health-care or durable financial directive",
             Kind::Agreement => "A private agreement (employment, contractor, LLC operating)",
+            Kind::Pleading => "Court paper filed with a court (complaint, motion, brief)",
             Kind::Onboarding => "The engagement that opens a matter — one instrument or a bundle",
             Kind::Offboarding => "The firm-signed letter that closes a matter",
             Kind::Memo => "An analytical work product (a review memo or opinion)",
@@ -293,6 +304,7 @@ impl Kind {
             | Kind::Trust
             | Kind::Directive
             | Kind::Agreement
+            | Kind::Pleading
             | Kind::Offboarding
             | Kind::Memo
             | Kind::Event
@@ -340,6 +352,7 @@ impl Kind {
             | Kind::Trust
             | Kind::Directive
             | Kind::Agreement
+            | Kind::Pleading
             | Kind::Onboarding
             | Kind::Memo
             | Kind::Event
@@ -401,6 +414,7 @@ impl Kind {
                 | Kind::Trust
                 | Kind::Directive
                 | Kind::Agreement
+                | Kind::Pleading
                 | Kind::Onboarding
                 | Kind::Offboarding
                 | Kind::Memo
@@ -451,6 +465,10 @@ impl Kind {
             // Already true in practice before this method existed: every
             // template that declares `output: form` is `kind: filing`.
             Kind::Filing => "form",
+            // Court paper renders through pdf::pleading's calibrated
+            // geometry, never firm letterhead — a pleading's typeface and
+            // margins are a court-rule compliance decision.
+            Kind::Pleading => "pleading",
             // Instruments between other parties never carry firm
             // letterhead. Every other kind below never reaches a render
             // profile: content pages, matter dashboards, the GitHub intake,
@@ -512,6 +530,7 @@ impl Kind {
                 | Kind::Trust
                 | Kind::Directive
                 | Kind::Agreement
+                | Kind::Pleading
                 | Kind::Onboarding
                 | Kind::Offboarding
                 | Kind::Memo
@@ -549,6 +568,7 @@ impl Kind {
                 | Kind::Trust
                 | Kind::Directive
                 | Kind::Agreement
+                | Kind::Pleading
                 | Kind::Onboarding
                 | Kind::Offboarding
                 | Kind::Memo
@@ -610,6 +630,7 @@ pub const VALID: &[&str] = &[
     "trust",
     "directive",
     "agreement",
+    "pleading",
     "onboarding",
     "offboarding",
     "memo",
@@ -732,6 +753,7 @@ mod tests {
             Kind::Trust,
             Kind::Directive,
             Kind::Agreement,
+            Kind::Pleading,
             Kind::Onboarding,
             Kind::Offboarding,
             Kind::Memo,
@@ -821,6 +843,7 @@ mod tests {
             Kind::Trust,
             Kind::Directive,
             Kind::Agreement,
+            Kind::Pleading,
             Kind::Offboarding,
             Kind::Memo,
             Kind::Event,
@@ -862,6 +885,7 @@ mod tests {
             Kind::Trust,
             Kind::Directive,
             Kind::Agreement,
+            Kind::Pleading,
             Kind::Onboarding,
             Kind::Memo,
             Kind::Event,
@@ -967,6 +991,13 @@ mod tests {
         // Already true in practice: every template that declares
         // `output: form` is `kind: filing`.
         assert_eq!(Kind::Filing.default_output(), "form");
+    }
+
+    #[test]
+    fn pleading_defaults_to_pleading() {
+        // Court paper renders through pdf::pleading's own geometry, never
+        // firm letterhead.
+        assert_eq!(Kind::Pleading.default_output(), "pleading");
     }
 
     #[test]

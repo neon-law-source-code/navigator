@@ -30,12 +30,15 @@ impl F109OutputFormat {
     pub const CODE: &'static str = "N109";
     /// Render profiles a template may declare. `letter` and `agreement`
     /// are Typst letterhead styles — the same chrome, typeset airily for
-    /// a letter and curtly for a contract; `form` is the `AcroForm` fill
-    /// **mode**, not a Typst format. `plain` is the implicit default and
-    /// is intentionally not declarable. This set is decoupled from
-    /// `pdf::OutputFormat::FRONTMATTER_VALUES` on purpose — `form` has
-    /// no Typst format, and `rules` does not depend on `pdf`.
-    pub const VALID: &'static [&'static str] = &["letter", "agreement", "form"];
+    /// a letter and curtly for a contract; `pleading` is court paper,
+    /// calibrated by the template's `jurisdiction:`
+    /// (`pdf::pleading::variant_for_jurisdiction`); `form` is the
+    /// `AcroForm` fill **mode**, not a Typst format. `plain` is the
+    /// implicit default and is intentionally not declarable. This set is
+    /// decoupled from `pdf::OutputFormat::FRONTMATTER_VALUES` on purpose —
+    /// `form` has no Typst format, `pleading` needs a jurisdiction `parse`
+    /// never sees, and `rules` does not depend on `pdf`.
+    pub const VALID: &'static [&'static str] = &["letter", "agreement", "pleading", "form"];
     /// The render profile that selects the `AcroForm` fill mode and so
     /// requires the `form:` / `origin_url:` companion keys.
     const FORM: &'static str = "form";
@@ -154,6 +157,27 @@ mod tests {
         let f = file("---\ntitle: T\noutput: agreement\n---\n");
         let v = F109OutputFormat.lint(&f);
         assert!(v.is_empty(), "{v:?}");
+    }
+
+    #[test]
+    fn passes_for_the_pleading_profile() {
+        // `pleading` is court paper, calibrated by the template's
+        // `jurisdiction:` (`pdf::pleading::variant_for_jurisdiction`). Being
+        // typeset rather than an AcroForm fill, it needs no companion keys.
+        let f = file("---\ntitle: T\noutput: pleading\n---\n");
+        let v = F109OutputFormat.lint(&f);
+        assert!(v.is_empty(), "{v:?}");
+    }
+
+    #[test]
+    fn flags_a_stray_form_key_on_a_pleading_template() {
+        let f = file("---\ntitle: T\noutput: pleading\nform: nv__llc_formation\n---\n");
+        let v = F109OutputFormat.lint(&f);
+        assert_eq!(v.len(), 1);
+        assert!(
+            v[0].message.contains("must not carry a `form:` key"),
+            "{v:?}"
+        );
     }
 
     #[test]

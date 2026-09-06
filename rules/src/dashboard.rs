@@ -391,6 +391,7 @@ pub fn skeleton(kind: Kind) -> Option<Skeleton> {
         | Kind::Trust
         | Kind::Directive
         | Kind::Agreement
+        | Kind::Pleading
         | Kind::Onboarding
         | Kind::Offboarding
         | Kind::Memo

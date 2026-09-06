@@ -347,14 +347,17 @@ offboarding letter (`?doc=onboarding`, `offboarding`). A notation on a matter �
 **Output formats — the letterhead seam.** How the document is dressed is an `OutputFormat` (`pdf::format`): `plain`
 (page geometry + firm typeface), `letter` (the firm letterhead — mark, letterspaced wordmark, a rule across the page,
 and a contact line carrying the firm mailbox and website rather than a street address, with every page numbered), or
-`agreement` (that same letterhead over an executed contract, typeset curtly and holding every table unbreakable so a
-signature block never splits across a page break). The default comes from the template's `kind:` (`Kind::default_output`
-in `rules`); an optional `output:` frontmatter field overrides it (validated by rule `N109`), and `--format` overrides
-per render on top of that. New forms — pleading paper, a fax cover — are a new `OutputFormat` variant plus its Typst
-chrome preamble; the conversion, embedded logo, and font stack are shared, and `agreement` is the worked example. Fill
-`{{placeholder}}` tokens with repeated `--answer code=value` flags; unfilled tokens render verbatim. The full command,
-letterhead, and font reference is [`pdf/README.md`](../pdf/README.md) — including how the licensed GORP Serif faces
-reach the renderer without their bytes entering the repository.
+`agreement` (that same letterhead over an executed contract, typeset curtly, a running header naming the firm on every
+continuation page, seven-level Harvard outline numbering (`pdf::outline` — each heading shows only its own level's
+marker; a cross-reference resolves the full ancestor path through Typst's own reference machinery, independent of that
+marker), and every table held unbreakable so a signature block never splits across a page break). `pleading` is court
+paper — no firm letterhead at all, calibrated instead by the template's `jurisdiction:` through `pdf::pleading`. The
+default comes from the template's `kind:` (`Kind::default_output` in `rules`); an optional `output:` frontmatter field
+overrides it (validated by rule `N109`), and `--format` overrides per render on top of that. A further form — a fax
+cover, say — is a new `OutputFormat` variant plus its Typst chrome preamble; the conversion, embedded logo, and font
+stack are shared. Fill `{{placeholder}}` tokens with repeated `--answer code=value` flags; unfilled tokens render
+verbatim. The full command, letterhead, and font reference is [`pdf/README.md`](../pdf/README.md) — including how the
+licensed GORP Serif faces reach the renderer without their bytes entering the repository.
 
 **Filling fillable government PDFs — done.** `pdf::fill_acroform(blank_pdf, fields)` opens an existing fillable PDF (a
 Nevada SoS articles form, an IRS Form 990) via `lopdf`, walks its AcroForm `/Fields`, sets each `/V`, and sets

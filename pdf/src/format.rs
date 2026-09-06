@@ -192,6 +192,14 @@ impl OutputFormat {
                     "#set page(\n",
                     "  paper: \"us-letter\",\n",
                     "  margin: (x: 0.85in, top: 0.8in, bottom: 0.75in),\n",
+                    // A page split from the rest of the contract — copied,
+                    // faxed, or simply dropped — should say which contract it
+                    // belongs to. The letterhead already marks page one, so
+                    // the header stays silent there and only names the firm
+                    // on every continuation page.
+                    "  header: context if counter(page).get().first() > 1 [",
+                    "#align(right)[#text(size: 7.5pt, tracking: 0.1em, fill: luma(45%))[",
+                    "#upper[{name}]]]],\n",
                     "  footer: context align(center)[#text(size: 7.5pt, fill: luma(45%))[",
                     "Page #counter(page).display() of #counter(page).final().first()]],\n",
                     ")\n",
@@ -205,8 +213,11 @@ impl OutputFormat {
                     // first signer saw. Keep every table whole.
                     "#show table: set block(breakable: false)\n",
                     "{head}",
+                    "{outline}",
                 ),
+                name = esc(&letterhead.name),
                 head = letterhead_block(letterhead, "1.1em"),
+                outline = crate::outline::preamble(),
             ),
             // Court paper is a different geometry entirely — no letterhead,
             // no shared page-chrome constants, calibrated per jurisdiction.
@@ -638,6 +649,45 @@ mod tests {
     }
 
     #[test]
+    fn agreement_header_names_the_firm_only_on_continuation_pages() {
+        // A page separated from the rest of a contract should say which
+        // contract it belongs to. The letterhead already marks page one,
+        // so a bare one-page document must carry the firm's name exactly
+        // once (the letterhead) — no redundant header repeats it there.
+        let lh = Letterhead::default();
+        let one_page =
+            super::render_document("Short body.", OutputFormat::Agreement, &lh).expect("renders");
+        assert_eq!(crate::passage::page_count(&one_page).expect("count"), 1);
+        assert_eq!(
+            crate::passage::occurrence_count(&one_page, "NEON LAW").expect("counts"),
+            1,
+            "a single page carries only the letterhead's own wordmark"
+        );
+
+        // A document spanning several pages: the header repeats once per
+        // continuation page, on top of the letterhead's own appearance.
+        let mut body = String::new();
+        for n in 1..=60 {
+            write!(
+                body,
+                "Paragraph {n}. Filler text long enough to help fill out the page and force it \
+                 to break onto the next one eventually.\n\n"
+            )
+            .expect("writing to a String never fails");
+        }
+        let many_pages =
+            super::render_document(&body, OutputFormat::Agreement, &lh).expect("renders");
+        let pages = crate::passage::page_count(&many_pages).expect("count");
+        assert!(pages > 1, "fixture must actually span pages: {pages}");
+        assert_eq!(
+            crate::passage::occurrence_count(&many_pages, "NEON LAW").expect("counts"),
+            pages,
+            "the wordmark shows once on page one (letterhead) and once per continuation page \
+             (header) — {pages} pages total"
+        );
+    }
+
+    #[test]
     fn agreement_render_produces_a_pdf_on_the_letterhead() {
         // The whole point of the variant is a contract that goes out
         // under the firm's name, so the `#image(..)` must resolve and the
@@ -691,15 +741,20 @@ mod tests {
                 "letter letterhead is missing `{element}`: {letter}"
             );
         }
-        // And the block *entire* — everything inside `#block(below: …)[…]`,
-        // which is the last thing either preamble emits — is identical.
-        // Only the `below:` distance, the air each format wants beneath
-        // the mark, is allowed to differ, so it is excluded by starting
-        // the comparison at the block's opening bracket.
+        // And the block *entire* — everything inside `#block(below: …)[…]`
+        // — is identical. Only the `below:` distance, the air each format
+        // wants beneath the mark, is allowed to differ, so it is excluded
+        // by starting the comparison at the block's opening bracket; the
+        // comparison ends at the block's own closing bracket (`]` on its
+        // own line) rather than at the end of the string, because
+        // `OutputFormat::Agreement`'s preamble carries more after the
+        // letterhead (the Harvard outline set-up) that `OutputFormat::
+        // Letter`'s never will.
         let mark = |p: &str| {
             let start = p.find("#block(below:").expect("letterhead block");
             let open = start + p[start..].find(")[").expect("the block's content");
-            p[open..].to_string()
+            let close = open + p[open..].find("]\n\n").expect("the block's own close") + 1;
+            p[open..close].to_string()
         };
         assert_eq!(
             mark(&agreement),

@@ -2,8 +2,8 @@
 //!
 //! ENG-81 collapsed the old per-tier namespaces, `/portal` among them, into one
 //! `/app` namespace, and the paths that used to hang off `/portal` now live under
-//! `/app` — the government-forms index at `/app/forms`, the impersonation stop
-//! at `/app/impersonation/stop`, a matter's notation documents under
+//! `/app` — the government-forms index at `/app/forms`, the client-DRI-view stop
+//! at `/app/view-as-client/stop`, a matter's notation documents under
 //! `/app/projects/{code}/...`. Nothing serves a top-level `/portal` any more,
 //! deliberately without a redirect shim, and
 //! `server/tests/routes.rs::the_retired_project_prefixes_are_not_served` pins
@@ -407,13 +407,13 @@ fn the_collector_finds_the_real_router() {
          broken and a retired path could hide behind one"
     );
 
-    let literal = sites.iter().any(|s| {
-        s.kind == SiteKind::Registration && s.value == "/app/admin/people/{id}/impersonate"
-    });
+    let literal = sites
+        .iter()
+        .any(|s| s.kind == SiteKind::Registration && s.value == "/app/admin/people/{id}/welcome");
     assert!(
         literal,
         "the literal-argument shape stopped being extracted (expected \
-         `/app/admin/people/{{id}}/impersonate` from portal/src/admin.rs)"
+         `/app/admin/people/{{id}}/welcome` from portal/src/admin.rs)"
     );
 
     let via = sites
@@ -448,7 +448,7 @@ mod classifier {
         assert!(is_top_level_portal("/portal/"));
         assert!(is_top_level_portal("/portal/forms"));
         assert!(is_top_level_portal("/portal/forms/{file}"));
-        assert!(is_top_level_portal("/portal/impersonation/stop"));
+        assert!(is_top_level_portal("/portal/view-as-client/stop"));
         assert!(is_top_level_portal(
             "/portal/notations/{id}/documents/{doc_id}"
         ));

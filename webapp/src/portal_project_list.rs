@@ -48,10 +48,10 @@ pub struct ClientProjectsView {
     pub summary: ClientProjectsSummary,
     pub rows: Vec<ClientProjectRow>,
     pub role: ViewerRole,
-    /// Who the viewer is acting as, when an admin is impersonating a client.
+    /// Who the viewer is acting as, when a firm member is viewing this matter as its client DRI (read-only).
     /// `None` for an ordinary session, which renders no banner.
     #[serde(default)]
-    pub impersonation: Option<crate::components::ImpersonationView>,
+    pub viewing_as_dri: Option<crate::components::ClientDriView>,
     /// The deploy's brand mark for the navbar. `None` when the mounted brand
     /// configures none.
     #[serde(default)]
@@ -81,9 +81,9 @@ pub async fn list_client_projects() -> Result<ClientProjectsView, ServerFnError>
         .await
         .map(|axum::Extension(role)| role)
         .unwrap_or_default();
-    let crate::components::Impersonating(impersonation) =
+    let crate::components::ViewingAsDri(viewing_as_dri) =
         dioxus_fullstack_core::FullstackContext::extract::<
-            axum::Extension<crate::components::Impersonating>,
+            axum::Extension<crate::components::ViewingAsDri>,
             _,
         >()
         .await
@@ -122,7 +122,7 @@ pub async fn list_client_projects() -> Result<ClientProjectsView, ServerFnError>
         summary,
         rows,
         role,
-        impersonation,
+        viewing_as_dri,
         logo: crate::app_chrome::app_logo_from_context().await,
         tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
         firm_name: crate::app_chrome::firm_name_from_context().await,
@@ -155,7 +155,7 @@ pub fn ClientProjects() -> Element {
         document::Title { "{view.firm_name} | Portal" }
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
         document::Stylesheet { href: "{view.tokens_href}" }
-        crate::components::ImpersonationBanner { view: view.impersonation.clone() }
+        crate::components::ClientDriViewBanner { view: view.viewing_as_dri.clone() }
         crate::components::AppNavbar {
             destinations: crate::app_chrome::app_destinations(view.role),
             logo: view.logo.clone(),

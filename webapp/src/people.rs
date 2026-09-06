@@ -46,10 +46,6 @@ pub struct PersonRow {
     /// the admin surface, which shows the Delete action.
     #[serde(default)]
     pub can_delete: bool,
-    /// The row may be impersonated — a client, on a surface that allows it (the
-    /// admin console).
-    #[serde(default)]
-    pub can_impersonate: bool,
 }
 
 /// The signed-in viewer's system tier. `web` derives it from the request
@@ -115,7 +111,7 @@ impl ViewerRole {
 pub const LIST_PATH: &str = "/app/admin/people";
 /// The "Add person" destination.
 pub const NEW_HREF: &str = "/app/admin/people/new";
-/// The detail path base for the per-row Edit / Delete / Impersonate routes.
+/// The detail path base for the per-row Edit / Delete routes.
 pub const DETAIL_PATH: &str = "/app/admin/people";
 
 /// The rendered people view: the rows, the active sort/filter state the
@@ -137,7 +133,7 @@ pub struct PeopleView {
     /// or a non-client record). `None` on a plain visit.
     #[serde(default)]
     pub error: Option<String>,
-    /// The session CSRF token for the per-row Delete / Impersonate forms.
+    /// The session CSRF token for the per-row Delete form.
     #[serde(default)]
     pub csrf_token: String,
     /// The deploy's firm name, for the document title. Resolved from the
@@ -149,8 +145,8 @@ pub struct PeopleView {
 
 /// Fetch the people directory for the **admin console** (`/app/admin/people`):
 /// refuse non-admin, read the injected CSRF token, and compute each row's
-/// delete/impersonate eligibility (only client records that are not the
-/// bootstrap Owner), so the admin surface renders the per-row action column.
+/// delete eligibility (only client records that are not the bootstrap Owner),
+/// so the admin surface renders the per-row action column.
 #[server]
 pub async fn list_admin_people() -> Result<PeopleView, ServerFnError> {
     let axum::extract::Query(query) =
@@ -237,7 +233,6 @@ pub async fn list_admin_people() -> Result<PeopleView, ServerFnError> {
                     role: p.role.as_str().to_string(),
                     // The command blocks deleting privileged roles and the bootstrap Owner.
                     can_delete: is_client && !is_bootstrap_owner,
-                    can_impersonate: is_client,
                 }
             })
             .collect(),
@@ -326,7 +321,7 @@ fn encode(value: &str) -> String {
 }
 
 /// The admin console people directory (`/app/admin/people`) — the same sortable list
-/// with a per-row action column (Edit / Delete / Impersonate). Resolves the
+/// with a per-row action column (Edit / Delete). Resolves the
 /// admin server function and renders through the shared [`render_people`].
 #[component]
 pub fn AdminPeople() -> Element {
@@ -336,8 +331,7 @@ pub fn AdminPeople() -> Element {
 
 /// Render the resolved people directory: a sortable table (the sort headers are
 /// real anchors carrying the `?sort=` toggle, working pre-hydration) with the
-/// per-row action column — a native Edit link plus Delete / Impersonate `POST`
-/// forms.
+/// per-row action column — a native Edit link plus a Delete `POST` form.
 fn render_people(resource: &Resource<Result<PeopleView, ServerFnError>>) -> Element {
     // Clone the view out of the read guard before rendering so the borrow does
     // not outlive it (the `rsx!` output escapes this scope).
@@ -429,14 +423,12 @@ fn render_people(resource: &Resource<Result<PeopleView, ServerFnError>>) -> Elem
 }
 
 /// The admin console's per-row action cell: the Edit link (always), then — for a
-/// deletable client that is not the bootstrap Owner — a native Delete `POST` form,
-/// and for an impersonatable client a native Impersonate `POST` form. Native
-/// forms so they work pre-hydration; the row used an `hx-delete` button and
-/// an HTMX-free impersonate form.
+/// deletable client that is not the bootstrap Owner — a native Delete `POST`
+/// form. Native forms so they work pre-hydration; the row used an
+/// `hx-delete` button.
 fn person_row_actions(csrf_token: &str, row: &PersonRow) -> Element {
     let edit_href = format!("{DETAIL_PATH}/{}/edit", row.id);
     let delete_action = format!("{DETAIL_PATH}/{}/delete", row.id);
-    let impersonate_action = format!("{DETAIL_PATH}/{}/impersonate", row.id);
     rsx! {
         span { class: "row-actions",
             a { class: "nav-link", href: "{edit_href}", "Edit" }
@@ -445,13 +437,6 @@ fn person_row_actions(csrf_token: &str, row: &PersonRow) -> Element {
                     "aria-label": "Delete {row.name}",
                     input { r#type: "hidden", name: "_csrf", value: "{csrf_token}" }
                     button { class: "nav-btn nav-btn--danger", r#type: "submit", "Delete" }
-                }
-            }
-            if row.can_impersonate {
-                form { class: "row-action", method: "post", action: "{impersonate_action}",
-                    "aria-label": "Impersonate {row.name}",
-                    input { r#type: "hidden", name: "_csrf", value: "{csrf_token}" }
-                    button { class: "nav-btn nav-btn--secondary", r#type: "submit", "Impersonate" }
                 }
             }
         }

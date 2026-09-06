@@ -5,7 +5,7 @@ pub enum AuthState {
     #[default]
     Anonymous,
     Authenticated,
-    Impersonating {
+    ViewingAsDri {
         target_name: String,
         target_email: String,
         csrf_token: String,

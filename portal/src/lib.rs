@@ -535,8 +535,8 @@ where
 }
 
 pub(crate) fn auth_state_for_session_data(session: &session::SessionData) -> views::AuthState {
-    if let Some(i) = &session.impersonation {
-        return views::AuthState::Impersonating {
+    if let Some(i) = &session.viewing_as_dri {
+        return views::AuthState::ViewingAsDri {
             target_name: i.target_name.clone(),
             target_email: i.target_email.clone(),
             csrf_token: session.csrf_token.clone(),
@@ -1440,7 +1440,7 @@ pub fn bootstrap(
     );
     // #641 Phase 3 (admin cluster): the admin console people list renders through
     // Dioxus at /app/admin/people — the sortable directory with a per-row
-    // Edit/Delete/Impersonate action column. `POST /app/admin/people` (create) stays
+    // Edit/Delete action column. `POST /app/admin/people` (create) stays
     // on the router; axum merges the same-path methods.
     let dioxus_admin_people = dioxus_app::admin_people_router(
         state.bootstrap_owner_email.clone(),
@@ -1451,10 +1451,10 @@ pub fn bootstrap(
     );
     // #641 Phase 3 (admin cluster): the admin console person show/edit page
     // renders through Dioxus — the prefilled edit form (name/email/role + the
-    // read-only legal-name parts) plus the welcome/impersonate actions, mounted
-    // at `/app/admin/people/{id}` and its `/edit` alias. Its native-form update,
-    // welcome, and impersonate actions post to the admin router; axum merges
-    // the same-path methods.
+    // read-only legal-name parts) plus the welcome action, mounted at
+    // `/app/admin/people/{id}` and its `/edit` alias. Its native-form update
+    // and welcome actions post to the admin router; axum merges the same-path
+    // methods.
     let dioxus_admin_person_show = dioxus_app::admin_person_show_router(
         state.bootstrap_owner_email.clone(),
         state.surreal.clone(),

@@ -542,7 +542,7 @@ async fn the_public_shell_passes_a_full_document_audit() {
 }
 
 /// The authenticated chrome is a second shell — a different navbar, the
-/// impersonation slot, and the app footer — and no public route renders it. The
+/// client-DRI-view banner slot, and the app footer — and no public route renders it. The
 /// team home at `/app/team` is where a firm person lands, so it is the natural
 /// place to audit that shell in full.
 #[tokio::test]

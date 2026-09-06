@@ -33,7 +33,7 @@ fn browser_session(exp: i64) -> SessionData {
         csrf_token: "csrf-token".into(),
         source: SessionSource::Browser,
         provider: None,
-        impersonation: None,
+        viewing_as_dri: None,
         scope: None,
     }
 }

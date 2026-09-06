@@ -39,11 +39,11 @@ pub mod confirm_delete;
 pub mod copy_runs;
 pub mod data_table;
 pub mod disclaimer;
+pub mod dri_view;
 pub mod focus;
 pub mod form;
 pub mod github_stars;
 pub mod icon;
-pub mod impersonation;
 pub mod links;
 pub mod navigator_chrome;
 pub mod pagination;
@@ -79,6 +79,7 @@ pub use confirm_delete::ConfirmDelete;
 pub use copy_runs::{wire_runs, CopyRun, RunParagraph};
 pub use data_table::{Column, DataTable, Direction, SortState};
 pub use disclaimer::LegalBlueprintDisclaimer;
+pub use dri_view::{ClientDriView, ClientDriViewBanner, ViewingAsDri, VIEW_AS_CLIENT_STOP_ACTION};
 pub use focus::{
     ChoiceGroup, ChoiceGroupOption, Hero, HeroAlign, HeroLevel, Stage, StageWidth, StepList,
     StepMeta, Stepper, StepperPanel,
@@ -90,9 +91,6 @@ pub use form::{
 };
 pub use github_stars::GitHubStars;
 pub use icon::{Icon, IconName, LIBRA_SCALES};
-pub use impersonation::{
-    Impersonating, ImpersonationBanner, ImpersonationView, IMPERSONATION_STOP_ACTION,
-};
 pub use links::ExternalLink;
 pub use navigator_chrome::{
     NavigatorDestination, NavigatorFooter, NavigatorFooterLink, NavigatorNavbar, NavigatorShell,

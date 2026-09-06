@@ -127,7 +127,7 @@ async fn open_list(world: &mut ListWorld, email: String) {
         csrf_token: "test-csrf".into(),
         source: portal::session::SessionSource::Browser,
         provider: None,
-        impersonation: None,
+        viewing_as_dri: None,
         scope: None,
     };
     let cookie = format!(

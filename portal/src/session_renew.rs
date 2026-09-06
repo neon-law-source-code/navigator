@@ -82,7 +82,7 @@ mod tests {
             csrf_token: "csrf".into(),
             source,
             provider: None,
-            impersonation: None,
+            viewing_as_dri: None,
             scope: None,
         }
     }

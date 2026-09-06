@@ -20,36 +20,6 @@ Feature: /app — one authenticated namespace, Owner/Admin/Lawyer only on the wo
     When "nick@neonlaw.com" opens /app/admin/people
     Then the response status is 200
 
-  Scenario: An admin impersonates a client from the people index
-    Given a seeded person "nick@neonlaw.com" with role "admin"
-    And a seeded person "libra@example.com" with role "client"
-    When "nick@neonlaw.com" POSTs to impersonate "libra@example.com"
-    Then the response status is 303
-    And the browser session role is "client"
-    When the browser opens /app/forms with its current session
-    Then the response body contains "Impersonating libra@example.com"
-    And the response body contains "/app/impersonation/stop"
-
-  Scenario: A lawyer cannot impersonate a client
-    Given a seeded person "lawyer@neonlaw.com" with role "lawyer"
-    And a seeded person "libra@example.com" with role "client"
-    When "lawyer@neonlaw.com" POSTs to impersonate "libra@example.com"
-    Then the response status is 403
-
-  Scenario: An admin cannot impersonate lawyer
-    Given a seeded person "nick@neonlaw.com" with role "admin"
-    And a seeded person "lawyer@neonlaw.com" with role "lawyer"
-    When "nick@neonlaw.com" POSTs to impersonate "lawyer@neonlaw.com"
-    Then the response status is 409
-    And the response body contains "Only client users can be impersonated."
-
-  Scenario: An admin cannot impersonate another admin
-    Given a seeded person "nick@neonlaw.com" with role "admin"
-    And a seeded person "other-admin@neonlaw.com" with role "admin"
-    When "nick@neonlaw.com" POSTs to impersonate "other-admin@neonlaw.com"
-    Then the response status is 409
-    And the response body contains "Only client users can be impersonated."
-
   Scenario: A lawyer reads the firm-wide entities index
     Given a seeded person "lawyer@neonlaw.com" with role "lawyer"
     When "lawyer@neonlaw.com" opens /app/admin/entities

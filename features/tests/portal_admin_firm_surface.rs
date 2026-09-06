@@ -30,7 +30,6 @@ struct FirmWorld {
     roles: HashMap<String, store::persons::Role>,
     last_status: Option<StatusCode>,
     last_body: String,
-    current_cookie: Option<String>,
 }
 
 impl std::fmt::Debug for FirmWorld {
@@ -61,7 +60,7 @@ impl FirmWorld {
             csrf_token: "test-csrf".into(),
             source: portal::session::SessionSource::Browser,
             provider: None,
-            impersonation: None,
+            viewing_as_dri: None,
             scope: None,
         };
         format!("{SESSION_COOKIE_NAME}={}", self.sessions().encode(&session))
@@ -163,49 +162,6 @@ async fn open(world: &mut FirmWorld, email: String, path: String) {
     world.last_body = body_string(resp).await;
 }
 
-#[when(regex = r#"^"([^"]+)" POSTs to impersonate "([^"]+)"$"#)]
-async fn post_impersonate(world: &mut FirmWorld, actor_email: String, target_email: String) {
-    let target_id = *world.persons.get(&target_email).expect("target seeded");
-    let cookie = world.session_cookie_for(&actor_email);
-    let resp = world
-        .app()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri(format!("/app/admin/people/{target_id}/impersonate"))
-                .header("cookie", cookie)
-                .header("content-type", "application/x-www-form-urlencoded")
-                .body(Body::from("_csrf=test-csrf"))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    world.last_status = Some(resp.status());
-    world.current_cookie = session_cookie_pair(&resp);
-    world.last_body = body_string(resp).await;
-}
-
-#[when(regex = r"^the browser opens (.+) with its current session$")]
-async fn browser_open_current_session(world: &mut FirmWorld, path: String) {
-    let cookie = world
-        .current_cookie
-        .as_deref()
-        .expect("browser session cookie set");
-    let resp = world
-        .app()
-        .oneshot(
-            Request::builder()
-                .uri(path)
-                .header("cookie", cookie)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    world.last_status = Some(resp.status());
-    world.last_body = body_string(resp).await;
-}
-
 #[then(regex = r"^the response status is (\d+)$")]
 async fn status_is(world: &mut FirmWorld, code: u16) {
     let actual = world.last_status.expect("no response");
@@ -234,32 +190,6 @@ async fn body_does_not_contain(world: &mut FirmWorld, needle: String) {
         "body unexpectedly contained {needle:?}: {}",
         truncate(&world.last_body)
     );
-}
-
-#[then(regex = r#"^the browser session role is "([^"]+)"$"#)]
-async fn browser_session_role_is(world: &mut FirmWorld, expected: String) {
-    let cookie = world
-        .current_cookie
-        .as_deref()
-        .expect("browser session cookie set");
-    let session = decode_session_cookie_pair(world.sessions(), cookie);
-    assert_eq!(session.role.as_str(), expected);
-}
-
-fn session_cookie_pair(resp: &axum::http::Response<Body>) -> Option<String> {
-    resp.headers()
-        .get_all(axum::http::header::SET_COOKIE)
-        .iter()
-        .filter_map(|v| v.to_str().ok())
-        .find(|v| v.starts_with(SESSION_COOKIE_NAME))
-        .map(|v| v.split(';').next().unwrap().to_string())
-}
-
-fn decode_session_cookie_pair(sessions: &SessionStore, cookie: &str) -> SessionData {
-    let value = cookie
-        .strip_prefix(&format!("{SESSION_COOKIE_NAME}="))
-        .expect("navigator session cookie pair");
-    sessions.decode(value).expect("valid signed session")
 }
 
 fn truncate(s: &str) -> String {

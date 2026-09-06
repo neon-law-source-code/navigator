@@ -93,7 +93,7 @@ pub struct ProjectDetailView {
     /// page renders its exit banner from this server-injected state rather than
     /// inferring anything from the effective client session.
     #[serde(default)]
-    pub impersonation: Option<crate::components::ImpersonationView>,
+    pub viewing_as_dri: Option<crate::components::ClientDriView>,
     /// The deploy's brand mark for the navbar. `None` when the mounted brand
     /// configures none.
     #[serde(default)]
@@ -181,13 +181,13 @@ pub async fn get_project_detail() -> Result<ProjectDetailView, ServerFnError> {
     .await
     .map(|axum::Extension(token)| token.0)
     .unwrap_or_default();
-    let crate::components::Impersonating(impersonation) =
+    let crate::components::ViewingAsDri(viewing_as_dri) =
         dioxus_fullstack_core::FullstackContext::extract::<
-            axum::Extension<crate::components::Impersonating>,
+            axum::Extension<crate::components::ViewingAsDri>,
             _,
         >()
         .await
-        .map(|axum::Extension(impersonation)| impersonation)
+        .map(|axum::Extension(viewing_as_dri)| viewing_as_dri)
         .unwrap_or_default();
     let pending_intake = dioxus_fullstack_core::FullstackContext::extract::<
         axum::Extension<PendingClientIntake>,
@@ -217,12 +217,12 @@ pub async fn get_project_detail() -> Result<ProjectDetailView, ServerFnError> {
     if !visible {
         return Ok(not_found(id, role, logo, csrf_token));
     }
-    // Queue only for a real client session. An administrator's client-lens
-    // impersonation renders the same page but must not look like client
+    // Queue only for a real client session. A firm member's read-only
+    // client-DRI view renders the same page but must not look like client
     // activity in the firm's channel. The one-way Restate call is best-effort
     // for the page: a Slack outage must not turn an authorized portal read into
     // a failed client request.
-    if role == ViewerRole::Client && impersonation.is_none() {
+    if role == ViewerRole::Client && viewing_as_dri.is_none() {
         tokio::spawn(queue_client_project_view(id));
     }
     // Notations, each with which of its three PDFs exist in storage.
@@ -294,7 +294,7 @@ pub async fn get_project_detail() -> Result<ProjectDetailView, ServerFnError> {
         resources,
         csrf_token,
         role,
-        impersonation,
+        viewing_as_dri,
         logo,
         tokens_href,
         pending_intake,
@@ -452,7 +452,7 @@ pub fn ClientProjectDetail() -> Element {
         document::Title { "{view.name}" }
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
         document::Stylesheet { href: "{view.tokens_href}" }
-        crate::components::ImpersonationBanner { view: view.impersonation.clone() }
+        crate::components::ClientDriViewBanner { view: view.viewing_as_dri.clone() }
         crate::components::AppNavbar {
             destinations: crate::app_chrome::app_destinations(view.role),
             logo: view.logo.clone(),

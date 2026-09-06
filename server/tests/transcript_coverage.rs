@@ -15,6 +15,8 @@
 //!      default; an uncovered question carries no prior answer and still asks.
 //!   3. Confirming a proposal through the normal `/step` POST writes a normal
 //!      (`source = lawyer`) answer row that supersedes the extracted proposal.
+//!   4. The JSON step carries the question's authored `help_text`, so the CLI
+//!      walk can print the same guidance the browser walk renders.
 
 use std::sync::Arc;
 
@@ -317,6 +319,20 @@ async fn the_walk_offers_the_proposal_then_confirms_it_as_a_lawyer_answer() {
     assert_eq!(step["question"]["code"], "custom_text__note");
     assert!(step["question"]["prior_answer"].is_null());
     assert!(step["question"]["prior_source"].is_null());
+}
+
+#[tokio::test]
+async fn the_json_step_carries_the_questions_authored_help_text() {
+    let (app, _surreal, nid) = build().await;
+
+    // The first step is a `custom_yes_no` question; its guidance comes from the
+    // canonical `Question.yaml` definition, exactly as the browser walk shows it.
+    let step = step_json(&app, nid).await;
+    assert_eq!(step["question"]["code"], "custom_yes_no__recording_consent");
+    assert_eq!(
+        step["question"]["help_text"],
+        store::seed::question_help_text("custom_yes_no").expect("custom_yes_no declares help_text")
+    );
 }
 
 /// POST a raw form body to the transcript endpoint; return just the status.

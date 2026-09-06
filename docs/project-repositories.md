@@ -94,7 +94,9 @@ than refused, so a downstream deployment table can add its own without breaking 
 
 ## Document staging and pointers
 
-`documents/` is a transient staging surface, not a second document store. Drop a local file below it and run:
+`documents/` is the root-level document surface in every Project repository, alongside `apps/` and `templates/`; it is
+not a directory inside the portal application. It holds committed YAML pointers and acts as temporary staging, not a
+second document store. Drop a local file below it and run:
 
 ```bash
 navigator site sync

@@ -486,9 +486,11 @@ file as `unclassified`.
 
 > **Source of truth = object storage plus the assets row.** When the application generates or proxies a document (a
 > rendered retainer PDF, a raw inbound email body), the bytes land in object storage via
-> [`cloud::StorageService`](../cloud/) and the `assets` row is the canonical pointer. `navigator site sync` uses a
-> Project repository's `documents/` directory only as transient local staging, then replaces each staged file with a
-> committed YAML pointer to that revision. Raw legal-document bytes never enter Project Git.
+> [`cloud::StorageService`](../cloud/) and the `assets` row is the canonical pointer. A Project repository's root
+> `documents/` directory is the source-side document contract: it holds committed YAML pointers and, temporarily,
+> Git-ignored files staged for `navigator site sync`. Sync uploads each staged file, replaces it with its pointer, and
+> removes the local bytes. `documents/` is a sibling of `apps/` and `templates/`, never part of the portal bundle and
+> never a second document store. Raw legal-document bytes never enter Project Git.
 
 - Schema: [`asset` in `navigator.surql`](../store/src/schema/navigator.surql) Queries:
   [`store::assets`](../store/src/assets.rs) Lives in: the `asset` table in SurrealDB (document-shaped rows)
@@ -705,7 +707,7 @@ table — the former `blobs` + `documents` split merged into `asset` (#449); see
 flowchart LR
   Inbound[Inbound artifact<br/>email, fax, scan, upload, video]
   Inbound --> Ingest[store::documents::ingest_bytes]
-  Ingest -->|storage put| Bytes[(object storage<br/>blobs/&lt;sha&gt;)]
+  Ingest -->|storage put| Bytes[(object storage<br/>projects/&lt;code&gt;/documents/&lt;sha&gt;)]
   Ingest -->|asset row| Row[(asset row<br/>source + metadata)]
   Ingest -.->|optional, when structured| Answer[Notation Answer]
 ```
@@ -1017,11 +1019,13 @@ other Notation — through `web`, the CLI, or AIDA. Every door works this way: n
 matter, and AIDA's `aida_create_notation` names the Project it acts on rather than opening one of its own.
 
 Each Project has **one** deployment-scoped source repository, named for its `code`, holding that Project's notation
-templates under `templates/` and its client portal under `portal/`. It contains source only; legal files, client
-material, answers, and produced documents remain in the deployment's private documents bucket (prefix
-`projects/<code>/documents`) and Navigator [Assets](#asset). Google Drive stays as a per-Project ingest dropbox —
-Workspace users drop files in; Navigator copies them into the documents bucket and never treats the folder as a live
-store. [`project-repositories`](project-repositories.md) is the canonical deployment map and source boundary.
+templates under `templates/`, client portal under `apps/portal/`, and source-side document pointers under `documents/`.
+That root `documents/` directory contains committed YAML pointers and only temporarily holds Git-ignored bytes staged
+for `navigator site sync`; it is not portal content or a document store. Legal files, client material, answers, and
+produced documents remain in the deployment's private documents bucket (prefix `projects/<code>/documents`) and
+Navigator [Assets](#asset). Google Drive stays as a per-Project ingest dropbox — Workspace users drop files in;
+Navigator copies them into the documents bucket and never treats the folder as a live store.
+[`project-repositories`](project-repositories.md) is the canonical deployment map and source boundary.
 
 `project.code` is **lowercase letters, digits, and single hyphens**, alphanumeric at both ends, at most 80 characters —
 enforced by [`store::projects::is_valid_code`](../store/src/projects.rs) and the SurrealDB `project_code` unique index.
@@ -1047,11 +1051,10 @@ Uppercase and underscores stay out deliberately: the code is also the repository
 
 **The code is immutable.** It is chosen once, at matter-open, and never changes — not on a client rename, not for a
 nicer slug, not ever. `code` addresses things Navigator does not own: the matter's route (`/app/projects/{code}`), its
-portal mount (`/app/projects/{code}/portal/`), and its documents-bucket prefix (`projects/{code}`) all key off the exact
-spelling picked at creation. `project.code` is `READONLY` in the SurrealDB schema, so a direct write that tries to
-change it is refused by the engine itself, not only by the absence of a handler that offers to — `UpdateProjectCommand`
-carries no `code` field at all. There is no rename path, and none is planned: the refusal is a rule with a reason, not
-an absence waiting to be filled in.
+portal mount (`/app/projects/{code}/portal/`), and its documents-bucket prefix (`projects/{code}/documents`) all key off
+the spelling picked at creation. `project.code` is `READONLY` in the SurrealDB schema, so a direct write that tries to
+change it is refused by the engine; `UpdateProjectCommand` carries no `code` field. There is no rename path. The refusal
+is a rule with a reason, not an absence waiting to be filled in.
 
 **`brand` records which house [Brand](#brand)'s storefront the client came through.** A closed key from
 [`views::brand::BrandKey`](../views/src/brand.rs) (`neon`, `delete-your-data`), `NOT NULL`, `DEFAULT 'neon'` for a row
@@ -1070,13 +1073,12 @@ Object-storage artifacts (rendered PDFs, signed documents, generated exports) li
 `gs://YOUR_PROJECT_ID-assets/projects/{id}/` for machine reads, and the nightly store→Parquet snapshots are immutable
 objects in GCS — so deleting a Project's database rows never deletes its archives.
 
-Working files live under the documents-bucket prefix `projects/{code}` — a key convention in the deployment's private
-documents bucket, not a bucket per Project. Google Drive is the Project's ingest dropbox. Its deployment-selected root
-holds one folder per matter, named for `project.code`; Workspace membership lets people drop files in, and Navigator
-copies them into the documents bucket. Drive is never the serve origin and never a CI publish target. Project
-participation grants Navigator and deployed Project-application access, never source-forge access. Opening a Project
-creates or adopts the three handles through `store::project_surfaces`; `POST /app/api/project-surfaces/{id}` and
-`navigator site projects surfaces reconcile --project <code>` retry a failed or legacy row.
+Working files live under the documents-bucket prefix `projects/{code}/documents` — a key convention in the deployment's
+private documents bucket, not a bucket per Project. Google Drive is the Project's ingest dropbox, with one folder per
+matter named for `project.code`. Workspace users drop files there, and Navigator copies them into the documents bucket.
+Drive never serves content or receives CI publishes. Project participation grants Navigator and deployed application
+access, never source-forge access. `store::project_surfaces` creates or adopts the handles. Their retry API/CLI are
+`POST /app/api/project-surfaces/{id}` and `navigator site projects surfaces reconcile --project <code>`.
 
 - Schema and commands: [`store::projects`](../store/src/projects.rs) ·
   [`store/src/schema/navigator.surql`](../store/src/schema/navigator.surql)

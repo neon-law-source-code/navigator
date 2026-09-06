@@ -70,10 +70,10 @@ The full authoring rules are [`vibe-react`](../.claude/skills/vibe-react/SKILL.m
 belongs here, because it is what makes vibing safe:
 
 **You own the screen. You do not own the data.** A Project repository holds template and application source plus
-checked-in configuration, and never a matter-data backend of its own. Reads go through Navigator's `/api` read clusters
-and writes go through the one REST command boundary in [`command-boundary`](command-boundary.md). Authorization is
-decided by Navigator from Project participation before your bundle is ever served, so there is no client-side
-authorization decision to get wrong.
+checked-in configuration — including root `documents/` YAML pointers, never document bytes — and never a matter-data
+backend of its own. Reads go through Navigator's `/api` read clusters and writes go through the REST command boundary in
+[`command-boundary`](command-boundary.md). Authorization is decided by Navigator from Project participation before your
+bundle is ever served, so there is no client-side authorization decision to get wrong.
 
 Everything you would normally have to be careful about — who may see this, whether this write is allowed, where the
 legal file lives — is somebody else's enforced invariant by the time your component renders. What is left is layout,

@@ -39,7 +39,7 @@ fn bootstrap_company_from_lookup<F>(get: F) -> String
 where
     F: Fn(&str) -> Option<String>,
 {
-    get("NAVIGATOR_BOOTSTRAP_COMPANY")
+    get(store::seed::BOOTSTRAP_COMPANY_ENV)
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| DEFAULT_BOOTSTRAP_COMPANY.to_string())
@@ -1423,6 +1423,7 @@ async fn projects_new_client_inline(
         family_name: None,
         middle_name: None,
         notion_user_id: None,
+        firm_id: None,
     };
     match crate::people_commands::create_person(&state.surreal, &command).await {
         Ok(created) => {

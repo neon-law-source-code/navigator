@@ -939,6 +939,14 @@ through person–project participation. `owner` is not a membership value: the d
 The command seam reads both referenced rows before writing, because a `record<>` link constrains the target table but
 does not prove the row exists.
 
+**A newly created Lawyer or Clerk joins a Firm as a standing rule, not a one-time backfill (ENG-495).**
+`store::people_commands::create_person` grants the membership itself, right after the Person write: the creating surface
+may name a Firm; left unnamed, it defaults to the deployment's anchor Firm (`store::firms::anchor_firm`, resolved
+through `store::entities::firm_anchor_holder` → `store::firms::find_by_entity_id`). Owner and Admin membership stays
+explicit — this door grants nothing for either — and a Client is never offered the write at all.
+`store::seed::seed_firm_memberships` remains the separate sweep the canonical seed's own fixture people need, because
+they are seeded `client` and promoted afterward, past the point this rule can see them.
+
 - Schema: [`store::firms`](../store/src/firms.rs) ·
   [`store/src/schema/navigator.surql`](../store/src/schema/navigator.surql)
 

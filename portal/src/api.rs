@@ -3938,6 +3938,14 @@ impl IntoResponse for ApiError {
                 )
                     .into_response()
             }
+            Self::Command(crate::people_commands::PeopleCommandError::FirmMembership(detail)) => {
+                tracing::error!(error = %detail, "api: default firm membership grant failed");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({ "error": "internal" })),
+                )
+                    .into_response()
+            }
             Self::Person(store::persons::PersonError::EmailTaken) => (
                 StatusCode::CONFLICT,
                 Json(serde_json::json!({

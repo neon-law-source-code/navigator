@@ -576,6 +576,7 @@ impl From<store::people_commands::PeopleCommandError> for ToolError {
             E::Blocked(m) => ToolError::Forbidden(m.to_string()),
             E::SendFailed => ToolError::Internal("welcome email send failed".into()),
             E::Db(e) => ToolError::from(e),
+            E::FirmMembership(detail) => ToolError::Internal(detail),
         }
     }
 }

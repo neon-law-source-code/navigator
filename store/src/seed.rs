@@ -116,6 +116,13 @@ pub const JURISDICTION_SEED_YAML: &str = canonical::JURISDICTION;
 /// that column and not the name.
 pub const FIRM_ENTITY_NAME: &str = "Shook Law PLLC";
 
+/// The environment variable a white-label operator names their own firm
+/// Entity with. Blank or unset falls back to [`FIRM_ENTITY_NAME`] everywhere
+/// this is read — `portal::admin::bootstrap_company_from_env` and
+/// [`crate::firms::anchor_firm`] agree on the one variable name rather than
+/// each spelling it again.
+pub const BOOTSTRAP_COMPANY_ENV: &str = "NAVIGATOR_BOOTSTRAP_COMPANY";
+
 /// Which brand's own seeds a boot applies.
 ///
 /// This is the third seed layer, and the only one besides the canonical set
@@ -639,6 +646,7 @@ async fn reconcile_people(
                             family_name: None,
                             middle_name: None,
                             notion_user_id: None,
+                            firm_id: None,
                         },
                     )
                     .await

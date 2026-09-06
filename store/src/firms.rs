@@ -553,6 +553,38 @@ pub async fn ensure_membership(
     }
 }
 
+/// The deployment's anchor Firm — the practice wearing the anchor Entity
+/// (`NAVIGATOR_BOOTSTRAP_COMPANY`, or the shipped [`crate::seed::FIRM_ENTITY_NAME`]
+/// when unset) — or `None` when no Firm row wraps that Entity yet.
+///
+/// ENG-495: this is the default a newly created Lawyer or Clerk joins when no
+/// other Firm is named. A deployment holding exactly one Firm degenerates to
+/// that Firm, which is today's single-practice answer; a deployment holding
+/// several still resolves deterministically, because the anchor Entity is
+/// unique by construction (`entity_firm_anchor`).
+///
+/// Reads the same environment variable
+/// [`crate::seed::BOOTSTRAP_COMPANY_ENV`] `portal::admin::bootstrap_company_from_env`
+/// resolves for the Entity surface, so the two agree on which Entity is the
+/// anchor without either importing the other.
+pub async fn anchor_firm(surreal: &SurrealDb) -> Result<Option<Firm>, FirmError> {
+    let configured = std::env::var(crate::seed::BOOTSTRAP_COMPANY_ENV)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| crate::seed::FIRM_ENTITY_NAME.to_string());
+    // The stored `firm_anchor` key is the anchor Entity's own name, lowercased
+    // — never the configured string directly (`entity_commands::firm_anchor_key`).
+    // The two are guaranteed to match: `is_firm_anchor` only let that Entity
+    // claim the key by matching `configured` case-insensitively in the first
+    // place, so the lowercased forms are identical.
+    let key = configured.to_lowercase();
+    let Some(entity_id) = crate::entities::firm_anchor_holder(surreal, &key).await? else {
+        return Ok(None);
+    };
+    find_by_entity_id(surreal, entity_id).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1058,5 +1090,73 @@ mod tests {
             Some(firm.id)
         );
         assert_eq!(backfill_unowned_projects(&db, firm.id).await.unwrap(), 0);
+    }
+
+    /// An Entity carrying `firm_anchor_key`, wrapped in a Firm — the shape
+    /// [`anchor_firm`] resolves. `name` is exactly [`crate::seed::FIRM_ENTITY_NAME`]
+    /// in these tests, because no test sets `NAVIGATOR_BOOTSTRAP_COMPANY` (a
+    /// process-wide environment variable every parallel test would race on),
+    /// so `anchor_firm` always falls back to that default.
+    async fn anchor_practice(db: &SurrealDb, name: &str) -> Firm {
+        let entity_id = crate::entities::create(
+            db,
+            &crate::entities::NewEntity {
+                name: name.to_string(),
+                entity_type_id: crate::test_support::SEED_ENTITY_TYPE_ID,
+                jurisdiction_id: crate::test_support::SEED_ENTITY_JURISDICTION_ID,
+                phone: None,
+                url: None,
+                firm_anchor_key: Some(name.trim().to_lowercase()),
+            },
+        )
+        .await
+        .unwrap()
+        .id;
+        create(
+            db,
+            &NewFirm {
+                name: name.to_string(),
+                status: "active".to_string(),
+                entity_id,
+            },
+        )
+        .await
+        .unwrap()
+    }
+
+    /// ENG-495: the default a newly created Lawyer or Clerk joins when no
+    /// other Firm is named — resolved through the two-hop
+    /// `firm_anchor_holder` → `find_by_entity_id` the issue asked to be
+    /// verified before anything is built on it.
+    #[tokio::test]
+    async fn anchor_firm_resolves_the_firm_wearing_the_bootstrap_entity() {
+        let db = mem_surreal().await;
+        let anchor = anchor_practice(&db, crate::seed::FIRM_ENTITY_NAME).await;
+
+        assert_eq!(anchor_firm(&db).await.unwrap(), Some(anchor));
+    }
+
+    /// No Entity carries the anchor key at all — an ordinary Firm alone
+    /// resolves to no default, rather than an arbitrary one.
+    #[tokio::test]
+    async fn anchor_firm_is_none_when_no_entity_holds_the_anchor_key() {
+        let db = mem_surreal().await;
+        practice(&db, "Ordinary Practice").await;
+
+        assert_eq!(anchor_firm(&db).await.unwrap(), None);
+    }
+
+    /// The two-firm case: a deployment holding several Firms still resolves
+    /// the one wearing the anchor Entity, not merely the first or the last
+    /// one created — this is the assertion that would pass vacuously against
+    /// a single seeded firm and is the whole point of ENG-495.
+    #[tokio::test]
+    async fn anchor_firm_picks_the_anchor_among_several_firms() {
+        let db = mem_surreal().await;
+        let _ordinary_first = practice(&db, "Ordinary Practice One").await;
+        let anchor = anchor_practice(&db, crate::seed::FIRM_ENTITY_NAME).await;
+        let _ordinary_second = practice(&db, "Ordinary Practice Two").await;
+
+        assert_eq!(anchor_firm(&db).await.unwrap(), Some(anchor));
     }
 }

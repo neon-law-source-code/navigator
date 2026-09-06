@@ -408,8 +408,17 @@ components.
 
 ## Directly Responsible Individual (DRI)
 
-The natural [Person](#person) accountable for a [Matter](#matter) — the name to ask "where does this stand?". Every
-matter carries **two sides** of accountability, seeded at matter-open, and each side is a **set**:
+"DRI" names two distinct accountability markers, one per domain, and neither implies the other:
+
+- **A matter's DRI** — this entry. `person_project_role.is_lawyer_dri` / `is_client_dri`, seeded at matter-open, scoped
+  to one [Project](#project).
+- **A Firm's Admin DRI** — `person_firm_role.is_dri` (ENG-499), scoped to one [Firm](#firm), unrelated to any matter.
+  See [Person–Firm Role](#personfirm-role) for its invariant (exactly one per active Firm) and the commands that enforce
+  it.
+
+The rest of this entry is the matter-level marker. The natural [Person](#person) accountable for a [Matter](#matter) —
+the name to ask "where does this stand?". Every matter carries **two sides** of accountability, seeded at matter-open,
+and each side is a **set**:
 
 - **Lawyer DRIs** — the attorneys/admins accountable for the matter inside the firm. The opening lawyer by default
   (else the firm principal, resolved by role). A matter always has at least one; it may have several, which is how one
@@ -941,6 +950,19 @@ through person–project participation. `owner` is not a membership value: the d
 
 The command seam reads both referenced rows before writing, because a `record<>` link constrains the target table but
 does not prove the row exists.
+
+**`is_dri` is the Firm's Admin DRI marker — a different noun from a matter's DRI (ENG-499).** Every active Firm holds
+exactly one: `person_firm_role.membership = 'admin'` and `person.role = admin`, never Owner, Lawyer, Clerk, or Client.
+Firm creation is atomic with this designation (`store::firms::create` takes `admin_dri_person_id` and refuses anything
+ineligible — there is no setup state a Firm passes through without one), and `store::firms::appoint_admin_dri` is the
+only writer thereafter: an Owner-only, one-transaction transfer that clears the outgoing DRI and sets the incoming one
+so a reader never observes zero or two. `store::firms::refuse_admin_dri_orphaning` is the guard every membership-removal
+door consults before deleting a row or changing it away from `admin`, so a direct edit cannot orphan an active Firm's
+designation either. `store::firms::admin_dri_invariant_report` is a read-only, deployment-wide scan for a Firm that is
+missing, has multiple, or holds an ineligible designation regardless — `navigator ops firms doctor` prints it. None of
+these repair a row; a reported Firm is fixed by a human appointing or transferring through the Owner surface. See
+[Directly Responsible Individual (DRI)](#directly-responsible-individual-dri) for how this differs from a matter's
+lawyer/client DRI.
 
 **A newly created Lawyer or Clerk joins a Firm as a standing rule, not a one-time backfill (ENG-495).**
 `store::people_commands::create_person` grants the membership itself, right after the Person write: the creating surface

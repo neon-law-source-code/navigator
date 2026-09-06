@@ -31,24 +31,34 @@ use uuid::Uuid;
 /// gates [`crate::firms::visible_person_ids`] and
 /// [`crate::projects::matter_directory_for`]; [`Self::ManageMembership`]
 /// gates [`crate::firms::add_membership`] and
-/// [`crate::firms::ensure_membership`].
+/// [`crate::firms::ensure_membership`]. [`Self::ManageAdminDri`] gates
+/// [`crate::firms::appoint_admin_dri`] (ENG-499): it admits no membership
+/// tier at all, so only Owner — who [`resolve`] allows before any membership
+/// read — ever holds it. An Admin DRI administers their own Firm's settings
+/// and integrations, but appointing or transferring the designation is
+/// Owner's alone.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FirmCapability {
     /// Read the Firm's scoped people and matter directories.
     ViewDirectory,
     /// Add or change a person's membership at the Firm.
     ManageMembership,
+    /// Appoint or transfer the Firm's Admin DRI designation.
+    ManageAdminDri,
 }
 
 impl FirmCapability {
     /// Whether a `person_firm_role` row carrying this membership tier admits
     /// this capability. `ViewDirectory` is open to every firm tier; only
     /// `Admin` membership may manage who else belongs to the Firm.
+    /// `ManageAdminDri` admits no membership tier — Owner is the only actor
+    /// [`resolve`] ever grants it to.
     #[must_use]
     fn admits(self, membership: FirmMembership) -> bool {
         match self {
             Self::ViewDirectory => true,
             Self::ManageMembership => membership == FirmMembership::Admin,
+            Self::ManageAdminDri => false,
         }
     }
 }
@@ -148,12 +158,24 @@ mod tests {
 
     async fn practice(db: &SurrealDb, name: &str) -> Firm {
         let entity_id = seed_entity(db).await;
+        let admin_dri_person_id = crate::persons::create(
+            db,
+            &NewPerson::with_role(
+                format!("{name} DRI"),
+                format!("dri-{}@example.com", Uuid::now_v7()),
+                Role::Admin,
+            ),
+        )
+        .await
+        .unwrap()
+        .id;
         firms::create(
             db,
             &NewFirm {
                 name: name.to_string(),
                 status: "active".to_string(),
                 entity_id,
+                admin_dri_person_id,
             },
         )
         .await
@@ -383,6 +405,44 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(admin_manage_ids, vec![firm_a.id]);
+    }
+
+    /// `ManageAdminDri` admits no membership tier: even the Firm's own Admin
+    /// member — who does hold `ManageMembership` — is refused it. Only Owner
+    /// may appoint or transfer the Admin DRI (ENG-499).
+    #[tokio::test]
+    async fn manage_admin_dri_admits_no_membership_tier_only_owner() {
+        let db = mem_surreal().await;
+        let firm = practice(&db, "Practice").await;
+        let owner = person(&db, "owner", Role::Owner).await;
+        let admin = person(&db, "admin", Role::Admin).await;
+        member(&db, admin.id, firm.id, FirmMembership::Admin).await;
+
+        assert_eq!(
+            resolve(
+                &db,
+                Role::Owner,
+                Some(owner.id),
+                firm.id,
+                FirmCapability::ManageAdminDri
+            )
+            .await
+            .unwrap(),
+            FirmCapabilityDecision::Allowed
+        );
+        assert_eq!(
+            resolve(
+                &db,
+                admin.role,
+                Some(admin.id),
+                firm.id,
+                FirmCapability::ManageAdminDri
+            )
+            .await
+            .unwrap(),
+            FirmCapabilityDecision::Forbidden,
+            "the Firm's own Admin member does not thereby appoint its DRI"
+        );
     }
 
     #[tokio::test]

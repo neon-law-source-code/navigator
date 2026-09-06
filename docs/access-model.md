@@ -24,9 +24,13 @@ role on the person row (their firm work) and a `person_project_role` row on thei
 participation. The system answers "what can this person do" by reading both.
 
 `person_firm_role` is the ownership join: a person may belong to a [`firm`](glossary.md#firm) as `admin`, `lawyer`, or
-`clerk`, with an optional `is_dri` marker. It does not overload `person.role`. Owner remains the one system-wide
-super-owner tier; clients do not get a firm-membership row. `/app/owner` is Owner only. An Admin's people directory and
-matter directory list only rows in firms they belong to.
+`clerk`, with an `is_dri` marker — the Firm's **Admin DRI**, not a matter DRI (see
+[glossary](glossary.md#directly-responsible-individual-dri)). Every active Firm holds exactly one: creation is atomic
+with an initial designation, `store::firms::appoint_admin_dri` is the only writer thereafter (Owner-only, one
+transaction), and `store::firms::admin_dri_invariant_report` is a read-only deployment-wide scan for a Firm that is not
+(ENG-499). It does not overload `person.role`. Owner remains the one system-wide super-owner tier; clients do not get a
+firm-membership row. `/app/owner` is Owner only. An Admin's people directory and matter directory list only rows in
+firms they belong to.
 
 ## Route admission versus Firm data authorization
 

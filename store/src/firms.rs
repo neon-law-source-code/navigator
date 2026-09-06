@@ -88,11 +88,20 @@ struct TouchedProject {
 }
 
 /// Inputs for creating a [`Firm`].
+///
+/// Creation is atomic with an initial Admin DRI (ENG-499): there is no
+/// setup state a Firm passes through before it has one.
+/// `admin_dri_person_id` must name a person carrying `person.role = admin`;
+/// [`create`] refuses anything else rather than leaving the new Firm without
+/// its one accountable administrator.
 #[derive(Debug, Clone)]
 pub struct NewFirm {
     pub name: String,
     pub status: String,
     pub entity_id: Uuid,
+    /// The person who becomes this Firm's first Admin DRI, in the same
+    /// transaction that creates the Firm.
+    pub admin_dri_person_id: Uuid,
 }
 
 /// Which membership a person holds at a firm.
@@ -215,6 +224,27 @@ pub enum FirmError {
     UnknownBrand(String),
     #[error("that brand is already attached to a firm")]
     DuplicateBrand,
+    /// The proposed Admin DRI does not carry `person.role = admin`. Refused
+    /// for Owner, Lawyer, Clerk, and Client alike (ENG-499).
+    #[error("person {0} does not hold the admin role and cannot be an Admin DRI")]
+    IneligibleAdminDriTier(Uuid),
+    /// The person holds a `person_firm_role` row on this Firm, but its
+    /// membership is not `admin`.
+    #[error("person {0} is not an admin member of firm {1}")]
+    WrongAdminDriMembership(Uuid, Uuid),
+    /// The person holds no membership row on this Firm at all. Distinct from
+    /// [`Self::WrongAdminDriMembership`]: this person is not a member of the
+    /// target Firm, whatever membership they hold elsewhere.
+    #[error("person {0} is not a member of firm {1}")]
+    AdminDriCrossFirm(Uuid, Uuid),
+    /// Only Owner may appoint or transfer a Firm's Admin DRI.
+    #[error("only Owner may appoint or transfer a Firm's Admin DRI")]
+    NotAuthorized,
+    /// Removing this membership, or changing it away from `admin`, would
+    /// leave an active Firm with no Admin DRI. Transfer the designation
+    /// first with [`appoint_admin_dri`].
+    #[error("firm {0} would be left without an Admin DRI")]
+    WouldLeaveFirmWithoutAdminDri(Uuid),
 }
 
 fn classify_write(error: surrealdb::Error) -> FirmError {
@@ -234,7 +264,16 @@ where
     retry::writing(attempt).await.map_err(classify_write)
 }
 
-/// Create a firm under a fresh UUID record key.
+/// Create a firm under a fresh UUID record key, atomically with its first
+/// Admin DRI.
+///
+/// `admin_dri_person_id` must resolve to a person carrying
+/// `person.role = admin`; anything else — Owner, Lawyer, Clerk, Client, or a
+/// dangling id — is refused before either row is written, so a Firm is never
+/// created without one (ENG-499: there is no setup state). The Firm row and
+/// its `person_firm_role` membership (carrying `is_dri = true`) are written
+/// in one transaction, so a reader never observes a Firm with zero Admin
+/// DRIs.
 pub async fn create(surreal: &SurrealDb, input: &NewFirm) -> Result<Firm, FirmError> {
     if crate::entities::find_by_id(surreal, input.entity_id)
         .await?
@@ -242,24 +281,38 @@ pub async fn create(surreal: &SurrealDb, input: &NewFirm) -> Result<Firm, FirmEr
     {
         return Err(FirmError::NoSuchEntity(input.entity_id));
     }
-    let id = Uuid::now_v7();
+    let admin = crate::persons::find_by_id(surreal, input.admin_dri_person_id)
+        .await?
+        .ok_or(FirmError::NoSuchPerson(input.admin_dri_person_id))?;
+    if admin.role != Role::Admin {
+        return Err(FirmError::IneligibleAdminDriTier(input.admin_dri_person_id));
+    }
+    let firm_id = Uuid::now_v7();
+    let membership_id = Uuid::now_v7();
     let now = chrono::Utc::now().to_rfc3339();
     let mut response = writing(|| {
         surreal
             .query(format!(
-                "CREATE $id SET name = $name, status = $status, entity_id = $entity_id, \
-                 inserted_at = $inserted_at, updated_at = $updated_at \
-                 RETURN {FIRM_SELECT}"
+                "BEGIN; \
+                 CREATE $firm_id SET name = $name, status = $status, entity_id = $entity_id, \
+                 inserted_at = $now, updated_at = $now RETURN {FIRM_SELECT}; \
+                 CREATE $membership_id SET person_id = $person_id, firm_id = $firm_id, \
+                 membership = 'admin', is_dri = true, inserted_at = $now, updated_at = $now; \
+                 COMMIT;"
             ))
-            .bind(("id", record_id(TABLE, id)))
+            .bind(("firm_id", record_id(TABLE, firm_id)))
+            .bind(("membership_id", record_id(MEMBERSHIP_TABLE, membership_id)))
+            .bind((
+                "person_id",
+                record_id(PERSON_TABLE, input.admin_dri_person_id),
+            ))
             .bind(("name", input.name.clone()))
             .bind(("status", input.status.clone()))
             .bind(("entity_id", record_id(ENTITY_TABLE, input.entity_id)))
-            .bind(("inserted_at", now.clone()))
-            .bind(("updated_at", now.clone()))
+            .bind(("now", now.clone()))
     })
     .await?;
-    let row: Option<FirmRow> = response.take(0)?;
+    let row: Option<FirmRow> = response.take(1)?;
     row.and_then(FirmRow::into_firm)
         .ok_or(FirmError::WriteReturnedNothing)
 }
@@ -553,6 +606,191 @@ pub async fn ensure_membership(
     }
 }
 
+/// Appoint or transfer a Firm's Admin DRI (ENG-499).
+///
+/// Owner-only: gated through
+/// [`crate::firm_capability::FirmCapability::ManageAdminDri`], which no
+/// membership tier admits, so an Admin — even the Firm's own — is refused
+/// with [`FirmError::NotAuthorized`]. The proposed DRI must carry
+/// `person.role = admin` ([`FirmError::IneligibleAdminDriTier`]) and hold an
+/// `admin` membership on this exact Firm: no row on this Firm at all is
+/// [`FirmError::AdminDriCrossFirm`], and a row here carrying a different
+/// membership is [`FirmError::WrongAdminDriMembership`].
+///
+/// The transfer itself is one transaction — clearing any current DRI on this
+/// Firm and setting the new one — so a concurrent reader never observes zero
+/// or two Admin DRIs on the same Firm.
+pub async fn appoint_admin_dri(
+    surreal: &SurrealDb,
+    actor_role: Role,
+    actor_person_id: Option<Uuid>,
+    firm_id: Uuid,
+    person_id: Uuid,
+) -> Result<PersonFirmRole, FirmError> {
+    match crate::firm_capability::resolve(
+        surreal,
+        actor_role,
+        actor_person_id,
+        firm_id,
+        crate::firm_capability::FirmCapability::ManageAdminDri,
+    )
+    .await?
+    {
+        crate::firm_capability::FirmCapabilityDecision::Allowed => {}
+        crate::firm_capability::FirmCapabilityDecision::FirmNotFound => {
+            return Err(FirmError::NoSuchFirm(firm_id))
+        }
+        crate::firm_capability::FirmCapabilityDecision::Forbidden => {
+            return Err(FirmError::NotAuthorized)
+        }
+    }
+
+    let person = crate::persons::find_by_id(surreal, person_id)
+        .await?
+        .ok_or(FirmError::NoSuchPerson(person_id))?;
+    if person.role != Role::Admin {
+        return Err(FirmError::IneligibleAdminDriTier(person_id));
+    }
+    match membership_for_person(surreal, person_id, firm_id).await? {
+        None => return Err(FirmError::AdminDriCrossFirm(person_id, firm_id)),
+        Some(row) if row.membership != FirmMembership::Admin => {
+            return Err(FirmError::WrongAdminDriMembership(person_id, firm_id));
+        }
+        Some(_) => {}
+    }
+
+    let now = chrono::Utc::now().to_rfc3339();
+    writing(|| {
+        surreal
+            .query(
+                "BEGIN; \
+                 UPDATE person_firm_role SET is_dri = false, updated_at = $now \
+                 WHERE firm_id = $firm_id AND is_dri = true; \
+                 UPDATE person_firm_role SET is_dri = true, updated_at = $now \
+                 WHERE person_id = $person_id AND firm_id = $firm_id; \
+                 COMMIT;",
+            )
+            .bind(("firm_id", record_id(TABLE, firm_id)))
+            .bind(("person_id", record_id(PERSON_TABLE, person_id)))
+            .bind(("now", now.clone()))
+    })
+    .await?;
+
+    membership_for_person(surreal, person_id, firm_id)
+        .await?
+        .ok_or(FirmError::WriteReturnedNothing)
+}
+
+/// Refuse a `person_firm_role` edit that would leave an active Firm with no
+/// Admin DRI (ENG-499 scope item 3).
+///
+/// Called by [`crate::firms`]'s own membership-removal doors before they
+/// delete a row or change its `membership` away from `admin`.
+/// `new_membership` is `None` for a removal and `Some(m)` for an update to
+/// `m`; a no-op when the row is not the Firm's current DRI, or the Firm is
+/// not active. Transferring the designation first with
+/// [`appoint_admin_dri`] is the only way past this guard for the current
+/// sole DRI.
+pub async fn refuse_admin_dri_orphaning(
+    surreal: &SurrealDb,
+    firm_id: Uuid,
+    person_id: Uuid,
+    new_membership: Option<FirmMembership>,
+) -> Result<(), FirmError> {
+    if new_membership == Some(FirmMembership::Admin) {
+        return Ok(());
+    }
+    let Some(row) = membership_for_person(surreal, person_id, firm_id).await? else {
+        return Ok(());
+    };
+    if !row.is_dri {
+        return Ok(());
+    }
+    let Some(firm) = find_by_id(surreal, firm_id).await? else {
+        return Ok(());
+    };
+    if firm.status != "active" {
+        return Ok(());
+    }
+    Err(FirmError::WouldLeaveFirmWithoutAdminDri(firm_id))
+}
+
+/// One active Firm's Admin-DRI standing, for the deployment-wide invariant
+/// report ([`admin_dri_invariant_report`]). Every active Firm reports
+/// `problem: None` when exactly one eligible Admin DRI holds the
+/// designation — anything else is an actionable state a human resolves,
+/// never one this report repairs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AdminDriStatus {
+    pub firm_id: Uuid,
+    pub firm_name: String,
+    pub problem: Option<AdminDriProblem>,
+}
+
+/// Why a Firm's Admin-DRI designation is not the invariant ENG-499 requires.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AdminDriProblem {
+    /// No `person_firm_role` row on this Firm carries `is_dri = true`.
+    Missing,
+    /// More than one row does. Carries every such person's id.
+    Multiple(Vec<Uuid>),
+    /// Exactly one row carries `is_dri = true`, but the person it names no
+    /// longer carries `person.role = admin` (or the row's own membership has
+    /// drifted off `admin`) — a designation that was valid at appointment
+    /// and is not any more.
+    Ineligible(Uuid),
+}
+
+/// Scan every active Firm and report which ones do not hold exactly one
+/// eligible Admin DRI. Read-only: it never appoints, clears, or otherwise
+/// repairs a row — [`appoint_admin_dri`] is the only writer.
+pub async fn admin_dri_invariant_report(
+    surreal: &SurrealDb,
+) -> Result<Vec<AdminDriStatus>, FirmError> {
+    let mut out = Vec::new();
+    for firm in all(surreal).await? {
+        if firm.status != "active" {
+            continue;
+        }
+        let mut response = surreal
+            .query(format!(
+                "SELECT {MEMBERSHIP_SELECT} FROM {MEMBERSHIP_TABLE} \
+                 WHERE firm_id = $firm_id AND is_dri = true ORDER BY inserted_at, id"
+            ))
+            .bind(("firm_id", record_id(TABLE, firm.id)))
+            .await
+            .and_then(surrealdb::IndexedResults::check)?;
+        let rows: Vec<PersonFirmRoleRow> = response.take(0)?;
+        let dris: Vec<PersonFirmRole> = rows
+            .into_iter()
+            .filter_map(PersonFirmRoleRow::into_role)
+            .collect();
+        let problem = if dris.is_empty() {
+            Some(AdminDriProblem::Missing)
+        } else if dris.len() > 1 {
+            Some(AdminDriProblem::Multiple(
+                dris.iter().map(|row| row.person_id).collect(),
+            ))
+        } else {
+            let dri = &dris[0];
+            if dri.membership == FirmMembership::Admin {
+                match crate::persons::find_by_id(surreal, dri.person_id).await? {
+                    Some(person) if person.role == Role::Admin => None,
+                    _ => Some(AdminDriProblem::Ineligible(dri.person_id)),
+                }
+            } else {
+                Some(AdminDriProblem::Ineligible(dri.person_id))
+            }
+        };
+        out.push(AdminDriStatus {
+            firm_id: firm.id,
+            firm_name: firm.name.clone(),
+            problem,
+        });
+    }
+    Ok(out)
+}
+
 /// The deployment's anchor Firm — the practice wearing the anchor Entity
 /// (`NAVIGATOR_BOOTSTRAP_COMPANY`, or the shipped [`crate::seed::FIRM_ENTITY_NAME`]
 /// when unset) — or `None` when no Firm row wraps that Entity yet.
@@ -595,6 +833,27 @@ mod tests {
     use crate::test_support::{mem_surreal, seed_entity};
 
     async fn practice(db: &SurrealDb, name: &str) -> Firm {
+        practice_with_admin(db, name, admin_dri_person(db).await).await
+    }
+
+    /// A fresh `person.role = admin` person, fit to name as a Firm's
+    /// `admin_dri_person_id`. Its own identity is opaque to callers that do
+    /// not need to name it — only [`practice`] uses this directly.
+    async fn admin_dri_person(db: &SurrealDb) -> Uuid {
+        crate::persons::create(
+            db,
+            &NewPerson::with_role(
+                "Admin DRI",
+                format!("admin-dri-{}@example.com", Uuid::now_v7()),
+                Role::Admin,
+            ),
+        )
+        .await
+        .unwrap()
+        .id
+    }
+
+    async fn practice_with_admin(db: &SurrealDb, name: &str, admin_dri_person_id: Uuid) -> Firm {
         let entity_id = seed_entity(db).await;
         create(
             db,
@@ -602,6 +861,7 @@ mod tests {
                 name: name.to_string(),
                 status: "active".to_string(),
                 entity_id,
+                admin_dri_person_id,
             },
         )
         .await
@@ -625,6 +885,317 @@ mod tests {
                 .id,
             created.id
         );
+    }
+
+    /// ENG-499: creation is atomic with the first Admin DRI. There is no
+    /// setup state — the moment the Firm row exists, so does exactly one
+    /// `person_firm_role` row carrying `membership = admin, is_dri = true`.
+    #[tokio::test]
+    async fn create_grants_the_named_admin_dri_atomically() {
+        let db = mem_surreal().await;
+        let admin = admin_dri_person(&db).await;
+        let firm = practice_with_admin(&db, "Atomic Practice", admin).await;
+
+        let membership = membership_for_person(&db, admin, firm.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(membership.membership, FirmMembership::Admin);
+        assert!(membership.is_dri);
+
+        let report = admin_dri_invariant_report(&db).await.unwrap();
+        let status = report.iter().find(|s| s.firm_id == firm.id).unwrap();
+        assert_eq!(status.problem, None, "{status:?}");
+    }
+
+    /// Creation refuses every ineligible tier: Owner, Lawyer, Clerk, and
+    /// Client all fail the same way a dangling person id would.
+    #[tokio::test]
+    async fn create_refuses_a_non_admin_dri() {
+        let db = mem_surreal().await;
+        let entity_id = seed_entity(&db).await;
+
+        for (tag, role) in [
+            ("owner", Role::Owner),
+            ("lawyer", Role::Lawyer),
+            ("clerk", Role::Clerk),
+            ("client", Role::Client),
+        ] {
+            let person = crate::persons::create(
+                &db,
+                &NewPerson::with_role(format!("{tag} Person"), format!("{tag}@example.com"), role),
+            )
+            .await
+            .unwrap();
+            let err = create(
+                &db,
+                &NewFirm {
+                    name: format!("{tag} Practice"),
+                    status: "active".to_string(),
+                    entity_id: seed_entity(&db).await,
+                    admin_dri_person_id: person.id,
+                },
+            )
+            .await
+            .unwrap_err();
+            assert!(
+                matches!(err, FirmError::IneligibleAdminDriTier(id) if id == person.id),
+                "{tag}: {err}"
+            );
+        }
+
+        let missing = Uuid::now_v7();
+        let err = create(
+            &db,
+            &NewFirm {
+                name: "Ghost Admin Practice".to_string(),
+                status: "active".to_string(),
+                entity_id,
+                admin_dri_person_id: missing,
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(err, FirmError::NoSuchPerson(id) if id == missing));
+    }
+
+    /// Owner appoints and transfers the designation; every other tier,
+    /// including the Firm's own Admin, is refused. The transfer clears the
+    /// outgoing DRI and sets the incoming one atomically.
+    #[tokio::test]
+    async fn appoint_admin_dri_transfers_atomically_and_is_owner_only() {
+        let db = mem_surreal().await;
+        let first_admin = admin_dri_person(&db).await;
+        let firm = practice_with_admin(&db, "Transfer Practice", first_admin).await;
+
+        let second_admin = crate::persons::create(
+            &db,
+            &NewPerson::with_role("Second Admin", "second-admin@example.com", Role::Admin),
+        )
+        .await
+        .unwrap();
+        add_membership(
+            &db,
+            &NewPersonFirmRole {
+                person_id: second_admin.id,
+                firm_id: firm.id,
+                membership: FirmMembership::Admin,
+                is_dri: false,
+            },
+        )
+        .await
+        .unwrap();
+
+        for (role, person_id) in [(Role::Admin, first_admin), (Role::Lawyer, second_admin.id)] {
+            let err = appoint_admin_dri(&db, role, Some(first_admin), firm.id, second_admin.id)
+                .await
+                .unwrap_err();
+            assert!(
+                matches!(err, FirmError::NotAuthorized),
+                "{person_id:?}: {err}"
+            );
+        }
+
+        let transferred = appoint_admin_dri(&db, Role::Owner, None, firm.id, second_admin.id)
+            .await
+            .unwrap();
+        assert!(transferred.is_dri);
+        assert_eq!(transferred.person_id, second_admin.id);
+
+        assert!(
+            !membership_for_person(&db, first_admin, firm.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .is_dri,
+            "the outgoing DRI must be cleared, not merely superseded"
+        );
+
+        let report = admin_dri_invariant_report(&db).await.unwrap();
+        let status = report.iter().find(|s| s.firm_id == firm.id).unwrap();
+        assert_eq!(status.problem, None);
+    }
+
+    /// Appointment refuses ineligible tiers, a person with no membership on
+    /// this Firm at all (cross-Firm), and a person whose membership on this
+    /// Firm is not `admin` — three distinct typed refusals.
+    #[tokio::test]
+    async fn appoint_admin_dri_refuses_ineligible_wrong_membership_and_cross_firm() {
+        let db = mem_surreal().await;
+        let firm_a = practice(&db, "Practice A").await;
+        let firm_b = practice(&db, "Practice B").await;
+
+        let lawyer = crate::persons::create(
+            &db,
+            &NewPerson::with_role("Lawyer A", "lawyer-a@example.com", Role::Lawyer),
+        )
+        .await
+        .unwrap();
+        let err = appoint_admin_dri(&db, Role::Owner, None, firm_a.id, lawyer.id)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, FirmError::IneligibleAdminDriTier(id) if id == lawyer.id));
+
+        let admin_on_b = crate::persons::create(
+            &db,
+            &NewPerson::with_role("Admin On B", "admin-on-b@example.com", Role::Admin),
+        )
+        .await
+        .unwrap();
+        add_membership(
+            &db,
+            &NewPersonFirmRole {
+                person_id: admin_on_b.id,
+                firm_id: firm_b.id,
+                membership: FirmMembership::Admin,
+                is_dri: false,
+            },
+        )
+        .await
+        .unwrap();
+        let err = appoint_admin_dri(&db, Role::Owner, None, firm_a.id, admin_on_b.id)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, FirmError::AdminDriCrossFirm(person, firm) if person == admin_on_b.id && firm == firm_a.id)
+        );
+
+        let lawyer_member_of_a = crate::persons::create(
+            &db,
+            &NewPerson::with_role(
+                "Admin Wrong Membership",
+                "wrong-membership@example.com",
+                Role::Admin,
+            ),
+        )
+        .await
+        .unwrap();
+        add_membership(
+            &db,
+            &NewPersonFirmRole {
+                person_id: lawyer_member_of_a.id,
+                firm_id: firm_a.id,
+                membership: FirmMembership::Lawyer,
+                is_dri: false,
+            },
+        )
+        .await
+        .unwrap();
+        let err = appoint_admin_dri(&db, Role::Owner, None, firm_a.id, lawyer_member_of_a.id)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, FirmError::WrongAdminDriMembership(person, firm) if person == lawyer_member_of_a.id && firm == firm_a.id)
+        );
+    }
+
+    /// The guard used by membership-removal doors: removing or demoting the
+    /// current sole DRI on an active Firm is refused; anything else is a
+    /// no-op that never errors.
+    #[tokio::test]
+    async fn refuse_admin_dri_orphaning_only_blocks_the_active_firm_s_sole_dri() {
+        let db = mem_surreal().await;
+        let admin = admin_dri_person(&db).await;
+        let firm = practice_with_admin(&db, "Guarded Practice", admin).await;
+
+        let err = refuse_admin_dri_orphaning(&db, firm.id, admin, None)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, FirmError::WouldLeaveFirmWithoutAdminDri(id) if id == firm.id));
+        let err = refuse_admin_dri_orphaning(&db, firm.id, admin, Some(FirmMembership::Lawyer))
+            .await
+            .unwrap_err();
+        assert!(matches!(err, FirmError::WouldLeaveFirmWithoutAdminDri(id) if id == firm.id));
+
+        // Reassigning to `admin` is not an orphan and is not refused.
+        refuse_admin_dri_orphaning(&db, firm.id, admin, Some(FirmMembership::Admin))
+            .await
+            .unwrap();
+
+        // A non-DRI row on the same Firm is never refused.
+        let lawyer = crate::persons::create(
+            &db,
+            &NewPerson::with_role("Lawyer", "guard-lawyer@example.com", Role::Lawyer),
+        )
+        .await
+        .unwrap();
+        add_membership(
+            &db,
+            &NewPersonFirmRole {
+                person_id: lawyer.id,
+                firm_id: firm.id,
+                membership: FirmMembership::Lawyer,
+                is_dri: false,
+            },
+        )
+        .await
+        .unwrap();
+        refuse_admin_dri_orphaning(&db, firm.id, lawyer.id, None)
+            .await
+            .unwrap();
+    }
+
+    /// The deployment-wide report names missing and multiple designations,
+    /// and never writes anything — the two invalid states a direct database
+    /// edit could still produce underneath the atomic doors above.
+    #[tokio::test]
+    async fn admin_dri_invariant_report_names_missing_and_multiple() {
+        let db = mem_surreal().await;
+        let admin = admin_dri_person(&db).await;
+        let firm = practice_with_admin(&db, "Reported Practice", admin).await;
+
+        // Multiple: a second Admin membership is force-marked `is_dri` by a
+        // direct write underneath `appoint_admin_dri` — exactly the kind of
+        // state this report exists to catch rather than silently repair.
+        let second_admin = crate::persons::create(
+            &db,
+            &NewPerson::with_role("Second", "second-reported@example.com", Role::Admin),
+        )
+        .await
+        .unwrap();
+        add_membership(
+            &db,
+            &NewPersonFirmRole {
+                person_id: second_admin.id,
+                firm_id: firm.id,
+                membership: FirmMembership::Admin,
+                is_dri: true,
+            },
+        )
+        .await
+        .unwrap();
+        let report = admin_dri_invariant_report(&db).await.unwrap();
+        let status = report.iter().find(|s| s.firm_id == firm.id).unwrap();
+        assert!(
+            matches!(&status.problem, Some(AdminDriProblem::Multiple(ids)) if ids.len() == 2),
+            "{status:?}"
+        );
+
+        // Missing: an empty Firm reports it, never guesses one.
+        let empty_entity = seed_entity(&db).await;
+        let empty_admin = admin_dri_person(&db).await;
+        let empty_firm = create(
+            &db,
+            &NewFirm {
+                name: "Empty Practice".to_string(),
+                status: "active".to_string(),
+                entity_id: empty_entity,
+                admin_dri_person_id: empty_admin,
+            },
+        )
+        .await
+        .unwrap();
+        // Clear the only DRI with a direct write — the same underneath-the-door
+        // edit the report exists to catch.
+        db.query("UPDATE person_firm_role SET is_dri = false WHERE firm_id = $firm_id")
+            .bind(("firm_id", record_id(TABLE, empty_firm.id)))
+            .await
+            .unwrap()
+            .check()
+            .unwrap();
+        let report = admin_dri_invariant_report(&db).await.unwrap();
+        let status = report.iter().find(|s| s.firm_id == empty_firm.id).unwrap();
+        assert_eq!(status.problem, Some(AdminDriProblem::Missing));
     }
 
     #[tokio::test]
@@ -871,6 +1442,7 @@ mod tests {
     #[tokio::test]
     async fn create_requires_a_live_entity_and_refuses_a_second_firm_on_it() {
         let db = mem_surreal().await;
+        let admin = admin_dri_person(&db).await;
         let missing = Uuid::now_v7();
         let err = create(
             &db,
@@ -878,6 +1450,7 @@ mod tests {
                 name: "Ghost Practice".to_string(),
                 status: "active".to_string(),
                 entity_id: missing,
+                admin_dri_person_id: admin,
             },
         )
         .await
@@ -891,6 +1464,7 @@ mod tests {
                 name: "First".to_string(),
                 status: "active".to_string(),
                 entity_id,
+                admin_dri_person_id: admin,
             },
         )
         .await
@@ -901,6 +1475,7 @@ mod tests {
                 name: "Second".to_string(),
                 status: "active".to_string(),
                 entity_id,
+                admin_dri_person_id: admin,
             },
         )
         .await
@@ -953,14 +1528,14 @@ mod tests {
     #[tokio::test]
     async fn admin_visibility_stays_inside_the_admin_s_firms() {
         let db = mem_surreal().await;
-        let firm_a = practice(&db, "Practice A").await;
-        let firm_b = practice(&db, "Practice B").await;
         let admin_a = crate::persons::create(
             &db,
             &NewPerson::with_role("Admin A", "admin-a@example.com", Role::Admin),
         )
         .await
         .unwrap();
+        let firm_a = practice_with_admin(&db, "Practice A", admin_a.id).await;
+        let firm_b = practice(&db, "Practice B").await;
         let lawyer_a = crate::persons::create(
             &db,
             &NewPerson::with_role("Lawyer A", "lawyer-a@example.com", Role::Lawyer),
@@ -970,17 +1545,6 @@ mod tests {
         let lawyer_b = crate::persons::create(
             &db,
             &NewPerson::with_role("Lawyer B", "lawyer-b@example.com", Role::Lawyer),
-        )
-        .await
-        .unwrap();
-        add_membership(
-            &db,
-            &NewPersonFirmRole {
-                person_id: admin_a.id,
-                firm_id: firm_a.id,
-                membership: FirmMembership::Admin,
-                is_dri: true,
-            },
         )
         .await
         .unwrap();
@@ -1016,24 +1580,13 @@ mod tests {
     #[tokio::test]
     async fn visible_person_ids_never_surfaces_a_client_through_a_firm_row() {
         let db = mem_surreal().await;
-        let firm = practice(&db, "No Client Members Practice").await;
         let admin = crate::persons::create(
             &db,
             &NewPerson::with_role("Admin Only", "admin-only@example.com", Role::Admin),
         )
         .await
         .unwrap();
-        add_membership(
-            &db,
-            &NewPersonFirmRole {
-                person_id: admin.id,
-                firm_id: firm.id,
-                membership: FirmMembership::Admin,
-                is_dri: true,
-            },
-        )
-        .await
-        .unwrap();
+        let firm = practice_with_admin(&db, "No Client Members Practice", admin.id).await;
 
         let client = crate::persons::create(
             &db,
@@ -1118,6 +1671,7 @@ mod tests {
                 name: name.to_string(),
                 status: "active".to_string(),
                 entity_id,
+                admin_dri_person_id: admin_dri_person(db).await,
             },
         )
         .await

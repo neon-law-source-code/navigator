@@ -572,6 +572,7 @@ fn ops_help_lists_operator_members() {
             "deployments",
             "dns",
             "doctor",
+            "firms",
             "gcp",
             "github",
             "lsp",

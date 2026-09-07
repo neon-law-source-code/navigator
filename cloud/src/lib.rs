@@ -194,6 +194,19 @@ pub async fn surreal_archives_from_env() -> Result<Arc<dyn StorageService>, Stor
     .await
 }
 
+/// Resolve the dedicated Iceberg-archive bucket the nightly `archives`
+/// promotion writes application and telemetry tables into
+/// (`NAVIGATOR_ARCHIVES_BUCKET`). Every deployment names it explicitly, and
+/// KIND provisions its own dedicated Garage bucket and key pair (ENG-214),
+/// so neither backend falls back to `NAVIGATOR_STORAGE_BUCKET`.
+pub async fn archives_from_env() -> Result<Arc<dyn StorageService>, StorageError> {
+    backend_from_env(
+        GcsStorageConfig::archives_from_env,
+        S3StorageConfig::archives_from_env,
+    )
+    .await
+}
+
 /// Like [`from_env`], but the GCS bucket comes from
 /// `NAVIGATOR_ASSETS_BUCKET` (falling back to `NAVIGATOR_STORAGE_BUCKET`
 /// — see [`GcsStorageConfig::assets_from_env`]).
@@ -458,8 +471,9 @@ mod ready_tests {
 #[cfg(test)]
 mod backend_tests {
     use super::{
-        applications_from_env, assets_from_env, assets_from_lookup, exports_from_env, from_env,
-        lfs_from_env, validate_backend_name, S3StorageConfig, StorageError,
+        applications_from_env, archives_from_env, assets_from_env, assets_from_lookup,
+        exports_from_env, from_env, lfs_from_env, validate_backend_name, S3StorageConfig,
+        StorageError,
     };
 
     #[tokio::test]
@@ -552,6 +566,7 @@ mod backend_tests {
         "NAVIGATOR_STORAGE_BUCKET",
         "NAVIGATOR_DOCUMENTS_BUCKET",
         "NAVIGATOR_SURREAL_ARCHIVES_BUCKET",
+        "NAVIGATOR_ARCHIVES_BUCKET",
         "NAVIGATOR_ASSETS_BUCKET",
         "NAVIGATOR_APPLICATIONS_BUCKET",
         "NAVIGATOR_LFS_BUCKET",
@@ -576,6 +591,7 @@ mod backend_tests {
         std::env::set_var("NAVIGATOR_STORAGE_BUCKET", "navigator-exports");
         std::env::set_var("NAVIGATOR_DOCUMENTS_BUCKET", "navigator-documents");
         std::env::set_var("NAVIGATOR_SURREAL_ARCHIVES_BUCKET", "navigator-archives");
+        std::env::set_var("NAVIGATOR_ARCHIVES_BUCKET", "navigator-iceberg-archives");
         std::env::set_var("NAVIGATOR_ASSETS_BUCKET", "navigator-assets");
         std::env::set_var("NAVIGATOR_APPLICATIONS_BUCKET", "navigator-applications");
         std::env::set_var("NAVIGATOR_LFS_BUCKET", "navigator-lfs");
@@ -592,6 +608,10 @@ mod backend_tests {
         assert_eq!(
             S3StorageConfig::surreal_archives_from_env().unwrap().bucket,
             "navigator-archives"
+        );
+        assert_eq!(
+            S3StorageConfig::archives_from_env().unwrap().bucket,
+            "navigator-iceberg-archives"
         );
         assert_eq!(
             S3StorageConfig::assets_from_env().unwrap().bucket,
@@ -611,6 +631,7 @@ mod backend_tests {
         std::env::set_var("NAVIGATOR_STORAGE_BACKEND", "s3");
         assert!(from_env().await.is_ok());
         assert!(exports_from_env().await.is_ok());
+        assert!(archives_from_env().await.is_ok());
         assert!(assets_from_env().await.is_ok());
         assert!(applications_from_env().await.is_ok());
         assert!(lfs_from_env().await.is_ok());

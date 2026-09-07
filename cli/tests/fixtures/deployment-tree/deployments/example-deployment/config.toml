@@ -40,7 +40,7 @@ NAVIGATOR_EXPORTS_BUCKET = "example-deployment-exports"
 NAVIGATOR_SURREAL_ARCHIVES_BUCKET = "example-deployment-archives"
 NAVIGATOR_LOGS_BUCKET = "example-deployment-logs"
 NAVIGATOR_APPLICATIONS_BUCKET = "example-deployment-applications"
-NAVIGATOR_ICEBERG_BUCKET = "example-archives-deployment"
+NAVIGATOR_ARCHIVES_BUCKET = "example-archives-deployment"
 NAVIGATOR_TELEMETRY_BUCKET = "example-deployment-telemetry"
 
 # --- Images ----------------------------------------------------------------

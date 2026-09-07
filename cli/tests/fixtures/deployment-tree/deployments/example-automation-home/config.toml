@@ -44,7 +44,7 @@ NAVIGATOR_EXPORTS_BUCKET = "example-automation-home-exports"
 NAVIGATOR_SURREAL_ARCHIVES_BUCKET = "example-automation-home-archives"
 NAVIGATOR_LOGS_BUCKET = "example-automation-home-logs"
 NAVIGATOR_APPLICATIONS_BUCKET = "example-automation-home-applications"
-NAVIGATOR_ICEBERG_BUCKET = "example-archives-automation-home"
+NAVIGATOR_ARCHIVES_BUCKET = "example-archives-automation-home"
 NAVIGATOR_TELEMETRY_BUCKET = "example-automation-home-telemetry"
 
 # --- Images ----------------------------------------------------------------

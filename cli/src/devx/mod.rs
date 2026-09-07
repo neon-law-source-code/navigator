@@ -596,7 +596,7 @@ pub enum GcpCmd {
         /// long-term storage lives. Omit to skip the lane entirely — there is
         /// no derived default, because the name is prefix-shaped rather than
         /// `<project-id>-`-shaped.
-        #[arg(long, env = "NAVIGATOR_ICEBERG_BUCKET")]
+        #[arg(long, env = "NAVIGATOR_ARCHIVES_BUCKET")]
         archives_bucket: Option<String>,
         /// Telemetry landing zone (`<deployment>-telemetry`), where the `OTel`
         /// collector writes Parquet before the nightly lane promotes it into

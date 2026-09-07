@@ -229,16 +229,14 @@ const NAVIGATOR_CODEQL_INTEGRATION_ID: u64 = 57789;
 /// Workflow files that may terminate in the [`REQUIRED_CHECK`] job, in the
 /// order they are looked for.
 ///
-/// Two spellings are live at once, and both are correct. A repository the Firm
-/// has always administered carries `ci.yml`; a Project repository written by
-/// `navigator site projects repository scaffold` carries `gate.yml`. What they share
-/// is the invariant that actually matters — a job whose check run is named
-/// `ci` — so the gate accepts either filename and refuses only when neither
-/// file exists or neither defines the job.
-///
-/// Accepting both is deliberate rather than transitional. The scaffold names
-/// the file for what it is, and renaming it in every Project repository would
-/// buy nothing: the required context is matched by job name, never by path.
+/// Two spellings are live at once. A repository the Firm has always
+/// administered carries `ci.yml`, and so does a Project repository written by
+/// `navigator site projects repository scaffold`. A retired `gate.yml` is still
+/// accepted so a repository that has not been regenerated continues to bind
+/// the required `ci` check. What they share is the invariant that actually
+/// matters — a job whose check run is named `ci` — so the gate accepts either
+/// filename and refuses only when neither file exists or neither defines the
+/// job.
 const CI_WORKFLOW_PATHS: &[&str] = &[".github/workflows/ci.yml", ".github/workflows/gate.yml"];
 
 /// The merge gate every repository the Firm *develops in* carries, with the

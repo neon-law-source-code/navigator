@@ -5,7 +5,8 @@ description: >-
   for a project-scoped Navigator session and verify each pointer against
   the live asset record.
 
-# A Project repository's gate.yml runs this on every event (#486). The job
+# A Project repository's reusable project-gate workflow runs this on every
+# event (#486). The job
 # must have `id-token: write` for the live half; an empty or missing `host`,
 # or any event other than a push to `main`, runs offline pointer-shape
 # validation only and mints no session. The minted Navigator session never

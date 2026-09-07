@@ -22,7 +22,7 @@ holds that Project's notation templates and application workspaces side by side:
 
 ```text
 <the Project's repository>
-├── .github/workflows/gate.yml
+├── .github/workflows/ci.yml
 ├── .github/workflows/publish.yml
 ├── apps/
 │   └── portal/        # React + Vite; discovered by its package.json
@@ -92,8 +92,9 @@ extension, keyed `name:`, is retired, and a checkout still carrying it reads as 
 and the same reader serve both a Project repository and a staged sample-project bundle:
 `store::sample_project::MANIFEST_FILE` and `cli/src/projects/repository.rs`'s `PROJECT_MANIFEST` name the identical
 string on purpose, so a rename of one cannot leave the other stale. The accepted top-level keys are `host`, `project`,
-`no_live_row`, `allowed_hosts`, and `allowed_prefixes`. An unknown key is refused, naming that set. `host` is a hostname,
-not a row in a deployment table. `project` is a Navigator Project code. `no_live_row` is a non-empty reason string.
+`no_live_row`, `allowed_hosts`, and `allowed_prefixes`. An unknown key is refused, naming that set. `host` is a
+hostname, not a row in a deployment table. `project` is a Navigator Project code. `no_live_row` is a non-empty reason
+string.
 
 ## Document staging and pointers
 
@@ -261,26 +262,10 @@ forge.
 
 ## The CI gate
 
-One composite action verifies the layout, every application build, and every mount, consumed identically by every
-Project repository in every organization:
-
-```yaml
-- uses: actions/checkout@<sha>  # v7
-- run: |
-    shopt -s nullglob
-    package_manifests=(apps/*/package.json)
-    if [ -f portal/package.json ]; then
-      package_manifests+=(portal/package.json)
-    fi
-    for package_json in "${package_manifests[@]}"; do
-      pnpm --dir "${package_json%/package.json}" build
-    done
-- uses: neon-law-source-code/navigator/.github/actions/validate@YY.M.D
-  with:
-A Project repository's `ci.yml` is a thin caller of Navigator's reusable workflow
-`.github/workflows/project-gate.yml`, pinned to an exact release tag. The pin *is* the version: `ops github setup`
-bumps the caller's `uses:` ref and does not resolve `latest`. Validate does not check that the pin exists on the
-registry — a tag that was never published fails on the run that downloads it.
+A Project repository's `ci.yml` is a thin caller of Navigator's reusable workflow `.github/workflows/project-gate.yml`,
+pinned to an exact release tag. The pin is the version: `ops github setup` bumps the caller's `uses:` ref and does not
+resolve `latest`. Validate does not check that the pin exists on the registry. A tag that was never published fails on
+the run that downloads it.
 
 ```yaml
 jobs:
@@ -292,10 +277,10 @@ jobs:
       host: ${{ vars.NAVIGATOR_HOST }}
 ```
 
-The reusable workflow downloads that CLI tag and runs `navigator validate` after the JS build. `navigator site projects
-gate --ci` is the OIDC door for live document verification (`POST /auth/ci/document-token`); without GitHub's OIDC
-request URL it exits 2 rather than minting a session. Staging sample repositories stay public by design;
-`ops github setup --dry-run` reports a visibility finding and never flips visibility.
+It downloads that CLI tag and runs `navigator validate` after the JS build. `navigator site projects gate --ci` is the
+OIDC door for live document verification at `POST /auth/ci/document-token`; without GitHub's OIDC request URL it exits 2
+rather than minting a session. Staging sample repositories stay public by design. `ops github setup --dry-run` reports a
+visibility finding and never flips visibility.
 
 `navigator site projects repository scaffold` generates the shape every Project repository converged on by hand before
 this generator caught up: three feeder jobs — `lint`, `verify` (typecheck, test, build), and `notation` (the snippet
@@ -506,38 +491,13 @@ identity for each of the three, and every `publish` run since it went in on 2026
 two credential coordinates are read from repository *variables*, not secrets — a Workload Identity provider resource
 name and a service-account email are public identifiers with no key behind them, so GitHub's per-repository OIDC
 condition and the bucket's IAM prefix condition are the actual trust boundary, not the secrecy of these two strings. The
-bucket and object prefix are not passed in at all; each repository derives them from its own `navigator.yaml` through a
-checked-in `.github/navigator.py`, which also backs the origin gate (`.github/no-external-references.py`) run in the
-same job.
+bucket and object prefix are not passed in at all; each repository derives them from its own `navigator.yaml`. The
+origin scan is `navigator validate` rule `Y009` over each built `dist/`, not a copied Python file. A new sample
+repository is `navigator site projects repository scaffold`; it does not copy `.github/*.py` from an existing Project.
 
-**The origin gate is a copied file, so its parsing rule is written down rather than left to the copy.** Neither script
-is written by `navigator projects repository scaffold`; both were added by hand, and a new Project repository gets them
-by copying. Copy from one of the three sample repositories above, which hold only synthetic source and carry the
-corrected parser — not from an arbitrary Project repository, where the copy may predate the correction.
-
-`navigator.py` parses `navigator.yaml` with a small hand-written parser, deliberately not a YAML library: a gate whose
-job is to be able to say no cannot depend on `pip install` succeeding. Inside `allowed_hosts` and `allowed_prefixes`, a
-`key: value` line **splits on the first `": "` and never on the first `":"`**. That is YAML's own rule, and it is the
-only reading under which a URL can be a key.
-
-Splitting on a bare `":"` makes the key of `https://example.test/x: reason` the string `https`. The gate's only consumer
-of that map tests `full.startswith(prefix)`, so a bare scheme is a prefix of every `https://` reference in the bundle
-and nothing is ever reported. **The gate does not go red or crash — it prints `no external references: N built file(s)
-reference no host but our own` and exits 0**, which is an affirmative claim that the bundle is clean and therefore ends
-the investigation rather than starting one.
-
-Two properties make this worth pinning rather than simply fixing:
-
-- **`allowed_hosts` escapes by luck, not by design.** A hostname has no colon before its `": "`, so the wrong split
-  happens to yield the right key. A host written with a port re-enters the defect through the door that looks safe.
-- **The gate's failure message solicits the entry that disables it.** A violation prints "add it to `allowed_hosts` or
-  `allowed_prefixes` in navigator.yaml with the reason". Under the bare-colon split, a single entry naming one host
-  suppresses reporting for *every* host, so the documented remedy for a failure is the action that turns the control off
-  — and the check goes green, which reads as the problem being solved. The failure mode gets worse the more carefully an
-  engineer follows the tool's own guidance.
-
-A copy of `navigator.py` should therefore carry the parser's cases and a `--test` entry point that runs them, so the
-rule is enforced in the repository that depends on it rather than remembered.
+The three live sample repositories may still carry a historical `publish.yml` that shells those scripts until they are
+regenerated. That copy is not the contract. The CLI parser refuses unknown manifest keys by naming the accepted set, and
+the origin scan skips an empty first label so a regex-literal `//.test(` is not a host.
 
 **Upload order is load-bearing, and the never-delete rule is what distinguishes a private, shared applications bucket
 from a public marketing site.** The action uploads in two passes — everything except `index.html` first, then
@@ -562,17 +522,18 @@ navigator site projects repository validate .
 ```
 
 `scaffold` is idempotent and leaves existing files alone. It writes the repository shell — `navigator.yaml` (requiring
-`--host`), the thin `ci.yml` caller, a `publish.yml` job guarded on `vars.NAVIGATOR_HOST`, `README.md`, `AGENTS.md`,
-a `CLAUDE.md` symlink to `AGENTS.md`, and `tests/`. It does not write a placeholder template. A hand-copied `ci.yml` of
+`--host`), the thin `ci.yml` caller, a `publish.yml` job guarded on `vars.NAVIGATOR_HOST`, `README.md`, `AGENTS.md`, a
+`CLAUDE.md` symlink to `AGENTS.md`, and `tests/`. It does not write a placeholder template. A hand-copied `ci.yml` of
 268 lines or more is left alone unless `--replace-gate` is passed.
 
-The generated gate pins Navigator's validate action to `--action-version`, which defaults to the release the running
-`navigator` reports as its own version — but only when this binary can actually vouch for that version: a downloaded
-release binary, or one built with `NAVIGATOR_RELEASE_TAG` set, both of which can only report a version this repository
-has already published. A plain local build cannot make that promise (`[workspace.package].version` is bumped on `main`
-days before the matching tag exists), so it carries no default at all, and `--action-version` must be named explicitly.
-A value that is not an exact release tag — including no value, when this binary cannot vouch for one — is refused before
-any file is written, so a gate that could never resolve is never created.
+The generated `ci.yml` pins Navigator's reusable project-gate workflow to `--action-version`, which defaults to the
+release the running `navigator` reports as its own version — but only when this binary can actually vouch for that
+version: a downloaded release binary, or one built with `NAVIGATOR_RELEASE_TAG` set, both of which can only report a
+version this repository has already published. A plain local build cannot make that promise
+(`[workspace.package].version` is bumped on `main` days before the matching tag exists), so it carries no default at
+all, and `--action-version` must be named explicitly. A value that is not an exact release tag — including no value,
+when this binary cannot vouch for one — is refused before any file is written, so a gate that could never resolve is
+never created.
 
 It does **not** write `apps/`. That arrives from the vibe-coding lane ([`vibe-coding`](vibe-coding.md)), which knows how
 to make a Vite application and which released `@neon-law/ux` version to pin. A direct `apps/<app>/package.json` is the
@@ -626,7 +587,7 @@ experiences them as one sequence, not five, so this section threads them togethe
    navigator site projects repository scaffold <code> --dir . --action-version <YY.M.D>
    ```
 
-   Commit and push what it writes — that push is what makes `.github/workflows/gate.yml` live on the new repository.
+   Commit and push what it writes — that push is what makes `.github/workflows/ci.yml` live on the new repository.
 
 4. **Build an application, if this Project needs one.** A separate, later decision made in the `vibe-react` lane
    against a pinned `@neon-law/ux` release; `scaffold` deliberately does not write `apps/`.

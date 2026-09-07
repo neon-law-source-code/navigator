@@ -14,7 +14,7 @@ The fixture seeds two more matters beside it — `sample-transactional` and `sam
 project list has something in it. The exercises stay on one matter on purpose; the other two are there to be seen from
 `/app/projects`, not worked.
 
-## Public brand hosts
+**Public brand hosts**
 
 The same local `web` process resolves its public face from the host. In staging, use `staging.neonlaw.com` for Neon Law,
 `staging.deleteyourdata.com` for DeleteYourData.com, and `staging.lawyershook.com` for Lawyer Shook. The route and

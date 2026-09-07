@@ -1112,7 +1112,7 @@ fn worktree_slot_of_host_port(port: u16) -> Option<u16> {
     // The window ends after the LAST base, so adding a tier member means
     // moving this to its base — otherwise that member's ports stop
     // registering as claims and `sweep` under-reports what a cluster holds.
-    const WINDOW_END: u16 = WORKTREE_SURREAL_PORT_BASE + WORKTREE_PORT_SPAN;
+    const WINDOW_END: u16 = WORKTREE_LAWYER_SHOOK_WEB_PORT_BASE + WORKTREE_PORT_SPAN;
     (WORKTREE_PORT_WINDOW_START..WINDOW_END)
         .contains(&port)
         .then_some(port % WORKTREE_PORT_SPAN)

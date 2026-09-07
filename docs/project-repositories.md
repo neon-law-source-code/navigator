@@ -192,16 +192,10 @@ group.
 
 | Deployment | GCP project | Organization | Drive root |
 | --- | --- | --- | --- |
-| Production | `neon-law` | `neon-law` | `Projects` |
 | Staging | `neon-law-stg` | `neon-law` | `Staging Projects` |
 
 The active deployment is identified by `NAVIGATOR_GCP_PROJECT_ID`. It is deliberately not `NAVIGATOR_ENVIRONMENT`, which
 is a two-valued dev/production switch and cannot name a deployment.
-
-**One string means two different things across those two vocabularies: the organization `neon-law` is staging, while the
-GCP project `neon-law` is production.** That inversion is accepted rather than accidental — the organizations are named
-for the entities and the GCP projects for the deployments. It is the single most likely way to ship to the wrong place,
-so it lives in the configuration an operator reads rather than in source where it would have to be remembered.
 
 ### An absent repository is legitimate
 

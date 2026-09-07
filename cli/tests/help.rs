@@ -82,7 +82,6 @@ fn top_level_help_keeps_orchestration_nested_under_groups() {
             "github",
             "notations",
             "ops",
-            "project",
             "site",
             "validate",
             "help",
@@ -176,30 +175,6 @@ fn site_import_help_lists_the_seed_arguments() {
         .stdout(str::contains("--dir"));
 }
 
-/// `project` is write-side and local; `site projects open` drives a running
-/// deployment through the stored bearer token.
-#[test]
-fn project_help_lists_only_the_local_write_side() {
-    assert_eq!(
-        command_names(&help(&["project", "--help"])),
-        vec!["create", "help"]
-    );
-    assert_eq!(
-        command_names(&help(&["site", "projects", "--help"])),
-        vec![
-            "close",
-            "doctor",
-            "drift",
-            "lifecycle",
-            "list",
-            "open",
-            "repository",
-            "surfaces",
-            "help"
-        ]
-    );
-}
-
 #[test]
 fn site_projects_close_accepts_an_effective_time() {
     let output = help(&["site", "projects", "close", "--help"]);
@@ -218,7 +193,9 @@ fn site_projects_close_accepts_an_effective_time() {
 /// matters, because `projects doctor` and `projects drift` promise to change
 /// nothing, `repository scaffold` writes files, and `surfaces reconcile`
 /// talks to Drive and the forge; `lifecycle` reads every row for admin-tier
-/// oversight.
+/// oversight. `archive-repository` zips a closed Project's repository
+/// working tree at its current commit and files it as a document — the
+/// separate, deliberate step that follows a close rather than gating it.
 ///
 /// The retired `projects application` verbs are asserted gone rather than
 /// merely absent from this list: a Project has one portal, so there is no
@@ -228,7 +205,9 @@ fn projects_help_lists_the_project_workspace_verbs() {
     assert_eq!(
         command_names(&help(&["site", "projects", "--help"])),
         vec![
+            "archive-repository",
             "close",
+            "create",
             "doctor",
             "drift",
             "lifecycle",
@@ -671,71 +650,29 @@ fn notation_create_help_lists_template_and_client_flags() {
         .stdout(str::contains("--project"));
 }
 
-/// `--entity-name` reads as optional to clap, because `project create`
-/// resolves it to an id itself and wants to name the missing entity in its own
-/// error rather than clap's. Its doc comment once said so in prose too — "Omit
-/// for a Project not yet bound to any Entity" — and no door in the system
-/// permits that: `projects.entity_id` is NOT NULL, `project::create` refuses a
-/// `None`, and the web form marks the field required.
-///
-/// **This asserts on the source, not on `--help`, and that is the point.**
-/// `help_headline` cuts every description at the first `.!?:;—` followed by
-/// whitespace and caps it at ten words, so the rendered line is only "Exact
-/// `entities.name` of the legal organization this Project tracks." The retired
-/// claim lived past that cut and never reached a terminal — which is exactly
-/// why nobody running the command reported it, and why a rendered-output
-/// assertion would be worthless here: the claim could come back in a later
-/// sentence and a `--help` test would still pass.
-///
-/// So the guarded surface is the one that actually carries the meaning. That
-/// is not a workaround; `help_headline`'s own documentation says the Rust
-/// documentation "remains the source of operational detail, while terminal
-/// help is deliberately just a scan-friendly headline". The detail layer is
-/// where the drift happened, so the detail layer is what gets pinned.
+/// `--entity-name` is genuinely optional on `navigator site projects create`
+/// (ENG-473): omitting it opens the matter against a `Human` entity created
+/// for the client instead, which then requires `--jurisdiction` — asserted
+/// directly against the live command rather than a doc-comment scan, since
+/// the flag's optionality is now real clap behavior, not a syntactic
+/// loosening the prose has to narrow back down.
 #[test]
-fn project_create_documents_the_entity_as_required() {
-    let source = std::fs::read_to_string(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/main.rs"),
-    )
-    .expect("read cli/src/main.rs");
-
-    let doc = doc_comment_above(&source, "entity_name: Option<String>,");
-
-    assert!(
-        !doc.contains("Omit for a Project"),
-        "the `--entity-name` documentation must not offer an Entity-less \
-         matter, which no door in the system permits: {doc}"
-    );
-    assert!(
-        doc.contains("Required") && doc.contains("NOT NULL"),
-        "the `--entity-name` documentation must say the Entity is required, \
-         and why: {doc}"
-    );
-}
-
-/// The contiguous `///` block immediately above the line containing `needle`,
-/// joined into one string. Intervening `#[arg(..)]` attributes and plain `//`
-/// comments are stepped over, so the block found is the documentation clap
-/// reads rather than whatever happens to sit closest.
-fn doc_comment_above(source: &str, needle: &str) -> String {
-    let lines: Vec<&str> = source.lines().collect();
-    let at = lines
-        .iter()
-        .position(|line| line.contains(needle))
-        .unwrap_or_else(|| panic!("`{needle}` is not in cli/src/main.rs"));
-
-    let mut doc: Vec<&str> = Vec::new();
-    for line in lines[..at].iter().rev() {
-        let trimmed = line.trim_start();
-        if let Some(text) = trimmed.strip_prefix("///") {
-            doc.push(text.trim());
-            continue;
-        }
-        if trimmed.starts_with("#[") || trimmed.starts_with("//") {
-            continue;
-        }
-        break;
-    }
-    doc.reverse();
-    doc.join(" ")
+fn projects_create_requires_a_jurisdiction_when_entity_name_is_omitted() {
+    Command::cargo_bin("navigator")
+        .unwrap()
+        .args([
+            "site",
+            "projects",
+            "create",
+            "--name",
+            "No Entity",
+            "--code",
+            "no-entity",
+            "--client-email",
+            "client@example.com",
+            "--attest",
+        ])
+        .assert()
+        .failure()
+        .stderr(str::contains("--jurisdiction"));
 }

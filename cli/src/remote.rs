@@ -10,6 +10,7 @@
 //! | --- | --- |
 //! | `projects list` | `GET /app/projects.csv` |
 //! | `projects lifecycle` | `GET /app/api/project-lifecycle` |
+//! | `projects create` | `POST /app/api/projects` (plus `GET /app/api/people`, `/entities`, `/entity-types`, `/jurisdictions`) |
 //! | `project open`   | `GET /app/projects/:code` |
 //! | `projects close` | `POST /app/api/projects/{id}/lifecycle` |
 //! | `document upload` | `POST /app/api/projects/{id}/documents` |
@@ -296,7 +297,8 @@ impl DocumentClient {
         })
     }
 
-    /// Upload one revision and return the source-safe pointer.
+    /// Upload one revision from a local file and return the source-safe
+    /// pointer.
     #[allow(clippy::too_many_arguments)]
     pub(crate) async fn upload(
         &self,
@@ -313,9 +315,40 @@ impl DocumentClient {
             .and_then(|name| name.to_str())
             .filter(|name| !name.is_empty())
             .ok_or_else(|| anyhow!("file path has no filename"))?;
+        self.upload_bytes(
+            filename,
+            &bytes,
+            kind,
+            visibility,
+            description,
+            content_type,
+            slug,
+            None,
+        )
+        .await
+    }
+
+    /// Upload one revision from bytes already in memory — the archive
+    /// command's own path, which has no file on disk to read (ENG-481).
+    /// `metadata`, when present, is passed through to the asset row's own
+    /// `metadata` column verbatim (a source repository's commit SHA, for
+    /// instance); the content hash needs no separate field, since the
+    /// server derives it from the bytes themselves.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) async fn upload_bytes(
+        &self,
+        filename: &str,
+        bytes: &[u8],
+        kind: &str,
+        visibility: Option<&str>,
+        description: Option<&str>,
+        content_type: Option<&str>,
+        slug: Option<&str>,
+        metadata: Option<serde_json::Value>,
+    ) -> Result<store::document_pointers::DocumentPointer> {
         let mut body = serde_json::json!({
             "filename": filename,
-            "content_base64": base64::engine::general_purpose::STANDARD.encode(&bytes),
+            "content_base64": base64::engine::general_purpose::STANDARD.encode(bytes),
             "content_type": content_type.unwrap_or("application/octet-stream"),
             "kind": kind,
             "visibility": visibility.unwrap_or("internal"),
@@ -325,6 +358,9 @@ impl DocumentClient {
         }
         if let Some(slug) = slug.map(str::trim).filter(|value| !value.is_empty()) {
             body["slug"] = serde_json::Value::String(slug.to_string());
+        }
+        if let Some(metadata) = metadata {
+            body["metadata"] = metadata;
         }
         let url = format!(
             "{}/app/api/projects/{}/documents",
@@ -401,6 +437,105 @@ pub async fn document_upload(
     .await
 }
 
+/// `navigator site projects archive-repository <code> [--dir .]` — zip the
+/// repository's working tree at HEAD (no git history — a snapshot document,
+/// not a clone), and file it as a `closed_repository` document, recording
+/// the final commit SHA in the asset's `metadata` (ENG-481). The content
+/// hash needs no separate recording: the server derives `sha256_hex` from
+/// the uploaded bytes themselves, the same way template import already
+/// records both for a notation body.
+///
+/// This follows a matter's close; it does not gate it. `--dir` is the local
+/// checkout to archive — the repository this Project's `repository_url`
+/// names — and defaults to the current directory, matching every other
+/// repository-scoped command in this CLI.
+pub async fn archive_repository(host: Option<&str>, project_code: &str, dir: &Path) -> ExitCode {
+    run(async {
+        let commit_sha = git_head_commit_sha(dir)?;
+        let zip_bytes = git_archive_zip(dir)?;
+        let client = DocumentClient::connect(host, project_code).await?;
+        let kind = rules::kind::Kind::ClosedRepository.as_str();
+        let pointer = client
+            .upload_bytes(
+                &format!("{project_code}-closed-repository.zip"),
+                &zip_bytes,
+                kind,
+                None,
+                Some(&format!(
+                    "Repository archive for {project_code} at commit {commit_sha}"
+                )),
+                Some("application/zip"),
+                Some(kind),
+                Some(serde_json::json!({ "commit_sha": commit_sha })),
+            )
+            .await?;
+        println!(
+            "{} {}",
+            palette::dim("archived repository for"),
+            palette::highlight(project_code)
+        );
+        println!("{}  {commit_sha}", palette::dim("commit:"));
+        println!(
+            "{}  {}",
+            palette::dim("content sha256:"),
+            pointer.current_version.sha256
+        );
+        println!(
+            "{}  {}",
+            palette::dim("asset id:"),
+            pointer.current_version.asset_id
+        );
+        Ok(())
+    })
+    .await
+}
+
+/// `git rev-parse HEAD` in `dir` — the commit the archive is a snapshot of.
+fn git_head_commit_sha(dir: &Path) -> Result<String> {
+    let output = std::process::Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .with_context(|| format!("run git rev-parse HEAD in {}", dir.display()))?;
+    if !output.status.success() {
+        return Err(anyhow!(
+            "git rev-parse HEAD failed in {}: {}",
+            dir.display(),
+            first_line(&String::from_utf8_lossy(&output.stderr))
+        ));
+    }
+    let sha = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if sha.is_empty() {
+        return Err(anyhow!(
+            "git rev-parse HEAD in {} returned no commit — is this a git repository with a \
+             committed HEAD?",
+            dir.display()
+        ));
+    }
+    Ok(sha)
+}
+
+/// `git archive --format=zip HEAD` in `dir` — the working tree at HEAD, with
+/// no `.git` history, exactly as `git archive` always produces: a snapshot,
+/// never a clone.
+fn git_archive_zip(dir: &Path) -> Result<Vec<u8>> {
+    let output = std::process::Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(["archive", "--format=zip", "HEAD"])
+        .output()
+        .with_context(|| format!("run git archive --format=zip HEAD in {}", dir.display()))?;
+    if !output.status.success() {
+        return Err(anyhow!(
+            "git archive failed in {}: {}",
+            dir.display(),
+            first_line(&String::from_utf8_lossy(&output.stderr))
+        ));
+    }
+    Ok(output.stdout)
+}
+
 /// An HTTP client that does **not** follow redirects, so a handler's `303`
 /// (the notation lifecycle POSTs redirect on success) reads as success
 /// rather than following the `Location` into an HTML page.
@@ -438,6 +573,10 @@ struct ProjectLifecycle {
     code: String,
     status: String,
     closed_at: Option<String>,
+    /// Derived by the server from `repository_url`/`forge_provisioned_at`/
+    /// `git_initialized_at` — never a stored column. See
+    /// `store::project_surfaces::SourceState`.
+    source_state: store::project_surfaces::SourceState,
 }
 
 /// `navigator site projects lifecycle [--host h] [--json]` — read the
@@ -468,13 +607,19 @@ pub async fn projects_lifecycle(host: Option<&str>, json: bool) -> ExitCode {
                         row.code.clone(),
                         row.status.clone(),
                         row.closed_at.clone().unwrap_or_default(),
+                        row.source_state.as_str().to_string(),
                     ]
                 })
                 .collect::<Vec<_>>();
             print_projects(
-                &std::iter::once(vec!["code".into(), "status".into(), "closed_at".into()])
-                    .chain(table_rows)
-                    .collect::<Vec<_>>(),
+                &std::iter::once(vec![
+                    "code".into(),
+                    "status".into(),
+                    "closed_at".into(),
+                    "source_state".into(),
+                ])
+                .chain(table_rows)
+                .collect::<Vec<_>>(),
                 false,
             )?;
         }
@@ -584,12 +729,316 @@ pub async fn matter_open(host: Option<&str>, project_code: &str) -> ExitCode {
     .await
 }
 
+#[derive(Debug, Deserialize)]
+struct VisiblePerson {
+    id: Uuid,
+    email: String,
+    name: String,
+    role: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct VisibleEntity {
+    id: Uuid,
+    name: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct VisibleEntityType {
+    id: Uuid,
+    name: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct VisibleJurisdiction {
+    id: Uuid,
+    name: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct CreatedEntityId {
+    id: Uuid,
+}
+
+#[derive(Debug, Deserialize)]
+struct CreatedProjectResponse {
+    id: Uuid,
+    name: String,
+    code: String,
+    status: String,
+    entity_id: Uuid,
+}
+
+/// Which entity `projects_create` resolves the matter against, decided once
+/// from `--entity-name`/`--jurisdiction` before any network call.
+enum EntitySelection<'a> {
+    /// Resolve an existing entity by name.
+    Existing(&'a str),
+    /// Create a `Human` entity for the client, in this jurisdiction.
+    HumanIn(&'a str),
+}
+
+/// Resolve an **existing** Entity by name over `GET /app/api/entities`.
+/// Never creates one — a missing name is the caller's to fix.
+async fn resolve_existing_entity(
+    client: &reqwest::Client,
+    base: &str,
+    token: &str,
+    needle: &str,
+) -> Result<Uuid> {
+    let entities_resp = client
+        .get(format!("{base}/app/api/entities"))
+        .bearer_auth(token)
+        .send()
+        .await
+        .context("GET /app/api/entities")?;
+    let entities_status = entities_resp.status();
+    let entities_body = entities_resp.text().await.unwrap_or_default();
+    if !entities_status.is_success() {
+        return Err(anyhow!(
+            "list entities failed: {entities_status}: {}",
+            first_line(&entities_body)
+        ));
+    }
+    let entities: Vec<VisibleEntity> =
+        serde_json::from_str(&entities_body).context("parse GET /app/api/entities")?;
+    entities
+        .into_iter()
+        .find(|e| e.name.eq_ignore_ascii_case(needle))
+        .map(|e| e.id)
+        .ok_or_else(|| anyhow!("no entity named `{needle}` — create it first"))
+}
+
+/// Create a `Human` entity named for the client, in `jurisdiction_name` —
+/// the Human-entity rule
+/// (`docs/project-repositories.md#an-individual-clients-entity`): an
+/// individual client's matter opens against a `Human` entity in the
+/// client's own jurisdiction, never guessed and never the firm's own.
+async fn create_human_entity(
+    client: &reqwest::Client,
+    base: &str,
+    token: &str,
+    client_name: &str,
+    jurisdiction_name: &str,
+) -> Result<Uuid> {
+    let types_resp = client
+        .get(format!("{base}/app/api/entity-types"))
+        .bearer_auth(token)
+        .send()
+        .await
+        .context("GET /app/api/entity-types")?;
+    let types_status = types_resp.status();
+    let types_body = types_resp.text().await.unwrap_or_default();
+    if !types_status.is_success() {
+        return Err(anyhow!(
+            "list entity types failed: {types_status}: {}",
+            first_line(&types_body)
+        ));
+    }
+    let entity_types: Vec<VisibleEntityType> =
+        serde_json::from_str(&types_body).context("parse GET /app/api/entity-types")?;
+    let entity_type_id = entity_types
+        .into_iter()
+        .find(|t| t.name.eq_ignore_ascii_case("Human"))
+        .map(|t| t.id)
+        .ok_or_else(|| anyhow!("no `Human` entity type on this deployment"))?;
+
+    let jurisdictions_resp = client
+        .get(format!("{base}/app/api/jurisdictions"))
+        .bearer_auth(token)
+        .send()
+        .await
+        .context("GET /app/api/jurisdictions")?;
+    let jurisdictions_status = jurisdictions_resp.status();
+    let jurisdictions_body = jurisdictions_resp.text().await.unwrap_or_default();
+    if !jurisdictions_status.is_success() {
+        return Err(anyhow!(
+            "list jurisdictions failed: {jurisdictions_status}: {}",
+            first_line(&jurisdictions_body)
+        ));
+    }
+    let jurisdictions: Vec<VisibleJurisdiction> =
+        serde_json::from_str(&jurisdictions_body).context("parse GET /app/api/jurisdictions")?;
+    let jurisdiction_id = jurisdictions
+        .into_iter()
+        .find(|j| j.name.eq_ignore_ascii_case(jurisdiction_name))
+        .map(|j| j.id)
+        .ok_or_else(|| anyhow!("no jurisdiction named `{jurisdiction_name}`"))?;
+
+    let create_resp = client
+        .post(format!("{base}/app/api/entities"))
+        .bearer_auth(token)
+        .json(&serde_json::json!({
+            "name": client_name,
+            "entity_type_id": entity_type_id,
+            "jurisdiction_id": jurisdiction_id,
+        }))
+        .send()
+        .await
+        .context("POST /app/api/entities")?;
+    let create_status = create_resp.status();
+    let create_body = create_resp.text().await.unwrap_or_default();
+    if !create_status.is_success() {
+        return Err(anyhow!(
+            "create the Human entity for `{client_name}` failed: {create_status}: {}",
+            first_line(&create_body)
+        ));
+    }
+    let created: CreatedEntityId =
+        serde_json::from_str(&create_body).context("parse POST /app/api/entities")?;
+    Ok(created.id)
+}
+
+/// `navigator site projects create --code --name --client-email [--entity-name |
+/// --jurisdiction] [--closed --closed-at] --attest` — open a matter through
+/// the live site's `POST /app/api/projects`, the caller's own bearer token
+/// attached so the conflict attestation stays a personal act rather than a
+/// service credential's. The only CLI door onto `store::projects::open_matter`
+/// now runs over HTTP; there is no local-store equivalent that connects to
+/// `NAVIGATOR_SURREAL_*` directly, so this works against any deployment the
+/// operator has a login for, with no database connection required.
+///
+/// Resolves `--client-email` to the client-of-record Person over
+/// `GET /app/api/people` (the deployment carries no filtered lookup, so this
+/// reads the whole visible directory and matches case-insensitively, the
+/// same shape `projects_close` already uses for a matter code). With
+/// `--entity-name`, resolves an **existing** Entity by that name over
+/// `GET /app/api/entities` — this door never creates one. Without it,
+/// creates a `Human` entity named for the client, in `--jurisdiction`
+/// (required in that case): the Human-entity rule
+/// (`docs/project-repositories.md#an-individual-clients-entity`) says an
+/// individual client's matter opens against a `Human` entity in the
+/// client's own jurisdiction, never guessed and never the firm's own.
+///
+/// `--attest` is the operator's explicit affirmation that the attorney has
+/// checked for conflicts, and that either none prevent the open or this
+/// Project is not legal advice; the server refuses the open without it.
+/// `--closed`/`--closed-at` open the matter already closed (ENG-469) — both
+/// required together, refused alone.
+#[allow(clippy::too_many_arguments)]
+pub async fn projects_create(
+    host: Option<&str>,
+    name: &str,
+    code: &str,
+    client_email: &str,
+    entity_name: Option<&str>,
+    jurisdiction: Option<&str>,
+    attest: bool,
+    closed_at: Option<chrono::DateTime<chrono::Utc>>,
+) -> ExitCode {
+    run(async {
+        // Caller-correctable and independent of any connection: resolved
+        // before requiring a login, matching every other "is this
+        // combination even sensible" refusal in this command. Resolving it
+        // once here, rather than matching on the raw `Option`s again where
+        // `entity_id` is computed, is what keeps that later site provably
+        // exhaustive with no unreachable-in-practice branch to justify.
+        let entity_selection = match (entity_name, jurisdiction) {
+            (Some(needle), _) => EntitySelection::Existing(needle),
+            (None, Some(jurisdiction_name)) => EntitySelection::HumanIn(jurisdiction_name),
+            (None, None) => {
+                return Err(anyhow!(
+                    "an individual client's matter opens against a Human entity in the \
+                     client's own jurisdiction — pass --jurisdiction <name> (e.g. \
+                     --jurisdiction Nevada), or pass --entity-name to open against an \
+                     existing entity instead"
+                ));
+            }
+        };
+
+        let (base, token) = resolve(host)?;
+        let client = reqwest::Client::new();
+
+        let people_resp = client
+            .get(format!("{base}/app/api/people"))
+            .bearer_auth(&token)
+            .send()
+            .await
+            .context("GET /app/api/people")?;
+        let people_status = people_resp.status();
+        let people_body = people_resp.text().await.unwrap_or_default();
+        if !people_status.is_success() {
+            return Err(anyhow!(
+                "list people failed: {people_status}: {}",
+                first_line(&people_body)
+            ));
+        }
+        let people: Vec<VisiblePerson> =
+            serde_json::from_str(&people_body).context("parse GET /app/api/people")?;
+        let person = people
+            .into_iter()
+            .find(|p| p.email.eq_ignore_ascii_case(client_email))
+            .ok_or_else(|| anyhow!("no person with email `{client_email}` — create it first with `navigator site import person <seed-file>`"))?;
+        if !person.role.eq_ignore_ascii_case("client") {
+            return Err(anyhow!(
+                "the client of record `{client_email}` must be a client person, not {}",
+                person.role
+            ));
+        }
+
+        let entity_id = match entity_selection {
+            EntitySelection::Existing(needle) => {
+                resolve_existing_entity(&client, &base, &token, needle).await?
+            }
+            EntitySelection::HumanIn(jurisdiction_name) => {
+                create_human_entity(&client, &base, &token, &person.name, jurisdiction_name).await?
+            }
+        };
+
+        let mut payload = serde_json::json!({
+            "name": name,
+            "code": code,
+            "client_id": person.id,
+            "entity_id": entity_id,
+            "attestation": attest,
+        });
+        if let Some(closed_at) = closed_at {
+            payload["status"] = serde_json::json!("closed");
+            payload["closed_at"] = serde_json::json!(closed_at);
+        }
+        let response = client
+            .post(format!("{base}/app/api/projects"))
+            .bearer_auth(&token)
+            .json(&payload)
+            .send()
+            .await
+            .context("POST /app/api/projects")?;
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(anyhow!(
+                "create project `{code}` failed: {status}: {}",
+                first_line(&body)
+            ));
+        }
+        let created: CreatedProjectResponse =
+            serde_json::from_str(&body).context("parse POST /app/api/projects")?;
+        println!(
+            "{} {} (code={}, status={}, entity_id={})",
+            palette::dim(format!("created project {}", created.id)),
+            palette::highlight(&created.name),
+            created.code,
+            created.status,
+            created.entity_id,
+        );
+        println!(
+            "{}",
+            palette::dim(format!(
+                "open a notation with: navigator site notation create <template_code> --project {}",
+                created.code
+            )),
+        );
+        Ok(())
+    })
+    .await
+}
+
 /// `navigator site notation create <template-code> --project <code> --client-email …`
 /// — open a notation on an **already-existing** matter and surface the
 /// notation id. Every notation hangs on a pre-existing Project (the matter
-/// is a deliberate prior step, `navigator project create`), so `--project`
-/// is required: this resolves the human-facing matter **code** to the
-/// Project id, then posts to the project-scoped create route
+/// is a deliberate prior step, `navigator site projects create`), so
+/// `--project` is required: this resolves the human-facing matter **code**
+/// to the Project id, then posts to the project-scoped create route
 /// (`POST /app/projects/<project-code>/notations/new`). The template is read
 /// from the Project's git repo when authored there, else from the bundled
 /// firm catalog. Leaves the questionnaire ready for the site intake flow.
@@ -1798,13 +2247,13 @@ mod tests {
     use std::sync::LazyLock;
 
     use super::{
-        candidate_by_name, canonical_choice_value, clause_add, clause_edit, clause_list,
-        document_upload, ensure_no_unused_selections, fetch_status, matter_close, matter_open,
-        notation_approve, notation_create, notation_document, notation_request_changes,
-        notation_status, notation_update, parse_scripted_selection, picker_selection_fields,
-        projects_lifecycle, projects_list, retainer_approve, retainer_send,
-        scripted_picker_selection_fields, seed, seed_directory, select_candidate, CoverageSummary,
-        SeedCredential, StepQuestion, StepResponse,
+        archive_repository, candidate_by_name, canonical_choice_value, clause_add, clause_edit,
+        clause_list, document_upload, ensure_no_unused_selections, fetch_status, matter_close,
+        matter_open, notation_approve, notation_create, notation_document,
+        notation_request_changes, notation_status, notation_update, parse_scripted_selection,
+        picker_selection_fields, projects_create, projects_lifecycle, projects_list,
+        retainer_approve, retainer_send, scripted_picker_selection_fields, seed, seed_directory,
+        select_candidate, CoverageSummary, SeedCredential, StepQuestion, StepResponse,
     };
     use super::{fetch_step, first_line, json_reason, parse_csv, server_error};
     use crate::credentials::{self, Credentials, HostCredential};
@@ -2165,6 +2614,104 @@ mod tests {
         );
     }
 
+    /// `git init`, one committed file, in a fresh temp dir. Returns the
+    /// directory and the resulting commit SHA, so a test can assert the
+    /// archive command reads back exactly what it just committed.
+    fn git_fixture() -> (tempfile::TempDir, String) {
+        let dir = tempfile::tempdir().unwrap();
+        let run = |args: &[&str]| {
+            let status = std::process::Command::new("git")
+                .arg("-C")
+                .arg(dir.path())
+                .args(args)
+                .status()
+                .expect("run git");
+            assert!(status.success(), "git {args:?} failed");
+        };
+        run(&["init", "--quiet"]);
+        run(&["config", "user.email", "test@example.com"]);
+        run(&["config", "user.name", "Test"]);
+        std::fs::write(dir.path().join("README.md"), b"hello").unwrap();
+        run(&["add", "README.md"]);
+        run(&["commit", "--quiet", "-m", "initial"]);
+        let sha = std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir.path())
+            .args(["rev-parse", "HEAD"])
+            .output()
+            .expect("git rev-parse HEAD");
+        let sha = String::from_utf8_lossy(&sha.stdout).trim().to_string();
+        (dir, sha)
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn archive_repository_records_the_commit_sha_and_uploads_a_zip() {
+        let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+        let (repo, commit_sha) = git_fixture();
+        let server = MockServer::start().await;
+        let server_uri = server.uri();
+        let _env = CredentialsEnv::new(&server_uri);
+        let project_id = Uuid::now_v7();
+        let document_id = Uuid::now_v7();
+
+        Mock::given(method("GET"))
+            .and(path("/app/api/projects"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"id": project_id, "code": "acme"}
+            ])))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path(format!("/app/api/projects/{project_id}/documents")))
+            .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+                "kind": "closed_repository",
+                "visibility": "internal",
+                "current_version": {
+                    "version": 1,
+                    "asset_id": document_id,
+                    "created_at": "2026-09-05T12:00:00Z",
+                    "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                    "size_bytes": 300
+                }
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        assert_eq!(
+            archive_repository(Some(server_uri.as_str()), "acme", repo.path()).await,
+            ExitCode::SUCCESS
+        );
+
+        // The exact body the mock above accepted (any body) is asserted more
+        // precisely below via the request log, so the commit sha this test
+        // fixture produced is provably what was sent, not merely a mock that
+        // would have matched anything.
+        let requests = server.received_requests().await.unwrap();
+        let upload = requests
+            .iter()
+            .find(|r| r.url.path().ends_with("/documents"))
+            .expect("the upload request was made");
+        let body: serde_json::Value = serde_json::from_slice(&upload.body).unwrap();
+        assert_eq!(body["kind"], "closed_repository");
+        assert_eq!(body["metadata"]["commit_sha"], commit_sha);
+        assert_eq!(body["content_type"], "application/zip");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn archive_repository_refuses_a_directory_with_no_git_head() {
+        let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+        let server = MockServer::start().await;
+        let server_uri = server.uri();
+        let _env = CredentialsEnv::new(&server_uri);
+        let empty = tempfile::tempdir().unwrap();
+
+        assert_eq!(
+            archive_repository(Some(server_uri.as_str()), "acme", empty.path()).await,
+            ExitCode::from(2)
+        );
+    }
+
     #[tokio::test(flavor = "current_thread")]
     async fn matter_close_refuses_an_unknown_matter_code() {
         let _lock = CREDENTIALS_ENV_LOCK.lock().await;
@@ -2196,8 +2743,8 @@ mod tests {
         Mock::given(method("GET"))
             .and(path("/app/api/project-lifecycle"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
-                {"code": "acme", "status": "closed", "closed_at": "2026-09-02T00:00:00Z"},
-                {"code": "sample", "status": "open", "closed_at": null}
+                {"code": "acme", "status": "closed", "closed_at": "2026-09-02T00:00:00Z", "source_state": "attached"},
+                {"code": "sample", "status": "open", "closed_at": null, "source_state": "not_enabled"}
             ])))
             .expect(2)
             .mount(&server)
@@ -2318,6 +2865,283 @@ mod tests {
         assert_eq!(
             matter_close(Some(server_uri.as_str()), "acme", Some(effective_at)).await,
             ExitCode::SUCCESS
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn projects_create_resolves_client_and_existing_entity_then_opens() {
+        let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+        let server = MockServer::start().await;
+        let server_uri = server.uri();
+        let _env = CredentialsEnv::new(&server_uri);
+        let client_id = Uuid::now_v7();
+        let entity_id = Uuid::now_v7();
+        let project_id = Uuid::now_v7();
+
+        Mock::given(method("GET"))
+            .and(path("/app/api/people"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"id": client_id, "email": "client@example.com", "name": "Acme Client", "role": "client"}
+            ])))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/app/api/entities"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"id": entity_id, "name": "Acme LLC"}
+            ])))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/app/api/projects"))
+            .and(body_json(serde_json::json!({
+                "name": "Acme Formation",
+                "code": "acme-formation",
+                "client_id": client_id,
+                "entity_id": entity_id,
+                "attestation": true,
+            })))
+            .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+                "id": project_id,
+                "name": "Acme Formation",
+                "code": "acme-formation",
+                "status": "open",
+                "entity_id": entity_id,
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        assert_eq!(
+            projects_create(
+                Some(&server_uri),
+                "Acme Formation",
+                "acme-formation",
+                "client@example.com",
+                Some("Acme LLC"),
+                None,
+                true,
+                None,
+            )
+            .await,
+            ExitCode::SUCCESS
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn projects_create_without_entity_name_creates_a_human_entity_in_the_jurisdiction() {
+        let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+        let server = MockServer::start().await;
+        let server_uri = server.uri();
+        let _env = CredentialsEnv::new(&server_uri);
+        let client_id = Uuid::now_v7();
+        let entity_type_id = Uuid::now_v7();
+        let jurisdiction_id = Uuid::now_v7();
+        let created_entity_id = Uuid::now_v7();
+        let project_id = Uuid::now_v7();
+
+        Mock::given(method("GET"))
+            .and(path("/app/api/people"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"id": client_id, "email": "solo@example.com", "name": "Solo Client", "role": "client"}
+            ])))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/app/api/entity-types"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"id": entity_type_id, "name": "Human"}
+            ])))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/app/api/jurisdictions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"id": jurisdiction_id, "name": "Nevada"}
+            ])))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/app/api/entities"))
+            .and(body_json(serde_json::json!({
+                "name": "Solo Client",
+                "entity_type_id": entity_type_id,
+                "jurisdiction_id": jurisdiction_id,
+            })))
+            .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+                "id": created_entity_id,
+                "name": "Solo Client",
+                "entity_type_id": entity_type_id,
+                "jurisdiction_id": jurisdiction_id,
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/app/api/projects"))
+            .and(body_json(serde_json::json!({
+                "name": "Solo Matter",
+                "code": "solo-matter",
+                "client_id": client_id,
+                "entity_id": created_entity_id,
+                "attestation": true,
+            })))
+            .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+                "id": project_id,
+                "name": "Solo Matter",
+                "code": "solo-matter",
+                "status": "open",
+                "entity_id": created_entity_id,
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        assert_eq!(
+            projects_create(
+                Some(&server_uri),
+                "Solo Matter",
+                "solo-matter",
+                "solo@example.com",
+                None,
+                Some("Nevada"),
+                true,
+                None,
+            )
+            .await,
+            ExitCode::SUCCESS
+        );
+    }
+
+    /// ENG-469: `--closed`/`--closed-at` reach the server as `status`/
+    /// `closed_at` on the same open call.
+    #[tokio::test(flavor = "current_thread")]
+    async fn projects_create_opens_already_closed() {
+        let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+        let server = MockServer::start().await;
+        let server_uri = server.uri();
+        let _env = CredentialsEnv::new(&server_uri);
+        let client_id = Uuid::now_v7();
+        let entity_id = Uuid::now_v7();
+        let project_id = Uuid::now_v7();
+        let closed_at: chrono::DateTime<chrono::Utc> = "2026-06-01T00:00:00Z".parse().unwrap();
+
+        Mock::given(method("GET"))
+            .and(path("/app/api/people"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"id": client_id, "email": "client@example.com", "name": "Acme Client", "role": "client"}
+            ])))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/app/api/entities"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"id": entity_id, "name": "Acme LLC"}
+            ])))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/app/api/projects"))
+            .and(body_json(serde_json::json!({
+                "name": "Already Closed",
+                "code": "already-closed",
+                "client_id": client_id,
+                "entity_id": entity_id,
+                "attestation": true,
+                "status": "closed",
+                "closed_at": "2026-06-01T00:00:00Z",
+            })))
+            .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+                "id": project_id,
+                "name": "Already Closed",
+                "code": "already-closed",
+                "status": "closed",
+                "entity_id": entity_id,
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        assert_eq!(
+            projects_create(
+                Some(&server_uri),
+                "Already Closed",
+                "already-closed",
+                "client@example.com",
+                Some("Acme LLC"),
+                None,
+                true,
+                Some(closed_at),
+            )
+            .await,
+            ExitCode::SUCCESS
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn projects_create_refuses_a_non_client_email() {
+        let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+        let server = MockServer::start().await;
+        let server_uri = server.uri();
+        let _env = CredentialsEnv::new(&server_uri);
+
+        Mock::given(method("GET"))
+            .and(path("/app/api/people"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"id": Uuid::now_v7(), "email": "lawyer@example.com", "name": "A Lawyer", "role": "lawyer"}
+            ])))
+            .mount(&server)
+            .await;
+
+        assert_eq!(
+            projects_create(
+                Some(&server_uri),
+                "Bad Client",
+                "bad-client",
+                "lawyer@example.com",
+                Some("Acme LLC"),
+                None,
+                true,
+                None,
+            )
+            .await,
+            ExitCode::from(2)
+        );
+    }
+
+    /// Omitting both `--entity-name` and `--jurisdiction` is refused before
+    /// any entity-resolving HTTP call — there is nothing to resolve a
+    /// `Human` entity's jurisdiction from otherwise.
+    #[tokio::test(flavor = "current_thread")]
+    async fn projects_create_without_entity_name_or_jurisdiction_is_refused() {
+        let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+        let server = MockServer::start().await;
+        let server_uri = server.uri();
+        let _env = CredentialsEnv::new(&server_uri);
+
+        Mock::given(method("GET"))
+            .and(path("/app/api/people"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"id": Uuid::now_v7(), "email": "client@example.com", "name": "A Client", "role": "client"}
+            ])))
+            .mount(&server)
+            .await;
+        // No `/app/api/entity-types` mock: a call there would 404 and the
+        // refusal would read as a server error rather than a caller error.
+
+        assert_eq!(
+            projects_create(
+                Some(&server_uri),
+                "No Entity",
+                "no-entity",
+                "client@example.com",
+                None,
+                None,
+                true,
+                None,
+            )
+            .await,
+            ExitCode::from(2)
         );
     }
 

@@ -562,6 +562,17 @@ Navigator's shared `templates/notations/neon_law` or `templates/notations/forms`
 `main`, validates its notation contract, persists its bytes as a content-addressed Asset, and records the imported
 commit SHA as provenance.
 
+## An individual client's entity
+
+A Project's `entity_id` is `NOT NULL` (see [the glossary](glossary.md#project)): every matter opens against a
+pre-existing [Entity](glossary.md#entity), never directly against a [Person](glossary.md#person). A company client
+already has one. For a solo natural-person client with no company of their own, the Entity is one of type `Human`, named
+for the client and domiciled in the client's own home jurisdiction — never the firm's, and never guessed. Nothing
+opening a matter invents this row: it is created first, like any other Entity, through `navigator site import entity` or
+`POST /app/api/entities`, and the matter-open door then names it by id. `seeds/Entity.yaml` declares a `Human` entity's
+jurisdiction the same way any other entity does — nested under its `entity_type:` block — and the import route refuses a
+record that omits it rather than resolving it to the firm's own state.
+
 ## Opening a Project from the browser, end to end
 
 The mechanisms above are documented separately because each is owned by a different piece of code. A lawyer or operator

@@ -177,6 +177,55 @@ async fn a_participant_lawyer_files_a_document() {
     );
 }
 
+/// ENG-481: the archive command records a repository's commit SHA in
+/// `metadata` — this is the wire path that carries it from the HTTP body
+/// through to the asset row, proving it is no longer silently dropped.
+#[tokio::test]
+async fn metadata_passes_through_to_the_stored_asset() {
+    let fx = build_fixture().await;
+    let mut body = doc_body();
+    body["metadata"] = serde_json::json!({ "commit_sha": "deadbeefcafe" });
+    let resp = upload(&fx, Some(&fx.lawyer), body).await;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    let document_id: Uuid = json["current_version"]["asset_id"]
+        .as_str()
+        .unwrap()
+        .parse()
+        .unwrap();
+
+    let asset = store::assets::find_by_id(&fx.surreal, document_id)
+        .await
+        .unwrap()
+        .expect("the filed document is a real asset");
+    assert_eq!(
+        asset.metadata.as_ref().and_then(|m| m.get("commit_sha")),
+        Some(&serde_json::Value::String("deadbeefcafe".to_string()))
+    );
+}
+
+/// A body naming no `metadata` at all still succeeds — the field is
+/// optional, matching every other document-upload field this door accepts.
+#[tokio::test]
+async fn metadata_is_optional() {
+    let fx = build_fixture().await;
+    let resp = upload(&fx, Some(&fx.lawyer), doc_body()).await;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    let document_id: Uuid = json["current_version"]["asset_id"]
+        .as_str()
+        .unwrap()
+        .parse()
+        .unwrap();
+    let asset = store::assets::find_by_id(&fx.surreal, document_id)
+        .await
+        .unwrap()
+        .expect("the filed document is a real asset");
+    assert_eq!(asset.metadata, None);
+}
+
 #[tokio::test]
 async fn a_repeated_slug_is_one_idempotent_revision_chain() {
     let fx = build_fixture().await;

@@ -9,6 +9,42 @@
 use std::process::ExitCode;
 
 use crate::palette;
+use store::project_surfaces::SurfaceStatus;
+
+/// The label `navigator site projects surfaces reconcile` prints for a
+/// surface this pass never attempts — the documents-bucket prefix is a key
+/// convention derived from the code, and the code itself is the input that
+/// named which matter reconcile ran against. Neither is created, adopted, or
+/// skipped for lack of configuration; both simply are, so both print this.
+const NOT_APPLICABLE: &str = "not applicable";
+
+fn status_label(status: SurfaceStatus) -> &'static str {
+    match status {
+        SurfaceStatus::Created => "created",
+        SurfaceStatus::Present => "present",
+        SurfaceStatus::Skipped => "skipped",
+    }
+}
+
+fn print_surface_row(status_text: &str, name: &str, value: Option<&str>) {
+    println!(
+        "{}  {:<20}  {}",
+        palette::highlight(format!("{status_text:<15}")),
+        name,
+        value.unwrap_or("—")
+    );
+}
+
+/// Print one provisioned surface's row and report whether it is an
+/// inconsistent "expected but not produced" state — attempted (`created` or
+/// `present`) yet carrying no value, which reconcile's own contract never
+/// leaves behind but a caller reading this report must be able to catch
+/// rather than trust.
+fn print_provisioned_surface(status: SurfaceStatus, name: &str, value: Option<&str>) -> bool {
+    print_surface_row(status_label(status), name, value);
+    let expected = matches!(status, SurfaceStatus::Created | SurfaceStatus::Present);
+    expected && value.is_none()
+}
 
 /// `navigator site projects surfaces reconcile --project <code>`.
 pub async fn reconcile(project_code: &str) -> ExitCode {
@@ -40,30 +76,29 @@ pub async fn reconcile(project_code: &str) -> ExitCode {
     };
     match store::project_surfaces::reconcile_from_env(&surreal, project.id).await {
         Ok(surfaces) => {
-            println!(
-                "{}  {:<20}  {}",
-                palette::highlight("ok  "),
-                "code",
-                surfaces.code
-            );
-            println!(
-                "{}  {:<20}  {}",
-                palette::highlight("ok  "),
+            print_surface_row(NOT_APPLICABLE, "code", Some(&surfaces.code));
+            print_surface_row(
+                NOT_APPLICABLE,
                 "documents prefix",
-                surfaces.documents_prefix
+                Some(&surfaces.documents_prefix),
             );
-            println!(
-                "{}  {:<20}  {}",
-                palette::highlight("ok  "),
+            let drive_incomplete = print_provisioned_surface(
+                surfaces.drive_status,
                 "drive folder",
-                surfaces.drive_folder_id.as_deref().unwrap_or("—")
+                surfaces.drive_folder_id.as_deref(),
             );
-            println!(
-                "{}  {:<20}  {}",
-                palette::highlight("ok  "),
+            let repository_incomplete = print_provisioned_surface(
+                surfaces.repository_status,
                 "repository",
-                surfaces.repository_url.as_deref().unwrap_or("—")
+                surfaces.repository_url.as_deref(),
             );
+            if drive_incomplete || repository_incomplete {
+                eprintln!(
+                    "navigator: a surface reconcile attempted produced no value; retry \
+                     or check the deployment's Drive/forge configuration"
+                );
+                return ExitCode::from(2);
+            }
             ExitCode::SUCCESS
         }
         Err(error) => {
@@ -93,5 +128,49 @@ mod tests {
     #[tokio::test]
     async fn invalid_code_is_refused_without_connecting() {
         assert_eq!(reconcile("NOT A CODE").await, ExitCode::from(2));
+    }
+
+    #[test]
+    fn every_status_prints_a_distinct_label() {
+        assert_eq!(status_label(SurfaceStatus::Created), "created");
+        assert_eq!(status_label(SurfaceStatus::Present), "present");
+        assert_eq!(status_label(SurfaceStatus::Skipped), "skipped");
+    }
+
+    #[test]
+    fn a_produced_value_is_never_reported_incomplete() {
+        assert!(!print_provisioned_surface(
+            SurfaceStatus::Created,
+            "drive folder",
+            Some("folder-1")
+        ));
+        assert!(!print_provisioned_surface(
+            SurfaceStatus::Present,
+            "repository",
+            Some("https://forge.example/acme")
+        ));
+    }
+
+    #[test]
+    fn skipping_for_lack_of_configuration_is_not_a_failure() {
+        assert!(!print_provisioned_surface(
+            SurfaceStatus::Skipped,
+            "drive folder",
+            None
+        ));
+    }
+
+    #[test]
+    fn an_attempted_surface_with_no_value_is_reported_incomplete() {
+        assert!(print_provisioned_surface(
+            SurfaceStatus::Created,
+            "drive folder",
+            None
+        ));
+        assert!(print_provisioned_surface(
+            SurfaceStatus::Present,
+            "repository",
+            None
+        ));
     }
 }

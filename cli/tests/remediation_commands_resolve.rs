@@ -477,7 +477,6 @@ fn the_help_parser_still_reads_the_top_level_commands() {
         "github",
         "notations",
         "ops",
-        "project",
         "site",
         "validate",
     ] {
@@ -583,8 +582,9 @@ fn the_scan_reads_the_cargo_run_spelling() {
 /// remediation that shows the operator what to substitute would fail.
 #[test]
 fn a_placeholder_ends_a_path_instead_of_becoming_a_subcommand() {
-    let path = subcommand_path("navigator project create --code <CODE>").expect("an invocation");
-    assert_eq!(path, vec!["project", "create"]);
+    let path =
+        subcommand_path("navigator site projects create --code <CODE>").expect("an invocation");
+    assert_eq!(path, vec!["site", "projects", "create"]);
 }
 
 /// Developer prose is out of scope, and staying out of scope is part of the

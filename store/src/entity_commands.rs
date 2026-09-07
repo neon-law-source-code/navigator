@@ -47,13 +47,25 @@ pub struct CreateEntityCommand {
 }
 
 /// Request body for updating an Entity through the command boundary. Every
-/// field is a full replacement — there is no partial-field semantics to
-/// preserve here, unlike the People update's structured legal-name parts.
-#[derive(Debug, Deserialize)]
+/// field is optional and an absent one leaves the column exactly as it
+/// was — the same partial-update contract
+/// [`crate::projects::UpdateProjectCommand`] documents. A caller that wants
+/// to correct only `jurisdiction_id` sends only `jurisdiction_id`.
+///
+/// `#[serde(deny_unknown_fields)]` is load-bearing: a caller posting a field
+/// this struct does not name must be told so, rather than have it silently
+/// dropped while a `200` implies it was honored.
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct UpdateEntityCommand {
-    pub name: String,
-    pub entity_type_id: Uuid,
-    pub jurisdiction_id: Uuid,
+    /// Absent leaves the name unchanged; present but blank is refused — an
+    /// entity with no name is not a state a patch may produce.
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub entity_type_id: Option<Uuid>,
+    #[serde(default)]
+    pub jurisdiction_id: Option<Uuid>,
 }
 
 #[derive(Debug)]
@@ -292,21 +304,29 @@ pub async fn update_entity(
     firm_anchor: &str,
     input: &UpdateEntityCommand,
 ) -> Result<Entity, EntityCommandError> {
-    if input.name.trim().is_empty() {
-        return Err(EntityCommandError::Invalid("Name is required."));
-    }
-    require_entity_type(surreal, input.entity_type_id).await?;
-    require_jurisdiction(surreal, input.jurisdiction_id).await?;
-
     let existing = entities::find_by_id(surreal, id)
         .await?
         .ok_or(EntityCommandError::NotFound)?;
+
+    // Absent leaves the column alone; present-but-blank on `name` is
+    // refused, the same rule `create_entity` applies.
+    let name = match input.name.as_deref() {
+        None => existing.name.clone(),
+        Some(name) if name.trim().is_empty() => {
+            return Err(EntityCommandError::Invalid("Name is required."))
+        }
+        Some(name) => name.to_string(),
+    };
+    let entity_type_id = input.entity_type_id.unwrap_or(existing.entity_type_id);
+    let jurisdiction_id = input.jurisdiction_id.unwrap_or(existing.jurisdiction_id);
+    require_entity_type(surreal, entity_type_id).await?;
+    require_jurisdiction(surreal, jurisdiction_id).await?;
 
     // Compared byte for byte against the stored name, deliberately: a firm
     // anchor's name is immutable down to case and spacing. `store::seed` looks
     // the row up by exact name, so even a whitespace variant forks the anchor
     // into a duplicate row on the next boot, with both copies protected.
-    let renaming = input.name != existing.name;
+    let renaming = name != existing.name;
     if renaming && is_firm_anchor(firm_anchor, &existing.name) {
         return Err(EntityCommandError::FirmAnchorImmutable);
     }
@@ -314,7 +334,7 @@ pub async fn update_entity(
     // a create would, and the row is protected the moment it lands — so this
     // door needs the same guard as `create_entity` rather than the delete
     // guard's later, and by then useless, refusal.
-    let anchor_key = firm_anchor_key(firm_anchor, &input.name);
+    let anchor_key = firm_anchor_key(firm_anchor, &name);
     if renaming {
         if let Some(key) = &anchor_key {
             if entities::firm_anchor_exists(surreal, key).await? {
@@ -327,12 +347,12 @@ pub async fn update_entity(
         surreal,
         id,
         &NewEntity {
-            name: input.name.clone(),
-            entity_type_id: input.entity_type_id,
-            jurisdiction_id: input.jurisdiction_id,
+            name,
+            entity_type_id,
+            jurisdiction_id,
             // The port carries these across untouched: they are set by
-            // the bulk-contact importer and by no field on this form, so
-            // a full-replacement update must not blank them.
+            // the bulk-contact importer and by no field on this command, so
+            // a partial update must not blank them.
             phone: existing.phone,
             url: existing.url,
             firm_anchor_key: anchor_key,
@@ -470,9 +490,9 @@ mod tests {
 
     fn edit(name: &str, type_id: Uuid, jur_id: Uuid) -> UpdateEntityCommand {
         UpdateEntityCommand {
-            name: name.into(),
-            entity_type_id: type_id,
-            jurisdiction_id: jur_id,
+            name: Some(name.into()),
+            entity_type_id: Some(type_id),
+            jurisdiction_id: Some(jur_id),
         }
     }
 
@@ -966,6 +986,83 @@ mod tests {
         .expect_err("a missing entity type must fail the update");
         assert!(matches!(err, EntityCommandError::Invalid(_)), "{err:?}");
         assert_eq!(err.user_message(), super::UNKNOWN_REFERENCE_MESSAGE);
+    }
+
+    /// ENG-518: `PATCH /app/api/entities/{id}` with only `jurisdiction_id`
+    /// must succeed as a partial update rather than being refused for
+    /// omitting `name` and `entity_type_id` — the exact body the issue
+    /// reports as failing with "Malformed JSON body."
+    #[tokio::test]
+    async fn update_accepts_a_jurisdiction_only_body_and_preserves_the_rest() {
+        let (surreal, type_id, jur_id) = fixture().await;
+        let row = create_entity(
+            &surreal,
+            "Acme Anchor",
+            &command("Beta LLC", type_id, jur_id),
+        )
+        .await
+        .unwrap();
+        let other_jurisdiction = crate::jurisdictions::create(
+            &surreal,
+            &crate::jurisdictions::NewJurisdiction::new("California", "CA", "state"),
+        )
+        .await
+        .unwrap()
+        .id;
+
+        let updated = update_entity(
+            &surreal,
+            row.id,
+            "Acme Anchor",
+            &UpdateEntityCommand {
+                name: None,
+                entity_type_id: None,
+                jurisdiction_id: Some(other_jurisdiction),
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(updated.name, "Beta LLC");
+        assert_eq!(updated.entity_type_id, type_id);
+        assert_eq!(updated.jurisdiction_id, other_jurisdiction);
+    }
+
+    /// A body naming no field at all is a no-op update rather than a
+    /// rejection — every field absent means every column is left alone.
+    #[tokio::test]
+    async fn update_with_an_entirely_absent_body_changes_nothing() {
+        let (surreal, type_id, jur_id) = fixture().await;
+        let row = create_entity(
+            &surreal,
+            "Acme Anchor",
+            &command("Beta LLC", type_id, jur_id),
+        )
+        .await
+        .unwrap();
+
+        let updated = update_entity(
+            &surreal,
+            row.id,
+            "Acme Anchor",
+            &UpdateEntityCommand::default(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(updated.name, "Beta LLC");
+        assert_eq!(updated.entity_type_id, type_id);
+        assert_eq!(updated.jurisdiction_id, jur_id);
+    }
+
+    /// `deny_unknown_fields` refuses a body naming a field this command does
+    /// not carry, and the error names it — never a caller-opaque "Malformed
+    /// JSON body." for a field this struct simply does not have.
+    #[test]
+    fn an_unrecognized_field_is_refused_naming_it() {
+        let error =
+            serde_json::from_str::<UpdateEntityCommand>(r#"{"bogus_field": true}"#).unwrap_err();
+        assert!(error.to_string().contains("bogus_field"), "{error}");
     }
 
     #[tokio::test]

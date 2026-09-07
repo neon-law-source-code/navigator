@@ -16,6 +16,7 @@ use crate::principal::Principal;
 use crate::server::McpState;
 
 pub mod aida_bulk_import;
+pub mod aida_delete_closed_repository;
 pub mod aida_send_welcome_email;
 pub mod aida_spawn_legal_council;
 pub mod answer_notation;
@@ -46,6 +47,7 @@ pub fn list_tools() -> Vec<Value> {
         validate_notation::descriptor(),
         create_project::descriptor(),
         close_project::descriptor(),
+        aida_delete_closed_repository::descriptor(),
         list_deadlines::descriptor(),
         list_projects::descriptor(),
         project_status::descriptor(),
@@ -270,6 +272,9 @@ pub async fn call_tool(
         "aida_validate_notation" => validate_notation::call(arguments).await,
         "aida_create_project" => create_project::call(surreal, principal, arguments).await,
         "aida_close_project" => close_project::call(surreal, arguments).await,
+        "aida_delete_closed_repository" => {
+            aida_delete_closed_repository::call(surreal, state.forge.as_ref(), arguments).await
+        }
         "aida_list_deadlines" => list_deadlines::call(surreal, &scope, arguments).await,
         "aida_list_projects" => list_projects::call(surreal, &scope, arguments).await,
         "aida_project_status" => project_status::call(surreal, &scope, arguments).await,
@@ -667,6 +672,7 @@ mod tests {
         assert!(names.contains(&"aida_validate_notation"));
         assert!(names.contains(&"aida_create_project"));
         assert!(names.contains(&"aida_close_project"));
+        assert!(names.contains(&"aida_delete_closed_repository"));
         assert!(names.contains(&"aida_list_deadlines"));
         assert!(names.contains(&"aida_list_projects"));
         assert!(names.contains(&"aida_project_status"));
@@ -724,6 +730,7 @@ mod tests {
             "aida_create_notation",
             "aida_answer_notation",
             "aida_send_welcome_email",
+            "aida_delete_closed_repository",
         ] {
             assert!(
                 super::requires_confirmation(gated),
@@ -746,7 +753,7 @@ mod tests {
                 "`{name}` advertised state disagrees with requires_confirmation"
             );
         }
-        assert_eq!(advertised.len(), whole.len() - 3);
+        assert_eq!(advertised.len(), whole.len() - 4);
     }
 
     #[test]

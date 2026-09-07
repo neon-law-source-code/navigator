@@ -190,6 +190,19 @@ The workflow prefix `client_review` lets the respondent review and approve attor
 signature or closing step. See [`notation-authoring`](notation-authoring.md#changing-the-workflow-composition) and
 [`workflows::step::STEP_PREFIXES`](../workflows/src/step.rs).
 
+## Closed Repository
+
+The [Asset](#asset) kind `rules::kind::Kind::ClosedRepository` (`kind: closed_repository`) names: a zip of a closed
+[Project](#project)'s repository working tree at its final commit, with no git history, filed on the matter once the
+repository is redundant. It follows the [Offboarding](#offboarding) close rather than gating it — a matter closes on its
+own signed closing letter, and an operator files the archive afterward with its own separate command, named for the
+matter code: `navigator site projects archive-repository <code>`. Asset-lane only: `Kind::valid_for(Lane::Template)`
+refuses it, so no template ever declares this kind.
+
+Deleting the repository from its forge is a separate, deliberate step an operator (or `aida_delete_closed_repository`)
+takes only after this document exists and its recorded commit SHA is checked against the live repository's current HEAD
+— the archive is what makes the delete safe, not the close itself.
+
 ## Conflict-Check Graph
 
 The graph the firm walks **before opening a matter** to decide whether the new engagement would conflict with a client
@@ -890,7 +903,8 @@ layers stay in sync because the worker writes them through `ctx.run`.
 The codebase term for the notation that **closes a matter** — `rules::kind::Kind::Offboarding`, classified by
 [`Kind::closes_a_matter`](../rules/src/kind.rs), the mirror of [`Kind::opens_a_matter`](#onboarding). In conversation
 and with clients this is the **closing letter**: the firm-signed letter that confirms the representation is concluded,
-seeded as `notations/neon_law/shared/offboarding_letter.md` (`code: offboarding__letter`).
+seeded as `notations/neon_law/shared/offboarding_letter.md` (`code: offboarding__letter`). A closed matter's repository
+is archived afterward as a [Closed Repository](#closed-repository) — a separate step this close never gates.
 
 `store::projects::matter_lifecycle_sets` keys the matching lifecycle flag off this classifier — never off the template's
 `code` — so a bespoke closing letter still clears the badge as long as it declares `kind: offboarding`. The
@@ -1062,6 +1076,14 @@ the transition command — cannot be bypassed by a partial update reaching it th
 transitions may carry an RFC 3339 `effective_at` between matter-open and now; the command derives `closed_at` from that
 value so an existing retention start can be corrected. Without it, a new close starts at the server's current time and
 an existing stamp is preserved. Reopen accepts no effective time and clears `closed_at`.
+
+**`source_state`** is a *derived* read-only signal on the lifecycle projection (`GET /app/api/projects/lifecycle`),
+never a stored column — [`store::project_surfaces::source_state`](../store/src/project_surfaces.rs) computes it purely
+from `repository_url`, `forge_provisioned_at`, and `git_initialized_at`. `not_enabled` (no repository requested),
+`unknown` (a repository URL is recorded but this deployment's own provisioning pass never stamped it — a direct edit or
+a pre-stamp row), `attached` (provisioned, no validated source committed or imported yet), and `initialized`
+(provisioned and carrying validated source) are the states a row can reach today; `pending` and `failed` are reserved
+for an asynchronous provisioning path nothing in this codebase writes yet.
 
 **Every Notation belongs to exactly one Project.** The schema enforces this with a `NOT NULL` `project_id` FK on
 `notations`. A Notation without a Project is a bug.

@@ -625,16 +625,14 @@ where
             .and_then(|v| v.to_str().ok())
             .is_some_and(|ct| ct.starts_with("application/json"));
         if is_json {
-            let Json(value) = Json::<T>::from_request(req, state).await.map_err(|_| {
-                ApiError::Command(PeopleCommandError::Invalid("Malformed JSON body."))
-            })?;
+            let Json(value) = Json::<T>::from_request(req, state)
+                .await
+                .map_err(|rejection| ApiError::MalformedBody(rejection.to_string()))?;
             Ok(Self(value))
         } else {
             let axum::extract::Form(value) = axum::extract::Form::<T>::from_request(req, state)
                 .await
-                .map_err(|_| {
-                    ApiError::Command(PeopleCommandError::Invalid("Malformed form body."))
-                })?;
+                .map_err(|rejection| ApiError::MalformedBody(rejection.to_string()))?;
             Ok(Self(value))
         }
     }
@@ -705,14 +703,23 @@ struct ProjectLifecycleEntry {
     code: String,
     status: String,
     closed_at: Option<String>,
+    /// Derived, never a stored column — see
+    /// [`store::project_surfaces::SourceState`]. Carries no repository
+    /// content: not the URL, not the Drive folder id, only which of six
+    /// states the three provisioning columns describe together.
+    source_state: store::project_surfaces::SourceState,
 }
 
 /// `GET /app/api/project-lifecycle` — read every Project's lifecycle fields.
 ///
 /// Admin-tier only. This is an oversight read rather than a matter read: it
-/// deliberately reads every row and returns only the stable code and the two
-/// fields that describe its lifecycle, so an operator can compare deployment
-/// state without receiving matter content or needing participation rows.
+/// deliberately reads every row and returns only the stable code, the two
+/// fields that describe its lifecycle, and a derived `source_state`, so an
+/// operator can compare deployment state without receiving matter content
+/// or needing participation rows. `source_state` is computed here rather
+/// than widening the row itself with `repository_url` or `drive_folder_id`
+/// — this route stays a minimal oversight read, and a repository URL names
+/// a matter's source per matter (ENG-466).
 async fn project_lifecycle_door(
     State(state): State<ApiState>,
     authed: AuthedSession,
@@ -726,6 +733,7 @@ async fn project_lifecycle_door(
     let lifecycle = projects
         .into_iter()
         .map(|project| ProjectLifecycleEntry {
+            source_state: store::project_surfaces::source_state(&project),
             code: project.code,
             status: project.status,
             closed_at: project.closed_at,
@@ -1109,9 +1117,11 @@ async fn reconcile_seed(
 }
 
 /// `PATCH /app/api/entities/{id}` — the Entity update command. Same lawyer-tier
-/// gate as create. Every field is a full replacement; the firm anchor's
-/// *name* is immutable while its type and jurisdiction stay editable, and a
-/// rename into the anchor's name is refused. Those rules live in
+/// gate as create. Every field is optional and a partial update: an absent
+/// field leaves its column unchanged, so a caller correcting only
+/// `jurisdiction_id` sends only that field. The firm anchor's *name* is
+/// immutable while its type and jurisdiction stay editable, and a rename
+/// into the anchor's name is refused. Those rules live in
 /// `store::entity_commands::update_entity`, which the `/app/admin/entities/{id}`
 /// edit form calls too.
 async fn update_entity(
@@ -1165,6 +1175,19 @@ struct OpenProjectRequest {
     /// Project is not legal advice.
     #[serde(default)]
     attestation: bool,
+    /// Open the matter already closed — an engagement that ended before
+    /// anyone opened its row. The only accepted value is `"closed"`;
+    /// omitted, this is the ordinary open. Requires [`Self::closed_at`],
+    /// and refused if it is present without this.
+    #[serde(default)]
+    status: Option<String>,
+    /// The close time. Required exactly when [`Self::status`] is
+    /// `"closed"`, and validated by the same
+    /// [`store::projects::transition_project`] this door calls afterward —
+    /// an effective time may not precede the matter's own open or fall in
+    /// the future.
+    #[serde(default)]
+    closed_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 /// `POST /app/api/projects` — open a matter. Lawyer-tier only, which at this firm
@@ -1177,6 +1200,16 @@ struct OpenProjectRequest {
 /// Drive ingest folder and source repository are then created or adopted
 /// best-effort: a Drive or forge fault leaves the matter open, and
 /// [`reconcile_project_surfaces_door`] retries.
+///
+/// Opening a matter already closed is the same call with `status: "closed"`
+/// and a required `closed_at`: [`store::projects::OpenMatterCommand`] writes
+/// `status`/`closed_at` into the same insert the open already makes, so an
+/// engagement that ended before anyone opened its row is recorded in one
+/// call rather than an open followed by a separate close. This is
+/// deliberately not create-then-[`store::projects::transition_project`]:
+/// that command refuses an effective time before the row's own
+/// `inserted_at`, which a row created this instant would make impossible to
+/// satisfy for any genuinely historical close date.
 async fn open_project(
     State(state): State<ApiState>,
     LawyerSession(session): LawyerSession,
@@ -1186,6 +1219,30 @@ async fn open_project(
     // one, and a matter cannot be opened (nor attested) by a session that
     // doesn't name who is acting.
     let acting = session.person_id.ok_or(ApiError::Forbidden)?;
+    match input.status.as_deref() {
+        Some("closed") if input.closed_at.is_none() => {
+            return Err(ApiError::Project(
+                store::projects::ProjectCommandError::Invalid(
+                    "closed_at is required when status is \"closed\"",
+                ),
+            ));
+        }
+        Some("closed") | None => {}
+        Some(_) => {
+            return Err(ApiError::Project(
+                store::projects::ProjectCommandError::Invalid(
+                    "status must be \"closed\" when present",
+                ),
+            ));
+        }
+    }
+    if input.status.is_none() && input.closed_at.is_some() {
+        return Err(ApiError::Project(
+            store::projects::ProjectCommandError::Invalid(
+                "closed_at is only accepted alongside status: \"closed\"",
+            ),
+        ));
+    }
     let command = store::projects::OpenMatterCommand {
         name: input.name,
         code: input.code,
@@ -1195,6 +1252,7 @@ async fn open_project(
         brand: views::brand::brand_key().as_str().to_string(),
         attestation: input.attestation,
         acting_person_id: acting,
+        closed_at: input.closed_at,
     };
     let matter = store::projects::open_matter(&state.surreal, &command).await?;
     store::project_surfaces::reconcile_after_open(&state.surreal, matter.id).await;
@@ -2576,6 +2634,11 @@ struct UploadDocumentRequest {
     /// files it as internal work product.
     visibility: Option<String>,
     description: Option<String>,
+    /// Free-form provenance the uploading caller already knows and the
+    /// bytes alone cannot say — a source repository's commit SHA, for
+    /// instance (ENG-481). Never inferred here; passed through verbatim
+    /// to the asset row's own `metadata` column.
+    metadata: Option<serde_json::Value>,
 }
 
 /// `POST /app/api/projects/{id}/documents` — file a document into a matter, the
@@ -2673,7 +2736,7 @@ async fn upload_document_door(
         &store::documents::DocumentIdentity {
             slug: Some(slug),
             published_at: None,
-            metadata: None,
+            metadata: input.metadata.clone(),
         },
         &bytes,
     )
@@ -3164,6 +3227,14 @@ pub enum ApiError {
     Ingest(store::documents::IngestError),
     Revision(store::assets::RevisionError),
     Asset(store::assets::AssetError),
+    /// A [`JsonOrForm`] body was well-formed for its content type but failed
+    /// deserialization — a missing required field, or (with a command's own
+    /// `#[serde(deny_unknown_fields)]`) an unrecognized one. Carries the
+    /// extractor's own rejection text, which names the field, so
+    /// `PATCH /app/api/entities/{id}` with `{"jurisdiction_id":…}` reports
+    /// what is missing rather than the opaque "Malformed JSON body." every
+    /// deserialize failure used to share (ENG-518).
+    MalformedBody(String),
 }
 
 impl From<store::persons::PersonError> for ApiError {
@@ -4031,6 +4102,14 @@ impl IntoResponse for ApiError {
                 )
                     .into_response()
             }
+            Self::MalformedBody(message) => (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": "invalid_request",
+                    "message": message
+                })),
+            )
+                .into_response(),
             Self::Notation(e) => {
                 tracing::error!(error = %e, "api: notation error");
                 (
@@ -4197,5 +4276,27 @@ mod tests {
         // if the same path is registered twice, so a green build here
         // proves the fold merges rather than re-registers.
         let _router = routes();
+    }
+
+    // Viewing a matter must never provision a repository or Drive folder —
+    // only `open_project` (create) and the explicit admin retry door call
+    // reconcile. A source scan rather than a live-service test: the
+    // invariant is "this handler never calls that function," which a
+    // running test can prove absent but never prove present.
+    #[test]
+    fn viewing_a_project_never_calls_project_surfaces_reconcile() {
+        let src = include_str!("api.rs");
+        let handler = src
+            .split("async fn get_project_door(")
+            .nth(1)
+            .expect("get_project_door is defined in this file")
+            .split("\n}\n")
+            .next()
+            .expect("the handler body ends at its closing brace");
+        assert!(
+            !handler.contains("reconcile"),
+            "GET /app/api/projects/{{id}} must stay read-only with respect to \
+             repository/Drive provisioning"
+        );
     }
 }

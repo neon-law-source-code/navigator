@@ -52,6 +52,7 @@ fn command(
         brand: "neon".to_string(),
         attestation: true,
         acting_person_id,
+        closed_at: None,
     }
 }
 

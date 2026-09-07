@@ -448,6 +448,11 @@ pub struct ReconcileRecord {
     /// Fields that `--overwrite` would replace.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub changed_fields: Vec<String>,
+    /// The jurisdiction an Entity record resolved to, named explicitly so a
+    /// document that leaves it out is never silently resolved to one the
+    /// operator did not choose (ENG-518). `None` for every other seed model.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub jurisdiction: Option<String>,
 }
 
 /// The result of reconciling one seed document through the operator API.
@@ -776,6 +781,7 @@ async fn reconcile_people(
                         key,
                         action: ReconcileAction::Changed,
                         changed_fields,
+                        jurisdiction: None,
                     });
                     if !actor.dry_run {
                         update_person_from_seed(surreal, &existing, rec, &update_ctx).await?;
@@ -797,14 +803,15 @@ async fn update_person_from_seed(
         surreal,
         existing.id,
         &crate::people_commands::UpdatePersonCommand {
-            name: rec.name,
-            email: rec.email,
+            name: Some(rec.name),
+            email: Some(rec.email),
             role: String::new(),
             given_name: None,
             family_name: None,
             middle_name: None,
             notion_user_id: None,
             linkedin_url: None,
+            csrf_token: None,
         },
         update_ctx,
     )
@@ -846,11 +853,7 @@ async fn reconcile_entities(
                     rec.entity_type.name
                 )
             })?;
-        let jurisdiction_name = rec
-            .entity_type
-            .jurisdiction
-            .as_ref()
-            .map_or("Nevada", |jurisdiction| jurisdiction.name.as_str());
+        let jurisdiction_name = declared_jurisdiction_name(&rec.name, &rec.entity_type)?;
         let jurisdiction = jurisdictions::find_by_name(surreal, jurisdiction_name)
             .await?
             .ok_or_else(|| {
@@ -881,6 +884,7 @@ async fn reconcile_entities(
                 report.records.push(ReconcileRecord {
                     key,
                     action: ReconcileAction::New,
+                    jurisdiction: Some(jurisdiction_name.to_string()),
                     ..ReconcileRecord::default()
                 });
             }
@@ -889,6 +893,7 @@ async fn reconcile_entities(
                 report.records.push(ReconcileRecord {
                     key,
                     action: ReconcileAction::Unchanged,
+                    jurisdiction: Some(jurisdiction_name.to_string()),
                     ..ReconcileRecord::default()
                 });
             }
@@ -904,6 +909,7 @@ async fn reconcile_entities(
                     report.records.push(ReconcileRecord {
                         key,
                         action: ReconcileAction::Unchanged,
+                        jurisdiction: Some(jurisdiction_name.to_string()),
                         ..ReconcileRecord::default()
                     });
                 } else {
@@ -912,6 +918,7 @@ async fn reconcile_entities(
                         key,
                         action: ReconcileAction::Changed,
                         changed_fields,
+                        jurisdiction: Some(jurisdiction_name.to_string()),
                     });
                     if !dry_run {
                         update_entity_from_seed(
@@ -944,9 +951,9 @@ async fn update_entity_from_seed(
         id,
         firm_anchor,
         &crate::entity_commands::UpdateEntityCommand {
-            name,
-            entity_type_id,
-            jurisdiction_id,
+            name: Some(name),
+            entity_type_id: Some(entity_type_id),
+            jurisdiction_id: Some(jurisdiction_id),
         },
     )
     .await
@@ -2460,6 +2467,28 @@ struct JurisdictionRef {
     name: String,
 }
 
+/// The jurisdiction name a seed record's nested `entity_type.jurisdiction`
+/// declares. No default: an Entity's jurisdiction is a fact about where it
+/// (or, for a `Human` entity, the person it represents) is domiciled, so a
+/// document that omits it is refused rather than silently resolved to the
+/// firm's own state (ENG-518 — a production seed once wrote a client's
+/// jurisdiction as `Nevada` this way, silently and wrongly).
+fn declared_jurisdiction_name<'a>(
+    entity_name: &str,
+    entity_type: &'a EntityTypeRef,
+) -> anyhow::Result<&'a str> {
+    entity_type
+        .jurisdiction
+        .as_ref()
+        .map(|jurisdiction| jurisdiction.name.as_str())
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "entity {entity_name:?} declares no jurisdiction — add `jurisdiction: \
+                 {{ name: <Jurisdiction> }}` under its `entity_type:` block"
+            )
+        })
+}
+
 async fn seed_entities(
     surreal: &SurrealDb,
     yaml: &str,
@@ -2482,11 +2511,7 @@ async fn seed_entities(
                     name = rec.entity_type.name
                 )
             })?;
-        let jurisdiction_name = rec
-            .entity_type
-            .jurisdiction
-            .as_ref()
-            .map_or("Nevada", |j| j.name.as_str());
+        let jurisdiction_name = declared_jurisdiction_name(&rec.name, &rec.entity_type)?;
         let jur = jurisdictions::find_by_name(surreal, jurisdiction_name)
             .await?
             .ok_or_else(|| {
@@ -3449,6 +3474,77 @@ records:
         );
     }
 
+    /// A create names the jurisdiction it resolved, so `--dry-run` (and the
+    /// applied run) tells the operator which one an entity landed under
+    /// rather than leaving it to be discovered by reading the row back.
+    #[tokio::test]
+    async fn entity_seed_names_the_jurisdiction_it_resolved() {
+        let surreal = mem_surreal().await;
+        entity_types::create(&surreal, "Human")
+            .await
+            .expect("create entity type");
+        jurisdictions::create(&surreal, &NewJurisdiction::new("Washington", "WA", "state"))
+            .await
+            .expect("create jurisdiction");
+        let yaml = "lookup_fields:\n  - name\n  - entity_type_id\nrecords:\n  - name: A Client\n    entity_type:\n      name: Human\n      jurisdiction:\n        name: Washington\n";
+
+        let report = reconcile_yaml(
+            &surreal,
+            SeedModel::Entity,
+            yaml,
+            "Firm",
+            true,
+            &ReconcileActor {
+                dry_run: true,
+                ..unrestricted_actor()
+            },
+        )
+        .await
+        .expect("plan entity seed");
+
+        assert_eq!(
+            report.records[0].jurisdiction.as_deref(),
+            Some("Washington")
+        );
+    }
+
+    /// A record with no declared jurisdiction is refused rather than
+    /// silently resolved to the firm's own state — the ENG-518 defect: a
+    /// production seed once wrote a client's entity into `Nevada` this way,
+    /// with nothing in the output saying so.
+    #[tokio::test]
+    async fn entity_seed_without_a_declared_jurisdiction_is_refused() {
+        let surreal = mem_surreal().await;
+        entity_types::create(&surreal, "Human")
+            .await
+            .expect("create entity type");
+        let yaml = "lookup_fields:\n  - name\n  - entity_type_id\nrecords:\n  - name: A Client\n    entity_type:\n      name: Human\n";
+
+        let error = reconcile_yaml(
+            &surreal,
+            SeedModel::Entity,
+            yaml,
+            "Firm",
+            true,
+            &ReconcileActor {
+                dry_run: true,
+                ..unrestricted_actor()
+            },
+        )
+        .await
+        .expect_err("a record with no jurisdiction must be refused, not defaulted");
+        let message = error.to_string();
+        assert!(message.contains("A Client"), "{message}");
+        assert!(message.contains("jurisdiction"), "{message}");
+        assert!(
+            entities::find_by_name(&surreal, "A Client")
+                .await
+                .expect("read")
+                .is_none(),
+            "the refused record must not be written"
+        );
+    }
+
     async fn project_fixture(surreal: &crate::surreal::SurrealDb, code: &str) -> projects::Project {
         projects::create(
             surreal,
@@ -4126,11 +4222,12 @@ records:
     /// `seed_entities` do not agree: the *entity type* resolves by name
     /// alone, so the seed finds `Professional Corporation` whatever
     /// jurisdiction it was declared under, while the *entity's* jurisdiction
-    /// comes from the nested `jurisdiction.name`. Drop that nested key and
-    /// the row still seeds cleanly — into Nevada, silently, because `Nevada`
-    /// is the fallback. A law corporation in the wrong state is not a
-    /// cosmetic error: its registration and its regulator both follow the
-    /// jurisdiction.
+    /// comes from the nested `jurisdiction.name` and this document declares
+    /// it explicitly. A law corporation in the wrong state is not a cosmetic
+    /// error: its registration and its regulator both follow the
+    /// jurisdiction — which is why `declared_jurisdiction_name` refuses a
+    /// record that omits it rather than resolving it to the firm's own
+    /// state (ENG-518).
     #[tokio::test]
     async fn the_california_law_corporation_seeds_under_california() {
         let surreal = mem_surreal().await;

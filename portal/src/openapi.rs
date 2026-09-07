@@ -360,9 +360,11 @@ pub fn document_with_base(base: &str) -> Value {
           "patch": {
             "summary": "Update an entity",
             "description":
-              "Replaces the name, entity type, and jurisdiction of one Entity row. The name is \
-               required and the type and jurisdiction must reference existing rows. The firm's own \
-               anchor Entity (`NAVIGATOR_BOOTSTRAP_COMPANY`, falling back to the shipped firm) has \
+              "Partial update for one Entity row: every field is optional, and an absent one \
+               leaves its column unchanged — a caller correcting only `jurisdiction_id` sends only \
+               that field. A present `name` must not be blank, and `entity_type_id`/`jurisdiction_id` \
+               must reference existing rows. The firm's own anchor Entity \
+               (`NAVIGATOR_BOOTSTRAP_COMPANY`, falling back to the shipped firm) has \
                an immutable name — its type and jurisdiction remain editable — and renaming any \
                other Entity *into* the anchor's name is refused; both return 409. The name is \
                compared byte for byte, so a case or whitespace variant of the anchor's name counts \
@@ -492,16 +494,19 @@ pub fn document_with_base(base: &str) -> Value {
           "get": {
             "summary": "Read every matter's lifecycle fields (admin)",
             "description":
-              "Returns one minimal row per matter with its `code`, `status`, and `closed_at`. \
-               This is a deployment-wide oversight read, not a participation-scoped matter \
-               read, and returns no matter content. Authorization: admin-tier only \
-               (`owner`/`admin`).",
+              "Returns one minimal row per matter with its `code`, `status`, `closed_at`, and \
+               derived `source_state`. This is a deployment-wide oversight read, not a \
+               participation-scoped matter read, and returns no matter content — no repository \
+               URL, no Drive folder id. Authorization: admin-tier only (`owner`/`admin`).",
             "responses": {
               "200": { "description": "The lifecycle rows", "content": { "application/json": {
-                "schema": { "type": "array", "items": { "type": "object", "required": ["code", "status", "closed_at"], "properties": {
+                "schema": { "type": "array", "items": { "type": "object", "required": ["code", "status", "closed_at", "source_state"], "properties": {
                   "code": { "type": "string" },
                   "status": { "type": "string", "enum": ["open", "closed", "archived"] },
-                  "closed_at": { "type": ["string", "null"], "format": "date-time" }
+                  "closed_at": { "type": ["string", "null"], "format": "date-time" },
+                  "source_state": { "type": "string",
+                    "enum": ["not_enabled", "pending", "unknown", "attached", "initialized", "failed"],
+                    "description": "Derived from repository_url/forge_provisioned_at/git_initialized_at — never a stored column. See docs/glossary.md#project." }
                 } } }
               } } },
               "401": { "description": "No authenticated session", "content": { "application/json": {
@@ -581,7 +586,10 @@ pub fn document_with_base(base: &str) -> Value {
                row and designated the accountable lawyer DRI — never taken from the request body. \
                Authorization: the caller's `persons.role` must be `lawyer` or `admin`; at this firm \
                `lawyer` is an attorney, so this is the 'an attorney is opening and attesting' gate. \
-               Anonymous, `client`, and non-lawyer `clerk` callers are rejected.",
+               Anonymous, `client`, and non-lawyer `clerk` callers are rejected. Optionally opens \
+               the matter already closed: `status: \"closed\"` with a required `closed_at` records \
+               an engagement that ended before anyone opened its row, in one call, through the \
+               same transition validation `POST /app/api/projects/{id}/lifecycle` runs.",
             "requestBody": {
               "required": true,
               "content": { "application/json": {
@@ -1909,7 +1917,7 @@ pub fn document_with_base(base: &str) -> Value {
                     "kind": {
                       "type": "string",
                       "description": "Required asset-lane document classification (`rules::kind::Kind` values valid for `Lane::Asset`). A missing or blank value is refused with `400 kind_required`; a value outside this set is refused with `400 invalid_kind`. Both messages name the accepted values; nothing is silently coerced to `unclassified`.",
-                      "enum": ["letter", "filing", "will", "trust", "directive", "agreement", "pleading", "onboarding", "offboarding", "memo", "transcript", "inbound_contract", "certificate_of_naturalization", "exhibit", "unclassified"]
+                      "enum": ["letter", "filing", "will", "trust", "directive", "agreement", "pleading", "onboarding", "offboarding", "memo", "transcript", "inbound_contract", "certificate_of_naturalization", "exhibit", "closed_repository", "unclassified"]
                     },
                     "visibility": { "type": "string", "enum": ["client", "internal"] },
                     "description": { "type": "string" }
@@ -2359,10 +2367,11 @@ pub fn document_with_base(base: &str) -> Value {
           },
           "UpdatePersonRequest": {
             "type": "object",
-            "required": ["name", "email"],
             "properties": {
-              "name":        { "type": "string" },
-              "email":       { "type": "string", "format": "email" },
+              "name":        { "type": "string",
+                               "description": "Omit to leave unchanged; present must not be blank." },
+              "email":       { "type": "string", "format": "email",
+                               "description": "Omit to leave unchanged; present must not be blank." },
               "role":        { "allOf": [ { "$ref": "#/components/schemas/PersonRole" } ],
                                "description": "Blank/absent preserves the current role; honored only for Owner/Admin callers up to their own authority, and the bootstrap Owner is always `owner`." },
               "given_name":  { "type": ["string", "null"],
@@ -2416,7 +2425,13 @@ pub fn document_with_base(base: &str) -> Value {
                                       "description": "Which house brand's storefront this matter was opened through — `neon` or `delete-your-data` today. Written by the server from the resolved request host at matter-open; never accepted from a client-submitted field." },
               "entity_id":          { "type": "string", "format": "uuid" },
               "description":        { "type": ["string", "null"] },
+              "drive_folder_id":    { "type": ["string", "null"],
+                                      "description": "The Project's Drive ingest folder id, or `null` before it is provisioned." },
+              "repository_url":     { "type": ["string", "null"],
+                                      "description": "The Project's one source repository, as a whole URL on any forge, or `null` when none is recorded." },
               "git_initialized_at": { "type": ["string", "null"] },
+              "forge_provisioned_at": { "type": ["string", "null"],
+                                      "description": "Stamped only once `repository_url` was created or adopted; `null` means not done or unknown." },
               "closed_at":          { "type": ["string", "null"] },
               "inserted_at":        { "type": "string" },
               "updated_at":         { "type": "string" }
@@ -2435,7 +2450,11 @@ pub fn document_with_base(base: &str) -> Value {
                                 "description": "The pre-existing entity the matter opens against." },
               "description":  { "type": ["string", "null"], "description": "The matter's scope narrative." },
               "attestation":  { "type": "boolean",
-                                "description": "The opening attorney's conflict attestation. Must be true; a missing attestation is refused. Affirms the attorney has checked for conflicts, and that either none prevent opening this Project or this Project is not legal advice. The attester is the authenticated session's person — never taken from this body." }
+                                "description": "The opening attorney's conflict attestation. Must be true; a missing attestation is refused. Affirms the attorney has checked for conflicts, and that either none prevent opening this Project or this Project is not legal advice. The attester is the authenticated session's person — never taken from this body." },
+              "status":       { "type": "string", "enum": ["closed"],
+                                "description": "Open the matter already closed — an engagement that ended before anyone opened its row. Omit for the ordinary open. Requires closed_at; refused if closed_at is present without this." },
+              "closed_at":    { "type": ["string", "null"], "format": "date-time",
+                                "description": "Required exactly when status is \"closed\". Validated the same way POST /app/api/projects/{id}/lifecycle validates an effective time: may not precede the matter's own open or fall in the future." }
             },
             "example": {
               "name": "Acme LLC — Formation",
@@ -2750,14 +2769,13 @@ pub fn document_with_base(base: &str) -> Value {
           },
           "UpdateEntityRequest": {
             "type": "object",
-            "required": ["name", "entity_type_id", "jurisdiction_id"],
             "properties": {
               "name":            { "type": "string",
-                                   "description": "Full replacement; must not be blank. Immutable for the firm anchor row." },
+                                   "description": "Omit to leave unchanged; present must not be blank. Immutable for the firm anchor row." },
               "entity_type_id":  { "type": "string", "format": "uuid",
-                                   "description": "An existing `/app/api/entity-types` row." },
+                                   "description": "Omit to leave unchanged. An existing `/app/api/entity-types` row." },
               "jurisdiction_id": { "type": "string", "format": "uuid",
-                                   "description": "An existing `/app/api/jurisdictions` row." }
+                                   "description": "Omit to leave unchanged. An existing `/app/api/jurisdictions` row." }
             },
             "example": {
               "name": "Example Holdings LLC",
@@ -2914,6 +2932,14 @@ pub const TOOLS_WITHOUT_AN_API_OPERATION: &[(&str, &str)] = &[
         "No route today. It is an MCP-only aggregate over three existing \
          Project-scoped queries (deadlines, notation events, participation), \
          so there is no single API operation for the tool to share.",
+    ),
+    (
+        "aida_delete_closed_repository",
+        "No route today. Deleting a forge repository is a supervised, \
+         confirmation-gated destructive act with no HTTP-side command to \
+         share — there is no `DELETE /app/api/projects/{id}/repository` — \
+         and adding one would give a second, un-gated door onto the same \
+         irreversible operation.",
     ),
 ];
 

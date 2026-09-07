@@ -64,6 +64,7 @@ async fn opening_a_matter_writes_the_project_two_participations_and_the_attestat
             brand: "neon".to_string(),
             attestation: true,
             acting_person_id,
+            closed_at: None,
         },
     )
     .await
@@ -108,5 +109,73 @@ async fn opening_a_matter_writes_the_project_two_participations_and_the_attestat
     assert!(
         table_is_defined(&surreal, "project").await,
         "the control: INFO FOR DB really does name the tables that exist"
+    );
+}
+
+/// ENG-469: `closed_at` opens the matter already closed, in the same
+/// insert — a historical close date that predates the row's own
+/// `inserted_at` (necessarily "now") must still be accepted, because there
+/// is no prior open state for it to have preceded.
+#[tokio::test]
+async fn open_matter_with_closed_at_opens_already_closed() {
+    let surreal = mem_surreal().await;
+    let (client_id, acting_person_id, entity_id) = references(&surreal).await;
+    let closed_at = "2026-06-01T00:00:00Z".parse().expect("valid timestamp");
+
+    let project = projects::open_matter(
+        &surreal,
+        &OpenMatterCommand {
+            name: "Already Closed".into(),
+            code: "already-closed".into(),
+            client_id,
+            entity_id,
+            description: None,
+            brand: "neon".to_string(),
+            attestation: true,
+            acting_person_id,
+            closed_at: Some(closed_at),
+        },
+    )
+    .await
+    .expect("open a matter already closed");
+
+    assert_eq!(project.status, "closed");
+    assert_eq!(project.closed_at.as_deref(), Some("2026-06-01T00:00:00Z"));
+}
+
+/// A `closed_at` in the future is refused rather than opening a matter with
+/// a nonsensical close date, and nothing is written.
+#[tokio::test]
+async fn open_matter_refuses_a_future_closed_at() {
+    let surreal = mem_surreal().await;
+    let (client_id, acting_person_id, entity_id) = references(&surreal).await;
+    let future = chrono::Utc::now() + chrono::Duration::days(365);
+
+    let error = projects::open_matter(
+        &surreal,
+        &OpenMatterCommand {
+            name: "Future Close".into(),
+            code: "future-close".into(),
+            client_id,
+            entity_id,
+            description: None,
+            brand: "neon".to_string(),
+            attestation: true,
+            acting_person_id,
+            closed_at: Some(future),
+        },
+    )
+    .await
+    .expect_err("a future closed_at must be refused");
+    assert!(
+        matches!(error, projects::OpenMatterError::Invalid(_)),
+        "{error:?}"
+    );
+    assert!(
+        projects::find_by_code(&surreal, "future-close")
+            .await
+            .expect("read")
+            .is_none(),
+        "a refused open must not write a row"
     );
 }

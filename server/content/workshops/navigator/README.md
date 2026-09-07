@@ -300,6 +300,50 @@ Commit and push. That push is what makes the CI gate live on the new repository.
 Run `scaffold` against the freshly cloned repository and show the room the files it writes. Commit and push before
 moving on — the CI gate does not exist on the repository until that push lands.
 
+### Stage a document and sync it
+
+`scaffold` does not write the repository's `documents/` directory. It is the root-level document surface in every
+Project repository, alongside `apps/` and `templates/`, and it holds committed YAML pointers while acting as temporary
+staging, not a second document store. Git keeps the pointer; Navigator keeps the bytes. Drop a local file below it, list
+what a sync would do, then run it:
+
+```bash
+navigator site sync --dry-run
+navigator site sync
+navigator site projects repository validate .
+```
+
+Against a staged `documents/exhibits/exhibit-a.png`, the dry run prints one line per staged file and a count, and
+changes nothing:
+
+```text
+would upload documents/exhibits/exhibit-a.png
+1 upload planned
+```
+
+The real run derives the document slug from its path below `documents/`, uploads the bytes through Navigator's
+authenticated API, writes `exhibit-a.png.yml` only after the upload succeeds, and then removes the staged file. It
+prints `1 uploaded`. The pointer records `kind`, desired `visibility`, current revision metadata, and the previous asset
+id when the chain has one. It never contains an object-storage coordinate or legal-document bytes; object storage and
+the `assets` revision chain remain authoritative. Folder conventions infer `filing` for `pleadings/`, `exhibit` for
+`exhibits/`, and `agreement` for `agreements/`; other paths use `unclassified`. Visibility defaults to `internal`.
+
+The real run needs a stored login — `navigator site login --host <host-or-url>` — and a matter with that code visible to
+the account. `--dry-run` needs neither. The first real run also creates `documents/.gitignore` without overwriting an
+existing file; until that first sync, nothing in the checkout stops `git add` from staging raw bytes. `validate` then
+rejects every file below `documents/` that is not a `*.yml` pointer or that `.gitignore`:
+
+```text
+./documents/exhibits/exhibit-a.png: error: legal documents and raw document bytes must not be committed; keep only `*.yml` pointers under `documents/`
+```
+
+---
+
+Stage one throwaway file under a synthetic `acme` checkout and run the dry run first, so the room sees the plan before
+anything moves. Run the real sync only against a matter the signed-in account can see; the seeded sample matters work.
+Open the emitted `.yml` and point out what it does not contain. Finish by committing a raw file on purpose and running
+`validate` so the room meets the gate error here, with context, rather than on their first real upload.
+
 ### The portal is a separate, later decision
 
 Not every Project needs a client-facing application. When one does, its `portal/` is hand-built in the `vibe-react` lane

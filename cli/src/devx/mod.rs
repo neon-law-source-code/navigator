@@ -28,6 +28,7 @@ pub mod deployments;
 mod dns;
 mod doctor;
 mod e2e;
+mod flake_hunt;
 mod garage;
 mod gcp;
 pub(crate) mod github_setup;
@@ -784,6 +785,11 @@ pub fn dispatch(command: crate::Command) -> Result<()> {
         crate::Command::Dev(crate::DevCmd::BrowserE2e { base_url }) => {
             browser_e2e::run_browser_e2e(base_url.as_deref())
         }
+        crate::Command::Dev(crate::DevCmd::FlakeHunt {
+            package,
+            test_filter,
+            runs,
+        }) => flake_hunt::run(&package, test_filter.as_deref(), runs),
         crate::Command::Dev(crate::DevCmd::Logs) => logs(&cfg),
         crate::Command::Dev(crate::DevCmd::Kustomize(crate::KustomizeCmd::Kind)) => {
             kustomize_render(&cfg.full_overlay)

@@ -656,6 +656,7 @@ jobs:
           NAVIGATOR_SURREAL_USER: root
           NAVIGATOR_SURREAL_PASSWORD: root
           NAV_REQUIRE_SURREAL: "1"
+          RUST_BACKTRACE: full
           # Bounds libtest's pool only, never the build. With nextest carrying
           # the workspace run this reaches the two lanes that are still plain
           # libtest — the doctests, and `features` if its cucumber suites ever
@@ -757,7 +758,13 @@ jobs:
           # runtime", out of `tokio-util`'s `spawn_pinned.rs`. Narrow the width
           # on that signature — it is not a flake to re-run. The real fix
           # remains ENG-57.
-          cargo nextest run --workspace --no-fail-fast --test-threads 4
+          #
+          # `--profile ci` is `.config/nextest.toml`: two retries, JUnit at
+          # `target/nextest/ci/junit.xml`, and a fail-then-pass recorded FLAKY.
+          # Tee the suite so a red run still has the panic after the log
+          # stream is gone; the step after this one uploads the JUnit on every
+          # outcome and the tee file on failure.
+          cargo nextest run --workspace --no-fail-fast --profile ci --test-threads 4 2>&1 | tee /tmp/navigator-workspace-tests.log
           # The two lanes nextest does not run, kept so this gate stays exactly
           # as wide as the `cargo test --workspace` it replaces — and so the
           # coverage number keeps measuring the same test set.
@@ -842,6 +849,18 @@ jobs:
           cargo llvm-cov report \
               --fail-under-lines 90.6 \
               --ignore-filename-regex '(cli/src/devx/(browser_e2e|chrome|e2e|garage|orchestrate|staging)|features/src/webdriver)\.rs$'
+      - name: upload nextest JUnit
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nextest-junit
+          path: target/nextest/ci/junit.xml
+      - name: upload workspace test log
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: workspace-test-log
+          path: /tmp/navigator-workspace-tests.log
       - name: report free disk after the test build
         if: always()
         run: df -h

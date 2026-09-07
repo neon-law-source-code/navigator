@@ -935,6 +935,20 @@ enum DevCmd {
         #[arg(long, env = "NAV_BASE_URL")]
         base_url: Option<String>,
     },
+    /// Loop one package's tests N times and print the pass/fail wall-time
+    /// distribution. Each run is classified from nextest's Summary line (or
+    /// cucumber's `test result:` / scenarios line), never from a pipe's
+    /// exit status.
+    FlakeHunt {
+        /// Cargo package to run (`store`, `portal`, `features`, …).
+        package: String,
+        /// Optional nextest filter expression (`-E`). For `features`, the
+        /// cucumber binary name passed to `cargo test --test`.
+        test_filter: Option<String>,
+        /// How many consecutive runs to record.
+        #[arg(long, default_value_t = 10)]
+        runs: u32,
+    },
     /// Tail `navigator-web` logs (`kubectl logs -f deployment/navigator-web`).
     Logs,
     /// Render Kubernetes overlays locally.

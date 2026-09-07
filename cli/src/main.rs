@@ -522,6 +522,17 @@ enum ProjectsCmd {
         #[arg(long)]
         json: bool,
     },
+    /// Run the Project CI gate: layout, origin scan, and optional OIDC document verify.
+    Gate {
+        /// Repository root. Defaults to the current directory.
+        #[arg(default_value = ".")]
+        dir: PathBuf,
+        /// Exchange GitHub Actions OIDC for a document-verify session.
+        #[arg(long)]
+        ci: bool,
+        #[command(flatten)]
+        host: HostOpt,
+    },
     /// Create or adopt the three handles a Project opens with.
     ///
     /// The documents-bucket prefix `projects/<code>/documents`, the Drive
@@ -569,13 +580,21 @@ enum ProjectRepositoryAction {
         /// Directory to create or complete. Defaults to the current directory.
         #[arg(long, default_value = ".")]
         dir: PathBuf,
-        /// Exact release tag the generated gate pins Navigator's validate
-        /// action to. Defaults to this binary's own version when — and only
+        /// Deployment hostname written to `navigator.yaml`.
+        #[arg(long)]
+        host: String,
+        /// Exact release tag the generated gate pins Navigator's project-gate
+        /// workflow to. Defaults to this binary's own version when — and only
         /// when — that version is one this repository has actually
         /// published; a plain local build cannot vouch for its own crate
         /// version, so it carries no default and this must be named.
         #[arg(long, default_value = published_cli_version())]
         action_version: String,
+        /// Replace a hand-copied `ci.yml` (268 lines or more) with the thin
+        /// reusable-workflow caller. Without this flag, scaffold leaves that
+        /// file alone and exits 2.
+        #[arg(long)]
+        replace_gate: bool,
     },
     /// Validate a Project repository: its layout, its notation templates, and
     /// its portal's build shape.
@@ -2246,8 +2265,16 @@ async fn run_projects(action: ProjectsCmd) -> ExitCode {
             ProjectRepositoryAction::Scaffold {
                 project_code,
                 dir,
+                host,
                 action_version,
-            } => projects::repository::scaffold(&dir, &project_code, &action_version),
+                replace_gate,
+            } => projects::repository::scaffold(
+                &dir,
+                &project_code,
+                &action_version,
+                &host,
+                replace_gate,
+            ),
             ProjectRepositoryAction::Validate { dir, repository } => {
                 projects::repository::validate(&dir, repository.as_deref())
             }
@@ -2259,6 +2286,7 @@ async fn run_projects(action: ProjectsCmd) -> ExitCode {
             all,
             json,
         } => projects::drift::run(host.host.as_deref(), &dir, all, json).await,
+        ProjectsCmd::Gate { dir, ci, host: _ } => projects::repository::gate(&dir, ci),
         ProjectsCmd::Surfaces { action } => match action {
             SurfacesAction::Reconcile { project } => projects::surfaces::reconcile(&project).await,
         },
@@ -2846,8 +2874,70 @@ fn standalone_tree_passes(dir: &std::path::Path) -> std::io::Result<Vec<GateErro
     errors.append(&mut seed_document_pass(dir)?);
     errors.append(&mut locale_document_pass(dir)?);
     errors.append(&mut document_pointer_pass(dir)?);
+    errors.extend(project_manifest_pass(dir));
+    errors.extend(project_origin_pass(dir));
     errors.append(&mut mutable_tag_pass(dir)?);
     Ok(errors)
+}
+
+/// `Y004`–`Y008` — a Project repository's `navigator.yaml` (or the retired
+/// `.yml` spelling) holds to the closed key set and value shapes.
+fn project_manifest_pass(dir: &std::path::Path) -> Vec<GateError> {
+    let findings = crate::projects::manifest::lint(dir);
+    let mut errors = Vec::with_capacity(findings.len());
+    for finding in findings {
+        let location = format!("{}:{}", finding.path.display(), finding.line);
+        print_violation(
+            &finding.path.display().to_string(),
+            finding.line,
+            finding.code,
+            &finding.message,
+        );
+        errors.push(GateError::new(
+            location,
+            Some(finding.code),
+            finding.message,
+        ));
+    }
+    if dir.join(crate::projects::manifest::FILE).is_file()
+        || dir.join(crate::projects::manifest::RETIRED_FILE).is_file()
+    {
+        println!(
+            "Validated project manifest, found {} error(s)",
+            errors.len()
+        );
+    }
+    errors
+}
+
+fn project_origin_pass(dir: &std::path::Path) -> Vec<GateError> {
+    let Some(manifest) = crate::projects::origin::load_manifest(dir) else {
+        return Vec::new();
+    };
+    let applications = crate::projects::repository::discovered_applications(dir);
+    let findings = crate::projects::origin::lint(dir, &applications, &manifest);
+    let mut errors = Vec::with_capacity(findings.len());
+    for finding in findings {
+        let location = format!("{}:{}", finding.path.display(), finding.line);
+        print_violation(
+            &finding.path.display().to_string(),
+            finding.line,
+            finding.code,
+            &finding.message,
+        );
+        errors.push(GateError::new(
+            location,
+            Some(finding.code),
+            finding.message,
+        ));
+    }
+    if !applications.is_empty() {
+        println!(
+            "Checked built origin references, found {} error(s)",
+            errors.len()
+        );
+    }
+    errors
 }
 
 fn run_validate(dir: &std::path::Path, fix: bool, errors_only: bool) -> ExitCode {

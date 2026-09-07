@@ -1,0 +1,257 @@
+name: project-gate
+
+# Reusable gate for a Project repository. A Project's own `ci.yml` is a thin
+# caller pinned to an exact release tag of this file:
+#
+#     jobs:
+#       ci:
+#         uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@YY.M.D
+#         secrets: inherit
+#         with:
+#           version: "YY.M.D"
+#
+# The pin *is* the version: this workflow downloads that CLI tag and runs
+# `navigator validate`. It does not resolve `latest`. There is no schedule.
+# `ops github setup` bumps the caller's pin; it never edits this file.
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Exact Navigator release tag to download and run.
+        required: true
+        type: string
+      host:
+        description: Deployment host for live document verification on push to main.
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: hashFiles('apps/*/package.json', 'portal/package.json', 'vite.config.ts', 'vite.config.js') != ''
+        with:
+          node-version: "22"
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        if: hashFiles('apps/*/package.json', 'portal/package.json', 'vite.config.ts', 'vite.config.js') != ''
+      - name: Install application dependencies
+        if: hashFiles('apps/*/package.json', 'portal/package.json', 'vite.config.ts', 'vite.config.js') != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          package_manifests=(apps/*/package.json)
+          if [ -f portal/package.json ]; then
+              package_manifests+=(portal/package.json)
+          fi
+          if [ -f package.json ] && { [ -f vite.config.ts ] || [ -f vite.config.js ]; }; then
+              if [ ! -f portal/package.json ] && [ ! -f apps/portal/package.json ]; then
+                  package_manifests+=(package.json)
+              fi
+          fi
+          for package_json in "${package_manifests[@]}"; do
+              app_dir="${package_json%/package.json}"
+              pnpm --dir "${app_dir}" install --frozen-lockfile
+          done
+      - name: Lint applications
+        if: hashFiles('apps/*/package.json', 'portal/package.json', 'vite.config.ts', 'vite.config.js') != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          package_manifests=(apps/*/package.json)
+          if [ -f portal/package.json ]; then
+              package_manifests+=(portal/package.json)
+          fi
+          if [ -f package.json ] && { [ -f vite.config.ts ] || [ -f vite.config.js ]; }; then
+              if [ ! -f portal/package.json ] && [ ! -f apps/portal/package.json ]; then
+                  package_manifests+=(package.json)
+              fi
+          fi
+          for package_json in "${package_manifests[@]}"; do
+              app_dir="${package_json%/package.json}"
+              pnpm --dir "${app_dir}" lint
+          done
+
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: hashFiles('apps/*/package.json', 'portal/package.json', 'vite.config.ts', 'vite.config.js') != ''
+        with:
+          node-version: "22"
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        if: hashFiles('apps/*/package.json', 'portal/package.json', 'vite.config.ts', 'vite.config.js') != ''
+      - name: Install application dependencies
+        if: hashFiles('apps/*/package.json', 'portal/package.json', 'vite.config.ts', 'vite.config.js') != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          package_manifests=(apps/*/package.json)
+          if [ -f portal/package.json ]; then
+              package_manifests+=(portal/package.json)
+          fi
+          if [ -f package.json ] && { [ -f vite.config.ts ] || [ -f vite.config.js ]; }; then
+              if [ ! -f portal/package.json ] && [ ! -f apps/portal/package.json ]; then
+                  package_manifests+=(package.json)
+              fi
+          fi
+          for package_json in "${package_manifests[@]}"; do
+              app_dir="${package_json%/package.json}"
+              pnpm --dir "${app_dir}" install --frozen-lockfile
+          done
+      - name: Typecheck applications
+        if: hashFiles('apps/*/package.json', 'portal/package.json', 'vite.config.ts', 'vite.config.js') != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          package_manifests=(apps/*/package.json)
+          if [ -f portal/package.json ]; then
+              package_manifests+=(portal/package.json)
+          fi
+          if [ -f package.json ] && { [ -f vite.config.ts ] || [ -f vite.config.js ]; }; then
+              if [ ! -f portal/package.json ] && [ ! -f apps/portal/package.json ]; then
+                  package_manifests+=(package.json)
+              fi
+          fi
+          for package_json in "${package_manifests[@]}"; do
+              app_dir="${package_json%/package.json}"
+              pnpm --dir "${app_dir}" typecheck
+          done
+      - name: Test applications
+        if: hashFiles('apps/*/package.json', 'portal/package.json', 'vite.config.ts', 'vite.config.js') != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          package_manifests=(apps/*/package.json)
+          if [ -f portal/package.json ]; then
+              package_manifests+=(portal/package.json)
+          fi
+          if [ -f package.json ] && { [ -f vite.config.ts ] || [ -f vite.config.js ]; }; then
+              if [ ! -f portal/package.json ] && [ ! -f apps/portal/package.json ]; then
+                  package_manifests+=(package.json)
+              fi
+          fi
+          for package_json in "${package_manifests[@]}"; do
+              app_dir="${package_json%/package.json}"
+              pnpm --dir "${app_dir}" test
+          done
+      - name: Build applications
+        if: hashFiles('apps/*/package.json', 'portal/package.json', 'vite.config.ts', 'vite.config.js') != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          package_manifests=(apps/*/package.json)
+          if [ -f portal/package.json ]; then
+              package_manifests+=(portal/package.json)
+          fi
+          if [ -f package.json ] && { [ -f vite.config.ts ] || [ -f vite.config.js ]; }; then
+              if [ ! -f portal/package.json ] && [ ! -f apps/portal/package.json ]; then
+                  package_manifests+=(package.json)
+              fi
+          fi
+          for package_json in "${package_manifests[@]}"; do
+              app_dir="${package_json%/package.json}"
+              pnpm --dir "${app_dir}" build
+          done
+
+  notation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: download and install the navigator CLI
+        env:
+          VERSION: ${{ inputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          case "${VERSION}" in
+            latest|main|HEAD|"")
+              echo "::error::version must be an exact release tag, not '${VERSION}'."
+              exit 1
+              ;;
+          esac
+          asset="navigator-${VERSION}-linux.tar.gz"
+          tmp="$(mktemp -d)"
+          gh release download "${VERSION}" \
+            --repo neon-law-source-code/navigator \
+            --pattern "${asset}" \
+            --dir "${tmp}" \
+            --clobber
+          tar -xzf "${tmp}/${asset}" -C "${tmp}" navigator
+          install -d "${RUNNER_TEMP}/navigator-bin"
+          install -m 0755 "${tmp}/navigator" "${RUNNER_TEMP}/navigator-bin/navigator"
+          echo "${RUNNER_TEMP}/navigator-bin" >> "${GITHUB_PATH}"
+      - name: navigator validate
+        run: navigator validate .
+
+  documents:
+    permissions:
+      contents: read
+      id-token: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: download and install the navigator CLI
+        env:
+          VERSION: ${{ inputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          case "${VERSION}" in
+            latest|main|HEAD|"")
+              echo "::error::version must be an exact release tag, not '${VERSION}'."
+              exit 1
+              ;;
+          esac
+          asset="navigator-${VERSION}-linux.tar.gz"
+          tmp="$(mktemp -d)"
+          gh release download "${VERSION}" \
+            --repo neon-law-source-code/navigator \
+            --pattern "${asset}" \
+            --dir "${tmp}" \
+            --clobber
+          tar -xzf "${tmp}/${asset}" -C "${tmp}" navigator
+          install -d "${RUNNER_TEMP}/navigator-bin"
+          install -m 0755 "${tmp}/navigator" "${RUNNER_TEMP}/navigator-bin/navigator"
+          echo "${RUNNER_TEMP}/navigator-bin" >> "${GITHUB_PATH}"
+      - name: navigator document verify
+        env:
+          HOST: ${{ inputs.host }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          if [ ! -d documents ]; then
+              echo "no documents — nothing to verify"
+              exit 0
+          fi
+          if [ -n "${HOST}" ] && [ "${EVENT_NAME}" = "push" ] && [ "${REF}" = "refs/heads/main" ]; then
+              navigator document verify . --ci --host "${HOST}"
+          else
+              navigator document verify .
+          fi
+
+  ci:
+    needs: [lint, verify, notation]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every job to have succeeded
+        run: |
+          test "${{ needs.lint.result }}" = "success"
+          test "${{ needs.verify.result }}" = "success"
+          test "${{ needs.notation.result }}" = "success"

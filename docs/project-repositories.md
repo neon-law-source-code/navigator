@@ -91,8 +91,9 @@ the layout (`ALLOWED_ROOTS` in `cli/src/projects/repository.rs`), and it is the 
 extension, keyed `name:`, is retired, and a checkout still carrying it reads as an unparsable manifest. The same file
 and the same reader serve both a Project repository and a staged sample-project bundle:
 `store::sample_project::MANIFEST_FILE` and `cli/src/projects/repository.rs`'s `PROJECT_MANIFEST` name the identical
-string on purpose, so a rename of one cannot leave the other stale. Unknown keys, such as `host:`, are ignored rather
-than refused, so a downstream deployment table can add its own without breaking this gate.
+string on purpose, so a rename of one cannot leave the other stale. The accepted top-level keys are `host`, `project`,
+`no_live_row`, `allowed_hosts`, and `allowed_prefixes`. An unknown key is refused, naming that set. `host` is a hostname,
+not a row in a deployment table. `project` is a Navigator Project code. `no_live_row` is a non-empty reason string.
 
 ## Document staging and pointers
 
@@ -276,14 +277,25 @@ Project repository in every organization:
     done
 - uses: neon-law-source-code/navigator/.github/actions/validate@YY.M.D
   with:
-    version: "YY.M.D"
-    project_repository: true
+A Project repository's `ci.yml` is a thin caller of Navigator's reusable workflow
+`.github/workflows/project-gate.yml`, pinned to an exact release tag. The pin *is* the version: `ops github setup`
+bumps the caller's `uses:` ref and does not resolve `latest`. Validate does not check that the pin exists on the
+registry — a tag that was never published fails on the run that downloads it.
+
+```yaml
+jobs:
+  ci:
+    uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@YY.M.D
+    secrets: inherit
+    with:
+      version: "YY.M.D"
+      host: ${{ vars.NAVIGATOR_HOST }}
 ```
 
-It carries no organization, host, deployment, or client name, because none of those vary: a mount is the repository
-name, which is the Project code, plus the discovered application name. A forge host never appears in a Vite base, which
-is why a repository may move between forges without touching the gate. `cli/tests/project_gate.rs` pins the shell
-against the Rust definitions it transcribes, because bash cannot call Rust.
+The reusable workflow downloads that CLI tag and runs `navigator validate` after the JS build. `navigator site projects
+gate --ci` is the OIDC door for live document verification (`POST /auth/ci/document-token`); without GitHub's OIDC
+request URL it exits 2 rather than minting a session. Staging sample repositories stay public by design;
+`ops github setup --dry-run` reports a visibility finding and never flips visibility.
 
 `navigator site projects repository scaffold` generates the shape every Project repository converged on by hand before
 this generator caught up: three feeder jobs — `lint`, `verify` (typecheck, test, build), and `notation` (the snippet
@@ -545,12 +557,14 @@ cannot push to `ux/core`.
 ## Scaffolding a repository
 
 ```bash
-navigator site projects repository scaffold <project-code> --dir . --action-version YY.M.D
+navigator site projects repository scaffold <project-code> --dir . --host staging.neonlaw.com --action-version YY.M.D
 navigator site projects repository validate .
 ```
 
-`scaffold` is idempotent and leaves existing files alone. It writes the repository shell and the templates half — the
-gate workflow, `README.md`, `AGENTS.md`, `CLAUDE.md`, a `templates/project_template.md` placeholder, and `tests/`.
+`scaffold` is idempotent and leaves existing files alone. It writes the repository shell — `navigator.yaml` (requiring
+`--host`), the thin `ci.yml` caller, a `publish.yml` job guarded on `vars.NAVIGATOR_HOST`, `README.md`, `AGENTS.md`,
+a `CLAUDE.md` symlink to `AGENTS.md`, and `tests/`. It does not write a placeholder template. A hand-copied `ci.yml` of
+268 lines or more is left alone unless `--replace-gate` is passed.
 
 The generated gate pins Navigator's validate action to `--action-version`, which defaults to the release the running
 `navigator` reports as its own version — but only when this binary can actually vouch for that version: a downloaded

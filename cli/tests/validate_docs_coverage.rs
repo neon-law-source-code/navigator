@@ -14,6 +14,13 @@ use std::fs;
 /// crate, because the pass it guards runs outside `ClassifiedRuleEngine` entirely.
 const SEED_DOCUMENT_CODE: &str = "Y001";
 const LOCALE_DOCUMENT_CODE: &str = "Y002";
+const DOCUMENT_POINTER_CODE: &str = "Y003";
+const MANIFEST_HOST_CODE: &str = "Y004";
+const MANIFEST_PROJECT_CODE: &str = "Y005";
+const MANIFEST_UNKNOWN_KEY_CODE: &str = "Y006";
+const MANIFEST_ROWLESS_CODE: &str = "Y007";
+const MANIFEST_RENAME_CODE: &str = "Y008";
+const ORIGIN_CODE: &str = "Y009";
 
 fn all_shipped_codes() -> BTreeSet<&'static str> {
     let mut codes = BTreeSet::new();
@@ -36,6 +43,13 @@ fn all_shipped_codes() -> BTreeSet<&'static str> {
     codes.insert("N111");
     codes.insert(SEED_DOCUMENT_CODE);
     codes.insert(LOCALE_DOCUMENT_CODE);
+    codes.insert(DOCUMENT_POINTER_CODE);
+    codes.insert(MANIFEST_HOST_CODE);
+    codes.insert(MANIFEST_PROJECT_CODE);
+    codes.insert(MANIFEST_UNKNOWN_KEY_CODE);
+    codes.insert(MANIFEST_ROWLESS_CODE);
+    codes.insert(MANIFEST_RENAME_CODE);
+    codes.insert(ORIGIN_CODE);
     codes
 }
 
@@ -60,6 +74,6 @@ fn every_shipped_code_has_an_entry_in_validate_docs() {
 /// Pin the exhaustive count so a rule addition or removal is a visible diff here, not a silent
 /// change to how many codes the doc is supposed to cover.
 #[test]
-fn the_shipped_code_count_is_eighty_six() {
-    assert_eq!(all_shipped_codes().len(), 86);
+fn the_shipped_code_count_is_ninety_three() {
+    assert_eq!(all_shipped_codes().len(), 93);
 }

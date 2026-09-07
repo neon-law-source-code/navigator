@@ -9,7 +9,7 @@
 //! write it and these tests do not depend on it.
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
@@ -45,8 +45,19 @@ fn scaffold(dir: &Path, project_code: &str) -> assert_cmd::assert::Assert {
             "--dir",
         ])
         .arg(dir)
-        .args(["--action-version", FIXTURE_PIN])
+        .args([
+            "--action-version",
+            FIXTURE_PIN,
+            "--host",
+            "staging.neonlaw.com",
+        ])
         .assert()
+}
+
+fn project_gate_source() -> String {
+    let path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.github/workflows/project-gate.yml");
+    fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
 }
 
 fn validate(dir: &Path, repository: &str) -> assert_cmd::assert::Assert {
@@ -73,8 +84,8 @@ fn write_portal(dir: &Path) {
 }
 
 #[cfg(unix)]
-fn generated_step_script(root: &Path, step_name: &str) -> String {
-    let source = fs::read_to_string(root.join(".github/workflows/gate.yml")).unwrap();
+fn generated_step_script(step_name: &str) -> String {
+    let source = project_gate_source();
     let workflow: serde_yaml::Value = serde_yaml::from_str(&source).unwrap();
     workflow
         .get("jobs")
@@ -97,7 +108,7 @@ fn the_scaffold_produces_a_repository_that_validates_and_is_idempotent() {
 
     validate(dir.path(), "example-project")
         .success()
-        .stdout(str::contains("1 template(s), 0 application(s), 0 error(s)"));
+        .stdout(str::contains("0 template(s), 0 application(s), 0 error(s)"));
 
     assert!(dir.path().join("README.md").is_file());
     assert!(dir.path().join("AGENTS.md").is_file());
@@ -116,9 +127,10 @@ fn the_scaffold_produces_a_repository_that_validates_and_is_idempotent() {
     );
     assert!(instructions.contains("A precedent"));
     assert!(instructions.contains("citation is still a breach"));
-    assert!(dir.path().join("templates/project_template.md").is_file());
-    let workflow = fs::read_to_string(dir.path().join(".github/workflows/gate.yml")).unwrap();
-    assert!(workflow.contains("project_repository: true"));
+    assert!(!dir.path().join("templates/project_template.md").exists());
+    let workflow = fs::read_to_string(dir.path().join(".github/workflows/ci.yml")).unwrap();
+    assert!(workflow.contains("project-gate.yml@"));
+    assert!(!workflow.contains("project_repository: true"));
     assert!(workflow.contains("actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"));
     let cd = fs::read_to_string(dir.path().join(".github/workflows/publish.yml")).unwrap();
     assert!(
@@ -144,6 +156,20 @@ fn the_scaffold_produces_a_repository_that_validates_and_is_idempotent() {
     validate(dir.path(), "example-project").success();
 }
 
+#[test]
+fn gate_ci_without_oidc_is_a_closed_door() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "example-project").success();
+    navigator()
+        .args(["site", "projects", "gate", "--ci"])
+        .arg(dir.path())
+        .env_remove("ACTIONS_ID_TOKEN_REQUEST_URL")
+        .assert()
+        .failure()
+        .code(2)
+        .stderr(str::contains("ACTIONS_ID_TOKEN_REQUEST_URL is unset"));
+}
+
 /// All three shapes validate: templates only, a portal only, and both.
 #[test]
 fn templates_only_a_portal_only_and_both_all_validate() {
@@ -152,7 +178,7 @@ fn templates_only_a_portal_only_and_both_all_validate() {
     scaffold(templates_only.path(), "example-project").success();
     validate(templates_only.path(), "example-project")
         .success()
-        .stdout(str::contains("1 template(s), 0 application(s)"));
+        .stdout(str::contains("0 template(s), 0 application(s)"));
 
     // Both halves in one repository, which is the point of the collapse.
     let both = TempDir::new().unwrap();
@@ -160,12 +186,11 @@ fn templates_only_a_portal_only_and_both_all_validate() {
     write_portal(both.path());
     validate(both.path(), "example-project")
         .success()
-        .stdout(str::contains("1 template(s), 1 application(s)"));
+        .stdout(str::contains("0 template(s), 1 application(s)"));
 
     // A portal only: no `templates/` at all.
     let portal_only = TempDir::new().unwrap();
     scaffold(portal_only.path(), "example-project").success();
-    fs::remove_dir_all(portal_only.path().join("templates")).unwrap();
     write_portal(portal_only.path());
     validate(portal_only.path(), "example-project")
         .success()
@@ -180,7 +205,6 @@ fn templates_only_a_portal_only_and_both_all_validate() {
 fn direct_apps_are_discovered_and_each_is_validated() {
     let dir = TempDir::new().unwrap();
     scaffold(dir.path(), "example-project").success();
-    fs::remove_dir_all(dir.path().join("templates")).unwrap();
     write_vite_workspace(dir.path(), "apps/portal");
     write_vite_workspace(dir.path(), "apps/exchange");
     fs::create_dir_all(dir.path().join("apps/shared")).unwrap();
@@ -217,7 +241,6 @@ fn direct_apps_are_discovered_and_each_is_validated() {
 fn a_legacy_root_portal_and_new_apps_can_transition_together() {
     let dir = TempDir::new().unwrap();
     scaffold(dir.path(), "example-project").success();
-    fs::remove_dir_all(dir.path().join("templates")).unwrap();
     write_portal(dir.path());
     write_vite_workspace(dir.path(), "apps/exchange");
 
@@ -267,11 +290,7 @@ fn the_generated_build_step_runs_every_discovered_application() {
     fs::set_permissions(&pnpm, fs::Permissions::from_mode(0o755)).unwrap();
 
     let script = dir.path().join("build.sh");
-    fs::write(
-        &script,
-        generated_step_script(dir.path(), "Build applications"),
-    )
-    .unwrap();
+    fs::write(&script, generated_step_script("Build applications")).unwrap();
     let path = format!(
         "{}:{}",
         bin.display(),

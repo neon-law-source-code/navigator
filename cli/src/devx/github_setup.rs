@@ -642,6 +642,8 @@ struct Repository {
     has_issues: bool,
     has_projects: bool,
     has_wiki: bool,
+    #[serde(default)]
+    private: Option<bool>,
 }
 
 /// The repository-level settings this command reconciles, as the body of one
@@ -1628,7 +1630,10 @@ async fn workflow_template_scope(
             "/contents/{}/package.json",
             project_repository::PORTAL_DIRECTORY
         )))
-        .await?;
+        .await?
+        || client
+            .exists(&client.repo_path("/contents/vite.config.ts"))
+            .await?;
     Ok(WorkflowTemplateScope::Project { has_portal })
 }
 
@@ -1837,6 +1842,24 @@ async fn read_live_rulesets(
     Ok((ruleset_ids, live_rulesets))
 }
 
+fn report_visibility_finding(dry_run: bool, policy: RepositoryPolicy, repository: &Repository) {
+    if !dry_run {
+        return;
+    }
+    let live = if repository.private == Some(true) {
+        Visibility::Private
+    } else {
+        Visibility::Public
+    };
+    if live != policy.default_visibility {
+        eprintln!(
+            "==> visibility finding: live is {live:?}, organization default is {:?}; \
+             this command never flips visibility (staging sample repositories are public by design)",
+            policy.default_visibility
+        );
+    }
+}
+
 async fn reconcile(
     policy: RepositoryPolicy,
     client: &GitHubClient,
@@ -1845,6 +1868,7 @@ async fn reconcile(
 ) -> Result<()> {
     eprintln!("==> reconciling {}", client.repository);
     let repository: Repository = client.get_json(&client.repo_path("")).await?;
+    report_visibility_finding(dry_run, policy, &repository);
 
     // Assertions run before any write, so a repository that cannot satisfy the
     // policy is left exactly as it was rather than half-reconciled.
@@ -2509,6 +2533,7 @@ mod tests {
             has_issues: false,
             has_projects: false,
             has_wiki: false,
+            private: Some(false),
         }
     }
 
@@ -4207,6 +4232,11 @@ mod tests {
             .respond_with(ResponseTemplate::new(404))
             .mount(&server)
             .await;
+        Mock::given(method("GET"))
+            .and(path("/repos/acme/navigator/contents/vite.config.ts"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
         assert_eq!(
             workflow_template_scope(&client, COMMON_POLICY)
                 .await
@@ -4229,6 +4259,11 @@ mod tests {
         Mock::given(method("GET"))
             .and(path("/repos/acme/navigator/contents/portal/package.json"))
             .respond_with(ResponseTemplate::new(200).set_body_string("{}"))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/repos/acme/navigator/contents/vite.config.ts"))
+            .respond_with(ResponseTemplate::new(404))
             .mount(&server)
             .await;
         assert_eq!(
@@ -4285,6 +4320,11 @@ mod tests {
             .mount(&server)
             .await;
         Mock::given(method("GET"))
+            .and(path("/repos/acme/navigator/contents/vite.config.ts"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
             .and(path(format!(
                 "/repos/acme/navigator/contents/{}",
                 project_repository::WORKFLOW
@@ -4329,6 +4369,11 @@ mod tests {
             .await;
         Mock::given(method("GET"))
             .and(path("/repos/acme/navigator/contents/portal/package.json"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/repos/acme/navigator/contents/vite.config.ts"))
             .respond_with(ResponseTemplate::new(404))
             .mount(&server)
             .await;
@@ -4428,6 +4473,11 @@ mod tests {
             .mount(&server)
             .await;
         Mock::given(method("GET"))
+            .and(path("/repos/acme/navigator/contents/vite.config.ts"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
             .and(path(format!(
                 "/repos/acme/navigator/contents/{}",
                 project_repository::WORKFLOW
@@ -4471,6 +4521,11 @@ mod tests {
             .await;
         Mock::given(method("GET"))
             .and(path("/repos/acme/navigator/contents/portal/package.json"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/repos/acme/navigator/contents/vite.config.ts"))
             .respond_with(ResponseTemplate::new(404))
             .mount(&server)
             .await;

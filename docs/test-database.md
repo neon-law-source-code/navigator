@@ -46,6 +46,13 @@ cargo nextest run --workspace && cargo test -p features
 Nothing to install, nothing to reclaim. The cucumber BDD suites in `features` keep `cargo test`; their custom harness
 does not speak nextest's protocol, so the workspace nextest profile excludes that package.
 
+A package-filtered `webapp` run needs the crate's `server` feature. A workspace nextest invocation already compiles
+`webapp` through dependents that enable it; running the crate alone does not:
+
+```sh
+cargo nextest run -p webapp --features server
+```
+
 To also exercise the server-mode lane — the WebSocket protocol, root `signin`, and namespace/database selection over a
 wire, which an in-process engine cannot cover — point the harness at a running engine:
 

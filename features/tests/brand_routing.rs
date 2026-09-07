@@ -1,6 +1,6 @@
 //! Cucumber runner for `features/brand_routing.feature`.
 //!
-//! Boots the real composed router against an in-memory `SQLite`
+//! Boots the real composed router against an in-memory `SurrealDB`
 //! and grep-asserts the per-brand `og:site_name` on every public
 //! route. Brand resolution runs as request middleware —
 //! `portal::canonical_host::resolve_brand_and_enforce_host` resolves the

@@ -272,6 +272,7 @@ fn dev_help_lists_local_loop_members() {
             "down",
             "e2e",
             "env",
+            "flake-hunt",
             "garage-bootstrap",
             "grant-lawyer",
             "install",
@@ -421,6 +422,18 @@ fn browser_e2e_help_lists_the_gate_overrides() {
         .stdout(str::contains("Usage: navigator dev browser-e2e"))
         .stdout(str::contains("--base-url"))
         .stdout(str::contains("NAV_BASE_URL"));
+}
+
+#[test]
+fn flake_hunt_help_lists_the_package_and_runs_flag() {
+    Command::cargo_bin("navigator")
+        .unwrap()
+        .args(["dev", "flake-hunt", "--help"])
+        .assert()
+        .success()
+        .stdout(str::contains("Usage: navigator dev flake-hunt"))
+        .stdout(str::contains("--runs"))
+        .stdout(str::contains("[TEST_FILTER]"));
 }
 
 #[test]

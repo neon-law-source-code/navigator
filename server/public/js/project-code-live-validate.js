@@ -12,16 +12,15 @@
 // remains the sole authority, and a JavaScript failure here leaves the plain
 // native form exactly as it was.
 //
-// Suffix note: Navigator appends a generated 8-letter suffix
-// (`store::projects::code_from_name`) that depends on the matter's id, which
-// does not exist until the row is created — so the preview below shows an
-// illustrative example suffix, never a real one.
+// Preview note: the code is stored exactly as supplied, normalized for case
+// and whitespace only (`store::projects::open_matter`, `docs/glossary.md#project`)
+// — nothing is generated or appended — so the preview below names the value
+// itself, and a clash with an open matter's code is refused at submit.
 
 (function () {
   "use strict";
 
   const RESERVED = ["navigator", "new"];
-  const EXAMPLE_SUFFIX = "a1b2c3d4";
 
   // Mirrors `cloud::workspace::is_valid_slug` byte for byte: non-empty, at
   // most 80 characters, only lowercase ASCII letters/digits/hyphens,
@@ -75,7 +74,7 @@
       } else {
         input.removeAttribute("aria-invalid");
         status.classList.remove("nav-field__help--live-invalid");
-        status.textContent = value === "" ? "" : "Your matter's code will be `" + value + "-" + EXAMPLE_SUFFIX + "` (Navigator generates the real suffix when the matter opens).";
+        status.textContent = value === "" ? "" : "Your matter's code will be `" + value + "` (chosen once and never changed).";
       }
     }
 

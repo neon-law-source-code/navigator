@@ -519,6 +519,7 @@ mod tests {
     use crate::persons::{self, NewPerson, Role};
     use crate::surreal::test_support::mem;
     use crate::surreal::SurrealDb;
+    use uuid::Uuid;
 
     async fn db() -> SurrealDb {
         mem().await
@@ -563,10 +564,27 @@ mod tests {
                 name: crate::seed::FIRM_ENTITY_NAME.to_string(),
                 status: "active".to_string(),
                 entity_id,
+                admin_dri_person_id: firm_dri(db).await,
             },
         )
         .await
         .unwrap()
+    }
+
+    /// A fresh `person.role = admin` person, fit to name as a Firm's
+    /// `admin_dri_person_id` in these fixtures.
+    async fn firm_dri(db: &SurrealDb) -> Uuid {
+        persons::create(
+            db,
+            &NewPerson::with_role(
+                "Firm DRI",
+                format!("firm-dri-{}@example.com", Uuid::now_v7()),
+                Role::Admin,
+            ),
+        )
+        .await
+        .unwrap()
+        .id
     }
 
     /// An ordinary Firm — no `firm_anchor_key` on its Entity — for the
@@ -579,6 +597,7 @@ mod tests {
                 name: name.to_string(),
                 status: "active".to_string(),
                 entity_id,
+                admin_dri_person_id: firm_dri(db).await,
             },
         )
         .await

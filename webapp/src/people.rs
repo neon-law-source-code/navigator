@@ -46,6 +46,12 @@ pub struct PersonRow {
     /// the admin surface, which shows the Delete action.
     #[serde(default)]
     pub can_delete: bool,
+    /// The Firms this person holds a `person_firm_role` membership on
+    /// (ENG-494), by name, in membership order. Empty for a Client, who
+    /// reaches a matter through `person_project_role` rather than firm
+    /// membership, and for anyone with no membership at all.
+    #[serde(default)]
+    pub firms: Vec<String>,
 }
 
 /// The signed-in viewer's system tier. `web` derives it from the request
@@ -216,26 +222,43 @@ pub async fn list_admin_people() -> Result<PeopleView, ServerFnError> {
         people.retain(|person| visible.contains(&person.id));
     }
 
+    // One lookup for the whole page rather than a query per row: every
+    // Firm's name, keyed by id, so each person's memberships resolve to
+    // names without re-reading the Firm table per person.
+    let firm_names: std::collections::HashMap<uuid::Uuid, String> = store::firms::all(&surreal)
+        .await
+        .map_err(|e| ServerFnError::new(e.to_string()))?
+        .into_iter()
+        .map(|firm| (firm.id, firm.name))
+        .collect();
+
+    let mut rows = Vec::with_capacity(people.len());
+    for p in people {
+        let is_client = p.role == store::persons::Role::Client;
+        let is_bootstrap_owner = bootstrap_owner_email
+            .as_deref()
+            .is_some_and(|configured| configured.eq_ignore_ascii_case(&p.email));
+        let firms = store::firms::memberships_for_person(&surreal, p.id)
+            .await
+            .map_err(|e| ServerFnError::new(e.to_string()))?
+            .into_iter()
+            .filter_map(|membership| firm_names.get(&membership.firm_id).cloned())
+            .collect();
+        rows.push(PersonRow {
+            id: p.id.to_string(),
+            name: p.name,
+            email: p.email,
+            role: p.role.as_str().to_string(),
+            // The command blocks deleting privileged roles and the bootstrap Owner.
+            can_delete: is_client && !is_bootstrap_owner,
+            firms,
+        });
+    }
+
     Ok(PeopleView {
         tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
         firm_name: crate::app_chrome::firm_name_from_context().await,
-        rows: people
-            .into_iter()
-            .map(|p| {
-                let is_client = p.role == store::persons::Role::Client;
-                let is_bootstrap_owner = bootstrap_owner_email
-                    .as_deref()
-                    .is_some_and(|configured| configured.eq_ignore_ascii_case(&p.email));
-                PersonRow {
-                    id: p.id.to_string(),
-                    name: p.name,
-                    email: p.email,
-                    role: p.role.as_str().to_string(),
-                    // The command blocks deleting privileged roles and the bootstrap Owner.
-                    can_delete: is_client && !is_bootstrap_owner,
-                }
-            })
-            .collect(),
+        rows,
         sort,
         filter_name,
         filter_email,
@@ -391,13 +414,14 @@ fn render_people(resource: &Resource<Result<PeopleView, ServerFnError>>) -> Elem
                                     th { a { class: "sort-name", href: "{name_href}", "Name" } }
                                     th { a { class: "sort-email", href: "{email_href}", "Email" } }
                                     th { "Role" }
+                                    th { "Firms" }
                                     th { "" }
                                 }
                             }
                             tbody {
                                 if is_empty {
                                     tr {
-                                        td { class: "people-empty", colspan: "4", "No people yet." }
+                                        td { class: "people-empty", colspan: "5", "No people yet." }
                                     }
                                 }
                                 for row in view.rows.iter().cloned() {
@@ -405,6 +429,13 @@ fn render_people(resource: &Resource<Result<PeopleView, ServerFnError>>) -> Elem
                                         td { class: "person-name", "{row.name}" }
                                         td { class: "person-email", "{row.email}" }
                                         td { class: "person-role", {role_label(&row.role)} }
+                                        td { class: "person-firms",
+                                            if row.firms.is_empty() {
+                                                span { class: "nav-muted", "—" }
+                                            } else {
+                                                "{row.firms.join(\", \")}"
+                                            }
+                                        }
                                         td { class: "person-actions",
                                             {person_row_actions(&view.csrf_token, &row)}
                                         }

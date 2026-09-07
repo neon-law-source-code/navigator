@@ -105,12 +105,15 @@ pub fn owner_home_body(view: &OwnerHomeView) -> Element {
         } else {
             firm.brand_keys.join(", ")
         };
+        let detail_href = format!("{}/{}", crate::firm_show::FIRM_SHOW_PATH, firm.id);
         rsx! {
             article {
                 key: "{firm.id}",
                 id: "firm-card-{firm.id}",
                 class: "team-home__card",
-                h2 { class: "team-home__card-title", "{firm.name}" }
+                h2 { class: "team-home__card-title",
+                    a { href: "{detail_href}", "{firm.name}" }
+                }
                 p { class: "team-home__card-desc",
                     "Entity: {firm.entity_name}. Status: {firm.status}."
                 }

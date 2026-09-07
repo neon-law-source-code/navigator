@@ -116,6 +116,12 @@ pub const JURISDICTION_SEED_YAML: &str = canonical::JURISDICTION;
 /// that column and not the name.
 pub const FIRM_ENTITY_NAME: &str = "Shook Law PLLC";
 
+/// The seeded practice's first Admin DRI (ENG-499). `User.yaml` carries the
+/// canonical `role: admin` assignment for this email; [`seed_practice`]
+/// resolves the row by it, so the two agree on which person opens the
+/// practice's Firm without either spelling the convention twice.
+const PRIMARY_ADMIN_EMAIL: &str = "nick@neonlaw.com";
+
 /// The environment variable a white-label operator names their own firm
 /// Entity with. Blank or unset falls back to [`FIRM_ENTITY_NAME`] everywhere
 /// this is read — `portal::admin::bootstrap_company_from_env` and
@@ -1261,9 +1267,17 @@ async fn seed_canonical_into(
     seed_jurisdictions(surreal, r).await?;
     seed_entity_types(surreal, r).await?;
     seed_entities(surreal, canonical::ENTITY, "Entity.yaml", r).await?;
-    seed_practice(surreal).await?;
+    // The practice's Firm needs an existing `role = admin` person for its
+    // Admin DRI (ENG-499: creation is atomic with one), so persons and their
+    // roles must be seeded first.
     seed_persons(surreal, r).await?;
     seed_user_roles(surreal, r).await?;
+    // The compiled house-brand keys migrate into `brand` rows before any
+    // Firm attaches one: `store::firms::attach_brand` validates a key
+    // against this table now, not the closed `CLOSED_BRAND_KEYS` array
+    // (ENG-496).
+    seed_brands(surreal).await?;
+    seed_practice(surreal).await?;
     seed_firm_memberships(surreal).await?;
     seed_questions(surreal, r).await?;
     seed_person_entity_roles(surreal, r).await?;
@@ -2527,8 +2541,47 @@ async fn seed_entities(
     Ok(())
 }
 
+/// Migrate the two compiled house-brand keys into system-wide `brand` rows
+/// (ENG-496), with the identity `views::brand::DEFAULT_BRANDING` and
+/// `DELETE_YOUR_DATA_BRANDING` already carry. `store` cannot depend on
+/// `views`, so these values are copied rather than read from it; a
+/// migrated row's `primary_color`/`accent_color`/`typeface` stay unset —
+/// this pair's real presentation stays on the existing static stylesheet
+/// path, not on these columns. Idempotent: a name or key already taken is
+/// this same migration having already run.
+async fn seed_brands(surreal: &SurrealDb) -> anyhow::Result<()> {
+    for (name, key) in [
+        ("Neon Law", "neon"),
+        ("DeleteYourData.com", "delete-your-data"),
+    ] {
+        match crate::brands::create(
+            surreal,
+            crate::persons::Role::Owner,
+            None,
+            &crate::brands::NewBrand {
+                name: name.to_string(),
+                key: key.to_string(),
+                is_law_firm: true,
+                legal_entity: Some(FIRM_ENTITY_NAME.to_string()),
+                ..crate::brands::NewBrand::default()
+            },
+        )
+        .await
+        {
+            Ok(_)
+            | Err(
+                crate::brands::BrandError::DuplicateName | crate::brands::BrandError::DuplicateKey,
+            ) => {}
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Ok(())
+}
+
 /// The one practice this deployment already is: the `Shook Law PLLC` entity,
-/// wearing every registered house-brand key. Idempotent.
+/// wearing every registered house-brand key. Idempotent: an existing Firm on
+/// this Entity is left exactly as it is, Admin DRI included — this only
+/// chooses [`PRIMARY_ADMIN_EMAIL`] for the *first* creation (ENG-499).
 async fn seed_practice(surreal: &SurrealDb) -> anyhow::Result<()> {
     let entity = crate::entities::find_by_name(surreal, FIRM_ENTITY_NAME)
         .await?
@@ -2541,6 +2594,14 @@ async fn seed_practice(surreal: &SurrealDb) -> anyhow::Result<()> {
                 name: FIRM_ENTITY_NAME.to_string(),
                 status: "active".to_string(),
                 entity_id: entity.id,
+                admin_dri_person_id: crate::persons::find_by_email_ci(surreal, PRIMARY_ADMIN_EMAIL)
+                    .await?
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "canonical seed is missing the primary admin {PRIMARY_ADMIN_EMAIL}"
+                        )
+                    })?
+                    .id,
             },
         )
         .await

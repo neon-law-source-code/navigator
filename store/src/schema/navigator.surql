@@ -515,7 +515,7 @@ DEFINE INDEX OVERWRITE entity_firm_anchor ON entity FIELDS firm_anchor_key UNIQU
 DEFINE TABLE IF NOT EXISTS firm SCHEMAFULL PERMISSIONS NONE;
 DEFINE FIELD OVERWRITE name ON firm TYPE string;
 DEFINE FIELD OVERWRITE status ON firm TYPE string
-    ASSERT $value IN ['active', 'suspended']
+    ASSERT $value IN ['active', 'suspended', 'archived']
     DEFAULT 'active';
 DEFINE FIELD OVERWRITE entity_id ON firm TYPE option<record<entity>>;
 DEFINE FIELD OVERWRITE inserted_at ON firm TYPE string;
@@ -530,6 +530,34 @@ DEFINE FIELD OVERWRITE inserted_at ON firm_brand TYPE string;
 DEFINE FIELD OVERWRITE updated_at ON firm_brand TYPE string;
 DEFINE INDEX OVERWRITE firm_brand_pair ON firm_brand FIELDS firm_id, brand_key UNIQUE;
 DEFINE INDEX OVERWRITE firm_brand_key ON firm_brand FIELDS brand_key UNIQUE;
+
+-- `brand`: a data-driven brand row (ENG-496). `firm_id` null means
+-- system-wide (Owner-created, visible to every Firm); a live `firm_id`
+-- means Firm-scoped (created only by that Firm's Admin DRI). `key` is the
+-- machine slug `firm_brand.brand_key` and `store::firms::CLOSED_BRAND_KEYS`
+-- reference; `name` is the human display name. Both are globally unique —
+-- a duplicate of either is refused.
+--
+-- `primary_color`/`accent_color`/`typeface` are presentation for a
+-- *runtime* brand only. The two migrated compiled brands (`neon`,
+-- `delete-your-data`) leave these `NONE`: their real presentation stays on
+-- the existing static stylesheet path (`webapp::brand_style`) and the
+-- compiled `views::brand::Branding` this row does not replace. No runtime
+-- brand publishes a host or a marketing page in this cut — `hosts()` and
+-- `registered_brand_key` keep resolving only the compiled `BrandKey` enum.
+DEFINE TABLE IF NOT EXISTS brand SCHEMAFULL PERMISSIONS NONE;
+DEFINE FIELD OVERWRITE name ON brand TYPE string;
+DEFINE FIELD OVERWRITE brand_key ON brand TYPE string;
+DEFINE FIELD OVERWRITE firm_id ON brand TYPE option<record<firm>>;
+DEFINE FIELD OVERWRITE primary_color ON brand TYPE option<string>;
+DEFINE FIELD OVERWRITE accent_color ON brand TYPE option<string>;
+DEFINE FIELD OVERWRITE typeface ON brand TYPE option<string>;
+DEFINE FIELD OVERWRITE is_law_firm ON brand TYPE bool DEFAULT false;
+DEFINE FIELD OVERWRITE legal_entity ON brand TYPE option<string>;
+DEFINE FIELD OVERWRITE inserted_at ON brand TYPE string;
+DEFINE FIELD OVERWRITE updated_at ON brand TYPE string;
+DEFINE INDEX OVERWRITE brand_name ON brand FIELDS name UNIQUE;
+DEFINE INDEX OVERWRITE brand_key_unique ON brand FIELDS brand_key UNIQUE;
 
 -- `firm_anchor`: the row that serializes minting the anchor, and the
 -- reason the UNIQUE index above is no longer the whole guard.

@@ -125,6 +125,8 @@ const UNIQUE_INDEX_NAMES: &[&str] = &[
     "firm_entity",
     "firm_brand_pair",
     "firm_brand_key",
+    "brand_name",
+    "brand_key_unique",
     "entity_role_tie",
     "git_repository_remote_hash",
     "glossary_term_slug",

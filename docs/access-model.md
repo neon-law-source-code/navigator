@@ -24,9 +24,13 @@ role on the person row (their firm work) and a `person_project_role` row on thei
 participation. The system answers "what can this person do" by reading both.
 
 `person_firm_role` is the ownership join: a person may belong to a [`firm`](glossary.md#firm) as `admin`, `lawyer`, or
-`clerk`, with an optional `is_dri` marker. It does not overload `person.role`. Owner remains the one system-wide
-super-owner tier; clients do not get a firm-membership row. `/app/owner` is Owner only. An Admin's people directory and
-matter directory list only rows in firms they belong to.
+`clerk`, with an `is_dri` marker — the Firm's **Admin DRI**, not a matter DRI (see
+[glossary](glossary.md#directly-responsible-individual-dri)). Every active Firm holds exactly one: creation is atomic
+with an initial designation, `store::firms::appoint_admin_dri` is the only writer thereafter (Owner-only, one
+transaction), and `store::firms::admin_dri_invariant_report` is a read-only deployment-wide scan for a Firm that is not
+(ENG-499). It does not overload `person.role`. Owner remains the one system-wide super-owner tier; clients do not get a
+firm-membership row. `/app/owner` is Owner only. An Admin's people directory and matter directory list only rows in
+firms they belong to.
 
 ## Route admission versus Firm data authorization
 
@@ -41,13 +45,18 @@ through, rather than each call site deriving its own `person_firm_role` filter:
 
 - [`FirmCapability`](../store/src/firm_capability.rs) is a narrow, closed enum — one variant per Firm-scoped command,
   not a blanket "is admin" boolean. `ViewDirectory` gates the Admin-tier people and matter directories
-  (`store::firms::visible_person_ids`, `store::projects::matter_directory_for`); `ManageMembership` gates writing a
-  `person_firm_role` row (`store::firms::add_membership`, `ensure_membership`).
+  (`store::firms::visible_person_ids`, `store::projects::matter_directory_for`) and the Firm detail view
+  (`webapp::firm_show`); `ManageMembership` gates writing a `person_firm_role` row and a Firm's own settings
+  (`store::firms::add_membership`, `ensure_membership`, `update`, `delete`, `update_membership`, `remove_membership`,
+  `detach_brand`); `ManageAdminDri` admits no membership tier at all — only Owner ever holds it — and gates
+  `store::firms::appoint_admin_dri` (ENG-499).
 - `resolve` answers one `(actor, target Firm, capability)` question with a typed
   [`FirmCapabilityDecision`](../store/src/firm_capability.rs) — `Allowed`, `Forbidden`, or `FirmNotFound` — so a future
   single-Firm surface can render `Forbidden` and `FirmNotFound` identically and never disclose that another Firm's row
   exists. `allowed_firm_ids` is its batch counterpart, for a directory that scopes itself to every Firm the caller may
-  act on.
+  act on. `resolve` emits one `firm_capability.resolve` telemetry event per call — capability, Firm id, actor person id,
+  outcome, and a stable reason code, ids only (ENG-464) — so every Firm-scoped allow/deny decision is auditable from the
+  one place every caller already routes through.
 - Owner holds every capability on every Firm with no membership row — the system-wide governance tier
   `docs/glossary.md#firm` describes. Client holds none. Admin, Lawyer, and Clerk need a `person_firm_role` row on the
   target Firm, and only some capabilities admit a non-Admin membership (`ManageMembership` is Admin-only).

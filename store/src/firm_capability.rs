@@ -31,24 +31,46 @@ use uuid::Uuid;
 /// gates [`crate::firms::visible_person_ids`] and
 /// [`crate::projects::matter_directory_for`]; [`Self::ManageMembership`]
 /// gates [`crate::firms::add_membership`] and
-/// [`crate::firms::ensure_membership`].
+/// [`crate::firms::ensure_membership`]. [`Self::ManageAdminDri`] gates
+/// [`crate::firms::appoint_admin_dri`] (ENG-499): it admits no membership
+/// tier at all, so only Owner — who [`resolve`] allows before any membership
+/// read — ever holds it. An Admin DRI administers their own Firm's settings
+/// and integrations, but appointing or transferring the designation is
+/// Owner's alone.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FirmCapability {
     /// Read the Firm's scoped people and matter directories.
     ViewDirectory,
     /// Add or change a person's membership at the Firm.
     ManageMembership,
+    /// Appoint or transfer the Firm's Admin DRI designation.
+    ManageAdminDri,
 }
 
 impl FirmCapability {
     /// Whether a `person_firm_role` row carrying this membership tier admits
     /// this capability. `ViewDirectory` is open to every firm tier; only
     /// `Admin` membership may manage who else belongs to the Firm.
+    /// `ManageAdminDri` admits no membership tier — Owner is the only actor
+    /// [`resolve`] ever grants it to.
     #[must_use]
     fn admits(self, membership: FirmMembership) -> bool {
         match self {
             Self::ViewDirectory => true,
             Self::ManageMembership => membership == FirmMembership::Admin,
+            Self::ManageAdminDri => false,
+        }
+    }
+
+    /// A stable, mechanism-only name for telemetry (ENG-464) — never a
+    /// `Debug` derive, so a variant rename does not silently change what a
+    /// dashboard or alert already matches on.
+    #[must_use]
+    fn telemetry_name(self) -> &'static str {
+        match self {
+            Self::ViewDirectory => "view_directory",
+            Self::ManageMembership => "manage_membership",
+            Self::ManageAdminDri => "manage_admin_dri",
         }
     }
 }
@@ -81,6 +103,13 @@ impl FirmCapabilityDecision {
 /// every capability. Admin, Lawyer, and Clerk need a `person_firm_role` row
 /// on `target_firm_id` whose membership tier [`FirmCapability::admits`]s the
 /// requested capability.
+///
+/// Emits exactly one `firm_capability.resolve` telemetry event (ENG-464)
+/// naming the capability, `target_firm_id`, `actor_person_id` (when known),
+/// the outcome, and a stable reason code — the one place every Firm-scoped
+/// allow/deny decision becomes auditable, since every caller routes through
+/// here rather than re-deriving its own check. Never logs an email or name:
+/// an id is a queryable fact, a person's identity is client content.
 pub async fn resolve(
     surreal: &SurrealDb,
     actor_role: Role,
@@ -88,22 +117,55 @@ pub async fn resolve(
     target_firm_id: Uuid,
     capability: FirmCapability,
 ) -> Result<FirmCapabilityDecision, FirmError> {
+    let (decision, reason) = resolve_inner(
+        surreal,
+        actor_role,
+        actor_person_id,
+        target_firm_id,
+        capability,
+    )
+    .await?;
+    tracing::info!(
+        target: "firm_capability.resolve",
+        capability = capability.telemetry_name(),
+        firm_id = %target_firm_id,
+        person_id = actor_person_id.map(|id| id.to_string()),
+        allowed = decision.is_allowed(),
+        reason,
+        "firm capability decision",
+    );
+    Ok(decision)
+}
+
+async fn resolve_inner(
+    surreal: &SurrealDb,
+    actor_role: Role,
+    actor_person_id: Option<Uuid>,
+    target_firm_id: Uuid,
+    capability: FirmCapability,
+) -> Result<(FirmCapabilityDecision, &'static str), FirmError> {
     if firms::find_by_id(surreal, target_firm_id).await?.is_none() {
-        return Ok(FirmCapabilityDecision::FirmNotFound);
+        return Ok((FirmCapabilityDecision::FirmNotFound, "firm_not_found"));
     }
     if actor_role == Role::Owner {
-        return Ok(FirmCapabilityDecision::Allowed);
+        return Ok((FirmCapabilityDecision::Allowed, "owner_bypass"));
     }
     if actor_role == Role::Client {
-        return Ok(FirmCapabilityDecision::Forbidden);
+        return Ok((
+            FirmCapabilityDecision::Forbidden,
+            "client_has_no_firm_capability",
+        ));
     }
     let Some(person_id) = actor_person_id else {
-        return Ok(FirmCapabilityDecision::Forbidden);
+        return Ok((FirmCapabilityDecision::Forbidden, "no_person_id"));
     };
     let member = firms::membership_for_person(surreal, person_id, target_firm_id).await?;
     Ok(match member {
-        Some(row) if capability.admits(row.membership) => FirmCapabilityDecision::Allowed,
-        _ => FirmCapabilityDecision::Forbidden,
+        Some(row) if capability.admits(row.membership) => {
+            (FirmCapabilityDecision::Allowed, "membership_admits")
+        }
+        Some(_) => (FirmCapabilityDecision::Forbidden, "membership_denies"),
+        None => (FirmCapabilityDecision::Forbidden, "not_a_member"),
     })
 }
 
@@ -148,12 +210,24 @@ mod tests {
 
     async fn practice(db: &SurrealDb, name: &str) -> Firm {
         let entity_id = seed_entity(db).await;
+        let admin_dri_person_id = crate::persons::create(
+            db,
+            &NewPerson::with_role(
+                format!("{name} DRI"),
+                format!("dri-{}@example.com", Uuid::now_v7()),
+                Role::Admin,
+            ),
+        )
+        .await
+        .unwrap()
+        .id;
         firms::create(
             db,
             &NewFirm {
                 name: name.to_string(),
                 status: "active".to_string(),
                 entity_id,
+                admin_dri_person_id,
             },
         )
         .await
@@ -385,6 +459,44 @@ mod tests {
         assert_eq!(admin_manage_ids, vec![firm_a.id]);
     }
 
+    /// `ManageAdminDri` admits no membership tier: even the Firm's own Admin
+    /// member — who does hold `ManageMembership` — is refused it. Only Owner
+    /// may appoint or transfer the Admin DRI (ENG-499).
+    #[tokio::test]
+    async fn manage_admin_dri_admits_no_membership_tier_only_owner() {
+        let db = mem_surreal().await;
+        let firm = practice(&db, "Practice").await;
+        let owner = person(&db, "owner", Role::Owner).await;
+        let admin = person(&db, "admin", Role::Admin).await;
+        member(&db, admin.id, firm.id, FirmMembership::Admin).await;
+
+        assert_eq!(
+            resolve(
+                &db,
+                Role::Owner,
+                Some(owner.id),
+                firm.id,
+                FirmCapability::ManageAdminDri
+            )
+            .await
+            .unwrap(),
+            FirmCapabilityDecision::Allowed
+        );
+        assert_eq!(
+            resolve(
+                &db,
+                admin.role,
+                Some(admin.id),
+                firm.id,
+                FirmCapability::ManageAdminDri
+            )
+            .await
+            .unwrap(),
+            FirmCapabilityDecision::Forbidden,
+            "the Firm's own Admin member does not thereby appoint its DRI"
+        );
+    }
+
     #[tokio::test]
     async fn allowed_firm_ids_excludes_a_lawyer_from_manage_membership() {
         let db = mem_surreal().await;
@@ -411,5 +523,172 @@ mod tests {
         .await
         .unwrap();
         assert!(manage_ids.is_empty());
+    }
+
+    #[derive(Clone)]
+    struct Buf(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+    impl std::io::Write for Buf {
+        fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(b);
+            Ok(b.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for Buf {
+        type Writer = Buf;
+        fn make_writer(&'a self) -> Buf {
+            self.clone()
+        }
+    }
+
+    /// `resolve` emits one telemetry event per decision, naming the
+    /// capability, the target Firm, the outcome, and a stable reason code —
+    /// distinct for an allow and a deny, and never carrying the acting
+    /// person's email or name (only their id).
+    #[tokio::test]
+    async fn resolve_emits_one_event_per_decision_with_a_stable_reason_and_no_pii() {
+        crate::test_tracing::ensure_callsite_interest();
+        let db = mem_surreal().await;
+        let firm = practice(&db, "Telemetry Practice").await;
+        let admin = crate::persons::create(
+            &db,
+            &NewPerson::with_role(
+                "Telemetry Admin",
+                "telemetry-admin@example.com",
+                Role::Admin,
+            ),
+        )
+        .await
+        .unwrap();
+        member(&db, admin.id, firm.id, FirmMembership::Admin).await;
+        let lawyer = crate::persons::create(
+            &db,
+            &NewPerson::with_role(
+                "Telemetry Lawyer",
+                "telemetry-lawyer@example.com",
+                Role::Lawyer,
+            ),
+        )
+        .await
+        .unwrap();
+        member(&db, lawyer.id, firm.id, FirmMembership::Lawyer).await;
+
+        let buf = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let subscriber = tracing_subscriber::fmt()
+            .json()
+            .with_max_level(tracing::Level::INFO)
+            .with_writer(Buf(buf.clone()))
+            .finish();
+        {
+            let _guard = tracing::subscriber::set_default(subscriber);
+            resolve(
+                &db,
+                admin.role,
+                Some(admin.id),
+                firm.id,
+                FirmCapability::ManageMembership,
+            )
+            .await
+            .unwrap();
+            resolve(
+                &db,
+                lawyer.role,
+                Some(lawyer.id),
+                firm.id,
+                FirmCapability::ManageMembership,
+            )
+            .await
+            .unwrap();
+        }
+
+        let logged = String::from_utf8(buf.lock().unwrap().clone()).unwrap();
+        let events: Vec<&str> = logged
+            .lines()
+            .filter(|line| line.contains("firm capability decision"))
+            .collect();
+        assert_eq!(events.len(), 2, "one event per resolve call: {logged}");
+
+        let allowed = events
+            .iter()
+            .find(|line| line.contains(&format!("\"person_id\":\"{}\"", admin.id)))
+            .unwrap_or_else(|| panic!("expected an event naming the admin: {logged}"));
+        assert!(allowed.contains("\"allowed\":true"), "{allowed}");
+        assert!(
+            allowed.contains("\"reason\":\"membership_admits\""),
+            "{allowed}"
+        );
+        assert!(
+            allowed.contains("\"capability\":\"manage_membership\""),
+            "{allowed}"
+        );
+        assert!(
+            allowed.contains(&format!("\"firm_id\":\"{}\"", firm.id)),
+            "{allowed}"
+        );
+
+        let denied = events
+            .iter()
+            .find(|line| line.contains(&format!("\"person_id\":\"{}\"", lawyer.id)))
+            .unwrap_or_else(|| panic!("expected an event naming the lawyer: {logged}"));
+        assert!(denied.contains("\"allowed\":false"), "{denied}");
+        assert!(
+            denied.contains("\"reason\":\"membership_denies\""),
+            "{denied}"
+        );
+
+        assert!(
+            !logged.contains("@example.com"),
+            "no email may reach telemetry: {logged}"
+        );
+        assert!(
+            !logged.contains("Telemetry Admin") && !logged.contains("Telemetry Lawyer"),
+            "no name may reach telemetry: {logged}"
+        );
+    }
+
+    /// The `FirmNotFound` and no-actor-id refusals — the "error-shaped"
+    /// paths `resolve` takes before any membership read — still log their
+    /// own distinct reason code rather than falling through to a generic
+    /// one.
+    #[tokio::test]
+    async fn resolve_names_a_distinct_reason_for_firm_not_found_and_no_person_id() {
+        crate::test_tracing::ensure_callsite_interest();
+        let db = mem_surreal().await;
+        let missing_firm = Uuid::now_v7();
+        let firm = practice(&db, "Reason Code Practice").await;
+
+        let buf = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let subscriber = tracing_subscriber::fmt()
+            .json()
+            .with_max_level(tracing::Level::INFO)
+            .with_writer(Buf(buf.clone()))
+            .finish();
+        {
+            let _guard = tracing::subscriber::set_default(subscriber);
+            resolve(
+                &db,
+                Role::Admin,
+                None,
+                missing_firm,
+                FirmCapability::ViewDirectory,
+            )
+            .await
+            .unwrap();
+            resolve(
+                &db,
+                Role::Admin,
+                None,
+                firm.id,
+                FirmCapability::ViewDirectory,
+            )
+            .await
+            .unwrap();
+        }
+
+        let logged = String::from_utf8(buf.lock().unwrap().clone()).unwrap();
+        assert!(logged.contains("\"reason\":\"firm_not_found\""), "{logged}");
+        assert!(logged.contains("\"reason\":\"no_person_id\""), "{logged}");
     }
 }

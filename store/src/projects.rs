@@ -3270,12 +3270,25 @@ mod surreal_read_tests {
     #[tokio::test]
     async fn the_directory_scopes_an_admin_to_their_firms() {
         let surreal = mem_surreal().await;
+        let admin_a = crate::persons::create(
+            &surreal,
+            &crate::persons::NewPerson::with_role("Admin A", "admin-a@example.com", Role::Admin),
+        )
+        .await
+        .unwrap();
+        let admin_b = crate::persons::create(
+            &surreal,
+            &crate::persons::NewPerson::with_role("Admin B", "admin-b@example.com", Role::Admin),
+        )
+        .await
+        .unwrap();
         let firm_a = crate::firms::create(
             &surreal,
             &crate::firms::NewFirm {
                 name: "Practice A".into(),
                 status: "active".into(),
                 entity_id: crate::test_support::seed_entity(&surreal).await,
+                admin_dri_person_id: admin_a.id,
             },
         )
         .await
@@ -3286,23 +3299,7 @@ mod surreal_read_tests {
                 name: "Practice B".into(),
                 status: "active".into(),
                 entity_id: crate::test_support::seed_entity(&surreal).await,
-            },
-        )
-        .await
-        .unwrap();
-        let admin_a = crate::persons::create(
-            &surreal,
-            &crate::persons::NewPerson::with_role("Admin A", "admin-a@example.com", Role::Admin),
-        )
-        .await
-        .unwrap();
-        crate::firms::add_membership(
-            &surreal,
-            &crate::firms::NewPersonFirmRole {
-                person_id: admin_a.id,
-                firm_id: firm_a.id,
-                membership: crate::firms::FirmMembership::Admin,
-                is_dri: true,
+                admin_dri_person_id: admin_b.id,
             },
         )
         .await

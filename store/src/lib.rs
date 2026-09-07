@@ -22,12 +22,66 @@
 //! Xero button and is a link out to the system of record, not a ledger
 //! of its own.
 
+#[cfg(test)]
+pub(crate) mod test_tracing {
+    use tracing::span::{Attributes, Id, Record};
+    use tracing::subscriber::Interest;
+    use tracing::{Event, Metadata, Subscriber};
+
+    /// A globally-installed subscriber that claims interest in every callsite
+    /// but records nothing itself.
+    ///
+    /// `tracing` computes and caches each callsite's interest from the
+    /// *globally registered* dispatchers only — a thread-local `set_default`
+    /// (how the capture tests install their subscriber) is invisible to that
+    /// cache. With no global dispatcher, a callsite first seen — or rebuilt —
+    /// while the global default is `NoSubscriber` caches as `Interest::never()`,
+    /// and the event a capturing test is asserting on is dropped before its
+    /// per-event `enabled` check ever runs against the thread-local subscriber.
+    /// Returning `Interest::sometimes()` from a globally-registered dispatcher
+    /// keeps every callsite deferring to the current dispatcher, so the
+    /// thread-local capture is consulted per event; `enabled` returns `false`
+    /// so this global itself records nothing on threads without a capturing
+    /// default. Mirrors `portal::test_tracing`.
+    struct AlwaysInterested;
+
+    impl Subscriber for AlwaysInterested {
+        fn register_callsite(&self, _: &'static Metadata<'static>) -> Interest {
+            Interest::sometimes()
+        }
+        fn enabled(&self, _: &Metadata<'_>) -> bool {
+            false
+        }
+        fn new_span(&self, _: &Attributes<'_>) -> Id {
+            Id::from_u64(1)
+        }
+        fn record(&self, _: &Id, _: &Record<'_>) {}
+        fn record_follows_from(&self, _: &Id, _: &Id) {}
+        fn event(&self, _: &Event<'_>) {}
+        fn enter(&self, _: &Id) {}
+        fn exit(&self, _: &Id) {}
+    }
+
+    static INSTALL: std::sync::Once = std::sync::Once::new();
+
+    /// Installs [`AlwaysInterested`] as the process-global default the first
+    /// time any capture test runs, so callsite interest can never cache as
+    /// `never`. Idempotent, and a no-op if some other global default is
+    /// already set.
+    pub(crate) fn ensure_callsite_interest() {
+        INSTALL.call_once(|| {
+            let _ = tracing::subscriber::set_global_default(AlwaysInterested);
+        });
+    }
+}
+
 pub mod access;
 pub mod addresses;
 pub mod answers;
 pub mod assets;
 pub mod attestations;
 pub mod authorities;
+pub mod brands;
 pub mod cases;
 pub mod communications;
 pub mod config;

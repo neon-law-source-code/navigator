@@ -119,6 +119,14 @@ key it serves. One repository, one running process, N house brands — adding on
 key, its hosts, its `Branding`) with a covering test, which is the right cost for a legal identity, and there is no
 runtime flag that can move a page from one brand's hosts to another's.
 
+**Distinct from the data-driven `brand` table** (`store::brands`, ENG-496) — a name, a unique key, and an
+authorization/identity record, not a routing registry entry. `firm_id: None` is system-wide (Owner-created, every Firm
+sees it); a live `firm_id` is scoped to that Firm (created only by its Admin DRI). It carries no host: `hosts()` and
+`registered_brand_key` keep resolving only the compiled `BrandKey` enum above, and a runtime `brand` row publishes no
+marketing page. The two compiled keys (`neon`, `delete-your-data`) migrate into system-wide rows on first boot so the
+one authorization table names every brand a Firm may attach, but their real presentation — hosts, colours, fonts, logos,
+copy — stays exactly where this entry describes it, unchanged.
+
 `portal::canonical_host::resolve_brand_and_enforce_host` resolves the key early in the middleware stack from the
 incoming `Host:` header and stashes it as a request extension; `scope_branding` reads that extension and scopes the
 resolved `Branding` for the rest of the request, the same [`views::brand::scope`](../views/src/brand.rs) task-local
@@ -408,8 +416,17 @@ components.
 
 ## Directly Responsible Individual (DRI)
 
-The natural [Person](#person) accountable for a [Matter](#matter) — the name to ask "where does this stand?". Every
-matter carries **two sides** of accountability, seeded at matter-open, and each side is a **set**:
+"DRI" names two distinct accountability markers, one per domain, and neither implies the other:
+
+- **A matter's DRI** — this entry. `person_project_role.is_lawyer_dri` / `is_client_dri`, seeded at matter-open, scoped
+  to one [Project](#project).
+- **A Firm's Admin DRI** — `person_firm_role.is_dri` (ENG-499), scoped to one [Firm](#firm), unrelated to any matter.
+  See [Person–Firm Role](#personfirm-role) for its invariant (exactly one per active Firm) and the commands that enforce
+  it.
+
+The rest of this entry is the matter-level marker. The natural [Person](#person) accountable for a [Matter](#matter) —
+the name to ask "where does this stand?". Every matter carries **two sides** of accountability, seeded at matter-open,
+and each side is a **set**:
 
 - **Lawyer DRIs** — the attorneys/admins accountable for the matter inside the firm. The opening lawyer by default
   (else the firm principal, resolved by role). A matter always has at least one; it may have several, which is how one
@@ -655,14 +672,28 @@ those firms' rows.
 Embedded Rego still does not isolate every project or person route by firm (`ENG-463`). The Owner listing and the two
 Admin directories named above do.
 
+`firm.status` is `active`, `suspended`, or `archived` (ENG-494). Owner, or a Firm's own Admin membership, edits a Firm's
+name/status/entity (`store::firms::update`), changes or removes a person's membership (`store::firms::update_membership`
+/ `remove_membership`), and detaches a brand key (`store::firms::detach_brand`) — each gated through the same
+`FirmCapability::ManageMembership` check `add_membership` already used. None of these write `is_dri`; only
+[`appoint_admin_dri`](#personfirm-role) does, and each membership-removal door refuses a change that would leave an
+active Firm without one. Deleting a Firm that still owns Projects is refused. The Firm detail view at
+`/app/admin/firms/{id}` (`webapp::firm_show`) is where these are read together: a Firm's own fields, its brands, its
+Admin-DRI standing, and every person on it.
+
 - Schema: [`firm` in `navigator.surql`](../store/src/schema/navigator.surql) ·
   [`store::firms`](../store/src/firms.rs)
 
 ## Firm Brand
 
-Which closed house-brand keys a [Firm](#firm) wears. The `firm_brand` table is the join: `firm_id`, a `brand_key` of
-`neon` or `delete-your-data`, and timestamps. Unique on the pair, and unique on `brand_key` globally — one storefront
-key belongs to at most one practice. Distinct from [Brand](#brand), which is the storefront a request resolved to.
+Which house-brand keys a [Firm](#firm) wears. The `firm_brand` table is the join: `firm_id`, a `brand_key`, and
+timestamps. Unique on the pair, and unique on `brand_key` globally — one storefront key belongs to at most one practice.
+Distinct from [Brand](#brand), which is the storefront a request resolved to.
+
+`store::firms::attach_brand` validates `brand_key` against the `brand` table (`store::brands`, ENG-496) — a live row
+carrying that key, not the closed `CLOSED_BRAND_KEYS` array directly — so a Firm may wear any brand a `brand` row now
+names, not only the two compiled ones. `store::firms::CLOSED_BRAND_KEYS` still names those two, and is what
+`store::seed` migrates into `brand` rows on first boot so the validation has something to check against from the start.
 
 - Schema: [`firm_brand` in `navigator.surql`](../store/src/schema/navigator.surql) ·
   [`store::firms`](../store/src/firms.rs)
@@ -941,6 +972,19 @@ through person–project participation. `owner` is not a membership value: the d
 
 The command seam reads both referenced rows before writing, because a `record<>` link constrains the target table but
 does not prove the row exists.
+
+**`is_dri` is the Firm's Admin DRI marker — a different noun from a matter's DRI (ENG-499).** Every active Firm holds
+exactly one: `person_firm_role.membership = 'admin'` and `person.role = admin`, never Owner, Lawyer, Clerk, or Client.
+Firm creation is atomic with this designation (`store::firms::create` takes `admin_dri_person_id` and refuses anything
+ineligible — there is no setup state a Firm passes through without one), and `store::firms::appoint_admin_dri` is the
+only writer thereafter: an Owner-only, one-transaction transfer that clears the outgoing DRI and sets the incoming one
+so a reader never observes zero or two. `store::firms::refuse_admin_dri_orphaning` is the guard every membership-removal
+door consults before deleting a row or changing it away from `admin`, so a direct edit cannot orphan an active Firm's
+designation either. `store::firms::admin_dri_invariant_report` is a read-only, deployment-wide scan for a Firm that is
+missing, has multiple, or holds an ineligible designation regardless — `navigator ops firms doctor` prints it. None of
+these repair a row; a reported Firm is fixed by a human appointing or transferring through the Owner surface. See
+[Directly Responsible Individual (DRI)](#directly-responsible-individual-dri) for how this differs from a matter's
+lawyer/client DRI.
 
 **A newly created Lawyer or Clerk joins a Firm as a standing rule, not a one-time backfill (ENG-495).**
 `store::people_commands::create_person` grants the membership itself, right after the Person write: the creating surface

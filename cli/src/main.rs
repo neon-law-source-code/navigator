@@ -11,6 +11,7 @@ mod devx;
 mod docs;
 mod document_sync;
 mod erd;
+mod firms_doctor;
 mod format;
 mod forms_sync;
 mod github;
@@ -1121,6 +1122,21 @@ enum OpsCmd {
         #[arg(long)]
         check: bool,
     },
+    /// Firm-scoped diagnostics.
+    Firms {
+        #[command(subcommand)]
+        action: FirmsAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum FirmsAction {
+    /// Report every active Firm's Admin-DRI standing (ENG-499): missing,
+    /// multiple, or ineligible designations. Read-only — never appoints,
+    /// clears, or otherwise repairs a row; `store::firms::appoint_admin_dri`
+    /// is the only writer. Connects to the `SurrealDB` the sourced
+    /// `.devx/env` names, the same store `web` reads.
+    Doctor,
 }
 
 #[derive(Subcommand)]
@@ -1931,8 +1947,12 @@ fn main() -> ExitCode {
             | OpsCmd::Assets { .. }
             | OpsCmd::ReleaseDefaultTag { .. }
             | OpsCmd::Release { .. }
-            | OpsCmd::Notices { .. }),
+            | OpsCmd::Notices { .. }
+            | OpsCmd::Firms { .. }),
         ) => match action {
+            OpsCmd::Firms { action } => match action {
+                FirmsAction::Doctor => firms_doctor::run(),
+            },
             OpsCmd::Notices { out, check } => notices::run(&out, check),
             OpsCmd::ReleaseDefaultTag { repo, no_fetch } => {
                 release_default_tag::run(chrono::Utc::now(), &repo, !no_fetch)

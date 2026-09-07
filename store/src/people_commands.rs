@@ -105,6 +105,15 @@ pub struct UpdatePersonCommand {
     /// it; send null or blank to clear it.
     #[serde(default, deserialize_with = "double_option")]
     pub linkedin_url: Option<Option<String>>,
+    /// The browser form's CSRF token, present on every native
+    /// `/app/admin/people/{id}` submission alongside the fields above —
+    /// this command boundary serves that form directly, with no separate
+    /// form-shaped DTO. Declared and ignored here so
+    /// `deny_unknown_fields` refuses a genuinely unrecognized field
+    /// without also refusing the one field every browser post carries
+    /// that isn't part of the write itself.
+    #[serde(default, rename = "_csrf")]
+    pub csrf_token: Option<String>,
 }
 
 /// Deserialize a "double option" that keeps a present JSON `null`
@@ -828,6 +837,7 @@ mod tests {
                 middle_name: None,
                 notion_user_id: Some(Some("notion-user-456".into())),
                 linkedin_url: None,
+                csrf_token: None,
             },
             &UpdateContext {
                 bootstrap_owner_email: None,
@@ -904,6 +914,7 @@ mod tests {
             middle_name: None,
             notion_user_id: None,
             linkedin_url: None,
+            csrf_token: None,
         };
         let ctx = UpdateContext {
             bootstrap_owner_email: None,
@@ -935,6 +946,7 @@ mod tests {
             middle_name: None,
             notion_user_id: None,
             linkedin_url: Some(Some("https://linkedin.example/gem".into())),
+            csrf_token: None,
         };
         let ctx = UpdateContext {
             bootstrap_owner_email: None,
@@ -978,6 +990,7 @@ mod tests {
             middle_name: None,
             notion_user_id: None,
             linkedin_url: None,
+            csrf_token: None,
         };
         let ctx = UpdateContext {
             bootstrap_owner_email: None,
@@ -1004,6 +1017,7 @@ mod tests {
             middle_name: None,
             notion_user_id: None,
             linkedin_url: None,
+            csrf_token: None,
         };
         let ctx = UpdateContext {
             bootstrap_owner_email: None,
@@ -1034,6 +1048,7 @@ mod tests {
             middle_name: None,
             notion_user_id: None,
             linkedin_url: None,
+            csrf_token: None,
         };
         let ctx = UpdateContext {
             bootstrap_owner_email: Some("boss@example.com"),
@@ -1064,6 +1079,7 @@ mod tests {
             middle_name: None,
             notion_user_id: None,
             linkedin_url: None,
+            csrf_token: None,
         };
         let admin_ctx = UpdateContext {
             bootstrap_owner_email: None,
@@ -1084,6 +1100,7 @@ mod tests {
             middle_name: None,
             notion_user_id: None,
             linkedin_url: None,
+            csrf_token: None,
         };
         assert!(matches!(
             update_person(&db, client.id, &promote_input, &admin_ctx).await,

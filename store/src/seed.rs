@@ -811,6 +811,7 @@ async fn update_person_from_seed(
             middle_name: None,
             notion_user_id: None,
             linkedin_url: None,
+            csrf_token: None,
         },
         update_ctx,
     )

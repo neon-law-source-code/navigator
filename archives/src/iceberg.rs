@@ -1,7 +1,8 @@
 //! Iceberg metadata writer — promotes the nightly Parquet snapshots into an
 //! Apache Iceberg v2 table (metadata JSON + manifest list + manifest) so the
-//! `iceberg/<table>/` prefix becomes a time-travelable, BigLake-readable table
-//! rather than loose Parquet a reader has to glob. See
+//! `<lane>/<table>/` prefix becomes a time-travelable, BigLake-readable table
+//! rather than loose Parquet a reader has to glob. `lane` is `application`
+//! for a `SurrealDB` entity table or `telemetry` for an `OTel` table — see
 //! [`docs/iceberg-archive.md`](../../docs/iceberg-archive.md).
 //!
 //! ## Why this shape (the evaluation outcome, recorded)
@@ -50,8 +51,8 @@ use uuid::Uuid;
 
 /// One Parquet data file written this run, to be appended to the table as a
 /// new snapshot. `path` is the final absolute object URI (e.g.
-/// `gs://<bucket>/iceberg/<table>/data/dt=2026-06-14/part-<uuid>.parquet`) that
-/// a reader resolves — it is recorded verbatim in the manifest.
+/// `gs://<bucket>/application/<table>/data/dt=2026-06-14/part-<uuid>.parquet`)
+/// that a reader resolves — it is recorded verbatim in the manifest.
 #[derive(Debug, Clone)]
 pub struct DataFileSpec {
     pub path: String,
@@ -346,9 +347,10 @@ fn build_table_metadata(
 
 // ---------------------------------------------------------------------------
 // File-sourced authoring — author Iceberg metadata over Parquet that already
-// lives in object storage (the telemetry lake: the OTel collector writes
-// `iceberg/otel_{logs,traces,metrics}/data/dt=<date>/*.parquet`; this also
-// generalizes to the entity-table snapshots). Reads the day's data files
+// lives in object storage: the telemetry lake (the OTel collector writes
+// `telemetry/otel_{logs,traces,metrics}/data/dt=<date>/*.parquet`) and the
+// entity-table snapshots (`application/<table>/data/dt=<date>/*.parquet`,
+// written by `archives::runner::snapshot_all`). Reads the day's data files
 // through `cloud::StorageService` — never a GCS SDK — derives the schema and
 // row counts from the Parquet footers, chains onto the prior metadata, and
 // persists the new metadata objects back through the same trait.
@@ -414,25 +416,50 @@ async fn read_prior(
     )))
 }
 
+/// Inputs to [`author_iceberg_for_prefix`] — one table's day of Parquet
+/// under its lane prefix. Grouped into a struct (rather than a long argument
+/// list) because every field is a distinct scalar an unlabeled positional
+/// argument would be easy to transpose.
+#[derive(Debug, Clone, Copy)]
+pub struct PromotionRequest<'a> {
+    /// [`crate::snapshot::APPLICATION_LANE`] for a `SurrealDB` entity table
+    /// or [`crate::snapshot::TELEMETRY_LANE`] for an `OTel` table — the two
+    /// lanes never share a prefix, so a table name that happens to collide
+    /// between them still resolves to distinct storage keys.
+    pub lane: &'a str,
+    pub table: &'a str,
+    /// The absolute store base a reader resolves (e.g.
+    /// `gs://<project>-exports`); it prefixes every path recorded in the
+    /// manifest.
+    pub location_base: &'a str,
+    pub run_date: NaiveDate,
+    /// Passed in rather than read from the clock — the caller stamps it
+    /// inside the journaled workflow step, so a replay reuses the cached
+    /// result.
+    pub snapshot_id: i64,
+    pub timestamp_ms: i64,
+    pub expire_before_ms: Option<i64>,
+}
+
 /// Author (and persist) Iceberg metadata for one table whose day's Parquet
-/// data files already live under `iceberg/<table>/data/dt=<run_date>/`.
-///
-/// `location_base` is the absolute store base a reader resolves (e.g.
-/// `gs://<project>-exports`); it prefixes every path recorded in the manifest.
-/// `snapshot_id` / `timestamp_ms` are passed in (the caller stamps them inside
-/// the journaled workflow step, so a replay reuses the cached result). Returns
-/// `None` when there are no data files for the date (a clean no-op — e.g. a day
-/// the collector wrote nothing, or before the OTLP->Parquet shim exists).
+/// data files already live under `<lane>/<table>/data/dt=<run_date>/`.
+/// Returns `None` when there are no data files for the date (a clean no-op —
+/// e.g. a day the collector wrote nothing, or before the OTLP->Parquet shim
+/// exists).
 pub async fn author_iceberg_for_prefix(
     storage: &dyn StorageService,
-    table: &str,
-    location_base: &str,
-    run_date: NaiveDate,
-    snapshot_id: i64,
-    timestamp_ms: i64,
-    expire_before_ms: Option<i64>,
+    request: PromotionRequest<'_>,
 ) -> Result<Option<AuthoredMetadata>> {
-    let table_prefix = format!("iceberg/{table}");
+    let PromotionRequest {
+        lane,
+        table,
+        location_base,
+        run_date,
+        snapshot_id,
+        timestamp_ms,
+        expire_before_ms,
+    } = request;
+    let table_prefix = format!("{lane}/{table}");
     let data_prefix = format!("{table_prefix}/data/dt={run_date}/");
 
     let mut objects: Vec<_> = storage
@@ -595,7 +622,7 @@ mod tests {
         let parquet = crate::encode_parquet(&batch).unwrap();
         storage
             .put(
-                "iceberg/otel_logs/data/dt=2026-06-14/part-1.parquet",
+                "telemetry/otel_logs/data/dt=2026-06-14/part-1.parquet",
                 &parquet,
                 "application/octet-stream",
             )
@@ -604,12 +631,15 @@ mod tests {
 
         let authored = author_iceberg_for_prefix(
             &storage,
-            "otel_logs",
-            "gs://exports",
-            run_date,
-            5001,
-            1_700_000_000_000,
-            None,
+            PromotionRequest {
+                lane: "telemetry",
+                table: "otel_logs",
+                location_base: "gs://exports",
+                run_date,
+                snapshot_id: 5001,
+                timestamp_ms: 1_700_000_000_000,
+                expire_before_ms: None,
+            },
         )
         .await
         .unwrap();
@@ -617,12 +647,12 @@ mod tests {
 
         // version-hint + metadata.json landed in storage and parse back.
         let hint = storage
-            .get("iceberg/otel_logs/metadata/version-hint.text")
+            .get("telemetry/otel_logs/metadata/version-hint.text")
             .await
             .unwrap();
         assert_eq!(String::from_utf8_lossy(&hint.bytes).trim(), "1");
         let meta = storage
-            .get("iceberg/otel_logs/metadata/v1.metadata.json")
+            .get("telemetry/otel_logs/metadata/v1.metadata.json")
             .await
             .unwrap();
         let tm: TableMetadata = serde_json::from_slice(&meta.bytes).unwrap();
@@ -631,21 +661,105 @@ mod tests {
         let snap = tm.snapshot_by_id(5001).unwrap();
         assert!(snap
             .manifest_list()
-            .starts_with("gs://exports/iceberg/otel_logs/metadata/"));
+            .starts_with("gs://exports/telemetry/otel_logs/metadata/"));
 
         // A prefix with no data files is a clean no-op.
         let none = author_iceberg_for_prefix(
             &storage,
-            "otel_traces",
-            "gs://exports",
-            run_date,
-            5002,
-            1,
-            None,
+            PromotionRequest {
+                lane: "telemetry",
+                table: "otel_traces",
+                location_base: "gs://exports",
+                run_date,
+                snapshot_id: 5002,
+                timestamp_ms: 1,
+                expire_before_ms: None,
+            },
         )
         .await
         .unwrap();
         assert!(none.is_none());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_store_table_and_a_telemetry_table_of_the_same_name_do_not_collide() {
+        use arrow::array::{RecordBatch, StringArray};
+        use cloud::{FsStorage, StorageService};
+
+        let dir = tempfile::TempDir::new().unwrap();
+        let storage = FsStorage::new(dir.path().to_path_buf()).await.unwrap();
+        let run_date = chrono::NaiveDate::from_ymd_opt(2026, 6, 14).unwrap();
+
+        let schema = Arc::new(ArrowSchema::new(vec![Field::new(
+            "id",
+            DataType::Utf8,
+            false,
+        )]));
+        let batch =
+            RecordBatch::try_new(schema, vec![Arc::new(StringArray::from(vec!["a"]))]).unwrap();
+        let parquet = crate::encode_parquet(&batch).unwrap();
+
+        // The same table name, "shared", written under both lanes.
+        storage
+            .put(
+                "application/shared/data/dt=2026-06-14/part-1.parquet",
+                &parquet,
+                "application/octet-stream",
+            )
+            .await
+            .unwrap();
+        storage
+            .put(
+                "telemetry/shared/data/dt=2026-06-14/part-1.parquet",
+                &parquet,
+                "application/octet-stream",
+            )
+            .await
+            .unwrap();
+
+        let application = author_iceberg_for_prefix(
+            &storage,
+            PromotionRequest {
+                lane: "application",
+                table: "shared",
+                location_base: "gs://exports",
+                run_date,
+                snapshot_id: 1,
+                timestamp_ms: 1_700_000_000_000,
+                expire_before_ms: None,
+            },
+        )
+        .await
+        .unwrap();
+        let telemetry = author_iceberg_for_prefix(
+            &storage,
+            PromotionRequest {
+                lane: "telemetry",
+                table: "shared",
+                location_base: "gs://exports",
+                run_date,
+                snapshot_id: 2,
+                timestamp_ms: 1_700_000_000_000,
+                expire_before_ms: None,
+            },
+        )
+        .await
+        .unwrap();
+        assert!(application.is_some());
+        assert!(telemetry.is_some());
+
+        // Each lane's metadata is independent — authoring telemetry's did not
+        // clobber (or chain onto) application's version-hint.
+        let application_hint = storage
+            .get("application/shared/metadata/version-hint.text")
+            .await
+            .unwrap();
+        let telemetry_hint = storage
+            .get("telemetry/shared/metadata/version-hint.text")
+            .await
+            .unwrap();
+        assert_eq!(String::from_utf8_lossy(&application_hint.bytes).trim(), "1");
+        assert_eq!(String::from_utf8_lossy(&telemetry_hint.bytes).trim(), "1");
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

@@ -11,7 +11,7 @@
 //!     (removed old + added new) and we refuse to guess.
 //!
 //! Drift state lives alongside the snapshot data in the same
-//! bucket at `iceberg/<table>/_schema.json` — a tiny JSON file
+//! bucket at `<lane>/<table>/_schema.json` — a tiny JSON file
 //! that's cheap to read on every run.
 
 use anyhow::{bail, Result};
@@ -54,10 +54,12 @@ pub fn classify(previous: Option<&StoredFingerprint>, current: &[String]) -> Res
     }
 }
 
-/// Storage key for the per-table fingerprint sidecar.
+/// Storage key for the per-table fingerprint sidecar, under its lane
+/// ([`crate::snapshot::APPLICATION_LANE`] or
+/// [`crate::snapshot::TELEMETRY_LANE`]).
 #[must_use]
-pub fn fingerprint_key(table: &str) -> String {
-    format!("iceberg/{table}/_schema.json")
+pub fn fingerprint_key(lane: &str, table: &str) -> String {
+    format!("{lane}/{table}/_schema.json")
 }
 
 #[cfg(test)]
@@ -116,8 +118,18 @@ mod tests {
     }
 
     #[test]
-    fn fingerprint_key_is_deterministic_per_table() {
-        assert_eq!(fingerprint_key("person"), "iceberg/person/_schema.json");
-        assert_eq!(fingerprint_key("entity"), "iceberg/entity/_schema.json");
+    fn fingerprint_key_is_deterministic_per_table_and_lane() {
+        assert_eq!(
+            fingerprint_key("application", "person"),
+            "application/person/_schema.json"
+        );
+        assert_eq!(
+            fingerprint_key("application", "entity"),
+            "application/entity/_schema.json"
+        );
+        assert_eq!(
+            fingerprint_key("telemetry", "otel_logs"),
+            "telemetry/otel_logs/_schema.json"
+        );
     }
 }

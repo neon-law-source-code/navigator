@@ -11,26 +11,26 @@
     "decade-long internal operational record, not a discoverable client-privilege",
     "surface. otel_traces / otel_metrics: 30 days. audit_events: NO rule here — it",
     "has its own 10-year governance and must never be caught by an otel rule, so no",
-    "matchesPrefix below touches iceberg/audit_events/. The entity tables",
-    "(iceberg/<table>/, not otel_*) likewise keep their full history and are not",
-    "matched here. Scheduled + uniform = defensible deletion; content-free => no",
-    "preservation duty, so auto-expiry is not spoliation."
+    "matchesPrefix below touches application/audit_events/. The entity tables",
+    "(application/<table>/, not telemetry/otel_*) likewise keep their full history",
+    "and are not matched here. Scheduled + uniform = defensible deletion;",
+    "content-free => no preservation duty, so auto-expiry is not spoliation."
   ],
   "lifecycle": {
     "rule": [
       {
         "action": { "type": "SetStorageClass", "storageClass": "COLDLINE" },
-        "condition": { "age": 365, "matchesPrefix": ["iceberg/otel_logs/"] }
+        "condition": { "age": 365, "matchesPrefix": ["telemetry/otel_logs/"] }
       },
       {
         "action": { "type": "Delete" },
-        "condition": { "age": 3650, "matchesPrefix": ["iceberg/otel_logs/"] }
+        "condition": { "age": 3650, "matchesPrefix": ["telemetry/otel_logs/"] }
       },
       {
         "action": { "type": "Delete" },
         "condition": {
           "age": 30,
-          "matchesPrefix": ["iceberg/otel_traces/", "iceberg/otel_metrics/"]
+          "matchesPrefix": ["telemetry/otel_traces/", "telemetry/otel_metrics/"]
         }
       }
     ]

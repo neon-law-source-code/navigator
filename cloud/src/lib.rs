@@ -120,9 +120,10 @@ pub trait StorageService: Send + Sync {
 
     /// List objects whose key starts with `prefix`, with their byte sizes.
     /// Used by the nightly Iceberg authoring to discover the day's Parquet
-    /// data files under `iceberg/<table>/data/dt=<date>/`. Order is
-    /// unspecified. The default returns [`StorageError::Unsupported`]; the
-    /// real backends ([`FsStorage`], [`GcsStorage`]) override it.
+    /// data files under `<lane>/<table>/data/dt=<date>/` (`lane` is
+    /// `application/` or `telemetry/`). Order is unspecified. The default
+    /// returns [`StorageError::Unsupported`]; the real backends
+    /// ([`FsStorage`], [`GcsStorage`]) override it.
     async fn list(&self, prefix: &str) -> Result<Vec<ObjectListing>, StorageError> {
         let _ = prefix;
         Err(StorageError::Unsupported("list"))
@@ -651,6 +652,7 @@ mod backend_tests {
         for opened in [
             from_env().await,
             exports_from_env().await,
+            archives_from_env().await,
             assets_from_env().await,
             applications_from_env().await,
             lfs_from_env().await,

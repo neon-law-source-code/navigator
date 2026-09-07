@@ -4,8 +4,8 @@
 //!
 //! [`snapshot_all`] walks [`crate::tables::ALL_TABLES`], encodes each
 //! non-empty table to Parquet, uploads it under the canonical
-//! `iceberg/<table>/data/<date>/part-<uuid>.parquet` key, and applies
-//! the add-only [`crate::drift`] policy. Per-table failures are
+//! `application/<table>/data/dt=<date>/part-<uuid>.parquet` key, and
+//! applies the add-only [`crate::drift`] policy. Per-table failures are
 //! collected into [`SnapshotSummary::failures`] rather than aborting
 //! the run, so the Slack digest still reports what did and didn't
 //! succeed. Only a failure to acquire the database / storage handles
@@ -26,7 +26,7 @@ use billing::gcp_cost::{
 use crate::tables::fetch_batch;
 use crate::{
     batch_from_rows, classify, encode_parquet, fingerprint, fingerprint_key, snapshot_key,
-    DriftDecision, SnapshotConfig, SnapshotEntry, StoredFingerprint, ALL_TABLES,
+    DriftDecision, SnapshotConfig, SnapshotEntry, StoredFingerprint, ALL_TABLES, APPLICATION_LANE,
 };
 
 /// One table that failed to snapshot, with the rendered error so the
@@ -110,7 +110,7 @@ async fn snapshot_table(
     let decision = classify(prev_fp.as_ref(), &current_fp)?;
 
     let bytes = encode_parquet(&batch)?;
-    let cfg = SnapshotConfig::now(table);
+    let cfg = SnapshotConfig::now(APPLICATION_LANE, table);
     let key = snapshot_key(&cfg);
     storage
         .put(&key, &bytes, "application/vnd.apache.parquet")
@@ -194,7 +194,7 @@ pub async fn cost_phase<F: Fn(&str) -> Option<String>>(get: F) -> Result<Option<
                 .await
                 .context("open object storage for cost snapshot")?;
             let bytes = encode_parquet(&batch)?;
-            let cfg = SnapshotConfig::now("gcp_cost");
+            let cfg = SnapshotConfig::now(APPLICATION_LANE, "gcp_cost");
             let key = snapshot_key(&cfg);
             storage
                 .put(&key, &bytes, "application/vnd.apache.parquet")
@@ -236,7 +236,7 @@ async fn read_fingerprint(
     storage: &dyn StorageService,
     table: &str,
 ) -> Result<Option<StoredFingerprint>> {
-    let key = fingerprint_key(table);
+    let key = fingerprint_key(APPLICATION_LANE, table);
     match storage.get(&key).await {
         Ok(obj) => {
             let parsed: StoredFingerprint = serde_json::from_slice(&obj.bytes)
@@ -249,7 +249,7 @@ async fn read_fingerprint(
 }
 
 async fn write_fingerprint(storage: &dyn StorageService, fp: &StoredFingerprint) -> Result<()> {
-    let key = fingerprint_key(&fp.table);
+    let key = fingerprint_key(APPLICATION_LANE, &fp.table);
     let bytes = serde_json::to_vec_pretty(fp).context("serialize fingerprint")?;
     storage
         .put(&key, &bytes, "application/json")

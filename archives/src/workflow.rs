@@ -16,10 +16,14 @@
 //!    snapshot the result to the export lake as `gcp_cost`. A clean
 //!    no-op when the env var is unset (KIND / dev / OSS forks).
 //! 3. `ctx.run("iceberg_telemetry", …)` — promote the day's telemetry
-//!    Parquet (`iceberg/otel_*/data/dt=<date>/`) to Iceberg tables via
+//!    Parquet (`telemetry/otel_*/data/dt=<date>/`) AND every store
+//!    table's day of snapshot Parquet, written in phase 1
+//!    (`application/<table>/data/dt=<date>/`), to Iceberg tables via
 //!    the entity-table writer ([`crate::author_iceberg_for_prefix`]).
-//!    Infallible: a telemetry-lake hiccup never fails the export; a
-//!    no-op until the collector's OTLP→Parquet shim writes those files.
+//!    Infallible per table: a lake-metadata hiccup never fails the
+//!    export of the underlying Parquet, which already landed. A
+//!    telemetry table is a no-op until the collector's OTLP→Parquet
+//!    shim writes those files.
 //! 4. `ctx.run("email", …)` — render the Slack digest (one line per
 //!    snapshotted table, each linking to its Iceberg files in the Google
 //!    Cloud console) and post it to firm ops through the worker's
@@ -43,6 +47,9 @@ use billing::gcp_cost::CostReport;
 
 use crate::digest::{render_archives_slack, DiagnosticReport};
 use crate::runner::{cost_phase, open_resources, snapshot_all, SnapshotSummary};
+use crate::snapshot::{APPLICATION_LANE, TELEMETRY_LANE};
+use crate::tables::ALL_TABLES;
+use cloud::StorageService;
 
 /// Request body for `Archives::run`. Empty today — the trigger only
 /// needs to start the workflow — but kept as a struct (rather than
@@ -135,15 +142,21 @@ impl ArchivesService {
                 .await?
                 .into_inner();
 
-            // Phase 3 — promote the day's telemetry Parquet (otel_*) to
+            // Phase 3 — promote the day's telemetry Parquet (otel_*) AND
+            // every store table's day of snapshot Parquet (phase 1) to
             // Iceberg tables, reusing the entity-table writer. Journaled and
-            // infallible: a telemetry-lake hiccup never fails the export. Run
-            // for the promotion side effect; the per-table summary lines are no
-            // longer surfaced in the digest.
-            let _iceberg_telemetry: Vec<String> = ctx
+            // infallible per table: a lake-metadata hiccup never fails the
+            // export. Run for the promotion side effect; the per-table
+            // summary lines are no longer surfaced in the digest.
+            //
+            // The step keeps its original name `iceberg_telemetry`: it is the
+            // journal key Restate matches on replay, and renaming it would
+            // raise JOURNAL_MISMATCH for any invocation replayed across the
+            // deploy that grew this step to cover the application lane too.
+            let _iceberg_promotion: Vec<String> = ctx
                 .run(|| async {
                     Ok::<_, HandlerError>(Json(
-                        promote_telemetry(summary.run_date, |k| std::env::var(k).ok()).await,
+                        promote_iceberg_metadata(summary.run_date, |k| std::env::var(k).ok()).await,
                     ))
                 })
                 .name("iceberg_telemetry")
@@ -214,16 +227,18 @@ fn build_report<F: Fn(&str) -> Option<String>>(
 /// The `otel_*` tables promoted from the telemetry lake's daily Parquet.
 const TELEMETRY_TABLES: &[&str] = &["otel_logs", "otel_traces", "otel_metrics"];
 
-/// Promote the day's telemetry Parquet (`iceberg/otel_*/data/dt=<date>/`) to
-/// Iceberg tables, reusing the entity-table writer ([`crate::author_iceberg_for_prefix`]).
+/// Promote the day's telemetry Parquet (`telemetry/otel_*/data/dt=<date>/`)
+/// AND every store table's day of snapshot Parquet
+/// (`application/<table>/data/dt=<date>/`, written by phase 1) to Iceberg
+/// tables, reusing the entity-table writer
+/// ([`crate::author_iceberg_for_prefix`]).
 ///
-/// **Infallible by design** — a telemetry-lake hiccup must never fail the
-/// nightly export of binding records — so it returns one human-readable line
-/// per table for the diagnostic email rather than a `Result`. A clean no-op
-/// ("no data") until the collector's OTLP→Parquet shim writes Parquet under
-/// these prefixes; in dev/KIND `exports_from_env` is `FsStorage` and lists
-/// nothing.
-async fn promote_telemetry<F: Fn(&str) -> Option<String>>(
+/// **Infallible per table by design** — a lake-metadata hiccup must never
+/// fail the nightly export, whose Parquet already landed in phase 1 — so it
+/// returns one human-readable line per table for the diagnostic email rather
+/// than a `Result`. A clean no-op ("no data") until a data file exists under
+/// that table's prefix for the run date.
+async fn promote_iceberg_metadata<F: Fn(&str) -> Option<String>>(
     run_date: NaiveDate,
     get: F,
 ) -> Vec<String> {
@@ -231,41 +246,71 @@ async fn promote_telemetry<F: Fn(&str) -> Option<String>>(
         Ok(s) => s,
         Err(e) => {
             return vec![format!(
-                "(telemetry promotion skipped — storage unavailable: {e})"
+                "(iceberg metadata promotion skipped — storage unavailable: {e})"
             )]
         }
     };
     let bucket = get("NAVIGATOR_STORAGE_BUCKET")
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "exports".to_string());
-    let location_base = format!("gs://{bucket}");
     // Stamped once inside the journaled step (so a replay reuses the cached
     // result, not a new clock read).
     let now_ms = chrono::Utc::now().timestamp_millis();
-    // 30-day cutoff for the short-retention tables (traces/metrics); their GCS
-    // lifecycle deletes data at 30d, so the snapshot log is pruned to match.
+    promote_iceberg_metadata_over(storage.as_ref(), &bucket, run_date, now_ms).await
+}
+
+/// The testable core of [`promote_iceberg_metadata`]: everything after the
+/// storage handle is open and the clock has been read, so a test can inject
+/// an `FsStorage` temp dir and a pinned `now_ms` without touching process env
+/// or the clock.
+async fn promote_iceberg_metadata_over(
+    storage: &dyn StorageService,
+    bucket: &str,
+    run_date: NaiveDate,
+    now_ms: i64,
+) -> Vec<String> {
+    let location_base = format!("gs://{bucket}");
+    // 30-day cutoff for the short-retention telemetry tables (traces/metrics);
+    // their GCS lifecycle deletes data at 30d, so the snapshot log is pruned
+    // to match. Every store table keeps its FULL snapshot log below — these
+    // are binding records, never pruned to match a telemetry lifecycle rule.
     let cutoff_30d_ms = now_ms - 30 * 24 * 60 * 60 * 1000;
 
-    let mut lines = Vec::with_capacity(TELEMETRY_TABLES.len());
-    for (i, &table) in TELEMETRY_TABLES.iter().enumerate() {
+    let mut plan: Vec<(&str, &str, Option<i64>)> = TELEMETRY_TABLES
+        .iter()
+        .map(|&table| {
+            // otel_logs keeps its full snapshot log (10-year, content-free);
+            // otel_traces / otel_metrics prune to the 30-day lifecycle window.
+            let expire_before_ms = (table != "otel_logs").then_some(cutoff_30d_ms);
+            (TELEMETRY_LANE, table, expire_before_ms)
+        })
+        .collect();
+    plan.extend(
+        ALL_TABLES
+            .iter()
+            .map(|table| (APPLICATION_LANE, table.as_str(), None)),
+    );
+
+    let mut lines = Vec::with_capacity(plan.len());
+    for (i, (lane, table, expire_before_ms)) in plan.into_iter().enumerate() {
         let snapshot_id = now_ms.saturating_add(i64::try_from(i).unwrap_or(0));
-        // otel_logs keeps its full snapshot log (10-year, content-free);
-        // otel_traces / otel_metrics prune to the 30-day lifecycle window.
-        let expire_before_ms = (table != "otel_logs").then_some(cutoff_30d_ms);
         match crate::author_iceberg_for_prefix(
-            storage.as_ref(),
-            table,
-            &location_base,
-            run_date,
-            snapshot_id,
-            now_ms,
-            expire_before_ms,
+            storage,
+            crate::PromotionRequest {
+                lane,
+                table,
+                location_base: &location_base,
+                run_date,
+                snapshot_id,
+                timestamp_ms: now_ms,
+                expire_before_ms,
+            },
         )
         .await
         {
-            Ok(Some(authored)) => lines.push(format!("{table} v{}", authored.version)),
-            Ok(None) => lines.push(format!("{table} (no data)")),
-            Err(e) => lines.push(format!("{table} FAILED: {e}")),
+            Ok(Some(authored)) => lines.push(format!("{lane}/{table} v{}", authored.version)),
+            Ok(None) => lines.push(format!("{lane}/{table} (no data)")),
+            Err(e) => lines.push(format!("{lane}/{table} FAILED: {e}")),
         }
     }
     lines
@@ -273,7 +318,7 @@ async fn promote_telemetry<F: Fn(&str) -> Option<String>>(
 
 #[cfg(test)]
 mod tests {
-    use super::{build_report, digest_message, SnapshotSummary};
+    use super::{build_report, digest_message, promote_iceberg_metadata_over, SnapshotSummary};
     use crate::digest::SnapshotEntry;
     use crate::drift::DriftDecision;
     use crate::runner::TableFailure;
@@ -305,7 +350,7 @@ mod tests {
             table: table.into(),
             rows,
             bytes: rows * 16,
-            key: format!("iceberg/{table}/data/2026-05-29/part-0.parquet"),
+            key: format!("application/{table}/data/dt=2026-05-29/part-0.parquet"),
             drift: DriftDecision::Unchanged,
         }
     }
@@ -385,7 +430,7 @@ mod tests {
         );
         assert!(
             msg.contains(
-                "<https://console.cloud.google.com/storage/browser/proj-exports/iceberg/persons|view in GCP>"
+                "<https://console.cloud.google.com/storage/browser/proj-exports/application/persons|view in GCP>"
             ),
             "link points into the threaded bucket: {msg}"
         );
@@ -403,9 +448,78 @@ mod tests {
         let msg = digest_message(&summary_with(vec![entry("persons", 1)], vec![]), |_| None);
         assert!(
             msg.contains(
-                "<https://console.cloud.google.com/storage/browser/<unset>/iceberg/persons|view in GCP>"
+                "<https://console.cloud.google.com/storage/browser/<unset>/application/persons|view in GCP>"
             ),
             "unset bucket still yields a structured link: {msg}"
         );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn promotion_authors_iceberg_metadata_for_a_store_table_and_chains_a_second_run() {
+        use crate::runner::snapshot_all;
+        use cloud::{FsStorage, StorageService};
+        use iceberg::spec::TableMetadata;
+
+        let db = store::surreal::test_support::mem().await;
+        db.query(
+            "CREATE person:analyst SET \
+             name = 'Analyst', \
+             email = 'analyst@example.com', \
+             inserted_at = d'2026-08-09T00:00:00Z', \
+             updated_at = d'2026-08-09T00:00:00Z'",
+        )
+        .await
+        .unwrap()
+        .check()
+        .unwrap();
+
+        let dir = tempfile::TempDir::new().unwrap();
+        let storage = FsStorage::new(dir.path().to_path_buf()).await.unwrap();
+        let run_date = chrono::Utc::now().date_naive();
+
+        // Phase 1: writes `application/person/data/dt=<today>/*.parquet`.
+        let summary = snapshot_all(&db, &storage).await;
+        assert!(summary.failures.is_empty(), "{:#?}", summary.failures);
+
+        // Phase 3, first run: author Iceberg metadata over that data file.
+        let now_ms = chrono::Utc::now().timestamp_millis();
+        promote_iceberg_metadata_over(&storage, "exports", run_date, now_ms).await;
+
+        let meta = storage
+            .get("application/person/metadata/v1.metadata.json")
+            .await
+            .unwrap();
+        let table_metadata: TableMetadata = serde_json::from_slice(&meta.bytes).unwrap();
+        assert_eq!(
+            table_metadata.snapshots().count(),
+            1,
+            "first run authors exactly one snapshot"
+        );
+        let hint = storage
+            .get("application/person/metadata/version-hint.text")
+            .await
+            .unwrap();
+        assert_eq!(String::from_utf8_lossy(&hint.bytes).trim(), "1");
+
+        // Second run over the same storage and day: chains onto the prior
+        // snapshot log rather than starting a fresh table (store tables never
+        // prune — expire_before_ms is always None for the application lane).
+        promote_iceberg_metadata_over(&storage, "exports", run_date, now_ms + 1000).await;
+
+        let meta = storage
+            .get("application/person/metadata/v2.metadata.json")
+            .await
+            .unwrap();
+        let table_metadata: TableMetadata = serde_json::from_slice(&meta.bytes).unwrap();
+        assert_eq!(
+            table_metadata.snapshots().count(),
+            2,
+            "second run chains onto the prior log — a two-entry snapshot log"
+        );
+        let hint = storage
+            .get("application/person/metadata/version-hint.text")
+            .await
+            .unwrap();
+        assert_eq!(String::from_utf8_lossy(&hint.bytes).trim(), "2");
     }
 }

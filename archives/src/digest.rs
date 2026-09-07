@@ -22,6 +22,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::drift::DriftDecision;
 use crate::runner::TableFailure;
+use crate::snapshot::APPLICATION_LANE;
 
 /// One table's snapshot outcome. Serializable because it is part of the
 /// journaled snapshot-phase output.
@@ -45,10 +46,11 @@ pub struct DiagnosticReport {
     pub failures: Vec<TableFailure>,
 }
 
-/// The Google Cloud Storage browser. Each table's Iceberg files live under the
-/// `iceberg/<table>/` prefix of the export bucket (see [`crate::snapshot`]), so
-/// linking to that prefix opens the table's `data/` and `metadata/` objects in
-/// the console.
+/// The Google Cloud Storage browser. Every snapshotted table here is a
+/// `SurrealDB` entity table, so its Iceberg files live under the
+/// `application/<table>/` prefix of the export bucket (see
+/// [`crate::snapshot`]) — linking to that prefix opens the table's `data/`
+/// and `metadata/` objects in the console.
 const GCS_BROWSER_BASE: &str = "https://console.cloud.google.com/storage/browser";
 
 /// Render the nightly export as a single Slack **mrkdwn** message: an iceberg
@@ -65,7 +67,7 @@ pub fn render_archives_slack(report: &DiagnosticReport) -> String {
     );
     for entry in &report.snapshots {
         let url = format!(
-            "{GCS_BROWSER_BASE}/{}/iceberg/{}",
+            "{GCS_BROWSER_BASE}/{}/{APPLICATION_LANE}/{}",
             report.bucket, entry.table
         );
         let _ = writeln!(
@@ -101,7 +103,7 @@ mod tests {
             table: table.into(),
             rows,
             bytes: rows * 32,
-            key: format!("iceberg/{table}/data/2026-07-10/part-abc.parquet"),
+            key: format!("application/{table}/data/dt=2026-07-10/part-abc.parquet"),
             drift: DriftDecision::Unchanged,
         }
     }
@@ -140,12 +142,12 @@ mod tests {
         // Table name in bold, the row count, and a mrkdwn link — one line each.
         assert!(msg.contains("• *persons* — 312 rows · "));
         assert!(msg.contains("• *documents* — 1204 rows · "));
-        // The link points into the GCS browser at this table's iceberg/ prefix.
+        // The link points into the GCS browser at this table's application/ prefix.
         assert!(msg.contains(
-            "<https://console.cloud.google.com/storage/browser/navigator-exports/iceberg/persons|view in GCP>"
+            "<https://console.cloud.google.com/storage/browser/navigator-exports/application/persons|view in GCP>"
         ));
         assert!(msg.contains(
-            "<https://console.cloud.google.com/storage/browser/navigator-exports/iceberg/documents|view in GCP>"
+            "<https://console.cloud.google.com/storage/browser/navigator-exports/application/documents|view in GCP>"
         ));
     }
 
@@ -175,7 +177,7 @@ mod tests {
             "failure must be visible: {msg}"
         );
         // The failed table has no GCS link (it never landed in the bucket).
-        assert!(!msg.contains("iceberg/documents"));
+        assert!(!msg.contains("application/documents"));
     }
 
     #[test]

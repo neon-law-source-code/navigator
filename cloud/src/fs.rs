@@ -286,19 +286,23 @@ mod tests {
         let (storage, _tmp) = fs().await;
         storage
             .put(
-                "iceberg/otel_logs/data/dt=2026-06-14/a.parquet",
+                "telemetry/otel_logs/data/dt=2026-06-14/a.parquet",
                 b"abc",
                 "x",
             )
             .await
             .unwrap();
         storage
-            .put("iceberg/otel_logs/data/dt=2026-06-14/b.parquet", b"de", "x")
+            .put(
+                "telemetry/otel_logs/data/dt=2026-06-14/b.parquet",
+                b"de",
+                "x",
+            )
             .await
             .unwrap();
         storage
             .put(
-                "iceberg/otel_traces/data/dt=2026-06-14/c.parquet",
+                "telemetry/otel_traces/data/dt=2026-06-14/c.parquet",
                 b"f",
                 "x",
             )
@@ -306,7 +310,7 @@ mod tests {
             .unwrap();
 
         let mut listed = storage
-            .list("iceberg/otel_logs/data/dt=2026-06-14/")
+            .list("telemetry/otel_logs/data/dt=2026-06-14/")
             .await
             .unwrap();
         listed.sort_by(|a, b| a.key.cmp(&b.key));
@@ -317,7 +321,7 @@ mod tests {
         );
         assert_eq!(
             listed[0].key,
-            "iceberg/otel_logs/data/dt=2026-06-14/a.parquet"
+            "telemetry/otel_logs/data/dt=2026-06-14/a.parquet"
         );
         assert_eq!(listed[0].size_bytes, 3);
         assert_eq!(listed[1].size_bytes, 2);

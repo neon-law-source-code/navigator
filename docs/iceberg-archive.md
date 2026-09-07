@@ -1,10 +1,10 @@
 # Iceberg archive — design
 
-Status: **writer landed** (`archives::iceberg::author_snapshot`) and already wired for the telemetry tables — the
-nightly `Archives` workflow's `iceberg_telemetry` phase (`archives/src/workflow.rs`) promotes `otel_logs`,
-`otel_traces`, and `otel_metrics` to Iceberg tables every run. Wiring the primary SurrealDB entity-table snapshot writer
-and BigLake registration are the remaining steps. This doc names every table, its partitioning, the GCS layout, the
-BigQuery wiring, and the retention policy.
+Status: **writer landed and wired for both lanes** (`archives::iceberg::author_snapshot`) — the nightly `Archives`
+workflow's `iceberg_telemetry` phase (`archives/src/workflow.rs`) promotes every table declared in Navigator's SurrealDB
+schema (the `application/` lane) alongside `otel_logs`, `otel_traces`, and `otel_metrics` (the `telemetry/` lane) to
+Iceberg tables every run. BigLake registration is the remaining step. This doc names every table, its partitioning, the
+GCS layout, the BigQuery wiring, and the retention policy.
 
 ## Evaluation outcome (recorded 2026-06-14)
 
@@ -28,10 +28,13 @@ by chaining from the prior `v<N>.metadata.json` (`TableMetadataBuilder::new_from
 
 The nightly [`Archives`](durable-workflows.md) Restate workflow snapshots every table declared in Navigator's SurrealDB
 schema to **Parquet** on GCS (`archives/src/snapshot.rs`, `archives/src/parquet_io.rs`). The objects already live under
-an Iceberg-shaped prefix:
+an Iceberg-shaped prefix, `<lane>/<table>/data/dt=<yyyy-mm-dd>/part-<uuid_v7>.parquet`, where `lane` is `application`
+for a SurrealDB entity table or `telemetry` for an OTel table — the bucket is dedicated to the archive, so a lane
+segment is what keeps the two apart rather than a shared `iceberg/` segment:
 
 ```text
-gs://<project>-exports/iceberg/<table>/data/<yyyy-mm-dd>/part-<uuid_v7>.parquet
+gs://<project>-exports/application/<table>/data/dt=<yyyy-mm-dd>/part-<uuid_v7>.parquet
+gs://<project>-exports/telemetry/<table>/data/dt=<yyyy-mm-dd>/part-<uuid_v7>.parquet
 ```
 
 But they are **loose Parquet files**, not a table: there is no Iceberg metadata, so a reader has to glob the prefix and
@@ -50,8 +53,8 @@ For each table prefix we additionally write, every nightly run:
 - `metadata/snap-<snapshot-id>-<uuid>.avro` — the **manifest list** for that snapshot (one row per manifest).
 - `metadata/<uuid>-m0.avro` — the **manifest file** listing the data files added that run, with per-file row counts and
   column bounds.
-- `data/dt=<yyyy-mm-dd>/part-<uuid_v7>.parquet` — unchanged from today, except the partition directory is the
-  Iceberg-standard `dt=<date>` form (see Partitioning).
+- `data/dt=<yyyy-mm-dd>/part-<uuid_v7>.parquet` — the Iceberg-standard `dt=<date>` partition directory (see
+  Partitioning), under the table's lane prefix.
 
 The data files we already produce are reused as-is; the new bytes are metadata. The snapshot is **append-only**: each
 run adds a new snapshot pointing at that night's data files, and prior snapshots stay valid — so the lake mirrors the
@@ -59,22 +62,24 @@ append-only [per-Project git repos](project-repositories.md) and never rewrites 
 
 ## Tables
 
-### SurrealDB table snapshots (full-table, nightly)
+### SurrealDB table snapshots (full-table, nightly) — `application/` lane
 
 `archives::tables::ALL_TABLES` is generated from every `DEFINE TABLE` in the shipped `store/src/schema/navigator.surql`.
 Adding a table to that schema adds it to the analytical lake in the same build; a read failure remains visible in the
 nightly summary rather than becoming an unregistered-table gap.
 
-Each nightly run writes a **full snapshot** of the current SurrealDB table. Record links land as stable `table:key`
-strings and datetimes as RFC 3339 strings, because the Parquet contract is nullable UTF-8 columns. Point-in-time queries
-come from Iceberg's snapshot log, not from diffing.
+Each nightly run writes a **full snapshot** of the current SurrealDB table, then the `iceberg_telemetry` workflow phase
+promotes it to an Iceberg table under the `application/` lane, reusing the same `author_snapshot` /
+`author_iceberg_for_prefix` writer described above. Record links land as stable `table:key` strings and datetimes as RFC
+3339 strings, because the Parquet contract is nullable UTF-8 columns. Point-in-time queries come from Iceberg's snapshot
+log, not from diffing. These are binding records: the snapshot log is never pruned (`expire_before_ms: None`), unlike
+the telemetry lane below.
 
-### Telemetry table snapshots (already promoted, nightly)
+### Telemetry table snapshots (promoted, nightly) — `telemetry/` lane
 
 `otel_logs`, `otel_traces`, and `otel_metrics` (`archives/src/workflow.rs`'s `TELEMETRY_TABLES`) are promoted to Iceberg
-tables every nightly run by the `iceberg_telemetry` phase, reusing the same `author_snapshot` /
-`author_iceberg_for_prefix` writer described above. `otel_logs` keeps its full snapshot log; `otel_traces` and
-`otel_metrics` prune snapshots older than 30 days to match their GCS lifecycle window.
+tables every nightly run by the same `iceberg_telemetry` phase, under the `telemetry/` lane. `otel_logs` keeps its full
+snapshot log; `otel_traces` and `otel_metrics` prune snapshots older than 30 days to match their GCS lifecycle window.
 
 ## Partitioning
 
@@ -86,10 +91,11 @@ Partition spec is recorded in the table metadata, so a reader prunes by `dt` wit
 
 ## GCS layout
 
-One bucket, `gs://<project>-exports` (the existing `NAVIGATOR_EXPORTS_BUCKET`; `cloud::exports_from_env`). Per table:
+One bucket, `gs://<project>-exports` (the existing `NAVIGATOR_EXPORTS_BUCKET`; `cloud::exports_from_env`). Per table,
+under its lane (`application/` for a SurrealDB entity table, `telemetry/` for an OTel table):
 
 ```text
-gs://<project>-exports/iceberg/<table>/
+gs://<project>-exports/application/<table>/
   metadata/
     version-hint.text
     v<N>.metadata.json
@@ -99,6 +105,8 @@ gs://<project>-exports/iceberg/<table>/
     dt=2026-06-10/part-<uuid_v7>.parquet
     dt=2026-06-11/part-<uuid_v7>.parquet
 ```
+
+`telemetry/<table>/` mirrors the same shape.
 
 Bytes stay in `cloud::StorageService` (GCS in prod, `FsStorage` in dev) — the writer goes through the trait, never the
 GCS SDK directly, per [CLAUDE.md](../CLAUDE.md).
@@ -111,7 +119,7 @@ Two ways to make BigQuery read the lake; pick one before building the writer:
    connection; BigQuery reads the Iceberg metadata directly, so schema evolution and snapshot adds show up without a
    per-run DDL. This is the closest to "it's just a table." Cost: a one-time BigLake connection + IAM on the bucket.
 2. **BigQuery external tables over the Parquet (status quo, simplest).** A per-table `CREATE EXTERNAL TABLE` with
-   `OPTIONS(format = 'PARQUET', uris = ['gs://…/iceberg/<table>/data/*'])` — the pattern already used for the
+   `OPTIONS(format = 'PARQUET', uris = ['gs://…/application/<table>/data/*'])` — the pattern already used for the
    email-events stream (see [the email-events pipeline](email-events-pipeline.md)). No Iceberg metadata needed, but no
    time-travel and no schema evolution: it globs the data files. Use this only if BigLake is unavailable.
 
@@ -125,8 +133,11 @@ catalog choice does not change the bytes on GCS — only how BigQuery is pointed
 ## Retention
 
 - **Data + manifests:** keep **10 years**, matching the matter-file retention the client consents to in the retainer
-  (`projects.closed_at + 10y`, see <surreal-archives.md>). A lifecycle rule transitions `iceberg/**` to Coldline at 365
-  days (the existing GCS lifecycle, see the GCP cost-cleanup notes) and deletes at 10 years.
+  (`projects.closed_at + 10y`, see <surreal-archives.md>). The `application/` lane (binding SurrealDB entity tables)
+  carries no GCS lifecycle rule — retention is enforced by never pruning the snapshot log. Only the content-free
+  `telemetry/otel_logs/` prefix has a lifecycle rule, transitioning to Coldline at 365 days and deleting at 10 years
+  (`examples/deploy/k8s/observability/exports-bucket-lifecycle.json`); `telemetry/otel_traces/` and
+  `telemetry/otel_metrics/` delete at 30 days.
 - **Snapshot expiry:** Iceberg snapshot-expiry (dropping old manifest entries) is **not** run — the snapshot log is the
   point-in-time index we want, and 10 years of nightly full snapshots is small relative to the data. Revisit only if the
   metadata grows unwieldy.
@@ -162,10 +173,11 @@ Run inline; the deliberation is not kept, only the decisions:
    schema and read through one generic query path.
 3. ~~Emit `metadata/` (table metadata JSON + manifest list + manifest), append-only~~ — **done** as a reusable
    writer (`archives::iceberg::author_snapshot`, unit-tested for metadata round-trip + snapshot-log chaining), and
-   **already wired** for the telemetry tables via the `iceberg_telemetry` workflow phase. Calling it from the primary
-   SurrealDB entity-table snapshot phase is the remaining wiring step.
-4. Rename the data partition dir to `dt=<date>`. **Pending** (the writer is unpartitioned in v1, so this is cosmetic
-   until identity-partitioning lands).
+   **wired for both lanes** via the `iceberg_telemetry` workflow phase: every `ALL_TABLES` entry under `application/`
+   and `otel_logs`/`otel_traces`/`otel_metrics` under `telemetry/`.
+4. ~~Rename the data partition dir to `dt=<date>`~~ — **done**, together with the `application`/`telemetry` lane
+   prefix (`archives/src/snapshot.rs`, `archives/src/drift.rs`, `archives/src/iceberg.rs`). The table is still
+   unpartitioned in the Iceberg partition spec (see v1 simplifications above); only the object-key directory changed.
 5. Wire BigLake (or external tables, per the operator's call) and add a smoke query. **Pending** (machine-bound; the
    one offline-unverifiable part — needs a live BigQuery to confirm the authored metadata is BigLake-readable).
 6. Surface per-table Iceberg snapshot ids in the nightly diagnostic email. **Pending** (with the wiring in step 3).

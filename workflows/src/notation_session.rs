@@ -48,6 +48,12 @@ pub struct QuestionDescriptor {
     /// canonical `Question.yaml` definition. `None` when the question
     /// declares none. Like `choices` it has no column on the `question`
     /// table, so it comes from the seed bytes rather than the row.
+    ///
+    /// Not every seeded string is written for the respondent: the four
+    /// [`AUTHOR_FACING_HELP_CODES`] address the template author, so a
+    /// [`client_intake_step`] descriptor carries `None` for them while the
+    /// lawyer walk keeps the string. A missing client lede on a `custom_*`
+    /// step is that choice, not a dropped value.
     pub help_text: Option<String>,
 }
 
@@ -607,12 +613,37 @@ fn ordered_question_codes(spec: &QuestionnaireSpec) -> Vec<String> {
     codes
 }
 
+/// The `custom_*` primitives whose seeded `help_text` speaks to the
+/// template author choosing a question type ("Use this for a one-off text
+/// answer when no glossary type fits."), not to the person answering it.
+/// The other custom primitives (`custom_phone`, `custom_usd`,
+/// `custom_datetime`) carry respondent guidance and stay visible. This is
+/// the audience decision `help_text` lacks: `questions.audience` gates which
+/// questions a client sees, and this list gates which guidance they read on
+/// them. A seed-level split of author notes from respondent help is the
+/// durable form; until then a test pins this list to the seed so a new
+/// author-facing string cannot reach a client unnoticed.
+const AUTHOR_FACING_HELP_CODES: [&str; 4] = [
+    "custom_text",
+    "custom_yes_no",
+    "custom_single_choice",
+    "custom_multiple_choice",
+];
+
+/// Whether the seeded `help_text` behind questionnaire `state` is written
+/// for the template author rather than the respondent, keyed by the
+/// canonical code with its `__role` suffix stripped.
+fn is_author_facing_help(state: &str) -> bool {
+    AUTHOR_FACING_HELP_CODES.contains(&question_code_for_state(state))
+}
+
 /// Resolve where the client is in their portion of `notation_id`'s
 /// intake: the first client-facing question the client has not yet
 /// answered (no `client`-sourced answer), pre-filled with any current
 /// value, or [`ClientIntakeStep::Complete`] when the client has answered
 /// them all. Save-per-step: a drop-off resumes at the first question
-/// still missing a client answer.
+/// still missing a client answer. The descriptor is the lawyer walk's,
+/// less any author-facing `help_text` ([`AUTHOR_FACING_HELP_CODES`]).
 pub async fn client_intake_step(
     surreal: &store::surreal::SurrealDb,
     storage: Option<&Arc<dyn StorageService>>,
@@ -673,13 +704,16 @@ pub async fn client_intake_step(
         if client_answered.contains(code) {
             continue;
         }
-        let question = load_question(
+        let mut question = load_question(
             surreal,
             &StateName::from(code.as_str()),
             &definition.prompts,
             &definition.choices,
         )
         .await?;
+        if is_author_facing_help(code) {
+            question.help_text = None;
+        }
         return Ok(ClientIntakeStep::NeedsAnswer {
             question,
             prior_value: latest_value
@@ -1289,10 +1323,37 @@ pub fn localize_prompt_for_state(prompt: &str, state: &str) -> String {
 mod tests {
     use super::{
         answer_step, answer_value_for_state, answered_client_states, current_step,
-        ordered_question_codes, questionnaire_chain_for_notation, questionnaire_definition_for,
-        record_reask_answer, start_notation, AnswerAuthor, NextStep, NotationSessionError,
-        QuestionDescriptor, QuestionnaireDefinition, StateName,
+        is_author_facing_help, ordered_question_codes, questionnaire_chain_for_notation,
+        questionnaire_definition_for, record_reask_answer, start_notation, AnswerAuthor, NextStep,
+        NotationSessionError, QuestionDescriptor, QuestionnaireDefinition, StateName,
+        AUTHOR_FACING_HELP_CODES,
     };
+
+    #[test]
+    fn author_facing_help_allowlist_matches_the_seed() {
+        // The allowlist is a snapshot of today's `Question.yaml`: every
+        // seeded string that opens by telling the *author* when to use the
+        // question ("Use this …") must be on it, and nothing else may be.
+        // A new author-facing string, or one of the four rewritten for the
+        // respondent, fails here so the client boundary moves deliberately.
+        for code in store::question_registry::QuestionType::all_tokens() {
+            let help = store::seed::question_help_text(code)
+                .unwrap_or_else(|| panic!("question `{code}` has no help_text"));
+            let reads_as_author_note = help.starts_with("Use this");
+            assert_eq!(
+                reads_as_author_note,
+                AUTHOR_FACING_HELP_CODES.contains(&code),
+                "question `{code}` help_text {help:?}: author-facing wording and \
+                 AUTHOR_FACING_HELP_CODES disagree",
+            );
+        }
+        // The role suffix a questionnaire state carries is stripped first,
+        // and a respondent-facing custom primitive is not caught by prefix.
+        assert!(is_author_facing_help("custom_text__engagement_scope"));
+        assert!(is_author_facing_help("custom_multiple_choice"));
+        assert!(!is_author_facing_help("custom_phone__daytime"));
+        assert!(!is_author_facing_help("person__client"));
+    }
 
     #[test]
     fn reference_envelope_embeds_the_selected_row_id() {
@@ -1965,6 +2026,45 @@ mod tests {
         .unwrap();
 
         assert_eq!(prompt_of(&outcome.next), "What is the dissolution reason?");
+    }
+
+    #[tokio::test]
+    async fn lawyer_walk_keeps_author_facing_custom_help() {
+        // The suppression is a client-path decision only. The lawyer walk
+        // is a staff tool where the author's note is at worst odd, so the
+        // same `custom_text` state still carries the seeded string there —
+        // the CLI and lawyer walker tests downstream depend on it.
+        let surreal = db().await;
+        seed_template(&surreal, "nv__dissolution", "Dissolution").await;
+        seed_question(&surreal, "custom_text").await;
+        let person_id = seed_person(&surreal, "libra@example.com").await;
+        let runtime = InMemoryRuntime::new();
+
+        let outcome = start_notation(
+            &surreal,
+            &runtime,
+            None,
+            "nv__dissolution",
+            person_id,
+            seed_project(&surreal).await,
+            None,
+        )
+        .await
+        .unwrap();
+
+        let NextStep::NeedsAnswer { question } = outcome.next else {
+            panic!("expected NeedsAnswer, got QuestionnaireComplete")
+        };
+        assert!(
+            question.code.starts_with("custom_text__"),
+            "{}",
+            question.code
+        );
+        assert_eq!(
+            question.help_text,
+            store::seed::question_help_text("custom_text"),
+        );
+        assert!(question.help_text.is_some());
     }
 
     #[tokio::test]
@@ -2789,6 +2889,86 @@ mod tests {
         assert_eq!(question.code, "custom_text__revenue_strategy");
         assert_eq!(prior_value.as_deref(), Some("Flat-fee retainers"));
         assert_eq!((position, total), (2, 2));
+    }
+
+    #[tokio::test]
+    async fn client_intake_drops_author_facing_help_and_keeps_respondent_help() {
+        // A client on a `custom_text` step would otherwise read "Use this for
+        // a one-off text answer when no glossary type fits." as the page
+        // lede — an author's note about the question bank, not guidance for
+        // the person answering. Walk one client intake across all four
+        // author-facing primitives, a respondent-facing custom primitive, and
+        // a bank question: only the four lose their help; the rest keep the
+        // seeded string, so the fix is the allowlist, not the `custom_`
+        // prefix and not a blanket blank for clients.
+        let surreal = db().await;
+        let states: [(&str, &str, &str); 6] = [
+            ("custom_text__note", "custom_text", "string"),
+            ("custom_yes_no__consent", "custom_yes_no", "yes_no"),
+            (
+                "custom_single_choice__tier",
+                "custom_single_choice",
+                "radio",
+            ),
+            (
+                "custom_multiple_choice__services",
+                "custom_multiple_choice",
+                "multiple_choice",
+            ),
+            ("custom_phone__daytime", "custom_phone", "custom_phone"),
+            ("person__client", "person", "person"),
+        ];
+        let mut question_ids = BTreeMap::new();
+        for (_, code, answer_type) in states {
+            let id = seed_client_question(&surreal, code, answer_type).await;
+            question_ids.insert(code, id);
+        }
+        let mut chain = String::new();
+        for pair in states.windows(2) {
+            chain.push_str("  ");
+            chain.push_str(pair[0].0);
+            chain.push_str(":\n    _: ");
+            chain.push_str(pair[1].0);
+            chain.push('\n');
+        }
+        let yaml = format!(
+            "questionnaire:\n  BEGIN:\n    _: custom_text__note\n{chain}  \
+             person__client:\n    _: END\n  END: {{}}\n"
+        );
+        let (id, person) = start_snapshot_notation(&surreal, &yaml, BTreeMap::new()).await;
+
+        for (idx, (state, code, _)) in states.iter().enumerate() {
+            let step = client_intake_step(&surreal, None, id).await.unwrap();
+            let ClientIntakeStep::NeedsAnswer {
+                question, position, ..
+            } = step
+            else {
+                panic!("expected NeedsAnswer({state})");
+            };
+            assert_eq!(question.code, *state);
+            assert_eq!(position, idx + 1);
+            let seeded = store::seed::question_help_text(code);
+            assert!(seeded.is_some(), "seed carries help for `{code}`");
+            if AUTHOR_FACING_HELP_CODES.contains(code) {
+                assert_eq!(question.help_text, None, "client step `{state}`");
+            } else {
+                assert_eq!(question.help_text, seeded, "client step `{state}`");
+            }
+            insert_answer(
+                &surreal,
+                id,
+                person,
+                question_ids[code],
+                Some(*state),
+                "answered",
+                SOURCE_CLIENT,
+            )
+            .await;
+        }
+        assert!(matches!(
+            client_intake_step(&surreal, None, id).await.unwrap(),
+            ClientIntakeStep::Complete { total: 6 }
+        ));
     }
 
     #[tokio::test]

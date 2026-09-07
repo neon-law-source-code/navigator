@@ -1909,7 +1909,7 @@ pub fn document_with_base(base: &str) -> Value {
                     "kind": {
                       "type": "string",
                       "description": "Required asset-lane document classification (`rules::kind::Kind` values valid for `Lane::Asset`). A missing or blank value is refused with `400 kind_required`; a value outside this set is refused with `400 invalid_kind`. Both messages name the accepted values; nothing is silently coerced to `unclassified`.",
-                      "enum": ["letter", "filing", "will", "trust", "directive", "agreement", "onboarding", "offboarding", "memo", "transcript", "inbound_contract", "certificate_of_naturalization", "exhibit", "unclassified"]
+                      "enum": ["letter", "filing", "will", "trust", "directive", "agreement", "pleading", "onboarding", "offboarding", "memo", "transcript", "inbound_contract", "certificate_of_naturalization", "exhibit", "unclassified"]
                     },
                     "visibility": { "type": "string", "enum": ["client", "internal"] },
                     "description": { "type": "string" }

@@ -188,6 +188,7 @@ Generated PDFs and lawyer uploads reuse the same strings on the asset lane. The 
 - `filing` — a document filed with a government body
 - `will`, `trust`, `directive` — estate instruments
 - `agreement` — a private agreement with a third party
+- `pleading` — court paper filed with a court (complaint, motion, brief)
 - `memo` — an analytical work product, not an executed instrument
 
 Filed uploads that are not templates use `transcript`, `inbound_contract`, `certificate_of_naturalization`, or

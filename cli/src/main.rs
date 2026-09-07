@@ -2871,7 +2871,7 @@ fn parse_document_visibility(value: &str) -> Result<String, String> {
     }
 }
 
-const DOCUMENT_UPLOAD_KIND_HELP: &str = "Accepted --kind values: letter, filing, will, trust, directive, agreement, onboarding, offboarding, memo, transcript, inbound_contract, certificate_of_naturalization, exhibit, unclassified.";
+const DOCUMENT_UPLOAD_KIND_HELP: &str = "Accepted --kind values: letter, filing, will, trust, directive, agreement, pleading, onboarding, offboarding, memo, transcript, inbound_contract, certificate_of_naturalization, exhibit, unclassified.";
 
 /// Render one notation template to a PDF. Validates the file against the
 /// notation rule set, resolves the output format (CLI override →

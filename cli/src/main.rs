@@ -2871,7 +2871,7 @@ fn parse_document_visibility(value: &str) -> Result<String, String> {
     }
 }
 
-const DOCUMENT_UPLOAD_KIND_HELP: &str = "Accepted --kind values: letter, filing, will, trust, directive, agreement, onboarding, offboarding, memo, transcript, inbound_contract, certificate_of_naturalization, exhibit, unclassified.";
+const DOCUMENT_UPLOAD_KIND_HELP: &str = "Accepted --kind values: letter, filing, will, trust, directive, agreement, pleading, onboarding, offboarding, memo, transcript, inbound_contract, certificate_of_naturalization, exhibit, unclassified.";
 
 /// Render one notation template to a PDF. Validates the file against the
 /// notation rule set, resolves the output format (CLI override →
@@ -2978,6 +2978,7 @@ fn run_render(
     // rather than to whatever bundle happens to be mounted at render time.
     // Restore the plumbing here, not somewhere new, if that call changes.
     let letterhead = pdf::Letterhead::default();
+    let format_debug = format!("{format:?}");
     let bytes = match pdf::render_document(&body, format, &letterhead) {
         Ok(b) => b,
         Err(e) => {
@@ -2992,7 +2993,7 @@ fn run_render(
     println!(
         "{}",
         palette::dim(format!(
-            "Rendered {} ({format:?}, {} bytes) → {}",
+            "Rendered {} ({format_debug}, {} bytes) → {}",
             file.display(),
             bytes.len(),
             out.display()

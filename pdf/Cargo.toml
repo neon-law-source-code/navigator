@@ -13,9 +13,13 @@ path = "src/lib.rs"
 lopdf.workspace = true
 pulldown-cmark = { workspace = true, default-features = false }
 thiserror.workspace = true
-typst-layout = "0.15"
-typst-pdf = "0.15"
-typst-as-lib = { version = "0.16", features = ["typst-kit-fonts", "typst-kit-embed-fonts"] }
+# Pinned exactly, not to a "0.15"/"0.16" range: a patch release on either
+# side can shift glyph positions or numbering output under the geometry
+# tests in pdf/tests/ (#889, ENG-106) without any source change here to
+# review. Bump deliberately, together, and re-verify the geometry suite.
+typst-layout = "=0.15.1"
+typst-pdf = "=0.15.1"
+typst-as-lib = { version = "=0.16.0", features = ["typst-kit-fonts", "typst-kit-embed-fonts"] }
 
 [dev-dependencies]
 lopdf.workspace = true

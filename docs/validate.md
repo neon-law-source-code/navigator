@@ -137,6 +137,7 @@ violation without a human decision; every other code needs a person to resolve i
 | `N118` | Error | Questionnaire must be one linear chain from `BEGIN` to `END`. | No |
 | `N119` | Error | A `kind: github` notation must be one of the two shelf paths and ask its required questions. | No |
 | `N120` | Error | A template body placeholder must name a declared questionnaire state. | No |
+| `N121` | Error | A `sent_for_signature` state must be preceded by a `generate_pdf` state. | No |
 
 ### E-family — events
 

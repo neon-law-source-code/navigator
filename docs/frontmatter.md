@@ -40,9 +40,9 @@ wrong, the editor underlines it — the same way a word processor underlines a m
 You say what a file is by **declaring it**: a `kind:` key names the file's kind outright, and that declaration is the
 *only* classifier — the system never guesses the kind from a file's structure or its path. Its value is one of a small,
 fixed vocabulary. Most values name notation-template kinds — `letter`, `filing`, `will`, `trust`, `directive`,
-`agreement`, `onboarding`, `offboarding`, `memo` — some name content pages — `post`, `workshop` — and one, `github`,
-names the engineering intake notations. A further ten name **matter dashboards**, the page types an attorney composes.
-Anything else is a blocking error (`S103`). The vocabulary grows as the firm's practice areas do.
+`agreement`, `pleading`, `onboarding`, `offboarding`, `memo` — some name content pages — `post`, `workshop` — and one,
+`github`, names the engineering intake notations. A further ten name **matter dashboards**, the page types an attorney
+composes. Anything else is a blocking error (`S103`). The vocabulary grows as the firm's practice areas do.
 
 A file that declares no `kind:` is ordinary prose, held only to general writing rules. Because classification is
 declaration-only, a file that carries notation *structure* — a `questionnaire:`/`workflow:` block — but forgets its
@@ -50,10 +50,10 @@ declaration-only, a file that carries notation *structure* — a `questionnaire:
 kind and the keys it must carry:
 
 - **Notation template** — one of the notation kinds (`letter`, `filing`, `will`, `trust`, `directive`, `agreement`,
-  `onboarding`, `offboarding`, `memo`). A complete one carries **both** the `questionnaire:` and `workflow:` machines
-  plus `title`, `code`, `respondent_type`, `jurisdiction`, and `confidential`, and the missing ones are flagged. Lives
-  under `templates/notations/forms/` or `templates/notations/neon_law/`; a `templates/` file with no `kind:` is just
-  prose until it declares one.
+  `pleading`, `onboarding`, `offboarding`, `memo`). A complete one carries **both** the `questionnaire:` and `workflow:`
+  machines plus `title`, `code`, `respondent_type`, `jurisdiction`, and `confidential`, and the missing ones are
+  flagged. Lives under `templates/notations/forms/` or `templates/notations/neon_law/`; a `templates/` file with no
+  `kind:` is just prose until it declares one.
 - **Blog post** — `kind: post`. Lives under `server/content/blog/`. Needs `title` and `description`, in a file named
   `YYYYMMDD_slug.md`.
 - **Workshop page** — `kind: workshop`. Lives under `server/content/workshops/`. Needs `title` and `description`.
@@ -147,11 +147,11 @@ workflow:
 
 Each key, in plain English:
 
-- **`kind`** — what this notation is: `onboarding` (the letter that opens a matter), `offboarding` (the closing
-  letter), `letter` (a letter the firm sends on the client's behalf), `filing` (a document filed with a government
-  body), `will`, `trust`, `directive`, `agreement`, or `memo`. It is **required** on every notation template — the
-  declared kind is the sole classifier, so a template without it lints as prose — and an unrecognized value is a
-  blocking error.
+- **`kind`** — what this notation is: `onboarding` (the letter that opens a matter), `offboarding` (the closing letter),
+  `letter` (a letter the firm sends on the client's behalf), `filing` (a document filed with a government body),
+  `pleading` (court paper — a complaint, motion, or brief), `will`, `trust`, `directive`, `agreement`, or `memo`. It is
+  **required** on every notation template — the declared kind is the sole classifier, so a template without it lints as
+  prose — and an unrecognized value is a blocking error.
 - **`title`** — the human name of the document, e.g. `Onboarding Letter`. It cannot be blank.
 - **`code`** — the document's permanent file number, in `snake_case` (e.g. `onboarding__letter`). It must be
   unique across the whole project, and you do not change it once clients have signed under it. The reason is the record:
@@ -214,8 +214,9 @@ full list of structural checks, is covered in <notation-authoring.md>.
 A notation template may carry an optional **`output`** key. It is the one place a template *overrides* its render
 profile — what comes out and how it is dressed. Left off, the profile is derived from the template's `kind:`
 (`Kind::default_output`): `letter`, `onboarding`, `offboarding`, and `memo` default to letterhead; `filing` defaults to
-`form`; every other notation kind — `will`, `trust`, `directive`, `agreement` — defaults to plain. `output:` exists for
-the templates whose default is wrong for them, such as a firm-drafted `agreement` that should carry letterhead.
+`form`; `pleading` defaults to court paper; every other notation kind — `will`, `trust`, `directive`, `agreement` —
+defaults to plain. `output:` exists for the templates whose default is wrong for them, such as a firm-drafted
+`agreement` that should carry letterhead.
 
 - **omit it** and the document renders on its kind's default profile — plain is our standard serif, one-inch margins,
   no letterhead. The body's `{{placeholders}}` fill from the questionnaire answers.
@@ -225,14 +226,19 @@ the templates whose default is wrong for them, such as a firm-drafted `agreement
 - **`output: agreement`** puts the same letterhead on an executed contract, typeset curtly: narrower margins, closer
   leading, headings at body size, and no table ever split across a page break so a signature block stays whole. Reach
   for it when the document is navigated by section number rather than read straight through.
+- **`output: pleading`** carries no firm letterhead at all — a pleading's typeface, margins, and (where the
+  jurisdiction requires one) numbered line rail are a court-rule compliance decision, calibrated by the template's
+  `jurisdiction:` rather than by the firm's own brand. `NV` and `CA` both render with the numbered rail their courts
+  require; `US` (federal district practice, not uniform on the rail) renders without one.
 - **`output: form`** is a different mode entirely: instead of typesetting prose, it prints the questionnaire answers
   onto an official government form (an AcroForm fill). A `form` template carries no legal prose — its body is the field
   map — so it always rides with the two form keys below (`form:` and `origin_url:`), and the checker (N109) requires
-  them. Conversely a typeset profile (`letter`, `agreement`, or no `output:` at all) must **not** carry a `form:` key.
+  them. Conversely a typeset profile (`letter`, `agreement`, `pleading`, or no `output:` at all) must **not** carry a
+  `form:` key.
 
-`letter`, `agreement`, and `form` are the values the checker accepts today (N109); leaving the key off gives you the
-kind's default profile. `output` is where a template overrides what it should look like, and the vocabulary is open to
-more named values as new layouts are named (a court-specific pleading-paper layout, for instance).
+`letter`, `agreement`, `pleading`, and `form` are the values the checker accepts today (N109); leaving the key off gives
+you the kind's default profile. `output` is where a template overrides what it should look like, and the vocabulary is
+open to more named values as new layouts are named.
 
 ### Government form templates carry two extra keys
 
@@ -279,7 +285,7 @@ what each code actually checks, its severity, and whether it autofixes, see the 
 
 | Key | Required | Values | Checked by |
 | --- | --- | --- | --- |
-| `kind` | yes | a notation kind (`letter` … `memo`, the nine listed above) | S103, S104 |
+| `kind` | yes | a notation kind (`letter` … `memo`, the ten listed above) | S103, S104 |
 | `title` | yes | any non-empty text | N101 |
 | `code` | yes | unique `snake_case` | N108 |
 | `respondent_type` | yes | `person`, `entity`, `person_and_entity` | N102 |
@@ -289,7 +295,7 @@ what each code actually checks, its severity, and whether it autofixes, see the 
 | `workflow` | yes (paired) | a `BEGIN` → `END` path that includes `lawyer_review` | N104, N106 |
 | `custom_questions` | with any `custom_*` state | wording (and options) for one-off questions | N104 |
 | `prompts` | no | override the bank's wording for a bank-backed state | N104 |
-| `output` | no | `letter`, `agreement`, or `form` (omit for a plain page) | N109 |
+| `output` | no | `letter`, `agreement`, `pleading`, or `form` (omit for a plain page) | N109 |
 | `form` | with `output: form` | the bundled form's code | N109 |
 | `origin_url` | forms only | the `.gov` page the blank form came from | N109, N110 |
 

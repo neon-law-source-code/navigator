@@ -1595,7 +1595,7 @@ pub(crate) async fn render_and_park(
         // matters here; the placed fields are rebuilt at send time from the
         // same deterministic expansion over the same conversion.
         let (typst_source, _signature_fields) = crate::signature_render::expand_signatures(
-            &typst_body_from_template(&template_body, &ctx),
+            &typst_body_from_template(&template_body, &ctx, template_row.kind.as_deref()),
         );
         serde_json::to_string(&workflows::DocumentPayload::Typst {
             storage_key: document_pdf_storage_key(notation_id),
@@ -1786,8 +1786,9 @@ pub(crate) async fn dispatch_signature(
     // the provider.
     let template_body = store::notation_clauses::splice(&raw_template_body, &clauses);
     let ctx = render_context_from_answers(deps.surreal, notation_id).await?;
-    let (_typst_source, signature_fields) =
-        crate::signature_render::expand_signatures(&typst_body_from_template(&template_body, &ctx));
+    let (_typst_source, signature_fields) = crate::signature_render::expand_signatures(
+        &typst_body_from_template(&template_body, &ctx, template_row.kind.as_deref()),
+    );
 
     // Read the PDF the worker persisted back from storage so the bytes
     // sent are exactly the bytes stored (one renderer, no second
@@ -2509,7 +2510,7 @@ async fn drive_closing_workflow(
     // `generate_pdf__closing_letter`.
     let document_payload = serde_json::to_string(&workflows::DocumentPayload::Typst {
         storage_key: closing_letter_storage_key(notation_id),
-        typst_source: typst_body_from_template(&template_body, &ctx),
+        typst_source: typst_body_from_template(&template_body, &ctx, template_row.kind.as_deref()),
     })
     .map_err(WorkflowDriveError::Payload)?;
     let s = signal_workflow(
@@ -2543,16 +2544,40 @@ fn substitute_template_body(body: &str, ctx: &BTreeMap<String, String>) -> Strin
 }
 
 /// Assemble a notation template body into compilable Typst: substitute the
-/// answer `ctx`, then convert the Markdown body to Typst markup via
-/// [`pdf::to_typst`]. Notation bodies are authored in Markdown, so the
+/// answer `ctx`, convert the Markdown body to Typst markup via
+/// [`pdf::to_typst`], and frame it in the format `kind` derives
+/// ([`rules::Kind::default_output`], the same derivation `cli::run_render`
+/// applies to a preview render — see ENG-99) so a `kind: letter` notation
+/// reaches object storage on the firm's letterhead instead of falling back
+/// to `OutputFormat::Plain`. `kind` is the template's declared `kind:`
+/// frontmatter (`store::templates::Template::kind`); an unset or
+/// unrecognized kind renders plain, same as a preview render of a
+/// kind-less template. The firm's identity is pinned to source
+/// ([`pdf::Letterhead::default`]), the same choice `cli::run_render` makes
+/// and for the same reason: a rendered, binding document reads identically
+/// regardless of which brand bundle happens to be mounted.
+///
+/// Notation bodies are authored in Markdown, so the [`pdf::to_typst`]
 /// conversion is what escapes the prose sigils Typst reads as syntax — most
 /// importantly a bare `@` (an email like `support@neonlaw.com` is otherwise
 /// parsed as a Typst label reference and fails to compile), as well as
 /// `#`/`$`/`*`. Signature placeholders (`{{client.signature}}`) survive the
 /// conversion verbatim so [`crate::signature_render::expand_signatures`] can
 /// expand them into anchored blocks afterward.
-fn typst_body_from_template(body: &str, ctx: &BTreeMap<String, String>) -> String {
-    pdf::to_typst(&substitute_template_body(body, ctx))
+fn typst_body_from_template(
+    body: &str,
+    ctx: &BTreeMap<String, String>,
+    kind: Option<&str>,
+) -> String {
+    let format = kind
+        .and_then(rules::Kind::parse)
+        .and_then(|k| pdf::OutputFormat::parse(k.default_output()))
+        .unwrap_or_default();
+    format!(
+        "{}{}",
+        format.preamble(&pdf::Letterhead::default()),
+        pdf::to_typst(&substitute_template_body(body, ctx))
+    )
 }
 
 /// The captive `clientUserId` for the client recipient of `notation_id`.
@@ -2969,7 +2994,7 @@ fn progress_from_chain(order: &[StateName], current_state: &StateName) -> (usize
 mod tests {
     use super::{
         context_from_answers, progress_from_chain, questionnaire_chain,
-        render_context_from_answers, substitute_template_body,
+        render_context_from_answers, substitute_template_body, typst_body_from_template,
     };
     use std::collections::BTreeMap;
     use uuid::Uuid;
@@ -3221,6 +3246,44 @@ Sign: {{client.signature}}";
         assert!(!typst_source.contains("{{client.signature}}"));
         assert!(typst_source.contains("nlsig-client-signature-1"));
         assert_eq!(fields.len(), 1);
+    }
+
+    #[test]
+    fn typst_body_from_template_frames_a_letter_kind_on_letterhead() {
+        // ENG-100: generate_pdf's assembled Typst source must select its
+        // OutputFormat from the template's declared kind — the same
+        // Kind::default_output derivation cli::run_render applies to a
+        // preview — rather than always rendering plain, or a `kind: letter`
+        // notation reaches object storage with no letterhead.
+        let ctx = BTreeMap::new();
+        let source = typst_body_from_template("Body.", &ctx, Some("letter"));
+        assert!(
+            source.contains("logo-neon-law.png"),
+            "a `kind: letter` template must render on the firm's letterhead: {source}"
+        );
+        let pdf = pdf::render(&source).expect("letter-framed body renders");
+        assert!(pdf.starts_with(b"%PDF"));
+    }
+
+    #[test]
+    fn typst_body_from_template_renders_plain_for_an_unset_or_unknown_kind() {
+        let ctx = BTreeMap::new();
+        for kind in [None, Some("bogus")] {
+            let source = typst_body_from_template("Body.", &ctx, kind);
+            assert!(
+                !source.contains("logo-neon-law.png"),
+                "{kind:?} must not pick up letterhead: {source}"
+            );
+        }
+    }
+
+    #[test]
+    fn typst_body_from_template_renders_plain_for_a_kind_defaulting_to_plain() {
+        // `will` defaults to plain (Kind::default_output) — an instrument
+        // between other parties never carries firm letterhead.
+        let ctx = BTreeMap::new();
+        let source = typst_body_from_template("Body.", &ctx, Some("will"));
+        assert!(!source.contains("logo-neon-law.png"), "{source}");
     }
 
     /// A bound Person carrying a distinct name/email, so a fixture can tell

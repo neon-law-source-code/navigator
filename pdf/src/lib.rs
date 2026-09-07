@@ -63,6 +63,7 @@ pub mod acroform;
 pub mod certificate;
 pub mod format;
 pub mod markdown;
+pub mod outline;
 pub mod passage;
 pub mod pleading;
 pub mod safety;
@@ -73,7 +74,7 @@ pub use acroform::{
     widget_annotation_count, FieldSpec, RadioMergeMember, RadioMergeSpec, ReauthorSpec,
 };
 pub use certificate::{render_certificate, CertificateParams};
-pub use format::{render_document, Letterhead, OutputFormat};
+pub use format::{render_document, Closing, LetterBlocks, Letterhead, OutputFormat};
 pub use markdown::to_typst;
 pub use passage::{
     locate, occurrence_count, page_count, page_render, NormalisedRect, PassageError,

@@ -395,11 +395,11 @@ pub fn navigator_default_rules() -> Vec<Box<dyn Rule>> {
         F109OutputFormat, F110JurisdictionPath, F112WorkflowStepNotBuilt, F113TypeGrounding,
         F114ForParentOrdering, F115PathResolution, F116LawyerReviewGatesSubmission,
         F117GlossaryBackedCustomText, F118QuestionnaireLinearity, F120BodyStateGrounding,
-        M001HeadingIncrement, M003HeadingStyle, M004ULStyle, M005ListIndent, M007ULIndent,
-        M009NoTrailingSpaces, M010NoHardTabs, M011NoReversedLinks, M012NoMultipleBlanks,
-        M018NoMissingSpaceATX, M019NoMultipleSpaceATX, M020NoMissingSpaceClosedATX,
-        M021NoMultipleSpaceClosedATX, M022BlanksAroundHeadings, M023HeadingStartLeft,
-        M024NoDuplicateHeading, M025SingleH1, M026NoTrailingPunctuation,
+        F121GeneratePdfPrecedesSignature, M001HeadingIncrement, M003HeadingStyle, M004ULStyle,
+        M005ListIndent, M007ULIndent, M009NoTrailingSpaces, M010NoHardTabs, M011NoReversedLinks,
+        M012NoMultipleBlanks, M018NoMissingSpaceATX, M019NoMultipleSpaceATX,
+        M020NoMissingSpaceClosedATX, M021NoMultipleSpaceClosedATX, M022BlanksAroundHeadings,
+        M023HeadingStartLeft, M024NoDuplicateHeading, M025SingleH1, M026NoTrailingPunctuation,
         M027NoMultipleSpaceBlockquote, M028NoBlanksBlockquote, M029OLPrefix, M030ListMarkerSpace,
         M031BlanksAroundFences, M032BlanksAroundLists, M034NoBareUrls, M035HRStyle,
         M037NoSpaceInEmphasis, M038NoSpaceInCode, M039NoSpaceInLinks, M040FencedCodeLanguage,
@@ -437,6 +437,7 @@ pub fn navigator_default_rules() -> Vec<Box<dyn Rule>> {
         Box::new(F117GlossaryBackedCustomText),
         Box::new(F118QuestionnaireLinearity),
         Box::new(F120BodyStateGrounding),
+        Box::new(F121GeneratePdfPrecedesSignature),
         // Mutual exclusivity runs on templates too: a template that wrongly
         // declares a `starts_at` timestamp is flagged here (the event side
         // is enforced by `navigator_event_rules`).
@@ -904,12 +905,12 @@ mod tests {
     /// silently reorders or drops a rule.
     const EXPECTED_DEFAULT_RULE_CODES: &[&str] = &[
         "S101", "S103", "S104", "N101", "N102", "N103", "N104", "N105", "N106", "N107", "N108",
-        "N109", "N110", "N112", "N113", "N114", "N115", "N116", "N117", "N118", "N120", "E002",
-        "M001", "M003", "M004", "M005", "M007", "M009", "M010", "M011", "M012", "M018", "M019",
-        "M020", "M021", "M022", "M023", "M024", "M025", "M026", "M027", "M028", "M029", "M030",
-        "M031", "M032", "M034", "M035", "M037", "M038", "M039", "M040", "M042", "M045", "M046",
-        "M047", "M048", "M049", "M050", "M051", "M052", "M053", "M054", "M055", "M056", "M057",
-        "M058", "M059", "M060", "M061",
+        "N109", "N110", "N112", "N113", "N114", "N115", "N116", "N117", "N118", "N120", "N121",
+        "E002", "M001", "M003", "M004", "M005", "M007", "M009", "M010", "M011", "M012", "M018",
+        "M019", "M020", "M021", "M022", "M023", "M024", "M025", "M026", "M027", "M028", "M029",
+        "M030", "M031", "M032", "M034", "M035", "M037", "M038", "M039", "M040", "M042", "M045",
+        "M046", "M047", "M048", "M049", "M050", "M051", "M052", "M053", "M054", "M055", "M056",
+        "M057", "M058", "M059", "M060", "M061",
     ];
 
     #[test]
@@ -980,6 +981,7 @@ mod tests {
         // free-text allowlist that exists to keep client facts typed.
         for absent in [
             "N102", "N105", "N106", "N107", "N108", "N109", "N110", "N112", "N114", "N116", "N117",
+            "N121",
         ] {
             assert!(
                 !codes.contains(&absent),

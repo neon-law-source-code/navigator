@@ -1,4 +1,4 @@
-//! `cli assets build` — transcode curated source photos into the
+//! `navigator ops assets build` — transcode curated source photos into the
 //! responsive web variants consumed by the browser surface.
 //!
 //! The manifest ([`views::assets::GALLERY`]) and the width set
@@ -121,7 +121,7 @@ const AVIF_QUALITY: f32 = 70.0;
 /// the small-file end of the curve.
 const AVIF_SPEED: u8 = 6;
 
-/// Entry point for `cli assets build`. `only` narrows the run to the
+/// Entry point for `navigator ops assets build`. `only` narrows the run to the
 /// named manifest slugs.
 pub fn run_build(src: &Path, out: &Path, only: &[String]) -> ExitCode {
     let selected = match select(only) {
@@ -244,7 +244,7 @@ fn build(
     Ok(variants)
 }
 
-/// Entry point for `cli assets upload`. `bucket` defaults to the
+/// Entry point for `navigator ops assets upload`. `bucket` defaults to the
 /// `NAVIGATOR_ASSETS_BUCKET` env var (the public `<project>-assets`
 /// bucket, distinct from the app's documents bucket
 /// `NAVIGATOR_DOCUMENTS_BUCKET`) so an upload can never accidentally
@@ -292,7 +292,7 @@ pub fn run_upload(dir: &Path, bucket: Option<String>) -> ExitCode {
     })
 }
 
-/// Entry point for `cli assets fonts upload`. Licensed font files use the
+/// Entry point for `navigator ops assets fonts upload`. Licensed font files use the
 /// same public assets bucket as images, but a separate `fonts/gorp-serif/`
 /// prefix so the private tree never carries proprietary WOFF2 bytes.
 pub fn run_upload_fonts(dir: &Path, bucket: Option<String>, family: &FontFamily) -> ExitCode {
@@ -341,7 +341,7 @@ pub fn run_upload_fonts(dir: &Path, bucket: Option<String>, family: &FontFamily)
     })
 }
 
-/// Entry point for `cli assets fonts upload-desktop`. Packages the licensed
+/// Entry point for `navigator ops assets fonts upload-desktop`. Packages the licensed
 /// GORP Serif `.otf` desktop family in `dir` into a single ZIP and uploads it
 /// to `fonts/gorp-serif/gorp-serif-otf.zip`.
 ///
@@ -395,7 +395,7 @@ pub fn run_upload_desktop_fonts(dir: &Path, bucket: Option<String>) -> ExitCode 
     })
 }
 
-/// Entry point for `cli assets pull` — the inverse of `upload`, for
+/// Entry point for `navigator ops assets pull` — the inverse of `upload`, for
 /// local development. `server/public/img/` is gitignored (photos live only
 /// in the public assets bucket, never in git, never baked into the
 /// image), so a fresh clone serves empty photo slots. This downloads
@@ -1024,7 +1024,7 @@ pub(crate) fn verify_public_asset_origin(content_dir: &Path, base_url: &str) -> 
     })
 }
 
-/// Entry point for `cli assets verify` — reconcile everything the site
+/// Entry point for `navigator ops assets verify` — reconcile everything the site
 /// loads from the public origin against what is actually published there.
 /// That is every `![](img/…)` reference under `content_dir`, every
 /// `views::assets::GALLERY` variant the Rust views render, and the
@@ -1183,7 +1183,7 @@ async fn fetch_referenced_content(content_dir: &Path, base_url: Option<String>, 
     fetch_report_exit(&report, &base_url, out)
 }
 
-/// Entry point for `cli assets fetch-referenced` — hydrate the gitignored
+/// Entry point for `navigator ops assets fetch-referenced` — hydrate the gitignored
 /// `server/public/img/` tree from a public HTTP origin so the `navigator-web`
 /// Docker image can serve content heroes in KIND. No GCP ADC: the origin
 /// is whatever `verify` would probe (`NAVIGATOR_ASSET_BASE_URL` or
@@ -1436,13 +1436,13 @@ fn stub_referenced_content(content_dir: &Path, out: &Path) -> u8 {
     }
 }
 
-/// Entry point for `cli assets stub-referenced`.
+/// Entry point for `navigator ops assets stub-referenced`.
 pub fn run_stub_referenced(content_dir: &Path, out: &Path) -> ExitCode {
     ExitCode::from(stub_referenced_content(content_dir, out))
 }
 
 /// The content type for an asset under `server/public/img/`, keyed off its
-/// extension. The three formats `cli assets build` emits (AVIF/WebP/JPEG)
+/// extension. The three formats `navigator ops assets build` emits (AVIF/WebP/JPEG)
 /// plus `png` for hand-authored blog/illustration heroes are carried;
 /// anything else under `dir` (a stray `.DS_Store`, an editor temp file)
 /// is skipped rather than pushed with a wrong type.
@@ -2948,7 +2948,7 @@ Inline raw-HTML tile: <div>![Team](img/thanks-apple/team-lunch.jpg)</div>\n";
 
     #[tokio::test]
     async fn upload_keys_each_variant_under_img_and_skips_non_images() {
-        // Lay out a slug directory the way `cli assets build` does,
+        // Lay out a slug directory the way `navigator ops assets build` does,
         // plus a stray non-image file that must not be uploaded.
         let dir = TempDir::new().unwrap();
         let slug = dir.path().join("lake-tahoe");

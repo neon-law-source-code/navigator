@@ -534,7 +534,7 @@ pub fn skipped_projected_objects(deployment: &Deployment) -> Result<BTreeSet<Str
     Ok(skipped.into_keys().collect())
 }
 
-/// `navigator ops deployments check --deployments-dir <dir>` — run every
+/// `navigator ops deployments --deployments-dir <dir>` — run every
 /// tree-level gate against whatever tree it is pointed at.
 ///
 /// The workspace suite asserts these against the synthetic tree in
@@ -897,7 +897,7 @@ mod tests {
     /// provisioned rows and arms them.
     ///
     /// `cli/tests/fixtures/deployment-tree/README.md` says what each row is
-    /// for. The real rows are gated by `navigator ops deployments check`, which
+    /// for. The real rows are gated by `navigator ops deployments`, which
     /// runs these same assertions against whatever tree it is pointed at.
     fn fixture_tree() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))

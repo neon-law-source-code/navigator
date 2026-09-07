@@ -2117,30 +2117,30 @@ These files were ported from the Java Caffeine library and are not dual-licensed
 Please refer to the LICENSE-APACHE file for more details on the Apache License 2.0.
 
 ----------------------------------------------------------------------------------------
-arrow 59.1.0
+arrow 59.3.0
 arrow-arith 58.4.0
-arrow-arith 59.1.0
+arrow-arith 59.3.0
 arrow-array 58.4.0
-arrow-array 59.1.0
+arrow-array 59.3.0
 arrow-buffer 58.4.0
-arrow-buffer 59.1.0
+arrow-buffer 59.3.0
 arrow-cast 58.4.0
-arrow-cast 59.1.0
+arrow-cast 59.3.0
 arrow-data 58.4.0
-arrow-data 59.1.0
+arrow-data 59.3.0
 arrow-ipc 58.4.0
-arrow-ipc 59.1.0
+arrow-ipc 59.3.0
 arrow-ord 58.4.0
-arrow-ord 59.1.0
-arrow-row 59.1.0
+arrow-ord 59.3.0
+arrow-row 59.3.0
 arrow-schema 58.4.0
-arrow-schema 59.1.0
+arrow-schema 59.3.0
 arrow-select 58.4.0
-arrow-select 59.1.0
+arrow-select 59.3.0
 arrow-string 58.4.0
-arrow-string 59.1.0
+arrow-string 59.3.0
 parquet 58.4.0
-parquet 59.1.0
+parquet 59.3.0
 
 Apache Arrow
 Copyright 2016-2026 The Apache Software Foundation
@@ -5849,28 +5849,28 @@ Apache License
    limitations under the License.
 
 ----------------------------------------------------------------------------------------
-arrow 59.1.0
+arrow 59.3.0
 arrow-arith 58.4.0
-arrow-arith 59.1.0
+arrow-arith 59.3.0
 arrow-array 58.4.0
-arrow-array 59.1.0
+arrow-array 59.3.0
 arrow-buffer 58.4.0
-arrow-buffer 59.1.0
+arrow-buffer 59.3.0
 arrow-cast 58.4.0
-arrow-cast 59.1.0
+arrow-cast 59.3.0
 arrow-data 58.4.0
-arrow-data 59.1.0
+arrow-data 59.3.0
 arrow-ipc 58.4.0
-arrow-ipc 59.1.0
+arrow-ipc 59.3.0
 arrow-ord 58.4.0
-arrow-ord 59.1.0
-arrow-row 59.1.0
+arrow-ord 59.3.0
+arrow-row 59.3.0
 arrow-schema 58.4.0
-arrow-schema 59.1.0
+arrow-schema 59.3.0
 arrow-select 58.4.0
-arrow-select 59.1.0
+arrow-select 59.3.0
 arrow-string 58.4.0
-arrow-string 59.1.0
+arrow-string 59.3.0
 as-any 0.3.2
 charset 0.1.5
 ciborium 0.2.2
@@ -5892,7 +5892,7 @@ nohash-hasher 0.2.0
 ntapi 0.4.3
 object_store 0.13.2
 parquet 58.4.0
-parquet 59.1.0
+parquet 59.3.0
 peniko 0.6.1
 polycool 0.4.0
 quinn 0.11.11
@@ -7862,9 +7862,9 @@ anstyle-query 1.1.5
 anstyle-wincon 3.0.11
 assert_cmd 2.2.2
 bytecount 0.6.9
-clap 4.6.3
-clap_builder 4.6.2
-clap_derive 4.6.3
+clap 4.6.6
+clap_builder 4.6.6
+clap_derive 4.6.4
 clap_lex 1.1.0
 cobs 0.3.0
 colorchoice 1.0.5
@@ -8945,7 +8945,7 @@ serde_yaml 0.9.34+deprecated
 sif-itree 0.4.1
 subsetter 0.2.6
 syn 2.0.118
-syn 3.0.0
+syn 3.0.5
 thin-vec 0.2.18
 thiserror 1.0.69
 thiserror 2.0.20
@@ -22331,7 +22331,7 @@ DEALINGS IN THE SOFTWARE.
 
 ----------------------------------------------------------------------------------------
 tower-http 0.6.11
-tower-http 0.7.0
+tower-http 0.7.1
 
 Copyright (c) 2019-2021 Tower Contributors
 
@@ -23935,9 +23935,9 @@ anstyle-parse 1.0.0
 anstyle-query 1.1.5
 anstyle-wincon 3.0.11
 assert_cmd 2.2.2
-clap 4.6.3
-clap_builder 4.6.2
-clap_derive 4.6.3
+clap 4.6.6
+clap_builder 4.6.6
+clap_derive 4.6.4
 clap_lex 1.1.0
 colorchoice 1.0.5
 is_terminal_polyfill 1.70.2
@@ -28346,7 +28346,7 @@ SOFTWARE.
 
 ----------------------------------------------------------------------------------------
 arrow-array 58.4.0
-arrow-array 59.1.0
+arrow-array 59.3.0
 
 MIT License
 
@@ -30860,7 +30860,7 @@ servo_arc 0.4.3
 simd_cesu8 1.2.0
 syn 1.0.109
 syn 2.0.118
-syn 3.0.0
+syn 3.0.5
 thin-vec 0.2.18
 thiserror 1.0.69
 thiserror 2.0.20

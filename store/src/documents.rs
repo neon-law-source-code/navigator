@@ -161,6 +161,25 @@ pub struct DocumentIdentity<'a> {
     pub metadata: Option<serde_json::Value>,
 }
 
+/// Inbound-mail provenance for one filed attachment (ENG-517) — the sender,
+/// message id, received timestamp, and subject of the
+/// `email_conversation_message` the bytes came from. A hand-download loses
+/// all four, which is exactly the gap `navigator site mail file` closes.
+///
+/// Deliberately not a field on [`IngestArgs`] or [`DocumentIdentity`]: those
+/// are constructed at roughly two dozen call sites across the workspace, and
+/// only mail filing's one server-side handler ever has this to give. A
+/// separate, `Default`-derived struct threaded through
+/// [`ingest_bytes_with_mail_provenance`] keeps every existing call site
+/// untouched.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct MailProvenance<'a> {
+    pub message_id: &'a str,
+    pub sender: &'a str,
+    pub received_at: &'a str,
+    pub subject: &'a str,
+}
+
 /// What [`ingest_bytes`] writes, returned for the caller to log /
 /// reference / show in a UI.
 #[derive(Debug, Clone)]
@@ -207,6 +226,35 @@ pub async fn ingest_bytes_as(
     identity: &DocumentIdentity<'_>,
     bytes: &[u8],
 ) -> Result<IngestedDocument, IngestError> {
+    ingest_bytes_as_inner(db, storage, args, identity, None, bytes).await
+}
+
+/// [`ingest_bytes_as`], additionally stamping [`MailProvenance`] onto the
+/// inserted row (ENG-517). The one caller is `navigator site mail file`'s
+/// server-side handler; every other ingest lane goes through
+/// [`ingest_bytes_as`] and leaves the four provenance columns unset.
+///
+/// # Errors
+/// Propagates database and storage errors.
+pub async fn ingest_bytes_with_mail_provenance(
+    db: &SurrealDb,
+    storage: &Arc<dyn StorageService>,
+    args: &IngestArgs<'_>,
+    identity: &DocumentIdentity<'_>,
+    provenance: &MailProvenance<'_>,
+    bytes: &[u8],
+) -> Result<IngestedDocument, IngestError> {
+    ingest_bytes_as_inner(db, storage, args, identity, Some(provenance), bytes).await
+}
+
+async fn ingest_bytes_as_inner(
+    db: &SurrealDb,
+    storage: &Arc<dyn StorageService>,
+    args: &IngestArgs<'_>,
+    identity: &DocumentIdentity<'_>,
+    provenance: Option<&MailProvenance<'_>>,
+    bytes: &[u8],
+) -> Result<IngestedDocument, IngestError> {
     if !rules::kind::Kind::parse(args.kind).is_some_and(|k| k.valid_for(rules::kind::Lane::Asset)) {
         return Err(IngestError::InvalidKind(args.kind.to_string()));
     }
@@ -239,7 +287,16 @@ pub async fn ingest_bytes_as(
         storage.put(&storage_key, bytes, args.content_type).await?;
     }
 
-    let asset_id = insert_asset_row(db, args, identity, &storage_key, &sha_hex, byte_size).await?;
+    let asset_id = insert_asset_row(
+        db,
+        args,
+        identity,
+        provenance,
+        &storage_key,
+        &sha_hex,
+        byte_size,
+    )
+    .await?;
 
     Ok(IngestedDocument {
         asset_id,
@@ -287,6 +344,7 @@ async fn insert_asset_row(
     db: &SurrealDb,
     args: &IngestArgs<'_>,
     identity: &DocumentIdentity<'_>,
+    provenance: Option<&MailProvenance<'_>>,
     storage_key: &str,
     sha_hex: &str,
     byte_size: i64,
@@ -309,6 +367,10 @@ async fn insert_asset_row(
              visibility = $visibility, \
              slug = $slug, \
              published_at = $published_at, \
+             source_message_id = $source_message_id, \
+             source_sender = $source_sender, \
+             source_received_at = $source_received_at, \
+             source_subject = $source_subject, \
              metadata = $metadata \
              RETURN {SELECT}"
         ))
@@ -333,6 +395,16 @@ async fn insert_asset_row(
         .bind(("visibility", args.visibility.to_string()))
         .bind(("slug", identity.slug.map(String::from)))
         .bind(("published_at", identity.published_at.map(String::from)))
+        .bind((
+            "source_message_id",
+            provenance.map(|p| p.message_id.to_string()),
+        ))
+        .bind(("source_sender", provenance.map(|p| p.sender.to_string())))
+        .bind((
+            "source_received_at",
+            provenance.map(|p| p.received_at.to_string()),
+        ))
+        .bind(("source_subject", provenance.map(|p| p.subject.to_string())))
         .bind(("metadata", identity.metadata.clone()))
     })
     .await?;

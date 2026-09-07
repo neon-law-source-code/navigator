@@ -229,6 +229,10 @@ mod tests {
             received_at: None,
             description: None,
             visibility: store::documents::visibility::INTERNAL.to_string(),
+            source_message_id: None,
+            source_sender: None,
+            source_received_at: None,
+            source_subject: None,
             inserted_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         }

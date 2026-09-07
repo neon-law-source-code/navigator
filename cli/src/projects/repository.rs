@@ -1039,6 +1039,12 @@ const CHECKOUT_ACTION: &str = "actions/checkout@3d3c42e5aac5ba805825da76410c1812
 const APPLICATION_PUBLISH_ACTION: &str =
     "neon-law-source-code/navigator/.github/actions/application-publish@";
 const SEED_IMPORT_ACTION: &str = "neon-law-source-code/navigator/.github/actions/seed-import@";
+/// The pinned document-verification action the generated `documents` job
+/// calls (#486): offline pointer-shape validation on every event, plus live
+/// verification against the asset record when it runs on push to `main` and
+/// `vars.NAVIGATOR_HOST` is set.
+const DOCUMENT_VERIFY_ACTION: &str =
+    "neon-law-source-code/navigator/.github/actions/document-verify@";
 
 /// The tree-derived condition for generated application steps.
 ///
@@ -1101,6 +1107,12 @@ fn setup_steps() -> String {
 /// reports success for work it never did, and a required check that can be
 /// satisfied by a skip is not a gate.
 ///
+/// `documents` (#486) is the one job outside this fan-in on purpose: its live
+/// half needs a reachable deployment, and `{REQUIRED_CHECK}` must never
+/// depend on that. It still runs unconditionally and no-ops over a
+/// repository carrying no `documents/`, the same way the other three do over
+/// an absent half.
+///
 /// # The pin is an argument, not a literal
 ///
 /// `[scaffold]` refuses to call this with anything [`is_release_tag`] rejects,
@@ -1149,6 +1161,24 @@ jobs:
         with:
           version: "{action_version}"
           project_repository: true
+
+  # Validates every `documents/` pointer offline on every event; on push to
+  # `main` it additionally verifies each one against the live asset record
+  # (#486). Deliberately *not* in `{REQUIRED_CHECK}`'s `needs:` below — its
+  # live half depends on a reachable deployment, which the always-required
+  # check must not. A repository carrying no `documents/` still reports a
+  # real `success`, never a skip.
+  documents:
+    permissions:
+      contents: read
+      id-token: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: {CHECKOUT_ACTION}
+      - uses: {DOCUMENT_VERIFY_ACTION}{action_version}
+        with:
+          version: "{action_version}"
+          host: ${{{{ vars.NAVIGATOR_HOST }}}}
 
   # The one required check. See the doc comment above for why it asserts
   # `needs.<job>.result` explicitly instead of trusting a bare `needs:`.
@@ -1617,6 +1647,31 @@ jobs:
                 "\n  {REQUIRED_CHECK}:\n    needs: [lint, verify, notation]\n"
             )),
             "{generated}"
+        );
+    }
+
+    /// The `documents` job (#486) calls the pinned document-verify action and
+    /// stays outside the required check's `needs:` — its live half depends on
+    /// a reachable deployment, which the always-required check must not.
+    #[test]
+    fn the_documents_job_calls_the_pinned_action_and_is_not_required() {
+        let generated = workflow(FIXTURE_PIN);
+        assert!(generated.contains("\n  documents:\n"), "{generated}");
+        assert!(
+            generated.contains(
+                "- uses: neon-law-source-code/navigator/.github/actions/document-verify@26.8.23"
+            ),
+            "{generated}"
+        );
+        assert!(
+            generated.contains("host: ${{ vars.NAVIGATOR_HOST }}"),
+            "{generated}"
+        );
+        assert!(
+            !generated.contains(&format!(
+                "\n  {REQUIRED_CHECK}:\n    needs: [lint, verify, notation, documents]\n"
+            )),
+            "the documents job must not gate the required check:\n{generated}"
         );
     }
 

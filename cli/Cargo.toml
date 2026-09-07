@@ -33,6 +33,7 @@ live-inquiry.workspace = true
 mcp.workspace = true
 owo-colors.workspace = true
 pdf.workspace = true
+pdf-extract.workspace = true
 portal.workspace = true
 rand.workspace = true
 ravif.workspace = true

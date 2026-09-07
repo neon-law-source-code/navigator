@@ -556,9 +556,12 @@ jobs:
       # sources land on the root disk this job already fights for, and they
       # grow the `~/.cargo` half of the rust-cache archive against a 10 GB
       # repository-wide quota. The `df -h` prices the first. If either bites,
-      # move this pair into its own small job.
+      # move this pair into its own small job. Re-extract the cached archives so
+      # mutable files left in registry/src by an earlier run cannot change the
+      # generated notice text for an unchanged Cargo.lock.
       - name: are the third-party notices current
         run: |
+          rm -rf "${CARGO_HOME:-$HOME/.cargo}/registry/src"
           cargo fetch --locked
           df -h
           "${CARGO_TARGET_DIR:-target}/debug/navigator" ops notices --check

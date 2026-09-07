@@ -1966,6 +1966,103 @@ pub fn document_with_base(base: &str) -> Value {
             }
           }
         },
+        "/app/api/projects/{id}/mail/file": {
+          "post": {
+            "summary": "File an inbound message's attachments into the matter",
+            "description":
+              "Files one inbound message's attachments into the matter, entirely server-side — the raw MIME is read \
+               from object storage and parsed here, so the bytes never reach the caller. Each attachment's slug is \
+               derived from the message id and its position, so re-filing the same message is a no-op. \
+               Authorization: lawyer or admin, and the caller must participate in the matter (out-of-scope → 404). \
+               A missing or blank `kind` is `400 kind_required`; a message with no archived raw MIME is \
+               `400 no_raw_message`. A message with no attachments returns `200` with empty lists rather than an \
+               error. `dry_run` lists what would be filed and writes nothing.",
+            "parameters": [
+              { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+            ],
+            "requestBody": {
+              "required": true,
+              "content": { "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["message_id", "kind"],
+                  "properties": {
+                    "message_id": { "type": "string", "format": "uuid", "description": "The email_conversation_message row to file attachments from" },
+                    "kind": {
+                      "type": "string",
+                      "description": "Required asset-lane document classification, applied to every attachment in this message.",
+                      "enum": ["letter", "filing", "will", "trust", "directive", "agreement", "onboarding", "offboarding", "memo", "transcript", "inbound_contract", "certificate_of_naturalization", "exhibit", "unclassified"]
+                    },
+                    "visibility": { "type": "string", "enum": ["client", "internal"] },
+                    "dry_run": { "type": "boolean", "default": false }
+                  }
+                }
+              } }
+            },
+            "responses": {
+              "200": { "description": "Dry run, or a message with no attachments", "content": { "application/json": { "schema": {
+                "type": "object", "required": ["message_id", "dry_run", "attachments", "filed"], "properties": {
+                  "message_id": { "type": "string", "format": "uuid" },
+                  "dry_run": { "type": "boolean" },
+                  "attachments": { "type": "array", "items": { "type": "object", "required": ["filename", "content_type", "size_bytes"], "properties": {
+                    "filename": { "type": "string" },
+                    "content_type": { "type": "string" },
+                    "size_bytes": { "type": "integer" }
+                  } } },
+                  "filed": { "type": "array", "items": { "type": "object" } }
+                }
+              } } } },
+              "201": { "description": "Every attachment filed, with one pointer each", "content": { "application/json": { "schema": {
+                "type": "object", "required": ["message_id", "dry_run", "attachments", "filed"], "properties": {
+                  "message_id": { "type": "string", "format": "uuid" },
+                  "dry_run": { "type": "boolean" },
+                  "attachments": { "type": "array", "items": { "type": "object" } },
+                  "filed": { "type": "array", "items": { "type": "object", "required": ["kind", "visibility", "current_version"] } }
+                }
+              } } } },
+              "400": { "description": "Missing or blank `kind` (error `kind_required`), or the message has no archived raw MIME (error `no_raw_message`)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+              "401": { "description": "No authenticated session", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+              "403": { "description": "Authenticated caller is not Lawyer/admin", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+              "404": { "description": "No such matter or message, or out of scope", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+              "500": { "description": "An attachment could not be filed", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } }
+            }
+          }
+        },
+        "/app/api/projects/{id}/documents/revisions": {
+          "get": {
+            "summary": "A document's revision chain",
+            "description":
+              "The revision chain of one slugged document, newest first — what `navigator document \
+               log` and `navigator document get --version` read. The slug travels as `?slug=`, never \
+               a path segment, because a slug may itself contain `/`. Authorization: any authenticated \
+               session, applied as the caller's lens — a client sees only published, client-visible \
+               revisions, renumbered over that visible subset so a lawyer-only revision between two \
+               visible ones never shows as a gap. Out-of-scope matter, or a slug with no visible \
+               revision, is `404`.",
+            "parameters": [
+              { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+              { "name": "slug", "in": "query", "required": true, "schema": { "type": "string" } }
+            ],
+            "responses": {
+              "200": { "description": "The revision chain under the caller's lens", "content": { "application/json": { "schema": {
+                "type": "object", "required": ["kind", "revisions"], "properties": {
+                  "kind": { "type": "string" },
+                  "revisions": { "type": "array", "items": { "type": "object", "required": ["version", "asset_id", "created_at", "sha256", "size_bytes", "filename", "operative"], "properties": {
+                    "version": { "type": "integer" },
+                    "asset_id": { "type": "string", "format": "uuid" },
+                    "created_at": { "type": "string" },
+                    "sha256": { "type": "string" },
+                    "size_bytes": { "type": "integer" },
+                    "filename": { "type": "string" },
+                    "operative": { "type": "boolean" }
+                  } } }
+                }
+              } } } },
+              "401": { "description": "No authenticated session", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } },
+              "404": { "description": "No such matter, out of scope, or no visible revision under this slug", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } } }
+            }
+          }
+        },
         "/app/api/notations/{id}/transcript": {
           "post": {
             "summary": "Run a transcript against a notation's questionnaire",

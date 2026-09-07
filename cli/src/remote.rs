@@ -187,16 +187,52 @@ async fn resolve_seed_credential(credential: &SeedCredential) -> Result<(String,
 /// minted Navigator token is held in memory for this process only.
 async fn resolve_ci(host: &str) -> Result<(String, String)> {
     let base = credentials::base_url(host);
+    let client = reqwest::Client::new();
+    let github_token = github_actions_oidc_token(&client, &base).await?;
+    let minted = mint_ci_token(&client, &base, "/auth/ci/seed-token", &github_token).await?;
+    eprintln!(
+        "{}",
+        palette::dim(format!(
+            "minted a project-scoped seed session for {}",
+            minted.project_code
+        ))
+    );
+    Ok((base, minted.token))
+}
+
+/// Exchange the GitHub Actions OIDC ID token for a Navigator session bound to
+/// this repository's live Project, for `navigator document verify --ci`
+/// (#486). Unlike [`resolve_ci`], this session carries no restricting
+/// `scope` — verification only reads, and the resolved actor is always that
+/// Project's own lawyer DRI, so the session already reaches no more than that
+/// person's ordinary login would.
+pub(crate) async fn resolve_ci_document(host: &str) -> Result<(String, String)> {
+    let base = credentials::base_url(host);
+    let client = reqwest::Client::new();
+    let github_token = github_actions_oidc_token(&client, &base).await?;
+    let minted = mint_ci_token(&client, &base, "/auth/ci/document-token", &github_token).await?;
+    eprintln!(
+        "{}",
+        palette::dim(format!(
+            "minted a project-scoped document-verify session for {}",
+            minted.project_code
+        ))
+    );
+    Ok((base, minted.token))
+}
+
+/// Fetch this GitHub Actions run's own OIDC ID token, audienced to `base` —
+/// shared by every `/auth/ci/*` mint.
+async fn github_actions_oidc_token(client: &reqwest::Client, base: &str) -> Result<String> {
     let request_url = std::env::var("ACTIONS_ID_TOKEN_REQUEST_URL").context(
-        "ACTIONS_ID_TOKEN_REQUEST_URL is unset — `navigator site import --ci` runs on GitHub Actions with `id-token: write`",
+        "ACTIONS_ID_TOKEN_REQUEST_URL is unset — this command runs on GitHub Actions with `id-token: write`",
     )?;
     let request_token = std::env::var("ACTIONS_ID_TOKEN_REQUEST_TOKEN").context(
-        "ACTIONS_ID_TOKEN_REQUEST_TOKEN is unset — `navigator site import --ci` runs on GitHub Actions with `id-token: write`",
+        "ACTIONS_ID_TOKEN_REQUEST_TOKEN is unset — this command runs on GitHub Actions with `id-token: write`",
     )?;
-    let client = reqwest::Client::new();
     let github = client
         .get(&request_url)
-        .query(&[("audience", base.as_str())])
+        .query(&[("audience", base)])
         .bearer_auth(&request_token)
         .header(reqwest::header::ACCEPT, "application/json")
         .send()
@@ -212,30 +248,32 @@ async fn resolve_ci(host: &str) -> Result<(String, String)> {
     }
     let github_token: GitHubOidcResponse =
         serde_json::from_str(&github_body).context("parse GitHub Actions OIDC token response")?;
+    Ok(github_token.value)
+}
+
+/// Exchange `github_token` for a Navigator session at one `/auth/ci/*` mint
+/// endpoint.
+async fn mint_ci_token(
+    client: &reqwest::Client,
+    base: &str,
+    mint_path: &str,
+    github_token: &str,
+) -> Result<CiSeedTokenResponse> {
     let minted = client
-        .post(format!("{base}/auth/ci/seed-token"))
-        .json(&serde_json::json!({ "token": github_token.value }))
+        .post(format!("{base}{mint_path}"))
+        .json(&serde_json::json!({ "token": github_token }))
         .send()
         .await
-        .context("POST /auth/ci/seed-token")?;
+        .with_context(|| format!("POST {mint_path}"))?;
     let minted_status = minted.status();
     let minted_body = minted.text().await.unwrap_or_default();
     if !minted_status.is_success() {
         return Err(anyhow!(
-            "CI seed-token mint failed: {minted_status}: {}",
+            "CI token mint at {mint_path} failed: {minted_status}: {}",
             first_line(&minted_body)
         ));
     }
-    let minted: CiSeedTokenResponse =
-        serde_json::from_str(&minted_body).context("parse /auth/ci/seed-token response")?;
-    eprintln!(
-        "{}",
-        palette::dim(format!(
-            "minted a project-scoped seed session for {}",
-            minted.project_code
-        ))
-    );
-    Ok((base, minted.token))
+    serde_json::from_str(&minted_body).with_context(|| format!("parse {mint_path} response"))
 }
 
 #[derive(Debug, Deserialize)]
@@ -255,18 +293,51 @@ struct VisibleProject {
     code: String,
 }
 
+/// One revision as reported by `GET
+/// /app/api/projects/{id}/documents/revisions?slug=` — what `navigator
+/// document log`/`get`/`diff` (#485) read.
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct RevisionSummary {
+    pub(crate) version: usize,
+    pub(crate) asset_id: Uuid,
+    pub(crate) created_at: String,
+    pub(crate) sha256: String,
+    pub(crate) size_bytes: i64,
+    pub(crate) filename: String,
+    pub(crate) operative: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct RevisionsResponse {
+    pub(crate) kind: String,
+    /// Newest first, matching `store::assets::revisions`.
+    pub(crate) revisions: Vec<RevisionSummary>,
+}
+
 /// Authenticated client for the one Project's document-sync operations.
 pub(crate) struct DocumentClient {
     base: String,
     token: String,
     client: reqwest::Client,
     project_id: Uuid,
+    project_code: String,
 }
 
 impl DocumentClient {
     /// Resolve a logged-in host and one visible Project code.
     pub(crate) async fn connect(host: Option<&str>, project_code: &str) -> Result<Self> {
         let (base, token) = resolve(host)?;
+        Self::with_credential(base, token, project_code).await
+    }
+
+    /// Build a client from an already-minted `(base, token)` pair — the
+    /// `navigator document verify --ci` path (#486), which authenticates via
+    /// GitHub Actions OIDC rather than a stored `~/.navigator.json` login.
+    pub(crate) async fn with_credential(
+        base: String,
+        token: String,
+        project_code: &str,
+    ) -> Result<Self> {
         let client = reqwest::Client::new();
         let list = client
             .get(format!("{base}/app/api/projects"))
@@ -294,7 +365,66 @@ impl DocumentClient {
             token,
             client,
             project_id,
+            project_code: project_code.to_string(),
         })
+    }
+
+    /// The revision chain of `slug` under the caller's own lens
+    /// (`GET /app/api/projects/{id}/documents/revisions?slug=`).
+    pub(crate) async fn list_revisions(&self, slug: &str) -> Result<RevisionsResponse> {
+        let url = format!(
+            "{}/app/api/projects/{}/documents/revisions",
+            self.base, self.project_id
+        );
+        let response = self
+            .client
+            .get(&url)
+            .query(&[("slug", slug)])
+            .bearer_auth(&self.token)
+            .send()
+            .await
+            .with_context(|| format!("GET {url}"))?;
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(anyhow!(
+                "no revision of `{slug}` is visible on this matter: {status}: {}",
+                first_line(&text)
+            ));
+        }
+        serde_json::from_str(&text).context("parse document revisions response")
+    }
+
+    /// Fetch one revision's bytes through the existing Project-scoped download
+    /// route — the same cross-project and caller-lens guards the browser's
+    /// download link applies. `reqwest`'s default client follows the redirect
+    /// to a signed storage URL (production) transparently; `FsStorage`
+    /// (local dev) streams bytes directly from the same route.
+    pub(crate) async fn download_revision(&self, asset_id: Uuid) -> Result<Vec<u8>> {
+        let url = format!(
+            "{}/app/projects/{}/documents/{asset_id}/download",
+            self.base, self.project_code
+        );
+        let response = self
+            .client
+            .get(&url)
+            .bearer_auth(&self.token)
+            .send()
+            .await
+            .with_context(|| format!("GET {url}"))?;
+        let status = response.status();
+        if !status.is_success() {
+            let text = response.text().await.unwrap_or_default();
+            return Err(anyhow!(
+                "download of revision {asset_id} failed: {status}: {}",
+                first_line(&text)
+            ));
+        }
+        Ok(response
+            .bytes()
+            .await
+            .context("read revision bytes")?
+            .to_vec())
     }
 
     /// Upload one revision from a local file and return the source-safe
@@ -409,6 +539,63 @@ impl DocumentClient {
         }
         Ok(())
     }
+
+    /// File one inbound message's attachments into the matter
+    /// (`POST /app/api/projects/{id}/mail/file`, #517). Entirely
+    /// server-side: only this JSON response travels back, never the
+    /// attachment bytes.
+    pub(crate) async fn file_mail(
+        &self,
+        message_id: Uuid,
+        kind: &str,
+        visibility: &str,
+        dry_run: bool,
+    ) -> Result<MailFileResponse> {
+        let url = format!(
+            "{}/app/api/projects/{}/mail/file",
+            self.base, self.project_id
+        );
+        let response = self
+            .client
+            .post(&url)
+            .bearer_auth(&self.token)
+            .json(&serde_json::json!({
+                "message_id": message_id,
+                "kind": kind,
+                "visibility": visibility,
+                "dry_run": dry_run,
+            }))
+            .send()
+            .await
+            .with_context(|| format!("POST {url}"))?;
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(anyhow!(
+                "filing message {message_id} failed: {status}: {}",
+                first_line(&text)
+            ));
+        }
+        serde_json::from_str(&text).context("parse mail-file response")
+    }
+}
+
+/// One attachment as `POST /app/api/projects/{id}/mail/file` reports it,
+/// filed or not.
+#[derive(Debug, Deserialize)]
+pub(crate) struct MailFileAttachment {
+    pub(crate) filename: String,
+    pub(crate) content_type: String,
+    pub(crate) size_bytes: usize,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct MailFileResponse {
+    pub(crate) dry_run: bool,
+    pub(crate) attachments: Vec<MailFileAttachment>,
+    /// One pointer per filed attachment, in message-part order. Empty when
+    /// `dry_run`, or when the message carried no attachments.
+    pub(crate) filed: Vec<store::document_pointers::DocumentPointer>,
 }
 
 /// `navigator site document upload --project <code> --file … --kind …`
@@ -485,6 +672,63 @@ pub async fn archive_repository(host: Option<&str>, project_code: &str, dir: &Pa
             palette::dim("asset id:"),
             pointer.current_version.asset_id
         );
+        Ok(())
+    })
+    .await
+}
+
+/// `navigator site mail file --message <id> --project <code> --kind …`
+/// — file one inbound message's attachments into a matter, entirely
+/// server-side (`POST /app/api/projects/{id}/mail/file`, #517). The
+/// attachment bytes never reach this process; only the pointer YAML this
+/// prints and stages under `documents/mail/<message>/` does, so the result
+/// is committable without the bytes ever having transited the checkout.
+/// `--dry-run` writes nothing and only lists what would be filed.
+#[allow(clippy::too_many_arguments)]
+pub async fn mail_file(
+    root: &Path,
+    host: Option<&str>,
+    project_code: &str,
+    message: Uuid,
+    kind: &str,
+    visibility: &str,
+    dry_run: bool,
+) -> ExitCode {
+    run(async {
+        let client = DocumentClient::connect(host, project_code).await?;
+        let response = client.file_mail(message, kind, visibility, dry_run).await?;
+
+        if response.attachments.is_empty() {
+            println!("message {message} has no attachments — nothing to file");
+            return Ok(());
+        }
+
+        if dry_run {
+            for attachment in &response.attachments {
+                println!(
+                    "would file {} ({}, {} bytes)",
+                    attachment.filename, attachment.content_type, attachment.size_bytes
+                );
+            }
+            println!(
+                "{} attachment(s) would be filed",
+                response.attachments.len()
+            );
+            return Ok(());
+        }
+
+        let documents_dir = root
+            .join("documents")
+            .join("mail")
+            .join(message.to_string());
+        std::fs::create_dir_all(&documents_dir)
+            .with_context(|| format!("create {}", documents_dir.display()))?;
+        for (index, pointer) in response.filed.iter().enumerate() {
+            let path = documents_dir.join(format!("{index}.yml"));
+            crate::document_sync::write_pointer_atomically(&path, &pointer.to_yaml()?)?;
+            println!("staged {}", path.display());
+        }
+        println!("{} attachment(s) filed", response.filed.len());
         Ok(())
     })
     .await
@@ -2248,8 +2492,8 @@ mod tests {
 
     use super::{
         archive_repository, candidate_by_name, canonical_choice_value, clause_add, clause_edit,
-        clause_list, document_upload, ensure_no_unused_selections, fetch_status, matter_close,
-        matter_open, notation_approve, notation_create, notation_document,
+        clause_list, document_upload, ensure_no_unused_selections, fetch_status, mail_file,
+        matter_close, matter_open, notation_approve, notation_create, notation_document,
         notation_request_changes, notation_status, notation_update, parse_scripted_selection,
         picker_selection_fields, projects_create, projects_lifecycle, projects_list,
         retainer_approve, retainer_send, scripted_picker_selection_fields, seed, seed_directory,
@@ -2577,6 +2821,183 @@ mod tests {
             .await,
             ExitCode::SUCCESS
         );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn mail_file_dry_run_lists_attachments_and_writes_nothing() {
+        let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+        let server = MockServer::start().await;
+        let server_uri = server.uri();
+        let _env = CredentialsEnv::new(&server_uri);
+        let project_id = Uuid::now_v7();
+        let message_id = Uuid::now_v7();
+
+        Mock::given(method("GET"))
+            .and(path("/app/api/projects"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"id": project_id, "code": "acme"}
+            ])))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path(format!("/app/api/projects/{project_id}/mail/file")))
+            .and(body_json(serde_json::json!({
+                "message_id": message_id,
+                "kind": "exhibit",
+                "visibility": "internal",
+                "dry_run": true,
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "message_id": message_id,
+                "dry_run": true,
+                "attachments": [
+                    {"filename": "photo.png", "content_type": "image/png", "size_bytes": 42}
+                ],
+                "filed": [],
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let root = tempfile::tempdir().unwrap();
+        assert_eq!(
+            mail_file(
+                root.path(),
+                Some(server_uri.as_str()),
+                "acme",
+                message_id,
+                "exhibit",
+                "internal",
+                true,
+            )
+            .await,
+            ExitCode::SUCCESS
+        );
+        assert!(
+            !root.path().join("documents").exists(),
+            "a dry run must write nothing"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn mail_file_stages_one_pointer_per_filed_attachment() {
+        let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+        let server = MockServer::start().await;
+        let server_uri = server.uri();
+        let _env = CredentialsEnv::new(&server_uri);
+        let project_id = Uuid::now_v7();
+        let message_id = Uuid::now_v7();
+        let asset_id = Uuid::now_v7();
+
+        Mock::given(method("GET"))
+            .and(path("/app/api/projects"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"id": project_id, "code": "acme"}
+            ])))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path(format!("/app/api/projects/{project_id}/mail/file")))
+            .and(body_json(serde_json::json!({
+                "message_id": message_id,
+                "kind": "exhibit",
+                "visibility": "internal",
+                "dry_run": false,
+            })))
+            .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+                "message_id": message_id,
+                "dry_run": false,
+                "attachments": [
+                    {"filename": "photo.png", "content_type": "image/png", "size_bytes": 42}
+                ],
+                "filed": [
+                    {
+                        "kind": "exhibit",
+                        "visibility": "internal",
+                        "current_version": {
+                            "version": 1,
+                            "asset_id": asset_id,
+                            "created_at": "2026-09-06T00:00:00Z",
+                            "sha256": "a".repeat(64),
+                            "size_bytes": 42
+                        }
+                    }
+                ],
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let root = tempfile::tempdir().unwrap();
+        assert_eq!(
+            mail_file(
+                root.path(),
+                Some(server_uri.as_str()),
+                "acme",
+                message_id,
+                "exhibit",
+                "internal",
+                false,
+            )
+            .await,
+            ExitCode::SUCCESS
+        );
+        let staged = root
+            .path()
+            .join("documents/mail")
+            .join(message_id.to_string())
+            .join("0.yml");
+        assert!(staged.is_file(), "{}", staged.display());
+        let pointer = store::document_pointers::DocumentPointer::from_yaml(
+            &std::fs::read_to_string(&staged).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(pointer.current_version.asset_id, asset_id);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn mail_file_with_no_attachments_writes_nothing_and_exits_cleanly() {
+        let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+        let server = MockServer::start().await;
+        let server_uri = server.uri();
+        let _env = CredentialsEnv::new(&server_uri);
+        let project_id = Uuid::now_v7();
+        let message_id = Uuid::now_v7();
+
+        Mock::given(method("GET"))
+            .and(path("/app/api/projects"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"id": project_id, "code": "acme"}
+            ])))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path(format!("/app/api/projects/{project_id}/mail/file")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "message_id": message_id,
+                "dry_run": false,
+                "attachments": [],
+                "filed": [],
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let root = tempfile::tempdir().unwrap();
+        assert_eq!(
+            mail_file(
+                root.path(),
+                Some(server_uri.as_str()),
+                "acme",
+                message_id,
+                "exhibit",
+                "internal",
+                false,
+            )
+            .await,
+            ExitCode::SUCCESS
+        );
+        assert!(!root.path().join("documents").exists());
     }
 
     #[tokio::test(flavor = "current_thread")]

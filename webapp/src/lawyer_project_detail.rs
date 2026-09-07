@@ -44,11 +44,24 @@ use crate::people::ViewerRole;
 #[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct ProjectRepositoryPointer(pub Option<String>);
 
+/// The document-upload form's `?error=` flash query.
+#[derive(Deserialize, Default)]
+pub struct DocumentsQuery {
+    #[serde(default)]
+    pub error: Option<String>,
+}
+
 /// One revision in a grouped lawyer document history.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct LawyerDocRevision {
     pub id: String,
     pub filename: String,
+    /// This revision's own stored visibility, as the plain word rendered on
+    /// the page (`"internal"` or `"shared"`) — never an icon or a colour
+    /// alone. A chain's revisions may disagree (an internal draft beside a
+    /// shared executed copy under one slug); that is normal, so each
+    /// revision carries its own value rather than inheriting the row's.
+    pub visibility: String,
 }
 
 /// One document row (the operative filename + id and its revision history).
@@ -56,6 +69,9 @@ pub struct LawyerDocRevision {
 pub struct LawyerDocRow {
     pub id: String,
     pub filename: String,
+    /// The operative revision's visibility, as the plain word rendered in
+    /// the table's Visibility column. See [`LawyerDocRevision::visibility`].
+    pub visibility: String,
     /// Newest-first revisions for a slugged document. Empty for one-off assets.
     pub revisions: Vec<LawyerDocRevision>,
 }
@@ -110,6 +126,10 @@ pub struct LawyerDetailView {
     pub repository_url: Option<String>,
     pub participations: Vec<ParticipationRow>,
     pub documents: Vec<LawyerDocRow>,
+    /// The document-upload form's `?error=` flash, set when a re-upload's
+    /// kind conflicts with the chain it would join.
+    #[serde(default)]
+    pub error: Option<String>,
     /// The upload form's Kind select, as `(value, label)` pairs — every
     /// `rules::kind::Kind::valid_for(Lane::Asset)` value, computed
     /// server-side so the wasm client never needs the `rules` crate.
@@ -150,6 +170,20 @@ async fn dri_names(
         .collect();
     names.sort();
     Ok(names)
+}
+
+/// The Visibility column's plain word — never an icon or a colour alone, so a
+/// lawyer scanning for what the client can see never has to learn a legend.
+/// `"shared"` for `store::documents::visibility::CLIENT`; `"internal"` for
+/// anything else, which is both the stored default and the safe reading of an
+/// unrecognized value.
+#[cfg(feature = "server")]
+fn visibility_word(stored: &str) -> String {
+    if stored == store::documents::visibility::CLIENT {
+        "shared".to_string()
+    } else {
+        "internal".to_string()
+    }
 }
 
 /// The document-upload Kind select's options, as `(value, label)` — every
@@ -195,6 +229,16 @@ pub async fn get_lawyer_project_detail() -> Result<LawyerDetailView, ServerFnErr
         crate::project_calendar::MATTER_COLUMNS,
     );
     let calendar_dir = crate::project_calendar::sort_dir(calendar_query.dir.as_deref());
+    // The document-upload form's `?error=` flash — set when the upload
+    // handler's redirect-on-refusal carries a message (a kind-changed
+    // revision refusal today).
+    let error = dioxus_fullstack_core::FullstackContext::extract::<
+        axum::extract::Query<DocumentsQuery>,
+        _,
+    >()
+    .await
+    .map_or_else(|_| DocumentsQuery::default(), |axum::extract::Query(q)| q)
+    .error;
     let role = dioxus_fullstack_core::FullstackContext::extract::<axum::Extension<ViewerRole>, _>()
         .await
         .map(|axum::Extension(role)| role)
@@ -310,12 +354,14 @@ pub async fn get_lawyer_project_detail() -> Result<LawyerDetailView, ServerFnErr
         .map(|group| LawyerDocRow {
             id: group.current.id.to_string(),
             filename: group.current.filename.unwrap_or_default(),
+            visibility: visibility_word(&group.current.visibility),
             revisions: group
                 .revisions
                 .into_iter()
                 .map(|revision| LawyerDocRevision {
                     id: revision.id.to_string(),
                     filename: revision.filename.unwrap_or_default(),
+                    visibility: visibility_word(&revision.visibility),
                 })
                 .collect(),
         })
@@ -366,6 +412,7 @@ pub async fn get_lawyer_project_detail() -> Result<LawyerDetailView, ServerFnErr
         repository_url,
         participations,
         documents,
+        error,
         asset_kind_choices: asset_kind_choices(),
         csrf_token,
         calendar_sort,
@@ -460,6 +507,70 @@ fn not_found(
         logo,
         csrf_token,
         ..LawyerDetailView::default()
+    }
+}
+
+/// The documents table: any `?error=` flash, then either the empty notice or
+/// the grouped table with its Visibility column — the operative revision's
+/// value in the row, each revision's own value in the expanded history.
+fn documents_table(view: &LawyerDetailView) -> Element {
+    rsx! {
+        if let Some(error) = view.error.as_ref() {
+            p { class: "nav-form-error", role: "alert", "{error}" }
+        }
+        if view.documents.is_empty() {
+            p { class: "projects-empty", "No documents yet." }
+        } else {
+            div { class: "nav-table-wrap",
+                table { class: "nav-table",
+                    thead {
+                        tr {
+                            th { scope: "col", "Filename" }
+                            th { scope: "col", "Visibility" }
+                            th { scope: "col", "Revisions" }
+                            th { scope: "col", "Download" }
+                        }
+                    }
+                    tbody {
+                        for doc in view.documents.iter() {
+                            tr {
+                                td {
+                                    if doc.revisions.is_empty() {
+                                        a { class: "nav-link", href: "/app/projects/{view.code}/documents/{doc.id}", "{doc.filename}" }
+                                    } else {
+                                        details {
+                                            summary {
+                                                a { class: "nav-link", href: "/app/projects/{view.code}/documents/{doc.id}", "{doc.filename}" }
+                                            }
+                                            ul {
+                                                for revision in doc.revisions.iter() {
+                                                    li {
+                                                        a { class: "nav-link", href: "/app/projects/{view.code}/documents/{revision.id}", "{revision.filename}" }
+                                                        " ({revision.visibility}) "
+                                                        a { class: "nav-link", href: "/app/projects/{view.code}/documents/{revision.id}/download", "Download" }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                td { "{doc.visibility}" }
+                                td {
+                                    if doc.revisions.is_empty() {
+                                        "—"
+                                    } else if doc.revisions.len() == 1 {
+                                        "1 revision"
+                                    } else {
+                                        "{doc.revisions.len()} revisions"
+                                    }
+                                }
+                                td { a { class: "nav-link", href: "/app/projects/{view.code}/documents/{doc.id}/download", "Download" } }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -604,57 +715,7 @@ pub fn LawyerProjectDetail() -> Element {
 
             section { class: "lawyer-detail__section project-documents",
                 h2 { "Documents" }
-                if view.documents.is_empty() {
-                    p { class: "projects-empty", "No documents yet." }
-                } else {
-                    div { class: "nav-table-wrap",
-                        table { class: "nav-table",
-                            thead {
-                                tr {
-                                    th { scope: "col", "Filename" }
-                                    th { scope: "col", "Revisions" }
-                                    th { scope: "col", "Download" }
-                                }
-                            }
-                            tbody {
-                                for doc in view.documents.iter() {
-                                    tr {
-                                        td {
-                                            if doc.revisions.is_empty() {
-                                                a { class: "nav-link", href: "/app/projects/{view.code}/documents/{doc.id}", "{doc.filename}" }
-                                            } else {
-                                                details {
-                                                    summary {
-                                                        a { class: "nav-link", href: "/app/projects/{view.code}/documents/{doc.id}", "{doc.filename}" }
-                                                    }
-                                                    ul {
-                                                        for revision in doc.revisions.iter() {
-                                                            li {
-                                                                a { class: "nav-link", href: "/app/projects/{view.code}/documents/{revision.id}", "{revision.filename}" }
-                                                                " "
-                                                                a { class: "nav-link", href: "/app/projects/{view.code}/documents/{revision.id}/download", "Download" }
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        td {
-                                            if doc.revisions.is_empty() {
-                                                "—"
-                                            } else if doc.revisions.len() == 1 {
-                                                "1 revision"
-                                            } else {
-                                                "{doc.revisions.len()} revisions"
-                                            }
-                                        }
-                                        td { a { class: "nav-link", href: "/app/projects/{view.code}/documents/{doc.id}/download", "Download" } }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                {documents_table(&view)}
                 // Real-time upload progress: `upload-progress.js` finds the
                 // form via this field's id and replays the native submit as
                 // an XHR so it can render `upload.loaded` / `upload.total`
@@ -874,7 +935,10 @@ pub fn ParticipationTable(
 
 #[cfg(test)]
 mod tests {
-    use super::{may_govern_lawyer_dri, ParticipationRow, ParticipationTable};
+    use super::{
+        documents_table, may_govern_lawyer_dri, LawyerDetailView, LawyerDocRevision, LawyerDocRow,
+        ParticipationRow, ParticipationTable,
+    };
     use dioxus::prelude::*;
 
     fn row(id: &str, lawyer_dri: bool) -> ParticipationRow {
@@ -961,5 +1025,79 @@ mod tests {
         assert!(!may_govern_lawyer_dri(false, false, false));
         assert!(may_govern_lawyer_dri(true, false, true));
         assert!(may_govern_lawyer_dri(false, true, false));
+    }
+
+    fn view_with_documents(documents: Vec<LawyerDocRow>) -> LawyerDetailView {
+        LawyerDetailView {
+            code: "sample-litigation".to_string(),
+            documents,
+            ..LawyerDetailView::default()
+        }
+    }
+
+    fn render_documents(documents: Vec<LawyerDocRow>) -> String {
+        dioxus_ssr::render_element(documents_table(&view_with_documents(documents)))
+    }
+
+    #[test]
+    fn a_document_with_an_internal_operative_revision_reads_as_internal() {
+        let html = render_documents(vec![LawyerDocRow {
+            id: "00000000-0000-0000-0000-0000000000aa".to_string(),
+            filename: "memo.pdf".to_string(),
+            visibility: "internal".to_string(),
+            revisions: Vec::new(),
+        }]);
+        assert!(html.contains("<td>internal</td>"), "{html}");
+    }
+
+    #[test]
+    fn a_document_with_a_client_visible_operative_revision_reads_as_shared() {
+        let html = render_documents(vec![LawyerDocRow {
+            id: "00000000-0000-0000-0000-0000000000aa".to_string(),
+            filename: "retainer.pdf".to_string(),
+            visibility: "shared".to_string(),
+            revisions: Vec::new(),
+        }]);
+        assert!(html.contains("<td>shared</td>"), "{html}");
+    }
+
+    #[test]
+    fn a_slugless_one_off_asset_still_shows_the_visibility_column() {
+        // Empty `revisions` is exactly the one-off-asset shape (#511's
+        // `NULL`-slug rows never enter a chain), and the column still renders.
+        let html = render_documents(vec![LawyerDocRow {
+            id: "00000000-0000-0000-0000-0000000000aa".to_string(),
+            filename: "inbound-attachment.pdf".to_string(),
+            visibility: "internal".to_string(),
+            revisions: Vec::new(),
+        }]);
+        assert!(html.contains("Visibility"), "{html}");
+        assert!(html.contains("<td>internal</td>"), "{html}");
+    }
+
+    #[test]
+    fn a_chain_whose_revisions_disagree_shows_the_operative_value_and_each_revisions_own() {
+        let html = render_documents(vec![LawyerDocRow {
+            id: "00000000-0000-0000-0000-0000000000aa".to_string(),
+            filename: "agreement.pdf".to_string(),
+            // The operative (newest) revision is shared…
+            visibility: "shared".to_string(),
+            revisions: vec![
+                LawyerDocRevision {
+                    id: "00000000-0000-0000-0000-0000000000ab".to_string(),
+                    filename: "agreement.pdf".to_string(),
+                    visibility: "shared".to_string(),
+                },
+                // …while an earlier draft under the same slug stayed internal.
+                LawyerDocRevision {
+                    id: "00000000-0000-0000-0000-0000000000ac".to_string(),
+                    filename: "agreement.pdf".to_string(),
+                    visibility: "internal".to_string(),
+                },
+            ],
+        }]);
+        assert!(html.contains("<td>shared</td>"), "{html}");
+        assert!(html.contains("(shared)"), "{html}");
+        assert!(html.contains("(internal)"), "{html}");
     }
 }

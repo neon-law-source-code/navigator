@@ -124,6 +124,10 @@ erDiagram
         string sha256_hex
         option_string slug
         option_string source
+        option_string source_message_id
+        option_string source_received_at
+        option_string source_sender
+        option_string source_subject
         string storage_key
         datetime updated_at
         string visibility

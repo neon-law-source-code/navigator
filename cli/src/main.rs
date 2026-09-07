@@ -9,6 +9,7 @@ mod assets;
 mod credentials;
 mod devx;
 mod docs;
+mod document_read;
 mod document_sync;
 mod erd;
 mod firms_doctor;
@@ -352,6 +353,16 @@ enum Command {
     Site {
         #[command(subcommand)]
         action: SiteCmd,
+    },
+
+    /// Read a matter document's revision chain from a checkout.
+    ///
+    /// The offline workbench for a filed document, the way `navigator
+    /// notations` is for `templates/notations/`. Uploading stays `navigator
+    /// site document upload`; these are read-only.
+    Document {
+        #[command(subcommand)]
+        action: DocumentReadAction,
     },
 
     // ─────────────── Operator ───────────────
@@ -738,6 +749,11 @@ enum SiteCmd {
     Document {
         #[command(subcommand)]
         action: DocumentAction,
+    },
+    /// File an inbound email's attachments on a live site.
+    Mail {
+        #[command(subcommand)]
+        action: MailAction,
     },
     /// Authenticate to a live Neon Law Navigator site via a browser-loopback
     /// flow and store a short-lived (1h) bearer token at
@@ -1669,6 +1685,79 @@ enum DocumentAction {
 }
 
 #[derive(Subcommand)]
+enum MailAction {
+    /// File one inbound message's attachments into a matter, without the
+    /// bytes ever touching this checkout.
+    #[command(after_long_help = DOCUMENT_UPLOAD_KIND_HELP)]
+    File {
+        #[command(flatten)]
+        host: HostOpt,
+        /// Matter code (human-facing) to file into.
+        #[arg(long)]
+        project: String,
+        /// `email_conversation_message` row id naming the inbound hop.
+        #[arg(long)]
+        message: uuid::Uuid,
+        /// Required asset-lane kind, applied to every attachment.
+        #[arg(long, value_parser = parse_asset_kind)]
+        kind: String,
+        /// `client` makes every filed attachment client-visible; default `internal`.
+        #[arg(long, value_parser = parse_document_visibility, default_value = "internal")]
+        visibility: String,
+        /// List what would be filed, with size and content type; write nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
+}
+
+/// Read one matter document's revision chain from a checkout.
+///
+/// Each verb takes a pointer path below `documents/` (the committed `.yml`,
+/// or the staged binary it names) and resolves the Project from
+/// `navigator.yaml` at `.` and the document slug from that path, so a lawyer
+/// names a file rather than an id.
+#[derive(Subcommand)]
+enum DocumentReadAction {
+    /// The revision chain, newest first, marking the operative row.
+    Log {
+        /// Path below `documents/`, such as `documents/pleadings/motion.pdf.yml`.
+        pointer: PathBuf,
+    },
+    /// Fetch one revision to a local path, verified by `sha256` and size
+    /// before success is reported. Refuses a destination inside `documents/`.
+    Get {
+        pointer: PathBuf,
+        /// Revision number to fetch. Defaults to the operative revision under
+        /// your lens.
+        #[arg(long)]
+        version: Option<usize>,
+        /// Where to write the fetched bytes. Must be outside `documents/`.
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// A text redline between two revision numbers. PDF and plain text only;
+    /// any other type is reported unsupported rather than diffed as bytes.
+    Diff {
+        pointer: PathBuf,
+        a: usize,
+        b: usize,
+    },
+    /// Validate every pointer offline, or against the live record with `--ci`.
+    Verify {
+        /// Directory to walk.
+        #[arg(default_value = ".")]
+        dir: PathBuf,
+        /// Verify against the live asset record via GitHub Actions OIDC,
+        /// rather than only checking pointer shape offline.
+        #[arg(long, requires = "host")]
+        ci: bool,
+        /// Host to mint a CI session against. Required with `--ci`.
+        #[arg(long)]
+        host: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
 enum NotationAction {
     /// Create a questionnaire-driven notation on an existing matter and
     /// leave its questionnaire ready for the site intake flow.
@@ -1889,8 +1978,40 @@ fn main() -> ExitCode {
             SiteCmd::Whoami { host } => login::run_whoami(host.as_deref()),
             SiteCmd::Mcp { host } => runtime().block_on(mcp_bridge::run(host.as_deref())),
             SiteCmd::Document { action } => runtime().block_on(run_document(action)),
+            SiteCmd::Mail { action } => match action {
+                MailAction::File {
+                    host,
+                    project,
+                    message,
+                    kind,
+                    visibility,
+                    dry_run,
+                } => runtime().block_on(remote::mail_file(
+                    std::path::Path::new("."),
+                    host.host.as_deref(),
+                    &project,
+                    message,
+                    &kind,
+                    &visibility,
+                    dry_run,
+                )),
+            },
             SiteCmd::Projects { action } => runtime().block_on(run_projects(action)),
             SiteCmd::Notation { action } => runtime().block_on(run_notation(action)),
+        },
+        Command::Document { action } => match action {
+            DocumentReadAction::Log { pointer } => runtime().block_on(document_read::log(&pointer)),
+            DocumentReadAction::Get {
+                pointer,
+                version,
+                out,
+            } => runtime().block_on(document_read::get(&pointer, version, &out)),
+            DocumentReadAction::Diff { pointer, a, b } => {
+                runtime().block_on(document_read::diff(&pointer, a, b))
+            }
+            DocumentReadAction::Verify { dir, ci, host } => {
+                runtime().block_on(document_read::verify(&dir, ci, host.as_deref()))
+            }
         },
         Command::Notations { action } => match action {
             NotationsCmd::Format { file } => format::run(&file),

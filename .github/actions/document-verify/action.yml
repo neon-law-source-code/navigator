@@ -1,0 +1,140 @@
+name: navigator document verify
+description: >-
+  Validate every documents/ pointer offline; on push to main with a
+  configured host, additionally exchange this GitHub Actions OIDC identity
+  for a project-scoped Navigator session and verify each pointer against
+  the live asset record.
+
+# A Project repository's gate.yml runs this on every event (#486). The job
+# must have `id-token: write` for the live half; an empty or missing `host`,
+# or any event other than a push to `main`, runs offline pointer-shape
+# validation only and mints no session. The minted Navigator session never
+# appears in argv, logs, or repository secrets — GitHub's OIDC token is
+# requested from the runner environment and exchanged at
+# `POST /auth/ci/document-token`.
+#
+# Consuming repository:
+#
+#     permissions:
+#       contents: read
+#       id-token: write
+#     steps:
+#       - uses: neon-law-source-code/navigator/.github/actions/document-verify@YY.M.D
+#         with:
+#           version: "YY.M.D"
+#           host: ${{ vars.NAVIGATOR_HOST }}
+#
+# `version` is required and must be an exact tag. A repository with no
+# `documents/` directory is a no-op, so it still satisfies this job with a
+# real success rather than a skip.
+
+inputs:
+  version:
+    description: >-
+      Exact immutable release tag to download, shaped `YY.M.D` or
+      `YY.M.D-hotfix.N`. Required and never `latest`.
+    required: true
+  host:
+    description: >-
+      Deployment host to verify against on push to main, such as
+      `staging.neonlaw.com`. Leave empty (or on any other event) to run
+      offline pointer-shape validation only.
+    required: false
+    default: ""
+  dir:
+    description: Directory to walk for a `documents/` tree.
+    required: false
+    default: "."
+  token:
+    description: >-
+      Token used to download the release asset. The default `github.token` is
+      enough when the Navigator repository is public or the caller lives in the
+      same organization.
+    required: false
+    default: ${{ github.token }}
+
+runs:
+  using: composite
+  steps:
+    - name: download and install the navigator CLI
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        GH_TOKEN: ${{ inputs.token }}
+        ACTION_REPO: ${{ github.action_repository }}
+      run: |
+        set -euo pipefail
+
+        if [ -z "${VERSION}" ]; then
+            echo "::error::'version' is required — pass the exact immutable release tag."
+            exit 1
+        fi
+        case "${VERSION}" in
+            latest|main|HEAD)
+                echo "::error::'version' must be an exact release tag, not '${VERSION}'."
+                exit 1
+                ;;
+        esac
+
+        case "${RUNNER_OS}" in
+            Linux)  platform=linux  ;;
+            macOS)  platform=macos  ;;
+            *)
+                echo "::error::unsupported runner OS '${RUNNER_OS}' — use a Linux or macOS runner."
+                exit 1
+                ;;
+        esac
+
+        repo="${ACTION_REPO:-neon-law-source-code/navigator}"
+        asset="navigator-${VERSION}-${platform}.tar.gz"
+        tmp="$(mktemp -d)"
+
+        echo "Downloading ${asset} from ${repo}@${VERSION}"
+        if ! gh release download "${VERSION}" \
+            --repo "${repo}" \
+            --pattern "${asset}" \
+            --dir "${tmp}" \
+            --clobber; then
+            echo "::error::could not download ${asset} from ${repo}. If ${repo} is private and this workflow lives in another organization, pass a PAT with contents:read as the 'token' input."
+            exit 1
+        fi
+
+        tar -xzf "${tmp}/${asset}" -C "${tmp}" navigator
+        install -d "${RUNNER_TEMP}/navigator-bin"
+        install -m 0755 "${tmp}/navigator" "${RUNNER_TEMP}/navigator-bin/navigator"
+        echo "${RUNNER_TEMP}/navigator-bin" >> "${GITHUB_PATH}"
+
+    - name: verify the installed CLI reports the pinned tag
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        reported="$(navigator --version)"
+        echo "navigator --version → ${reported}"
+        case "${reported}" in
+            *"${VERSION}"*) ;;
+            *)
+                echo "::error::expected navigator ${VERSION}, got '${reported}'."
+                exit 1
+                ;;
+        esac
+
+    - name: navigator document verify
+      shell: bash
+      env:
+        HOST: ${{ inputs.host }}
+        DIR: ${{ inputs.dir }}
+        EVENT_NAME: ${{ github.event_name }}
+        REF: ${{ github.ref }}
+      run: |
+        set -euo pipefail
+        if [ ! -d "${DIR}/documents" ]; then
+            echo "no ${DIR}/documents — nothing to verify"
+            exit 0
+        fi
+        if [ -n "${HOST}" ] && [ "${EVENT_NAME}" = "push" ] && [ "${REF}" = "refs/heads/main" ]; then
+            navigator document verify "${DIR}" --ci --host "${HOST}"
+        else
+            navigator document verify "${DIR}"
+        fi

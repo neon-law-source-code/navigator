@@ -11,9 +11,25 @@ use crate::remote::DocumentClient;
 const GITIGNORE: &str = "*\n!*/\n!*.yml\n!.gitignore\n";
 
 #[derive(Deserialize)]
-struct ProjectManifest {
-    project: String,
-    host: Option<String>,
+pub(crate) struct ProjectManifest {
+    pub(crate) project: String,
+    pub(crate) host: Option<String>,
+}
+
+/// Read and validate `<root>/navigator.yaml` — the one manifest every
+/// document command (`sync`, and the read verbs under `navigator document`)
+/// resolves its Project and login host from.
+pub(crate) fn read_manifest(root: &Path) -> Result<ProjectManifest> {
+    let manifest_path = root.join("navigator.yaml");
+    let manifest: ProjectManifest = serde_yaml::from_str(
+        &std::fs::read_to_string(&manifest_path)
+            .with_context(|| format!("read {}", manifest_path.display()))?,
+    )
+    .context("parse navigator.yaml")?;
+    if manifest.project.trim().is_empty() {
+        return Err(anyhow!("navigator.yaml must name a Project"));
+    }
+    Ok(manifest)
 }
 
 /// Synchronize the current Project repository's staged documents.
@@ -28,16 +44,7 @@ pub(crate) async fn run(root: &Path, dry_run: bool) -> ExitCode {
 }
 
 async fn sync(root: &Path, dry_run: bool) -> Result<()> {
-    let manifest_path = root.join("navigator.yaml");
-    let manifest: ProjectManifest = serde_yaml::from_str(
-        &std::fs::read_to_string(&manifest_path)
-            .with_context(|| format!("read {}", manifest_path.display()))?,
-    )
-    .context("parse navigator.yaml")?;
-    if manifest.project.trim().is_empty() {
-        return Err(anyhow!("navigator.yaml must name a Project"));
-    }
-
+    let manifest = read_manifest(root)?;
     let documents = root.join("documents");
     let (binaries, pointers) = discover(&documents)?;
     if dry_run {
@@ -150,7 +157,7 @@ fn content_type(path: &Path) -> &'static str {
     }
 }
 
-fn slash_path(path: &Path) -> Result<String> {
+pub(crate) fn slash_path(path: &Path) -> Result<String> {
     let parts = path
         .components()
         .map(|part| {
@@ -169,13 +176,15 @@ fn display_relative(root: &Path, path: &Path) -> String {
         .unwrap_or_else(|| path.display().to_string())
 }
 
-fn write_pointer_atomically(path: &Path, yaml: &str) -> Result<()> {
+pub(crate) fn write_pointer_atomically(path: &Path, yaml: &str) -> Result<()> {
     let temp = PathBuf::from(format!("{}.tmp-{}", path.display(), uuid::Uuid::now_v7()));
     std::fs::write(&temp, yaml).with_context(|| format!("write {}", temp.display()))?;
     std::fs::rename(&temp, path).with_context(|| format!("publish {}", path.display()))
 }
 
-fn read_pointer(path: &Path) -> Result<Option<store::document_pointers::DocumentPointer>> {
+pub(crate) fn read_pointer(
+    path: &Path,
+) -> Result<Option<store::document_pointers::DocumentPointer>> {
     match std::fs::read_to_string(path) {
         Ok(raw) => store::document_pointers::DocumentPointer::from_yaml(&raw)
             .with_context(|| format!("validate {}", path.display()))

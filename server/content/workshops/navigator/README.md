@@ -14,12 +14,6 @@ The fixture seeds two more matters beside it — `sample-transactional` and `sam
 project list has something in it. The exercises stay on one matter on purpose; the other two are there to be seen from
 `/app/projects`, not worked.
 
-**Public brand hosts**
-
-The same local `web` process resolves its public face from the host. In staging, use `staging.neonlaw.com` for Neon Law,
-`staging.deleteyourdata.com` for DeleteYourData.com, and `staging.lawyershook.com` for Lawyer Shook. The route and
-application stay shared; the host selects the brand's copy, mark, font, and colour layer.
-
 ## Intro
 
 ### Learning objectives
@@ -60,6 +54,10 @@ Point out the code in the portal URL. It is the stable, human-readable project i
 ## Develop locally
 
 ### Start the local room
+
+The same local `web` process resolves its public face from the host. In staging, use `staging.neonlaw.com` for Neon Law,
+`staging.deleteyourdata.com` for DeleteYourData.com, and `staging.lawyershook.com` for Lawyer Shook. The route and
+application stay shared; the host selects the brand's copy, mark, font, and colour layer.
 
 The Navigator CLI owns the complete local lifecycle. From a New Worktree, run:
 

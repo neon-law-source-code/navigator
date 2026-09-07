@@ -214,7 +214,7 @@ walkdir = "2.5"
 webapp = { path = "webapp" }
 wiremock = "0.6"
 workflows = { path = "workflows" }
-restate-sdk = "0.11"
+restate-sdk = "0.12"
 restate-jwt = { package = "jsonwebtoken", version = "10.4", default-features = false, features = ["rust_crypto"] }
 serde_yaml = "0.9"
 chrono = { version = "0.4", default-features = false, features = ["serde", "clock", "std"] }

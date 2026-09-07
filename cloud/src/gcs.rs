@@ -54,6 +54,15 @@ impl GcsStorageConfig {
         Self::surreal_archives_from_lookup(|k| std::env::var(k).ok())
     }
 
+    /// Iceberg-archive variant. Every deployment names the dedicated
+    /// analytical archive bucket explicitly, with no fallback to
+    /// `NAVIGATOR_STORAGE_BUCKET` on either backend: KIND provisions its
+    /// own dedicated Garage bucket for this lane, so there is no
+    /// single-bucket topology to fall back to. See ENG-209/ENG-214.
+    pub fn archives_from_env() -> Result<Self, StorageError> {
+        Self::archives_from_lookup(|k| std::env::var(k).ok())
+    }
+
     pub fn from_lookup<F: Fn(&str) -> Option<String>>(get: F) -> Result<Self, StorageError> {
         // Bucket name resolution has a precedence chain so a single
         // workload can name its bucket specifically without disturbing
@@ -103,6 +112,19 @@ impl GcsStorageConfig {
             .ok_or(StorageError::MissingEnv(
                 "NAVIGATOR_SURREAL_ARCHIVES_BUCKET",
             ))?;
+        Ok(Self {
+            bucket,
+            endpoint: Self::endpoint(&get),
+        })
+    }
+
+    /// See [`archives_from_env`](Self::archives_from_env).
+    pub fn archives_from_lookup<F: Fn(&str) -> Option<String>>(
+        get: F,
+    ) -> Result<Self, StorageError> {
+        let bucket = get("NAVIGATOR_ARCHIVES_BUCKET")
+            .filter(|value| !value.is_empty())
+            .ok_or(StorageError::MissingEnv("NAVIGATOR_ARCHIVES_BUCKET"))?;
         Ok(Self {
             bucket,
             endpoint: Self::endpoint(&get),
@@ -858,6 +880,58 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(err, StorageError::Unsupported(_)), "got {err:?}");
+    }
+
+    #[test]
+    fn archives_lane_resolves_its_dedicated_bucket() {
+        use std::collections::HashMap;
+        let map: HashMap<&str, &str> = HashMap::from([
+            ("NAVIGATOR_ARCHIVES_BUCKET", "neon-law-archives-staging"),
+            ("NAVIGATOR_STORAGE_BUCKET", "worktree-exports"),
+        ]);
+        let cfg = GcsStorageConfig::archives_from_lookup(|key| {
+            map.get(key).map(|value| (*value).to_string())
+        })
+        .unwrap();
+        assert_eq!(cfg.bucket, "neon-law-archives-staging");
+    }
+
+    #[test]
+    fn archives_lane_requires_its_dedicated_bucket_with_no_fallback() {
+        use std::collections::HashMap;
+        // Even with the generic bucket AND the documents bucket set, the
+        // archives lane must not borrow either — KIND provisions its own
+        // dedicated bucket (ENG-214), so there is no confidentiality
+        // boundary this lane may cross by falling back.
+        let map: HashMap<&str, &str> = HashMap::from([
+            ("NAVIGATOR_DOCUMENTS_BUCKET", "proj-documents"),
+            ("NAVIGATOR_STORAGE_BUCKET", "worktree-exports"),
+        ]);
+        let error = GcsStorageConfig::archives_from_lookup(|key| {
+            map.get(key).map(|value| (*value).to_string())
+        })
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            StorageError::MissingEnv("NAVIGATOR_ARCHIVES_BUCKET")
+        ));
+    }
+
+    #[test]
+    fn archives_lane_treats_the_empty_string_as_absent() {
+        use std::collections::HashMap;
+        let map: HashMap<&str, &str> = HashMap::from([
+            ("NAVIGATOR_ARCHIVES_BUCKET", ""),
+            ("NAVIGATOR_STORAGE_BUCKET", "worktree-exports"),
+        ]);
+        let error = GcsStorageConfig::archives_from_lookup(|key| {
+            map.get(key).map(|value| (*value).to_string())
+        })
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            StorageError::MissingEnv("NAVIGATOR_ARCHIVES_BUCKET")
+        ));
     }
 
     #[test]

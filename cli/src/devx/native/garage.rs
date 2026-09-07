@@ -6,7 +6,7 @@
 //! `kubectl exec garage-0 -- /garage …`
 //! ([`super::super::garage::provision`]); this module runs the identical
 //! command sequence against a local config file. Only the transport
-//! changes — the layout assignment, the four lane keys, the four
+//! changes — the layout assignment, the seven lane keys, the seven
 //! buckets, and the grants are the same operations in the same order,
 //! and the output parsing is literally the same code.
 //!
@@ -37,6 +37,8 @@ const LANES: &[&str] = &[
     "navigator-assets",
     "navigator-applications",
     "navigator-exports",
+    "navigator-archives",
+    "navigator-telemetry",
     "navigator-lfs",
 ];
 
@@ -207,11 +209,14 @@ pub(super) fn provision(root: &Path) -> Result<Credentials> {
         .next()
         .context("the applications lane key is missing")?;
     let _exports = minted.next().context("the exports lane key is missing")?;
+    let archives = minted.next().context("the archives lane key is missing")?;
+    let _telemetry = minted.next().context("the telemetry lane key is missing")?;
     let lfs = minted.next().context("the LFS lane key is missing")?;
     Ok(Credentials {
         documents,
         assets,
         applications,
+        archives,
         lfs,
     })
 }
@@ -348,8 +353,10 @@ mod tests {
         assert_eq!(node_id(""), None);
     }
 
-    /// `render_env_for` names five buckets. Provisioning a different set
-    /// renders an environment pointing at storage that was never created.
+    /// `render_env_for` names six buckets under their own env vars (the
+    /// seventh, telemetry, is provisioned for a future consumer — see
+    /// ENG-206). Provisioning a different set renders an environment
+    /// pointing at storage that was never created.
     #[test]
     fn every_bucket_the_environment_names_is_provisioned() {
         for bucket in [
@@ -357,10 +364,11 @@ mod tests {
             "navigator-assets",
             "navigator-applications",
             "navigator-exports",
+            "navigator-archives",
             "navigator-lfs",
         ] {
             assert!(LANES.contains(&bucket), "{bucket} is not provisioned");
         }
-        assert_eq!(LANES.len(), 5);
+        assert_eq!(LANES.len(), 7);
     }
 }

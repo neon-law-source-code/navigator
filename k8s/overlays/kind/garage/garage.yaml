@@ -14,6 +14,8 @@ data:
   surreal_archives_bucket: navigator-exports
   assets_bucket: navigator-assets
   applications_bucket: navigator-applications
+  archives_bucket: navigator-archives
+  telemetry_bucket: navigator-telemetry
   lfs_bucket: navigator-lfs
   garage.toml: |
     metadata_dir = "/var/lib/garage/meta"

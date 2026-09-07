@@ -830,12 +830,14 @@ runtime environment and the KIND secrets; they are never suitable for a public d
 | Storage buckets | `NAVIGATOR_STORAGE_BUCKET`, `NAVIGATOR_ASSETS_BUCKET`, `NAVIGATOR_LFS_BUCKET` |
 | Applications bucket | `NAVIGATOR_APPLICATIONS_BUCKET` |
 | SurrealDB operational archive bucket | `NAVIGATOR_SURREAL_ARCHIVES_BUCKET` |
-| Archive buckets | `NAVIGATOR_ICEBERG_BUCKET`, `NAVIGATOR_TELEMETRY_BUCKET` |
+| Iceberg-archive bucket | `NAVIGATOR_ARCHIVES_BUCKET` |
+| Cloud-only archive buckets (`ops gcp setup`, not locally generated) | `NAVIGATOR_TELEMETRY_BUCKET` |
 | Storage region | `NAVIGATOR_STORAGE_REGION` |
 | Documents credentials | `NAVIGATOR_STORAGE_ACCESS_KEY`, `NAVIGATOR_STORAGE_SECRET_KEY` |
 | Assets credentials | `NAVIGATOR_ASSETS_ACCESS_KEY`, `NAVIGATOR_ASSETS_SECRET_KEY` |
 | Applications credentials | `NAVIGATOR_APPLICATIONS_ACCESS_KEY`, `NAVIGATOR_APPLICATIONS_SECRET_KEY` |
 | LFS credentials | `NAVIGATOR_LFS_ACCESS_KEY`, `NAVIGATOR_LFS_SECRET_KEY` |
+| Iceberg-archive credentials | `NAVIGATOR_ARCHIVES_ACCESS_KEY`, `NAVIGATOR_ARCHIVES_SECRET_KEY` |
 | Browser OIDC | `OAUTH_ISSUER_URL`, `OAUTH_CLIENT_ID`, `OAUTH_CLIENT_SECRET`, `OAUTH_REDIRECT_URI`, `SESSION_SECRET` |
 | Sign in with Microsoft | `OAUTH_MICROSOFT_CLIENT_ID`, `OAUTH_MICROSOFT_CLIENT_SECRET` |
 | Microsoft tenant gate | `OAUTH_MICROSOFT_ALLOWED_TENANTS`, `OAUTH_MICROSOFT_ISSUER_URL` |
@@ -930,6 +932,8 @@ that credential in each deployment's `secrets.enc.yaml` at the same time.
 | Assets S3 key | `NAVIGATOR_ASSETS_ACCESS_KEY`, `NAVIGATOR_ASSETS_SECRET_KEY` |
 | LFS S3 key | `NAVIGATOR_LFS_ACCESS_KEY`, `NAVIGATOR_LFS_SECRET_KEY` |
 | Exports S3 key | `NAVIGATOR_EXPORTS_ACCESS_KEY`, `NAVIGATOR_EXPORTS_SECRET_KEY` |
+| Iceberg-archive bucket | `NAVIGATOR_ARCHIVES_BUCKET` |
+| Iceberg-archive S3 key | `NAVIGATOR_ARCHIVES_ACCESS_KEY`, `NAVIGATOR_ARCHIVES_SECRET_KEY` |
 | Sessions | `SESSION_SECRET` |
 | Restate client | `RESTATE_BROKER_URL`, `RESTATE_AUTH_TOKEN`, `RESTATE_SERVICE` |
 | Trigger ingress | `RESTATE_INGRESS_URL` |

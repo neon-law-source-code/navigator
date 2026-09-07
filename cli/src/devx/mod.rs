@@ -596,7 +596,7 @@ pub enum GcpCmd {
         /// long-term storage lives. Omit to skip the lane entirely — there is
         /// no derived default, because the name is prefix-shaped rather than
         /// `<project-id>-`-shaped.
-        #[arg(long, env = "NAVIGATOR_ICEBERG_BUCKET")]
+        #[arg(long, env = "NAVIGATOR_ARCHIVES_BUCKET")]
         archives_bucket: Option<String>,
         /// Telemetry landing zone (`<deployment>-telemetry`), where the `OTel`
         /// collector writes Parquet before the nightly lane promotes it into
@@ -1890,6 +1890,11 @@ fn render_env_for(cfg: &KindConfig, db_name: &str, web_port: u16, root: &Path) -
             "navigator-applications".into(),
         ),
         ("NAVIGATOR_LFS_BUCKET", "navigator-lfs".into()),
+        // The dedicated Iceberg-archive bucket — distinct from
+        // NAVIGATOR_STORAGE_BUCKET above, with its own Garage key pair, so
+        // the nightly `archives` promotion (ENG-206) can be exercised
+        // locally without borrowing the documents bucket.
+        ("NAVIGATOR_ARCHIVES_BUCKET", "navigator-archives".into()),
         ("NAVIGATOR_STORAGE_REGION", "garage".into()),
         (
             "NAVIGATOR_STORAGE_ACCESS_KEY",
@@ -1931,6 +1936,17 @@ fn render_env_for(cfg: &KindConfig, db_name: &str, web_port: u16, root: &Path) -
         (
             "NAVIGATOR_LFS_SECRET_KEY",
             env_string("NAVIGATOR_GARAGE_LFS_SECRET_KEY", "navigator-lfs-secret"),
+        ),
+        (
+            "NAVIGATOR_ARCHIVES_ACCESS_KEY",
+            env_string("NAVIGATOR_GARAGE_ARCHIVES_ACCESS_KEY", "navigator-archives"),
+        ),
+        (
+            "NAVIGATOR_ARCHIVES_SECRET_KEY",
+            env_string(
+                "NAVIGATOR_GARAGE_ARCHIVES_SECRET_KEY",
+                "navigator-archives-secret",
+            ),
         ),
         ("OAUTH_ISSUER_URL", rauthy_issuer(cfg.rauthy_port)),
         ("OAUTH_CLIENT_ID", "navigator-web".into()),

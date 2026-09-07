@@ -19,6 +19,7 @@ pub(super) struct Credentials {
     pub documents: LaneCredentials,
     pub assets: LaneCredentials,
     pub applications: LaneCredentials,
+    pub archives: LaneCredentials,
     pub lfs: LaneCredentials,
 }
 
@@ -107,12 +108,16 @@ pub(super) fn provision(namespace: &str) -> Result<Credentials> {
     let assets = create_key(namespace, "navigator-assets")?;
     let applications = create_key(namespace, "navigator-applications")?;
     let exports = create_key(namespace, "navigator-exports")?;
+    let archives = create_key(namespace, "navigator-archives")?;
+    let telemetry = create_key(namespace, "navigator-telemetry")?;
     let lfs = create_key(namespace, "navigator-lfs")?;
     for (bucket, key_name) in [
         ("navigator-documents", "navigator-documents"),
         ("navigator-assets", "navigator-assets"),
         ("navigator-applications", "navigator-applications"),
         ("navigator-exports", "navigator-exports"),
+        ("navigator-archives", "navigator-archives"),
+        ("navigator-telemetry", "navigator-telemetry"),
         ("navigator-lfs", "navigator-lfs"),
     ] {
         garage_allow_failure(namespace, &["bucket", "create", bucket])?;
@@ -125,11 +130,13 @@ pub(super) fn provision(namespace: &str) -> Result<Credentials> {
     }
 
     let manifest = format!(
-        "apiVersion: v1\nkind: Secret\nmetadata:\n  name: {S3_SECRET}\n  namespace: {namespace}\ntype: Opaque\nstringData:\n  access_key: {}\n  secret_key: {}\n  assets_access_key: {}\n  assets_secret_key: {}\n  applications_access_key: {}\n  applications_secret_key: {}\n  exports_access_key: {}\n  exports_secret_key: {}\n  lfs_access_key: {}\n  lfs_secret_key: {}\n",
+        "apiVersion: v1\nkind: Secret\nmetadata:\n  name: {S3_SECRET}\n  namespace: {namespace}\ntype: Opaque\nstringData:\n  access_key: {}\n  secret_key: {}\n  assets_access_key: {}\n  assets_secret_key: {}\n  applications_access_key: {}\n  applications_secret_key: {}\n  exports_access_key: {}\n  exports_secret_key: {}\n  archives_access_key: {}\n  archives_secret_key: {}\n  telemetry_access_key: {}\n  telemetry_secret_key: {}\n  lfs_access_key: {}\n  lfs_secret_key: {}\n",
         documents.access_key, documents.secret_key,
         assets.access_key, assets.secret_key,
         applications.access_key, applications.secret_key,
         exports.access_key, exports.secret_key,
+        archives.access_key, archives.secret_key,
+        telemetry.access_key, telemetry.secret_key,
         lfs.access_key, lfs.secret_key,
     );
     apply_stdin(&manifest)?;
@@ -137,6 +144,7 @@ pub(super) fn provision(namespace: &str) -> Result<Credentials> {
         documents,
         assets,
         applications,
+        archives,
         lfs,
     })
 }
@@ -152,6 +160,12 @@ fn provisioned_credentials(namespace: &str) -> Result<Option<Credentials>> {
         return Ok(None);
     };
     let Some(exports) = existing_key(namespace, "navigator-exports")? else {
+        return Ok(None);
+    };
+    let Some(archives) = existing_key(namespace, "navigator-archives")? else {
+        return Ok(None);
+    };
+    let Some(telemetry) = existing_key(namespace, "navigator-telemetry")? else {
         return Ok(None);
     };
     let Some(lfs) = existing_key(namespace, "navigator-lfs")? else {
@@ -185,6 +199,22 @@ fn provisioned_credentials(namespace: &str) -> Result<Option<Credentials>> {
     let Some(exports_secret_key) = secret_value(namespace, S3_SECRET, "exports_secret_key")? else {
         return Ok(None);
     };
+    let Some(archives_access_key) = secret_value(namespace, S3_SECRET, "archives_access_key")?
+    else {
+        return Ok(None);
+    };
+    let Some(archives_secret_key) = secret_value(namespace, S3_SECRET, "archives_secret_key")?
+    else {
+        return Ok(None);
+    };
+    let Some(telemetry_access_key) = secret_value(namespace, S3_SECRET, "telemetry_access_key")?
+    else {
+        return Ok(None);
+    };
+    let Some(telemetry_secret_key) = secret_value(namespace, S3_SECRET, "telemetry_secret_key")?
+    else {
+        return Ok(None);
+    };
     let Some(lfs_access_key) = secret_value(namespace, S3_SECRET, "lfs_access_key")? else {
         return Ok(None);
     };
@@ -199,6 +229,10 @@ fn provisioned_credentials(namespace: &str) -> Result<Option<Credentials>> {
         || applications.secret_key != applications_secret_key
         || exports.access_key != exports_access_key
         || exports.secret_key != exports_secret_key
+        || archives.access_key != archives_access_key
+        || archives.secret_key != archives_secret_key
+        || telemetry.access_key != telemetry_access_key
+        || telemetry.secret_key != telemetry_secret_key
         || lfs.access_key != lfs_access_key
         || lfs.secret_key != lfs_secret_key
     {
@@ -208,6 +242,7 @@ fn provisioned_credentials(namespace: &str) -> Result<Option<Credentials>> {
         documents,
         assets,
         applications,
+        archives,
         lfs,
     }))
 }
@@ -446,6 +481,14 @@ pub(super) fn export(credentials: &Credentials) {
         (
             "NAVIGATOR_GARAGE_APPLICATIONS_SECRET_KEY",
             &credentials.applications.secret_key,
+        ),
+        (
+            "NAVIGATOR_GARAGE_ARCHIVES_ACCESS_KEY",
+            &credentials.archives.access_key,
+        ),
+        (
+            "NAVIGATOR_GARAGE_ARCHIVES_SECRET_KEY",
+            &credentials.archives.secret_key,
         ),
         (
             "NAVIGATOR_GARAGE_LFS_ACCESS_KEY",

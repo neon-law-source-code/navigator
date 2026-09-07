@@ -74,6 +74,24 @@ impl S3StorageConfig {
         })
     }
 
+    /// Iceberg-archive lane. No fallback to `NAVIGATOR_STORAGE_BUCKET`: KIND
+    /// provisions this lane its own dedicated Garage bucket and key pair
+    /// (ENG-214), so the documents key must not be able to open it.
+    pub fn archives_from_env() -> Result<Self, StorageError> {
+        Self::archives_from_lookup(|key| std::env::var(key).ok())
+    }
+
+    /// See [`archives_from_env`](Self::archives_from_env).
+    pub fn archives_from_lookup<F: Fn(&str) -> Option<String>>(
+        get: F,
+    ) -> Result<Self, StorageError> {
+        Self::from_lookup_with_bucket(get, "NAVIGATOR_ARCHIVES", |get| {
+            get("NAVIGATOR_ARCHIVES_BUCKET")
+                .filter(|value| !value.is_empty())
+                .ok_or(StorageError::MissingEnv("NAVIGATOR_ARCHIVES_BUCKET"))
+        })
+    }
+
     pub fn assets_from_env() -> Result<Self, StorageError> {
         Self::assets_from_lookup(|key| std::env::var(key).ok())
     }
@@ -472,6 +490,40 @@ mod tests {
         assert!(matches!(
             error,
             StorageError::MissingEnv("NAVIGATOR_SURREAL_ARCHIVES_BUCKET")
+        ));
+    }
+
+    #[test]
+    fn archives_lane_selects_its_bucket_and_dedicated_credentials() {
+        let values = HashMap::from([
+            ("NAVIGATOR_ARCHIVES_BUCKET", "neon-law-archives-staging"),
+            ("NAVIGATOR_STORAGE_BUCKET", "exports"),
+            ("NAVIGATOR_STORAGE_ENDPOINT", "http://garage:3900"),
+            ("NAVIGATOR_ARCHIVES_ACCESS_KEY", "archives-access"),
+            ("NAVIGATOR_ARCHIVES_SECRET_KEY", "archives-secret"),
+        ]);
+        let config =
+            S3StorageConfig::archives_from_lookup(|key| values.get(key).map(ToString::to_string))
+                .unwrap();
+        assert_eq!(config.bucket, "neon-law-archives-staging");
+        assert_eq!(config.access_key, "archives-access");
+    }
+
+    #[test]
+    fn archives_lane_requires_its_dedicated_bucket_with_no_fallback() {
+        let values = HashMap::from([
+            ("NAVIGATOR_DOCUMENTS_BUCKET", "documents"),
+            ("NAVIGATOR_STORAGE_BUCKET", "exports"),
+            ("NAVIGATOR_STORAGE_ENDPOINT", "http://garage:3900"),
+            ("NAVIGATOR_STORAGE_ACCESS_KEY", "access"),
+            ("NAVIGATOR_STORAGE_SECRET_KEY", "secret"),
+        ]);
+        let error =
+            S3StorageConfig::archives_from_lookup(|key| values.get(key).map(ToString::to_string))
+                .unwrap_err();
+        assert!(matches!(
+            error,
+            StorageError::MissingEnv("NAVIGATOR_ARCHIVES_BUCKET")
         ));
     }
 

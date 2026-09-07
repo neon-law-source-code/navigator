@@ -163,8 +163,9 @@ downloading the executed documents, and capturing a real Connect completion/decl
 ## Client delivery: captive vs emailed
 
 Each notation carries a `delivery` column (`store/src/schema/navigator.surql`) that selects, per matter, how the client
-recipient is addressed when the single send path builds the signature manifest. The firm always countersigns second
-(`routingOrder` 2) as a non-captive recipient — it receives the usual emailed link — regardless of `delivery`.
+recipient is addressed when the single send path builds the signature manifest. Recipients follow the template's
+`signers:` list in declaration order. When `firm` is in that set it is a non-captive recipient — it receives the usual
+emailed link — regardless of `delivery`.
 
 - **`embedded`** (the default; the standalone retainer walk) — the client is a **captive** recipient: the manifest sets
   `client_user_id` (derived from the notation), so DocuSign suppresses the signing email. Because no email goes out, a

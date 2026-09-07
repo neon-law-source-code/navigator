@@ -118,7 +118,9 @@ rgb = "0.8"
 symphonia = { version = "0.6", features = ["all"] }
 base64 = "0.23"
 bs58 = "0.5"
-ed25519-dalek = "2"
+# `alloc` + `pkcs8` encode Restate request-identity test keys as Ed25519 DER
+# for `restate-jwt`. Encoding is feature-gated in 3.x.
+ed25519-dalek = { version = "3", features = ["alloc", "pkcs8"] }
 hmac = "0.13"
 jsonwebtoken = { version = "11", default-features = false, features = ["use_pem", "rust_crypto"] }
 # P-256 ECDSA — verifies SendGrid's Signed Event Webhook signature. Already

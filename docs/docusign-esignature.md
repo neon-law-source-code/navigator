@@ -67,9 +67,10 @@ The send path is keyed off the notation's **template code**, not the retainer. `
 ([`portal::retainer_walk`](https://github.com/neon-law-source-code/navigator/blob/main/portal/src/retainer_walk.rs))
 resolves the workflow spec via `workflows::bundled_spec_yaml(code)`, rendering to the generic per-notation storage keys
 (`notations/{id}/document.pdf`, `signed-document.pdf`, `certificate-of-completion.pdf`), and resolves the captive signer
-from the questionnaire answers when present and otherwise from the notation's bound Person row. Adding a signed template
-is a template + spec, not a new handler — the spec just needs the retainer's shape: an `intake_persisted__*` →
-`lawyer_review` → `generate_pdf__*_pdf` → `sent_for_signature__pending` chain.
+from the questionnaire answers when present and otherwise from the notation's bound Person row. Recipients follow the
+template's `signers:` list (default `[client, firm]`) in declaration order. Adding a signed template is a template +
+spec, not a new handler — the spec just needs the retainer's shape: an `intake_persisted__*` → `lawyer_review` →
+`generate_pdf__*_pdf` → `sent_for_signature__pending` chain.
 
 Signed templates today:
 
@@ -162,8 +163,9 @@ downloading the executed documents, and capturing a real Connect completion/decl
 ## Client delivery: captive vs emailed
 
 Each notation carries a `delivery` column (`store/src/schema/navigator.surql`) that selects, per matter, how the client
-recipient is addressed when the single send path builds the signature manifest. The firm always countersigns second
-(`routingOrder` 2) as a non-captive recipient — it receives the usual emailed link — regardless of `delivery`.
+recipient is addressed when the single send path builds the signature manifest. Recipients follow the template's
+`signers:` list in declaration order. When `firm` is in that set it is a non-captive recipient — it receives the usual
+emailed link — regardless of `delivery`.
 
 - **`embedded`** (the default; the standalone retainer walk) — the client is a **captive** recipient: the manifest sets
   `client_user_id` (derived from the notation), so DocuSign suppresses the signing email. Because no email goes out, a

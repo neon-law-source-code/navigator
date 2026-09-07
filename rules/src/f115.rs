@@ -23,9 +23,10 @@ use serde::Deserialize;
 
 use crate::{frontmatter, line_byte_range, Rule, SourceFile, Violation};
 
-/// Signer roles that own the `signer.field` signature grammar — `N107`'s
-/// domain, skipped here. Mirrors `F107SignaturePlaceholders::SIGNERS`.
-const SIGNER_ROLES: &[&str] = &["client", "firm"];
+/// Signature field types — `N107`'s domain. A dotted path whose first
+/// field is one of these is a signature placeholder, not questionnaire
+/// data, regardless of the signer role.
+const SIGNATURE_FIELDS: &[&str] = &["signature", "initials", "date"];
 
 /// A person/`people` aggregate row's fields — the registry's
 /// `PERSON_ROW_PARTS`.
@@ -107,7 +108,9 @@ impl Rule for F115PathResolution {
             return Vec::new();
         };
         let Some(questionnaire) = parsed.questionnaire else {
-            return Vec::new();
+            let mut violations = Vec::new();
+            check_declared_signer_backing(file, &file.contents, &BTreeMap::new(), &mut violations);
+            return violations;
         };
         // state name → its `<type>` token.
         let state_type: BTreeMap<&str, &str> = questionnaire
@@ -144,6 +147,7 @@ impl Rule for F115PathResolution {
         if !loops.is_empty() {
             violations.push(violation(file, "`{{#for}}` is not closed by `{{/for}}`"));
         }
+        check_declared_signer_backing(file, &file.contents, &state_type, &mut violations);
         violations
     }
 }
@@ -194,11 +198,10 @@ fn handle_path(
     violations: &mut Vec<Violation>,
 ) {
     // Signature blocks (`client.signature`) are N107's domain.
-    if SIGNER_ROLES.contains(&head) {
+    let field = tail.split('.').next().unwrap_or(tail);
+    if SIGNATURE_FIELDS.contains(&field) {
         return;
     }
-    // The first field segment carries the shape check.
-    let field = tail.split('.').next().unwrap_or(tail);
     // A loop variable resolves against its aggregate row shape.
     if let Some((_, agg)) = loops.iter().find(|(v, _)| v == head) {
         if agg.is_empty() {
@@ -218,6 +221,47 @@ fn handle_path(
         return;
     };
     check_field(shape_for(ty), field, head, file, violations);
+}
+
+fn check_declared_signer_backing(
+    file: &SourceFile,
+    contents: &str,
+    state_type: &BTreeMap<&str, &str>,
+    violations: &mut Vec<Violation>,
+) {
+    let Ok(set) = crate::f107::signer_set(contents) else {
+        return;
+    };
+    if !set.explicit {
+        return;
+    }
+    for role in &set.roles {
+        if role == "firm" {
+            // The firm countersigns from the configured signer, not a
+            // questionnaire state.
+            continue;
+        }
+        let state = format!("person__{role}");
+        let Some(&ty) = state_type.get(state.as_str()) else {
+            violations.push(violation(
+                file,
+                format!(
+                    "declared signer role `{role}` has no questionnaire state \
+                     `{state}` carrying at least a name and an email"
+                ),
+            ));
+            continue;
+        };
+        if ty != "person" {
+            violations.push(violation(
+                file,
+                format!(
+                    "declared signer role `{role}` must be backed by a `person` \
+                     state (`{state}`) carrying at least a name and an email"
+                ),
+            ));
+        }
+    }
 }
 
 fn check_field(
@@ -377,5 +421,66 @@ mod tests {
         assert!(F115PathResolution
             .lint(&file("{{a.b}} just body"))
             .is_empty());
+    }
+
+    fn three_party(signers: &str, questionnaire: &str) -> String {
+        format!(
+            "---\ntitle: Assignment\n{signers}questionnaire:\n{questionnaire}workflow:\n  BEGIN:\n    \
+             created: sent_for_signature__pending\n  sent_for_signature__pending:\n    \
+             signature_received: END\n  END: {{}}\n---\n\
+             {{{{client.signature}}}}\n{{{{firm.signature}}}}\n{{{{confirming_assignor.signature}}}}\n"
+        )
+    }
+
+    #[test]
+    fn declared_three_party_roles_resolve_against_person_states() {
+        let body = three_party(
+            "signers:\n  - client\n  - firm\n  - confirming_assignor\n",
+            "  BEGIN:\n    _: person__client\n  person__client:\n    _: person__confirming_assignor\n  \
+             person__confirming_assignor:\n    _: END\n  END: {}\n",
+        );
+        assert!(
+            F115PathResolution.lint(&file(&body)).is_empty(),
+            "client and confirming_assignor are person states with name and email: {:?}",
+            F115PathResolution.lint(&file(&body)),
+        );
+    }
+
+    #[test]
+    fn declared_role_without_questionnaire_state_fails() {
+        let body = three_party(
+            "signers:\n  - client\n  - firm\n  - confirming_assignor\n",
+            "  BEGIN:\n    _: person__client\n  person__client:\n    _: END\n  END: {}\n",
+        );
+        let v = F115PathResolution.lint(&file(&body));
+        assert!(
+            v.iter().any(|x| {
+                x.code == "N115"
+                    && x.message.contains("confirming_assignor")
+                    && (x.message.contains("questionnaire")
+                        || x.message.contains("name and an email"))
+            }),
+            "a declared role with no person state must fail N115; got {v:?}"
+        );
+    }
+
+    #[test]
+    fn shipped_onboarding_letter_needs_no_signers_key() {
+        let body = include_str!("../../templates/notations/neon_law/shared/onboarding_letter.md");
+        assert!(
+            F115PathResolution.lint(&file(body)).is_empty(),
+            "{:?}",
+            F115PathResolution.lint(&file(body)),
+        );
+    }
+
+    #[test]
+    fn shipped_offboarding_letter_needs_no_signers_key() {
+        let body = include_str!("../../templates/notations/neon_law/shared/offboarding_letter.md");
+        assert!(
+            F115PathResolution.lint(&file(body)).is_empty(),
+            "{:?}",
+            F115PathResolution.lint(&file(body)),
+        );
     }
 }

@@ -3664,6 +3664,17 @@ fn workflow_drive_error(e: crate::retainer_walk::WorkflowDriveError) -> Response
             })),
         )
             .into_response(),
+        E::UnresolvedSigner { role } => (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(serde_json::json!({
+                "error": "unresolved_signer",
+                "message": format!(
+                    "Declared signer role `{role}` has no resolved name and email. \
+                     The envelope is not sent until every declared role can sign."
+                )
+            })),
+        )
+            .into_response(),
         // A government-form (AcroForm) fill or config failure. The reason is
         // actionable (a missing blank, a pin mismatch, a mis-mapped field).
         E::Form { form_code, reason } => (

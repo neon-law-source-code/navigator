@@ -161,6 +161,11 @@ Each key, in plain English:
 - **`jurisdiction`** — the state whose law governs: `NV`, `CA`, or `US`.
 - **`confidential`** — `true` or `false`. There is no default; you state it on purpose, every time, because the system
   will not guess how to treat a client's document for you.
+- **`signers`** — optional list of lowercase snake_case role names who sign the document, in routing order. When omitted
+  the set is `[client, firm]`. `client` is the respondent and `firm` is the attorney of record; any other role is a
+  third party backed by `person__<role>`. Omit `client` or `firm` from an explicit list only when that party does not
+  sign. N107 matches body placeholders to this set; N115 requires each listed role other than `firm` to have a person
+  state with a name and an email.
 - **`questionnaire`** — the questions the client answers, written as a simple step-by-step ladder from `BEGIN` to `END`.
 - **`workflow`** — the path the document walks from intake to signature. It **must** include a `lawyer_review` step.
   That is not a formality: a licensed attorney reviews the draft before anything is sent — the supervision you owe any

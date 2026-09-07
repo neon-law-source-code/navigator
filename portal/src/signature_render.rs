@@ -31,11 +31,21 @@ fn parse_kind(field: &str) -> Option<SignatureFieldKind> {
 }
 
 /// Human display name for a signer role.
-fn signer_label(signer: &str) -> &str {
+fn signer_label(signer: &str) -> String {
     match signer {
-        "client" => "Client",
-        "firm" => "Neon Law",
-        other => other,
+        "client" => "Client".to_string(),
+        "firm" => "Neon Law".to_string(),
+        other => other
+            .split('_')
+            .map(|w| {
+                let mut c = w.chars();
+                match c.next() {
+                    None => String::new(),
+                    Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" "),
     }
 }
 
@@ -89,12 +99,6 @@ pub fn expand_signatures(body: &str) -> (String, Vec<SignatureField>) {
         let Some(kind) = parse_kind(&ph.field) else {
             continue; // leave unknown tokens in place
         };
-        if signer_label(&ph.signer) == ph.signer.as_str()
-            && ph.signer != "client"
-            && ph.signer != "firm"
-        {
-            continue; // unknown signer — leave verbatim
-        }
 
         // Emit everything between the previous token and this one.
         out.push_str(&body[cursor..ph.offset]);

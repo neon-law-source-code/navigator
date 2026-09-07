@@ -148,8 +148,9 @@ parent to precede the child in the questionnaire graph and bars aggregates from 
 **Body placeholders.** Prose uses `{{code}}` for a bare answer, `{{type__role.field}}` for a field off a typed answer,
 and `{{#for x in <aggregate>}} … {{x.field}} … {{/for}}` to walk a plural answer. `N115` resolves every path and
 iterator against the questionnaire's declared states, and `N120` resolves the bare `{{type__role}}` token the same way;
-signature blocks (`{{client.signature}}`) stay `N107`'s specialty. A token nothing declares is never substituted, so it
-reaches the rendered page verbatim — which is why both rules ground the body against the questionnaire beside it.
+signature blocks (`{{client.signature}}`) stay `N107`'s specialty, matched against the template's `signers:` list (or
+`[client, firm]` when that key is absent). A token nothing declares is never substituted, so it reaches the rendered
+page verbatim — which is why both rules ground the body against the questionnaire beside it.
 
 ## How to create one — the five-step recipe
 

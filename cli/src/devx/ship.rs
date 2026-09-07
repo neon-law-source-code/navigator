@@ -4343,7 +4343,7 @@ mod tests {
     /// a new `deployments/<name>/` pair into the tree is the whole activation.
     ///
     /// The tree it reads is the synthetic one; the real rows are held to the
-    /// same assertion by `navigator ops deployments check`.
+    /// same assertion by `navigator ops deployments`.
     #[test]
     fn every_checked_in_deployment_resolves_a_complete_ship_config() {
         let root = fixture_tree();

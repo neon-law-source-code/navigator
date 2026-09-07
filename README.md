@@ -17,6 +17,9 @@ Navigator is source-available under the [Business Source License 1.1](LICENSE): 
 commercial licence from Neon Law IP LLC. Four years after a version is published, that version converts to `Apache-2.0`
 and the restriction ends for it permanently.
 
+Font licensing is separate: see the [GORP Serif notice](server/public/fonts/gorp-serif/LICENSE.txt) and the [Tinos
+OFL](pdf/assets/fonts/Tinos/OFL.txt).
+
 Copyright (C) 2026 **Neon Law IP LLC**.
 
 ## Trademarks

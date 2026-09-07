@@ -193,7 +193,7 @@ fn every_upstream_swagger_ui_asset_is_pinned() {
 fn gorp_license_notice_separates_code_and_font_licenses() {
     let notice = std::fs::read_to_string(public_dir().join("fonts/gorp-serif/LICENSE.txt"))
         .expect("read the tracked GORP license notice");
-    assert!(notice.contains("Shook Law PLLC") && notice.contains("proprietary"));
+    assert!(notice.contains("Neon Law IP LLC") && notice.contains("proprietary"));
     assert!(notice.contains("licensed separately from TrashType"));
     assert!(notice.contains("https://trashtype.com/legal"));
     assert!(!notice.contains("sample purposes"));

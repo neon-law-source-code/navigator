@@ -221,7 +221,7 @@ mod tests {
         use super::super::super::deployments::{names, Deployment};
 
         // The synthetic tree, because the real rows moved to a private
-        // repository. `navigator ops deployments check` runs this same
+        // repository. `navigator ops deployments` runs this same
         // agreement against them; see
         // `cli/tests/fixtures/deployment-tree/README.md`.
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))

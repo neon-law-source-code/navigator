@@ -2,8 +2,8 @@
 //! the public assets bucket as direct downloads.
 //!
 //! The binary is a **public** artifact (product tooling), so it
-//! lands in the public `<project>-assets` bucket — the same lane `cli
-//! assets upload` and `cli forms sync` use — deliberately distinct from
+//! lands in the public `<project>-assets` bucket — the same lane
+//! `navigator ops assets upload` and `navigator forms sync` use — deliberately distinct from
 //! the confidential documents bucket. Each platform's binary lands at
 //! [`lsp_binary_key`]'s `lsp/<triple>/<binary_name>`, the same key the
 //! public download commands target. Upload and download therefore share
@@ -31,7 +31,7 @@ use views::lsp::{lsp_binary_key, LSP_TARGETS};
 const LSP_CACHE_CONTROL: &str = "public, max-age=3600";
 
 /// The filename every target directory holds.
-/// Entry point for `cli lsp publish`. `bucket` defaults to the
+/// Entry point for `navigator ops lsp publish`. `bucket` defaults to the
 /// `NAVIGATOR_ASSETS_BUCKET` env var — the public `<project>-assets`
 /// bucket. `dir` is the cross-build output root (`<dir>/<triple>/<binary_name>`).
 pub fn run_publish(dir: &Path, bucket: Option<String>) -> ExitCode {

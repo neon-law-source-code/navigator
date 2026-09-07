@@ -91,7 +91,7 @@ fn workspace_root() -> anyhow::Result<PathBuf> {
         })
 }
 
-/// Entry point for `cli forms sync`. `bucket` defaults to the
+/// Entry point for `navigator forms sync`. `bucket` defaults to the
 /// `NAVIGATOR_ASSETS_BUCKET` env var — the public `<project>-assets`
 /// bucket, deliberately distinct from the documents bucket so blanks
 /// never land in the confidential lane (and vice versa).

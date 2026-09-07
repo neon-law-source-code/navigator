@@ -1,7 +1,7 @@
 GORP Serif font software
 Copyright TrashType LLC. All rights reserved.
 
-Neon Law Navigator source code is copyright Shook Law PLLC and is licensed
+Neon Law Navigator source code is copyright Neon Law IP LLC and is licensed
 under BUSL-1.1; see LICENSE. None of that reaches this font. The code licenses
 do not cover GORP Serif.
 

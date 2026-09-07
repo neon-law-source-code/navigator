@@ -243,6 +243,25 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
+    // Unsigned liveness/readiness probe (ENG-551): unlike the Restate
+    // endpoint on `listen`, this needs no Restate Cloud signature, so
+    // kubelet and the GCE LB can reach it directly on every deployment.
+    // Its one route round-trips a throwaway signature through the same
+    // `jsonwebtoken` verification path real traffic uses, catching an
+    // ENG-550-style `CryptoProvider` regression instead of shipping it
+    // invisibly again.
+    let health_addr = workflows_service::health::health_listen_addr(|key| std::env::var(key).ok())?;
+    let health_listener = tokio::net::TcpListener::bind(health_addr)
+        .await
+        .with_context(|| format!("bind health probe listener on {health_addr}"))?;
+    tracing::info!(%health_addr, "health probe listener listening");
+    tokio::spawn(async move {
+        if let Err(error) = axum::serve(health_listener, workflows_service::health::router()).await
+        {
+            tracing::error!(%error, "health probe listener stopped");
+        }
+    });
+
     server.await;
 
     Ok(())

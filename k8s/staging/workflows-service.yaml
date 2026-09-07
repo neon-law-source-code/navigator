@@ -46,11 +46,17 @@ spec:
           ports:
             - name: restate
               containerPort: 9080
+            # The unsigned health-probe listener (ENG-551) — see
+            # readinessProbe/livenessProbe below.
+            - name: health
+              containerPort: 9083
           env:
             # The worker binds to this address; Restate hits it via
             # the operator-managed Service.
             - name: WORKFLOWS_SERVICE_LISTEN
               value: 0.0.0.0:9080
+            - name: WORKFLOWS_SERVICE_HEALTH_LISTEN
+              value: 0.0.0.0:9083
             - name: NAVIGATOR_ENVIRONMENT
               value: dev
             - name: NAVIGATOR_CI_HARNESS
@@ -173,13 +179,20 @@ spec:
             - name: SENDGRID_INBOUND_SECRET
               value: kind-stub
           readinessProbe:
-            tcpSocket:
-              port: 9080
+            # ENG-551: httpGet on the unsigned health listener actually
+            # round-trips a request through live worker code (the same
+            # `jsonwebtoken` verification path Restate signatures use), so a
+            # `CryptoProvider` regression (ENG-550) fails this instead of the
+            # bare tcpSocket check that let it ship invisibly.
+            httpGet:
+              path: /healthz
+              port: 9083
             initialDelaySeconds: 5
             periodSeconds: 5
           livenessProbe:
-            tcpSocket:
-              port: 9080
+            httpGet:
+              path: /healthz
+              port: 9083
             initialDelaySeconds: 30
             periodSeconds: 10
           volumeMounts:

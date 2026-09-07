@@ -10420,7 +10420,7 @@ async fn view_as_client_stop_bypasses_policy_for_an_active_dri_view() {
     )
     .await
     .unwrap();
-    store::projects::add_participation(&surreal, project.id, lawyer.id, "attorney")
+    store::projects::add_participation(&surreal, project.id, lawyer.id, "lawyer")
         .await
         .unwrap();
     let (lawyer_cookie, lawyer_csrf) = session_cookie_and_csrf_for_person(&lawyer);

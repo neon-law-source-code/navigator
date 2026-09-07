@@ -193,7 +193,9 @@ fn site_projects_close_accepts_an_effective_time() {
 /// matters, because `projects doctor` and `projects drift` promise to change
 /// nothing, `repository scaffold` writes files, and `surfaces reconcile`
 /// talks to Drive and the forge; `lifecycle` reads every row for admin-tier
-/// oversight.
+/// oversight. `archive-repository` zips a closed Project's repository
+/// working tree at its current commit and files it as a document — the
+/// separate, deliberate step that follows a close rather than gating it.
 ///
 /// The retired `projects application` verbs are asserted gone rather than
 /// merely absent from this list: a Project has one portal, so there is no
@@ -203,6 +205,7 @@ fn projects_help_lists_the_project_workspace_verbs() {
     assert_eq!(
         command_names(&help(&["site", "projects", "--help"])),
         vec![
+            "archive-repository",
             "close",
             "create",
             "doctor",

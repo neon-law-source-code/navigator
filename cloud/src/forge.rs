@@ -77,7 +77,11 @@ pub enum ForgeError {
 ///
 /// The trait is deliberately narrow. Adding a collaborator method here would
 /// make Project participation a back door onto the forge, which
-/// [`docs/project-repositories.md`] forbids.
+/// [`docs/project-repositories.md`] forbids. [`Self::delete_repository`] and
+/// [`Self::head_commit_sha`] are the exception: they serve a matter's
+/// *close*, not its participation, and exist so a closed Project's
+/// repository can be archived and safely removed (ENG-481) rather than
+/// living forever once the matter has ended.
 #[async_trait]
 pub trait ForgeService: Send + Sync {
     async fn find_repository(
@@ -85,6 +89,15 @@ pub trait ForgeService: Send + Sync {
         project_code: &str,
     ) -> Result<Option<ForgeRepository>, ForgeError>;
     async fn ensure_repository(&self, project_code: &str) -> Result<ForgeRepository, ForgeError>;
+    /// The current commit SHA at the tip of the repository's default
+    /// branch, or `None` if the repository does not exist. Read fresh on
+    /// every call — never cached — so a caller comparing it against an
+    /// archived document's recorded commit sees whatever has actually been
+    /// pushed since.
+    async fn head_commit_sha(&self, project_code: &str) -> Result<Option<String>, ForgeError>;
+    /// Permanently delete the repository. Irreversible; callers must have
+    /// already confirmed an archive exists and matches before calling this.
+    async fn delete_repository(&self, project_code: &str) -> Result<(), ForgeError>;
 }
 
 /// In-memory forge for store and workflow tests. Idempotent on the Project
@@ -101,6 +114,9 @@ pub struct FakeForge {
 struct FakeForgeState {
     repositories: BTreeMap<String, ForgeRepository>,
     ensure_calls: usize,
+    /// Set only by [`FakeForge::set_head_commit_sha`] — tests control what
+    /// the "live" HEAD is rather than this fake deriving one from nothing.
+    head_shas: BTreeMap<String, String>,
 }
 
 impl FakeForge {
@@ -141,6 +157,17 @@ impl FakeForge {
             .repositories
             .len()
     }
+
+    /// Test control: declare what [`ForgeService::head_commit_sha`] reports
+    /// for `project_code`, standing in for whatever a real forge's default
+    /// branch tip would be.
+    pub fn set_head_commit_sha(&self, project_code: &str, sha: impl Into<String>) {
+        self.state
+            .lock()
+            .expect("fake forge mutex poisoned")
+            .head_shas
+            .insert(project_code.to_string(), sha.into());
+    }
 }
 
 impl Default for FakeForge {
@@ -173,6 +200,18 @@ impl ForgeService for FakeForge {
             .repositories
             .insert(project_code.to_string(), created.clone());
         Ok(created)
+    }
+
+    async fn head_commit_sha(&self, project_code: &str) -> Result<Option<String>, ForgeError> {
+        let state = self.state.lock().expect("fake forge mutex poisoned");
+        Ok(state.head_shas.get(project_code).cloned())
+    }
+
+    async fn delete_repository(&self, project_code: &str) -> Result<(), ForgeError> {
+        let mut state = self.state.lock().expect("fake forge mutex poisoned");
+        state.repositories.remove(project_code);
+        state.head_shas.remove(project_code);
+        Ok(())
     }
 }
 
@@ -332,6 +371,16 @@ struct RepositoryBody {
     name: Option<String>,
 }
 
+#[derive(Deserialize)]
+struct RepositoryDetail {
+    default_branch: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct CommitBody {
+    sha: String,
+}
+
 async fn parse_repository(
     response: reqwest::Response,
     action: &'static str,
@@ -373,6 +422,65 @@ impl ForgeService for GitHubForge {
         );
         Ok(created)
     }
+
+    async fn head_commit_sha(&self, project_code: &str) -> Result<Option<String>, ForgeError> {
+        let action = "reading repository for HEAD sha";
+        let response = self
+            .http
+            .get(self.repos_url(project_code))
+            .bearer_auth(&self.token)
+            .header(reqwest::header::USER_AGENT, USER_AGENT)
+            .header(reqwest::header::ACCEPT, "application/vnd.github+json")
+            .header("X-GitHub-Api-Version", API_VERSION)
+            .send()
+            .await;
+        let response = match response {
+            Ok(response) if response.status().as_u16() == 404 => return Ok(None),
+            other => Self::checked(other, action)?,
+        };
+        let detail = response
+            .json::<RepositoryDetail>()
+            .await
+            .map_err(|source| ForgeError::Response { action, source })?;
+        let branch = detail
+            .default_branch
+            .ok_or(ForgeError::MissingUrl { action })?;
+
+        let action = "reading HEAD commit";
+        let commit_url = format!(
+            "{}/repos/{}/{project_code}/commits/{branch}",
+            self.api_base, self.organization
+        );
+        let response = self
+            .http
+            .get(commit_url)
+            .bearer_auth(&self.token)
+            .header(reqwest::header::USER_AGENT, USER_AGENT)
+            .header(reqwest::header::ACCEPT, "application/vnd.github+json")
+            .header("X-GitHub-Api-Version", API_VERSION)
+            .send()
+            .await;
+        let response = Self::checked(response, action)?;
+        let commit = response
+            .json::<CommitBody>()
+            .await
+            .map_err(|source| ForgeError::Response { action, source })?;
+        Ok(Some(commit.sha))
+    }
+
+    async fn delete_repository(&self, project_code: &str) -> Result<(), ForgeError> {
+        let response = self
+            .http
+            .delete(self.repos_url(project_code))
+            .bearer_auth(&self.token)
+            .header(reqwest::header::USER_AGENT, USER_AGENT)
+            .header(reqwest::header::ACCEPT, "application/vnd.github+json")
+            .header("X-GitHub-Api-Version", API_VERSION)
+            .send()
+            .await;
+        Self::checked(response, "deleting repository")?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -405,6 +513,32 @@ mod tests {
         assert_eq!(first.url, "https://forge.example/an-organization/acme");
         assert_eq!(forge.repository_count(), 1);
         assert_eq!(forge.ensure_calls(), 2);
+    }
+
+    #[tokio::test]
+    async fn fake_forge_reports_no_head_sha_until_one_is_set() {
+        let forge = FakeForge::new();
+        forge.ensure_repository("acme").await.unwrap();
+        assert_eq!(forge.head_commit_sha("acme").await.unwrap(), None);
+        forge.set_head_commit_sha("acme", "deadbeef");
+        assert_eq!(
+            forge.head_commit_sha("acme").await.unwrap(),
+            Some("deadbeef".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn fake_forge_delete_removes_the_repository_and_its_head_sha() {
+        let forge = FakeForge::new();
+        forge.ensure_repository("acme").await.unwrap();
+        forge.set_head_commit_sha("acme", "deadbeef");
+        assert_eq!(forge.repository_count(), 1);
+
+        forge.delete_repository("acme").await.unwrap();
+
+        assert_eq!(forge.repository_count(), 0);
+        assert_eq!(forge.head_commit_sha("acme").await.unwrap(), None);
+        assert_eq!(forge.find_repository("acme").await.unwrap(), None);
     }
 
     #[test]
@@ -523,5 +657,80 @@ mod tests {
         .expect("configured forge");
         let repo = forge.ensure_repository("acme").await.unwrap();
         assert_eq!(repo.url, "https://forge.example/an-organization/acme");
+    }
+
+    #[tokio::test]
+    async fn github_forge_reads_the_default_branchs_head_sha() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/repos/an-organization/acme"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "html_url": "https://forge.example/an-organization/acme",
+                "name": "acme",
+                "default_branch": "main"
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/repos/an-organization/acme/commits/main"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "sha": "deadbeefcafe"
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let forge = GitHubForge::from_lookup(lookup(&[
+            (NAVIGATOR_GCP_PROJECT_ID, "neon-law-stg"),
+            (NAVIGATOR_GITHUB_ORG, "an-organization"),
+            (NAVIGATOR_GITHUB_TOKEN_ENV, "test-token"),
+            (GITHUB_API_BASE_ENV, server.uri().as_str()),
+        ]))
+        .expect("configured forge");
+        let sha = forge.head_commit_sha("acme").await.unwrap();
+        assert_eq!(sha, Some("deadbeefcafe".to_string()));
+    }
+
+    #[tokio::test]
+    async fn github_forge_head_sha_is_none_for_a_repository_that_does_not_exist() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/repos/an-organization/ghost"))
+            .respond_with(ResponseTemplate::new(404))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let forge = GitHubForge::from_lookup(lookup(&[
+            (NAVIGATOR_GCP_PROJECT_ID, "neon-law-stg"),
+            (NAVIGATOR_GITHUB_ORG, "an-organization"),
+            (NAVIGATOR_GITHUB_TOKEN_ENV, "test-token"),
+            (GITHUB_API_BASE_ENV, server.uri().as_str()),
+        ]))
+        .expect("configured forge");
+        let sha = forge.head_commit_sha("ghost").await.unwrap();
+        assert_eq!(sha, None);
+    }
+
+    #[tokio::test]
+    async fn github_forge_deletes_the_repository() {
+        let server = MockServer::start().await;
+        Mock::given(method("DELETE"))
+            .and(path("/repos/an-organization/acme"))
+            .and(header("authorization", "Bearer test-token"))
+            .respond_with(ResponseTemplate::new(204))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let forge = GitHubForge::from_lookup(lookup(&[
+            (NAVIGATOR_GCP_PROJECT_ID, "neon-law-stg"),
+            (NAVIGATOR_GITHUB_ORG, "an-organization"),
+            (NAVIGATOR_GITHUB_TOKEN_ENV, "test-token"),
+            (GITHUB_API_BASE_ENV, server.uri().as_str()),
+        ]))
+        .expect("configured forge");
+        forge.delete_repository("acme").await.unwrap();
     }
 }

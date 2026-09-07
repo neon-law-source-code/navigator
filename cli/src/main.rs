@@ -522,6 +522,20 @@ enum ProjectsCmd {
         #[command(subcommand)]
         action: SurfacesAction,
     },
+    /// Archive a closed Project's repository as a `closed_repository`
+    /// document: zip the working tree at HEAD (no git history), record the
+    /// commit SHA, and file it. Follows the matter's close; does not gate
+    /// it. The content hash needs no separate flag — the server derives it
+    /// from the uploaded bytes.
+    ArchiveRepository {
+        /// Project code, e.g. `acme`.
+        project_code: String,
+        /// The local checkout to archive. Defaults to the current directory.
+        #[arg(long, default_value = ".")]
+        dir: PathBuf,
+        #[command(flatten)]
+        host: HostOpt,
+    },
 }
 
 #[derive(Subcommand)]
@@ -2113,6 +2127,11 @@ async fn run_projects(action: ProjectsCmd) -> ExitCode {
         ProjectsCmd::Surfaces { action } => match action {
             SurfacesAction::Reconcile { project } => projects::surfaces::reconcile(&project).await,
         },
+        ProjectsCmd::ArchiveRepository {
+            project_code,
+            dir,
+            host,
+        } => remote::archive_repository(host.host.as_deref(), &project_code, &dir).await,
     }
 }
 
@@ -2841,7 +2860,7 @@ fn parse_document_visibility(value: &str) -> Result<String, String> {
     }
 }
 
-const DOCUMENT_UPLOAD_KIND_HELP: &str = "Accepted --kind values: letter, filing, will, trust, directive, agreement, pleading, onboarding, offboarding, memo, transcript, inbound_contract, certificate_of_naturalization, exhibit, unclassified.";
+const DOCUMENT_UPLOAD_KIND_HELP: &str = "Accepted --kind values: letter, filing, will, trust, directive, agreement, pleading, onboarding, offboarding, memo, transcript, inbound_contract, certificate_of_naturalization, exhibit, closed_repository, unclassified.";
 
 /// Render one notation template to a PDF. Validates the file against the
 /// notation rule set, resolves the output format (CLI override →

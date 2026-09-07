@@ -44,6 +44,12 @@ pub struct McpState {
     /// exercise only the tools that never send mail, and the tool
     /// refuses rather than sending unaudited when it is absent.
     pub email: Option<Arc<dyn workflows::EmailService>>,
+    /// The source forge (GitHub today). `aida_delete_closed_repository` is
+    /// the only tool that reads it, and no deployment wires a live forge
+    /// credential into this process yet — provisioning one is a separate,
+    /// credentialed decision, so the `Option` stays `None` until it is made.
+    /// The tool refuses cleanly rather than panicking when it is absent.
+    pub forge: Option<Arc<dyn cloud::ForgeService>>,
 }
 
 impl McpState {
@@ -57,6 +63,7 @@ impl McpState {
             questionnaire_runtime,
             storage: None,
             email: None,
+            forge: None,
         }
     }
 }

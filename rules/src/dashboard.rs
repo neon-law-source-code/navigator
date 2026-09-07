@@ -403,6 +403,7 @@ pub fn skeleton(kind: Kind) -> Option<Skeleton> {
         | Kind::InboundContract
         | Kind::CertificateOfNaturalization
         | Kind::Exhibit
+        | Kind::ClosedRepository
         | Kind::Unclassified => return None,
     };
     Some(s)

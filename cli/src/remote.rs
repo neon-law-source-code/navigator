@@ -297,7 +297,8 @@ impl DocumentClient {
         })
     }
 
-    /// Upload one revision and return the source-safe pointer.
+    /// Upload one revision from a local file and return the source-safe
+    /// pointer.
     #[allow(clippy::too_many_arguments)]
     pub(crate) async fn upload(
         &self,
@@ -314,9 +315,40 @@ impl DocumentClient {
             .and_then(|name| name.to_str())
             .filter(|name| !name.is_empty())
             .ok_or_else(|| anyhow!("file path has no filename"))?;
+        self.upload_bytes(
+            filename,
+            &bytes,
+            kind,
+            visibility,
+            description,
+            content_type,
+            slug,
+            None,
+        )
+        .await
+    }
+
+    /// Upload one revision from bytes already in memory — the archive
+    /// command's own path, which has no file on disk to read (ENG-481).
+    /// `metadata`, when present, is passed through to the asset row's own
+    /// `metadata` column verbatim (a source repository's commit SHA, for
+    /// instance); the content hash needs no separate field, since the
+    /// server derives it from the bytes themselves.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) async fn upload_bytes(
+        &self,
+        filename: &str,
+        bytes: &[u8],
+        kind: &str,
+        visibility: Option<&str>,
+        description: Option<&str>,
+        content_type: Option<&str>,
+        slug: Option<&str>,
+        metadata: Option<serde_json::Value>,
+    ) -> Result<store::document_pointers::DocumentPointer> {
         let mut body = serde_json::json!({
             "filename": filename,
-            "content_base64": base64::engine::general_purpose::STANDARD.encode(&bytes),
+            "content_base64": base64::engine::general_purpose::STANDARD.encode(bytes),
             "content_type": content_type.unwrap_or("application/octet-stream"),
             "kind": kind,
             "visibility": visibility.unwrap_or("internal"),
@@ -326,6 +358,9 @@ impl DocumentClient {
         }
         if let Some(slug) = slug.map(str::trim).filter(|value| !value.is_empty()) {
             body["slug"] = serde_json::Value::String(slug.to_string());
+        }
+        if let Some(metadata) = metadata {
+            body["metadata"] = metadata;
         }
         let url = format!(
             "{}/app/api/projects/{}/documents",
@@ -400,6 +435,105 @@ pub async fn document_upload(
         Ok(())
     })
     .await
+}
+
+/// `navigator site projects archive-repository <code> [--dir .]` — zip the
+/// repository's working tree at HEAD (no git history — a snapshot document,
+/// not a clone), and file it as a `closed_repository` document, recording
+/// the final commit SHA in the asset's `metadata` (ENG-481). The content
+/// hash needs no separate recording: the server derives `sha256_hex` from
+/// the uploaded bytes themselves, the same way template import already
+/// records both for a notation body.
+///
+/// This follows a matter's close; it does not gate it. `--dir` is the local
+/// checkout to archive — the repository this Project's `repository_url`
+/// names — and defaults to the current directory, matching every other
+/// repository-scoped command in this CLI.
+pub async fn archive_repository(host: Option<&str>, project_code: &str, dir: &Path) -> ExitCode {
+    run(async {
+        let commit_sha = git_head_commit_sha(dir)?;
+        let zip_bytes = git_archive_zip(dir)?;
+        let client = DocumentClient::connect(host, project_code).await?;
+        let kind = rules::kind::Kind::ClosedRepository.as_str();
+        let pointer = client
+            .upload_bytes(
+                &format!("{project_code}-closed-repository.zip"),
+                &zip_bytes,
+                kind,
+                None,
+                Some(&format!(
+                    "Repository archive for {project_code} at commit {commit_sha}"
+                )),
+                Some("application/zip"),
+                Some(kind),
+                Some(serde_json::json!({ "commit_sha": commit_sha })),
+            )
+            .await?;
+        println!(
+            "{} {}",
+            palette::dim("archived repository for"),
+            palette::highlight(project_code)
+        );
+        println!("{}  {commit_sha}", palette::dim("commit:"));
+        println!(
+            "{}  {}",
+            palette::dim("content sha256:"),
+            pointer.current_version.sha256
+        );
+        println!(
+            "{}  {}",
+            palette::dim("asset id:"),
+            pointer.current_version.asset_id
+        );
+        Ok(())
+    })
+    .await
+}
+
+/// `git rev-parse HEAD` in `dir` — the commit the archive is a snapshot of.
+fn git_head_commit_sha(dir: &Path) -> Result<String> {
+    let output = std::process::Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .with_context(|| format!("run git rev-parse HEAD in {}", dir.display()))?;
+    if !output.status.success() {
+        return Err(anyhow!(
+            "git rev-parse HEAD failed in {}: {}",
+            dir.display(),
+            first_line(&String::from_utf8_lossy(&output.stderr))
+        ));
+    }
+    let sha = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if sha.is_empty() {
+        return Err(anyhow!(
+            "git rev-parse HEAD in {} returned no commit — is this a git repository with a \
+             committed HEAD?",
+            dir.display()
+        ));
+    }
+    Ok(sha)
+}
+
+/// `git archive --format=zip HEAD` in `dir` — the working tree at HEAD, with
+/// no `.git` history, exactly as `git archive` always produces: a snapshot,
+/// never a clone.
+fn git_archive_zip(dir: &Path) -> Result<Vec<u8>> {
+    let output = std::process::Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(["archive", "--format=zip", "HEAD"])
+        .output()
+        .with_context(|| format!("run git archive --format=zip HEAD in {}", dir.display()))?;
+    if !output.status.success() {
+        return Err(anyhow!(
+            "git archive failed in {}: {}",
+            dir.display(),
+            first_line(&String::from_utf8_lossy(&output.stderr))
+        ));
+    }
+    Ok(output.stdout)
 }
 
 /// An HTTP client that does **not** follow redirects, so a handler's `303`
@@ -2113,13 +2247,13 @@ mod tests {
     use std::sync::LazyLock;
 
     use super::{
-        candidate_by_name, canonical_choice_value, clause_add, clause_edit, clause_list,
-        document_upload, ensure_no_unused_selections, fetch_status, matter_close, matter_open,
-        notation_approve, notation_create, notation_document, notation_request_changes,
-        notation_status, notation_update, parse_scripted_selection, picker_selection_fields,
-        projects_create, projects_lifecycle, projects_list, retainer_approve, retainer_send,
-        scripted_picker_selection_fields, seed, seed_directory, select_candidate, CoverageSummary,
-        SeedCredential, StepQuestion, StepResponse,
+        archive_repository, candidate_by_name, canonical_choice_value, clause_add, clause_edit,
+        clause_list, document_upload, ensure_no_unused_selections, fetch_status, matter_close,
+        matter_open, notation_approve, notation_create, notation_document,
+        notation_request_changes, notation_status, notation_update, parse_scripted_selection,
+        picker_selection_fields, projects_create, projects_lifecycle, projects_list,
+        retainer_approve, retainer_send, scripted_picker_selection_fields, seed, seed_directory,
+        select_candidate, CoverageSummary, SeedCredential, StepQuestion, StepResponse,
     };
     use super::{fetch_step, first_line, json_reason, parse_csv, server_error};
     use crate::credentials::{self, Credentials, HostCredential};
@@ -2476,6 +2610,104 @@ mod tests {
                 None,
             )
             .await,
+            ExitCode::from(2)
+        );
+    }
+
+    /// `git init`, one committed file, in a fresh temp dir. Returns the
+    /// directory and the resulting commit SHA, so a test can assert the
+    /// archive command reads back exactly what it just committed.
+    fn git_fixture() -> (tempfile::TempDir, String) {
+        let dir = tempfile::tempdir().unwrap();
+        let run = |args: &[&str]| {
+            let status = std::process::Command::new("git")
+                .arg("-C")
+                .arg(dir.path())
+                .args(args)
+                .status()
+                .expect("run git");
+            assert!(status.success(), "git {args:?} failed");
+        };
+        run(&["init", "--quiet"]);
+        run(&["config", "user.email", "test@example.com"]);
+        run(&["config", "user.name", "Test"]);
+        std::fs::write(dir.path().join("README.md"), b"hello").unwrap();
+        run(&["add", "README.md"]);
+        run(&["commit", "--quiet", "-m", "initial"]);
+        let sha = std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir.path())
+            .args(["rev-parse", "HEAD"])
+            .output()
+            .expect("git rev-parse HEAD");
+        let sha = String::from_utf8_lossy(&sha.stdout).trim().to_string();
+        (dir, sha)
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn archive_repository_records_the_commit_sha_and_uploads_a_zip() {
+        let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+        let (repo, commit_sha) = git_fixture();
+        let server = MockServer::start().await;
+        let server_uri = server.uri();
+        let _env = CredentialsEnv::new(&server_uri);
+        let project_id = Uuid::now_v7();
+        let document_id = Uuid::now_v7();
+
+        Mock::given(method("GET"))
+            .and(path("/app/api/projects"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"id": project_id, "code": "acme"}
+            ])))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path(format!("/app/api/projects/{project_id}/documents")))
+            .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+                "kind": "closed_repository",
+                "visibility": "internal",
+                "current_version": {
+                    "version": 1,
+                    "asset_id": document_id,
+                    "created_at": "2026-09-05T12:00:00Z",
+                    "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                    "size_bytes": 300
+                }
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        assert_eq!(
+            archive_repository(Some(server_uri.as_str()), "acme", repo.path()).await,
+            ExitCode::SUCCESS
+        );
+
+        // The exact body the mock above accepted (any body) is asserted more
+        // precisely below via the request log, so the commit sha this test
+        // fixture produced is provably what was sent, not merely a mock that
+        // would have matched anything.
+        let requests = server.received_requests().await.unwrap();
+        let upload = requests
+            .iter()
+            .find(|r| r.url.path().ends_with("/documents"))
+            .expect("the upload request was made");
+        let body: serde_json::Value = serde_json::from_slice(&upload.body).unwrap();
+        assert_eq!(body["kind"], "closed_repository");
+        assert_eq!(body["metadata"]["commit_sha"], commit_sha);
+        assert_eq!(body["content_type"], "application/zip");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn archive_repository_refuses_a_directory_with_no_git_head() {
+        let _lock = CREDENTIALS_ENV_LOCK.lock().await;
+        let server = MockServer::start().await;
+        let server_uri = server.uri();
+        let _env = CredentialsEnv::new(&server_uri);
+        let empty = tempfile::tempdir().unwrap();
+
+        assert_eq!(
+            archive_repository(Some(server_uri.as_str()), "acme", empty.path()).await,
             ExitCode::from(2)
         );
     }

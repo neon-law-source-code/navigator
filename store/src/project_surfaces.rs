@@ -335,6 +335,14 @@ mod tests {
         ) -> Result<ForgeRepository, ForgeError> {
             Err(ForgeError::Authentication)
         }
+
+        async fn head_commit_sha(&self, _project_code: &str) -> Result<Option<String>, ForgeError> {
+            Ok(None)
+        }
+
+        async fn delete_repository(&self, _project_code: &str) -> Result<(), ForgeError> {
+            Err(ForgeError::Authentication)
+        }
     }
 
     async fn open_acme(surreal: &crate::surreal::SurrealDb) -> projects::Project {

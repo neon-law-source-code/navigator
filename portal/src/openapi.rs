@@ -1917,7 +1917,7 @@ pub fn document_with_base(base: &str) -> Value {
                     "kind": {
                       "type": "string",
                       "description": "Required asset-lane document classification (`rules::kind::Kind` values valid for `Lane::Asset`). A missing or blank value is refused with `400 kind_required`; a value outside this set is refused with `400 invalid_kind`. Both messages name the accepted values; nothing is silently coerced to `unclassified`.",
-                      "enum": ["letter", "filing", "will", "trust", "directive", "agreement", "pleading", "onboarding", "offboarding", "memo", "transcript", "inbound_contract", "certificate_of_naturalization", "exhibit", "unclassified"]
+                      "enum": ["letter", "filing", "will", "trust", "directive", "agreement", "pleading", "onboarding", "offboarding", "memo", "transcript", "inbound_contract", "certificate_of_naturalization", "exhibit", "closed_repository", "unclassified"]
                     },
                     "visibility": { "type": "string", "enum": ["client", "internal"] },
                     "description": { "type": "string" }
@@ -2932,6 +2932,14 @@ pub const TOOLS_WITHOUT_AN_API_OPERATION: &[(&str, &str)] = &[
         "No route today. It is an MCP-only aggregate over three existing \
          Project-scoped queries (deadlines, notation events, participation), \
          so there is no single API operation for the tool to share.",
+    ),
+    (
+        "aida_delete_closed_repository",
+        "No route today. Deleting a forge repository is a supervised, \
+         confirmation-gated destructive act with no HTTP-side command to \
+         share — there is no `DELETE /app/api/projects/{id}/repository` — \
+         and adding one would give a second, un-gated door onto the same \
+         irreversible operation.",
     ),
 ];
 

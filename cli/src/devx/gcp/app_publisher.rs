@@ -752,6 +752,70 @@ fn ambiguous_repoint(
     }
 }
 
+/// The updated binding list after [`remove_publisher_binding`], and whether
+/// it differs from what was passed in.
+#[cfg_attr(not(test), allow(dead_code))]
+struct Removed {
+    next: Vec<Value>,
+    changed: bool,
+}
+
+/// Remove `member`'s conditioned binding for `role` from `bindings`,
+/// dropping the binding entirely once it holds no other member.
+///
+/// The mirror of [`merge_publisher_bindings`]: that function adds a
+/// Project's conditioned grant when its repository is created;
+/// this removes it once the repository is deleted (ENG-481), so a
+/// decommissioned Project's publisher identity does not keep a clause
+/// scoped to a prefix that no longer exists. Pure for the same reason
+/// `merge_publisher_bindings` is — every branch stays testable without a
+/// live bucket.
+///
+/// Not wired to a live call: revoking a real bucket's IAM policy needs a
+/// deployment's own GCP credentials, which nothing in this repository
+/// provisions yet, and `mcp`'s tools have no dependency on the CLI's
+/// `devx` module (nor should one be added just for this). This function is
+/// the reconciled algebra a future revoke path builds on, proven here on
+/// its own rather than left unwritten until that wiring exists.
+#[cfg_attr(not(test), allow(dead_code))]
+fn remove_publisher_binding(bindings: Vec<Value>, member: &str, role: &str) -> Removed {
+    let mut changed = false;
+    let mut next: Vec<Value> = Vec::with_capacity(bindings.len());
+
+    for binding in bindings {
+        let binding_role = binding.get("role").and_then(Value::as_str).unwrap_or("");
+        let holds_member = binding
+            .get("members")
+            .and_then(Value::as_array)
+            .is_some_and(|members| members.iter().any(|m| m.as_str() == Some(member)));
+
+        if binding_role == role && holds_member {
+            let remaining: Vec<Value> = binding
+                .get("members")
+                .and_then(Value::as_array)
+                .map(|members| {
+                    members
+                        .iter()
+                        .filter(|m| m.as_str() != Some(member))
+                        .cloned()
+                        .collect()
+                })
+                .unwrap_or_default();
+            changed = true;
+            if !remaining.is_empty() {
+                let mut kept = binding.clone();
+                kept["members"] = Value::Array(remaining);
+                next.push(kept);
+            }
+            continue;
+        }
+
+        next.push(binding);
+    }
+
+    Removed { next, changed }
+}
+
 /// Idempotently create the app-publisher Workload Identity pool.
 async fn ensure_wif_pool(client: &GcpClient, project_id: &str) -> SetupResult<()> {
     let path = format!(
@@ -1518,5 +1582,94 @@ mod tests {
         let client = GcpClient::new(Arc::new(StaticToken("t".into())))
             .with_base_url(GcpService::Iam, server.uri());
         ensure_wif_provider(&client, "p", "neon-law").await.unwrap();
+    }
+
+    /// Removing the publisher's binding drops exactly one clause — the
+    /// prior clause count minus one — and leaves every other Project's
+    /// binding on the same role untouched.
+    #[test]
+    fn remove_publisher_binding_drops_exactly_one_clause_and_spares_the_rest() {
+        let role = "projects/proj/roles/navigatorApplicationsPublisher";
+        let member = "serviceAccount:nav-pub-sample-litigation@proj.iam.gserviceaccount.com";
+        let other_member = "serviceAccount:nav-pub-sample-estate@proj.iam.gserviceaccount.com";
+        let bindings = vec![
+            json!({
+                "role": role,
+                "members": [member],
+                "condition": {
+                    "expression": publisher_condition_expression(
+                        "proj-applications", "sample-litigation"),
+                },
+            }),
+            json!({
+                "role": role,
+                "members": [other_member],
+                "condition": {
+                    "expression": publisher_condition_expression(
+                        "proj-applications", "sample-estate"),
+                },
+            }),
+            json!({ "role": "roles/storage.admin", "members": ["serviceAccount:someone-else"] }),
+        ];
+        let before = bindings.len();
+
+        let removed = remove_publisher_binding(bindings, member, role);
+
+        assert!(removed.changed);
+        assert_eq!(removed.next.len(), before - 1);
+        assert!(
+            removed.next.iter().all(|b| b
+                .get("members")
+                .and_then(Value::as_array)
+                .is_some_and(|members| !members.iter().any(|m| m.as_str() == Some(member)))),
+            "the removed member must not survive on any remaining binding"
+        );
+        assert!(
+            removed.next.iter().any(|b| b
+                .get("members")
+                .and_then(Value::as_array)
+                .is_some_and(|members| members.iter().any(|m| m.as_str() == Some(other_member)))),
+            "a different Project's publisher binding must survive untouched"
+        );
+    }
+
+    /// A binding with no other member is dropped entirely rather than left
+    /// with an empty `members` array, mirroring how `merge_publisher_bindings`
+    /// treats a stripped wide grant.
+    #[test]
+    fn remove_publisher_binding_drops_a_binding_left_with_no_members() {
+        let role = "projects/proj/roles/navigatorApplicationsPublisher";
+        let member = "serviceAccount:nav-pub-sample-litigation@proj.iam.gserviceaccount.com";
+        let bindings = vec![json!({
+            "role": role,
+            "members": [member],
+            "condition": {
+                "expression": publisher_condition_expression(
+                    "proj-applications", "sample-litigation"),
+            },
+        })];
+
+        let removed = remove_publisher_binding(bindings, member, role);
+
+        assert!(removed.changed);
+        assert!(removed.next.is_empty());
+    }
+
+    /// A member the binding never held is a no-op: nothing changes and
+    /// nothing is dropped.
+    #[test]
+    fn remove_publisher_binding_is_a_noop_when_the_member_is_absent() {
+        let role = "projects/proj/roles/navigatorApplicationsPublisher";
+        let member = "serviceAccount:nav-pub-sample-litigation@proj.iam.gserviceaccount.com";
+        let bindings = vec![json!({
+            "role": "roles/storage.admin",
+            "members": ["serviceAccount:someone-else"],
+        })];
+        let before = bindings.clone();
+
+        let removed = remove_publisher_binding(bindings, member, role);
+
+        assert!(!removed.changed);
+        assert_eq!(removed.next, before);
     }
 }

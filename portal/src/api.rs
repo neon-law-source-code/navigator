@@ -2634,6 +2634,11 @@ struct UploadDocumentRequest {
     /// files it as internal work product.
     visibility: Option<String>,
     description: Option<String>,
+    /// Free-form provenance the uploading caller already knows and the
+    /// bytes alone cannot say — a source repository's commit SHA, for
+    /// instance (ENG-481). Never inferred here; passed through verbatim
+    /// to the asset row's own `metadata` column.
+    metadata: Option<serde_json::Value>,
 }
 
 /// `POST /app/api/projects/{id}/documents` — file a document into a matter, the
@@ -2731,7 +2736,7 @@ async fn upload_document_door(
         &store::documents::DocumentIdentity {
             slug: Some(slug),
             published_at: None,
-            metadata: None,
+            metadata: input.metadata.clone(),
         },
         &bytes,
     )

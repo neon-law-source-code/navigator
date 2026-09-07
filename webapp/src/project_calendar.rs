@@ -1,14 +1,15 @@
-//! The project calendar — the dated view of matter events, shared by the lawyer
-//! workbench (`/app/lawyer`, across every matter the caller can see) and the
-//! matter workbench (`/app/projects/{code}`, scoped to one).
+//! The project calendar — the dated view of matter appearances, shared by the
+//! lawyer workbench (`/app/lawyer`, across every matter the caller can see) and
+//! the matter workbench (`/app/projects/{code}`, scoped to one).
 //!
-//! **Both render empty.** A calendar must not synthesize events out of the rows
-//! its page already holds: a document, a participation, and a notation are not
-//! scheduled events, and real event storage does not exist yet (#350). What
-//! ships is the contract that survives until it does — the sortable columns and
-//! the sort round-trip through the query string.
+//! Rows come from docket appearances: a hearing or trial's current
+//! `scheduled_on`, following a continuance chain to the entry no later entry
+//! supersedes. A document, a participation, and a notation are not scheduled
+//! events. Deadlines stay on their own module — an appearance is a fact the
+//! docket records, not a derived obligation.
 
 use dioxus::prelude::*;
+use serde::{Deserialize, Serialize};
 
 /// One sortable column: its `?sort=` key and its header label.
 pub type CalendarColumn = (&'static str, &'static str);
@@ -28,6 +29,29 @@ pub const WORKBENCH_COLUMNS: &[CalendarColumn] = &[
 /// the event.
 pub const MATTER_COLUMNS: &[CalendarColumn] =
     &[("date", "Date"), ("event", "Event"), ("status", "Status")];
+
+/// One appearance the calendar can render.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CalendarEvent {
+    pub date: String,
+    pub event: String,
+    pub status: String,
+    pub project: String,
+    pub entity: String,
+}
+
+impl CalendarEvent {
+    fn cell(&self, column: &str) -> &str {
+        match column {
+            "date" => &self.date,
+            "event" => &self.event,
+            "status" => &self.status,
+            "project" => &self.project,
+            "entity" => &self.entity,
+            _ => "",
+        }
+    }
+}
 
 /// The `?sort=`/`?dir=` pair every calendar reads. Both are lenient — an
 /// unrecognised value falls back to the default rather than refusing the
@@ -61,8 +85,21 @@ pub fn sort_dir(raw: Option<&str>) -> String {
     }
 }
 
-/// The calendar: a heading over a table of sortable headers and, until events
-/// are stored, one row saying so.
+/// Order appearances by the active column. Unknown columns fall back to date.
+pub fn sort_events(events: &mut [CalendarEvent], sort: &str, dir: &str) {
+    let descending = dir == "desc";
+    events.sort_by(|left, right| {
+        let ordering = left.cell(sort).cmp(right.cell(sort));
+        if descending {
+            ordering.reverse()
+        } else {
+            ordering
+        }
+    });
+}
+
+/// The calendar: a heading over a table of sortable headers and either the
+/// current appearances or one row saying none are scheduled.
 ///
 /// `path` and `query_prefix` build the header links. `query_prefix` is whatever
 /// the host page must carry through a re-sort, already `k=v&`-joined and
@@ -78,8 +115,11 @@ pub fn ProjectCalendar(
     query_prefix: String,
     sort: String,
     dir: String,
+    events: Vec<CalendarEvent>,
 ) -> Element {
     let span = columns.len().to_string();
+    let mut events = events;
+    sort_events(&mut events, &sort, &dir);
 
     rsx! {
         section { class: "{section_class}",
@@ -103,8 +143,18 @@ pub fn ProjectCalendar(
                         }
                     }
                     tbody {
-                        tr {
-                            td { colspan: "{span}", class: "nav-muted", "{empty_message}" }
+                        if events.is_empty() {
+                            tr {
+                                td { colspan: "{span}", class: "nav-muted", "{empty_message}" }
+                            }
+                        } else {
+                            for event in events.iter() {
+                                tr {
+                                    for (key , _) in columns.iter() {
+                                        td { "{event.cell(key)}" }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -159,6 +209,7 @@ mod tests {
                 query_prefix: String::new(),
                 sort: sort.to_string(),
                 dir: dir.to_string(),
+                events: Vec::new(),
             }
         }
     }
@@ -205,6 +256,7 @@ mod tests {
                 query_prefix: "status=closed&".to_string(),
                 sort: "date".to_string(),
                 dir: "asc".to_string(),
+                events: Vec::new(),
             }
         });
         assert!(
@@ -230,5 +282,40 @@ mod tests {
         assert_eq!(sort_dir(Some("asc")), "asc");
         assert_eq!(sort_dir(Some("sideways")), "asc");
         assert_eq!(sort_dir(None), "asc");
+    }
+
+    #[test]
+    fn a_continuance_chain_lists_one_row_with_the_later_date() {
+        let html = dioxus_ssr::render_element(rsx! {
+            ProjectCalendar {
+                section_class: "lawyer-detail__section project-calendar".to_string(),
+                heading: "Calendar".to_string(),
+                empty_message: "No calendar events scheduled for this matter.".to_string(),
+                columns: MATTER_COLUMNS.to_vec(),
+                path: "/app/projects/sample-litigation".to_string(),
+                query_prefix: String::new(),
+                sort: "date".to_string(),
+                dir: "asc".to_string(),
+                events: vec![CalendarEvent {
+                    date: "2027-04-12 09:00 UTC".to_string(),
+                    event: "Motion hearing (continued)".to_string(),
+                    status: "Hearing".to_string(),
+                    project: "Cruller v. Prine".to_string(),
+                    entity: "Cruller".to_string(),
+                }],
+            }
+        });
+        assert!(html.contains("Motion hearing (continued)"), "{html}");
+        assert!(html.contains("2027-04-12 09:00 UTC"), "{html}");
+        assert!(html.contains("Hearing"), "{html}");
+        assert!(
+            !html.contains("No calendar events scheduled for this matter."),
+            "{html}"
+        );
+        assert_eq!(
+            html.matches("<tr>").count(),
+            2,
+            "header plus one appearance: {html}"
+        );
     }
 }

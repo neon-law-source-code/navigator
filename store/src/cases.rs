@@ -17,6 +17,7 @@
 
 use chrono::{DateTime, Utc};
 use serde::Serialize;
+use std::collections::HashSet;
 use surrealdb::types::SurrealValue;
 use uuid::Uuid;
 
@@ -100,6 +101,12 @@ impl EntryKind {
     #[must_use]
     pub fn parse(value: &str) -> Option<EntryKind> {
         Self::ALL.iter().copied().find(|k| k.as_str() == value)
+    }
+
+    /// Hearings and trials are appearances: they carry `scheduled_on`.
+    #[must_use]
+    pub fn is_appearance(self) -> bool {
+        matches!(self, Self::Hearing | Self::Trial)
     }
 }
 
@@ -227,6 +234,14 @@ pub struct DocketEntry {
     pub party: Option<String>,
     /// RFC 3339 date filed or served.
     pub filed_or_served_on: Option<String>,
+    /// When the court set a hearing or trial. Required for those kinds,
+    /// absent for every other. Historical rows that predate the field stay
+    /// `None` until an operator records the date; they are never backfilled.
+    pub scheduled_on: Option<DateTime<Utc>>,
+    /// The prior appearance this continuance replaces. The superseded
+    /// entry keeps its date; the calendar follows the chain to the entry
+    /// no later entry points at.
+    pub supersedes: Option<Uuid>,
     /// `None` means *source pending*.
     pub document_asset_id: Option<Uuid>,
     /// Set when the firm drafted it.
@@ -244,6 +259,8 @@ struct DocketEntryRow {
     title: String,
     party: Option<String>,
     filed_or_served_on: Option<String>,
+    scheduled_on: Option<surrealdb::types::Datetime>,
+    supersedes: Option<surrealdb::types::RecordId>,
     document_asset_id: Option<surrealdb::types::RecordId>,
     notation_id: Option<surrealdb::types::RecordId>,
     inserted_at: surrealdb::types::Datetime,
@@ -260,6 +277,8 @@ impl DocketEntryRow {
             title: self.title,
             party: self.party,
             filed_or_served_on: self.filed_or_served_on,
+            scheduled_on: self.scheduled_on.map(Into::into),
+            supersedes: self.supersedes.as_ref().and_then(record_uuid),
             document_asset_id: self.document_asset_id.as_ref().and_then(record_uuid),
             notation_id: self.notation_id.as_ref().and_then(record_uuid),
             inserted_at: self.inserted_at.into(),
@@ -269,8 +288,49 @@ impl DocketEntryRow {
 }
 
 const DOCKET_ENTRY_SELECT: &str = "id, case_id, entry_number, kind, title, party, \
-                                   filed_or_served_on, document_asset_id, notation_id, \
-                                   inserted_at, updated_at";
+                                   filed_or_served_on, scheduled_on, supersedes, \
+                                   document_asset_id, notation_id, inserted_at, updated_at";
+
+/// A hearing or trial the calendar should show: the current appearance on
+/// a continuance chain, with a date still in the future.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Appearance {
+    pub id: Uuid,
+    pub case_id: Uuid,
+    pub project_id: Uuid,
+    pub kind: String,
+    pub title: String,
+    pub scheduled_on: DateTime<Utc>,
+}
+
+impl Appearance {
+    /// The calendar's date cell — UTC, minute precision.
+    #[must_use]
+    pub fn calendar_date(&self) -> String {
+        self.scheduled_on.format("%Y-%m-%d %H:%M UTC").to_string()
+    }
+
+    /// The calendar's status cell.
+    #[must_use]
+    pub fn calendar_status(&self) -> &'static str {
+        match self.kind.as_str() {
+            "hearing" => "Hearing",
+            "trial" => "Trial",
+            _ => "Appearance",
+        }
+    }
+}
+
+/// A hearing or trial row that has no `scheduled_on`. Existing databases
+/// can hold these from before the field existed; they are reported, never
+/// backfilled.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct UndatedAppearance {
+    pub id: Uuid,
+    pub case_id: Uuid,
+    pub kind: String,
+    pub title: String,
+}
 
 /// One served set of written discovery.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -521,6 +581,11 @@ pub struct NewDocketEntry<'a> {
     pub title: &'a str,
     pub party: Option<&'a str>,
     pub filed_or_served_on: Option<&'a str>,
+    /// Required when `kind` is [`EntryKind::Hearing`] or [`EntryKind::Trial`];
+    /// must be `None` otherwise. The schema ASSERT is the write-time gate.
+    pub scheduled_on: Option<DateTime<Utc>>,
+    /// The prior appearance a continuance replaces.
+    pub supersedes: Option<Uuid>,
     /// `None` is a meaningful state — the entry renders *source pending*.
     pub document_asset_id: Option<Uuid>,
     pub notation_id: Option<Uuid>,
@@ -540,6 +605,7 @@ pub async fn record_entry(
             "CREATE $id SET \
              case_id = $case_id, entry_number = $entry_number, kind = $kind, title = $title, \
              party = $party, filed_or_served_on = $filed_or_served_on, \
+             scheduled_on = $scheduled_on, supersedes = $supersedes, \
              document_asset_id = $document_asset_id, notation_id = $notation_id \
              RETURN {DOCKET_ENTRY_SELECT}"
         ))
@@ -552,6 +618,15 @@ pub async fn record_entry(
         .bind((
             "filed_or_served_on",
             new.filed_or_served_on.map(str::to_string),
+        ))
+        .bind((
+            "scheduled_on",
+            new.scheduled_on.map(surrealdb::types::Datetime::from),
+        ))
+        .bind((
+            "supersedes",
+            new.supersedes
+                .map(|prior| record_id(DOCKET_ENTRY_TABLE, prior)),
         ))
         .bind((
             "document_asset_id",
@@ -603,6 +678,111 @@ pub async fn docket(db: &SurrealDb, case_id: Uuid) -> Result<Vec<DocketEntry>, C
 #[must_use]
 pub fn is_source_pending(entry: &DocketEntry) -> bool {
     entry.document_asset_id.is_none()
+}
+
+fn is_appearance_kind(kind: &str) -> bool {
+    matches!(kind, "hearing" | "trial")
+}
+
+fn appearance_from_entry(entry: &DocketEntry, project_id: Uuid) -> Option<Appearance> {
+    Some(Appearance {
+        id: entry.id,
+        case_id: entry.case_id,
+        project_id,
+        kind: entry.kind.clone(),
+        title: entry.title.clone(),
+        scheduled_on: entry.scheduled_on?,
+    })
+}
+
+/// Current upcoming appearances on `case_id`: hearing and trial entries
+/// that carry a date, that no later entry supersedes, and whose date is
+/// still in the future.
+///
+/// # Errors
+/// Propagates any database error.
+pub async fn current_appearances_for_case(
+    db: &SurrealDb,
+    case_id: Uuid,
+    project_id: Uuid,
+) -> Result<Vec<Appearance>, CaseError> {
+    let entries = docket(db, case_id).await?;
+    let superseded: HashSet<Uuid> = entries
+        .iter()
+        .filter_map(|entry| entry.supersedes)
+        .collect();
+    let now = Utc::now();
+    let mut appearances: Vec<Appearance> = entries
+        .iter()
+        .filter(|entry| is_appearance_kind(&entry.kind))
+        .filter(|entry| !superseded.contains(&entry.id))
+        .filter(|entry| entry.scheduled_on.is_some_and(|when| when >= now))
+        .filter_map(|entry| appearance_from_entry(entry, project_id))
+        .collect();
+    appearances.sort_by_key(|appearance| appearance.scheduled_on);
+    Ok(appearances)
+}
+
+/// Current upcoming appearances on every case belonging to `project_id`.
+///
+/// # Errors
+/// Propagates any database error.
+pub async fn current_appearances_for_project(
+    db: &SurrealDb,
+    project_id: Uuid,
+) -> Result<Vec<Appearance>, CaseError> {
+    let mut appearances = Vec::new();
+    for case in for_project(db, project_id).await? {
+        appearances.extend(current_appearances_for_case(db, case.id, case.project_id).await?);
+    }
+    appearances.sort_by_key(|appearance| appearance.scheduled_on);
+    Ok(appearances)
+}
+
+/// Current upcoming appearances across the given matters.
+///
+/// # Errors
+/// Propagates any database error.
+pub async fn current_appearances_for_projects(
+    db: &SurrealDb,
+    project_ids: &[Uuid],
+) -> Result<Vec<Appearance>, CaseError> {
+    let mut appearances = Vec::new();
+    for project_id in project_ids {
+        appearances.extend(current_appearances_for_project(db, *project_id).await?);
+    }
+    appearances.sort_by_key(|appearance| appearance.scheduled_on);
+    Ok(appearances)
+}
+
+/// Hearing and trial rows that have no `scheduled_on`. The schema refuses
+/// new writes in that state; this read is how an operator finds rows that
+/// predate the field. It never writes.
+///
+/// # Errors
+/// Propagates any database error.
+pub async fn undated_hearings_and_trials(
+    db: &SurrealDb,
+) -> Result<Vec<UndatedAppearance>, CaseError> {
+    let mut response = db
+        .query(format!(
+            "SELECT {DOCKET_ENTRY_SELECT} FROM {DOCKET_ENTRY_TABLE} \
+             WHERE kind IN ['hearing', 'trial'] AND scheduled_on IS NONE \
+             ORDER BY id ASC"
+        ))
+        .await
+        .and_then(surrealdb::IndexedResults::check)?;
+    let rows: Vec<DocketEntryRow> = response.take(0)?;
+    Ok(rows
+        .into_iter()
+        .filter_map(DocketEntryRow::into_entry)
+        .map(|entry| UndatedAppearance {
+            id: entry.id,
+            case_id: entry.case_id,
+            kind: entry.kind,
+            title: entry.title,
+        })
+        .collect())
 }
 
 /// What a new served discovery set needs.

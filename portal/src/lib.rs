@@ -1276,7 +1276,7 @@ pub fn bootstrap(
     // redirect a refusal back to the form with an `?error=` flash and the
     // rejected positions text instead of re-rendering inline.
     // #956 Phase 4: the lawyer workbench at `/app/lawyer` renders through Dioxus —
-    // the project KPI overview, the calendar placeholder, and the
+    // the project KPI overview, the calendar of upcoming appearances, and the
     // administrative directory. Person-scoped like the lawyer projects list, so
     // the counts and the matter list are the caller's workload.
     let dioxus_lawyer_dashboard = dioxus_app::lawyer_dashboard_router(

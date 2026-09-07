@@ -15,9 +15,10 @@
 <path class="e" d="M782,719 L998,3719" marker-end="url(#arrow)"/>
 <path class="e" d="M1262,675 L998,2173" marker-end="url(#arrow)"/>
 <path class="e" d="M1710,785 L998,3719" marker-end="url(#arrow)"/>
-<path class="e" d="M382,949 L1454,583" marker-end="url(#arrow)"/>
-<path class="e" d="M382,971 L998,45" marker-end="url(#arrow)"/>
-<path class="e" d="M382,1081 L30,2929" marker-end="url(#arrow)"/>
+<path class="e" d="M422,949 L1454,583" marker-end="url(#arrow)"/>
+<path class="e" d="M422,971 L998,45" marker-end="url(#arrow)"/>
+<path class="e" d="M422,1081 L30,2929" marker-end="url(#arrow)"/>
+<path class="e" d="M422,1147 L30,901" marker-end="url(#arrow)"/>
 <path class="e" d="M846,949 L494,583" marker-end="url(#arrow)"/>
 <path class="e" d="M1350,949 L998,45" marker-end="url(#arrow)"/>
 <path class="e" d="M1350,971 L1454,2929" marker-end="url(#arrow)"/>
@@ -339,31 +340,35 @@
 <text class="ct" x="244" y="265" text-anchor="end">datetime</text>
 </g>
 <g transform="translate(30,886)">
-<rect class="t" width="352" height="272"/>
-<rect class="tt" width="352" height="30"/>
-<text class="tn" x="176" y="20" text-anchor="middle">case_docket_entry</text>
+<rect class="t" width="392" height="316"/>
+<rect class="tt" width="392" height="30"/>
+<text class="tn" x="196" y="20" text-anchor="middle">case_docket_entry</text>
 <text class="cn" x="12" y="45">id</text>
-<text class="cpk" x="340" y="45" text-anchor="end">record PK</text>
+<text class="cpk" x="380" y="45" text-anchor="end">record PK</text>
 <text class="cn" x="12" y="67">case_id</text>
-<text class="cfk" x="340" y="67" text-anchor="end">record_case FK</text>
+<text class="cfk" x="380" y="67" text-anchor="end">record_case FK</text>
 <text class="cn" x="12" y="89">document_asset_id</text>
-<text class="cfk" x="340" y="89" text-anchor="end">option_record_asset FK</text>
+<text class="cfk" x="380" y="89" text-anchor="end">option_record_asset FK</text>
 <text class="cn" x="12" y="111">entry_number</text>
-<text class="ct" x="340" y="111" text-anchor="end">string</text>
+<text class="ct" x="380" y="111" text-anchor="end">string</text>
 <text class="cn" x="12" y="133">filed_or_served_on</text>
-<text class="ct" x="340" y="133" text-anchor="end">option_string</text>
+<text class="ct" x="380" y="133" text-anchor="end">option_string</text>
 <text class="cn" x="12" y="155">inserted_at</text>
-<text class="ct" x="340" y="155" text-anchor="end">datetime</text>
+<text class="ct" x="380" y="155" text-anchor="end">datetime</text>
 <text class="cn" x="12" y="177">kind</text>
-<text class="ct" x="340" y="177" text-anchor="end">string</text>
+<text class="ct" x="380" y="177" text-anchor="end">string</text>
 <text class="cn" x="12" y="199">notation_id</text>
-<text class="cfk" x="340" y="199" text-anchor="end">option_record_notation FK</text>
+<text class="cfk" x="380" y="199" text-anchor="end">option_record_notation FK</text>
 <text class="cn" x="12" y="221">party</text>
-<text class="ct" x="340" y="221" text-anchor="end">option_string</text>
-<text class="cn" x="12" y="243">title</text>
-<text class="ct" x="340" y="243" text-anchor="end">string</text>
-<text class="cn" x="12" y="265">updated_at</text>
-<text class="ct" x="340" y="265" text-anchor="end">datetime</text>
+<text class="ct" x="380" y="221" text-anchor="end">option_string</text>
+<text class="cn" x="12" y="243">scheduled_on</text>
+<text class="ct" x="380" y="243" text-anchor="end">option_datetime</text>
+<text class="cn" x="12" y="265">supersedes</text>
+<text class="cfk" x="380" y="265" text-anchor="end">option_record_case_docket_entry FK</text>
+<text class="cn" x="12" y="287">title</text>
+<text class="ct" x="380" y="287" text-anchor="end">string</text>
+<text class="cn" x="12" y="309">updated_at</text>
+<text class="ct" x="380" y="309" text-anchor="end">datetime</text>
 </g>
 <g transform="translate(494,886)">
 <rect class="t" width="352" height="206"/>

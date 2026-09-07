@@ -1376,16 +1376,31 @@ DEFINE INDEX OVERWRITE case_project ON case FIELDS project_id;
 -- An absent `document_asset_id` is a **meaningful state**, not an error —
 -- the entry renders as *source pending*, derived from whether the link
 -- exists rather than from a hand-maintained flag.
+--
+-- `scheduled_on` is the appearance date the court set. It is required for
+-- `hearing` and `trial`, and refused for every other kind. A continuance is
+-- a new entry of the same kind with a new `scheduled_on` and `supersedes`
+-- pointing at the prior entry, so the earlier date stays on the record.
 DEFINE TABLE IF NOT EXISTS case_docket_entry SCHEMAFULL PERMISSIONS NONE;
 DEFINE FIELD OVERWRITE case_id ON case_docket_entry TYPE record<case>;
 DEFINE FIELD OVERWRITE entry_number ON case_docket_entry TYPE string;
 DEFINE FIELD OVERWRITE kind ON case_docket_entry TYPE string
     ASSERT $value IN ['pleading', 'motion', 'opposition', 'reply', 'order', 'notice',
                       'stipulation', 'discovery_request', 'discovery_response', 'subpoena',
-                      'expert_disclosure', 'hearing', 'trial', 'appeal', 'settlement', 'other'];
+                      'expert_disclosure', 'hearing', 'trial', 'appeal', 'settlement', 'other']
+    AND (
+        ($value IN ['hearing', 'trial'] AND scheduled_on IS NOT NONE)
+        OR ($value NOT IN ['hearing', 'trial'] AND scheduled_on IS NONE)
+    );
 DEFINE FIELD OVERWRITE title ON case_docket_entry TYPE string;
 DEFINE FIELD OVERWRITE party ON case_docket_entry TYPE option<string>;
 DEFINE FIELD OVERWRITE filed_or_served_on ON case_docket_entry TYPE option<string>;
+DEFINE FIELD OVERWRITE scheduled_on ON case_docket_entry TYPE option<datetime>
+    ASSERT (
+        (kind IN ['hearing', 'trial'] AND $value IS NOT NONE)
+        OR (kind NOT IN ['hearing', 'trial'] AND $value IS NONE)
+    );
+DEFINE FIELD OVERWRITE supersedes ON case_docket_entry TYPE option<record<case_docket_entry>>;
 DEFINE FIELD OVERWRITE document_asset_id ON case_docket_entry TYPE option<record<asset>>;
 DEFINE FIELD OVERWRITE notation_id ON case_docket_entry TYPE option<record<notation>>;
 DEFINE FIELD OVERWRITE inserted_at ON case_docket_entry TYPE datetime DEFAULT time::now();

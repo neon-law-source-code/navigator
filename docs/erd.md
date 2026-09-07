@@ -206,6 +206,8 @@ erDiagram
         string kind
         option_record_notation notation_id FK
         option_string party
+        option_datetime scheduled_on
+        option_record_case_docket_entry supersedes FK
         string title
         datetime updated_at
     }
@@ -781,6 +783,7 @@ erDiagram
     case ||--o{ case_docket_entry : "case_id"
     asset ||--o{ case_docket_entry : "document_asset_id"
     notation ||--o{ case_docket_entry : "notation_id"
+    case_docket_entry ||--o{ case_docket_entry : "supersedes"
     authority_use ||--o{ citation : "authority_use_id"
     asset ||--o{ communication : "asset_id"
     person ||--o{ communication : "author_person_id"

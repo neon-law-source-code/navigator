@@ -3587,20 +3587,22 @@ mod tests {
             "OAuth hosted-domain environment-variable name is preserved"
         );
         // The production render's `NAVIGATOR_PUBLIC_HOST` is `www.neonlaw.com`,
-        // so the other registered `BrandKey` (`DeleteYourData`) contributes its
-        // own production host here — derived from the compiled registry, not a
-        // second hand-maintained coordinate.
+        // so every other registered `BrandKey` contributes its own production
+        // host here — derived from the compiled registry, not a second
+        // hand-maintained coordinate.
         let cert_manifest =
             fs::read_to_string(gke.join("ingress/managed-certificate.yaml")).unwrap();
         assert!(
             cert_manifest.contains("- www.deleteyourdata.com"),
             "the additional brand's production host gets a cert domain"
         );
+        assert!(cert_manifest.contains("- www.lawyershook.com"));
         let ingress = fs::read_to_string(gke.join("ingress/ingress.yaml")).unwrap();
         assert!(
             ingress.contains("- host: www.deleteyourdata.com"),
             "the additional brand's production host gets an Ingress rule: {ingress}"
         );
+        assert!(ingress.contains("- host: www.lawyershook.com"));
         assert!(
             ingress.contains(
                 "name: navigator-web\n                port:\n                  number: 80"
@@ -3609,7 +3611,9 @@ mod tests {
         );
         assert!(
             !cert_manifest.contains("staging.deleteyourdata.com")
-                && !ingress.contains("staging.deleteyourdata.com"),
+                && !cert_manifest.contains("staging.lawyershook.com")
+                && !ingress.contains("staging.deleteyourdata.com")
+                && !ingress.contains("staging.lawyershook.com"),
             "a production render must not carry the staging sibling of the additional brand's host"
         );
         // The support-chat coordinate is optional, so the drift that matters is
@@ -3685,12 +3689,12 @@ mod tests {
     fn additional_brand_hosts_excludes_the_default_and_matches_the_environment() {
         assert_eq!(
             additional_brand_hosts("www.neonlaw.com"),
-            vec!["www.deleteyourdata.com"],
+            vec!["www.deleteyourdata.com", "www.lawyershook.com"],
             "a production public host pulls in only the other brand's production host"
         );
         assert_eq!(
             additional_brand_hosts("staging.neonlaw.com"),
-            vec!["staging.deleteyourdata.com"],
+            vec!["staging.deleteyourdata.com", "staging.lawyershook.com"],
             "a staging public host pulls in only the other brand's staging host"
         );
     }
@@ -3699,9 +3703,9 @@ mod tests {
     fn a_staging_render_carries_the_staging_sibling_not_the_production_one() {
         // Mirrors `render_substitutes_every_placeholder_to_zero_remaining`'s
         // production assertion, but for the `neon-law-stg` shape (`HUB_ENV`),
-        // whose `NAVIGATOR_PUBLIC_HOST` is `staging.neonlaw.com` — the other
-        // registered brand's cert/Ingress entry must flip to its own
-        // `staging.` host, not repeat the production one.
+        // whose `NAVIGATOR_PUBLIC_HOST` is `staging.neonlaw.com` — each
+        // registered brand's cert/Ingress entry must use its own `staging.`
+        // host.
         let subs =
             resolve_substitutions_for_deployment("neon-law-stg", "26.7.15", env_getter(HUB_ENV))
                 .expect("hub env resolves");
@@ -3713,6 +3717,7 @@ mod tests {
             cert_manifest.contains("- staging.deleteyourdata.com"),
             "the additional brand's staging host gets a cert domain"
         );
+        assert!(cert_manifest.contains("- staging.lawyershook.com"));
         assert!(
             !cert_manifest.contains("www.deleteyourdata.com"),
             "a staging render must not carry the production sibling"
@@ -3722,6 +3727,7 @@ mod tests {
             ingress.contains("- host: staging.deleteyourdata.com"),
             "the additional brand's staging host gets an Ingress rule: {ingress}"
         );
+        assert!(ingress.contains("- host: staging.lawyershook.com"));
     }
 
     /// Collect every `env:` entry declared anywhere under `node`, as

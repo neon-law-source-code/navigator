@@ -193,6 +193,7 @@ async fn dioxus_document_head(req: Request, next: Next) -> Response {
     let font_head: &str = match views::brand::brand_key() {
         views::brand::BrandKey::Neon => &GORP_HEAD,
         views::brand::BrandKey::DeleteYourData => &PLUS_JAKARTA_SANS_HEAD,
+        views::brand::BrandKey::LawyerShook => &TINOS_HEAD,
     };
     let html = stamp_document_title(&stamp_html_lang(&rendered, lang), &path)
         .replace("<script>", &format!("<script nonce=\"{nonce}\">"))
@@ -366,7 +367,7 @@ fn open_with_banner(html: &str, banner: &str) -> String {
 
 /// The GORP Serif head fragment, built once from the process asset origin: a
 /// preload for the reading face (so first paint is not a fallback-serif flash)
-/// and the two `@font-face` declarations `theme.css`'s `--nav-font-family`
+/// and the `@font-face` declarations `theme.css`'s `--nav-font-family`
 /// resolves against. `views` owns the declaration text consumed by the Dioxus
 /// browser surface.
 static GORP_HEAD: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
@@ -378,9 +379,7 @@ static GORP_HEAD: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
 });
 
 /// DeleteYourData.com's Plus Jakarta Sans head fragment — the same
-/// bucket-served shape as [`GORP_HEAD`], for the one brand that wears a
-/// different face. [`dioxus_document_head`] picks between the two per the
-/// request's resolved [`views::brand::BrandKey`].
+/// bucket-served shape as [`GORP_HEAD`].
 static PLUS_JAKARTA_SANS_HEAD: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
     font_head_fragment(
         "Plus Jakarta Sans",
@@ -389,7 +388,15 @@ static PLUS_JAKARTA_SANS_HEAD: std::sync::LazyLock<String> = std::sync::LazyLock
     )
 });
 
-/// Pure builder behind [`GORP_HEAD`] and [`PLUS_JAKARTA_SANS_HEAD`], so tests
+static TINOS_HEAD: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+    font_head_fragment(
+        "Tinos",
+        "/public/fonts/tinos/Tinos-Regular.woff2",
+        "/public/fonts/tinos/Tinos-Bold.woff2",
+    )
+});
+
+/// Pure builder behind the registered font head fragments, so tests
 /// exercise every asset-origin shape without stomping the process-wide env
 /// var. The preload `href` is HTML-escaped; the stylesheet body arrives
 /// already CSS-string-escaped from `views::assets::font_face_css`.
@@ -3760,6 +3767,19 @@ mod tests {
             ),
             "the reading face must be preloaded: {fragment}",
         );
+    }
+
+    #[test]
+    fn the_tinos_head_declares_the_lawyer_shook_faces() {
+        let fragment = font_head_fragment(
+            "Tinos",
+            "/public/fonts/tinos/Tinos-Regular.woff2",
+            "/public/fonts/tinos/Tinos-Bold.woff2",
+        );
+        assert!(fragment.contains("font-family:'Tinos'"), "{fragment}");
+        assert!(fragment.contains("Tinos-Regular.woff2"), "{fragment}");
+        assert!(fragment.contains("Tinos-Bold.woff2"), "{fragment}");
+        assert_eq!(fragment.matches("font-family:'Tinos'").count(), 2);
     }
 
     /// A hostile asset origin cannot break out of the `<style>` element it is

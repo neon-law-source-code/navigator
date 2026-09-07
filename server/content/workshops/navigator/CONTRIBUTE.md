@@ -40,6 +40,10 @@ authorized lawyers contribute inside the firm. The most useful corpus contributi
 - Add a missing legal template. Add a government PDF form. Improve a field map. Add a test that locks a workflow to the
   law it implements.
 
+- Maintain a brand catalog. Each public brand keeps its English home and services copy in
+  `neon/locales/en/<brand-key>`; the registered catalogs are `neon/`, `delete-your-data/`, and `lawyer-shook/`. A new
+  catalog must be added through the brand registry with covering tests and attorney review for public legal copy.
+
 ---
 
 Everything you have seen in these workshops — the `web` app, the `navigator` CLI, the durable workflows — lives in one

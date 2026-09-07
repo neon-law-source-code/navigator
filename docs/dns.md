@@ -53,6 +53,8 @@ is served by the redirect service, which sends both its apex and `www` host to t
 | --- | --- | --- |
 | `www.neonlaw.com` / `workflows.neonlaw.com` | the production deployment | its `<prefix>-gateway-ip` |
 | `staging.neonlaw.com` / `workflows-staging.neonlaw.com` | the staging deployment | its `<prefix>-gateway-ip` |
+| `staging.deleteyourdata.com` | the staging deployment | its `<prefix>-gateway-ip` |
+| `staging.lawyershook.com` | the staging deployment | its `<prefix>-gateway-ip` |
 | `neonlaw.org` / `www.neonlaw.org` | the redirect service | `https://www.neonlaw.com` (path-preserving 301) |
 
 The `neonlaw.com` apex is not a deployment entry: it carries a `URL` record that 301s to `https://www.neonlaw.com`,

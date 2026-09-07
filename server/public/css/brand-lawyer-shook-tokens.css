@@ -1,0 +1,55 @@
+/* The `lawyer-shook` registry key's legal-pad face and palette. */
+
+@font-face {
+  font-family: "Tinos";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/public/fonts/tinos/Tinos-Regular.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Tinos";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/public/fonts/tinos/Tinos-Bold.woff2") format("woff2");
+}
+
+:root {
+  --font-body: "Tinos", "Times New Roman", serif;
+  --nav-font-family: var(--font-body);
+  --nav-color-bg: #fff9a8;
+  --nav-color-surface: #fff9a8;
+  --nav-color-surface-raised: #fffbd1;
+  --nav-color-surface-subtle: #fffbd1;
+  --nav-color-primary: #5c5100;
+  --nav-color-primary-hover: #443c00;
+  --nav-color-primary-active: #2e2900;
+  --nav-color-link: #443c00;
+  --nav-color-link-hover: #2e2900;
+  --nav-color-text: #272300;
+  --nav-color-text-muted: #5b5528;
+  --nav-color-border: #c9bd55;
+  --nav-color-on-primary: #fff9a8;
+  --nav-color-on-brand: #272300;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --nav-color-bg: #272300;
+    --nav-color-surface: #332e00;
+    --nav-color-surface-raised: #403900;
+    --nav-color-surface-subtle: #403900;
+    --nav-color-primary: #fff176;
+    --nav-color-primary-hover: #fff7a8;
+    --nav-color-primary-active: #fffbd1;
+    --nav-color-link: #fff176;
+    --nav-color-link-hover: #fff7a8;
+    --nav-color-text: #fffbd1;
+    --nav-color-text-muted: #e5dc8a;
+    --nav-color-border: #8f842d;
+    --nav-color-on-primary: #272300;
+    --nav-color-on-brand: #272300;
+  }
+}

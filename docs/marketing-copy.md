@@ -33,6 +33,13 @@ DeleteYourData.com (`delete-your-data/`):
 | `neon/locales/en/delete-your-data/home.yaml` | `/` |
 | `neon/locales/en/delete-your-data/services.yaml` | `/services` |
 
+Lawyer Shook (`lawyer-shook/`):
+
+| File | Page |
+| --- | --- |
+| `neon/locales/en/lawyer-shook/home.yaml` | `/` |
+| `neon/locales/en/lawyer-shook/services.yaml` | `/services` |
+
 Which stems a key ships is [`BrandKey::catalog_pages`](../views/src/brand.rs). A house brand answers only those pages
 plus `/contact` (addresses, not a YAML stem); other firm paths 404 on that host rather than rendering Neon's words.
 

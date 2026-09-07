@@ -1,0 +1,82 @@
+head_title: "Legal Services — {site_name}"
+meta_description: >-
+  Legal services from Lawyer Shook, a practice of Shook Law PLLC. We discuss
+  the work, check for conflicts, and explain the scope before an engagement
+  begins. This is an attorney advertisement.
+title: Legal Services
+hero_mark: gavel
+tagline: Work with a clear scope
+hero_lines:
+  - text: Work with
+    accent_words: 2
+  - text: a clear scope
+    accent_words: 0
+hero_lead: >-
+  Lawyer Shook is a practice of Shook Law PLLC. We discuss the legal problem,
+  check for conflicts, and explain the scope before any work begins.
+hero_cta:
+  href: "mailto:{firm_email}"
+  label: Contact us
+skin: practice
+bands:
+  - kind: statement
+    heading: Who this is for
+    lead: ""
+    body:
+      - - text: >-
+            This page is for someone who wants to discuss a legal problem with
+            a lawyer. It is an attorney advertisement, not legal advice, and
+            not a promise that a particular result is available.
+  - kind: cards
+    anchor: work
+    overline: The conversation
+    heading: What we can discuss
+    description: >-
+      The right scope depends on the facts, the records, the law, and whether
+      we can represent you. We explain the proposed work before it begins.
+    items:
+      - title: Dispute assessment
+        body:
+          - - text: >-
+                We listen to the dispute, ask what has happened, and check for
+                conflicts before discussing whether the matter may fit.
+      - title: Business counsel
+        body:
+          - - text: >-
+                We discuss contracts and business decisions that need legal
+                attention, with the proposed scope explained before work begins.
+      - title: Defined legal task
+        body:
+          - - text: >-
+                We discuss a focused task such as a document, filing, or legal
+                plan and identify what the engagement would cover.
+  - kind: steps
+    anchor: how
+    overline: How it works
+    heading: Start with a conversation
+    description: >-
+      Tell us what you are trying to do. We will check for conflicts and tell
+      you whether the work may fit before any engagement begins.
+    items:
+      - title: Write to us
+        body:
+          - - text: >-
+                Email the practice with the legal problem, the relevant timing,
+                and how we can reach you.
+      - title: We listen and check
+        body:
+          - - text: >-
+                We ask the questions needed to understand the request and check
+                whether we can represent you.
+      - title: We explain the scope
+        body:
+          - - text: >-
+                If the work may fit, we explain what the engagement would cover
+                before it begins.
+  - kind: cta
+    heading: Ready to talk?
+    body: >-
+      Email the practice with the legal problem you are trying to solve. We
+      will respond about whether the work may fit.
+    email: "{firm_email}"
+    email_subject: Legal services

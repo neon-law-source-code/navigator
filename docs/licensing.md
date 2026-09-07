@@ -93,6 +93,8 @@ Two facts, one organization — but that organization is not the one that practi
 | --- | --- | --- |
 | Copyright in this repository | **Neon Law IP LLC**, the IP holder | Only the holder can grant the whole work |
 | **NEON LAW**, U.S. Reg. No. 6,325,650 | **Neon Law IP LLC**, the IP holder | The mark is not licensed here at all |
+| **DELETEYOURDATA.COM™** | **Shook Law PLLC**, the operating Firm | Common-law mark; not licensed here |
+| **LAWYER SHOOK™** | **Shook Law PLLC**, the operating Firm | Common-law mark; not licensed here |
 
 **Why Neon Law IP LLC holds it, and Shook Law PLLC does not.** Shook Law PLLC is the law firm that writes this software,
 engages the people who write the rest of it, and operates a legal practice under the NEON LAW mark — but the copyright
@@ -352,6 +354,10 @@ This is the one reservation this project genuinely needs. A client identifies wh
 the name on the door, so a fork trading as Neon Law would misdirect the person least able to check. Anyone may run,
 fork, and redistribute the software, and may say their work is built on Neon Law Navigator; nobody may present their
 deployment as Neon Law.
+
+**DELETEYOURDATA.COM™** and **LAWYER SHOOK™** are common-law marks of Shook Law PLLC. The same copyright licence does
+not grant either mark. A deployment using either house brand must be the Firm's own deployment; a fork chooses a
+different name and identity.
 
 ## Contributions
 

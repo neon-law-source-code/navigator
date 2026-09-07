@@ -162,6 +162,13 @@ cargo run -p cli -- ops assets verify --base-url https://staging.neonlaw.com/ass
 `views::assets::GALLERY` variant, and both licensed GORP faces — and exits `2` naming whatever the origin does not
 serve.
 
+### Lawyer Shook's Tinos
+
+The `lawyer-shook` house brand uses Tinos under the SIL Open Font License 1.1. The repository carries the Regular and
+Bold WOFF2 faces under `server/public/fonts/tinos/`; no raster mark is required because the public header and footer
+render the LAWYER SHOOK wordmark as text. `portal::dioxus_app` selects these faces for the Lawyer Shook host, while the
+Neon Law and DeleteYourData faces retain their existing head fragments.
+
 ## Verify after shipping
 
 A live deployment can serve a 404 hero when the bucket is missing bytes — the rendered-HTML test only checks the `src`

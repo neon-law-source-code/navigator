@@ -244,11 +244,18 @@ const DEFAULT_LOCAL_WEB_PORT: u16 = 3001;
 // var name `web` itself reads — devx and the running process can therefore
 // never disagree on which port serves that brand.
 const DEFAULT_LOCAL_DELETE_YOUR_DATA_WEB_PORT: u16 = 3011;
+const DEFAULT_LOCAL_LAWYER_SHOOK_WEB_PORT: u16 = 3021;
 
 fn delete_your_data_port_env_var() -> &'static str {
     views::brand::BrandKey::DeleteYourData
         .local_port_env_var()
         .expect("DeleteYourData is a registered non-default key and always has a local port var")
+}
+
+fn lawyer_shook_port_env_var() -> &'static str {
+    views::brand::BrandKey::LawyerShook
+        .local_port_env_var()
+        .expect("LawyerShook is a registered non-default key and always has a local port var")
 }
 
 // OpenObserve's UI (5080) and direct OTLP gRPC ingest port (5081) are
@@ -282,6 +289,7 @@ struct KindConfig {
     surreal_port: u16,
     web_port: u16,
     delete_your_data_web_port: u16,
+    lawyer_shook_web_port: u16,
     openobserve_port: u16,
     openobserve_otlp_port: u16,
 }
@@ -328,6 +336,10 @@ impl KindConfig {
             delete_your_data_web_port: env_port(
                 delete_your_data_port_env_var(),
                 DEFAULT_LOCAL_DELETE_YOUR_DATA_WEB_PORT,
+            ),
+            lawyer_shook_web_port: env_port(
+                lawyer_shook_port_env_var(),
+                DEFAULT_LOCAL_LAWYER_SHOOK_WEB_PORT,
             ),
             openobserve_port: env_port(
                 "NAVIGATOR_KIND_OPENOBSERVE_PORT",
@@ -1812,6 +1824,10 @@ fn render_env_for(cfg: &KindConfig, db_name: &str, web_port: u16, root: &Path) -
             cfg.delete_your_data_web_port.to_string(),
         ),
         (
+            lawyer_shook_port_env_var(),
+            cfg.lawyer_shook_web_port.to_string(),
+        ),
+        (
             "NAVIGATOR_KIND_OPENOBSERVE_PORT",
             cfg.openobserve_port.to_string(),
         ),
@@ -2617,6 +2633,7 @@ mod tests {
         "NAVIGATOR_KIND_GARAGE_S3_PORT",
         "NAVIGATOR_KIND_WEB_PORT",
         "NAVIGATOR_LOCAL_DELETE_YOUR_DATA_PORT",
+        "NAVIGATOR_LOCAL_LAWYER_SHOOK_PORT",
         "NAVIGATOR_KIND_OPENOBSERVE_PORT",
         "NAVIGATOR_KIND_OPENOBSERVE_OTLP_PORT",
     ];
@@ -2656,6 +2673,7 @@ mod tests {
             surreal_port: DEFAULT_SURREAL_HOST_PORT,
             web_port: DEFAULT_LOCAL_WEB_PORT,
             delete_your_data_web_port: DEFAULT_LOCAL_DELETE_YOUR_DATA_WEB_PORT,
+            lawyer_shook_web_port: DEFAULT_LOCAL_LAWYER_SHOOK_WEB_PORT,
             openobserve_port: DEFAULT_OPENOBSERVE_HOST_PORT,
             openobserve_otlp_port: DEFAULT_OPENOBSERVE_OTLP_HOST_PORT,
         }
@@ -2910,6 +2928,7 @@ mod tests {
         env::set_var("NAVIGATOR_KIND_GARAGE_S3_PORT", "31900");
         env::set_var("NAVIGATOR_KIND_WEB_PORT", "4001");
         env::set_var(delete_your_data_port_env_var(), "4011");
+        env::set_var(lawyer_shook_port_env_var(), "4021");
         let cfg = KindConfig::from_env();
         clear_kind_env();
         assert_eq!(cfg.ingress_http_port, 18080);
@@ -2921,6 +2940,7 @@ mod tests {
         assert_eq!(cfg.garage_s3_port, 31900);
         assert_eq!(cfg.web_port, 4001);
         assert_eq!(cfg.delete_your_data_web_port, 4011);
+        assert_eq!(cfg.lawyer_shook_web_port, 4021);
     }
 
     #[test]
@@ -2939,6 +2959,10 @@ mod tests {
             cfg.delete_your_data_web_port,
             DEFAULT_LOCAL_DELETE_YOUR_DATA_WEB_PORT
         );
+        assert_eq!(
+            cfg.lawyer_shook_web_port,
+            DEFAULT_LOCAL_LAWYER_SHOOK_WEB_PORT
+        );
     }
 
     #[test]
@@ -2947,6 +2971,7 @@ mod tests {
         cfg.cluster = "navigator-task".into();
         cfg.web_port = 4001;
         cfg.delete_your_data_web_port = 4011;
+        cfg.lawyer_shook_web_port = 4021;
         cfg.clamav_port = 23310;
         cfg.rauthy_port = 31080;
         cfg.garage_s3_port = 31900;
@@ -2960,6 +2985,7 @@ mod tests {
         assert!(env.contains("NAVIGATOR_KIND_RESTATE_INGRESS_PORT=19080"));
         assert!(env.contains("NAVIGATOR_KIND_WEB_PORT=4001"));
         assert!(env.contains(&format!("{}=4011", delete_your_data_port_env_var())));
+        assert!(env.contains(&format!("{}=4021", lawyer_shook_port_env_var())));
         assert!(env.contains("NAVIGATOR_GIT_REPO_ROOT='/ws/.devx/repos/navigator'"));
         assert!(env.contains("OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:15081"));
         assert!(env.contains("NAVIGATOR_OPENOBSERVE_URL=http://localhost:15080"));

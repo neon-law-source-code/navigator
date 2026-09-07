@@ -89,17 +89,19 @@ pub fn SiteHeader(
         // declines to draw. A browser that cannot use it falls back to
         // requesting `/favicon.ico`, which this deployment does not serve — one
         // 404 for a tab icon, not a broken page.
-        document::Link {
-            rel: "icon",
-            r#type: if std::path::Path::new(&logo_href)
-                .extension()
-                .is_some_and(|ext| ext.eq_ignore_ascii_case("svg"))
-            {
-                "image/svg+xml"
-            } else {
-                "image/png"
-            },
-            href: "{logo_href}",
+        if !logo_href.is_empty() {
+            document::Link {
+                rel: "icon",
+                r#type: if std::path::Path::new(&logo_href)
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("svg"))
+                {
+                    "image/svg+xml"
+                } else {
+                    "image/png"
+                },
+                href: "{logo_href}",
+            }
         }
         // Without this a phone lays the page out in a 980px imaginary window and
         // scales the result down, so every `max-width` breakpoint in the
@@ -118,12 +120,14 @@ pub fn SiteHeader(
                     class: "site-header__brand",
                     href: "{home_href}",
                     "aria-label": "{brand_name} home",
-                    img {
-                        class: "site-header__logo",
-                        src: "{logo_href}",
-                        alt: "",
-                        width: "32",
-                        height: "32",
+                    if !logo_href.is_empty() {
+                        img {
+                            class: "site-header__logo",
+                            src: "{logo_href}",
+                            alt: "",
+                            width: "32",
+                            height: "32",
+                        }
                     }
                     strong { "{brand_name}" }
                 }
@@ -249,6 +253,24 @@ mod tests {
         );
         // The logo is decorative — the brand text and label carry the name.
         assert!(out.contains(r#"alt="""#), "logo is decorative: {out}");
+    }
+
+    #[test]
+    fn a_text_wordmark_does_not_emit_an_empty_image() {
+        fn app() -> Element {
+            rsx! {
+                SiteHeader {
+                    brand_name: "Lawyer Shook".to_string(),
+                    home_href: "/".to_string(),
+                    logo_href: String::new(),
+                    destinations: vec![SiteNavLink::new("Services", "/services")],
+                }
+            }
+        }
+        let out = ssr(app);
+        assert!(out.contains("Lawyer Shook"), "text wordmark remains: {out}");
+        assert!(!out.contains("site-header__logo"), "no empty logo: {out}");
+        assert!(!out.contains("rel=\"icon\""), "no empty favicon: {out}");
     }
 
     #[test]

@@ -8,7 +8,7 @@ Feature: Public routing on the firm's own host
   This harness drives every scenario against the firm's own host, so
   `og:site_name` is "Neon Law" throughout — that name is what these scenarios
   assert; its absence marks a page mounted under the wrong brand. The
-  exhaustive host-by-brand matrix (a second registered host answering its own
+  exhaustive host-by-brand matrix (a registered host answering its own
   brand, an unregistered host redirecting) lives in `server/tests/routes.rs`,
   which drives one composed router directly rather than building a whole app
   per scenario.

@@ -62,6 +62,7 @@ const WORKTREE_WEB_PORT_BASE: u16 = 20_600;
 /// port the same way it gets `web` one. `20_300` is the one 100-band in the
 /// worktree window no other tier member claims.
 const WORKTREE_DELETE_YOUR_DATA_WEB_PORT_BASE: u16 = 20_300;
+const WORKTREE_LAWYER_SHOOK_WEB_PORT_BASE: u16 = 21_300;
 const WORKTREE_OPENOBSERVE_PORT_BASE: u16 = 20_700;
 const WORKTREE_OPENOBSERVE_OTLP_PORT_BASE: u16 = 20_800;
 const WORKTREE_CLAMAV_PORT_BASE: u16 = 21_100;
@@ -728,6 +729,7 @@ fn worktree_kind_config(base: &KindConfig, root: &Path, slot: u16) -> KindConfig
     cfg.garage_s3_port = WORKTREE_GARAGE_S3_PORT_BASE + slot;
     cfg.web_port = WORKTREE_WEB_PORT_BASE + slot;
     cfg.delete_your_data_web_port = WORKTREE_DELETE_YOUR_DATA_WEB_PORT_BASE + slot;
+    cfg.lawyer_shook_web_port = WORKTREE_LAWYER_SHOOK_WEB_PORT_BASE + slot;
     cfg.openobserve_port = WORKTREE_OPENOBSERVE_PORT_BASE + slot;
     cfg.openobserve_otlp_port = WORKTREE_OPENOBSERVE_OTLP_PORT_BASE + slot;
     cfg.clamav_port = WORKTREE_CLAMAV_PORT_BASE + slot;
@@ -1110,7 +1112,7 @@ fn worktree_slot_of_host_port(port: u16) -> Option<u16> {
     // The window ends after the LAST base, so adding a tier member means
     // moving this to its base — otherwise that member's ports stop
     // registering as claims and `sweep` under-reports what a cluster holds.
-    const WINDOW_END: u16 = WORKTREE_SURREAL_PORT_BASE + WORKTREE_PORT_SPAN;
+    const WINDOW_END: u16 = WORKTREE_LAWYER_SHOOK_WEB_PORT_BASE + WORKTREE_PORT_SPAN;
     (WORKTREE_PORT_WINDOW_START..WINDOW_END)
         .contains(&port)
         .then_some(port % WORKTREE_PORT_SPAN)
@@ -1689,7 +1691,7 @@ fn dev_summary(slug: &str, db_name: &str, runtime: Runtime, cfg: &KindConfig) ->
     format!(
         "\n{rule}\n navigator dev worktree-env up — dev environment for `{slug}`\n{rule}\n\n\
          {tier}  database     : {db_name}\n  Restate port : {}\n  Surreal port : {}\n  web port     : {}\n\
-         \x20 delete-your-data web port : {}\n\n\
+         \x20 delete-your-data web port : {}\n  lawyer-shook web port       : {}\n\n\
          Start this worktree's web server:\n\n{}\n\n\
          Tear down this worktree's tier:\n    \
          navigator dev worktree-env down\n",
@@ -1697,7 +1699,12 @@ fn dev_summary(slug: &str, db_name: &str, runtime: Runtime, cfg: &KindConfig) ->
         cfg.surreal_port,
         cfg.web_port,
         cfg.delete_your_data_web_port,
-        web_start_instructions(cfg.web_port, cfg.delete_your_data_web_port)
+        cfg.lawyer_shook_web_port,
+        web_start_instructions(
+            cfg.web_port,
+            cfg.delete_your_data_web_port,
+            cfg.lawyer_shook_web_port,
+        )
     )
 }
 
@@ -1705,10 +1712,14 @@ fn dev_summary(slug: &str, db_name: &str, runtime: Runtime, cfg: &KindConfig) ->
 /// `web_port`, and `delete-your-data` on its own `delete_your_data_web_port`
 /// — see ENG-437. `web` needs no `Host:` trickery to serve either; the port
 /// alone selects the brand.
-fn web_start_instructions(web_port: u16, delete_your_data_web_port: u16) -> String {
+fn web_start_instructions(
+    web_port: u16,
+    delete_your_data_web_port: u16,
+    lawyer_shook_web_port: u16,
+) -> String {
     format!(
         "    set -a; source .devx/env; set +a\n    cargo run -p neon   # neon on :{web_port}, \
-         delete-your-data on :{delete_your_data_web_port}"
+         delete-your-data on :{delete_your_data_web_port}, lawyer-shook on :{lawyer_shook_web_port}"
     )
 }
 
@@ -1733,7 +1744,7 @@ mod tests {
         // generated env is therefore sufficient, and naming a secrets
         // provider here would advertise a dependency the binary doesn't
         // have.
-        let instructions = web_start_instructions(3042, 3043);
+        let instructions = web_start_instructions(3042, 3043, 3044);
         assert!(instructions.contains("source .devx/env"));
         assert!(instructions.contains("cargo run -p neon"));
         assert!(instructions.contains(":3042"), "must name the chosen port");
@@ -1741,6 +1752,7 @@ mod tests {
             instructions.contains(":3043"),
             "must name the delete-your-data port too"
         );
+        assert!(instructions.contains(":3044"));
         assert!(
             !instructions.to_lowercase().contains("doppler"),
             "local web start is self-contained and names no secrets provider: {instructions}"
@@ -1767,11 +1779,16 @@ mod tests {
             "delete-your-data web port : {}",
             cfg.delete_your_data_web_port
         )));
+        assert!(summary.contains(&format!(
+            "lawyer-shook web port       : {}",
+            cfg.lawyer_shook_web_port
+        )));
         // The summary must carry the real start instructions, not a
         // paraphrase that could drift from `web_start_instructions`.
         assert!(summary.contains(&web_start_instructions(
             cfg.web_port,
-            cfg.delete_your_data_web_port
+            cfg.delete_your_data_web_port,
+            cfg.lawyer_shook_web_port
         )));
         assert!(summary.contains("navigator dev worktree-env down"));
     }
@@ -1814,7 +1831,8 @@ mod tests {
         // start instructions must not differ between the lanes.
         assert!(summary.contains(&web_start_instructions(
             cfg.web_port,
-            cfg.delete_your_data_web_port
+            cfg.delete_your_data_web_port,
+            cfg.lawyer_shook_web_port
         )));
     }
 
@@ -1920,6 +1938,10 @@ mod tests {
             first.delete_your_data_web_port,
             WORKTREE_DELETE_YOUR_DATA_WEB_PORT_BASE + 7
         );
+        assert_eq!(
+            first.lawyer_shook_web_port,
+            WORKTREE_LAWYER_SHOOK_WEB_PORT_BASE + 7
+        );
         assert_eq!(first.clamav_port, WORKTREE_CLAMAV_PORT_BASE + 7);
         assert_ne!(first.restate_ingress_port, second.restate_ingress_port);
         assert_ne!(first.clamav_port, second.clamav_port);
@@ -1927,6 +1949,8 @@ mod tests {
         // ENG-437: `web` and `delete-your-data` must never share a bind
         // port — every brand a worktree can reach locally needs its own.
         assert_ne!(first.web_port, first.delete_your_data_web_port);
+        assert_ne!(first.web_port, first.lawyer_shook_web_port);
+        assert_ne!(first.delete_your_data_web_port, first.lawyer_shook_web_port);
 
         let host_ports = [
             first.ingress_http_port,
@@ -1938,6 +1962,7 @@ mod tests {
             first.garage_s3_port,
             first.web_port,
             first.delete_your_data_web_port,
+            first.lawyer_shook_web_port,
             first.openobserve_port,
             first.openobserve_otlp_port,
         ];
@@ -1953,7 +1978,7 @@ mod tests {
     /// this file gets two distinct addresses to reach the two brands, not
     /// one variable silently shadowing the other.
     #[test]
-    fn rendered_worktree_env_carries_two_distinct_web_ports() {
+    fn rendered_worktree_env_carries_distinct_web_ports_for_every_brand() {
         let cfg = worktree_kind_config(
             &KindConfig::from_env(),
             Path::new("/tmp/navigator/worktrees/brand-ports"),
@@ -1966,6 +1991,12 @@ mod tests {
             cfg.delete_your_data_web_port
         )));
         assert_ne!(cfg.web_port, cfg.delete_your_data_web_port);
+        assert!(env.contains(&format!(
+            "NAVIGATOR_LOCAL_LAWYER_SHOOK_PORT={}",
+            cfg.lawyer_shook_web_port
+        )));
+        assert_ne!(cfg.web_port, cfg.lawyer_shook_web_port);
+        assert_ne!(cfg.delete_your_data_web_port, cfg.lawyer_shook_web_port);
     }
 
     #[test]
@@ -2066,6 +2097,7 @@ mod tests {
             cfg.garage_s3_port,
             cfg.web_port,
             cfg.delete_your_data_web_port,
+            cfg.lawyer_shook_web_port,
             cfg.openobserve_port,
             cfg.openobserve_otlp_port,
             cfg.clamav_port,
@@ -2076,7 +2108,7 @@ mod tests {
 
         // Ports outside the worktree window are not worktree claims: the
         // shared `dev up` tier and the testcontainer range must not register.
-        for port in [3001, 15_432, 9080, 30_080, 19_999, 21_300, 32_770] {
+        for port in [3001, 15_432, 9080, 30_080, 19_999, 21_400, 32_770] {
             assert_eq!(worktree_slot_of_host_port(port), None);
         }
     }

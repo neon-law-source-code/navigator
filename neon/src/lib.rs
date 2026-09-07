@@ -91,7 +91,7 @@ pub const PUBLIC_PATHS: &[&str] = &[
 #[must_use]
 pub fn sitemap_paths(state: &AppState, key: BrandKey) -> std::collections::BTreeSet<String> {
     match key {
-        BrandKey::DeleteYourData => ["/", "/services", "/contact"]
+        BrandKey::DeleteYourData | BrandKey::LawyerShook => ["/", "/services", "/contact"]
             .iter()
             .map(|path| (*path).to_string())
             .collect(),
@@ -173,6 +173,32 @@ pub fn llms_txt(state: &AppState, key: BrandKey) -> portal::LlmsTxt {
                             "How to reach {mark}, a practice of Shook Law PLLC, about a \
                              data-deletion request."
                         ),
+                    },
+                ],
+                sections: Vec::new(),
+            }
+        }
+        BrandKey::LawyerShook => {
+            let branding = &views::brand::LAWYER_SHOOK_BRANDING;
+            let mark = branding.firm.site_name;
+            portal::LlmsTxt {
+                title: mark.to_string(),
+                summary: branding.mission_description.to_string(),
+                pages: vec![
+                    portal::LlmsTxtLink {
+                        title: mark.to_string(),
+                        path: "/".to_string(),
+                        description: branding.mission_description.to_string(),
+                    },
+                    portal::LlmsTxtLink {
+                        title: "Legal services".to_string(),
+                        path: "/services".to_string(),
+                        description: branding.service_description.to_string(),
+                    },
+                    portal::LlmsTxtLink {
+                        title: "Contact".to_string(),
+                        path: "/contact".to_string(),
+                        description: format!("How to reach {mark}, a practice of Shook Law PLLC."),
                     },
                 ],
                 sections: Vec::new(),

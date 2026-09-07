@@ -1,0 +1,49 @@
+head_title: "{site_name} | Home"
+meta_description: >-
+  Lawyer Shook is a practice of Shook Law PLLC. We listen to the legal problem
+  you bring us, tell you whether we can take the work, and explain the scope
+  before it begins. This is an attorney advertisement.
+heading: Start with the problem in front of you.
+lead: >-
+  Lawyer Shook is a practice of Shook Law PLLC. Bring us the legal problem
+  you are trying to solve. We will listen, tell you whether we can take the
+  work, and explain the scope before any work begins.
+contact_label: Contact us
+service:
+  heading: A clear place to start
+  body:
+    - - text: >-
+          A legal question can begin with a contract, a dispute, a business
+          decision, or a personal plan. We start by understanding what you
+          need and checking whether we can represent you.
+    - - text: >-
+          If we can take the work, we will explain the engagement and its scope
+          before work begins. A page cannot tell you what advice your facts
+          require, and nothing here is legal advice without a signed retainer
+          for an active project.
+    - - text: "Write to "
+      - text: "{firm_email}"
+        href: "mailto:{firm_email}"
+      - text: >-
+          . Tell us what you are trying to do and how we can reach you. We will
+          respond about whether the work may fit the practice.
+practices_heading: The work we can discuss
+practices:
+  - mark: scales
+    heading: Disputes
+    body: >-
+      We listen to the dispute, check for conflicts, and discuss whether the
+      matter is one we can take.
+    href: /services
+  - mark: handshake
+    heading: Business counsel
+    body: >-
+      We discuss the contracts and decisions that keep a business moving, with
+      scope agreed before work begins.
+    href: /services
+  - mark: gavel
+    heading: Legal services
+    body: >-
+      We discuss a defined legal task and the documents or filing it requires,
+      with the scope explained before work begins.
+    href: /services

@@ -70,7 +70,7 @@ DEFINE FIELD OVERWRITE status ON project TYPE string;
 -- collapses an absent value to `'neon'`, so a historical row is tolerated at
 -- both the read and the write layer with no live data backfill required.
 DEFINE FIELD OVERWRITE brand ON project TYPE option<string>
-    ASSERT $value = NONE OR $value IN ['neon', 'delete-your-data'];
+    ASSERT $value = NONE OR $value IN ['neon', 'delete-your-data', 'lawyer-shook'];
 DEFINE FIELD OVERWRITE entity_id ON project TYPE record<entity>;
 -- Owning practice. Optional until the one-shot backfill points existing
 -- rows at a `firm` record: `DEFAULT` is write-time only and does not
@@ -525,7 +525,7 @@ DEFINE INDEX OVERWRITE firm_entity ON firm FIELDS entity_id UNIQUE;
 DEFINE TABLE IF NOT EXISTS firm_brand SCHEMAFULL PERMISSIONS NONE;
 DEFINE FIELD OVERWRITE firm_id ON firm_brand TYPE record<firm>;
 DEFINE FIELD OVERWRITE brand_key ON firm_brand TYPE string
-    ASSERT $value IN ['neon', 'delete-your-data'];
+    ASSERT $value IN ['neon', 'delete-your-data', 'lawyer-shook'];
 DEFINE FIELD OVERWRITE inserted_at ON firm_brand TYPE string;
 DEFINE FIELD OVERWRITE updated_at ON firm_brand TYPE string;
 DEFINE INDEX OVERWRITE firm_brand_pair ON firm_brand FIELDS firm_id, brand_key UNIQUE;

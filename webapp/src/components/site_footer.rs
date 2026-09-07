@@ -477,27 +477,27 @@ pub fn SiteFooterLegal(
                     // the site rather than regulated attorney copy, and it
                     // links out for the same reason those rows do — a reader
                     // checks the register, not the page's word for it.
-                    if !trademark.is_empty() && !trademark_registration.is_empty() {
+                    if !trademark.is_empty() {
                         p { class: "site-footer__trademark",
                             "{trademark}"
-                            // `line-height: 0` in the stylesheet keeps the
-                            // superscript from stretching the fine print's
-                            // line box; the glyph is part of the mark, not
-                            // decoration, so it stays in the text.
-                            sup { class: "site-footer__trademark-mark", "®" }
-                            " is a registered trademark of {copyright_holder}, "
-                            // The notice ends on the registration, with no
-                            // closing period — the same shape as each bar row
-                            // below. `ExternalLink` closes on its
-                            // leaving-the-site glyph, so punctuation after it
-                            // would set adrift of the number it belongs to.
-                            if trademark_record_url.is_empty() {
-                                "U.S. Reg. No. {trademark_registration}"
+                            if trademark_registration.is_empty() {
+                                sup { class: "site-footer__trademark-mark", "™" }
+                                " is a common-law mark of {copyright_holder}"
                             } else {
-                                ExternalLink {
-                                    href: trademark_record_url.clone(),
-                                    class: "link-secondary".to_string(),
+                                // `line-height: 0` in the stylesheet keeps the
+                                // superscript from stretching the fine print's
+                                // line box; the glyph is part of the mark, not
+                                // decoration, so it stays in the text.
+                                sup { class: "site-footer__trademark-mark", "®" }
+                                " is a registered trademark of {copyright_holder}, "
+                                if trademark_record_url.is_empty() {
                                     "U.S. Reg. No. {trademark_registration}"
+                                } else {
+                                    ExternalLink {
+                                        href: trademark_record_url.clone(),
+                                        class: "link-secondary".to_string(),
+                                        "U.S. Reg. No. {trademark_registration}"
+                                    }
                                 }
                             }
                         }
@@ -684,6 +684,16 @@ mod tests {
                 }
             }
         }
+        fn common_law() -> Element {
+            rsx! {
+                SiteFooterLegal {
+                    copyright_holder: "Shook Law PLLC".to_string(),
+                    disclaimer: "This is an attorney advertisement.".to_string(),
+                    copyright_year: 2026,
+                    trademark: "LAWYER SHOOK".to_string(),
+                }
+            }
+        }
 
         let out = ssr(unregistered);
         assert!(
@@ -700,6 +710,11 @@ mod tests {
             !out.contains("tmsearch"),
             "with no link to a record it does not have: {out}"
         );
+
+        let out = ssr(common_law);
+        assert!(out.contains("LAWYER SHOOK") && out.contains("™"), "{out}");
+        assert!(out.contains("common-law mark of Shook Law PLLC"), "{out}");
+        assert!(!out.contains("®") && !out.contains("U.S. Reg."), "{out}");
     }
 
     /// The open-source line names the repository, links it, and prints the

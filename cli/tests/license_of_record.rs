@@ -583,6 +583,10 @@ fn the_notice_reserves_the_marks_alongside_the_grant() {
         "{NOTICE_FILE} must cite the NEON LAW registration it reserves"
     );
     assert!(
+        flat.contains("DELETEYOURDATA.COM") && flat.contains("LAWYER SHOOK"),
+        "{NOTICE_FILE} must reserve every house-brand mark"
+    );
+    assert!(
         flat.contains("views::brand_bundle"),
         "{NOTICE_FILE} must point a fork at the brand manifest — telling someone \
          they may not use the marks without showing them the rename seam leaves \

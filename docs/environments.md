@@ -44,7 +44,13 @@ instance, buckets, and cluster.
 | Deployment | GCP project | Public host | Matters | Image | Resource prefix |
 | --- | --- | --- | --- | --- | --- |
 | `neon-law-stg` | `neon-law-stg` | `staging.neonlaw.com` | sample | `neon-server` | `neon-law-stg` |
-| the production deployment | its own project | `www.neonlaw.com` | real | `neon-server` | its deployment name |
+| production | its own project | configured host | real | `neon-server` | deployment name |
+
+| Deployment | Brand host |
+| --- | --- |
+| `neon-law-stg` | `staging.deleteyourdata.com` |
+| `neon-law-stg` | `staging.lawyershook.com` |
+| the production deployment | its configured brand hosts |
 
 Each row also serves a workflows host beside its public one: `workflows-staging.neonlaw.com` for `neon-law-stg` and
 `workflows.neonlaw.com` for production. Both are set per deployment as `NAVIGATOR_PUBLIC_HOST` and

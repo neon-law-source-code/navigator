@@ -330,6 +330,18 @@ fn reusable_rauthy_layer_contains_no_kind_credentials() {
 }
 
 #[test]
+fn staging_brand_hosts_are_present_in_the_staging_manifest_contract() {
+    let staging = std::fs::read_to_string(workspace().join("docs/environments.md"))
+        .expect("staging environment contract");
+    for host in ["staging.deleteyourdata.com", "staging.lawyershook.com"] {
+        assert!(
+            staging.contains(host),
+            "staging manifest documentation must name {host}"
+        );
+    }
+}
+
+#[test]
 fn production_overlay_excludes_the_local_rauthy_fixture() {
     let Some(resources) = render(GKE) else {
         return;

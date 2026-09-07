@@ -295,3 +295,19 @@ async fn the_delete_your_data_llms_txt_is_that_brands_pages_under_its_host() {
         );
     }
 }
+
+#[tokio::test]
+async fn the_lawyer_shook_llms_txt_is_that_brands_pages_under_its_host() {
+    let app = app().await;
+    let host = "staging.lawyershook.com";
+    let (status, body) = get_on_host(&app, "/llms.txt", Some(host)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.starts_with("# Lawyer Shook\n"), "{body}");
+    assert!(body.contains(&format!("https://{host}/)")), "{body}");
+    assert!(!body.contains("neonlaw.com"), "{body}");
+    assert!(!body.contains("/litigation"), "{body}");
+    for path in advertised_paths(&body) {
+        let (status, _) = get_on_host(&app, &path, Some(host)).await;
+        assert_eq!(status, StatusCode::OK, "{host} llms.txt advertises {path}");
+    }
+}

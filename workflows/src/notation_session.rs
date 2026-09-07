@@ -2031,7 +2031,7 @@ mod tests {
     #[tokio::test]
     async fn lawyer_walk_keeps_author_facing_custom_help() {
         // The suppression is a client-path decision only. The lawyer walk
-        // is a staff tool where the author's note is at worst odd, so the
+        // is a firm-side tool where the author's note is at worst odd, so the
         // same `custom_text` state still carries the seeded string there —
         // the CLI and lawyer walker tests downstream depend on it.
         let surreal = db().await;

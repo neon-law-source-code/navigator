@@ -20,8 +20,12 @@ own persistence logic.
   embedded Rego checks.
 - **CLI.** A subcommand either calls an authenticated `/app/api/*` route over HTTP (`cli/src/remote.rs`, bearer token)
   or, where it cannot depend on `portal`, calls the **same** shared `store` / `workflows` command the `/app/api` handler
-  calls. Convergence is at the command layer, not necessarily over HTTP: the `navigator project create` subcommand
-  (`cli/src/project.rs::create`) and `POST /app/api/projects` both call the same `store::projects::open_matter`.
+  calls. `navigator site projects create` (`cli/src/remote.rs::projects_create`) is the HTTP form: it resolves the
+  client and entity over `GET /app/api/people`/`/entities`/`/entity-types`/`/jurisdictions`, then opens the matter
+  through `POST /app/api/projects` with the caller's own bearer token, so the conflict attestation stays a personal act
+  rather than a shared service credential's. `store::projects::open_matter` itself is called by that route, the lawyer
+  web form, and the `aida_create_project` MCP tool — never directly from the CLI, which no longer holds a local-store
+  door onto it.
 - **Seed reconciliation.** `navigator site import <MODEL_NAME> <SEED_FILE>` reads seed YAML locally and sends it
   with the bearer from `navigator site login` to `POST /app/api/seed`. The deployment resolves the glossary model and
   validates its `lookup_fields`, then performs lookup/create there; `--overwrite` changes only fields represented in the

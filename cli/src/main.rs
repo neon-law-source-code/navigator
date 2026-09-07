@@ -25,7 +25,6 @@ mod mcp_bridge;
 mod narrate;
 mod notices;
 mod palette;
-mod project;
 mod projects;
 mod release;
 mod release_check;
@@ -349,12 +348,6 @@ enum Command {
         #[arg(long, value_enum, default_value_t = erd::OutputFormat::Mermaid)]
         format: erd::OutputFormat,
     },
-    /// Insert a new row in the `projects` table.
-    Project {
-        #[command(subcommand)]
-        action: ProjectAction,
-    },
-
     /// Drive a running deployment with the bearer token `navigator site login` stores.
     Site {
         #[command(subcommand)]
@@ -372,6 +365,57 @@ enum Command {
 
 #[derive(Subcommand)]
 enum ProjectsCmd {
+    /// Open a matter through the live site's `POST /app/api/projects`, the
+    /// caller's own bearer token attached so the conflict attestation stays
+    /// a personal act.
+    Create {
+        /// Human-readable matter name, e.g. `"Shook Estate"`.
+        #[arg(long)]
+        name: String,
+        /// The matter's code, e.g. `shook-estate`, stored exactly as given.
+        /// Required — lowercase letters, digits, and single hyphens. A code
+        /// is chosen once at matter-open and never changes; a code already
+        /// in use by another matter is refused, not disambiguated.
+        #[arg(long)]
+        code: String,
+        /// Email of the pre-existing **client** Person this matter is
+        /// opened for — its client-side DRI. Required, and must be a
+        /// `role = client` person (create the client first with
+        /// `navigator site import person <seed-file>`). The lawyer-side DRI
+        /// is the attester, resolved from this login.
+        #[arg(long)]
+        client_email: String,
+        /// Exact `entities.name` of an **existing** legal organization this
+        /// Project tracks. Omit for an individual client with no company —
+        /// this then creates a `Human` entity named for the client instead,
+        /// which requires `--jurisdiction`. Conflicts with `--jurisdiction`.
+        #[arg(long, conflicts_with = "jurisdiction")]
+        entity_name: Option<String>,
+        /// The individual client's home jurisdiction, e.g. `Nevada` —
+        /// required when `--entity-name` is omitted, so the `Human` entity
+        /// this command creates never silently lands in the firm's own
+        /// jurisdiction. Conflicts with `--entity-name`.
+        #[arg(long, conflicts_with = "entity_name")]
+        jurisdiction: Option<String>,
+        /// The opening attorney's conflict attestation. Required on every
+        /// Project open: passing `--attest` affirms the attorney has checked
+        /// for conflicts, and that either none prevent the open or this
+        /// Project is not legal advice. Without it the open is refused — it
+        /// is never defaulted.
+        #[arg(long)]
+        attest: bool,
+        /// Open the matter already closed — an engagement that ended
+        /// before anyone opened its row. Requires `--closed-at`.
+        #[arg(long, requires = "closed_at")]
+        closed: bool,
+        /// The close time, required exactly when `--closed` is set and
+        /// refused otherwise. May predate today — there is no prior state
+        /// for it to have preceded.
+        #[arg(long, requires = "closed")]
+        closed_at: Option<chrono::DateTime<chrono::Utc>>,
+        #[command(flatten)]
+        host: HostOpt,
+    },
     /// Close an existing Project through the live site's lifecycle command.
     Close {
         /// Project code, resolved only against Projects visible to the login.
@@ -1617,9 +1661,9 @@ enum NotationAction {
     ///
     /// Every notation hangs on an already-existing Project, so `--project`
     /// (the matter code) is required — open the matter first with
-    /// `navigator project create`. The template is read from that Project's
-    /// git repo when authored there, else from the bundled firm catalog; the
-    /// notation opens pinned to it
+    /// `navigator site projects create`. The template is read from that
+    /// Project's git repo when authored there, else from the bundled firm
+    /// catalog; the notation opens pinned to it
     /// (`POST /app/projects/<id>/notations/new`).
     Create {
         /// Template code, e.g. `onboarding__letter`,
@@ -1704,52 +1748,6 @@ enum NotationAction {
     },
 }
 
-#[derive(Subcommand)]
-enum ProjectAction {
-    /// Insert a new row in the `projects` table. By default runs the
-    /// canonical seed first so the named `--entity-name` can resolve
-    /// against it. Pass `--skip-seed` when pointing at an
-    /// already-managed store (e.g. a production database) to avoid
-    /// upserting seed rows.
-    Create {
-        /// Human-readable matter name, e.g. `"Shook Estate"`.
-        #[arg(long)]
-        name: String,
-        /// The matter's code, e.g. `shook-estate`, stored exactly as given.
-        /// Required — lowercase letters, digits, and single hyphens. A code
-        /// is chosen once at matter-open and never changes; a code already
-        /// in use by another matter is refused, not disambiguated.
-        #[arg(long)]
-        code: String,
-        /// Exact `entities.name` of the legal organization this Project
-        /// tracks. Required: `projects.entity_id` is NOT NULL, so a matter
-        /// always opens against an Entity that already exists — create the
-        /// entity first.
-        #[arg(long)]
-        entity_name: Option<String>,
-        /// Email of the pre-existing **client** Person this matter is
-        /// opened for — its client-side DRI. Required: every matter has a
-        /// client of record, and it must be a `role = client` person
-        /// (create the client first). The lawyer-side DRI defaults to the
-        /// firm principal.
-        #[arg(long)]
-        client_email: String,
-        /// The opening attorney's conflict attestation. Required on every
-        /// Project open: passing `--attest` affirms the attorney has checked
-        /// for conflicts, and that either none prevent the open or this
-        /// Project is not legal advice. Without it the open is refused — it
-        /// is never defaulted. (At this firm the firm principal that opens a
-        /// Project is an attorney; see navigator#355.)
-        #[arg(long)]
-        attest: bool,
-        /// Skip the canonical seed — the caller owns the schema. Use
-        /// this against an already-managed deployment where you don't
-        /// want the canonical seed re-applied.
-        #[arg(long)]
-        skip_seed: bool,
-    },
-}
-
 #[allow(clippy::too_many_lines)] // one flat dispatch match; splitting it hurts readability
 fn main() -> ExitCode {
     // `.env` is picked up before `clap` reads its `env = "..."`
@@ -1801,23 +1799,6 @@ fn main() -> ExitCode {
             DocsAction::Glossary { term } => docs::glossary(term.as_deref()),
         },
         Command::Erd { format } => runtime().block_on(run_erd(format)),
-        Command::Project { action } => match action {
-            ProjectAction::Create {
-                name,
-                code,
-                entity_name,
-                client_email,
-                attest,
-                skip_seed,
-            } => runtime().block_on(run_project_create(
-                &name,
-                &code,
-                entity_name.as_deref(),
-                &client_email,
-                attest,
-                skip_seed,
-            )),
-        },
         Command::Forms { action } => match action {
             FormsAction::Sync { bucket } => forms_sync::run_sync(bucket.as_deref()),
             FormsAction::Fields { code, bucket } => {
@@ -2072,62 +2053,31 @@ async fn open_surreal() -> Result<store::surreal::SurrealDb, ExitCode> {
     }
 }
 
-// One flag per argument the matter-open command needs. A struct here would
-// only rename the same list.
-async fn run_project_create(
-    name: &str,
-    code: &str,
-    entity_name: Option<&str>,
-    client_email: &str,
-    attest: bool,
-    skip_seed: bool,
-) -> ExitCode {
-    let surreal = match open_surreal().await {
-        Ok(conn) => conn,
-        Err(code) => return code,
-    };
-    if !skip_seed {
-        let storage = match cloud::from_env().await {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("navigator: storage: {e}");
-                return ExitCode::from(2);
-            }
-        };
-        if let Err(e) = store::seed::seed_canonical(&surreal, &storage).await {
-            eprintln!("navigator: seed: {e}");
-            return ExitCode::from(2);
-        }
-    }
-    match project::create(&surreal, name, code, entity_name, client_email, attest).await {
-        Ok(p) => {
-            println!(
-                "{} {} (code={}, status={}, entity_id={})",
-                palette::dim(format!("created project {}", p.id)),
-                palette::highlight(&p.name),
-                p.code,
-                p.status,
-                p.entity_id,
-            );
-            println!(
-                "{}",
-                palette::dim(format!(
-                    "open a notation with: \
-                     navigator site notation create <template_code> --project {}",
-                    p.code
-                )),
-            );
-            ExitCode::SUCCESS
-        }
-        Err(e) => {
-            eprintln!("navigator: project create: {e}");
-            ExitCode::from(2)
-        }
-    }
-}
-
 async fn run_projects(action: ProjectsCmd) -> ExitCode {
     match action {
+        ProjectsCmd::Create {
+            name,
+            code,
+            client_email,
+            entity_name,
+            jurisdiction,
+            attest,
+            closed,
+            closed_at,
+            host,
+        } => {
+            remote::projects_create(
+                host.host.as_deref(),
+                &name,
+                &code,
+                &client_email,
+                entity_name.as_deref(),
+                jurisdiction.as_deref(),
+                attest,
+                closed.then_some(closed_at).flatten(),
+            )
+            .await
+        }
         ProjectsCmd::Close {
             project_code,
             effective_at,

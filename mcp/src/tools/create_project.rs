@@ -192,8 +192,9 @@ pub async fn call(
             })?,
     };
 
-    // Open the matter through the shared command — the same boundary the web
-    // form and CLI (`project create`) use (#355). It owns the conflict block,
+    // Open the matter through the shared command — the same boundary
+    // `POST /app/api/projects` (and, over HTTP, the CLI's `site projects
+    // create`) uses (#355). It owns the conflict block,
     // the attestation audit row, both DRI designations, and repo provisioning
     // in one transaction; this tool is one more adapter that resolves ids and
     // renders the outcome. `attestation` must be `true` (the AIDA caller

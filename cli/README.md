@@ -50,6 +50,16 @@ navigator validate <dir>
 navigator validate
 ```
 
+Open a matter through the logged-in site, against a pre-existing client and either an existing entity or a `Human`
+entity this command creates for a solo client:
+
+```bash
+navigator site projects create --name "Acme LLC — Formation" --code acme-llc-formation \
+  --client-email <client@example.com> --entity-name "Acme LLC" --attest
+navigator site projects create --name "Shook Estate" --code shook-estate \
+  --client-email <client@example.com> --jurisdiction Nevada --attest
+```
+
 Create a notation on an existing Project through the logged-in site. Each Project keeps one onboarding notation and one
 offboarding notation; later work uses other kinds. The shared catalog codes are `onboarding__letter` to open and
 `offboarding__letter` to close:
@@ -64,6 +74,6 @@ navigator site notation create offboarding__letter \
 ```
 
 You do not need a site to work locally. Use `navigator validate`, the `navigator notations` authoring commands, and the
-KIND-backed `navigator dev` loop. `navigator project create` opens a matter directly against the local store, and
-`navigator erd` introspects its schema; seed a local catalog with `navigator site seed` when that command's local store
-and storage environment are available, or import deployment data with `navigator site import` after logging in.
+KIND-backed `navigator dev` loop, and `navigator erd` to introspect the schema; seed a local catalog with `navigator
+site seed` when that command's local store and storage environment are available, or import deployment data with
+`navigator site import` after logging in.

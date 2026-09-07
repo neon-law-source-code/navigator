@@ -129,16 +129,6 @@ const JOB_COPY: &[JobCopy] = &[
                       a beat is missing.",
         manual_slug: Some("heartbeat"),
     },
-    JobCopy {
-        cron_name: "github-automation-heartbeat-trigger",
-        name: "GitHub-automation authority canary",
-        cadence: "Every 6h · 00/06/12/18 UTC",
-        description: "Liveness canary for the GitHub-automation authority — a body-free \
-                      two-step Restate workflow that journals a beat and sends the one-line \
-                      authority notice through the ops notifier. It never receives a webhook, \
-                      reads repository content, mints a GitHub token, or invokes an agent.",
-        manual_slug: None,
-    },
 ];
 
 /// The prose shown for a rendered `CronJob` nobody has described yet. The row

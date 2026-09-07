@@ -1567,7 +1567,12 @@ a.nav-pagination__link:hover {
 .pricing-card__day-rate-label {
   font-size: 1.05rem;
   font-weight: 700;
-  color: var(--nav-color-primary);
+  /* `--nav-color-primary` (teal-500) on `--nav-color-surface-subtle`
+     (teal-subtle) is 4.41:1 — under the 4.5:1 AA floor, because the 500
+     stop's 4.90:1 headroom (tokens.css) was measured against
+     `--nav-color-bg`, not this tinted surface. Per tokens.css's own guidance,
+     a surface that needs more steps down to 600 rather than lightening 500. */
+  color: var(--nav-color-primary-hover);
 }
 
 .pricing-card__features {

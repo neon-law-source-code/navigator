@@ -67,6 +67,9 @@ spec:
             # automation-home deployment actually binds it; declared here so
             # the port is documented on every deployment's identical manifest.
             - containerPort: 9082
+            # The unsigned health-probe listener (ENG-551) — see
+            # readinessProbe/livenessProbe below.
+            - containerPort: 9083
           env:
             - name: WORKFLOWS_SERVICE_LISTEN
               # 0.0.0.0 so the kubelet's tcpSocket readinessProbe
@@ -88,6 +91,14 @@ spec:
               # Bound only on the automation-home deployment (neon-law-stg);
               # elsewhere the worker runs no receiver and nothing opens 9082.
               value: "0.0.0.0:9082"
+            - name: WORKFLOWS_SERVICE_HEALTH_LISTEN
+              # Always-on, unsigned `/healthz` (ENG-551) — separate from both
+              # the Restate endpoint above (which 401s any unsigned request,
+              # kubelet's probe included, once RESTATE_IDENTITY_KEY is set)
+              # and Envoy's own static `/restate/health` response (ENG-509,
+              # which proves only that Envoy itself is up). readinessProbe /
+              # livenessProbe below hit this directly on the pod IP.
+              value: "0.0.0.0:9083"
             - name: NAVIGATOR_EMAIL_BACKEND
               # Worker dispatches real SendGrid sends in prod via
               # `email_send__*` steps. KIND keeps this unset so the
@@ -150,13 +161,20 @@ spec:
             - secretRef:
                 name: navigator-web-secrets
           readinessProbe:
-            tcpSocket:
-              port: 9080
+            # ENG-551: httpGet on the unsigned health listener actually
+            # round-trips a request through live worker code (the same
+            # `jsonwebtoken` verification path Restate signatures use), so a
+            # `CryptoProvider` regression (ENG-550) fails this instead of the
+            # bare tcpSocket check that let it ship invisibly.
+            httpGet:
+              path: /healthz
+              port: 9083
             initialDelaySeconds: 5
             periodSeconds: 5
           livenessProbe:
-            tcpSocket:
-              port: 9080
+            httpGet:
+              path: /healthz
+              port: 9083
             initialDelaySeconds: 30
             periodSeconds: 10
         # Envoy sidecar — see envoy-config.yaml. Bridges HTTP/1.1

@@ -29,6 +29,14 @@ cloud.workspace = true
 dotenvy.workspace = true
 github_webhooks.workspace = true
 restate-sdk.workspace = true
+# `restate-jwt` is `restate-sdk-shared-core`'s own `jsonwebtoken` dependency
+# (feature = "rust_crypto"). Pinning the process-level `CryptoProvider` to it
+# in `main()` (see `request_identity::install_crypto_provider`) needs this in
+# the shipped binary, not just in tests — `store`'s `surrealdb-core`
+# dependency compiles the same `jsonwebtoken` version with `aws_lc_rs`, and
+# the two features being unified into one build is otherwise ambiguous
+# (ENG-550).
+restate-jwt.workspace = true
 repos = { workspace = true }
 serde.workspace = true
 serde_json.workspace = true
@@ -51,7 +59,6 @@ views.workspace = true
 rules = { workspace = true }
 bs58.workspace = true
 ed25519-dalek.workspace = true
-restate-jwt.workspace = true
 store = { workspace = true, features = ["test-support"] }
 tokio = { workspace = true, features = ["macros", "rt"] }
 tower = { workspace = true }

@@ -22,7 +22,7 @@ use workflows::{EmailService, SlackOpsDelivery};
 use workflows_service::dri_digest::DriDigestService;
 use workflows_service::github_automation_heartbeat::GitHubAutomationHeartbeatService;
 use workflows_service::heartbeat::HeartbeatService;
-use workflows_service::request_identity::apply_identity_key;
+use workflows_service::request_identity::{apply_identity_key, install_crypto_provider};
 use workflows_service::{
     email_from_env, notifier_from_env, project_slack::ProjectSlackService,
     repository_correlation::ProjectRepositoryResolver, slack_bot_from_env, NotationService,
@@ -72,6 +72,12 @@ async fn main() -> anyhow::Result<()> {
     // banner reads.
     let simulated_matters =
         store::sample_matters(environment).context("resolve NAVIGATOR_SIMULATED_MATTERS")?;
+    // Makes `jsonwebtoken`'s process-level `CryptoProvider` deterministic
+    // before any request-identity signature is verified (ENG-550): Cargo
+    // feature unification otherwise leaves both `rust_crypto` and
+    // `aws_lc_rs` enabled on the shared `jsonwebtoken` instance, which
+    // panics the first real Restate-signed request.
+    install_crypto_provider();
     let endpoint_builder = apply_identity_key(Endpoint::builder(), environment, |key| {
         std::env::var(key).ok()
     })
@@ -236,6 +242,25 @@ async fn main() -> anyhow::Result<()> {
             }
         });
     }
+
+    // Unsigned liveness/readiness probe (ENG-551): unlike the Restate
+    // endpoint on `listen`, this needs no Restate Cloud signature, so
+    // kubelet and the GCE LB can reach it directly on every deployment.
+    // Its one route round-trips a throwaway signature through the same
+    // `jsonwebtoken` verification path real traffic uses, catching an
+    // ENG-550-style `CryptoProvider` regression instead of shipping it
+    // invisibly again.
+    let health_addr = workflows_service::health::health_listen_addr(|key| std::env::var(key).ok())?;
+    let health_listener = tokio::net::TcpListener::bind(health_addr)
+        .await
+        .with_context(|| format!("bind health probe listener on {health_addr}"))?;
+    tracing::info!(%health_addr, "health probe listener listening");
+    tokio::spawn(async move {
+        if let Err(error) = axum::serve(health_listener, workflows_service::health::router()).await
+        {
+            tracing::error!(%error, "health probe listener stopped");
+        }
+    });
 
     server.await;
 

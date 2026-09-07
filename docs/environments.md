@@ -51,8 +51,8 @@ Each row also serves a workflows host beside its public one: `workflows-staging.
 `NAVIGATOR_WORKFLOWS_HOST`.
 
 **One production.** One deployment serves real matters, and `www.neonlaw.com` is the only public host that reaches them.
-Staging carries a public name so a link to it resolves, not so it is open: its perimeter is the tailnet allowlist, which
-is what "private mode" configures.
+Staging carries a public name so a link to it resolves. Its perimeter is the tailnet allowlist, which keeps the human
+surface private while the public workflows host remains reachable by external machine callers.
 
 Production is a rollable deployment. Its `deployments/<name>/` directory in the deploy repository carries both
 `config.toml` and `secrets.enc.yaml`, and nothing in this repository's CI rolls it. A person runs the `ops ship` command

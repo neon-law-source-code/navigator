@@ -35,7 +35,6 @@ resources:
   - cron-surreal-archive.yaml
   - surreal-archive-monitoring.yaml
   - cron-heartbeat-trigger.yaml
-  - cron-github-automation-heartbeat-trigger.yaml
   - cron-billing-digest-trigger.yaml
   - cron-dri-digest-trigger.yaml
   - cron-general-nag.yaml

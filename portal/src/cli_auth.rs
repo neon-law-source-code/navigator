@@ -8,7 +8,7 @@
 //! holds in its cookie; it is presented as `Authorization: Bearer` and
 //! resolved back into a session by [`crate::auth::inject_bearer_session`].
 //!
-//! Routes (mounted at the router root, under the private-mode-exempt
+//! Routes (mounted at the router root, under the authentication-exempt
 //! `/auth/*` prefix):
 //!
 //! - `GET /auth/cli/start?redirect=<loopback>&state=<nonce>` — requires

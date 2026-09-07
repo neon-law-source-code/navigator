@@ -5,11 +5,144 @@
 //! bring up local KIND, start `web` / `workflows-service`, and provision or
 //! ship the reference GKE deployment visible in both places.
 
-use std::path::Path;
+use std::collections::BTreeSet;
+use std::path::{Path, PathBuf};
 
 fn repo_file(rel: &str) -> String {
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join(rel);
     std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {} — {e}", path.display()))
+}
+
+fn repo_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("..")
+}
+
+fn environment_keys(env_example: &str) -> BTreeSet<String> {
+    env_example
+        .lines()
+        .filter_map(|line| {
+            let assignment = line.trim_start().trim_start_matches('#').trim_start();
+            let (key, _) = assignment.split_once('=')?;
+            (!key.is_empty()
+                && key.chars().all(|character| {
+                    character == '_' || character.is_ascii_uppercase() || character.is_ascii_digit()
+                }))
+            .then_some(key.to_string())
+        })
+        .collect()
+}
+
+fn collect_environment_read_sources(path: &Path, sources: &mut Vec<(PathBuf, String)>) {
+    let Ok(entries) = std::fs::read_dir(path) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_environment_read_sources(&path, sources);
+            continue;
+        }
+        let file_name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or_default();
+        let is_source = path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| matches!(extension, "rs" | "toml" | "yml" | "yaml"))
+            || file_name.starts_with("Containerfile");
+        if !is_source || file_name == ".env.example" {
+            continue;
+        }
+        let path_text = path.to_string_lossy();
+        if path_text.contains("/docs/")
+            || path_text.contains("/content/")
+            || path_text.ends_with("/server/tests/deploy_workshop_environment.rs")
+        {
+            continue;
+        }
+        if let Ok(contents) = std::fs::read_to_string(&path) {
+            sources.push((path, contents));
+        }
+    }
+}
+
+fn environment_read_sources() -> Vec<(PathBuf, String)> {
+    let root = repo_root();
+    let mut sources = Vec::new();
+    for relative in [
+        "archives",
+        "billing",
+        "billing-workflows",
+        "cli",
+        "cloud",
+        "features",
+        "github-runner",
+        "github_webhooks",
+        "images",
+        "k8s",
+        "mcp",
+        "portal",
+        "server",
+        "store",
+        "telemetry",
+        "views",
+        "workflows",
+        "workflows-service",
+        ".github/workflows",
+        "Cargo.toml",
+    ] {
+        collect_environment_read_sources(&root.join(relative), &mut sources);
+    }
+    sources
+}
+
+const DYNAMIC_ENV_FAMILY_PREFIXES: &[&str] = &[
+    "NAVIGATOR_ASSETS_",
+    "NAVIGATOR_LFS_",
+    "NAVIGATOR_EXPORTS_",
+    "NAVIGATOR_DRIVE_FIAT_LAW_",
+    "NAVIGATOR_DRIVE_NEON_LAW_",
+];
+
+const INTENTIONAL_ENV_ALLOWLIST: &[&str] = &[
+    // SLACK_OPS_MENTION is an operator-supplied Slack mention fragment, not a runtime setting.
+    "SLACK_OPS_MENTION",
+    // RUST_LOG is consumed by the tracing subscriber rather than Navigator configuration code.
+    "RUST_LOG",
+    // SOLANA_RPC_URL is read by the optional on-chain integration outside the startup path.
+    "SOLANA_RPC_URL",
+    // SOLANA_PROGRAM_ID is read by the optional on-chain integration outside the startup path.
+    "SOLANA_PROGRAM_ID",
+    // SOLANA_SIGNER_SECRET is read by the optional on-chain integration outside the startup path.
+    "SOLANA_SIGNER_SECRET",
+];
+
+fn committed_environment_reads(keys: &BTreeSet<String>) -> BTreeSet<String> {
+    let sources = environment_read_sources();
+    let mut reads = keys
+        .iter()
+        .filter(|key| {
+            sources
+                .iter()
+                .any(|(_, source)| source.contains(key.as_str()))
+        })
+        .cloned()
+        .collect::<BTreeSet<_>>();
+
+    for prefix in DYNAMIC_ENV_FAMILY_PREFIXES {
+        let family_is_constructed = sources.iter().any(|(_, source)| {
+            source.contains(prefix.trim_end_matches('_'))
+                && source.contains("format!")
+                && (source.contains("{lane}_ACCESS_KEY")
+                    || source.contains("{lane}_SECRET_KEY")
+                    || source.contains("{prefix}_{suffix}"))
+        });
+        if family_is_constructed {
+            reads.extend(keys.iter().filter(|key| key.starts_with(prefix)).cloned());
+        }
+    }
+    reads
 }
 
 fn environment_matrix() -> String {
@@ -30,7 +163,6 @@ const LOCAL_CONTROL_VARS: &[&str] = &[
     "NAVIGATOR_KIND_DEPS_OVERLAY",
     "NAVIGATOR_KIND_OVERLAY",
     "NAVIGATOR_GKE_OVERLAY",
-    "NAVIGATOR_PRIVATE_MODE",
     "NAVIGATOR_KIND_SURREAL_PORT",
     "NAVIGATOR_KIND_RESTATE_INGRESS_PORT",
     "NAVIGATOR_KIND_RESTATE_ADMIN_PORT",
@@ -224,22 +356,33 @@ fn operating_workshop_and_env_contract_list_every_startup_variable() {
 fn operating_workshop_lists_every_committed_environment_variable() {
     let workshop = environment_matrix();
     let env_example = repo_file(".env.example");
-    let variables = env_example.lines().filter_map(|line| {
-        let assignment = line.trim_start().trim_start_matches('#').trim_start();
-        let (key, _) = assignment.split_once('=')?;
-        (!key.is_empty()
-            && key.chars().all(|character| {
-                character == '_' || character.is_ascii_uppercase() || character.is_ascii_digit()
-            }))
-        .then_some(key)
-    });
+    let variables = environment_keys(&env_example);
 
-    for variable in variables {
+    for variable in &variables {
         assert!(
             workshop.contains(variable),
             "Operating workshop Environment Matrix must list `{variable}` from .env.example",
         );
     }
+}
+
+#[test]
+fn every_committed_environment_variable_is_read_or_explicitly_allowlisted() {
+    let keys = environment_keys(&repo_file(".env.example"));
+    let reads = committed_environment_reads(&keys);
+    let allowlist = INTENTIONAL_ENV_ALLOWLIST
+        .iter()
+        .copied()
+        .collect::<BTreeSet<_>>();
+    let unread = keys
+        .difference(&reads)
+        .filter(|key| !allowlist.contains(key.as_str()))
+        .collect::<Vec<_>>();
+
+    assert!(
+        unread.is_empty(),
+        "every .env.example key must be read by source, a workflow, or a manifest; unread: {unread:?}"
+    );
 }
 
 #[test]

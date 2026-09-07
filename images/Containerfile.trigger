@@ -58,7 +58,6 @@ COPY forms             forms
 COPY workflows         workflows
 COPY workflows-service workflows-service
 COPY github-runner     github-runner
-COPY gateway           gateway
 COPY cloud             cloud
 COPY live-inquiry      live-inquiry
 COPY mcp               mcp

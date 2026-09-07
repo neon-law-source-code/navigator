@@ -218,7 +218,7 @@ async fn main() -> anyhow::Result<()> {
     };
 
     // The GitHub webhook receiver runs on its own Axum listener beside the
-    // Restate endpoint: `www.<domain>` goes behind the tailnet, so the receiver
+    // Restate endpoint: `www.<domain>` remains behind the tailnet perimeter, so the receiver
     // moves to the public `workflows.<domain>` host, where Envoy routes
     // `/webhooks/github/*` here and everything else to the Restate leg. Present
     // only on the automation-home deployment (`receiver_from_env` is `None`

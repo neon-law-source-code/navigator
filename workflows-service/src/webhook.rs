@@ -1,6 +1,6 @@
 //! GitHub webhook receiver hosted by the worker.
 //!
-//! `web` no longer mounts the receiver: `www.<domain>` goes behind the tailnet,
+//! `web` does not mount the receiver: `www.<domain>` remains behind the tailnet perimeter,
 //! and GitHub — an external sender that cannot join it — can only reach the public
 //! `workflows.<domain>` host. The receiver therefore runs here, on its own Axum
 //! listener beside the Restate endpoint, and Envoy routes `/webhooks/github/*`

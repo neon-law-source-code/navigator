@@ -120,10 +120,11 @@ URI** to the app — needed only to land the one-time consent click. Use a dedic
 `https://www.neonlaw.com/docusign/consent-callback`, kept **distinct from** the OIDC `/auth/callback`
 ([`portal::oauth`](https://github.com/neon-law-source-code/navigator/blob/main/portal/src/oauth.rs)): JWT grant never
 sends an auth code back, so this URI is ceremonial and must not collide with the Google-login callback. `web` serves it
-as a small "Consent recorded" confirmation page (exempt from the private-mode gate) so the operator lands on a
-confirmation rather than a 404. 4. From **My Account Information** copy the **API Account ID** → `DOCUSIGN_ACCOUNT_ID`
-and the **User ID** GUID → `DOCUSIGN_USER_ID`. 5. **Grant one-time consent** — open this in a browser logged into the
-sandbox and click **Allow** (substitute the integration key + a registered redirect):
+as a small "Consent recorded" confirmation page so the operator lands on a confirmation rather than a 404. 4. From **My
+Account Information** copy the **API Account ID** → `DOCUSIGN_ACCOUNT_ID` and the **User ID** GUID → `DOCUSIGN_USER_ID`.
+
+5. **Grant one-time consent** — open this in a browser logged into the sandbox and click **Allow** (substitute the
+integration key + a registered redirect):
 
    ```text
    https://account-d.docusign.com/oauth/auth?response_type=code&scope=signature%20impersonation&client_id=KEY&redirect_uri=REDIRECT

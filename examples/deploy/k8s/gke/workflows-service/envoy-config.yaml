@@ -48,7 +48,7 @@ data:
                   routes:
                   # The GitHub webhook receiver runs on its own Axum listener
                   # (WORKFLOWS_WEBHOOK_LISTEN, 9082) beside the Restate endpoint,
-                  # because www.<domain> goes behind the tailnet and GitHub can
+                  # because www.<domain> remains behind the tailnet perimeter and GitHub can
                   # only reach the public workflows host. This leg stays HTTP/1.1
                   # end to end and forwards the raw body byte-for-byte — GitHub
                   # signs the body, so any re-encoding breaks X-Hub-Signature-256.

@@ -25,8 +25,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use super::{
     garage, normalize_docker_arch, parse_terminating, render_env, render_kind_config,
     restate_crd_path, terminating_wedge_message, KindConfig, Terminating, DEFAULT_RAUTHY_HOST_PORT,
-    GATEWAY_IMAGE, INGRESS_MANIFEST, RESTATE_CRDS, RESTATE_OPERATOR_VERSION, WEB_IMAGE,
-    WORKFLOWS_SERVICE_IMAGE,
+    INGRESS_MANIFEST, RESTATE_CRDS, RESTATE_OPERATOR_VERSION, WEB_IMAGE, WORKFLOWS_SERVICE_IMAGE,
 };
 
 pub(super) fn up(cfg: &KindConfig) -> Result<()> {
@@ -50,10 +49,6 @@ pub(super) fn up_in(root: &Path, cfg: &KindConfig) -> Result<()> {
     // local development must work with an empty `.env` and must not run a
     // worker from a different release than host-side `web`.
     build_and_load_worker(root, cfg)?;
-    if super::private_mode_from_env() {
-        build_and_load_gateway(root, cfg)?;
-    }
-
     ensure_namespace(&cfg.namespace)?;
     garage::prepare(&cfg.namespace)?;
     retire_legacy_identity_provider(cfg)?;
@@ -202,12 +197,6 @@ fn build_and_load_worker(root: &Path, cfg: &KindConfig) -> Result<()> {
         "images/Containerfile.workflows-service",
         WORKFLOWS_SERVICE_IMAGE,
     )
-}
-
-/// Build the private-mode Pingora gateway only when the selected overlay uses
-/// it, then make its local tag available to every node of this KIND cluster.
-fn build_and_load_gateway(root: &Path, cfg: &KindConfig) -> Result<()> {
-    build_and_load_local_image(root, cfg, "images/Containerfile.gateway", GATEWAY_IMAGE)
 }
 
 fn build_and_load_local_image(
@@ -381,9 +370,6 @@ pub(super) fn deploy(cfg: &KindConfig, tag_override: Option<&str>) -> Result<()>
     // ImagePullBackOff.
     super::registry::ensure_tag_published(&image_registry, "navigator-web", &tag)?;
     super::registry::ensure_tag_published(&image_registry, "navigator-workflows-service", &tag)?;
-    if cfg.full_overlay == super::DEFAULT_KUSTOMIZE_KIND_PRIVATE {
-        super::registry::ensure_tag_published(&image_registry, "navigator-gateway", &tag)?;
-    }
     pull_retag_load(&image_registry, "navigator-web", &tag, WEB_IMAGE, cfg)?;
     pull_retag_load(
         &image_registry,
@@ -392,15 +378,6 @@ pub(super) fn deploy(cfg: &KindConfig, tag_override: Option<&str>) -> Result<()>
         WORKFLOWS_SERVICE_IMAGE,
         cfg,
     )?;
-    if cfg.full_overlay == super::DEFAULT_KUSTOMIZE_KIND_PRIVATE {
-        pull_retag_load(
-            &image_registry,
-            "navigator-gateway",
-            &tag,
-            GATEWAY_IMAGE,
-            cfg,
-        )?;
-    }
     garage::prepare(&cfg.namespace)?;
     retire_legacy_identity_provider(cfg)?;
     apply_kustomize(&root, &cfg.full_overlay)?;

@@ -1091,7 +1091,7 @@ pub fn bootstrap(
     // Loopback-OAuth endpoints for the `navigator` CLI. `/auth/cli/start`
     // mints a CLI bearer from the browser session; `/auth/cli/whoami`
     // echoes the bearer caller's identity. Both live under the
-    // private-mode-exempt `/auth/*` prefix.
+    // authentication-exempt `/auth/*` prefix.
     let cli_auth = cli_auth::routes(state.sessions.clone());
     let seed_token_auth = ci_auth::routes(ci_auth::CiAuthState {
         sessions: state.sessions.clone(),
@@ -2291,7 +2291,7 @@ async fn api_template_raw(AxumPath(path): AxumPath<String>) -> impl IntoResponse
 /// purely informational. It is registered as the app's Redirect URI (see
 /// [`docs/docusign-esignature.md`](../docs/docusign-esignature.md)),
 /// deliberately distinct from the OIDC `/auth/callback`, and is exempt
-/// from the private-mode gate so the operator lands on a confirmation
+/// from authentication so the operator lands on a confirmation
 /// rather than a login bounce or a 404.
 async fn docusign_consent_callback() -> axum::response::Html<String> {
     webapp::docusign_consent::render()
@@ -3018,8 +3018,8 @@ async fn catalog_certificate_submit(
 /// they cannot drift from what was deployed. A local `cargo run` honestly
 /// reports `"unknown"` (no env var, no build-arg).
 ///
-/// Public, unauthenticated, exempt from the private-mode gate — it is an
-/// ops/health-class endpoint like `/health` and `/readyz`.
+/// Public and unauthenticated — it is an ops/health-class endpoint like
+/// `/health` and `/readyz`.
 async fn version() -> impl IntoResponse {
     let release = std::env::var("NAVIGATOR_RELEASE_TAG").unwrap_or_else(|_| "unknown".into());
     let commit_full = std::env::var("NAVIGATOR_GIT_SHA").unwrap_or_else(|_| "unknown".into());

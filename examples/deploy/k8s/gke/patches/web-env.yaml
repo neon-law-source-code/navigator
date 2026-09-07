@@ -72,13 +72,11 @@ spec:
             # all — nobody can seed the first Person because seeding requires
             # an authenticated Owner.
             #
-            # A literal rather than a per-deployment coordinate, exactly like
-            # NAVIGATOR_BOOTSTRAP_COMPANY above: both rows are the same
-            # firm with the same GOOGLE_OAUTH_REQUIRED_HD (`neonlaw.com`), so
-            # they share one Owner. The domain gate still applies — this
+            # The deployment's own bootstrap identity, resolved from its
+            # config.toml by `ops ship`. The domain gate still applies — this
             # carve-out cannot admit an address the IdP would not issue.
             - name: NAVIGATOR_BOOTSTRAP_OWNER_EMAIL
-              value: nick@neonlaw.com
+              value: YOUR_BOOTSTRAP_OWNER_EMAIL
             # Whether this deployment's matters are simulated rather than
             # real. `false` for every deployment that does not say otherwise,
             # including production — `ops ship` renders that default when the
@@ -104,11 +102,12 @@ spec:
             # Committed in clear like OAUTH_CLIENT_ID below: a Chatwoot website
             # token is a public identifier that appears in the HTML every
             # visitor's browser receives, so it rides inline env rather than the
-            # projected Secret. NAVIGATOR_CHATWOOT_BASE_URL is deliberately
-            # omitted — unset means Chatwoot Cloud, the installation the firm
-            # uses; set it only for a self-hosted one.
+            # projected Secret. NAVIGATOR_CHATWOOT_BASE_URL defaults to
+            # Chatwoot Cloud; set it in the deployment config for self-hosting.
             - name: NAVIGATOR_CHATWOOT_WEBSITE_TOKEN
               value: "YOUR_CHATWOOT_WEBSITE_TOKEN"
+            - name: NAVIGATOR_CHATWOOT_BASE_URL
+              value: "YOUR_CHATWOOT_BASE_URL"
             # NAVIGATOR_STORAGE_ENDPOINT is deliberately omitted in prod:
             # it is a local/test override that the KIND base may set, and
             # the `$patch: replace` above drops the base's whole env list.

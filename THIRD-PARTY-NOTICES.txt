@@ -8961,6 +8961,8 @@ unicode-math-class 0.1.0
 unscanny 0.1.0
 utf-8 0.7.6
 utf8parse 0.2.2
+verus_prettyplease 0.0.0-2026-08-09-0044
+verus_syn 0.0.0-2026-08-02-0125
 wasm-streams 0.4.2
 wasm-streams 0.5.0
 xmp-writer 0.3.3
@@ -26905,7 +26907,7 @@ MIT License
     SOFTWARE
 
 ----------------------------------------------------------------------------------------
-regorus 0.11.0
+regorus 0.12.0
 
 MIT License
 
@@ -30917,6 +30919,8 @@ unic-langid-macros-impl 0.9.6
 unicode-ident 1.0.24
 unsafe-libyaml 0.2.11
 utf-8 0.7.6
+verus_prettyplease 0.0.0-2026-08-09-0044
+verus_syn 0.0.0-2026-08-02-0125
 wasi 0.11.1+wasi-snapshot-preview1
 wasip2 1.0.4+wasi-0.2.12
 wasm-streams 0.4.2
@@ -33902,6 +33906,7 @@ const-serialize 0.8.0-alpha.0  —  MIT OR Apache-2.0
 const-serialize-macro 0.7.2  —  MIT OR Apache-2.0
 const-serialize-macro 0.8.0-alpha.0  —  MIT OR Apache-2.0
 content_disposition 0.4.0  —  MIT OR 0BSD
+convert_case 0.4.0  —  MIT
 cucumber-codegen 0.23.0  —  MIT OR Apache-2.0
 defmt-parser 1.0.0  —  MIT OR Apache-2.0
 difflib 0.4.0  —  MIT
@@ -34026,7 +34031,11 @@ typst-syntax 0.15.1  —  Apache-2.0
 typst-timing 0.15.1  —  Apache-2.0
 typst-utils 0.15.1  —  Apache-2.0
 valuable 0.1.1  —  MIT
+verus_builtin 0.0.0-2026-08-09-0044  —  MIT
+verus_builtin_macros 0.0.0-2026-08-23-0033  —  MIT
+verus_state_machines_macros 0.0.0-2026-08-02-0125  —  MIT
 vsimd 0.8.0  —  MIT
+vstd 0.0.0-2026-08-23-0033  —  MIT
 warnings 0.2.1  —  MIT OR Apache-2.0
 warnings-macro 0.2.0  —  MIT OR Apache-2.0
 wasmi 1.1.0  —  MIT/Apache-2.0

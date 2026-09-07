@@ -1037,12 +1037,18 @@ mod tests {
 
         let stdout = Arc::new(Mutex::new(String::new()));
         let openobserve = Arc::new(Mutex::new(String::new()));
+        // `without_time` keeps the wall clock out of the rendered lines: the
+        // formatter's default timestamp carries sub-second digits, and the
+        // `212` assertion below would otherwise trip whenever those digits
+        // happened to contain it.
         let stdout_layer = tracing_subscriber::fmt::layer()
             .json()
+            .without_time()
             .with_writer(Buffer(stdout.clone()))
             .with_target(false);
         let openobserve_layer = tracing_subscriber::fmt::layer()
             .json()
+            .without_time()
             .with_writer(Buffer(openobserve.clone()))
             .with_target(false);
         let subscriber = SanitizingSubscriber::new(

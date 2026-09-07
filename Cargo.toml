@@ -132,7 +132,7 @@ reqwest = { version = "0.13", default-features = false, features = ["json", "rus
 # Rust-native Rego interpreter. The compatibility gate uses only the
 # thread-safe core needed by Navigator's policy; the default feature set
 # pulls in unrelated JSON Schema, URL, crypto, and coverage machinery.
-regorus = { version = "0.11.0", default-features = false, features = ["arc", "std"] }
+regorus = { version = "0.12.0", default-features = false, features = ["arc", "std"] }
 # NRS scraper: parse the legislature's HTML chapter pages. encoding_rs
 # decodes their windows-1252 bytes (MS-Word-filtered HTML) to UTF-8.
 scraper = "0.27"

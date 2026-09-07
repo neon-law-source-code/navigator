@@ -952,7 +952,7 @@ async fn admin_edits_matter_participation_from_the_project_workbench() {
     )
     .await
     .expect("seed project");
-    store::projects::add_participation(&surreal, project.id, lawyer.id, "lawyer_dri")
+    store::projects::add_participation(&surreal, project.id, lawyer.id, "lawyer")
         .await
         .expect("disclose logged-in lawyer to project");
 

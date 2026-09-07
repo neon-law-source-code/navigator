@@ -12,8 +12,7 @@ fn repo_root() -> PathBuf {
 
 fn ci_workflow() -> String {
     let path = repo_root().join(".github/workflows/ci.yml");
-    std::fs::read_to_string(&path)
-        .unwrap_or_else(|err| panic!("read {}: {err}", path.display()))
+    std::fs::read_to_string(&path).unwrap_or_else(|err| panic!("read {}: {err}", path.display()))
 }
 
 #[test]

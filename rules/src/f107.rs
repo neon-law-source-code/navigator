@@ -8,12 +8,19 @@
 //!
 //! The placeholder splits on the **first** dot into `<signer>.<field>`:
 //!
-//! - `signer` must be one of [`F107SignaturePlaceholders::SIGNERS`]
-//!   (`client`, `firm`). Roles, never a person's name — the signer
-//!   resolves to a real Person (the respondent, or the attorney of
-//!   record) at notation time.
+//! - `signer` must be a role from the template's declared [`SignerSet`]:
+//!   the optional frontmatter `signers:` list, or `[client, firm]` when
+//!   that key is absent. Roles, never a person's name — each signer
+//!   resolves to a real Person at notation time (`client` to the
+//!   respondent, `firm` to the attorney of record, any other role to
+//!   the matching `person__<role>` questionnaire state).
 //! - `field` must be one of [`F107SignaturePlaceholders::FIELDS`]
 //!   (`signature`, `initials`, `date`).
+//!
+//! An explicit `signers:` list is bidirectional with the body: every
+//! listed role must appear as a `signature` or `initials` placeholder,
+//! and every placeholder role must be on the list. A declared role with
+//! no placeholder is an error.
 //!
 //! The signing declaration is **bidirectional** — a well-formed
 //! signature is declared in two places that must agree:
@@ -42,8 +49,90 @@
 use std::collections::BTreeMap;
 
 use serde::Deserialize;
+use serde_yaml::Value;
 
-use crate::{frontmatter, Rule, SourceFile, Violation};
+use crate::{frontmatter, is_snake_case, Rule, SourceFile, Violation};
+
+/// Default `signers:` when the key is absent — every existing template.
+pub const DEFAULT_SIGNERS: &[&str] = &["client", "firm"];
+
+/// The signer roles a template permits, in declaration order.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SignerSet {
+    /// Role names (`client`, `firm`, `confirming_assignor`, …).
+    pub roles: Vec<String>,
+    /// True when frontmatter carried an explicit `signers:` list.
+    pub explicit: bool,
+}
+
+impl SignerSet {
+    fn implicit_default() -> Self {
+        Self {
+            roles: DEFAULT_SIGNERS.iter().map(|s| (*s).to_string()).collect(),
+            explicit: false,
+        }
+    }
+
+    /// Comma-separated roles for diagnostics.
+    #[must_use]
+    pub fn joined(&self) -> String {
+        self.roles.join(", ")
+    }
+
+    /// True when `role` is in this set.
+    #[must_use]
+    pub fn contains(&self, role: &str) -> bool {
+        self.roles.iter().any(|r| r == role)
+    }
+}
+
+/// Parse the template's signer set from its full Markdown source.
+///
+/// No frontmatter, no `signers:` key, or a null `signers:` all yield the
+/// implicit default `[client, firm]`. A present list must be lowercase
+/// `snake_case` role names with no duplicates.
+pub fn signer_set(contents: &str) -> Result<SignerSet, String> {
+    let Some(fm) = frontmatter::extract(contents) else {
+        return Ok(SignerSet::implicit_default());
+    };
+    let yaml: Value = serde_yaml::from_str(fm).map_err(|e| e.to_string())?;
+    parse_signer_set(&yaml)
+}
+
+fn parse_signer_set(yaml: &Value) -> Result<SignerSet, String> {
+    let Some(signers) = yaml.get("signers") else {
+        return Ok(SignerSet::implicit_default());
+    };
+    if signers.is_null() {
+        return Ok(SignerSet::implicit_default());
+    }
+    let Some(seq) = signers.as_sequence() else {
+        return Err("signers: must be a list of lowercase snake_case role names".to_string());
+    };
+    let mut roles = Vec::with_capacity(seq.len());
+    for (i, item) in seq.iter().enumerate() {
+        let Some(name) = item.as_str() else {
+            return Err(format!("signers[{i}] must be a string role name"));
+        };
+        if !is_signer_role_name(name) {
+            return Err(format!(
+                "`{name}` is not a lowercase snake_case signer role"
+            ));
+        }
+        if roles.iter().any(|r| r == name) {
+            return Err(format!("signer role `{name}` is listed twice"));
+        }
+        roles.push(name.to_string());
+    }
+    Ok(SignerSet {
+        roles,
+        explicit: true,
+    })
+}
+
+fn is_signer_role_name(name: &str) -> bool {
+    is_snake_case(name) && !name.contains("__")
+}
 
 const FOR_OPEN: &str = "{{#for ";
 
@@ -52,9 +141,8 @@ pub struct F107SignaturePlaceholders;
 impl F107SignaturePlaceholders {
     pub const CODE: &'static str = "N107";
 
-    /// Recognized signer roles. Roles, never names — extend this list
-    /// when a new signer (e.g. `witness`, `notary`) enters the bench.
-    pub const SIGNERS: &'static [&'static str] = &["client", "firm"];
+    /// Default signer roles when a template omits `signers:`.
+    pub const SIGNERS: &'static [&'static str] = DEFAULT_SIGNERS;
 
     /// Recognized signature field types, each mapping to a distinct
     /// downstream e-signature tab (signHere / initialHere / dateSigned).
@@ -155,12 +243,19 @@ impl Rule for F107SignaturePlaceholders {
     }
 
     fn lint(&self, file: &SourceFile) -> Vec<Violation> {
-        // Notation-template rule: skip files without frontmatter.
         let Some(fm) = frontmatter::extract(&file.contents) else {
             return Vec::new();
         };
 
-        let placeholders = signature_placeholders(&file.contents);
+        let mut violations = Vec::new();
+        let set = match signer_set(&file.contents) {
+            Ok(set) => set,
+            Err(message) => {
+                violations.push(n107(file, 1, 0..0, message));
+                SignerSet::implicit_default()
+            }
+        };
+
         let parsed = serde_yaml::from_str::<FrontmatterShape>(fm).ok();
         let questionnaire_states: std::collections::BTreeSet<&str> = parsed
             .as_ref()
@@ -168,113 +263,159 @@ impl Rule for F107SignaturePlaceholders {
             .into_iter()
             .flat_map(|q| q.keys().map(String::as_str))
             .collect();
-        let loop_variables = loop_variables(&file.contents);
-        let mut violations = Vec::new();
-        let mut saw_valid_block = false;
-        // A *relevant* anchor is any placeholder that survives the
-        // data-grammar filter above — a candidate signature token, valid
-        // (`{{client.signature}}`) or malformed (`{{spouse.signature}}`).
-        // Loop row tokens (`{{m.name}}`) and questionnaire-state paths are
-        // N115 data grammar, so they never count as a signature anchor.
-        let mut saw_relevant_anchor = false;
-
-        for ph in &placeholders {
-            if questionnaire_states.contains(ph.signer.as_str())
-                || loop_variables.contains(ph.signer.as_str())
-            {
-                continue;
-            }
-            saw_relevant_anchor = true;
-            let signer_ok = Self::SIGNERS.contains(&ph.signer.as_str());
-            let field_ok = Self::FIELDS.contains(&ph.field.as_str());
-            let line = line_at(&file.contents, ph.offset);
-            let range = ph.offset..ph.offset;
-
-            if !signer_ok {
-                violations.push(Violation {
-                    code: Self::CODE,
-                    path: file.path.clone(),
-                    line,
-                    range: range.clone(),
-                    message: format!(
-                        "unknown signer role `{}` in signature placeholder (expected one of: {})",
-                        ph.signer,
-                        Self::SIGNERS.join(", ")
-                    ),
-                });
-            }
-            if !field_ok {
-                violations.push(Violation {
-                    code: Self::CODE,
-                    path: file.path.clone(),
-                    line,
-                    range,
-                    message: format!(
-                        "unknown signature field `{}` in signature placeholder (expected one of: {})",
-                        ph.field,
-                        Self::FIELDS.join(", ")
-                    ),
-                });
-            }
-            if signer_ok && field_ok {
-                saw_valid_block = true;
-            }
+        let loops = loop_variables(&file.contents);
+        let scan = scan_placeholders(file, &set, &questionnaire_states, &loops);
+        violations.extend(scan.violations);
+        if set.explicit {
+            require_declared_placeholders(file, &set, &scan.signed_roles, &mut violations);
         }
-
-        // The signing declaration is bidirectional: a body signature
-        // block and a `sent_for_signature[__*]` State must each imply the
-        // other. Parse the workflow once and cross-check both directions.
-        let has_signing_state = parsed.and_then(|p| p.workflow).is_some_and(|wf| {
-            wf.keys().any(|state| {
-                state == Self::SIGNING_STATE
-                    || state.starts_with(&format!("{}__", Self::SIGNING_STATE))
-            })
-        });
-
-        // Forward: a signature block must have somewhere to collect the
-        // signature.
-        if saw_valid_block && !has_signing_state {
-            violations.push(Violation {
-                code: Self::CODE,
-                path: file.path.clone(),
-                line: 1,
-                range: 0..0,
-                message: format!(
-                    "template draws a signature block but its workflow has no \
-                     `{}` (or `{}__*`) state to collect the signature",
-                    Self::SIGNING_STATE,
-                    Self::SIGNING_STATE
-                ),
-            });
-        }
-
-        // Reverse: a signing State must have a body anchor for its tab to
-        // land on — otherwise the provider gets a signing step with no
-        // placed signature field (the live retainer bug). We key off "no
-        // *relevant* signature token", not "no valid one": a malformed
-        // token (`{{spouse.signature}}`) already draws its own
-        // unknown-signer violation, so adding "no anchor" on top would be
-        // contradictory noise. Keying off `placeholders.is_empty()` alone
-        // would let a signing template that uses a `{{#for}}` loop but
-        // forgets its real signature block slip through — the loop row
-        // tokens are data grammar, not anchors, so they must not satisfy
-        // this check.
-        if has_signing_state && !saw_relevant_anchor {
-            violations.push(Violation {
-                code: Self::CODE,
-                path: file.path.clone(),
-                line: 1,
-                range: 0..0,
-                message: format!(
-                    "workflow declares a `{}` state but the body carries no signature \
-                     anchor (expected at least one `{{{{<signer>.<field>}}}}`, e.g. \
-                     `{{{{client.signature}}}}`) for the tab to land on",
-                    Self::SIGNING_STATE
-                ),
-            });
-        }
-
+        cross_check_signing_state(
+            file,
+            parsed,
+            scan.saw_valid,
+            scan.saw_relevant,
+            &mut violations,
+        );
         violations
+    }
+}
+
+struct PlaceholderScan {
+    violations: Vec<Violation>,
+    saw_valid: bool,
+    saw_relevant: bool,
+    signed_roles: std::collections::BTreeSet<String>,
+}
+
+fn n107(
+    file: &SourceFile,
+    line: usize,
+    range: std::ops::Range<usize>,
+    message: impl Into<String>,
+) -> Violation {
+    Violation {
+        code: F107SignaturePlaceholders::CODE,
+        path: file.path.clone(),
+        line,
+        range,
+        message: message.into(),
+    }
+}
+
+fn scan_placeholders(
+    file: &SourceFile,
+    set: &SignerSet,
+    questionnaire_states: &std::collections::BTreeSet<&str>,
+    loops: &std::collections::BTreeSet<String>,
+) -> PlaceholderScan {
+    let mut scan = PlaceholderScan {
+        violations: Vec::new(),
+        saw_valid: false,
+        saw_relevant: false,
+        signed_roles: std::collections::BTreeSet::new(),
+    };
+    for ph in signature_placeholders(&file.contents) {
+        if questionnaire_states.contains(ph.signer.as_str()) || loops.contains(ph.signer.as_str()) {
+            continue;
+        }
+        scan.saw_relevant = true;
+        let signer_ok = set.contains(&ph.signer);
+        let field_ok = F107SignaturePlaceholders::FIELDS.contains(&ph.field.as_str());
+        let line = line_at(&file.contents, ph.offset);
+        let range = ph.offset..ph.offset;
+        if !signer_ok {
+            scan.violations.push(n107(
+                file,
+                line,
+                range.clone(),
+                format!(
+                    "unknown signer role `{}` in signature placeholder (expected one of: {})",
+                    ph.signer,
+                    set.joined()
+                ),
+            ));
+        }
+        if !field_ok {
+            scan.violations.push(n107(
+                file,
+                line,
+                range,
+                format!(
+                    "unknown signature field `{}` in signature placeholder (expected one of: {})",
+                    ph.field,
+                    F107SignaturePlaceholders::FIELDS.join(", ")
+                ),
+            ));
+        }
+        if signer_ok && field_ok {
+            scan.saw_valid = true;
+            if ph.field == "signature" || ph.field == "initials" {
+                scan.signed_roles.insert(ph.signer.clone());
+            }
+        }
+    }
+    scan
+}
+
+fn require_declared_placeholders(
+    file: &SourceFile,
+    set: &SignerSet,
+    signed_roles: &std::collections::BTreeSet<String>,
+    violations: &mut Vec<Violation>,
+) {
+    for role in &set.roles {
+        if !signed_roles.contains(role.as_str()) {
+            violations.push(n107(
+                file,
+                1,
+                0..0,
+                format!(
+                    "declared signer role `{role}` has no placeholder in the body \
+                     (expected `{{{{{role}.signature}}}}` or `{{{{{role}.initials}}}}`)"
+                ),
+            ));
+        }
+    }
+}
+
+fn cross_check_signing_state(
+    file: &SourceFile,
+    parsed: Option<FrontmatterShape>,
+    saw_valid: bool,
+    saw_relevant: bool,
+    violations: &mut Vec<Violation>,
+) {
+    let has_signing_state = parsed.and_then(|p| p.workflow).is_some_and(|wf| {
+        wf.keys().any(|state| {
+            state == F107SignaturePlaceholders::SIGNING_STATE
+                || state.starts_with(&format!("{}__", F107SignaturePlaceholders::SIGNING_STATE))
+        })
+    });
+    if saw_valid && !has_signing_state {
+        violations.push(n107(
+            file,
+            1,
+            0..0,
+            format!(
+                "template draws a signature block but its workflow has no \
+                 `{}` (or `{}__*`) state to collect the signature",
+                F107SignaturePlaceholders::SIGNING_STATE,
+                F107SignaturePlaceholders::SIGNING_STATE
+            ),
+        ));
+    }
+    if has_signing_state && !saw_relevant {
+        violations.push(n107(
+            file,
+            1,
+            0..0,
+            format!(
+                "workflow declares a `{}` state but the body carries no signature \
+                 anchor (expected at least one `{{{{<signer>.<field>}}}}`, e.g. \
+                 `{{{{client.signature}}}}`) for the tab to land on",
+                F107SignaturePlaceholders::SIGNING_STATE
+            ),
+        ));
     }
 }
 
@@ -497,5 +638,89 @@ mod tests {
         let body = "---\ntitle: T\nworkflow:\n  BEGIN:\n    created: END\n  END: {}\n---\n\
                     Dear {{client_name}}, welcome.\n";
         assert!(F107SignaturePlaceholders.lint(&file(body)).is_empty());
+    }
+
+    /// A three-party assignment: client, firm, and a confirming assignor.
+    /// Questionnaire states back the respondent-side roles; `firm` is the
+    /// configured countersignature. Fixtures use the sample transactional
+    /// matter, never a live Project code.
+    fn three_party_assignment(signers_yaml: &str, extra_body: &str) -> String {
+        format!(
+            "---\ntitle: Assignment\n{signers_yaml}questionnaire:\n  BEGIN:\n    \
+             _: person__client\n  person__client:\n    _: person__confirming_assignor\n  \
+             person__confirming_assignor:\n    _: END\n  END: {{}}\nworkflow:\n  BEGIN:\n    \
+             created: sent_for_signature__pending\n  sent_for_signature__pending:\n    \
+             signature_received: END\n  END: {{}}\n---\n\
+             {{{{client.signature}}}}\n{{{{firm.signature}}}}\n{{{{confirming_assignor.signature}}}}\n\
+             {extra_body}"
+        )
+    }
+
+    #[test]
+    fn declared_three_party_signer_set_validates() {
+        let body = three_party_assignment(
+            "signers:\n  - client\n  - firm\n  - confirming_assignor\n",
+            "",
+        );
+        assert!(
+            F107SignaturePlaceholders.lint(&file(&body)).is_empty(),
+            "a template that declares its three signer roles must lint clean: {:?}",
+            F107SignaturePlaceholders.lint(&file(&body)),
+        );
+    }
+
+    #[test]
+    fn absent_signers_rejects_a_third_role_and_names_the_permitted_set() {
+        let body = three_party_assignment("", "");
+        let v = F107SignaturePlaceholders.lint(&file(&body));
+        assert!(
+            v.iter().any(|x| {
+                x.code == "N107"
+                    && x.message
+                        .contains("unknown signer role `confirming_assignor`")
+                    && x.message.contains("client, firm")
+            }),
+            "absent signers: must permit only client, firm; got {v:?}"
+        );
+    }
+
+    #[test]
+    fn declared_role_without_a_placeholder_is_an_error() {
+        let body =
+            "---\ntitle: Assignment\nsigners:\n  - client\n  - firm\n  - confirming_assignor\n\
+                    questionnaire:\n  BEGIN:\n    _: person__client\n  person__client:\n    \
+                    _: person__confirming_assignor\n  person__confirming_assignor:\n    _: END\n  \
+                    END: {}\nworkflow:\n  BEGIN:\n    created: sent_for_signature__pending\n  \
+                    sent_for_signature__pending:\n    signature_received: END\n  END: {}\n---\n\
+                    {{client.signature}}\n{{firm.signature}}\n";
+        let v = F107SignaturePlaceholders.lint(&file(body));
+        assert!(
+            v.iter().any(|x| {
+                x.code == "N107"
+                    && x.message.contains("confirming_assignor")
+                    && x.message.contains("no placeholder")
+            }),
+            "a declared role with no body placeholder must fail N107; got {v:?}"
+        );
+    }
+
+    #[test]
+    fn shipped_onboarding_letter_validates_without_a_signers_key() {
+        let body = include_str!("../../templates/notations/neon_law/shared/onboarding_letter.md");
+        assert!(
+            F107SignaturePlaceholders.lint(&file(body)).is_empty(),
+            "the bundled onboarding letter must stay valid with the default signer set: {:?}",
+            F107SignaturePlaceholders.lint(&file(body)),
+        );
+    }
+
+    #[test]
+    fn shipped_offboarding_letter_validates_without_a_signers_key() {
+        let body = include_str!("../../templates/notations/neon_law/shared/offboarding_letter.md");
+        assert!(
+            F107SignaturePlaceholders.lint(&file(body)).is_empty(),
+            "the bundled closing letter must stay valid with the default signer set: {:?}",
+            F107SignaturePlaceholders.lint(&file(body)),
+        );
     }
 }

@@ -123,7 +123,7 @@ violation without a human decision; every other code needs a person to resolve i
 | `N104` | Error | Questionnaire/workflow state references an unknown registry item. | No |
 | `N105` | Error | Notation template must declare `confidential`. | No |
 | `N106` | Error | Notation workflow must include a `lawyer_review` step. | No |
-| `N107` | Error | Signature placeholders must name a known signer/field and signing workflow state. | No |
+| `N107` | Error | Signature placeholders must match the declared signer set and signing state. | No |
 | `N108` | Error | Notation template must declare a stable `code`. | No |
 | `N109` | Error | `output:` must name a known render format, and its paired keys must travel with it. | No |
 | `N110` | Error | Notation template must live under `notations/` and declare `jurisdiction`. | No |
@@ -131,7 +131,7 @@ violation without a human decision; every other code needs a person to resolve i
 | `N112` | **Warning** | A workflow step is allowed but its automation is not built yet. | No |
 | `N113` | Error | Questionnaire state type must be a registered question type. | No |
 | `N114` | Error | A `__for_` child state must follow a role-matched person/entity parent. | No |
-| `N115` | Error | A template data path or iterator must resolve against a typed questionnaire state. | No |
+| `N115` | Error | Data paths, iterators, and declared signer roles must resolve against questionnaire state. | No |
 | `N116` | Error | Notation workflow must gate every outbound submission behind lawyer review. | No |
 | `N117` | Error | Every `custom_text__*` state must be an allowlisted free-text primitive. | No |
 | `N118` | Error | Questionnaire must be one linear chain from `BEGIN` to `END`. | No |

@@ -67,8 +67,9 @@ The send path is keyed off the notation's **template code**, not the retainer. `
 ([`portal::retainer_walk`](https://github.com/neon-law-source-code/navigator/blob/main/portal/src/retainer_walk.rs))
 resolves the workflow spec via `workflows::bundled_spec_yaml(code)`, rendering to the generic per-notation storage keys
 (`notations/{id}/document.pdf`, `signed-document.pdf`, `certificate-of-completion.pdf`), and resolves the captive signer
-from the questionnaire answers when present and otherwise from the notation's bound Person row. Adding a signed template
-is a template + spec, not a new handler — the spec just needs the retainer's shape: an `intake_persisted__*` →
+from the questionnaire answers when present and otherwise from the notation's bound Person row. Recipients follow the
+template's `signers:` list (default `[client, firm]`) in declaration order. Adding a signed template is a template +
+spec, not a new handler — the spec just needs the retainer's shape: an `intake_persisted__*` →
 `lawyer_review` → `generate_pdf__*_pdf` → `sent_for_signature__pending` chain.
 
 Signed templates today:

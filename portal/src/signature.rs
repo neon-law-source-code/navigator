@@ -82,10 +82,10 @@ impl SignatureFieldKind {
 
 /// One person who signs the document, with their routing position.
 /// Identities are resolved by the caller (the respondent Person, the
-/// attorney of record) — the provider never hardcodes who `client` or
-/// `firm` is. `routing_order` is load-bearing: the client signs first
-/// (order 1), the firm countersigns (order 2), and the engagement forms
-/// on the firm's signature.
+/// attorney of record, or `person__<role>` for any other declared
+/// signer) — the provider never hardcodes who a role is. `routing_order`
+/// is load-bearing: recipients sign in the template's `signers:`
+/// declaration order (default client then firm).
 ///
 /// `client_user_id`, when set, makes the recipient **captive** (embedded):
 /// DocuSign does NOT email them a signing link; instead the app requests

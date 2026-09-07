@@ -1398,6 +1398,10 @@ pub enum WorkflowDriveError {
          and its engagement agreement leaves the fee to them"
     )]
     ClausesRequired(Uuid),
+    /// A declared signer role has no resolved name and email, so the
+    /// envelope is not sent.
+    #[error("declared signer role `{role}` is unresolved: missing name or email")]
+    UnresolvedSigner { role: String },
     /// The template's `form:` binding or its field map failed to
     /// resolve — a vendoring or mapping defect, never silently skipped.
     #[error("government form `{form_code}`: {reason}")]
@@ -1778,13 +1782,12 @@ pub(crate) async fn dispatch_signature(
     let s = signal_workflow(runtime, notation_id, "pdf_persisted", None, acting).await?;
     sync_notation_state(deps.surreal, notation_id, s.as_str()).await?;
 
-    // Now at sent_for_signature__pending; fire the signature seam. The
-    // client signs first (routing 1), the firm countersigns (routing 2) so
-    // the engagement forms on the firm's signature. The captive client's
-    // identity comes from the questionnaire answers when present (the
-    // retainer asks `person__client`, exposing `person__client.name`) and
-    // otherwise from the notation's bound Person row — never hardcoded in
-    // the provider.
+    // Now at sent_for_signature__pending; fire the signature seam.
+    // Recipients follow the template's declared signer set in order.
+    // The captive client's identity comes from the questionnaire answers
+    // when present (the retainer asks `person__client`, exposing
+    // `person__client.name`) and otherwise from the notation's bound
+    // Person row — never hardcoded in the provider.
     let template_body = store::notation_clauses::splice(&raw_template_body, &clauses);
     let ctx = render_context_from_answers(deps.surreal, notation_id).await?;
     let (_typst_source, signature_fields) = crate::signature_render::expand_signatures(
@@ -1811,7 +1814,8 @@ pub(crate) async fn dispatch_signature(
         &ctx,
         client.as_ref(),
         captive,
-    );
+        &raw_template_body,
+    )?;
     let id = deps
         .signature_provider
         .send_for_signature(notation_id, &pdf_bytes, &manifest)
@@ -1954,6 +1958,20 @@ pub async fn send_post(
                     "reason": "the fee terms have not been written — this engagement \
                                agreement leaves the fee to its custom clauses. Add at \
                                least one clause on the review screen, then send again.",
+                })),
+            )
+                .into_response()
+        }
+        Err(WorkflowDriveError::UnresolvedSigner { ref role }) => {
+            tracing::info!(%notation_id, %role, "send: refused — a declared signer is unresolved");
+            (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                axum::Json(serde_json::json!({
+                    "error": "unresolved_signer",
+                    "reason": format!(
+                        "declared signer role `{role}` has no resolved name and email — \
+                         the envelope is not sent until every declared role can sign"
+                    ),
                 })),
             )
                 .into_response()
@@ -2590,39 +2608,28 @@ pub fn client_user_id(notation_id: Uuid) -> String {
     format!("client-{notation_id}")
 }
 
-/// Assemble the signature manifest from the placed fields. Only roles
-/// that actually anchor a field become recipients, in routing order:
-/// the client (routing 1) signs from their questionnaire answers; the
-/// firm (routing 2) countersigns from the `DOCUSIGN_SIGNER_*` config
-/// (defaulting to the firm support inbox, mirroring
-/// `DocuSignSignatureProvider::from_env`). Empty fields → empty manifest
-/// (the provider's single-signer fallback).
-///
-/// The captive client's name/email come from the questionnaire answers
-/// when the template captured them (the retainer asks `person__client`,
-/// whose dotted `.name`/`.email` fields land in the render context) and
-/// otherwise from the notation's bound Person row in `client` (the trust
-/// questionnaire never asks for an email, and the retainer captures the
-/// email out-of-band, so `.email` falls through to the Person row). That
-/// same Person is what [`crate::esign_view`] resolves the
-/// embedded recipient against, so envelope creation and the recipient
-/// view agree.
-///
-/// The client is **captive** (a `client_user_id` derived from the
-/// notation): they sign embedded inside Neon Law Navigator, so DocuSign does not
-/// email them. The firm is left non-captive — it countersigns from the
-/// support inbox via the usual emailed link.
+/// Assemble the signature manifest from the placed fields and the
+/// template's declared signer set. Recipients fan out one per declared
+/// role, in declaration order, using the same routing-order mechanism
+/// two-party envelopes use. `client` resolves from questionnaire answers
+/// or the bound Person; `firm` from `DOCUSIGN_SIGNER_*`; any other role
+/// from `person__<role>.name` / `.email`. Empty fields → empty manifest
+/// (the provider's single-signer fallback). A declared role that lacks a
+/// resolved name and email refuses the send.
 fn build_signature_manifest(
     notation_id: Uuid,
     fields: &[crate::signature::SignatureField],
     ctx: &BTreeMap<String, String>,
     client: Option<&store::persons::Person>,
     captive: bool,
-) -> crate::signature::SignatureManifest {
+    template_source: &str,
+) -> Result<crate::signature::SignatureManifest, WorkflowDriveError> {
     use crate::signature::{SignatureManifest, SignatureRecipient};
     if fields.is_empty() {
-        return SignatureManifest::default();
+        return Ok(SignatureManifest::default());
     }
+    let set = rules::signer_set(template_source)
+        .map_err(|message| WorkflowDriveError::UnresolvedSigner { role: message })?;
     let role_present = |role: &str| fields.iter().any(|f| f.recipient_role == role);
     let env = |k: &str, default: &str| {
         std::env::var(k)
@@ -2630,42 +2637,52 @@ fn build_signature_manifest(
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| default.to_string())
     };
-    // Prefer the answered value; fall back to the bound Person when the
-    // questionnaire didn't capture it (empty answers fall back too).
     let answered = |key: &str| ctx.get(key).filter(|s| !s.is_empty()).cloned();
 
     let mut recipients = Vec::new();
-    if role_present("client") {
+    for (role, routing_order) in set.roles.iter().zip(1u32..) {
+        if !role_present(role) {
+            if set.explicit {
+                return Err(WorkflowDriveError::UnresolvedSigner { role: role.clone() });
+            }
+            continue;
+        }
+        let (name, email, client_user_id) = match role.as_str() {
+            "client" => (
+                answered("person__client.name")
+                    .or_else(|| client.map(|c| c.name.clone()))
+                    .unwrap_or_default(),
+                answered("person__client.email")
+                    .or_else(|| client.map(|c| c.email.clone()))
+                    .unwrap_or_default(),
+                captive.then(|| client_user_id(notation_id)),
+            ),
+            "firm" => (
+                env("DOCUSIGN_SIGNER_NAME", "Neon Law"),
+                env("DOCUSIGN_SIGNER_EMAIL", "support@neonlaw.com"),
+                None,
+            ),
+            other => (
+                answered(&format!("person__{other}.name")).unwrap_or_default(),
+                answered(&format!("person__{other}.email")).unwrap_or_default(),
+                None,
+            ),
+        };
+        if name.is_empty() || email.is_empty() {
+            return Err(WorkflowDriveError::UnresolvedSigner { role: role.clone() });
+        }
         recipients.push(SignatureRecipient {
-            role: "client".into(),
-            email: answered("person__client.email")
-                .or_else(|| client.map(|c| c.email.clone()))
-                .unwrap_or_default(),
-            name: answered("person__client.name")
-                .or_else(|| client.map(|c| c.name.clone()))
-                .unwrap_or_default(),
-            routing_order: 1,
-            // Captive (`embedded` delivery): a `client_user_id` makes the
-            // client an embedded recipient DocuSign does NOT email — they
-            // sign inside Neon Law Navigator (`crate::esign_view`). Non-captive
-            // (`emailed` delivery): `None`, so DocuSign emails them a
-            // signing link they open from their own inbox.
-            client_user_id: captive.then(|| client_user_id(notation_id)),
+            role: role.clone(),
+            email,
+            name,
+            routing_order,
+            client_user_id,
         });
     }
-    if role_present("firm") {
-        recipients.push(SignatureRecipient {
-            role: "firm".into(),
-            email: env("DOCUSIGN_SIGNER_EMAIL", "support@neonlaw.com"),
-            name: env("DOCUSIGN_SIGNER_NAME", "Neon Law"),
-            routing_order: 2,
-            client_user_id: None,
-        });
-    }
-    SignatureManifest {
+    Ok(SignatureManifest {
         recipients,
         fields: fields.to_vec(),
-    }
+    })
 }
 
 /// Build the `{{state}} → answer` context map for `notation_id`.
@@ -3379,7 +3396,8 @@ Sign: {{client.signature}}";
         let fields = [client_signature_field()];
 
         let manifest =
-            super::build_signature_manifest(Uuid::now_v7(), &fields, &ctx, Some(&client), true);
+            super::build_signature_manifest(Uuid::now_v7(), &fields, &ctx, Some(&client), true, "")
+                .expect("client identity resolves from answers");
 
         let recipient = manifest
             .recipients
@@ -3400,7 +3418,8 @@ Sign: {{client.signature}}";
         let fields = [client_signature_field()];
 
         let manifest =
-            super::build_signature_manifest(Uuid::now_v7(), &fields, &ctx, Some(&client), true);
+            super::build_signature_manifest(Uuid::now_v7(), &fields, &ctx, Some(&client), true, "")
+                .expect("client identity resolves from the Person row");
 
         let recipient = manifest
             .recipients
@@ -3409,6 +3428,105 @@ Sign: {{client.signature}}";
             .expect("client recipient present");
         assert_eq!(recipient.name, "Libra Prime");
         assert_eq!(recipient.email, "libra@example.com");
+    }
+
+    fn assignor_signature_field() -> crate::signature::SignatureField {
+        crate::signature::SignatureField {
+            recipient_role: "confirming_assignor".into(),
+            kind: crate::signature::SignatureFieldKind::Signature,
+            anchor: "{{confirming_assignor.signature}}".into(),
+        }
+    }
+
+    fn firm_signature_field() -> crate::signature::SignatureField {
+        crate::signature::SignatureField {
+            recipient_role: "firm".into(),
+            kind: crate::signature::SignatureFieldKind::Signature,
+            anchor: "{{firm.signature}}".into(),
+        }
+    }
+
+    fn three_party_template() -> &'static str {
+        "---\nsigners:\n  - client\n  - firm\n  - confirming_assignor\n---\n"
+    }
+
+    #[test]
+    fn signature_manifest_fans_out_declared_roles_in_declaration_order() {
+        let ctx = BTreeMap::from([
+            ("person__client.name".to_string(), "Libra Prime".to_string()),
+            (
+                "person__client.email".to_string(),
+                "libra@example.com".to_string(),
+            ),
+            (
+                "person__confirming_assignor.name".to_string(),
+                "Pat Assignor".to_string(),
+            ),
+            (
+                "person__confirming_assignor.email".to_string(),
+                "assignor@example.com".to_string(),
+            ),
+        ]);
+        let client = person_named("Libra Prime", "libra@example.com");
+        let fields = [
+            client_signature_field(),
+            firm_signature_field(),
+            assignor_signature_field(),
+        ];
+
+        let manifest = super::build_signature_manifest(
+            Uuid::now_v7(),
+            &fields,
+            &ctx,
+            Some(&client),
+            true,
+            three_party_template(),
+        )
+        .expect("every declared role is resolved");
+
+        let roles: Vec<&str> = manifest
+            .recipients
+            .iter()
+            .map(|r| r.role.as_str())
+            .collect();
+        assert_eq!(roles, ["client", "firm", "confirming_assignor"]);
+        assert_eq!(manifest.recipients[0].routing_order, 1);
+        assert_eq!(manifest.recipients[1].routing_order, 2);
+        assert_eq!(manifest.recipients[2].routing_order, 3);
+        assert_eq!(manifest.recipients[2].email, "assignor@example.com");
+        assert_eq!(manifest.recipients[2].name, "Pat Assignor");
+    }
+
+    #[test]
+    fn signature_manifest_refuses_an_unresolved_declared_role() {
+        let ctx = BTreeMap::from([
+            ("person__client.name".to_string(), "Libra Prime".to_string()),
+            (
+                "person__client.email".to_string(),
+                "libra@example.com".to_string(),
+            ),
+        ]);
+        let client = person_named("Libra Prime", "libra@example.com");
+        let fields = [
+            client_signature_field(),
+            firm_signature_field(),
+            assignor_signature_field(),
+        ];
+
+        let err = super::build_signature_manifest(
+            Uuid::now_v7(),
+            &fields,
+            &ctx,
+            Some(&client),
+            true,
+            three_party_template(),
+        )
+        .expect_err("confirming_assignor has no name or email");
+        let message = err.to_string();
+        assert!(
+            message.contains("confirming_assignor"),
+            "refusal must name the unresolved role: {message}"
+        );
     }
 
     #[test]

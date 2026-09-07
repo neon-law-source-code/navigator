@@ -973,6 +973,7 @@ async fn step_json(
                 "question": {
                     "code": question.code,
                     "prompt": question.prompt,
+                    "help_text": question.help_text,
                     "answer_type": question.answer_type,
                     "choices": choices,
                     "candidates": candidates,

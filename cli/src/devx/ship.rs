@@ -3855,8 +3855,7 @@ mod tests {
         // the state that would make the loop above vacuous — does.
         assert!(
             sourced_from_secret >= 8,
-            "expected at least the four Restate triggers' two keys to be sourced from the Secret, \
-             saw {sourced_from_secret}"
+            "expected the four Restate triggers' two keys to be sourced from the deployment Secret"
         );
 
         // The premise behind `optional: true`, proven rather than asserted:

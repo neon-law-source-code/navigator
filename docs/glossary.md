@@ -123,9 +123,9 @@ runtime flag that can move a page from one brand's hosts to another's.
 authorization/identity record, not a routing registry entry. `firm_id: None` is system-wide (Owner-created, every Firm
 sees it); a live `firm_id` is scoped to that Firm (created only by its Admin DRI). It carries no host: `hosts()` and
 `registered_brand_key` keep resolving only the compiled `BrandKey` enum above, and a runtime `brand` row publishes no
-marketing page. The three compiled keys (`neon`, `delete-your-data`, `lawyer-shook`) migrate into system-wide rows on first boot so the
-one authorization table names every brand a Firm may attach, but their real presentation — hosts, colours, fonts, logos,
-copy — stays exactly where this entry describes it, unchanged.
+marketing page. The three compiled keys (`neon`, `delete-your-data`, `lawyer-shook`) migrate into system-wide rows on
+first boot so the one authorization table names every brand a Firm may attach, but their real presentation — hosts,
+colours, fonts, logos, copy — stays exactly where this entry describes it, unchanged.
 
 `portal::canonical_host::resolve_brand_and_enforce_host` resolves the key early in the middleware stack from the
 incoming `Host:` header and stashes it as a request extension; `scope_branding` reads that extension and scopes the
@@ -699,21 +699,14 @@ Admin-DRI standing, and every person on it.
 
 ## Firm Brand
 
-<<<<<<< HEAD
 Which house-brand keys a [Firm](#firm) wears. The `firm_brand` table is the join: `firm_id`, a `brand_key`, and
-timestamps. Unique on the pair, and unique on `brand_key` globally — one storefront key belongs to at most one practice.
+timestamps. Unique on the pair, and unique on `brand_key` globally: one storefront key belongs to at most one practice.
 Distinct from [Brand](#brand), which is the storefront a request resolved to.
 
-`store::firms::attach_brand` validates `brand_key` against the `brand` table (`store::brands`, ENG-496) — a live row
-carrying that key, not the closed `CLOSED_BRAND_KEYS` array directly — so a Firm may wear any brand a `brand` row now
-names, not only the two compiled ones. `store::firms::CLOSED_BRAND_KEYS` still names those two, and is what
-`store::seed` migrates into `brand` rows on first boot so the validation has something to check against from the start.
-=======
-Which closed house-brand keys a [Firm](#firm) wears. The `firm_brand` table is the join: `firm_id`, a `brand_key` of
-`neon`, `delete-your-data`, or `lawyer-shook`, and timestamps. Unique on the pair, and unique on `brand_key` globally —
-one storefront key belongs to at most one practice. Distinct from [Brand](#brand), which is the storefront a request
-resolved to.
->>>>>>> 7b88786 (docs(brands): teach the docs and workshops the third brand)
+`store::firms::attach_brand` validates `brand_key` against the `brand` table (`store::brands`, ENG-496): a live row
+carrying that key, not the closed `CLOSED_BRAND_KEYS` array directly. A Firm may therefore wear any brand a `brand` row
+names, not only the three compiled ones. `store::firms::CLOSED_BRAND_KEYS` names `neon`, `delete-your-data`, and
+`lawyer-shook`; `store::seed` migrates them into `brand` rows on first boot so validation has a catalog from the start.
 
 - Schema: [`firm_brand` in `navigator.surql`](../store/src/schema/navigator.surql) ·
   [`store::firms`](../store/src/firms.rs)

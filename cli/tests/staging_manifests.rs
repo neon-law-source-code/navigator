@@ -137,6 +137,26 @@ fn staging_contracts_keep_secrets_lanes_brand_and_store_coordinates_aligned() {
             config_map_key(worker, "NAVIGATOR_STORAGE_BUCKET"),
             "exports_bucket"
         );
+        assert_eq!(
+            config_map_key(worker, "NAVIGATOR_ARCHIVES_BUCKET"),
+            "archives_bucket"
+        );
+        // The second half of the two-bucket proof: a worker where the
+        // Iceberg-archive and exports keys resolve to the same ConfigMap
+        // value would pass the key-name assertion above while proving
+        // nothing about a two-bucket change (ENG-214).
+        let garage_config_map = resource(&resources, "ConfigMap", "navigator-garage");
+        let archives_bucket_value = garage_config_map["data"]["archives_bucket"]
+            .as_str()
+            .expect("navigator-garage ConfigMap must define archives_bucket");
+        let exports_bucket_value = garage_config_map["data"]["exports_bucket"]
+            .as_str()
+            .expect("navigator-garage ConfigMap must define exports_bucket");
+        assert_ne!(
+            archives_bucket_value, exports_bucket_value,
+            "{overlay} the Iceberg-archive bucket must differ from the exports bucket \
+             NAVIGATOR_STORAGE_BUCKET resolves to"
+        );
         assert!(text.contains("NAVIGATOR_CUSTOM_BRANDING"));
         assert!(!text.contains("NAVIGATOR_BRAND_BUNDLE_DIR"));
         assert_eq!(
@@ -160,7 +180,7 @@ fn staging_contracts_keep_secrets_lanes_brand_and_store_coordinates_aligned() {
             "{overlay} worker must emit NAVIGATOR_ENVIRONMENT=dev"
         );
         assert!(text.contains("readOnly: true"));
-        for lane in ["documents", "assets", "exports", "lfs"] {
+        for lane in ["documents", "assets", "exports", "archives", "lfs"] {
             assert!(text.contains(lane), "{overlay} must preserve {lane} lane");
         }
         assert!(text.contains("navigator.neonlaw.org/environment: staging"));

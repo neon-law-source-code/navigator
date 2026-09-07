@@ -3,6 +3,23 @@ use thiserror::Error;
 
 pub const RESTATE_IDENTITY_KEY: &str = "RESTATE_IDENTITY_KEY";
 
+/// Pins `jsonwebtoken`'s process-level `CryptoProvider` to `rust_crypto`.
+///
+/// `store`'s `surrealdb-core` dependency compiles `jsonwebtoken` 10.4.0 with
+/// its `aws_lc_rs` feature on every native target, unconditionally — this
+/// crate's own `restate-jwt` dependency (feeding `restate-sdk-shared-core`)
+/// compiles the same crate version with `rust_crypto`. Cargo unifies both
+/// into the one `jsonwebtoken` instance this binary links, so
+/// `CryptoProvider::from_crate_features` sees two providers and panics the
+/// first time a real request is verified (ENG-550) instead of never being
+/// ambiguous. Neither dependency exposes a feature to turn the other back
+/// off, so the ambiguity must be resolved at runtime: call this once, before
+/// the server starts accepting requests, to make the choice deterministic
+/// regardless of what Cargo resolves.
+pub fn install_crypto_provider() {
+    let _ = restate_jwt::crypto::rust_crypto::DEFAULT_PROVIDER.install_default();
+}
+
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum IdentityConfigError {
     #[error("{RESTATE_IDENTITY_KEY} must be set for the production Restate Cloud worker")]
@@ -30,7 +47,7 @@ pub fn apply_identity_key<F: Fn(&str) -> Option<String>>(
 
 #[cfg(test)]
 mod tests {
-    use super::{apply_identity_key, IdentityConfigError};
+    use super::{apply_identity_key, install_crypto_provider, IdentityConfigError};
     use axum::body::Body;
     use axum::http::Request;
     use ed25519_dalek::{pkcs8::EncodePrivateKey, SigningKey};
@@ -142,7 +159,7 @@ mod tests {
 
     #[test]
     fn production_endpoint_accepts_only_a_valid_identity_signature() {
-        let _ = restate_jwt::crypto::rust_crypto::DEFAULT_PROVIDER.install_default();
+        install_crypto_provider();
         let (identity_key, token) = signed_request();
         let endpoint = endpoint_with_key(Some(&identity_key));
 

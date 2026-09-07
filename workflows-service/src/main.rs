@@ -22,7 +22,7 @@ use workflows::{EmailService, SlackOpsDelivery};
 use workflows_service::dri_digest::DriDigestService;
 use workflows_service::github_automation_heartbeat::GitHubAutomationHeartbeatService;
 use workflows_service::heartbeat::HeartbeatService;
-use workflows_service::request_identity::apply_identity_key;
+use workflows_service::request_identity::{apply_identity_key, install_crypto_provider};
 use workflows_service::{
     email_from_env, notifier_from_env, project_slack::ProjectSlackService,
     repository_correlation::ProjectRepositoryResolver, slack_bot_from_env, NotationService,
@@ -72,6 +72,12 @@ async fn main() -> anyhow::Result<()> {
     // banner reads.
     let simulated_matters =
         store::sample_matters(environment).context("resolve NAVIGATOR_SIMULATED_MATTERS")?;
+    // Makes `jsonwebtoken`'s process-level `CryptoProvider` deterministic
+    // before any request-identity signature is verified (ENG-550): Cargo
+    // feature unification otherwise leaves both `rust_crypto` and
+    // `aws_lc_rs` enabled on the shared `jsonwebtoken` instance, which
+    // panics the first real Restate-signed request.
+    install_crypto_provider();
     let endpoint_builder = apply_identity_key(Endpoint::builder(), environment, |key| {
         std::env::var(key).ok()
     })

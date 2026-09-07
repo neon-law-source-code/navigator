@@ -17,8 +17,8 @@
 //! rendering moves.
 //!
 //! The calendar is [`crate::project_calendar`] scoped to this matter — the same
-//! surface the lawyer workbench carries across every matter, and empty for the
-//! same reason (#350).
+//! surface the lawyer workbench carries across every matter. It lists current
+//! upcoming appearances from the docket.
 //!
 //! One seam `webapp` cannot cross itself, injected by the portal router the same
 //! wasm-safe way as [`ViewerRole`] / [`crate::csrf::CsrfToken`]:
@@ -139,6 +139,9 @@ pub struct LawyerDetailView {
     /// normalised to the advertised columns.
     pub calendar_sort: String,
     pub calendar_dir: String,
+    /// Current upcoming appearances on this matter's docket.
+    #[serde(default)]
+    pub calendar_events: Vec<crate::project_calendar::CalendarEvent>,
     pub role: ViewerRole,
     /// The deploy's brand mark for the navbar. `None` when the mounted brand
     /// configures none.
@@ -381,6 +384,20 @@ pub async fn get_lawyer_project_detail() -> Result<LawyerDetailView, ServerFnErr
     .map_err(server_error)?;
     let participations = to_participation_rows(&participation_rows, &people);
 
+    let appearances = store::cases::current_appearances_for_project(&surreal, id)
+        .await
+        .map_err(server_error)?;
+    let calendar_events = appearances
+        .iter()
+        .map(|appearance| crate::project_calendar::CalendarEvent {
+            date: appearance.calendar_date(),
+            event: appearance.title.clone(),
+            status: appearance.calendar_status().to_string(),
+            project: project.name.clone(),
+            entity: entity_name.clone().unwrap_or_default(),
+        })
+        .collect();
+
     let code_for_resources = project.code.clone();
     Ok(LawyerDetailView {
         id: project.id.to_string(),
@@ -417,6 +434,7 @@ pub async fn get_lawyer_project_detail() -> Result<LawyerDetailView, ServerFnErr
         csrf_token,
         calendar_sort,
         calendar_dir,
+        calendar_events,
         role,
         logo,
         tokens_href,
@@ -690,9 +708,9 @@ pub fn LawyerProjectDetail() -> Element {
                 }
             }
 
-            // This matter's slice of the workbench calendar. Empty for the same
-            // reason that one is (#350): the page must not pass its documents,
-            // participations, or notations off as scheduled events.
+            // This matter's slice of the workbench calendar: current hearing
+            // and trial appearances from the docket. Documents, participations,
+            // and notations stay out of it.
             crate::project_calendar::ProjectCalendar {
                 section_class: "lawyer-detail__section project-calendar".to_string(),
                 heading: "Calendar".to_string(),
@@ -702,6 +720,7 @@ pub fn LawyerProjectDetail() -> Element {
                 query_prefix: String::new(),
                 sort: view.calendar_sort.clone(),
                 dir: view.calendar_dir.clone(),
+                events: view.calendar_events.clone(),
             }
 
             ParticipationTable {

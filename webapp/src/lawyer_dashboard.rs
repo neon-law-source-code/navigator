@@ -4,7 +4,7 @@
 //! The successor to the `views::pages::admin::dashboard`. It carries three
 //! sections: the project KPI overview (a conic-gradient status pie plus a
 //! paginated, status-filtered list of the caller's matters), the project
-//! calendar placeholder, and the "Details" directory of every administrative
+//! calendar of upcoming appearances, and the "Details" directory of every administrative
 //! sub-page and JSON endpoint.
 //!
 //! **The project list is the caller's workload, not the firm's.** The loader
@@ -16,13 +16,9 @@
 //! collection, so the page can never disclose the name of a matter the caller
 //! may not see.
 //!
-//! **The calendar is a deliberate placeholder.** It has rendered empty since
-//! the dashboard shipped (#350), and its covering test asserts it stays that
-//! way — the page must not synthesize events from projects before real event
-//! storage exists. It is ported as-is rather than removed, because "no events
-//! yet" is a product decision, not dead code. The calendar itself lives in
-//! [`crate::project_calendar`], which the matter workbench renders scoped to
-//! one matter.
+//! The calendar lists current upcoming appearances from each visible matter's
+//! docket — a hearing or trial's `scheduled_on`, following a continuance chain.
+//! Documents and project rows are not events.
 
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -115,6 +111,9 @@ pub struct DashboardView {
     /// white-label deploy's tab reads its own name.
     #[serde(default)]
     pub firm_name: String,
+    /// Current upcoming appearances across the caller's visible matters.
+    #[serde(default)]
+    pub calendar_events: Vec<crate::project_calendar::CalendarEvent>,
 }
 
 /// The dashboard's query string. All four are lenient: an unrecognised value
@@ -222,6 +221,8 @@ pub async fn get_lawyer_dashboard() -> Result<DashboardView, ServerFnError> {
         })
         .collect();
 
+    let calendar_events = calendar_events_for_projects(&surreal, &projects).await?;
+
     Ok(DashboardView {
         firm_name: crate::app_chrome::firm_name_from_context().await,
         total_projects: pitch_projects
@@ -242,7 +243,64 @@ pub async fn get_lawyer_dashboard() -> Result<DashboardView, ServerFnError> {
         role,
         logo: crate::app_chrome::app_logo_from_context().await,
         tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
+        calendar_events,
     })
+}
+
+/// Appearances on the caller's visible matters, labelled with project and
+/// entity names. A query failure is a 500 — an empty calendar is only honest
+/// when the store answered.
+#[cfg(feature = "server")]
+async fn calendar_events_for_projects(
+    surreal: &store::surreal::SurrealDb,
+    projects: &[store::projects::Project],
+) -> Result<Vec<crate::project_calendar::CalendarEvent>, ServerFnError> {
+    let project_ids: Vec<uuid::Uuid> = projects.iter().map(|project| project.id).collect();
+    let appearances = store::cases::current_appearances_for_projects(surreal, &project_ids)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "dashboard: current_appearances_for_projects failed");
+            dioxus_fullstack_core::FullstackContext::commit_http_status(
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                None,
+            );
+            ServerFnError::new(e.to_string())
+        })?;
+    let entity_ids: Vec<uuid::Uuid> = projects.iter().map(|project| project.entity_id).collect();
+    let entities = store::entities::find_by_ids(surreal, &entity_ids)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "dashboard: entities for calendar failed");
+            dioxus_fullstack_core::FullstackContext::commit_http_status(
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                None,
+            );
+            ServerFnError::new(e.to_string())
+        })?;
+    let entity_name: std::collections::HashMap<uuid::Uuid, String> = entities
+        .into_iter()
+        .map(|entity| (entity.id, entity.name))
+        .collect();
+    let project_by_id: std::collections::HashMap<uuid::Uuid, &store::projects::Project> = projects
+        .iter()
+        .map(|project| (project.id, project))
+        .collect();
+    Ok(appearances
+        .iter()
+        .filter_map(|appearance| {
+            let project = project_by_id.get(&appearance.project_id)?;
+            Some(crate::project_calendar::CalendarEvent {
+                date: appearance.calendar_date(),
+                event: appearance.title.clone(),
+                status: appearance.calendar_status().to_string(),
+                project: project.name.clone(),
+                entity: entity_name
+                    .get(&project.entity_id)
+                    .cloned()
+                    .unwrap_or_default(),
+            })
+        })
+        .collect())
 }
 
 /// Pitch / active / closed counts for the KPI pie. Archived matters are
@@ -324,6 +382,7 @@ fn lawyer_dashboard_body(view: &DashboardView) -> Element {
                 query_prefix: format!("status={}&", view.status),
                 sort: view.sort.clone(),
                 dir: view.dir.clone(),
+                events: view.calendar_events.clone(),
             }
             DashboardDetails { role }
         }
@@ -570,6 +629,7 @@ mod tests {
             dir: "asc".to_string(),
             role: ViewerRole::Lawyer,
             logo: None,
+            calendar_events: vec![],
         }
     }
 
@@ -654,10 +714,9 @@ mod tests {
     }
 
     #[test]
-    fn the_calendar_stays_empty_and_its_headers_toggle_direction() {
-        // #350: the dashboard must not synthesize calendar events from projects
-        // before real event storage exists. The seeded matter in `view()` is a
-        // witness — it must not appear as an event.
+    fn the_calendar_stays_empty_without_appearances_and_its_headers_toggle_direction() {
+        // Appearances come from the docket. The seeded matter in `view()` is a
+        // witness — it must not appear as an event just because it is listed.
         let html = dioxus_ssr::render_element(lawyer_dashboard_body(&DashboardView {
             sort: "project".to_string(),
             dir: "asc".to_string(),

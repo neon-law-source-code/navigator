@@ -6,9 +6,11 @@
 //! entry with no document is **source pending** — a meaningful state, not
 //! an error — derived from the link rather than a hand-maintained flag.
 
+use chrono::{DateTime, Utc};
 use store::cases::{
-    add_item, answer_item, docket, for_project, is_source_pending, items, open_case, record_entry,
-    serve_discovery, Device, EntryKind, NewCase, NewDiscoveryRequest, NewDocketEntry,
+    add_item, answer_item, current_appearances_for_project, docket, for_project, is_source_pending,
+    items, open_case, record_entry, serve_discovery, undated_hearings_and_trials, Device,
+    EntryKind, NewCase, NewDiscoveryRequest, NewDocketEntry,
 };
 use store::surreal::test_support::mem;
 use store::surreal::SurrealDb;
@@ -29,6 +31,32 @@ fn a_case(project_id: Uuid, caption: &'static str) -> NewCase<'static> {
         docket_number: Some("A-26-000001-C"),
         judge: Some("Hon. Example Judge"),
         posture: "plaintiff",
+    }
+}
+
+fn at(value: &str) -> DateTime<Utc> {
+    DateTime::parse_from_rfc3339(value)
+        .expect("fixture RFC 3339")
+        .with_timezone(&Utc)
+}
+
+fn an_entry(
+    case_id: Uuid,
+    entry_number: &'static str,
+    kind: EntryKind,
+    title: &'static str,
+) -> NewDocketEntry<'static> {
+    NewDocketEntry {
+        case_id,
+        entry_number,
+        kind,
+        title,
+        party: None,
+        filed_or_served_on: None,
+        scheduled_on: None,
+        supersedes: None,
+        document_asset_id: None,
+        notation_id: None,
     }
 }
 
@@ -91,6 +119,8 @@ async fn a_docket_entry_number_round_trips_an_attachment_sub_number() {
                 title,
                 party: Some("Plaintiff"),
                 filed_or_served_on: Some("2026-08-01T00:00:00Z"),
+                scheduled_on: None,
+                supersedes: None,
                 document_asset_id: None,
                 notation_id: None,
             },
@@ -128,6 +158,8 @@ async fn an_entry_without_a_document_is_source_pending_not_invalid() {
             title: "Order Setting Trial",
             party: Some("Court"),
             filed_or_served_on: Some("2026-08-01T00:00:00Z"),
+            scheduled_on: None,
+            supersedes: None,
             document_asset_id: None,
             notation_id: None,
         },
@@ -168,15 +200,19 @@ async fn the_spine_carries_entries_from_pleading_through_appeal() {
         (EntryKind::Settlement, "Stipulated Dismissal"),
     ];
     for (i, (kind, title)) in stages.iter().enumerate() {
+        let entry_number = (i + 1).to_string();
+        let scheduled_on = kind.is_appearance().then_some(at("2027-06-01T09:00:00Z"));
         record_entry(
             db,
             &NewDocketEntry {
                 case_id: c.id,
-                entry_number: &(i + 1).to_string(),
+                entry_number: &entry_number,
                 kind: *kind,
                 title,
                 party: None,
                 filed_or_served_on: None,
+                scheduled_on,
+                supersedes: None,
                 document_asset_id: None,
                 notation_id: None,
             },
@@ -201,16 +237,7 @@ async fn entry_numbers_are_unique_within_a_case_only() {
         .await
         .expect("case two");
 
-    let entry = |case_id: Uuid| NewDocketEntry {
-        case_id,
-        entry_number: "1",
-        kind: EntryKind::Pleading,
-        title: "Complaint",
-        party: None,
-        filed_or_served_on: None,
-        document_asset_id: None,
-        notation_id: None,
-    };
+    let entry = |case_id: Uuid| an_entry(case_id, "1", EntryKind::Pleading, "Complaint");
 
     record_entry(db, &entry(one.id)).await.expect("first");
     record_entry(db, &entry(two.id))
@@ -242,6 +269,8 @@ async fn a_served_discovery_set_carries_numbered_items_and_responses() {
             title: "Defendant's First Set of Interrogatories",
             party: Some("Defendant"),
             filed_or_served_on: Some("2026-08-01T00:00:00Z"),
+            scheduled_on: None,
+            supersedes: None,
             document_asset_id: None,
             notation_id: None,
         },
@@ -380,21 +409,9 @@ async fn litigation_records_are_scoped_to_their_case_and_matter() {
     let c = open_case(db, &a_case(project_id, "Alpha v. Beta"))
         .await
         .expect("case");
-    record_entry(
-        db,
-        &NewDocketEntry {
-            case_id: c.id,
-            entry_number: "1",
-            kind: EntryKind::Pleading,
-            title: "Complaint",
-            party: None,
-            filed_or_served_on: None,
-            document_asset_id: None,
-            notation_id: None,
-        },
-    )
-    .await
-    .expect("entry");
+    record_entry(db, &an_entry(c.id, "1", EntryKind::Pleading, "Complaint"))
+        .await
+        .expect("entry");
     let set = serve_discovery(
         db,
         &NewDiscoveryRequest {
@@ -423,4 +440,146 @@ async fn litigation_records_are_scoped_to_their_case_and_matter() {
         .await
         .expect("q")
         .is_empty());
+}
+
+/// A hearing or trial is an appearance: the schema refuses a row of those
+/// kinds without `scheduled_on`.
+#[tokio::test]
+async fn a_hearing_without_scheduled_on_is_refused() {
+    let db = &mem().await;
+    let project_id = open_matter(db, "hearing-date").await;
+    let c = open_case(db, &a_case(project_id, "Alpha v. Beta"))
+        .await
+        .expect("case");
+
+    let refused = db
+        .query(
+            "CREATE type::record('case_docket_entry', rand::uuid::v7()) SET \
+             case_id = $case, entry_number = '40', kind = 'hearing', \
+             title = 'Motion hearing'",
+        )
+        .bind(("case", store::surreal::record_id("case", c.id)))
+        .await
+        .and_then(surrealdb::IndexedResults::check)
+        .expect_err("a hearing needs scheduled_on");
+    assert!(
+        refused.to_string().contains("scheduled_on") || refused.to_string().contains("ASSERT"),
+        "{refused}"
+    );
+}
+
+/// `scheduled_on` is only for appearances. A pleading that carries one is
+/// refused, the same way a hearing without one is.
+#[tokio::test]
+async fn a_pleading_with_scheduled_on_is_refused() {
+    let db = &mem().await;
+    let project_id = open_matter(db, "pleading-date").await;
+    let c = open_case(db, &a_case(project_id, "Alpha v. Beta"))
+        .await
+        .expect("case");
+
+    let refused = db
+        .query(
+            "CREATE type::record('case_docket_entry', rand::uuid::v7()) SET \
+             case_id = $case, entry_number = '1', kind = 'pleading', \
+             title = 'Complaint', scheduled_on = d'2027-03-15T09:00:00Z'",
+        )
+        .bind(("case", store::surreal::record_id("case", c.id)))
+        .await
+        .and_then(surrealdb::IndexedResults::check)
+        .expect_err("a pleading must not carry scheduled_on");
+    assert!(
+        refused.to_string().contains("scheduled_on") || refused.to_string().contains("ASSERT"),
+        "{refused}"
+    );
+}
+
+/// A continuance is a new entry of the same kind. The earlier date stays
+/// on the superseded row; the calendar follows the chain to the later one.
+#[tokio::test]
+async fn a_continuance_chain_resolves_to_the_later_date() {
+    let db = &mem().await;
+    let project_id = open_matter(db, "continuance").await;
+    let c = open_case(db, &a_case(project_id, "Alpha v. Beta"))
+        .await
+        .expect("case");
+
+    let original = record_entry(
+        db,
+        &NewDocketEntry {
+            scheduled_on: Some(at("2027-03-15T09:00:00Z")),
+            ..an_entry(c.id, "40", EntryKind::Hearing, "Motion hearing")
+        },
+    )
+    .await
+    .expect("original setting");
+    record_entry(
+        db,
+        &NewDocketEntry {
+            scheduled_on: Some(at("2027-04-12T09:00:00Z")),
+            supersedes: Some(original.id),
+            ..an_entry(c.id, "41", EntryKind::Hearing, "Motion hearing (continued)")
+        },
+    )
+    .await
+    .expect("continuance");
+
+    let appearances = current_appearances_for_project(db, project_id)
+        .await
+        .expect("appearances");
+    assert_eq!(appearances.len(), 1, "{appearances:?}");
+    assert_eq!(appearances[0].title, "Motion hearing (continued)");
+    assert_eq!(appearances[0].scheduled_on, at("2027-04-12T09:00:00Z"));
+}
+
+/// Rows written before `scheduled_on` existed are reported, never filled in.
+#[tokio::test]
+async fn undated_hearings_are_reported_and_never_backfilled() {
+    let db = &mem().await;
+    let project_id = open_matter(db, "undated-hearing").await;
+    let c = open_case(db, &a_case(project_id, "Alpha v. Beta"))
+        .await
+        .expect("case");
+
+    db.query(
+        "DEFINE FIELD OVERWRITE kind ON case_docket_entry TYPE string \
+         ASSERT $value IN ['pleading', 'motion', 'opposition', 'reply', 'order', 'notice', \
+         'stipulation', 'discovery_request', 'discovery_response', 'subpoena', \
+         'expert_disclosure', 'hearing', 'trial', 'appeal', 'settlement', 'other']; \
+         DEFINE FIELD OVERWRITE scheduled_on ON case_docket_entry TYPE option<datetime>",
+    )
+    .await
+    .unwrap()
+    .check()
+    .unwrap();
+    let id = Uuid::now_v7();
+    db.query(
+        "CREATE $id SET case_id = $case, entry_number = '40', kind = 'hearing', \
+         title = 'Legacy hearing'",
+    )
+    .bind(("id", store::surreal::record_id("case_docket_entry", id)))
+    .bind(("case", store::surreal::record_id("case", c.id)))
+    .await
+    .unwrap()
+    .check()
+    .expect("historical hearing without scheduled_on");
+    store::schema::apply(db)
+        .await
+        .expect("restore the write-time ASSERT");
+
+    let missing = undated_hearings_and_trials(db).await.expect("report");
+    assert_eq!(missing.len(), 1, "{missing:?}");
+    assert_eq!(missing[0].id, id);
+    assert_eq!(missing[0].title, "Legacy hearing");
+    assert_eq!(missing[0].kind, "hearing");
+    let still_missing = docket(db, c.id)
+        .await
+        .expect("docket")
+        .into_iter()
+        .find(|entry| entry.id == id)
+        .expect("legacy row");
+    assert!(
+        still_missing.scheduled_on.is_none(),
+        "the report never writes a date"
+    );
 }

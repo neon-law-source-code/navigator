@@ -14926,7 +14926,8 @@ async fn project_detail_page_renders_an_empty_matter_calendar() {
     let project_code = project.code;
 
     // A document is a witness, not an event: the calendar must not pass the
-    // rows the page already holds off as something scheduled (#350).
+    // rows the page already holds off as something scheduled. Appearances come
+    // from the docket.
     let args = store::documents::IngestArgs {
         project_id,
         source: "upload",
@@ -14984,6 +14985,99 @@ async fn project_detail_page_renders_an_empty_matter_calendar() {
     // page — so the workbench's own columns must not leak into it.
     assert!(!calendar.contains(">Project"), "{calendar}");
     assert!(!calendar.contains(">Entity"), "{calendar}");
+}
+
+#[tokio::test]
+async fn project_calendar_renders_an_appearance_only_for_a_participant() {
+    let (state, surreal) = state_with_engines().await;
+    let (project_id, _lawyer, cookie, _csrf) = lawyer_project_fixture(&surreal).await;
+    let project_code = code_for_project(&surreal, project_id).await;
+    let case = store::cases::open_case(
+        &surreal,
+        &store::cases::NewCase {
+            project_id,
+            caption: "Homer v. Flanders",
+            forum: Some("Eighth Judicial District Court"),
+            jurisdiction: Some("Nevada"),
+            docket_number: Some("A-27-000040-C"),
+            judge: Some("Hon. Example Judge"),
+            posture: "plaintiff",
+        },
+    )
+    .await
+    .expect("case");
+    store::cases::record_entry(
+        &surreal,
+        &store::cases::NewDocketEntry {
+            case_id: case.id,
+            entry_number: "40",
+            kind: store::cases::EntryKind::Hearing,
+            title: "Motion hearing",
+            party: None,
+            filed_or_served_on: None,
+            scheduled_on: Some(
+                chrono::DateTime::parse_from_rfc3339("2027-03-15T09:00:00Z")
+                    .expect("fixture")
+                    .with_timezone(&chrono::Utc),
+            ),
+            supersedes: None,
+            document_asset_id: None,
+            notation_id: None,
+        },
+    )
+    .await
+    .expect("hearing");
+
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/app/projects/{project_code}"))
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = strip_hydration_markers(&body_string(resp).await);
+    let calendar = matter_calendar_section(&body);
+    assert!(calendar.contains("Motion hearing"), "{calendar}");
+    assert!(calendar.contains("2027-03-15 09:00 UTC"), "{calendar}");
+    assert!(calendar.contains("Hearing"), "{calendar}");
+    assert!(
+        !calendar.contains("No calendar events scheduled for this matter."),
+        "{calendar}"
+    );
+
+    let outsider = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "Outsider Lawyer",
+            "outsider-lawyer@neonlaw.com",
+            store::persons::Role::Lawyer,
+        ),
+    )
+    .await
+    .unwrap();
+    let (outsider_cookie, _) = session_cookie_and_csrf_for_person(&outsider);
+    let denied = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/app/projects/{project_code}"))
+                .header("cookie", &outsider_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(denied.status(), StatusCode::NOT_FOUND);
+    let denied_body = strip_hydration_markers(&body_string(denied).await);
+    assert!(
+        !denied_body.contains("Motion hearing"),
+        "a non-participant must not see the appearance: {denied_body}"
+    );
 }
 
 #[tokio::test]

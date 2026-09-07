@@ -55,8 +55,7 @@ name: ci
 # minute Blacksmith charges: $0.256 -> $0.144, and 64 -> 36 included minutes.
 #
 # The ratio is that small because the job is not core-bound. `cargo test with
-# coverage` is 11 of the 18 minutes and is bounded by `--test-threads 4` (see
-# the test step), so it barely moves. The other phases are compiles, and the
+# coverage` is 11 of the 18 minutes. The other phases are compiles, and the
 # cache step below restores the third-party graph before they start, so they
 # have far less to divide across extra cores than a cold build would.
 #
@@ -74,7 +73,7 @@ name: ci
 # were entirely parallel. Four cores is cheaper or the same at every cache
 # state; warm merely makes it cheapest, because T is 11 of 18 minutes there.
 # What would overturn it is not a cold cache but T shrinking to nothing —
-# raising `--test-threads` so the run phase scales with cores too.
+# a run phase that scales with cores the same way the compile does.
 #
 # The two ways a narrower runner fails are cliffs, not slopes, so both were
 # measured rather than reasoned about. Memory peaks LOWER at 4 cores — 5.1 GB
@@ -97,8 +96,7 @@ name: ci
 # 144427521) — against the 111 GB this job peaks at now.
 #
 # `cargo nextest` is what makes the run phase schedule across binaries instead
-# of one after another; ENG-57, the Dioxus pinned pool, is what still bounds
-# its width. See the test step.
+# of one after another. See the test step.
 #
 # The `free-disk-space` sweep is GONE because it cost 1.2-1.5 metered min per
 # run to reclaim 25 GB against the headroom above. `strip=symbols`, lld and the
@@ -657,60 +655,13 @@ jobs:
           NAVIGATOR_SURREAL_PASSWORD: root
           NAV_REQUIRE_SURREAL: "1"
           RUST_BACKTRACE: full
-          # Bounds libtest's pool only, never the build. With nextest carrying
-          # the workspace run this reaches the two lanes that are still plain
-          # libtest — the doctests, and `features` if its cucumber suites ever
-          # adopt a harness — and it holds them at the same 4 the nextest
-          # `--test-threads` below uses.
-          RUST_TEST_THREADS: "4"
-        # Compile at the machine's full width; hold test EXECUTION at the
-        # concurrency that is known to work. Neither `RUST_TEST_THREADS` nor
-        # nextest's `--test-threads` touches `cargo`'s `-j` build parallelism.
-        #
-        # This is a workaround for a latent quadratic in the test suite, not a
-        # property of the runner. `dioxus-server` builds every `FullstackState`
-        # with a pinned pool sized to the machine, and offers no way to bound it:
-        #
-        #     let rt = LocalPoolHandle::new(
-        #         std::thread::available_parallelism().map(usize::from).unwrap_or(1),
-        #     );
-        #
-        # Every test that builds a router gets its own pool, and each pinned
-        # worker is a current-thread Tokio runtime holding an epoll instance. So
-        # live runtimes scale as (concurrent tests x cores): 4x8 = 32 here, and
-        # 16x16 = 256 on a larger runner. The default
-        # `fs.epoll.max_user_instances` ceiling is 128, which is why that
-        # surfaces as EMFILE — `code: 24`, from `tokio-util`'s
-        # `spawn_pinned.rs:385` — while the descriptor count stays trivial.
-        # Same code, different machine; nothing regressed.
-        #
-        # Three fixes were tried and rejected, recorded so they are not retried:
-        #
-        #   * `ulimit -n` to the 65536 hard cap. Applied (`file descriptor limit:
-        #     65536`) and the identical panic returned. Descriptor exhaustion is
-        #     not the cause.
-        #   * `sysctl fs.epoll.max_user_instances`. Not exposed by this kernel
-        #     (`cannot stat /proc/sys/fs/epoll/max_user_instances`), so the
-        #     binding ceiling cannot be raised here.
-        #   * Capping only `features`. Too narrow — the next run failed in
-        #     ordinary `portal` tests (`admin_post_with_session_*`,
-        #     `api_json_write_*`) instead. Any test building a router is exposed.
-        #
-        # Removing this cap is ENG-57: bound the pool, or share one router across
-        # tests, so concurrency stops tracking the core count. Until then the cap
-        # has to come from outside the pool, which is what nextest's
-        # `--test-threads` below does — it bounds the number of test processes
-        # holding pools at once without touching the build's width.
-        #
-        # Limits are echoed first and read defensively: a missing sysctl must not
-        # abort the step before a single test runs, which is how the epoll
-        # attempt burned a full run.
+        # Compile at the machine's full width. Test execution uses Rust and
+        # nextest defaults — neither libtest nor nextest gets an extra cap.
         run: |
           set -uo pipefail
           ulimit -n "$(ulimit -Hn)" || true
           echo "nproc                   : $(nproc)"
           echo "file descriptor limit   : $(ulimit -n)"
-          echo "RUST_TEST_THREADS       : ${RUST_TEST_THREADS:-<unset>}"
           echo "epoll max_user_instances: $(cat /proc/sys/fs/epoll/max_user_instances 2>/dev/null || echo '<not exposed>')"
           set -e
           # Arm coverage instrumentation for every cargo invocation below.
@@ -722,49 +673,15 @@ jobs:
           # --workspace`, which deletes build artifacts and would throw away the
           # dependency graph `rust-cache` just restored.
           cargo llvm-cov clean --profraw-only
-          # Build on all 16 cores, then run the tests with 4-core semantics.
-          #
-          # The resource that blows up is the Dioxus pinned pool, sized by
-          # `std::thread::available_parallelism()`. Nothing else reaches it:
-          # RUST_TEST_THREADS bounds libtest only (Cucumber runs `harness = false`
-          # with its own fixed `max_concurrent_scenarios: Some(64)`), and
-          # Cucumber's `--concurrency` flag is unreachable because these suites
-          # call `World::run` rather than opting into its CLI — passing it fails
-          # with `error: Unrecognized option: 'concurrency'`.
-          #
-          # Under `cargo test` the lever was `taskset`, because
-          # `available_parallelism()` honours CPU affinity and nothing else
-          # reached every scheduler at once. `cargo nextest` needs no such
-          # trick: `--test-threads` bounds how many test PROCESSES run at once,
-          # which is the same quantity the pin was there to bound.
-          #
-          # Build every test binary at the machine's full width first, so the
-          # bound below applies to execution alone.
+          # Build every test binary at the machine's full width first, so
+          # execution is a separate cargo invocation.
           cargo nextest run --workspace --no-run
-          # Four, and it is the concurrency this suite has already proven rather
-          # than a new bet. Live runtimes scale as (concurrent tests x cores):
-          # 16x16 = 256 blew past the suspected 128 `fs.epoll.max_user_instances`
-          # ceiling, and 4 concurrent tests x 8 cores = 32 was confirmed green on
-          # run 144357516. Four nextest processes x 8 cores is that same 32.
-          # Raising it is untested and is a separate, measured change.
-          #
-          # What this buys is scheduling ACROSS binaries. `cargo test` ran the
-          # ~209 test binaries one after another — 10m15s of a 19.3 min job on
-          # run 32517062301, with at most four tests live inside one binary at a
-          # time while seven cores waited.
-          #
-          # If the ceiling is ever exceeded it fails loudly and unmistakably:
-          # EMFILE, `code: 24`, "Failed to start a pinned worker thread
-          # runtime", out of `tokio-util`'s `spawn_pinned.rs`. Narrow the width
-          # on that signature — it is not a flake to re-run. The real fix
-          # remains ENG-57.
-          #
           # `--profile ci` is `.config/nextest.toml`: two retries, JUnit at
           # `target/nextest/ci/junit.xml`, and a fail-then-pass recorded FLAKY.
           # Tee the suite so a red run still has the panic after the log
           # stream is gone; the step after this one uploads the JUnit on every
           # outcome and the tee file on failure.
-          cargo nextest run --workspace --no-fail-fast --profile ci --test-threads 4 2>&1 | tee /tmp/navigator-workspace-tests.log
+          cargo nextest run --workspace --no-fail-fast --profile ci 2>&1 | tee /tmp/navigator-workspace-tests.log
           # The two lanes nextest does not run, kept so this gate stays exactly
           # as wide as the `cargo test --workspace` it replaces — and so the
           # coverage number keeps measuring the same test set.

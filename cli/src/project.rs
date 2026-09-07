@@ -109,6 +109,7 @@ pub async fn create(
             brand: "neon".to_string(),
             attestation: attest,
             acting_person_id: attester,
+            closed_at: None,
         },
     )
     .await

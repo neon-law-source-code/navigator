@@ -212,6 +212,7 @@ pub async fn call(
             brand: "neon".to_string(),
             attestation: args.attestation.unwrap_or(false),
             acting_person_id: lawyer_dri,
+            closed_at: None,
         },
     )
     .await

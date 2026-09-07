@@ -362,6 +362,7 @@ mod tests {
                 brand: "neon".to_string(),
                 attestation: true,
                 acting_person_id: lawyer.id,
+                closed_at: None,
             },
         )
         .await

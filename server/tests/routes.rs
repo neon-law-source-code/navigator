@@ -5817,6 +5817,148 @@ async fn api_projects_open_authorizes_only_lawyer_and_admin() {
     }
 }
 
+/// `POST /app/api/projects` with `status: "closed"` and `closed_at` opens
+/// the matter, then moves it through the same `transition_project` the
+/// lifecycle route uses — ENG-469, "create a closed Project in one call".
+#[tokio::test]
+async fn api_projects_open_closed_records_status_and_closed_at() {
+    let (state, surreal) = state_with_engines().await;
+    store::seed::seed_canonical(&state.surreal, &state.storage)
+        .await
+        .unwrap();
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+    let (client_id, entity_id) = open_matter_prereqs(&surreal).await;
+    let attester = seeded_actor(
+        &surreal,
+        "closed-open-attorney@neonlaw.com",
+        store::persons::Role::Lawyer,
+    )
+    .await;
+    let (cookie, csrf) = session_cookie_and_csrf_for_person(&attester);
+
+    let req = serde_json::json!({
+        "name": "Already Closed Matter",
+        "code": "already-closed-matter",
+        "client_id": client_id,
+        "entity_id": entity_id,
+        "attestation": true,
+        "status": "closed",
+        "closed_at": "2026-08-01T00:00:00Z",
+    });
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/app/api/projects")
+                .header("content-type", "application/json")
+                .header(header::COOKIE, cookie)
+                .header("x-csrf-token", csrf)
+                .body(Body::from(req.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body: serde_json::Value = serde_json::from_str(&body_string(resp).await).unwrap();
+    assert_eq!(body["status"], "closed");
+    assert_eq!(body["closed_at"], "2026-08-01T00:00:00Z");
+}
+
+/// `status: "closed"` with no `closed_at` is refused — the silent no-op
+/// `PATCH` this issue also reports must not have a `POST`-side sibling.
+#[tokio::test]
+async fn api_projects_open_closed_requires_closed_at() {
+    let (state, surreal) = state_with_engines().await;
+    store::seed::seed_canonical(&state.surreal, &state.storage)
+        .await
+        .unwrap();
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+    let (client_id, entity_id) = open_matter_prereqs(&surreal).await;
+    let attester = seeded_actor(
+        &surreal,
+        "missing-closed-at@neonlaw.com",
+        store::persons::Role::Lawyer,
+    )
+    .await;
+    let (cookie, csrf) = session_cookie_and_csrf_for_person(&attester);
+
+    let req = serde_json::json!({
+        "name": "Missing Closed At",
+        "code": "missing-closed-at",
+        "client_id": client_id,
+        "entity_id": entity_id,
+        "attestation": true,
+        "status": "closed",
+    });
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/app/api/projects")
+                .header("content-type", "application/json")
+                .header(header::COOKIE, cookie)
+                .header("x-csrf-token", csrf)
+                .body(Body::from(req.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    assert!(
+        !store::projects::all(&surreal)
+            .await
+            .unwrap()
+            .iter()
+            .any(|p| p.code == "missing-closed-at"),
+        "a refused open must not write a row"
+    );
+}
+
+/// `closed_at` without `status: "closed"` is refused rather than silently
+/// ignored — an unrecognized combination should never be honored partway.
+#[tokio::test]
+async fn api_projects_open_rejects_closed_at_without_status() {
+    let (state, surreal) = state_with_engines().await;
+    store::seed::seed_canonical(&state.surreal, &state.storage)
+        .await
+        .unwrap();
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+    let (client_id, entity_id) = open_matter_prereqs(&surreal).await;
+    let attester = seeded_actor(
+        &surreal,
+        "stray-closed-at@neonlaw.com",
+        store::persons::Role::Lawyer,
+    )
+    .await;
+    let (cookie, csrf) = session_cookie_and_csrf_for_person(&attester);
+
+    let req = serde_json::json!({
+        "name": "Stray Closed At",
+        "code": "stray-closed-at",
+        "client_id": client_id,
+        "entity_id": entity_id,
+        "attestation": true,
+        "closed_at": "2026-08-01T00:00:00Z",
+    });
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/app/api/projects")
+                .header("content-type", "application/json")
+                .header(header::COOKIE, cookie)
+                .header("x-csrf-token", csrf)
+                .body(Body::from(req.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
 #[tokio::test]
 async fn api_projects_open_records_the_resolved_brand_and_ignores_a_posted_one() {
     // `brand` is written by the server from the request's resolved `Host:`

@@ -586,7 +586,10 @@ pub fn document_with_base(base: &str) -> Value {
                row and designated the accountable lawyer DRI — never taken from the request body. \
                Authorization: the caller's `persons.role` must be `lawyer` or `admin`; at this firm \
                `lawyer` is an attorney, so this is the 'an attorney is opening and attesting' gate. \
-               Anonymous, `client`, and non-lawyer `clerk` callers are rejected.",
+               Anonymous, `client`, and non-lawyer `clerk` callers are rejected. Optionally opens \
+               the matter already closed: `status: \"closed\"` with a required `closed_at` records \
+               an engagement that ended before anyone opened its row, in one call, through the \
+               same transition validation `POST /app/api/projects/{id}/lifecycle` runs.",
             "requestBody": {
               "required": true,
               "content": { "application/json": {
@@ -2447,7 +2450,11 @@ pub fn document_with_base(base: &str) -> Value {
                                 "description": "The pre-existing entity the matter opens against." },
               "description":  { "type": ["string", "null"], "description": "The matter's scope narrative." },
               "attestation":  { "type": "boolean",
-                                "description": "The opening attorney's conflict attestation. Must be true; a missing attestation is refused. Affirms the attorney has checked for conflicts, and that either none prevent opening this Project or this Project is not legal advice. The attester is the authenticated session's person — never taken from this body." }
+                                "description": "The opening attorney's conflict attestation. Must be true; a missing attestation is refused. Affirms the attorney has checked for conflicts, and that either none prevent opening this Project or this Project is not legal advice. The attester is the authenticated session's person — never taken from this body." },
+              "status":       { "type": "string", "enum": ["closed"],
+                                "description": "Open the matter already closed — an engagement that ended before anyone opened its row. Omit for the ordinary open. Requires closed_at; refused if closed_at is present without this." },
+              "closed_at":    { "type": ["string", "null"], "format": "date-time",
+                                "description": "Required exactly when status is \"closed\". Validated the same way POST /app/api/projects/{id}/lifecycle validates an effective time: may not precede the matter's own open or fall in the future." }
             },
             "example": {
               "name": "Acme LLC — Formation",

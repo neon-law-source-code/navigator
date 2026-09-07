@@ -1175,6 +1175,19 @@ struct OpenProjectRequest {
     /// Project is not legal advice.
     #[serde(default)]
     attestation: bool,
+    /// Open the matter already closed — an engagement that ended before
+    /// anyone opened its row. The only accepted value is `"closed"`;
+    /// omitted, this is the ordinary open. Requires [`Self::closed_at`],
+    /// and refused if it is present without this.
+    #[serde(default)]
+    status: Option<String>,
+    /// The close time. Required exactly when [`Self::status`] is
+    /// `"closed"`, and validated by the same
+    /// [`store::projects::transition_project`] this door calls afterward —
+    /// an effective time may not precede the matter's own open or fall in
+    /// the future.
+    #[serde(default)]
+    closed_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 /// `POST /app/api/projects` — open a matter. Lawyer-tier only, which at this firm
@@ -1187,6 +1200,16 @@ struct OpenProjectRequest {
 /// Drive ingest folder and source repository are then created or adopted
 /// best-effort: a Drive or forge fault leaves the matter open, and
 /// [`reconcile_project_surfaces_door`] retries.
+///
+/// Opening a matter already closed is the same call with `status: "closed"`
+/// and a required `closed_at`: [`store::projects::OpenMatterCommand`] writes
+/// `status`/`closed_at` into the same insert the open already makes, so an
+/// engagement that ended before anyone opened its row is recorded in one
+/// call rather than an open followed by a separate close. This is
+/// deliberately not create-then-[`store::projects::transition_project`]:
+/// that command refuses an effective time before the row's own
+/// `inserted_at`, which a row created this instant would make impossible to
+/// satisfy for any genuinely historical close date.
 async fn open_project(
     State(state): State<ApiState>,
     LawyerSession(session): LawyerSession,
@@ -1196,6 +1219,30 @@ async fn open_project(
     // one, and a matter cannot be opened (nor attested) by a session that
     // doesn't name who is acting.
     let acting = session.person_id.ok_or(ApiError::Forbidden)?;
+    match input.status.as_deref() {
+        Some("closed") if input.closed_at.is_none() => {
+            return Err(ApiError::Project(
+                store::projects::ProjectCommandError::Invalid(
+                    "closed_at is required when status is \"closed\"",
+                ),
+            ));
+        }
+        Some("closed") | None => {}
+        Some(_) => {
+            return Err(ApiError::Project(
+                store::projects::ProjectCommandError::Invalid(
+                    "status must be \"closed\" when present",
+                ),
+            ));
+        }
+    }
+    if input.status.is_none() && input.closed_at.is_some() {
+        return Err(ApiError::Project(
+            store::projects::ProjectCommandError::Invalid(
+                "closed_at is only accepted alongside status: \"closed\"",
+            ),
+        ));
+    }
     let command = store::projects::OpenMatterCommand {
         name: input.name,
         code: input.code,
@@ -1205,6 +1252,7 @@ async fn open_project(
         brand: views::brand::brand_key().as_str().to_string(),
         attestation: input.attestation,
         acting_person_id: acting,
+        closed_at: input.closed_at,
     };
     let matter = store::projects::open_matter(&state.surreal, &command).await?;
     store::project_surfaces::reconcile_after_open(&state.surreal, matter.id).await;

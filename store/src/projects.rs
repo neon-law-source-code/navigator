@@ -2059,6 +2059,20 @@ pub struct OpenMatterCommand {
     /// becomes the matter's accountable lawyer DRI and the actor on the
     /// attestation audit row.
     pub acting_person_id: Uuid,
+    /// Open the matter already closed — an engagement that ended before
+    /// anyone opened its row (ENG-469). `None` is the ordinary open
+    /// (`status = 'open'`, no `closed_at`); `Some` writes `status =
+    /// 'closed'` and this timestamp in the same insert.
+    ///
+    /// This is deliberately **not** a create-then-[`transition_project`]
+    /// sequence: that command refuses an `effective_at` before the row's
+    /// own `inserted_at`, which a row [`open_matter`] is creating this
+    /// instant would make impossible to satisfy for any genuinely
+    /// historical close date. Baking the state into the initial row sidesteps
+    /// that comparison entirely — there is no prior state to have preceded.
+    /// The one bound that still applies is [`transition_project`]'s other
+    /// rule, checked here directly: a close cannot be dated in the future.
+    pub closed_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 /// A matter could not be opened.
@@ -2188,6 +2202,28 @@ async fn validate_open_references(
     Ok(attester.role)
 }
 
+/// Resolve the `status`/`closed_at` pair a new row's initial `CREATE` should
+/// carry, from [`OpenMatterCommand::closed_at`]. `None` is the ordinary
+/// open; `Some` is validated against the one bound that still applies to a
+/// row with no prior state — a close cannot be dated in the future — and
+/// rendered in the same format [`transition_project`] stores.
+fn initial_status_and_closed_at(
+    closed_at: Option<chrono::DateTime<chrono::Utc>>,
+) -> Result<(&'static str, Option<String>), OpenMatterError> {
+    let Some(closed_at) = closed_at else {
+        return Ok(("open", None));
+    };
+    if closed_at > chrono::Utc::now() {
+        return Err(OpenMatterError::Invalid(
+            "closed_at cannot be in the future.",
+        ));
+    }
+    Ok((
+        "closed",
+        Some(closed_at.to_rfc3339_opts(chrono::SecondsFormat::AutoSi, true)),
+    ))
+}
+
 pub async fn open_matter(
     surreal: &SurrealDb,
     input: &OpenMatterCommand,
@@ -2236,15 +2272,18 @@ pub async fn open_matter(
         return Err(OpenMatterError::BlockingConflict(conflict.summary_lines()));
     }
 
+    let (status, closed_at) = initial_status_and_closed_at(input.closed_at)?;
+
     let now = chrono::Utc::now().to_rfc3339();
     let description = crate::people_commands::none_if_blank(input.description.as_deref());
     let mut response = writing_project(|| {
         surreal
             .query(format!(
                 r"BEGIN;
-                 CREATE $project SET code = $code, name = $name, status = 'open',
+                 CREATE $project SET code = $code, name = $name, status = $status,
                     brand = $brand,
                     entity_id = $entity_id, description = $description,
+                    closed_at = $closed_at,
                     inserted_at = $now, updated_at = $now RETURN {PROJECT_SELECT};
                  CREATE $lawyer_role SET person_id = $attester, project_id = $project, participation = $attester_participation,
                     is_lawyer_dri = true, inserted_at = $now, updated_at = $now;
@@ -2257,6 +2296,8 @@ pub async fn open_matter(
             .bind(("client_role", record_id(PERSON_PROJECT_ROLE_TABLE, Uuid::now_v7())))
             .bind(("code", code.clone()))
             .bind(("name", name.to_string()))
+            .bind(("status", status.to_string()))
+            .bind(("closed_at", closed_at.clone()))
             .bind(("brand", input.brand.clone()))
             .bind(("entity_id", record_id(ENTITY_TABLE, input.entity_id)))
             .bind(("description", description.clone()))

@@ -1849,6 +1849,7 @@ async fn projects_create_lawyer_only(
             brand: views::brand::brand_key().as_str().to_string(),
             attestation: input.attestation.as_deref() == Some("1"),
             acting_person_id: attester,
+            closed_at: None,
         },
     )
     .await

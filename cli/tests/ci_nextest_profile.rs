@@ -1,5 +1,5 @@
 //! The workspace merge gate classifies nextest retries as FLAKY and always
-//! uploads the JUnit report the `ci` profile writes.
+//! uploads the `JUnit` report the `ci` profile writes.
 
 use std::path::{Path, PathBuf};
 

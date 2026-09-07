@@ -997,31 +997,62 @@ pub(crate) fn verify_public_asset_origin(content_dir: &Path, base_url: &str) -> 
     let runtime = tokio::runtime::Runtime::new().context("create asset verification runtime")?;
     runtime.block_on(async {
         let refs = published_asset_refs(content_dir)?;
-        let client = reqwest::Client::builder()
-            .build()
-            .context("build the public asset verification client")?;
-        let report = verify_refs(&HttpProbe { client }, base_url, &refs).await;
-        if report.missing.is_empty() && report.unknown.is_empty() {
-            eprintln!(
-                "==> post-roll asset verification OK ({} public asset(s) at {base_url})",
-                report.checked
-            );
-            return Ok(());
-        }
-
-        let mut detail = String::new();
-        for key in &report.missing {
-            let _ = writeln!(detail, "\n  missing: {}", join_public_url(base_url, key));
-        }
-        for unknown in &report.unknown {
-            let _ = writeln!(detail, "\n  unknown: {unknown}");
-        }
-        anyhow::bail!(
-            "post-roll public asset verification failed at {base_url}: {} missing, {} could not be checked.{detail}",
-            report.missing.len(),
-            report.unknown.len()
-        )
+        verify_public_origin_refs(base_url, &refs).await
     })
+}
+
+/// Every public asset key this binary can name without a content checkout:
+/// the presentation/workshop `](img/…)` references embedded in
+/// [`SLIDE_CONTENT`], the gallery variants the Rust views render, and the
+/// licensed faces. It is [`published_asset_refs`] minus the markdown that only
+/// exists on disk (the blog), so it is a strict subset of what a source
+/// checkout verifies and never a superset.
+pub(crate) fn embedded_asset_refs() -> BTreeSet<String> {
+    let mut refs = bundled_slide_asset_keys();
+    refs.extend(gallery_variant_keys());
+    refs.extend(font_family_refs(&GORP_SERIF));
+    refs.extend(font_family_refs(&PLUS_JAKARTA_SANS));
+    refs
+}
+
+/// [`verify_public_asset_origin`] for a roll driven from a deploy-only tree,
+/// where no `server/content` exists to walk: the same public-origin probe,
+/// over [`embedded_asset_refs`] instead of the on-disk tree. `ops ship` falls
+/// back to this seam and says so, because the blog's references are the one
+/// thing it cannot see.
+pub(crate) fn verify_public_asset_origin_embedded(base_url: &str) -> anyhow::Result<()> {
+    anyhow::ensure!(!base_url.trim().is_empty(), "public asset origin is blank");
+    let runtime = tokio::runtime::Runtime::new().context("create asset verification runtime")?;
+    runtime.block_on(async { verify_public_origin_refs(base_url, &embedded_asset_refs()).await })
+}
+
+/// The probe and verdict shared by both post-roll entry points: HEAD every
+/// key at `base_url` and fail naming each missing or unknown one.
+async fn verify_public_origin_refs(base_url: &str, refs: &BTreeSet<String>) -> anyhow::Result<()> {
+    let client = reqwest::Client::builder()
+        .build()
+        .context("build the public asset verification client")?;
+    let report = verify_refs(&HttpProbe { client }, base_url, refs).await;
+    if report.missing.is_empty() && report.unknown.is_empty() {
+        eprintln!(
+            "==> post-roll asset verification OK ({} public asset(s) at {base_url})",
+            report.checked
+        );
+        return Ok(());
+    }
+
+    let mut detail = String::new();
+    for key in &report.missing {
+        let _ = writeln!(detail, "\n  missing: {}", join_public_url(base_url, key));
+    }
+    for unknown in &report.unknown {
+        let _ = writeln!(detail, "\n  unknown: {unknown}");
+    }
+    anyhow::bail!(
+        "post-roll public asset verification failed at {base_url}: {} missing, {} could not be checked.{detail}",
+        report.missing.len(),
+        report.unknown.len()
+    )
 }
 
 /// Entry point for `navigator ops assets verify` — reconcile everything the site
@@ -1718,14 +1749,15 @@ async fn download(storage: &dyn StorageService, out: &Path) -> anyhow::Result<us
 mod tests {
     use super::{
         asset_exists, build_gorp_otf_zip, bundled_slide_asset_keys, content_image_refs,
-        content_type_for, destination_for_ref, download, fetch_asset, fetch_referenced_content,
-        fetch_report_exit, font_family_refs, gallery_variant_keys, join_public_url, orphan_keys,
-        orphan_report, parse_image_refs, placeholder_bytes_for, published_asset_refs,
-        reachable_image_keys, report_exit, resolve_public_origin, run_fetch_referenced,
-        run_orphans, run_pull, run_upload, run_upload_desktop_fonts, run_upload_fonts, select,
-        storage_report_result, stub_referenced_content, upload, upload_font_family,
-        upload_gorp_otf_zip, verify_bundled_slide_assets, verify_bundled_slide_assets_bucket,
-        verify_content, verify_public_asset_origin, verify_refs, verify_storage_refs, AssetProbe,
+        content_type_for, destination_for_ref, download, embedded_asset_refs, fetch_asset,
+        fetch_referenced_content, fetch_report_exit, font_family_refs, gallery_variant_keys,
+        join_public_url, orphan_keys, orphan_report, parse_image_refs, placeholder_bytes_for,
+        published_asset_refs, reachable_image_keys, report_exit, resolve_public_origin,
+        run_fetch_referenced, run_orphans, run_pull, run_upload, run_upload_desktop_fonts,
+        run_upload_fonts, select, storage_report_result, stub_referenced_content, upload,
+        upload_font_family, upload_gorp_otf_zip, verify_bundled_slide_assets,
+        verify_bundled_slide_assets_bucket, verify_content, verify_public_asset_origin,
+        verify_public_asset_origin_embedded, verify_refs, verify_storage_refs, AssetProbe,
         FetchReport, VerifyReport, ASSET_CACHE_CONTROL, GORP_OTF_ZIP_KEY, GORP_SERIF,
         PLUS_JAKARTA_SANS,
     };
@@ -2529,6 +2561,96 @@ Inline raw-HTML tile: <div>![Team](img/thanks-apple/team-lunch.jpg)</div>\n";
         let message = format!("{error:#}");
         assert!(message.contains("post-roll public asset verification failed"));
         assert!(message.contains("missing:"));
+    }
+
+    #[test]
+    fn embedded_asset_refs_are_the_checkout_set_minus_the_on_disk_markdown() {
+        // ENG-552. The deploy-only fallback must name every key a source
+        // checkout would that this binary can know without a tree: the
+        // embedded slides, the gallery variants, and the licensed faces. A
+        // tree holding only the embedded markdown therefore verifies the
+        // identical set, and the embedded set never exceeds a checkout's.
+        let refs = embedded_asset_refs();
+        let slides = bundled_slide_asset_keys();
+        assert!(
+            slides.iter().any(|key| key.starts_with("img/")),
+            "the embedded workshops must reference at least one public image"
+        );
+        assert!(slides.is_subset(&refs));
+        assert!(gallery_variant_keys().is_subset(&refs));
+        for family in [&GORP_SERIF, &PLUS_JAKARTA_SANS] {
+            for rel in font_family_refs(family) {
+                assert!(refs.contains(&rel), "missing font key {rel}");
+            }
+        }
+
+        let dir = TempDir::new().unwrap();
+        write_embedded_dir(&super::SLIDE_CONTENT, dir.path());
+        let from_tree = published_asset_refs(dir.path()).unwrap();
+        assert_eq!(from_tree, refs);
+    }
+
+    /// Materialise an embedded [`include_dir::Dir`] under `root`, preserving
+    /// its relative layout, so an on-disk walk can be compared with it.
+    fn write_embedded_dir(dir: &include_dir::Dir<'_>, root: &std::path::Path) {
+        for file in dir.files() {
+            let dest = root.join(file.path());
+            fs::create_dir_all(dest.parent().unwrap()).unwrap();
+            fs::write(dest, file.contents()).unwrap();
+        }
+        for child in dir.dirs() {
+            write_embedded_dir(child, root);
+        }
+    }
+
+    #[tokio::test]
+    async fn verify_public_asset_origin_embedded_passes_when_every_key_is_served() {
+        let server = MockServer::start().await;
+        mount_published_fonts(&server).await;
+        mount_published_gallery(&server).await;
+        for rel in bundled_slide_asset_keys() {
+            Mock::given(method("HEAD"))
+                .and(path(format!("/{rel}")))
+                .respond_with(ResponseTemplate::new(200))
+                .mount(&server)
+                .await;
+        }
+        let base_url = server.uri();
+        let result = std::thread::spawn(move || verify_public_asset_origin_embedded(&base_url))
+            .join()
+            .expect("asset verification thread should not panic");
+        assert!(
+            result.is_ok(),
+            "complete public origin should pass: {result:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn verify_public_asset_origin_embedded_reports_a_missing_slide_asset() {
+        // Fonts and gallery published, the workshop images not: the fallback
+        // must fail on exactly the keys it exists to cover.
+        let server = MockServer::start().await;
+        mount_published_fonts(&server).await;
+        mount_published_gallery(&server).await;
+        let base_url = server.uri();
+        let error = std::thread::spawn(move || verify_public_asset_origin_embedded(&base_url))
+            .join()
+            .expect("asset verification thread should not panic")
+            .expect_err("an origin missing embedded slide assets must fail");
+        let message = format!("{error:#}");
+        assert!(message.contains("post-roll public asset verification failed"));
+        assert!(message.contains("missing:"));
+        let first_slide = bundled_slide_asset_keys()
+            .into_iter()
+            .next()
+            .expect("the embedded workshops reference at least one asset");
+        assert!(message.contains(&first_slide), "{message}");
+    }
+
+    #[test]
+    fn verify_public_asset_origin_embedded_refuses_a_blank_origin() {
+        let error = verify_public_asset_origin_embedded("  ").expect_err("blank origin");
+        assert!(error.to_string().contains("public asset origin is blank"));
     }
 
     #[tokio::test]

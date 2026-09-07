@@ -131,7 +131,7 @@ fn the_scaffold_produces_a_repository_that_validates_and_is_idempotent() {
     let workflow = fs::read_to_string(dir.path().join(".github/workflows/ci.yml")).unwrap();
     assert!(workflow.contains("project-gate.yml@"));
     assert!(!workflow.contains("project_repository: true"));
-    assert!(workflow.contains("actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"));
+    assert!(workflow.contains("id-token: write"));
     let cd = fs::read_to_string(dir.path().join(".github/workflows/publish.yml")).unwrap();
     assert!(
         !cd.contains("TBD"),

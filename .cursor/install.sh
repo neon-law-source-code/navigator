@@ -8,6 +8,10 @@
 # has started dockerd. Cluster creation stays opt-in — do not start KIND here.
 set -euo pipefail
 
+if [ "${NAVIGATOR_CLOUD_DIND:-}" = 1 ]; then
+  echo "cloud agent: Docker-in-Docker / KIND tools requested"
+fi
+
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 

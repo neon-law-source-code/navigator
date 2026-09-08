@@ -54,7 +54,8 @@ Nine normal validation passes happen in this order:
    `navigator.yml` file to rename to `navigator.yaml`.
 8. **An origin pass** (rule `Y009`) scans each built application's `dist/` when the walked root is a Project
    repository. Empty first labels (`.test`) and dots/slashes-only are not hosts. Missing `dist/` is skipped so a
-   source-only tree can still validate; a present `dist/` with an off-origin host fails.
+   source-only tree can still validate; a present `dist/` with an off-origin host fails. An `href` whose host is in
+   `allowed_links` passes only when that anchor carries `rel="noreferrer"`.
 9. **A consumed mutable-tag pass** walks YAML files and Containerfiles/Dockerfiles for an image or binary reference
    pinned to a mutable tag (`latest`, a branch name) rather than a digest or release version, and fails on each one
    found. This has no rule code either.
@@ -236,4 +237,4 @@ for that violation without a human decision; every other code needs a person to 
 | `Y006` | Error | A Project manifest top-level key must be one of the accepted set. | No |
 | `Y007` | Error | A Project manifest `no_live_row` must be a non-empty reason string. | No |
 | `Y008` | Error | The Project manifest filename is `navigator.yaml`; rename `navigator.yml`. | No |
-| `Y009` | Error | A built Project portal must not name an off-origin host. | No |
+| `Y009` | Error | A built Project portal must not name an off-origin host; `allowed_links` hrefs need `rel="noreferrer"`. | No |

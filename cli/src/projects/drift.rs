@@ -1133,6 +1133,7 @@ mod tests {
             "project: acme\n",
             "no_live_row: the matter closed\n",
             "allowed_hosts:\n  www.w3.org: ns\n",
+            "allowed_links:\n  courts.example: citation\n",
             "allowed_prefixes:\n  \"https://react.dev/errors/\": react\n",
         );
         let manifest = super::super::manifest::parse(yaml).unwrap();
@@ -1143,10 +1144,12 @@ mod tests {
             Some("ns")
         );
         assert_eq!(manifest.allowed_prefixes.len(), 1);
+        assert_eq!(manifest.allowed_links.len(), 1);
         assert_eq!(
             super::super::manifest::ACCEPTED_KEYS,
             [
                 "allowed_hosts",
+                "allowed_links",
                 "allowed_prefixes",
                 "host",
                 "no_live_row",

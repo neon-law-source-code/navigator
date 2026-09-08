@@ -92,9 +92,10 @@ extension, keyed `name:`, is retired, and a checkout still carrying it reads as 
 and the same reader serve both a Project repository and a staged sample-project bundle:
 `store::sample_project::MANIFEST_FILE` and `cli/src/projects/repository.rs`'s `PROJECT_MANIFEST` name the identical
 string on purpose, so a rename of one cannot leave the other stale. The accepted top-level keys are `host`, `project`,
-`no_live_row`, `allowed_hosts`, and `allowed_prefixes`. An unknown key is refused, naming that set. `host` is a
-hostname, not a row in a deployment table. `project` is a Navigator Project code. `no_live_row` is a non-empty reason
-string.
+`no_live_row`, `allowed_hosts`, `allowed_prefixes`, and `allowed_links`. An unknown key is refused, naming that set.
+`host` is a hostname, not a row in a deployment table. `project` is a Navigator Project code. `no_live_row` is a
+non-empty reason string. `allowed_links` names hosts that appear only as citation `href`s; each such anchor must carry
+`rel="noreferrer"` so the portal URL is not sent as `Referer`.
 
 ## Document staging and pointers
 
@@ -491,7 +492,9 @@ two credential coordinates are read from repository *variables*, not secrets —
 name and a service-account email are public identifiers with no key behind them, so GitHub's per-repository OIDC
 condition and the bucket's IAM prefix condition are the actual trust boundary, not the secrecy of these two strings. The
 bucket and object prefix are not passed in at all; each repository derives them from its own `navigator.yaml`. The
-origin scan is `navigator validate` rule `Y009` over each built `dist/`, not a copied Python file. A new sample
+origin scan is `navigator validate` rule `Y009` over each built `dist/`, not a copied Python file. A portal that quotes
+an opinion renders footnote URLs as plain text rather than autolinks, so a court's own words are not an `href` and do
+not need `allowed_links`. A new sample
 repository is `navigator site projects repository scaffold`; it does not copy `.github/*.py` from an existing Project.
 
 The three live sample repositories may still carry a historical `publish.yml` that shells those scripts until they are

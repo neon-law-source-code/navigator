@@ -31,6 +31,7 @@ pub const RENAME_CODE: &str = "Y008";
 /// covering test that asserts the two agree.
 pub const ACCEPTED_KEYS: &[&str] = &[
     "allowed_hosts",
+    "allowed_links",
     "allowed_prefixes",
     "host",
     "no_live_row",
@@ -49,6 +50,8 @@ pub struct Manifest {
     pub no_live_row: Option<serde_yaml::Value>,
     #[serde(default)]
     pub allowed_hosts: BTreeMap<String, String>,
+    #[serde(default)]
+    pub allowed_links: BTreeMap<String, String>,
     #[serde(default)]
     pub allowed_prefixes: BTreeMap<String, String>,
 }
@@ -152,6 +155,16 @@ fn lint_allowlists(path: &Path, manifest: &Manifest) -> Vec<ManifestFinding> {
                 1,
                 UNKNOWN_KEY_CODE,
                 format!("`allowed_prefixes` entry `{prefix}` must give a reason"),
+            ));
+        }
+    }
+    for (host, reason) in &manifest.allowed_links {
+        if reason.trim().is_empty() {
+            findings.push(ManifestFinding::at(
+                path,
+                1,
+                UNKNOWN_KEY_CODE,
+                format!("`allowed_links` entry `{host}` must give a reason"),
             ));
         }
     }
@@ -328,6 +341,7 @@ mod tests {
         // lists identical so a new key cannot land on one side only.
         const DRIFT_READER_KEYS: &[&str] = &[
             "allowed_hosts",
+            "allowed_links",
             "allowed_prefixes",
             "host",
             "no_live_row",
@@ -343,6 +357,8 @@ mod tests {
             "no_live_row: the matter closed\n",
             "allowed_hosts:\n",
             "  www.w3.org: XML namespace\n",
+            "allowed_links:\n",
+            "  courts.example: civil-procedure citation\n",
             "allowed_prefixes:\n",
             "  \"https://react.dev/errors/\": React minified errors\n",
         );
@@ -350,6 +366,7 @@ mod tests {
         assert_eq!(parsed.host.as_deref(), Some("staging.neonlaw.com"));
         assert_eq!(parsed.project.as_deref(), Some("acme"));
         assert_eq!(parsed.allowed_hosts.len(), 1);
+        assert_eq!(parsed.allowed_links.len(), 1);
         assert_eq!(parsed.allowed_prefixes.len(), 1);
         assert!(codes(yaml).is_empty());
     }
@@ -389,6 +406,7 @@ mod tests {
         assert!(unknown.message.contains("project"));
         assert!(unknown.message.contains("no_live_row"));
         assert!(unknown.message.contains("allowed_hosts"));
+        assert!(unknown.message.contains("allowed_links"));
         assert!(unknown.message.contains("allowed_prefixes"));
     }
 

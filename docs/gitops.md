@@ -218,9 +218,36 @@ The split is required because GitHub scopes bypasses to an entire ruleset rather
 approval requirement separate gives code owners a safe self-merge path while all other production rules remain
 universal.
 
-Repository permissions are the outer boundary and are not managed by this command: a collaborator with `read` cannot
-push a branch at all, and with forking disabled has no fork path either. `production` governs everyone who *can* push —
-today the `write` collaborators.
+**`production` requiring zero approving reviews is the design, not an omission.** Because bypass is scoped to a whole
+ruleset, folding the approval requirement into `production` would grant the code owner's bypass over signed commits,
+linear history, squash-only merges, resolved threads, and the required `ci` check as well. Raising that number in place
+is therefore the one edit that weakens the integrity gate, which is why `production` carries no bypass actors and no
+approval count and `production-review` carries the approval count alone. A reader auditing the fleet finds
+`required_approving_review_count: 0` on `production` everywhere and should read it as chosen.
+
+Whether an approving review is required is therefore a separate question from `production`'s contents: it is whether the
+repository takes `production-review` at all, which is the `review_gate` field on its policy. Every policy in the command
+sets it, so the gate is available to any governed repository and needs designing for none of them — but that also means
+**reconciling a repository turns the gate on.** Pointing `ops github setup` at one whose `production` sits at zero
+approvals today writes `production-review` beside it, and that is a deliberate act rather than a side effect of a
+settings sweep. Read the `--dry-run` before applying.
+
+The three `neon-law-staging` sample repositories sit at zero approving reviews, decided 2026-09-08 rather than
+inherited: no ruleset there is edited by hand to raise it. They are a two-owner surface carrying overwhelmingly
+mechanical change; GitHub permits nobody to approve their own pull request, and `dismiss_stale_reviews_on_push` throws
+an approval away on the next fixup push. A required approval there makes every change a hard dependency on one named
+person, and the predictable end state is routine bypass — which launders an unreviewed merge as a reviewed one, and is
+worse than an honest zero. That is not a claim that review is unnecessary; it is a claim about what a two-person bench
+can honestly promise.
+
+**`validate` is the gate on those repositories.** `navigator validate .` runs inside the required `ci` check, and it
+holds the things a Project repository can actually get wrong: the manifest key set and value shapes, document pointers,
+the origin scan over the built bundle, and the no-client-data pass. A mechanical change that satisfies those has had the
+review that matters; a change that would publish a client identifier or an off-origin host fails the check and does not
+merge, reviewer or no reviewer. Auto-merge is armed on every pull request opened non-draft, so the required check is the
+only thing one waits on — open a pull request as a draft to hold it for a human. Revisit the zero if a third approver
+joins, if something non-mechanical starts flowing through these repositories, or if an unreviewed merge reaches a
+client-facing portal in a way that matters; the change is one policy field, not a hand-edited ruleset.
 
 #### CODEOWNERS owners must resolve
 

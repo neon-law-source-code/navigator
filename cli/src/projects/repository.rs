@@ -91,7 +91,10 @@ const APPLICATIONS_DIRECTORY: &str = "apps";
 /// `pub(crate)` because [`super::super::devx::github_setup`] reconciles the
 /// live file at this path against [`workflow`]'s output, the same template
 /// `scaffold` writes, read back rather than duplicated.
-pub(crate) const WORKFLOW: &str = ".github/workflows/gate.yml";
+pub(crate) const WORKFLOW: &str = ".github/workflows/ci.yml";
+/// The retired generated-gate filename. Reconcile still reads it so a
+/// repository that has not yet been rewritten is classified, not ignored.
+pub(crate) const RETIRED_WORKFLOW: &str = ".github/workflows/gate.yml";
 /// `pub(crate)` for the same reason as [`WORKFLOW`], but for [`cd_workflow`].
 pub(crate) const CD_WORKFLOW: &str = ".github/workflows/publish.yml";
 /// The manifest a Project repository declares its Project in.
@@ -106,23 +109,6 @@ pub(crate) const CD_WORKFLOW: &str = ".github/workflows/publish.yml";
 /// manifest and a staged sample bundle's manifest are the same file, read by
 /// different tools, not two schemas that happen to overlap.
 pub(crate) const PROJECT_MANIFEST: &str = "navigator.yaml";
-/// Manifest keys the CLI once might have read and never did, each retired for
-/// its own reason. [`validate`] refuses a manifest carrying one of these
-/// outright, naming the key and why — the one exception to `docs/project-repositories.md`'s
-/// "unknown keys are ignored" policy, which stays true for every key not on
-/// this closed list (`host:` included). A per-repository exemption is not a
-/// gap this list can be extended to close: see "Exemptions live here, not per
-/// repository" above.
-const RETIRED_MANIFEST_KEYS: &[(&str, &str)] = &[
-    (
-        "exempt_roots",
-        "the layout gate has no per-repository exemption mechanism; a new root is admitted in ALLOWED_ROOTS, reviewed once, for every repository",
-    ),
-    (
-        "exempt_paths",
-        "the layout gate has no per-repository exemption mechanism; move the exempted material or admit its root in ALLOWED_ROOTS instead",
-    ),
-];
 /// Seed-shaped YAML documents for `navigator site import`, one file per model.
 const SEED_DIRECTORY: &str = "seeds";
 const ALLOWED_ROOTS: &[&str] = &[
@@ -135,7 +121,24 @@ const ALLOWED_ROOTS: &[&str] = &[
     // hide one inside `portal/`; a templates-only Project has nowhere to put it
     // at all, so refusing it here made the layout unsatisfiable for that shape.
     "LICENSE.md",
+    "LICENSE",
     "README.md",
+    // A Vite application at the repository root (no `apps/` grouping) is named
+    // `portal`. These are the files that shape requires at the root.
+    "package.json",
+    "vite.config.ts",
+    "vite.config.js",
+    "index.html",
+    "pnpm-lock.yaml",
+    "package-lock.json",
+    "yarn.lock",
+    "bun.lockb",
+    "tsconfig.json",
+    "tsconfig.node.json",
+    "tsconfig.app.json",
+    ".oxlintrc.json",
+    "public",
+    "src",
     APPLICATIONS_DIRECTORY,
     "fixtures",
     DOCUMENT_DIRECTORY,
@@ -259,7 +262,13 @@ impl Finding {
 /// blocks their first pull request rather than on the command that wrote it.
 /// `docs/project-repositories.md` requires an exact immutable release tag, so
 /// this is that rule enforced at the one place the file is written.
-pub fn scaffold(root: &Path, project_code: &str, action_version: &str) -> ExitCode {
+pub fn scaffold(
+    root: &Path,
+    project_code: &str,
+    action_version: &str,
+    host: &str,
+    replace_gate: bool,
+) -> ExitCode {
     // Trimmed once, here, before it is either checked or written: `is_release_tag`
     // trims internally, so an untrimmed value could pass this refusal and still
     // reach `workflow` with the whitespace intact, corrupting the `uses:` ref it
@@ -288,21 +297,38 @@ pub fn scaffold(root: &Path, project_code: &str, action_version: &str) -> ExitCo
         return ExitCode::from(2);
     }
 
+    let host = host.trim();
+    if !super::manifest::is_hostname(host) {
+        eprintln!("navigator: `--host` must be a hostname, not `{host}`");
+        return ExitCode::from(2);
+    }
+
+    let workflow_path = root.join(WORKFLOW);
+    if workflow_path.is_file() && !replace_gate {
+        if let Ok(live) = fs::read_to_string(&workflow_path) {
+            if live.lines().count() >= HAND_COPIED_GATE_LINES {
+                eprintln!(
+                    "navigator: {} has {} lines; pass --replace-gate to replace the named jobs with the thin project-gate caller",
+                    workflow_path.display(),
+                    live.lines().count()
+                );
+                return ExitCode::from(2);
+            }
+        }
+    }
+
+    let manifest = format!("host: {host}\nproject: {project_code}\n");
     let files = [
         (root.join("README.md"), readme(project_code)),
         (root.join("AGENTS.md"), agents(project_code)),
-        (root.join("CLAUDE.md"), agents(project_code)),
-        (
-            root.join(TEMPLATE_DIRECTORY).join("project_template.md"),
-            example_template(),
-        ),
         (root.join("tests/README.md"), tests_readme()),
         (root.join(WORKFLOW), workflow(action_version)),
         (root.join(CD_WORKFLOW), cd_workflow(action_version)),
+        (root.join(PROJECT_MANIFEST), manifest),
     ];
 
     for (path, contents) in files {
-        if path.exists() {
+        if path.exists() && !(replace_gate && path == workflow_path) {
             println!("exists    {} (left alone)", path.display());
             continue;
         }
@@ -319,9 +345,22 @@ pub fn scaffold(root: &Path, project_code: &str, action_version: &str) -> ExitCo
         println!("created   {}", path.display());
     }
 
+    let claude = root.join("CLAUDE.md");
+    if claude.exists() {
+        println!("exists    {} (left alone)", claude.display());
+    } else {
+        match std::os::unix::fs::symlink("AGENTS.md", &claude) {
+            Ok(()) => println!("created   {} (symlink to AGENTS.md)", claude.display()),
+            Err(error) => {
+                eprintln!("navigator: symlink {}: {error}", claude.display());
+                return ExitCode::from(2);
+            }
+        }
+    }
+
     // Do not interpolate the CLI root here: `Command` also carries `Secrets`,
     // and CodeQL treats any printed Command field as cleartext logging.
-    println!("\nValidate with: navigator site projects repository validate .");
+    println!("\nValidate with: navigator validate .");
     ExitCode::SUCCESS
 }
 
@@ -444,6 +483,18 @@ fn repository_name(root: &Path, explicit: Option<&str>) -> String {
             return name.to_string();
         }
     }
+    if let Ok(contents) = fs::read_to_string(root.join(PROJECT_MANIFEST)) {
+        if let Ok(manifest) = super::manifest::parse(&contents) {
+            if let Some(code) = manifest
+                .project
+                .as_deref()
+                .map(str::trim)
+                .filter(|code| !code.is_empty())
+            {
+                return code.to_string();
+            }
+        }
+    }
     root.file_name()
         .and_then(|name| name.to_str())
         .filter(|name| !name.is_empty())
@@ -462,9 +513,13 @@ fn validate_layout(root: &Path, errors: &mut Vec<Finding>) {
     validate_manifest(root, errors);
 
     let workflow_path = root.join(WORKFLOW);
+    let retired_workflow = root.join(RETIRED_WORKFLOW);
     match fs::read_to_string(&workflow_path) {
         Ok(contents) => validate_workflow(&workflow_path, &contents, errors),
-        Err(_) => errors.push(Finding::at(workflow_path, "missing required CI gate")),
+        Err(_) => match fs::read_to_string(&retired_workflow) {
+            Ok(contents) => validate_workflow(&retired_workflow, &contents, errors),
+            Err(_) => errors.push(Finding::at(workflow_path, "missing required CI gate")),
+        },
     }
 
     for entry in walkdir::WalkDir::new(root)
@@ -554,26 +609,15 @@ fn validate_layout(root: &Path, errors: &mut Vec<Finding>) {
     }
 }
 
-/// Refuse [`RETIRED_MANIFEST_KEYS`] by name, and nothing else: a manifest
-/// missing entirely, or one that fails to parse as YAML, reports nothing here
-/// — [`validate_workflow`]-style content checks elsewhere already cover a
-/// missing or broken file, and this function's only job is the retired-key
-/// gate.
+/// Hold a Project repository's `navigator.yaml` to the closed key set and
+/// value shapes [`super::manifest::lint`] owns. There is no per-repository
+/// exemption mechanism.
 fn validate_manifest(root: &Path, errors: &mut Vec<Finding>) {
-    let manifest_path = root.join(PROJECT_MANIFEST);
-    let Ok(contents) = fs::read_to_string(&manifest_path) else {
-        return;
-    };
-    let Ok(document) = serde_yaml::from_str::<serde_yaml::Value>(&contents) else {
-        return;
-    };
-    for (key, reason) in RETIRED_MANIFEST_KEYS {
-        if document.get(key).is_some() {
-            errors.push(Finding::at(
-                &manifest_path,
-                format!("`{key}` is retired: {reason}"),
-            ));
-        }
+    for finding in super::manifest::lint(root) {
+        errors.push(Finding::at(
+            finding.path,
+            format!("{}: {}", finding.code, finding.message),
+        ));
     }
 }
 
@@ -638,16 +682,32 @@ fn validate_skills(root: &Path, errors: &mut Vec<Finding>) {
 
 /// Discover direct application workspaces from the tree.
 ///
-/// The legacy root `portal/` is directory-discovered so a half-migrated,
-/// malformed portal still receives the Vite finding it always did. New
-/// applications are declared only by a direct `apps/<app>/package.json`;
-/// unrelated shared source below `apps/` is not another declaration.
+/// A root `package.json` plus `vite.config.ts`, with no `apps/portal/` and no
+/// legacy `portal/` directory, is the application named `portal`. The legacy
+/// root `portal/` is directory-discovered so a half-migrated, malformed portal
+/// still receives the Vite finding it always did. Nested applications are
+/// declared only by a direct `apps/<app>/package.json`.
 fn application_workspaces(root: &Path, errors: &mut Vec<Finding>) -> Vec<PathBuf> {
     let mut applications = Vec::new();
     let legacy_portal = root.join(PORTAL_DIRECTORY);
     let has_legacy_portal = legacy_portal.is_dir();
     if has_legacy_portal {
         applications.push(legacy_portal);
+    }
+    let root_vite = root.join("package.json").is_file()
+        && (root.join("vite.config.ts").is_file() || root.join("vite.config.js").is_file());
+    let has_apps_portal = root
+        .join(APPLICATIONS_DIRECTORY)
+        .join(PORTAL_DIRECTORY)
+        .join("package.json")
+        .is_file();
+    if root_vite && (has_legacy_portal || has_apps_portal) {
+        errors.push(Finding::at(
+            root.join("package.json"),
+            "a root Vite workspace and `portal/` (or `apps/portal/`) claim the same application route; keep one",
+        ));
+    } else if root_vite {
+        applications.push(root.to_path_buf());
     }
 
     let apps = root.join(APPLICATIONS_DIRECTORY);
@@ -676,10 +736,10 @@ fn application_workspaces(root: &Path, errors: &mut Vec<Finding>) -> Vec<PathBuf
                     ),
                 ));
             }
-            if name == PORTAL_DIRECTORY && has_legacy_portal {
+            if name == PORTAL_DIRECTORY && (has_legacy_portal || root_vite) {
                 errors.push(Finding::at(
                     &path,
-                    "`apps/portal/` and the legacy root `portal/` claim the same application route; move the portal instead of keeping both",
+                    "`apps/portal/` and a root or legacy `portal/` claim the same application route; keep one",
                 ));
             }
             discovered.push(path);
@@ -688,6 +748,11 @@ fn application_workspaces(root: &Path, errors: &mut Vec<Finding>) -> Vec<PathBuf
     discovered.sort();
     applications.extend(discovered);
     applications
+}
+
+pub(crate) fn discovered_applications(root: &Path) -> Vec<PathBuf> {
+    let mut errors = Vec::new();
+    application_workspaces(root, &mut errors)
 }
 
 /// One discovered application's build shape.
@@ -714,7 +779,10 @@ fn validate_application(application: &Path, errors: &mut Vec<Finding>) {
     }
 }
 
-/// The pinned validate action a Project repository's gate must call.
+/// The reusable workflow a Project repository's thin `ci.yml` must call.
+const PROJECT_GATE_WORKFLOW: &str =
+    "neon-law-source-code/navigator/.github/workflows/project-gate.yml@";
+/// The retired composite-action pin a `gate.yml` used to call.
 const VALIDATE_ACTION: &str = "neon-law-source-code/navigator/.github/actions/validate@";
 
 /// Just enough of a workflow to find one step and read its inputs.
@@ -730,12 +798,6 @@ struct Workflow {
 
 #[derive(serde::Deserialize)]
 struct WorkflowJob {
-    #[serde(default)]
-    steps: Vec<WorkflowStep>,
-}
-
-#[derive(serde::Deserialize)]
-struct WorkflowStep {
     #[serde(default)]
     uses: Option<String>,
     #[serde(default)]
@@ -755,26 +817,11 @@ fn scalar(value: &serde_yaml::Value) -> Option<String> {
     }
 }
 
-/// Hold the CI gate to calling Navigator's pinned validate action, at a release
-/// tag matching the CLI version it downloads, in Project-repository mode.
-///
-/// # Read the step, not the lines
-///
-/// Every check here is anchored to **the one step that `uses` the validate
-/// action**, and that is load-bearing rather than tidiness. Scanning raw lines
-/// got all three wrong: matching `- uses: ` saw only a step whose first key was
-/// `uses`, so an ordinarily labelled `- name:` step was reported absent while
-/// calling the action on the next line; the first `version:` line anywhere won,
-/// so the pnpm setup every portal repository runs first supplied its own
-/// version as the CLI's; and `project_repository: true` was a substring search
-/// a comment could satisfy. Parsing costs nothing and the three findings then
-/// describe the step they name.
+/// Hold the CI gate to calling Navigator's reusable project-gate workflow, at
+/// an exact release tag matching the `version` input.
 fn validate_workflow(path: &Path, contents: &str, errors: &mut Vec<Finding>) {
     let workflow: Workflow = match serde_yaml::from_str(contents) {
         Ok(workflow) => workflow,
-        // A gate that does not parse is its own failure. Reporting it as a
-        // missing action sends the reader hunting for a step that is right
-        // there in front of them.
         Err(error) => {
             errors.push(Finding::at(
                 path,
@@ -784,34 +831,30 @@ fn validate_workflow(path: &Path, contents: &str, errors: &mut Vec<Finding>) {
         }
     };
 
-    let step = workflow
-        .jobs
-        .values()
-        .flat_map(|job| &job.steps)
-        .find(|step| {
-            step.uses
-                .as_deref()
-                .is_some_and(|uses| uses.trim().starts_with(VALIDATE_ACTION))
-        });
-    let Some(step) = step else {
+    let job = workflow.jobs.values().find(|job| {
+        job.uses
+            .as_deref()
+            .is_some_and(|uses| uses.trim().starts_with(PROJECT_GATE_WORKFLOW))
+    });
+    let Some(job) = job else {
         errors.push(Finding::at(
             path,
-            "CI gate must call Navigator's pinned validate action",
+            "CI gate must call Navigator's pinned project-gate reusable workflow",
         ));
         return;
     };
 
-    let action_version = step
+    let action_version = job
         .uses
         .as_deref()
         .unwrap_or_default()
         .trim()
-        .strip_prefix(VALIDATE_ACTION)
+        .strip_prefix(PROJECT_GATE_WORKFLOW)
         .unwrap_or_default();
-    let Some(input_version) = step.with.get("version").and_then(scalar) else {
+    let Some(input_version) = job.with.get("version").and_then(scalar) else {
         errors.push(Finding::at(
             path,
-            "CI gate must pass the action's exact release tag as `version`",
+            "CI gate must pass the reusable workflow's exact release tag as `version`",
         ));
         return;
     };
@@ -820,26 +863,14 @@ fn validate_workflow(path: &Path, contents: &str, errors: &mut Vec<Finding>) {
         errors.push(Finding::at(
             path,
             format!(
-                "validation action ref `{action_version}` must equal its downloaded CLI version `{input_version}`"
+                "project-gate workflow ref `{action_version}` must equal its `version` input `{input_version}`"
             ),
         ));
     }
     if !is_release_tag(action_version) {
         errors.push(Finding::at(
             path,
-            format!("validation action ref `{action_version}` must be {RELEASE_TAG_SHAPE}"),
-        ));
-    }
-    if step
-        .with
-        .get("project_repository")
-        .and_then(scalar)
-        .as_deref()
-        != Some("true")
-    {
-        errors.push(Finding::at(
-            path,
-            "CI gate must set `project_repository: true`",
+            format!("project-gate workflow ref `{action_version}` must be {RELEASE_TAG_SHAPE}"),
         ));
     }
 }
@@ -956,17 +987,18 @@ fn validate_templates(
 
 fn readme(project_code: &str) -> String {
     format!(
-        "# {project_code}\n\nThis repository holds source-only material for Project `{project_code}`: its notation\n\
-         templates under `templates/`, and its application workspaces under `apps/<app>/`.\n\n\
-         The repository name *is* the Project code. Nothing in here declares it, so nothing can\n\
-         disagree with it. Each app name comes from its directory and builds for\n\
-         `/app/projects/{project_code}/<app>/`; `apps/` is not part of that URL.\n\n\
+        "# {project_code}\n\n\
+         This repository holds source-only material for Project `{project_code}`.\n\n\
+         Notation templates live under `templates/`, and application workspaces live under `apps/<app>/`.\n\n\
+         The repository name *is* the Project code. Nothing in here declares it, so nothing can disagree with it.\n\n\
+         Each app name comes from its directory and builds for `/app/projects/{project_code}/<app>/`.\n\n\
+         `apps/` is not part of that URL.\n\n\
          A root `portal/` is also accepted while repositories move it to `apps/portal/`.\n\n\
-         Navigator imports each direct `templates/<code>.md` file at the current commit, preserving both\n\
-         that commit SHA and the template body's content hash as provenance.\n\n\
-         Do not commit client uploads, answers, generated documents, secrets, dependencies, or build\n\
-         output. Legal files live in Drive and in Navigator's assets, never in Git.\n\n\
-         Run `navigator site projects repository validate .` before opening a pull request.\n"
+         Navigator imports each direct `templates/<code>.md` file at the current commit.\n\n\
+         It preserves that commit SHA and the template body's content hash as provenance.\n\n\
+         Do not commit client uploads, answers, generated documents, secrets, dependencies, or build output.\n\n\
+         Legal files live in Drive and in Navigator's assets, never in Git.\n\n\
+         Run `navigator validate .` before opening a pull request.\n"
     )
 }
 
@@ -974,54 +1006,28 @@ fn agents(project_code: &str) -> String {
     format!(
         "# Working in {project_code}\n\n\
          This is one Project's repository. It holds two kinds of source and nothing else.\n\n\
-         * `templates/` — notation blueprints, one `templates/<code>.md` per notation. Navigator\n\
-           imports them and records the commit SHA as provenance.\n\
-         * `apps/<app>/` — React + Vite applications, each discovered from its direct\n\
-           `package.json`. Build each for `/app/projects/{project_code}/<app>/`; the `apps/`\n\
-           source grouping is not a URL segment. Derive every in-app path from\n\
-           `import.meta.env.BASE_URL` rather than writing an absolute path by hand: a Vite base\n\
-           rewrites module and asset URLs and never an `href` in source. A root `portal/` is also\n\
-           accepted while repositories move that workspace to `apps/portal/`.\n\n\
+         * `templates/` — notation blueprints, one `templates/<code>.md` per notation.\n\
+         * `apps/<app>/` — React + Vite applications, each discovered from its direct `package.json`.\n\n\
+         Navigator imports each template and records the commit SHA as provenance.\n\n\
+         Build each app for `/app/projects/{project_code}/<app>/`; the `apps/` source grouping is not a URL segment.\n\n\
+         Derive every in-app path from `import.meta.env.BASE_URL` rather than writing an absolute path by hand.\n\n\
+         A Vite base rewrites module and asset URLs and never an `href` in source.\n\n\
+         A root `portal/` is also accepted while repositories move that workspace to `apps/portal/`.\n\n\
          ## Project codes are client identifiers\n\n\
-         A Project code names a matter and its repository. It identifies a client, so it is client\n\
-         data. The one legitimate use here is this repository naming itself, as in `navigator.yaml`,\n\
-         its paths, and its portal mount. Do not copy a Project code from another repository into this\n\
-         codebase or into a commit message, code comment, branch name, or pull-request body. A precedent\n\
-         citation is still a breach; cite the governing issue by its bare identifier instead.\n\n\
-         Read matter data through Navigator's `/api` read surfaces and write through its one REST\n\
-         command boundary. Do not add a second backend, and do not put a legal file, a client upload,\n\
-         an answer, a generated document, or a secret in this repository.\n"
+         A Project code names a matter and its repository. It identifies a client, so it is client data.\n\n\
+         The one legitimate use here is this repository naming itself, as in `navigator.yaml`, its paths, and its portal mount.\n\n\
+         Do not copy a Project code from another repository into this codebase.\n\n\
+         Do not put it into a commit message, code comment, branch name, or pull-request body.\n\n\
+         A precedent citation is still a breach; cite the governing issue by its bare identifier instead.\n\n\
+         Read matter data through Navigator's `/api` read surfaces and write through its one REST command boundary.\n\n\
+         Do not add a second backend.\n\n\
+         Do not put a legal file, a client upload, an answer, a generated document, or a secret in this repository.\n"
     )
 }
 
 fn tests_readme() -> String {
     "# Tests\n\nKeep source-level tests for this Project's templates here. Generated documents and dependencies do not belong here.\n"
         .to_string()
-}
-
-fn example_template() -> String {
-    r"---
-kind: letter
-title: Project Template Placeholder
-respondent_type: entity
-code: project_template
-confidential: false
-jurisdiction: NV
-questionnaire:
-  BEGIN:
-    _: END
-  END: {}
-workflow:
-  BEGIN:
-    _: lawyer_review
-  lawyer_review:
-    _: END
-  END: {}
----
-
-Replace this placeholder with the Project-specific template approved for import.
-"
-    .to_string()
 }
 
 /// The pinned actions every generated workflow installs Node and pnpm with.
@@ -1039,12 +1045,6 @@ const CHECKOUT_ACTION: &str = "actions/checkout@3d3c42e5aac5ba805825da76410c1812
 const APPLICATION_PUBLISH_ACTION: &str =
     "neon-law-source-code/navigator/.github/actions/application-publish@";
 const SEED_IMPORT_ACTION: &str = "neon-law-source-code/navigator/.github/actions/seed-import@";
-/// The pinned document-verification action the generated `documents` job
-/// calls (#486): offline pointer-shape validation on every event, plus live
-/// verification against the asset record when it runs on push to `main` and
-/// `vars.NAVIGATOR_HOST` is set.
-const DOCUMENT_VERIFY_ACTION: &str =
-    "neon-law-source-code/navigator/.github/actions/document-verify@";
 
 /// The tree-derived condition for generated application steps.
 ///
@@ -1053,7 +1053,7 @@ const DOCUMENT_VERIFY_ACTION: &str =
 /// repositories that actually need Node; the shell loop below still derives
 /// the complete list independently rather than trusting a declared matrix.
 const IF_APPLICATION_PRESENT: &str =
-    "hashFiles('apps/*/package.json', 'portal/package.json') != ''";
+    "hashFiles('apps/*/package.json', 'portal/package.json', 'vite.config.ts', 'vite.config.js') != ''";
 
 /// The standard install/lint/typecheck/build/test sequence, one line per
 /// script, package-manager-agnostic in what it checks but pnpm in what it
@@ -1072,6 +1072,11 @@ fn pnpm_step(name: &str, script: &str) -> String {
           if [ -f portal/package.json ]; then
               package_manifests+=(portal/package.json)
           fi
+          if [ -f package.json ] && {{ [ -f vite.config.ts ] || [ -f vite.config.js ]; }}; then
+              if [ ! -f portal/package.json ] && [ ! -f apps/portal/package.json ]; then
+                  package_manifests+=(package.json)
+              fi
+          fi
           for package_json in "${{package_manifests[@]}}"; do
               app_dir="${{package_json%/package.json}}"
               pnpm --dir "${{app_dir}}" {script}
@@ -1088,54 +1093,13 @@ fn setup_steps() -> String {
     )
 }
 
-/// The CI gate, promoted from the hand-built shape the Project repositories
-/// had already converged on before this generator caught up to them, pinned
-/// to `action_version`.
+/// A thin `ci.yml` caller: one required job named [`REQUIRED_CHECK`] that
+/// calls Navigator's reusable project-gate workflow at `action_version`.
 ///
-/// # Fan-in, not one flat job
-///
-/// `lint`, `verify`, and `notation` each run unconditionally and no-op
-/// internally over a half this repository does not carry (each application
-/// step loops over the package manifests discovered from the tree; the pinned
-/// validate action already no-ops over an absent application on its own).
-/// [`REQUIRED_CHECK`] is the one job the
-/// ruleset actually binds to, and it asserts each dependency's `result`
-/// explicitly rather than trusting a bare `needs:` — a **skipped** job reports
-/// no result at all, so a bare `needs:` would read that as success and leave a
-/// required check nothing ever fails, stuck "Expected" forever. There is
-/// deliberately **no** `paths:` filter anywhere: a filtered job that skips
-/// reports success for work it never did, and a required check that can be
-/// satisfied by a skip is not a gate.
-///
-/// `documents` (#486) is the one job outside this fan-in on purpose: its live
-/// half needs a reachable deployment, and `{REQUIRED_CHECK}` must never
-/// depend on that. It still runs unconditionally and no-ops over a
-/// repository carrying no `documents/`, the same way the other three do over
-/// an absent half.
-///
-/// # The pin is an argument, not a literal
-///
-/// `[scaffold]` refuses to call this with anything [`is_release_tag`] rejects,
-/// the way `ops release version` refuses a malformed `--tag`: a gate emitted
-/// at `main`, at `latest`, or at a version this repository has not published
-/// is a gate the Project cannot run, so the choice belongs to the operator
-/// (or to `main.rs`'s `published_cli_version`, when this binary can vouch for
-/// its own version) rather than to a literal frozen in this string.
-///
-/// A raw string, not a `\`-continued one. A backslash continuation strips the
-/// leading whitespace of the next line, which silently reflows YAML into
-/// something that no longer parses — and a generated workflow that does not
-/// parse fails in the Project repository rather than here.
-///
-/// `pub(crate)` so [`super::super::devx::github_setup`] can reconcile a live
-/// `gate.yml` against this exact output rather than a second template that is
-/// free to drift from it.
+/// The jobs themselves live in `.github/workflows/project-gate.yml` in this
+/// repository. Pinning that file is the thing that scales; a Project
+/// repository does not copy them.
 pub(crate) fn workflow(action_version: &str) -> String {
-    let setup = setup_steps();
-    let install = pnpm_step(
-        "Install application dependencies",
-        "install --frozen-lockfile",
-    );
     format!(
         r#"name: {REQUIRED_CHECK}
 
@@ -1144,61 +1108,26 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-{setup}{install}{lint_step}
-  verify:
-    runs-on: ubuntu-latest
-    steps:
-{setup}{install}{typecheck_step}{test_step}{build_step}
-  notation:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: {CHECKOUT_ACTION}
-      - uses: {VALIDATE_ACTION}{action_version}
-        with:
-          version: "{action_version}"
-          project_repository: true
-
-  # Validates every `documents/` pointer offline on every event; on push to
-  # `main` it additionally verifies each one against the live asset record
-  # (#486). Deliberately *not* in `{REQUIRED_CHECK}`'s `needs:` below — its
-  # live half depends on a reachable deployment, which the always-required
-  # check must not. A repository carrying no `documents/` still reports a
-  # real `success`, never a skip.
-  documents:
-    permissions:
-      contents: read
-      id-token: write
-    runs-on: ubuntu-latest
-    steps:
-      - uses: {CHECKOUT_ACTION}
-      - uses: {DOCUMENT_VERIFY_ACTION}{action_version}
-        with:
-          version: "{action_version}"
-          host: ${{{{ vars.NAVIGATOR_HOST }}}}
-
-  # The one required check. See the doc comment above for why it asserts
-  # `needs.<job>.result` explicitly instead of trusting a bare `needs:`.
   {REQUIRED_CHECK}:
-    needs: [lint, verify, notation]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Require every job to have succeeded
-        run: |
-          test "${{{{ needs.lint.result }}}}" = "success"
-          test "${{{{ needs.verify.result }}}}" = "success"
-          test "${{{{ needs.notation.result }}}}" = "success"
-"#,
-        lint_step = pnpm_step("Lint applications", "lint"),
-        typecheck_step = pnpm_step("Typecheck applications", "typecheck"),
-        test_step = pnpm_step("Test applications", "test"),
-        build_step = pnpm_step("Build applications", "build"),
+    uses: {PROJECT_GATE_WORKFLOW}{action_version}
+    secrets: inherit
+    with:
+      version: "{action_version}"
+      host: ${{{{ vars.NAVIGATOR_HOST }}}}
+"#
     )
 }
+
+/// Hand-copied Project `ci.yml` files from the Python-gate era are this long.
+/// Scaffold will not replace one unless `--replace-gate` is passed, because
+/// replacing it drops the named jobs (`lint`, `verify`, `notation`) a ruleset
+/// or a human may still be looking at.
+pub(crate) const HAND_COPIED_GATE_LINES: usize = 268;
 
 /// The Project publication workflow: install, lint, typecheck, test, and build
 /// the portal, re-validate the whole repository, then publish through the
@@ -1233,14 +1162,13 @@ permissions:
 
 jobs:
   publish:
+    if: vars.NAVIGATOR_HOST != ''
     runs-on: ubuntu-latest
     steps:
 {setup}{install}{lint_step}{typecheck_step}{test_step}{build_step}      - uses: {VALIDATE_ACTION}{action_version}
         with:
           version: "{action_version}"
-          project_repository: true
       - name: Import seed documents
-        if: vars.NAVIGATOR_HOST != ''
         uses: {SEED_IMPORT_ACTION}{action_version}
         with:
           version: "{action_version}"
@@ -1249,7 +1177,7 @@ jobs:
       # authorization decision. This preserves only the existing root portal
       # publisher during the source-layout transition.
       - name: Publish the legacy root portal
-        if: hashFiles('portal/package.json') != ''
+        if: hashFiles('portal/package.json', 'vite.config.ts', 'vite.config.js') != ''
         uses: {APPLICATION_PUBLISH_ACTION}{action_version}
         with:
           applications_bucket: ${{{{ secrets.NAVIGATOR_APPLICATIONS_BUCKET }}}}
@@ -1266,8 +1194,8 @@ jobs:
 #[cfg(test)]
 mod tests {
     use super::{
-        cd_workflow, example_template, is_release_tag, repository_name, scaffold, validate_layout,
-        validate_workflow, workflow, Finding, ALLOWED_ROOTS, CD_WORKFLOW, REQUIRED_CHECK, WORKFLOW,
+        cd_workflow, is_release_tag, repository_name, scaffold, validate_layout, validate_workflow,
+        workflow, Finding, ALLOWED_ROOTS, CD_WORKFLOW, PROJECT_MANIFEST, WORKFLOW,
     };
     use std::path::Path;
 
@@ -1310,7 +1238,7 @@ mod tests {
             .next()
             .expect("production source precedes the test module");
         assert!(
-            production.contains("Validate with: navigator site projects repository validate ."),
+            production.contains("Validate with: navigator validate ."),
             "the post-scaffold hint must name the validate command"
         );
         assert!(
@@ -1328,8 +1256,42 @@ mod tests {
     }
 
     #[test]
+    fn repository_name_uses_github_repository_before_the_manifest() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join(PROJECT_MANIFEST),
+            "project: acme\nhost: staging.neonlaw.com\n",
+        )
+        .unwrap();
+        let previous = std::env::var("GITHUB_REPOSITORY").ok();
+        std::env::set_var("GITHUB_REPOSITORY", "org/from-ci");
+        let name = repository_name(dir.path(), None);
+        match previous {
+            Some(value) => std::env::set_var("GITHUB_REPOSITORY", value),
+            None => std::env::remove_var("GITHUB_REPOSITORY"),
+        }
+        assert_eq!(name, "from-ci");
+    }
+
+    #[test]
+    fn repository_name_uses_the_manifest_when_github_is_unset() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join(PROJECT_MANIFEST),
+            "project: acme\nhost: staging.neonlaw.com\n",
+        )
+        .unwrap();
+        let previous = std::env::var("GITHUB_REPOSITORY").ok();
+        std::env::remove_var("GITHUB_REPOSITORY");
+        let name = repository_name(dir.path(), None);
+        if let Some(value) = previous {
+            std::env::set_var("GITHUB_REPOSITORY", value);
+        }
+        assert_eq!(name, "acme");
+    }
+
+    #[test]
     fn generated_template_has_a_stable_code() {
-        assert!(example_template().contains("code: project_template"));
         assert!(is_release_tag("26.7.27"));
         assert!(is_release_tag("26.8.19-hotfix.14"));
         assert!(!is_release_tag("main"));
@@ -1354,111 +1316,46 @@ mod tests {
         assert!(ALLOWED_ROOTS.contains(&"LICENSE.md"));
     }
 
-    /// A step labelled with `name:` before `uses:` is the ordinary way to write
-    /// one, and the gate must see it. Matching on a line beginning `- uses: `
-    /// only ever saw a step whose *first* key was `uses`, so a labelled step
-    /// was reported absent while calling the action on the very next line —
-    /// and the early return meant its version was never checked either.
     #[test]
-    fn a_labelled_step_calls_the_action() {
+    fn a_reusable_workflow_call_with_a_matching_pin_passes() {
         let contents = r#"name: ci
 on: [pull_request]
 jobs:
   ci:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Validate the Project repository
-        uses: neon-law-source-code/navigator/.github/actions/validate@26.7.27
-        with:
-          version: "26.7.27"
-          project_repository: true
+    uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@26.7.27
+    with:
+      version: "26.7.27"
 "#;
         assert_eq!(findings(contents), Vec::<String>::new());
     }
 
-    /// `version` belongs to the validate step, not to the file. Reading the
-    /// first `version:` line anywhere meant an earlier action's own input won:
-    /// every portal repository sets pnpm up before validating, so the standard
-    /// layout reported a mismatch naming pnpm's version as the CLI's.
-    #[test]
-    fn an_earlier_actions_version_input_is_not_the_cli_version() {
-        let contents = r#"name: ci
-on: [pull_request]
-jobs:
-  ci:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: pnpm/action-setup@v4
-        with:
-          version: "9.1.0"
-      - uses: neon-law-source-code/navigator/.github/actions/validate@26.7.27
-        with:
-          version: "26.7.27"
-          project_repository: true
-"#;
-        assert_eq!(findings(contents), Vec::<String>::new());
-    }
-
-    /// The input has to be *passed*, not merely present in the file. A bare
-    /// substring search was satisfied by a comment, or by another step.
-    #[test]
-    fn project_repository_must_be_passed_to_the_validate_step() {
-        let contents = r#"name: ci
-on: [pull_request]
-jobs:
-  ci:
-    runs-on: ubuntu-latest
-    steps:
-      # project_repository: true
-      - uses: other/action@v1
-        with:
-          project_repository: true
-      - uses: neon-law-source-code/navigator/.github/actions/validate@26.7.27
-        with:
-          version: "26.7.27"
-"#;
-        assert_eq!(
-            findings(contents),
-            vec!["CI gate must set `project_repository: true`".to_string()]
-        );
-    }
-
-    /// The fix must not stop checking. A genuine disagreement between the ref
-    /// and the downloaded version is still the whole point of the gate.
     #[test]
     fn a_real_version_mismatch_is_still_caught() {
         let contents = r#"name: ci
 on: [pull_request]
 jobs:
   ci:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: neon-law-source-code/navigator/.github/actions/validate@26.7.27
-        with:
-          version: "26.7.26"
-          project_repository: true
+    uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@26.7.27
+    with:
+      version: "26.7.26"
 "#;
         let found = findings(contents);
         assert_eq!(found.len(), 1, "{found:?}");
         assert!(
-            found[0].contains("must equal its downloaded CLI version"),
+            found[0].contains("must equal its `version` input"),
             "{found:?}"
         );
     }
 
-    /// A moving ref is not a pin, so `@main` stays refused.
     #[test]
     fn a_moving_ref_is_still_refused() {
         let contents = r#"name: ci
 on: [pull_request]
 jobs:
   ci:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: neon-law-source-code/navigator/.github/actions/validate@main
-        with:
-          version: "main"
-          project_repository: true
+    uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@main
+    with:
+      version: "main"
 "#;
         let found = findings(contents);
         assert_eq!(found.len(), 1, "{found:?}");
@@ -1522,50 +1419,51 @@ jobs:
         scaffold_minimal(root.path());
         std::fs::write(
             root.path().join("navigator.yaml"),
-            "host: www.neonlaw.com\nproject: acme\n",
+            "host: staging.neonlaw.com\nproject: acme\n",
         )
         .unwrap();
 
         assert_eq!(layout_findings(root.path()), Vec::<String>::new());
     }
 
-    /// ENG-490: `exempt_roots` is declared and read by nothing, which lets a
-    /// dead exemption look effective to anyone opening the manifest. `validate`
-    /// refuses it by name instead of silently ignoring it.
+    /// An unknown key, including a retired exemption key, is refused and names
+    /// the accepted set. There is no per-repository exemption mechanism.
     #[test]
-    fn a_manifest_carrying_a_retired_key_produces_the_named_error() {
+    fn a_manifest_carrying_an_unknown_key_is_refused() {
         let root = tempfile::tempdir().unwrap();
         scaffold_minimal(root.path());
         std::fs::write(
             root.path().join("navigator.yaml"),
-            "project: acme\nexempt_roots:\n  - documents\n  - evidence\n",
+            "host: staging.neonlaw.com\nproject: acme\nexempt_roots:\n  - documents\n  - evidence\n",
         )
         .unwrap();
 
         let found = layout_findings(root.path());
-        assert_eq!(found.len(), 1, "{found:?}");
-        assert!(found[0].contains("`exempt_roots` is retired"), "{found:?}");
         assert!(
-            found[0].contains("per-repository exemption"),
-            "the error should name why the key is retired: {found:?}"
+            found.iter().any(|finding| finding.contains("Y006")
+                && finding.contains("exempt_roots")
+                && finding.contains("host")),
+            "{found:?}"
         );
     }
 
-    /// The guard against reintroducing wholesale unknown-key rejection: ENG-290
-    /// deliberately leaves keys like `host:` ignored so a downstream deployment
-    /// table can add its own, and only the closed `RETIRED_MANIFEST_KEYS` list
-    /// is refused. An arbitrary unknown key must keep validating clean.
     #[test]
-    fn a_manifest_carrying_an_arbitrary_unknown_key_still_validates_clean() {
+    fn a_manifest_carrying_an_arbitrary_unknown_key_is_refused() {
         let root = tempfile::tempdir().unwrap();
         scaffold_minimal(root.path());
         std::fs::write(
             root.path().join("navigator.yaml"),
-            "project: acme\ntotally_made_up_key: whatever\n",
+            "host: staging.neonlaw.com\nproject: acme\ntotally_made_up_key: whatever\n",
         )
         .unwrap();
 
-        assert_eq!(layout_findings(root.path()), Vec::<String>::new());
+        let found = layout_findings(root.path());
+        assert!(
+            found
+                .iter()
+                .any(|finding| finding.contains("Y006") && finding.contains("totally_made_up_key")),
+            "{found:?}"
+        );
     }
 
     /// Admitting the manifest must not make the closed list permissive: the
@@ -1588,7 +1486,11 @@ jobs:
     fn a_forbidden_component_still_wins() {
         let root = tempfile::tempdir().unwrap();
         scaffold_minimal(root.path());
-        std::fs::write(root.path().join("navigator.yaml"), "project: acme\n").unwrap();
+        std::fs::write(
+            root.path().join("navigator.yaml"),
+            "host: staging.neonlaw.com\nproject: acme\n",
+        )
+        .unwrap();
         std::fs::write(root.path().join(".env"), "SECRET=1\n").unwrap();
 
         let found = layout_findings(root.path());
@@ -1608,7 +1510,8 @@ jobs:
             !generated.contains("paths:"),
             "a path-filtered required check can be satisfied by a skip"
         );
-        assert!(generated.contains("project_repository: true"));
+        assert!(generated.contains("project-gate.yml@"));
+        assert!(!generated.contains("project_repository: true"));
     }
 
     /// The pin the caller names reaches both places that carry it, and no
@@ -1618,7 +1521,7 @@ jobs:
         let generated = workflow("26.8.23");
         assert!(
             generated.contains(
-                "- uses: neon-law-source-code/navigator/.github/actions/validate@26.8.23"
+                "uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@26.8.23"
             ),
             "{generated}"
         );
@@ -1629,61 +1532,27 @@ jobs:
         );
     }
 
-    /// The gate fans three feeder jobs into the one required check, rather
-    /// than cramming install/lint/typecheck/build/test into the required job
-    /// itself — the shape the Project repositories had already converged on
-    /// before this generator caught up to them.
     #[test]
-    fn the_generated_gate_fans_three_jobs_into_the_required_check() {
-        let generated = workflow(FIXTURE_PIN);
-        for job in ["lint:", "verify:", "notation:"] {
+    fn the_reusable_workflow_fans_five_jobs_into_the_required_check() {
+        let generated = include_str!("../../../.github/workflows/project-gate.yml");
+        for job in ["lint:", "verify:", "notation:", "documents:", "manifest:"] {
             assert!(
                 generated.contains(&format!("\n  {job}\n")),
                 "missing job `{job}`:\n{generated}"
             );
         }
         assert!(
-            generated.contains(&format!(
-                "\n  {REQUIRED_CHECK}:\n    needs: [lint, verify, notation]\n"
-            )),
+            generated
+                .contains("\n  ci:\n    needs: [lint, verify, notation, documents, manifest]\n"),
             "{generated}"
         );
     }
 
-    /// The `documents` job (#486) calls the pinned document-verify action and
-    /// stays outside the required check's `needs:` — its live half depends on
-    /// a reachable deployment, which the always-required check must not.
-    #[test]
-    fn the_documents_job_calls_the_pinned_action_and_is_not_required() {
-        let generated = workflow(FIXTURE_PIN);
-        assert!(generated.contains("\n  documents:\n"), "{generated}");
-        assert!(
-            generated.contains(
-                "- uses: neon-law-source-code/navigator/.github/actions/document-verify@26.8.23"
-            ),
-            "{generated}"
-        );
-        assert!(
-            generated.contains("host: ${{ vars.NAVIGATOR_HOST }}"),
-            "{generated}"
-        );
-        assert!(
-            !generated.contains(&format!(
-                "\n  {REQUIRED_CHECK}:\n    needs: [lint, verify, notation, documents]\n"
-            )),
-            "the documents job must not gate the required check:\n{generated}"
-        );
-    }
-
-    /// A **skipped** job reports no result at all, so the required check
-    /// asserts each dependency's result explicitly rather than trusting a
-    /// bare `needs:` — the failure mode `ops github setup`'s own docstring
-    /// warns leaves a pull request stuck on an expected check forever.
     #[test]
     fn the_required_check_asserts_every_dependencys_result() {
-        let generated = workflow(FIXTURE_PIN);
+        let generated = include_str!("../../../.github/workflows/project-gate.yml");
         assert!(generated.contains("if: always()"), "{generated}");
-        for job in ["lint", "verify", "notation"] {
+        for job in ["lint", "verify", "notation", "documents", "manifest"] {
             assert!(
                 generated.contains(&format!("needs.{job}.result")),
                 "the required check does not check `{job}`'s result:\n{generated}"
@@ -1691,50 +1560,35 @@ jobs:
         }
     }
 
-    /// Application steps discover workspaces at run time rather than being
-    /// generated from the tree `scaffold` happened to see. The condition wakes
-    /// for either direct apps or the root-portal transition, and every command
-    /// independently loops over the full discovered set.
     #[test]
     fn the_application_steps_discover_every_workspace_at_run_time() {
-        let generated = workflow(FIXTURE_PIN);
-        assert_eq!(
-            generated
-                .matches("package_manifests=(apps/*/package.json)")
-                .count(),
-            6,
-            "every application command must discover the tree for itself:\n{generated}"
-        );
-        assert_eq!(
-            generated.matches("pnpm --dir \"${app_dir}\"").count(),
-            6,
-            "every application command must run once per discovered workspace:\n{generated}"
+        let generated = include_str!("../../../.github/workflows/project-gate.yml");
+        assert!(
+            generated.contains("package_manifests=(apps/*/package.json)"),
+            "{generated}"
         );
         assert!(
-            generated.contains("hashFiles('apps/*/package.json', 'portal/package.json') != ''"),
-            "tool setup and commands must wake for either supported source root:\n{generated}"
+            generated.contains("vite.config.ts"),
+            "root-layout portals must wake the JS jobs:\n{generated}"
         );
-        for step in [
-            "Install application dependencies",
-            "Lint applications",
-            "Typecheck applications",
-            "Test applications",
-            "Build applications",
-        ] {
-            let marker = format!("- name: {step}\n");
-            let start = generated.find(&marker).expect("generated step exists");
-            let body = &generated[start..];
-            assert!(body.contains("apps/*/package.json"), "{step}:\n{body}");
-            assert!(body.contains("portal/package.json"), "{step}:\n{body}");
-            assert!(
-                body.contains("pnpm --dir \"${app_dir}\""),
-                "{step} does not run against each discovered app:\n{body}"
-            );
-        }
-        assert!(
-            !generated.contains("hashFiles('portal/package.json')"),
-            "the root portal must not be the only condition that can make the gate run:\n{generated}"
-        );
+    }
+
+    #[test]
+    fn a_root_vite_workspace_is_the_portal_application() {
+        let root = tempfile::tempdir().unwrap();
+        scaffold_minimal(root.path());
+        std::fs::write(root.path().join("package.json"), "{}\n").unwrap();
+        std::fs::write(root.path().join("vite.config.ts"), "export default {}\n").unwrap();
+        std::fs::write(root.path().join("index.html"), "<!doctype html>\n").unwrap();
+        std::fs::write(
+            root.path().join("pnpm-lock.yaml"),
+            "lockfileVersion: '9.0'\n",
+        )
+        .unwrap();
+        let mut errors = Vec::new();
+        let apps = super::application_workspaces(root.path(), &mut errors);
+        assert!(errors.is_empty(), "{errors:?}");
+        assert_eq!(apps, vec![root.path().to_path_buf()]);
     }
 
     /// The publish workflow is the real thing now, not a placeholder that
@@ -1880,7 +1734,13 @@ jobs:
     fn the_scaffold_refuses_a_pin_that_is_not_a_release_tag() {
         for refused in ["main", "latest", ""] {
             let root = tempfile::tempdir().unwrap();
-            scaffold(root.path(), "example-project", refused);
+            scaffold(
+                root.path(),
+                "example-project",
+                refused,
+                "staging.neonlaw.com",
+                false,
+            );
             assert!(
                 !root.path().join(WORKFLOW).exists(),
                 "`{refused}` was accepted and a gate was written"
@@ -1899,11 +1759,17 @@ jobs:
     #[test]
     fn the_scaffold_trims_the_pin_before_checking_and_writing() {
         let root = tempfile::tempdir().unwrap();
-        scaffold(root.path(), "example-project", " 26.8.23 ");
+        scaffold(
+            root.path(),
+            "example-project",
+            " 26.8.23 ",
+            "staging.neonlaw.com",
+            false,
+        );
         let generated = std::fs::read_to_string(root.path().join(WORKFLOW)).unwrap();
         assert!(
             generated.contains(
-                "- uses: neon-law-source-code/navigator/.github/actions/validate@26.8.23"
+                "uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@26.8.23"
             ),
             "{generated}"
         );

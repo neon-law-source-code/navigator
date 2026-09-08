@@ -211,6 +211,7 @@ fn projects_help_lists_the_project_workspace_verbs() {
             "create",
             "doctor",
             "drift",
+            "gate",
             "lifecycle",
             "list",
             "open",
@@ -221,7 +222,7 @@ fn projects_help_lists_the_project_workspace_verbs() {
     );
     assert_eq!(
         command_names(&help(&["site", "projects", "repository", "--help"])),
-        vec!["scaffold", "sync-skills", "validate", "help"]
+        vec!["scaffold", "sync-skills", "help"]
     );
     assert_eq!(
         command_names(&help(&["site", "projects", "surfaces", "--help"])),

@@ -307,8 +307,8 @@ fn project_checks(drive: Option<&DriveCoordinates>, code: &str, probe: &Probe<'_
 
     // A Project's source repository is a whole URL stored on the Project, not
     // a coordinate composed from deployment configuration, so there is nothing
-    // for a configuration doctor to derive or check here. `projects
-    // repository validate` inspects an actual checkout instead.
+    // for a configuration doctor to derive or check here. `navigator validate`
+    // inspects an actual checkout instead.
     checks.push(Check::ok(
         "portal mount",
         WorkspaceConfig::portal_mount(code),

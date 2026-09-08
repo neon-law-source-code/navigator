@@ -9,5 +9,8 @@
 
 pub mod doctor;
 pub mod drift;
+pub mod gate;
+pub mod manifest;
+pub mod origin;
 pub mod repository;
 pub mod surfaces;

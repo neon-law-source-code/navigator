@@ -106,8 +106,8 @@ nothing a human deliberately adds is taken away either.
 
 #### Reconciling generated workflow content
 
-Every Project repository's `.github/workflows/gate.yml` — and `.github/workflows/publish.yml`, if it carries a `portal/`
-— pins Navigator's validate action to an exact release tag, the same way [`scaffold`'s generated
+Every Project repository's `.github/workflows/ci.yml` — and `.github/workflows/publish.yml`, if it carries a portal —
+pins Navigator's reusable project-gate workflow to an exact release tag, the same way [`scaffold`'s generated
 gate](project-repositories.md#scaffolding-a-repository) does. Before this, moving that pin forward across the fleet
 after a release meant hand-editing it in every one of the 19+ Project repositories that carry it — a manual, unreviewed
 in spirit, per-repository chore.
@@ -116,7 +116,7 @@ in spirit, per-repository chore.
 (`cli/src/projects/repository.rs`'s `workflow`/`cd_workflow`) rather than a second copy that could drift from them. It
 first has to know whether the target repository is one this applies to at all:
 
-- `neon-law-source-code/navigator` and the Homebrew tap carry no generated `gate.yml`/`publish.yml` in this shape, so
+- `neon-law-source-code/navigator` and the Homebrew tap carry no generated `ci.yml`/`publish.yml` in this shape, so
   this half of the reconcile is a no-op for both, same as before this feature existed.
 - The deploy repository — named by the optional `NAVIGATOR_GITHUB_DEPLOY_REPO` environment variable, never a literal in
   source, the same reason `.github/workflows/deploy.yml` carries its own checkout as the `DEPLOY_REPO` Actions variable
@@ -137,7 +137,7 @@ the desired payload directly *is* the reconciliation. A workflow file is differe
 whose own ruleset already requires a pull request, a passing `ci`, and a code owner's approval to change `main` at all,
 so writing it directly would either be rejected by the very ruleset this command maintains or, on a repository where
 that ruleset is not yet applied, bypass it outright — for a binding legal-services practice, that is not an acceptable
-trade for one fewer manual step. So when `gate.yml` or `publish.yml` (or both) drift, the command opens a branch off
+trade for one fewer manual step. So when `ci.yml` or `publish.yml` (or both) drift, the command opens a branch off
 `main`, commits the regenerated file(s) there, and opens an ordinary pull request back into `main` — the same shape a
 human bumping the pin by hand opens today, gated the same way. Re-running before that pull request merges is idempotent:
 the branch is named for the exact pin, so a second run finds it already holding the identical, deterministic template
@@ -171,12 +171,13 @@ simply sit forever on a check that will never arrive, and the usual fix — drop
 enforcing nothing at all. `ops github setup` therefore reads the repository's CI workflow and refuses to bind the gate
 unless a job in it actually reports as `ci`.
 
-It accepts either `.github/workflows/ci.yml` or `.github/workflows/gate.yml`, and looks for them in that order. Two
-spellings are live at once and both are correct: a repository the Firm has always administered carries `ci.yml`, while a
-Project repository written by `navigator site projects repository scaffold` carries `gate.yml`. What they share is the
-invariant the gate is actually matched by — a job whose check run is named `ci` — so the filename is free to differ. A
-repository carrying neither file is refused, and so is one whose workflow exists but ends in some other job name; those
-are different problems with different fixes, so they are different errors.
+It accepts either `.github/workflows/ci.yml` or `.github/workflows/gate.yml`, and looks for them in that order.
+Firm-administered repositories and scaffolded Project repositories both carry `ci.yml` as the required-check file.
+`navigator site projects repository scaffold` writes that file. A retired `gate.yml` is still accepted so a repository
+that has not been regenerated continues to bind the required `ci` check. What they share is the invariant the gate is
+actually matched by — a job whose check run is named `ci` — so the filename is free to differ. A repository carrying
+neither file is refused, and so is one whose workflow exists but ends in some other job name; those are different
+problems with different fixes, so they are different errors.
 
 #### Adopting a repository that is not yet governed
 

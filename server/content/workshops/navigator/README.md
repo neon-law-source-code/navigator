@@ -288,10 +288,10 @@ Clone the now-existing empty repository, then generate its shell:
 navigator site projects repository scaffold <code> --dir . --action-version <YY.M.D>
 ```
 
-`scaffold` is idempotent. It writes `README.md`, `AGENTS.md`, `CLAUDE.md`, an example `templates/project_template.md`,
-`tests/README.md`, and two workflows — `.github/workflows/gate.yml` (the CI gate) and `.github/workflows/publish.yml`
-(the portal-publish caller). It does not write `portal/`; that only exists once a client-facing application is built.
-Pass `--action-version` explicitly rather than relying on a default, which only resolves from a real release build.
+`scaffold` is idempotent. It writes `README.md`, `AGENTS.md`, a `CLAUDE.md` symlink, `tests/README.md`, and two
+workflows — `.github/workflows/ci.yml` (the thin CI caller) and `.github/workflows/publish.yml` (the portal-publish
+caller). It does not write `portal/`; that only exists once a client-facing application is built. Pass
+`--action-version` explicitly rather than relying on a default, which only resolves from a real release build.
 
 Commit and push. That push is what makes the CI gate live on the new repository.
 
@@ -310,7 +310,7 @@ what a sync would do, then run it:
 ```bash
 navigator site sync --dry-run
 navigator site sync
-navigator site projects repository validate .
+navigator validate .
 ```
 
 Against a staged `documents/exhibits/exhibit-a.png`, the dry run prints one line per staged file and a count, and

@@ -229,16 +229,14 @@ const NAVIGATOR_CODEQL_INTEGRATION_ID: u64 = 57789;
 /// Workflow files that may terminate in the [`REQUIRED_CHECK`] job, in the
 /// order they are looked for.
 ///
-/// Two spellings are live at once, and both are correct. A repository the Firm
-/// has always administered carries `ci.yml`; a Project repository written by
-/// `navigator site projects repository scaffold` carries `gate.yml`. What they share
-/// is the invariant that actually matters — a job whose check run is named
-/// `ci` — so the gate accepts either filename and refuses only when neither
-/// file exists or neither defines the job.
-///
-/// Accepting both is deliberate rather than transitional. The scaffold names
-/// the file for what it is, and renaming it in every Project repository would
-/// buy nothing: the required context is matched by job name, never by path.
+/// Two spellings are live at once. A repository the Firm has always
+/// administered carries `ci.yml`, and so does a Project repository written by
+/// `navigator site projects repository scaffold`. A retired `gate.yml` is still
+/// accepted so a repository that has not been regenerated continues to bind
+/// the required `ci` check. What they share is the invariant that actually
+/// matters — a job whose check run is named `ci` — so the gate accepts either
+/// filename and refuses only when neither file exists or neither defines the
+/// job.
 const CI_WORKFLOW_PATHS: &[&str] = &[".github/workflows/ci.yml", ".github/workflows/gate.yml"];
 
 /// The merge gate every repository the Firm *develops in* carries, with the
@@ -642,6 +640,8 @@ struct Repository {
     has_issues: bool,
     has_projects: bool,
     has_wiki: bool,
+    #[serde(default)]
+    private: Option<bool>,
 }
 
 /// The repository-level settings this command reconciles, as the body of one
@@ -1628,7 +1628,10 @@ async fn workflow_template_scope(
             "/contents/{}/package.json",
             project_repository::PORTAL_DIRECTORY
         )))
-        .await?;
+        .await?
+        || client
+            .exists(&client.repo_path("/contents/vite.config.ts"))
+            .await?;
     Ok(WorkflowTemplateScope::Project { has_portal })
 }
 
@@ -1837,6 +1840,24 @@ async fn read_live_rulesets(
     Ok((ruleset_ids, live_rulesets))
 }
 
+fn report_visibility_finding(dry_run: bool, policy: RepositoryPolicy, repository: &Repository) {
+    if !dry_run {
+        return;
+    }
+    let live = if repository.private == Some(true) {
+        Visibility::Private
+    } else {
+        Visibility::Public
+    };
+    if live != policy.default_visibility {
+        eprintln!(
+            "==> visibility finding: live is {live:?}, organization default is {:?}; \
+             this command never flips visibility (staging sample repositories are public by design)",
+            policy.default_visibility
+        );
+    }
+}
+
 async fn reconcile(
     policy: RepositoryPolicy,
     client: &GitHubClient,
@@ -1845,6 +1866,7 @@ async fn reconcile(
 ) -> Result<()> {
     eprintln!("==> reconciling {}", client.repository);
     let repository: Repository = client.get_json(&client.repo_path("")).await?;
+    report_visibility_finding(dry_run, policy, &repository);
 
     // Assertions run before any write, so a repository that cannot satisfy the
     // policy is left exactly as it was rather than half-reconciled.
@@ -2509,6 +2531,7 @@ mod tests {
             has_issues: false,
             has_projects: false,
             has_wiki: false,
+            private: Some(false),
         }
     }
 
@@ -3779,7 +3802,21 @@ mod tests {
         }
     }
 
+    /// A workflow that defines the aggregating `ci` job `assert_required_check_job`
+    /// looks for, without being a Project `ci.yml` template.
+    const REQUIRED_CHECK_WORKFLOW: &str =
+        "jobs:\n  rust:\n    name: cargo test (workspace)\n  ci:\n    name: ci\n";
+
     async fn mount_reads(server: &MockServer, ruleset: &RulesetPayload, labels: Vec<Label>) {
+        mount_reads_with_ci(server, ruleset, labels, REQUIRED_CHECK_WORKFLOW).await;
+    }
+
+    async fn mount_reads_with_ci(
+        server: &MockServer,
+        ruleset: &RulesetPayload,
+        labels: Vec<Label>,
+        ci_workflow: &str,
+    ) {
         // The host names its own Actions App, and the required-check rule is
         // built from that id.
         Mock::given(method("GET"))
@@ -3829,13 +3866,14 @@ mod tests {
             .mount(server)
             .await;
         // The workflow must actually define the `ci` job the gate requires.
+        // Accept is pinned to raw+json so a later Contents JSON mock for the
+        // same path (blob sha on write) is not stolen by this stub.
         Mock::given(method("GET"))
             .and(path(
                 "/repos/acme/navigator/contents/.github/workflows/ci.yml",
             ))
-            .respond_with(ResponseTemplate::new(200).set_body_string(
-                "jobs:\n  rust:\n    name: cargo test (workspace)\n  ci:\n    name: ci\n",
-            ))
+            .and(header("accept", "application/vnd.github.raw+json"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(ci_workflow))
             .mount(server)
             .await;
         Mock::given(method("GET"))
@@ -3880,10 +3918,27 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn required_check_job_accepts_the_scaffolded_gate_workflow() {
-        // A Project repository written by `navigator site projects repository
-        // scaffold` has no ci.yml at all. Before both spellings were accepted
-        // this read as "the repository has no CI" and refused to govern it.
+    async fn required_check_job_accepts_the_scaffolded_ci_workflow() {
+        // `scaffold` writes `.github/workflows/ci.yml` as a thin caller whose
+        // one job is named `ci`. A retired `gate.yml` is still accepted when
+        // `ci.yml` is absent; this test is the live scaffolded spelling.
+        let server = MockServer::start().await;
+        let client = test_client(&server);
+        Mock::given(method("GET"))
+            .and(path(
+                "/repos/acme/navigator/contents/.github/workflows/ci.yml",
+            ))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(project_repository::workflow(FIXTURE_ACTION_VERSION)),
+            )
+            .mount(&server)
+            .await;
+        assert_required_check_job(&client).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn required_check_job_accepts_a_retired_gate_yml() {
         let server = MockServer::start().await;
         let client = test_client(&server);
         Mock::given(method("GET"))
@@ -4207,6 +4262,11 @@ mod tests {
             .respond_with(ResponseTemplate::new(404))
             .mount(&server)
             .await;
+        Mock::given(method("GET"))
+            .and(path("/repos/acme/navigator/contents/vite.config.ts"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
         assert_eq!(
             workflow_template_scope(&client, COMMON_POLICY)
                 .await
@@ -4229,6 +4289,11 @@ mod tests {
         Mock::given(method("GET"))
             .and(path("/repos/acme/navigator/contents/portal/package.json"))
             .respond_with(ResponseTemplate::new(200).set_body_string("{}"))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/repos/acme/navigator/contents/vite.config.ts"))
+            .respond_with(ResponseTemplate::new(404))
             .mount(&server)
             .await;
         assert_eq!(
@@ -4261,17 +4326,18 @@ mod tests {
     }
 
     /// A drift-free repository plans no `UpdateWorkflow` action at all — the
-    /// diff-detection half of ENG-378: a matching `gate.yml` and a matching
-    /// `publish.yml` leave `reconcile` with nothing left to open a pull
-    /// request for.
+    /// diff-detection half of ENG-378: a matching `ci.yml` leaves `reconcile`
+    /// with nothing left to open a pull request for.
     #[tokio::test]
     async fn reconcile_plans_no_workflow_action_when_content_already_matches() {
         let server = MockServer::start().await;
         let client = test_client(&server);
-        mount_reads(
+        let matching = project_repository::workflow(FIXTURE_ACTION_VERSION);
+        mount_reads_with_ci(
             &server,
             &desired_branch_ruleset(TEST_ACTIONS_APP_ID, &[]),
             Vec::new(),
+            &matching,
         )
         .await;
         Mock::given(method("GET"))
@@ -4285,14 +4351,8 @@ mod tests {
             .mount(&server)
             .await;
         Mock::given(method("GET"))
-            .and(path(format!(
-                "/repos/acme/navigator/contents/{}",
-                project_repository::WORKFLOW
-            )))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_string(project_repository::workflow(FIXTURE_ACTION_VERSION)),
-            )
+            .and(path("/repos/acme/navigator/contents/vite.config.ts"))
+            .respond_with(ResponseTemplate::new(404))
             .mount(&server)
             .await;
 
@@ -4309,17 +4369,19 @@ mod tests {
         );
     }
 
-    /// The other half: a `gate.yml` pinned to a stale version is drift, and
+    /// The other half: a `ci.yml` pinned to a stale version is drift, and
     /// `reconcile` opens a branch, commits the regenerated file, and opens a
     /// pull request for it rather than writing `main` directly.
     #[tokio::test]
-    async fn reconcile_opens_a_pull_request_when_gate_yml_is_pinned_to_a_stale_version() {
+    async fn reconcile_opens_a_pull_request_when_ci_yml_is_pinned_to_a_stale_version() {
         let server = MockServer::start().await;
         let client = test_client(&server);
-        mount_reads(
+        let live_ci_yml = project_repository::workflow("26.7.1");
+        mount_reads_with_ci(
             &server,
             &desired_branch_ruleset(TEST_ACTIONS_APP_ID, &[]),
             Vec::new(),
+            &live_ci_yml,
         )
         .await;
         Mock::given(method("GET"))
@@ -4332,17 +4394,11 @@ mod tests {
             .respond_with(ResponseTemplate::new(404))
             .mount(&server)
             .await;
-        let live_gate_yml = project_repository::workflow("26.7.1");
         Mock::given(method("GET"))
-            .and(path(format!(
-                "/repos/acme/navigator/contents/{}",
-                project_repository::WORKFLOW
-            )))
-            .and(header("accept", "application/vnd.github.raw+json"))
-            .respond_with(ResponseTemplate::new(200).set_body_string(&live_gate_yml))
+            .and(path("/repos/acme/navigator/contents/vite.config.ts"))
+            .respond_with(ResponseTemplate::new(404))
             .mount(&server)
             .await;
-
         let branch = workflow_update_branch(FIXTURE_ACTION_VERSION);
         Mock::given(method("GET"))
             .and(path("/repos/acme/navigator/git/ref/heads/main"))
@@ -4369,7 +4425,7 @@ mod tests {
             .and(header("accept", "application/vnd.github+json"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "sha": "live-blob-sha",
-                "content": BASE64_STANDARD.encode(&live_gate_yml),
+                "content": BASE64_STANDARD.encode(&live_ci_yml),
             })))
             .mount(&server)
             .await;
@@ -4428,13 +4484,8 @@ mod tests {
             .mount(&server)
             .await;
         Mock::given(method("GET"))
-            .and(path(format!(
-                "/repos/acme/navigator/contents/{}",
-                project_repository::WORKFLOW
-            )))
-            .respond_with(
-                ResponseTemplate::new(200).set_body_string(project_repository::workflow("26.7.1")),
-            )
+            .and(path("/repos/acme/navigator/contents/vite.config.ts"))
+            .respond_with(ResponseTemplate::new(404))
             .mount(&server)
             .await;
 
@@ -4471,6 +4522,11 @@ mod tests {
             .await;
         Mock::given(method("GET"))
             .and(path("/repos/acme/navigator/contents/portal/package.json"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/repos/acme/navigator/contents/vite.config.ts"))
             .respond_with(ResponseTemplate::new(404))
             .mount(&server)
             .await;

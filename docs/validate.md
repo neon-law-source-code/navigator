@@ -24,7 +24,7 @@ This is also the exact command every Project repository's generated CI gate runs
 
 ## What it runs
 
-Seven normal validation passes happen in this order:
+Nine normal validation passes happen in this order:
 
 1. **The classified rule engine** (`rules::ClassifiedRuleEngine::lint_directory`) walks every `.md` file, classifies
    each one by its declared `kind:` (notation template, event, blog post, workshop, GitHub notation, matter dashboard,
@@ -48,10 +48,17 @@ Seven normal validation passes happen in this order:
 6. **A document-pointer pass** (rule `Y003`) validates `documents/**/*.yml` only when the validation root is a Project
    repository declared by `navigator.yaml`. It checks the closed asset kind and visibility vocabularies, current
    revision metadata, revision-chain linkage, and the retained document extension without reading the network or bytes.
-7. **A consumed mutable-tag pass** walks YAML files and Containerfiles/Dockerfiles for an image or binary reference
+7. **A Project-manifest pass** (rules `Y004`–`Y008`) runs when the walked root carries `navigator.yaml` or the retired
+   `navigator.yml` spelling. It holds `host` to a hostname shape, `project` to `store::projects::is_valid_code`,
+   `no_live_row` to a non-empty reason string, refuses an unknown top-level key by naming the accepted set, and tells a
+   `navigator.yml` file to rename to `navigator.yaml`.
+8. **An origin pass** (rule `Y009`) scans each built application's `dist/` when the walked root is a Project
+   repository. Empty first labels (`.test`) and dots/slashes-only are not hosts. Missing `dist/` is skipped so a
+   source-only tree can still validate; a present `dist/` with an off-origin host fails.
+9. **A consumed mutable-tag pass** walks YAML files and Containerfiles/Dockerfiles for an image or binary reference
    pinned to a mutable tag (`latest`, a branch name) rather than a digest or release version, and fails on each one
    found. This has no rule code either.
-When `--fix` is passed, it replaces those seven passes entirely: it applies every rule's safe-by-construction autofix
+When `--fix` is passed, it replaces those nine passes entirely: it applies every rule's safe-by-construction autofix
 across the tree, prints the file it changed, re-lints, and prints whatever the autofix could not resolve. This is the
 same fix the `navigator-lsp` `source.fixAll` editor action ships.
 
@@ -83,7 +90,7 @@ error: docs/example.md:104 S101: Line is 130 characters (max 120)
 
 ## The error recapitulation
 
-A run that found any error closes with an errors-only block naming every failing line again, after all seven passes have
+A run that found any error closes with an errors-only block naming every failing line again, after all nine passes have
 printed:
 
 ```text
@@ -92,17 +99,16 @@ error: docs/example.md:104 S101: Line is 130 characters (max 120)
 error: locales/xx/home.yaml:1 Y002: locale directory `xx` is not published; only `en` is allowed
 ```
 
-It is a separate block rather than a reordering because the five standalone passes print *after* the markdown lint's
-summary line, so no ordering within a single pass could gather a YAML error and a mutable-tag error together. Being
-additive, it also leaves the primary listing in tree order — per pass, per file, per line — so a file's findings stay
-adjacent. Reading it is the supported way to answer "which line do I fix"; the summary counts and the exit code say only
-*how many*.
+It is a separate block rather than a reordering because the standalone passes print *after* the markdown lint's summary
+line, so no ordering within a single pass could gather a YAML error and a mutable-tag error together. Being additive, it
+also leaves the primary listing in tree order — per pass, per file, per line — so a file's findings stay adjacent.
+Reading it is how to answer "which line do I fix"; the summary counts and the exit code say only *how many*.
 
 ## Rule codes
 
-Every code below is defined in `rules/src/`, except `Y001`, `Y002`, and `Y003`, which live in `cli/src/main.rs` because
-the typed YAML passes run outside the `rules` crate entirely. "Autofix" means `--fix` rewrites the file for that
-violation without a human decision; every other code needs a person to resolve it.
+Every code below is defined in `rules/src/`, except `Y001`–`Y009`, which live in `cli/src/` because the typed YAML,
+Project-manifest, and origin passes run outside the `rules` crate entirely. "Autofix" means `--fix` rewrites the file
+for that violation without a human decision; every other code needs a person to resolve it.
 
 ### S-family — cross-cutting structure
 
@@ -225,3 +231,9 @@ violation without a human decision; every other code needs a person to resolve i
 | `Y001` | Error | A `seeds/*.yaml` document must be accepted by `navigator site import`. | No |
 | `Y002` | Error | An English `locales/` catalog must deserialize as the page its stem names. | No |
 | `Y003` | Error | A Project repository's `documents/**/*.yml` pointer must name a valid asset revision. | No |
+| `Y004` | Error | A Project manifest `host` must be a hostname (no scheme, port, or path). | No |
+| `Y005` | Error | A Project manifest `project` must be a valid Navigator Project code. | No |
+| `Y006` | Error | A Project manifest top-level key must be one of the accepted set. | No |
+| `Y007` | Error | A Project manifest `no_live_row` must be a non-empty reason string. | No |
+| `Y008` | Error | The Project manifest filename is `navigator.yaml`; rename `navigator.yml`. | No |
+| `Y009` | Error | A built Project portal must not name an off-origin host. | No |

@@ -98,23 +98,8 @@ pub const MANIFEST_CODE_KEY: &str = "project";
 /// boolean records that someone silenced a finding without recording why.
 pub const MANIFEST_ROWLESS_KEY: &str = "no_live_row";
 
-/// A Project repository's root manifest.
-///
-/// Unknown keys pass through untouched — `navigator.yaml` also carries `host:`,
-/// and a repository is free to add its own keys without this command refusing
-/// to read the two it cares about.
-#[derive(Debug, Clone, Default, serde::Deserialize)]
-struct Manifest {
-    project: Option<String>,
-    /// Deliberately the raw YAML value rather than `Option<String>`. Deserializing
-    /// straight into a string is *lenient*: `no_live_row: true` coerces to the
-    /// string `"true"` and reads as a perfectly good reason, which is exactly the
-    /// boolean-shaped suppression [`MANIFEST_ROWLESS_KEY`] exists to refuse. The
-    /// value is held untyped here and required to be a genuine string below.
-    no_live_row: Option<serde_yaml::Value>,
-}
-
-/// One checkout found under the scan root.
+/// The named fields are exactly [`super::manifest::ACCEPTED_KEYS`]. Drift
+/// deserializes through [`super::manifest::parse`] so the two cannot disagree.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScannedRepository {
     /// The checkout's directory name. This is the repository name, and
@@ -413,9 +398,9 @@ fn scan_repository(directory: &Path) -> ScannedRepository {
         Ok(contents) => contents,
         Err(error) => return unreadable(error.to_string()),
     };
-    let manifest: Manifest = match serde_yaml::from_str(&contents) {
+    let manifest = match super::manifest::parse(&contents) {
         Ok(manifest) => manifest,
-        Err(error) => return unreadable(format!("not valid YAML: {error}")),
+        Err(error) => return unreadable(error),
     };
     let declared = manifest
         .project
@@ -1138,6 +1123,35 @@ mod tests {
                 .is_some_and(|detail| detail.contains("not a valid Project code")),
             "{:?}",
             found[0].manifest_error
+        );
+    }
+
+    #[test]
+    fn the_drift_reader_deserializes_every_accepted_manifest_key() {
+        let yaml = concat!(
+            "host: staging.neonlaw.com\n",
+            "project: acme\n",
+            "no_live_row: the matter closed\n",
+            "allowed_hosts:\n  www.w3.org: ns\n",
+            "allowed_prefixes:\n  \"https://react.dev/errors/\": react\n",
+        );
+        let manifest = super::super::manifest::parse(yaml).unwrap();
+        assert_eq!(manifest.host.as_deref(), Some("staging.neonlaw.com"));
+        assert_eq!(manifest.project.as_deref(), Some("acme"));
+        assert_eq!(
+            manifest.allowed_hosts.get("www.w3.org").map(String::as_str),
+            Some("ns")
+        );
+        assert_eq!(manifest.allowed_prefixes.len(), 1);
+        assert_eq!(
+            super::super::manifest::ACCEPTED_KEYS,
+            [
+                "allowed_hosts",
+                "allowed_prefixes",
+                "host",
+                "no_live_row",
+                "project"
+            ]
         );
     }
 }

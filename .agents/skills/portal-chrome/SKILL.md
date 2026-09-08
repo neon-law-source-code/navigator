@@ -99,9 +99,10 @@ every fill and stroke — a hex value there is the one mark on the page that wil
 ## Before you open a pull request
 
 ```bash
-navigator site projects repository validate . --repository <code>
+navigator validate .
 cd portal && pnpm check
 ```
 
-The `--repository` flag is not optional in practice: without it the CLI derives the code from the checkout directory,
-which fails a repository that is correct.
+`navigator validate` reads `project:` from `navigator.yaml`. Without that key the
+layout half does not run, and a checkout whose directory name is not the Project
+code still validates against the manifest.

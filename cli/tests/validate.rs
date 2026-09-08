@@ -19,8 +19,32 @@ fn write(dir: &Path, rel: &str, contents: &str) {
     fs::write(path, contents).unwrap();
 }
 
+fn write_project_shell(dir: &Path, code: &str) {
+    write(
+        dir,
+        "navigator.yaml",
+        &format!("host: staging.neonlaw.com\nproject: {code}\n"),
+    );
+    write(dir, "README.md", &format!("# {code}\n\nProject source.\n"));
+    write(
+        dir,
+        ".github/workflows/ci.yml",
+        r#"name: ci
+on: [pull_request]
+jobs:
+  ci:
+    uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@26.8.23
+    secrets: inherit
+    with:
+      version: "26.8.23"
+"#,
+    );
+}
+
 fn navigator() -> Command {
-    Command::cargo_bin("navigator").unwrap()
+    let mut command = Command::cargo_bin("navigator").unwrap();
+    command.env_remove("GITHUB_REPOSITORY");
+    command
 }
 
 #[test]
@@ -438,7 +462,7 @@ fn validate_checks_document_pointer_shape_only_in_a_project_repository() {
 #[test]
 fn validate_accepts_a_complete_document_pointer_and_rejects_chain_mismatches() {
     let dir = TempDir::new().unwrap();
-    write(dir.path(), "navigator.yaml", "project: acme\n");
+    write_project_shell(dir.path(), "acme");
     let path = "documents/agreements/terms.pdf.yml";
     write(
         dir.path(),
@@ -1179,4 +1203,60 @@ fn validate_errors_only_is_rejected_with_fix() {
         .stderr(str::contains(
             "the argument '--errors-only' cannot be used with '--fix'",
         ));
+}
+
+#[test]
+fn validate_refuses_a_project_manifest_that_is_not_a_hostname_or_code() {
+    let dir = TempDir::new().unwrap();
+    write(
+        dir.path(),
+        "navigator.yaml",
+        "host: https://staging.neonlaw.com\nproject: Not A Code\n",
+    );
+    navigator()
+        .arg("validate")
+        .arg(dir.path())
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(str::contains("Y004"))
+        .stdout(str::contains("Y005"));
+}
+
+#[test]
+fn validate_refuses_an_unknown_manifest_key_and_a_boolean_no_live_row() {
+    let dir = TempDir::new().unwrap();
+    write(
+        dir.path(),
+        "navigator.yaml",
+        "host: staging.neonlaw.com\nproject: acme\nexempt_roots: [docs]\nno_live_row: true\n",
+    );
+    navigator()
+        .arg("validate")
+        .arg(dir.path())
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(str::contains("Y006"))
+        .stdout(str::contains("exempt_roots"))
+        .stdout(str::contains("Y007"))
+        .stdout(str::contains("written as text"));
+}
+
+#[test]
+fn validate_tells_a_yml_manifest_to_rename() {
+    let dir = TempDir::new().unwrap();
+    write(
+        dir.path(),
+        "navigator.yml",
+        "host: staging.neonlaw.com\nproject: acme\n",
+    );
+    navigator()
+        .arg("validate")
+        .arg(dir.path())
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(str::contains("Y008"))
+        .stdout(str::contains("the manifest is navigator.yaml, rename it"));
 }

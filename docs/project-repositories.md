@@ -512,6 +512,36 @@ build time, and repository metadata — as GCS custom metadata surfaced at `x-go
 Project repository's `main` and letting the caller workflow publish the reverted tree; because the action never deletes,
 every rollback is a forward publish rather than a recovery of something removed.
 
+### Publishing from an operator's machine
+
+The action is the Project repository's lane. Two cases have no runner to publish from: the three public sample
+repositories deliberately carry no publish workflow, and a production-profile boot never writes a portal bundle, so a
+bundle that has gone missing from a deployment's bucket is not put back by anything automatic. The operator lane for
+both is one command:
+
+```bash
+cargo run -p cli -- ops application publish --bucket neon-law-stg-applications --dry-run
+cargo run -p cli -- ops application publish --bucket neon-law-stg-applications --project sample-litigation
+```
+
+It runs `dev sample-project`'s clone, install, build, and manifest checks in a temporary directory, then walks
+`store::sample_project::publish_plan` and writes every object to the named bucket through the operator's own Application
+Default Credentials — hashed assets first, `index.html` last, and nothing ever deleted. Without `--project` it publishes
+every sample matter; with one it publishes that Project alone, cloning `--repo` when given, else a sample matter's
+compiled-in repository, else the URL recorded on the Project row — the one case that needs this worktree's `.devx/env`
+sourced, since a publish to a deployment should not otherwise depend on a local database being up. `--ref` pins a branch
+or tag.
+
+Three things are deliberate. **`--bucket` is required and reads no environment variable**: a sourced `.devx/env` sets
+`NAVIGATOR_APPLICATIONS_BUCKET` to the local `fs` path, so a fallback would hand an operator a silent wrong target, and
+naming a bucket is naming a deployment. **The Project code comes from the checkout's own `navigator.yaml`**, checked by
+`store::sample_project::project_code_for` against the code asked for, so a bundle naming a different Project is refused
+before any object is written; the repository name is never consulted. **Every object is written on every publish** — the
+plan enumerates from disk and nothing is compared against the bucket — which is what keeps the bucket's object-age
+Delete rule from ever reaching a live asset. `--dry-run` prints the resolved bucket, every key in upload order, the
+object count, and the last key, and writes nothing; it is the rehearsal before a publish to a real deployment. No
+deployment coordinate enters the repository: the bucket is an argument and the credential is the operator's.
+
 The versioned reusable-workflow home for the shared caller is `ux/core`; wiring the thin caller there — so a Project
 repository consumes one `uses:` line instead of transcribing the job above — is a hand-off, because this repository
 cannot push to `ux/core`.

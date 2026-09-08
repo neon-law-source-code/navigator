@@ -21,6 +21,7 @@ use std::process::Command;
 use anyhow::{bail, Context, Result};
 use clap::Subcommand;
 
+mod application_publish;
 pub mod brand;
 mod browser_e2e;
 mod chrome;
@@ -950,6 +951,24 @@ pub fn dispatch(command: crate::Command) -> Result<()> {
             tag,
             assert_signing_iam,
         }),
+        crate::Command::Ops(crate::OpsCmd::Application {
+            action:
+                crate::ApplicationAction::Publish {
+                    bucket,
+                    project,
+                    repo,
+                    git_ref,
+                    dry_run,
+                    keep,
+                },
+        }) => application_publish::run(
+            &bucket,
+            project.as_deref(),
+            repo.as_deref(),
+            git_ref.as_deref(),
+            dry_run,
+            keep,
+        ),
         crate::Command::Ops(crate::OpsCmd::Deployments { deployments_dir }) => {
             deployments::check(&deployments::root(deployments_dir.as_deref())?)
         }

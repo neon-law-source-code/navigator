@@ -65,11 +65,10 @@ async fn a_seed_without_sample_matters_has_no_disposable_projects_or_people() {
         .unwrap();
     assert_eq!(
         brands,
-        vec![
-            "delete-your-data".to_string(),
-            "lawyer-shook".to_string(),
-            "neon".to_string(),
-        ]
+        store::firms::CLOSED_BRAND_KEYS
+            .iter()
+            .map(|key| (*key).to_string())
+            .collect::<Vec<_>>(),
     );
 }
 
@@ -670,11 +669,10 @@ async fn the_dev_boot_seeds_the_practice_once() {
         .unwrap();
     assert_eq!(
         brands,
-        vec![
-            "delete-your-data".to_string(),
-            "lawyer-shook".to_string(),
-            "neon".to_string(),
-        ]
+        store::firms::CLOSED_BRAND_KEYS
+            .iter()
+            .map(|key| (*key).to_string())
+            .collect::<Vec<_>>(),
     );
 
     for project in projects::all(&surreal).await.unwrap() {

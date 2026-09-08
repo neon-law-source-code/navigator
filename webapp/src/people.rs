@@ -398,6 +398,12 @@ fn render_people(resource: &Resource<Result<PeopleView, ServerFnError>>) -> Elem
                 nav { class: "lawyer-nav",
                     a { class: "nav-link", href: "/app/projects", "Projects" }
                     a { class: "nav-link", href: "/auth/logout", "Sign out" }
+                    crate::components::AppProfileMenu {
+                        destinations: vec![
+                            crate::components::AppNavLink::new("Projects", "/app/projects"),
+                            crate::components::AppNavLink::new("Sign out", "/auth/logout"),
+                        ],
+                    }
                 }
                 main { id: "admin-people",
                     h1 { "People" }

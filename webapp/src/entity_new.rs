@@ -156,6 +156,12 @@ fn entity_new_body(view: &EntityNewView) -> Element {
         nav { class: "lawyer-nav",
             a { class: "nav-link", href: "/app/projects", "Projects" }
             a { class: "nav-link", href: "/auth/logout", "Sign out" }
+            crate::components::AppProfileMenu {
+                destinations: vec![
+                    crate::components::AppNavLink::new("Projects", "/app/projects"),
+                    crate::components::AppNavLink::new("Sign out", "/auth/logout"),
+                ],
+            }
         }
         main { id: "entity-new", class: "nav-theme",
             if let Some(error) = view.error.as_ref() {

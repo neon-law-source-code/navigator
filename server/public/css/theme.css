@@ -1999,6 +1999,67 @@ main#letter-detail {
   font-size: 0.95rem;
 }
 
+/* The signed-in viewer's avatar owns the application destinations. Native
+ * `details` keeps the menu usable before hydration and without a script. */
+.lawyer-nav__profile {
+  position: relative;
+  order: 2;
+  margin-left: auto;
+}
+
+.lawyer-nav__profile-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.lawyer-nav__profile-trigger::-webkit-details-marker {
+  display: none;
+}
+
+.lawyer-nav__avatar {
+  display: block;
+  width: 36px;
+  height: 36px;
+  border: 2px solid var(--nav-color-border);
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.lawyer-nav__profile-chevron {
+  color: var(--nav-color-link);
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.lawyer-nav__profile-menu {
+  position: absolute;
+  right: 0;
+  z-index: 10;
+  display: grid;
+  min-width: 10rem;
+  gap: 0.25rem;
+  padding: 0.5rem;
+  margin-top: 0.5rem;
+  border: 1px solid var(--nav-color-border);
+  border-radius: var(--nav-radius-sm);
+  background: var(--nav-color-surface-raised);
+  box-shadow: 0 0.5rem 1.25rem rgb(15 23 42 / 15%);
+}
+
+.lawyer-nav__profile-menu .nav-link {
+  display: block;
+  padding: 0.5rem 0.65rem;
+  border-radius: var(--nav-radius-sm);
+  white-space: nowrap;
+}
+
+.lawyer-nav__profile-menu .nav-link:hover {
+  background: var(--nav-color-surface);
+}
+
 /* The deploy's brand mark, at the navbar's trailing edge. `margin-left: auto`
  * is what puts it on the right — it is the last child, so the free space
  * collects before it however many destinations the viewer's role earned. */

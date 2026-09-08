@@ -221,6 +221,14 @@ allow if {
     is_clerk(input.session)
 }
 
+# The authenticated viewer's own avatar is safe for every tier and never
+# accepts a person id from the caller. The handler resolves the id from the
+# signed session, so this route cannot become a directory read by accident.
+allow if {
+    input.path == ["app", "me", "avatar"]
+    is_authenticated(input.session)
+}
+
 # /app/brands is the house-of-brands home: every registered brand's typeface.
 # Owner only (ENG-493) — narrowed from every firm tier, a deliberate removal
 # of the brand style reference Lawyer and Clerk could reach before. Owner

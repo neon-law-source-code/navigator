@@ -30,16 +30,17 @@ use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::components::{
-    wire_runs, Accordion, AppFooter, AppLogo, AppNavbar, Avatar, BackBreadcrumb, Card, CatalogHero,
-    Choice, ChoiceGroup, ChoiceGroupOption, ClientDriView, ClientDriViewBanner, CodeBlock, Column,
-    ConfirmDelete, DataTable, DayRateBadge, ExternalLink, Field, FooterAttorney, FooterBarLicense,
-    FooterNavLink, FooterOffice, FormCard, GitHubStars, Hero, HeroAlign, HeroLevel, Icon, IconName,
-    LawyerPortalBreadcrumb, LegalBlueprintDisclaimer, NavigatorDestination, NavigatorFooter,
-    NavigatorFooterLink, NavigatorNavbar, NavigatorShell, Pagination, PeopleListInputs,
-    PersonChoice, PersonPicker, PricingCard, PricingSection, Progress, PublicShell, QuestionStage,
-    RowActions, RunParagraph, SampleMattersBanner, SiteFooterLegal, SiteHeader, SiteNavLink,
-    SocialMeta, SortState, Stage, StageWidth, StepMeta, Stepper, StepperPanel, TestimonialCard,
-    TestimonialSection, Toast, ToastTone, THEME_STYLESHEET_HREF,
+    wire_runs, Accordion, AppFooter, AppLogo, AppNavbar, AppProfileMenu, Avatar, BackBreadcrumb,
+    Card, CatalogHero, Choice, ChoiceGroup, ChoiceGroupOption, ClientDriView, ClientDriViewBanner,
+    CodeBlock, Column, ConfirmDelete, DataTable, DayRateBadge, ExternalLink, Field, FooterAttorney,
+    FooterBarLicense, FooterNavLink, FooterOffice, FormCard, GitHubStars, Hero, HeroAlign,
+    HeroLevel, Icon, IconName, LawyerPortalBreadcrumb, LegalBlueprintDisclaimer,
+    NavigatorDestination, NavigatorFooter, NavigatorFooterLink, NavigatorNavbar, NavigatorShell,
+    Pagination, PeopleListInputs, PersonChoice, PersonPicker, PricingCard, PricingSection,
+    Progress, PublicShell, QuestionStage, RowActions, RunParagraph, SampleMattersBanner,
+    SiteFooterLegal, SiteHeader, SiteNavLink, SocialMeta, SortState, Stage, StageWidth, StepMeta,
+    Stepper, StepperPanel, TestimonialCard, TestimonialSection, Toast, ToastTone,
+    THEME_STYLESHEET_HREF,
 };
 // The vendor marks come from their own module rather than the theme root: they
 // are the one component whose colours are a third party's rather than the
@@ -453,6 +454,7 @@ pub fn DesignGallery() -> Element {
             FormShowcase {}
             PeopleListShowcase {}
             AppNavbarShowcase {}
+            AppProfileMenuShowcase {}
             AppFooterShowcase {}
             NavigatorChromeShowcase {}
             NavigationShowcase {}
@@ -518,8 +520,8 @@ fn AppNavbarShowcase() -> Element {
         section {
             h2 { "Application navbar" }
             p {
-                "The one navbar every authenticated /app page renders. The firm workspaces are "
-                "gated by the viewer's tier, and the deploy's brand mark sits at the trailing "
+                "The one navbar every authenticated /app page renders. The viewer's avatar opens "
+                "the role-filtered destinations, and the deploy's brand mark sits at the trailing "
                 "edge — a prop, so a white-label install publishes its own."
             }
             for (label, role) in tiers {
@@ -531,6 +533,33 @@ fn AppNavbarShowcase() -> Element {
                         href: "/".to_string(),
                         brand_name: "Example Law".to_string(),
                     }),
+                }
+            }
+        }
+    }
+}
+
+/// The top-right avatar disclosure used by every authenticated application
+/// route. This is the production [`AppNavbar`] with the smallest menu, so the
+/// gallery shows the actual keyboard-friendly `details` interaction rather
+/// than a static imitation.
+#[component]
+fn AppProfileMenuShowcase() -> Element {
+    rsx! {
+        section {
+            h2 { "Application profile menu" }
+            p {
+                "The circular avatar is the always-visible trigger. Opening it reveals the "
+                "viewer's Projects destination and Sign out action without requiring client-side "
+                "JavaScript. The real route serves the uploaded private avatar or initials fallback "
+                "from the authenticated session."
+            }
+            nav { class: "lawyer-nav", "aria-label": "Application",
+                AppProfileMenu {
+                    destinations: vec![
+                        crate::components::AppNavLink::new("Projects", "/app/projects"),
+                        crate::components::AppNavLink::new("Sign out", "/auth/logout"),
+                    ],
                 }
             }
         }
@@ -820,8 +849,8 @@ fn TestimonialShowcase() -> Element {
     }
 }
 
-/// The avatar (image, or generated-initials fallback) used on `/team` and the
-/// admin Person edit page.
+/// The avatar (image, or generated-initials fallback) used by the profile menu
+/// and the admin Person edit page.
 #[component]
 fn AvatarShowcase() -> Element {
     rsx! {
@@ -829,9 +858,8 @@ fn AvatarShowcase() -> Element {
             h2 { "Avatar" }
             p {
                 "An uploaded image when one is set, or the person's initials otherwise — "
-                "shared by "
-                code { "/team" }
-                ", the testimonial cards, and the admin Person avatar upload preview."
+                "shared by the application profile menu, testimonial cards, and the admin Person "
+                "avatar upload preview."
             }
             div { class: "design-avatars", style: "display:flex; gap:1rem; align-items:center;",
                 Avatar {

@@ -776,6 +776,110 @@ async fn admin_adds_a_person_through_the_people_form() {
     c.close().await.unwrap();
 }
 
+/// The avatar upload and the shared profile menu must work together in a real
+/// browser: selecting a file submits the multipart form, the admin page shows
+/// the stored image, and the authenticated application chrome points at the
+/// viewer-only image route with the existing destinations behind the disclosure.
+#[tokio::test]
+async fn admin_uploads_an_avatar_and_sees_the_profile_menu() {
+    let Some(c) = new_client_or_skip().await else {
+        return;
+    };
+    let surreal = store::surreal::connect_from_env()
+        .await
+        .expect("connect to the port-forwarded SurrealDB");
+    let person = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "E2E Avatar Person",
+            format!("e2e-avatar-{}@example.com", Uuid::now_v7()),
+            store::persons::Role::Lawyer,
+        ),
+    )
+    .await
+    .expect("seed the synthetic avatar person");
+    let unique = Uuid::now_v7();
+    let path = std::env::temp_dir().join(format!("navigator-avatar-{unique}.png"));
+    std::fs::write(
+        &path,
+        [
+            0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48,
+            0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00,
+            0x00, 0x1f, 0x15, 0xc4, 0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41, 0x54, 0x78,
+            0x9c, 0x62, 0x00, 0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00,
+            0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+        ],
+    )
+    .expect("write the synthetic avatar fixture");
+
+    login_as_admin(&c).await;
+    c.goto(&format!("{}/app/admin/people/{}", base_url(), person.id))
+        .await
+        .unwrap();
+    let picker = c
+        .wait()
+        .at_most(Duration::from_secs(10))
+        .for_element(Locator::Css("#person-avatar input[type='file']"))
+        .await
+        .expect("the person page renders its avatar picker");
+    picker
+        .send_keys(path.to_str().expect("avatar path is valid UTF-8"))
+        .await
+        .expect("select the synthetic avatar");
+    scroll_and_js_click(&c, "#person-avatar form button[type='submit']").await;
+    wait_for_path(
+        &c,
+        &format!("/app/admin/people/{}", person.id),
+        Duration::from_secs(20),
+    )
+    .await;
+    let person_source = c.source().await.unwrap();
+    assert!(
+        person_source.contains(&format!("/app/admin/people/{}/avatar", person.id)),
+        "the admin page should render the uploaded avatar: {person_source}"
+    );
+
+    c.goto(&format!("{}/app/projects", base_url()))
+        .await
+        .unwrap();
+    let avatar = c
+        .wait()
+        .at_most(Duration::from_secs(10))
+        .for_element(Locator::Css(".lawyer-nav__avatar"))
+        .await
+        .expect("the shared app chrome renders the viewer avatar");
+    assert_eq!(
+        avatar.attr("src").await.unwrap().as_deref(),
+        Some("/app/me/avatar")
+    );
+    let trigger = c
+        .find(Locator::Css(".lawyer-nav__profile-trigger"))
+        .await
+        .expect("the avatar is a profile-menu trigger");
+    trigger.click().await.expect("open the profile menu");
+    let open_menu = c
+        .find(Locator::Css(".lawyer-nav__profile[open]"))
+        .await
+        .expect("the native disclosure opens");
+    assert!(
+        open_menu
+            .find(Locator::Css("a[href='/app/projects']"))
+            .await
+            .is_ok(),
+        "Projects should be inside the opened profile menu"
+    );
+    assert!(
+        open_menu
+            .find(Locator::Css("a[href='/auth/logout']"))
+            .await
+            .is_ok(),
+        "Sign out should be inside the opened profile menu"
+    );
+
+    std::fs::remove_file(path).ok();
+    c.close().await.unwrap();
+}
+
 #[tokio::test]
 async fn lawyer_creates_a_client_inline_on_the_project_form() {
     // Drives the inline "New client" form on /app/projects/new end to end in

@@ -350,8 +350,7 @@ fn editor_extension_manifest_declares_the_license_of_record() {
 /// lies beyond it is left to BUSL's own undefined term, and the Firm's reading
 /// of that term lives in `NOTICE`, where it binds nobody.
 ///
-/// The same paragraph opens the grant in `navigator-ux` and in the Homebrew
-/// tap, so a review that has cleared one repository has cleared all three.
+/// The same paragraph opens the grant in the Homebrew tap.
 const ADDITIONAL_USE_GRANT: &str = "\
 Additional Use Grant: You may operate the Licensed Work on infrastructure You
                       control or rent, including hosted and cloud
@@ -495,6 +494,29 @@ fn the_notice_puts_this_work_under_the_grant() {
             "{NOTICE_FILE} must state `{required}` — it is the file that says \
              this program is published under {LICENSE} and that nothing beside \
              the grant adds to or takes from it"
+        );
+    }
+
+    assert!(
+        !flat.contains("navigator-ux"),
+        "{NOTICE_FILE} must not claim that the Apache-2.0 navigator-ux repository \
+         shares Navigator's BUSL grant"
+    );
+
+    let licensing = flat_lower(&read("docs/licensing.md"));
+    for required in [
+        "## sibling repositories",
+        "repository",
+        "licensor",
+        "change licence",
+        "where it lags",
+        "| `navigator` |",
+        "| `navigator-ux` |",
+        "| `homebrew-navigator` |",
+    ] {
+        assert!(
+            licensing.contains(required),
+            "docs/licensing.md must record the sibling-repositories table with `{required}`"
         );
     }
 }

@@ -43,8 +43,19 @@ restriction — which would breach the covenant Neon Law IP LLC's permission to 
 only adds permission cannot. So the free zone is operative text; what lies outside it remains BUSL's own undefined term,
 and Neon Law IP LLC's reading of that lives in [`NOTICE`](../NOTICE) and below, where it binds nobody.
 
-The same paragraph opens the grant in `navigator-ux` and in the Homebrew tap. A legal review that has cleared one of the
-three has cleared all three.
+The same paragraph opens the grant in the Homebrew tap. Navigator UX is independently licensed under `Apache-2.0` as of
+2026-09-03.
+
+## Sibling repositories
+
+The sibling repositories are independently maintained, so their present licence parameters belong in the record rather
+than being inferred from Navigator's. The last column names the precise drift from this repository's terms.
+
+| Repository | Licence | Licensor | Change licence | Where it lags |
+| --- | --- | --- | --- | --- |
+| `navigator` | `BUSL-1.1` | Neon Law IP LLC | `Apache-2.0` | — |
+| `navigator-ux` | `Apache-2.0` (since 2026-09-03) | — | — | No BUSL lag; independently licensed |
+| `homebrew-navigator` | `BUSL-1.1` | Shook Law PLLC | `AGPL-3.0-only` | Parameters differ; grant paragraph matches |
 
 **The Change Date runs per version.** Each published version carries its own four-year clock, so a version published
 today converts four years from today whatever happens to the ones after it. That is BUSL's own rule, not a choice: its

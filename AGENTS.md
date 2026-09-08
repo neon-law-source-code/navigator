@@ -406,14 +406,18 @@ releases, and production handoff live in [`docs/gitops.md`](docs/gitops.md).
 A Cursor Cloud Agent boots from [`.cursor/environment.json`](.cursor/environment.json), whose `install` runs
 [`.cursor/install.sh`](.cursor/install.sh): it materializes the pinned toolchain, installs `cargo-nextest`, provisions
 the system packages the test build needs (`libssl-dev`/`pkg-config` for `fantoccini`'s `openssl-sys`, `lld` for linking
-the test binaries, and `kubectl` for the `cli::devx::ship` `kubectl kustomize` tests), and warms the build cache.
+the test binaries, and `kubectl` for the `cli::devx::ship` `kubectl kustomize` tests), installs Docker CE with
+`fuse-overlayfs` plus `kind` v0.32.0 and `helm` for opt-in KIND tasks, and warms the build cache. `start` runs
+[`.cursor/start.sh`](.cursor/start.sh), which starts `dockerd` directly — PID 1 is tini, so systemd unit files never
+run — and waits until `docker info` succeeds.
 
-The Cloud VM runs the zero-infrastructure loop above — build, `cargo fmt`, `cargo clippy`, the test gate, `navigator`,
-and editing. It does **not** run the KIND dependency tier: nested Docker + Kubernetes is a developer-machine flow, so
-`dev up` and `dev worktree-env up` are out of scope there. To exercise the running site in the Cloud VM, boot `neon`
-against a standalone SurrealDB server (`surreal start --user root --pass root memory`) with the `NAVIGATOR_SURREAL_*`,
-`fs` storage, `SESSION_SECRET`, and placeholder `RESTATE_BROKER_URL`/`NAVIGATOR_CLAMD_ADDR` the boot invariants require;
-the latter two are read lazily, so the pages render without those services.
+The default Cloud loop remains the zero-infrastructure path: build, `cargo fmt`, `cargo clippy`, the test gate,
+`navigator`, and editing. Nested Docker + Kubernetes is available when a task needs the KIND dependency tier: confirm
+`docker info`, then run `dev up` or `dev worktree-env up` as on a developer machine. Do not create a cluster during
+install or start; a full `dev up` pulls node and service images and is opt-in. For a running site without that
+cluster, boot `neon` against a standalone SurrealDB server (`surreal start --user root --pass root memory`) with the
+`NAVIGATOR_SURREAL_*`, `fs` storage, `SESSION_SECRET`, and placeholder `RESTATE_BROKER_URL`/`NAVIGATOR_CLAMD_ADDR` the
+boot invariants require; the latter two are read lazily, so the pages render without those services.
 
 Run the full workspace suite with the same knobs CI uses (see [`.github/workflows/ci.yml`](.github/workflows/ci.yml)),
 because the Cloud disk cannot hold the ~40 test binaries at the default `debuginfo=2`:

@@ -79,7 +79,7 @@ with Docker Desktop, which is exactly why the remaining two are easy to miss:
   than the latest release: the workflow records that v0.32.0's `kind load` is what understands the containerd config v4
   the v1.36.1 node writes, and that the two are meant to be bumped together.
 - **`helm`, any release with OCI registry support** — the lane uses it for one thing, `helm upgrade --install` of the
-  Restate Operator chart from `oci://ghcr.io/restatedev/restate-operator-helm` at `cli/src/devx/orchestrate.rs:502`.
+  Restate Operator chart from `oci://ghcr.io/restatedev/restate-operator-helm` at `cli/src/devx/orchestrate.rs:663`.
   Nothing in this repository pins it and CI takes whatever its runner image ships, so there is no version to cite here
   the way there is for the tools above; v4.2.4 is known to pull the pinned chart.
 

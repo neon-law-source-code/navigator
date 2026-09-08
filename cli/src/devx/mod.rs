@@ -1612,6 +1612,29 @@ fn normalize_docker_arch(arch: &str) -> String {
     }
 }
 
+/// Nested Docker (Cursor Cloud `DinD`) cannot load `xt_multiport` or
+/// `xt_statistic`, so kube-proxy's default iptables mode never programs
+/// `ClusterIP`/`NodePort` rules. KIND's `kubeProxyMode: nftables` uses the
+/// in-node `nft` binary instead.
+fn inject_kube_proxy_nftables(yaml: &str) -> String {
+    if yaml
+        .lines()
+        .any(|line| line.trim_start().starts_with("kubeProxyMode:"))
+    {
+        return yaml.to_string();
+    }
+    let needle = "apiVersion: kind.x-k8s.io/v1alpha4\n";
+    let Some(idx) = yaml.find(needle) else {
+        return yaml.to_string();
+    };
+    let insert_at = idx + needle.len();
+    let mut out = String::with_capacity(yaml.len() + 48);
+    out.push_str(&yaml[..insert_at]);
+    out.push_str("networking:\n  kubeProxyMode: nftables\n");
+    out.push_str(&yaml[insert_at..]);
+    out
+}
+
 /// Substitute configurable `hostPort:` values in a `kind-config.yaml` body.
 /// The container ports stay fixed, so Service manifests remain in sync. At
 /// default ports the output is byte-identical to the input.
@@ -3166,6 +3189,17 @@ mod tests {
     fn render_kind_config_is_byte_identical_at_defaults() {
         let rendered = render_kind_config(COMMITTED_KIND_CONFIG, &default_cfg());
         assert_eq!(rendered, COMMITTED_KIND_CONFIG);
+    }
+
+    #[test]
+    fn inject_kube_proxy_nftables_adds_networking_after_api_version() {
+        let rendered = inject_kube_proxy_nftables(COMMITTED_KIND_CONFIG);
+        assert!(rendered.contains("apiVersion: kind.x-k8s.io/v1alpha4\nnetworking:\n  kubeProxyMode: nftables\nname: navigator\n"));
+        assert_eq!(
+            inject_kube_proxy_nftables(&rendered),
+            rendered,
+            "a second pass must not duplicate the block"
+        );
     }
 
     #[test]

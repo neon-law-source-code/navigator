@@ -387,10 +387,44 @@ mod tests {
         custom_questions_from_yaml, merge_custom_questions, questionnaire_spec_from_template,
         questionnaire_spec_from_yaml, retainer_intake_questionnaire, retainer_intake_spec,
         template_has_questionnaire, workflow_spec_from_template, workflow_spec_from_yaml,
-        RETAINER_INTAKE_SPEC_YAML, RETAINER_SCOPED_SPEC_YAML,
+        RETAINER_INTAKE_SPEC_YAML, RETAINER_INTAKE_TEMPLATE, RETAINER_SCOPED_SPEC_YAML,
     };
     use crate::spec::StateName;
     use std::collections::BTreeMap;
+
+    const GOVERNING_LAW_PROMPT: &str = "Which state's law governs this engagement? Nevada, unless the Firm has agreed otherwise; California and Washington are the alternatives available.";
+
+    #[test]
+    fn governing_law_prompt_names_firm_choice_not_client_location() {
+        let sources = [
+            custom_questions_from_template(RETAINER_INTAKE_TEMPLATE)
+                .expect("onboarding letter frontmatter"),
+            custom_questions_from_yaml(RETAINER_INTAKE_SPEC_YAML).expect("onboarding letter spec"),
+            custom_questions_from_yaml(RETAINER_SCOPED_SPEC_YAML).expect("scoped letter spec"),
+        ];
+        for cq in sources {
+            let question = cq
+                .get("governing_law")
+                .expect("governing_law custom question");
+            assert_eq!(question.prompt, GOVERNING_LAW_PROMPT);
+            assert!(
+                !question.prompt.contains("Client is located"),
+                "prompt must not make governing law a function of Client location"
+            );
+            let keys: Vec<_> = question.choices.keys().cloned().collect();
+            assert_eq!(keys, ["california", "nevada", "washington"]);
+        }
+        let teaching = include_str!("../../docs/frontmatter.md");
+        let teaching_folded: String = teaching.split_whitespace().collect::<Vec<_>>().join(" ");
+        assert!(
+            teaching_folded.contains(GOVERNING_LAW_PROMPT),
+            "frontmatter teaching copy must carry the same prompt"
+        );
+        assert!(
+            !teaching.contains("Client is located"),
+            "frontmatter teaching copy must not make governing law a function of Client location"
+        );
+    }
 
     #[test]
     fn custom_questions_parse_prompt_and_choices() {

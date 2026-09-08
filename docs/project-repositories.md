@@ -522,8 +522,8 @@ navigator validate .
 
 `scaffold` is idempotent and leaves existing files alone. It writes the repository shell — `navigator.yaml` (requiring
 `--host`), the thin `ci.yml` caller, a `publish.yml` job guarded on `vars.NAVIGATOR_HOST`, `README.md`, `AGENTS.md`, a
-`CLAUDE.md` symlink to `AGENTS.md`, and `tests/`. It does not write a placeholder template. A hand-copied `ci.yml` of
-268 lines or more is left alone unless `--replace-gate` is passed.
+`CLAUDE.md` that delivers `AGENTS.md` (a relative symlink on Unix, a copy on Windows), and `tests/`. It does not write a
+placeholder template. A hand-copied `ci.yml` of 268 lines or more is left alone unless `--replace-gate` is passed.
 
 The generated `ci.yml` pins Navigator's reusable project-gate workflow to `--action-version`, which defaults to the
 release the running `navigator` reports as its own version — but only when this binary can actually vouch for that

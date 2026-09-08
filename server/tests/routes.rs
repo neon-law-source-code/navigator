@@ -1645,11 +1645,11 @@ async fn anonymous_access_to_the_shared_navigator_surface_lands_at_the_login_doo
     state.docs = portal::docs::loader::bundled();
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
 
-    // `/docs` and `/docs/glossary` have left this list. The workspace
-    // documentation reads anonymously now — the repository is source-available, so
-    // a login door stood in front of the manual for software anyone can clone.
-    // `/app/docs` is the surface that still answers the login door, and it is
-    // listed below in its place.
+    // `/documents` and `/documents/glossary` have left this list. The
+    // workspace documentation reads anonymously now — the repository is
+    // source-available, so a login door stood in front of the manual for
+    // software anyone can clone. `/app/documents` is the surface that still
+    // answers the login door, and it is listed below in its place.
     for path in [
         "/app/projects",
         "/app/lawyer",
@@ -1658,8 +1658,8 @@ async fn anonymous_access_to_the_shared_navigator_surface_lands_at_the_login_doo
         "/app/team",
         "/app/brands",
         "/app/owner",
-        "/app/docs",
-        "/app/docs/glossary",
+        "/app/documents",
+        "/app/documents/glossary",
         "/templates",
     ] {
         let resp = app
@@ -1822,94 +1822,77 @@ async fn english_home_declares_lang_en() {
     assert!(en.contains("<html lang=\"en\""));
 }
 
+/// ENG-84: `/health` is liveness, not readiness — it must answer without a
+/// database round-trip, so a probe still succeeds during a dependency
+/// outage. `/app/health` is the same handler mounted a second time under the
+/// private surface, and stays reachable with no session for the same reason.
+/// `/readyz` (below) is the one of the pair that still pings the store.
 #[tokio::test]
-async fn health_returns_200_when_db_pings() {
+async fn health_and_app_health_return_200_with_no_database_round_trip() {
+    let mut state = empty_state().await;
+    state.surreal = store::surreal::SurrealDb::uninitialized();
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+
+    for path in ["/health", "/app/health"] {
+        let resp = app
+            .clone()
+            .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK, "{path} with the store down");
+        assert_eq!(
+            body_string(resp).await,
+            "ok\nNothing here is legal advice without a signed retainer.",
+            "{path}"
+        );
+    }
+}
+
+/// `/readyz` and its `/app` alias keep the SurrealDB ping `/health` dropped:
+/// a pod backed by an unreachable store must fail readiness so the load
+/// balancer stops sending it traffic, even though it stays alive.
+#[tokio::test]
+async fn readyz_and_app_readyz_return_503_when_the_store_is_down() {
+    let mut state = empty_state().await;
+    state.surreal = store::surreal::SurrealDb::uninitialized();
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+
+    for path in ["/readyz", "/app/readyz"] {
+        let resp = app
+            .clone()
+            .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(
+            resp.status(),
+            StatusCode::SERVICE_UNAVAILABLE,
+            "{path} with the store down"
+        );
+        assert!(
+            body_string(resp).await.contains("surreal:"),
+            "{path} must name the failing dependency"
+        );
+    }
+}
+
+/// The happy path for the pair that still pings the store: readiness must
+/// still answer `200` when the database is reachable.
+#[tokio::test]
+async fn readyz_and_app_readyz_return_200_when_db_pings() {
     let app = server::neon_router(
         empty_state().await,
         std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
     );
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .uri("/health")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-    assert_eq!(
-        body_string(resp).await,
-        "ok\nNothing here is legal advice without a signed retainer."
-    );
-}
 
-#[tokio::test]
-async fn health_returns_503_when_the_store_is_down() {
-    let state = AppState {
-        brand_bundle: None,
-        surreal: store::surreal::SurrealDb::uninitialized(),
-        workshops: WorkshopIndex::empty(),
-        docs: portal::DocsIndex::empty(),
-        blog: portal::BlogIndex::empty(),
-        auth: AuthConfig::new(true, None),
-        google_oauth: portal::google_oauth::GoogleOauthConfig::passthrough(),
-        rate_limit: portal::rate_limit::RateLimit::disabled(),
-        canonical_host: CanonicalHost::new(None),
-        portal_only: portal::PortalOnly::default(),
-        sessions: test_sessions(),
-        github_oidc: portal::github_oidc::GitHubOidc::rejecting(),
-        oauth: None,
-        oauth_microsoft: None,
-        storage: std::sync::Arc::new(
-            cloud::FsStorage::new(std::env::temp_dir().join("navigator-web-test-storage"))
-                .await
-                .unwrap(),
-        ),
-        assets_storage: std::sync::Arc::new(
-            cloud::FsStorage::new(std::env::temp_dir().join("navigator-web-test-storage"))
-                .await
-                .unwrap(),
-        ),
-        applications_storage: std::sync::Arc::new(
-            cloud::FsStorage::new(std::env::temp_dir().join("navigator-web-test-storage"))
-                .await
-                .unwrap(),
-        ),
-        forms_registry: std::sync::Arc::new(forms::registry().unwrap()),
-        policy: portal::policy::PolicyClient::passthrough(),
-        workflow_runtime: std::sync::Arc::new(workflows::InMemoryRuntime::new()),
-        questionnaire_runtime: std::sync::Arc::new(workflows::InMemoryRuntime::new()),
-        signature_provider: std::sync::Arc::new(portal::signature::StubSignatureProvider::new()),
-        billing_provider: std::sync::Arc::new(portal::billing::StubBillingProvider::new()),
-        contract_reviewer: std::sync::Arc::new(portal::contract_review::StubContractReviewer),
-        esignature_webhook_secret: None,
-        esignature_hmac_key: None,
-        email: std::sync::Arc::new(portal::email::CapturingEmail::new()),
-        attachment_scanner: std::sync::Arc::new(
-            portal::attachment_scanner::FakeAttachmentScanner::clean(),
-        ),
-        inbound_email_secret: None,
-        email_events_secret: None,
-        sendgrid_events_public_key: None,
-        bootstrap_owner_email: None,
-        self_signup_enabled: false,
-        identity_password: None,
-        identity_admin: None,
-        a2a_router: None,
-    };
-    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .uri("/health")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
-    assert_eq!(body_string(resp).await, "store unavailable");
+    for path in ["/readyz", "/app/readyz"] {
+        let resp = app
+            .clone()
+            .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK, "{path}");
+        assert_eq!(body_string(resp).await, "ready", "{path}");
+    }
 }
 
 #[tokio::test]
@@ -2042,12 +2025,12 @@ async fn robots_txt_advertises_sitemap_and_blocks_private_surfaces() {
     assert!(body.contains("Disallow: /app"));
     assert!(body.contains("Disallow: /admin"));
     assert!(body.contains("Sitemap: https://www.neonlaw.com/sitemap.xml"));
-    // `/docs` and `/templates` sit behind the session boundary (#732), so the
-    // policy names each rather than pointing a crawler at a login redirect.
-    // `/design` reads anonymously now, and stays disallowed for the other
-    // reason: a contributor reference gallery is not a page to index.
+    // `/documents` and `/templates` sit behind the session boundary (#732), so
+    // the policy names each rather than pointing a crawler at a login
+    // redirect. `/design` reads anonymously now, and stays disallowed for the
+    // other reason: a contributor reference gallery is not a page to index.
     for authenticated in [
-        "Disallow: /docs",
+        "Disallow: /documents",
         "Disallow: /design",
         "Disallow: /templates",
     ] {
@@ -2184,12 +2167,13 @@ async fn sitemap_xml_lists_public_routes_from_loaded_indexes() {
         "sitemap should not list authenticated app routes: {body}"
     );
     // `/templates` is authenticated (#732), and a sitemap entry pointing at a
-    // login redirect is worse than no entry at all. `/docs` and `/design` read
-    // anonymously now but stay unadvertised for the same reason as each other:
-    // both are contributor references, not pages a search result should land a
-    // prospective client on. Advertising the documentation is a separate
-    // decision from un-gating it, and is deliberately not made here.
-    for authenticated in ["/docs", "/design", "/templates"] {
+    // login redirect is worse than no entry at all. `/documents` and
+    // `/design` read anonymously now but stay unadvertised for the same
+    // reason as each other: both are contributor references, not pages a
+    // search result should land a prospective client on. Advertising the
+    // documentation is a separate decision from un-gating it, and is
+    // deliberately not made here.
+    for authenticated in ["/documents", "/design", "/templates"] {
         assert!(
             !body.contains(&format!("<loc>https://www.neonlaw.com{authenticated}")),
             "sitemap must not advertise authenticated {authenticated}: {body}"
@@ -11050,11 +11034,10 @@ async fn admin_generic_listings_all_mount_and_render_their_heading() {
     let (state, _surreal) = state_with_engines().await;
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
 
-    // Authenticated as Admin: `/app/admin/letters` and `/app/admin/email-log` refuse
-    // the Lawyer tier since ENG-303 (no project link on `letter` or
-    // `sent_email` to scope by), and the admin tier reads every listing here.
+    // Authenticated as Admin, who reads every listing here unscoped
+    // (ENG-310 scopes `/app/admin/letters` and `/app/admin/email-log` to
+    // participation for the Lawyer tier, same as the rest of this class).
     // What each gate admits is the subject of
-    // `unscopeable_matter_content_listings_require_the_admin_tier` and
     // `matter_content_listings_are_scoped_to_participation`; this test is only
     // about the mount.
     for (path, heading) in [
@@ -11149,6 +11132,11 @@ async fn admin_letter_detail_renders_the_record_from_its_path_id() {
         &surreal,
         &store::letters::NewLetter {
             mailroom_id: mailroom.id,
+            // Unlinked; the scoping behavior itself is
+            // `letter_detail_is_scoped_to_participation`'s subject. This test
+            // is only about the path param and the rendered fields, so it
+            // reads through the unscoped Admin tier.
+            project_id: None,
             direction: store::letters::DIRECTION_INCOMING.to_string(),
             sender: "IRS".into(),
             recipient: "Acme Trust".into(),
@@ -11162,7 +11150,7 @@ async fn admin_letter_detail_renders_the_record_from_its_path_id() {
     let resp = get_with_role(
         app,
         &format!("/app/lawyer/letters/{}", letter.id),
-        store::persons::Role::Lawyer,
+        store::persons::Role::Admin,
     )
     .await;
     assert_eq!(resp.status(), StatusCode::OK);
@@ -11186,13 +11174,131 @@ async fn admin_letter_detail_renders_the_record_from_its_path_id() {
     );
 }
 
+/// ENG-310: `/app/lawyer/letters/{id}` is scoped by the same `project_id` as
+/// the listing — a known id outside the caller's participation renders the
+/// same not-found state as an unknown one, so probing a guessed id cannot
+/// distinguish the two. Owner and Admin keep the unscoped read.
+#[allow(clippy::too_many_lines)]
+#[tokio::test]
+async fn letter_detail_is_scoped_to_participation() {
+    let (state, surreal) = state_with_engines().await;
+    let lawyer = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "Scoped Lawyer",
+            "letter-scoped-lawyer@neonlaw.com",
+            store::persons::Role::Lawyer,
+        ),
+    )
+    .await
+    .unwrap();
+    let visible = test_project(&surreal, "Visible Letter Matter", "open").await;
+    let hidden = test_project(&surreal, "Hidden Letter Matter", "open").await;
+    participate(&surreal, lawyer.id, visible.id, "lawyer").await;
+
+    let address = store::addresses::create(
+        &surreal,
+        &store::addresses::NewAddress {
+            line1: "7 Notary Row".into(),
+            city: "Sparks".into(),
+            region: "NV".into(),
+            postal_code: "89431".into(),
+            country: "USA".into(),
+            ..store::addresses::NewAddress::default()
+        },
+    )
+    .await
+    .unwrap();
+    let mailroom = store::mailrooms::create(&surreal, "Reno HQ", address.id)
+        .await
+        .unwrap();
+    let mut letter_ids = Vec::new();
+    for (project_id, summary) in [
+        (Some(visible.id), "Visible letter detail"),
+        (Some(hidden.id), "Hidden letter detail"),
+        (None, "Unlinked letter detail"),
+    ] {
+        let letter = store::letters::record(
+            &surreal,
+            &store::letters::NewLetter {
+                mailroom_id: mailroom.id,
+                project_id,
+                direction: store::letters::DIRECTION_INCOMING.to_string(),
+                sender: "IRS".into(),
+                recipient: "Acme Trust".into(),
+                summary: summary.into(),
+            },
+        )
+        .await
+        .unwrap();
+        letter_ids.push(letter.id);
+    }
+    let [visible_letter, hidden_letter, unlinked_letter] = letter_ids[..] else {
+        unreachable!()
+    };
+
+    let mut session =
+        portal::SessionData::fresh("letter-scoped-lawyer-sub", store::persons::Role::Lawyer);
+    session.person_id = Some(lawyer.id);
+    session.email = Some(lawyer.email);
+    let lawyer_cookie = format!(
+        "{}={}",
+        portal::session::SESSION_COOKIE_NAME,
+        test_sessions().encode(&session)
+    );
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+
+    let visible_body = rendered_body_with_cookie(
+        app.clone(),
+        &format!("/app/lawyer/letters/{visible_letter}"),
+        &lawyer_cookie,
+    )
+    .await;
+    assert!(
+        visible_body.contains("Visible letter detail"),
+        "the participated matter's letter must render; got: {visible_body}",
+    );
+
+    for (id, label) in [
+        (hidden_letter, "an unparticipated matter's"),
+        (unlinked_letter, "an unlinked"),
+    ] {
+        let resp = get_with_cookie(
+            app.clone(),
+            &format!("/app/lawyer/letters/{id}"),
+            &lawyer_cookie,
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::OK, "renders the not-found page");
+        let body = body_string(resp).await;
+        assert!(
+            body.contains("Letter not found"),
+            "{label} letter must render as not-found to a lawyer outside its scope; got: {body}",
+        );
+    }
+
+    // Owner and Admin keep the unscoped read.
+    for role in [store::persons::Role::Owner, store::persons::Role::Admin] {
+        let resp = get_with_role(
+            app.clone(),
+            &format!("/app/lawyer/letters/{hidden_letter}"),
+            role,
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = body_string(resp).await;
+        assert!(
+            body.contains("Hidden letter detail"),
+            "{role:?} must read every letter unscoped; got: {body}",
+        );
+    }
+}
+
 #[tokio::test]
 async fn admin_email_log_paginates_over_fifty_rows() {
-    // Admin, not Lawyer: `/app/admin/email-log` refuses the Lawyer tier since
-    // ENG-303 — `sent_email` carries no project link to scope by, so the admin
-    // gate is the interim close. Which tier is admitted is
-    // `unscopeable_matter_content_listings_require_the_admin_tier`'s subject;
-    // this test is about the log itself.
+    // The Admin tier reads the unscoped trail (ENG-310); scoping itself is
+    // proved by the shared `matter_content_listings_*` tests, which now cover
+    // this listing too. This test is about the pager.
     // The email log is the one paginated listing: 50 rows per page. Seed 51 so
     // there are two pages, then assert page 1 renders its rows and a `?page=2`
     // pager anchor with "Page 1 of 2", and that `?page=2` renders as page 2 of 2.
@@ -11206,6 +11312,7 @@ async fn admin_email_log_paginates_over_fifty_rows() {
                 recipient: format!("user{i}@test.invalid"),
                 subject: format!("Message {i}"),
                 sender: "noreply@test.invalid".into(),
+                project_id: None,
                 body: "body".into(),
                 outcome: "delivered".into(),
                 template_slug: None,
@@ -11566,8 +11673,9 @@ struct MatterContentFixture {
 }
 
 /// Seed one visible matter, one hidden matter, and one unlinked row for each of
-/// the three matter-content listings (`assets`, `answers`, `relationship-logs`),
-/// and return a Lawyer session holding a firm-side row on the visible matter
+/// the five matter-content listings (`assets`, `answers`, `relationship-logs`,
+/// `letters`, `email-log` — ENG-310 added the last two), and return a Lawyer
+/// session holding a firm-side row on the visible matter
 /// only.
 #[allow(clippy::too_many_lines)]
 async fn seed_matter_content(surreal: &store::surreal::SurrealDb) -> MatterContentFixture {
@@ -11736,6 +11844,69 @@ async fn seed_matter_content(surreal: &store::surreal::SurrealDb) -> MatterConte
     .await
     .unwrap();
 
+    // letters → one per matter, plus one with no project link at all
+    // (ENG-310).
+    let mailroom_address = store::addresses::create(
+        surreal,
+        &store::addresses::NewAddress {
+            line1: "500 Silver Street".into(),
+            city: "Reno".into(),
+            region: "NV".into(),
+            postal_code: "89501".into(),
+            country: "USA".into(),
+            ..store::addresses::NewAddress::default()
+        },
+    )
+    .await
+    .unwrap();
+    let mailroom = store::mailrooms::create(surreal, "Scoping intake", mailroom_address.id)
+        .await
+        .unwrap();
+    for (project_id, summary) in [
+        (Some(visible.id), "Visible letter summary"),
+        (Some(hidden.id), "Hidden letter summary"),
+        (None, "Unlinked letter summary"),
+    ] {
+        store::letters::record(
+            surreal,
+            &store::letters::NewLetter {
+                mailroom_id: mailroom.id,
+                project_id,
+                direction: store::letters::DIRECTION_INCOMING.to_string(),
+                sender: "opposing-counsel@example.com".into(),
+                recipient: "intake@neonlaw.com".into(),
+                summary: summary.into(),
+            },
+        )
+        .await
+        .unwrap();
+    }
+
+    // email log → one send per matter, plus one firm-wide send with no
+    // project link at all (ENG-310).
+    for (project_id, recipient) in [
+        (Some(visible.id), "visible-recipient@example.com"),
+        (Some(hidden.id), "hidden-recipient@example.com"),
+        (None, "unlinked-recipient@example.com"),
+    ] {
+        store::sent_emails::record(
+            surreal,
+            &store::sent_emails::NewSentEmail {
+                recipient: recipient.into(),
+                subject: "Matter correspondence".into(),
+                sender: "support@neonlaw.com".into(),
+                project_id,
+                template_slug: Some("welcome".into()),
+                body: "Body".into(),
+                outcome: "sent".into(),
+                sg_message_id: None,
+                sent_at: "2026-05-24T10:00:00Z".parse().unwrap(),
+            },
+        )
+        .await
+        .unwrap();
+    }
+
     let mut session = portal::SessionData::fresh("scoped-lawyer-sub", store::persons::Role::Lawyer);
     session.person_id = Some(lawyer.id);
     session.email = Some(lawyer.email);
@@ -11751,26 +11922,35 @@ async fn seed_matter_content(surreal: &store::surreal::SurrealDb) -> MatterConte
             visible_asset_sha,
             "Visible Adverse Party".into(),
             "Visible attestation detail".into(),
+            "Visible letter summary".into(),
+            "visible-recipient@example.com".into(),
         ],
         hidden_cells: vec![
             hidden_asset_sha,
             "Hidden Adverse Party".into(),
             "Hidden attestation detail".into(),
+            "Hidden letter summary".into(),
+            "hidden-recipient@example.com".into(),
         ],
         unlinked_cells: vec![
             unlinked_asset_sha,
             "Unlinked Adverse Party".into(),
             "Unlinked trail detail".into(),
+            "Unlinked letter summary".into(),
+            "unlinked-recipient@example.com".into(),
         ],
     }
 }
 
-/// The three matter-content listing paths, aligned to the fixture's cell
-/// vectors: assets, answers, relationship-logs.
-const MATTER_CONTENT_PATHS: [&str; 3] = [
+/// The five matter-content listing paths, aligned to the fixture's cell
+/// vectors: assets, answers, relationship-logs, letters, email log (ENG-310
+/// added the last two).
+const MATTER_CONTENT_PATHS: [&str; 5] = [
     "/app/lawyer/assets",
     "/app/lawyer/answers",
     "/app/lawyer/relationship-logs",
+    "/app/admin/letters",
+    "/app/admin/email-log",
 ];
 
 /// GET `uri` with `cookie`, assert it rendered, and return the body — the
@@ -11960,88 +12140,6 @@ async fn conflict_graph_listings_stay_firm_wide_for_an_unparticipating_lawyer() 
     );
 }
 
-/// ENG-303: `/app/admin/letters` and `/app/admin/email-log` refuse the Lawyer tier
-/// and serve Owner/Admin. `letter` and `sent_email` carry no project link, so
-/// the admin gate is the interim close until one exists.
-#[tokio::test]
-async fn unscopeable_matter_content_listings_require_the_admin_tier() {
-    let (state, surreal) = state_with_engines().await;
-    let mailroom_address = store::addresses::create(
-        &surreal,
-        &store::addresses::NewAddress {
-            line1: "500 Silver Street".into(),
-            city: "Reno".into(),
-            region: "NV".into(),
-            postal_code: "89501".into(),
-            country: "USA".into(),
-            ..store::addresses::NewAddress::default()
-        },
-    )
-    .await
-    .unwrap();
-    let mailroom = store::mailrooms::create(&surreal, "Reno intake", mailroom_address.id)
-        .await
-        .unwrap();
-    store::letters::record(
-        &surreal,
-        &store::letters::NewLetter {
-            mailroom_id: mailroom.id,
-            direction: "incoming".into(),
-            sender: "opposing-counsel@example.com".into(),
-            recipient: "intake@neonlaw.com".into(),
-            summary: "Demand letter summary".into(),
-        },
-    )
-    .await
-    .unwrap();
-    store::sent_emails::record(
-        &surreal,
-        &store::sent_emails::NewSentEmail {
-            recipient: "logged-recipient@example.com".into(),
-            subject: "Matter correspondence".into(),
-            body: "Body".into(),
-            sender: "support@neonlaw.com".into(),
-            template_slug: Some("welcome".into()),
-            outcome: "sent".into(),
-            sg_message_id: None,
-            sent_at: "2026-05-24T10:00:00Z".parse().unwrap(),
-        },
-    )
-    .await
-    .unwrap();
-    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
-
-    for (path, disclosed) in [
-        ("/app/admin/letters", "Demand letter summary"),
-        ("/app/admin/email-log", "logged-recipient@example.com"),
-    ] {
-        // A Lawyer-tier session is refused outright — a real 403, not a
-        // successful page with an empty table.
-        let resp = get_with_role(app.clone(), path, store::persons::Role::Lawyer).await;
-        assert_eq!(
-            resp.status(),
-            StatusCode::FORBIDDEN,
-            "{path} must refuse the lawyer tier",
-        );
-        let refused = body_string(resp).await;
-        assert!(
-            !refused.contains(disclosed),
-            "{path} disclosed {disclosed:?} in its refusal body; got: {refused}",
-        );
-
-        // Owner and Admin still read it.
-        for role in [store::persons::Role::Owner, store::persons::Role::Admin] {
-            let resp = get_with_role(app.clone(), path, role).await;
-            assert_eq!(resp.status(), StatusCode::OK, "{path} must serve {role:?}");
-            let body = body_string(resp).await;
-            assert!(
-                body.contains(disclosed),
-                "{path} must render {disclosed:?} for {role:?}; got: {body}",
-            );
-        }
-    }
-}
-
 /// ENG-303: every listing in `webapp::admin_listings` is classified exactly
 /// once in `webapp::admin_listing::LAWYER_LISTINGS`.
 ///
@@ -12079,8 +12177,8 @@ fn every_admin_listing_is_classified_exactly_once() {
             "`{full}` is a lawyer listing with no entry in \
              `webapp::admin_listing::LAWYER_LISTINGS`. Decide what it discloses: \
              `Reference`, `MatterContent` (scope it through \
-             `require_lawyer_in_matters`), `ConflictGraph` (firm-wide, Model Rule \
-             1.10), or `AdminOnly`.",
+             `require_lawyer_in_matters`), or `ConflictGraph` (firm-wide, Model \
+             Rule 1.10).",
         );
     }
     for (name, _, _) in webapp::admin_listing::LAWYER_LISTINGS {
@@ -12943,11 +13041,9 @@ async fn admin_person_show_floats_failure_toast_after_welcome_failed() {
 
 #[tokio::test]
 async fn admin_email_log_empty_state_explains_what_lands_here() {
-    // Admin, not Lawyer: `/app/admin/email-log` refuses the Lawyer tier since
-    // ENG-303 — `sent_email` carries no project link to scope by, so the admin
-    // gate is the interim close. Which tier is admitted is
-    // `unscopeable_matter_content_listings_require_the_admin_tier`'s subject;
-    // this test is about the log itself.
+    // The Admin tier reads the unscoped trail (ENG-310); scoping itself is
+    // proved by the shared `matter_content_listings_*` tests, which now cover
+    // this listing too. This test is about the log itself.
     let (state, _surreal) = state_with_engines().await;
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
     let resp = get_with_role(app, "/app/admin/email-log", store::persons::Role::Admin).await;
@@ -12967,11 +13063,9 @@ async fn admin_email_log_empty_state_explains_what_lands_here() {
 
 #[tokio::test]
 async fn admin_email_log_lists_rows_newest_first() {
-    // Admin, not Lawyer: `/app/admin/email-log` refuses the Lawyer tier since
-    // ENG-303 — `sent_email` carries no project link to scope by, so the admin
-    // gate is the interim close. Which tier is admitted is
-    // `unscopeable_matter_content_listings_require_the_admin_tier`'s subject;
-    // this test is about the log itself.
+    // The Admin tier reads the unscoped trail (ENG-310); scoping itself is
+    // proved by the shared `matter_content_listings_*` tests, which now cover
+    // this listing too. This test is about the log itself.
     let (state, surreal) = state_with_engines().await;
     for (sent_at, recipient) in [
         ("2026-05-24T10:00:00Z", "older@example.com"),
@@ -12985,6 +13079,7 @@ async fn admin_email_log_lists_rows_newest_first() {
                 subject: "Welcome to Neon Law".into(),
                 body: "Welcome aboard.".into(),
                 sender: "support@neonlaw.com".into(),
+                project_id: None,
                 template_slug: Some("welcome".into()),
                 outcome: "sent".into(),
                 sg_message_id: None,
@@ -15243,6 +15338,8 @@ async fn wants_json_path_classifier() {
     assert!(portal::wants_json("/app/api/people/123"));
     assert!(portal::wants_json("/mcp"));
     assert!(portal::wants_json("/mcp/foo"));
+    assert!(portal::wants_json("/app/mcp"));
+    assert!(portal::wants_json("/app/mcp/foo"));
     assert!(portal::wants_json("/app/api/openapi.json"));
     assert!(!portal::wants_json("/"));
     assert!(!portal::wants_json("/app/lawyer"));
@@ -16502,7 +16599,7 @@ async fn delete_of_non_bootstrap_client_person_still_succeeds() {
 }
 
 // ---------------------------------------------------------------------------
-// Published workspace docs at /docs/:slug (portal::docs).
+// Published workspace docs at /documents/:slug (portal::docs).
 // ---------------------------------------------------------------------------
 
 /// State whose docs index is the real baked `docs/` tree (every other
@@ -16530,16 +16627,16 @@ async fn docs_glossary_renders_headings() {
         state_with_docs().await,
         std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
     );
-    let resp = get_signed_in(app, "/docs/glossary").await;
+    let resp = get_signed_in(app, "/documents/glossary").await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
-    // Firm-branded page title from the doc's leading H1. `/docs` is mounted
+    // Firm-branded page title from the doc's leading H1. `/documents` is mounted
     // once, in the composition every brand binary shares, so a second wordmark
     // here would publish another organization's identity on the firm's own host
     // and on every white-label tenant's. These are the Firm's own operating
     // docs.
     assert!(
-        body.contains("<title>Neon Law | Docs | Glossary</title>"),
+        body.contains("<title>Neon Law | Documents | Glossary</title>"),
         "docs pages wear the firm brand on every host"
     );
     // The title carries the whole distinction: a docs page wearing a retired
@@ -16551,7 +16648,7 @@ async fn docs_glossary_renders_headings() {
     );
     assert!(
         !body.contains(&format!(
-            "<title>{} | Docs | Glossary</title>",
+            "<title>{} | Documents | Glossary</title>",
             ["Neon", "Law", "Foundation"].join(" ")
         )),
         "the retired wordmark must not return"
@@ -16562,14 +16659,14 @@ async fn docs_glossary_renders_headings() {
         "glossary should render the Council heading with an anchor id"
     );
     // Cross-doc link rewritten to a site route.
-    assert!(body.contains("href=\"/docs/notation\""));
+    assert!(body.contains("href=\"/documents/notation\""));
     assert!(
         body.contains("class=\"docs-article\""),
         "article pages retain their reading layout"
     );
     assert!(
         !body.contains("docs-catalog"),
-        "the catalog presentation belongs only to /docs"
+        "the catalog presentation belongs only to /documents"
     );
 }
 
@@ -16580,7 +16677,7 @@ async fn docs_index_is_a_flat_accessible_catalog_of_every_published_guide() {
         state_with_docs().await,
         std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
     );
-    let response = get_signed_in(app, "/docs").await;
+    let response = get_signed_in(app, "/documents").await;
     assert_eq!(response.status(), StatusCode::OK);
     let body = body_string(response).await;
 
@@ -16630,7 +16727,7 @@ async fn docs_index_is_a_flat_accessible_catalog_of_every_published_guide() {
     let cards = &body[cards_start..];
     let mut previous = 0;
     for doc in published {
-        let href = format!("href=\"/docs/{}\"", doc.slug);
+        let href = format!("href=\"/documents/{}\"", doc.slug);
         let position = cards
             .find(&href)
             .unwrap_or_else(|| panic!("missing {href}: {cards}"));
@@ -16653,14 +16750,14 @@ async fn docs_notation_renders_teaching_order_headings() {
         state_with_docs().await,
         std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
     );
-    let resp = get_signed_in(app, "/docs/notation").await;
+    let resp = get_signed_in(app, "/documents/notation").await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
     // Template precedes Notation by design — both headings present.
     assert!(body.contains("<h2 id=\"template\">Template</h2>"));
     assert!(body.contains("<h2 id=\"notation\">Notation</h2>"));
-    // notation links glossary.md#asset → /docs/glossary#asset.
-    assert!(body.contains("href=\"/docs/glossary#asset\""));
+    // notation links glossary.md#asset → /documents/glossary#asset.
+    assert!(body.contains("href=\"/documents/glossary#asset\""));
 }
 
 #[tokio::test]
@@ -16675,7 +16772,7 @@ async fn every_published_doc_is_200() {
             state_with_docs().await,
             std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
         );
-        let uri = format!("/docs/{}", doc.slug);
+        let uri = format!("/documents/{}", doc.slug);
         let resp = get_signed_in(app, &uri).await;
         assert_eq!(resp.status(), StatusCode::OK, "{uri} should be 200");
     }
@@ -16700,9 +16797,9 @@ async fn docs_index_slug_redirects_to_canonical_docs_root() {
         state_with_docs().await,
         std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
     );
-    let resp = get_signed_in(app, "/docs/index").await;
+    let resp = get_signed_in(app, "/documents/index").await;
     assert_eq!(resp.status(), StatusCode::PERMANENT_REDIRECT);
-    assert_eq!(resp.headers().get("location").unwrap(), "/docs");
+    assert_eq!(resp.headers().get("location").unwrap(), "/documents");
 }
 
 #[tokio::test]
@@ -16711,7 +16808,7 @@ async fn docs_unknown_slug_is_404() {
         state_with_docs().await,
         std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
     );
-    let resp = get_signed_in(app, "/docs/no-such-doc").await;
+    let resp = get_signed_in(app, "/documents/no-such-doc").await;
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
@@ -16771,13 +16868,13 @@ fn docs_carry_no_client_confidences() {
     for doc in portal::docs::loader::bundled().docs() {
         assert!(
             !contains_dash_digit_pattern(&doc.body_html, &[3, 2, 4]),
-            "/docs/{} contains an SSN-shaped string — published docs must \
+            "/documents/{} contains an SSN-shaped string — published docs must \
              carry no client confidence",
             doc.slug
         );
         assert!(
             !contains_dash_digit_pattern(&doc.body_html, &[2, 7]),
-            "/docs/{} contains an EIN-shaped string — published docs must \
+            "/documents/{} contains an EIN-shaped string — published docs must \
              carry no client confidence",
             doc.slug
         );

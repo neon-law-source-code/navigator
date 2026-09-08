@@ -10,11 +10,11 @@
 //! stream:
 //!
 //! 1. [`rewrite_link`] maps a same-directory `foo.md` / `foo.md#bar`
-//!    reference to `/docs/foo` / `/docs/foo#bar`, and a `../` repo path
+//!    reference to `/documents/foo` / `/documents/foo#bar`, and a `../` repo path
 //!    (from `docs/`) to the matching GitHub blob or tree URL. A browser
-//!    at `/docs/glossary` would otherwise resolve `../store/…` against
+//!    at `/documents/glossary` would otherwise resolve `../store/…` against
 //!    the site origin and 404. External URLs, `mailto:`, bare `#anchors`,
-//!    and already-absolute `/docs/…` paths pass through.
+//!    and already-absolute `/documents/…` paths pass through.
 //! 2. Every heading gets a GitHub-style slug `id`, so the in-page
 //!    `#anchor` links the rewriter produces actually land. Off-site
 //!    anchors open in a new tab with the same up-right arrow the rest
@@ -123,13 +123,13 @@ fn title_from_markdown(raw: &str, fallback: &str) -> String {
 
 /// Map a markdown link destination to a site route or a GitHub source URL.
 ///
-/// - `notation.md`        → `/docs/notation`
-/// - `glossary.md#asset`  → `/docs/glossary#asset`
+/// - `notation.md`        → `/documents/notation`
+/// - `glossary.md#asset`  → `/documents/glossary#asset`
 /// - `../store/foo.rs`    → GitHub blob at `store/foo.rs`
 /// - `../store/`          → GitHub tree at `store`
 ///
 /// Absolute URLs (`https://…`, `mailto:`), already-absolute site paths
-/// (`/docs/…`), and bare in-page anchors (`#council`) pass through.
+/// (`/documents/…`), and bare in-page anchors (`#council`) pass through.
 /// A `../` that would climb out of the repository is left verbatim.
 #[must_use]
 pub fn rewrite_link(dest: &str) -> String {
@@ -155,7 +155,7 @@ pub fn rewrite_link(dest: &str) -> String {
         // `#anchor` is a heading slug (which may legitimately hold
         // underscores), so it is passed through untouched.
         return with_anchor(
-            &format!("/docs/{stem}", stem = views::slug::to_url(stem)),
+            &format!("/documents/{stem}", stem = views::slug::to_url(stem)),
             anchor,
         );
     }
@@ -248,7 +248,7 @@ fn off_site_open_tag(href: &str, title: &str) -> String {
     }
 }
 
-/// Render markdown to HTML, rewriting `.md` links to `/docs/*` routes
+/// Render markdown to HTML, rewriting `.md` links to `/documents/*` routes
 /// and stamping a slug `id` on every heading so in-page anchors resolve.
 #[must_use]
 fn render_markdown(src: &str) -> String {
@@ -371,16 +371,19 @@ mod tests {
 
     #[test]
     fn rewrite_link_maps_sibling_md_to_route() {
-        assert_eq!(rewrite_link("notation.md#x"), "/docs/notation#x");
-        assert_eq!(rewrite_link("glossary.md"), "/docs/glossary");
-        assert_eq!(rewrite_link("access-model.md"), "/docs/access-model");
+        assert_eq!(rewrite_link("notation.md#x"), "/documents/notation#x");
+        assert_eq!(rewrite_link("glossary.md"), "/documents/glossary");
+        assert_eq!(rewrite_link("access-model.md"), "/documents/access-model");
         // An underscore filename is rewritten to its kebab-case URL,
         // while a heading anchor (which may carry underscores) is left as
         // authored.
-        assert_eq!(rewrite_link("retainer_intake.md"), "/docs/retainer-intake");
+        assert_eq!(
+            rewrite_link("retainer_intake.md"),
+            "/documents/retainer-intake"
+        );
         assert_eq!(
             rewrite_link("retainer_intake.md#step_one"),
-            "/docs/retainer-intake#step_one"
+            "/documents/retainer-intake#step_one"
         );
     }
 
@@ -413,7 +416,7 @@ mod tests {
             "mailto:support@neonlaw.com"
         );
         assert_eq!(rewrite_link("#council"), "#council");
-        assert_eq!(rewrite_link("/docs/glossary"), "/docs/glossary");
+        assert_eq!(rewrite_link("/documents/glossary"), "/documents/glossary");
         // Climbing out of the repository is not a GitHub path we can name.
         assert_eq!(rewrite_link("../../outside.rs"), "../../outside.rs");
     }
@@ -436,9 +439,9 @@ mod tests {
             "https://github.com/neon-law-source-code/navigator"
         ));
         assert!(is_off_site("https://restate.dev"));
-        assert!(!is_off_site("https://www.neonlaw.com/docs/glossary"));
-        assert!(!is_off_site("https://staging.neonlaw.com/docs"));
-        assert!(!is_off_site("/docs/notation"));
+        assert!(!is_off_site("https://www.neonlaw.com/documents/glossary"));
+        assert!(!is_off_site("https://staging.neonlaw.com/documents"));
+        assert!(!is_off_site("/documents/notation"));
         assert!(!is_off_site("#council"));
         assert!(!is_off_site("mailto:support@neonlaw.com"));
     }
@@ -507,7 +510,7 @@ mod tests {
             "frontmatter",
             "glossary",
             "gov-forms",
-            // The hub `/docs` itself resolves. It is the documentation front
+            // The hub `/documents` itself resolves. It is the documentation front
             // door and the footer links it, so leaving it opt-out made the one
             // page every reader lands on first a 404.
             "index",
@@ -543,7 +546,7 @@ mod tests {
     #[test]
     fn doc_route_slugs_are_unique_after_kebab() {
         // `_`→`-` is lossy, so two manifest stems differing only by `_`
-        // vs `-` would publish at one `/docs` URL and `DocsIndex::find`
+        // vs `-` would publish at one `/documents` URL and `DocsIndex::find`
         // would silently return the first. Fail the build if that ever
         // happens instead of shadowing a doc in production.
         use std::collections::HashSet;
@@ -565,7 +568,7 @@ mod tests {
         let ix = bundled();
         assert!(
             ix.find("retainer-intake").is_some(),
-            "retainer_intake.md should publish at /docs/retainer-intake"
+            "retainer_intake.md should publish at /documents/retainer-intake"
         );
         assert!(
             ix.find("retainer_intake").is_none(),
@@ -586,16 +589,16 @@ mod tests {
         );
         // Cross-doc link rewritten to a site route without the `.md` suffix.
         assert!(
-            glossary.body_html.contains("href=\"/docs/notation\""),
-            "glossary's notation.md link should point at /docs/notation"
+            glossary.body_html.contains("href=\"/documents/notation\""),
+            "glossary's notation.md link should point at /documents/notation"
         );
         assert!(
-            !glossary.body_html.contains("href=\"/docs/notation.md"),
+            !glossary.body_html.contains("href=\"/documents/notation.md"),
             "published docs routes must not keep the .md extension: {}",
             glossary.body_html
         );
         // A `../` source link becomes a GitHub blob so a browser at
-        // `/docs/glossary` does not resolve it as `/store/…` on neonlaw.com.
+        // `/documents/glossary` does not resolve it as `/store/…` on neonlaw.com.
         let surql = format!("{REPO}/blob/main/store/src/schema/navigator.surql");
         assert!(
             glossary.body_html.contains(&format!("href=\"{surql}\"")),
@@ -609,9 +612,11 @@ mod tests {
         );
 
         let notation = ix.find("notation").expect("notation published");
-        // notation links glossary.md#asset → /docs/glossary#asset.
+        // notation links glossary.md#asset → /documents/glossary#asset.
         assert!(
-            notation.body_html.contains("href=\"/docs/glossary#asset\""),
+            notation
+                .body_html
+                .contains("href=\"/documents/glossary#asset\""),
             "notation's glossary anchor link should be rewritten"
         );
     }
@@ -641,11 +646,11 @@ mod tests {
         // On-site docs routes stay in this tab and do not get the glyph on
         // the anchor itself — the glyph is only emitted for off-site tags.
         assert!(
-            html.contains("href=\"/docs/notation\""),
+            html.contains("href=\"/documents/notation\""),
             "internal docs routes remain ordinary anchors"
         );
         assert!(
-            !html.contains("href=\"/docs/notation\" target=\"_blank\""),
+            !html.contains("href=\"/documents/notation\" target=\"_blank\""),
             "an on-site docs route must not open a new tab: {html}"
         );
     }
@@ -668,7 +673,7 @@ mod tests {
         let slugs: Vec<String> = terms.iter().map(|term| term.slug.clone()).collect();
         assert_eq!(
             html_ids, slugs,
-            "published /docs/glossary headings drifted from store::glossary::parse"
+            "published /documents/glossary headings drifted from store::glossary::parse"
         );
     }
 }

@@ -39,11 +39,6 @@ pub enum Disclosure {
     /// conflict check to the checker's own caseload, which is the failure the
     /// rule exists to prevent. Do not "fix" these for consistency.
     ConflictGraph,
-    /// Matter content the schema cannot scope: the row carries no link to a
-    /// project, so there is no join to filter on. Raised to
-    /// [`require_admin`] as the interim close. This is a holding position, not
-    /// a design — see the follow-up that adds the missing link.
-    AdminOnly,
 }
 
 /// Every lawyer-tier listing, its route, and the single class it belongs to.
@@ -122,12 +117,17 @@ pub const LAWYER_LISTINGS: &[(&str, &str, Disclosure)] = &[
         "/app/lawyer/person-entity-roles",
         Disclosure::ConflictGraph,
     ),
-    // No project link on `letter` or `sent_email` to scope by.
-    ("list_letters", "/app/admin/letters", Disclosure::AdminOnly),
+    // `letter.project_id` and `sent_email.project_id` (ENG-310) scope both to
+    // the caller's participation ledger, same as the rest of this class.
+    (
+        "list_letters",
+        "/app/admin/letters",
+        Disclosure::MatterContent,
+    ),
     (
         "list_email_log",
         "/app/admin/email-log",
-        Disclosure::AdminOnly,
+        Disclosure::MatterContent,
     ),
 ];
 

@@ -58,6 +58,11 @@ Custom MCP Server data store sends opaque OAuth 2.0 access tokens (`ya29....`) t
 `"Invalid IAP credentials: Unable to parse JWT"`. Validation runs in-process instead; the BackendConfig keeps
 `iap.enabled: false` as scaffolding.
 
+**`/app/mcp` is a second door onto the same handler, not a new one.** ENG-84 made `/app` private by default and mounts
+`/app/mcp` beside `/mcp` — same `McpState`, same layer stack above, same Bearer-only auth. It exists so infrastructure
+as code can migrate the ingress path onto `/app` without forking this setup. Gemini Enterprise's own data-store config
+and the LB path routing above both keep naming `/mcp`; that external contract does not change here.
+
 ## Source documentation
 
 Copy/paste these URLs (long, fenced so the markdown linter doesn't chase the line-length rule):

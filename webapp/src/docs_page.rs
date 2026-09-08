@@ -1,5 +1,5 @@
-//! `/docs` and `/docs/{slug}` — the workspace documentation, migrated to Dioxus
-//! SSR (#956 Phase 4).
+//! `/documents` and `/documents/{slug}` — the workspace documentation, migrated
+//! to Dioxus SSR (#956 Phase 4).
 //!
 //! The successor to the `views::pages::docs`. One doc is a title over a
 //! rendered `CommonMark` body baked from the single-source-of-truth `docs/`
@@ -16,9 +16,9 @@
 //! Per-request content: the doc is selected by the `{slug}` path parameter, so
 //! the portal route's pre-layer resolves it from the compiled-in `DocsIndex`
 //! and injects it. That layer also owns every non-render outcome on the path —
-//! the kebab-case redirect, the `/docs/index` → `/docs` redirect, and the
-//! unknown-slug 404 — because axum cannot register a second `GET` handler where
-//! the render sits.
+//! the kebab-case redirect, the `/documents/index` → `/documents` redirect, and
+//! the unknown-slug 404 — because axum cannot register a second `GET` handler
+//! where the render sits.
 
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -38,7 +38,7 @@ pub struct DocContent {
     pub title: String,
     /// The rendered HTML body (already sanitized; NOT raw markdown).
     pub body_html: String,
-    /// True only for `/docs`, which renders a card catalog instead of the
+    /// True only for `/documents`, which renders a card catalog instead of the
     /// Markdown index body.
     pub is_index: bool,
     /// Every published guide, supplied only to the index route.
@@ -143,7 +143,7 @@ pub fn docs_body(view: &DocsPageView) -> Element {
     }
 }
 
-/// The public `/docs` reading room. The collection stays flat: the cards sort
+/// The public `/documents` reading room. The collection stays flat: the cards sort
 /// by title, but no subject group changes a guide's place in the list.
 fn docs_catalog(content: &DocContent) -> Element {
     let mut catalog = content.catalog.clone();
@@ -153,7 +153,7 @@ fn docs_catalog(content: &DocContent) -> Element {
             div { class: "docs-catalog__desk",
                 h1 { id: "docs-catalog-title", "Documentation" }
                 p { class: "docs-catalog__lede",
-                    a { class: "docs-catalog__start", href: "/docs/glossary", "Start with Glossary" }
+                    a { class: "docs-catalog__start", href: "/documents/glossary", "Start with Glossary" }
                 }
                 nav { class: "docs-catalog__list", "aria-label": "Documentation catalog",
                     ol { class: "docs-catalog__cards",
@@ -185,7 +185,7 @@ mod tests {
     /// The firm chrome this page now wears. Hand-built because
     /// `firm_public_chrome` is gated behind the `server` feature, which this
     /// unit build does not carry — so these tests cover the *rendering* half
-    /// only. That the `/docs` route actually resolves the firm's brand is
+    /// only. That the `/documents` route actually resolves the firm's brand is
     /// pinned end-to-end by `docs_glossary_renders_headings` in
     /// `server/tests/routes.rs`, which drives the real router.
     fn view(title: &str, body_html: &str) -> DocsPageView {
@@ -212,7 +212,7 @@ mod tests {
     fn catalog_entry(title: &str, slug: &str) -> DocCatalogEntry {
         DocCatalogEntry {
             title: title.to_string(),
-            href: format!("/docs/{slug}"),
+            href: format!("/documents/{slug}"),
         }
     }
 
@@ -266,7 +266,7 @@ mod tests {
             "alphabetical catalog: {out}"
         );
         assert!(
-            out.contains("href=\"/docs/access-model\""),
+            out.contains("href=\"/documents/access-model\""),
             "catalog link: {out}"
         );
         assert!(
@@ -322,7 +322,7 @@ mod tests {
         let out = render(&view);
         assert!(
             out.contains(
-                "<a class=\"neon-card docs-catalog__card\" href=\"/docs/glossary\" aria-labelledby=\"docs-catalog-card-0\""
+                "<a class=\"neon-card docs-catalog__card\" href=\"/documents/glossary\" aria-labelledby=\"docs-catalog-card-0\""
             ),
             "the complete card is the destination: {out}"
         );

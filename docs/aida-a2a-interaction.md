@@ -196,3 +196,6 @@ Each behavior described above is grounded by a test or a BDD feature, so the doc
   [feature](../features/tests/features/workshop_navigator_walkthrough.feature).
 - **Agent-card / OAuth / one-time setup** — [`gemini-enterprise-mcp.md`](gemini-enterprise-mcp.md), grounded by the
   card tests in `portal/src/a2a.rs`.
+- **`/mcp` stays Bearer-only under `/app`** — ENG-84 mounts `/app/mcp` beside `/mcp` as the identical Bearer-only
+  surface (no session cookie), so `/app` being private-by-default does not change how this path authenticates. See
+  [`access-model.md`](access-model.md).

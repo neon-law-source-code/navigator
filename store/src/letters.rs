@@ -34,6 +34,10 @@ pub const DIRECTION_OUTGOING: &str = "outgoing";
 pub struct Letter {
     pub id: Uuid,
     pub mailroom_id: Uuid,
+    /// The matter this letter belongs to, when one is known. `None` for
+    /// every historical row and for mail not yet linked to a matter — see
+    /// the schema note on `letter.project_id`.
+    pub project_id: Option<Uuid>,
     /// [`DIRECTION_INCOMING`] or [`DIRECTION_OUTGOING`].
     pub direction: String,
     pub sender: String,
@@ -47,6 +51,7 @@ pub struct Letter {
 #[derive(Debug, Clone)]
 pub struct NewLetter {
     pub mailroom_id: Uuid,
+    pub project_id: Option<Uuid>,
     pub direction: String,
     pub sender: String,
     pub recipient: String,
@@ -59,6 +64,7 @@ pub struct NewLetter {
 struct LetterRow {
     id: surrealdb::types::RecordId,
     mailroom_id: surrealdb::types::RecordId,
+    project_id: Option<surrealdb::types::RecordId>,
     direction: String,
     sender: String,
     recipient: String,
@@ -74,6 +80,7 @@ impl LetterRow {
         Some(Letter {
             id: record_uuid(&self.id)?,
             mailroom_id: record_uuid(&self.mailroom_id)?,
+            project_id: self.project_id.as_ref().and_then(record_uuid),
             direction: self.direction,
             sender: self.sender,
             recipient: self.recipient,
@@ -86,8 +93,8 @@ impl LetterRow {
 
 /// The projection every read shares, so one field list describes the row
 /// and a new column cannot reach [`LetterRow`] from only one query.
-const SELECT: &str =
-    "id, mailroom_id, direction, sender, recipient, summary, inserted_at, updated_at";
+const SELECT: &str = "id, mailroom_id, project_id, direction, sender, recipient, summary, \
+                      inserted_at, updated_at";
 
 /// Errors reading or writing a letter.
 #[derive(Debug, thiserror::Error)]
@@ -141,6 +148,7 @@ pub async fn record(db: &SurrealDb, new: &NewLetter) -> Result<Letter, LetterErr
         db.query(format!(
             "CREATE $id SET \
              mailroom_id = $mailroom_id, \
+             project_id = $project_id, \
              direction = $direction, \
              sender = $sender, \
              recipient = $recipient, \
@@ -149,6 +157,11 @@ pub async fn record(db: &SurrealDb, new: &NewLetter) -> Result<Letter, LetterErr
         ))
         .bind(("id", record_id(TABLE, id)))
         .bind(("mailroom_id", record_id(MAILROOM_TABLE, new.mailroom_id)))
+        .bind((
+            "project_id",
+            new.project_id
+                .map(|p| record_id(crate::projects::PROJECT_TABLE, p)),
+        ))
         .bind(("direction", new.direction.clone()))
         .bind(("sender", new.sender.clone()))
         .bind(("recipient", new.recipient.clone()))
@@ -253,6 +266,7 @@ mod tests {
     use crate::mailrooms;
     use crate::surreal::test_support::mem;
     use crate::surreal::SurrealDb;
+    use crate::test_support::seed_project_surreal;
     use uuid::Uuid;
 
     async fn a_mailroom(db: &SurrealDb, name: &str) -> Uuid {
@@ -275,6 +289,7 @@ mod tests {
     fn a_letter(mailroom_id: Uuid, summary: &str) -> NewLetter {
         NewLetter {
             mailroom_id,
+            project_id: None,
             direction: DIRECTION_INCOMING.to_string(),
             sender: "IRS".into(),
             recipient: "Acme".into(),
@@ -291,9 +306,61 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(written.mailroom_id, mailroom_id);
+        assert_eq!(written.project_id, None);
         assert_eq!(written.summary, "Form 990 reminder");
         assert_eq!(written.direction, DIRECTION_INCOMING);
         assert_eq!(find_by_id(&db, written.id).await.unwrap(), Some(written));
+    }
+
+    /// ENG-310: a letter recorded for a known matter carries it through the
+    /// round trip untouched.
+    #[tokio::test]
+    async fn a_letter_scoped_to_a_project_reads_back_with_it() {
+        let db = mem().await;
+        let mailroom_id = a_mailroom(&db, "HQ").await;
+        let project_id = seed_project_surreal(&db, "matter").await;
+
+        let mut letter = a_letter(mailroom_id, "Engagement notice");
+        letter.project_id = Some(project_id);
+        let written = record(&db, &letter).await.unwrap();
+
+        assert_eq!(written.project_id, Some(project_id));
+        assert_eq!(
+            find_by_id(&db, written.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .project_id,
+            Some(project_id)
+        );
+    }
+
+    /// ENG-310: a row written before this field existed has no value for it
+    /// at all — not the engine's default, an absent field entirely. The
+    /// reader must tolerate that rather than fail the whole row.
+    #[tokio::test]
+    async fn a_historical_letter_with_no_project_id_reads_as_none() {
+        let db = mem().await;
+        let mailroom_id = a_mailroom(&db, "HQ").await;
+        let id = Uuid::now_v7();
+        db.query(
+            "CREATE $id SET mailroom_id = $mailroom_id, direction = $direction, \
+                   sender = $sender, recipient = $recipient, summary = $summary",
+        )
+        .bind(("id", crate::surreal::record_id(super::TABLE, id)))
+        .bind((
+            "mailroom_id",
+            crate::surreal::record_id(super::MAILROOM_TABLE, mailroom_id),
+        ))
+        .bind(("direction", DIRECTION_INCOMING.to_string()))
+        .bind(("sender", "IRS".to_string()))
+        .bind(("recipient", "Acme".to_string()))
+        .bind(("summary", "Pre-ENG-310 mail".to_string()))
+        .await
+        .unwrap();
+
+        let read = find_by_id(&db, id).await.unwrap().expect("row reads back");
+        assert_eq!(read.project_id, None);
     }
 
     #[tokio::test]

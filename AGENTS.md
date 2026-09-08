@@ -49,7 +49,7 @@ rejects the broken-stub form in a temporary fixture.
   notation, workflows, forms, billing, storage, authorization, `store`, and the CLI. Rust owns the browser surface
   through Dioxus; generated PDFs use Typst and transactional email uses string templates. There is no Node or pnpm
   workspace. See [`docs/workspace-layout.md`](docs/workspace-layout.md).
-- **English only.** Code, comments, `/docs`, portal UI, emails, and legal template bodies are English, and no page
+- **English only.** Code, comments, `/documents`, portal UI, emails, and legal template bodies are English, and no page
   publishes a translated surface. Firm marketing copy lives in `neon/locales/en/<brand-key>/*.yaml`, one catalog per
   page stem, covering the home page, the practice pages, and the marketing pages — `/navigator`, `/services`, and
   `/personal-plan`. [`views::locales::KNOWN_PAGES`](views/src/locales.rs) is the closed list of stems, and `Y002`

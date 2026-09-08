@@ -457,6 +457,7 @@ erDiagram
         string direction
         datetime inserted_at
         record_mailroom mailroom_id FK
+        option_record_project project_id FK
         string recipient
         string sender
         string summary
@@ -674,6 +675,7 @@ erDiagram
         string body
         datetime inserted_at
         string outcome
+        option_record_project project_id FK
         string recipient
         string sender
         datetime sent_at
@@ -822,6 +824,7 @@ erDiagram
     person ||--o{ git_access_token : "person_id"
     project ||--o{ git_access_token : "project_id"
     mailroom ||--o{ letter : "mailroom_id"
+    project ||--o{ letter : "project_id"
     address ||--o{ mailroom : "address_id"
     asset ||--o{ notarization : "asset_id"
     person ||--o{ notarization : "notary_person_id"
@@ -858,6 +861,7 @@ erDiagram
     disclosure ||--o{ relationship : "source_id"
     person ||--o{ relationship_log : "actor_person_id"
     notation ||--o{ review_document : "notation_id"
+    project ||--o{ sent_email : "project_id"
     notation ||--o{ signature : "notation_id"
     person ||--o{ signature : "signer_person_id"
     project ||--o{ statutory_deadline : "project_id"

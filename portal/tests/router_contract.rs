@@ -75,14 +75,18 @@ const CONTRACT: &[(&str, Access)] = &[
     // source-available, so these documents are the manual for software anyone can
     // clone — a login door in front of them guarded nothing and cost a reader
     // the one page that explains how to run it.
-    ("/docs", Access::PortalPublic),
-    ("/docs/glossary", Access::PortalPublic),
-    // The same documentation inside the application. `/docs` above renders for
-    // anyone; these carry the session boundary plus a policy rule that admits
-    // only the tiers who operate Navigator. What that gates is the application
-    // surface, not the documents.
-    ("/app/docs", Access::ProtectedHuman),
-    ("/app/docs/glossary", Access::ProtectedHuman),
+    ("/documents", Access::PortalPublic),
+    ("/documents/glossary", Access::PortalPublic),
+    // The same documentation inside the application. `/documents` above renders
+    // for anyone; these carry the session boundary plus a policy rule that
+    // admits only the tiers who operate Navigator. What that gates is the
+    // application surface, not the documents.
+    ("/app/documents", Access::ProtectedHuman),
+    ("/app/documents/glossary", Access::ProtectedHuman),
+    // Anonymous exceptions folded into `/app` by ENG-84: probes with no
+    // session requirement, mounted beside their pre-existing paths above.
+    ("/app/health", Access::PublicIngress),
+    ("/app/readyz", Access::PublicIngress),
     // The living design system reads anonymously: it is a contributor
     // reference, so it renders for a reader who has no account rather than
     // sending them through the login door.
@@ -113,6 +117,12 @@ const CONTRACT: &[(&str, Access)] = &[
     // now needs a session to read the card, so A2A discovery is not
     // self-service. See `portal::a2a` for why that is the accepted trade.
     ("/app/api/aida.json", Access::ProtectedProtocol),
+    // `/app/mcp` is deliberately absent from this table: it carries the same
+    // Bearer-only `require_auth` stack as `/mcp` (no session cookie), which
+    // answers a bare `401` rather than the structured
+    // `{"error":"unauthenticated"}` body `Access::ProtectedProtocol` asserts
+    // for the session-boundary surfaces above. See
+    // `server/tests/mcp_embedded.rs` for its own anonymous-access coverage.
     // Host-owned public pages. Legal and crawler documents belong to the
     // brand host that publishes them, not to the shared application.
     ("/privacy", Access::HostPublic),
@@ -427,7 +437,7 @@ async fn a_signed_session_passes_the_shared_boundary() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/docs/glossary")
+                .uri("/documents/glossary")
                 .header("cookie", cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -440,7 +450,7 @@ async fn a_signed_session_passes_the_shared_boundary() {
         StatusCode::OK,
         "an authenticated reader still gets the shared docs"
     );
-    // `/docs` is anonymous, so this no longer proves the boundary passes a
+    // `/documents` is anonymous, so this no longer proves the boundary passes a
     // signed session — a gated surface does. `/templates` is behind the same
     // boundary and renders for any authenticated person.
     let gallery = app_for_gallery
@@ -508,7 +518,7 @@ async fn mount_keeps_host_public_routes_and_protects_portal_routes() {
         "the host keeps serving its own public page"
     );
 
-    // `/templates`, not `/docs`: the documentation reads anonymously now, so it
+    // `/templates`, not `/documents`: the documentation reads anonymously now, so it
     // can no longer stand for "the boundary still closes under a host mount".
     // The template gallery is the nearest shared surface that is still gated.
     let gallery_response = anonymous_get(&app, "/templates").await;

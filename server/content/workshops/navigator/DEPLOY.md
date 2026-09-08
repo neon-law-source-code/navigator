@@ -312,7 +312,7 @@ these HTTP paths and every descendant:
 
 - operational and public ingress: `/health`, `/readyz`, `/version`, `/assets/*`, `/webhook/*`, `/docusign/*`,
   `/public/*`, and `/dioxus-demo`;
-- application and control surfaces: `/app/*`, `/app/api/*`, `/auth/*`, `/mcp/*`, and `/docs/*`;
+- application and control surfaces: `/app/*`, `/app/api/*`, `/auth/*`, `/mcp/*`, and `/documents/*`;
 - API documentation: `/app/api` and `/app/api/openapi.json`.
 
 The brand-owned public routes are:

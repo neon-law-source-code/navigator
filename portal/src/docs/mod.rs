@@ -1,11 +1,11 @@
-//! Workspace docs published verbatim at `/docs/:slug`, behind the shared
+//! Workspace docs published verbatim at `/documents/:slug`, behind the shared
 //! Navigator session boundary.
 //!
 //! The single source of truth is the workspace-root `docs/` tree.
 //! There is **no forked copy** under `web/`: the docs tree is baked into
 //! the binary at compile time (the prod
 //! image builds from `web/`, so `docs/` is outside it and can't be read
-//! at runtime — see [`loader`]). A git reader and a `/docs` visitor see
+//! at runtime — see [`loader`]). A git reader and a `/documents` visitor see
 //! the same bytes.
 //!
 //! A doc is published only with `publish: true` in its leading YAML
@@ -29,7 +29,7 @@ pub struct Doc {
     /// back to the slug when the file has none).
     pub title: String,
     /// Rendered HTML body (NOT raw markdown). Sibling `*.md` links are
-    /// rewritten to `/docs/*` routes, repo-relative `../` links become
+    /// rewritten to `/documents/*` routes, repo-relative `../` links become
     /// GitHub source URLs, off-site anchors carry the up-right arrow,
     /// and headings carry GitHub-style anchor ids so in-page `#anchor`
     /// links resolve.
@@ -55,7 +55,7 @@ impl DocsIndex {
         Self::new(Vec::new())
     }
 
-    /// Every published doc, sorted by slug — for a `/docs` hub or tests.
+    /// Every published doc, sorted by slug — for a `/documents` hub or tests.
     #[must_use]
     pub fn docs(&self) -> &[Doc] {
         &self.docs

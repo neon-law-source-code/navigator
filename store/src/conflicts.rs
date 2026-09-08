@@ -256,6 +256,9 @@ pub struct ConflictGraph {
     client_persons: HashSet<Uuid>,
     /// Entity → its conflict / related-party disclosure summaries.
     entity_disclosures: HashMap<Uuid, Vec<String>>,
+    /// Every non-archived project's own entity — [`ConflictGraph::findings_for_projects`]'s
+    /// source for turning a caller's visible matters into graph anchors.
+    project_entities: HashMap<Uuid, Uuid>,
 }
 
 /// Whether the firm has actually screened this person for conflicts.
@@ -353,6 +356,7 @@ pub async fn build_graph(surreal: &SurrealDb) -> Result<ConflictGraph, String> {
         entity_clients,
         client_persons,
         entity_disclosures,
+        project_entities: live_project_entities,
     })
 }
 
@@ -742,6 +746,137 @@ impl ConflictGraph {
         });
         Ok(ConflictReport { findings })
     }
+
+    /// Ranked conflict findings across the firm-wide graph, anchored on the
+    /// given projects' own entities and current client DRIs (ENG-307) —
+    /// the lawyer dashboard's reading of "their" conflicts, per
+    /// `docs/access-model.md`'s Model Rule 1.10 discussion: firm-wide,
+    /// oriented on the caller's own matters rather than scoped to them, so
+    /// a conflict arising out of a matter the caller does not participate
+    /// in still surfaces.
+    ///
+    /// Distinct from [`check`](Self::check), which answers "would *this*
+    /// proposed new matter conflict" for a client/entity pair that may not
+    /// have a project yet. This answers "what does the firm's graph say
+    /// about the matters I already have", anchored on projects that already
+    /// exist.
+    ///
+    /// A reached node is a finding only when it is a client the firm serves
+    /// on some *other* project — one of the anchor projects' own entity or
+    /// client DRI is the matter itself, not a conflict with it.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`String`] if the participation lookup or the traversal
+    /// fails.
+    pub async fn findings_for_projects(
+        &self,
+        project_ids: &[Uuid],
+    ) -> Result<Vec<ConflictFinding>, String> {
+        let anchor_projects: HashSet<Uuid> = project_ids.iter().copied().collect();
+        if anchor_projects.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let anchor_entities: HashSet<Uuid> = anchor_projects
+            .iter()
+            .filter_map(|id| self.project_entities.get(id))
+            .copied()
+            .collect();
+        let anchor_clients: HashSet<Uuid> = crate::projects::all_participations(&self.graph)
+            .await
+            .map_err(|error| format!("load conflict-dashboard participations: {error}"))?
+            .into_iter()
+            .filter(|role| role.is_client_dri && anchor_projects.contains(&role.project_id))
+            .map(|role| role.person_id)
+            .collect();
+
+        let anchors: Vec<NodeRef> = anchor_entities
+            .iter()
+            .copied()
+            .map(NodeRef::entity)
+            .chain(anchor_clients.iter().copied().map(NodeRef::person))
+            .collect();
+        if anchors.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let (reached, labels) = self.reach(&anchors).await?;
+
+        let mut findings = Vec::new();
+        for (&n, r) in &reached {
+            // The anchors themselves are the caller's own matters, not a
+            // conflict with them.
+            if r.hops == 0 {
+                continue;
+            }
+            let counterparty_client = match n.kind {
+                Endpoint::Entity => {
+                    !anchor_entities.contains(&n.id)
+                        && self.entity_clients.get(&n.id).is_some_and(|clients| {
+                            clients.iter().any(|c| !anchor_clients.contains(c))
+                        })
+                }
+                Endpoint::Person => {
+                    !anchor_clients.contains(&n.id) && self.client_persons.contains(&n.id)
+                }
+            };
+
+            if counterparty_client {
+                let (severity, reason) = if r.adverse_on_path {
+                    let blocking = r.confidence_pct >= BLOCK_FLOOR_PCT && r.hops <= BLOCK_MAX_HOPS;
+                    (
+                        if blocking {
+                            Severity::Block
+                        } else {
+                            Severity::Review
+                        },
+                        Reason::Adverse,
+                    )
+                } else {
+                    (Severity::Review, Reason::SharedParty)
+                };
+                let lead = match reason {
+                    Reason::Adverse => "Adverse to a current client",
+                    _ => "Shares a party with a current client's matter",
+                };
+                findings.push(ConflictFinding {
+                    severity,
+                    reason,
+                    counterparty: label(&labels, n),
+                    explanation: format!("{lead}: {}", r.path),
+                    confidence_pct: r.confidence_pct,
+                });
+            }
+
+            if n.kind == Endpoint::Entity {
+                if let Some(summaries) = self.entity_disclosures.get(&n.id) {
+                    for summary in summaries {
+                        findings.push(ConflictFinding {
+                            severity: Severity::Review,
+                            reason: Reason::Disclosure,
+                            counterparty: label(&labels, n),
+                            explanation: format!(
+                                "Disclosure on {}: {summary} (via {})",
+                                label(&labels, n),
+                                r.path
+                            ),
+                            confidence_pct: r.confidence_pct,
+                        });
+                    }
+                }
+            }
+        }
+
+        findings.sort_by(|a, b| {
+            b.severity
+                .eq(&Severity::Block)
+                .cmp(&a.severity.eq(&Severity::Block))
+                .then(b.confidence_pct.cmp(&a.confidence_pct))
+                .then(a.counterparty.cmp(&b.counterparty))
+        });
+        Ok(findings)
+    }
 }
 
 /// Build the lookups and run the pre-matter conflict check in one call.
@@ -762,9 +897,28 @@ pub async fn check_new_matter(
         .await
 }
 
+/// Build the lookups and run the lawyer-dashboard conflict scan in one
+/// call (ENG-307) — see [`ConflictGraph::findings_for_projects`]. This is
+/// the entry point `webapp::lawyer_dashboard` uses; it answers a different
+/// question from [`check_new_matter`] and does not replace it.
+///
+/// # Errors
+///
+/// Returns any `String` from loading the lookups or running the
+/// traversal.
+pub async fn findings_for_matters(
+    surreal: &SurrealDb,
+    project_ids: &[Uuid],
+) -> Result<Vec<ConflictFinding>, String> {
+    build_graph(surreal)
+        .await?
+        .findings_for_projects(project_ids)
+        .await
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{check_new_matter, is_screened_client, Reason, Severity};
+    use super::{check_new_matter, findings_for_matters, is_screened_client, Reason, Severity};
     use crate::entity_roles;
     use crate::persons::{self, NewPerson};
     use crate::relationships::{
@@ -1325,5 +1479,120 @@ mod tests {
             before,
             "the conflict check mutated the store it was only supposed to read"
         );
+    }
+
+    /// ENG-307: the dashboard reading is firm-wide, oriented on the caller's
+    /// own matters — a finding arising from a matter the caller does not
+    /// participate in must still surface. This is the same Model Rule 1.10
+    /// reasoning `check_new_matter` already applies to a *proposed* matter,
+    /// pinned here for an *existing* one.
+    #[tokio::test]
+    async fn a_finding_from_an_unparticipated_matter_is_shown() {
+        let surreal = mem().await;
+
+        // The caller's own matter — the anchor.
+        let my_entity = seed_entity(&surreal).await;
+        let my_client = person_named(&surreal, "My Client").await;
+        let my_project = crate::projects::create(
+            &surreal,
+            &crate::projects::NewProject {
+                code: format!("my-matter-{}", Uuid::now_v7()),
+                name: "My matter".into(),
+                status: "open".into(),
+                entity_id: my_entity,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        crate::projects::designate_dri_in_surreal(
+            &surreal,
+            my_project.id,
+            my_client,
+            crate::projects::DriSide::Client,
+        )
+        .await
+        .unwrap();
+        crate::projects::designate_dri_in_surreal(
+            &surreal,
+            my_project.id,
+            dri_person(&surreal).await,
+            crate::projects::DriSide::Lawyer,
+        )
+        .await
+        .unwrap();
+
+        // A different matter, the caller holds no participation row on it
+        // at all — its client is directly adverse to mine.
+        let opponent = person_named(&surreal, "Someone Else's Opponent").await;
+        let opponent_entity = seed_entity(&surreal).await;
+        open_project(&surreal, opponent_entity, opponent).await;
+        edge(
+            &surreal,
+            (Endpoint::Person, my_client),
+            (Endpoint::Person, opponent),
+            KIND_ADVERSE_TO,
+            100,
+        )
+        .await;
+
+        let findings = findings_for_matters(&surreal, &[my_project.id])
+            .await
+            .unwrap();
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.reason == Reason::Adverse && f.explanation.contains("Someone Else's Opponent")),
+            "a conflict on a matter the caller does not participate in must still surface: {findings:?}",
+        );
+    }
+
+    /// ENG-307: no edges reachable from the caller's matters is an empty
+    /// list, not an error — the dashboard's empty state, never synthesized.
+    #[tokio::test]
+    async fn findings_for_matters_is_empty_for_a_clean_graph() {
+        let surreal = mem().await;
+        let entity_id = seed_entity(&surreal).await;
+        let client = person_named(&surreal, "Quiet Client").await;
+        let project = crate::projects::create(
+            &surreal,
+            &crate::projects::NewProject {
+                code: format!("quiet-matter-{}", Uuid::now_v7()),
+                name: "Quiet matter".into(),
+                status: "open".into(),
+                entity_id,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        crate::projects::designate_dri_in_surreal(
+            &surreal,
+            project.id,
+            client,
+            crate::projects::DriSide::Client,
+        )
+        .await
+        .unwrap();
+        crate::projects::designate_dri_in_surreal(
+            &surreal,
+            project.id,
+            dri_person(&surreal).await,
+            crate::projects::DriSide::Lawyer,
+        )
+        .await
+        .unwrap();
+
+        let findings = findings_for_matters(&surreal, &[project.id]).await.unwrap();
+        assert!(findings.is_empty(), "findings: {findings:?}");
+    }
+
+    /// ENG-307: an empty anchor set (a caller on no matters at all) is
+    /// empty, not an error and not a firm-wide dump.
+    #[tokio::test]
+    async fn findings_for_matters_is_empty_with_no_anchor_projects() {
+        let surreal = mem().await;
+        let findings = findings_for_matters(&surreal, &[]).await.unwrap();
+        assert!(findings.is_empty());
     }
 }

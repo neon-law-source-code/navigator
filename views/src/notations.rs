@@ -35,9 +35,9 @@ fn strip_leading_h1(md: &str) -> &str {
 }
 
 /// Map one of the README's relative Markdown links onto the URL that serves it:
-/// a workspace doc to `/docs/...`, a template to its raw `/app/api/templates/...`
-/// route, and anything else to the file on GitHub. Absolute and in-page links
-/// pass through untouched.
+/// a workspace doc to `/documents/...`, a template to its raw
+/// `/app/api/templates/...` route, and anything else to the file on GitHub.
+/// Absolute and in-page links pass through untouched.
 fn rewrite_link(dest: &str) -> String {
     if dest.starts_with("http://")
         || dest.starts_with("https://")
@@ -55,7 +55,7 @@ fn rewrite_link(dest: &str) -> String {
         .and_then(|rest| rest.strip_suffix(".md"))
     {
         if !stem.contains('/') {
-            return with_anchor(&format!("/docs/{}", crate::slug::to_url(stem)), anchor);
+            return with_anchor(&format!("/documents/{}", crate::slug::to_url(stem)), anchor);
         }
     }
     if path == "../README.md" {
@@ -115,9 +115,9 @@ mod tests {
     fn doc_links_map_to_site_routes() {
         assert_eq!(
             rewrite_link("../docs/notation.md#template"),
-            "/docs/notation#template"
+            "/documents/notation#template"
         );
-        assert_eq!(rewrite_link("../docs/glossary.md"), "/docs/glossary");
+        assert_eq!(rewrite_link("../docs/glossary.md"), "/documents/glossary");
     }
 
     #[test]

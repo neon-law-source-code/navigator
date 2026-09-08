@@ -170,18 +170,28 @@ The anonymous allowlist is explicit, small, and pinned by `portal/tests/router_c
 - the static assets under `/public/` that the login page renders;
 - `/assets/*`, which reads only the deployment's dedicated private marketing-assets bucket through the GKE workload
   identity; client documents, exports, and logs have no corresponding anonymous route;
-- the `/health` and `/readyz` probes and the `/version` deploy-identity probe;
+- the `/health` and `/readyz` probes and the `/version` deploy-identity probe. ENG-84 mounts `/app/health` and
+  `/app/readyz` beside them, mirroring the same handlers under the private prefix so infrastructure as code can move its
+  probe paths onto `/app` without a window where neither answers. `/health` (and `/app/health`) is liveness and answers
+  with no database round-trip; `/readyz` (and `/app/readyz`) is readiness and keeps the SurrealDB ping — a dependency
+  outage must fail readiness, not liveness, or the load balancer never learns to stop sending traffic;
 - webhook ingress whose sender authenticates by signature or path secret — SendGrid inbound mail and delivery events,
   and the e-signature completion callback. The GitHub webhook receiver is not on this list: it lives on
   `workflows-service`, a separate host, and `web` answers `404` for it
   (`portal/tests/router_contract.rs::web_does_not_serve_the_github_webhook_receiver`);
 - the DocuSign consent callback, the provider's return leg of an admin-initiated consent grant;
-- the two contributor reference surfaces, `/design` and the workspace documentation at `/docs` and `/docs/{slug}`. Both
-  render their own `200` for a reader with no account rather than answering the login door, and both carry
-  `inject_optional_session` so a signed-in reader still gets the authenticated nav. The documentation is anonymous
-  because the repository is source-available: those documents are the manual for software anyone can clone, so a login
-  door in front of them guarded nothing. `/app/docs` is a second door to the same index wearing the application chrome,
-  and it stays gated — what it restricts is that surface, not the documents.
+- the two contributor reference surfaces, `/design` and the workspace documentation at `/documents` and
+  `/documents/{slug}`. Both render their own `200` for a reader with no account rather than answering the login door,
+  and both carry `inject_optional_session` so a signed-in reader still gets the authenticated nav. The documentation is
+  anonymous because the repository is source-available: those documents are the manual for software anyone can clone, so
+  a login door in front of them guarded nothing. `/app/documents` is a second door to the same index wearing the
+  application chrome, and it stays gated — what it restricts is that surface, not the documents.
+
+`/mcp` and its `/app/mcp` alias are **not** on this allowlist — a caller still needs a credential — but they are not
+behind the session-cookie boundary either. Both mount the same Bearer-only stack (`require_auth`, `require_policy`, and
+in production `require_google_oauth`), carry no CSRF layer, and never accept the browser session cookie: JSON-RPC
+clients send `Authorization: Bearer`, not a cookie. Mounting `/app/mcp` beside `/mcp` is what lets ops migrate the
+ingress path onto `/app` without forking that auth stack or briefly serving `/mcp` from a different one.
 
 The A2A agent card is *not* on that list. The whole API surface, its documentation, and the card itself live under the
 private `/app/api` prefix and require a session, so A2A discovery is not self-service: a client cannot read the card to
@@ -414,9 +424,14 @@ Embedded Rego's allow rules in priority order:
    `/app/lawyer/person-entity-roles` feed `store::conflicts::check_new_matter`, and ABA Model Rule 1.10 imputes a
    conflict firm-wide, so a lawyer must be able to see one arising out of a matter they are not on — scoping either
    would narrow the conflict check to the checker's own caseload. `/app/admin/letters` and `/app/admin/email-log` are
-   Owner/Admin only: `letter` and `sent_email` carry no project link to scope by, so the admin gate is the interim close
-   until one exists. Which class each listing belongs to is written down once, in
-   `webapp::admin_listing::LAWYER_LISTINGS`.
+   participation-scoped the same way (ENG-310): `letter.project_id` and `sent_email.project_id` are
+   `option<record<project>>`, `NONE` for every historical row and for correspondence not tied to a matter, so those rows
+   are absent from a scoped read rather than admitted. `/app/lawyer/letters/{id}` scopes by the same field. Which class
+   each listing belongs to is written down once, in `webapp::admin_listing::LAWYER_LISTINGS`. The lawyer dashboard's
+   Conflicts section (ENG-307, `store::conflicts::findings_for_matters`) reads the graph the other way: it anchors the
+   traversal on the caller's own visible matters but does not scope the *findings* to them, so a conflict arising out of
+   a matter the caller does not participate in still surfaces there too — the identical Model Rule 1.10 reasoning above,
+   applied to an existing matter rather than a proposed one.
 3. **Clerk supervised lens** — a Clerk enters `/app/projects` with everyone else, and
    `store::access::matter_viewer` resolves them to `MatterViewer::Clerk` only when they hold a firm-side row and the
    matter has a flagged lawyer DRI who currently holds the lawyer tier. That variant renders the matter name, status,

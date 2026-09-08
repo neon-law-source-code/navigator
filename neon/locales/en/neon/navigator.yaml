@@ -41,6 +41,7 @@ bands:
       - Descrybe
       - Exa
       - Midpage
+      - Perplexity
     agentic_coding_tools:
       - Antigravity
       - Claude Code

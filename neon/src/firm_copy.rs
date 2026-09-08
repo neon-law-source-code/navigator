@@ -508,7 +508,10 @@ mod firm_copy_tests {
             "Client collaboration when the Project uses it."
         );
         let mcp_tools: Vec<&str> = diagram.2.iter().map(String::as_str).collect();
-        assert_eq!(mcp_tools, ["Court Listener", "Descrybe", "Exa", "Midpage"]);
+        assert_eq!(
+            mcp_tools,
+            ["Court Listener", "Descrybe", "Exa", "Midpage", "Perplexity"]
+        );
         let agentic_coding_tools: Vec<&str> = diagram.3.iter().map(String::as_str).collect();
         assert_eq!(
             agentic_coding_tools,

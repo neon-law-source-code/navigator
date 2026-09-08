@@ -976,6 +976,96 @@ fn validate_templates(
     paths.len()
 }
 
+/// `Y010` — a Project template names `Neon Law` with a corporate suffix that is
+/// not the firm entity of record.
+///
+/// `Neon Law` is a mark, and a mark may head any sentence in a template. The
+/// mark followed by `, Inc.`, `LLC`, `PLLC`, or another corporate suffix is a
+/// claim about which legal person the client is engaging, and on an
+/// engagement letter that claim sits above a signature block. The one legal
+/// person is [`store::seed::FIRM_ENTITY_NAME`]; this compares against that
+/// constant and never against a literal of its own, so the gate cannot become
+/// a further spelling. `Neon Law IP LLC`, the Licensor, is a different name
+/// with a different word after the mark, not a suffix case.
+pub const ENTITY_CODE: &str = "Y010";
+
+/// The mark a template may trade under without naming a legal person.
+const FIRM_MARK: &str = "Neon Law";
+
+/// Corporate suffixes that turn the mark into an entity claim. Longer
+/// spellings precede the shorter spelling they contain, so `Incorporated` is
+/// read whole rather than as `Inc` with letters after it.
+const CORPORATE_SUFFIXES: &[&str] = &[
+    "Incorporated",
+    "Inc.",
+    "Inc",
+    "P.L.L.C.",
+    "PLLC",
+    "L.L.C.",
+    "LLC",
+    "L.L.P.",
+    "LLP",
+    "Corporation",
+    "Corp.",
+    "Corp",
+    "Limited",
+    "Ltd.",
+    "Ltd",
+    "P.C.",
+    "PC",
+    "Co.",
+];
+
+/// Every `(line, spelling)` at which `contents` names the mark with a
+/// corporate suffix and the result is not `firm`, the entity of record.
+///
+/// Lines are one-based, as the finding prints them. The spelling is the mark
+/// plus the suffix as the template wrote it, with one space between, so the
+/// message names what the file says rather than a normalized form.
+fn misnamed_firm_entities(contents: &str, firm: &str) -> Vec<(usize, String)> {
+    let mut found = Vec::new();
+    for (index, line) in contents.lines().enumerate() {
+        for (at, _) in line.match_indices(FIRM_MARK) {
+            let rest = &line[at + FIRM_MARK.len()..];
+            let Some(suffix) = entity_suffix(rest) else {
+                continue;
+            };
+            let spelled = format!("{FIRM_MARK}{suffix}");
+            if spelled != firm {
+                found.push((index + 1, spelled));
+            }
+        }
+    }
+    found
+}
+
+/// The corporate suffix `rest` opens with — an optional comma, at least one
+/// whitespace character, and one of [`CORPORATE_SUFFIXES`] ending at a word
+/// boundary — rendered as `, Inc.` or ` PLLC`. `None` when the mark ran into
+/// more letters (`Neon Lawyers`), ended the sentence (`Neon Law.`), or was
+/// followed by any other word (`Neon Law IP LLC`, `Neon Law helps`).
+fn entity_suffix(rest: &str) -> Option<String> {
+    let (comma, rest) = match rest.strip_prefix(',') {
+        Some(rest) => (",", rest),
+        None => ("", rest),
+    };
+    let trimmed = rest.trim_start();
+    if trimmed.len() == rest.len() {
+        return None;
+    }
+    CORPORATE_SUFFIXES.iter().find_map(|suffix| {
+        let head = trimmed.get(..suffix.len())?;
+        if !head.eq_ignore_ascii_case(suffix) {
+            return None;
+        }
+        let boundary = trimmed[suffix.len()..]
+            .chars()
+            .next()
+            .is_none_or(|next| !next.is_alphanumeric());
+        boundary.then(|| format!("{comma} {head}"))
+    })
+}
+
 fn lint_project_template(
     path: &Path,
     prefix: &str,
@@ -1003,6 +1093,17 @@ fn lint_project_template(
         } else {
             warnings.push(finding);
         }
+    }
+    for (line, spelling) in misnamed_firm_entities(&contents, store::seed::FIRM_ENTITY_NAME) {
+        errors.push(Finding::at(
+            path,
+            format!(
+                "{ENTITY_CODE}: line {line} names `{spelling}` as the firm, but the entity of \
+                 record is `{}`; a template that gives the mark a corporate suffix must name \
+                 the contracting entity exactly",
+                store::seed::FIRM_ENTITY_NAME
+            ),
+        ));
     }
     let stem = path
         .file_stem()
@@ -1289,8 +1390,9 @@ jobs:
 #[cfg(test)]
 mod tests {
     use super::{
-        cd_workflow, is_release_tag, repository_name, scaffold, validate_layout, validate_workflow,
-        workflow, Finding, ALLOWED_ROOTS, CD_WORKFLOW, PROJECT_MANIFEST, WORKFLOW,
+        cd_workflow, is_release_tag, lint_project_template, misnamed_firm_entities,
+        placeholder_template, repository_name, scaffold, validate_layout, validate_workflow,
+        workflow, Finding, ALLOWED_ROOTS, CD_WORKFLOW, ENTITY_CODE, PROJECT_MANIFEST, WORKFLOW,
     };
     use std::path::Path;
 
@@ -1869,5 +1971,133 @@ jobs:
             "{generated}"
         );
         assert!(generated.contains(r#"version: "26.8.23""#), "{generated}");
+    }
+
+    /// `Y010`: the mark with a corporate suffix is an entity claim, and the
+    /// claim is measured against the entity of record the caller passes, so
+    /// the spelling that *is* the entity passes and every other one fails.
+    #[test]
+    fn a_template_naming_the_mark_with_a_corporate_suffix_is_refused() {
+        for (body, spelling) in [
+            (
+                "The Company, Neon Law, Inc., engages the Client.",
+                "Neon Law, Inc.",
+            ),
+            ("**Neon Law PLLC** (the \"Firm\")", "Neon Law PLLC"),
+            ("between Neon Law LLC and the Client", "Neon Law LLC"),
+            ("Neon Law,   P.L.L.C.", "Neon Law, P.L.L.C."),
+            (
+                "engaged Neon Law Incorporated today",
+                "Neon Law Incorporated",
+            ),
+            ("Neon Law, inc. signs below", "Neon Law, inc."),
+        ] {
+            assert_eq!(
+                misnamed_firm_entities(body, "Shook Law PLLC"),
+                vec![(1, spelling.to_string())],
+                "{body}"
+            );
+        }
+        assert_eq!(
+            misnamed_firm_entities("---\ntitle: x\n---\n\nNeon Law, Inc.\n", "Shook Law PLLC"),
+            vec![(5, "Neon Law, Inc.".to_string())]
+        );
+        // The comparison is against the entity of record, not against every
+        // suffix: were the firm itself `Neon Law PLLC`, that spelling passes.
+        assert_eq!(
+            misnamed_firm_entities("engages Neon Law PLLC", "Neon Law PLLC"),
+            Vec::new()
+        );
+    }
+
+    /// The bare mark, the Licensor's own name, a longer word that merely
+    /// starts with the mark, and the entity of record itself are not entity
+    /// claims: a template may trade under the mark and may cite
+    /// `Neon Law IP LLC` as the Licensor.
+    #[test]
+    fn the_mark_alone_and_the_licensor_are_not_entity_claims() {
+        for body in [
+            "Neon Law",
+            "Neon Law.",
+            "Neon Law helps you.",
+            "Neon Law, a practice of Shook Law PLLC, will",
+            "Neon Law IP LLC licenses the mark.",
+            "Neon Lawyers Inc",
+            "Neon Law Incorporates the terms",
+            "Shook Law PLLC",
+        ] {
+            assert_eq!(
+                misnamed_firm_entities(body, "Shook Law PLLC"),
+                Vec::new(),
+                "{body}"
+            );
+        }
+    }
+
+    /// Through the real template lint: the finding carries the rule code, the
+    /// line, the spelling the file used, and the entity of record.
+    #[test]
+    fn lint_project_template_reports_y010_with_the_line_and_the_spelling() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("acme__engagement.md");
+        let template = placeholder_template("acme__engagement").replace(
+            "Replace this placeholder with the notation this Project actually uses.",
+            "This letter engages Neon Law, Inc. (the \"Firm\").",
+        );
+        let line = template
+            .lines()
+            .position(|line| line.contains("Neon Law, Inc."))
+            .expect("the body carries the spelling")
+            + 1;
+        std::fs::write(&path, &template).unwrap();
+
+        let mut errors: Vec<Finding> = Vec::new();
+        let mut warnings: Vec<Finding> = Vec::new();
+        let mut declared = std::collections::BTreeMap::new();
+        lint_project_template(
+            &path,
+            "acme__",
+            &[],
+            &mut declared,
+            &mut errors,
+            &mut warnings,
+        );
+        let messages: Vec<String> = errors.into_iter().map(|error| error.message).collect();
+        assert!(
+            messages.iter().any(|message| {
+                message.starts_with(&format!("{ENTITY_CODE}: line {line} "))
+                    && message.contains("`Neon Law, Inc.`")
+                    && message.contains(store::seed::FIRM_ENTITY_NAME)
+            }),
+            "{messages:?}"
+        );
+        assert!(warnings.is_empty(), "{warnings:?}");
+    }
+
+    /// The scaffolded placeholder names no entity, so a fresh Project
+    /// repository does not start out failing its own gate.
+    #[test]
+    fn the_scaffolded_placeholder_template_carries_no_y010() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("acme__engagement.md");
+        std::fs::write(&path, placeholder_template("acme__engagement")).unwrap();
+
+        let mut errors: Vec<Finding> = Vec::new();
+        let mut warnings: Vec<Finding> = Vec::new();
+        let mut declared = std::collections::BTreeMap::new();
+        lint_project_template(
+            &path,
+            "acme__",
+            &[],
+            &mut declared,
+            &mut errors,
+            &mut warnings,
+        );
+        assert!(
+            errors
+                .iter()
+                .all(|error| !error.message.starts_with(ENTITY_CODE)),
+            "{errors:?}"
+        );
     }
 }

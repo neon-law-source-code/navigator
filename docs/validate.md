@@ -107,7 +107,7 @@ Reading it is how to answer "which line do I fix"; the summary counts and the ex
 
 ## Rule codes
 
-Every code below is defined in `rules/src/`, except `Y001`–`Y009`, which live in `cli/src/` because the typed YAML,
+Every code below is defined in `rules/src/`, except `Y001`–`Y010`, which live in `cli/src/` because the typed YAML,
 Project-manifest, and origin passes run outside the `rules` crate entirely. "Autofix" means `--fix` rewrites the file
 for that violation without a human decision; every other code needs a person to resolve it.
 
@@ -238,3 +238,9 @@ for that violation without a human decision; every other code needs a person to 
 | `Y007` | Error | A Project manifest `no_live_row` must be a non-empty reason string. | No |
 | `Y008` | Error | The Project manifest filename is `navigator.yaml`; rename `navigator.yml`. | No |
 | `Y009` | Error | Off-origin hosts fail unless listed in `allowed_links` with `rel="noreferrer"`. | No |
+| `Y010` | Error | A Project template naming `Neon Law` with a corporate suffix must name the entity of record. | No |
+
+`Y010` runs inside the Project-repository check that `navigator validate` applies when the walked root is a Project
+repository. It reads each `templates/<code>.md` and compares any `Neon Law` spelled with a corporate suffix (`, Inc.`,
+`LLC`, `PLLC`, and the like) against `store::seed::FIRM_ENTITY_NAME`, the legal person a client engages, so a signature
+instrument cannot name a party the firm is not. The bare mark and `Neon Law IP LLC`, the Licensor, are not findings.

@@ -100,6 +100,12 @@ impl SeedReport {
 /// without reaching into `store`'s private modules.
 pub const JURISDICTION_SEED_YAML: &str = canonical::JURISDICTION;
 
+/// The canonical Entity seed, embedded at compile time. Exposed so the
+/// cross-crate parity test in `cli` can prove the row this seed writes is
+/// named exactly [`FIRM_ENTITY_NAME`] and exactly what `views::brand` prints
+/// as the footer's legal entity, without reading `store/seeds/` from disk.
+pub const ENTITY_SEED_YAML: &str = canonical::ENTITY;
+
 /// The firm Entity that anchors the canonical seed. `Entity.yaml` re-creates
 /// this row by exact name on every boot, so every deployment carries it.
 /// `web` reads this to keep the row's delete and rename guards aligned with

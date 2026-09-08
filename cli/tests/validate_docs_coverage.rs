@@ -21,6 +21,8 @@ const MANIFEST_UNKNOWN_KEY_CODE: &str = "Y006";
 const MANIFEST_ROWLESS_CODE: &str = "Y007";
 const MANIFEST_RENAME_CODE: &str = "Y008";
 const ORIGIN_CODE: &str = "Y009";
+/// `Y010` is the Project-template entity check in `cli/src/projects/repository.rs`.
+const ENTITY_CODE: &str = "Y010";
 
 fn all_shipped_codes() -> BTreeSet<&'static str> {
     let mut codes = BTreeSet::new();
@@ -50,6 +52,7 @@ fn all_shipped_codes() -> BTreeSet<&'static str> {
     codes.insert(MANIFEST_ROWLESS_CODE);
     codes.insert(MANIFEST_RENAME_CODE);
     codes.insert(ORIGIN_CODE);
+    codes.insert(ENTITY_CODE);
     codes
 }
 
@@ -74,6 +77,6 @@ fn every_shipped_code_has_an_entry_in_validate_docs() {
 /// Pin the exhaustive count so a rule addition or removal is a visible diff here, not a silent
 /// change to how many codes the doc is supposed to cover.
 #[test]
-fn the_shipped_code_count_is_ninety_three() {
-    assert_eq!(all_shipped_codes().len(), 93);
+fn the_shipped_code_count_is_ninety_four() {
+    assert_eq!(all_shipped_codes().len(), 94);
 }

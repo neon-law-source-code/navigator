@@ -34,10 +34,20 @@ const BUILTIN_PREFIXES: &[(&str, &str)] = &[(
 /// Scan each application's `dist/` for off-origin host references.
 ///
 /// A repository with no application is a no-op. An application whose `dist/`
-/// is missing, or holds no scannable files, is a finding: the gate describes
-/// what a client receives, so it must read the real build.
+/// exists but holds no scannable files is always a finding.
+///
+/// A *missing* `dist/` depends on who is asking. `ci` false is the local loop —
+/// a source-only checkout has not been built yet, and failing it would train a
+/// reader to ignore the code. `ci` true is a gate that has already run the
+/// build, so nothing to scan means the scan examined nothing, and the gate
+/// describes what a client receives rather than what a source tree promises.
 #[must_use]
-pub fn lint(_root: &Path, applications: &[PathBuf], manifest: &Manifest) -> Vec<ManifestFinding> {
+pub fn lint(
+    _root: &Path,
+    applications: &[PathBuf],
+    manifest: &Manifest,
+    ci: bool,
+) -> Vec<ManifestFinding> {
     if applications.is_empty() {
         return Vec::new();
     }
@@ -48,6 +58,14 @@ pub fn lint(_root: &Path, applications: &[PathBuf], manifest: &Manifest) -> Vec<
     for application in applications {
         let dist = application.join("dist");
         if !dist.is_dir() {
+            if ci {
+                findings.push(ManifestFinding::at(
+                    application,
+                    1,
+                    ORIGIN_CODE,
+                    "no dist/ to check — the origin scan needs the built bundle, so run this after the application's build",
+                ));
+            }
             continue;
         }
         let files = scanned_files(&dist);
@@ -552,7 +570,7 @@ mod tests {
             project: Some("acme".into()),
             ..Manifest::default()
         };
-        let findings = lint(dir.path(), &[dir.path().to_path_buf()], &manifest);
+        let findings = lint(dir.path(), &[dir.path().to_path_buf()], &manifest, false);
         assert!(findings.is_empty(), "{findings:?}");
     }
 
@@ -571,12 +589,37 @@ mod tests {
             project: Some("acme".into()),
             ..Manifest::default()
         };
-        let findings = lint(dir.path(), &[dir.path().to_path_buf()], &manifest);
+        let findings = lint(dir.path(), &[dir.path().to_path_buf()], &manifest, false);
         assert!(
             findings
                 .iter()
                 .any(|f| f.code == ORIGIN_CODE && f.message.contains("evil.example")),
             "{findings:?}"
+        );
+    }
+
+    /// A declared application with no `dist/` is skipped for a local run and is
+    /// a finding under `--ci`. Both arms are asserted: pinning only the `--ci`
+    /// finding would pass on a version that also broke validating a
+    /// source-only checkout, which is the loop this skip exists for.
+    #[test]
+    fn a_missing_dist_is_a_finding_under_ci() {
+        let dir = tempfile::tempdir().unwrap();
+        let manifest = Manifest {
+            host: Some("staging.neonlaw.com".into()),
+            project: Some("acme".into()),
+            ..Manifest::default()
+        };
+        let applications = [dir.path().to_path_buf()];
+
+        let local = lint(dir.path(), &applications, &manifest, false);
+        assert!(local.is_empty(), "{local:?}");
+
+        let ci = lint(dir.path(), &applications, &manifest, true);
+        assert!(
+            ci.iter()
+                .any(|f| f.code == ORIGIN_CODE && f.message.contains("no dist/")),
+            "{ci:?}"
         );
     }
 
@@ -603,7 +646,7 @@ mod tests {
             allowed_links,
             ..Manifest::default()
         };
-        lint(dir.path(), &[dir.path().to_path_buf()], &manifest)
+        lint(dir.path(), &[dir.path().to_path_buf()], &manifest, false)
             .into_iter()
             .map(|finding| finding.message)
             .collect()

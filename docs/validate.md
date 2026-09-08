@@ -52,10 +52,11 @@ Nine normal validation passes happen in this order:
    `navigator.yml` spelling. It holds `host` to a hostname shape, `project` to `store::projects::is_valid_code`,
    `no_live_row` to a non-empty reason string, refuses an unknown top-level key by naming the accepted set, and tells a
    `navigator.yml` file to rename to `navigator.yaml`.
-8. **An origin pass** (rule `Y009`) scans each built application's `dist/` when the walked root is a Project
-   repository. Empty first labels (`.test`) and dots/slashes-only are not hosts. Missing `dist/` is skipped so a
-   source-only tree can still validate; a present `dist/` with an off-origin host fails. An `href` whose host is in
-   `allowed_links` passes only when that anchor carries `rel="noreferrer"`.
+8. **An origin pass** (rule `Y009`) scans each built application's `dist/` when the walked root is a Project repository.
+   Empty first labels (`.test`) and dots/slashes-only are not hosts. Missing `dist/` is skipped so a source-only tree
+   can still validate, and is a finding under `--ci`, where the build has already run and nothing to scan means the pass
+   read nothing; a present `dist/` with an off-origin host fails either way. An `href` whose host is in `allowed_links`
+   passes only when that anchor carries `rel="noreferrer"`.
 9. **A consumed mutable-tag pass** walks YAML files and Containerfiles/Dockerfiles for an image or binary reference
    pinned to a mutable tag (`latest`, a branch name) rather than a digest or release version, and fails on each one
    found. This has no rule code either.
@@ -71,6 +72,10 @@ same fix the `navigator-lsp` `source.fixAll` editor action ships.
 - **`--errors-only`** — print only the findings that fail the gate, hiding the Warning-severity advisories. The summary
   line still counts both and the exit code is unchanged: this narrows the listing for a CI-triage read, not the gate. It
   is rejected with `--fix`, where a remaining advisory still fails the run and so has to stay on screen.
+- **`--ci`** — assert that the origin pass read a real build. A declared application with no `dist/` becomes a `Y009`
+  finding instead of a skip. The `verify` job in `.github/workflows/project-gate.yml` is the only caller: it runs each
+  application's build and then this command, so a missing `dist/` there means the pass examined nothing rather than that
+  the tree has not been built yet. Local runs and the bare-checkout `notation` job omit it.
 
 ## Errors versus warnings
 

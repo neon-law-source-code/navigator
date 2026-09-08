@@ -125,6 +125,48 @@ data:
           - duration_ms
           - count
           - audit
+          # --- the agent-action authorization export contract (ENG-320) ---
+          # Decided, not accreted: these `target: "audit"` records in
+          # portal/src/a2a.rs ARE the audit trail for an agent action, not a
+          # lossy view of one held somewhere else. So every field they emit
+          # exports, and all of them are identifiers or enums per the standing
+          # order in telemetry/src/lib.rs — no free text, no arguments, no
+          # argument keys, no count.
+          #
+          # This list is PINNED to those call sites by
+          # cli/tests/audit_fields_exported.rs, in both directions: a new audit
+          # field that is not here fails the workspace suite instead of
+          # exporting as a blank, and a key here that no record emits fails it
+          # too. Adding a field is therefore a three-place decision (call site,
+          # export contract, this list) rather than a diff that quietly changes
+          # what the trail can prove. Before that test, three of the seventeen
+          # names were allowed and the exported record said only that something
+          # audit-tagged had happened to a person at a step.
+          #
+          # A payload digest is deliberately NOT here, and on confidentiality
+          # rather than tidiness: an unsalted hash over a knowable input space
+          # is recovered by enumerating it, and these payloads are keyed by
+          # project codes visible in portal URLs. See the "Why there is no
+          # payload digest here" section in portal/src/audit_fields.rs.
+          #
+          # This covers these records only. Other audit sites emit `path`,
+          # `project_code`, `ip`, and `subject`; their absence below is the
+          # control working, because a resolved path, a Project code, and an
+          # address are client-identifying.
+          - event
+          - decision
+          - tool
+          - skill
+          - role
+          - proposer_person_id
+          - proposer_role
+          - principal_kind
+          - task_id
+          - context_id
+          - authorized
+          - confirmed
+          - confirmation_required
+          - routed_via_llm
           # --- sanitized address fields (portal/src/audit_fields.rs) ---
           # The domain half of an address, never the local part: it names an
           # organization rather than a person. Absent these keys the redaction

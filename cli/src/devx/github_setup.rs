@@ -615,6 +615,37 @@ struct RulesetSummary {
     name: String,
 }
 
+/// One feature's status, as GitHub spells it on both sides of
+/// `security_and_analysis`: the string `"enabled"` or `"disabled"`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct FeatureStatus {
+    status: String,
+}
+
+/// The `security_and_analysis` block a published repository is reconciled to.
+///
+/// Only push protection. `secret_scanning` itself is on for every public
+/// repository and cannot be turned off, so asserting it would restate a fact
+/// rather than converge one; and non-provider patterns are deliberately absent,
+/// because generic high-entropy matching against legal prose and rendered PDFs
+/// blocks pushes for nothing, and a gate that fires on nothing gets bypassed by
+/// habit.
+#[derive(Debug, PartialEq, Eq, Serialize)]
+struct SecurityAndAnalysis {
+    secret_scanning_push_protection: FeatureStatus,
+}
+
+/// The same block as `GET /repos/{owner}/{repo}` returns it.
+///
+/// Every level is optional because GitHub omits the whole object for a
+/// repository that has never had it configured — which is the state this
+/// reconcile exists to leave.
+#[derive(Debug, Deserialize)]
+struct LiveSecurityAndAnalysis {
+    #[serde(default)]
+    secret_scanning_push_protection: Option<FeatureStatus>,
+}
+
 /// One repository, as `GET /repos/{owner}/{repo}` returns it.
 ///
 /// The merge fields are `Option` because GitHub does not return them at all to
@@ -642,6 +673,8 @@ struct Repository {
     has_wiki: bool,
     #[serde(default)]
     private: Option<bool>,
+    #[serde(default)]
+    security_and_analysis: Option<LiveSecurityAndAnalysis>,
 }
 
 /// The repository-level settings this command reconciles, as the body of one
@@ -669,6 +702,15 @@ struct RepositorySettings {
     has_issues: bool,
     has_projects: bool,
     has_wiki: bool,
+    /// Secret-scanning push protection, on a published repository only.
+    ///
+    /// `None` for a client matter, and the key is then omitted from the body
+    /// rather than sent as `null`: push protection at a private repository
+    /// without GitHub Advanced Security answers 422, so a `null` here would
+    /// fail every reconcile in the deployment's own organization instead of
+    /// leaving those repositories alone.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    security_and_analysis: Option<SecurityAndAnalysis>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -1922,8 +1964,8 @@ async fn reconcile(
         actions_app_id,
         &review_bypass_actors,
         create_codeowners,
-        RepositorySettings::from_live(&repository, &client.repository)?
-            == desired_repository_settings(),
+        RepositorySettings::from_live(&repository, &client.repository, policy)?
+            == desired_repository_settings(policy),
         &live_rulesets,
         &labels,
     );
@@ -1998,7 +2040,7 @@ async fn apply(
         }
         Action::UpdateRepositorySettings => {
             client
-                .patch_json(&client.repo_path(""), &desired_repository_settings())
+                .patch_json(&client.repo_path(""), &desired_repository_settings(policy))
                 .await
         }
         Action::CreateRuleset { name } => {
@@ -2072,7 +2114,7 @@ fn label_by_name(policy: RepositoryPolicy, name: &str) -> Result<&'static Desire
         .ok_or_else(|| anyhow!("no desired label named {name}"))
 }
 
-fn desired_repository_settings() -> RepositorySettings {
+fn desired_repository_settings(policy: RepositoryPolicy) -> RepositorySettings {
     RepositorySettings {
         allow_squash_merge: true,
         allow_merge_commit: false,
@@ -2085,6 +2127,22 @@ fn desired_repository_settings() -> RepositorySettings {
         has_issues: false,
         has_projects: false,
         has_wiki: false,
+        security_and_analysis: desired_security_and_analysis(policy),
+    }
+}
+
+/// Push protection is asserted where the tree is readable by anyone, because
+/// there a credential is compromised the moment it lands and deleting the
+/// commit does not undo that. Refusing the push is the only mitigation that
+/// happens before the disclosure.
+fn desired_security_and_analysis(policy: RepositoryPolicy) -> Option<SecurityAndAnalysis> {
+    match policy.default_visibility {
+        Visibility::Public => Some(SecurityAndAnalysis {
+            secret_scanning_push_protection: FeatureStatus {
+                status: "enabled".to_string(),
+            },
+        }),
+        Visibility::Private => None,
     }
 }
 
@@ -2099,7 +2157,7 @@ impl RepositorySettings {
     /// cannot administer the repository. That is a permission answer rather
     /// than drift, and reconciling against a guess would report every such
     /// repository as needing an update it is not allowed to make.
-    fn from_live(repository: &Repository, slug: &str) -> Result<Self> {
+    fn from_live(repository: &Repository, slug: &str, policy: RepositoryPolicy) -> Result<Self> {
         let missing = |field: &str| {
             anyhow!(
                 "GitHub did not return {field:?} for {slug}, which it omits for a caller \
@@ -2138,6 +2196,22 @@ impl RepositorySettings {
             has_issues: repository.has_issues,
             has_projects: repository.has_projects,
             has_wiki: repository.has_wiki,
+            // Read against the same visibility branch the desired side takes,
+            // so the two compare with `==`. An omitted object is `disabled`
+            // rather than a match: GitHub omits it for exactly the repository
+            // that has never had push protection configured.
+            security_and_analysis: desired_security_and_analysis(policy).map(|_| {
+                SecurityAndAnalysis {
+                    secret_scanning_push_protection: FeatureStatus {
+                        status: repository
+                            .security_and_analysis
+                            .as_ref()
+                            .and_then(|live| live.secret_scanning_push_protection.as_ref())
+                            .map_or("disabled", |feature| feature.status.as_str())
+                            .to_string(),
+                    },
+                }
+            }),
         })
     }
 }
@@ -2532,13 +2606,18 @@ mod tests {
             has_projects: false,
             has_wiki: false,
             private: Some(false),
+            security_and_analysis: Some(LiveSecurityAndAnalysis {
+                secret_scanning_push_protection: Some(FeatureStatus {
+                    status: "enabled".to_string(),
+                }),
+            }),
         }
     }
 
     /// Whether the live repository reads as already reconciled.
-    fn settings_match(repository: &Repository) -> bool {
-        RepositorySettings::from_live(repository, "acme/navigator")
-            .is_ok_and(|live| live == desired_repository_settings())
+    fn settings_match(repository: &Repository, policy: RepositoryPolicy) -> bool {
+        RepositorySettings::from_live(repository, "acme/navigator", policy)
+            .is_ok_and(|live| live == desired_repository_settings(policy))
     }
 
     /// No actor may bypass the integrity gate — including the administrator who
@@ -3702,6 +3781,55 @@ mod tests {
             .unwrap();
     }
 
+    /// The read reaches the write: a published repository whose push protection
+    /// is off draws exactly one settings `PATCH`, carrying the enabled payload.
+    ///
+    /// Every other half of the reconcile is mounted already-converged — the
+    /// branch ruleset as `desired_branch_ruleset` builds it, the labels with the
+    /// descriptions the policy asks for — so this server would 404 any write but
+    /// the one asserted. The two unit tests above would both pass on a version
+    /// where `from_live` and `desired_repository_settings` agreed with each other
+    /// and neither reached GitHub; this is what rules that out.
+    #[tokio::test]
+    async fn a_public_repository_without_push_protection_is_patched() {
+        let server = MockServer::start().await;
+        let client = test_client(&server);
+        mount_reads_with_repository(
+            &server,
+            &desired_branch_ruleset(
+                TEST_ACTIONS_APP_ID,
+                &[serde_json::json!({
+                    "context": "CodeQL",
+                    "integration_id": NAVIGATOR_CODEQL_INTEGRATION_ID
+                })],
+            ),
+            DEVX_LABELS
+                .iter()
+                .map(|label| Label {
+                    name: label.name.to_string(),
+                    description: Some(label.description.to_string()),
+                })
+                .collect(),
+            REQUIRED_CHECK_WORKFLOW,
+            live_repository_json("disabled"),
+        )
+        .await;
+        Mock::given(method("PATCH"))
+            .and(path("/repos/acme/navigator"))
+            .and(header("authorization", "Bearer token"))
+            .and(body_json(
+                serde_json::to_value(desired_repository_settings(NAVIGATOR_POLICY)).unwrap(),
+            ))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        reconcile(NAVIGATOR_POLICY, &client, false, "")
+            .await
+            .unwrap();
+    }
+
     #[tokio::test]
     async fn dry_run_never_writes() {
         let server = MockServer::start().await;
@@ -3742,19 +3870,7 @@ mod tests {
             .await;
         Mock::given(method("GET"))
             .and(path("/repos/acme/navigator"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "allow_squash_merge": true,
-                "allow_merge_commit": false,
-                "allow_rebase_merge": false,
-                "allow_auto_merge": true,
-                "delete_branch_on_merge": true,
-                "squash_merge_commit_title": "PR_TITLE",
-                "squash_merge_commit_message": "PR_BODY",
-                "pull_request_creation_policy": "collaborators_only",
-                "has_issues": false,
-                "has_projects": false,
-                "has_wiki": false,
-            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(live_repository_json("enabled")))
             .mount(&server)
             .await;
         Mock::given(method("GET"))
@@ -3811,11 +3927,49 @@ mod tests {
         mount_reads_with_ci(server, ruleset, labels, REQUIRED_CHECK_WORKFLOW).await;
     }
 
+    /// One live `GET /repos/{owner}/{repo}` body, reconciled apart from the
+    /// push-protection status the caller names.
+    fn live_repository_json(push_protection: &str) -> serde_json::Value {
+        serde_json::json!({
+            "allow_squash_merge": true,
+            "allow_merge_commit": false,
+            "allow_rebase_merge": false,
+            "allow_auto_merge": true,
+            "delete_branch_on_merge": true,
+            "squash_merge_commit_title": "PR_TITLE",
+            "squash_merge_commit_message": "PR_BODY",
+            "pull_request_creation_policy": "collaborators_only",
+            "has_issues": false,
+            "has_projects": false,
+            "has_wiki": false,
+            "security_and_analysis": {
+                "secret_scanning_push_protection": {"status": push_protection}
+            },
+        })
+    }
+
     async fn mount_reads_with_ci(
         server: &MockServer,
         ruleset: &RulesetPayload,
         labels: Vec<Label>,
         ci_workflow: &str,
+    ) {
+        mount_reads_with_repository(
+            server,
+            ruleset,
+            labels,
+            ci_workflow,
+            live_repository_json("enabled"),
+        )
+        .await;
+    }
+
+    async fn mount_reads_with_repository(
+        server: &MockServer,
+        ruleset: &RulesetPayload,
+        labels: Vec<Label>,
+        ci_workflow: &str,
+        repository: serde_json::Value,
     ) {
         // The host names its own Actions App, and the required-check rule is
         // built from that id.
@@ -3829,19 +3983,7 @@ mod tests {
             .await;
         Mock::given(method("GET"))
             .and(path("/repos/acme/navigator"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "allow_squash_merge": true,
-                "allow_merge_commit": false,
-                "allow_rebase_merge": false,
-                "allow_auto_merge": true,
-                "delete_branch_on_merge": true,
-                "squash_merge_commit_title": "PR_TITLE",
-                "squash_merge_commit_message": "PR_BODY",
-                "pull_request_creation_policy": "collaborators_only",
-                "has_issues": false,
-                "has_projects": false,
-                "has_wiki": false,
-            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(repository))
             .mount(server)
             .await;
         Mock::given(method("GET"))
@@ -4069,7 +4211,7 @@ mod tests {
     fn merge_settings_detects_drift() {
         let mut repository = matching_repository();
         repository.allow_rebase_merge = Some(true);
-        assert!(!settings_match(&repository));
+        assert!(!settings_match(&repository, NAVIGATOR_POLICY));
     }
 
     /// Issues, Projects, and the wiki are part of the reconciled state, not
@@ -4090,21 +4232,79 @@ mod tests {
             let mut repository = matching_repository();
             mutate(&mut repository);
             assert!(
-                !settings_match(&repository),
+                !settings_match(&repository, NAVIGATOR_POLICY),
                 "a repository feature left on must plan an update"
             );
         }
-        let desired = desired_repository_settings();
+        let desired = desired_repository_settings(NAVIGATOR_POLICY);
         assert!(!desired.has_issues);
         assert!(!desired.has_projects);
         assert!(!desired.has_wiki);
+    }
+
+    /// Secret-scanning push protection is asserted on every published
+    /// repository, and an unset one reads as drift rather than as agreement.
+    ///
+    /// The absent-object case is the one that matters: GitHub omits
+    /// `security_and_analysis` entirely for a repository that has never had it
+    /// configured, so treating the omission as a match would leave exactly the
+    /// repositories this reconcile exists for permanently unreconciled.
+    #[test]
+    fn public_repositories_require_push_protection() {
+        for policy in [COMMON_POLICY, NAVIGATOR_POLICY, TAP_POLICY] {
+            assert_eq!(policy.default_visibility, Visibility::Public);
+            let value = serde_json::to_value(desired_repository_settings(policy)).unwrap();
+            assert_eq!(
+                value["security_and_analysis"]["secret_scanning_push_protection"]["status"],
+                serde_json::json!("enabled"),
+                "{value}"
+            );
+        }
+        let mut absent = matching_repository();
+        absent.security_and_analysis = None;
+        assert!(
+            !settings_match(&absent, COMMON_POLICY),
+            "an omitted security_and_analysis must plan an update"
+        );
+        let mut disabled = matching_repository();
+        disabled.security_and_analysis = Some(LiveSecurityAndAnalysis {
+            secret_scanning_push_protection: Some(FeatureStatus {
+                status: "disabled".to_string(),
+            }),
+        });
+        assert!(
+            !settings_match(&disabled, COMMON_POLICY),
+            "push protection left off must plan an update"
+        );
+    }
+
+    /// A client matter's repository is private, and patching
+    /// `security_and_analysis` at a private repository without GitHub Advanced
+    /// Security answers 422 rather than doing nothing. So the requirement is
+    /// that the key is **absent** from the payload — a `null` there would fail
+    /// the reconcile just as surely as an `"enabled"`.
+    #[test]
+    fn client_repositories_do_not_patch_security_settings() {
+        assert_eq!(CLIENT_POLICY.default_visibility, Visibility::Private);
+        let value = serde_json::to_value(desired_repository_settings(CLIENT_POLICY)).unwrap();
+        assert!(
+            value.get("security_and_analysis").is_none(),
+            "a private repository's payload must omit the key entirely:\n{value}"
+        );
+        let mut repository = matching_repository();
+        repository.private = Some(true);
+        repository.security_and_analysis = None;
+        assert!(
+            settings_match(&repository, CLIENT_POLICY),
+            "a private repository that says nothing about push protection is already reconciled"
+        );
     }
 
     /// A feature toggle reaches GitHub in the same PATCH the merge settings
     /// use, because they are the same endpoint.
     #[test]
     fn repository_settings_payload_carries_the_feature_toggles() {
-        let value = serde_json::to_value(desired_repository_settings()).unwrap();
+        let value = serde_json::to_value(desired_repository_settings(NAVIGATOR_POLICY)).unwrap();
         assert_eq!(value["has_issues"], serde_json::json!(false));
         assert_eq!(value["has_projects"], serde_json::json!(false));
         assert_eq!(value["has_wiki"], serde_json::json!(false));
@@ -4135,7 +4335,7 @@ mod tests {
             "has_wiki": false,
         }))
         .expect("a repository read without admin access still decodes");
-        let error = RepositorySettings::from_live(&repository, "acme/sample")
+        let error = RepositorySettings::from_live(&repository, "acme/sample", CLIENT_POLICY)
             .expect_err("settings that GitHub withheld are not drift")
             .to_string();
         assert!(error.contains("acme/sample"), "{error}");

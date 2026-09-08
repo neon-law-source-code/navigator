@@ -10,8 +10,9 @@ use views::brand::BrandKey;
 use views::locales::{
     interpolate, BandCopy, CardCopy, CopyRun, HeroCtaCopy, HeroLine, HomeCopy, LitigationCopy,
     MarketingPageCopy, PackageInstallCopy, PageSkin, Paragraph, PracticeLinkCopy, PracticeMark,
-    PricingCardCopy, ProjectNetworkNodeCopy, ServiceSectionCopy, StepCopy, TransactionalCopy,
-    VirtueCopy,
+    PricingCardCopy, ProjectNetworkNodeCopy, ProvenanceLedgerRowCopy, ProvenanceMark,
+    ProvenancePillarCopy, ProvenanceSectionCopy, ProvenanceStepCopy, ServiceSectionCopy, StepCopy,
+    TransactionalCopy, VirtueCopy,
 };
 use webapp::components::DayRateBadge;
 use webapp::marketing_page::{
@@ -103,6 +104,70 @@ fn paragraphs_to_marketing(body: Vec<Paragraph>) -> Vec<webapp::marketing_page::
     body.into_iter()
         .map(|paragraph| paragraph.into_iter().map(copy_run_to_marketing).collect())
         .collect()
+}
+
+fn provenance_mark(mark: ProvenanceMark) -> webapp::home::ProvenanceMark {
+    match mark {
+        ProvenanceMark::Request => webapp::home::ProvenanceMark::Request,
+        ProvenanceMark::Attorney => webapp::home::ProvenanceMark::Attorney,
+        ProvenanceMark::Chain => webapp::home::ProvenanceMark::Chain,
+    }
+}
+
+fn provenance_to_home(copy: ProvenanceSectionCopy) -> webapp::home::ProvenanceSection {
+    let ProvenanceSectionCopy {
+        overline,
+        heading,
+        heading_accent,
+        lead,
+        steps,
+        ledger_heading,
+        ledger_caption,
+        ledger,
+        pillars,
+        notes,
+    } = copy;
+    webapp::home::ProvenanceSection {
+        overline,
+        heading,
+        heading_accent,
+        lead,
+        steps: steps
+            .into_iter()
+            .map(
+                |ProvenanceStepCopy {
+                     mark,
+                     label,
+                     detail,
+                 }| webapp::home::ProvenanceStep {
+                    mark: provenance_mark(mark),
+                    label,
+                    detail,
+                },
+            )
+            .collect(),
+        ledger_heading,
+        ledger_caption,
+        ledger: ledger
+            .into_iter()
+            .map(
+                |ProvenanceLedgerRowCopy { label, status }| webapp::home::ProvenanceLedgerRow {
+                    label,
+                    status,
+                },
+            )
+            .collect(),
+        pillars: pillars
+            .into_iter()
+            .map(
+                |ProvenancePillarCopy { heading, body }| webapp::home::ProvenancePillar {
+                    heading,
+                    body,
+                },
+            )
+            .collect(),
+        notes: paragraphs_to_home(notes),
+    }
 }
 
 fn practice_mark(mark: PracticeMark) -> webapp::components::PracticeMark {
@@ -355,6 +420,7 @@ pub fn home(branding: &views::brand::Branding) -> webapp::home::HomeContent {
                 },
             )
             .collect(),
+        provenance: copy.provenance.map(provenance_to_home),
     }
 }
 
@@ -550,6 +616,123 @@ mod tests {
         );
     }
 
+    /// Every word the provenance section publishes, for the advertising checks.
+    fn provenance_text(provenance: &webapp::home::ProvenanceSection) -> String {
+        let steps = provenance
+            .steps
+            .iter()
+            .map(|step| format!("{} {}", step.label, step.detail))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let pillars = provenance
+            .pillars
+            .iter()
+            .map(|pillar| format!("{} {}", pillar.heading, pillar.body))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let notes = provenance
+            .notes
+            .iter()
+            .flatten()
+            .map(|run| run.text.as_str())
+            .collect::<Vec<_>>()
+            .join(" ");
+        format!(
+            "{} {} {} {steps} {} {pillars} {notes}",
+            provenance.heading,
+            provenance.heading_accent,
+            provenance.lead,
+            provenance.ledger_caption
+        )
+        .to_lowercase()
+    }
+
+    /// The `DeleteYourData` home says what happens to a request after a lawyer
+    /// verifies it — a record uploaded to Solana — and what the lawyer-attested
+    /// nodes are for. The other two brands keep no such record and publish no
+    /// such section.
+    #[test]
+    fn delete_your_data_home_carries_the_solana_provenance_section() {
+        let content = home(&views::brand::DELETE_YOUR_DATA_BRANDING);
+        let provenance = content
+            .provenance
+            .expect("the DeleteYourData home publishes its provenance section");
+        assert_eq!(
+            provenance
+                .steps
+                .iter()
+                .map(|step| step.mark)
+                .collect::<Vec<_>>(),
+            [
+                webapp::home::ProvenanceMark::Request,
+                webapp::home::ProvenanceMark::Attorney,
+                webapp::home::ProvenanceMark::Chain,
+            ],
+            "request, verify, record — in that order"
+        );
+        assert!(!provenance.ledger.is_empty(), "the ledger has rows to draw");
+        let text = provenance_text(&provenance);
+        assert!(
+            text.contains("verif"),
+            "the request is verified first: {text}"
+        );
+        assert!(text.contains("solana"), "the record goes to Solana: {text}");
+        assert!(
+            text.contains("lawyer-attested nodes") && text.contains("provenance"),
+            "the nodes are named as long-term provenance: {text}"
+        );
+        assert!(
+            text.contains("attorney advertisement"),
+            "the section carries the advertising notice: {text}"
+        );
+        assert!(
+            home(&views::brand::DEFAULT_BRANDING).provenance.is_none(),
+            "Neon keeps no removal record and publishes no section"
+        );
+        assert!(
+            home(&views::brand::LAWYER_SHOOK_BRANDING)
+                .provenance
+                .is_none(),
+            "Lawyer Shook keeps no removal record and publishes no section"
+        );
+    }
+
+    /// The three tiles say what the record is for — privacy, security, and the
+    /// federated work of the nodes — and, like the rest of the section, make no
+    /// claim a lawyer cannot defend: a record that a request was made is not a
+    /// promise about what the company did with it, and the chain is described
+    /// without the superlatives a chain's own front page reaches for.
+    #[test]
+    fn the_provenance_section_upsells_without_an_indefensible_claim() {
+        let provenance = home(&views::brand::DELETE_YOUR_DATA_BRANDING)
+            .provenance
+            .expect("the DeleteYourData home publishes its provenance section");
+        let headings = provenance
+            .pillars
+            .iter()
+            .map(|pillar| pillar.heading.to_lowercase())
+            .collect::<Vec<_>>();
+        for pillar in ["privacy", "security", "federated"] {
+            assert!(
+                headings.iter().any(|heading| heading.contains(pillar)),
+                "a {pillar:?} tile: {headings:?}"
+            );
+        }
+        let text = provenance_text(&provenance);
+        for banned in [
+            "guarantee",
+            "certified",
+            "permanent",
+            "tamper-proof",
+            "immutable",
+            "leading",
+            "fastest",
+            "world's",
+        ] {
+            assert!(!text.contains(banned), "no {banned:?} claim: {text}");
+        }
+    }
+
     #[test]
     fn lawyer_shook_catalogs_are_brand_keyed_and_attributed() {
         let branding = &views::brand::LAWYER_SHOOK_BRANDING;
@@ -560,5 +743,154 @@ mod tests {
         assert!(services_content.hero_lead.contains("Shook Law PLLC"));
         assert!(!home_content.lead.contains("DeleteYourData.com"));
         assert!(!services_content.meta_description.contains("flat-fee"));
+    }
+
+    /// Every word one of these pages renders, flattened, so a claim placed in
+    /// any field — a lead, a card body, a step, a chip — is visible to a
+    /// guard here. Scoped to this test module rather than reused from
+    /// `firm_copy::firm_copy_tests`, whose `band_text` guards the firm's own
+    /// `/navigator` and `/services` pages, not a house brand's.
+    fn dyd_page_text(content: &PageContent) -> String {
+        fn paragraphs(body: &[Vec<Run>]) -> String {
+            body.iter()
+                .flat_map(|p| p.iter().map(|r| r.text.clone()))
+                .collect::<Vec<_>>()
+                .join(" ")
+        }
+        let bands = content
+            .bands
+            .iter()
+            .map(|band| match band {
+                Band::Statement {
+                    heading,
+                    lead,
+                    body,
+                } => {
+                    format!("{heading} {lead} {}", paragraphs(body))
+                }
+                Band::Cards {
+                    overline,
+                    heading,
+                    description,
+                    items,
+                    ..
+                } => {
+                    let cards = items
+                        .iter()
+                        .map(|c| {
+                            format!("{} {} {}", c.title, c.chips.join(" "), paragraphs(&c.body))
+                        })
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    format!(
+                        "{overline} {heading} {} {cards}",
+                        description.clone().unwrap_or_default()
+                    )
+                }
+                Band::Steps {
+                    overline,
+                    heading,
+                    description,
+                    items,
+                    ..
+                } => {
+                    let steps = items
+                        .iter()
+                        .map(|s| format!("{} {}", s.title, paragraphs(&s.body)))
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    format!(
+                        "{overline} {heading} {} {steps}",
+                        description.clone().unwrap_or_default()
+                    )
+                }
+                Band::Cta { heading, body, .. } => {
+                    format!("{heading} {}", body.clone().unwrap_or_default())
+                }
+                _ => String::new(),
+            })
+            .collect::<Vec<_>>()
+            .join(" ");
+        format!(
+            "{} {} {} {bands}",
+            content.tagline, content.hero_lead, content.meta_description
+        )
+    }
+
+    /// The `DeleteYourData` home and services pages both publish the flat
+    /// removal-request fee and the Neon Law Personal Plan as the way to get
+    /// it at no added cost, and neither page still tells a reader every
+    /// request is quoted — the pre-existing framing this fee contradicted.
+    #[test]
+    fn delete_your_data_publishes_its_flat_fee_and_the_personal_plan_link() {
+        let branding = &views::brand::DELETE_YOUR_DATA_BRANDING;
+        let home_content = home(branding);
+        let services_content = legal_services(branding);
+
+        let home_service = home_content.service.expect("the home service section");
+        let home_text = home_service
+            .body
+            .iter()
+            .flatten()
+            .map(|run| run.text.as_str())
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(
+            home_text.contains("$10"),
+            "the home page states the fee: {home_text}"
+        );
+        let personal_plan_run = home_service
+            .body
+            .iter()
+            .flatten()
+            .find(|run| run.href.as_deref() == Some("https://www.neonlaw.com/personal-plan"))
+            .expect("a run links the Neon Law Personal Plan");
+        assert_eq!(personal_plan_run.text, "Neon Law Personal Plan");
+        // The linked run's own text carries no leading/trailing run-boundary
+        // artifact — the bug this test would have caught twice while this
+        // paragraph was drafted.
+        assert!(
+            !home_text.contains("Planmember"),
+            "run boundaries: {home_text}"
+        );
+
+        let practice_bodies = home_content
+            .practices
+            .iter()
+            .map(|practice| practice.body.as_str())
+            .collect::<Vec<_>>();
+        assert!(
+            practice_bodies.iter().any(|body| body.contains("$10")),
+            "the practice box states the fee: {practice_bodies:?}"
+        );
+
+        let services_text = dyd_page_text(&services_content);
+        assert!(
+            services_text.contains("$10"),
+            "the services page states the fee: {services_text}"
+        );
+        assert!(
+            services_text.contains("Personal Plan"),
+            "the services page names the Personal Plan alternative: {services_text}"
+        );
+        assert!(
+            !services_text.to_lowercase().contains("fees are quoted before work begins"),
+            "the blanket quoted-only claim is gone now that a flat fee is published: {services_text}"
+        );
+
+        // The `$10` chip on the Removal Request card is the one this page
+        // already shipped (PR #358); the surrounding prose must agree with
+        // it rather than call every request a bespoke quote.
+        let removal_request = services_content
+            .bands
+            .iter()
+            .find_map(|band| match band {
+                Band::Cards { items, .. } => {
+                    items.iter().find(|card| card.title == "Removal Request")
+                }
+                _ => None,
+            })
+            .expect("the Removal Request card");
+        assert_eq!(removal_request.chips, vec!["$10".to_string()]);
     }
 }

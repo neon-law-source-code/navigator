@@ -494,8 +494,8 @@ pub static DELETE_YOUR_DATA_BRANDING: Branding = Branding {
     base_url: "",
     primary_domain: "deleteyourdata.com",
     firm_disclaimer: "Attorney advertisement. Nothing here is legal advice without a signed retainer for an active project. Past results do not guarantee future outcomes.",
-    mission_description: "DeleteYourData.com is a practice of Shook Law PLLC. A licensed attorney helps a person ask a company to delete personal data it holds about them. Fees are quoted before work begins. This is an attorney advertisement, not a promise about a result.",
-    service_description: "Data-deletion request work from DeleteYourData.com, a practice of Shook Law PLLC. A licensed attorney reviews the work. Fees are quoted before work begins.",
+    mission_description: "DeleteYourData.com is a practice of Shook Law PLLC. A licensed attorney helps a person ask a company to delete personal data it holds about them. A standard request is a flat $10, and other work is quoted before it begins. This is an attorney advertisement, not a promise about a result.",
+    service_description: "Data-deletion request work from DeleteYourData.com, a practice of Shook Law PLLC. A licensed attorney reviews the work. A standard request is a flat $10, and other work is quoted before it begins.",
     portal_only: false,
     brand_key: BrandKey::DeleteYourData,
 };
@@ -1885,9 +1885,10 @@ mod tests {
         assert!(branding
             .mission_description
             .contains("attorney advertisement"));
+        assert!(branding.service_description.contains("flat $10"));
         assert!(branding
             .service_description
-            .contains("quoted before work begins"));
+            .contains("quoted before it begins"));
         assert!(branding.firm_trademark.is_empty());
         assert!(branding.firm_trademark_registration.is_empty());
         assert!(branding.firm_trademark_record_url.is_empty());

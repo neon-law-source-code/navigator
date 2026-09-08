@@ -47,6 +47,11 @@ plus `/contact` (addresses, not a YAML stem); other firm paths 404 on that host 
 missing field or an unknown stem fails the gate before a brand crate can load it. The advertising guards in
 `neon::firm_copy` still read the loaded Neon pages when the Rust suite runs.
 
+A home catalog may carry an optional `provenance` block — the flow a request follows, a ledger illustration, three
+tiles, and notes — which `webapp::home` renders as one animated card between the service prose and the practice boxes.
+Only `neon/locales/en/delete-your-data/home.yaml` publishes one; a brand that keeps no such record omits the block and
+renders no section.
+
 The `practices` list in `neon/locales/en/neon/home.yaml` is the firm's practice catalog. The Neon home page renders
 those doors, and workshop slides that expand `{{firm-product-cards}}` render the same list. Do not keep a second copy of
 the doors in Rust.

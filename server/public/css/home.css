@@ -330,3 +330,609 @@
   color: var(--nav-color-text-muted);
   text-wrap: pretty;
 }
+
+/* ---- The record ---------------------------------------------------------- */
+
+/* How a request becomes a record. One card, in three movements: the flow on a
+   rail (request, attorney, chain), the ledger beside it, and the tiles under
+   both. It borrows the stage from a chain's own front page — a dark ground, a
+   glow, a two-tone display heading — but every colour is the brand's token, so
+   on DeleteYourData it burns red and on any other brand it would wear that
+   brand's stop. Nothing here is a literal colour.
+
+   Every animation is decoration: the copy reads the same with the motion off,
+   and the `prefers-reduced-motion` block at the end pins each element at its
+   final frame. */
+.home-provenance {
+  --home-provenance-ink: var(--nav-color-text);
+  --home-provenance-muted: var(--nav-color-text-muted);
+  --home-provenance-rail: var(--firm-brand-edge);
+  --home-provenance-fill: var(--firm-brand);
+  --home-provenance-fill-strong: var(--firm-brand-strong);
+  --home-provenance-tint: var(--firm-brand-tint);
+  --home-provenance-panel: color-mix(in oklab, var(--nav-color-surface-subtle) 55%, transparent);
+  --home-provenance-ease: cubic-bezier(0.16, 1, 0.3, 1);
+
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(1.75rem, 4vw, 2.75rem);
+  margin-top: clamp(2.5rem, 6vw, 4rem);
+  color: var(--home-provenance-ink);
+}
+
+/* The glow. A brand-coloured wash anchored off the top-right corner that
+   breathes slowly. It is clipped by the card — the statement's glow was
+   retired because it bled past the hero into the margin, and this one cannot:
+   the card isolates it and hides its overflow. */
+.home-provenance__glow {
+  position: absolute;
+  z-index: -1;
+  inset-block-start: -35%;
+  inset-inline-end: -20%;
+  inline-size: 70%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    var(--firm-brand-glow) 0%,
+    color-mix(in oklab, var(--firm-brand-glow) 40%, transparent) 40%,
+    transparent 70%
+  );
+  filter: blur(24px);
+  opacity: 0.7;
+  animation: home-provenance-breathe 14s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes home-provenance-breathe {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+    opacity: 0.55;
+  }
+
+  50% {
+    transform: translate(-6%, 8%) scale(1.12);
+    opacity: 0.85;
+  }
+}
+
+.home-provenance__header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-width: 44rem;
+}
+
+.home-provenance__overline {
+  margin: 0;
+}
+
+/* Two-tone display heading: the first line in the ink, the second in the
+   brand gradient. One `<h2>`, so the page's outline still reads one heading
+   for the section. */
+.home-provenance__heading {
+  margin: 0;
+  font-family: var(--firm-serif);
+  font-size: clamp(1.75rem, 4.5vw, 2.75rem);
+  font-weight: 600;
+  line-height: 1.1;
+  text-wrap: balance;
+}
+
+.home-provenance__heading-accent {
+  display: block;
+  font-weight: 400;
+  background: linear-gradient(
+    90deg,
+    var(--home-provenance-fill) 0%,
+    var(--home-provenance-fill-strong) 60%,
+    var(--home-provenance-fill) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: home-provenance-sheen 9s ease-in-out infinite;
+}
+
+@keyframes home-provenance-sheen {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+.home-provenance__lead {
+  margin: 0;
+  max-width: 62ch;
+  font-size: 1.0625rem;
+  line-height: 1.6;
+  color: var(--home-provenance-muted);
+  text-wrap: pretty;
+}
+
+/* The flow and the ledger, side by side where there is room. */
+.home-provenance__grid {
+  display: grid;
+  gap: clamp(1.5rem, 4vw, 2.5rem);
+}
+
+@media (min-width: 56rem) {
+  .home-provenance__grid {
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+    align-items: start;
+  }
+}
+
+/* -- The flow -- */
+
+/* Three nodes on a rail. On a phone the rail runs down the left edge and the
+   nodes stack; from 40rem up it turns and runs across the top. The rail is a
+   pseudo-element that draws itself in — `scale` from nothing along its own
+   axis — so the eye is led from the request to the chain in order. */
+.home-provenance__steps {
+  --home-provenance-node: 3rem;
+
+  position: relative;
+  display: grid;
+  gap: 1.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.home-provenance__steps::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  inset-block: calc(var(--home-provenance-node) / 2) calc(var(--home-provenance-node) / 2);
+  inset-inline-start: calc(var(--home-provenance-node) / 2 - 1px);
+  inline-size: 2px;
+  background: linear-gradient(
+    180deg,
+    var(--home-provenance-rail),
+    var(--home-provenance-fill) 60%,
+    var(--home-provenance-fill-strong)
+  );
+  transform-origin: top;
+  animation: home-provenance-rail-draw 1400ms var(--home-provenance-ease) 200ms backwards;
+}
+
+@keyframes home-provenance-rail-draw {
+  from {
+    transform: scaleY(0);
+  }
+
+  to {
+    transform: scaleY(1);
+  }
+}
+
+.home-provenance__step {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: var(--home-provenance-node) minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  column-gap: 1rem;
+  row-gap: 0.25rem;
+  align-items: start;
+  animation: home-provenance-step-in 700ms var(--home-provenance-ease) backwards;
+  animation-delay: calc(350ms + var(--home-provenance-index, 0) * 320ms);
+}
+
+@keyframes home-provenance-step-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.75rem);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* The node: a ring on the rail holding the glyph. The card's own background
+   sits behind it so the rail does not show through the ring. */
+.home-provenance__mark {
+  grid-row: 1 / span 2;
+  position: relative;
+  display: grid;
+  place-items: center;
+  inline-size: var(--home-provenance-node);
+  block-size: var(--home-provenance-node);
+  border: 1.5px solid var(--home-provenance-rail);
+  border-radius: 50%;
+  background: var(--nav-color-surface);
+  color: var(--home-provenance-ink);
+  box-shadow: 0 0 0 4px var(--home-provenance-tint);
+}
+
+.home-provenance__glyph {
+  inline-size: 1.5rem;
+  block-size: 1.5rem;
+}
+
+/* The attorney's node carries the brand: verification is the step the page is
+   about. The chain's node pulses — a ring expanding from it and fading, the
+   one continuous motion on the page — because the record is what persists. */
+.home-provenance__mark--attorney {
+  border-color: var(--home-provenance-fill);
+  color: var(--home-provenance-fill);
+}
+
+.home-provenance__mark--chain {
+  border-color: var(--home-provenance-fill);
+  background: var(--home-provenance-fill);
+  color: var(--firm-on-brand);
+}
+
+.home-provenance__mark--chain::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border: 2px solid var(--home-provenance-fill);
+  border-radius: 50%;
+  opacity: 0;
+  animation: home-provenance-pulse 2800ms ease-out 1600ms infinite;
+  pointer-events: none;
+}
+
+@keyframes home-provenance-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+
+  70%,
+  100% {
+    transform: scale(1.9);
+    opacity: 0;
+  }
+}
+
+.home-provenance__step-label {
+  margin: 0;
+  align-self: center;
+  font-family: var(--firm-serif);
+  font-size: clamp(1.125rem, 2vw, 1.25rem);
+  font-weight: 600;
+  line-height: 1.2;
+  text-wrap: balance;
+}
+
+.home-provenance__step-detail {
+  margin: 0;
+  line-height: 1.55;
+  color: var(--home-provenance-muted);
+  text-wrap: pretty;
+}
+
+@media (min-width: 40rem) and (max-width: 55.98rem), (min-width: 72rem) {
+  .home-provenance__steps {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1.25rem;
+  }
+
+  .home-provenance__steps::before {
+    inset-block: calc(var(--home-provenance-node) / 2 - 1px) auto;
+    inset-inline: calc(var(--home-provenance-node) / 2) 16.666%;
+    block-size: 2px;
+    inline-size: auto;
+    background: linear-gradient(
+      90deg,
+      var(--home-provenance-rail),
+      var(--home-provenance-fill) 60%,
+      var(--home-provenance-fill-strong)
+    );
+    transform-origin: left;
+    animation-name: home-provenance-rail-draw-across;
+  }
+
+  .home-provenance__step {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto auto;
+    row-gap: 0.5rem;
+  }
+
+  .home-provenance__mark {
+    grid-row: auto;
+    margin-block-end: 0.5rem;
+  }
+
+  .home-provenance__step-label {
+    align-self: start;
+  }
+}
+
+@keyframes home-provenance-rail-draw-across {
+  from {
+    transform: scaleX(0);
+  }
+
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* -- The ledger -- */
+
+/* A panel of rows, each a place a request went and the record that followed.
+   The bars fill left to right in sequence and the status appears when each
+   is full: a ledger being written, which is the claim the section makes. The
+   caption under the heading says in words that it is an illustration. */
+.home-provenance__ledger {
+  margin: 0;
+  padding: clamp(1.25rem, 3vw, 1.75rem);
+  border: 1px solid var(--home-provenance-rail);
+  border-radius: calc(var(--neon-card-radius) - 0.25rem);
+  background:
+    linear-gradient(
+      160deg,
+      var(--home-provenance-tint),
+      transparent 55%
+    ),
+    var(--home-provenance-panel);
+}
+
+.home-provenance__ledger-caption {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0 0 1.25rem;
+}
+
+.home-provenance__ledger-heading {
+  margin: 0;
+  font-family: var(--firm-serif);
+  font-size: clamp(1.125rem, 2vw, 1.25rem);
+  font-weight: 600;
+  line-height: 1.2;
+  text-wrap: balance;
+}
+
+.home-provenance__ledger-note {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--home-provenance-muted);
+  text-wrap: pretty;
+}
+
+.home-provenance__rows {
+  display: grid;
+  gap: 0.85rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: home-provenance-row;
+}
+
+.home-provenance__row {
+  --home-provenance-row-delay: calc(900ms + var(--home-provenance-index, 0) * 520ms);
+
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "label status"
+    "bar bar";
+  column-gap: 0.75rem;
+  row-gap: 0.4rem;
+  align-items: center;
+  counter-increment: home-provenance-row;
+}
+
+.home-provenance__row-label {
+  grid-area: label;
+  font-size: 0.9375rem;
+  line-height: 1.4;
+}
+
+/* The row number, so the panel reads as a ledger rather than a list. */
+.home-provenance__row-label::before {
+  content: counter(home-provenance-row, decimal-leading-zero) " ";
+  font-variant-numeric: tabular-nums;
+  color: var(--home-provenance-fill);
+}
+
+/* The bar: a track with a fill that scales in from the left. */
+.home-provenance__bar {
+  grid-area: bar;
+  position: relative;
+  display: block;
+  block-size: 0.5rem;
+  border-radius: 999px;
+  background: var(--home-provenance-tint);
+  overflow: hidden;
+}
+
+.home-provenance__bar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    var(--home-provenance-fill),
+    var(--home-provenance-fill-strong)
+  );
+  transform-origin: left;
+  animation: home-provenance-bar-fill 1100ms var(--home-provenance-ease) var(--home-provenance-row-delay) backwards;
+}
+
+@keyframes home-provenance-bar-fill {
+  from {
+    transform: scaleX(0);
+  }
+
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* The status chip lands as the bar completes. */
+.home-provenance__status {
+  grid-area: status;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.15rem 0.6rem;
+  border: 1px solid var(--home-provenance-fill);
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--home-provenance-fill);
+  background: var(--nav-color-surface);
+  animation: home-provenance-status-in 500ms var(--home-provenance-ease) calc(var(--home-provenance-row-delay) + 900ms) backwards;
+}
+
+.home-provenance__status::before {
+  content: "";
+  inline-size: 0.45rem;
+  block-size: 0.45rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+@keyframes home-provenance-status-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.35rem);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* -- The tiles -- */
+
+.home-provenance__pillars {
+  display: grid;
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (min-width: 48rem) {
+  .home-provenance__pillars {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* A tile with a brand hairline along its top edge that brightens on hover.
+   The tiles rise in after the flow has drawn. */
+.home-provenance__pillar {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1.25rem 1.25rem 1.25rem;
+  border: 1px solid var(--home-provenance-rail);
+  border-radius: calc(var(--neon-card-radius) - 0.25rem);
+  background: var(--home-provenance-panel);
+  transition: border-color 240ms ease, transform 240ms var(--home-provenance-ease);
+  animation: home-provenance-step-in 700ms var(--home-provenance-ease) backwards;
+  animation-delay: calc(1200ms + var(--home-provenance-index, 0) * 160ms);
+}
+
+.home-provenance__pillar::before {
+  content: "";
+  position: absolute;
+  inset-block-start: -1px;
+  inset-inline: 1.25rem;
+  block-size: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--home-provenance-fill), transparent);
+  opacity: 0.8;
+  transition: opacity 240ms ease, inset-inline 320ms var(--home-provenance-ease);
+}
+
+.home-provenance__pillar:hover {
+  border-color: var(--home-provenance-fill);
+  transform: translateY(-2px);
+}
+
+.home-provenance__pillar:hover::before {
+  inset-inline: 0.5rem;
+  opacity: 1;
+}
+
+.home-provenance__pillar-heading {
+  margin: 0;
+  font-family: var(--firm-serif);
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.home-provenance__pillar-body {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  color: var(--home-provenance-muted);
+  text-wrap: pretty;
+}
+
+/* -- The notes -- */
+
+.home-provenance__notes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding-block-start: 1.25rem;
+  border-block-start: 1px solid var(--home-provenance-rail);
+}
+
+.home-provenance__note {
+  margin: 0;
+  max-width: 68ch;
+  line-height: 1.6;
+  color: var(--home-provenance-ink);
+  text-wrap: pretty;
+}
+
+.home-provenance__note strong {
+  font-weight: 600;
+}
+
+/* Everything above is decoration. With motion reduced, each element sits at
+   its final frame: the rail drawn, the bars full, the chips shown, the glow
+   still, and the chain's ring gone. */
+@media (prefers-reduced-motion: reduce) {
+  .home-provenance__glow,
+  .home-provenance__heading-accent,
+  .home-provenance__steps::before,
+  .home-provenance__step,
+  .home-provenance__bar::before,
+  .home-provenance__status,
+  .home-provenance__pillar {
+    animation: none;
+  }
+
+  .home-provenance__mark--chain::after {
+    display: none;
+  }
+
+  .home-provenance__pillar,
+  .home-provenance__pillar::before {
+    transition-duration: 1ms;
+  }
+
+  .home-provenance__pillar:hover {
+    transform: none;
+  }
+}

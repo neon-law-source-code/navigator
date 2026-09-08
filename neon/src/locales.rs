@@ -744,4 +744,153 @@ mod tests {
         assert!(!home_content.lead.contains("DeleteYourData.com"));
         assert!(!services_content.meta_description.contains("flat-fee"));
     }
+
+    /// Every word one of these pages renders, flattened, so a claim placed in
+    /// any field — a lead, a card body, a step, a chip — is visible to a
+    /// guard here. Scoped to this test module rather than reused from
+    /// `firm_copy::firm_copy_tests`, whose `band_text` guards the firm's own
+    /// `/navigator` and `/services` pages, not a house brand's.
+    fn dyd_page_text(content: &PageContent) -> String {
+        fn paragraphs(body: &[Vec<Run>]) -> String {
+            body.iter()
+                .flat_map(|p| p.iter().map(|r| r.text.clone()))
+                .collect::<Vec<_>>()
+                .join(" ")
+        }
+        let bands = content
+            .bands
+            .iter()
+            .map(|band| match band {
+                Band::Statement {
+                    heading,
+                    lead,
+                    body,
+                } => {
+                    format!("{heading} {lead} {}", paragraphs(body))
+                }
+                Band::Cards {
+                    overline,
+                    heading,
+                    description,
+                    items,
+                    ..
+                } => {
+                    let cards = items
+                        .iter()
+                        .map(|c| {
+                            format!("{} {} {}", c.title, c.chips.join(" "), paragraphs(&c.body))
+                        })
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    format!(
+                        "{overline} {heading} {} {cards}",
+                        description.clone().unwrap_or_default()
+                    )
+                }
+                Band::Steps {
+                    overline,
+                    heading,
+                    description,
+                    items,
+                    ..
+                } => {
+                    let steps = items
+                        .iter()
+                        .map(|s| format!("{} {}", s.title, paragraphs(&s.body)))
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    format!(
+                        "{overline} {heading} {} {steps}",
+                        description.clone().unwrap_or_default()
+                    )
+                }
+                Band::Cta { heading, body, .. } => {
+                    format!("{heading} {}", body.clone().unwrap_or_default())
+                }
+                _ => String::new(),
+            })
+            .collect::<Vec<_>>()
+            .join(" ");
+        format!(
+            "{} {} {} {bands}",
+            content.tagline, content.hero_lead, content.meta_description
+        )
+    }
+
+    /// The `DeleteYourData` home and services pages both publish the flat
+    /// removal-request fee and the Neon Law Personal Plan as the way to get
+    /// it at no added cost, and neither page still tells a reader every
+    /// request is quoted — the pre-existing framing this fee contradicted.
+    #[test]
+    fn delete_your_data_publishes_its_flat_fee_and_the_personal_plan_link() {
+        let branding = &views::brand::DELETE_YOUR_DATA_BRANDING;
+        let home_content = home(branding);
+        let services_content = legal_services(branding);
+
+        let home_service = home_content.service.expect("the home service section");
+        let home_text = home_service
+            .body
+            .iter()
+            .flatten()
+            .map(|run| run.text.as_str())
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(
+            home_text.contains("$10"),
+            "the home page states the fee: {home_text}"
+        );
+        let personal_plan_run = home_service
+            .body
+            .iter()
+            .flatten()
+            .find(|run| run.href.as_deref() == Some("https://www.neonlaw.com/personal-plan"))
+            .expect("a run links the Neon Law Personal Plan");
+        assert_eq!(personal_plan_run.text, "Neon Law Personal Plan");
+        // The linked run's own text carries no leading/trailing run-boundary
+        // artifact — the bug this test would have caught twice while this
+        // paragraph was drafted.
+        assert!(
+            !home_text.contains("Planmember"),
+            "run boundaries: {home_text}"
+        );
+
+        let practice_bodies = home_content
+            .practices
+            .iter()
+            .map(|practice| practice.body.as_str())
+            .collect::<Vec<_>>();
+        assert!(
+            practice_bodies.iter().any(|body| body.contains("$10")),
+            "the practice box states the fee: {practice_bodies:?}"
+        );
+
+        let services_text = dyd_page_text(&services_content);
+        assert!(
+            services_text.contains("$10"),
+            "the services page states the fee: {services_text}"
+        );
+        assert!(
+            services_text.contains("Personal Plan"),
+            "the services page names the Personal Plan alternative: {services_text}"
+        );
+        assert!(
+            !services_text.to_lowercase().contains("fees are quoted before work begins"),
+            "the blanket quoted-only claim is gone now that a flat fee is published: {services_text}"
+        );
+
+        // The `$10` chip on the Removal Request card is the one this page
+        // already shipped (PR #358); the surrounding prose must agree with
+        // it rather than call every request a bespoke quote.
+        let removal_request = services_content
+            .bands
+            .iter()
+            .find_map(|band| match band {
+                Band::Cards { items, .. } => {
+                    items.iter().find(|card| card.title == "Removal Request")
+                }
+                _ => None,
+            })
+            .expect("the Removal Request card");
+        assert_eq!(removal_request.chips, vec!["$10".to_string()]);
+    }
 }

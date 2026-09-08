@@ -19,11 +19,18 @@ service:
           We help a person ask a company to delete personal data it holds
           about them. A licensed attorney reviews the work. Shook Law PLLC
           is the law firm you would retain.
-    - - text: >-
-          Whether a particular request is available, and what it can
-          achieve, depends on the company, the records, and the law that
-          applies. We do not publish a fee here. Email us and we will quote
-          the matter before we start.
+    - - text: "A standard removal request is a flat "
+      - text: "$10"
+        emphasis: true
+      - text: " per company, paid before we send it. It is also included at no added cost for a "
+      - text: Neon Law Personal Plan
+        href: "https://www.neonlaw.com/personal-plan"
+      - text: >-
+          , as a
+          member. Whether a particular request is available, and what it
+          can achieve, depends on the company, the records, and the law
+          that applies; a request outside this standard scope is quoted
+          before any work on it begins.
     - - text: "Write to "
       - text: "{firm_email}"
         href: "mailto:{firm_email}"
@@ -99,6 +106,6 @@ practices:
   - mark: gavel
     heading: Data-deletion requests
     body: >-
-      One scoped request, quoted before work begins, reviewed by a licensed
-      attorney. This is an attorney advertisement.
+      A standard request is a flat $10, reviewed by a licensed attorney. This
+      is an attorney advertisement.
     href: /services

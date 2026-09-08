@@ -1,8 +1,8 @@
 head_title: "Data-deletion requests — {site_name}"
 meta_description: >-
   Data-deletion request work from DeleteYourData.com, a practice of Shook
-  Law PLLC. A licensed attorney reviews the work. Fees are quoted before
-  work begins. This is an attorney advertisement.
+  Law PLLC. A standard request is a flat $10, reviewed by a licensed
+  attorney. This is an attorney advertisement.
 title: Data-deletion requests
 hero_mark: gavel
 tagline: Ask a company to delete personal data
@@ -12,8 +12,8 @@ hero_lines:
   - text: to delete personal data
     accent_words: 0
 hero_lead: >-
-  One scoped request, quoted before any work begins, reviewed by a licensed
-  attorney. Shook Law PLLC is the law firm you would retain.
+  One scoped request for a flat $10, reviewed by a licensed attorney. Shook
+  Law PLLC is the law firm you would retain.
 hero_cta:
   href: "mailto:{firm_email}"
   label: Contact us
@@ -28,12 +28,22 @@ bands:
             company to delete personal data it holds about them. It is an
             attorney advertisement. It is not legal advice, and it is not a
             promise that a company will delete anything.
+      - - text: "A standard request is a flat "
+        - text: "$10"
+          emphasis: true
+        - text: " per company. It is included at no added cost for a "
+        - text: Neon Law Personal Plan
+          href: "https://www.neonlaw.com/personal-plan"
+        - text: >-
+            , as a member — alongside that plan's tax filing and credit
+            monitoring (beta).
   - kind: cards
     anchor: work
     overline: The work
-    heading: What we can quote
+    heading: What it costs
     description: >-
-      Each matter is scoped and quoted on its own facts. Government or
+      A standard removal request is a flat $10; follow-up and any work
+      outside that standard scope is quoted on its own facts. Government or
       platform fees, if any, are passed through at cost.
     items:
       - title: Removal Request
@@ -54,21 +64,23 @@ bands:
   - kind: steps
     anchor: how
     overline: How it works
-    heading: Quote first, then the request
+    heading: Flat fee first, then the request
     description: >-
       Create an account, tell us the company and what you know, and we
-      send the quote before any drafting begins.
+      confirm the fee before any drafting begins.
     items:
       - title: Write to us
         body:
           - - text: >-
                 Email the practice with the company, what you want deleted
                 if you know it, and how we can reach you.
-      - title: We quote the matter
+      - title: We confirm the fee
         body:
           - - text: >-
-                You receive the scope and the fee before we start. Nothing
-                is due, and no request is sent, until you agree.
+                A standard request is the flat $10; anything outside that
+                standard scope is quoted separately. Either way you see the
+                scope and the fee before we start, and nothing is due until
+                you agree.
       - title: A licensed attorney reviews the request
         body:
           - - text: >-
@@ -83,6 +95,7 @@ bands:
     heading: Ready to ask?
     body: >-
       Email the practice. Name the company and what you want deleted, if
-      you know it. We will quote the matter before any work begins.
+      you know it. A standard request is a flat $10, or included at no
+      added cost in your Neon Law Personal Plan.
     email: "{firm_email}"
     email_subject: Data-deletion request

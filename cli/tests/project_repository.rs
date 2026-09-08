@@ -131,9 +131,7 @@ fn the_scaffold_produces_a_repository_that_validates_and_is_idempotent() {
     assert!(instructions.contains("root `portal/` is also"));
     assert!(instructions.contains("A Project code names a matter and its repository."));
     assert!(instructions.contains("It identifies a client, so it is client data."));
-    assert!(
-        instructions.contains("The one legitimate use here is this repository naming itself")
-    );
+    assert!(instructions.contains("The one legitimate use here is this repository naming itself"));
     assert!(
         instructions.contains("commit message, code comment, branch name, or pull-request body")
     );

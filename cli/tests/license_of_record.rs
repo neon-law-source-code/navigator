@@ -815,10 +815,11 @@ fn no_document_promises_a_contributor_keeps_the_copyright() {
 /// `foundation(s) of` and `foundational`. A named third party is allowed through
 /// [`OTHER_FOUNDATIONS`]; every other mention has to say whose foundation it is.
 ///
-/// **This is the absence half only.** A companion assertion that a deck *states*
-/// the licence position belongs with the copy that states it. That sentence has
-/// not been written yet, and pinning the present silence would fix the wrong
-/// invariant — so the presence half is left out on purpose, not by oversight.
+/// **The presence half is paired below.** Every deck that teaches a deployment
+/// must state the licence at the point where it tells a reader to stand one up:
+/// `BUSL-1.1`, the need for a `commercial licence`, and the reliance boundary.
+/// The companion assertion walks the same tree, so a new deployment deck cannot
+/// inherit the absence that let this defect ship.
 #[test]
 fn no_workshop_deck_attributes_the_grant_to_a_foundation() {
     /// Foundations that belong to somebody else, which a deck may name.
@@ -873,6 +874,38 @@ fn no_workshop_deck_attributes_the_grant_to_a_foundation() {
          deck names the Firm rather than a foundation — and names a third \
          party's foundation in full where the reference is genuinely theirs:\n  \
          {}",
+        offenders.join("\n  ")
+    );
+}
+
+/// Every workshop deck that teaches a deployment states the grant.
+///
+/// `gcloud` and `ops gcp setup` are the deployment signals in the workshop
+/// tree. A deck that teaches either one must name the licence, the commercial
+/// boundary, and the reliance test in its own prose rather than deferring to a
+/// linked document.
+#[test]
+fn every_workshop_deck_that_teaches_a_deployment_states_the_grant() {
+    let mut offenders = Vec::new();
+    for path in workshop_decks() {
+        let rel = repository_relative_path(&path);
+        let flat = flat_lower(&fs::read_to_string(&path).unwrap_or_default());
+        if !flat.contains("gcloud") && !flat.contains("ops gcp setup") {
+            continue;
+        }
+
+        let missing: Vec<&str> = ["busl-1.1", "commercial licence", "relies"]
+            .into_iter()
+            .filter(|required| !flat.contains(required))
+            .collect();
+        if !missing.is_empty() {
+            offenders.push(format!("{rel}: missing {}", missing.join(", ")));
+        }
+    }
+
+    assert!(
+        offenders.is_empty(),
+        "a workshop deck that teaches deployment must state BUSL-1.1, the commercial licence boundary, and reliance:\n  {}",
         offenders.join("\n  ")
     );
 }

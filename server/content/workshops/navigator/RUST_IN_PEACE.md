@@ -92,7 +92,8 @@ Our firm offers Litigation, Fractional GC, Personal Plan, and One-Time Services.
 
 ---
 
-Neon Law Navigator is source-available software designed to enable all lawyers to be vibe-coding storytellers.
+Neon Law Navigator is source-available software (BUSL-1.1; production use is licensed) designed to enable all lawyers to
+be vibe-coding storytellers. If a person relies on what it does in production, a commercial licence is required.
 
 ### Agenda
 

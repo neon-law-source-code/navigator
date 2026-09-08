@@ -26,6 +26,11 @@ use std::sync::{LazyLock, OnceLock};
 
 use crate::brand_bundle::BrandManifest;
 
+pub use crate::brand_presentation::{
+    palette_by_id, resolve_presentation, tokens_stylesheet, typeface_by_id, Palette, PaletteScheme,
+    Typeface, PALETTE, TYPEFACES,
+};
+
 /// Bundle of strings + nav links that identify the running site.
 ///
 /// `Copy` is preserved so the layout's `with_brand(SiteBrand)` API

@@ -2578,6 +2578,7 @@ async fn seed_brands(surreal: &SurrealDb) -> anyhow::Result<()> {
         ("DeleteYourData.com", "delete-your-data"),
         ("Lawyer Shook", "lawyer-shook"),
     ] {
+        let (typeface, palette) = compiled_brand_presentation(key);
         match crate::brands::create(
             surreal,
             crate::persons::Role::Owner,
@@ -2587,19 +2588,46 @@ async fn seed_brands(surreal: &SurrealDb) -> anyhow::Result<()> {
                 key: key.to_string(),
                 is_law_firm: true,
                 legal_entity: Some(FIRM_ENTITY_NAME.to_string()),
+                typeface: Some(typeface.to_string()),
+                primary_color: Some(palette.to_string()),
+                accent_color: Some(palette.to_string()),
                 ..crate::brands::NewBrand::default()
             },
         )
         .await
         {
-            Ok(_)
-            | Err(
+            Ok(_) => {}
+            Err(
                 crate::brands::BrandError::DuplicateName | crate::brands::BrandError::DuplicateKey,
-            ) => {}
+            ) => {
+                if let Some(existing) = crate::brands::find_by_key(surreal, key).await? {
+                    crate::brands::update(
+                        surreal,
+                        crate::persons::Role::Owner,
+                        None,
+                        existing.id,
+                        &crate::brands::BrandEdit {
+                            typeface: Some(Some(typeface.to_string())),
+                            primary_color: Some(Some(palette.to_string())),
+                            accent_color: Some(Some(palette.to_string())),
+                            ..crate::brands::BrandEdit::default()
+                        },
+                    )
+                    .await?;
+                }
+            }
             Err(error) => return Err(error.into()),
         }
     }
     Ok(())
+}
+
+fn compiled_brand_presentation(key: &str) -> (&'static str, &'static str) {
+    match key {
+        "delete-your-data" => ("system-sans", "delete-your-data"),
+        "lawyer-shook" => ("tinos", "lawyer-shook"),
+        _ => ("gorp-serif", "neon-teal"),
+    }
 }
 
 /// The one practice this deployment already is: the `Shook Law PLLC` entity,
@@ -4756,6 +4784,18 @@ records:
         assert_eq!(second.jurisdictions_inserted, 0);
         assert_eq!(second.persons_inserted, 0);
         assert!(first.questions_inserted > 0);
+        let neon = crate::brands::find_by_key(&surreal, "neon")
+            .await
+            .unwrap()
+            .expect("neon brand");
+        assert_eq!(neon.typeface.as_deref(), Some("gorp-serif"));
+        assert_eq!(neon.primary_color.as_deref(), Some("neon-teal"));
+        let dyd = crate::brands::find_by_key(&surreal, "delete-your-data")
+            .await
+            .unwrap()
+            .expect("delete-your-data brand");
+        assert_eq!(dyd.typeface.as_deref(), Some("system-sans"));
+        assert_eq!(dyd.primary_color.as_deref(), Some("delete-your-data"));
     }
 
     #[tokio::test]

@@ -13,13 +13,11 @@
      Hex is written out rather than left as `oklch()` so the tokens resolve the
      same everywhere `color-mix` is not available.
 
-     The firm wears this teal unchanged, in `brand-neon-tokens.css`. Every
-     other registered brand overrides it in its own `brand-<key>-tokens.css`
-     (e.g. `brand-delete-your-data-tokens.css`'s red) — resolved per request
+     The firm wears this teal unchanged, via the generated `brand-neon-tokens.css` (palette id `neon-teal`). Every
+     other registered brand overrides it from its own row — resolved per request
      by `webapp::brand_style::brand_tokens_href` and hoisted by
      `webapp::public_chrome::PublicFooter` and every `/app` page. Each layer
-     redeclares only the `--nav-color-*` aliases (and, optionally,
-     `--nav-font-family`), so everything below stays the single source for
+     redeclares only the `--nav-color-*` aliases (and `--nav-font-family`), so everything below stays the single source for
      radii, neutrals, and state colours across every brand. Anything added
      here that a brand might need to differ on belongs in the alias block,
      not baked into a component.

@@ -9059,10 +9059,7 @@ async fn an_app_page_links_its_own_brands_tokens_stylesheet_and_font() {
         dyd_body.contains(r#"href="/public/css/brand-delete-your-data-tokens.css""#),
         "{dyd_body}"
     );
-    assert!(
-        dyd_body.contains("font-family:'Plus Jakarta Sans'"),
-        "{dyd_body}"
-    );
+    assert!(!dyd_body.contains("Plus Jakarta Sans"), "{dyd_body}");
     assert!(!dyd_body.contains("GORP Serif"), "{dyd_body}");
     assert!(!dyd_body.contains("brand-neon-tokens.css"), "{dyd_body}");
 }

@@ -192,7 +192,7 @@ async fn dioxus_document_head(req: Request, next: Next) -> Response {
     };
     let font_head: &str = match views::brand::brand_key() {
         views::brand::BrandKey::Neon => &GORP_HEAD,
-        views::brand::BrandKey::DeleteYourData => &PLUS_JAKARTA_SANS_HEAD,
+        views::brand::BrandKey::DeleteYourData => "",
         views::brand::BrandKey::LawyerShook => &TINOS_HEAD,
     };
     let html = stamp_document_title(&stamp_html_lang(&rendered, lang), &path)
@@ -375,16 +375,6 @@ static GORP_HEAD: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
         "GORP Serif",
         &views::assets::asset_url("fonts/gorp-serif/GORPSerif-Regular.woff2"),
         &views::assets::asset_url("fonts/gorp-serif/GORPSerif-Bold.woff2"),
-    )
-});
-
-/// DeleteYourData.com's Plus Jakarta Sans head fragment — the same
-/// bucket-served shape as [`GORP_HEAD`].
-static PLUS_JAKARTA_SANS_HEAD: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-    font_head_fragment(
-        "Plus Jakarta Sans",
-        &views::assets::asset_url("fonts/plus-jakarta-sans/PlusJakartaSans-Regular.woff2"),
-        &views::assets::asset_url("fonts/plus-jakarta-sans/PlusJakartaSans-Bold.woff2"),
     )
 });
 
@@ -777,7 +767,7 @@ async fn inject_public_utility(mut req: Request, next: Next) -> Response {
         req.extensions()
             .get::<webapp::public_chrome::ResolvedFooterBrands>()
     {
-        chrome.brands = brands.clone();
+        chrome.brands.clone_from(brands);
     }
     req.extensions_mut().insert(chrome);
     req.extensions_mut()
@@ -3332,6 +3322,11 @@ pub fn app_team_router(
 /// The house-of-brands home — every registered brand's typeface.
 pub const APP_BRANDS_PATH: &str = "/app/brands";
 
+/// Presentation edit for one brand. Owner for a system-wide row; a Firm's
+/// Admin DRI for a Firm-scoped row. The home at [`APP_BRANDS_PATH`] stays
+/// Owner-only (`owner_only_path` is exactly two segments).
+pub const APP_BRANDS_EDIT_PATH: &str = "/app/brands/{key}/edit";
+
 /// `/app/brands` — the house-of-brands home.
 ///
 /// Owner only (ENG-493), narrowed from every firm tier. Gated exactly like
@@ -3356,6 +3351,61 @@ pub fn app_brands_router(
         .with_state(FullstackState::new(
             ServeConfig::new(),
             webapp::brands_home::BrandsHome,
+        ))
+        .route_layer(from_fn_with_state(
+            (sessions, policy),
+            crate::policy::require_policy,
+        ))
+        .route_layer(from_fn_with_state(auth, crate::auth::require_auth))
+}
+
+/// `/app/brands/{key}/edit` — Owner or Admin at the route; `store::brands::update`
+/// refuses a non-DRI Admin and a Lawyer never reaches the handler.
+pub fn app_brands_edit_router(
+    sessions: crate::session::SessionStore,
+    policy: crate::policy::PolicyClient,
+    auth: crate::auth::AuthConfig,
+    surreal: store::surreal::SurrealDb,
+) -> Router {
+    let cfg = ServeConfig::new().context_providers(std::sync::Arc::new(vec![Box::new(move || {
+        Box::new(surreal.clone()) as Box<dyn std::any::Any>
+    })
+        as Box<dyn Fn() -> Box<dyn std::any::Any> + Send + Sync>]));
+    Router::<FullstackState>::new()
+        .route(
+            APP_BRANDS_EDIT_PATH,
+            get(render_handler)
+                .layer(from_fn(dioxus_document_head))
+                .layer(from_fn(inject_viewer_role))
+                .layer(from_fn(inject_person_id))
+                .layer(from_fn(inject_csrf_token))
+                .layer(from_fn(inject_app_brand_mark)),
+        )
+        .with_state(FullstackState::new(cfg, webapp::brands_edit::BrandsEdit))
+        .route_layer(from_fn_with_state(
+            (sessions, policy),
+            crate::policy::require_policy,
+        ))
+        .route_layer(from_fn_with_state(auth, crate::auth::require_auth))
+}
+
+/// Native POST twin of `PATCH /app/api/brands/{key}` so the edit form stays
+/// a classic navigation.
+pub fn app_brands_edit_post_router(
+    sessions: crate::session::SessionStore,
+    policy: crate::policy::PolicyClient,
+    auth: crate::auth::AuthConfig,
+    surreal: store::surreal::SurrealDb,
+) -> Router {
+    Router::new()
+        .route(
+            APP_BRANDS_EDIT_PATH,
+            axum::routing::post(crate::brand_edit::post_brand_edit),
+        )
+        .with_state(surreal)
+        .layer(from_fn_with_state(
+            (sessions.clone(), crate::csrf::CsrfMode::Form),
+            crate::csrf::require_csrf,
         ))
         .route_layer(from_fn_with_state(
             (sessions, policy),

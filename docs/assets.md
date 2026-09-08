@@ -128,13 +128,11 @@ tiers — Owner, Admin, Lawyer, and Clerk — and deny client and anonymous call
 lawyer work, so it needs neither the `/app/lawyer` prefix nor the exact-path Clerk exception that prefix used to force.
 A missing object is a loud `502`, never a fallback — the same pull-and-verify posture as the vendored government forms.
 
-### DeleteYourData.com's Plus Jakarta Sans
+### DeleteYourData.com's typeface
 
-The `delete-your-data` house brand wears Plus Jakarta Sans instead of GORP Serif. Unlike GORP, the font itself is
-OFL-1.1 — nothing legally requires keeping the bytes out of git — but it publishes through the same operator-upload lane
-as GORP's licensed delivery anyway, so every deployment's font bytes come from one mechanism rather than two, and a
-fresh clone needs none of them to build or test. `cli::assets::FontFamily` generalizes the GORP-specific upload path so
-a second family is a new constant, not a second command:
+The `delete-your-data` house brand seeds the closed `system-sans` typeface (the operating-system sans stack). Plus
+Jakarta Sans remains an operator-uploadable OFL family for deployments that still serve those files, but it is not a
+value on `views::brand::TYPEFACES` and is not injected into the document head.
 
 ```bash
 cargo run -p cli -- ops assets fonts upload --family plus-jakarta-sans \
@@ -144,9 +142,8 @@ cargo run -p cli -- ops assets fonts upload --family plus-jakarta-sans \
 The directory must hold `PlusJakartaSans-Regular.woff2` and `PlusJakartaSans-Bold.woff2`; the command uploads both to
 `fonts/plus-jakarta-sans/` in the public assets bucket (`--family gorp-serif`, the default, is unchanged). Local
 development and tests resolve the same fallback `/public/fonts/plus-jakarta-sans/` path GORP's faces use when
-`NAVIGATOR_ASSET_BASE_URL` is unset. `portal::dioxus_app` selects which family's `@font-face` head fragment to inject
-per request from the resolved `views::brand::BrandKey`, so a `delete-your-data` page never declares GORP Serif and a
-firm page never declares Plus Jakarta Sans.
+`NAVIGATOR_ASSET_BASE_URL` is unset. `portal::dioxus_app` injects GORP for Neon and Tinos for Lawyer Shook; a
+`delete-your-data` page does not declare a webfont in the head.
 
 Publication is not verified by CI. `deploy.yml` builds and publishes images, and its local KIND gate proves only the
 placeholder image. A full or image-only `ops ship` run verifies the selected deployment's public asset origin after the

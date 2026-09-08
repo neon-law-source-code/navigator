@@ -81,7 +81,9 @@ pub mod attachment_scanner;
 pub mod audit_fields;
 pub mod auth;
 pub mod blog;
+pub mod brand_edit;
 pub mod brand_fonts;
+pub mod brand_tokens;
 pub mod cron_schedules;
 // The billing-provider seam moved to the `billing` crate so the
 // worker-side `billing-workflows` can share it. Re-exported here so
@@ -196,8 +198,9 @@ const X_REQUEST_ID: HeaderName = HeaderName::from_static("x-request-id");
 /// `Cache-Control` for `/public/` static assets. One hour is the
 /// conservative default until we add content-hashed filenames; bump
 /// to `immutable` once asset paths are fingerprinted.
-const STATIC_CACHE_CONTROL: HeaderValue = HeaderValue::from_static("public, max-age=3600");
-const NOSNIFF: HeaderValue = HeaderValue::from_static("nosniff");
+pub(crate) const STATIC_CACHE_CONTROL: HeaderValue =
+    HeaderValue::from_static("public, max-age=3600");
+pub(crate) const NOSNIFF: HeaderValue = HeaderValue::from_static("nosniff");
 
 /// `Strict-Transport-Security` value — two years with
 /// `includeSubDomains` and `preload`, making the site eligible for
@@ -906,6 +909,18 @@ pub fn bootstrap(
         state.sessions.clone(),
         state.policy.clone(),
         state.auth.clone(),
+    );
+    let dioxus_app_brands_edit = dioxus_app::app_brands_edit_router(
+        state.sessions.clone(),
+        state.policy.clone(),
+        state.auth.clone(),
+        state.surreal.clone(),
+    );
+    let dioxus_app_brands_edit_post = dioxus_app::app_brands_edit_post_router(
+        state.sessions.clone(),
+        state.policy.clone(),
+        state.auth.clone(),
+        state.surreal.clone(),
     );
     let dioxus_app_owner = dioxus_app::app_owner_router(
         state.sessions.clone(),
@@ -1616,6 +1631,10 @@ pub fn bootstrap(
     let boundary_auth = state.auth.clone();
     let footer_store = state.surreal.clone();
     let mut router = mount_brand_assets(router, brand_bundle.as_ref())
+        .route(
+            "/public/css/brand-{key}-tokens.css",
+            get(brand_tokens::tokens_css),
+        )
         .nest_service("/public", static_files)
         .with_state(state)
         .merge(api)
@@ -1724,6 +1743,7 @@ pub fn bootstrap(
         dioxus_app_doc,
         dioxus_app_team,
         dioxus_app_brands,
+        dioxus_app_brands_edit,
         dioxus_app_owner,
         dioxus_firm_show,
         dioxus_template_gallery,
@@ -1735,6 +1755,11 @@ pub fn bootstrap(
             &boundary_auth,
         ));
     }
+    router = router.merge(session_boundary(
+        dioxus_app_brands_edit_post,
+        &boundary_sessions,
+        &boundary_auth,
+    ));
     // The two sortable read-only listings (#956 Phase 4) — the template catalog
     // and the questions directory — mount through the same scaffold as the
     // fixed-order ones, plus a pre-handler that 400s an unadvertised `?sort=`.

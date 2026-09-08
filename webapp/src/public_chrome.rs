@@ -65,8 +65,6 @@ pub struct ChromeBrand {
 }
 
 /// The public-page chrome: everything the [`crate::components::SiteHeader`] and
-
-/// The public-page chrome: everything the [`crate::components::SiteHeader`] and
 /// [`crate::components::SiteFooterLegal`] need, resolved from the process brand
 /// per request so the wasm client never links the view layer.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]

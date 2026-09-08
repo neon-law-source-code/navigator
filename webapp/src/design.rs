@@ -30,16 +30,17 @@ use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::components::{
-    wire_runs, Accordion, AppFooter, AppLogo, AppNavbar, Avatar, BackBreadcrumb, Card, CatalogHero,
-    Choice, ChoiceGroup, ChoiceGroupOption, ClientDriView, ClientDriViewBanner, CodeBlock, Column,
-    ConfirmDelete, DataTable, DayRateBadge, ExternalLink, Field, FooterAttorney, FooterBarLicense,
-    FooterNavLink, FooterOffice, FormCard, GitHubStars, Hero, HeroAlign, HeroLevel, Icon, IconName,
-    LawyerPortalBreadcrumb, LegalBlueprintDisclaimer, NavigatorDestination, NavigatorFooter,
-    NavigatorFooterLink, NavigatorNavbar, NavigatorShell, Pagination, PeopleListInputs,
-    PersonChoice, PersonPicker, PricingCard, PricingSection, Progress, PublicShell, QuestionStage,
-    RowActions, RunParagraph, SampleMattersBanner, SiteFooterLegal, SiteHeader, SiteNavLink,
-    SocialMeta, SortState, Stage, StageWidth, StepMeta, Stepper, StepperPanel, TestimonialCard,
-    TestimonialSection, Toast, ToastTone, THEME_STYLESHEET_HREF,
+    wire_runs, Accordion, AppFooter, AppLogo, AppNavbar, AppProfileMenu, Avatar, BackBreadcrumb,
+    Card, CatalogHero, Choice, ChoiceGroup, ChoiceGroupOption, ClientDriView, ClientDriViewBanner,
+    CodeBlock, Column, ConfirmDelete, DataTable, DayRateBadge, ExternalLink, Field, FooterAttorney,
+    FooterBarLicense, FooterNavLink, FooterOffice, FormCard, GitHubStars, Hero, HeroAlign,
+    HeroLevel, Icon, IconName, LawyerPortalBreadcrumb, LegalBlueprintDisclaimer,
+    NavigatorDestination, NavigatorFooter, NavigatorFooterLink, NavigatorNavbar, NavigatorShell,
+    Pagination, PeopleListInputs, PersonChoice, PersonPicker, PricingCard, PricingSection,
+    Progress, PublicShell, QuestionStage, RowActions, RunParagraph, SampleMattersBanner,
+    SiteFooterLegal, SiteHeader, SiteNavLink, SocialMeta, SortState, Stage, StageWidth, StepMeta,
+    Stepper, StepperPanel, TestimonialCard, TestimonialSection, Toast, ToastTone,
+    THEME_STYLESHEET_HREF,
 };
 // The vendor marks come from their own module rather than the theme root: they
 // are the one component whose colours are a third party's rather than the
@@ -553,12 +554,13 @@ fn AppProfileMenuShowcase() -> Element {
                 "JavaScript. The real route serves the uploaded private avatar or initials fallback "
                 "from the authenticated session."
             }
-            AppNavbar {
-                destinations: vec![
-                    crate::components::AppNavLink::new("Projects", "/app/projects"),
-                    crate::components::AppNavLink::new("Sign out", "/auth/logout"),
-                ],
-                logo: None,
+            nav { class: "lawyer-nav", "aria-label": "Application",
+                AppProfileMenu {
+                    destinations: vec![
+                        crate::components::AppNavLink::new("Projects", "/app/projects"),
+                        crate::components::AppNavLink::new("Sign out", "/auth/logout"),
+                    ],
+                }
             }
         }
     }

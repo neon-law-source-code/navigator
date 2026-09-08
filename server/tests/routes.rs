@@ -15112,8 +15112,8 @@ async fn lawyer_project_documents_render_grouped_history_and_one_offs() {
     );
     assert_eq!(
         body.matches("<details").count(),
-        1,
-        "one slugged document row expands: {body}"
+        2,
+        "the profile menu and one slugged document row expand: {body}"
     );
     assert!(body.contains(&format!(
         "/app/projects/{project_code}/documents/{operative}"

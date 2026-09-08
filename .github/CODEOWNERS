@@ -1,22 +1,3 @@
-# CODEOWNERS — Nick reviews everything.
-#
-# The handle must resolve on the host this repository lives on, and it is
-# `@shicholas` rather than `@nick`. This matters more than a spelling: `nick` is
-# a real, unrelated github.com account that is not a collaborator here, and
-# GitHub does not reject an owner it cannot match to one — it drops the rule and
-# leaves those paths unowned, which is indistinguishable from having no
-# CODEOWNERS at all. A repository can sit for months with the file committed and
-# no owner on any path.
-#
-# `@nick` was correct on the retired GitHub Enterprise deployment, whose EMU
-# accounts were provisioned through Google SAML and shared no namespace with
-# github.com. This repository is on github.com now, so it is wrong here for the
-# same reason it was right there. The Firm's other repositories were corrected
-# already; this one was missed.
-#
-# `ops github setup` resolves every owner named here against the API, but note
-# what that does and does not prove: it asks whether the account exists, and
-# `@nick` exists. Only write access makes an owner an owner.
-#
-# https://docs.github.com/articles/about-code-owners
-* @shicholas
+# CODEOWNERS
+
+* @shicholas @jask04

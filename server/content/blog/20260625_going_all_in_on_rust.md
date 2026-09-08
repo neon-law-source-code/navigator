@@ -6,7 +6,7 @@ description: Why a general practice firm builds its own tools in one language fo
 
 ![Ferris trains at sunrise on stone steps.](img/going-all-in-on-rust/ferris-training-hero.png)
 
-_Nick is a partner at Neon Law._
+_Nick is a lawyer at Neon Law._
 
 Most of our work arrives the way yours probably does: on a Tuesday, from someone who did not plan their week around it.
 A founder forwards a contract at eleven at night because the customer wants it signed by Thursday. A client gets served

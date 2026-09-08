@@ -1612,9 +1612,9 @@ fn normalize_docker_arch(arch: &str) -> String {
     }
 }
 
-/// Nested Docker (Cursor Cloud DinD) cannot load `xt_multiport` or
+/// Nested Docker (Cursor Cloud `DinD`) cannot load `xt_multiport` or
 /// `xt_statistic`, so kube-proxy's default iptables mode never programs
-/// ClusterIP/NodePort rules. KIND's `kubeProxyMode: nftables` uses the
+/// `ClusterIP`/`NodePort` rules. KIND's `kubeProxyMode: nftables` uses the
 /// in-node `nft` binary instead.
 fn inject_kube_proxy_nftables(yaml: &str) -> String {
     if yaml

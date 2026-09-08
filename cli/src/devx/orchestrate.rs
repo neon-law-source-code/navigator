@@ -466,10 +466,10 @@ fn kind_nested_dind_requested() -> bool {
     )
 }
 
-/// Nested Docker (Cursor Cloud DinD) has no `xt_statistic` module, so
-/// kube-proxy's default iptables mode fails `iptables-restore` and ClusterIP
-/// DNS never works. On an already-created cluster, flip the ConfigMap to
-/// nftables and restart the DaemonSet. New clusters get the same mode from
+/// Nested Docker (Cursor Cloud `DinD`) has no `xt_statistic` module, so
+/// kube-proxy's default iptables mode fails `iptables-restore` and `ClusterIP`
+/// DNS never works. On an already-created cluster, flip the `ConfigMap` to
+/// nftables and restart the `DaemonSet`. New clusters get the same mode from
 /// [`super::inject_kube_proxy_nftables`] in the KIND config.
 fn ensure_kube_proxy_nftables_if_requested() -> Result<()> {
     if !kind_nested_dind_requested() {
@@ -542,7 +542,7 @@ fn ensure_kube_proxy_nftables_if_requested() -> Result<()> {
     Ok(())
 }
 
-/// Nested Docker (Cursor Cloud DinD) has no `xt_multiport` module, so kindnet
+/// Nested Docker (Cursor Cloud `DinD`) has no `xt_multiport` module, so kindnet
 /// cannot DNAT the ingress-nginx `hostPort` 80/443 bindings. When
 /// `NAVIGATOR_KIND_NO_HOSTPORT` is set, drop those hostPorts after apply so
 /// the controller can become Ready. `dev up` reaches Rauthy and the other
@@ -896,7 +896,7 @@ fn pull_retag_load(
 /// Path to the `kind create cluster --config` file. At default host ports this
 /// is the committed `k8s/kind-config.yaml` verbatim (so a standalone `kind
 /// create` against it still works). When any mapped host port is overridden
-/// or nested DinD needs nftables kube-proxy, render a copy under `.devx/`.
+/// or nested `DinD` needs nftables kube-proxy, render a copy under `.devx/`.
 fn kind_config_path(root: &Path, cfg: &KindConfig) -> Result<PathBuf> {
     let committed = root.join("k8s/kind-config.yaml");
     let nested = kind_nested_dind_requested();

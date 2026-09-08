@@ -302,11 +302,12 @@ pub struct FirmOffice {
 /// mark, the legal person a client actually engages — kept in step with its row
 /// in `store/seeds/neon/Address.yaml`.
 ///
-/// One office, where there were four. The California, New York, and Washington
-/// boxes were the retired partnership's, and an address is a holding out to
-/// practise in that state: publishing one under an entity that does not rent it
-/// is a false statement about where the firm can be reached, not a stale
-/// footer. Re-add each here only once this entity holds that box.
+/// One office, where there were four, then three. The California box went when
+/// the retired partnership that held it wound down; New York and Washington
+/// followed for the same reason: an address is a holding out to practise in
+/// that state, so a box the firm no longer rents cannot stay in the list, not
+/// a stale footer. Re-add either here only once this entity holds that box
+/// again.
 ///
 /// Still a separate field from [`SiteBrand::postal_address`], which is the one
 /// registered address the letterhead carries, even though both name the same
@@ -315,9 +316,7 @@ pub struct FirmOffice {
 /// bouncing — `405-9002` is the firm's.
 ///
 /// Each office is published under its state rather than its city, so the footer
-/// reads as the map of where the firm practises, and the list is ordered
-/// alphabetically by that state so a new office slots in by where it sits
-/// rather than by whoever edited the list last. The street address underneath
+/// reads as the map of where the firm practises. The street address underneath
 /// still names the city.
 ///
 /// Every comma is a line break. The footer sets an address the way an envelope
@@ -325,23 +324,11 @@ pub struct FirmOffice {
 /// and the city starts one, rather than the whole address running together and
 /// wrapping wherever the column ends. The city keeps its state and ZIP on the
 /// same line. See `webapp::components::site_footer`, which does the splitting.
-const FIRM_OFFICES: &[FirmOffice] = &[
-    FirmOffice {
-        state: "Nevada",
-        address: "5150 Mae Anne Ave, Ste 405-9002, Reno, NV 89523",
-        note: None,
-    },
-    FirmOffice {
-        state: "New York",
-        address: "12 E 49th St, 18th Floor, New York, NY 10017",
-        note: None,
-    },
-    FirmOffice {
-        state: "Washington",
-        address: "720 Seneca St, Ste 107-715, Seattle, WA 98101",
-        note: None,
-    },
-];
+const FIRM_OFFICES: &[FirmOffice] = &[FirmOffice {
+    state: "Nevada",
+    address: "5150 Mae Anne Ave, Ste 405-9002, Reno, NV 89523",
+    note: None,
+}];
 
 /// All identity consumed by rendering. The web router scopes one immutable
 /// instance to a request; direct view tests receive [`DEFAULT_BRANDING`].
@@ -1104,11 +1091,12 @@ mod tests {
     /// The footer publishes the one office the firm actually keeps, and the
     /// letterhead names the same box.
     ///
-    /// It published four while the retired partnership held boxes in four
-    /// states. An address is a holding out to practise in that state, so a
-    /// list that outlives the entity renting those boxes is a false statement
-    /// about where the firm can be reached — not a stale footer. A fifth entry
-    /// appearing here must correspond to a box this entity actually holds.
+    /// It published four, then three, while the retired partnership held boxes
+    /// in other states. An address is a holding out to practise in that state,
+    /// so a list that outlives the entity renting those boxes is a false
+    /// statement about where the firm can be reached — not a stale footer. A
+    /// second entry appearing here must correspond to a box this entity
+    /// actually holds.
     #[test]
     fn publishes_every_firm_office_without_touching_the_letterhead() {
         let published: Vec<(&str, &str)> = DEFAULT_BRANDING
@@ -1118,14 +1106,7 @@ mod tests {
             .collect();
         assert_eq!(
             published,
-            [
-                ("Nevada", "5150 Mae Anne Ave, Ste 405-9002, Reno, NV 89523"),
-                ("New York", "12 E 49th St, 18th Floor, New York, NY 10017"),
-                (
-                    "Washington",
-                    "720 Seneca St, Ste 107-715, Seattle, WA 98101"
-                ),
-            ],
+            [("Nevada", "5150 Mae Anne Ave, Ste 405-9002, Reno, NV 89523")],
             "the footer publishes the offices the firm actually keeps, ordered by state",
         );
         assert_eq!(
@@ -1145,11 +1126,7 @@ mod tests {
             .iter()
             .map(|office| (office.state, office.note))
             .collect();
-        assert_eq!(
-            qualified,
-            [("Nevada", None), ("New York", None), ("Washington", None)],
-            "no office carries a note",
-        );
+        assert_eq!(qualified, [("Nevada", None)], "no office carries a note");
     }
 
     /// The firm's footer discloses no per-attorney bar licence. The credentials
@@ -1205,7 +1182,7 @@ mod tests {
         })
         .await;
         // The compiled default is unchanged.
-        assert_eq!(DEFAULT_BRANDING.firm_offices.len(), 3);
+        assert_eq!(DEFAULT_BRANDING.firm_offices.len(), 1);
         assert!(DEFAULT_BRANDING.firm_attorneys.is_empty());
     }
 

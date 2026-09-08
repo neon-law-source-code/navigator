@@ -522,8 +522,9 @@ navigator validate .
 
 `scaffold` is idempotent and leaves existing files alone. It writes the repository shell — `navigator.yaml` (requiring
 `--host`), the thin `ci.yml` caller, a `publish.yml` job guarded on `vars.NAVIGATOR_HOST`, `README.md`, `AGENTS.md`, a
-`CLAUDE.md` that delivers `AGENTS.md` (a relative symlink on Unix, a copy on Windows), and `tests/`. It does not write a
-placeholder template. A hand-copied `ci.yml` of 268 lines or more is left alone unless `--replace-gate` is passed.
+`CLAUDE.md` that delivers `AGENTS.md` (a relative symlink on Unix, a copy on Windows), `tests/`, and one placeholder
+`templates/<code>__engagement.md` whose stem is the Project code with hyphens replaced by underscores. A hand-copied
+`ci.yml` of 268 lines or more is left alone unless `--replace-gate` is passed.
 
 The generated `ci.yml` pins Navigator's reusable project-gate workflow to `--action-version`, which defaults to the
 release the running `navigator` reports as its own version — but only when this binary can actually vouch for that
@@ -542,10 +543,29 @@ is checked by the same rules.
 `validate` accepts templates, applications, either, or both, and reports a repository carrying neither distinctly rather
 than failing it. A Project may legitimately open before either half exists.
 
-The template directory is flat. Each `templates/<code>.md` file is a Project-local notation blueprint; it is not part of
-Navigator's shared `templates/notations/neon_law` or `templates/notations/forms` catalog. Navigator reads the file at
-`main`, validates its notation contract, persists its bytes as a content-addressed Asset, and records the imported
-commit SHA as provenance.
+The template directory is flat. Each `templates/<code>.md` file is a Project-local
+notation blueprint; it is not part of Navigator's shared
+`templates/notations/neon_law` or `templates/notations/forms` catalog. N110 holds
+that catalog to those shelves. When the tree carries a `navigator.yaml` with
+`project:`, the same rule accepts a direct `templates/<code>.md` and refuses a
+subdirectory — the same demand the layout gate already makes. Navigator reads the
+file at `main`, validates its notation contract, persists its bytes as a
+content-addressed Asset, and records the imported commit SHA as provenance.
+
+From 26.9.6 the catalog prefix N110 expects is `notations/neon_law/` (and
+`notations/forms/`) rather than a bare `templates/neon_law/` or `templates/forms/`.
+A Navigator-catalog checkout still sitting on the old shelf moves in one rename:
+
+```bash
+git mv templates/neon_law templates/notations/neon_law
+git mv templates/forms templates/notations/forms
+```
+
+A Project repository does not take that path. Flatten instead:
+
+```bash
+git mv templates/neon_law/<file>.md templates/<file>.md
+```
 
 ## An individual client's entity
 

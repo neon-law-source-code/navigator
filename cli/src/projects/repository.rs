@@ -318,6 +318,7 @@ pub fn scaffold(
     }
 
     let manifest = format!("host: {host}\nproject: {project_code}\n");
+    let template_stem = placeholder_template_stem(project_code);
     let files = [
         (root.join("README.md"), readme(project_code)),
         (root.join("AGENTS.md"), agents(project_code)),
@@ -325,6 +326,11 @@ pub fn scaffold(
         (root.join(WORKFLOW), workflow(action_version)),
         (root.join(CD_WORKFLOW), cd_workflow(action_version)),
         (root.join(PROJECT_MANIFEST), manifest),
+        (
+            root.join(TEMPLATE_DIRECTORY)
+                .join(format!("{template_stem}.md")),
+            placeholder_template(&template_stem),
+        ),
     ];
 
     for (path, contents) in files {
@@ -1008,6 +1014,42 @@ fn validate_templates(
         }
     }
     paths.len()
+}
+
+/// Filename stem for a Project template: hyphens in the Project code
+/// become underscores, then `__` and a short name. Scaffold writes
+/// `<that>__engagement.md`.
+fn placeholder_template_stem(project_code: &str) -> String {
+    format!("{}__engagement", project_code.replace('-', "_"))
+}
+
+fn placeholder_template(stem: &str) -> String {
+    [
+        "---\n",
+        "kind: letter\n",
+        "title: Engagement letter\n",
+        "respondent_type: entity\n",
+        "code: ",
+        stem,
+        "\n",
+        "jurisdiction: NV\n",
+        "confidential: true\n",
+        "questionnaire:\n",
+        "  BEGIN:\n",
+        "    _: END\n",
+        "  END: {}\n",
+        "workflow:\n",
+        "  BEGIN:\n",
+        "    intake_submitted: lawyer_review\n",
+        "  lawyer_review:\n",
+        "    approved: END\n",
+        "    rejected: END\n",
+        "  END: {}\n",
+        "---\n",
+        "\n",
+        "Replace this placeholder with the notation this Project actually uses.\n",
+    ]
+    .concat()
 }
 
 fn readme(project_code: &str) -> String {

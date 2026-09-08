@@ -132,7 +132,7 @@ for that violation without a human decision; every other code needs a person to 
 | `N107` | Error | Signature placeholders must match the declared signer set and signing state. | No |
 | `N108` | Error | Notation template must declare a stable `code`. | No |
 | `N109` | Error | `output:` must name a known render format, and its paired keys must travel with it. | No |
-| `N110` | Error | Notation template must live under `notations/` and declare `jurisdiction`. | No |
+| `N110` | Error | Catalog: `notations/` shelves. Project: flat `templates/<code>.md`. | No |
 | `N111` | Error | Notation template `code` must be unique across the whole tree. | No |
 | `N112` | **Warning** | A workflow step is allowed but its automation is not built yet. | No |
 | `N113` | Error | Questionnaire state type must be a registered question type. | No |

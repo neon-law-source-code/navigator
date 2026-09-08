@@ -1,12 +1,19 @@
 #![allow(clippy::doc_markdown)]
-//! `N110` — notation templates must live in the private catalog and
-//! declare their jurisdiction.
+//! `N110` — notation templates must live on the shelf their tree owns
+//! and declare their jurisdiction.
 //!
-//! Every notation lives under `notations/`, which has two shelves:
+//! Navigator's own catalog lives under `templates/notations/`, which has
+//! two shelves:
 //!
 //! - `notations/neon_law/` for firm-authored templates.
 //! - `notations/forms/` for government form-backed templates whose repo
 //!   path (below `notations/`) mirrors their public bucket key.
+//!
+//! A Project repository is a different tree: its root `navigator.yaml`
+//! carries `project:`, and each blueprint is a direct
+//! `templates/<code>.md` file. N110 accepts that flat layout there and
+//! refuses a subdirectory. The layout gate in
+//! `cli/src/projects/repository.rs` makes the same demand.
 //!
 //! Jurisdiction is explicit metadata, not a deep practice-area path. A
 //! form template at `templates/notations/forms/united_states/nevada/
@@ -52,6 +59,29 @@ pub static JURISDICTIONS: LazyLock<Vec<(String, String)>> = LazyLock::new(|| {
         })
         .collect()
 });
+
+/// True when an ancestor of `path` carries `navigator.yaml` with a
+/// non-empty `project:` — the signal that this tree is a Project
+/// repository rather than Navigator's catalog.
+fn is_project_repository_tree(path: &Path) -> bool {
+    let mut current = path.parent();
+    while let Some(dir) = current {
+        let manifest = dir.join("navigator.yaml");
+        if let Ok(raw) = std::fs::read_to_string(&manifest) {
+            if serde_yaml::from_str::<serde_yaml::Value>(&raw).is_ok_and(|value| {
+                value
+                    .get("project")
+                    .and_then(serde_yaml::Value::as_str)
+                    .map(str::trim)
+                    .is_some_and(|project| !project.is_empty())
+            }) {
+                return true;
+            }
+        }
+        current = dir.parent();
+    }
+    false
+}
 
 pub struct F110JurisdictionPath;
 
@@ -99,7 +129,7 @@ impl Rule for F110JurisdictionPath {
     }
 
     fn description(&self) -> &'static str {
-        "Notation templates must live under `notations/` and declare jurisdiction"
+        "Notation templates live on the catalog shelves or as a Project templates/<code>.md"
     }
 
     fn lint(&self, file: &SourceFile) -> Vec<Violation> {
@@ -114,14 +144,27 @@ impl Rule for F110JurisdictionPath {
         }
 
         let mut violations = Vec::new();
-        let matched_shelf: Option<&str> = if *first == CATALOG_ROOT {
+        let project_repository = is_project_repository_tree(&file.path);
+        let matched_shelf: Option<&str> = if project_repository {
+            if rel.len() != 1 {
+                violations.push(Self::violation(
+                    file,
+                    format!(
+                        "Project templates must be direct `templates/<code>.md` files; \
+                         found `{}`",
+                        rel.join("/")
+                    ),
+                ));
+            }
+            None
+        } else if *first == CATALOG_ROOT {
             rel.get(1)
                 .copied()
                 .filter(|second| SHELVES.contains(second))
         } else {
             None
         };
-        if matched_shelf.is_none() {
+        if !project_repository && matched_shelf.is_none() {
             violations.push(Self::violation(
                 file,
                 format!(
@@ -158,7 +201,7 @@ impl Rule for F110JurisdictionPath {
             return violations;
         };
 
-        if matched_shelf == Some("forms") {
+        if !project_repository && matched_shelf == Some("forms") {
             if !frontmatter::field(fm, "origin_url")
                 .is_some_and(|url| url.starts_with("https://") && url.contains(".gov"))
             {
@@ -357,5 +400,45 @@ mod tests {
             contents: "# Notation templates\n\nNo frontmatter, and that is fine.\n".to_string(),
         });
         assert!(v.is_empty(), "{v:?}");
+    }
+
+    fn project_tree(relative: &str, fm: &str) -> (tempfile::TempDir, SourceFile) {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("navigator.yaml"),
+            "host: staging.neonlaw.com\nproject: acme\n",
+        )
+        .unwrap();
+        let path = dir.path().join(relative);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let contents = format!("---\n{fm}\n---\nbody\n");
+        std::fs::write(&path, &contents).unwrap();
+        (dir, SourceFile { path, contents })
+    }
+
+    #[test]
+    fn accepts_a_flat_project_repository_template() {
+        let (_dir, file) = project_tree(
+            "templates/acme__engagement.md",
+            "title: T\ncode: acme__engagement\njurisdiction: NV",
+        );
+        let v = F110JurisdictionPath.lint(&file);
+        assert!(v.is_empty(), "{v:?}");
+    }
+
+    #[test]
+    fn rejects_a_subdirectory_in_a_project_repository() {
+        let (_dir, file) = project_tree(
+            "templates/neon_law/acme__engagement.md",
+            "title: T\ncode: acme__engagement\njurisdiction: NV",
+        );
+        let v = F110JurisdictionPath.lint(&file);
+        assert_eq!(v[0].code, "N110");
+        assert!(
+            v[0].message
+                .contains("Project templates must be direct `templates/<code>.md` files"),
+            "{v:?}"
+        );
+        assert!(!v[0].message.contains("notations/neon_law"), "{v:?}");
     }
 }

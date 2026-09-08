@@ -408,17 +408,17 @@ A Cursor Cloud Agent boots from [`.cursor/environment.json`](.cursor/environment
 the system packages the test build needs (`libssl-dev`/`pkg-config` for `fantoccini`'s `openssl-sys`, `lld` for linking
 the test binaries, and `kubectl` for the `cli::devx::ship` `kubectl kustomize` tests), installs Docker CE with
 `fuse-overlayfs` plus `kind` v0.32.0 and `helm` for opt-in KIND tasks, and warms the build cache. `start` runs
-[`.cursor/start.sh`](.cursor/start.sh), which starts `dockerd` directly — PID 1 is tini, so systemd unit files never
-run — and waits until `docker info` succeeds. Nested KIND has no `xt_multiport` or `xt_statistic` modules, so set
-`NAVIGATOR_KIND_NO_HOSTPORT=1` before `dev up` (start.sh exports it): `dev up` drops ingress-nginx `hostPort` 80/443
-and switches kube-proxy to nftables so ClusterIP DNS works. The controller still becomes Ready, and `dev up` reaches
-deps over kubectl port-forwards.
+[`.cursor/start.sh`](.cursor/start.sh), which starts `dockerd` directly — PID 1 is tini, so systemd unit files never run
+— and waits until `docker info` succeeds. Nested KIND has no `xt_multiport` or `xt_statistic` modules, so set
+`NAVIGATOR_KIND_NO_HOSTPORT=1` before `dev up` (start.sh exports it): `dev up` drops ingress-nginx `hostPort` 80/443 and
+switches kube-proxy to nftables so ClusterIP DNS works. The controller still becomes Ready, and `dev up` reaches deps
+over kubectl port-forwards.
 
 The default Cloud loop remains the zero-infrastructure path: build, `cargo fmt`, `cargo clippy`, the test gate,
 `navigator`, and editing. Nested Docker + Kubernetes is available when a task needs the KIND dependency tier: confirm
 `docker info`, then run `dev up` or `dev worktree-env up` as on a developer machine. Do not create a cluster during
-install or start; a full `dev up` pulls node and service images and is opt-in. For a running site without that
-cluster, boot `neon` against a standalone SurrealDB server (`surreal start --user root --pass root memory`) with the
+install or start; a full `dev up` pulls node and service images and is opt-in. For a running site without that cluster,
+boot `neon` against a standalone SurrealDB server (`surreal start --user root --pass root memory`) with the
 `NAVIGATOR_SURREAL_*`, `fs` storage, `SESSION_SECRET`, and placeholder `RESTATE_BROKER_URL`/`NAVIGATOR_CLAMD_ADDR` the
 boot invariants require; the latter two are read lazily, so the pages render without those services.
 

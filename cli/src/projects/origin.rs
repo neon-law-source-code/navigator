@@ -584,7 +584,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let dist = dir.path().join("dist");
         std::fs::create_dir_all(&dist).unwrap();
-        let contents = if name.ends_with(".js") {
+        let contents = if Path::new(name)
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("js"))
+        {
             format!("{body}{}", "x".repeat(200))
         } else {
             body.to_string()

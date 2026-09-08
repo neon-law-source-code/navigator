@@ -971,60 +971,71 @@ fn validate_templates(
     let prefix = template_code_prefix(project_code);
     let mut declared_codes = BTreeMap::new();
     for path in &paths {
-        let contents = match fs::read_to_string(path) {
-            Ok(contents) => contents,
-            Err(error) => {
-                errors.push(Finding::at(path, format!("read template: {error}")));
-                continue;
-            }
-        };
-        let filename = path.file_name().map_or_else(PathBuf::new, PathBuf::from);
-        let source = rules::SourceFile {
-            path: filename,
-            contents: contents.clone(),
-        };
-        for violation in rules.iter().flat_map(|rule| rule.lint(&source)) {
-            let finding = Finding::at(path, format!("{}: {}", violation.code, violation.message));
-            if rules::severity_for_code(violation.code) == rules::Severity::Error {
-                errors.push(finding);
-            } else {
-                warnings.push(finding);
-            }
-        }
-        let stem = path
-            .file_stem()
-            .and_then(|stem| stem.to_str())
-            .unwrap_or_default();
-        if !stem.starts_with(&prefix) {
-            errors.push(Finding::at(
-                path,
-                format!("template filename stem `{stem}` must start with `{prefix}`"),
-            ));
-        }
-        if let Some(code) = rules::frontmatter::extract(&contents)
-            .and_then(|frontmatter| rules::frontmatter::field(frontmatter, "code"))
-        {
-            if code != stem {
-                errors.push(Finding::at(
-                    path,
-                    format!(
-                        "template `code` `{code}` must equal filename stem `{stem}` \
-                         (expected prefix `{prefix}`)"
-                    ),
-                ));
-            }
-            if let Some(first) = declared_codes.insert(code.clone(), path.clone()) {
-                errors.push(Finding::at(
-                    path,
-                    format!(
-                        "duplicate template `code` `{code}`; first declared in {}",
-                        first.display()
-                    ),
-                ));
-            }
-        }
+        lint_project_template(path, &prefix, &rules, &mut declared_codes, errors, warnings);
     }
     paths.len()
+}
+
+fn lint_project_template(
+    path: &Path,
+    prefix: &str,
+    rules: &[Box<dyn rules::Rule>],
+    declared_codes: &mut BTreeMap<String, PathBuf>,
+    errors: &mut Vec<Finding>,
+    warnings: &mut Vec<Finding>,
+) {
+    let contents = match fs::read_to_string(path) {
+        Ok(contents) => contents,
+        Err(error) => {
+            errors.push(Finding::at(path, format!("read template: {error}")));
+            return;
+        }
+    };
+    let filename = path.file_name().map_or_else(PathBuf::new, PathBuf::from);
+    let source = rules::SourceFile {
+        path: filename,
+        contents: contents.clone(),
+    };
+    for violation in rules.iter().flat_map(|rule| rule.lint(&source)) {
+        let finding = Finding::at(path, format!("{}: {}", violation.code, violation.message));
+        if rules::severity_for_code(violation.code) == rules::Severity::Error {
+            errors.push(finding);
+        } else {
+            warnings.push(finding);
+        }
+    }
+    let stem = path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or_default();
+    if !stem.starts_with(prefix) {
+        errors.push(Finding::at(
+            path,
+            format!("template filename stem `{stem}` must start with `{prefix}`"),
+        ));
+    }
+    if let Some(code) = rules::frontmatter::extract(&contents)
+        .and_then(|frontmatter| rules::frontmatter::field(frontmatter, "code"))
+    {
+        if code != stem {
+            errors.push(Finding::at(
+                path,
+                format!(
+                    "template `code` `{code}` must equal filename stem `{stem}` \
+                     (expected prefix `{prefix}`)"
+                ),
+            ));
+        }
+        if let Some(first) = declared_codes.insert(code.clone(), path.to_path_buf()) {
+            errors.push(Finding::at(
+                path,
+                format!(
+                    "duplicate template `code` `{code}`; first declared in {}",
+                    first.display()
+                ),
+            ));
+        }
+    }
 }
 
 /// Filename prefix for a Project template: hyphens in the Project code

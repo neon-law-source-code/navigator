@@ -446,8 +446,10 @@ fn transactional_text_entrances_keep_text_opaque() {
         let keyframe = css
             .split_once(&format!("@keyframes {name} {{"))
             .and_then(|(_, rest)| rest.split_once("\n  }\n}"))
-            .map(|(declarations, _)| declarations)
-            .unwrap_or_else(|| panic!("transactional.css must retain the {name} keyframe"));
+            .map_or_else(
+                || panic!("transactional.css must retain the {name} keyframe"),
+                |(declarations, _)| declarations,
+            );
         assert!(
             keyframe.contains(expected_transform),
             "{name} remains a motion, not a static replacement: {keyframe}"

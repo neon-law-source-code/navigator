@@ -237,4 +237,4 @@ for that violation without a human decision; every other code needs a person to 
 | `Y006` | Error | A Project manifest top-level key must be one of the accepted set. | No |
 | `Y007` | Error | A Project manifest `no_live_row` must be a non-empty reason string. | No |
 | `Y008` | Error | The Project manifest filename is `navigator.yaml`; rename `navigator.yml`. | No |
-| `Y009` | Error | A built Project portal must not name an off-origin host; `allowed_links` hrefs need `rel="noreferrer"`. | No |
+| `Y009` | Error | Off-origin hosts fail unless listed in `allowed_links` with `rel="noreferrer"`. | No |

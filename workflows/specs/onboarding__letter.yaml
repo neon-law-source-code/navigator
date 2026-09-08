@@ -39,8 +39,8 @@ custom_questions:
     prompt: When does this engagement begin?
   governing_law:
     prompt: >-
-      Which state's law governs this engagement? Nevada by default; choose other state we practice in if
-      the Client is located there.
+      Which state's law governs this engagement? Nevada, unless the Firm has
+      agreed otherwise; California and Washington are the alternatives available.
     choices:
       nevada: Nevada
       california: California

@@ -2044,11 +2044,18 @@ pub(crate) async fn resolve_intake_review(
         .map(|(code, label)| webapp::intake_review::ReaskQuestion { code, label })
         .collect();
 
+    let governing_law_defaulted =
+        match render_context_from_answers(&state.surreal, notation_id).await {
+            Ok(ctx) => ctx.get(GOVERNING_LAW_DEFAULTED_MARKER).map(String::as_str) == Some("true"),
+            Err(_) => false,
+        };
+
     Ok(webapp::intake_review::IntakeReviewData {
         notation_id: notation_id.to_string(),
         workflow_state: notation_row.state,
         signature_request_id,
         rendered_html,
+        governing_law_defaulted,
         reask_questions,
         approve_send_label: "Approve and send for signature".to_string(),
     })
@@ -2804,6 +2811,13 @@ async fn build_answer_context(
     Ok(ctx)
 }
 
+/// Fill-context key for the governing-law answer. A stored choice (including
+/// an explicit Nevada) occupies this key with no sibling marker.
+const GOVERNING_LAW_CONTEXT_KEY: &str = "custom_single_choice__governing_law";
+/// Sibling of [`GOVERNING_LAW_CONTEXT_KEY`]: present only when Nevada was
+/// filled because the intake never stored an answer. Not a fourth choice.
+const GOVERNING_LAW_DEFAULTED_MARKER: &str = "custom_single_choice__governing_law.defaulted";
+
 /// Default the fillable governing-law clause to Nevada when the intake never
 /// captured it — e.g. an in-flight product-retainer notation whose frozen
 /// questionnaire graph predates the fillable governing-law clause (#363), so
@@ -2811,15 +2825,22 @@ async fn build_answer_context(
 /// `custom_single_choice__governing_law` answer. The retainer body references
 /// `{{custom_single_choice__governing_law}}`, so a missing answer would
 /// otherwise render the raw placeholder in a binding document. Answers always
-/// win — only a gap is filled — matching the questionnaire's documented
-/// "Nevada by default", in the label/key form the rendering mode expects.
+/// win — only a gap is filled. A gap fill records
+/// [`GOVERNING_LAW_DEFAULTED_MARKER`] beside the Nevada value so a chosen
+/// Nevada and a defaulted Nevada stay distinct in the fill context.
 fn default_governing_law(ctx: &mut BTreeMap<String, String>, rendering: ChoiceRendering) {
     let nevada = match rendering {
         ChoiceRendering::Labels => "Nevada",
         ChoiceRendering::Keys => "nevada",
     };
-    ctx.entry("custom_single_choice__governing_law".to_string())
-        .or_insert_with(|| nevada.to_string());
+    if ctx.contains_key(GOVERNING_LAW_CONTEXT_KEY) {
+        return;
+    }
+    ctx.insert(GOVERNING_LAW_CONTEXT_KEY.to_string(), nevada.to_string());
+    ctx.insert(
+        GOVERNING_LAW_DEFAULTED_MARKER.to_string(),
+        "true".to_string(),
+    );
 }
 
 /// Key notation-scoped answer rows into the placeholder context. Pure (no
@@ -3185,6 +3206,12 @@ mod tests {
                 .map(String::as_str),
             Some("Nevada"),
         );
+        assert_eq!(
+            labels
+                .get("custom_single_choice__governing_law.defaulted")
+                .map(String::as_str),
+            Some("true"),
+        );
 
         // Form-fill (Keys) defaults to the stored *value*.
         let mut keys = BTreeMap::new();
@@ -3193,6 +3220,11 @@ mod tests {
             keys.get("custom_single_choice__governing_law")
                 .map(String::as_str),
             Some("nevada"),
+        );
+        assert_eq!(
+            keys.get("custom_single_choice__governing_law.defaulted")
+                .map(String::as_str),
+            Some("true"),
         );
 
         // Answers win: a captured choice is never overwritten by the default.
@@ -3207,6 +3239,22 @@ mod tests {
                 .map(String::as_str),
             Some("California"),
         );
+        assert!(!answered.contains_key("custom_single_choice__governing_law.defaulted"));
+
+        // A chosen Nevada is the same fill value as the default, and must
+        // still omit the defaulted marker.
+        let mut chosen_nevada = BTreeMap::from([(
+            "custom_single_choice__governing_law".to_string(),
+            "Nevada".to_string(),
+        )]);
+        default_governing_law(&mut chosen_nevada, ChoiceRendering::Labels);
+        assert_eq!(
+            chosen_nevada
+                .get("custom_single_choice__governing_law")
+                .map(String::as_str),
+            Some("Nevada"),
+        );
+        assert!(!chosen_nevada.contains_key("custom_single_choice__governing_law.defaulted"));
     }
 
     #[test]

@@ -10541,6 +10541,157 @@ async fn every_firm_tier_can_view_an_assigned_matter_as_its_client() {
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn view_as_client_can_get_pending_intake_as_the_client() {
+    let (state, surreal) = state_with_engines().await;
+    let lawyer = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "Intake preview lawyer",
+            "intake-preview-lawyer@example.com",
+            store::persons::Role::Lawyer,
+        ),
+    )
+    .await
+    .unwrap();
+    let client = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "Intake preview client",
+            "intake-preview-client@example.com",
+            store::persons::Role::Client,
+        ),
+    )
+    .await
+    .unwrap();
+    let entity_id = store::test_support::seed_entity(&surreal).await;
+    let project = store::projects::create(
+        &surreal,
+        &store::projects::NewProject {
+            code: format!("intake-preview-{}", uuid::Uuid::now_v7()),
+            name: "Intake preview".to_string(),
+            status: "open".into(),
+            entity_id,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    store::projects::add_participation(&surreal, project.id, client.id, "client")
+        .await
+        .unwrap();
+    store::projects::designate_dri_in_surreal(
+        &surreal,
+        project.id,
+        client.id,
+        store::projects::DriSide::Client,
+    )
+    .await
+    .unwrap();
+    store::projects::add_participation(&surreal, project.id, lawyer.id, "lawyer")
+        .await
+        .unwrap();
+
+    store::templates::save_version(
+        &surreal,
+        None,
+        "onboarding__letter",
+        store::templates::Version {
+            title: "Client intake agreement".into(),
+            respondent_type: "person".into(),
+            asset_id: None,
+            form_code: None,
+            kind: None,
+            source_commit_sha: None,
+        },
+    )
+    .await
+    .unwrap();
+    for code in [
+        "entity",
+        "address",
+        "person",
+        "project",
+        "custom_text",
+        "custom_datetime",
+        "custom_single_choice",
+    ] {
+        store::questions::create(
+            &surreal,
+            &store::questions::NewQuestion::new(code, format!("Prompt for {code}"), "string"),
+        )
+        .await
+        .unwrap();
+    }
+    let notation = workflows::notation_session::start_notation(
+        &surreal,
+        &workflows::InMemoryRuntime::new(),
+        None,
+        "onboarding__letter",
+        client.id,
+        project.id,
+        None,
+    )
+    .await
+    .unwrap();
+
+    let step =
+        workflows::notation_session::client_intake_step(&surreal, None, notation.notation_id)
+            .await
+            .unwrap();
+    assert!(
+        matches!(
+            step,
+            workflows::notation_session::ClientIntakeStep::NeedsAnswer { .. }
+        ),
+        "fixture notation must still need a client answer: {step:?}"
+    );
+
+    let (lawyer_cookie, lawyer_csrf) = session_cookie_and_csrf_for_person(&lawyer);
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+
+    let preview = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/app/projects/{}/view-as-client", project.code))
+                .header(header::COOKIE, lawyer_cookie)
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(Body::from(format!("_csrf={lawyer_csrf}")))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(preview.status(), StatusCode::SEE_OTHER);
+    let viewing_cookie = session_cookie_pair(&preview);
+    let viewing = decode_session_cookie_pair(&viewing_cookie);
+    assert_eq!(viewing.role, store::persons::Role::Client);
+    assert_eq!(viewing.person_id, Some(client.id));
+    assert!(viewing.viewing_as_dri.is_some());
+
+    let intake = app
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/app/projects/{}/intake/{}",
+                    project.code, notation.notation_id
+                ))
+                .header(header::COOKIE, viewing_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(intake.status(), StatusCode::OK);
+    let body = body_string(intake).await;
+    assert!(
+        body.contains("id=\"intake\"") || body.contains("Prompt for person"),
+        "View as Client must reach the pending intake as the client: {body}"
+    );
+}
+
+#[tokio::test]
 async fn view_as_client_stop_bypasses_policy_for_an_active_dri_view() {
     let (state, surreal) = state_with_engines().await;
     let lawyer = store::persons::create(

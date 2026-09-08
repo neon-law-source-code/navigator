@@ -3,8 +3,8 @@ description: >-
   Lint a content repository's Markdown, event, and YAML files with the
   Neon Law Navigator CLI, using a published release binary.
 
-# The one-line gate for repositories that hold content, but do not hold
-# Navigator. `deploy.yml` already attaches `navigator-<TAG>-<platform>` archives
+# The one-line gate for repositories that hold content, including a Project
+# repository. `deploy.yml` already attaches `navigator-<TAG>-<platform>` archives
 # to every immutable release (`YY.M.D`, legacy `YY.M.D.H`, or
 # `YY.M.D-hotfix.N`); this action downloads the one that matches
 # the runner and runs `navigator validate` over the checked-out tree.
@@ -16,29 +16,8 @@ description: >-
 #       with:
 #         version: "YY.M.D"
 #
-# ## One gate for a Project repository
-#
-# Set `project_repository: true` and this becomes the whole gate for a Project's
-# one repository, holding both kinds of source. It runs
-# `navigator site projects repository validate`, which covers whichever halves are
-# present, and then verifies every built application is mounted where Navigator
-# will serve it.
-#
-# It carries no organization, host, or client name, because none of those vary:
-# the repository name is the Project code and each mount is that name plus the
-# direct `apps/<app>/` directory name, identically in every deployment. The
-# repository-side `apps/` grouping is not a URL segment. Only the *host* differs
-# between deployments, and a host never appears in a Vite base.
-#
-# There is deliberately **no path filter**. Each half no-ops when this
-# repository does not carry it, so the one job always runs — a required check
-# that can be satisfied by being skipped is not a gate.
-#
-#     - run: for app in apps/*; do pnpm --dir "$app" build; done
-#     - uses: neon-law-source-code/navigator/.github/actions/validate@YY.M.D
-#       with:
-#         version: "YY.M.D"
-#         project_repository: true
+# A Project repository's `navigator.yaml` makes `navigator validate` also run
+# layout, mount, and origin. There is no separate input for that half.
 #
 # `version` is required and must be an exact tag. That is the house rule from
 # docs/gitops.md ("Pin every consumed image, binary, and action"): publishing
@@ -74,27 +53,6 @@ inputs:
       skipped and everything else still runs.
     required: false
     default: "false"
-  project_repository:
-    description: >-
-      Validate the checked-out directory as one Project's repository: enforce
-      the source-only layout, lint its notation templates, hold every discovered
-      application to the Vite contract, and verify each build is mounted where
-      Navigator serves it.
-    required: false
-    default: "false"
-  repository:
-    description: >-
-      Repository name, which *is* the Project code. Defaults to the current
-      GitHub repository's name; pass this for a differently named local
-      checkout. Nothing else declares the code, so nothing can disagree with it.
-    required: false
-    default: ${{ github.event.repository.name }}
-  portal_dist:
-    description: >-
-      Each application's build output directory, relative to its workspace.
-      The legacy input name is retained while root `portal/` remains accepted.
-    required: false
-    default: "dist"
 
 runs:
   using: composite
@@ -175,138 +133,21 @@ runs:
                 ;;
         esac
 
-    # One walk: every `.md` against the classified rule set (prose gets the
-    # Markdown rules, notation templates get the N-family structural checks on
-    # top), the typed event checks over each event file, and a parse of every
-    # `.yaml`/`.yml`.
+    # One walk: Markdown, YAML, seeds, locales, and — when `navigator.yaml`
+    # declares a Project — layout, mount, and origin.
     - name: navigator validate
       shell: bash
       env:
         DIR: ${{ inputs.dir }}
         QUESTION_CODES_FROM_STORE: ${{ inputs.question_codes_from_store }}
-        PROJECT_REPOSITORY: ${{ inputs.project_repository }}
-        REPOSITORY: ${{ inputs.repository }}
       run: |
         set -euo pipefail
-        case "${PROJECT_REPOSITORY}" in
-            true)
-                navigator site projects repository validate "${DIR}" --repository "${REPOSITORY}"
-                ;;
-            false)
-                case "${QUESTION_CODES_FROM_STORE}" in
-                    true)
-                        navigator validate "${DIR}"
-                        ;;
-                    false)
-                        navigator validate "${DIR}"
-                        ;;
-                    *)
-                        echo "::error::'question_codes_from_store' must be 'true' or 'false'."
-                        exit 1
-                        ;;
-                esac
+        case "${QUESTION_CODES_FROM_STORE}" in
+            true|false)
+                navigator validate "${DIR}"
                 ;;
             *)
-                echo "::error::'project_repository' must be 'true' or 'false'."
+                echo "::error::'question_codes_from_store' must be 'true' or 'false'."
                 exit 1
                 ;;
         esac
-
-    # The mount half of a Project repository's gate. It discovers the same
-    # direct package manifests as the Rust validator and generated workflow,
-    # then proves every build. It no-ops only when the repository carries no
-    # application, which is why the one job can always run rather than being
-    # skipped by a path filter.
-    - name: the built applications are mounted where Navigator serves them
-      shell: bash
-      env:
-        DIR: ${{ inputs.dir }}
-        PROJECT_REPOSITORY: ${{ inputs.project_repository }}
-        REPOSITORY: ${{ inputs.repository }}
-        PORTAL_DIST: ${{ inputs.portal_dist }}
-      run: |
-        set -euo pipefail
-
-        if [ "${PROJECT_REPOSITORY}" != "true" ]; then
-            exit 0
-        fi
-        # cloud::workspace::is_valid_slug, transcribed. Lowercase letters,
-        # digits, and single hyphens; alphanumeric at both ends; at most 80.
-        # Bash cannot call Rust, so cli/tests/project_gate.rs pins this block
-        # against the Rust definition it mirrors.
-        code="${REPOSITORY}"
-        if ! printf '%s' "${code}" | grep -Eq '^[a-z0-9]([a-z0-9-]{0,78}[a-z0-9])?$'; then
-            echo "::error::'${code}' is not a valid Project code: lowercase letters, digits, and single hyphens, alphanumeric at both ends, at most 80 characters."
-            exit 1
-        fi
-        if printf '%s' "${code}" | grep -q -- '--'; then
-            echo "::error::'${code}' contains a doubled hyphen."
-            exit 1
-        fi
-        # cloud::workspace::RESERVED_PROJECT_CODES — `/app/projects/new` is
-        # Navigator's matter-open form, so it cannot also be a Project.
-        if [ "${code}" = "new" ]; then
-            echo "::error::'new' is a route Navigator serves itself and cannot be a Project code."
-            exit 1
-        fi
-        # cloud::workspace::RESERVED_PROJECT_CODES — a Project code is its
-        # repository name, so `navigator` would name Navigator's own source
-        # rather than a matter's. A Project is never Navigator.
-        if [ "${code}" = "navigator" ]; then
-            echo "::error::'navigator' names Navigator's own repository and cannot be a Project code."
-            exit 1
-        fi
-
-        shopt -s nullglob
-        package_manifests=("${DIR}"/apps/*/package.json)
-        if [ -f "${DIR}/portal/package.json" ]; then
-            package_manifests+=("${DIR}/portal/package.json")
-        fi
-        if [ "${#package_manifests[@]}" -eq 0 ]; then
-            echo "no applications in this repository — nothing to mount"
-            exit 0
-        fi
-
-        for package_json in "${package_manifests[@]}"; do
-            app_dir="${package_json%/package.json}"
-            app="$(basename "${app_dir}")"
-            if [ "${app}" = "portal" ] && [ "${app_dir}" != "${DIR}/portal" ] \
-                && [ -f "${DIR}/portal/package.json" ]; then
-                echo "::error::${app_dir} and ${DIR}/portal claim the same application route; move the portal instead of keeping both."
-                exit 1
-            fi
-            if ! printf '%s' "${app}" | grep -Eq '^[a-z0-9]([a-z0-9-]{0,78}[a-z0-9])?$' \
-                || printf '%s' "${app}" | grep -q -- '--'; then
-                echo "::error::'${app}' is not a valid application name: use lowercase letters, digits, and single hyphens, alphanumeric at both ends, at most 80 characters."
-                exit 1
-            fi
-
-            # `apps/` groups source in the repository; it is deliberately not
-            # part of the product route. The trailing slash remains load-bearing.
-            base="/app/projects/${code}/${app}/"
-            index="${app_dir}/${PORTAL_DIST}/index.html"
-            if [ ! -f "${index}" ]; then
-                echo "::error::${index} is missing; build the application before this gate runs."
-                exit 1
-            fi
-            if ! grep -q "\"${base}assets/" "${index}"; then
-                echo "::error::${index} is not mounted at ${base} — the base did not reach the build."
-                grep -o 'src="[^"]*"' "${index}" >&2 || true
-                exit 1
-            fi
-
-            # A Vite base rewrites module and asset URLs; it does not rewrite
-            # an href string in source. Navigator's `/app/` and `/auth/`
-            # namespaces remain the deliberate exceptions.
-            if matches="$(grep -rnE "(href|src|to)=\"/" \
-                --include='*.ts' --include='*.tsx' --include='*.jsx' --include='*.js' \
-                "${app_dir}/src/" 2>/dev/null \
-                | grep -v "\"${base}" \
-                | grep -vE "\"/(app|auth)/")"; then
-                echo "::error::absolute path in source that is neither under ${base} nor a Navigator route; build an in-app path from import.meta.env.BASE_URL."
-                printf '%s\n' "${matches}" >&2
-                exit 1
-            fi
-
-            echo "mount ${base} — application built and no in-app absolute path escapes it"
-        done

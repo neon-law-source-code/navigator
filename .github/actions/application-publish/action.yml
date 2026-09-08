@@ -6,10 +6,11 @@ description: >-
 
 # The publish half of a Project repository's CI, downstream of the one gate.
 #
-# `neon-law-source-code/navigator/.github/actions/validate@YY.M.D` with
-# `project_repository: true` is the source-only, no-legal-files gate, and it
-# also proves the built portal is mounted at `/app/projects/<code>/portal/`.
-# This action runs AFTER that gate, in the same job, and moves the bytes: it
+# `neon-law-source-code/navigator/.github/actions/validate@YY.M.D` runs
+# `navigator validate`, which is the source-only, no-legal-files gate and
+# also proves the built portal is mounted at `/app/projects/<code>/portal/`
+# when the tree declares a Project. This action runs AFTER that gate, in the
+# same job, and moves the bytes: it
 # authenticates to the deployment's GCP project through Workload Identity
 # Federation and uploads `dist/` to `<code>/portal/` in the private
 # `<deployment>-applications` bucket that Navigator streams from.
@@ -68,7 +69,6 @@ description: >-
 #       - uses: neon-law-source-code/navigator/.github/actions/validate@YY.M.D
 #         with:
 #           version: "YY.M.D"
-#           project_repository: true              # the one gate: source-only, no legal files, mounted
 #       - uses: neon-law-source-code/navigator/.github/actions/application-publish@YY.M.D
 #         with:
 #           applications_bucket: ${{ secrets.NAVIGATOR_APPLICATIONS_BUCKET }}

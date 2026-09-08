@@ -404,7 +404,6 @@ jobs:
       - uses: neon-law-source-code/navigator/.github/actions/validate@YY.M.D
         with:
           version: "YY.M.D"
-          project_repository: true              # the one gate: source-only, no legal files, mounted
       - name: Import seed documents
         if: vars.NAVIGATOR_HOST != ''
         uses: neon-law-source-code/navigator/.github/actions/seed-import@YY.M.D
@@ -518,7 +517,7 @@ cannot push to `ux/core`.
 
 ```bash
 navigator site projects repository scaffold <project-code> --dir . --host staging.neonlaw.com --action-version YY.M.D
-navigator site projects repository validate .
+navigator validate .
 ```
 
 `scaffold` is idempotent and leaves existing files alone. It writes the repository shell — `navigator.yaml` (requiring

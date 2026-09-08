@@ -60,11 +60,23 @@ fn project_gate_source() -> String {
     fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
 }
 
-fn validate(dir: &Path, repository: &str) -> assert_cmd::assert::Assert {
+#[test]
+fn the_reusable_gate_asks_the_deployment_and_arms_auto_merge() {
+    let source = project_gate_source();
+    assert!(source.contains("navigator site projects gate --ci"));
+    assert!(source.contains("enable-automerge:"));
+    assert!(source.contains("needs: [lint, verify, notation, documents, manifest]"));
+}
+
+fn validate(dir: &Path) -> assert_cmd::assert::Assert {
+    navigator().args(["validate"]).arg(dir).assert()
+}
+
+fn validate_as(dir: &Path, repository: &str) -> assert_cmd::assert::Assert {
     navigator()
-        .args(["site", "projects", "repository", "validate"])
+        .args(["validate"])
         .arg(dir)
-        .args(["--repository", repository])
+        .env("GITHUB_REPOSITORY", format!("org/{repository}"))
         .assert()
 }
 
@@ -106,7 +118,7 @@ fn the_scaffold_produces_a_repository_that_validates_and_is_idempotent() {
     let dir = TempDir::new().unwrap();
     scaffold(dir.path(), "example-project").success();
 
-    validate(dir.path(), "example-project")
+    validate(dir.path())
         .success()
         .stdout(str::contains("0 template(s), 0 application(s), 0 error(s)"));
 
@@ -153,7 +165,7 @@ fn the_scaffold_produces_a_repository_that_validates_and_is_idempotent() {
     scaffold(dir.path(), "example-project")
         .success()
         .stdout(str::contains("left alone"));
-    validate(dir.path(), "example-project").success();
+    validate(dir.path()).success();
 }
 
 #[test]
@@ -170,13 +182,28 @@ fn gate_ci_without_oidc_is_a_closed_door() {
         .stderr(str::contains("ACTIONS_ID_TOKEN_REQUEST_URL is unset"));
 }
 
+#[test]
+fn gate_ci_without_host_is_a_closed_door() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "example-project").success();
+    navigator()
+        .args(["site", "projects", "gate", "--ci"])
+        .arg(dir.path())
+        .env("ACTIONS_ID_TOKEN_REQUEST_URL", "http://127.0.0.1/oidc")
+        .env("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "token")
+        .assert()
+        .failure()
+        .code(2)
+        .stderr(str::contains("--ci requires --host"));
+}
+
 /// All three shapes validate: templates only, a portal only, and both.
 #[test]
 fn templates_only_a_portal_only_and_both_all_validate() {
     // Templates only — what the scaffold produces.
     let templates_only = TempDir::new().unwrap();
     scaffold(templates_only.path(), "example-project").success();
-    validate(templates_only.path(), "example-project")
+    validate(templates_only.path())
         .success()
         .stdout(str::contains("0 template(s), 0 application(s)"));
 
@@ -184,7 +211,7 @@ fn templates_only_a_portal_only_and_both_all_validate() {
     let both = TempDir::new().unwrap();
     scaffold(both.path(), "example-project").success();
     write_portal(both.path());
-    validate(both.path(), "example-project")
+    validate(both.path())
         .success()
         .stdout(str::contains("0 template(s), 1 application(s)"));
 
@@ -192,7 +219,7 @@ fn templates_only_a_portal_only_and_both_all_validate() {
     let portal_only = TempDir::new().unwrap();
     scaffold(portal_only.path(), "example-project").success();
     write_portal(portal_only.path());
-    validate(portal_only.path(), "example-project")
+    validate(portal_only.path())
         .success()
         .stdout(str::contains("0 template(s), 1 application(s)"));
 }
@@ -210,12 +237,12 @@ fn direct_apps_are_discovered_and_each_is_validated() {
     fs::create_dir_all(dir.path().join("apps/shared")).unwrap();
     fs::write(dir.path().join("apps/shared/routes.ts"), "export {};\n").unwrap();
 
-    validate(dir.path(), "example-project")
+    validate(dir.path())
         .success()
         .stdout(str::contains("2 application(s)"));
 
     fs::remove_file(dir.path().join("apps/exchange/index.html")).unwrap();
-    validate(dir.path(), "example-project")
+    validate(dir.path())
         .failure()
         .code(1)
         .stderr(str::contains("apps/exchange"))
@@ -227,7 +254,7 @@ fn direct_apps_are_discovered_and_each_is_validated() {
         "SECRET=synthetic\n",
     )
     .unwrap();
-    validate(dir.path(), "example-project")
+    validate(dir.path())
         .failure()
         .code(1)
         .stderr(str::contains("apps/exchange/.env.production"))
@@ -244,7 +271,7 @@ fn a_legacy_root_portal_and_new_apps_can_transition_together() {
     write_portal(dir.path());
     write_vite_workspace(dir.path(), "apps/exchange");
 
-    validate(dir.path(), "example-project")
+    validate(dir.path())
         .success()
         .stdout(str::contains("2 application(s)"));
 }
@@ -256,7 +283,7 @@ fn the_legacy_and_new_portal_locations_cannot_claim_the_same_route() {
     write_portal(dir.path());
     write_vite_workspace(dir.path(), "apps/portal");
 
-    validate(dir.path(), "example-project")
+    validate(dir.path())
         .failure()
         .code(1)
         .stderr(str::contains("apps/portal"))
@@ -324,7 +351,7 @@ fn an_application_directory_name_must_be_a_route_safe_slug() {
     scaffold(dir.path(), "example-project").success();
     write_vite_workspace(dir.path(), "apps/Client_Exchange");
 
-    validate(dir.path(), "example-project")
+    validate(dir.path())
         .failure()
         .code(1)
         .stderr(str::contains("Client_Exchange"))
@@ -342,7 +369,7 @@ fn a_repository_carrying_neither_half_is_reported_and_not_failed() {
     scaffold(dir.path(), "example-project").success();
     fs::remove_dir_all(dir.path().join("templates")).unwrap();
 
-    validate(dir.path(), "example-project")
+    validate(dir.path())
         .success()
         .stdout(str::contains("carries neither"));
 }
@@ -354,14 +381,14 @@ fn a_repository_name_that_is_not_a_valid_project_code_is_refused() {
     let dir = TempDir::new().unwrap();
     scaffold(dir.path(), "example-project").success();
 
-    validate(dir.path(), "Not_A_Code")
+    validate_as(dir.path(), "Not_A_Code")
         .failure()
         .code(1)
         .stderr(str::contains("is not a valid Navigator Project code"));
 
     // `new` is well-formed and still refused: `/app/projects/new` is
     // Navigator's matter-open form.
-    validate(dir.path(), "new")
+    validate_as(dir.path(), "new")
         .failure()
         .code(1)
         .stderr(str::contains("is not a valid Navigator Project code"));
@@ -380,7 +407,7 @@ fn a_portal_that_is_not_a_vite_workspace_is_refused() {
     fs::create_dir_all(dir.path().join("portal/src")).unwrap();
     fs::write(dir.path().join("portal/package.json"), "{}\n").unwrap();
 
-    validate(dir.path(), "example-project")
+    validate(dir.path())
         .failure()
         .code(1)
         .stderr(str::contains("is not a Vite workspace"))
@@ -398,7 +425,7 @@ fn client_uploads_and_generated_output_are_refused() {
     fs::create_dir_all(dir.path().join("target")).unwrap();
     fs::write(dir.path().join(".env.production"), "SECRET=x").unwrap();
 
-    validate(dir.path(), "example-project")
+    validate(dir.path())
         .failure()
         .code(1)
         .stderr(str::contains("forbidden `uploads` path"))
@@ -423,7 +450,7 @@ fn document_pointers_are_source_but_document_bytes_are_refused() {
     )
     .unwrap();
 
-    validate(dir.path(), "example-project")
+    validate(dir.path())
         .success()
         .stdout(str::contains("0 error(s)"));
 
@@ -431,7 +458,7 @@ fn document_pointers_are_source_but_document_bytes_are_refused() {
         .path()
         .join("documents/exhibits/2026-09-05/screenshot.png");
     fs::write(&binary, b"synthetic image bytes").unwrap();
-    validate(dir.path(), "example-project")
+    validate(dir.path())
         .failure()
         .code(1)
         .stderr(str::contains(binary.display().to_string()))
@@ -478,7 +505,7 @@ fn sync_skills_writes_the_canonical_catalog_and_validate_accepts_it() {
         assert!(!fs::read_to_string(&path).unwrap().is_empty());
     }
 
-    validate(dir.path(), "example-project")
+    validate(dir.path())
         .success()
         .stdout(str::contains("0 error(s)"));
 }
@@ -516,7 +543,7 @@ fn validate_fails_on_a_drifted_synced_skill() {
     )
     .unwrap();
 
-    validate(dir.path(), "example-project")
+    validate(dir.path())
         .failure()
         .code(1)
         .stderr(str::contains("synced skill `council` has drifted"))
@@ -536,7 +563,7 @@ fn validate_passes_when_no_skills_have_been_synced() {
         "scaffold must not create `.claude/`, or this asserts the wrong branch"
     );
 
-    validate(dir.path(), "example-project")
+    validate(dir.path())
         .success()
         .stdout(str::contains("0 error(s)"));
 }
@@ -556,7 +583,7 @@ fn validate_fails_when_claude_exists_without_the_catalog() {
     scaffold(dir.path(), "example-project").success();
     fs::create_dir_all(dir.path().join(".claude")).unwrap();
 
-    validate(dir.path(), "example-project")
+    validate(dir.path())
         .failure()
         .code(1)
         .stderr(str::contains("missing synced skill `portal-chrome`"))
@@ -574,7 +601,7 @@ fn validate_passes_when_claude_exists_and_the_catalog_is_synced() {
     fs::create_dir_all(dir.path().join(".claude")).unwrap();
     sync_skills(dir.path()).success();
 
-    validate(dir.path(), "example-project")
+    validate(dir.path())
         .success()
         .stdout(str::contains("0 error(s)"));
 }

@@ -446,14 +446,6 @@ pub fn validate(root: &Path, repository: Option<&str>) -> ExitCode {
     for application in &applications {
         validate_application(application, &mut errors);
     }
-    if let Some(manifest) = super::origin::load_manifest(root) {
-        for finding in super::origin::lint(root, &applications, &manifest) {
-            errors.push(Finding::at(
-                finding.path,
-                format!("{}: {}", finding.code, finding.message),
-            ));
-        }
-    }
     if !has_templates && applications.is_empty() {
         println!("note: {code} carries neither `{TEMPLATE_DIRECTORY}/` nor an application yet");
     }
@@ -478,27 +470,18 @@ pub fn validate(root: &Path, repository: Option<&str>) -> ExitCode {
     }
 }
 
-/// CI entry for a Project repository: layout, origin scan, then the OIDC
-/// document-verify door when `--ci` is set. Without GitHub's OIDC request
-/// URL the door stays shut rather than minting anything.
-pub fn gate(root: &Path, ci: bool) -> ExitCode {
-    let status = validate(root, None);
-    if status != ExitCode::SUCCESS {
-        return status;
-    }
-    if ci && std::env::var("ACTIONS_ID_TOKEN_REQUEST_URL").is_err() {
-        eprintln!(
-            "navigator: --ci exchanges GitHub Actions OIDC at POST /auth/ci/document-token; \
-             ACTIONS_ID_TOKEN_REQUEST_URL is unset — this is not a GitHub Actions job"
-        );
-        return ExitCode::from(2);
-    }
-    ExitCode::SUCCESS
-}
-
 fn repository_name(root: &Path, explicit: Option<&str>) -> String {
     if let Some(name) = explicit.map(str::trim).filter(|name| !name.is_empty()) {
         return name.rsplit('/').next().unwrap_or(name).to_string();
+    }
+    if let Ok(repository) = std::env::var("GITHUB_REPOSITORY") {
+        if let Some(name) = repository
+            .rsplit('/')
+            .next()
+            .filter(|name| !name.is_empty())
+        {
+            return name.to_string();
+        }
     }
     if let Ok(contents) = fs::read_to_string(root.join(PROJECT_MANIFEST)) {
         if let Ok(manifest) = super::manifest::parse(&contents) {
@@ -510,15 +493,6 @@ fn repository_name(root: &Path, explicit: Option<&str>) -> String {
             {
                 return code.to_string();
             }
-        }
-    }
-    if let Ok(repository) = std::env::var("GITHUB_REPOSITORY") {
-        if let Some(name) = repository
-            .rsplit('/')
-            .next()
-            .filter(|name| !name.is_empty())
-        {
-            return name.to_string();
         }
     }
     root.file_name()
@@ -1023,7 +997,7 @@ fn readme(project_code: &str) -> String {
          that commit SHA and the template body's content hash as provenance.\n\n\
          Do not commit client uploads, answers, generated documents, secrets, dependencies, or build\n\
          output. Legal files live in Drive and in Navigator's assets, never in Git.\n\n\
-         Run `navigator site projects repository validate .` before opening a pull request.\n"
+         Run `navigator validate .` before opening a pull request.\n"
     )
 }
 
@@ -1221,7 +1195,7 @@ jobs:
 mod tests {
     use super::{
         cd_workflow, is_release_tag, repository_name, scaffold, validate_layout, validate_workflow,
-        workflow, Finding, ALLOWED_ROOTS, CD_WORKFLOW, WORKFLOW,
+        workflow, Finding, ALLOWED_ROOTS, CD_WORKFLOW, PROJECT_MANIFEST, WORKFLOW,
     };
     use std::path::Path;
 
@@ -1279,6 +1253,41 @@ mod tests {
             repository_name(Path::new("/tmp/renamed"), Some("org/example")),
             "example"
         );
+    }
+
+    #[test]
+    fn repository_name_uses_github_repository_before_the_manifest() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join(PROJECT_MANIFEST),
+            "project: acme\nhost: staging.neonlaw.com\n",
+        )
+        .unwrap();
+        let previous = std::env::var("GITHUB_REPOSITORY").ok();
+        std::env::set_var("GITHUB_REPOSITORY", "org/from-ci");
+        let name = repository_name(dir.path(), None);
+        match previous {
+            Some(value) => std::env::set_var("GITHUB_REPOSITORY", value),
+            None => std::env::remove_var("GITHUB_REPOSITORY"),
+        }
+        assert_eq!(name, "from-ci");
+    }
+
+    #[test]
+    fn repository_name_uses_the_manifest_when_github_is_unset() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join(PROJECT_MANIFEST),
+            "project: acme\nhost: staging.neonlaw.com\n",
+        )
+        .unwrap();
+        let previous = std::env::var("GITHUB_REPOSITORY").ok();
+        std::env::remove_var("GITHUB_REPOSITORY");
+        let name = repository_name(dir.path(), None);
+        if let Some(value) = previous {
+            std::env::set_var("GITHUB_REPOSITORY", value);
+        }
+        assert_eq!(name, "acme");
     }
 
     #[test]

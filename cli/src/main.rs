@@ -522,7 +522,7 @@ enum ProjectsCmd {
         #[arg(long)]
         json: bool,
     },
-    /// Run the Project CI gate: layout, origin scan, and optional OIDC document verify.
+    /// Run the Project CI gate: layout, then the OIDC live-status door.
     Gate {
         /// Repository root. Defaults to the current directory.
         #[arg(default_value = ".")]
@@ -595,17 +595,6 @@ enum ProjectRepositoryAction {
         /// file alone and exits 2.
         #[arg(long)]
         replace_gate: bool,
-    },
-    /// Validate a Project repository: its layout, its notation templates, and
-    /// its portal's build shape.
-    Validate {
-        /// Repository root. Defaults to the current directory.
-        #[arg(default_value = ".")]
-        dir: PathBuf,
-        /// Repository name, which is the Project code. Defaults to
-        /// `GITHUB_REPOSITORY`'s final segment, then the directory name.
-        #[arg(long)]
-        repository: Option<String>,
     },
     /// Write Navigator's canonical agent-skill catalog into a Project
     /// repository, from this binary's own compiled-in copies.
@@ -2275,9 +2264,6 @@ async fn run_projects(action: ProjectsCmd) -> ExitCode {
                 &host,
                 replace_gate,
             ),
-            ProjectRepositoryAction::Validate { dir, repository } => {
-                projects::repository::validate(&dir, repository.as_deref())
-            }
             ProjectRepositoryAction::SyncSkills { dir } => projects::repository::sync_skills(&dir),
         },
         ProjectsCmd::Drift {
@@ -2286,7 +2272,9 @@ async fn run_projects(action: ProjectsCmd) -> ExitCode {
             all,
             json,
         } => projects::drift::run(host.host.as_deref(), &dir, all, json).await,
-        ProjectsCmd::Gate { dir, ci, host: _ } => projects::repository::gate(&dir, ci),
+        ProjectsCmd::Gate { dir, ci, host } => {
+            projects::gate::run(&dir, ci, host.host.as_deref()).await
+        }
         ProjectsCmd::Surfaces { action } => match action {
             SurfacesAction::Reconcile { project } => projects::surfaces::reconcile(&project).await,
         },
@@ -3040,11 +3028,14 @@ fn run_validate(dir: &std::path::Path, fix: bool, errors_only: bool) -> ExitCode
     // something to be found by scrolling.
     print_error_recap(&gate_errors);
 
+    let project_layout_failed = is_project_repository(dir)
+        && projects::repository::validate(dir, None) != ExitCode::SUCCESS;
+
     // Fail the gate on Error-severity markdown violations, malformed YAML,
-    // seed documents, locale catalogs, or a consumed mutable tag.
-    // Warning-severity advisories (e.g. a step that's allowed but not built
-    // yet) are printed but do not fail.
-    if gate_errors.is_empty() {
+    // seed documents, locale catalogs, a consumed mutable tag, or a Project
+    // repository's layout/mount findings. Warning-severity advisories are
+    // printed but do not fail.
+    if gate_errors.is_empty() && !project_layout_failed {
         ExitCode::SUCCESS
     } else {
         ExitCode::from(1)

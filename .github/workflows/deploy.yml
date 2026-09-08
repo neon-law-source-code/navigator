@@ -2157,7 +2157,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: navigator-windows-cli
-          path: dist/navigator-*-windows.zip
+          path: dist/navigator-${{ needs.release-version.outputs.tag }}-windows.zip
           if-no-files-found: error
       - uses: ./.github/actions/slack-progress
         with:
@@ -2185,7 +2185,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: navigator-windows-lsp
-          path: dist/navigator-lsp-*-windows.zip
+          path: dist/navigator-lsp-${{ needs.release-version.outputs.tag }}-windows.zip
           if-no-files-found: error
 
 
@@ -2263,7 +2263,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: navigator-linux-cli
-          path: dist/navigator-*-linux.tar.gz
+          path: dist/navigator-${{ needs.release-version.outputs.tag }}-linux.tar.gz
           if-no-files-found: error
       - uses: ./.github/actions/slack-progress
         with:
@@ -2292,7 +2292,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: navigator-linux-lsp
-          path: dist/navigator-lsp-*-linux.tar.gz
+          path: dist/navigator-lsp-${{ needs.release-version.outputs.tag }}-linux.tar.gz
           if-no-files-found: error
 
   release-cli-build-macos:
@@ -2370,7 +2370,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: navigator-macos-cli
-          path: dist/navigator-*-macos.tar.gz
+          path: dist/navigator-${{ needs.release-version.outputs.tag }}-macos.tar.gz
           if-no-files-found: error
       - uses: ./.github/actions/slack-progress
         with:
@@ -2399,7 +2399,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: navigator-macos-lsp
-          path: dist/navigator-lsp-*-macos.tar.gz
+          path: dist/navigator-lsp-${{ needs.release-version.outputs.tag }}-macos.tar.gz
           if-no-files-found: error
 
   release-windows-cli-publish:
@@ -2536,21 +2536,27 @@ jobs:
               # it now would name a SHA for a ref that already has one.
               gh release create "${TAG}" --repo "${GITHUB_REPOSITORY}" "${flags[@]}"
           fi
-          gh release upload "${TAG}" dist/navigator-*-windows.zip \
+          # Every upload names its archive tag-exactly. `navigator-*` and
+          # `navigator-lsp-*` are distinct strings but not distinct match sets:
+          # the CLI wildcard also matched `navigator-lsp-<tag>-*`, so each LSP
+          # archive uploaded twice, and any drift between the two command
+          # shapes would have clobbered the wrong bytes. `--clobber` only makes
+          # a re-run idempotent; the exact filename is what keeps each asset
+          # its own. The LSP archives share this job and this Release, but not
+          # the CLI's filename prefix, so an editor extension (Zed's
+          # marketplace, first) can resolve the LSP asset by name without also
+          # matching the CLI's.
+          gh release upload "${TAG}" dist/navigator-${TAG}-windows.zip \
               --repo "${GITHUB_REPOSITORY}" --clobber
-          gh release upload "${TAG}" dist/navigator-*-linux.tar.gz \
+          gh release upload "${TAG}" dist/navigator-${TAG}-linux.tar.gz \
               --repo "${GITHUB_REPOSITORY}" --clobber
-          gh release upload "${TAG}" dist/navigator-*-macos.tar.gz \
+          gh release upload "${TAG}" dist/navigator-${TAG}-macos.tar.gz \
               --repo "${GITHUB_REPOSITORY}" --clobber
-          # `navigator-lsp-*` is a distinct glob from `navigator-*` above: the
-          # LSP archives share this job and this Release, but not the CLI's
-          # filename prefix, so an editor extension (Zed's marketplace, first)
-          # can resolve the LSP asset without also matching the CLI's.
-          gh release upload "${TAG}" dist/navigator-lsp-*-windows.zip \
+          gh release upload "${TAG}" dist/navigator-lsp-${TAG}-windows.zip \
               --repo "${GITHUB_REPOSITORY}" --clobber
-          gh release upload "${TAG}" dist/navigator-lsp-*-linux.tar.gz \
+          gh release upload "${TAG}" dist/navigator-lsp-${TAG}-linux.tar.gz \
               --repo "${GITHUB_REPOSITORY}" --clobber
-          gh release upload "${TAG}" dist/navigator-lsp-*-macos.tar.gz \
+          gh release upload "${TAG}" dist/navigator-lsp-${TAG}-macos.tar.gz \
               --repo "${GITHUB_REPOSITORY}" --clobber
 
   # ---------- Stage 3b: hand the release to the Homebrew tap ----------

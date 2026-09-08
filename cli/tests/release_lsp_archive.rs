@@ -53,8 +53,8 @@ fn releases_build_and_attach_a_linux_lsp_archive() {
         "install -m 0644 LICENSE dist/navigator-lsp-linux/LICENSE",
         "-C dist/navigator-lsp-linux navigator-lsp LICENSE",
         "name: navigator-linux-lsp",
-        "path: dist/navigator-lsp-*-linux.tar.gz",
-        "gh release upload \"${TAG}\" dist/navigator-lsp-*-linux.tar.gz",
+        "path: dist/navigator-lsp-${{ needs.release-version.outputs.tag }}-linux.tar.gz",
+        "gh release upload \"${TAG}\" dist/navigator-lsp-${TAG}-linux.tar.gz",
     ] {
         assert!(
             workflow.contains(required),
@@ -72,8 +72,8 @@ fn releases_build_and_attach_a_macos_lsp_archive() {
         "install -m 0644 LICENSE dist/navigator-lsp-macos/LICENSE",
         "-C dist/navigator-lsp-macos navigator-lsp LICENSE",
         "name: navigator-macos-lsp",
-        "path: dist/navigator-lsp-*-macos.tar.gz",
-        "gh release upload \"${TAG}\" dist/navigator-lsp-*-macos.tar.gz",
+        "path: dist/navigator-lsp-${{ needs.release-version.outputs.tag }}-macos.tar.gz",
+        "gh release upload \"${TAG}\" dist/navigator-lsp-${TAG}-macos.tar.gz",
     ] {
         assert!(
             workflow.contains(required),
@@ -91,8 +91,8 @@ fn releases_build_and_attach_a_windows_lsp_archive() {
         "dist/navigator-lsp-windows/navigator-lsp.exe",
         "Compress-Archive -Path \"dist/navigator-lsp-windows/*\"",
         "name: navigator-windows-lsp",
-        "path: dist/navigator-lsp-*-windows.zip",
-        "gh release upload \"${TAG}\" dist/navigator-lsp-*-windows.zip",
+        "path: dist/navigator-lsp-${{ needs.release-version.outputs.tag }}-windows.zip",
+        "gh release upload \"${TAG}\" dist/navigator-lsp-${TAG}-windows.zip",
     ] {
         assert!(
             workflow.contains(required),
@@ -132,6 +132,66 @@ fn the_publish_job_downloads_every_lsp_archive_before_attaching_it() {
             downloaded.iter().any(|name| name == required),
             "release-windows-cli-publish must download `{required}` before it can attach it, \
              got: {downloaded:?}"
+        );
+    }
+}
+
+/// `navigator-*` and `navigator-lsp-*` are distinct strings but not distinct
+/// match sets: a shell glob `navigator-*-linux.tar.gz` also matches
+/// `navigator-lsp-<tag>-linux.tar.gz`, because `*` spans the `lsp-<tag>` run.
+/// While the publish step used that wildcard, each LSP archive uploaded twice
+/// from one step — harmlessly, only because both `gh release upload` calls
+/// passed `--clobber` with identical bytes. Every archive path under `dist/`
+/// therefore names its file tag-exactly: `${TAG}` inside a `run:` block, the
+/// `needs.release-version.outputs.tag` expression inside a `with:` input.
+///
+/// The check is a match-set check, not a string-equality one: it substitutes a
+/// tag into every `dist/navigator-` path and asserts the result matches the
+/// CLI archive name or the LSP archive name for its platform, never both.
+#[test]
+fn no_cli_archive_path_can_match_an_lsp_archive() {
+    const ARCHIVE_SUFFIXES: [&str; 2] = [".tar.gz", ".zip"];
+    let tag = "26.9.3";
+    // Resolve every spelling of the tag first, so the `with:` expression form
+    // (which carries spaces) tokenizes as one path like the shell forms do.
+    let resolved_workflow = deploy_workflow()
+        .replace("${{ needs.release-version.outputs.tag }}", tag)
+        .replace("${TAG}", tag)
+        .replace("$env:TAG", tag);
+    let paths: Vec<String> = resolved_workflow
+        .lines()
+        .filter(|line| !line.trim_start().starts_with('#'))
+        .flat_map(|line| {
+            line.split_whitespace()
+                .map(|word| word.trim_matches('"').to_string())
+                .filter(|word| word.contains("dist/navigator-"))
+                .collect::<Vec<_>>()
+        })
+        // Staging directories (`dist/navigator-linux/…`) hold the members an
+        // archive is packed from; only the archive filenames are uploaded. The
+        // suffixes are exact-case on purpose: they are the asset names a
+        // consumer downloads, not a loose file-type check.
+        .filter(|path| ARCHIVE_SUFFIXES.iter().any(|suffix| path.ends_with(suffix)))
+        .collect();
+    assert!(
+        paths.len() >= 12,
+        "expected at least the six artifact paths and the six upload paths, got {paths:?}"
+    );
+
+    for path in &paths {
+        assert!(
+            !path.contains('*') && !path.contains('?') && !path.contains('['),
+            "`{path}` is a glob; every archive path must name its file tag-exactly"
+        );
+        let name = path
+            .rsplit('/')
+            .next()
+            .expect("an archive path has a filename");
+        let cli = format!("navigator-{tag}-");
+        let lsp = format!("navigator-lsp-{tag}-");
+        assert!(
+            name.starts_with(&cli) ^ name.starts_with(&lsp),
+            "`{path}` resolves to `{name}`, which must name the CLI archive (`{cli}<platform>`) or the LSP archive (`{lsp}<platform>`), never both"
         );
     }
 }

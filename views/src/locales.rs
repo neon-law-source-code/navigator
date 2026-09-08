@@ -136,33 +136,8 @@ pub struct VirtueCopy {
     pub body: String,
 }
 
-/// One line item the monthly fee covers.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct IncludedCopy {
-    pub name: String,
-    pub body: String,
-}
-
-/// One sales-cycle stage and the legal step inside it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SalesStageCopy {
-    pub stage: String,
-    pub legal_step: String,
-}
-
-/// Work quoted outside the monthly retainer.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SeparateWorkCopy {
-    pub name: String,
-    pub body: String,
-    #[serde(default)]
-    pub href: Option<String>,
-    #[serde(default)]
-    pub link_label: Option<String>,
-}
-
 /// One flat-fee pricing card the fractional-GC page publishes for the base
-/// retainer itself, alongside the fee schedule it no longer withholds.
+/// retainer itself.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PricingCardCopy {
     pub title: String,
@@ -189,22 +164,13 @@ pub struct TransactionalCopy {
     pub lead: String,
     pub cta_label: String,
     pub virtues: Vec<VirtueCopy>,
-    pub msa_term: String,
-    pub msa_definition: String,
     pub fee_heading: String,
     pub fee_body: String,
     #[serde(default)]
     pub pricing: Vec<PricingCardCopy>,
-    #[serde(default)]
-    pub availability_note: Option<String>,
-    pub included_heading: String,
-    pub included: Vec<IncludedCopy>,
-    pub cycle_heading: String,
-    pub cycle_body: String,
-    pub cycle: Vec<SalesStageCopy>,
-    pub separate_heading: String,
-    pub separate_body: String,
-    pub separate: Vec<SeparateWorkCopy>,
+    pub closing_heading: String,
+    pub closing_body: String,
+    pub closing_email: String,
 }
 
 /// The hero's one call to action.

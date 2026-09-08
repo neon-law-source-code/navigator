@@ -18,8 +18,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::components::pricing::{DayRateBadge, PricingCard, PricingSection};
 use crate::components::{
-    PlatformMark, PlatformMarkGlyph, PracticeMark, PracticeMarkGlyph, PublicShell, SiteHeader,
-    SiteNavLink, SocialMeta,
+    BillMarkGlyph, PlatformMark, PlatformMarkGlyph, PracticeMark, PracticeMarkGlyph, PublicShell,
+    SiteHeader, SiteNavLink, SocialMeta,
 };
 use crate::litigation_page::HeroWord;
 use crate::public_chrome::{PublicChrome, PublicFooter};
@@ -364,6 +364,9 @@ fn MarketingShell(
     /// vocabulary — the card, the glow, the eyebrow — so a page wearing it
     /// needs the sheet that defines them. Marketing-skin pages do not.
     firm_components: bool,
+    /// Hoist the shared recurring-commitment treatment after the page-specific
+    /// layers. Practice pages use the same hero and benefit-row vocabulary.
+    commitment_components: bool,
     /// Hoist the home page's sheet (`home.css`). A page carrying a downloads
     /// band reuses that sheet's `.home-practice` box wholesale, and this is the
     /// only place in the render tree that can put it in the document head:
@@ -410,6 +413,9 @@ fn MarketingShell(
             document::Stylesheet { href: crate::brand_style::BRAND_STYLESHEET_HREF }
         }
         document::Stylesheet { href: MARKETING_STYLESHEET_HREF }
+        if commitment_components {
+            document::Stylesheet { href: crate::components::COMMITMENT_STYLESHEET_HREF }
+        }
         // After the marketing layer, because the download boxes take their
         // whole treatment from `home.css` and this page's own rules only
         // position them.
@@ -424,15 +430,24 @@ fn MarketingShell(
 /// without a server future.
 #[component]
 pub fn MarketingPage(chrome: PublicChrome, content: PageContent) -> Element {
+    let hero_day_rate = content.bands.iter().find_map(|band| match band {
+        Band::Cards {
+            items,
+            pricing_style: true,
+            ..
+        } => items.first().and_then(|card| card.day_rate.clone()),
+        _ => None,
+    });
     rsx! {
         MarketingShell {
             chrome: chrome.clone(),
             title: content.head_title.clone(),
             description: content.meta_description.clone(),
             firm_components: content.skin == PageSkin::Practice || content.hero_mark.is_some(),
+            commitment_components: content.skin == PageSkin::Practice,
             home_components: content.bands.iter().any(Band::is_downloads),
             div { class: "fm-page{content.skin.modifier()}",
-                section { class: "fm-hero fm-hero--page",
+                section { class: "fm-hero fm-hero--page commitment-hero",
                     // The practice skin leads with the eyebrow and sets the
                     // tagline as the `<h1>`, the way `/litigation` does: on a
                     // practice page the statement is the headline and the
@@ -440,15 +455,15 @@ pub fn MarketingPage(chrome: PublicChrome, content: PageContent) -> Element {
                     // keeps the title as the headline.
                     if content.skin == PageSkin::Practice {
                         div { class: "firm-glow fm-hero__glow", "aria-hidden": "true" }
-                        div { class: "fm-hero__inner",
+                        div { class: "fm-hero__inner commitment-hero__statement",
                             if let Some(mark) = content.hero_mark {
                                 PracticeMarkGlyph {
                                     mark,
-                                    class: "fm-hero__mark".to_string(),
+                                    class: "fm-hero__mark commitment-hero__mark".to_string(),
                                 }
                             }
                             p { class: "firm-eyebrow", "{content.title}" }
-                            h1 { class: "fm-hero__title",
+                            h1 { class: "fm-hero__title commitment-hero__heading",
                                 if content.hero_lines.is_empty() {
                                     "{content.tagline}"
                                 } else {
@@ -473,14 +488,23 @@ pub fn MarketingPage(chrome: PublicChrome, content: PageContent) -> Element {
                                 }
                             }
                             if !content.hero_lead.is_empty() {
-                                p { class: "fm-hero__lead", "{content.hero_lead}" }
+                                p { class: "fm-hero__lead commitment-hero__lead", "{content.hero_lead}" }
                             }
                             if let Some(cta) = content.hero_cta.as_ref() {
                                 a {
-                                    class: "nav-btn nav-btn--primary fm-hero__cta",
+                                    class: "nav-btn nav-btn--primary fm-hero__cta commitment-hero__cta",
                                     href: "{cta.href}",
                                     "{cta.label}"
                                 }
+                            }
+                        }
+                        if let Some(badge) = hero_day_rate {
+                            div { class: "commitment-hero__rate",
+                                BillMarkGlyph {
+                                    src: badge.image_src.clone(),
+                                    class: "commitment-hero__rate-mark".to_string(),
+                                }
+                                p { class: "commitment-hero__rate-caption", "${badge.amount} a day" }
                             }
                         }
                     } else {
@@ -560,9 +584,9 @@ fn Bands(items: Vec<Band>) -> Element {
                                     }
                                 }
                             } else {
-                                ul { class: "fm-cards",
+                                ul { class: "fm-cards commitment-benefit-grid",
                                     for card in items.iter() {
-                                        li { class: "fm-card",
+                                        li { class: "fm-card commitment-benefit-card",
                                             h3 { class: "fm-card__title", "{card.title}" }
                                             if !card.chips.is_empty() {
                                                 ul { class: "fm-chips",
@@ -1397,6 +1421,10 @@ mod tests {
         assert!(
             practice.contains("firm-glow"),
             "the practice skin carries the glow the practice pages wear: {practice}"
+        );
+        assert!(
+            practice.contains("commitment-hero"),
+            "the practice skin carries the shared recurring-commitment hero: {practice}"
         );
         assert!(
             practice.contains(r#"data-practice-mark="technology""#),

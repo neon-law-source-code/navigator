@@ -128,6 +128,11 @@ pub use toast::{Toast, ToastTone};
 /// migrated pages keep Bootstrap until their Phase 3 cluster moves.
 pub const THEME_STYLESHEET_HREF: &str = "/public/css/theme.css";
 
+/// The shared commitment-page treatment used by the firm's recurring-fee
+/// offers. Both the company-side and personal-side pages load it after their
+/// page-specific layers so the hero, benefit row, and offer card stay aligned.
+pub const COMMITMENT_STYLESHEET_HREF: &str = "/public/css/commitment.css";
+
 #[cfg(test)]
 mod leaf_contract {
     use std::path::{Path, PathBuf};

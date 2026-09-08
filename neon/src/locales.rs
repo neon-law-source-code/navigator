@@ -8,10 +8,10 @@
 
 use views::brand::BrandKey;
 use views::locales::{
-    interpolate, BandCopy, CardCopy, CopyRun, HeroCtaCopy, HeroLine, HomeCopy, IncludedCopy,
-    LitigationCopy, MarketingPageCopy, PackageInstallCopy, PageSkin, Paragraph, PracticeLinkCopy,
-    PracticeMark, PricingCardCopy, ProjectNetworkNodeCopy, SalesStageCopy, SeparateWorkCopy,
-    ServiceSectionCopy, StepCopy, TransactionalCopy, VirtueCopy,
+    interpolate, BandCopy, CardCopy, CopyRun, HeroCtaCopy, HeroLine, HomeCopy, LitigationCopy,
+    MarketingPageCopy, PackageInstallCopy, PageSkin, Paragraph, PracticeLinkCopy, PracticeMark,
+    PricingCardCopy, ProjectNetworkNodeCopy, ServiceSectionCopy, StepCopy, TransactionalCopy,
+    VirtueCopy,
 };
 use webapp::components::DayRateBadge;
 use webapp::marketing_page::{
@@ -391,8 +391,6 @@ pub fn fractional_gc(
             .into_iter()
             .map(|VirtueCopy { word, body }| webapp::transactional_page::Virtue { word, body })
             .collect(),
-        msa_term: copy.msa_term,
-        msa_definition: copy.msa_definition,
         fee_heading: copy.fee_heading,
         fee_body: copy.fee_body,
         pricing: copy
@@ -416,44 +414,9 @@ pub fn fractional_gc(
                 },
             )
             .collect(),
-        availability_note: copy.availability_note,
-        included_heading: copy.included_heading,
-        included: copy
-            .included
-            .into_iter()
-            .map(|IncludedCopy { name, body }| webapp::transactional_page::Included { name, body })
-            .collect(),
-        cycle_heading: copy.cycle_heading,
-        cycle_body: copy.cycle_body,
-        cycle: copy
-            .cycle
-            .into_iter()
-            .map(
-                |SalesStageCopy { stage, legal_step }| webapp::transactional_page::SalesStage {
-                    stage,
-                    legal_step,
-                },
-            )
-            .collect(),
-        separate_heading: copy.separate_heading,
-        separate_body: copy.separate_body,
-        separate: copy
-            .separate
-            .into_iter()
-            .map(
-                |SeparateWorkCopy {
-                     name,
-                     body,
-                     href,
-                     link_label,
-                 }| webapp::transactional_page::SeparateWork {
-                    name,
-                    body,
-                    href,
-                    link_label,
-                },
-            )
-            .collect(),
+        closing_heading: copy.closing_heading,
+        closing_body: copy.closing_body,
+        closing_email: copy.closing_email,
     }
 }
 

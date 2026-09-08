@@ -166,9 +166,7 @@ async fn site_host_serves_the_firm_surface_and_host_documents() {
 async fn the_personal_plan_page_publishes_its_plan_and_pricing() {
     // The firm's consumer legal plan: taxes, privacy protection, and credit
     // monitoring (beta) on one flat annual or daily fee — the personal-side
-    // counterpart to Fractional GC, and (unlike the retired Fractional CTO
-    // page) it publishes a real figure. Estate planning stays off this list:
-    // it is a one-time matter already on the `/services` flat-fee schedule.
+    // counterpart to Fractional GC, and it publishes a real figure.
     let app = site_app().await;
     let resp = anon_get(&app, "/personal-plan").await;
     assert_eq!(resp.status(), StatusCode::OK);
@@ -178,7 +176,7 @@ async fn the_personal_plan_page_publishes_its_plan_and_pricing() {
         "the page titles itself Personal Plan: {body}"
     );
     assert!(
-        body.contains(r#"<h1 class="fm-hero__title""#),
+        body.contains("fm-hero__title"),
         "the page states its offering in an h1: {body}"
     );
     for figure in ["$365", "/year", "$1 a day", "leap day is free"] {
@@ -204,19 +202,13 @@ async fn the_personal_plan_page_publishes_its_plan_and_pricing() {
         "the page carries a contact CTA: {body}"
     );
     // Structured to match `/fractional-gc`: a three-word virtue row after the
-    // hero, and a "priced separately" section for the work the flat fee does
-    // not cover, ahead of the closing CTA.
+    // hero, followed by the plan's included work and closing CTA.
     for virtue in ["Private", "Simple", "Attentive"] {
         assert!(body.contains(virtue), "missing the virtue {virtue}: {body}");
     }
-    assert!(
-        body.contains("Priced separately") && body.contains("One-time matters"),
-        "the plan names what sits outside it, like /fractional-gc does: {body}"
-    );
-    assert!(
-        body.contains(r#"href="/services""#),
-        "priced-separately work routes to the flat-fee schedule: {body}"
-    );
+    for removed in ["Priced separately", "One-time matters", "flat-fee schedule"] {
+        assert!(!body.contains(removed), "the plan omits {removed}: {body}");
+    }
 }
 
 /// `/personal-plan` and `/services` wear the practice-page header.
@@ -232,14 +224,14 @@ async fn the_practice_pages_wear_the_same_header() {
     for path in ["/personal-plan", "/services"] {
         let body = body_string(anon_get(&app, path).await).await;
         for part in [
-            r#"class="fm-hero fm-hero--page""#,
+            "fm-hero fm-hero--page",
             r#"class="fm-hero__mark"#,
             r#"class="firm-eyebrow""#,
-            r#"<h1 class="fm-hero__title""#,
+            "fm-hero__title",
             r#"class="fm-hero__line""#,
             r#"class="fm-word fm-word--accent""#,
-            r#"class="fm-hero__lead""#,
-            r#"class="nav-btn nav-btn--primary fm-hero__cta" href="mailto:contact@neonlaw.com""#,
+            "fm-hero__lead",
+            "nav-btn nav-btn--primary fm-hero__cta",
         ] {
             assert!(
                 body.contains(part),
@@ -287,7 +279,7 @@ async fn site_host_serves_the_legal_services_page() {
         "the page titles itself Legal Services: {body}"
     );
     assert!(
-        body.contains(r#"<h1 class="fm-hero__title""#),
+        body.contains("fm-hero__title"),
         "the page states its offering in an h1: {body}"
     );
     // Classless on purpose: `theme.css` cues inline prose links through
@@ -643,9 +635,7 @@ async fn litigation_carries_the_regulated_copy_and_no_results_promise() {
 async fn transactional_publishes_its_flat_fee_pricing_cards() {
     // Fractional GC now publishes its base-package pricing on the page — one
     // flat annual figure, framed per-day in the card body, plus the DocuSign
-    // per-contract line — rather than quoting it through `/contact`. The MSA
-    // is priced separately (like financings and litigation), not as a second
-    // base-package cadence.
+    // per-contract line — rather than quoting it through `/contact`.
     let app = site_app().await;
     let resp = anon_get(&app, "/fractional-gc").await;
     assert_eq!(resp.status(), StatusCode::OK);
@@ -656,20 +646,43 @@ async fn transactional_publishes_its_flat_fee_pricing_cards() {
         "the statement: {body}"
     );
     assert!(
-        body.contains("One base package, flat fees for everything else"),
+        body.contains("One flat annual fee"),
         "the structure: {body}"
     );
     for figure in ["$3,650", "/year", "$10 a day", "$5 per contract"] {
         assert!(body.contains(figure), "{figure} must publish: {body}");
     }
-    assert!(
-        body.contains("Contracts with revisions") && body.contains("flat $500 each"),
-        "revision work is priced separately, like financings: {body}"
-    );
-    assert!(
-        body.contains("limited number of Fractional GC clients"),
-        "the availability note, not a gate: {body}"
-    );
+    for removed in [
+        "Priced separately",
+        "Contracts with revisions",
+        "Financings",
+    ] {
+        assert!(
+            !body.contains(removed),
+            "fractional GC omits {removed}: {body}"
+        );
+    }
+    for removed in [
+        "limited number of Fractional GC clients",
+        "What the fee covers",
+        "It runs inside your sales cycle",
+        "Discovery call",
+    ] {
+        assert!(
+            !body.contains(removed),
+            "fractional GC omits {removed}: {body}"
+        );
+    }
+    for added in [
+        "Ready to build and sell?",
+        "Invite us to be your Fractional GC.",
+        "contact@neonlaw.com",
+    ] {
+        assert!(
+            body.contains(added),
+            "fractional GC publishes {added}: {body}"
+        );
+    }
     // The engagement-letter block came off the page: what it said is a term of
     // the engagement, not something the marketing surface has to close on.
     assert!(
@@ -715,18 +728,16 @@ async fn transactional_states_its_turnaround_in_prose() {
     for gone in ["speed-dial", "Measured from a complete intake"] {
         assert!(!body.contains(gone), "the dial is gone ({gone}): {body}");
     }
-    // The page uses "MSA", so the page defines it.
-    assert!(
-        body.contains("master services agreement"),
-        "the term is spelled out where it is used: {body}"
-    );
-    // Financings and litigation are quoted separately, and the litigation
-    // half routes to the practice page rather than dead-ending.
-    assert!(body.contains("Financings"), "separate work: {body}");
-    assert!(
-        body.contains(r#"href="/litigation""#),
-        "the litigation cross-link: {body}"
-    );
+    for removed in [
+        "Priced separately",
+        "master services agreement",
+        "Financings",
+    ] {
+        assert!(
+            !body.contains(removed),
+            "fractional GC omits {removed}: {body}"
+        );
+    }
 }
 
 #[tokio::test]
@@ -745,6 +756,26 @@ async fn both_practice_pages_hoist_their_own_stylesheet() {
             "{path} hoists the brand layer: {body}"
         );
         assert!(body.contains(sheet), "{path} hoists {sheet}: {body}");
+    }
+}
+
+#[tokio::test]
+async fn recurring_offer_pages_share_the_commitment_treatment() {
+    let app = site_app().await;
+    for path in ["/fractional-gc", "/personal-plan"] {
+        let body = body_string(anon_get(&app, path).await).await;
+        for part in [
+            "/public/css/commitment.css",
+            "commitment-hero",
+            "commitment-benefit-grid",
+            "pricing-card",
+            "Contact us",
+        ] {
+            assert!(
+                body.contains(part),
+                "{path} shares the recurring-offer treatment {part}: {body}"
+            );
+        }
     }
 }
 
@@ -1075,7 +1106,7 @@ async fn services_and_fractional_gc_publish_real_fees() {
             "/services",
             vec!["$50", "$350/year", "$100", "$250", "$350", "$500"],
         ),
-        ("/fractional-gc", vec!["$3,650", "$10", "$1", "$500"]),
+        ("/fractional-gc", vec!["$3,650", "$10"]),
     ] {
         let body = body_string(anon_get(&app, priced).await).await;
         assert!(

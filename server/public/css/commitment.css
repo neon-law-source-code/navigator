@@ -1,0 +1,128 @@
+/* Shared treatment for the firm's recurring-fee pages.
+
+   `/fractional-gc` and `/personal-plan` have different supporting sections,
+   but their decision point is the same: one predictable daily commitment,
+   one offer card, and one clear next step. This layer is loaded after each
+   page's own CSS so those three pieces cannot drift apart visually. */
+
+.commitment-hero {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  gap: clamp(2rem, 6vw, 4rem);
+  align-items: center;
+}
+
+@media (min-width: 60rem) {
+  .commitment-hero {
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+  }
+}
+
+.commitment-hero__statement {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1.25rem;
+  max-width: 40rem;
+}
+
+.commitment-hero__mark {
+  width: clamp(4.25rem, 9vw, 6.5rem);
+  height: clamp(4.25rem, 9vw, 6.5rem);
+  padding: 1rem;
+  border: 1px solid var(--firm-brand-edge);
+  border-radius: 50%;
+  color: var(--firm-brand);
+  background: var(--firm-brand-tint);
+  box-shadow: 0 1rem 3rem var(--firm-brand-glow);
+}
+
+.commitment-hero__heading {
+  margin: 0;
+  font-family: var(--firm-serif);
+  font-size: clamp(2.25rem, 6vw, 4rem);
+  font-weight: 600;
+  line-height: 1.02;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+
+.commitment-hero__lead {
+  margin: 0;
+  max-width: 44rem;
+  font-size: 1.125rem;
+  line-height: 1.6;
+  color: var(--nav-color-text-muted);
+}
+
+.commitment-hero__rate {
+  position: relative;
+  z-index: 1;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  justify-self: center;
+}
+
+@media (min-width: 60rem) {
+  .commitment-hero__rate {
+    display: flex;
+  }
+}
+
+.commitment-hero__rate-mark {
+  width: clamp(9rem, 16vw, 13rem);
+  height: auto;
+  filter: drop-shadow(0 1rem 2rem var(--firm-brand-glow));
+}
+
+.commitment-hero__rate-caption {
+  margin: 0;
+  font-family: var(--firm-serif);
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--firm-brand);
+}
+
+.commitment-benefit-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (min-width: 52rem) {
+  .commitment-benefit-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.commitment-benefit-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+  margin: 0;
+  padding: clamp(1.5rem, 3vw, 2rem);
+  border: 1px solid var(--firm-brand-edge);
+  border-radius: var(--neon-card-radius);
+  background: var(--neon-card-bg);
+  transition: transform 180ms ease-out, border-color 180ms ease-out;
+}
+
+.commitment-benefit-card:hover {
+  transform: translateY(-4px);
+  border-color: var(--firm-brand);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .commitment-benefit-card:hover {
+    transform: none;
+  }
+}

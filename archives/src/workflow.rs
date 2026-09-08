@@ -250,7 +250,7 @@ async fn promote_iceberg_metadata<F: Fn(&str) -> Option<String>>(
             )]
         }
     };
-    let bucket = get("NAVIGATOR_STORAGE_BUCKET")
+    let bucket = get("NAVIGATOR_ARCHIVES_BUCKET")
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "exports".to_string());
     // Stamped once inside the journaled step (so a replay reuses the cached

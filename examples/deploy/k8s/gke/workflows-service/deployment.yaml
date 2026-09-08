@@ -104,10 +104,12 @@ spec:
               # `email_send__*` steps. KIND keeps this unset so the
               # `email_config` selector returns `CapturingEmail`.
               value: sendgrid
-            # Object storage. Two lanes share this pod:
+            # Object storage. Three lanes share this pod:
             #  - The Archives snapshot phase writes nightly Parquet to the
-            #    exports bucket via `cloud::exports_from_env`
-            #    (NAVIGATOR_STORAGE_BUCKET only).
+            #    dedicated archive bucket via `cloud::archives_from_env`
+            #    (NAVIGATOR_ARCHIVES_BUCKET). That handle fails closed: with
+            #    the key unset the nightly run errors rather than filling
+            #    the exports bucket with objects nothing reads.
             #  - The `generate_pdf__*` render lane (the retainer / closing
             #    letter PDF the worker renders + persists) writes to the
             #    DOCUMENTS bucket via `cloud::from_env`, which prefers
@@ -115,10 +117,14 @@ spec:
             #    documents bucket — `web` reads the rendered PDF back from
             #    the same key to send it for signature, so a mismatch is an
             #    `object not found` 500 at send time.
+            #  - Everything else still resolves NAVIGATOR_STORAGE_BUCKET,
+            #    the general exports bucket.
             - name: NAVIGATOR_STORAGE_BACKEND
               value: gcs
             - name: NAVIGATOR_STORAGE_BUCKET
               value: YOUR_EXPORTS_BUCKET
+            - name: NAVIGATOR_ARCHIVES_BUCKET
+              value: YOUR_ARCHIVES_BUCKET
             - name: NAVIGATOR_DOCUMENTS_BUCKET
               value: YOUR_DOCUMENTS_BUCKET
             # Cost phase: set BILLING_EXPORT_TABLE (and BIGQUERY_PROJECT)

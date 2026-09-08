@@ -6,6 +6,12 @@
 # Do not create a KIND cluster here: that is opt-in per task.
 set -euo pipefail
 
+# Nested KIND cannot DNAT ingress-nginx hostPorts without xt_multiport.
+export NAVIGATOR_KIND_NO_HOSTPORT=1
+# Survives later non-login shells that source this file.
+echo 'export NAVIGATOR_KIND_NO_HOSTPORT=1' | sudo tee /etc/profile.d/navigator-kind-dind.sh >/dev/null
+
+
 docker_ready() {
   sudo docker info >/dev/null 2>&1
 }

@@ -459,6 +459,72 @@ pub(super) fn kustomize_render(overlay: &str) -> Result<()> {
 
 // ---------- shared helpers ----------
 
+/// Nested Docker (Cursor Cloud DinD) has no `xt_multiport` module, so kindnet
+/// cannot DNAT the ingress-nginx `hostPort` 80/443 bindings. When
+/// `NAVIGATOR_KIND_NO_HOSTPORT` is set, drop those hostPorts after apply so
+/// the controller can become Ready. `dev up` reaches Rauthy and the other
+/// deps through kubectl port-forwards, not those hostPorts.
+fn strip_ingress_controller_host_ports_if_requested() -> Result<()> {
+    match env::var("NAVIGATOR_KIND_NO_HOSTPORT") {
+        Ok(value) if !value.is_empty() && value != "0" => {}
+        _ => return Ok(()),
+    }
+    eprintln!("==> stripping ingress-nginx hostPorts (NAVIGATOR_KIND_NO_HOSTPORT)");
+    let output = Command::new("kubectl")
+        .args([
+            "--namespace",
+            "ingress-nginx",
+            "get",
+            "deploy",
+            "ingress-nginx-controller",
+            "-o",
+            "json",
+        ])
+        .output()
+        .context("get ingress-nginx-controller for hostPort strip")?;
+    if !output.status.success() {
+        bail!(
+            "kubectl get deploy ingress-nginx-controller failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    let mut deploy: serde_json::Value =
+        serde_json::from_slice(&output.stdout).context("parse ingress-nginx-controller json")?;
+    let Some(ports) = deploy.pointer_mut("/spec/template/spec/containers/0/ports") else {
+        return Ok(());
+    };
+    let Some(arr) = ports.as_array_mut() else {
+        return Ok(());
+    };
+    let mut stripped = false;
+    for port in arr.iter_mut() {
+        if let Some(obj) = port.as_object_mut() {
+            if obj.remove("hostPort").is_some() {
+                stripped = true;
+            }
+        }
+    }
+    if !stripped {
+        return Ok(());
+    }
+    if let Some(ann) = deploy.pointer_mut("/spec/template/metadata/annotations") {
+        if let Some(obj) = ann.as_object_mut() {
+            obj.insert(
+                "navigator.devx/no-hostport".to_string(),
+                serde_json::Value::String("1".into()),
+            );
+        }
+    }
+    let tmp = tempfile::NamedTempFile::new().context("temp file for ingress patch")?;
+    let bytes = serde_json::to_vec(&deploy).context("serialize ingress patch")?;
+    std::fs::write(tmp.path(), bytes).context("write ingress patch")?;
+    run(Command::new("kubectl")
+        .arg("apply")
+        .arg("-f")
+        .arg(tmp.path()))?;
+    Ok(())
+}
+
 /// Idempotent cluster bring-up: `kind create cluster` (if missing),
 /// `kubectl apply` the nginx-ingress manifest, then `helm install`
 /// the Restate Operator. Safe to re-invoke.
@@ -486,6 +552,7 @@ fn kind_up_steps(root: &Path, cfg: &KindConfig) -> Result<()> {
         .arg("apply")
         .arg("-f")
         .arg(root.join(INGRESS_MANIFEST)))?;
+    strip_ingress_controller_host_ports_if_requested()?;
     run(Command::new("kubectl")
         .arg("--namespace")
         .arg("ingress-nginx")

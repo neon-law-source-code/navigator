@@ -1221,6 +1221,7 @@ async fn the_navigator_page_maps_a_connected_project() {
         "Descrybe",
         "Exa",
         "Midpage",
+        "Perplexity",
         "Agentic Legal Coding",
         "Antigravity",
         "Claude Code",

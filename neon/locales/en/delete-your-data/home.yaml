@@ -30,6 +30,70 @@ service:
       - text: >-
           . Name the company, what you want deleted if you know it, and how
           we can reach you.
+provenance:
+  overline: How the record works
+  heading: Verified by a lawyer,
+  heading_accent: then recorded on Solana.
+  lead: >-
+    We verify your removal request before anything leaves the firm. Once a
+    licensed attorney has confirmed it, we upload a record of that request
+    to Solana. The record is a fingerprint and a timestamp, never the
+    request itself and never your data.
+  steps:
+    - mark: request
+      label: You send the request
+      detail: >-
+        Name the company and what you want deleted. We quote the matter
+        before any work begins.
+    - mark: attorney
+      label: A licensed attorney verifies it
+      detail: >-
+        The attorney checks the request against what you sent and signs
+        off before it goes out.
+    - mark: chain
+      label: We upload the record to Solana
+      detail: >-
+        A hash of the verified request is written to the chain, binding the
+        firm's attestation to that moment.
+  ledger_heading: Where your data has been removed from
+  ledger_caption: >-
+    An illustration of one request's record, not a count. Each row is a
+    place a request went and the attestation that followed it.
+  ledger:
+    - label: A data broker
+      status: Attested
+    - label: A people-search site
+      status: Attested
+    - label: An advertising network
+      status: Attested
+    - label: A service you stopped using
+      status: Attested
+  pillars:
+    - heading: Privacy
+      body: >-
+        Only a hash goes on the chain. Your request, your name, and the data
+        you want deleted stay with the firm, never on a public ledger.
+    - heading: Security
+      body: >-
+        Each record is attested by a licensed attorney before it is written.
+        You can check it against the chain later instead of trusting a
+        screenshot or an email thread.
+    - heading: Federated work
+      body: >-
+        Our lawyer-attested nodes are run by licensed practices, not one
+        company. Where your data has been removed from is recorded across
+        them, so the provenance does not depend on a single vendor's
+        database.
+  notes:
+    - - text: "Our "
+      - text: lawyer-attested nodes
+        emphasis: true
+      - text: " can be used for long-term provenance of where your data has been removed from. Each attestation is a licensed attorney's record that a request was made, and it stays readable after the company, the email thread, and the firm's own files have moved on."
+    - - text: >-
+          A record that a request was made is not a promise that the company
+          complied. What a company deletes, and when, depends on the company,
+          the records, and the law that applies. This is an attorney
+          advertisement.
 practices_heading: The work
 practices:
   - mark: gavel

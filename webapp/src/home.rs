@@ -82,6 +82,61 @@ pub struct PracticeLink {
     pub href: String,
 }
 
+/// The decorative mark a provenance step opens on, drawn by the view and
+/// hidden from assistive technology: the label beside it already names the
+/// step.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default, Debug)]
+pub enum ProvenanceMark {
+    /// The request a person sends: a document.
+    #[default]
+    Request,
+    /// The licensed attorney's verification: a shield with a check.
+    Attorney,
+    /// The record uploaded to the chain: linked blocks.
+    Chain,
+}
+
+/// One step of the flow a request follows, drawn as a node on a rail.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+pub struct ProvenanceStep {
+    pub mark: ProvenanceMark,
+    pub label: String,
+    pub detail: String,
+}
+
+/// One row of the ledger illustration: a place a request went, and the record
+/// that followed it.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+pub struct ProvenanceLedgerRow {
+    pub label: String,
+    pub status: String,
+}
+
+/// How a request becomes a durable record: the flow, the ledger illustration
+/// beside it, and the prose under both. Rendered only by a brand that keeps
+/// such a record.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+pub struct ProvenanceSection {
+    pub overline: String,
+    pub heading: String,
+    /// A second heading line set in the brand gradient; empty renders none.
+    pub heading_accent: String,
+    pub lead: String,
+    pub steps: Vec<ProvenanceStep>,
+    pub ledger_heading: String,
+    pub ledger_caption: String,
+    pub ledger: Vec<ProvenanceLedgerRow>,
+    pub pillars: Vec<ProvenancePillar>,
+    pub notes: Vec<Vec<CopyRun>>,
+}
+
+/// One tile under the flow: what the record is for.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+pub struct ProvenancePillar {
+    pub heading: String,
+    pub body: String,
+}
+
 /// The static home copy — resolved brand-safely at router-build time and
 /// injected into the render context.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
@@ -104,6 +159,10 @@ pub struct HomeContent {
     /// The other practices, as boxes at the foot of the page. Empty renders no
     /// section at all rather than an empty grid.
     pub practices: Vec<PracticeLink>,
+    /// How a request becomes a record. `None` renders no section, so a brand
+    /// that keeps no such record says nothing about one.
+    #[serde(default)]
+    pub provenance: Option<ProvenanceSection>,
 }
 
 /// The [`HomeContent`] injected into the render context by the portal router.
@@ -227,6 +286,9 @@ pub fn HomePage(chrome: PublicChrome, content: HomeContent) -> Element {
             if let Some(service) = content.service.as_ref() {
                 ServiceProse { service: service.clone() }
             }
+            if let Some(provenance) = content.provenance.as_ref() {
+                ProvenanceBand { provenance: provenance.clone() }
+            }
             if !content.practices.is_empty() {
                 PracticeLinks {
                     heading: content.practices_heading.clone(),
@@ -254,6 +316,155 @@ fn ServiceProse(service: ServiceSection) -> Element {
                             "{run.text}"
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+/// How a request becomes a record: the flow on a rail, the ledger beside it,
+/// and the notes under both.
+///
+/// The steps are an `<ol>` because their order is the claim — verification
+/// comes before the record, never after. The ledger is an illustration, and
+/// its caption says so in words; the bars inside it are decoration and stay
+/// out of the accessibility tree. Every mark is stroked in `currentColor` so
+/// one drawing serves both schemes.
+#[component]
+fn ProvenanceBand(provenance: ProvenanceSection) -> Element {
+    rsx! {
+        section {
+            class: "neon-card home-provenance",
+            "aria-labelledby": "home-provenance-heading",
+            div { class: "home-provenance__glow", "aria-hidden": "true" }
+            header { class: "home-provenance__header",
+                p { class: "firm-eyebrow home-provenance__overline", "{provenance.overline}" }
+                h2 { id: "home-provenance-heading", class: "home-provenance__heading",
+                    "{provenance.heading}"
+                    if !provenance.heading_accent.is_empty() {
+                        " "
+                        span { class: "home-provenance__heading-accent", "{provenance.heading_accent}" }
+                    }
+                }
+                if !provenance.lead.is_empty() {
+                    p { class: "home-provenance__lead", "{provenance.lead}" }
+                }
+            }
+            div { class: "home-provenance__grid",
+                if !provenance.steps.is_empty() {
+                    ol { class: "home-provenance__steps",
+                        for (index , step) in provenance.steps.iter().enumerate() {
+                            li {
+                                class: "home-provenance__step",
+                                style: "--home-provenance-index: {index}",
+                                ProvenanceMarkGlyph { mark: step.mark }
+                                h3 { class: "home-provenance__step-label", "{step.label}" }
+                                p { class: "home-provenance__step-detail", "{step.detail}" }
+                            }
+                        }
+                    }
+                }
+                if !provenance.ledger.is_empty() {
+                    figure {
+                        class: "home-provenance__ledger",
+                        "aria-labelledby": "home-provenance-ledger-heading",
+                        figcaption { class: "home-provenance__ledger-caption",
+                            h3 {
+                                id: "home-provenance-ledger-heading",
+                                class: "home-provenance__ledger-heading",
+                                "{provenance.ledger_heading}"
+                            }
+                            if !provenance.ledger_caption.is_empty() {
+                                p { class: "home-provenance__ledger-note", "{provenance.ledger_caption}" }
+                            }
+                        }
+                        ol { class: "home-provenance__rows",
+                            for (index , row) in provenance.ledger.iter().enumerate() {
+                                li {
+                                    class: "home-provenance__row",
+                                    style: "--home-provenance-index: {index}",
+                                    span { class: "home-provenance__row-label", "{row.label}" }
+                                    span { class: "home-provenance__bar", "aria-hidden": "true" }
+                                    span { class: "home-provenance__status", "{row.status}" }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if !provenance.pillars.is_empty() {
+                ul { class: "home-provenance__pillars",
+                    for (index , pillar) in provenance.pillars.iter().enumerate() {
+                        li {
+                            class: "home-provenance__pillar",
+                            style: "--home-provenance-index: {index}",
+                            h3 { class: "home-provenance__pillar-heading", "{pillar.heading}" }
+                            p { class: "home-provenance__pillar-body", "{pillar.body}" }
+                        }
+                    }
+                }
+            }
+            if !provenance.notes.is_empty() {
+                div { class: "home-provenance__notes",
+                    for paragraph in provenance.notes.iter() {
+                        p { class: "home-provenance__note",
+                            for run in paragraph.iter() {
+                                if let Some(href) = run.href.as_ref() {
+                                    a { class: "home-service__link", href: "{href}", "{run.text}" }
+                                } else if run.emphasis {
+                                    strong { "{run.text}" }
+                                } else {
+                                    "{run.text}"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Draw one provenance mark, stroked in `currentColor` and hidden from
+/// assistive technology.
+#[component]
+fn ProvenanceMarkGlyph(mark: ProvenanceMark) -> Element {
+    let class = match mark {
+        ProvenanceMark::Request => "home-provenance__mark home-provenance__mark--request",
+        ProvenanceMark::Attorney => "home-provenance__mark home-provenance__mark--attorney",
+        ProvenanceMark::Chain => "home-provenance__mark home-provenance__mark--chain",
+    };
+    rsx! {
+        span { class: "{class}",
+            svg {
+                class: "home-provenance__glyph",
+                xmlns: "http://www.w3.org/2000/svg",
+                view_box: "0 0 24 24",
+                fill: "none",
+                stroke: "currentColor",
+                "stroke-width": "1.5",
+                "stroke-linecap": "round",
+                "stroke-linejoin": "round",
+                "aria-hidden": "true",
+                "focusable": "false",
+                match mark {
+                    ProvenanceMark::Request => rsx! {
+                        path { d: "M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9Z" }
+                        path { d: "M14 3v6h6" }
+                        path { d: "M8 13h8" }
+                        path { d: "M8 17h5" }
+                    },
+                    ProvenanceMark::Attorney => rsx! {
+                        path { d: "M12 3 4 6v6c0 4.4 3.4 8.1 8 9 4.6-.9 8-4.6 8-9V6Z" }
+                        path { d: "m9 12 2 2 4-4" }
+                    },
+                    ProvenanceMark::Chain => rsx! {
+                        rect { x: "3", y: "9", width: "6", height: "6", rx: "1" }
+                        rect { x: "15", y: "9", width: "6", height: "6", rx: "1" }
+                        path { d: "M9 12h6" }
+                        path { d: "M12 9v-4" }
+                        path { d: "M12 15v4" }
+                    },
                 }
             }
         }
@@ -352,6 +563,7 @@ mod tests {
                                 }],
                             ],
                         }),
+                        provenance: None,
                     },
                 }
             }
@@ -661,6 +873,176 @@ mod tests {
         let out = html();
         assert!(out.contains("site-header"), "header chrome: {out}");
         assert!(out.contains("site-footer__legal"), "footer chrome");
+    }
+
+    /// The provenance section: an ordered flow, a labelled ledger figure, and
+    /// the notes under both. The steps are an `<ol>` because their order is
+    /// the claim; the bars are decoration and stay out of the accessibility
+    /// tree; the glyphs are stroked in `currentColor` and hidden.
+    #[test]
+    fn the_provenance_section_renders_an_ordered_flow_a_ledger_figure_and_notes() {
+        let out = provenance_html();
+        assert!(
+            out.contains(r#"class="neon-card home-provenance""#),
+            "the section is one card: {out}"
+        );
+        assert!(
+            out.contains(r#"aria-labelledby="home-provenance-heading""#)
+                && out.contains(r#"<h2 id="home-provenance-heading""#),
+            "the section is labelled by its own heading: {out}"
+        );
+        assert!(
+            out.contains(r#"<ol class="home-provenance__steps""#),
+            "the flow is ordered: {out}"
+        );
+        assert_eq!(
+            out.matches(r#"class="home-provenance__step""#).count(),
+            3,
+            "three steps: {out}"
+        );
+        assert!(
+            out.contains(r#"style="--home-provenance-index: 2""#),
+            "each step carries its index for the stagger: {out}"
+        );
+        for glyph in ["mark--request", "mark--attorney", "mark--chain"] {
+            assert!(out.contains(glyph), "{glyph} renders: {out}");
+        }
+        assert!(
+            out.contains(r#"stroke="currentColor""#) && out.contains(r#"focusable="false""#),
+            "the glyphs take the text colour and hide from assistive technology: {out}"
+        );
+        assert!(
+            out.contains(r#"<figure class="home-provenance__ledger" aria-labelledby="home-provenance-ledger-heading""#)
+                && out.contains(r#"<h3 id="home-provenance-ledger-heading""#),
+            "the ledger is a figure named by its heading: {out}"
+        );
+        assert!(
+            out.contains("An illustration, not a count."),
+            "the caption says what the ledger is: {out}"
+        );
+        assert!(
+            out.contains(r#"<span class="home-provenance__bar" aria-hidden="true">"#),
+            "the bars are decoration: {out}"
+        );
+        assert!(out.contains(">Attested<"), "the status is real text: {out}");
+        assert!(
+            out.contains(r#"<span class="home-provenance__heading-accent">"#)
+                && out.contains("then recorded on Solana."),
+            "the accent line sits inside the one h2: {out}"
+        );
+        assert!(
+            out.contains(r#"<ul class="home-provenance__pillars""#)
+                && out.contains(r#"<h3 class="home-provenance__pillar-heading">"#),
+            "the pillars are a list of tiles: {out}"
+        );
+        assert!(
+            out.contains(r#"<p class="home-provenance__note">"#)
+                && out.contains("<strong>lawyer-attested nodes</strong>"),
+            "the notes render with their emphasis: {out}"
+        );
+        let service = out.find("home-service").expect("the service section");
+        let provenance = out.find("home-provenance").expect("the provenance section");
+        let practices = out.find("home-practices").expect("the practice boxes");
+        assert!(
+            service < provenance && provenance < practices,
+            "prose, then the record, then the boxes: {out}"
+        );
+        assert!(
+            !out.contains("firm-glow"),
+            "the section's wash is its own, clipped inside the card: {out}"
+        );
+    }
+
+    #[test]
+    fn the_provenance_section_stays_out_of_the_markup_when_there_is_none() {
+        for out in [html(), statement_only_html()] {
+            assert!(!out.contains("home-provenance"), "no empty section: {out}");
+        }
+    }
+
+    /// The `html()` fixture plus a provenance section.
+    fn provenance_html() -> String {
+        fn app() -> Element {
+            rsx! {
+                HomePage {
+                    chrome: PublicChrome::default(),
+                    content: HomeContent {
+                        heading: "Ask companies to delete your data.".to_string(),
+                        contact_href: "mailto:contact@neonlaw.com".to_string(),
+                        contact_label: "Contact us".to_string(),
+                        service: Some(ServiceSection {
+                            heading: "What this practice does".to_string(),
+                            body: vec![vec![CopyRun {
+                                text: "We help.".to_string(),
+                                emphasis: false,
+                                href: None,
+                            }]],
+                        }),
+                        provenance: Some(ProvenanceSection {
+                            overline: "How the record works".to_string(),
+                            heading: "Verified by a lawyer,".to_string(),
+                            heading_accent: "then recorded on Solana.".to_string(),
+                            lead: "We verify the request first.".to_string(),
+                            steps: vec![
+                                ProvenanceStep {
+                                    mark: ProvenanceMark::Request,
+                                    label: "You send the request".to_string(),
+                                    detail: "Name the company.".to_string(),
+                                },
+                                ProvenanceStep {
+                                    mark: ProvenanceMark::Attorney,
+                                    label: "A licensed attorney verifies it".to_string(),
+                                    detail: "Reviewed before it goes out.".to_string(),
+                                },
+                                ProvenanceStep {
+                                    mark: ProvenanceMark::Chain,
+                                    label: "We upload the record to Solana".to_string(),
+                                    detail: "A hash, never the request.".to_string(),
+                                },
+                            ],
+                            ledger_heading: "Where your data has been removed from".to_string(),
+                            ledger_caption: "An illustration, not a count.".to_string(),
+                            ledger: vec![ProvenanceLedgerRow {
+                                label: "A data broker".to_string(),
+                                status: "Attested".to_string(),
+                            }],
+                            pillars: vec![ProvenancePillar {
+                                heading: "Privacy".to_string(),
+                                body: "Only a hash goes on the chain.".to_string(),
+                            }],
+                            notes: vec![vec![
+                                CopyRun {
+                                    text: "Our ".to_string(),
+                                    emphasis: false,
+                                    href: None,
+                                },
+                                CopyRun {
+                                    text: "lawyer-attested nodes".to_string(),
+                                    emphasis: true,
+                                    href: None,
+                                },
+                                CopyRun {
+                                    text: " are long-term provenance.".to_string(),
+                                    emphasis: false,
+                                    href: None,
+                                },
+                            ]],
+                        }),
+                        practices_heading: "The work".to_string(),
+                        practices: vec![PracticeLink {
+                            mark: PracticeMark::Gavel,
+                            heading: "Data-deletion requests".to_string(),
+                            body: "One scoped request.".to_string(),
+                            href: "/services".to_string(),
+                        }],
+                        ..HomeContent::default()
+                    },
+                }
+            }
+        }
+        let mut dom = VirtualDom::new(app);
+        dom.rebuild_in_place();
+        dioxus_ssr::render(&dom)
     }
 
     /// The page with nothing but its defaults: no hero, no service section.

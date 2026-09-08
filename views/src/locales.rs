@@ -92,6 +92,73 @@ pub struct HomeCopy {
     pub practices_heading: String,
     #[serde(default)]
     pub practices: Vec<PracticeLinkCopy>,
+    /// How a request becomes a durable record. `None` renders no section, so
+    /// a brand that keeps no such record publishes nothing about one.
+    #[serde(default)]
+    pub provenance: Option<ProvenanceSectionCopy>,
+}
+
+/// The home page's provenance section: the flow a request follows, the
+/// ledger illustration beside it, and the prose under both.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProvenanceSectionCopy {
+    pub overline: String,
+    pub heading: String,
+    /// A second line of the heading set in the brand gradient. Empty renders
+    /// the heading alone.
+    #[serde(default)]
+    pub heading_accent: String,
+    #[serde(default)]
+    pub lead: String,
+    /// The flow, in order. Each step is drawn as a node on a rail.
+    #[serde(default)]
+    pub steps: Vec<ProvenanceStepCopy>,
+    pub ledger_heading: String,
+    /// What the ledger illustrates, said plainly beside it.
+    #[serde(default)]
+    pub ledger_caption: String,
+    /// The ledger rows: a place a request went, and the record that followed.
+    #[serde(default)]
+    pub ledger: Vec<ProvenanceLedgerRowCopy>,
+    /// What the record is for, as three or so tiles: privacy, security, and
+    /// the federated work of the nodes.
+    #[serde(default)]
+    pub pillars: Vec<ProvenancePillarCopy>,
+    #[serde(default)]
+    pub notes: Vec<Paragraph>,
+}
+
+/// One tile under the provenance flow.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProvenancePillarCopy {
+    pub heading: String,
+    pub body: String,
+}
+
+/// The decorative mark a provenance step opens on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ProvenanceMark {
+    #[default]
+    Request,
+    Attorney,
+    Chain,
+}
+
+/// One step of the provenance flow.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProvenanceStepCopy {
+    #[serde(default)]
+    pub mark: ProvenanceMark,
+    pub label: String,
+    pub detail: String,
+}
+
+/// One row of the provenance ledger illustration.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProvenanceLedgerRowCopy {
+    pub label: String,
+    pub status: String,
 }
 
 /// The home hero photograph.
@@ -463,6 +530,68 @@ practices:
 "#,
         )
         .expect("home catalog");
+    }
+
+    /// The provenance section is optional, and when present its steps and
+    /// ledger rows deserialize as typed copy rather than free-form maps.
+    #[test]
+    fn home_catalog_deserializes_a_provenance_section() {
+        parse_locale_file(
+            "home",
+            r#"
+head_title: "{site_name} | Home"
+meta_description: Ask companies to delete your data.
+heading: Ask companies to delete your data.
+lead: A licensed attorney helps.
+contact_label: Contact us
+provenance:
+  overline: How the record works
+  heading: Verified, then recorded.
+  lead: We verify the request first.
+  steps:
+    - mark: request
+      label: You send the request
+      detail: Name the company.
+    - mark: attorney
+      label: A licensed attorney verifies it
+      detail: Reviewed before it goes out.
+    - mark: chain
+      label: We upload the record to Solana
+      detail: A hash, never the request.
+  ledger_heading: Where your data has been removed from
+  ledger_caption: An illustration, not a count.
+  ledger:
+    - label: A data broker
+      status: Attested
+  pillars:
+    - heading: Privacy
+      body: Only a hash goes on the chain.
+  notes:
+    - - text: Our lawyer-attested nodes are long-term provenance.
+"#,
+        )
+        .expect("home catalog with provenance");
+        // An unknown mark is a typo in the catalog, not a fourth glyph.
+        let err = parse_locale_file(
+            "home",
+            r"
+head_title: Home
+meta_description: d
+heading: h
+lead: l
+contact_label: c
+provenance:
+  overline: o
+  heading: h
+  ledger_heading: l
+  steps:
+    - mark: rocket
+      label: x
+      detail: y
+",
+        )
+        .expect_err("unknown mark");
+        assert!(err.contains("rocket"), "{err}");
     }
 
     #[test]

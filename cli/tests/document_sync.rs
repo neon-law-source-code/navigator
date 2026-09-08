@@ -50,6 +50,28 @@ fn credentials(root: &Path, host: &str) -> std::path::PathBuf {
     path
 }
 
+fn write_layout_for_validate(root: &Path) {
+    write(
+        root,
+        "navigator.yaml",
+        "project: acme\nhost: staging.neonlaw.com\n",
+    );
+    write(root, "README.md", "# acme\n\nProject source.\n");
+    write(
+        root,
+        ".github/workflows/ci.yml",
+        r#"name: ci
+on: [pull_request]
+jobs:
+  ci:
+    uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@26.8.23
+    secrets: inherit
+    with:
+      version: "26.8.23"
+"#,
+    );
+}
+
 fn pointer(asset_id: Uuid) -> serde_json::Value {
     serde_json::json!({
         "kind": "filing",
@@ -151,25 +173,7 @@ async fn sync_uploads_through_the_api_writes_a_pointer_and_removes_the_binary() 
         .success()
         .stdout(predicate::str::contains("0 uploaded"));
 
-    write(
-        root.path(),
-        "navigator.yaml",
-        "project: acme\nhost: staging.neonlaw.com\n",
-    );
-    write(root.path(), "README.md", "# acme\n\nProject source.\n");
-    write(
-        root.path(),
-        ".github/workflows/ci.yml",
-        r#"name: ci
-on: [pull_request]
-jobs:
-  ci:
-    uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@26.8.23
-    secrets: inherit
-    with:
-      version: "26.8.23"
-"#,
-    );
+    write_layout_for_validate(root.path());
     navigator()
         .current_dir(root.path())
         .args(["validate", "."])

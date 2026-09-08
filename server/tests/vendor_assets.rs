@@ -428,29 +428,37 @@ fn the_home_hero_carries_its_own_opaque_shade_under_the_wordmark() {
     );
 }
 
-/// Hero motion may move text into place, but it may not fade normal-size copy
-/// below the contrast floor while the page first renders. The browser gate
-/// caught the Fractional GC lead mid-fade in the release KIND image; this
+/// Motion may move normal-size text into place, but it may not fade it below
+/// the contrast floor while the page first renders. The browser gate caught
+/// the Fractional GC virtue cards mid-fade in the release KIND image; this
 /// inexpensive stylesheet check keeps that transient failure out of ordinary
 /// workspace runs too.
 #[test]
-fn transactional_hero_entrance_keeps_text_opaque() {
+fn transactional_text_entrances_keep_text_opaque() {
     let css = std::fs::read_to_string(public_dir().join("css/transactional.css"))
         .expect("read the transactional stylesheet");
 
-    let keyframe = css
-        .split_once("@keyframes speed-heading-in {")
-        .and_then(|(_, rest)| rest.split_once("}\n\n.speed-hero__lead"))
-        .map(|(declarations, _)| declarations)
-        .expect("transactional.css must retain the shared hero entrance keyframe");
-    assert!(
-        keyframe.contains("transform: translateY(0.4rem);"),
-        "the hero entrance remains a motion, not a static replacement: {keyframe}"
-    );
-    assert!(
-        !keyframe.contains("opacity:"),
-        "normal-size hero copy may not fade below WCAG contrast while entering: {keyframe}"
-    );
+    for (name, expected_transform) in [
+        ("speed-heading-in", "transform: translateY(0.4rem);"),
+        ("speed-virtue-in", "transform: translateY(1rem);"),
+        ("speed-card-in", "transform: translateY(1rem);"),
+    ] {
+        let keyframe = css
+            .split_once(&format!("@keyframes {name} {{"))
+            .and_then(|(_, rest)| rest.split_once("\n  }\n}"))
+            .map_or_else(
+                || panic!("transactional.css must retain the {name} keyframe"),
+                |(declarations, _)| declarations,
+            );
+        assert!(
+            keyframe.contains(expected_transform),
+            "{name} remains a motion, not a static replacement: {keyframe}"
+        );
+        assert!(
+            !keyframe.contains("opacity:"),
+            "normal-size text may not fade below WCAG contrast while {name} runs: {keyframe}"
+        );
+    }
 }
 
 /// An inline link inside prose carries a cue that is not colour (WCAG 1.4.1).

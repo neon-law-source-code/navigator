@@ -3076,6 +3076,9 @@ async fn seed_letters(surreal: &SurrealDb, report: &mut SeedReport) -> anyhow::R
             surreal,
             &crate::letters::NewLetter {
                 mailroom_id: mr.id,
+                // The canonical seed is firm-wide reference data, not tied to
+                // any one matter (ENG-310).
+                project_id: None,
                 direction: crate::letters::DIRECTION_INCOMING.to_string(),
                 sender: rec.sender,
                 recipient: rec.mailroom.name.clone(),

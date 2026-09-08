@@ -424,9 +424,14 @@ Embedded Rego's allow rules in priority order:
    `/app/lawyer/person-entity-roles` feed `store::conflicts::check_new_matter`, and ABA Model Rule 1.10 imputes a
    conflict firm-wide, so a lawyer must be able to see one arising out of a matter they are not on — scoping either
    would narrow the conflict check to the checker's own caseload. `/app/admin/letters` and `/app/admin/email-log` are
-   Owner/Admin only: `letter` and `sent_email` carry no project link to scope by, so the admin gate is the interim close
-   until one exists. Which class each listing belongs to is written down once, in
-   `webapp::admin_listing::LAWYER_LISTINGS`.
+   participation-scoped the same way (ENG-310): `letter.project_id` and `sent_email.project_id` are
+   `option<record<project>>`, `NONE` for every historical row and for correspondence not tied to a matter, so those rows
+   are absent from a scoped read rather than admitted. `/app/lawyer/letters/{id}` scopes by the same field. Which class
+   each listing belongs to is written down once, in `webapp::admin_listing::LAWYER_LISTINGS`. The lawyer dashboard's
+   Conflicts section (ENG-307, `store::conflicts::findings_for_matters`) reads the graph the other way: it anchors the
+   traversal on the caller's own visible matters but does not scope the *findings* to them, so a conflict arising out of
+   a matter the caller does not participate in still surfaces there too — the identical Model Rule 1.10 reasoning above,
+   applied to an existing matter rather than a proposed one.
 3. **Clerk supervised lens** — a Clerk enters `/app/projects` with everyone else, and
    `store::access::matter_viewer` resolves them to `MatterViewer::Clerk` only when they hold a firm-side row and the
    matter has a flagged lawyer DRI who currently holds the lawyer tier. That variant renders the matter name, status,

@@ -43,23 +43,28 @@ pub struct LetterDetailView {
     pub firm_name: String,
 }
 
-/// Fetch one letter for the `{id}` in the request path: refuse non-lawyer, read
-/// the injected `SurrealDb`, load the letter, and resolve its mailroom name and
-/// address through the same nested join the detail handler used. Returns
-/// `fields: None` when the id resolves to no row (the not-found state).
+/// Fetch one letter for the `{id}` in the request path: refuse non-lawyer,
+/// scope to the caller's participation ledger (ENG-310), read the injected
+/// `SurrealDb`, load the letter, and resolve its mailroom name and address
+/// through the same nested join the detail handler used. Returns `fields:
+/// None` — the same not-found state a missing id renders — both when no
+/// letter has that id and when one exists outside the caller's scope, so
+/// probing a guessed id cannot distinguish "no such letter" from "not yours
+/// to read".
 #[server]
 pub async fn get_letter() -> Result<LetterDetailView, ServerFnError> {
-    let role = crate::admin_listing::require_lawyer().await?;
+    let surreal = consume_context::<store::surreal::SurrealDb>();
+    let (role, scope) = crate::admin_listing::require_lawyer_in_matters(&surreal).await?;
     let axum::extract::Path(id) =
         dioxus_fullstack_core::FullstackContext::extract::<axum::extract::Path<uuid::Uuid>, _>()
             .await?;
 
     // The whole `letter -> mailroom -> address` chain lives in SurrealDB
     // now, so the detail page is one engine's work end to end.
-    let surreal = consume_context::<store::surreal::SurrealDb>();
     let letter = store::letters::find_by_id(&surreal, id)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
+        .map_err(|e| ServerFnError::new(e.to_string()))?
+        .filter(|letter| scope.admits(letter.project_id));
 
     let fields = match letter {
         None => None,

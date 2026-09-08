@@ -60,6 +60,10 @@ pub struct SentEmail {
     /// The `From:` actually used, so the trail reflects what the
     /// backend sent rather than what the default was.
     pub sender: String,
+    /// The matter this send belongs to, when one is known. `None` for a
+    /// firm-wide send and for every historical row — see the schema note on
+    /// `sent_email.project_id`.
+    pub project_id: Option<Uuid>,
     /// Slug of the template that rendered the body (`welcome`, …).
     /// `None` for ad-hoc messages.
     pub template_slug: Option<String>,
@@ -81,6 +85,7 @@ pub struct NewSentEmail {
     pub recipient: String,
     pub subject: String,
     pub sender: String,
+    pub project_id: Option<Uuid>,
     pub template_slug: Option<String>,
     pub body: String,
     pub outcome: String,
@@ -96,6 +101,7 @@ struct SentEmailRow {
     recipient: String,
     subject: String,
     sender: String,
+    project_id: Option<surrealdb::types::RecordId>,
     template_slug: Option<String>,
     body: String,
     outcome: String,
@@ -114,6 +120,7 @@ impl SentEmailRow {
             recipient: self.recipient,
             subject: self.subject,
             sender: self.sender,
+            project_id: self.project_id.as_ref().and_then(record_uuid),
             template_slug: self.template_slug,
             body: self.body,
             outcome: self.outcome,
@@ -127,7 +134,7 @@ impl SentEmailRow {
 
 /// The projection every read shares, so one field list describes the row
 /// and a new column cannot reach [`SentEmailRow`] from only one query.
-const SELECT: &str = "id, recipient, subject, sender, template_slug, body, outcome, \
+const SELECT: &str = "id, recipient, subject, sender, project_id, template_slug, body, outcome, \
                       sg_message_id, sent_at, inserted_at, updated_at";
 
 /// Errors reading or writing the audit trail.
@@ -171,6 +178,7 @@ pub async fn record(db: &SurrealDb, new: &NewSentEmail) -> Result<SentEmail, Sen
              recipient = $recipient, \
              subject = $subject, \
              sender = $sender, \
+             project_id = $project_id, \
              template_slug = $template_slug, \
              body = $body, \
              outcome = $outcome, \
@@ -182,6 +190,11 @@ pub async fn record(db: &SurrealDb, new: &NewSentEmail) -> Result<SentEmail, Sen
         .bind(("recipient", new.recipient.clone()))
         .bind(("subject", new.subject.clone()))
         .bind(("sender", new.sender.clone()))
+        .bind((
+            "project_id",
+            new.project_id
+                .map(|p| record_id(crate::projects::PROJECT_TABLE, p)),
+        ))
         .bind(("template_slug", new.template_slug.clone()))
         .bind(("body", new.body.clone()))
         .bind(("outcome", new.outcome.clone()))
@@ -198,6 +211,12 @@ pub async fn record(db: &SurrealDb, new: &NewSentEmail) -> Result<SentEmail, Sen
 /// One page of the trail, newest first, with `requested` clamped into
 /// range.
 ///
+/// `project_ids` scopes the whole page — both the count and the fetch — to
+/// those matters (ENG-310); `None` reads the unscoped trail, which is what
+/// Owner and Admin see. Filtering after an unscoped fetch would page over
+/// the wrong total for a scoped caller, so the `WHERE` runs inside the same
+/// transaction as the count.
+///
 /// The count, the clamp, and the fetch run inside one explicit
 /// `BEGIN`/`COMMIT` transaction, so all three describe one snapshot of
 /// the table — see the module header for why a bare statement batch
@@ -209,9 +228,20 @@ pub async fn record(db: &SurrealDb, new: &NewSentEmail) -> Result<SentEmail, Sen
 /// # Errors
 ///
 /// [`SentEmailError::Db`] if the query fails.
-pub async fn page(db: &SurrealDb, requested: u64, per_page: u64) -> Result<Page, SentEmailError> {
+pub async fn page(
+    db: &SurrealDb,
+    requested: u64,
+    per_page: u64,
+    project_ids: Option<&[Uuid]>,
+) -> Result<Page, SentEmailError> {
     let per_page = per_page.max(1);
     let requested = requested.max(1);
+    let scoped = project_ids.is_some();
+    let projects: Vec<surrealdb::types::RecordId> = project_ids
+        .unwrap_or_default()
+        .iter()
+        .map(|id| record_id(crate::projects::PROJECT_TABLE, *id))
+        .collect();
     let mut response = db
         .query(format!(
             // The explicit `BEGIN`/`COMMIT` is load-bearing, not
@@ -221,6 +251,11 @@ pub async fn page(db: &SurrealDb, requested: u64, per_page: u64) -> Result<Page,
             // count in one snapshot and fetch in another — exactly the
             // race this pager must not lose. `BEGIN` is what consumes
             // the following statements into a single transaction.
+            //
+            // `$scoped == false OR project_id IN $projects` keeps one query
+            // shape for both callers: an unscoped read never evaluates the
+            // `IN` past the short-circuit, and a scoped read with an empty
+            // `$projects` (a lawyer on no matters) correctly matches nothing.
             //
             // `GROUP ALL` yields one `{ count: n }` object rather than a
             // bare number, so the count is reached through `.count`;
@@ -235,17 +270,21 @@ pub async fn page(db: &SurrealDb, requested: u64, per_page: u64) -> Result<Page,
             // `math::max` lifts to the one empty page. LIMIT and START
             // accept only ints, hence the casts.
             "BEGIN; \
-             LET $total = (SELECT count() FROM {TABLE} GROUP ALL)[0].count ?? 0; \
+             LET $total = (SELECT count() FROM {TABLE} \
+             WHERE ($scoped = false OR project_id IN $projects) GROUP ALL)[0].count ?? 0; \
              LET $pages = <int> math::max([1, ($total + $per_page - 1) / $per_page]); \
              LET $page = <int> math::min([$requested, $pages]); \
              LET $start = <int> (($page - 1) * $per_page); \
              SELECT {SELECT} FROM {TABLE} \
+             WHERE ($scoped = false OR project_id IN $projects) \
              ORDER BY sent_at DESC, id DESC LIMIT $per_page START $start; \
              RETURN [$pages, $page]; \
              COMMIT;"
         ))
         .bind(("per_page", per_page))
         .bind(("requested", requested))
+        .bind(("scoped", scoped))
+        .bind(("projects", projects))
         .await
         .and_then(surrealdb::IndexedResults::check)?;
 
@@ -293,6 +332,7 @@ mod tests {
     use super::{all, page, record, NewSentEmail};
     use crate::surreal::test_support::mem;
     use crate::surreal::SurrealDb;
+    use crate::test_support::seed_project_surreal;
     use chrono::{DateTime, TimeZone, Utc};
 
     fn at(minute: u32) -> DateTime<Utc> {
@@ -304,6 +344,7 @@ mod tests {
             recipient: recipient.to_string(),
             subject: "Your matter".to_string(),
             sender: "support@neonlaw.com".to_string(),
+            project_id: None,
             template_slug: Some("welcome".to_string()),
             body: "Hello.".to_string(),
             outcome: "sent".to_string(),
@@ -331,7 +372,51 @@ mod tests {
         assert_eq!(written.outcome, "sent");
         assert_eq!(written.sent_at, at(0));
         assert_eq!(written.sg_message_id.as_deref(), Some("sg-1"));
+        assert_eq!(written.project_id, None);
         assert_eq!(all(&db).await.unwrap(), vec![written]);
+    }
+
+    /// ENG-310: a send recorded for a known matter carries it through the
+    /// round trip untouched.
+    #[tokio::test]
+    async fn a_message_scoped_to_a_project_reads_back_with_it() {
+        let db = mem().await;
+        let project_id = seed_project_surreal(&db, "matter").await;
+        let mut message = a_message("virgo@example.com", at(0));
+        message.project_id = Some(project_id);
+
+        let written = record(&db, &message).await.unwrap();
+        assert_eq!(written.project_id, Some(project_id));
+    }
+
+    /// ENG-310: a row written before this field existed has no value for it
+    /// at all — not the engine's default, an absent field entirely. The
+    /// reader must tolerate that rather than fail the whole row.
+    #[tokio::test]
+    async fn a_historical_message_with_no_project_id_reads_as_none() {
+        let db = mem().await;
+        let id = uuid::Uuid::now_v7();
+        db.query(
+            "CREATE $id SET recipient = $recipient, subject = $subject, sender = $sender, \
+             body = $body, outcome = $outcome, sent_at = $sent_at",
+        )
+        .bind(("id", crate::surreal::record_id(super::TABLE, id)))
+        .bind(("recipient", "virgo@example.com".to_string()))
+        .bind(("subject", "Your matter".to_string()))
+        .bind(("sender", "support@neonlaw.com".to_string()))
+        .bind(("body", "Hello.".to_string()))
+        .bind(("outcome", "sent".to_string()))
+        .bind(("sent_at", surrealdb::types::Datetime::from(at(0))))
+        .await
+        .unwrap();
+
+        let read = all(&db)
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|row| row.id == id)
+            .expect("row reads back");
+        assert_eq!(read.project_id, None);
     }
 
     #[tokio::test]
@@ -371,13 +456,13 @@ mod tests {
         let db = mem().await;
         journal(&db, 5).await;
 
-        let first = page(&db, 1, 2).await.unwrap();
+        let first = page(&db, 1, 2, None).await.unwrap();
         assert_eq!(first.total_pages, 3);
         assert_eq!(first.page, 1);
         assert_eq!(first.rows.len(), 2);
 
-        let second = page(&db, 2, 2).await.unwrap();
-        let third = page(&db, 3, 2).await.unwrap();
+        let second = page(&db, 2, 2, None).await.unwrap();
+        let third = page(&db, 3, 2, None).await.unwrap();
         assert_eq!(third.rows.len(), 1, "the final page is partial");
 
         let walked: Vec<String> = first
@@ -404,7 +489,7 @@ mod tests {
         // The pager renders `page` against `total_pages`; an unclamped
         // request would fetch nothing while the label still claimed a
         // real page.
-        let beyond = page(&db, 99, 2).await.unwrap();
+        let beyond = page(&db, 99, 2, None).await.unwrap();
         assert_eq!(beyond.total_pages, 2);
         assert_eq!(beyond.page, 2, "clamped to the final page");
         assert_eq!(beyond.rows.len(), 1);
@@ -413,7 +498,7 @@ mod tests {
     #[tokio::test]
     async fn an_empty_trail_is_one_empty_page() {
         let db = mem().await;
-        let empty = page(&db, 1, 50).await.unwrap();
+        let empty = page(&db, 1, 50, None).await.unwrap();
         assert!(empty.rows.is_empty());
         assert_eq!(
             empty.total_pages, 1,
@@ -426,7 +511,44 @@ mod tests {
     async fn a_full_page_boundary_does_not_invent_an_empty_last_page() {
         let db = mem().await;
         journal(&db, 4).await;
-        let exact = page(&db, 1, 2).await.unwrap();
+        let exact = page(&db, 1, 2, None).await.unwrap();
         assert_eq!(exact.total_pages, 2, "4 rows at 2 per page is 2 pages");
+    }
+
+    /// ENG-310: scoping to a project set filters both the count and the
+    /// fetch, so the pagination math describes the scoped set rather than
+    /// the whole table.
+    #[tokio::test]
+    async fn a_scoped_page_counts_and_fetches_only_its_own_projects() {
+        let db = mem().await;
+        let visible = seed_project_surreal(&db, "matter-a").await;
+        let other = seed_project_surreal(&db, "matter-b").await;
+
+        for n in 0..3 {
+            let mut message = a_message(&format!("a{n}@example.com"), at(n));
+            message.project_id = Some(visible);
+            record(&db, &message).await.unwrap();
+        }
+        for n in 3..5 {
+            let mut message = a_message(&format!("a{n}@example.com"), at(n));
+            message.project_id = Some(other);
+            record(&db, &message).await.unwrap();
+        }
+        // A firm-wide send with no matter at all must not leak into either
+        // caller's scoped page.
+        record(&db, &a_message("firmwide@example.com", at(5)))
+            .await
+            .unwrap();
+
+        let scoped = page(&db, 1, 10, Some(&[visible])).await.unwrap();
+        assert_eq!(scoped.total_pages, 1);
+        assert_eq!(scoped.rows.len(), 3, "only the visible project's rows");
+        assert!(scoped
+            .rows
+            .iter()
+            .all(|row| row.project_id == Some(visible)));
+
+        let unscoped = page(&db, 1, 10, None).await.unwrap();
+        assert_eq!(unscoped.rows.len(), 6, "Owner/Admin still see every row");
     }
 }

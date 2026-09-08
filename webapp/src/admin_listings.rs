@@ -529,21 +529,26 @@ pub fn LawyerMailrooms() -> Element {
 /// mailroom through an in-memory join, so it builds rows itself and hands them
 /// to `admin_listing::view`.
 ///
-/// This is matter content — sender, recipient, and summary of correspondence in
-/// both directions — but `letter` carries no link to a project to scope it by.
-/// Its only link is `mailroom_id`, and a mailroom is a physical address, not a
-/// matter. So the interim close is the admin gate rather than participation
-/// scoping: it stops the disclosure today with no schema change, at the cost of
-/// a firm-wide view a Lawyer arguably never should have had. Adding
-/// `letter.project_id` plus a backfill is the real fix and is tracked
-/// separately.
+/// This is **matter content** — sender, recipient, and summary of
+/// correspondence in both directions — scoped through
+/// [`crate::admin_listing::require_lawyer_in_matters`] to the caller's
+/// participation ledger (ENG-310). `letter.project_id` now carries the link;
+/// a row with none (mail not yet, or never, tied to a matter) is absent from
+/// a scoped read, same as every other matter-content listing.
+///
+/// Gate first, then read, then scope, then project.
 #[server]
 pub async fn list_letters() -> Result<AdminListingView, ServerFnError> {
-    let role = crate::admin_listing::require_admin().await?;
+    // Resolve the handle first, because the gate needs it to read the
+    // participation ledger — but the gate still runs before the listing's own
+    // query, so a non-lawyer caller never triggers it.
     let surreal = consume_context::<store::surreal::SurrealDb>();
-    let letters = store::letters::list_all(&surreal)
+    let (role, scope) = crate::admin_listing::require_lawyer_in_matters(&surreal).await?;
+
+    let mut letters = store::letters::list_all(&surreal)
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
+    scope.retain(&mut letters, |letter| letter.project_id);
     // Both tables are single-engine now, so the in-memory join is one
     // engine's data rather than two.
     let mailrooms = store::mailrooms::list_all(&surreal)
@@ -595,27 +600,35 @@ pub struct EmailLogQuery {
 #[cfg(feature = "server")]
 const EMAIL_LOG_PER_PAGE: u64 = 50;
 
-/// Email log — **Owner/Admin only** (ENG-303). A read-only,
-/// `?page=`-paginated audit view over `sent_emails`, newest first, metadata
-/// only (the body is intentionally not shown). Unlike the other listings it
-/// carries pagination, so it sets the view's `PageState` after building its
-/// rows.
+/// Email log — **matter content**, scoped through
+/// [`crate::admin_listing::require_lawyer_in_matters`] to the caller's
+/// participation ledger (ENG-310). A read-only, `?page=`-paginated audit view
+/// over `sent_emails`, newest first, metadata only (the body is intentionally
+/// not shown). Unlike the other listings it carries pagination, so it sets
+/// the view's `PageState` after building its rows.
 ///
-/// Recipient, subject, and sender of every message the deployment has sent is
-/// matter content, but `sent_email` carries no project link at all — not even
-/// an indirect one — so there is nothing to scope by. Same interim close as
-/// `/app/admin/letters`: the admin gate now, a real `project_id` and backfill in
-/// its own issue.
+/// `sent_email.project_id` now carries the link; scoping runs inside
+/// [`store::sent_emails::page`]'s own transaction, since filtering after an
+/// unscoped fetch would page over the wrong total for a scoped caller.
 #[server]
 pub async fn list_email_log() -> Result<AdminListingView, ServerFnError> {
-    let role = crate::admin_listing::require_admin().await?;
+    // Resolve the handle first, because the gate needs it to read the
+    // participation ledger — but the gate still runs before the listing's own
+    // query, so a non-lawyer caller never triggers it.
+    let db = consume_context::<store::surreal::SurrealDb>();
+    let (role, scope) = crate::admin_listing::require_lawyer_in_matters(&db).await?;
     let axum::extract::Query(query) =
         dioxus_fullstack_core::FullstackContext::extract::<axum::extract::Query<EmailLogQuery>, _>(
         )
         .await?;
     let requested_page = query.page.unwrap_or(1).max(1);
 
-    let db = consume_context::<store::surreal::SurrealDb>();
+    let visible: Option<Vec<uuid::Uuid>> = match &scope {
+        crate::admin_listing::MatterScope::Unscoped => None,
+        crate::admin_listing::MatterScope::Participating(ids) => {
+            Some(ids.iter().copied().collect())
+        }
+    };
     // The count, the clamp, and the fetch are one statement batch inside
     // `store::sent_emails::page`, which SurrealDB runs as one transaction, so
     // all three read one snapshot. Without it, a row logged between the count
@@ -626,7 +639,7 @@ pub async fn list_email_log() -> Result<AdminListingView, ServerFnError> {
         rows: rows_raw,
         total_pages,
         page,
-    } = store::sent_emails::page(&db, requested_page, EMAIL_LOG_PER_PAGE)
+    } = store::sent_emails::page(&db, requested_page, EMAIL_LOG_PER_PAGE, visible.as_deref())
         .await
         .map_err(|e| ServerFnError::new(e.to_string()))?;
     let rows = rows_raw

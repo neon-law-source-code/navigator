@@ -732,6 +732,12 @@ DEFINE TABLE IF NOT EXISTS sent_email SCHEMAFULL PERMISSIONS NONE;
 DEFINE FIELD OVERWRITE recipient ON sent_email TYPE string;
 DEFINE FIELD OVERWRITE subject ON sent_email TYPE string;
 DEFINE FIELD OVERWRITE sender ON sent_email TYPE string;
+-- `NONE` for a firm-wide send (a welcome email, a heartbeat notice) and for
+-- every historical row (ENG-310; no write site could name an unambiguous
+-- matter before this field existed, so nothing backfills it). Set only where
+-- the caller genuinely knows one matter — `recipient` alone is not enough,
+-- since the same person may participate in several.
+DEFINE FIELD OVERWRITE project_id ON sent_email TYPE option<record<project>>;
 DEFINE FIELD OVERWRITE template_slug ON sent_email TYPE option<string>;
 DEFINE FIELD OVERWRITE body ON sent_email TYPE string;
 DEFINE FIELD OVERWRITE outcome ON sent_email TYPE string;
@@ -742,6 +748,8 @@ DEFINE FIELD OVERWRITE updated_at ON sent_email TYPE datetime DEFAULT time::now(
 -- The email log's hot read is a newest-first paginated listing, which scans
 -- without this index.
 DEFINE INDEX OVERWRITE sent_email_sent_at ON sent_email FIELDS sent_at;
+-- The lawyer-tier listing scopes to the caller's participation (ENG-310).
+DEFINE INDEX OVERWRITE sent_email_project_id ON sent_email FIELDS project_id;
 
 -- `visitor_route_counts`: aggregate public-website visit counters, one
 -- row per (day, country, route, source, locale, status class) bucket.
@@ -822,8 +830,16 @@ DEFINE FIELD OVERWRITE direction ON letter TYPE string
 DEFINE FIELD OVERWRITE sender ON letter TYPE string;
 DEFINE FIELD OVERWRITE recipient ON letter TYPE string;
 DEFINE FIELD OVERWRITE summary ON letter TYPE string;
+-- `NONE` for every historical row and for mail that is not yet — or never —
+-- linked to a matter (ENG-310). A mailroom is a physical address, not a
+-- matter, so nothing about `mailroom_id` implies one; the inbound router
+-- files unclassified mail before any matter is known, which is why it is the
+-- one write site and it always passes `NONE`.
+DEFINE FIELD OVERWRITE project_id ON letter TYPE option<record<project>>;
 DEFINE FIELD OVERWRITE inserted_at ON letter TYPE datetime DEFAULT time::now();
 DEFINE FIELD OVERWRITE updated_at ON letter TYPE datetime DEFAULT time::now();
+-- The lawyer-tier listing scopes to the caller's participation (ENG-310).
+DEFINE INDEX OVERWRITE letter_project_id ON letter FIELDS project_id;
 
 -- `questions`: one prompt presented to a respondent during template
 -- traversal. Seeded from template frontmatter by `cli import`, so the

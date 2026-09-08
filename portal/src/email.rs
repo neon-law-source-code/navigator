@@ -140,6 +140,14 @@ impl LoggingEmail {
             recipient: email.to.clone(),
             subject: email.subject.clone(),
             sender: from,
+            // `OutboundEmail` carries no matter context today (ENG-310):
+            // every send that reaches this decorator is either firm-wide
+            // (a welcome email, a heartbeat notice) or, for a workflow-driven
+            // template send, keyed to a person who may participate in more
+            // than one matter — an ambiguity a project id must not paper
+            // over. Threading a real matter through is future work for the
+            // one call site that would actually know it.
+            project_id: None,
             template_slug: email.template_slug.clone(),
             body: email.body.clone(),
             outcome: outcome.to_string(),

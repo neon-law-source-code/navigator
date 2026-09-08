@@ -11034,11 +11034,10 @@ async fn admin_generic_listings_all_mount_and_render_their_heading() {
     let (state, _surreal) = state_with_engines().await;
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
 
-    // Authenticated as Admin: `/app/admin/letters` and `/app/admin/email-log` refuse
-    // the Lawyer tier since ENG-303 (no project link on `letter` or
-    // `sent_email` to scope by), and the admin tier reads every listing here.
+    // Authenticated as Admin, who reads every listing here unscoped
+    // (ENG-310 scopes `/app/admin/letters` and `/app/admin/email-log` to
+    // participation for the Lawyer tier, same as the rest of this class).
     // What each gate admits is the subject of
-    // `unscopeable_matter_content_listings_require_the_admin_tier` and
     // `matter_content_listings_are_scoped_to_participation`; this test is only
     // about the mount.
     for (path, heading) in [
@@ -11133,6 +11132,11 @@ async fn admin_letter_detail_renders_the_record_from_its_path_id() {
         &surreal,
         &store::letters::NewLetter {
             mailroom_id: mailroom.id,
+            // Unlinked; the scoping behavior itself is
+            // `letter_detail_is_scoped_to_participation`'s subject. This test
+            // is only about the path param and the rendered fields, so it
+            // reads through the unscoped Admin tier.
+            project_id: None,
             direction: store::letters::DIRECTION_INCOMING.to_string(),
             sender: "IRS".into(),
             recipient: "Acme Trust".into(),
@@ -11146,7 +11150,7 @@ async fn admin_letter_detail_renders_the_record_from_its_path_id() {
     let resp = get_with_role(
         app,
         &format!("/app/lawyer/letters/{}", letter.id),
-        store::persons::Role::Lawyer,
+        store::persons::Role::Admin,
     )
     .await;
     assert_eq!(resp.status(), StatusCode::OK);
@@ -11170,13 +11174,131 @@ async fn admin_letter_detail_renders_the_record_from_its_path_id() {
     );
 }
 
+/// ENG-310: `/app/lawyer/letters/{id}` is scoped by the same `project_id` as
+/// the listing — a known id outside the caller's participation renders the
+/// same not-found state as an unknown one, so probing a guessed id cannot
+/// distinguish the two. Owner and Admin keep the unscoped read.
+#[allow(clippy::too_many_lines)]
+#[tokio::test]
+async fn letter_detail_is_scoped_to_participation() {
+    let (state, surreal) = state_with_engines().await;
+    let lawyer = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "Scoped Lawyer",
+            "letter-scoped-lawyer@neonlaw.com",
+            store::persons::Role::Lawyer,
+        ),
+    )
+    .await
+    .unwrap();
+    let visible = test_project(&surreal, "Visible Letter Matter", "open").await;
+    let hidden = test_project(&surreal, "Hidden Letter Matter", "open").await;
+    participate(&surreal, lawyer.id, visible.id, "lawyer").await;
+
+    let address = store::addresses::create(
+        &surreal,
+        &store::addresses::NewAddress {
+            line1: "7 Notary Row".into(),
+            city: "Sparks".into(),
+            region: "NV".into(),
+            postal_code: "89431".into(),
+            country: "USA".into(),
+            ..store::addresses::NewAddress::default()
+        },
+    )
+    .await
+    .unwrap();
+    let mailroom = store::mailrooms::create(&surreal, "Reno HQ", address.id)
+        .await
+        .unwrap();
+    let mut letter_ids = Vec::new();
+    for (project_id, summary) in [
+        (Some(visible.id), "Visible letter detail"),
+        (Some(hidden.id), "Hidden letter detail"),
+        (None, "Unlinked letter detail"),
+    ] {
+        let letter = store::letters::record(
+            &surreal,
+            &store::letters::NewLetter {
+                mailroom_id: mailroom.id,
+                project_id,
+                direction: store::letters::DIRECTION_INCOMING.to_string(),
+                sender: "IRS".into(),
+                recipient: "Acme Trust".into(),
+                summary: summary.into(),
+            },
+        )
+        .await
+        .unwrap();
+        letter_ids.push(letter.id);
+    }
+    let [visible_letter, hidden_letter, unlinked_letter] = letter_ids[..] else {
+        unreachable!()
+    };
+
+    let mut session =
+        portal::SessionData::fresh("letter-scoped-lawyer-sub", store::persons::Role::Lawyer);
+    session.person_id = Some(lawyer.id);
+    session.email = Some(lawyer.email);
+    let lawyer_cookie = format!(
+        "{}={}",
+        portal::session::SESSION_COOKIE_NAME,
+        test_sessions().encode(&session)
+    );
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+
+    let visible_body = rendered_body_with_cookie(
+        app.clone(),
+        &format!("/app/lawyer/letters/{visible_letter}"),
+        &lawyer_cookie,
+    )
+    .await;
+    assert!(
+        visible_body.contains("Visible letter detail"),
+        "the participated matter's letter must render; got: {visible_body}",
+    );
+
+    for (id, label) in [
+        (hidden_letter, "an unparticipated matter's"),
+        (unlinked_letter, "an unlinked"),
+    ] {
+        let resp = get_with_cookie(
+            app.clone(),
+            &format!("/app/lawyer/letters/{id}"),
+            &lawyer_cookie,
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::OK, "renders the not-found page");
+        let body = body_string(resp).await;
+        assert!(
+            body.contains("Letter not found"),
+            "{label} letter must render as not-found to a lawyer outside its scope; got: {body}",
+        );
+    }
+
+    // Owner and Admin keep the unscoped read.
+    for role in [store::persons::Role::Owner, store::persons::Role::Admin] {
+        let resp = get_with_role(
+            app.clone(),
+            &format!("/app/lawyer/letters/{hidden_letter}"),
+            role,
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = body_string(resp).await;
+        assert!(
+            body.contains("Hidden letter detail"),
+            "{role:?} must read every letter unscoped; got: {body}",
+        );
+    }
+}
+
 #[tokio::test]
 async fn admin_email_log_paginates_over_fifty_rows() {
-    // Admin, not Lawyer: `/app/admin/email-log` refuses the Lawyer tier since
-    // ENG-303 — `sent_email` carries no project link to scope by, so the admin
-    // gate is the interim close. Which tier is admitted is
-    // `unscopeable_matter_content_listings_require_the_admin_tier`'s subject;
-    // this test is about the log itself.
+    // The Admin tier reads the unscoped trail (ENG-310); scoping itself is
+    // proved by the shared `matter_content_listings_*` tests, which now cover
+    // this listing too. This test is about the pager.
     // The email log is the one paginated listing: 50 rows per page. Seed 51 so
     // there are two pages, then assert page 1 renders its rows and a `?page=2`
     // pager anchor with "Page 1 of 2", and that `?page=2` renders as page 2 of 2.
@@ -11190,6 +11312,7 @@ async fn admin_email_log_paginates_over_fifty_rows() {
                 recipient: format!("user{i}@test.invalid"),
                 subject: format!("Message {i}"),
                 sender: "noreply@test.invalid".into(),
+                project_id: None,
                 body: "body".into(),
                 outcome: "delivered".into(),
                 template_slug: None,
@@ -11550,8 +11673,9 @@ struct MatterContentFixture {
 }
 
 /// Seed one visible matter, one hidden matter, and one unlinked row for each of
-/// the three matter-content listings (`assets`, `answers`, `relationship-logs`),
-/// and return a Lawyer session holding a firm-side row on the visible matter
+/// the five matter-content listings (`assets`, `answers`, `relationship-logs`,
+/// `letters`, `email-log` — ENG-310 added the last two), and return a Lawyer
+/// session holding a firm-side row on the visible matter
 /// only.
 #[allow(clippy::too_many_lines)]
 async fn seed_matter_content(surreal: &store::surreal::SurrealDb) -> MatterContentFixture {
@@ -11720,6 +11844,69 @@ async fn seed_matter_content(surreal: &store::surreal::SurrealDb) -> MatterConte
     .await
     .unwrap();
 
+    // letters → one per matter, plus one with no project link at all
+    // (ENG-310).
+    let mailroom_address = store::addresses::create(
+        surreal,
+        &store::addresses::NewAddress {
+            line1: "500 Silver Street".into(),
+            city: "Reno".into(),
+            region: "NV".into(),
+            postal_code: "89501".into(),
+            country: "USA".into(),
+            ..store::addresses::NewAddress::default()
+        },
+    )
+    .await
+    .unwrap();
+    let mailroom = store::mailrooms::create(surreal, "Scoping intake", mailroom_address.id)
+        .await
+        .unwrap();
+    for (project_id, summary) in [
+        (Some(visible.id), "Visible letter summary"),
+        (Some(hidden.id), "Hidden letter summary"),
+        (None, "Unlinked letter summary"),
+    ] {
+        store::letters::record(
+            surreal,
+            &store::letters::NewLetter {
+                mailroom_id: mailroom.id,
+                project_id,
+                direction: store::letters::DIRECTION_INCOMING.to_string(),
+                sender: "opposing-counsel@example.com".into(),
+                recipient: "intake@neonlaw.com".into(),
+                summary: summary.into(),
+            },
+        )
+        .await
+        .unwrap();
+    }
+
+    // email log → one send per matter, plus one firm-wide send with no
+    // project link at all (ENG-310).
+    for (project_id, recipient) in [
+        (Some(visible.id), "visible-recipient@example.com"),
+        (Some(hidden.id), "hidden-recipient@example.com"),
+        (None, "unlinked-recipient@example.com"),
+    ] {
+        store::sent_emails::record(
+            surreal,
+            &store::sent_emails::NewSentEmail {
+                recipient: recipient.into(),
+                subject: "Matter correspondence".into(),
+                sender: "support@neonlaw.com".into(),
+                project_id,
+                template_slug: Some("welcome".into()),
+                body: "Body".into(),
+                outcome: "sent".into(),
+                sg_message_id: None,
+                sent_at: "2026-05-24T10:00:00Z".parse().unwrap(),
+            },
+        )
+        .await
+        .unwrap();
+    }
+
     let mut session = portal::SessionData::fresh("scoped-lawyer-sub", store::persons::Role::Lawyer);
     session.person_id = Some(lawyer.id);
     session.email = Some(lawyer.email);
@@ -11735,26 +11922,35 @@ async fn seed_matter_content(surreal: &store::surreal::SurrealDb) -> MatterConte
             visible_asset_sha,
             "Visible Adverse Party".into(),
             "Visible attestation detail".into(),
+            "Visible letter summary".into(),
+            "visible-recipient@example.com".into(),
         ],
         hidden_cells: vec![
             hidden_asset_sha,
             "Hidden Adverse Party".into(),
             "Hidden attestation detail".into(),
+            "Hidden letter summary".into(),
+            "hidden-recipient@example.com".into(),
         ],
         unlinked_cells: vec![
             unlinked_asset_sha,
             "Unlinked Adverse Party".into(),
             "Unlinked trail detail".into(),
+            "Unlinked letter summary".into(),
+            "unlinked-recipient@example.com".into(),
         ],
     }
 }
 
-/// The three matter-content listing paths, aligned to the fixture's cell
-/// vectors: assets, answers, relationship-logs.
-const MATTER_CONTENT_PATHS: [&str; 3] = [
+/// The five matter-content listing paths, aligned to the fixture's cell
+/// vectors: assets, answers, relationship-logs, letters, email log (ENG-310
+/// added the last two).
+const MATTER_CONTENT_PATHS: [&str; 5] = [
     "/app/lawyer/assets",
     "/app/lawyer/answers",
     "/app/lawyer/relationship-logs",
+    "/app/admin/letters",
+    "/app/admin/email-log",
 ];
 
 /// GET `uri` with `cookie`, assert it rendered, and return the body — the
@@ -11944,88 +12140,6 @@ async fn conflict_graph_listings_stay_firm_wide_for_an_unparticipating_lawyer() 
     );
 }
 
-/// ENG-303: `/app/admin/letters` and `/app/admin/email-log` refuse the Lawyer tier
-/// and serve Owner/Admin. `letter` and `sent_email` carry no project link, so
-/// the admin gate is the interim close until one exists.
-#[tokio::test]
-async fn unscopeable_matter_content_listings_require_the_admin_tier() {
-    let (state, surreal) = state_with_engines().await;
-    let mailroom_address = store::addresses::create(
-        &surreal,
-        &store::addresses::NewAddress {
-            line1: "500 Silver Street".into(),
-            city: "Reno".into(),
-            region: "NV".into(),
-            postal_code: "89501".into(),
-            country: "USA".into(),
-            ..store::addresses::NewAddress::default()
-        },
-    )
-    .await
-    .unwrap();
-    let mailroom = store::mailrooms::create(&surreal, "Reno intake", mailroom_address.id)
-        .await
-        .unwrap();
-    store::letters::record(
-        &surreal,
-        &store::letters::NewLetter {
-            mailroom_id: mailroom.id,
-            direction: "incoming".into(),
-            sender: "opposing-counsel@example.com".into(),
-            recipient: "intake@neonlaw.com".into(),
-            summary: "Demand letter summary".into(),
-        },
-    )
-    .await
-    .unwrap();
-    store::sent_emails::record(
-        &surreal,
-        &store::sent_emails::NewSentEmail {
-            recipient: "logged-recipient@example.com".into(),
-            subject: "Matter correspondence".into(),
-            body: "Body".into(),
-            sender: "support@neonlaw.com".into(),
-            template_slug: Some("welcome".into()),
-            outcome: "sent".into(),
-            sg_message_id: None,
-            sent_at: "2026-05-24T10:00:00Z".parse().unwrap(),
-        },
-    )
-    .await
-    .unwrap();
-    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
-
-    for (path, disclosed) in [
-        ("/app/admin/letters", "Demand letter summary"),
-        ("/app/admin/email-log", "logged-recipient@example.com"),
-    ] {
-        // A Lawyer-tier session is refused outright — a real 403, not a
-        // successful page with an empty table.
-        let resp = get_with_role(app.clone(), path, store::persons::Role::Lawyer).await;
-        assert_eq!(
-            resp.status(),
-            StatusCode::FORBIDDEN,
-            "{path} must refuse the lawyer tier",
-        );
-        let refused = body_string(resp).await;
-        assert!(
-            !refused.contains(disclosed),
-            "{path} disclosed {disclosed:?} in its refusal body; got: {refused}",
-        );
-
-        // Owner and Admin still read it.
-        for role in [store::persons::Role::Owner, store::persons::Role::Admin] {
-            let resp = get_with_role(app.clone(), path, role).await;
-            assert_eq!(resp.status(), StatusCode::OK, "{path} must serve {role:?}");
-            let body = body_string(resp).await;
-            assert!(
-                body.contains(disclosed),
-                "{path} must render {disclosed:?} for {role:?}; got: {body}",
-            );
-        }
-    }
-}
-
 /// ENG-303: every listing in `webapp::admin_listings` is classified exactly
 /// once in `webapp::admin_listing::LAWYER_LISTINGS`.
 ///
@@ -12063,8 +12177,8 @@ fn every_admin_listing_is_classified_exactly_once() {
             "`{full}` is a lawyer listing with no entry in \
              `webapp::admin_listing::LAWYER_LISTINGS`. Decide what it discloses: \
              `Reference`, `MatterContent` (scope it through \
-             `require_lawyer_in_matters`), `ConflictGraph` (firm-wide, Model Rule \
-             1.10), or `AdminOnly`.",
+             `require_lawyer_in_matters`), or `ConflictGraph` (firm-wide, Model \
+             Rule 1.10).",
         );
     }
     for (name, _, _) in webapp::admin_listing::LAWYER_LISTINGS {
@@ -12927,11 +13041,9 @@ async fn admin_person_show_floats_failure_toast_after_welcome_failed() {
 
 #[tokio::test]
 async fn admin_email_log_empty_state_explains_what_lands_here() {
-    // Admin, not Lawyer: `/app/admin/email-log` refuses the Lawyer tier since
-    // ENG-303 — `sent_email` carries no project link to scope by, so the admin
-    // gate is the interim close. Which tier is admitted is
-    // `unscopeable_matter_content_listings_require_the_admin_tier`'s subject;
-    // this test is about the log itself.
+    // The Admin tier reads the unscoped trail (ENG-310); scoping itself is
+    // proved by the shared `matter_content_listings_*` tests, which now cover
+    // this listing too. This test is about the log itself.
     let (state, _surreal) = state_with_engines().await;
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
     let resp = get_with_role(app, "/app/admin/email-log", store::persons::Role::Admin).await;
@@ -12951,11 +13063,9 @@ async fn admin_email_log_empty_state_explains_what_lands_here() {
 
 #[tokio::test]
 async fn admin_email_log_lists_rows_newest_first() {
-    // Admin, not Lawyer: `/app/admin/email-log` refuses the Lawyer tier since
-    // ENG-303 — `sent_email` carries no project link to scope by, so the admin
-    // gate is the interim close. Which tier is admitted is
-    // `unscopeable_matter_content_listings_require_the_admin_tier`'s subject;
-    // this test is about the log itself.
+    // The Admin tier reads the unscoped trail (ENG-310); scoping itself is
+    // proved by the shared `matter_content_listings_*` tests, which now cover
+    // this listing too. This test is about the log itself.
     let (state, surreal) = state_with_engines().await;
     for (sent_at, recipient) in [
         ("2026-05-24T10:00:00Z", "older@example.com"),
@@ -12969,6 +13079,7 @@ async fn admin_email_log_lists_rows_newest_first() {
                 subject: "Welcome to Neon Law".into(),
                 body: "Welcome aboard.".into(),
                 sender: "support@neonlaw.com".into(),
+                project_id: None,
                 template_slug: Some("welcome".into()),
                 outcome: "sent".into(),
                 sg_message_id: None,

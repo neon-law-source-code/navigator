@@ -399,6 +399,9 @@ pub async fn persist(
         surreal,
         &store::letters::NewLetter {
             mailroom_id,
+            // Inbound mail lands unclassified — no matter is known at this
+            // hop, so nothing here could name one without guessing (ENG-310).
+            project_id: None,
             direction: store::letters::DIRECTION_INCOMING.to_string(),
             sender: email.from.clone(),
             recipient: email.to.clone(),

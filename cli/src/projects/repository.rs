@@ -1542,9 +1542,8 @@ jobs:
             );
         }
         assert!(
-            generated.contains(
-                "\n  ci:\n    needs: [lint, verify, notation, documents, manifest]\n"
-            ),
+            generated
+                .contains("\n  ci:\n    needs: [lint, verify, notation, documents, manifest]\n"),
             "{generated}"
         );
     }

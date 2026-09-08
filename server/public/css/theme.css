@@ -3197,6 +3197,63 @@ a.nav-link:hover {
   margin-bottom: 2rem;
 }
 
+/* The Conflicts section (ENG-307). `--block`/`--review` reuse the KPI pie's
+   red/yellow so severity reads consistently with the closed/pitch pills
+   above it on the same page. */
+.lawyer-conflicts {
+  margin-bottom: 2rem;
+}
+
+.conflict-findings {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+}
+
+.conflict-finding {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--nav-color-border);
+}
+
+.conflict-finding__severity {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--nav-color-on-primary);
+}
+
+.conflict-finding__severity--block {
+  background: rgb(216, 0, 35);
+}
+
+.conflict-finding__severity--review {
+  background: var(--nav-color-warning);
+}
+
+.conflict-finding__explanation {
+  flex: 1 1 auto;
+}
+
+.conflict-finding__confidence {
+  color: var(--nav-color-text-muted);
+  font-size: 0.85rem;
+}
+
+.conflict-finding__links {
+  display: flex;
+  gap: 0.75rem;
+  flex-basis: 100%;
+  font-size: 0.85rem;
+}
+
 .admin-details__columns {
   display: grid;
   gap: 1.5rem;

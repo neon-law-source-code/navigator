@@ -1,11 +1,20 @@
 //! The lawyer workbench at `/app/lawyer` as a Dioxus component (#956 Phase 4) — the
 //! project-first landing page every signed-in lawyer reaches first.
 //!
-//! The successor to the `views::pages::admin::dashboard`. It carries three
+//! The successor to the `views::pages::admin::dashboard`. It carries four
 //! sections: the project KPI overview (a conic-gradient status pie plus a
 //! paginated, status-filtered list of the caller's matters), the project
-//! calendar of upcoming appearances, and the "Details" directory of every administrative
-//! sub-page and JSON endpoint.
+//! calendar of upcoming appearances, the conflicts section (ENG-307), and the
+//! "Details" directory of every administrative sub-page and JSON endpoint.
+//!
+//! **Conflicts are firm-wide, oriented on the caller's own matters — not
+//! scoped to them.** `store::conflicts::findings_for_matters` anchors on the
+//! caller's visible matters (the same collection the KPIs and calendar read)
+//! but walks the *whole* firm graph from there, so a finding arising out of a
+//! matter the caller does not participate in still surfaces. ABA Model Rule
+//! 1.10 imputes a conflict firm-wide; narrowing this to the caller's own
+//! participation would silently defeat the check it exists to run. See
+//! `docs/access-model.md` for the recorded decision.
 //!
 //! **The project list is the caller's workload, not the firm's.** The loader
 //! reads the injected `person_id` and role and goes through
@@ -78,6 +87,19 @@ pub struct ProjectLink {
     pub name: String,
 }
 
+/// One conflict finding, in a wasm-safe shape (ENG-307). `severity` is
+/// `"Block"` or `"Review"`, mirroring `store::conflicts::Severity`; the
+/// underlying `store::conflicts::Reason` is not carried separately because
+/// `explanation` already states it in prose ("Adverse to a current client:
+/// …", "Disclosure on …").
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct ConflictFindingView {
+    pub severity: String,
+    pub counterparty: String,
+    pub explanation: String,
+    pub confidence_pct: i32,
+}
+
 /// The whole rendered dashboard.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct DashboardView {
@@ -114,6 +136,11 @@ pub struct DashboardView {
     /// Current upcoming appearances across the caller's visible matters.
     #[serde(default)]
     pub calendar_events: Vec<crate::project_calendar::CalendarEvent>,
+    /// Ranked firm-wide conflict findings anchored on the caller's visible
+    /// matters (ENG-307). Empty when the graph raises nothing — rendered as
+    /// the section's own empty state, never synthesized.
+    #[serde(default)]
+    pub conflict_findings: Vec<ConflictFindingView>,
 }
 
 /// The dashboard's query string. All four are lenient: an unrecognised value
@@ -222,6 +249,7 @@ pub async fn get_lawyer_dashboard() -> Result<DashboardView, ServerFnError> {
         .collect();
 
     let calendar_events = calendar_events_for_projects(&surreal, &projects).await?;
+    let conflict_findings = conflict_findings_for_projects(&surreal, &projects).await?;
 
     Ok(DashboardView {
         firm_name: crate::app_chrome::firm_name_from_context().await,
@@ -244,7 +272,42 @@ pub async fn get_lawyer_dashboard() -> Result<DashboardView, ServerFnError> {
         logo: crate::app_chrome::app_logo_from_context().await,
         tokens_href: crate::app_chrome::app_tokens_href_from_context().await,
         calendar_events,
+        conflict_findings,
     })
+}
+
+/// Ranked conflict findings anchored on the caller's visible matters
+/// (ENG-307). A query failure is a 500 — the same line every other
+/// dashboard lookup on this page draws, since an empty section is only
+/// honest when the store actually answered.
+#[cfg(feature = "server")]
+async fn conflict_findings_for_projects(
+    surreal: &store::surreal::SurrealDb,
+    projects: &[store::projects::Project],
+) -> Result<Vec<ConflictFindingView>, ServerFnError> {
+    let project_ids: Vec<uuid::Uuid> = projects.iter().map(|project| project.id).collect();
+    let findings = store::conflicts::findings_for_matters(surreal, &project_ids)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "dashboard: findings_for_matters failed");
+            dioxus_fullstack_core::FullstackContext::commit_http_status(
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                None,
+            );
+            ServerFnError::new(e)
+        })?;
+    Ok(findings
+        .into_iter()
+        .map(|finding| ConflictFindingView {
+            severity: match finding.severity {
+                store::conflicts::Severity::Block => "Block".to_string(),
+                store::conflicts::Severity::Review => "Review".to_string(),
+            },
+            counterparty: finding.counterparty,
+            explanation: finding.explanation,
+            confidence_pct: finding.confidence_pct,
+        })
+        .collect())
 }
 
 /// Appearances on the caller's visible matters, labelled with project and
@@ -384,6 +447,7 @@ fn lawyer_dashboard_body(view: &DashboardView) -> Element {
                 dir: view.dir.clone(),
                 events: view.calendar_events.clone(),
             }
+            ConflictsSection { findings: view.conflict_findings.clone() }
             DashboardDetails { role }
         }
     }
@@ -560,6 +624,42 @@ fn ProjectListPagination(view: DashboardView) -> Element {
     }
 }
 
+/// The conflicts section (ENG-307): a ranked list of firm-wide conflict
+/// findings anchored on the caller's visible matters. Follows the
+/// calendar's precedent immediately above — when the graph raises nothing,
+/// this renders its own empty state rather than a placeholder invented for
+/// class. Each finding links out to the three routes that carry the
+/// underlying graph data — Disclosures, Person ↔ entity roles, and
+/// Relationship logs — so a lawyer can go investigate it.
+#[component]
+fn ConflictsSection(findings: Vec<ConflictFindingView>) -> Element {
+    rsx! {
+        section { class: "lawyer-conflicts",
+            h2 { "Conflicts" }
+            if findings.is_empty() {
+                p { class: "nav-muted", "No conflict findings across your matters." }
+            } else {
+                ul { class: "conflict-findings",
+                    for finding in findings.iter() {
+                        li { class: "conflict-finding",
+                            span { class: "conflict-finding__severity conflict-finding__severity--{finding.severity.to_lowercase()}",
+                                "{finding.severity}"
+                            }
+                            span { class: "conflict-finding__explanation", "{finding.explanation}" }
+                            span { class: "conflict-finding__confidence", "{finding.confidence_pct}% confidence" }
+                            nav { class: "conflict-finding__links", aria_label: "Investigate this finding",
+                                a { href: "/app/lawyer/disclosures", "Disclosures" }
+                                a { href: "/app/lawyer/person-entity-roles", "Person ↔ entity roles" }
+                                a { href: "/app/lawyer/relationship-logs", "Relationship logs" }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// The directory of every administrative sub-page and JSON endpoint.
 #[component]
 fn DashboardDetails(role: ViewerRole) -> Element {
@@ -630,6 +730,7 @@ mod tests {
             role: ViewerRole::Lawyer,
             logo: None,
             calendar_events: vec![],
+            conflict_findings: vec![],
         }
     }
 
@@ -735,6 +836,57 @@ mod tests {
         // An inactive column offers ascending and carries no marker.
         assert!(
             html.contains("/app/lawyer?status=open&#38;sort=entity&#38;dir=asc"),
+            "{html}"
+        );
+    }
+
+    /// ENG-307: follows the calendar's precedent — a truthfully empty
+    /// section renders its own empty state rather than a placeholder.
+    #[test]
+    fn conflicts_section_renders_its_empty_state_with_no_findings() {
+        let html = dioxus_ssr::render_element(lawyer_dashboard_body(&view()));
+        assert!(
+            html.contains("No conflict findings across your matters."),
+            "{html}"
+        );
+        assert!(!html.contains("conflict-finding__severity"), "{html}");
+    }
+
+    /// ENG-307: a ranked finding renders its severity, explanation,
+    /// confidence, and the three investigate-further links.
+    #[test]
+    fn conflicts_section_renders_a_ranked_finding_with_its_investigate_links() {
+        let html = dioxus_ssr::render_element(lawyer_dashboard_body(&DashboardView {
+            conflict_findings: vec![ConflictFindingView {
+                severity: "Block".to_string(),
+                counterparty: "Opposing Party".to_string(),
+                explanation:
+                    "Adverse to a current client: Visible Client —adverse_to→ Opposing Party"
+                        .to_string(),
+                confidence_pct: 100,
+            }],
+            ..view()
+        }));
+        assert!(html.contains("conflict-finding__severity--block"), "{html}");
+        assert!(html.contains(">Block<"), "{html}");
+        assert!(
+            html.contains(
+                "Adverse to a current client: Visible Client —adverse_to→ Opposing Party"
+            ),
+            "{html}"
+        );
+        assert!(html.contains("100% confidence"), "{html}");
+        assert!(html.contains(r#"href="/app/lawyer/disclosures""#), "{html}");
+        assert!(
+            html.contains(r#"href="/app/lawyer/person-entity-roles""#),
+            "{html}"
+        );
+        assert!(
+            html.contains(r#"href="/app/lawyer/relationship-logs""#),
+            "{html}"
+        );
+        assert!(
+            !html.contains("No conflict findings across your matters."),
             "{html}"
         );
     }

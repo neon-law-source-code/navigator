@@ -66,6 +66,18 @@ wiki is documentation outside the review gate every other word in the tree passe
 before this command carried them, and the hand-application did not hold, which is the argument for reconciling them
 rather than trusting a setting nobody re-checks.
 
+Secret-scanning **push protection** rides in that same `PATCH`, on a published repository only. A credential pushed to a
+public tree is compromised the moment it lands and deleting the commit does not undo that — the rotation is mandatory
+either way — so refusing the push is the only mitigation that happens before the disclosure. `secret_scanning` itself is
+not asserted: GitHub enables it on every public repository and does not let it be turned off. Non-provider patterns are
+not enabled either, deliberately; generic high-entropy matching against legal prose and rendered PDFs blocks pushes for
+nothing, and a gate that fires on nothing gets bypassed by habit.
+
+The gate is `default_visibility`, so a repository in this deployment's own organization omits the key from the body
+entirely rather than sending it as `null`. That is not a courtesy: push protection at a private repository without
+GitHub Advanced Security answers 422, so an unconditional field would fail every reconcile in that organization instead
+of leaving those repositories alone.
+
 `neon-law-source-code/navigator` alone adds `NAVIGATOR_POLICY`'s three extras — the release-tag ruleset, the DevX
 labels, and the App-installation assertion — because it is the only repository that cuts a release or runs that
 automation.

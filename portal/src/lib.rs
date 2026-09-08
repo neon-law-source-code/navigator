@@ -1631,11 +1631,13 @@ pub fn bootstrap(
     let boundary_auth = state.auth.clone();
     let footer_store = state.surreal.clone();
     let mut router = mount_brand_assets(router, brand_bundle.as_ref())
-        .route(
-            "/public/css/brand-{key}-tokens.css",
-            get(brand_tokens::tokens_css),
-        )
         .nest_service("/public", static_files)
+        // Axum forbids `{key}` inside a mixed path segment (`brand-{key}-tokens.css`).
+        // Middleware keeps the compiled href and still generates from the catalog.
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            brand_tokens::intercept,
+        ))
         .with_state(state)
         .merge(api)
         .merge(api_docs)

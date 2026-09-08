@@ -19,6 +19,28 @@ fn write(dir: &Path, rel: &str, contents: &str) {
     fs::write(path, contents).unwrap();
 }
 
+fn write_project_shell(dir: &Path, code: &str) {
+    write(
+        dir,
+        "navigator.yaml",
+        &format!("host: staging.neonlaw.com\nproject: {code}\n"),
+    );
+    write(dir, "README.md", &format!("# {code}\n\nProject source.\n"));
+    write(
+        dir,
+        ".github/workflows/ci.yml",
+        r#"name: ci
+on: [pull_request]
+jobs:
+  ci:
+    uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@26.8.23
+    secrets: inherit
+    with:
+      version: "26.8.23"
+"#,
+    );
+}
+
 fn navigator() -> Command {
     Command::cargo_bin("navigator").unwrap()
 }
@@ -438,11 +460,7 @@ fn validate_checks_document_pointer_shape_only_in_a_project_repository() {
 #[test]
 fn validate_accepts_a_complete_document_pointer_and_rejects_chain_mismatches() {
     let dir = TempDir::new().unwrap();
-    write(
-        dir.path(),
-        "navigator.yaml",
-        "host: staging.neonlaw.com\nproject: acme\n",
-    );
+    write_project_shell(dir.path(), "acme");
     let path = "documents/agreements/terms.pdf.yml";
     write(
         dir.path(),

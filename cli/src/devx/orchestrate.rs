@@ -459,15 +459,97 @@ pub(super) fn kustomize_render(overlay: &str) -> Result<()> {
 
 // ---------- shared helpers ----------
 
+fn kind_nested_dind_requested() -> bool {
+    matches!(
+        env::var("NAVIGATOR_KIND_NO_HOSTPORT"),
+        Ok(value) if !value.is_empty() && value != "0"
+    )
+}
+
+/// Nested Docker (Cursor Cloud DinD) has no `xt_statistic` module, so
+/// kube-proxy's default iptables mode fails `iptables-restore` and ClusterIP
+/// DNS never works. On an already-created cluster, flip the ConfigMap to
+/// nftables and restart the DaemonSet. New clusters get the same mode from
+/// [`super::inject_kube_proxy_nftables`] in the KIND config.
+fn ensure_kube_proxy_nftables_if_requested() -> Result<()> {
+    if !kind_nested_dind_requested() {
+        return Ok(());
+    }
+    let output = Command::new("kubectl")
+        .args([
+            "--namespace",
+            "kube-system",
+            "get",
+            "configmap",
+            "kube-proxy",
+            "-o",
+            "json",
+        ])
+        .output()
+        .context("get kube-proxy ConfigMap")?;
+    if !output.status.success() {
+        bail!(
+            "kubectl get configmap kube-proxy failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    let mut cm: serde_json::Value =
+        serde_json::from_slice(&output.stdout).context("parse kube-proxy ConfigMap json")?;
+    let Some(conf) = cm.pointer_mut("/data/config.conf") else {
+        return Ok(());
+    };
+    let Some(text) = conf.as_str() else {
+        return Ok(());
+    };
+    if text.lines().any(|line| line.trim() == "mode: nftables") {
+        return Ok(());
+    }
+    eprintln!("==> switching kube-proxy to nftables (NAVIGATOR_KIND_NO_HOSTPORT)");
+    let patched = text.replace("mode: iptables\n", "mode: nftables\n");
+    if patched == text {
+        bail!("kube-proxy ConfigMap has no `mode: iptables` line to replace with nftables");
+    }
+    *conf = serde_json::Value::String(patched);
+    if let Some(meta) = cm.get_mut("metadata").and_then(|v| v.as_object_mut()) {
+        meta.remove("resourceVersion");
+        meta.remove("uid");
+        meta.remove("generation");
+        meta.remove("creationTimestamp");
+        meta.remove("managedFields");
+    }
+    let tmp = tempfile::NamedTempFile::new().context("temp file for kube-proxy ConfigMap")?;
+    let bytes = serde_json::to_vec(&cm).context("serialize kube-proxy ConfigMap")?;
+    std::fs::write(tmp.path(), bytes).context("write kube-proxy ConfigMap")?;
+    run(Command::new("kubectl")
+        .arg("apply")
+        .arg("-f")
+        .arg(tmp.path()))?;
+    run(Command::new("kubectl").args([
+        "--namespace",
+        "kube-system",
+        "rollout",
+        "restart",
+        "daemonset/kube-proxy",
+    ]))?;
+    run(Command::new("kubectl").args([
+        "--namespace",
+        "kube-system",
+        "rollout",
+        "status",
+        "daemonset/kube-proxy",
+        "--timeout=120s",
+    ]))?;
+    Ok(())
+}
+
 /// Nested Docker (Cursor Cloud DinD) has no `xt_multiport` module, so kindnet
 /// cannot DNAT the ingress-nginx `hostPort` 80/443 bindings. When
 /// `NAVIGATOR_KIND_NO_HOSTPORT` is set, drop those hostPorts after apply so
 /// the controller can become Ready. `dev up` reaches Rauthy and the other
 /// deps through kubectl port-forwards, not those hostPorts.
 fn strip_ingress_controller_host_ports_if_requested() -> Result<()> {
-    match env::var("NAVIGATOR_KIND_NO_HOSTPORT") {
-        Ok(value) if !value.is_empty() && value != "0" => {}
-        _ => return Ok(()),
+    if !kind_nested_dind_requested() {
+        return Ok(());
     }
     eprintln!("==> stripping ingress-nginx hostPorts (NAVIGATOR_KIND_NO_HOSTPORT)");
     let output = Command::new("kubectl")
@@ -556,6 +638,7 @@ fn kind_up_steps(root: &Path, cfg: &KindConfig) -> Result<()> {
             .arg(&config_path))?;
     }
     configure_worktree_kubeconfig(root, cfg)?;
+    ensure_kube_proxy_nftables_if_requested()?;
 
     eprintln!("==> installing nginx-ingress");
     run(Command::new("kubectl")
@@ -812,19 +895,24 @@ fn pull_retag_load(
 
 /// Path to the `kind create cluster --config` file. At default host ports this
 /// is the committed `k8s/kind-config.yaml` verbatim (so a standalone `kind
-/// create` against it still works). When any mapped host port is overridden,
-/// render a temp copy under `.devx/`.
+/// create` against it still works). When any mapped host port is overridden
+/// or nested DinD needs nftables kube-proxy, render a copy under `.devx/`.
 fn kind_config_path(root: &Path, cfg: &KindConfig) -> Result<PathBuf> {
     let committed = root.join("k8s/kind-config.yaml");
+    let nested = kind_nested_dind_requested();
     if cfg.ingress_http_port == super::DEFAULT_INGRESS_HTTP_HOST_PORT
         && cfg.ingress_https_port == super::DEFAULT_INGRESS_HTTPS_HOST_PORT
         && cfg.rauthy_port == DEFAULT_RAUTHY_HOST_PORT
+        && !nested
     {
         return Ok(committed);
     }
     let template =
         fs::read_to_string(&committed).with_context(|| format!("read {}", committed.display()))?;
-    let rendered = render_kind_config(&template, cfg);
+    let mut rendered = render_kind_config(&template, cfg);
+    if nested {
+        rendered = super::inject_kube_proxy_nftables(&rendered);
+    }
     let dir = root.join(".devx");
     fs::create_dir_all(&dir).with_context(|| format!("create state dir {}", dir.display()))?;
     let path = dir.join("kind-config.yaml");

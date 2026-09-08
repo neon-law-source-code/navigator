@@ -409,9 +409,10 @@ the system packages the test build needs (`libssl-dev`/`pkg-config` for `fantocc
 the test binaries, and `kubectl` for the `cli::devx::ship` `kubectl kustomize` tests), installs Docker CE with
 `fuse-overlayfs` plus `kind` v0.32.0 and `helm` for opt-in KIND tasks, and warms the build cache. `start` runs
 [`.cursor/start.sh`](.cursor/start.sh), which starts `dockerd` directly — PID 1 is tini, so systemd unit files never
-run — and waits until `docker info` succeeds. Nested KIND has no `xt_multiport` module, so set
-`NAVIGATOR_KIND_NO_HOSTPORT=1` before `dev up` (start.sh exports it) to drop ingress-nginx `hostPort` 80/443; the
-controller still becomes Ready, and `dev up` reaches deps over kubectl port-forwards.
+run — and waits until `docker info` succeeds. Nested KIND has no `xt_multiport` or `xt_statistic` modules, so set
+`NAVIGATOR_KIND_NO_HOSTPORT=1` before `dev up` (start.sh exports it): `dev up` drops ingress-nginx `hostPort` 80/443
+and switches kube-proxy to nftables so ClusterIP DNS works. The controller still becomes Ready, and `dev up` reaches
+deps over kubectl port-forwards.
 
 The default Cloud loop remains the zero-infrastructure path: build, `cargo fmt`, `cargo clippy`, the test gate,
 `navigator`, and editing. Nested Docker + Kubernetes is available when a task needs the KIND dependency tier: confirm

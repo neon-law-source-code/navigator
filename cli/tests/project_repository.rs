@@ -122,7 +122,7 @@ fn the_scaffold_produces_a_repository_that_validates_and_is_idempotent() {
 
     validate(dir.path())
         .success()
-        .stdout(str::contains("0 template(s), 0 application(s), 0 error(s)"));
+        .stdout(str::contains("1 template(s), 0 application(s), 0 error(s)"));
 
     assert!(dir.path().join("README.md").is_file());
     assert!(dir.path().join("AGENTS.md").is_file());
@@ -131,6 +131,8 @@ fn the_scaffold_produces_a_repository_that_validates_and_is_idempotent() {
     assert!(instructions.contains("`apps/<app>/`"));
     assert!(instructions.contains("source grouping is not a URL segment"));
     assert!(instructions.contains("root `portal/` is also"));
+    assert!(instructions.contains("hyphens become `_`) then `__name`"));
+    assert!(instructions.contains("`code:` matches"));
     assert!(instructions.contains("A Project code names a matter and its repository."));
     assert!(instructions.contains("It identifies a client, so it is client data."));
     assert!(instructions.contains("The one legitimate use here is this repository naming itself"));
@@ -139,6 +141,10 @@ fn the_scaffold_produces_a_repository_that_validates_and_is_idempotent() {
     );
     assert!(instructions.contains("A precedent"));
     assert!(instructions.contains("citation is still a breach"));
+    assert!(dir
+        .path()
+        .join("templates/example_project__engagement.md")
+        .is_file());
     assert!(!dir.path().join("templates/project_template.md").exists());
     let workflow = fs::read_to_string(dir.path().join(".github/workflows/ci.yml")).unwrap();
     assert!(workflow.contains("project-gate.yml@"));
@@ -205,7 +211,7 @@ fn templates_only_a_portal_only_and_both_all_validate() {
     scaffold(templates_only.path(), "example-project").success();
     validate(templates_only.path())
         .success()
-        .stdout(str::contains("0 template(s), 0 application(s)"));
+        .stdout(str::contains("1 template(s), 0 application(s)"));
 
     // Both halves in one repository, which is the point of the collapse.
     let both = TempDir::new().unwrap();
@@ -213,15 +219,67 @@ fn templates_only_a_portal_only_and_both_all_validate() {
     write_portal(both.path());
     validate(both.path())
         .success()
-        .stdout(str::contains("0 template(s), 1 application(s)"));
+        .stdout(str::contains("1 template(s), 1 application(s)"));
 
-    // A portal only: no `templates/` at all.
+    // Scaffold now writes one placeholder template; a portal is extra.
     let portal_only = TempDir::new().unwrap();
     scaffold(portal_only.path(), "example-project").success();
     write_portal(portal_only.path());
     validate(portal_only.path())
         .success()
-        .stdout(str::contains("0 template(s), 1 application(s)"));
+        .stdout(str::contains("1 template(s), 1 application(s)"));
+}
+
+#[test]
+fn a_nested_template_is_refused_in_a_project_repository() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "acme").success();
+    let flat = dir.path().join("templates/acme__engagement.md");
+    let nested = dir.path().join("templates/neon_law/acme__engagement.md");
+    fs::create_dir_all(nested.parent().unwrap()).unwrap();
+    fs::rename(&flat, &nested).unwrap();
+    validate(dir.path())
+        .failure()
+        .code(1)
+        .stdout(str::contains("N110"))
+        .stdout(str::contains(
+            "Project templates must be direct `templates/<code>.md` files",
+        ))
+        .stderr(str::contains(
+            "Project templates must be direct `templates/<code>.md` files",
+        ));
+}
+
+#[test]
+fn a_template_filename_must_use_the_project_code_prefix() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "acme").success();
+    fs::rename(
+        dir.path().join("templates/acme__engagement.md"),
+        dir.path().join("templates/project_template.md"),
+    )
+    .unwrap();
+    validate(dir.path())
+        .failure()
+        .code(1)
+        .stderr(str::contains("acme__"))
+        .stderr(str::contains("project_template"));
+}
+
+#[test]
+fn a_template_code_must_equal_the_filename_stem() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "acme").success();
+    let path = dir.path().join("templates/acme__engagement.md");
+    let body = fs::read_to_string(&path)
+        .unwrap()
+        .replace("code: acme__engagement", "code: other__engagement");
+    fs::write(&path, body).unwrap();
+    validate(dir.path())
+        .failure()
+        .code(1)
+        .stderr(str::contains("acme__"))
+        .stderr(str::contains("other__engagement"));
 }
 
 /// Direct `apps/<app>/package.json` files are the app declarations. Every

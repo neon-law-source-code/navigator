@@ -318,6 +318,7 @@ pub fn scaffold(
     }
 
     let manifest = format!("host: {host}\nproject: {project_code}\n");
+    let template_stem = placeholder_template_stem(project_code);
     let files = [
         (root.join("README.md"), readme(project_code)),
         (root.join("AGENTS.md"), agents(project_code)),
@@ -325,6 +326,11 @@ pub fn scaffold(
         (root.join(WORKFLOW), workflow(action_version)),
         (root.join(CD_WORKFLOW), cd_workflow(action_version)),
         (root.join(PROJECT_MANIFEST), manifest),
+        (
+            root.join(TEMPLATE_DIRECTORY)
+                .join(format!("{template_stem}.md")),
+            placeholder_template(&template_stem),
+        ),
     ];
 
     for (path, contents) in files {
@@ -464,7 +470,7 @@ pub fn validate(root: &Path, repository: Option<&str>) -> ExitCode {
     let has_templates = root.join(TEMPLATE_DIRECTORY).is_dir();
     let applications = application_workspaces(root, &mut errors);
     let templates = if has_templates {
-        validate_templates(root, &mut errors, &mut warnings)
+        validate_templates(root, &code, &mut errors, &mut warnings)
     } else {
         0
     };
@@ -913,6 +919,7 @@ pub(crate) const RELEASE_TAG_SHAPE: &str =
 
 fn validate_templates(
     root: &Path,
+    project_code: &str,
     errors: &mut Vec<Finding>,
     warnings: &mut Vec<Finding>,
 ) -> usize {
@@ -961,53 +968,115 @@ fn validate_templates(
     }
 
     let rules = rules::navigator_default_rules_with_codes(&rules::canonical_question_codes());
+    let prefix = template_code_prefix(project_code);
     let mut declared_codes = BTreeMap::new();
     for path in &paths {
-        let contents = match fs::read_to_string(path) {
-            Ok(contents) => contents,
-            Err(error) => {
-                errors.push(Finding::at(path, format!("read template: {error}")));
-                continue;
-            }
-        };
-        let filename = path.file_name().map_or_else(PathBuf::new, PathBuf::from);
-        let source = rules::SourceFile {
-            path: filename,
-            contents: contents.clone(),
-        };
-        for violation in rules.iter().flat_map(|rule| rule.lint(&source)) {
-            let finding = Finding::at(path, format!("{}: {}", violation.code, violation.message));
-            if rules::severity_for_code(violation.code) == rules::Severity::Error {
-                errors.push(finding);
-            } else {
-                warnings.push(finding);
-            }
-        }
-        if let Some(code) = rules::frontmatter::extract(&contents)
-            .and_then(|frontmatter| rules::frontmatter::field(frontmatter, "code"))
-        {
-            let stem = path
-                .file_stem()
-                .and_then(|stem| stem.to_str())
-                .unwrap_or_default();
-            if code != stem {
-                errors.push(Finding::at(
-                    path,
-                    format!("template `code` `{code}` must equal filename stem `{stem}`"),
-                ));
-            }
-            if let Some(first) = declared_codes.insert(code.clone(), path.clone()) {
-                errors.push(Finding::at(
-                    path,
-                    format!(
-                        "duplicate template `code` `{code}`; first declared in {}",
-                        first.display()
-                    ),
-                ));
-            }
-        }
+        lint_project_template(path, &prefix, &rules, &mut declared_codes, errors, warnings);
     }
     paths.len()
+}
+
+fn lint_project_template(
+    path: &Path,
+    prefix: &str,
+    rules: &[Box<dyn rules::Rule>],
+    declared_codes: &mut BTreeMap<String, PathBuf>,
+    errors: &mut Vec<Finding>,
+    warnings: &mut Vec<Finding>,
+) {
+    let contents = match fs::read_to_string(path) {
+        Ok(contents) => contents,
+        Err(error) => {
+            errors.push(Finding::at(path, format!("read template: {error}")));
+            return;
+        }
+    };
+    let filename = path.file_name().map_or_else(PathBuf::new, PathBuf::from);
+    let source = rules::SourceFile {
+        path: filename,
+        contents: contents.clone(),
+    };
+    for violation in rules.iter().flat_map(|rule| rule.lint(&source)) {
+        let finding = Finding::at(path, format!("{}: {}", violation.code, violation.message));
+        if rules::severity_for_code(violation.code) == rules::Severity::Error {
+            errors.push(finding);
+        } else {
+            warnings.push(finding);
+        }
+    }
+    let stem = path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or_default();
+    if !stem.starts_with(prefix) {
+        errors.push(Finding::at(
+            path,
+            format!("template filename stem `{stem}` must start with `{prefix}`"),
+        ));
+    }
+    if let Some(code) = rules::frontmatter::extract(&contents)
+        .and_then(|frontmatter| rules::frontmatter::field(frontmatter, "code"))
+    {
+        if code != stem {
+            errors.push(Finding::at(
+                path,
+                format!(
+                    "template `code` `{code}` must equal filename stem `{stem}` \
+                     (expected prefix `{prefix}`)"
+                ),
+            ));
+        }
+        if let Some(first) = declared_codes.insert(code.clone(), path.to_path_buf()) {
+            errors.push(Finding::at(
+                path,
+                format!(
+                    "duplicate template `code` `{code}`; first declared in {}",
+                    first.display()
+                ),
+            ));
+        }
+    }
+}
+
+/// Filename prefix for a Project template: hyphens in the Project code
+/// become underscores, then `__`. Every `templates/<stem>.md` stem starts
+/// with this, and frontmatter `code:` equals the stem.
+fn template_code_prefix(project_code: &str) -> String {
+    format!("{}__", project_code.replace('-', "_"))
+}
+
+/// Filename stem for the scaffolded placeholder.
+fn placeholder_template_stem(project_code: &str) -> String {
+    format!("{}engagement", template_code_prefix(project_code))
+}
+
+fn placeholder_template(stem: &str) -> String {
+    [
+        "---\n",
+        "kind: letter\n",
+        "title: Engagement letter\n",
+        "respondent_type: entity\n",
+        "code: ",
+        stem,
+        "\n",
+        "jurisdiction: NV\n",
+        "confidential: true\n",
+        "questionnaire:\n",
+        "  BEGIN:\n",
+        "    _: END\n",
+        "  END: {}\n",
+        "workflow:\n",
+        "  BEGIN:\n",
+        "    intake_submitted: lawyer_review\n",
+        "  lawyer_review:\n",
+        "    approved: END\n",
+        "    rejected: END\n",
+        "  END: {}\n",
+        "---\n",
+        "\n",
+        "Replace this placeholder with the notation this Project actually uses.\n",
+    ]
+    .concat()
 }
 
 fn readme(project_code: &str) -> String {
@@ -1033,6 +1102,7 @@ fn agents(project_code: &str) -> String {
          This is one Project's repository. It holds two kinds of source and nothing else.\n\n\
          * `templates/` — notation blueprints, one `templates/<code>.md` per notation.\n\
          * `apps/<app>/` — React + Vite applications, each discovered from its direct `package.json`.\n\n\
+         Filename stems use the Project code (hyphens become `_`) then `__name`; `code:` matches.\n\n\
          Navigator imports each template and records the commit SHA as provenance.\n\n\
          Build each app for `/app/projects/{project_code}/<app>/`; the `apps/` source grouping is not a URL segment.\n\n\
          Derive every in-app path from `import.meta.env.BASE_URL` rather than writing an absolute path by hand.\n\n\

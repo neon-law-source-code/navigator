@@ -54,7 +54,8 @@ Nine normal validation passes happen in this order:
    `navigator.yml` file to rename to `navigator.yaml`.
 8. **An origin pass** (rule `Y009`) scans each built application's `dist/` when the walked root is a Project
    repository. Empty first labels (`.test`) and dots/slashes-only are not hosts. Missing `dist/` is skipped so a
-   source-only tree can still validate; a present `dist/` with an off-origin host fails.
+   source-only tree can still validate; a present `dist/` with an off-origin host fails. An `href` whose host is in
+   `allowed_links` passes only when that anchor carries `rel="noreferrer"`.
 9. **A consumed mutable-tag pass** walks YAML files and Containerfiles/Dockerfiles for an image or binary reference
    pinned to a mutable tag (`latest`, a branch name) rather than a digest or release version, and fails on each one
    found. This has no rule code either.
@@ -132,7 +133,7 @@ for that violation without a human decision; every other code needs a person to 
 | `N107` | Error | Signature placeholders must match the declared signer set and signing state. | No |
 | `N108` | Error | Notation template must declare a stable `code`. | No |
 | `N109` | Error | `output:` must name a known render format, and its paired keys must travel with it. | No |
-| `N110` | Error | Notation template must live under `notations/` and declare `jurisdiction`. | No |
+| `N110` | Error | Catalog: `notations/` shelves. Project: flat `templates/<code>.md`. | No |
 | `N111` | Error | Notation template `code` must be unique across the whole tree. | No |
 | `N112` | **Warning** | A workflow step is allowed but its automation is not built yet. | No |
 | `N113` | Error | Questionnaire state type must be a registered question type. | No |
@@ -236,4 +237,4 @@ for that violation without a human decision; every other code needs a person to 
 | `Y006` | Error | A Project manifest top-level key must be one of the accepted set. | No |
 | `Y007` | Error | A Project manifest `no_live_row` must be a non-empty reason string. | No |
 | `Y008` | Error | The Project manifest filename is `navigator.yaml`; rename `navigator.yml`. | No |
-| `Y009` | Error | A built Project portal must not name an off-origin host. | No |
+| `Y009` | Error | Off-origin hosts fail unless listed in `allowed_links` with `rel="noreferrer"`. | No |

@@ -92,9 +92,10 @@ extension, keyed `name:`, is retired, and a checkout still carrying it reads as 
 and the same reader serve both a Project repository and a staged sample-project bundle:
 `store::sample_project::MANIFEST_FILE` and `cli/src/projects/repository.rs`'s `PROJECT_MANIFEST` name the identical
 string on purpose, so a rename of one cannot leave the other stale. The accepted top-level keys are `host`, `project`,
-`no_live_row`, `allowed_hosts`, and `allowed_prefixes`. An unknown key is refused, naming that set. `host` is a
-hostname, not a row in a deployment table. `project` is a Navigator Project code. `no_live_row` is a non-empty reason
-string.
+`no_live_row`, `allowed_hosts`, `allowed_prefixes`, and `allowed_links`. An unknown key is refused, naming that set.
+`host` is a hostname, not a row in a deployment table. `project` is a Navigator Project code. `no_live_row` is a
+non-empty reason string. `allowed_links` names hosts that appear only as citation `href`s; each such anchor must carry
+`rel="noreferrer"` so the portal URL is not sent as `Referer`.
 
 ## Document staging and pointers
 
@@ -491,8 +492,10 @@ two credential coordinates are read from repository *variables*, not secrets —
 name and a service-account email are public identifiers with no key behind them, so GitHub's per-repository OIDC
 condition and the bucket's IAM prefix condition are the actual trust boundary, not the secrecy of these two strings. The
 bucket and object prefix are not passed in at all; each repository derives them from its own `navigator.yaml`. The
-origin scan is `navigator validate` rule `Y009` over each built `dist/`, not a copied Python file. A new sample
-repository is `navigator site projects repository scaffold`; it does not copy `.github/*.py` from an existing Project.
+origin scan is `navigator validate` rule `Y009` over each built `dist/`, not a copied Python file. A portal that quotes
+an opinion renders footnote URLs as plain text rather than autolinks, so a court's own words are not an `href` and do
+not need `allowed_links`. A new sample repository is `navigator site projects repository scaffold`; it does not copy
+`.github/*.py` from an existing Project.
 
 The three live sample repositories may still carry a historical `publish.yml` that shells those scripts until they are
 regenerated. That copy is not the contract. The CLI parser refuses unknown manifest keys by naming the accepted set, and
@@ -522,8 +525,9 @@ navigator validate .
 
 `scaffold` is idempotent and leaves existing files alone. It writes the repository shell — `navigator.yaml` (requiring
 `--host`), the thin `ci.yml` caller, a `publish.yml` job guarded on `vars.NAVIGATOR_HOST`, `README.md`, `AGENTS.md`, a
-`CLAUDE.md` that delivers `AGENTS.md` (a relative symlink on Unix, a copy on Windows), and `tests/`. It does not write a
-placeholder template. A hand-copied `ci.yml` of 268 lines or more is left alone unless `--replace-gate` is passed.
+`CLAUDE.md` that delivers `AGENTS.md` (a relative symlink on Unix, a copy on Windows), `tests/`, and one placeholder
+`templates/<code>__engagement.md` whose stem is the Project code with hyphens replaced by underscores. A hand-copied
+`ci.yml` of 268 lines or more is left alone unless `--replace-gate` is passed.
 
 The generated `ci.yml` pins Navigator's reusable project-gate workflow to `--action-version`, which defaults to the
 release the running `navigator` reports as its own version — but only when this binary can actually vouch for that
@@ -543,9 +547,30 @@ is checked by the same rules.
 than failing it. A Project may legitimately open before either half exists.
 
 The template directory is flat. Each `templates/<code>.md` file is a Project-local notation blueprint; it is not part of
-Navigator's shared `templates/notations/neon_law` or `templates/notations/forms` catalog. Navigator reads the file at
-`main`, validates its notation contract, persists its bytes as a content-addressed Asset, and records the imported
-commit SHA as provenance.
+Navigator's shared `templates/notations/neon_law` or `templates/notations/forms` catalog. N110 holds that catalog to
+those shelves. When the tree carries a `navigator.yaml` with `project:`, the same rule accepts a direct
+`templates/<code>.md` and refuses a subdirectory — the same demand the layout gate already makes. Navigator reads the
+file at `main`, validates its notation contract, persists its bytes as a content-addressed Asset, and records the
+imported commit SHA as provenance.
+
+From 26.9.6 the catalog prefix N110 expects is `notations/neon_law/` (and `notations/forms/`) rather than a bare
+`templates/neon_law/` or `templates/forms/`. A Navigator-catalog checkout still sitting on the old shelf moves in one
+rename:
+
+```bash
+git mv templates/neon_law templates/notations/neon_law
+git mv templates/forms templates/notations/forms
+```
+
+A Project repository does not take that path. Flatten instead:
+
+```bash
+git mv templates/neon_law/<file>.md templates/<file>.md
+```
+
+The filename stem is the Project code with hyphens replaced by underscores, then `__` and a short name. Frontmatter
+`code:` equals that stem. The layout gate refuses either mismatch and names the expected prefix (`acme__` for Project
+`acme`). Non-conforming files in other repositories are renamed in those repositories; this tree does not rewrite them.
 
 ## An individual client's entity
 

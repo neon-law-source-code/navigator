@@ -43,6 +43,7 @@ pub fn lint(_root: &Path, applications: &[PathBuf], manifest: &Manifest) -> Vec<
     }
     let hosts = merge_hosts(manifest);
     let prefixes = merge_prefixes(manifest);
+    let links = merge_links(manifest);
     let mut findings = Vec::new();
     for application in applications {
         let dist = application.join("dist");
@@ -69,7 +70,7 @@ pub fn lint(_root: &Path, applications: &[PathBuf], manifest: &Manifest) -> Vec<
                 ));
                 continue;
             };
-            findings.extend(check_hosts(&path, &text, &hosts, &prefixes));
+            findings.extend(check_hosts(&path, &text, &hosts, &prefixes, &links));
             findings.extend(check_minified(&path, &text));
             findings.extend(check_sourcemap(&path, &text));
         }
@@ -104,6 +105,10 @@ fn merge_prefixes(manifest: &Manifest) -> BTreeMap<String, String> {
     prefixes
 }
 
+fn merge_links(manifest: &Manifest) -> BTreeMap<String, String> {
+    manifest.allowed_links.clone()
+}
+
 fn scanned_files(dist: &Path) -> Vec<PathBuf> {
     walkdir::WalkDir::new(dist)
         .into_iter()
@@ -127,27 +132,86 @@ fn check_hosts(
     text: &str,
     hosts: &BTreeMap<String, String>,
     prefixes: &BTreeMap<String, String>,
+    links: &BTreeMap<String, String>,
 ) -> Vec<ManifestFinding> {
     let text = strip_base64(text);
+    let anchors = find_anchors(&text);
+    let mut covered = vec![false; text.len().saturating_add(1)];
     let mut findings = Vec::new();
-    for (full, host) in find_urls(&text) {
-        if skip_host(host) || hosts.contains_key(host) {
+    for anchor in &anchors {
+        mark_covered(&mut covered, anchor.href_start, anchor.href_end);
+        if skip_host(&anchor.host) || hosts.contains_key(&anchor.host) {
             continue;
         }
-        if prefixes.keys().any(|prefix| full.starts_with(prefix)) {
+        if prefixes
+            .keys()
+            .any(|prefix| anchor.href.starts_with(prefix.as_str()))
+        {
             continue;
         }
-        findings.push(ManifestFinding::at(
-            path,
-            1,
-            ORIGIN_CODE,
-            format!(
-                "off-origin reference to `{host}` — {}. A portal reads only Navigator's API under its own origin. If this is a dependency's doing, pin or patch it; if it is genuinely not a request, add it to `allowed_hosts` or `allowed_prefixes` in navigator.yaml with the reason.",
-                truncate(&full, 120)
-            ),
-        ));
+        if links.contains_key(&anchor.host) {
+            if has_noreferrer(&anchor.rel) {
+                continue;
+            }
+            findings.push(ManifestFinding::at(
+                path,
+                1,
+                ORIGIN_CODE,
+                format!(
+                    "off-origin link to `{}` is listed in `allowed_links` but is missing \
+                     rel=\"noreferrer\" — {}",
+                    anchor.host,
+                    truncate(&anchor.href, 120)
+                ),
+            ));
+            continue;
+        }
+        findings.push(off_origin_finding(path, &anchor.host, &anchor.href));
+    }
+    for url in find_url_spans(&text) {
+        if range_covered(&covered, url.start, url.end) {
+            continue;
+        }
+        if skip_host(url.host) || hosts.contains_key(url.host) {
+            continue;
+        }
+        if prefixes.keys().any(|prefix| url.full.starts_with(prefix)) {
+            continue;
+        }
+        findings.push(off_origin_finding(path, url.host, &url.full));
     }
     findings
+}
+
+fn off_origin_finding(path: &Path, host: &str, full: &str) -> ManifestFinding {
+    ManifestFinding::at(
+        path,
+        1,
+        ORIGIN_CODE,
+        format!(
+            "off-origin reference to `{host}` — {}. A portal reads only Navigator's API under its own origin. If this is a dependency's doing, pin or patch it; if it is genuinely not a request, add it to `allowed_hosts` or `allowed_prefixes` in navigator.yaml with the reason. Citation hrefs that must not send Referer belong in `allowed_links` and must carry rel=\"noreferrer\".",
+            truncate(full, 120)
+        ),
+    )
+}
+
+fn mark_covered(covered: &mut [bool], start: usize, end: usize) {
+    let end = end.min(covered.len());
+    let start = start.min(end);
+    for slot in covered.iter_mut().take(end).skip(start) {
+        *slot = true;
+    }
+}
+
+fn range_covered(covered: &[bool], start: usize, end: usize) -> bool {
+    let end = end.min(covered.len());
+    let start = start.min(end);
+    (start..end).any(|i| covered[i])
+}
+
+fn has_noreferrer(rel: &str) -> bool {
+    rel.split_whitespace()
+        .any(|token| token.eq_ignore_ascii_case("noreferrer"))
 }
 
 /// Empty first label (`.test`) and dots/slashes-only are not hosts.
@@ -232,8 +296,23 @@ fn is_b64(b: u8) -> bool {
     b.is_ascii_alphanumeric() || b == b'+' || b == b'/'
 }
 
-/// `(full, host)` for each absolute or protocol-relative URL.
-fn find_urls(text: &str) -> Vec<(String, &str)> {
+#[derive(Debug)]
+struct FoundUrl<'a> {
+    full: String,
+    host: &'a str,
+    start: usize,
+    end: usize,
+}
+
+struct FoundAnchor {
+    href: String,
+    host: String,
+    rel: String,
+    href_start: usize,
+    href_end: usize,
+}
+
+fn find_url_spans(text: &str) -> Vec<FoundUrl<'_>> {
     let bytes = text.as_bytes();
     let mut found = Vec::new();
     let mut i = 0;
@@ -257,7 +336,12 @@ fn find_urls(text: &str) -> Vec<(String, &str)> {
                 while full_end < bytes.len() && !is_url_stop(bytes[full_end]) {
                     full_end += 1;
                 }
-                found.push((text[scheme..full_end].to_string(), host));
+                found.push(FoundUrl {
+                    full: text[scheme..full_end].to_string(),
+                    host,
+                    start: scheme,
+                    end: full_end,
+                });
                 i = host_end;
                 continue;
             }
@@ -265,6 +349,139 @@ fn find_urls(text: &str) -> Vec<(String, &str)> {
         i += 1;
     }
     found
+}
+
+fn find_anchors(text: &str) -> Vec<FoundAnchor> {
+    let bytes = text.as_bytes();
+    let mut found = Vec::new();
+    let mut i = 0;
+    while i + 2 < bytes.len() {
+        if bytes[i] == b'<' && is_ascii_a(bytes[i + 1]) && is_a_tag_boundary(bytes[i + 2]) {
+            if let Some(anchor) = parse_anchor(text, i) {
+                let next = anchor.href_end;
+                found.push(anchor);
+                i = next.max(i + 1);
+                continue;
+            }
+        }
+        i += 1;
+    }
+    found
+}
+
+fn is_ascii_a(b: u8) -> bool {
+    b == b'a' || b == b'A'
+}
+
+fn is_a_tag_boundary(b: u8) -> bool {
+    b.is_ascii_whitespace() || b == b'/' || b == b'>'
+}
+
+fn parse_anchor(text: &str, start: usize) -> Option<FoundAnchor> {
+    let bytes = text.as_bytes();
+    let mut i = start + 2;
+    let mut quote: Option<u8> = None;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if let Some(q) = quote {
+            if b == q {
+                quote = None;
+            }
+            i += 1;
+            continue;
+        }
+        if b == b'"' || b == b'\'' {
+            quote = Some(b);
+            i += 1;
+            continue;
+        }
+        if b == b'>' {
+            break;
+        }
+        i += 1;
+    }
+    if i >= bytes.len() || bytes[i] != b'>' {
+        return None;
+    }
+    let inner = &text[start + 2..i];
+    let attrs = parse_attrs(inner);
+    let href = attrs.get("href")?;
+    if href.is_empty() {
+        return None;
+    }
+    let href_start = text[start..=i].find(href.as_str())? + start;
+    let href_end = href_start + href.len();
+    let host = find_url_spans(href)
+        .into_iter()
+        .next()
+        .map(|url| url.host.to_string())?;
+    let rel = attrs.get("rel").cloned().unwrap_or_default();
+    Some(FoundAnchor {
+        href: href.clone(),
+        host,
+        rel,
+        href_start,
+        href_end,
+    })
+}
+
+fn parse_attrs(inner: &str) -> BTreeMap<String, String> {
+    let bytes = inner.as_bytes();
+    let mut i = 0;
+    let mut attrs = BTreeMap::new();
+    while i < bytes.len() {
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        if i >= bytes.len() || bytes[i] == b'/' {
+            break;
+        }
+        let name_start = i;
+        while i < bytes.len() && is_attr_name_byte(bytes[i]) {
+            i += 1;
+        }
+        if i == name_start {
+            i += 1;
+            continue;
+        }
+        let name = inner[name_start..i].to_ascii_lowercase();
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        if i >= bytes.len() || bytes[i] != b'=' {
+            attrs.insert(name, String::new());
+            continue;
+        }
+        i += 1;
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        let value = if i < bytes.len() && (bytes[i] == b'"' || bytes[i] == b'\'') {
+            let q = bytes[i];
+            i += 1;
+            let v_start = i;
+            while i < bytes.len() && bytes[i] != q {
+                i += 1;
+            }
+            let value = inner[v_start..i].to_string();
+            if i < bytes.len() {
+                i += 1;
+            }
+            value
+        } else {
+            let v_start = i;
+            while i < bytes.len() && !bytes[i].is_ascii_whitespace() && bytes[i] != b'/' {
+                i += 1;
+            }
+            inner[v_start..i].to_string()
+        };
+        attrs.insert(name, value);
+    }
+    attrs
+}
+
+fn is_attr_name_byte(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'-' || b == b':' || b == b'_'
 }
 
 fn is_host_byte(b: u8) -> bool {
@@ -306,16 +523,16 @@ mod tests {
     #[test]
     fn regex_literal_slash_pair_is_not_protocol_relative() {
         let js = r"let t=/^\s*<\//.test(e.textAfter);cdn.example/x.js";
-        let urls = find_urls(js);
+        let urls = find_url_spans(js);
         assert!(
             urls.iter()
-                .all(|(_, host)| skip_host(host) || *host != ".test"),
+                .all(|url| skip_host(url.host) || url.host != ".test"),
             "{urls:?}"
         );
         let with_real = r#"let t=/^\s*<\//.test(e.textAfter);fetch("https://cdn.example/x.js")"#;
-        let found = find_urls(with_real);
+        let found = find_url_spans(with_real);
         assert!(
-            found.iter().any(|(_, host)| *host == "cdn.example"),
+            found.iter().any(|url| url.host == "cdn.example"),
             "{found:?}"
         );
     }
@@ -361,5 +578,122 @@ mod tests {
                 .any(|f| f.code == ORIGIN_CODE && f.message.contains("evil.example")),
             "{findings:?}"
         );
+    }
+
+    fn lint_snippet(name: &str, body: &str, links: &[(&str, &str)]) -> Vec<String> {
+        let dir = tempfile::tempdir().unwrap();
+        let dist = dir.path().join("dist");
+        std::fs::create_dir_all(&dist).unwrap();
+        let contents = if Path::new(name)
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("js"))
+        {
+            format!("{body}{}", "x".repeat(200))
+        } else {
+            body.to_string()
+        };
+        std::fs::write(dist.join(name), contents).unwrap();
+        let allowed_links = links
+            .iter()
+            .map(|(host, reason)| ((*host).to_string(), (*reason).to_string()))
+            .collect();
+        let manifest = Manifest {
+            host: Some("staging.neonlaw.com".into()),
+            project: Some("acme".into()),
+            allowed_links,
+            ..Manifest::default()
+        };
+        lint(dir.path(), &[dir.path().to_path_buf()], &manifest)
+            .into_iter()
+            .map(|finding| finding.message)
+            .collect()
+    }
+
+    #[test]
+    fn allowed_links_table() {
+        struct Case {
+            name: &'static str,
+            body: &'static str,
+            links: &'static [(&'static str, &'static str)],
+            expect: &'static str,
+        }
+        let cases = [
+            Case {
+                name: "index.html",
+                body: r#"<a href="https://courts.example/r33" rel="noreferrer">rule</a>"#,
+                links: &[("courts.example", "civil procedure")],
+                expect: "ok",
+            },
+            Case {
+                name: "index.html",
+                body: r#"<a href="https://courts.example/r33" rel="noopener noreferrer">rule</a>"#,
+                links: &[("courts.example", "civil procedure")],
+                expect: "ok",
+            },
+            Case {
+                name: "index.html",
+                body: r#"<a href="https://courts.example/r33">rule</a>"#,
+                links: &[("courts.example", "civil procedure")],
+                expect: "missing-rel",
+            },
+            Case {
+                name: "index.html",
+                body: r#"<a href="https://caselaw.example/x">case</a>"#,
+                links: &[("courts.example", "civil procedure")],
+                expect: "unlisted",
+            },
+            Case {
+                name: "app.js",
+                body: r#"let html='<a href="https://courts.example/r33" rel="noreferrer">rule</a>';"#,
+                links: &[("courts.example", "civil procedure")],
+                expect: "ok",
+            },
+            Case {
+                name: "app.js",
+                body: r#"let html='<a href="https://courts.example/r33">rule</a>';"#,
+                links: &[("courts.example", "civil procedure")],
+                expect: "missing-rel",
+            },
+            Case {
+                name: "app.js",
+                body: r#"fetch("https://courts.example/x.js");"#,
+                links: &[("courts.example", "civil procedure")],
+                expect: "fetch",
+            },
+        ];
+        for case in cases {
+            let messages = lint_snippet(case.name, case.body, case.links);
+            match case.expect {
+                "ok" => assert!(
+                    messages.is_empty(),
+                    "{} {} -> {messages:?}",
+                    case.name,
+                    case.body
+                ),
+                "missing-rel" => assert!(
+                    messages
+                        .iter()
+                        .any(|m| m.contains("allowed_links") && m.contains("noreferrer")),
+                    "{} {} -> {messages:?}",
+                    case.name,
+                    case.body
+                ),
+                "unlisted" => assert!(
+                    messages.iter().any(|m| m.contains("caselaw.example")
+                        && !m.contains("missing rel=\"noreferrer\"")),
+                    "{} {} -> {messages:?}",
+                    case.name,
+                    case.body
+                ),
+                "fetch" => assert!(
+                    messages.iter().any(|m| m.contains("courts.example")
+                        && !m.contains("missing rel=\"noreferrer\"")),
+                    "{} {} -> {messages:?}",
+                    case.name,
+                    case.body
+                ),
+                other => panic!("unknown expect {other}"),
+            }
+        }
     }
 }

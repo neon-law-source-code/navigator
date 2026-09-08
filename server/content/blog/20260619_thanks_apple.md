@@ -4,7 +4,7 @@ title: Thanks, Apple
 description: A farewell to my Apple teammates, and the north star that's taking me to Neon Law.
 ---
 
-_Nick is a lawyer for Neon Law_.
+_Nick is a lawyer at Neon Law._
 
 ![If fruit falls, it's fair game](img/thanks-apple/collage-6.jpg)
 

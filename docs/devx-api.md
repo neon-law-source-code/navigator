@@ -34,10 +34,10 @@ the same Restate registration and ingress checks as the general `Heartbeat` cana
 
 ## Runner image inventory
 
-`navigator-runner` is amd64-only. The integration-gated tag flow publishes it to private Artifact Registry with the
-release tag and `latest`; the `navigator-*` cleanup rule owns its retention. It carries the pinned Rust toolchain,
-Chrome/ChromeDriver pair, Node LTS, Claude Code CLI, `cargo-llvm-cov`, and a built `navigator` CLI with dependency-warm
-Cargo layers.
+`navigator-runner` is amd64-only. The integration-gated tag flow publishes it to GHCR (`ghcr.io/neon-law-source-code`)
+with the release tag and `latest`; `.github/workflows/ghcr-retention.yml` owns its retention. It carries the pinned Rust
+toolchain, Chrome/ChromeDriver pair, Node LTS, Claude Code CLI, `cargo-llvm-cov`, and a built `navigator` CLI with
+dependency-warm Cargo layers.
 
 Its dependency-first Cargo recipe warms the workspace target cache without making cache bytes authoritative.
 

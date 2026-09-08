@@ -44,11 +44,12 @@ Everything is Rust and env-driven — no per-deployment value is baked into a co
    `AGENTS.md`). Flavor A is a thin "POST and exit"; flavor B does the work and exits non-zero on failure so the Job is
    marked failed.
 2. **An image** — servers from `images/Containerfile.<name>`; triggers from the shared `images/Containerfile.trigger`
-   (one `--build-arg CRATE=`/`BIN=` row). CI (`deploy.yml`) builds and publishes it to
-   `YOUR_GCP_REGION-docker.pkg.dev/YOUR_IMAGES_PROJECT_ID/navigator/navigator-<name>` tagged `YY.M.D` (the release date)
-   plus `latest`; the GKE nodes pull it via Workload Identity (the registry is private, and lives in the images project,
-   not the cluster's). CI owns image builds — there is no per-image `cargo run -p cli -- image-<name>` build command —
-   and the local KIND loop **pulls** them (`navigator dev deploy` / `dev worktree-env --demo`).
+   (one `--build-arg CRATE=`/`BIN=` row). CI (`deploy.yml`) builds and publishes it to GHCR as
+   `ghcr.io/neon-law-source-code/navigator-<name>`, tagged with the release version plus `latest`. The packages are
+   public, so a node on the GHCR path pulls with no imagePullSecret and no registry grant;
+   [`gke-prod.md`](gke-prod.md#deploy-flow) says how to confirm which pull path a given cluster is on. CI owns image
+   builds — there is no per-image `cargo run -p cli -- image-<name>` build command — and the local KIND loop **pulls**
+   them (`navigator dev deploy` / `dev worktree-env --demo`).
 3. **A manifest** under `examples/deploy/k8s/exports/` with placeholders (`YOUR_PROJECT_ID` for the environment,
    `YOUR_IMAGES_PROJECT_ID` for the registry the image comes from, the image tag, any ingress URL), namespace
    `navigator`. Render real values at apply time; keep the committed file generic.
@@ -76,7 +77,7 @@ spec:
           restartPolicy: OnFailure
           containers:
             - name: nrs-scraper
-              image: YOUR_GCP_REGION-docker.pkg.dev/YOUR_IMAGES_PROJECT_ID/navigator/navigator-nrs-scraper:YY.M.D
+              image: ghcr.io/neon-law-source-code/navigator-nrs-scraper:YY.M.D
               envFrom:
                 - secretRef:
                     name: navigator-web-secrets   # store credentials, storage creds, etc.
@@ -96,10 +97,10 @@ year-round, set `spec.timeZone: "America/Los_Angeles"` instead of doing the math
 ## Build and deploy
 
 CI owns image publishing. Cron trigger images are built and pushed by `deploy.yml` to
-`YOUR_GCP_REGION-docker.pkg.dev/YOUR_IMAGES_PROJECT_ID/navigator/navigator-<name>` tagged `YY.M.D` + `latest` — the same
-CI-published flow as `navigator-web` and `workflows-service`, never a local `docker build` + push side channel. Nothing
-is built on a laptop, and the private registry is pulled via Workload Identity by the GKE nodes (no imagePullSecret).
-Deploying a cron job is therefore just: pin the manifest to the published `YY.M.D` tag and apply.
+`ghcr.io/neon-law-source-code/navigator-<name>` tagged with the release version + `latest` — the same CI-published flow
+as `navigator-web` and `workflows-service`, never a local `docker build` + push side channel. Nothing is built on a
+laptop, and the login is the run's own `GITHUB_TOKEN` (see [`gitops.md`](gitops.md#keyless-pushes-to-ghcr)). Deploying a
+cron job is therefore just: pin the manifest to the published tag and apply.
 
 ```bash
 # The deployment's coordinates are plaintext TOML — export them from its config:
@@ -135,8 +136,8 @@ end-to-end after deploy.
 2. Write the Rust binary; **make a re-run safe** — the schedule is at-least-once, and a failed run just runs again next
    period. Exit non-zero on failure so the Job is marked failed and shows in history.
 3. Add a server `images/Containerfile.<name>` (or a `--build-arg CRATE=`/`BIN=` row for a trigger), and add the image to
-   `deploy.yml`'s publish matrix so CI builds and pushes it to the Artifact Registry. (There is no per-image CLI build
-   command; CI owns image builds.)
+   `deploy.yml`'s publish matrix so CI builds and pushes it to GHCR. (There is no per-image CLI build command; CI owns
+   image builds.)
 4. Add `cron-<name>.yaml` under `examples/deploy/k8s/exports/` with placeholders, namespace `navigator`, a UTC schedule
    with a Pacific comment.
 5. Once CI has published the image, render the manifest to the `YY.M.D` tag and apply (above). For flavor A, also

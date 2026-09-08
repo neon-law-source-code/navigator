@@ -131,6 +131,8 @@ fn the_scaffold_produces_a_repository_that_validates_and_is_idempotent() {
     assert!(instructions.contains("`apps/<app>/`"));
     assert!(instructions.contains("source grouping is not a URL segment"));
     assert!(instructions.contains("root `portal/` is also"));
+    assert!(instructions.contains("hyphens become `_`) then `__name`"));
+    assert!(instructions.contains("`code:` matches"));
     assert!(instructions.contains("A Project code names a matter and its repository."));
     assert!(instructions.contains("It identifies a client, so it is client data."));
     assert!(instructions.contains("The one legitimate use here is this repository naming itself"));
@@ -246,6 +248,38 @@ fn a_nested_template_is_refused_in_a_project_repository() {
         .stderr(str::contains(
             "Project templates must be direct `templates/<code>.md` files",
         ));
+}
+
+#[test]
+fn a_template_filename_must_use_the_project_code_prefix() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "acme").success();
+    fs::rename(
+        dir.path().join("templates/acme__engagement.md"),
+        dir.path().join("templates/project_template.md"),
+    )
+    .unwrap();
+    validate(dir.path())
+        .failure()
+        .code(1)
+        .stderr(str::contains("acme__"))
+        .stderr(str::contains("project_template"));
+}
+
+#[test]
+fn a_template_code_must_equal_the_filename_stem() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "acme").success();
+    let path = dir.path().join("templates/acme__engagement.md");
+    let body = fs::read_to_string(&path)
+        .unwrap()
+        .replace("code: acme__engagement", "code: other__engagement");
+    fs::write(&path, body).unwrap();
+    validate(dir.path())
+        .failure()
+        .code(1)
+        .stderr(str::contains("acme__"))
+        .stderr(str::contains("other__engagement"));
 }
 
 /// Direct `apps/<app>/package.json` files are the app declarations. Every

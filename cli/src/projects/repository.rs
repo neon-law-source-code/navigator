@@ -470,7 +470,7 @@ pub fn validate(root: &Path, repository: Option<&str>) -> ExitCode {
     let has_templates = root.join(TEMPLATE_DIRECTORY).is_dir();
     let applications = application_workspaces(root, &mut errors);
     let templates = if has_templates {
-        validate_templates(root, &mut errors, &mut warnings)
+        validate_templates(root, &code, &mut errors, &mut warnings)
     } else {
         0
     };
@@ -919,6 +919,7 @@ pub(crate) const RELEASE_TAG_SHAPE: &str =
 
 fn validate_templates(
     root: &Path,
+    project_code: &str,
     errors: &mut Vec<Finding>,
     warnings: &mut Vec<Finding>,
 ) -> usize {
@@ -967,6 +968,7 @@ fn validate_templates(
     }
 
     let rules = rules::navigator_default_rules_with_codes(&rules::canonical_question_codes());
+    let prefix = template_code_prefix(project_code);
     let mut declared_codes = BTreeMap::new();
     for path in &paths {
         let contents = match fs::read_to_string(path) {
@@ -989,17 +991,26 @@ fn validate_templates(
                 warnings.push(finding);
             }
         }
+        let stem = path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap_or_default();
+        if !stem.starts_with(&prefix) {
+            errors.push(Finding::at(
+                path,
+                format!("template filename stem `{stem}` must start with `{prefix}`"),
+            ));
+        }
         if let Some(code) = rules::frontmatter::extract(&contents)
             .and_then(|frontmatter| rules::frontmatter::field(frontmatter, "code"))
         {
-            let stem = path
-                .file_stem()
-                .and_then(|stem| stem.to_str())
-                .unwrap_or_default();
             if code != stem {
                 errors.push(Finding::at(
                     path,
-                    format!("template `code` `{code}` must equal filename stem `{stem}`"),
+                    format!(
+                        "template `code` `{code}` must equal filename stem `{stem}` \
+                         (expected prefix `{prefix}`)"
+                    ),
                 ));
             }
             if let Some(first) = declared_codes.insert(code.clone(), path.clone()) {
@@ -1016,11 +1027,16 @@ fn validate_templates(
     paths.len()
 }
 
-/// Filename stem for a Project template: hyphens in the Project code
-/// become underscores, then `__` and a short name. Scaffold writes
-/// `<that>__engagement.md`.
+/// Filename prefix for a Project template: hyphens in the Project code
+/// become underscores, then `__`. Every `templates/<stem>.md` stem starts
+/// with this, and frontmatter `code:` equals the stem.
+fn template_code_prefix(project_code: &str) -> String {
+    format!("{}__", project_code.replace('-', "_"))
+}
+
+/// Filename stem for the scaffolded placeholder.
 fn placeholder_template_stem(project_code: &str) -> String {
-    format!("{}__engagement", project_code.replace('-', "_"))
+    format!("{}engagement", template_code_prefix(project_code))
 }
 
 fn placeholder_template(stem: &str) -> String {
@@ -1075,6 +1091,7 @@ fn agents(project_code: &str) -> String {
          This is one Project's repository. It holds two kinds of source and nothing else.\n\n\
          * `templates/` — notation blueprints, one `templates/<code>.md` per notation.\n\
          * `apps/<app>/` — React + Vite applications, each discovered from its direct `package.json`.\n\n\
+         Filename stems use the Project code (hyphens become `_`) then `__name`; `code:` matches.\n\n\
          Navigator imports each template and records the commit SHA as provenance.\n\n\
          Build each app for `/app/projects/{project_code}/<app>/`; the `apps/` source grouping is not a URL segment.\n\n\
          Derive every in-app path from `import.meta.env.BASE_URL` rather than writing an absolute path by hand.\n\n\

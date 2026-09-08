@@ -567,6 +567,12 @@ A Project repository does not take that path. Flatten instead:
 git mv templates/neon_law/<file>.md templates/<file>.md
 ```
 
+The filename stem is the Project code with hyphens replaced by underscores, then
+`__` and a short name. Frontmatter `code:` equals that stem. The layout gate
+refuses either mismatch and names the expected prefix (`acme__` for Project
+`acme`). Non-conforming files in other repositories are renamed in those
+repositories; this tree does not rewrite them.
+
 ## An individual client's entity
 
 A Project's `entity_id` is `NOT NULL` (see [the glossary](glossary.md#project)): every matter opens against a

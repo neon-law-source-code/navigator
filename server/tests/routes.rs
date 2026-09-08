@@ -1729,7 +1729,7 @@ async fn owner_lists_the_seeded_practice_and_its_brands() {
     assert!(html.contains("Shook Law PLLC"), "{html}");
     assert!(html.contains("Entity: Shook Law PLLC"), "{html}");
     assert!(
-        html.contains("Brands: delete-your-data, lawyer-shook, neon"),
+        html.contains("Brands: neon, delete-your-data, lawyer-shook"),
         "{html}"
     );
     assert!(

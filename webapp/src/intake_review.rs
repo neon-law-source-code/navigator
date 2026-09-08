@@ -38,6 +38,9 @@ pub struct IntakeReviewData {
     pub signature_request_id: Option<String>,
     /// The assembled document, rendered to HTML — what actually gets signed.
     pub rendered_html: String,
+    /// True when governing law was filled as Nevada because no answer was stored.
+    #[serde(default)]
+    pub governing_law_defaulted: bool,
     pub reask_questions: Vec<ReaskQuestion>,
     /// The catalog string for the approve-and-send action, resolved server-side
     /// so the button and its accessible name cannot drift apart.
@@ -233,6 +236,11 @@ fn review_body(view: &IntakeReviewView) -> Element {
                     }
                 }
             }
+            if data.governing_law_defaulted {
+                p { class: "nav-muted", role: "status",
+                    "Governing law defaulted to Nevada; confirm or change"
+                }
+            }
             h2 { "Rendered document" }
             // The assembled document, already rendered and sanitized by
             // `views::notation`. This is the artifact that gets signed, so it is
@@ -308,6 +316,7 @@ mod tests {
                 workflow_state: state.to_string(),
                 signature_request_id: signature.map(str::to_string),
                 rendered_html: "<article class=\"notation\"><p>body</p></article>".to_string(),
+                governing_law_defaulted: false,
                 reask_questions: vec![ReaskQuestion {
                     code: "person__client".to_string(),
                     label: "Client name".to_string(),
@@ -429,6 +438,27 @@ mod tests {
             html.matches("name=\"_csrf\" value=\"TOK\"").count(),
             2,
             "{html}"
+        );
+    }
+
+    #[test]
+    fn awaiting_review_shows_governing_law_defaulted_before_the_draft() {
+        let mut defaulted = view("lawyer_review", None);
+        defaulted.data.governing_law_defaulted = true;
+        let html = render(&defaulted);
+        let notice = html
+            .find("Governing law defaulted to Nevada; confirm or change")
+            .expect("defaulted notice");
+        let draft = html.find("Rendered document").expect("draft heading");
+        assert!(
+            notice < draft,
+            "the defaulted notice must appear before the draft: {html}"
+        );
+
+        let chosen = render(&view("lawyer_review", None));
+        assert!(
+            !chosen.contains("Governing law defaulted to Nevada; confirm or change"),
+            "a chosen Nevada must not show the defaulted notice: {chosen}"
         );
     }
 }

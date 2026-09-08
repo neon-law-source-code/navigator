@@ -170,6 +170,12 @@ fn retired_org_name() -> String {
     ["Neon", "Law", "Foundation"].join(" ")
 }
 
+/// The retired nonprofit's repository handle, assembled so this test does not
+/// restate the contiguous coordinate it rejects.
+fn retired_org_handle() -> String {
+    ["neon", "law", "foundation"].join("-")
+}
+
 /// The prose surrounding a match — 200 characters either side, snapped out to
 /// the nearest character boundary so a multi-byte dash in the copy cannot panic
 /// the slice.
@@ -1846,30 +1852,36 @@ fn the_internal_assignment_names_the_firm_that_engaged_the_author() {
     );
 }
 
-/// No tracked file contains the retired nonprofit's display name as a
-/// contiguous phrase — product copy, comments, and tests all assemble it at
-/// runtime if they need to match against a served page.
+/// No tracked file contains the retired nonprofit's display name or repository
+/// handle — product copy, comments, and tests all assemble them at runtime if
+/// they need to match against a served page.
 #[test]
 fn no_file_contains_the_retired_org_display_name() {
-    let needle = retired_org_name().to_lowercase();
+    let needles = [
+        ("display name", retired_org_name().to_lowercase()),
+        ("repository handle", retired_org_handle()),
+    ];
     let mut offenders = Vec::new();
     for path in walk_repo_files(|_| true) {
         let Ok(body) = fs::read_to_string(&path) else {
             continue;
         };
-        if body.to_lowercase().contains(&needle) {
-            let rel = path
-                .strip_prefix(repo_root())
-                .unwrap_or(&path)
-                .to_string_lossy()
-                .replace("../", "");
-            offenders.push(rel);
+        let body = body.to_lowercase();
+        for (label, needle) in &needles {
+            if body.contains(needle) {
+                let rel = path
+                    .strip_prefix(repo_root())
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .replace("../", "");
+                offenders.push(format!("{rel}: retired {label}"));
+            }
         }
     }
     assert!(
         offenders.is_empty(),
-        "the retired nonprofit's display name is gone from the tree; these \
-         files still contain it:\n  {}",
+        "the retired nonprofit's display name and repository handle are gone \
+         from the tree; these files still contain one:\n  {}",
         offenders.join("\n  ")
     );
 }

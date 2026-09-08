@@ -480,6 +480,10 @@ at all.
 
 ### The `neon-law-staging` sample lane
 
+**Derive the repository owner from the checkout; never restate it.** The publish mechanism reads the owner from the
+checkout's remote and combines it with the repository name. Manifests, workflows, and examples must not carry a
+hand-maintained organization handle: the checkout is the source of truth.
+
 Three public repositories — `neon-law-staging/sample-litigation`, `/sample-transactional` and `/sample-estate` — each
 hold one sample portal, named for the Project code it mounts on. Because the repository name *is* the code, the action's
 derived prefix is already correct and no `repository:` override is needed. `dist_dir: dist` is set because these

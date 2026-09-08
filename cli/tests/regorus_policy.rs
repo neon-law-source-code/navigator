@@ -197,9 +197,14 @@ fn regorus_matches_every_checked_in_policy_decision() {
     //   (#517): Lawyer and Admin admitted; Client, Clerk, and anonymous
     //   denied.
     // 414 + 5 = 419.
+    //
+    // + 8 for brand presentation edit: Owner and Admin reach
+    //   `/app/brands/{key}/edit` and `PATCH /app/api/brands/{key}`; Lawyer
+    //   and Clerk are denied on both.
+    // 419 + 8 = 427.
     assert_eq!(
         test_names.len(),
-        419,
+        427,
         "the policy decision inventory changed; review every new or removed rule"
     );
 

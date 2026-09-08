@@ -1729,7 +1729,7 @@ async fn owner_lists_the_seeded_practice_and_its_brands() {
     assert!(html.contains("Shook Law PLLC"), "{html}");
     assert!(html.contains("Entity: Shook Law PLLC"), "{html}");
     assert!(
-        html.contains("Brands: delete-your-data, lawyer-shook, neon"),
+        html.contains("Brands: neon, delete-your-data, lawyer-shook"),
         "{html}"
     );
     assert!(
@@ -9059,12 +9059,43 @@ async fn an_app_page_links_its_own_brands_tokens_stylesheet_and_font() {
         dyd_body.contains(r#"href="/public/css/brand-delete-your-data-tokens.css""#),
         "{dyd_body}"
     );
-    assert!(
-        dyd_body.contains("font-family:'Plus Jakarta Sans'"),
-        "{dyd_body}"
-    );
+    assert!(!dyd_body.contains("Plus Jakarta Sans"), "{dyd_body}");
     assert!(!dyd_body.contains("GORP Serif"), "{dyd_body}");
     assert!(!dyd_body.contains("brand-neon-tokens.css"), "{dyd_body}");
+}
+
+/// The tokens href is not a static file: the router generates CSS from the
+/// closed catalogs. Axum cannot bind `{key}` inside `brand-{key}-tokens.css`,
+/// so this is the covering request for the intercept, not a path param.
+#[tokio::test]
+async fn brand_tokens_stylesheet_is_generated_and_other_public_css_still_serves() {
+    let state =
+        empty_state_with_canonical_host(CanonicalHost::new(Some("www.neonlaw.com".into()))).await;
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+
+    let tokens = get_on_host(&app, "/public/css/brand-neon-tokens.css", "www.neonlaw.com").await;
+    assert_eq!(tokens.status(), StatusCode::OK);
+    let content_type = tokens
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("");
+    assert!(
+        content_type.starts_with("text/css"),
+        "content-type: {content_type}"
+    );
+    let css = body_string(tokens).await;
+    assert!(css.contains("--nav-font-family:"), "{css}");
+    assert!(css.contains("GORP Serif"), "{css}");
+    assert!(css.contains("--nav-color-primary:"), "{css}");
+
+    let theme = get_on_host(&app, "/public/css/theme.css", "www.neonlaw.com").await;
+    assert_eq!(theme.status(), StatusCode::OK);
+    let theme_css = body_string(theme).await;
+    assert!(!theme_css.is_empty());
+
+    let missing = get_on_host(&app, "/public/css/brand-acme-tokens.css", "www.neonlaw.com").await;
+    assert_eq!(missing.status(), StatusCode::NOT_FOUND);
 }
 
 /// Issue `GET path` against `app` with the given `Host:` header.

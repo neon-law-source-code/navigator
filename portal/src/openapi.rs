@@ -278,6 +278,43 @@ pub fn document_with_base(base: &str) -> Value {
             }
           }
         },
+        "/app/api/brands/{key}": {
+          "patch": {
+            "summary": "Update a brand's typeface and palette",
+            "description":
+              "Sets the brand row's typeface and palette from the closed catalogs in \
+               `views::brand`. Free CSS is refused. The path parameter is the brand key \
+               string, not a UUID. Authorization: Owner for a system-wide brand; that \
+               Firm's Admin DRI for a Firm-scoped brand. Lawyer and Clerk are denied.",
+            "parameters": [
+              { "name": "key", "in": "path", "required": true,
+                "schema": { "type": "string" } }
+            ],
+            "requestBody": {
+              "required": true,
+              "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/UpdateBrandPresentationRequest" }
+              } }
+            },
+            "responses": {
+              "200": { "description": "Updated brand", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/Brand" }
+              } } },
+              "401": { "description": "No authenticated session", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } },
+              "403": { "description": "Caller may not edit this brand", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } },
+              "400": { "description": "Typeface or palette is not on the closed list", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } },
+              "404": { "description": "No brand with that key", "content": { "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" }
+              } } }
+            }
+          }
+        },
         "/app/api/entities": {
           "get": {
             "summary": "List all entities",
@@ -2847,6 +2884,30 @@ pub fn document_with_base(base: &str) -> Value {
                              "description": "The created contract review (deviation analysis attached; matter parked at lawyer_review)." }
             }
           },
+          "UpdateBrandPresentationRequest": {
+            "type": "object",
+            "required": ["typeface", "palette"],
+            "additionalProperties": false,
+            "properties": {
+              "typeface": { "type": "string",
+                            "enum": ["gorp-serif", "tinos", "system-serif", "system-sans"] },
+              "palette":  { "type": "string",
+                            "enum": ["neon-teal", "delete-your-data", "lawyer-shook"] }
+            },
+            "example": { "typeface": "tinos", "palette": "lawyer-shook" }
+          },
+          "Brand": {
+            "type": "object",
+            "required": ["id", "name", "key"],
+            "properties": {
+              "id": { "type": "string", "format": "uuid" },
+              "name": { "type": "string" },
+              "key": { "type": "string" },
+              "typeface": { "type": "string" },
+              "primary_color": { "type": "string" },
+              "accent_color": { "type": "string" }
+            }
+          },
           "CreateEntityRequest": {
             "type": "object",
             "required": ["name", "entity_type_id", "jurisdiction_id"],
@@ -3075,6 +3136,7 @@ mod tests {
         assert!(ops.contains(&("PATCH".to_string(), "/app/api/people/{id}".to_string())));
         assert!(ops.contains(&("DELETE".to_string(), "/app/api/people/{id}".to_string())));
         assert!(ops.contains(&("POST".to_string(), "/app/api/entities".to_string())));
+        assert!(ops.contains(&("PATCH".to_string(), "/app/api/brands/{key}".to_string())));
         assert!(ops.contains(&("PATCH".to_string(), "/app/api/entities/{id}".to_string())));
         assert!(ops.contains(&("DELETE".to_string(), "/app/api/entities/{id}".to_string())));
         assert!(ops.contains(&("PATCH".to_string(), "/app/api/projects/{id}".to_string())));

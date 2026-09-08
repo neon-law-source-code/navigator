@@ -19,6 +19,11 @@
 
 use dioxus::prelude::*;
 
+/// The platform line every Navigator footer carries, so a white-label
+/// deployment still names the software it runs. Shared with
+/// [`crate::components::AppFooter`] so the wording cannot drift.
+pub const POWERED_BY_NEON_LAW_NAVIGATOR: &str = "Powered by Neon Law Navigator";
+
 use crate::components::{ExternalLink, GitHubStars, Icon, IconName};
 
 /// One published office — the state it sits in and its street address.
@@ -108,6 +113,15 @@ fn state_outline(state: &str) -> Option<&'static str> {
 pub struct FooterNavLink {
     pub label: String,
     pub href: String,
+}
+
+/// One brand the current firm wears. The current brand is shown but not
+/// linked; every other entry links that brand's home host.
+#[derive(Clone, PartialEq, Eq)]
+pub struct FooterBrandLink {
+    pub label: String,
+    pub href: String,
+    pub current: bool,
 }
 
 /// One bar license an attorney holds. Mirrors `views::brand::BarLicense`.
@@ -238,6 +252,10 @@ pub fn SiteFooterLegal(
     #[props(default)] brand_name: String,
     #[props(default)] home_href: String,
     #[props(default)] nav: Vec<FooterNavLink>,
+    /// Brands this firm's footer names. One entry is no row: a single-brand
+    /// firm stays byte-identical to a footer that never learned the list.
+    #[props(default)]
+    brands: Vec<FooterBrandLink>,
     /// The registered word mark the site trades under, spelled the way the
     /// register spells it, and the registration that proves it. Renders one
     /// notice under the copyright line — the site's two ownership facts read
@@ -374,6 +392,25 @@ pub fn SiteFooterLegal(
                                                     "{link.label}"
                                                 }
                                             }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                if brands.len() > 1 {
+                    nav { class: "site-footer__brands", "aria-label": "Brands",
+                        ul { class: "site-footer__brands-list",
+                            for brand in brands.iter() {
+                                li { class: "site-footer__brands-item", key: "{brand.href}",
+                                    if brand.current {
+                                        span { class: "site-footer__brands-current", "{brand.label}" }
+                                    } else {
+                                        a {
+                                            class: "site-footer__brands-link",
+                                            href: "{brand.href}",
+                                            "{brand.label}"
                                         }
                                     }
                                 }
@@ -530,21 +567,17 @@ pub fn SiteFooterLegal(
                         }
                         p { class: "site-footer__disclaimer", "{disclaimer}" }
                     }
-                    // The repository the platform is developed in and the
-                    // release running here, closing the strip on one line. No
-                    // box, no attribution prose — just the repository's name
-                    // and its star count, the way the rest of the site links
-                    // off to GitHub, with the version right beside it rather
-                    // than on a line of its own.
-                    //
-                    // Each half stands alone: a deploy publishes the
-                    // repository without a release stamp under `cargo run`,
-                    // and the region itself renders only when there is
-                    // something to put in it.
-                    if (!source_repo.is_empty() && !source_href.is_empty())
-                        || (!navigator_version.is_empty() && !navigator_href.is_empty())
-                    {
-                        div { class: "site-footer__legal-platform",
+                    // The platform line names the software this page runs, then
+                    // the repository it is developed in and the release
+                    // serving here. The wording is the shared constant so this
+                    // footer and `/app`'s cannot drift. The repository and
+                    // version halves still stand alone: a deploy publishes
+                    // the repository without a release stamp under `cargo run`.
+                    div { class: "site-footer__legal-platform",
+                        p { class: "site-footer__powered", "{POWERED_BY_NEON_LAW_NAVIGATOR}" }
+                        if (!source_repo.is_empty() && !source_href.is_empty())
+                            || (!navigator_version.is_empty() && !navigator_href.is_empty())
+                        {
                             p { class: "site-footer__source",
                                 if !source_repo.is_empty() && !source_href.is_empty() {
                                     GitHubStars {
@@ -1362,8 +1395,9 @@ mod tests {
     ///
     /// `NAVIGATOR_RELEASE_TAG` is unset under a local `cargo run`, and a footer
     /// reading "#" is worse than no attribution. The repository line is
-    /// independent and still renders, and with both halves absent the region
-    /// itself disappears rather than leaving an empty box.
+    /// independent and still renders. The platform region always carries the
+    /// shared "Powered by" line, even when both repository and release are
+    /// absent.
     #[test]
     fn omits_the_release_line_when_unpublished() {
         fn repository_only() -> Element {
@@ -1395,10 +1429,44 @@ mod tests {
             out.contains("site-footer__source"),
             "the repository line is independent of it: {out}"
         );
+        assert!(
+            out.contains(POWERED_BY_NEON_LAW_NAVIGATOR),
+            "the shared platform line still renders: {out}"
+        );
         let bare = ssr(neither);
         assert!(
-            !bare.contains("site-footer__legal-platform"),
-            "with neither half, the region itself does not render: {bare}"
+            bare.contains("site-footer__legal-platform"),
+            "the platform region carries the powered-by line: {bare}"
+        );
+        assert!(
+            bare.contains(POWERED_BY_NEON_LAW_NAVIGATOR),
+            "the shared wording is present without a repository: {bare}"
+        );
+        assert!(
+            !bare.contains("site-footer__source"),
+            "no empty source line: {bare}"
+        );
+    }
+
+    #[test]
+    fn the_platform_line_is_the_shared_powered_by_wording() {
+        fn app() -> Element {
+            rsx! {
+                SiteFooterLegal {
+                    copyright_holder: "Neon Law".to_string(),
+                    disclaimer: "This is an attorney advertisement.".to_string(),
+                    copyright_year: 2026,
+                }
+            }
+        }
+        let out = ssr(app);
+        assert!(
+            out.contains(POWERED_BY_NEON_LAW_NAVIGATOR),
+            "the public footer uses the shared wording: {out}"
+        );
+        assert_eq!(
+            POWERED_BY_NEON_LAW_NAVIGATOR,
+            "Powered by Neon Law Navigator"
         );
     }
 
@@ -1480,6 +1548,89 @@ mod tests {
         assert!(
             out.contains(r#"<div class="site-footer__legal""#),
             "the legal strip still renders: {out}"
+        );
+    }
+
+    fn three_firm_brands() -> Vec<FooterBrandLink> {
+        vec![
+            FooterBrandLink {
+                label: "Neon Law".to_string(),
+                href: "https://www.neonlaw.com".to_string(),
+                current: true,
+            },
+            FooterBrandLink {
+                label: "DeleteYourData.com".to_string(),
+                href: "https://www.deleteyourdata.com".to_string(),
+                current: false,
+            },
+            FooterBrandLink {
+                label: "Lawyer Shook".to_string(),
+                href: "https://www.lawyershook.com".to_string(),
+                current: false,
+            },
+        ]
+    }
+
+    #[test]
+    fn a_firm_with_three_brands_renders_them_in_order_with_the_current_one_unlinked() {
+        fn app() -> Element {
+            rsx! {
+                SiteFooterLegal {
+                    copyright_holder: "Neon Law".to_string(),
+                    disclaimer: "This is an attorney advertisement.".to_string(),
+                    copyright_year: 2026,
+                    brands: three_firm_brands(),
+                }
+            }
+        }
+        let out = ssr(app);
+        let neon = out.find("Neon Law").expect("neon");
+        let dyd = out.find("DeleteYourData.com").expect("dyd");
+        let shook = out.find("Lawyer Shook").expect("lawyer shook");
+        assert!(neon < dyd && dyd < shook, "registry order: {out}");
+        assert!(
+            out.contains(r#"class="site-footer__brands-current""#),
+            "current brand is not a link: {out}"
+        );
+        assert!(
+            !out.contains(r#"href="https://www.neonlaw.com""#),
+            "current brand is unlinked: {out}"
+        );
+        assert!(
+            out.contains(r#"href="https://www.deleteyourdata.com""#),
+            "other brands link their home host: {out}"
+        );
+        assert!(
+            out.contains(r#"href="https://www.lawyershook.com""#),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn a_firm_with_one_brand_renders_no_brands_row() {
+        fn app() -> Element {
+            rsx! {
+                SiteFooterLegal {
+                    copyright_holder: "Neon Law".to_string(),
+                    disclaimer: "This is an attorney advertisement.".to_string(),
+                    copyright_year: 2026,
+                    brands: vec![FooterBrandLink {
+                        label: "Neon Law".to_string(),
+                        href: "https://www.neonlaw.com".to_string(),
+                        current: true,
+                    }],
+                }
+            }
+        }
+        let out = ssr(app);
+        assert!(
+            !out.contains("site-footer__brands"),
+            "one brand is no row: {out}"
+        );
+        let bare = legal_html();
+        assert!(
+            !bare.contains("site-footer__brands"),
+            "an unset list is no row: {bare}"
         );
     }
 }

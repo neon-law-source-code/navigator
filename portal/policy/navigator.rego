@@ -39,9 +39,13 @@ owner_only_path if {
     input.path[1] == "owner"
 }
 
+# The house-of-brands home is Owner only. `/app/brands/{key}/edit` is three
+# segments, so Admin (and Owner) reach it through the route bypass; Lawyer and
+# Clerk stay denied.
 owner_only_path if {
     input.path[0] == "app"
     input.path[1] == "brands"
+    count(input.path) == 2
 }
 
 allow if {
@@ -222,7 +226,11 @@ allow if {
 # of the brand style reference Lawyer and Clerk could reach before. Owner
 # reaches it through `owner_only_path` below, not the route bypass at the top
 # of this policy: Admin must not inherit it the way it inherits everything
-# else, so it needs the same exclusion `/app/owner` already has.
+# else, so it needs the same exclusion `/app/owner` already has. The edit
+# page at `/app/brands/{key}/edit` is not this path: `owner_only_path` is
+# exactly two segments, so Owner and Admin reach the editor through the
+# bypass and Lawyer/Clerk stay denied. The handler then refuses anyone who
+# is not Owner (system-wide brands) or that Firm's Admin DRI.
 
 # /app/admin is Owner/Admin only at the hub, the matter directory
 # (`/app/admin/projects`), Person CRUD (`/app/admin/people`), and visitor

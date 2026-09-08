@@ -81,7 +81,9 @@ pub mod attachment_scanner;
 pub mod audit_fields;
 pub mod auth;
 pub mod blog;
+pub mod brand_edit;
 pub mod brand_fonts;
+pub mod brand_tokens;
 pub mod cron_schedules;
 // The billing-provider seam moved to the `billing` crate so the
 // worker-side `billing-workflows` can share it. Re-exported here so
@@ -196,8 +198,9 @@ const X_REQUEST_ID: HeaderName = HeaderName::from_static("x-request-id");
 /// `Cache-Control` for `/public/` static assets. One hour is the
 /// conservative default until we add content-hashed filenames; bump
 /// to `immutable` once asset paths are fingerprinted.
-const STATIC_CACHE_CONTROL: HeaderValue = HeaderValue::from_static("public, max-age=3600");
-const NOSNIFF: HeaderValue = HeaderValue::from_static("nosniff");
+pub(crate) const STATIC_CACHE_CONTROL: HeaderValue =
+    HeaderValue::from_static("public, max-age=3600");
+pub(crate) const NOSNIFF: HeaderValue = HeaderValue::from_static("nosniff");
 
 /// `Strict-Transport-Security` value — two years with
 /// `includeSubDomains` and `preload`, making the site eligible for
@@ -907,6 +910,18 @@ pub fn bootstrap(
         state.policy.clone(),
         state.auth.clone(),
     );
+    let dioxus_app_brands_edit = dioxus_app::app_brands_edit_router(
+        state.sessions.clone(),
+        state.policy.clone(),
+        state.auth.clone(),
+        state.surreal.clone(),
+    );
+    let dioxus_app_brands_edit_post = dioxus_app::app_brands_edit_post_router(
+        state.sessions.clone(),
+        state.policy.clone(),
+        state.auth.clone(),
+        state.surreal.clone(),
+    );
     let dioxus_app_owner = dioxus_app::app_owner_router(
         state.sessions.clone(),
         state.policy.clone(),
@@ -1614,8 +1629,15 @@ pub fn bootstrap(
     // composition is merged behind this same boundary.
     let boundary_sessions = state.sessions.clone();
     let boundary_auth = state.auth.clone();
+    let footer_store = state.surreal.clone();
     let mut router = mount_brand_assets(router, brand_bundle.as_ref())
         .nest_service("/public", static_files)
+        // Axum forbids `{key}` inside a mixed path segment (`brand-{key}-tokens.css`).
+        // Middleware keeps the compiled href and still generates from the catalog.
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            brand_tokens::intercept,
+        ))
         .with_state(state)
         .merge(api)
         .merge(api_docs)
@@ -1723,6 +1745,7 @@ pub fn bootstrap(
         dioxus_app_doc,
         dioxus_app_team,
         dioxus_app_brands,
+        dioxus_app_brands_edit,
         dioxus_app_owner,
         dioxus_firm_show,
         dioxus_template_gallery,
@@ -1734,6 +1757,11 @@ pub fn bootstrap(
             &boundary_auth,
         ));
     }
+    router = router.merge(session_boundary(
+        dioxus_app_brands_edit_post,
+        &boundary_sessions,
+        &boundary_auth,
+    ));
     // The two sortable read-only listings (#956 Phase 4) — the template catalog
     // and the questions directory — mount through the same scaffold as the
     // fixed-order ones, plus a pre-handler that 400s an unadvertised `?sort=`.
@@ -1831,6 +1859,10 @@ pub fn bootstrap(
             session_renew::renew_session,
         ))
         .layer(tower_cookies::CookieManagerLayer::new())
+        .layer(axum::middleware::from_fn_with_state(
+            footer_store,
+            inject_firm_footer_brands,
+        ))
         .layer(axum::middleware::from_fn_with_state(
             branding,
             scope_branding,
@@ -2235,6 +2267,26 @@ fn mount_brand_assets(
         router = router.route_service(&route, ServeFile::new(bundle.directory.join(file)));
     }
     router
+}
+
+/// Fill the public footer's brands row from `firm_brand` for the firm that
+/// wears this request's brand. Runs inside `host_layer` so the resolved
+/// [`views::brand::BrandKey`] is already on the request.
+async fn inject_firm_footer_brands(
+    State(surreal): State<store::surreal::SurrealDb>,
+    mut request: Request<axum::body::Body>,
+    next: Next,
+) -> Response {
+    let current = request
+        .extensions()
+        .get::<views::brand::BrandKey>()
+        .copied()
+        .unwrap_or_default();
+    let brands = webapp::public_chrome::footer_brands_from_store(&surreal, current).await;
+    request
+        .extensions_mut()
+        .insert(webapp::public_chrome::ResolvedFooterBrands(brands));
+    next.run(request).await
 }
 
 /// Scope the request's resolved brand for the life of the request. `state`

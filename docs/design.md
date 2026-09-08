@@ -52,15 +52,14 @@ One contract, three sets of values. Nothing in `webapp/src/components/` changes 
    `.nav-card`, `.nav-btn`, `.nav-table`, `.nav-toast`, and the page chrome each read `var(--nav-…)`, never a hex value.
 3. A component emits only those class names. It never carries a colour of its own.
 
-**Per-brand overrides, resolved per request.** Every registry key (`views::brand::BrandKey`) has its own
-`server/public/css/brand-<key>-tokens.css`, redeclaring only the `--nav-color-*` aliases and, optionally,
-`--nav-font-family` — `brand-neon-tokens.css` (empty; the firm keeps the shared teal) and
-`brand-delete-your-data-tokens.css` (an accessible red, and Plus Jakarta Sans) and `brand-lawyer-shook-tokens.css` (a
-legal-pad yellow surface and Tinos) are the house-brand layers. `webapp::brand_style::brand_tokens_href` computes the
-href from the key's string form; it is hoisted on every public page by `webapp::public_chrome::PublicFooter`, and on
-every `/app` page beside `theme.css` via `webapp::app_chrome::app_tokens_href_from_context` — request-extension seam
-`app_logo_from_context` already used for the header mark. A page that renders only the theme stylesheet and skips this
-second one is missing it and will not wear its host's brand.
+**Per-brand overrides, resolved per request.** Every brand key has a tokens stylesheet at
+`/public/css/brand-<key>-tokens.css`, rendered from that brand row's typeface and palette ids (falling back to the
+compiled registry when the store has no row). The closed catalogs live in `views::brand_presentation`: four typefaces
+(GORP Serif, Tinos, system serif, system sans) and three palettes taken from the former static sheets (Neon teal,
+DeleteYourData red, legal pad). `webapp::brand_style::brand_tokens_href` computes the href from the key's string form;
+it is hoisted on every public page by `webapp::public_chrome::PublicFooter`, and on every `/app` page beside `theme.css`
+via `webapp::app_chrome::app_tokens_href_from_context`. A page that renders only the theme stylesheet and skips this
+second one is missing it and will not wear its host's brand. Edit the ids at `/app/brands/{key}/edit`.
 
 The `/design` palette section paints each swatch from its own token, so the gallery shows whichever brand the request
 resolved to.

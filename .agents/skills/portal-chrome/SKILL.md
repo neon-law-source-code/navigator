@@ -53,7 +53,10 @@ Use the chrome the library ships:
 - **`NavigatorShell`** wraps the page, with `header` and `footer` slots.
 - **`NavigatorNavbar`** is the header. Give it `brand`, `destinations` for the portal's own routes, and — this is the
   part most often missed — a `brandHref` that leaves the portal.
-- **`NavigatorFooter`** is the footer: a `legal` line, `links`, and `release`.
+- **`NavigatorFooter`** is the footer: a host `legal` line, then the fixed
+  `Powered by Neon Law Navigator` line (`POWERED_BY_NEON_LAW_NAVIGATOR`), then
+  `links` and `release`. Do not pass the platform wording as `legal`; the library
+  renders it.
 
 Do not build a bar out of primitives, and do not leave the portal with no way out. `PageHeader`, `CaseHead`, and
 `Hero` are page headings and none of them is chrome; a page heading inside the shell is right, a page heading standing

@@ -540,7 +540,8 @@ fn AppNavbarShowcase() -> Element {
 /// The minimal footer every `/app` page carries, injected once into every
 /// response by `portal::dioxus_app::dioxus_document_head` rather than
 /// rendered by each of the eight real `/app` pages — see the component's own
-/// module docs for why. It carries nothing but the copyright line.
+/// module docs for why. It carries the copyright line and the shared
+/// platform line, with no navigation.
 #[component]
 fn AppFooterShowcase() -> Element {
     rsx! {
@@ -548,7 +549,7 @@ fn AppFooterShowcase() -> Element {
             h2 { "Application footer" }
             p {
                 "The one footer every authenticated /app page carries: a centered copyright "
-                "line naming the entity of record, and nothing else."
+                "line naming the entity of record, then the platform line, and no navigation."
             }
             AppFooter { legal_entity: "Shook Law PLLC".to_string(), copyright_year: 2026 }
         }
@@ -1779,5 +1780,23 @@ mod tests {
                 "the /design gallery does not render {component}"
             );
         }
+    }
+
+    #[test]
+    fn app_footer_showcase_renders_the_platform_line() {
+        use super::AppFooterShowcase;
+        use crate::components::POWERED_BY_NEON_LAW_NAVIGATOR;
+        use dioxus::prelude::*;
+
+        fn app() -> Element {
+            rsx! { AppFooterShowcase {} }
+        }
+        let mut dom = VirtualDom::new(app);
+        dom.rebuild_in_place();
+        let html = dioxus_ssr::render(&dom);
+        assert!(
+            html.contains(POWERED_BY_NEON_LAW_NAVIGATOR),
+            "the gallery preview shows the shared platform line: {html}"
+        );
     }
 }

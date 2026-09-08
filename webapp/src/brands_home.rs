@@ -35,15 +35,15 @@ struct BrandFontCard {
     /// family has no separate desktop package to gate.
     download: Option<&'static str>,
     href: &'static str,
+    edit_href: &'static str,
 }
 
 /// The registered brands' font cards, in registry order.
 ///
-/// The GORP Serif, Plus Jakarta Sans, and Tinos facts here mirror the match arms in
-/// `portal::dioxus_app::dioxus_document_head` and `docs/assets.md`'s
-/// "Licensed webfonts" section. This client-rendered data stays independent of
-/// the server-only `views` crate so the WASM build does not pull server brand
-/// resolution into the browser bundle.
+/// The GORP Serif, Tinos, and system-sans facts here mirror `views::brand::TYPEFACES`
+/// and the compiled seed for each registry key. This client-rendered data stays
+/// independent of the server-only `views` crate so the WASM build does not pull
+/// server brand resolution into the browser bundle.
 fn brand_font_cards() -> [BrandFontCard; 3] {
     [
         BrandFontCard {
@@ -53,14 +53,16 @@ fn brand_font_cards() -> [BrandFontCard; 3] {
             license_note: "Licensed from TrashType. The desktop family is a firm-only download; the public site serves only the web (WOFF2) faces.",
             download: Some("gorp-serif.zip"),
             href: "/app/team/fonts/gorp-serif.zip",
+            edit_href: "/app/brands/neon/edit",
         },
         BrandFontCard {
             id: "brand-card-delete-your-data",
             brand_label: "DeleteYourData.com",
-            family_name: "Plus Jakarta Sans",
-            license_note: "SIL Open Font License 1.1 — the desktop family is the same public font anyone can install from Google Fonts.",
+            family_name: "System sans",
+            license_note: "The operating-system sans stack. No licensed webfont.",
             download: None,
-            href: "https://fonts.google.com/specimen/Plus+Jakarta+Sans",
+            href: "/app/brands/delete-your-data/edit",
+            edit_href: "/app/brands/delete-your-data/edit",
         },
         BrandFontCard {
             id: "brand-card-lawyer-shook",
@@ -68,7 +70,8 @@ fn brand_font_cards() -> [BrandFontCard; 3] {
             family_name: "Tinos",
             license_note: "SIL Open Font License 1.1 — the web faces are served from Navigator's public asset origin.",
             download: None,
-            href: "https://fonts.google.com/specimen/Tinos",
+            href: "/app/brands/lawyer-shook/edit",
+            edit_href: "/app/brands/lawyer-shook/edit",
         },
     ]
 }
@@ -141,11 +144,18 @@ pub fn brands_home_body(view: &BrandsHomeView) -> Element {
                 h2 { class: "brands-home__card-title", "{c.brand_label}" }
                 p { class: "brands-home__card-family", "{c.family_name}" }
                 p { class: "brands-home__card-license", "{c.license_note}" }
+                if let Some(download) = c.download {
+                    a {
+                        class: "brands-home__card-link",
+                        href: "{c.href}",
+                        download: "{download}",
+                        "Download the desktop family"
+                    }
+                }
                 a {
                     class: "brands-home__card-link",
-                    href: "{c.href}",
-                    download: c.download,
-                    if c.download.is_some() { "Download the desktop family" } else { "View the font license" }
+                    href: "{c.edit_href}",
+                    "Edit presentation"
                 }
             }
         }
@@ -248,15 +258,18 @@ mod tests {
         );
     }
 
-    /// `DeleteYourData`'s card links the public OFL font reference rather than
-    /// offering a download attribute — there is no firm-gated desktop package
-    /// for an already-public font.
+    /// `DeleteYourData`'s card links the presentation editor rather than a
+    /// public font specimen — the seed wears the system sans stack.
     #[test]
     fn the_delete_your_data_card_has_no_download_attribute() {
-        let html = render(ViewerRole::Lawyer);
+        let html = render(ViewerRole::Owner);
         assert!(
-            html.contains("fonts.google.com/specimen/Plus+Jakarta+Sans"),
-            "the DeleteYourData card links the public font reference: {html}"
+            html.contains(r#"href="/app/brands/delete-your-data/edit""#),
+            "the DeleteYourData card links the presentation editor: {html}"
+        );
+        assert!(
+            html.contains("System sans"),
+            "the DeleteYourData card names the system sans stack: {html}"
         );
         assert_eq!(
             html.matches("download=").count(),

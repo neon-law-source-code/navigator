@@ -339,6 +339,11 @@ fn api_operation_table() -> Vec<(&'static str, &'static str, MethodRouter<ApiSta
             "/app/api/templates/validate",
             post(validate_template),
         ),
+        (
+            "PATCH",
+            "/app/api/brands/{key}",
+            patch(update_brand_presentation),
+        ),
     ]
 }
 
@@ -600,6 +605,125 @@ where
         match parts.extensions.get::<SessionData>() {
             None => Err(ApiError::Unauthenticated),
             Some(session) => Ok(Self(session.clone())),
+        }
+    }
+}
+
+/// Owner or Admin only. Lawyer is lawyer-tier, not this extractor: brand
+/// presentation writes are never a lawyer command.
+struct AdminSession(SessionData);
+
+impl<S> FromRequestParts<S> for AdminSession
+where
+    S: Send + Sync,
+{
+    type Rejection = ApiError;
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        match parts.extensions.get::<SessionData>() {
+            None => Err(ApiError::Unauthenticated),
+            Some(session) if session.role.is_admin_tier() => Ok(Self(session.clone())),
+            Some(_) => Err(ApiError::Forbidden),
+        }
+    }
+}
+
+/// Closed-list presentation edit. `palette` is stored as `primary_color`
+/// (and `accent_color`); free CSS is not a field.
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct UpdateBrandPresentation {
+    typeface: String,
+    palette: String,
+}
+
+/// Shared by `PATCH /app/api/brands/{key}` and the native edit form.
+#[derive(Debug)]
+pub enum BrandPresentationError {
+    NotFound,
+    Forbidden,
+    UnknownChoice(String),
+    Internal(String),
+}
+
+pub async fn apply_brand_presentation(
+    surreal: &store::surreal::SurrealDb,
+    actor_role: store::persons::Role,
+    actor_person_id: Option<uuid::Uuid>,
+    key: &str,
+    typeface: &str,
+    palette: &str,
+) -> Result<store::brands::Brand, BrandPresentationError> {
+    if views::brand::typeface_by_id(typeface).is_none() {
+        return Err(BrandPresentationError::UnknownChoice(format!(
+            "typeface must be one of: {}",
+            views::brand::TYPEFACES
+                .iter()
+                .map(|face| face.id)
+                .collect::<Vec<_>>()
+                .join(", ")
+        )));
+    }
+    if views::brand::palette_by_id(palette).is_none() {
+        return Err(BrandPresentationError::UnknownChoice(format!(
+            "palette must be one of: {}",
+            views::brand::PALETTE
+                .iter()
+                .map(|item| item.id)
+                .collect::<Vec<_>>()
+                .join(", ")
+        )));
+    }
+    let brand = store::brands::find_by_key(surreal, key)
+        .await
+        .map_err(|error| BrandPresentationError::Internal(error.to_string()))?
+        .ok_or(BrandPresentationError::NotFound)?;
+    match store::brands::update(
+        surreal,
+        actor_role,
+        actor_person_id,
+        brand.id,
+        &store::brands::BrandEdit {
+            typeface: Some(Some(typeface.to_string())),
+            primary_color: Some(Some(palette.to_string())),
+            accent_color: Some(Some(palette.to_string())),
+            ..store::brands::BrandEdit::default()
+        },
+    )
+    .await
+    {
+        Ok(updated) => Ok(updated),
+        Err(store::brands::BrandError::NotAuthorized) => Err(BrandPresentationError::Forbidden),
+        Err(store::brands::BrandError::NoSuchBrand(_)) => Err(BrandPresentationError::NotFound),
+        Err(error) => Err(BrandPresentationError::Internal(error.to_string())),
+    }
+}
+
+async fn update_brand_presentation(
+    State(state): State<ApiState>,
+    AdminSession(session): AdminSession,
+    Path(key): Path<String>,
+    JsonOrForm(input): JsonOrForm<UpdateBrandPresentation>,
+) -> Response {
+    match apply_brand_presentation(
+        &state.surreal,
+        session.role,
+        session.person_id,
+        &key,
+        &input.typeface,
+        &input.palette,
+    )
+    .await
+    {
+        Ok(updated) => Json(updated).into_response(),
+        Err(BrandPresentationError::NotFound) => ApiError::NotFound.into_response(),
+        Err(BrandPresentationError::Forbidden) => ApiError::Forbidden.into_response(),
+        Err(BrandPresentationError::UnknownChoice(message)) => {
+            ApiError::MalformedBody(message).into_response()
+        }
+        Err(BrandPresentationError::Internal(error)) => {
+            tracing::error!(error = %error, "api: brand presentation update failed");
+            ApiError::Db(error).into_response()
         }
     }
 }

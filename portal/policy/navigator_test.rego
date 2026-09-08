@@ -1988,6 +1988,38 @@ test_anonymous_denied_app_brands if {
 	not authz.allow with input as {"path": ["app", "brands"], "method": "GET", "session": null}
 }
 
+test_owner_reaches_app_brands_edit if {
+	authz.allow with input as {"path": ["app", "brands", "neon", "edit"], "method": "GET", "session": owner_session}
+}
+
+test_admin_reaches_app_brands_edit if {
+	authz.allow with input as {"path": ["app", "brands", "neon", "edit"], "method": "GET", "session": admin_session}
+}
+
+test_lawyer_denied_app_brands_edit if {
+	not authz.allow with input as {"path": ["app", "brands", "neon", "edit"], "method": "GET", "session": lawyer_session}
+}
+
+test_clerk_denied_app_brands_edit if {
+	not authz.allow with input as {"path": ["app", "brands", "neon", "edit"], "method": "GET", "session": clerk_session}
+}
+
+test_owner_patches_app_api_brands if {
+	authz.allow with input as {"path": ["app", "api", "brands", "neon"], "method": "PATCH", "session": owner_session}
+}
+
+test_admin_patches_app_api_brands if {
+	authz.allow with input as {"path": ["app", "api", "brands", "neon"], "method": "PATCH", "session": admin_session}
+}
+
+test_lawyer_denied_app_api_brands_patch if {
+	not authz.allow with input as {"path": ["app", "api", "brands", "neon"], "method": "PATCH", "session": lawyer_session}
+}
+
+test_clerk_denied_app_api_brands_patch if {
+	not authz.allow with input as {"path": ["app", "api", "brands", "neon"], "method": "PATCH", "session": clerk_session}
+}
+
 # ---------- /app/owner ----------
 # Deployment-wide firm inventory. Owner only: the Owner/Admin route bypass
 # does not apply here, so an Admin is denied the same way a Lawyer is.

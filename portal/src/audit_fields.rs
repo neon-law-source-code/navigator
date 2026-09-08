@@ -7,11 +7,17 @@
 //! itself, and `cli/tests/no_address_in_telemetry.rs` recognizes them by name
 //! as the sanitized shape.
 //!
-//! Every field name here is one the collector's redaction processor already
-//! allows (`examples/deploy/k8s/observability/otel-collector.yaml`). A field
-//! absent from that `allowed_keys` list is silently deleted on the export
-//! path, so a sanitizer that produced a differently-named field would trade a
-//! leak for a blank.
+//! The collector's redaction processor is fail-closed: a field absent from its
+//! `allowed_keys` list (`examples/deploy/k8s/observability/otel-collector.yaml`)
+//! is silently deleted on the export path, so a sanitizer whose field the list
+//! does not name would trade a leak for a blank.
+//!
+//! For the `target: "audit"` records in `a2a`, the list does not lead — it
+//! follows. `cli/tests/audit_fields_exported.rs` pins it to those call sites in
+//! both directions, so a new audit field fails the workspace suite until it is
+//! named there rather than exporting as a blank, and a key nothing emits fails
+//! it too. Writing a field to fit whatever names the list already happened to
+//! carry is what left fourteen of seventeen deleted before that test existed.
 //!
 //! # Why there is no payload digest here
 //!
@@ -35,17 +41,21 @@
 //!
 //! If the trail ever needs to name the call, the answer is an identifier into a
 //! governed store rather than a hash of the payload. `a2a::PendingConfirmations`
-//! is process-local and so cannot be that store. The export contract for these
-//! records is tracked separately.
+//! is process-local and so cannot be that store.
 
 /// Render a person's id for an audit field, or `none`.
 ///
-/// The field is spelled `person_id` deliberately. These `target: "audit"`
-/// records carry the only copy of an authorization decision, and the
-/// collector drops any structured field absent from its `allowed_keys` list —
-/// where `person_id` appears and `approver_person_id` does not. A more
-/// descriptive name would be silently deleted on the export path, leaving the
-/// decision with no actor again.
+/// The field is spelled `person_id` because that is the spelling every other
+/// record in the tree uses for the same thing, so one query answers "what did
+/// this person do" across all of them. These `target: "audit"` records carry
+/// the only copy of an authorization decision, and a decision whose actor is
+/// spelled differently from every other actor is a decision nobody finds.
+///
+/// The collector allows it, along with the rest of the export contract; the
+/// list follows these call sites rather than constraining them. Where a record
+/// genuinely needs a second actor it says so and the list carries that too —
+/// `proposer_person_id`, which is what lets a reader tell an approval from a
+/// self-approval.
 ///
 /// An id is an opaque UUID rather than client-identifying content, which is
 /// what makes it loggable where the address it replaces is not.

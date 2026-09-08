@@ -987,16 +987,17 @@ fn validate_templates(
 
 fn readme(project_code: &str) -> String {
     format!(
-        "# {project_code}\n\nThis repository holds source-only material for Project `{project_code}`: its notation\n\
-         templates under `templates/`, and its application workspaces under `apps/<app>/`.\n\n\
-         The repository name *is* the Project code. Nothing in here declares it, so nothing can\n\
-         disagree with it. Each app name comes from its directory and builds for\n\
-         `/app/projects/{project_code}/<app>/`; `apps/` is not part of that URL.\n\n\
+        "# {project_code}\n\n\
+         This repository holds source-only material for Project `{project_code}`.\n\n\
+         Notation templates live under `templates/`, and application workspaces live under `apps/<app>/`.\n\n\
+         The repository name *is* the Project code. Nothing in here declares it, so nothing can disagree with it.\n\n\
+         Each app name comes from its directory and builds for `/app/projects/{project_code}/<app>/`.\n\n\
+         `apps/` is not part of that URL.\n\n\
          A root `portal/` is also accepted while repositories move it to `apps/portal/`.\n\n\
-         Navigator imports each direct `templates/<code>.md` file at the current commit, preserving both\n\
-         that commit SHA and the template body's content hash as provenance.\n\n\
-         Do not commit client uploads, answers, generated documents, secrets, dependencies, or build\n\
-         output. Legal files live in Drive and in Navigator's assets, never in Git.\n\n\
+         Navigator imports each direct `templates/<code>.md` file at the current commit.\n\n\
+         It preserves that commit SHA and the template body's content hash as provenance.\n\n\
+         Do not commit client uploads, answers, generated documents, secrets, dependencies, or build output.\n\n\
+         Legal files live in Drive and in Navigator's assets, never in Git.\n\n\
          Run `navigator validate .` before opening a pull request.\n"
     )
 }
@@ -1005,23 +1006,22 @@ fn agents(project_code: &str) -> String {
     format!(
         "# Working in {project_code}\n\n\
          This is one Project's repository. It holds two kinds of source and nothing else.\n\n\
-         * `templates/` — notation blueprints, one `templates/<code>.md` per notation. Navigator\n\
-           imports them and records the commit SHA as provenance.\n\
-         * `apps/<app>/` — React + Vite applications, each discovered from its direct\n\
-           `package.json`. Build each for `/app/projects/{project_code}/<app>/`; the `apps/`\n\
-           source grouping is not a URL segment. Derive every in-app path from\n\
-           `import.meta.env.BASE_URL` rather than writing an absolute path by hand: a Vite base\n\
-           rewrites module and asset URLs and never an `href` in source. A root `portal/` is also\n\
-           accepted while repositories move that workspace to `apps/portal/`.\n\n\
+         * `templates/` — notation blueprints, one `templates/<code>.md` per notation.\n\
+         * `apps/<app>/` — React + Vite applications, each discovered from its direct `package.json`.\n\n\
+         Navigator imports each template and records the commit SHA as provenance.\n\n\
+         Build each app for `/app/projects/{project_code}/<app>/`; the `apps/` source grouping is not a URL segment.\n\n\
+         Derive every in-app path from `import.meta.env.BASE_URL` rather than writing an absolute path by hand.\n\n\
+         A Vite base rewrites module and asset URLs and never an `href` in source.\n\n\
+         A root `portal/` is also accepted while repositories move that workspace to `apps/portal/`.\n\n\
          ## Project codes are client identifiers\n\n\
-         A Project code names a matter and its repository. It identifies a client, so it is client\n\
-         data. The one legitimate use here is this repository naming itself, as in `navigator.yaml`,\n\
-         its paths, and its portal mount. Do not copy a Project code from another repository into this\n\
-         codebase or into a commit message, code comment, branch name, or pull-request body. A precedent\n\
-         citation is still a breach; cite the governing issue by its bare identifier instead.\n\n\
-         Read matter data through Navigator's `/api` read surfaces and write through its one REST\n\
-         command boundary. Do not add a second backend, and do not put a legal file, a client upload,\n\
-         an answer, a generated document, or a secret in this repository.\n"
+         A Project code names a matter and its repository. It identifies a client, so it is client data.\n\n\
+         The one legitimate use here is this repository naming itself, as in `navigator.yaml`, its paths, and its portal mount.\n\n\
+         Do not copy a Project code from another repository into this codebase.\n\n\
+         Do not put it into a commit message, code comment, branch name, or pull-request body.\n\n\
+         A precedent citation is still a breach; cite the governing issue by its bare identifier instead.\n\n\
+         Read matter data through Navigator's `/api` read surfaces and write through its one REST command boundary.\n\n\
+         Do not add a second backend.\n\n\
+         Do not put a legal file, a client upload, an answer, a generated document, or a secret in this repository.\n"
     )
 }
 

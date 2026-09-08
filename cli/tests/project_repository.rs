@@ -130,9 +130,9 @@ fn the_scaffold_produces_a_repository_that_validates_and_is_idempotent() {
     assert!(instructions.contains("source grouping is not a URL segment"));
     assert!(instructions.contains("root `portal/` is also"));
     assert!(instructions.contains("A Project code names a matter and its repository."));
-    assert!(instructions.contains("It identifies a client, so it is client"));
+    assert!(instructions.contains("It identifies a client, so it is client data."));
     assert!(
-        instructions.contains("data. The one legitimate use here is this repository naming itself")
+        instructions.contains("The one legitimate use here is this repository naming itself")
     );
     assert!(
         instructions.contains("commit message, code comment, branch name, or pull-request body")
@@ -367,7 +367,10 @@ fn an_application_directory_name_must_be_a_route_safe_slug() {
 fn a_repository_carrying_neither_half_is_reported_and_not_failed() {
     let dir = TempDir::new().unwrap();
     scaffold(dir.path(), "example-project").success();
-    fs::remove_dir_all(dir.path().join("templates")).unwrap();
+    let templates = dir.path().join("templates");
+    if templates.exists() {
+        fs::remove_dir_all(templates).unwrap();
+    }
 
     validate(dir.path())
         .success()

@@ -1,16 +1,15 @@
 head_title: "{site_name} | Fractional General Counsel"
 meta_description: >-
-  Company counsel on one flat annual fee, just $10 a day — cap table, employee
-  agreements, and state tax filings, with a one-business-day redline
-  turnaround.
+  Company counsel on one flat annual fee, just $10 a day, covering our library
+  of standard company documents — with flat per-document pricing for the paper
+  you bring us.
 eyebrow: Fractional General Counsel
 heading:
   text: Accurate. Efficient. Speedy.
   accent_words: 1
 lead: >-
-  One simple flat annual fee — just $10 a day — for company counsel working at
-  the pace your sales cycle already runs at. A redline comes back in one
-  business day.
+  One simple flat annual fee for just $10 a day that includes all your company
+  basics with predictable flat fees for the rest.
 cta_label: Contact us
 virtues:
   - word: Accurate
@@ -20,29 +19,34 @@ virtues:
       actually is.
   - word: Efficient
     body: >-
-      One flat fee covers the recurring work, so a routine question costs
-      nothing to ask and the answer arrives the day you asked it.
+      We answer all questions within three business days and often much faster.
   - word: Speedy
     body: >-
-      Turnarounds are published rather than negotiated deal by deal: one
-      business day on a redline, same business day on an NDA.
+      Turnarounds are published rather than negotiated deal by deal: a document
+      from our library goes out the same business day, and a redline of your own
+      paper comes back in one business day.
 fee_heading: One flat annual fee
 fee_body: >-
-  One predictable fee covers the recurring legal work that keeps your company
-  moving.
+  The flat fee covers our library of standard company documents — employee and
+  contractor agreements, NDAs, and the corporate housekeeping that keeps them
+  current. Paper you bring us is priced per document: $100 to redline a Word
+  document of up to 100 pages, or up to 2,500 lines of the same document as
+  Navigator-formatted Markdown.
 pricing:
   - title: Base package
     price: "$3,650"
     cadence: /year
     blurb: >-
-      That's just $10 a day. Routine contract review and redlines, covered by
-      one flat annual fee.
+      That's just $10 a day for our standard document library, covered by one
+      flat annual fee.
     features:
       - Cap table management
-      - Employee and contractor agreements
+      - Standard employee and contractor agreements
+      - NDAs and standard commercial forms
       - Basic taxes and state filings
       - Corporate housekeeping
-      - Counsel on call
+      - Counsel on call, answered within three business days
+      - Redline of a document you bring us at $100, up to 100 pages
       - DocuSign sent & tracked for you at $5 per contract
     day_rate_bill: 10
 closing_heading: Ready to build and sell?

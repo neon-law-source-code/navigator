@@ -313,6 +313,14 @@ enum Command {
         /// resolved before the run passes and so must stay on screen.
         #[arg(long, conflicts_with = "fix")]
         errors_only: bool,
+        /// Hold the origin pass (`Y009`) to a tree that has already been
+        /// built. A Project repository's CI runs its applications' builds
+        /// and then this command, so a declared application with no `dist/`
+        /// means the scan read nothing and is a finding. Without the flag a
+        /// missing `dist/` is skipped, which is what lets a source-only
+        /// checkout validate before anyone runs a build.
+        #[arg(long)]
+        ci: bool,
     },
     /// The notation author's offline workbench for everything under
     /// `templates/notations/`.
@@ -1915,7 +1923,8 @@ fn main() -> ExitCode {
             dir,
             fix,
             errors_only,
-        } => run_validate(&dir, fix, errors_only),
+            ci,
+        } => run_validate(&dir, fix, errors_only, ci),
         // The docs reference helpers need no cluster, so they are handled
         // here rather than routed into the KIND dispatcher with the rest
         // of `dev`.
@@ -2857,13 +2866,13 @@ fn mutable_tag_pass(dir: &std::path::Path) -> std::io::Result<Vec<GateError>> {
 /// lint — YAML syntax, seed-document shape, locale catalogs, and consumed
 /// mutable tags. Every finding any of them reports fails the gate, so the four
 /// lists concatenate into one.
-fn standalone_tree_passes(dir: &std::path::Path) -> std::io::Result<Vec<GateError>> {
+fn standalone_tree_passes(dir: &std::path::Path, ci: bool) -> std::io::Result<Vec<GateError>> {
     let mut errors = yaml_pass(dir)?;
     errors.append(&mut seed_document_pass(dir)?);
     errors.append(&mut locale_document_pass(dir)?);
     errors.append(&mut document_pointer_pass(dir)?);
     errors.extend(project_manifest_pass(dir));
-    errors.extend(project_origin_pass(dir));
+    errors.extend(project_origin_pass(dir, ci));
     errors.append(&mut mutable_tag_pass(dir)?);
     Ok(errors)
 }
@@ -2898,12 +2907,12 @@ fn project_manifest_pass(dir: &std::path::Path) -> Vec<GateError> {
     errors
 }
 
-fn project_origin_pass(dir: &std::path::Path) -> Vec<GateError> {
+fn project_origin_pass(dir: &std::path::Path, ci: bool) -> Vec<GateError> {
     let Some(manifest) = crate::projects::origin::load_manifest(dir) else {
         return Vec::new();
     };
     let applications = crate::projects::repository::discovered_applications(dir);
-    let findings = crate::projects::origin::lint(dir, &applications, &manifest);
+    let findings = crate::projects::origin::lint(dir, &applications, &manifest, ci);
     let mut errors = Vec::with_capacity(findings.len());
     for finding in findings {
         let location = format!("{}:{}", finding.path.display(), finding.line);
@@ -2928,7 +2937,7 @@ fn project_origin_pass(dir: &std::path::Path) -> Vec<GateError> {
     errors
 }
 
-fn run_validate(dir: &std::path::Path, fix: bool, errors_only: bool) -> ExitCode {
+fn run_validate(dir: &std::path::Path, fix: bool, errors_only: bool, ci: bool) -> ExitCode {
     let question_codes = rules::canonical_question_codes();
     if fix {
         let fix_report = match fix_directory(dir, &rules::DefaultFileFilter::default(), |file| {
@@ -3015,7 +3024,7 @@ fn run_validate(dir: &std::path::Path, fix: bool, errors_only: bool) -> ExitCode
     // Standalone raw-tree passes over the same walk: YAML parse errors, seed
     // document shape, locale catalogs, and consumed mutable image/binary tags
     // (navigator#540).
-    match standalone_tree_passes(dir) {
+    match standalone_tree_passes(dir, ci) {
         Ok(mut errors) => gate_errors.append(&mut errors),
         Err(e) => {
             eprintln!("navigator: {e}");

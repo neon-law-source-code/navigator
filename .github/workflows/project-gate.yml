@@ -167,6 +167,36 @@ jobs:
               app_dir="${package_json%/package.json}"
               pnpm --dir "${app_dir}" build
           done
+      # The origin gate (`Y009`) reads each application's built `dist/`, so it
+      # can only run in the job that produced one. `notation` validates a bare
+      # checkout on its own runner and never sees a build.
+      - name: download and install the navigator CLI
+        if: hashFiles('apps/*/package.json', 'portal/package.json', 'vite.config.ts', 'vite.config.js') != ''
+        env:
+          VERSION: ${{ inputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          case "${VERSION}" in
+            latest|main|HEAD|"")
+              echo "::error::version must be an exact release tag, not '${VERSION}'."
+              exit 1
+              ;;
+          esac
+          asset="navigator-${VERSION}-linux.tar.gz"
+          tmp="$(mktemp -d)"
+          gh release download "${VERSION}" \
+            --repo neon-law-source-code/navigator \
+            --pattern "${asset}" \
+            --dir "${tmp}" \
+            --clobber
+          tar -xzf "${tmp}/${asset}" -C "${tmp}" navigator
+          install -d "${RUNNER_TEMP}/navigator-bin"
+          install -m 0755 "${tmp}/navigator" "${RUNNER_TEMP}/navigator-bin/navigator"
+          echo "${RUNNER_TEMP}/navigator-bin" >> "${GITHUB_PATH}"
+      - name: navigator validate --ci
+        if: hashFiles('apps/*/package.json', 'portal/package.json', 'vite.config.ts', 'vite.config.js') != ''
+        run: navigator validate . --ci
 
   notation:
     runs-on: ubuntu-latest

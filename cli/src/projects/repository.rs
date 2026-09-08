@@ -1655,6 +1655,38 @@ jobs:
         }
     }
 
+    /// The origin pass reads a built `dist/`, so the job that builds is the
+    /// only job that can validate it. Asserting the step's *presence* would
+    /// pass on a workflow that validated before the build and scanned a
+    /// source tree, so the assertion is on the byte offsets: the build comes
+    /// first, and the validate step carries `--ci` so a missing `dist/` is a
+    /// finding rather than a skip.
+    #[test]
+    fn the_verify_job_validates_after_it_builds() {
+        let generated = include_str!("../../../.github/workflows/project-gate.yml");
+        let verify = generated
+            .split_once("\n  verify:\n")
+            .expect("no verify job")
+            .1
+            .split_once("\n  notation:\n")
+            .expect("verify is not followed by notation")
+            .0;
+        let build = verify
+            .find(r#"pnpm --dir "${app_dir}" build"#)
+            .expect("verify does not build:\n{verify}");
+        let validate = verify
+            .find("navigator validate . --ci")
+            .unwrap_or_else(|| panic!("verify does not run the origin gate:\n{verify}"));
+        assert!(
+            build < validate,
+            "verify validates before it builds, so `Y009` reads a source tree:\n{verify}"
+        );
+        assert!(
+            verify.contains("navigator-bin"),
+            "verify validates without installing the pinned CLI:\n{verify}"
+        );
+    }
+
     #[test]
     fn the_application_steps_discover_every_workspace_at_run_time() {
         let generated = include_str!("../../../.github/workflows/project-gate.yml");

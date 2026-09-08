@@ -202,6 +202,7 @@ pub fn routes(
                 .post(admin_person_avatar_upload)
                 .layer(DefaultBodyLimit::max(MAX_AVATAR_BYTES)),
         )
+        .route("/app/me/avatar", get(current_viewer_avatar))
         .route("/app/admin/people/{id}/welcome", post(admin_person_welcome))
         .route("/app/admin/people/{id}/delete", post(admin_person_delete));
     r = register_firm_matter_routes(r, "/app/lawyer");
@@ -972,6 +973,55 @@ async fn admin_person_avatar_download(
         return StatusCode::NOT_FOUND.into_response();
     };
     stream_avatar(&s.storage, person.profile_image_url).await
+}
+
+/// `GET /app/me/avatar` — stream only the authenticated viewer's avatar for
+/// the shared `/app` profile menu. The person id comes from the signed session,
+/// never from the URL, so this is not an alternative people-directory read.
+async fn current_viewer_avatar(
+    State(s): State<AdminState>,
+    session: Option<Extension<SessionData>>,
+) -> Response {
+    let Some(Extension(session)) = session else {
+        return StatusCode::FORBIDDEN.into_response();
+    };
+    let Some(person_id) = session.person_id else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let person = match store::persons::find_by_id(&s.surreal, person_id).await {
+        Ok(person) => person,
+        Err(e) => {
+            tracing::error!(error = %e, person_id = %person_id, "current avatar: person read failed");
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
+    };
+    let Some(person) = person else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    match person.profile_image_url {
+        Some(stored) => stream_avatar(&s.storage, Some(stored)).await,
+        None => initials_avatar_response(&person.name),
+    }
+}
+
+/// Render the same initials fallback as the Dioxus avatar component for the
+/// native image request used by the profile menu.
+fn initials_avatar_response(name: &str) -> Response {
+    let initials = webapp::components::initials(name);
+    let svg = format!(
+        r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36" role="img" aria-label="Profile avatar"><circle cx="18" cy="18" r="18" fill="#0f766e"/><text x="18" y="19" fill="white" font-family="sans-serif" font-size="13" font-weight="600" text-anchor="middle" dominant-baseline="middle">{initials}</text></svg>"##
+    );
+    (
+        [
+            (
+                axum::http::header::CONTENT_TYPE,
+                "image/svg+xml; charset=utf-8",
+            ),
+            (axum::http::header::CACHE_CONTROL, "private, no-store"),
+        ],
+        svg,
+    )
+        .into_response()
 }
 
 /// `POST /app/admin/people/{id}/welcome` — the native-form welcome-email send behind

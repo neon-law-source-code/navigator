@@ -143,6 +143,12 @@ pub fn LawyerLetterDetail() -> Element {
                 a { class: "nav-link", href: "/app/admin", "Admin" }
             }
             a { class: "nav-link", href: "/auth/logout", "Sign out" }
+            crate::components::AppProfileMenu {
+                destinations: vec![
+                    crate::components::AppNavLink::new("Projects", "/app/projects"),
+                    crate::components::AppNavLink::new("Sign out", "/auth/logout"),
+                ],
+            }
         }
         main { id: "letter-detail", class: "nav-theme",
             match view.fields {

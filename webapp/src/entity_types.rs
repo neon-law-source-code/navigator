@@ -139,6 +139,12 @@ pub fn LawyerEntityTypes() -> Element {
         nav { class: "lawyer-nav",
             a { class: "nav-link", href: "/app/projects", "Projects" }
             a { class: "nav-link", href: "/auth/logout", "Sign out" }
+            crate::components::AppProfileMenu {
+                destinations: vec![
+                    crate::components::AppNavLink::new("Projects", "/app/projects"),
+                    crate::components::AppNavLink::new("Sign out", "/auth/logout"),
+                ],
+            }
         }
         main { id: "lawyer-entity-types", class: "nav-theme",
             h1 { "Entity types" }

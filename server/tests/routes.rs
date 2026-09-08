@@ -15965,6 +15965,91 @@ async fn admin_person_avatar_download_requires_admin() {
     assert_eq!(resp.status(), StatusCode::FORBIDDEN);
 }
 
+/// The shared application chrome reads only the signed-in person's avatar. It
+/// serves initials until an upload exists, then streams that person's private
+/// object — without accepting another person's id in the request path.
+#[tokio::test]
+async fn current_viewer_avatar_serves_initials_then_the_private_upload() {
+    let (state, surreal) = state_with_engines().await;
+    let viewer = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "Ada Lovelace",
+            "ada@example.com",
+            store::persons::Role::Lawyer,
+        ),
+    )
+    .await
+    .unwrap();
+    let app = server::neon_router(
+        state.clone(),
+        std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
+    );
+    let (cookie, _) = session_cookie_and_csrf_for_person(&viewer);
+
+    let initials = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/app/me/avatar")
+                .header(header::COOKIE, &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(initials.status(), StatusCode::OK);
+    assert_eq!(
+        initials
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok()),
+        Some("image/svg+xml; charset=utf-8")
+    );
+    let initials_body = body_string(initials).await;
+    assert!(initials_body.contains(">AL</text>"), "{initials_body}");
+
+    let key = format!("people/{}/avatars/{}.png", viewer.id, viewer.id);
+    state
+        .storage
+        .put(&key, ONE_PIXEL_PNG, "image/png")
+        .await
+        .unwrap();
+    store::persons::edit(
+        &surreal,
+        viewer.id,
+        &store::persons::PersonEdit {
+            profile_image_url: Some(Some(key)),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    let uploaded = app
+        .oneshot(
+            Request::builder()
+                .uri("/app/me/avatar")
+                .header(header::COOKIE, &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(uploaded.status(), StatusCode::OK);
+    assert_eq!(
+        uploaded
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok()),
+        Some("image/png")
+    );
+    let uploaded_body = axum::body::to_bytes(uploaded.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert_eq!(uploaded_body.as_ref(), ONE_PIXEL_PNG);
+}
+
 /// `POST /app/admin/entities/{id}/avatar` writes the image to the private
 /// documents bucket at `entities/{id}/avatars/…` and redirects to the edit
 /// page; `GET` on the same path streams it back. A **lawyer** session

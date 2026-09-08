@@ -1,4 +1,6 @@
-//! The one navbar every authenticated `/app` page renders.
+//! The shared navbar used by the authenticated `/app` pages that render the
+//! Dioxus application chrome. Legacy native-form pages reuse its
+//! [`AppProfileMenu`] leaf so the viewer affordance stays consistent there too.
 //!
 //! Before this component each `/app` page hand-wrote its own `nav.lawyer-nav`,
 //! and they drifted: the workbench offered Admin, the matter list offered
@@ -50,7 +52,8 @@ pub struct AppLogo {
     pub brand_name: String,
 }
 
-/// The `/app` navbar: the viewer's destinations, then the deploy's brand mark.
+/// The `/app` navbar: a profile menu containing the viewer's destinations,
+/// then the deploy's brand mark.
 ///
 /// `logo` is `None` for a deploy that configures no mark, which renders the row
 /// of links alone rather than a broken image.
@@ -61,9 +64,7 @@ pub fn AppNavbar(
 ) -> Element {
     rsx! {
         nav { class: "lawyer-nav", "aria-label": "Application",
-            for link in destinations.iter() {
-                a { class: "nav-link", href: "{link.href}", "{link.label}" }
-            }
+            AppProfileMenu { destinations }
             if let Some(logo) = logo.as_ref() {
                 a {
                     class: "lawyer-nav__brand",
@@ -76,6 +77,34 @@ pub fn AppNavbar(
                         width: "28",
                         height: "28",
                     }
+                }
+            }
+        }
+    }
+}
+
+/// The avatar trigger and disclosure shared by migrated and legacy `/app`
+/// routes. Keeping this leaf separate lets a native-form page retain its
+/// existing links while gaining the same authenticated profile affordance.
+#[component]
+pub fn AppProfileMenu(destinations: Vec<AppNavLink>) -> Element {
+    rsx! {
+        details { class: "lawyer-nav__profile",
+            summary {
+                class: "lawyer-nav__profile-trigger",
+                "aria-label": "Open profile menu",
+                img {
+                    class: "lawyer-nav__avatar",
+                    src: "/app/me/avatar",
+                    alt: "Your profile photo",
+                    width: "36",
+                    height: "36",
+                }
+                span { class: "lawyer-nav__profile-chevron", "⌄" }
+            }
+            div { class: "lawyer-nav__profile-menu",
+                for link in destinations.iter() {
+                    a { class: "nav-link", href: "{link.href}", "{link.label}" }
                 }
             }
         }
@@ -139,7 +168,9 @@ mod tests {
         assert!(html.contains(r#"aria-label="Example Law home""#), "{html}");
         // The mark is decorative: the anchor's label carries the brand name.
         assert!(html.contains(r#"alt="""#), "{html}");
-        // It trails the links, which is what the `margin-left: auto` on
+        assert!(html.contains(r#"src="/app/me/avatar""#), "{html}");
+        assert!(html.contains(r#"aria-label="Open profile menu""#), "{html}");
+        // It trails the profile menu, which is what the `margin-left: auto` on
         // `.lawyer-nav__brand` pushes to the right-hand edge.
         let sign_out = html.find("Sign out").expect("Sign out present");
         let mark = html.find("lawyer-nav__brand").expect("mark present");
@@ -156,6 +187,6 @@ mod tests {
 
         let html = ssr(app);
         assert!(!html.contains("lawyer-nav__brand"), "{html}");
-        assert!(!html.contains("<img"), "{html}");
+        assert!(!html.contains("lawyer-nav__logo"), "{html}");
     }
 }

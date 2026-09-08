@@ -183,6 +183,12 @@ fn review_body(view: &IntakeReviewView) -> Element {
                 a { class: "nav-link", href: "/app/admin", "Admin" }
             }
             a { class: "nav-link", href: "/auth/logout", "Sign out" }
+            crate::components::AppProfileMenu {
+                destinations: vec![
+                    crate::components::AppNavLink::new("Projects", "/app/projects"),
+                    crate::components::AppNavLink::new("Sign out", "/auth/logout"),
+                ],
+            }
         }
         main { id: "intake-review", class: "nav-theme",
             h1 { {phase.heading()} }

@@ -1394,32 +1394,108 @@ fn lane_requires_post_roll_asset_verification(lane: ShipLane) -> bool {
     matches!(lane, ShipLane::ImageOnly | ShipLane::Roll)
 }
 
+/// Where the post-roll check reads the asset references it probes the public
+/// origin for. Decided once from the selected root so the live lane and the
+/// dry-run line cannot disagree about it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum PostRollAssetRefs {
+    /// A source checkout: walk `server/content` under the root, the complete
+    /// set `navigator ops assets verify` reads.
+    ContentTree(PathBuf),
+    /// A deploy-only tree (`--deployments-dir` pointing at a checkout that
+    /// carries `deployments/` and nothing else) has no `server/content`. The
+    /// references embedded in this binary stand in: the workshop markdown,
+    /// the gallery variants, and the licensed faces — everything but the
+    /// blog's markdown, which exists only on disk.
+    Embedded {
+        /// The directory that was looked for and not found, named in the
+        /// operator warning so a source checkout with a stray root is not
+        /// mistaken for a deploy-only tree.
+        missing: PathBuf,
+    },
+}
+
+impl PostRollAssetRefs {
+    /// The clause the dry-run line carries so an operator sees which set a
+    /// live run from this root would probe.
+    fn describe(&self) -> String {
+        match self {
+            Self::ContentTree(content_root) => {
+                format!("references from `{}`", content_root.display())
+            }
+            Self::Embedded { missing } => format!(
+                "`{}` is absent, so the references embedded in this CLI",
+                missing.display()
+            ),
+        }
+    }
+}
+
+/// `server/content` under `root` when it is a directory, else the embedded set.
+/// A file at that path counts as absent: there is nothing to walk.
+fn post_roll_asset_refs(root: &Path) -> PostRollAssetRefs {
+    let content_root = root.join("server/content");
+    if content_root.is_dir() {
+        PostRollAssetRefs::ContentTree(content_root)
+    } else {
+        PostRollAssetRefs::Embedded {
+            missing: content_root,
+        }
+    }
+}
+
 /// Finish a lane that changed the deployed image: Restate must see the new
 /// handler list first, then the public origin must prove every asset the
-/// rolled binary can request. The verifier is injected so this ordering and
-/// its failure boundary stay unit-testable without a cluster or network.
-fn finish_roll<R, F>(
+/// rolled binary can request. Both verifiers are injected so this ordering,
+/// the choice between them, and their failure boundary stay unit-testable
+/// without a cluster or network: `verify` walks a source checkout's
+/// `server/content`; `verify_embedded` probes the same origin for the
+/// references this binary embeds when the root carries no such tree (the
+/// documented deploy-only invocation, ENG-552). Neither is skipped — a
+/// missing tree changes the reference source, never whether the origin is
+/// checked — and either failing blocks completion.
+fn finish_roll<R, F, E>(
     lane: ShipLane,
     cfg: &ShipConfig,
     root: &Path,
     dry_run: bool,
     reregister: R,
     verify: F,
+    verify_embedded: E,
 ) -> Result<()>
 where
     R: FnOnce() -> Result<()>,
     F: FnOnce(&Path, &str) -> Result<()>,
+    E: FnOnce(&str) -> Result<()>,
 {
     reregister()?;
     if lane_requires_post_roll_asset_verification(lane) {
+        let refs = post_roll_asset_refs(root);
         if dry_run {
             eprintln!(
-                "DRY-RUN: would verify public assets at {} after the roll",
-                cfg.asset_base_url
+                "DRY-RUN: would verify public assets at {} after the roll ({})",
+                cfg.asset_base_url,
+                refs.describe()
             );
         } else {
-            let content_root = root.join("server/content");
-            verify(&content_root, &cfg.asset_base_url).with_context(|| {
+            match refs {
+                PostRollAssetRefs::ContentTree(content_root) => {
+                    verify(&content_root, &cfg.asset_base_url)
+                }
+                PostRollAssetRefs::Embedded { missing } => {
+                    eprintln!(
+                        "WARN: `{}` is not a directory, so this is a deploy-only tree: the \
+                         post-roll check probes {} for the assets embedded in this CLI — the \
+                         workshop images, the gallery variants, and the licensed fonts — and \
+                         cannot see references held only by the blog markdown. Run \
+                         `navigator ops assets verify` from a source checkout for the complete set.",
+                        missing.display(),
+                        cfg.asset_base_url
+                    );
+                    verify_embedded(&cfg.asset_base_url)
+                }
+            }
+            .with_context(|| {
                 format!(
                     "post-roll public asset verification failed for deployment `{}`",
                     cfg.name
@@ -1520,6 +1596,7 @@ fn image_only_steps(cfg: &ShipConfig, tag: &str, dry_run: bool, root: &Path) -> 
         dry_run,
         || reregister(cfg, dry_run),
         crate::assets::verify_public_asset_origin,
+        crate::assets::verify_public_asset_origin_embedded,
     )?;
 
     eprintln!(
@@ -1761,6 +1838,7 @@ fn roll(
         dry_run,
         || reregister(cfg, dry_run),
         crate::assets::verify_public_asset_origin,
+        crate::assets::verify_public_asset_origin_embedded,
     )?;
 
     // 7. Smoke-check the public surface (best-effort).
@@ -6661,9 +6739,16 @@ spec:
         restart_only_steps(&sample_config(), true).expect("a dry-run restart needs no cluster");
     }
 
+    /// A root shaped like a source checkout: `server/content` exists to walk.
+    fn source_checkout() -> TempDir {
+        let root = tempfile::tempdir().expect("create a test workspace");
+        fs::create_dir_all(root.path().join("server/content")).expect("create content tree");
+        root
+    }
+
     #[test]
     fn a_completed_roll_verifies_public_assets_after_re_registering() {
-        let root = tempfile::tempdir().expect("create a test workspace");
+        let root = source_checkout();
         let events = std::cell::RefCell::new(Vec::new());
 
         finish_roll(
@@ -6681,6 +6766,7 @@ spec:
                 assert_eq!(base_url, "https://www.example.com/assets");
                 Ok(())
             },
+            |_| unreachable!("a source checkout walks its own content tree"),
         )
         .expect("a live completed roll should verify its public origin");
 
@@ -6689,7 +6775,7 @@ spec:
 
     #[test]
     fn a_failed_post_roll_asset_check_blocks_ship_completion() {
-        let root = tempfile::tempdir().expect("create a test workspace");
+        let root = source_checkout();
         let events = std::cell::RefCell::new(Vec::new());
 
         let error = finish_roll(
@@ -6705,6 +6791,7 @@ spec:
                 events.borrow_mut().push("assets");
                 Err(anyhow!("public origin is unreachable"))
             },
+            |_| unreachable!("a source checkout walks its own content tree"),
         )
         .expect_err("an unreachable public origin must block completion");
 
@@ -6713,6 +6800,133 @@ spec:
             .to_string()
             .contains("post-roll public asset verification"));
         assert!(format!("{error:#}").contains("public origin is unreachable"));
+    }
+
+    #[test]
+    fn a_deploy_only_tree_probes_the_embedded_asset_set_after_re_registering() {
+        // ENG-552. The documented `--deployments-dir .` invocation from a tree
+        // that carries `deployments/` and no application source used to fail
+        // here with "content directory `./server/content` does not exist"
+        // after the roll had already landed. The check still runs, still
+        // after Restate, against the references this binary embeds.
+        let root = tempfile::tempdir().expect("create a deploy-only tree");
+        let events = std::cell::RefCell::new(Vec::new());
+
+        finish_roll(
+            ShipLane::Roll,
+            &sample_config(),
+            root.path(),
+            false,
+            || {
+                events.borrow_mut().push("restate");
+                Ok(())
+            },
+            |_, _| unreachable!("a deploy-only tree has no content tree to walk"),
+            |base_url| {
+                events.borrow_mut().push("embedded");
+                assert_eq!(base_url, "https://www.example.com/assets");
+                Ok(())
+            },
+        )
+        .expect("a deploy-only roll verifies the embedded set instead of failing");
+
+        assert_eq!(*events.borrow(), ["restate", "embedded"]);
+    }
+
+    #[test]
+    fn a_failed_embedded_asset_check_blocks_ship_completion() {
+        // The fallback is a different reference source, not a softer gate.
+        let root = tempfile::tempdir().expect("create a deploy-only tree");
+        let events = std::cell::RefCell::new(Vec::new());
+
+        let error = finish_roll(
+            ShipLane::ImageOnly,
+            &sample_config(),
+            root.path(),
+            false,
+            || {
+                events.borrow_mut().push("restate");
+                Ok(())
+            },
+            |_, _| unreachable!("a deploy-only tree has no content tree to walk"),
+            |_| {
+                events.borrow_mut().push("embedded");
+                Err(anyhow!("workshop hero is missing"))
+            },
+        )
+        .expect_err("a missing embedded asset must block completion");
+
+        assert_eq!(*events.borrow(), ["restate", "embedded"]);
+        assert!(error
+            .to_string()
+            .contains("post-roll public asset verification failed for deployment `example-prod`"));
+        assert!(format!("{error:#}").contains("workshop hero is missing"));
+    }
+
+    #[test]
+    fn a_dry_run_names_its_reference_source_and_probes_nothing() {
+        // Under `--dry-run` neither verifier runs from either root shape; the
+        // printed line carries which set a live run would probe.
+        for root in [
+            source_checkout(),
+            tempfile::tempdir().expect("deploy-only tree"),
+        ] {
+            finish_roll(
+                ShipLane::Roll,
+                &sample_config(),
+                root.path(),
+                true,
+                || Ok(()),
+                |_, _| unreachable!("dry-run probes no origin"),
+                |_| unreachable!("dry-run probes no origin"),
+            )
+            .expect("a dry-run finish needs no origin");
+        }
+
+        let checkout = source_checkout();
+        let content_root = checkout.path().join("server/content");
+        assert_eq!(
+            post_roll_asset_refs(checkout.path()).describe(),
+            format!("references from `{}`", content_root.display())
+        );
+
+        let deploy_only = tempfile::tempdir().expect("deploy-only tree");
+        let missing = deploy_only.path().join("server/content");
+        assert_eq!(
+            post_roll_asset_refs(deploy_only.path()).describe(),
+            format!(
+                "`{}` is absent, so the references embedded in this CLI",
+                missing.display()
+            )
+        );
+    }
+
+    #[test]
+    fn the_reference_source_follows_whether_the_content_tree_is_a_directory() {
+        let checkout = source_checkout();
+        assert_eq!(
+            post_roll_asset_refs(checkout.path()),
+            PostRollAssetRefs::ContentTree(checkout.path().join("server/content"))
+        );
+
+        let deploy_only = tempfile::tempdir().expect("deploy-only tree");
+        assert_eq!(
+            post_roll_asset_refs(deploy_only.path()),
+            PostRollAssetRefs::Embedded {
+                missing: deploy_only.path().join("server/content"),
+            }
+        );
+
+        // A file where the directory should be is nothing to walk either.
+        let odd = tempfile::tempdir().expect("odd tree");
+        fs::create_dir_all(odd.path().join("server")).expect("create server dir");
+        fs::write(odd.path().join("server/content"), b"").expect("write a stray file");
+        assert_eq!(
+            post_roll_asset_refs(odd.path()),
+            PostRollAssetRefs::Embedded {
+                missing: odd.path().join("server/content"),
+            }
+        );
     }
 
     #[test]
@@ -6730,6 +6944,10 @@ spec:
             },
             |_, _| {
                 events.borrow_mut().push("assets");
+                Ok(())
+            },
+            |_| {
+                events.borrow_mut().push("embedded");
                 Ok(())
             },
         )

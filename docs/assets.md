@@ -175,7 +175,11 @@ A live deployment can serve a 404 hero when the bucket is missing bytes — the 
 string, not that the object exists. `assets verify` closes that gap: it walks image refs under `server/content`, every
 responsive gallery variant and both licensed webfont families, then fetches each one from the public origin (auth-free
 `HEAD` against `NAVIGATOR_ASSET_BASE_URL`, exactly as a browser would). It exits non-zero listing whatever the origin
-does not serve. `ops ship` invokes the same verifier after a full or image-only roll.
+does not serve. `ops ship` invokes the same verifier after a full or image-only roll. From a deploy-only tree — a
+`--deployments-dir` checkout that carries `deployments/` and no `server/content` — it probes the same origin for the
+references the binary embeds instead: the workshop markdown, every gallery variant, and both font families. It says so
+on stderr, because the blog's references are the one set that lane cannot see; run `assets verify` from a source
+checkout to cover them.
 
 ```bash
 NAVIGATOR_ASSET_BASE_URL=https://staging.neonlaw.com/assets cargo run -p cli -- ops assets verify

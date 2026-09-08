@@ -290,6 +290,45 @@ fn the_legacy_and_new_portal_locations_cannot_claim_the_same_route() {
         .stderr(str::contains("claim the same application route"));
 }
 
+/// `CLAUDE.md` must deliver the bytes of `AGENTS.md` on every platform.
+///
+/// Stated in resolved content rather than link type, the way
+/// `cli/tests/agent_instruction_links.rs` states it for Navigator's own tree:
+/// on Unix the scaffold writes a relative symlink, on Windows a copy, and a
+/// harness reading either sees the same contract. The release archive for
+/// Windows compiles this path, so this is also the test that runs it.
+#[test]
+fn the_scaffold_makes_claude_md_deliver_the_agents_contract() {
+    let dir = TempDir::new().unwrap();
+    scaffold(dir.path(), "example-project")
+        .success()
+        .stdout(str::contains("CLAUDE.md ("));
+
+    let agents = fs::read(dir.path().join("AGENTS.md")).unwrap();
+    let claude = fs::read(dir.path().join("CLAUDE.md")).unwrap();
+    assert!(!agents.is_empty());
+    assert_eq!(claude, agents, "CLAUDE.md does not resolve to AGENTS.md");
+}
+
+/// The contract `CLAUDE.md` delivers is the `AGENTS.md` on disk, not the
+/// template: `scaffold` leaves an existing `AGENTS.md` alone, and a symlink
+/// resolves to that file, so the copy written where links are unavailable
+/// must be taken from it too or the two platforms diverge silently.
+#[test]
+fn the_scaffold_links_claude_md_to_an_existing_agents_md() {
+    let dir = TempDir::new().unwrap();
+    let hand_written = "# A contract this repository already had
+";
+    fs::write(dir.path().join("AGENTS.md"), hand_written).unwrap();
+
+    scaffold(dir.path(), "example-project")
+        .success()
+        .stdout(str::contains("AGENTS.md (left alone)"));
+
+    let claude = fs::read_to_string(dir.path().join("CLAUDE.md")).unwrap();
+    assert_eq!(claude, hand_written);
+}
+
 /// Execute the generated build step rather than only looking for a glob in
 /// its source: every direct app and the compatibility root portal must reach
 /// pnpm exactly once.

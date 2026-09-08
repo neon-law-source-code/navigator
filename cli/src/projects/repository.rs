@@ -349,10 +349,10 @@ pub fn scaffold(
     if claude.exists() {
         println!("exists    {} (left alone)", claude.display());
     } else {
-        match std::os::unix::fs::symlink("AGENTS.md", &claude) {
-            Ok(()) => println!("created   {} (symlink to AGENTS.md)", claude.display()),
+        match link_claude_to_agents(root, &claude) {
+            Ok(mechanism) => println!("created   {} ({mechanism})", claude.display()),
             Err(error) => {
-                eprintln!("navigator: symlink {}: {error}", claude.display());
+                eprintln!("navigator: {}: {error}", claude.display());
                 return ExitCode::from(2);
             }
         }
@@ -362,6 +362,31 @@ pub fn scaffold(
     // and CodeQL treats any printed Command field as cleartext logging.
     println!("\nValidate with: navigator validate .");
     ExitCode::SUCCESS
+}
+
+/// Make `CLAUDE.md` deliver the bytes of `AGENTS.md`.
+///
+/// One contract, read by whichever harness is pointed at the tree: the same
+/// invariant Navigator's own `cli/tests/agent_instruction_links.rs` guards,
+/// and it is stated in resolved bytes rather than link type. On Unix the
+/// cheapest way to keep two paths reading one document is a relative symlink.
+/// Windows cannot be asked for one: `symlink_file` needs a privilege an
+/// ordinary account lacks unless Developer Mode is on, and a link a Windows
+/// clone materialises without `core.symlinks` is a stub holding its own target
+/// path, which is the exact failure the guard exists to catch. So there the
+/// contract is copied from the `AGENTS.md` on disk, whether `scaffold` wrote
+/// it just now or left an existing one alone, so both platforms resolve to the
+/// same file. The returned string names the mechanism for the `created` line.
+#[cfg(unix)]
+fn link_claude_to_agents(_root: &Path, claude: &Path) -> std::io::Result<&'static str> {
+    std::os::unix::fs::symlink("AGENTS.md", claude)?;
+    Ok("symlink to AGENTS.md")
+}
+
+#[cfg(not(unix))]
+fn link_claude_to_agents(root: &Path, claude: &Path) -> std::io::Result<&'static str> {
+    fs::copy(root.join("AGENTS.md"), claude)?;
+    Ok("copy of AGENTS.md")
 }
 
 /// Write Navigator's canonical skill catalog into a Project repository, from

@@ -1533,31 +1533,19 @@ jobs:
     }
 
     #[test]
-    fn the_reusable_workflow_fans_three_jobs_into_the_required_check() {
+    fn the_reusable_workflow_fans_five_jobs_into_the_required_check() {
         let generated = include_str!("../../../.github/workflows/project-gate.yml");
-        for job in ["lint:", "verify:", "notation:"] {
+        for job in ["lint:", "verify:", "notation:", "documents:", "manifest:"] {
             assert!(
                 generated.contains(&format!("\n  {job}\n")),
                 "missing job `{job}`:\n{generated}"
             );
         }
         assert!(
-            generated.contains("\n  ci:\n    needs: [lint, verify, notation]\n"),
+            generated.contains(
+                "\n  ci:\n    needs: [lint, verify, notation, documents, manifest]\n"
+            ),
             "{generated}"
-        );
-    }
-
-    #[test]
-    fn the_documents_job_is_not_required() {
-        let generated = include_str!("../../../.github/workflows/project-gate.yml");
-        assert!(generated.contains("\n  documents:\n"), "{generated}");
-        assert!(
-            generated.contains("navigator document verify"),
-            "{generated}"
-        );
-        assert!(
-            !generated.contains("needs: [lint, verify, notation, documents]"),
-            "the documents job must not gate the required check:\n{generated}"
         );
     }
 
@@ -1565,7 +1553,7 @@ jobs:
     fn the_required_check_asserts_every_dependencys_result() {
         let generated = include_str!("../../../.github/workflows/project-gate.yml");
         assert!(generated.contains("if: always()"), "{generated}");
-        for job in ["lint", "verify", "notation"] {
+        for job in ["lint", "verify", "notation", "documents", "manifest"] {
             assert!(
                 generated.contains(&format!("needs.{job}.result")),
                 "the required check does not check `{job}`'s result:\n{generated}"

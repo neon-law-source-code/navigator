@@ -310,7 +310,7 @@ what a sync would do, then run it:
 ```bash
 navigator site sync --dry-run
 navigator site sync
-navigator site projects repository validate .
+navigator validate .
 ```
 
 Against a staged `documents/exhibits/exhibit-a.png`, the dry run prints one line per staged file and a count, and

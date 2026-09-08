@@ -42,7 +42,9 @@ jobs:
 }
 
 fn navigator() -> Command {
-    Command::cargo_bin("navigator").unwrap()
+    let mut command = Command::cargo_bin("navigator").unwrap();
+    command.env_remove("GITHUB_REPOSITORY");
+    command
 }
 
 #[test]

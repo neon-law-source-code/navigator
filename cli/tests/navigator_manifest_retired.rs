@@ -17,9 +17,14 @@
 use std::path::PathBuf;
 use std::process::Command;
 
-/// This file, exempt by provenance: it has to spell the retired name to check
-/// for it.
-const SKIPPED_FILES: &[&str] = &["navigator_manifest_retired.rs"];
+/// Files exempt by provenance: this guard plus the source, fixture, and rule
+/// catalog that reject the retired spelling.
+const SKIPPED_FILES: &[&str] = &[
+    "navigator_manifest_retired.rs",
+    "manifest.rs",
+    "validate.rs",
+    "validate.md",
+];
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..")

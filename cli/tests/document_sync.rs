@@ -11,7 +11,9 @@ use wiremock::matchers::{body_json, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn navigator() -> Command {
-    Command::cargo_bin("navigator").unwrap()
+    let mut command = Command::cargo_bin("navigator").unwrap();
+    command.env_remove("GITHUB_REPOSITORY");
+    command
 }
 
 fn write(root: &Path, relative: &str, bytes: impl AsRef<[u8]>) {

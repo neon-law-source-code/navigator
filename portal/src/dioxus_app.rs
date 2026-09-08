@@ -217,7 +217,7 @@ async fn dioxus_document_head(req: Request, next: Next) -> Response {
         None => html,
     };
 
-    // The minimal `/app` footer — a centered copyright line, nothing else.
+    // The minimal `/app` footer — copyright plus the shared platform line.
     // Gated on the request path rather than on the rendered shell: unlike the
     // public/authenticated split above, the eight real `/app` pages render
     // their navbar directly rather than through a shared `NavigatorShell`, so

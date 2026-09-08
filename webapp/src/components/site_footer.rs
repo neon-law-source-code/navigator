@@ -19,6 +19,11 @@
 
 use dioxus::prelude::*;
 
+/// The platform line every Navigator footer carries, so a white-label
+/// deployment still names the software it runs. Shared with
+/// [`crate::components::AppFooter`] so the wording cannot drift.
+pub const POWERED_BY_NEON_LAW_NAVIGATOR: &str = "Powered by Neon Law Navigator";
+
 use crate::components::{ExternalLink, GitHubStars, Icon, IconName};
 
 /// One published office — the state it sits in and its street address.
@@ -530,21 +535,17 @@ pub fn SiteFooterLegal(
                         }
                         p { class: "site-footer__disclaimer", "{disclaimer}" }
                     }
-                    // The repository the platform is developed in and the
-                    // release running here, closing the strip on one line. No
-                    // box, no attribution prose — just the repository's name
-                    // and its star count, the way the rest of the site links
-                    // off to GitHub, with the version right beside it rather
-                    // than on a line of its own.
-                    //
-                    // Each half stands alone: a deploy publishes the
-                    // repository without a release stamp under `cargo run`,
-                    // and the region itself renders only when there is
-                    // something to put in it.
-                    if (!source_repo.is_empty() && !source_href.is_empty())
-                        || (!navigator_version.is_empty() && !navigator_href.is_empty())
-                    {
-                        div { class: "site-footer__legal-platform",
+                    // The platform line names the software this page runs, then
+                    // the repository it is developed in and the release
+                    // serving here. The wording is the shared constant so this
+                    // footer and `/app`'s cannot drift. The repository and
+                    // version halves still stand alone: a deploy publishes
+                    // the repository without a release stamp under `cargo run`.
+                    div { class: "site-footer__legal-platform",
+                        p { class: "site-footer__powered", "{POWERED_BY_NEON_LAW_NAVIGATOR}" }
+                        if (!source_repo.is_empty() && !source_href.is_empty())
+                            || (!navigator_version.is_empty() && !navigator_href.is_empty())
+                        {
                             p { class: "site-footer__source",
                                 if !source_repo.is_empty() && !source_href.is_empty() {
                                     GitHubStars {
@@ -1362,8 +1363,9 @@ mod tests {
     ///
     /// `NAVIGATOR_RELEASE_TAG` is unset under a local `cargo run`, and a footer
     /// reading "#" is worse than no attribution. The repository line is
-    /// independent and still renders, and with both halves absent the region
-    /// itself disappears rather than leaving an empty box.
+    /// independent and still renders. The platform region always carries the
+    /// shared "Powered by" line, even when both repository and release are
+    /// absent.
     #[test]
     fn omits_the_release_line_when_unpublished() {
         fn repository_only() -> Element {
@@ -1395,11 +1397,42 @@ mod tests {
             out.contains("site-footer__source"),
             "the repository line is independent of it: {out}"
         );
+        assert!(
+            out.contains(POWERED_BY_NEON_LAW_NAVIGATOR),
+            "the shared platform line still renders: {out}"
+        );
         let bare = ssr(neither);
         assert!(
-            !bare.contains("site-footer__legal-platform"),
-            "with neither half, the region itself does not render: {bare}"
+            bare.contains("site-footer__legal-platform"),
+            "the platform region carries the powered-by line: {bare}"
         );
+        assert!(
+            bare.contains(POWERED_BY_NEON_LAW_NAVIGATOR),
+            "the shared wording is present without a repository: {bare}"
+        );
+        assert!(
+            !bare.contains("site-footer__source"),
+            "no empty source line: {bare}"
+        );
+    }
+
+    #[test]
+    fn the_platform_line_is_the_shared_powered_by_wording() {
+        fn app() -> Element {
+            rsx! {
+                SiteFooterLegal {
+                    copyright_holder: "Neon Law".to_string(),
+                    disclaimer: "This is an attorney advertisement.".to_string(),
+                    copyright_year: 2026,
+                }
+            }
+        }
+        let out = ssr(app);
+        assert!(
+            out.contains(POWERED_BY_NEON_LAW_NAVIGATOR),
+            "the public footer uses the shared wording: {out}"
+        );
+        assert_eq!(POWERED_BY_NEON_LAW_NAVIGATOR, "Powered by Neon Law Navigator");
     }
 
     /// A deploy that publishes an office in a state this component carries no

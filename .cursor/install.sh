@@ -32,7 +32,8 @@ cd "$repo_root"
 #    only when absent, and the whole step is skipped without passwordless sudo
 #    (a base image that already ships these).
 if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
-  apt_opts=(DEBIAN_FRONTEND=noninteractive -o Dpkg::Options::=--force-confold)
+  apt_env=(DEBIAN_FRONTEND=noninteractive)
+  apt_get=(apt-get -o Dpkg::Options::=--force-confold)
   need_apt=()
   pkg-config --exists openssl 2>/dev/null || need_apt+=(libssl-dev pkg-config)
   command -v ld.lld >/dev/null 2>&1 || need_apt+=(lld)
@@ -40,7 +41,7 @@ if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
   command -v iptables >/dev/null 2>&1 || need_apt+=(iptables)
   if [ "${#need_apt[@]}" -gt 0 ]; then
     sudo apt-get update -qq
-    sudo "${apt_opts[@]}" apt-get install -y -qq "${need_apt[@]}"
+    sudo "${apt_env[@]}" "${apt_get[@]}" install -y -qq "${need_apt[@]}"
   fi
   if [ -x /usr/sbin/iptables-legacy ]; then
     sudo update-alternatives --set iptables /usr/sbin/iptables-legacy >/dev/null
@@ -63,7 +64,7 @@ if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
         | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
     fi
     sudo apt-get update -qq
-    sudo "${apt_opts[@]}" apt-get install -y -qq \
+    sudo "${apt_env[@]}" "${apt_get[@]}" install -y -qq \
       docker-ce=5:28.5.2-1~ubuntu.24.04~noble \
       docker-ce-cli=5:28.5.2-1~ubuntu.24.04~noble \
       containerd.io \

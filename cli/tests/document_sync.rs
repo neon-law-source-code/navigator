@@ -69,8 +69,9 @@ async fn sync_uploads_through_the_api_writes_a_pointer_and_removes_the_binary() 
     let server = MockServer::start().await;
     let host = server.uri();
     let root = TempDir::new().unwrap();
+    let creds = TempDir::new().unwrap();
     manifest(root.path(), &host);
-    let credential_path = credentials(root.path(), &host);
+    let credential_path = credentials(creds.path(), &host);
     write(
         root.path(),
         "documents/pleadings/summons.pdf",
@@ -118,7 +119,7 @@ async fn sync_uploads_through_the_api_writes_a_pointer_and_removes_the_binary() 
 
     navigator()
         .current_dir(root.path())
-        .env("NAVIGATOR_CREDENTIALS_FILE", credential_path)
+        .env("NAVIGATOR_CREDENTIALS_FILE", &credential_path)
         .args(["site", "sync"])
         .assert()
         .success()
@@ -132,11 +133,6 @@ async fn sync_uploads_through_the_api_writes_a_pointer_and_removes_the_binary() 
         fs::read_to_string(root.path().join("documents/.gitignore")).unwrap(),
         "*\n!*/\n!*.yml\n!.gitignore\n"
     );
-    navigator()
-        .current_dir(root.path())
-        .args(["validate", "."])
-        .assert()
-        .success();
 
     let pointer_path = root.path().join("documents/pleadings/summons.pdf.yml");
     fs::write(
@@ -149,14 +145,36 @@ async fn sync_uploads_through_the_api_writes_a_pointer_and_removes_the_binary() 
     // reconciles the desired state through the authorized API.
     navigator()
         .current_dir(root.path())
-        .env(
-            "NAVIGATOR_CREDENTIALS_FILE",
-            root.path().join("credentials.json"),
-        )
+        .env("NAVIGATOR_CREDENTIALS_FILE", &credential_path)
         .args(["site", "sync"])
         .assert()
         .success()
         .stdout(predicate::str::contains("0 uploaded"));
+
+    write(
+        root.path(),
+        "navigator.yaml",
+        "project: acme\nhost: staging.neonlaw.com\n",
+    );
+    write(root.path(), "README.md", "# acme\n\nProject source.\n");
+    write(
+        root.path(),
+        ".github/workflows/ci.yml",
+        r#"name: ci
+on: [pull_request]
+jobs:
+  ci:
+    uses: neon-law-source-code/navigator/.github/workflows/project-gate.yml@26.8.23
+    secrets: inherit
+    with:
+      version: "26.8.23"
+"#,
+    );
+    navigator()
+        .current_dir(root.path())
+        .args(["validate", "."])
+        .assert()
+        .success();
 }
 
 #[test]

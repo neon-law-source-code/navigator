@@ -1,16 +1,16 @@
 # Gemini Enterprise — Neon Law Navigator MCP server
 
-How to expose Neon Law Navigator's `/mcp` endpoint to **Gemini Enterprise** so the Workspace's LLMs can call its tool
-catalog — 11 of the firm's 14 tools are advertised: `aida_create_person`, `aida_show_person`, `aida_list_jurisdictions`,
-`aida_list_entities`, `aida_validate_notation`, `aida_create_project`, `aida_list_projects`, `aida_link_person_project`,
-`aida_list_tools`, `aida_bulk_import`, and `aida_spawn_legal_council` — during chat sessions, with no new identity
-provider to operate. All tool names are namespaced under the `aida_` prefix.
+How to expose Neon Law Navigator's `/app/mcp` endpoint to **Gemini Enterprise** so the Workspace's LLMs can call its
+tool catalog — 11 of the firm's 14 tools are advertised: `aida_create_person`, `aida_show_person`,
+`aida_list_jurisdictions`, `aida_list_entities`, `aida_validate_notation`, `aida_create_project`, `aida_list_projects`,
+`aida_link_person_project`, `aida_list_tools`, `aida_bulk_import`, and `aida_spawn_legal_council` — during chat
+sessions, with no new identity provider to operate. All tool names are namespaced under the `aida_` prefix.
 
 The endpoint serves a **narrower catalog than the firm has**. Three tools — `aida_create_notation`,
 `aida_answer_notation`, and `aida_send_welcome_email` — are supervised acts: they email a client, or create or answer a
 Notation, which is a binding legal artifact. `mcp::tools::requires_confirmation` classifies them, and MCP has no
-`input-required` state to pause in, so `/mcp` withholds them from `tools/list` and refuses one named anyway rather than
-simulating an approval it cannot collect. Those acts are performed in `/app`, where a human approves them and the
+`input-required` state to pause in, so `/app/mcp` withholds them from `tools/list` and refuses one named anyway rather
+than simulating an approval it cannot collect. Those acts are performed in `/app`, where a human approves them and the
 approval is recorded against the matter. Reading the catalog and finding three tools missing is the design, not a
 registration fault.
 
@@ -30,8 +30,8 @@ Gemini Enterprise (OAuth client registered with Workspace)
    │   Authorization: Bearer <Google opaque access token, ya29.*>
    ▼
 Global External HTTPS LB (www.your-domain.example)
-   │   path-routed: /mcp → navigator-web-mcp Service
-   │                /*   → navigator-web Service (public)
+   │   path-routed: /app/mcp → navigator-web-mcp Service
+   │                /*       → navigator-web Service (public)
    ▼
 web Pod  (same pods, two Services pointing at them)
    ▼
@@ -42,7 +42,7 @@ portal::google_oauth::require_google_oauth
    │   validates email ends with @GOOGLE_OAUTH_REQUIRED_HD
    │   populates AuthClaims { sub: email, role: <resolved from persons, default Client> }
    ▼
-require_policy (embedded Rego)  →  /mcp handler  →  tools/call
+require_policy (embedded Rego)  →  /app/mcp handler  →  tools/call
 ```
 
 In KIND / local dev `GOOGLE_OAUTH_CLIENT_IDS` is unset, so `require_google_oauth` is a pass-through and `require_auth`
@@ -50,18 +50,18 @@ handles the Bearer-JWT path — the existing test harness keeps working.
 
 That pass-through is a local-dev shape only. `GOOGLE_OAUTH_CLIENT_IDS` is a boot invariant on every deployed environment
 (`store::deployment::WEB_REQUIREMENTS`), so a staging or production `web` refuses to start without it rather than serve
-`/mcp` with no token validation — and, because no `Principal` reaches the tools, with AIDA's per-Project scope checks
-silently skipped.
+`/app/mcp` with no token validation — and, because no `Principal` reaches the tools, with AIDA's per-Project scope
+checks silently skipped.
 
 **Why this rather than Identity-Aware Proxy?** IAP requires JWT-shaped ID tokens (`eyJ...`), but Gemini Enterprise's
 Custom MCP Server data store sends opaque OAuth 2.0 access tokens (`ya29....`) that IAP rejects with the message
 `"Invalid IAP credentials: Unable to parse JWT"`. Validation runs in-process instead; the BackendConfig keeps
 `iap.enabled: false` as scaffolding.
 
-**`/app/mcp` is a second door onto the same handler, not a new one.** ENG-84 made `/app` private by default and mounts
-`/app/mcp` beside `/mcp` — same `McpState`, same layer stack above, same Bearer-only auth. It exists so infrastructure
-as code can migrate the ingress path onto `/app` without forking this setup. Gemini Enterprise's own data-store config
-and the LB path routing above both keep naming `/mcp`; that external contract does not change here.
+**MCP answers under `/app` and nowhere else.** `/app` is private by default, and the MCP endpoint lives inside it with
+the rest of the application surface. The data-store URL Gemini Enterprise calls is external state this repository cannot
+change: it is set by hand in the Gemini Enterprise console, and it must already name `/app/mcp` before a deployment
+reaches the cluster, or every call arrives at a path that answers `404`.
 
 ## Source documentation
 
@@ -146,9 +146,9 @@ The pinned list for this project is in `cloud/README.md`.
 
 ### 5. Access control: the `hd` claim is the gate
 
-`GOOGLE_OAUTH_REQUIRED_HD=neonlaw.com` on the pod means every `/mcp` call must come from a token whose email ends with
-`@neonlaw.com` AND has `email_verified: true`. That's the lawyer allowlist — no per-user IAM binding needed. To add a
-new lawyer, all they need is a Workspace account in the org; once they OAuth-consent inside Gemini Enterprise, their
+`GOOGLE_OAUTH_REQUIRED_HD=neonlaw.com` on the pod means every `/app/mcp` call must come from a token whose email ends
+with `@neonlaw.com` AND has `email_verified: true`. That's the lawyer allowlist — no per-user IAM binding needed. To add
+a new lawyer, all they need is a Workspace account in the org; once they OAuth-consent inside Gemini Enterprise, their
 access token's email matches and the call succeeds.
 
 Equivalent gcloud (for reference):
@@ -177,7 +177,7 @@ source picker (it's marked "Preview"). Click **Add MCP server**.
 
 Fill the form:
 
-- **MCP Server URL**: `https://www.your-domain.example/mcp` **Authorization URL**:
+- **MCP Server URL**: `https://www.your-domain.example/app/mcp` **Authorization URL**:
   `https://accounts.google.com/o/oauth2/v2/auth` **Token URL**: `https://oauth2.googleapis.com/token` **Client ID** /
   **Client Secret**: the Gemini Enterprise UI walks you through provisioning these against the same Google Workspace
   org. The OAuth consent screen from step 2 is what Gemini Enterprise's flow consents against.
@@ -199,7 +199,8 @@ kubectl kustomize --load-restrictor=LoadRestrictionsNone examples/deploy/k8s/gke
 kubectl -n navigator rollout status deployment/navigator-web
 ```
 
-The currently-accepted clients are listed in `cloud/README.md` under "Live: in-app Google OAuth validation on `/mcp`".
+The currently-accepted clients are listed in `cloud/README.md` under "Live: in-app Google OAuth validation on
+`/app/mcp`".
 
 (IAP-style IAM bindings are NOT used here — `portal::google_oauth` validates tokens directly via Google's tokeninfo
 endpoint. The `navigator-web-mcp` BackendConfig is kept with `iap.enabled: false` as scaffolding; if a future caller
@@ -288,7 +289,7 @@ the create-agent dialog, the no-code path isn't licensed for your tenant — the
   previously-working user, they probably need to re-consent (open the data store config and click **Login** again to
   refresh tokens).
 - **Audit**: every Gemini-initiated call lands in Cloud Logging with `resource.type=http_load_balancer` and a request
-  URL matching `/mcp`. Filter by user agent `python-httpx` to isolate Gemini's calls from manual curl tests.
+  URL matching `/app/mcp`. Filter by user agent `python-httpx` to isolate Gemini's calls from manual curl tests.
 - **Pod-side diagnostics**: failures emit a `portal::google_oauth: tokeninfo rejected token` warn line with the
   specific reason. Possible reasons: `aud not in allowlist` means the OAuth client needs to be added to
   `GOOGLE_OAUTH_CLIENT_IDS`, and `email-domain mismatch` means the Workspace user is outside the value of
@@ -306,7 +307,7 @@ itself succeeded — **check the LB access log first**, not the pod log:
 
 ```bash
 gcloud logging read \
-  'resource.type="http_load_balancer" AND httpRequest.requestUrl=~"/mcp"' \
+  'resource.type="http_load_balancer" AND httpRequest.requestUrl=~"/app/mcp"' \
   --project YOUR_PROJECT_ID --freshness=15m \
   --format='value(timestamp,httpRequest.requestMethod,httpRequest.status,httpRequest.requestUrl,httpRequest.userAgent)'
 ```
@@ -316,7 +317,7 @@ gcloud logging read \
 the URL, so a stale hostname fails DNS client-side: the Console reports "successfully authenticated" (the OAuth dance
 runs against Google's own servers) but the subsequent `tools/list` call never reaches us.
 
-**Fix**: open the data store config, edit the URL to `https://www.your-domain.example/mcp`, save, click **Refresh
+**Fix**: open the data store config, edit the URL to `https://www.your-domain.example/app/mcp`, save, click **Refresh
 tools** again. The next LB log entry should be a `POST 401` from `python-httpx/<version>` — the 401 is expected on the
 first call because OAuth scopes get re-acquired; subsequent calls land at 200 once a valid token is cached.
 
@@ -333,8 +334,8 @@ If LB logs *do* show traffic but every request returns 401:
 
 ### OPTIONS preflight 401 (browser-direct callers only)
 
-`OPTIONS /mcp` returns 401 with no CORS headers because `require_google_oauth` runs ahead of any CORS layer. This only
-matters if a future caller invokes `/mcp` directly from a browser (Gemini Enterprise is server-to-server, so it
+`OPTIONS /app/mcp` returns 401 with no CORS headers because `require_google_oauth` runs ahead of any CORS layer. This
+only matters if a future caller invokes `/app/mcp` directly from a browser (Gemini Enterprise is server-to-server, so it
 doesn't); if you add such a caller, add a `tower_http::cors::CorsLayer` ahead of the auth middleware and short-circuit
 `OPTIONS` in `require_google_oauth`.
 

@@ -83,8 +83,8 @@ const CONTRACT: &[(&str, Access)] = &[
     // application surface, not the documents.
     ("/app/documents", Access::ProtectedHuman),
     ("/app/documents/glossary", Access::ProtectedHuman),
-    // Anonymous exceptions folded into `/app` by ENG-84: probes with no
-    // session requirement, mounted beside their pre-existing paths above.
+    // The operational probes: anonymous, with no session requirement. They
+    // are the only paths Kubernetes dials, and they answer on `/app` alone.
     ("/app/health", Access::PublicIngress),
     ("/app/readyz", Access::PublicIngress),
     // The living design system reads anonymously: it is a contributor
@@ -117,8 +117,8 @@ const CONTRACT: &[(&str, Access)] = &[
     // now needs a session to read the card, so A2A discovery is not
     // self-service. See `portal::a2a` for why that is the accepted trade.
     ("/app/api/aida.json", Access::ProtectedProtocol),
-    // `/app/mcp` is deliberately absent from this table: it carries the same
-    // Bearer-only `require_auth` stack as `/mcp` (no session cookie), which
+    // `/app/mcp` is deliberately absent from this table: it carries a
+    // Bearer-only `require_auth` stack (no session cookie), which
     // answers a bare `401` rather than the structured
     // `{"error":"unauthenticated"}` body `Access::ProtectedProtocol` asserts
     // for the session-boundary surfaces above. See
@@ -133,8 +133,6 @@ const CONTRACT: &[(&str, Access)] = &[
     ("/blog", Access::HostPublic),
     ("/notations", Access::HostPublic),
     // The explicit anonymous allowlist.
-    ("/health", Access::PublicIngress),
-    ("/readyz", Access::PublicIngress),
     ("/version", Access::PublicIngress),
     ("/auth/login", Access::PublicIngress),
     ("/auth/callback", Access::PublicIngress),
@@ -307,6 +305,27 @@ async fn the_retired_lawyer_prefix_is_not_served() {
         !portal::RESERVED_PATH_PREFIXES.contains(&"/lawyer"),
         "a retired prefix must not stay reserved against a host"
     );
+}
+
+/// The probes and the MCP JSON-RPC endpoint answer under `/app` and nowhere
+/// else. Each was mounted twice while infrastructure moved onto the `/app`
+/// path; the bare mount is gone, and a prefix nothing serves must not stay
+/// reserved against a brand host that wants to publish that name.
+#[tokio::test]
+async fn the_pre_app_probe_and_mcp_paths_are_not_served() {
+    let app = portal::router(contract_state().await);
+
+    for path in ["/health", "/readyz", "/mcp"] {
+        assert_eq!(
+            anonymous_get(&app, path).await.status(),
+            StatusCode::NOT_FOUND,
+            "{path} must not keep a mount once the surface moved under /app"
+        );
+        assert!(
+            !portal::RESERVED_PATH_PREFIXES.contains(&path),
+            "{path} must not stay reserved against a host once nothing mounts there"
+        );
+    }
 }
 
 #[tokio::test]

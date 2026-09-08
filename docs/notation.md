@@ -128,8 +128,8 @@ call the same [`workflows::notation_session`](../workflows/src/notation_session.
 logic touch exactly one codepath.
 
 Creating or answering a Notation is a supervised act, so that walk runs over A2A, where every call pauses in
-`input-required` until a firm principal authorizes it. The `/mcp` endpoint and the stdio bridge withhold both tools and
-refuse one named anyway: neither can collect an approval, and simulating one is worse than declining. See
+`input-required` until a firm principal authorizes it. The `/app/mcp` endpoint and the stdio bridge withhold both tools
+and refuse one named anyway: neither can collect an approval, and simulating one is worse than declining. See
 [`docs/aida-a2a-interaction.md`](aida-a2a-interaction.md) for the authorization round trip.
 
 ## Question

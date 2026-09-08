@@ -1622,7 +1622,7 @@ async fn portal_only_mode_redirects_root_to_portal_and_drops_host_pages() {
     let resp = app
         .oneshot(
             Request::builder()
-                .uri("/health")
+                .uri("/app/health")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -1822,77 +1822,85 @@ async fn english_home_declares_lang_en() {
     assert!(en.contains("<html lang=\"en\""));
 }
 
-/// ENG-84: `/health` is liveness, not readiness — it must answer without a
+/// `/app/health` is liveness, not readiness — it must answer without a
 /// database round-trip, so a probe still succeeds during a dependency
-/// outage. `/app/health` is the same handler mounted a second time under the
-/// private surface, and stays reachable with no session for the same reason.
-/// `/readyz` (below) is the one of the pair that still pings the store.
+/// outage, and it stays reachable with no session for the same reason.
+/// `/app/readyz` (below) is the probe that still pings the store.
 #[tokio::test]
-async fn health_and_app_health_return_200_with_no_database_round_trip() {
+async fn app_health_returns_200_with_no_database_round_trip() {
     let mut state = empty_state().await;
     state.surreal = store::surreal::SurrealDb::uninitialized();
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
 
-    for path in ["/health", "/app/health"] {
-        let resp = app
-            .clone()
-            .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-        assert_eq!(resp.status(), StatusCode::OK, "{path} with the store down");
-        assert_eq!(
-            body_string(resp).await,
-            "ok\nNothing here is legal advice without a signed retainer.",
-            "{path}"
-        );
-    }
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/app/health")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::OK,
+        "/app/health with the store down"
+    );
+    assert_eq!(
+        body_string(resp).await,
+        "ok\nNothing here is legal advice without a signed retainer."
+    );
 }
 
-/// `/readyz` and its `/app` alias keep the SurrealDB ping `/health` dropped:
-/// a pod backed by an unreachable store must fail readiness so the load
-/// balancer stops sending it traffic, even though it stays alive.
+/// `/app/readyz` keeps the SurrealDB ping `/app/health` dropped: a pod backed
+/// by an unreachable store must fail readiness so the load balancer stops
+/// sending it traffic, even though it stays alive.
 #[tokio::test]
-async fn readyz_and_app_readyz_return_503_when_the_store_is_down() {
+async fn app_readyz_returns_503_when_the_store_is_down() {
     let mut state = empty_state().await;
     state.surreal = store::surreal::SurrealDb::uninitialized();
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
 
-    for path in ["/readyz", "/app/readyz"] {
-        let resp = app
-            .clone()
-            .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-        assert_eq!(
-            resp.status(),
-            StatusCode::SERVICE_UNAVAILABLE,
-            "{path} with the store down"
-        );
-        assert!(
-            body_string(resp).await.contains("surreal:"),
-            "{path} must name the failing dependency"
-        );
-    }
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/app/readyz")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::SERVICE_UNAVAILABLE,
+        "/app/readyz with the store down"
+    );
+    assert!(
+        body_string(resp).await.contains("surreal:"),
+        "/app/readyz must name the failing dependency"
+    );
 }
 
-/// The happy path for the pair that still pings the store: readiness must
+/// The happy path for the probe that still pings the store: readiness must
 /// still answer `200` when the database is reachable.
 #[tokio::test]
-async fn readyz_and_app_readyz_return_200_when_db_pings() {
+async fn app_readyz_returns_200_when_db_pings() {
     let app = server::neon_router(
         empty_state().await,
         std::path::Path::new(portal::DEFAULT_PUBLIC_DIR),
     );
 
-    for path in ["/readyz", "/app/readyz"] {
-        let resp = app
-            .clone()
-            .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-        assert_eq!(resp.status(), StatusCode::OK, "{path}");
-        assert_eq!(body_string(resp).await, "ready", "{path}");
-    }
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/app/readyz")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK, "/app/readyz");
+    assert_eq!(body_string(resp).await, "ready");
 }
 
 #[tokio::test]
@@ -6786,7 +6794,7 @@ async fn visitor_analytics_counts_public_routes_and_excludes_private_surfaces() 
         "/app/lawyer",
         "/admin",
         "/app/api/aida.json",
-        "/mcp",
+        "/app/mcp",
         "/public/app.css",
     ] {
         let _ = app
@@ -8701,23 +8709,35 @@ async fn canonical_host_redirects_when_host_mismatches() {
     assert_eq!(location, "https://neonlaw.org/notations");
 }
 
+/// Both probes answer on a pod IP with canonical-host enforcement configured.
+/// `k8s/base/web/web.yaml` dials `/app/health` and `/app/readyz`, and
+/// Kubernetes reaches the pod directly, so neither request can carry the
+/// public `Host:` header enforcement expects. Redirecting one would mark
+/// every backend unhealthy the moment a deployment sets `CANONICAL_HOST`.
 #[tokio::test]
-async fn canonical_host_keeps_health_available_on_a_noncanonical_host() {
+async fn canonical_host_keeps_the_probes_available_on_a_noncanonical_host() {
     let state =
         empty_state_with_canonical_host(CanonicalHost::new(Some("neonlaw.org".into()))).await;
     let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .uri("/health")
-                .header("host", "10.0.0.12:3001")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-    assert!(resp.headers().get(header::LOCATION).is_none());
+
+    for path in ["/app/health", "/app/readyz"] {
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(path)
+                    .header("host", "10.0.0.12:3001")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK, "{path} on a pod IP");
+        assert!(
+            resp.headers().get(header::LOCATION).is_none(),
+            "{path} must not redirect"
+        );
+    }
 }
 
 #[tokio::test]
@@ -9147,7 +9167,7 @@ async fn assert_unregistered_host_redirects(
 /// The (brand host × path) matrix ENG-434 names, asserted exhaustively on one
 /// composed router: every registered brand host renders its own chrome on
 /// every path category, an unregistered host is permanently redirected to
-/// the deployment's own configured host on every category except `/health`,
+/// the deployment's own configured host on every category except the probes,
 /// and every redirect is followed to its actual target rather than trusted
 /// on the `Location` header alone.
 ///
@@ -9156,7 +9176,7 @@ async fn assert_unregistered_host_redirects(
 /// | marketing path     | 200, own chrome | 200, own chrome              | 200, own chrome     | 301 → default |
 /// | `/app`             | 303 → login     | 303 → login (no brand leak)  | 303 → login         | 301 → default |
 /// | `/public/*` asset  | 200             | 200                          | 200                | 301 → default |
-/// | `/health`          | 200             | 200                          | 200                | 200           |
+/// | `/app/health`      | 200             | 200                          | 200                | 200           |
 ///
 /// The `/app` row's brand assertion lives in
 /// `a_server_fn_backed_app_page_on_the_non_default_host_renders_its_own_brand`
@@ -9245,20 +9265,25 @@ async fn host_brand_path_matrix_resolves_every_combination() {
         "followed /public/favicon.svg"
     );
 
-    // `/health`: a probe target, not a public hostname — every host answers,
-    // registered or not, and never redirects.
+    // The probes: a probe target, not a public hostname — every host answers,
+    // registered or not, and never redirects. Kubernetes dials a pod IP, so
+    // the request carries no public `Host:` header to satisfy enforcement;
+    // redirecting one would mark every backend unhealthy the moment
+    // canonical-host enforcement is configured.
     for host in [
         default_host,
         delete_your_data_host,
         lawyer_shook_host,
         unknown_host,
     ] {
-        let resp = get_on_host(&app, "/health", host).await;
-        assert_eq!(resp.status(), StatusCode::OK, "{host} /health");
-        assert!(
-            resp.headers().get(header::LOCATION).is_none(),
-            "{host} /health must not redirect"
-        );
+        for path in ["/app/health", "/app/readyz"] {
+            let resp = get_on_host(&app, path, host).await;
+            assert_eq!(resp.status(), StatusCode::OK, "{host} {path}");
+            assert!(
+                resp.headers().get(header::LOCATION).is_none(),
+                "{host} {path} must not redirect"
+            );
+        }
     }
 }
 
@@ -15440,7 +15465,7 @@ async fn project_documents_upload_404s_when_project_missing() {
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
-// ---------- Error pages: HTML for browsers, JSON for /api & /mcp ----------
+// ---------- Error pages: HTML for browsers, JSON for /app/api & /app/mcp ----------
 
 #[tokio::test]
 async fn unknown_path_returns_html_404_page_for_browser_request() {
@@ -15496,7 +15521,7 @@ async fn unknown_mcp_path_returns_json_404_not_html() {
     let resp = app
         .oneshot(
             Request::builder()
-                .uri("/mcp/unknown")
+                .uri("/app/mcp/unknown")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -15506,7 +15531,7 @@ async fn unknown_mcp_path_returns_json_404_not_html() {
     let body = body_string(resp).await;
     assert!(
         !body.starts_with("<!DOCTYPE html>"),
-        "/mcp/* 404 must NOT be the HTML page; got: {body}",
+        "/app/mcp/* 404 must NOT be the HTML page; got: {body}",
     );
 }
 
@@ -15518,12 +15543,14 @@ async fn wants_json_path_classifier() {
     // client.
     assert!(portal::wants_json("/app/api/people"));
     assert!(portal::wants_json("/app/api/people/123"));
-    assert!(portal::wants_json("/mcp"));
-    assert!(portal::wants_json("/mcp/foo"));
     assert!(portal::wants_json("/app/mcp"));
     assert!(portal::wants_json("/app/mcp/foo"));
     assert!(portal::wants_json("/app/api/openapi.json"));
     assert!(!portal::wants_json("/"));
+    // The pre-`/app` MCP path is not served, so it is a page 404 like any
+    // other unrouted path rather than a JSON surface.
+    assert!(!portal::wants_json("/mcp"));
+    assert!(!portal::wants_json("/mcp/foo"));
     assert!(!portal::wants_json("/app/lawyer"));
     assert!(!portal::wants_json("/app/lawyer/people"));
     assert!(!portal::wants_json("/blog/anything"));

@@ -47,7 +47,7 @@ routing.
   JSON-RPC at `/app/api/aida/rpc`. Used by Gemini Enterprise and any other A2A-compatible orchestrator. A free-form
   `message/send` is interpreted by a pluggable [`AgentRouter`](../portal/src/agent_router.rs) (Vertex AI Gemini Flash in
   prod) that maps the user's text to one of the declared tools.
-- **MCP** — JSON-RPC at `/mcp`. Used by Claude.ai Connectors, Claude Code, LibreChat, and other Anthropic-stack
+- **MCP** — JSON-RPC at `/app/mcp`. Used by Claude.ai Connectors, Claude Code, LibreChat, and other Anthropic-stack
   clients. The MCP-side LLM (e.g. Claude) does its own tool routing client-side; our server just dispatches the named
   tool.
 
@@ -131,7 +131,8 @@ colours, fonts, logos, copy — stays exactly where this entry describes it, unc
 incoming `Host:` header and stashes it as a request extension; `scope_branding` reads that extension and scopes the
 resolved `Branding` for the rest of the request, the same [`views::brand::scope`](../views/src/brand.rs) task-local
 mechanism a mounted white-label bundle already used to scope its own `Branding`. An unregistered host redirects to the
-deployment's own configured host (`CANONICAL_HOST`); `/health` answers on every host, unredirected.
+deployment's own configured host (`CANONICAL_HOST`); the `/app/health` and `/app/readyz` probes answer on every host,
+unredirected.
 
 Distinct from [`portal::hosting::Site`](../portal/src/hosting.rs) (formerly named `Brand`, renamed to end the collision
 once "brand" came to mean the per-request identity above): a `Site` is what one brand *crate*'s `main` hands the shared

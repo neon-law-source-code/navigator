@@ -5,7 +5,7 @@ open a matter with its entities and people by asking for it in plain English.
 
 This is the **setup and capability** story. The runtime interaction model — where AIDA pauses, how a failure's reason
 reaches the user — is [`aida-a2a-interaction.md`](aida-a2a-interaction.md). The Gemini Enterprise equivalent, which
-dials `/mcp` over HTTPS instead, is [`gemini-enterprise-mcp.md`](gemini-enterprise-mcp.md).
+dials `/app/mcp` over HTTPS instead, is [`gemini-enterprise-mcp.md`](gemini-enterprise-mcp.md).
 
 ## What runs where
 
@@ -33,9 +33,9 @@ cannot follow. None of it widens who may call — the same Rego lawyer-gate stil
 
 Two more decisions are worth stating, because both are load-bearing.
 
-**It dials A2A, not `/mcp`, even though it speaks MCP to Claude.** A2A is where the supervision lives: the lawyer-tier
-check, and the `target: "audit"` record of every decision. Sending to `/mcp` would be one fewer hop and would skip all
-of it.
+**It dials A2A, not `/app/mcp`, even though it speaks MCP to Claude.** A2A is where the supervision lives: the
+lawyer-tier check, and the `target: "audit"` record of every decision. Sending to `/app/mcp` would be one fewer hop and
+would skip all of it.
 
 **Claude picks the tool, not Gemini.** A2A's free-form path runs its own agentic loop with Vertex AI choosing the tools.
 Bridging that would put two models in series and let the weaker one decide the actions. The bridge sends

@@ -7,7 +7,7 @@
 //! module below or it is caught by a failed release.
 //!
 //! `run_e2e` waits for every rollout the tier deploys, probes `ClamAV`
-//! and Restate for protocol readiness, hits `/health` through the ingress,
+//! and Restate for protocol readiness, hits `/app/health` through the ingress,
 //! and confirms the seed data landed. `grant_lawyer` pre-seeds the Lawyer
 //! demo user, writing the singular `persons.role` column, so the browser
 //! e2e's admin-gated walk can reach `/admin`; it connects to the
@@ -297,7 +297,7 @@ fn restate_ready_target() -> (&'static str, &'static str, &'static str) {
     ("restate", "restatecluster/restate", "Ready")
 }
 
-/// Hit `/health` through the KIND ingress and require HTTP 200.
+/// Hit `/app/health` through the KIND ingress and require HTTP 200.
 ///
 /// Two guards make this loud-but-bounded instead of an indefinite hang.
 /// `--max-time` caps each individual request, so a wedged ingress that
@@ -308,7 +308,7 @@ fn restate_ready_target() -> (&'static str, &'static str, &'static str) {
 /// failure says *what* the ingress returned, not just "not 200".
 fn check_health() -> Result<()> {
     let host = std::env::var("INGRESS_HOST").unwrap_or_else(|_| "localhost:8080".to_string());
-    let url = format!("http://{host}/health");
+    let url = format!("http://{host}/app/health");
     let deadline = Instant::now() + Duration::from_mins(1);
     let mut attempt = 0;
     loop {
@@ -327,7 +327,7 @@ fn check_health() -> Result<()> {
             .arg("localhost:8080:127.0.0.1")
             .arg(&url)
             .output()
-            .context("curl /health")?;
+            .context("curl /app/health")?;
         let status = String::from_utf8_lossy(&out.stdout).trim().to_string();
         if status == "200" {
             eprintln!("    health OK ({status}) after {attempt} attempt(s)");
@@ -338,7 +338,9 @@ fn check_health() -> Result<()> {
                 "expected HTTP 200 from {url} within 60s; last status {status:?} after {attempt} attempt(s)"
             );
         }
-        eprintln!("    /health not ready (status {status:?}); retrying in 2s [attempt {attempt}]");
+        eprintln!(
+            "    /app/health not ready (status {status:?}); retrying in 2s [attempt {attempt}]"
+        );
         sleep(Duration::from_secs(2));
     }
 }

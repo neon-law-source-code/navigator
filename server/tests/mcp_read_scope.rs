@@ -1,14 +1,14 @@
 #![allow(clippy::doc_markdown)]
-//! `/mcp` reads answer through the caller's own lens.
+//! `/app/mcp` reads answer through the caller's own lens.
 //!
 //! Two things had to be true for that, and this drives the composed
 //! router rather than either one alone, because either one alone is
 //! silently useless:
 //!
-//! 1. `/mcp` has to resolve the `navigator` CLI's own credential — the
+//! 1. `/app/mcp` has to resolve the `navigator` CLI's own credential — the
 //!    HMAC-signed `SessionData` blob `cli_auth` mints — so there is an
 //!    identity to scope by. The A2A rpc route already carried
-//!    `inject_bearer_session`; `/mcp` did not, so `inject_principal`
+//!    `inject_bearer_session`; `/app/mcp` did not, so `inject_principal`
 //!    found no session to read an email from and every read answered as
 //!    the deployment.
 //! 2. `aida_list_projects` has to scope on that identity: participation
@@ -109,7 +109,7 @@ async fn put_on_matter(
     .unwrap();
 }
 
-/// Call `aida_list_projects` over `/mcp` and return `structuredContent`.
+/// Call `aida_list_projects` over `/app/mcp` and return `structuredContent`.
 async fn list_projects(app: &axum::Router, bearer: Option<&str>) -> Value {
     let body = json!({
         "jsonrpc": "2.0",
@@ -119,7 +119,7 @@ async fn list_projects(app: &axum::Router, bearer: Option<&str>) -> Value {
     });
     let mut builder = Request::builder()
         .method("POST")
-        .uri("/mcp")
+        .uri("/app/mcp")
         .header("content-type", "application/json");
     if let Some(b) = bearer {
         builder = builder.header("authorization", b);

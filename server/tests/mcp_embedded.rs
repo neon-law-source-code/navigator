@@ -1,6 +1,6 @@
 #![allow(clippy::doc_markdown)]
-//! Tests that the `mcp` library router is mounted at `POST /mcp` by
-//! the main composed router and that the same `require_auth` /
+//! Tests that the `mcp` library router is mounted at `POST /app/mcp` by
+//! the main composed router and that the `require_auth` /
 //! `require_policy` route_layers gate it. Drives the router via
 //! `tower::ServiceExt::oneshot` — no socket binding.
 
@@ -25,7 +25,7 @@ async fn state_with(auth: AuthConfig) -> AppState {
 }
 
 fn mcp_request(body: &Value, bearer: Option<&str>) -> Request<Body> {
-    mcp_request_at("/mcp", body, bearer)
+    mcp_request_at("/app/mcp", body, bearer)
 }
 
 fn mcp_request_at(uri: &str, body: &Value, bearer: Option<&str>) -> Request<Body> {
@@ -83,9 +83,8 @@ async fn mcp_rejects_request_without_bearer_when_auth_enforced() {
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 }
 
-/// ENG-84: `/app/mcp` is the private alias mounted beside `/mcp`, carrying
-/// the identical Bearer-only stack — no session cookie, so an anonymous
-/// caller still gets a bare `401`, never a login redirect.
+/// `/app/mcp` carries a Bearer-only stack — no session cookie, so an
+/// anonymous caller gets a bare `401`, never a login redirect.
 #[tokio::test]
 async fn app_mcp_rejects_request_without_bearer_when_auth_enforced() {
     let state = state_with(AuthConfig::new(false, Some("test-secret"))).await;
@@ -102,8 +101,7 @@ async fn app_mcp_rejects_request_without_bearer_when_auth_enforced() {
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 }
 
-/// The same valid bearer that authenticates `/mcp` authenticates its `/app`
-/// alias — one auth stack, mounted twice.
+/// A valid bearer authenticates `/app/mcp`.
 #[tokio::test]
 async fn app_mcp_accepts_valid_bearer_token_when_auth_enforced() {
     let state = state_with(AuthConfig::new(false, Some("test-secret"))).await;
@@ -173,4 +171,24 @@ async fn mcp_accepts_valid_bearer_token_when_auth_enforced() {
     assert!(names.contains(&"aida_create_person"));
     assert!(names.contains(&"aida_show_person"));
     assert!(names.contains(&"aida_list_jurisdictions"));
+}
+
+/// MCP answers under `/app` and nowhere else. It was mounted at the bare
+/// `/mcp` as well while the load balancer and the Gemini Enterprise data
+/// store still named that path; both now name `/app/mcp`, so the bare mount
+/// is gone rather than left as a second door onto the same handler.
+#[tokio::test]
+async fn post_mcp_is_not_served() {
+    let state = state_with(AuthConfig::new(true, None)).await;
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+
+    let resp = app
+        .oneshot(mcp_request_at(
+            "/mcp",
+            &json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {} }),
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }

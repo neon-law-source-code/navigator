@@ -2170,7 +2170,7 @@ async fn site_host_still_closes_the_shared_navigator_boundary() {
         "an anonymous machine caller at /app/api/people gets a structured 401"
     );
     assert_eq!(
-        anon_get(&app, "/health").await.status(),
+        anon_get(&app, "/app/health").await.status(),
         StatusCode::OK,
         "the health probe stays anonymous"
     );

@@ -46,7 +46,7 @@ the exception, and it is a choice, not an oversight.
   `workflows::start_workflow` (span `workflow.trigger` + metric `navigator.workflow.trigger.fired{service,outcome}`), so
   every trigger gets it free.
 - The two agent surfaces over the **one shared tool catalog** are each instrumented at their single dispatch
-  chokepoint, so neither protocol is blind: A2A in `portal::a2a` (audit spans), and `/mcp` in
+  chokepoint, so neither protocol is blind: A2A in `portal::a2a` (audit spans), and `/app/mcp` in
   `mcp::server::handle_tools_call` (span `mcp.tool.call` + metric `navigator.mcp.tool.called{tool,outcome}`). Tool name
   and outcome only — never the `arguments`.
 - Spans: `#[tracing::instrument(skip(secret_or_body), fields(service = ..., key = ...))]`. Skip bodies and tokens.

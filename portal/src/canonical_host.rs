@@ -132,8 +132,9 @@ pub async fn resolve_brand_and_enforce_host(
 ) -> Response {
     // Health probes reach a pod or backend IP and therefore cannot promise
     // the public Host header. Redirecting them would mark every backend
-    // unhealthy as soon as canonical-host enforcement is enabled.
-    if req.uri().path() == "/health" {
+    // unhealthy as soon as canonical-host enforcement is enabled. These are
+    // the paths `k8s/base/web/web.yaml` dials.
+    if matches!(req.uri().path(), "/app/health" | "/app/readyz") {
         return next.run(req).await;
     }
     let raw_host = req

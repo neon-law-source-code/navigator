@@ -507,6 +507,16 @@ fn strip_ingress_controller_host_ports_if_requested() -> Result<()> {
     if !stripped {
         return Ok(());
     }
+    if let Some(meta) = deploy.get_mut("metadata").and_then(|v| v.as_object_mut()) {
+        meta.remove("resourceVersion");
+        meta.remove("uid");
+        meta.remove("generation");
+        meta.remove("creationTimestamp");
+        meta.remove("managedFields");
+    }
+    if let Some(obj) = deploy.as_object_mut() {
+        obj.remove("status");
+    }
     if let Some(ann) = deploy.pointer_mut("/spec/template/metadata/annotations") {
         if let Some(obj) = ann.as_object_mut() {
             obj.insert(

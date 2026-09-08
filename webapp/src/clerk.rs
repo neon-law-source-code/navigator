@@ -372,7 +372,7 @@ pub fn ClerkProjectDetail() -> Element {
                     h1 { "{project.name}" }
                     p { class: "nav-muted", "Read-only coordination view for a supervised non-lawyer Clerk." }
                     dl { class: "clerk-facts",
-                        dt { "Matter status" }
+                        dt { "Project status" }
                         dd { "{project.status}" }
                         dt { "Supervising lawyer" }
                         dd { "{project.lawyer_dri}" }

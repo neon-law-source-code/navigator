@@ -245,16 +245,15 @@ pub(crate) fn entity_options(entities: &[EntityOption]) -> Vec<Choice> {
 
 /// The help line under the entity picker — the same copy on both project forms.
 pub(crate) const ENTITY_HELP: &str =
-    "The legal organization this matter is opened against — a person's own Human entity for a \
+    "The legal organization this project is opened against — a person's own Human entity for a \
      solo client. Create the entity first if it isn't listed.";
 
 /// The help line under the scope-narrative textarea.
-pub(crate) const DESCRIPTION_HELP: &str =
-    "This matter's scope narrative (\"the project's story\").";
+pub(crate) const DESCRIPTION_HELP: &str = "This project's scope narrative.";
 
 /// The help line under the private Slack channel field.
 pub(crate) const INTERNAL_SLACK_HELP: &str =
-    "The lawyer-only Slack channel for this matter. Firm-only: a client never sees it.";
+    "The lawyer-only Slack channel for this project. Firm-only: a client never sees it.";
 
 /// The help line under the shared Slack channel field, revealed by the
 /// Slack card's share toggle.
@@ -287,14 +286,14 @@ pub(crate) const SHARE_NOTION_TOGGLE_HELP: &str =
 /// Navigator neither reads nor enforces — so a page left on a workspace default
 /// is readable by everyone in that workspace no matter what this label says.
 pub(crate) const PRIVATE_NOTION_HELP: &str =
-    "The firm-only Notion page for this matter — internal write-up and working notes. \
+    "The firm-only Notion page for this project — internal write-up and working notes. \
      Navigator never shows it to a client, but Notion\u{2019}s own sharing is what restricts \
      who can open it: share the page to the firm\u{2019}s Notion group rather than leaving it on \
      the workspace default.";
 
 /// The help line under the shared Notion page field.
 pub(crate) const SHARED_NOTION_HELP: &str =
-    "Optional — the Notion page shared with the client, if this matter has one. \
+    "Optional — the Notion page shared with the client, if this project has one. \
      Visible to the client, so share it to them in Notion too.";
 
 /// The help line under the source repository field.
@@ -303,7 +302,7 @@ pub(crate) const SHARED_NOTION_HELP: &str =
 /// composed from one configured forge: a reader who remembers that behavior
 /// would otherwise assume the organization is fixed.
 pub(crate) const REPOSITORY_URL_HELP: &str =
-    "Optional — the full URL of this matter's repository, \
+    "Optional — the full URL of this project's repository, \
      holding its notation templates and client portal. Any host: GitHub, GitLab, or a self-hosted \
      remote.";
 
@@ -404,7 +403,7 @@ fn edit_body(view: &ProjectEditView) -> Element {
             "private_notion_page_url",
             view.private_notion_page_url.clone(),
         )
-        .placeholder("https://www.notion.so/an-organization/A-matter-abc123")
+        .placeholder("https://www.notion.so/an-organization/A-project-abc123")
         .help(PRIVATE_NOTION_HELP),
         "share_shared_notion_page",
         share_notion_checked,
@@ -414,7 +413,7 @@ fn edit_body(view: &ProjectEditView) -> Element {
             "shared_notion_page_url",
             view.shared_notion_page_url.clone(),
         )
-        .placeholder("https://www.notion.so/an-organization/A-matter-def456")
+        .placeholder("https://www.notion.so/an-organization/A-project-def456")
         .help(SHARED_NOTION_HELP),
     );
     let repository_field = Field::text(
@@ -481,7 +480,7 @@ pub fn LawyerProjectEdit() -> Element {
             } else {
                 document::Title { "{view.firm_name} | Lawyer | Not found" }
                 h1 { "Not found" }
-                p { "No matter is available at this address." }
+                p { "No project is available at this address." }
             }
         }
     }

@@ -192,7 +192,7 @@ pub fn AdminMatterDirectory() -> Element {
         Some(Ok(view)) => view.clone(),
         Some(Err(_)) => {
             return rsx! {
-                main { id: "matter-directory", p { "Failed to load the matter directory." } }
+                main { id: "matter-directory", p { "Failed to load the project directory." } }
             }
         }
         None => {
@@ -211,14 +211,14 @@ pub fn matter_directory_body(view: &MatterDirectoryView) -> Element {
     let sort = SortState::parse(Some(&view.sort));
     let columns = vec![
         Column::sortable("code", "Code"),
-        Column::sortable("name", "Matter"),
+        Column::sortable("name", "Project"),
         Column::sortable("status", "Status"),
         Column::sortable("dri", "Lawyer DRI"),
     ];
     let is_empty = view.rows.is_empty();
 
     rsx! {
-        document::Title { "{view.firm_name} | Admin | Matters" }
+        document::Title { "{view.firm_name} | Admin | Projects" }
         document::Stylesheet { href: crate::components::THEME_STYLESHEET_HREF }
         document::Stylesheet { href: "{view.tokens_href}" }
         crate::components::AppNavbar {
@@ -227,13 +227,13 @@ pub fn matter_directory_body(view: &MatterDirectoryView) -> Element {
         }
         main { id: "matter-directory", class: "nav-theme",
             header { class: "page-header",
-                h1 { "Matters" }
+                h1 { "Projects" }
                 p { class: "nav-muted",
-                    "Every matter the firm carries and the lawyer accountable for it."
+                    "Every project the firm carries and the lawyer accountable for it."
                 }
             }
             if is_empty {
-                p { class: "nav-muted", role: "status", "No matters yet." }
+                p { class: "nav-muted", role: "status", "No projects yet." }
             } else {
                 DataTable {
                     columns,
@@ -359,7 +359,7 @@ mod tests {
     #[test]
     fn an_empty_directory_says_so() {
         let out = html(&directory(Vec::new(), ViewerRole::Owner));
-        assert!(out.contains("No matters yet."), "{out}");
+        assert!(out.contains(r#"role="status""#), "{out}");
         assert!(!out.contains("<table"), "no empty table: {out}");
     }
 

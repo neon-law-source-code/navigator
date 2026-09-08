@@ -601,12 +601,12 @@ pub fn LawyerProjectDetail() -> Element {
         Some(Ok(view)) if !view.name.is_empty() => view.clone(),
         Some(Ok(_)) => {
             return rsx! {
-                main { id: "lawyer-project", p { "That matter was not found." } }
+                main { id: "lawyer-project", p { "That project was not found." } }
             }
         }
         Some(Err(_)) => {
             return rsx! {
-                main { id: "lawyer-project", p { "Failed to load this matter." } }
+                main { id: "lawyer-project", p { "Failed to load this project." } }
             }
         }
         None => {
@@ -714,7 +714,7 @@ pub fn LawyerProjectDetail() -> Element {
             crate::project_calendar::ProjectCalendar {
                 section_class: "lawyer-detail__section project-calendar".to_string(),
                 heading: "Calendar".to_string(),
-                empty_message: "No calendar events scheduled for this matter.".to_string(),
+                empty_message: "No calendar events scheduled for this project.".to_string(),
                 columns: crate::project_calendar::MATTER_COLUMNS.to_vec(),
                 path: format!("/app/projects/{}", view.code),
                 query_prefix: String::new(),
@@ -786,7 +786,7 @@ pub fn LawyerProjectDetail() -> Element {
             if view.status == "open" {
                 section { class: "lawyer-detail__section project-close",
                     p { class: "nav-muted",
-                        "To close this matter, email the lawyer DRI"
+                        "To close this project, email the lawyer DRI"
                         if !view.lawyer_dris.is_empty() {
                             " ({lawyer_dri_disp})"
                         }
@@ -801,11 +801,11 @@ pub fn LawyerProjectDetail() -> Element {
                     // Make DRI on a firm-side row in the ledger below.
                     if view.lawyer_dris.is_empty() && view.role.is_lawyer_tier() {
                         p { class: "nav-form-error", role: "alert",
-                            "This matter has no lawyer DRI. "
+                            "This project has no lawyer DRI. "
                             if is_admin {
                                 a { class: "nav-link", href: "/app/projects/{view.code}/people/new", "Designate the accountable lawyer" }
                             } else {
-                                "Use Make DRI on a lawyer already assigned to this matter"
+                                "Use Make DRI on a lawyer already assigned to this project"
                             }
                             "."
                         }
@@ -849,14 +849,14 @@ pub fn ParticipationTable(
     rsx! {
         section { class: "lawyer-detail__section project-participations",
             div { class: "lawyer-detail__section-head",
-                h2 { "Matter people" }
+                h2 { "Project people" }
                 if is_admin {
                     a { class: "nav-btn nav-btn--primary", href: "/app/projects/{code}/people/new", "Add person" }
                 }
             }
-            p { class: "nav-muted", "Participation records who is assigned to this matter and follows each person's system tier. Adding or removing someone here does not change that tier." }
+            p { class: "nav-muted", "Participation records who is assigned to this project and follows each person's system tier. Adding or removing someone here does not change that tier." }
             if participations.is_empty() {
-                p { class: "projects-empty", "No people are assigned to this matter yet." }
+                p { class: "projects-empty", "No people are assigned to this project yet." }
             } else {
                 div { class: "nav-table-wrap",
                     table { class: "nav-table",

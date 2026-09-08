@@ -195,7 +195,7 @@ pub fn Review() -> Element {
 
         main { id: "review", class: "nav-theme document-review-page",
             nav { class: "portal-detail__back",
-                a { class: "nav-link", href: "/app/projects/{view.project_code}", "← Back to your matter" }
+                a { class: "nav-link", href: "/app/projects/{view.project_code}", "← Back to your project" }
             }
             header {
                 h1 { "{view.title}" }

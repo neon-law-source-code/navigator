@@ -967,7 +967,7 @@ async fn admin_edits_matter_participation_from_the_project_workbench() {
     )
     .await
     .expect("designate client DRI");
-    wait_for_text(&c, "Matter people", Duration::from_secs(10)).await;
+    wait_for_text(&c, "Project people", Duration::from_secs(10)).await;
     // Drive the "Add person" link through the shared click-and-navigate
     // helper. A native WebDriver `.click()` here flaked in CI: the request
     // never reached `web` (empty pod logs, issue #512), meaning the element

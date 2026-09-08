@@ -254,7 +254,7 @@ pub fn Conversation() -> Element {
 
         main { id: "conversation", class: "nav-theme portal-conversation",
             nav { class: "portal-detail__back",
-                a { class: "nav-link", href: "{view.base}", "← Back to matter" }
+                a { class: "nav-link", href: "{view.base}", "← Back to project" }
             }
             h1 { "Conversation" }
             p { class: "nav-muted", "{view.project_name}" }

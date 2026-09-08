@@ -113,7 +113,7 @@ pub fn GovForms() -> Element {
             p { class: "nav-muted",
                 "The official forms Neon Law Navigator fills — vendored from each authority's own site "
                 "and stored at the same path used in the public assets bucket. Download a blank to read "
-                "what a filing asks before you answer the questionnaire; your matter's filled copy "
+                "what a filing asks before you answer the questionnaire; your project's filled copy "
                 "always goes through attorney review."
             }
             div { class: "nav-table-wrap",

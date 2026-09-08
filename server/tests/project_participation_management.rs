@@ -238,7 +238,10 @@ async fn admin_manages_project_participation_from_the_matter_workbench() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
     let html = body_string(response).await;
-    assert!(html.contains("Matter people"), "html: {html}");
+    assert!(
+        html.contains(r#"class="lawyer-detail__section project-participations""#),
+        "html: {html}"
+    );
     assert!(html.contains("Lawyer Member"), "html: {html}");
     assert!(html.contains("System tier"), "html: {html}");
     assert!(html.contains("lawyer"), "html: {html}");
@@ -276,7 +279,14 @@ async fn admin_manages_project_participation_from_the_matter_workbench() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
     let html = body_string(response).await;
-    assert!(html.contains("Add matter person"), "html: {html}");
+    assert!(
+        html.contains(&format!(
+            r#"action="/app/projects/{}/people""#,
+            fixture.project_code
+        )),
+        "html: {html}"
+    );
+    assert!(html.contains(r#"name="person_id""#), "html: {html}");
     assert!(html.contains("Paralegal Candidate"), "html: {html}");
 
     let response = fixture
@@ -310,7 +320,14 @@ async fn admin_manages_project_participation_from_the_matter_workbench() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
     let html = body_string(response).await;
-    assert!(html.contains("Edit matter person"), "html: {html}");
+    assert!(
+        html.contains(&format!(
+            r#"action="/app/projects/{}/people/{}/edit""#,
+            fixture.project_code, fixture.assigned_role_id
+        )),
+        "html: {html}"
+    );
+    assert!(html.contains(r#"name="person_id""#), "html: {html}");
     assert!(html.contains("lawyer"), "html: {html}");
 
     let response = fixture
@@ -1495,7 +1512,7 @@ async fn a_lawyer_on_an_unassigned_matter_names_themselves_dri() {
         .unwrap();
     assert_eq!(page.status(), StatusCode::OK);
     let html = body_string(page).await;
-    assert!(html.contains("This matter has no lawyer DRI"), "{html}");
+    assert!(html.contains("This project has no lawyer DRI"), "{html}");
     assert!(html.contains("Make DRI"), "{html}");
     let action = format!("/app/projects/{}/people/{}/dri", project.code, row.id);
     assert!(html.contains(&format!(r#"action="{action}""#)), "{html}");

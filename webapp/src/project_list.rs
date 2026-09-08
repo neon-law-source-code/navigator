@@ -323,7 +323,7 @@ pub fn LawyerProjects() -> Element {
             }
             if is_empty {
                 p { class: "projects-empty",
-                    "No matters yet. "
+                    "No projects yet. "
                     a { href: "/app/projects/new", "Add the first." }
                 }
             } else {
@@ -347,7 +347,7 @@ pub fn LawyerProjects() -> Element {
                                 if row.missing_offboarding_letter {
                                     " "
                                     span { class: "matter-flag",
-                                        title: "This closed matter has no offboarding letter on file.",
+                                        title: "This closed project has no offboarding letter on file.",
                                         "no offboarding letter"
                                     }
                                 }

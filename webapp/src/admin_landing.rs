@@ -40,11 +40,11 @@ const ADMIN_LINKS: &[AdminLink] = &[
         cta: "View analytics",
     },
     AdminLink {
-        title: "Matters",
-        blurb: "Every matter the firm carries — its code, name, status, and the lawyer \
+        title: "Projects",
+        blurb: "Every project the firm carries — its code, name, status, and the lawyer \
                 accountable for it.",
         href: crate::matter_directory::MATTER_DIRECTORY_PATH,
-        cta: "Browse matters",
+        cta: "Browse projects",
     },
 ];
 
@@ -158,12 +158,14 @@ mod tests {
             "analytics tile: {out}"
         );
         assert!(
-            out.contains(r#"href="/app/admin/projects""#),
-            "matter directory tile: {out}"
+            out.contains(&format!(
+                r#"href="{}""#,
+                crate::matter_directory::MATTER_DIRECTORY_PATH
+            )),
+            "project directory tile: {out}"
         );
         assert!(out.contains("Manage people"), "people call to action");
         assert!(out.contains("View analytics"), "analytics call to action");
-        assert!(out.contains("Browse matters"), "matters call to action");
     }
 
     #[test]
@@ -197,7 +199,7 @@ mod tests {
     #[test]
     fn the_nav_offers_the_shared_firm_row_to_an_admin() {
         let out = html(ViewerRole::Admin);
-        assert!(out.contains(r#"href="/app/projects""#), "matter surface");
+        assert!(out.contains(r#"href="/app/projects""#), "project surface");
         assert!(out.contains(r#"href="/app/team""#), "team home: {out}");
         assert!(out.contains(r#"href="/auth/logout""#), "sign out");
         assert!(

@@ -327,9 +327,9 @@ fn dri_field(view: &ParticipationView) -> Field {
         Some(view.dri.clone()),
     )
     .help(
-        "A matter can have more than one DRI on each side, so this adds this person to that side \
+        "A project can have more than one DRI on each side, so this adds this person to that side \
          rather than replacing anyone. Lawyer DRIs are the accountable lawyers and close the \
-         matter; client DRIs are the client-side contacts. Only a firm-side lawyer can hold the \
+         project; client DRIs are the client-side contacts. Only a firm-side lawyer can hold the \
          lawyer marker.",
     )
 }
@@ -339,9 +339,9 @@ fn dri_field(view: &ParticipationView) -> Field {
 fn participation_body(view: &ParticipationView) -> Element {
     let editing = view.role_id.is_some();
     let title = if editing {
-        "Edit matter person"
+        "Edit project person"
     } else {
-        "Add matter person"
+        "Add project person"
     };
     let submit = if editing { "Save" } else { "Add" };
     let project_href = format!("/app/projects/{}", view.project_code);
@@ -360,7 +360,7 @@ fn participation_body(view: &ParticipationView) -> Element {
         view.person_id.clone(),
     )
     .person_search(view.person_id_search.clone())
-    .help("Their participation on this matter follows the system tier shown beside each name.")
+    .help("Their participation on this project follows the system tier shown beside each name.")
     .required()];
     fields.push(dri_field(view));
 
@@ -373,7 +373,7 @@ fn participation_body(view: &ParticipationView) -> Element {
         p { class: "participation-intro",
             "This changes only who reaches "
             strong { "{view.project_name}" }
-            ". Their participation on the matter follows the system tier already on their \
+            ". Their participation on the project follows the system tier already on their \
              account, and that tier remains unchanged."
         }
         if let Some(error) = view.error.as_ref() {
@@ -419,7 +419,7 @@ fn render_participation(resource: &Resource<Result<ParticipationView, ServerFnEr
             } else {
                 document::Title { "{view.firm_name} | Lawyer | Not found" }
                 h1 { "Not found" }
-                p { "No matter participation is available at this address." }
+                p { "No project participation is available at this address." }
             }
         }
     }

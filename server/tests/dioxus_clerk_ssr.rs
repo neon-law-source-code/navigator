@@ -222,9 +222,10 @@ async fn clerk_list_ssrs_supervised_matters_and_names_the_supervisor() {
     // renders instead.
     for workbench in [
         "Participation ledger",
-        "Matter people",
+        r#"id="lawyer-project""#,
+        r#"class="lawyer-detail__section project-participations""#,
         "Documents",
-        "To close this matter",
+        r#"class="lawyer-detail__section project-close""#,
         "Repository",
     ] {
         assert!(

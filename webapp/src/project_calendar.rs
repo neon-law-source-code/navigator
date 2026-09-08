@@ -198,14 +198,18 @@ fn CalendarSortLink(
 mod tests {
     use super::*;
 
+    /// A synthetic empty-state message: the test exercises whatever text the
+    /// caller passes through, not any particular page's real copy.
+    const EMPTY_MESSAGE: &str = "No calendar events scheduled for this project.";
+
     fn matter_calendar(sort: &str, dir: &str) -> Element {
         rsx! {
             ProjectCalendar {
                 section_class: "lawyer-detail__section project-calendar".to_string(),
                 heading: "Calendar".to_string(),
-                empty_message: "No calendar events scheduled for this matter.".to_string(),
+                empty_message: EMPTY_MESSAGE.to_string(),
                 columns: MATTER_COLUMNS.to_vec(),
-                path: "/app/projects/matter-id".to_string(),
+                path: "/app/projects/sample-litigation".to_string(),
                 query_prefix: String::new(),
                 sort: sort.to_string(),
                 dir: dir.to_string(),
@@ -220,10 +224,7 @@ mod tests {
         for (_, label) in MATTER_COLUMNS {
             assert!(html.contains(label), "{label}: {html}");
         }
-        assert!(
-            html.contains("No calendar events scheduled for this matter."),
-            "{html}"
-        );
+        assert!(html.contains(EMPTY_MESSAGE), "{html}");
         // The empty row must span the whole table, whatever the column set is.
         assert!(html.contains("colspan=\"3\""), "{html}");
     }
@@ -233,12 +234,12 @@ mod tests {
         let html = dioxus_ssr::render_element(matter_calendar("event", "asc"));
         assert!(html.contains("Event (asc)"), "{html}");
         assert!(
-            html.contains("/app/projects/matter-id?sort=event&#38;dir=desc"),
+            html.contains("/app/projects/sample-litigation?sort=event&#38;dir=desc"),
             "{html}"
         );
         // An inactive column offers ascending and carries no marker.
         assert!(
-            html.contains("/app/projects/matter-id?sort=date&#38;dir=asc"),
+            html.contains("/app/projects/sample-litigation?sort=date&#38;dir=asc"),
             "{html}"
         );
         assert!(!html.contains("Date ("), "{html}");
@@ -290,7 +291,7 @@ mod tests {
             ProjectCalendar {
                 section_class: "lawyer-detail__section project-calendar".to_string(),
                 heading: "Calendar".to_string(),
-                empty_message: "No calendar events scheduled for this matter.".to_string(),
+                empty_message: EMPTY_MESSAGE.to_string(),
                 columns: MATTER_COLUMNS.to_vec(),
                 path: "/app/projects/sample-litigation".to_string(),
                 query_prefix: String::new(),
@@ -308,10 +309,7 @@ mod tests {
         assert!(html.contains("Motion hearing (continued)"), "{html}");
         assert!(html.contains("2027-04-12 09:00 UTC"), "{html}");
         assert!(html.contains("Hearing"), "{html}");
-        assert!(
-            !html.contains("No calendar events scheduled for this matter."),
-            "{html}"
-        );
+        assert!(!html.contains(EMPTY_MESSAGE), "{html}");
         assert_eq!(
             html.matches("<tr>").count(),
             2,

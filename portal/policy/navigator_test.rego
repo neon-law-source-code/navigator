@@ -1882,54 +1882,55 @@ test_an_unnamed_api_read_is_denied if {
 	not authz.allow with input as {"path": ["app", "api", "invoices"], "method": "GET", "session": lawyer_session}
 }
 
-# ---------- /app/docs ----------
+# ---------- /app/documents ----------
 # The workspace documentation inside the application. Every tier that operates
-# Navigator reads it; `client` is the one authenticated tier denied. `/docs`
-# itself carries no rule in this policy — it sits behind the session boundary
-# alone — so this is a second, role-restricted door rather than a gate closing
-# over material that used to be open.
+# Navigator reads it; `client` is the one authenticated tier denied.
+# `/documents` itself carries no rule in this policy — it sits behind the
+# session boundary alone — so this is a second, role-restricted door rather
+# than a gate closing over material that used to be open. (ENG-84 renamed
+# both paths from `/docs` / `/app/docs`.)
 
-test_lawyer_reaches_app_docs if {
-	authz.allow with input as {"path": ["app", "docs"], "method": "GET", "session": lawyer_session}
+test_lawyer_reaches_app_documents if {
+	authz.allow with input as {"path": ["app", "documents"], "method": "GET", "session": lawyer_session}
 }
 
-test_clerk_reaches_app_docs if {
-	authz.allow with input as {"path": ["app", "docs"], "method": "GET", "session": clerk_session}
+test_clerk_reaches_app_documents if {
+	authz.allow with input as {"path": ["app", "documents"], "method": "GET", "session": clerk_session}
 }
 
-test_owner_reaches_app_docs if {
-	authz.allow with input as {"path": ["app", "docs"], "method": "GET", "session": owner_session}
+test_owner_reaches_app_documents if {
+	authz.allow with input as {"path": ["app", "documents"], "method": "GET", "session": owner_session}
 }
 
-test_admin_reaches_app_docs if {
-	authz.allow with input as {"path": ["app", "docs"], "method": "GET", "session": admin_session}
+test_admin_reaches_app_documents if {
+	authz.allow with input as {"path": ["app", "documents"], "method": "GET", "session": admin_session}
 }
 
 # One document beneath the hub carries the same audience as the hub itself.
-test_lawyer_reaches_a_document_in_app_docs if {
-	authz.allow with input as {"path": ["app", "docs", "glossary"], "method": "GET", "session": lawyer_session}
+test_lawyer_reaches_a_document_in_app_documents if {
+	authz.allow with input as {"path": ["app", "documents", "glossary"], "method": "GET", "session": lawyer_session}
 }
 
-test_clerk_reaches_a_document_in_app_docs if {
-	authz.allow with input as {"path": ["app", "docs", "glossary"], "method": "GET", "session": clerk_session}
+test_clerk_reaches_a_document_in_app_documents if {
+	authz.allow with input as {"path": ["app", "documents", "glossary"], "method": "GET", "session": clerk_session}
 }
 
 # The denials. A client is authenticated and still refused: these documents
-# describe firm-side operation, and the public `/docs` mount is their door.
-test_client_denied_app_docs if {
-	not authz.allow with input as {"path": ["app", "docs"], "method": "GET", "session": client_session}
+# describe firm-side operation, and the public `/documents` mount is their door.
+test_client_denied_app_documents if {
+	not authz.allow with input as {"path": ["app", "documents"], "method": "GET", "session": client_session}
 }
 
-test_client_denied_a_document_in_app_docs if {
-	not authz.allow with input as {"path": ["app", "docs", "glossary"], "method": "GET", "session": client_session}
+test_client_denied_a_document_in_app_documents if {
+	not authz.allow with input as {"path": ["app", "documents", "glossary"], "method": "GET", "session": client_session}
 }
 
-test_anonymous_denied_app_docs if {
-	not authz.allow with input as {"path": ["app", "docs"], "method": "GET", "session": null}
+test_anonymous_denied_app_documents if {
+	not authz.allow with input as {"path": ["app", "documents"], "method": "GET", "session": null}
 }
 
 # ---------- /app/team ----------
-# The firm team home. Same audience as `/app/docs`: every firm tier is
+# The firm team home. Same audience as `/app/documents`: every firm tier is
 # admitted, with `client` the one authenticated tier denied.
 
 test_lawyer_reaches_app_portal if {

@@ -231,7 +231,7 @@ const FIRM_FOOTER_NAV: &[NavLink] = &[
     NavLink::leaf("API", "/api"),
     NavLink::leaf("Blog", "/blog"),
     NavLink::leaf("Contact", "/contact"),
-    NavLink::leaf("Docs", "/docs"),
+    NavLink::leaf("Docs", "/documents"),
     NavLink::leaf("Navigator", "/navigator"),
     NavLink::leaf("Notations", "/notations"),
     NavLink::leaf("Presentations", "/presentations"),

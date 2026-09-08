@@ -4,9 +4,10 @@ publish: true
 
 # Documentation
 
-Published guides also appear at `/docs` in one alphabetical catalog. This page is the map: every document under `docs/`,
-grouped by topic, with a stable place for anything new to land. `cli/tests/docs_index_completeness.rs` fails the build
-when a file exists under `docs/` with no entry here, so this list cannot decay the way the old seven-line stub did.
+Published guides also appear at `/documents` in one alphabetical catalog. This page is the map: every document under
+`docs/`, grouped by topic, with a stable place for anything new to land. `cli/tests/docs_index_completeness.rs` fails
+the build when a file exists under `docs/` with no entry here, so this list cannot decay the way the old seven-line stub
+did.
 
 ## Start here
 

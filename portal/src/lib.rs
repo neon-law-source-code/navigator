@@ -297,7 +297,7 @@ pub struct AppState {
     /// engine cannot serve anything.
     pub surreal: store::surreal::SurrealDb,
     pub workshops: WorkshopIndex,
-    /// Workspace docs published at `/docs/{slug}`, baked from the
+    /// Workspace docs published at `/documents/{slug}`, baked from the
     /// `docs/` tree at compile time. See [`docs`].
     pub docs: DocsIndex,
     /// Firm blog posts served at `/blog`, loaded at boot from a
@@ -640,8 +640,12 @@ pub fn gated(state: &AppState, router: Router) -> Router {
 /// owns.
 ///
 /// Nothing here renders Navigator content to a human. `/health` and `/readyz`
-/// are the Kubernetes probes; `/version` is the deploy-identity probe. The
-/// webhook receivers
+/// are the Kubernetes probes; `/version` is the deploy-identity probe.
+/// `/app/health` and `/app/readyz` (ENG-84) mount the identical handlers a
+/// second time under the private prefix, so infrastructure as code can move
+/// its probe paths onto `/app` without a window where neither answers — both
+/// are anonymous exceptions to "everything under `/app` requires a session".
+/// The webhook receivers
 /// authenticate their sender by signature or path secret rather than by
 /// session, the DocuSign consent callback is the provider's return leg of an
 /// admin-initiated consent grant, and `/assets/*` exposes only the deployment's
@@ -655,6 +659,8 @@ fn public_ingress_routes() -> Router<AppState> {
     Router::new()
         .route("/health", get(health))
         .route("/readyz", get(readyz))
+        .route("/app/health", get(health))
+        .route("/app/readyz", get(readyz))
         .route("/version", get(version))
         .route("/assets/{*key}", get(public_asset))
         .route(
@@ -862,21 +868,21 @@ pub fn bootstrap(
         state.auth.clone(),
     );
     // #956 Phase 4: the workspace documentation renders through Dioxus at
-    // /docs and /docs/{slug}. Its pre-layer resolves the doc from the
-    // compiled-in DocsIndex and owns the canonicalizing redirects and the
+    // /documents and /documents/{slug}. Its pre-layer resolves the doc from
+    // the compiled-in DocsIndex and owns the canonicalizing redirects and the
     // unknown-slug 404.
     let dioxus_docs_index = dioxus_app::docs_router(
-        dioxus_app::DOCS_PATH,
+        dioxus_app::DOCUMENTS_PATH,
         Some(dioxus_app::DOCS_INDEX_SLUG),
         state.docs.clone(),
     );
-    let dioxus_doc = dioxus_app::docs_router(dioxus_app::DOC_PATH, None, state.docs.clone());
+    let dioxus_doc = dioxus_app::docs_router(dioxus_app::DOCUMENT_PATH, None, state.docs.clone());
     // The same documentation, a second door: inside the authenticated
     // application, wearing the app chrome, for the tiers that operate
     // Navigator. The public mount above is unchanged — this adds a reader, it
     // does not move one.
     let dioxus_app_docs_index = dioxus_app::app_docs_router(
-        dioxus_app::APP_DOCS_PATH,
+        dioxus_app::APP_DOCUMENTS_PATH,
         Some(dioxus_app::DOCS_INDEX_SLUG),
         state.docs.clone(),
         state.sessions.clone(),
@@ -884,7 +890,7 @@ pub fn bootstrap(
         state.auth.clone(),
     );
     let dioxus_app_doc = dioxus_app::app_docs_router(
-        dioxus_app::APP_DOC_PATH,
+        dioxus_app::APP_DOCUMENT_PATH,
         None,
         state.docs.clone(),
         state.sessions.clone(),
@@ -969,7 +975,10 @@ pub fn bootstrap(
         &state.auth,
     );
     // MCP rides on the same Pod / host as the public site, served at
-    // `POST /mcp`. The layer stack (outermost first):
+    // `POST /mcp` and, since ENG-84, the identical private alias
+    // `POST /app/mcp` — same handler, same layer stack, mounted twice so
+    // infrastructure as code can move the ingress path onto `/app` without a
+    // window where neither answers. The layer stack (outermost first):
     //
     //   1. google_oauth::require_google_oauth — prod: validates the
     //      Google OAuth access token Gemini Enterprise sends as
@@ -983,7 +992,10 @@ pub fn bootstrap(
     //   3. require_policy — embedded Rego policy decision; same as /app.
     //
     // CSRF is intentionally NOT in the chain — JSON-RPC clients send
-    // a Bearer token, not a session cookie.
+    // a Bearer token, not a session cookie, on either path. Neither carries
+    // a session cookie, so `/app/mcp` is not gated by `session_boundary` —
+    // see `docs/access-model.md` for why that is not the same thing as
+    // being anonymous.
     let mut mcp_state =
         mcp::McpState::new(state.surreal.clone(), state.questionnaire_runtime.clone());
     // Object storage is always available to the MCP tools — the
@@ -995,47 +1007,54 @@ pub fn bootstrap(
     // API door writes. Injecting it here is what lets the agent door go
     // through the shared command instead of the Restate trigger (ENG-317).
     mcp_state.email = Some(state.email.clone());
-    let mcp = mcp::build_router(mcp_state.clone())
-        .route_layer(axum::middleware::from_fn_with_state(
-            state.google_oauth.clone(),
-            crate::mcp_principal::inject_principal,
-        ))
-        .route_layer(axum::middleware::from_fn_with_state(
-            (state.sessions.clone(), state.policy.clone()),
-            crate::policy::require_policy,
-        ))
-        .route_layer(axum::middleware::from_fn_with_state(
-            state.auth.clone(),
-            crate::auth::require_auth,
-        ))
-        .route_layer(axum::middleware::from_fn_with_state(
-            state.google_oauth.clone().with_db(state.surreal.clone()),
-            crate::google_oauth::require_google_oauth,
-        ))
-        // Above the auth chain, so every layer below sees a resolved
-        // session: the `navigator` CLI's own bearer, the same layer the
-        // A2A rpc route already carries.
-        //
-        // Without it `/mcp` has no identity to scope a read by. The CLI's
-        // credential is the HMAC-signed `SessionData` blob `cli_auth`
-        // mints — not a JWT and not a Google access token — so
-        // `require_auth` found nothing to validate and `inject_principal`
-        // found no session to read an email from. Every read then
-        // answered as the deployment rather than as the person signed in.
-        //
-        // Resolving it here is not a widening: `SessionStore::decode`
-        // accepts only a blob this deployment signed, carrying the role
-        // and expiry it minted at an authenticated OIDC login.
-        .route_layer(axum::middleware::from_fn_with_state(
-            state.sessions.clone(),
-            crate::auth::inject_bearer_session,
-        ))
-        // Outermost: shed an over-budget IP with 429 before any auth or
-        // tokeninfo work runs.
-        .route_layer(axum::middleware::from_fn_with_state(
-            state.rate_limit.clone(),
-            crate::rate_limit::enforce,
-        ));
+    let mcp_layered = |mcp_state: mcp::McpState| {
+        mcp::build_router(mcp_state)
+            .route_layer(axum::middleware::from_fn_with_state(
+                state.google_oauth.clone(),
+                crate::mcp_principal::inject_principal,
+            ))
+            .route_layer(axum::middleware::from_fn_with_state(
+                (state.sessions.clone(), state.policy.clone()),
+                crate::policy::require_policy,
+            ))
+            .route_layer(axum::middleware::from_fn_with_state(
+                state.auth.clone(),
+                crate::auth::require_auth,
+            ))
+            .route_layer(axum::middleware::from_fn_with_state(
+                state.google_oauth.clone().with_db(state.surreal.clone()),
+                crate::google_oauth::require_google_oauth,
+            ))
+            // Above the auth chain, so every layer below sees a resolved
+            // session: the `navigator` CLI's own bearer, the same layer the
+            // A2A rpc route already carries.
+            //
+            // Without it `/mcp` has no identity to scope a read by. The CLI's
+            // credential is the HMAC-signed `SessionData` blob `cli_auth`
+            // mints — not a JWT and not a Google access token — so
+            // `require_auth` found nothing to validate and `inject_principal`
+            // found no session to read an email from. Every read then
+            // answered as the deployment rather than as the person signed in.
+            //
+            // Resolving it here is not a widening: `SessionStore::decode`
+            // accepts only a blob this deployment signed, carrying the role
+            // and expiry it minted at an authenticated OIDC login.
+            .route_layer(axum::middleware::from_fn_with_state(
+                state.sessions.clone(),
+                crate::auth::inject_bearer_session,
+            ))
+            // Outermost: shed an over-budget IP with 429 before any auth or
+            // tokeninfo work runs.
+            .route_layer(axum::middleware::from_fn_with_state(
+                state.rate_limit.clone(),
+                crate::rate_limit::enforce,
+            ))
+    };
+    let mcp = mcp_layered(mcp_state.clone());
+    // `mcp::build_router` registers at the literal path `/mcp`; nesting a
+    // second instance under `/app` is what produces `/app/mcp` without
+    // forking the handler or the layer stack above.
+    let app_mcp = Router::new().nest("/app", mcp_layered(mcp_state.clone()));
     // A2A surface — the agent card at `/app/api/aida.json` and JSON-RPC
     // at `/app/api/aida/rpc`, the latter behind the same auth stack as
     // `/mcp`. Both are private, like every path under `/app/api`: the
@@ -1602,6 +1621,7 @@ pub fn bootstrap(
         .merge(api_docs)
         .merge(admin)
         .merge(mcp)
+        .merge(app_mcp)
         .merge(a2a_card)
         .merge(a2a_rpc)
         .merge(cli_auth)
@@ -1741,14 +1761,15 @@ pub fn bootstrap(
     // `host_dioxus` because that list is firm-host-only and the gallery is a
     // shared Navigator tool that must answer on both hosts.
     //
-    // `/docs` and `/docs/{slug}` mount the same way, and for the same reason:
-    // the workspace documentation is the manual for software anyone can clone.
-    // It sat behind the session boundary while the source was closed, which put
-    // a login door in front of the one document that explains how to run what is
-    // now public — the argument that already un-gated the Navigator classes.
-    // `/app/docs` is untouched: it is the second, role-restricted door to the
-    // same index wearing the application chrome, and it stays gated because it
-    // is part of the authenticated surface, not because the documents are.
+    // `/documents` and `/documents/{slug}` mount the same way, and for the same
+    // reason: the workspace documentation is the manual for software anyone
+    // can clone. It sat behind the session boundary while the source was
+    // closed, which put a login door in front of the one document that
+    // explains how to run what is now public — the argument that already
+    // un-gated the Navigator classes. `/app/documents` is untouched: it is the
+    // second, role-restricted door to the same index wearing the application
+    // chrome, and it stays gated because it is part of the authenticated
+    // surface, not because the documents are.
     for public_router in [dioxus_app::design_router(), dioxus_docs_index, dioxus_doc] {
         router = router.merge(
             public_router.route_layer(axum::middleware::from_fn_with_state(
@@ -1927,7 +1948,10 @@ mod trailing_slash_tests {
 
     #[test]
     fn strips_a_trailing_slash_from_a_head() {
-        assert_eq!(target(&Method::HEAD, "/docs/"), Some("/docs".to_string()));
+        assert_eq!(
+            target(&Method::HEAD, "/documents/"),
+            Some("/documents".to_string())
+        );
     }
 
     #[test]
@@ -2117,7 +2141,7 @@ pub const RESERVED_PATH_PREFIXES: &[&str] = &[
     "/app",
     "/auth",
     "/mcp",
-    "/docs",
+    "/documents",
     "/api",
 ];
 
@@ -2551,7 +2575,7 @@ Disallow: /app
 Disallow: /admin
 Disallow: /auth
 Disallow: /mcp
-Disallow: /docs
+Disallow: /documents
 Disallow: /design
 Disallow: /templates
 ";
@@ -2614,7 +2638,7 @@ pub type SitemapPaths = fn(&AppState, views::brand::BrandKey) -> std::collection
 /// every brand serves, plus the brand's own anonymous pages.
 ///
 /// Only host pages appear: the shared Navigator tools that used to be listed
-/// here — `/docs`, `/templates`, `/design` — are authenticated
+/// here — `/documents`, `/templates`, `/design` — are authenticated
 /// now, and a sitemap entry pointing at a login redirect is worse than no
 /// entry at all.
 fn sitemap_paths(
@@ -3040,17 +3064,15 @@ async fn version() -> impl IntoResponse {
     }))
 }
 
-async fn health(State(surreal): State<store::surreal::SurrealDb>) -> impl IntoResponse {
-    match store::surreal::ping(&surreal).await {
-        Ok(()) => (
-            StatusCode::OK,
-            "ok\nNothing here is legal advice without a signed retainer.",
-        ),
-        Err(e) => {
-            tracing::warn!(error = %e, "health: store ping failed");
-            (StatusCode::SERVICE_UNAVAILABLE, "store unavailable")
-        }
-    }
+/// Liveness probe: the process is up. Deliberately makes no database
+/// round-trip (ENG-84) — that is `readyz`'s job — so a dependency outage
+/// fails readiness without also failing liveness and getting the pod
+/// restarted for a problem a restart cannot fix.
+async fn health() -> impl IntoResponse {
+    (
+        StatusCode::OK,
+        "ok\nNothing here is legal advice without a signed retainer.",
+    )
 }
 
 /// Readiness probe: the pod is ready to take traffic when its database is
@@ -3087,10 +3109,11 @@ async fn fallback_not_found(req: axum::extract::Request) -> impl IntoResponse {
 }
 
 /// `true` when the request should get a machine-readable error body
-/// rather than the HTML chrome. The two non-HTML surfaces this server
-/// hosts are `/app/api/*` (JSON listings + the OpenAPI document) and
-/// `/mcp` (MCP JSON-RPC). Everything else — including `/app/*` HTML
-/// pages and the `/auth/*` flows — gets the styled error page.
+/// rather than the HTML chrome. The non-HTML surfaces this server hosts are
+/// `/app/api/*` (JSON listings + the OpenAPI document) and `/mcp` and its
+/// `/app/mcp` alias (MCP JSON-RPC). Everything else — including the rest of
+/// `/app/*`'s HTML pages and the `/auth/*` flows — gets the styled error
+/// page.
 ///
 /// `/app/api` exactly is the one path under the prefix that does *not*
 /// want JSON: it is the Swagger UI shell, an HTML page a browser lands
@@ -3098,7 +3121,11 @@ async fn fallback_not_found(req: axum::extract::Request) -> impl IntoResponse {
 /// than holding a JSON error body.
 #[must_use]
 pub fn wants_json(path: &str) -> bool {
-    path.starts_with("/app/api/") || path.starts_with("/mcp/") || path == "/mcp"
+    path.starts_with("/app/api/")
+        || path.starts_with("/mcp/")
+        || path == "/mcp"
+        || path.starts_with("/app/mcp/")
+        || path == "/app/mcp"
 }
 
 #[cfg(test)]

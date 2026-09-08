@@ -25,9 +25,13 @@ async fn state_with(auth: AuthConfig) -> AppState {
 }
 
 fn mcp_request(body: &Value, bearer: Option<&str>) -> Request<Body> {
+    mcp_request_at("/mcp", body, bearer)
+}
+
+fn mcp_request_at(uri: &str, body: &Value, bearer: Option<&str>) -> Request<Body> {
     let mut b = Request::builder()
         .method("POST")
-        .uri("/mcp")
+        .uri(uri)
         .header("content-type", "application/json");
     if let Some(t) = bearer {
         b = b.header("authorization", format!("Bearer {t}"));
@@ -77,6 +81,62 @@ async fn mcp_rejects_request_without_bearer_when_auth_enforced() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+/// ENG-84: `/app/mcp` is the private alias mounted beside `/mcp`, carrying
+/// the identical Bearer-only stack — no session cookie, so an anonymous
+/// caller still gets a bare `401`, never a login redirect.
+#[tokio::test]
+async fn app_mcp_rejects_request_without_bearer_when_auth_enforced() {
+    let state = state_with(AuthConfig::new(false, Some("test-secret"))).await;
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+
+    let resp = app
+        .oneshot(mcp_request_at(
+            "/app/mcp",
+            &json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize" }),
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+/// The same valid bearer that authenticates `/mcp` authenticates its `/app`
+/// alias — one auth stack, mounted twice.
+#[tokio::test]
+async fn app_mcp_accepts_valid_bearer_token_when_auth_enforced() {
+    let state = state_with(AuthConfig::new(false, Some("test-secret"))).await;
+    let claims = AuthClaims {
+        sub: "lawyer@neonlaw.com".into(),
+        exp: i64::try_from(jsonwebtoken::get_current_timestamp() + 3600).unwrap(),
+        role: store::persons::Role::Lawyer,
+    };
+    let token = encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(b"test-secret"),
+    )
+    .unwrap();
+
+    let app = server::neon_router(state, std::path::Path::new(portal::DEFAULT_PUBLIC_DIR));
+    let resp = app
+        .oneshot(mcp_request_at(
+            "/app/mcp",
+            &json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/list"
+            }),
+            Some(&token),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    let tools = body["result"]["tools"].as_array().expect("tools array");
+    let names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
+    assert!(names.contains(&"aida_create_person"));
 }
 
 #[tokio::test]

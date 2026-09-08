@@ -74,13 +74,13 @@ fn docs_list_includes_opted_in_docs_and_glossary_term_pages() {
         .expect("run navigator dev docs list");
     assert!(out.status.success(), "exit status: {:?}", out.status);
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(stdout.contains("/docs/glossary\t"));
+    assert!(stdout.contains("/documents/glossary\t"));
     assert!(
-        !stdout.contains("/docs/erd\t"),
+        !stdout.contains("/documents/erd\t"),
         "unflagged docs must not appear in the published listing"
     );
-    assert!(stdout.contains("/docs/glossary#lawyer-review\tGlossary: Lawyer Review"));
-    assert!(stdout.contains("/docs/glossary#workflow-runtime\tGlossary: Workflow Runtime"));
+    assert!(stdout.contains("/documents/glossary#lawyer-review\tGlossary: Lawyer Review"));
+    assert!(stdout.contains("/documents/glossary#workflow-runtime\tGlossary: Workflow Runtime"));
 }
 
 #[test]
@@ -95,12 +95,12 @@ fn docs_list_glossary_terms_match_the_published_page() {
     assert!(
         stdout
             .lines()
-            .any(|line| line == "/docs/glossary\tGlossary"),
-        "CLI list must include the published /docs/glossary page, got: {stdout}"
+            .any(|line| line == "/documents/glossary\tGlossary"),
+        "CLI list must include the published /documents/glossary page, got: {stdout}"
     );
     for term in &terms {
         let line = format!(
-            "/docs/glossary#{slug}\tGlossary: {title}",
+            "/documents/glossary#{slug}\tGlossary: {title}",
             slug = term.slug,
             title = term.title
         );

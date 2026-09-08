@@ -37,7 +37,8 @@ fn regorus_matches_every_checked_in_policy_decision() {
     let tests = include_str!("../../portal/policy/navigator_test.rego");
     let test_names = test_rule_names(tests);
 
-    // 178 + 9 for `/app/docs`: four admitted tiers at the hub, two of them
+    // 178 + 9 for `/app/documents` (renamed from `/app/docs` by ENG-84): four
+    // admitted tiers at the hub, two of them
     // again one document deeper, and the three denials that matter — a client
     // at the hub, a client at a document, and an anonymous request.
     //

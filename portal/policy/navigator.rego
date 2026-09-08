@@ -149,19 +149,22 @@ allow if {
     is_lawyer(input.session)
 }
 
-# /app/docs is the workspace documentation inside the application. It admits
-# every tier that operates Navigator — Lawyer and Clerk by the two rules
-# below, Owner and Admin through the route bypass at the top of this policy.
+# /app/documents is the workspace documentation inside the application. It
+# admits every tier that operates Navigator — Lawyer and Clerk by the two
+# rules below, Owner and Admin through the route bypass at the top of this
+# policy.
 #
 # `client` is the one authenticated tier denied here. These documents describe
 # how the firm runs the product, not anything a client does.
 #
-# Note what this does and does not change. `/docs` carries no rule in this
-# policy and is not behind the session boundary either: it is an anonymous
-# public surface, because the repository is source-available and those documents
-# are the manual for software anyone can clone. `/app/docs` is therefore not a
-# gate over the documents at all — it is a second door to the same index
-# wearing the application chrome, and what it restricts is that surface.
+# Note what this does and does not change. `/documents` carries no rule in
+# this policy and is not behind the session boundary either: it is an
+# anonymous public surface, because the repository is source-available and
+# those documents are the manual for software anyone can clone.
+# `/app/documents` is therefore not a gate over the documents at all — it is a
+# second door to the same index wearing the application chrome, and what it
+# restricts is that surface. (ENG-84 renamed both from `/docs` /
+# `/app/docs`; the split above is unchanged.)
 #
 # Clerk is admitted by an explicit rule rather than by widening `lawyer_tier`:
 # per the note at the top of this file, a non-lawyer role must never inherit
@@ -173,13 +176,13 @@ allow if {
 # admitted to the hub may not read.
 allow if {
     input.path[0] == "app"
-    input.path[1] == "docs"
+    input.path[1] == "documents"
     is_lawyer(input.session)
 }
 
 allow if {
     input.path[0] == "app"
-    input.path[1] == "docs"
+    input.path[1] == "documents"
     is_clerk(input.session)
 }
 

@@ -170,18 +170,28 @@ The anonymous allowlist is explicit, small, and pinned by `portal/tests/router_c
 - the static assets under `/public/` that the login page renders;
 - `/assets/*`, which reads only the deployment's dedicated private marketing-assets bucket through the GKE workload
   identity; client documents, exports, and logs have no corresponding anonymous route;
-- the `/health` and `/readyz` probes and the `/version` deploy-identity probe;
+- the `/health` and `/readyz` probes and the `/version` deploy-identity probe. ENG-84 mounts `/app/health` and
+  `/app/readyz` beside them, mirroring the same handlers under the private prefix so infrastructure as code can move its
+  probe paths onto `/app` without a window where neither answers. `/health` (and `/app/health`) is liveness and answers
+  with no database round-trip; `/readyz` (and `/app/readyz`) is readiness and keeps the SurrealDB ping — a dependency
+  outage must fail readiness, not liveness, or the load balancer never learns to stop sending traffic;
 - webhook ingress whose sender authenticates by signature or path secret — SendGrid inbound mail and delivery events,
   and the e-signature completion callback. The GitHub webhook receiver is not on this list: it lives on
   `workflows-service`, a separate host, and `web` answers `404` for it
   (`portal/tests/router_contract.rs::web_does_not_serve_the_github_webhook_receiver`);
 - the DocuSign consent callback, the provider's return leg of an admin-initiated consent grant;
-- the two contributor reference surfaces, `/design` and the workspace documentation at `/docs` and `/docs/{slug}`. Both
-  render their own `200` for a reader with no account rather than answering the login door, and both carry
-  `inject_optional_session` so a signed-in reader still gets the authenticated nav. The documentation is anonymous
-  because the repository is source-available: those documents are the manual for software anyone can clone, so a login
-  door in front of them guarded nothing. `/app/docs` is a second door to the same index wearing the application chrome,
-  and it stays gated — what it restricts is that surface, not the documents.
+- the two contributor reference surfaces, `/design` and the workspace documentation at `/documents` and
+  `/documents/{slug}`. Both render their own `200` for a reader with no account rather than answering the login door,
+  and both carry `inject_optional_session` so a signed-in reader still gets the authenticated nav. The documentation is
+  anonymous because the repository is source-available: those documents are the manual for software anyone can clone, so
+  a login door in front of them guarded nothing. `/app/documents` is a second door to the same index wearing the
+  application chrome, and it stays gated — what it restricts is that surface, not the documents.
+
+`/mcp` and its `/app/mcp` alias are **not** on this allowlist — a caller still needs a credential — but they are not
+behind the session-cookie boundary either. Both mount the same Bearer-only stack (`require_auth`, `require_policy`, and
+in production `require_google_oauth`), carry no CSRF layer, and never accept the browser session cookie: JSON-RPC
+clients send `Authorization: Bearer`, not a cookie. Mounting `/app/mcp` beside `/mcp` is what lets ops migrate the
+ingress path onto `/app` without forking that auth stack or briefly serving `/mcp` from a different one.
 
 The A2A agent card is *not* on that list. The whole API surface, its documentation, and the card itself live under the
 private `/app/api` prefix and require a session, so A2A discovery is not self-service: a client cannot read the card to

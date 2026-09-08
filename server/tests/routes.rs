@@ -14959,7 +14959,7 @@ async fn project_detail_page_renders_an_empty_matter_calendar() {
 
     let calendar = matter_calendar_section(&body);
     assert!(
-        calendar.contains("No calendar events scheduled for this matter."),
+        calendar.contains("No calendar events scheduled for this project."),
         "{calendar}"
     );
     // The matter's own rows must stay out of it.
@@ -15047,7 +15047,7 @@ async fn project_calendar_renders_an_appearance_only_for_a_participant() {
     assert!(calendar.contains("2027-03-15 09:00 UTC"), "{calendar}");
     assert!(calendar.contains("Hearing"), "{calendar}");
     assert!(
-        !calendar.contains("No calendar events scheduled for this matter."),
+        !calendar.contains("No calendar events scheduled for this project."),
         "{calendar}"
     );
 
@@ -17997,7 +17997,7 @@ async fn a_supervised_clerk_gets_the_narrow_rendering_and_no_documents() {
         "Documents",
         "Invoice",
         "Participation ledger",
-        "To close this matter",
+        r#"class="lawyer-detail__section project-close""#,
         "Upload",
     ] {
         assert!(
@@ -18188,14 +18188,14 @@ async fn the_workbench_points_every_firm_participant_at_email_to_close_a_matter(
         // Dioxus splits an interpolated node from its surrounding text with
         // hydration comments — so no long contiguous run of it survives SSR.
         assert!(
-            body.contains("To close this matter, email the lawyer DRI")
+            body.contains("To close this project, email the lawyer DRI")
                 && body.contains("(Lawyer Project Fixture)")
                 && body.contains("mailto:support@neonlaw.com"),
             "{who} is pointed at the named lawyer DRI and the support address: {body}"
         );
         for gone in [
-            "Close this matter".to_string(),
-            "Close matter".to_string(),
+            "Close this project".to_string(),
+            "Close project".to_string(),
             format!("/app/projects/{project_code}/close"),
         ] {
             assert!(

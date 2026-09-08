@@ -108,8 +108,8 @@ struct Destination {
 fn destinations_for(role: ViewerRole) -> Vec<Destination> {
     let mut cards = vec![Destination {
         id: "team-card-projects",
-        title: "Matters",
-        description: "Every matter you can see, in one list.",
+        title: "Projects",
+        description: "Every project you can see, in one list.",
         href: APP_PROJECTS_HREF,
         download: None,
     }];
@@ -117,7 +117,7 @@ fn destinations_for(role: ViewerRole) -> Vec<Destination> {
         cards.push(Destination {
             id: "team-card-lawyer",
             title: "Lawyer",
-            description: "The firm workbench: your matters' status at a glance, the \
+            description: "The firm workbench: your projects' status at a glance, the \
                           calendar, and the people, entities, and notations you manage.",
             href: APP_LAWYER_HREF,
             download: None,
@@ -127,7 +127,7 @@ fn destinations_for(role: ViewerRole) -> Vec<Destination> {
         cards.push(Destination {
             id: "team-card-admin",
             title: "Admin",
-            description: "Firm administration and the full matter directory.",
+            description: "Firm administration and the full project directory.",
             href: APP_ADMIN_HREF,
             download: None,
         });

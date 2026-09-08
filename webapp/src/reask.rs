@@ -141,7 +141,7 @@ fn reask_body(view: &ReaskView) -> Element {
             header { class: "page-header",
                 h1 { "Re-collect flagged answers" }
                 p { class: "nav-muted",
-                    "This matter was sent back for changes. Correct the flagged answers "
+                    "This project was sent back for changes. Correct the flagged answers "
                     "below — on the client's behalf, or have the client do it from their "
                     "portal — then resubmit for review. Only the flagged answers are "
                     "re-collected; every other answer stays as it was."

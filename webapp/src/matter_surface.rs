@@ -222,7 +222,7 @@ pub fn ProjectDetail() -> Element {
                 main { id: "matter-not-found", class: "nav-theme",
                     document::Title { "{firm_name} | Not found" }
                     h1 { "Not found" }
-                    p { "No matter is available at this address." }
+                    p { "No project is available at this address." }
                 }
             },
         }

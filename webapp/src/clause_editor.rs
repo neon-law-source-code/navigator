@@ -163,7 +163,7 @@ fn editor_body(view: &ClauseEditorView) -> Element {
             header { class: "page-header",
                 h1 { "Custom clauses" }
                 p { class: "nav-muted",
-                    "Paragraphs added here are spliced into this matter's "
+                    "Paragraphs added here are spliced into this project's "
                     "{view.flow_label} at its custom-clauses marker, in order. Any "
                     "clause sends the document back through attorney review before "
                     "it can go out for signature."
@@ -191,7 +191,7 @@ fn editor_body(view: &ClauseEditorView) -> Element {
                     Field::textarea("Clause text", "body", "", 3)
                         .required()
                         .id("clause-new")
-                        .placeholder("A custom paragraph for this matter only…"),
+                        .placeholder("A custom paragraph for this project only…"),
                 ],
             }
         }

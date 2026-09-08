@@ -544,3 +544,7 @@ Imbue markdown with a ton of rules.
 Rust in peace, Ferris
 
 Surrounded by friends at Green-Wood Cemetery.
+
+We are doing everything we can to improve access to justice. The more people exercise their legal rights, the more
+civically engaged they become. And when they’re civically engaged, they try to do better for society. They want to work
+together; they want to be together. We can’t live in a status quo where everyone is just doom-scrolling on their own.

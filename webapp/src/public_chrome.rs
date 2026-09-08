@@ -11,7 +11,7 @@ use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::components::{
-    FooterAttorney, FooterBarLicense, FooterNavLink, FooterOffice, SiteFooterLegal,
+    FooterAttorney, FooterBarLicense, FooterBrandLink, FooterNavLink, FooterOffice, SiteFooterLegal,
 };
 
 /// One nav destination, resolved from the brand for the header.
@@ -55,6 +55,16 @@ pub struct ChromeAttorney {
     pub name: String,
     pub licenses: Vec<ChromeBarLicense>,
 }
+
+/// One brand the current firm wears, for the public footer's brands row.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+pub struct ChromeBrand {
+    pub label: String,
+    pub href: String,
+    pub current: bool,
+}
+
+/// The public-page chrome: everything the [`crate::components::SiteHeader`] and
 
 /// The public-page chrome: everything the [`crate::components::SiteHeader`] and
 /// [`crate::components::SiteFooterLegal`] need, resolved from the process brand
@@ -120,6 +130,10 @@ pub struct PublicChrome {
     /// registry key that produced the rest of this chrome, so the palette
     /// always matches the identity the header and footer already carry.
     pub tokens_href: String,
+    /// Brands the current firm wears, in registry order. Empty or a single
+    /// entry renders no footer row.
+    #[serde(default)]
+    pub brands: Vec<ChromeBrand>,
     /// How many people have starred that repository, or `None` when the
     /// process has not fetched it yet.
     ///
@@ -215,6 +229,15 @@ pub fn PublicFooter(chrome: PublicChrome) -> Element {
             source_stars: chrome.source_stars,
             navigator_version: chrome.navigator_version.clone(),
             navigator_href: chrome.navigator_href.clone(),
+            brands: chrome
+                .brands
+                .iter()
+                .map(|brand| FooterBrandLink {
+                    label: brand.label.clone(),
+                    href: brand.href.clone(),
+                    current: brand.current,
+                })
+                .collect(),
         }
     }
 }
@@ -328,6 +351,67 @@ fn chrome_for(brand: &views::brand::SiteBrand, utility: Vec<ChromeNavLink>) -> P
             .to_string(),
         navigator_href: "/navigator".to_string(),
         tokens_href: crate::brand_style::brand_tokens_href(views::brand::brand_key().as_str()),
+        // One compiled brand until the request overlay reads `firm_brand`.
+        // A single entry renders no row, so a cargo run without seeds stays
+        // byte-identical to today's footer.
+        brands: compiled_footer_brands(views::brand::brand_key()),
+    }
+}
+
+/// Brands resolved from `firm_brand` for this request, injected by the
+/// portal host layer so `inject_public_utility` can overlay them on the
+/// compiled fallback.
+#[derive(Clone)]
+pub struct ResolvedFooterBrands(pub Vec<ChromeBrand>);
+
+/// The current compiled brand only — the no-store fallback. A firm that
+/// actually wears more than one is filled in by [`footer_brands_from_store`].
+#[cfg(feature = "server")]
+fn compiled_footer_brands(current: views::brand::BrandKey) -> Vec<ChromeBrand> {
+    footer_brands_for_keys(&[current.as_str().to_string()], current)
+}
+
+/// Map stored (or compiled) keys onto footer entries: registry order, current
+/// unlinked, hrefs from the compiled hosts. Runtime keys with no compiled
+/// host are omitted.
+#[cfg(feature = "server")]
+#[must_use]
+pub fn footer_brands_for_keys(
+    keys: &[String],
+    current: views::brand::BrandKey,
+) -> Vec<ChromeBrand> {
+    use views::brand::{BrandKey, DEFAULT_BRANDING};
+
+    BrandKey::ALL
+        .iter()
+        .copied()
+        .filter(|key| keys.iter().any(|item| item == key.as_str()))
+        .map(|key| ChromeBrand {
+            label: key
+                .resolve_branding(&DEFAULT_BRANDING)
+                .firm
+                .site_name
+                .to_string(),
+            href: key.public_home_href(),
+            current: key == current,
+        })
+        .collect()
+}
+
+/// Resolve the brands row from `firm_brand` for the firm that wears
+/// `current`. No rows falls back to the compiled current brand.
+#[cfg(feature = "server")]
+pub async fn footer_brands_from_store(
+    surreal: &store::surreal::SurrealDb,
+    current: views::brand::BrandKey,
+) -> Vec<ChromeBrand> {
+    let Ok(Some(firm_id)) = store::firms::firm_id_for_brand_key(surreal, current.as_str()).await
+    else {
+        return compiled_footer_brands(current);
+    };
+    match store::firms::brand_keys_for_firm(surreal, firm_id).await {
+        Ok(keys) if !keys.is_empty() => footer_brands_for_keys(&keys, current),
+        _ => compiled_footer_brands(current),
     }
 }
 
@@ -618,5 +702,31 @@ mod tests {
             out.contains("attorney advertisement") || out.contains("attorney advertising"),
             "the firm's own disclaimer is there: {out}"
         );
+    }
+
+    #[cfg(feature = "server")]
+    #[test]
+    fn compiled_keys_are_registry_order_and_current_unlinked() {
+        use views::brand::BrandKey;
+
+        let brands = footer_brands_for_keys(
+            &[
+                "lawyer-shook".to_string(),
+                "neon".to_string(),
+                "delete-your-data".to_string(),
+            ],
+            BrandKey::Neon,
+        );
+        assert_eq!(
+            brands
+                .iter()
+                .map(|brand| brand.label.as_str())
+                .collect::<Vec<_>>(),
+            ["Neon Law", "DeleteYourData.com", "Lawyer Shook"]
+        );
+        assert!(brands[0].current);
+        assert!(!brands[1].current);
+        assert_eq!(brands[0].href, "https://www.neonlaw.com");
+        assert_eq!(brands[1].href, "https://www.deleteyourdata.com");
     }
 }

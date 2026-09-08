@@ -115,6 +115,15 @@ pub struct FooterNavLink {
     pub href: String,
 }
 
+/// One brand the current firm wears. The current brand is shown but not
+/// linked; every other entry links that brand's home host.
+#[derive(Clone, PartialEq, Eq)]
+pub struct FooterBrandLink {
+    pub label: String,
+    pub href: String,
+    pub current: bool,
+}
+
 /// One bar license an attorney holds. Mirrors `views::brand::BarLicense`.
 #[derive(Clone, PartialEq, Eq)]
 pub struct FooterBarLicense {
@@ -243,6 +252,10 @@ pub fn SiteFooterLegal(
     #[props(default)] brand_name: String,
     #[props(default)] home_href: String,
     #[props(default)] nav: Vec<FooterNavLink>,
+    /// Brands this firm's footer names. One entry is no row: a single-brand
+    /// firm stays byte-identical to a footer that never learned the list.
+    #[props(default)]
+    brands: Vec<FooterBrandLink>,
     /// The registered word mark the site trades under, spelled the way the
     /// register spells it, and the registration that proves it. Renders one
     /// notice under the copyright line — the site's two ownership facts read
@@ -379,6 +392,25 @@ pub fn SiteFooterLegal(
                                                     "{link.label}"
                                                 }
                                             }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                if brands.len() > 1 {
+                    nav { class: "site-footer__brands", "aria-label": "Brands",
+                        ul { class: "site-footer__brands-list",
+                            for brand in brands.iter() {
+                                li { class: "site-footer__brands-item", key: "{brand.href}",
+                                    if brand.current {
+                                        span { class: "site-footer__brands-current", "{brand.label}" }
+                                    } else {
+                                        a {
+                                            class: "site-footer__brands-link",
+                                            href: "{brand.href}",
+                                            "{brand.label}"
                                         }
                                     }
                                 }
@@ -1432,7 +1464,10 @@ mod tests {
             out.contains(POWERED_BY_NEON_LAW_NAVIGATOR),
             "the public footer uses the shared wording: {out}"
         );
-        assert_eq!(POWERED_BY_NEON_LAW_NAVIGATOR, "Powered by Neon Law Navigator");
+        assert_eq!(
+            POWERED_BY_NEON_LAW_NAVIGATOR,
+            "Powered by Neon Law Navigator"
+        );
     }
 
     /// A deploy that publishes an office in a state this component carries no
@@ -1513,6 +1548,89 @@ mod tests {
         assert!(
             out.contains(r#"<div class="site-footer__legal""#),
             "the legal strip still renders: {out}"
+        );
+    }
+
+    fn three_firm_brands() -> Vec<FooterBrandLink> {
+        vec![
+            FooterBrandLink {
+                label: "Neon Law".to_string(),
+                href: "https://www.neonlaw.com".to_string(),
+                current: true,
+            },
+            FooterBrandLink {
+                label: "DeleteYourData.com".to_string(),
+                href: "https://www.deleteyourdata.com".to_string(),
+                current: false,
+            },
+            FooterBrandLink {
+                label: "Lawyer Shook".to_string(),
+                href: "https://www.lawyershook.com".to_string(),
+                current: false,
+            },
+        ]
+    }
+
+    #[test]
+    fn a_firm_with_three_brands_renders_them_in_order_with_the_current_one_unlinked() {
+        fn app() -> Element {
+            rsx! {
+                SiteFooterLegal {
+                    copyright_holder: "Neon Law".to_string(),
+                    disclaimer: "This is an attorney advertisement.".to_string(),
+                    copyright_year: 2026,
+                    brands: three_firm_brands(),
+                }
+            }
+        }
+        let out = ssr(app);
+        let neon = out.find("Neon Law").expect("neon");
+        let dyd = out.find("DeleteYourData.com").expect("dyd");
+        let shook = out.find("Lawyer Shook").expect("lawyer shook");
+        assert!(neon < dyd && dyd < shook, "registry order: {out}");
+        assert!(
+            out.contains(r#"class="site-footer__brands-current""#),
+            "current brand is not a link: {out}"
+        );
+        assert!(
+            !out.contains(r#"href="https://www.neonlaw.com""#),
+            "current brand is unlinked: {out}"
+        );
+        assert!(
+            out.contains(r#"href="https://www.deleteyourdata.com""#),
+            "other brands link their home host: {out}"
+        );
+        assert!(
+            out.contains(r#"href="https://www.lawyershook.com""#),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn a_firm_with_one_brand_renders_no_brands_row() {
+        fn app() -> Element {
+            rsx! {
+                SiteFooterLegal {
+                    copyright_holder: "Neon Law".to_string(),
+                    disclaimer: "This is an attorney advertisement.".to_string(),
+                    copyright_year: 2026,
+                    brands: vec![FooterBrandLink {
+                        label: "Neon Law".to_string(),
+                        href: "https://www.neonlaw.com".to_string(),
+                        current: true,
+                    }],
+                }
+            }
+        }
+        let out = ssr(app);
+        assert!(
+            !out.contains("site-footer__brands"),
+            "one brand is no row: {out}"
+        );
+        let bare = legal_html();
+        assert!(
+            !bare.contains("site-footer__brands"),
+            "an unset list is no row: {bare}"
         );
     }
 }

@@ -1137,6 +1137,34 @@ a.nav-pagination__link:hover {
 }
 
 .site-footer__nav-link:hover {
+  color: var(--nav-color-text);
+}
+
+.site-footer__brands {
+  margin: 0 0 1rem;
+}
+
+.site-footer__brands-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.site-footer__brands-item {
+  margin: 0;
+}
+
+.site-footer__brands-link,
+.site-footer__brands-current {
+  font-size: 0.875rem;
+}
+
+.site-footer__brands-current {
+  font-weight: 600;
+}
   text-decoration: underline;
 }
 

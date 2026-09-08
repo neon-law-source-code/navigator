@@ -772,8 +772,14 @@ async fn inject_public_utility(mut req: Request, next: Next) -> Response {
     // building the chrome there would render the DEFAULT brand under a mounted
     // white-label bundle (the header logo, wordmark, and footer). Inject the
     // resolved chrome for the server-fn to read back.
-    req.extensions_mut()
-        .insert(webapp::public_chrome::firm_public_chrome(utility.clone()));
+    let mut chrome = webapp::public_chrome::firm_public_chrome(utility.clone());
+    if let Some(webapp::public_chrome::ResolvedFooterBrands(brands)) =
+        req.extensions()
+            .get::<webapp::public_chrome::ResolvedFooterBrands>()
+    {
+        chrome.brands = brands.clone();
+    }
+    req.extensions_mut().insert(chrome);
     req.extensions_mut()
         .insert(webapp::public_chrome::PublicUtility(utility));
     next.run(req).await

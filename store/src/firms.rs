@@ -825,7 +825,47 @@ pub async fn brand_keys_for_firm(
         .await
         .and_then(surrealdb::IndexedResults::check)?;
     let rows: Vec<BrandRow> = response.take(0)?;
-    Ok(rows.into_iter().map(|row| row.brand_key).collect())
+    Ok(in_registry_order(
+        rows.into_iter().map(|row| row.brand_key).collect(),
+    ))
+}
+
+/// The Firm that wears `brand_key`, if any. A key is unique across the
+/// deployment (`firm_brand_key`), so this is at most one row.
+pub async fn firm_id_for_brand_key(
+    surreal: &SurrealDb,
+    brand_key: &str,
+) -> Result<Option<Uuid>, FirmError> {
+    #[derive(SurrealValue)]
+    struct FirmIdRow {
+        firm_id: surrealdb::types::RecordId,
+    }
+    let mut response = surreal
+        .query(format!(
+            "SELECT firm_id FROM {BRAND_TABLE} WHERE brand_key = $brand_key LIMIT 1"
+        ))
+        .bind(("brand_key", brand_key.to_string()))
+        .await
+        .and_then(surrealdb::IndexedResults::check)?;
+    let rows: Vec<FirmIdRow> = response.take(0)?;
+    Ok(rows.into_iter().find_map(|row| record_uuid(&row.firm_id)))
+}
+
+/// House-brand keys this firm wears, ordered as [`CLOSED_BRAND_KEYS`] then
+/// any runtime keys the Firm added later.
+fn in_registry_order(keys: Vec<String>) -> Vec<String> {
+    let mut ordered = Vec::new();
+    for known in CLOSED_BRAND_KEYS {
+        if keys.iter().any(|key| key == *known) {
+            ordered.push((*known).to_string());
+        }
+    }
+    for key in keys {
+        if !ordered.contains(&key) {
+            ordered.push(key);
+        }
+    }
+    ordered
 }
 
 /// Detach a house-brand key from a firm. Owner, or that Firm's own Admin
@@ -1992,6 +2032,53 @@ mod tests {
         detach_brand(&db, Role::Owner, None, firm.id, "neon")
             .await
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn two_firms_each_list_only_their_own_brands() {
+        let db = mem_surreal().await;
+        for (name, key) in [
+            ("Neon Law", "neon"),
+            ("DeleteYourData.com", "delete-your-data"),
+            ("Lawyer Shook", "lawyer-shook"),
+        ] {
+            crate::brands::create(
+                &db,
+                Role::Owner,
+                None,
+                &crate::brands::NewBrand {
+                    name: name.to_string(),
+                    key: key.to_string(),
+                    ..crate::brands::NewBrand::default()
+                },
+            )
+            .await
+            .unwrap();
+        }
+        let firm_a = practice(&db, "Practice A").await;
+        let firm_b = practice(&db, "Practice B").await;
+        attach_brand(&db, firm_a.id, "neon").await.unwrap();
+        attach_brand(&db, firm_a.id, "delete-your-data")
+            .await
+            .unwrap();
+        attach_brand(&db, firm_b.id, "lawyer-shook").await.unwrap();
+
+        assert_eq!(
+            firm_id_for_brand_key(&db, "neon").await.unwrap(),
+            Some(firm_a.id)
+        );
+        assert_eq!(
+            firm_id_for_brand_key(&db, "lawyer-shook").await.unwrap(),
+            Some(firm_b.id)
+        );
+        assert_eq!(
+            brand_keys_for_firm(&db, firm_a.id).await.unwrap(),
+            vec!["neon".to_string(), "delete-your-data".to_string()]
+        );
+        assert_eq!(
+            brand_keys_for_firm(&db, firm_b.id).await.unwrap(),
+            vec!["lawyer-shook".to_string()]
+        );
     }
 
     /// ENG-494: `update` edits name/status/entity_id and leaves the Admin

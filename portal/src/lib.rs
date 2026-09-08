@@ -1614,6 +1614,7 @@ pub fn bootstrap(
     // composition is merged behind this same boundary.
     let boundary_sessions = state.sessions.clone();
     let boundary_auth = state.auth.clone();
+    let footer_store = state.surreal.clone();
     let mut router = mount_brand_assets(router, brand_bundle.as_ref())
         .nest_service("/public", static_files)
         .with_state(state)
@@ -1831,6 +1832,10 @@ pub fn bootstrap(
             session_renew::renew_session,
         ))
         .layer(tower_cookies::CookieManagerLayer::new())
+        .layer(axum::middleware::from_fn_with_state(
+            footer_store,
+            inject_firm_footer_brands,
+        ))
         .layer(axum::middleware::from_fn_with_state(
             branding,
             scope_branding,
@@ -2235,6 +2240,26 @@ fn mount_brand_assets(
         router = router.route_service(&route, ServeFile::new(bundle.directory.join(file)));
     }
     router
+}
+
+/// Fill the public footer's brands row from `firm_brand` for the firm that
+/// wears this request's brand. Runs inside `host_layer` so the resolved
+/// [`views::brand::BrandKey`] is already on the request.
+async fn inject_firm_footer_brands(
+    State(surreal): State<store::surreal::SurrealDb>,
+    mut request: Request<axum::body::Body>,
+    next: Next,
+) -> Response {
+    let current = request
+        .extensions()
+        .get::<views::brand::BrandKey>()
+        .copied()
+        .unwrap_or_default();
+    let brands = webapp::public_chrome::footer_brands_from_store(&surreal, current).await;
+    request
+        .extensions_mut()
+        .insert(webapp::public_chrome::ResolvedFooterBrands(brands));
+    next.run(request).await
 }
 
 /// Scope the request's resolved brand for the life of the request. `state`

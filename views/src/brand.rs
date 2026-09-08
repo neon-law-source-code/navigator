@@ -570,6 +570,18 @@ impl BrandKey {
         }
     }
 
+    /// Parse a registry key. Runtime-created keys have no compiled hosts.
+    #[must_use]
+    pub fn parse(key: &str) -> Option<Self> {
+        Self::ALL.iter().copied().find(|item| item.as_str() == key)
+    }
+
+    /// The production home this key answers on, as an absolute URL.
+    #[must_use]
+    pub fn public_home_href(self) -> String {
+        format!("https://{}", self.hosts()[0])
+    }
+
     /// English catalog stems this key ships under `locales/en/<key>/`.
     ///
     /// Neon publishes every page in [`crate::locales::KNOWN_PAGES`]. A house
@@ -1608,6 +1620,14 @@ mod tests {
                     link.href
                 );
             }
+        }
+        for key in super::BrandKey::ALL {
+            let href = key.public_home_href();
+            assert!(
+                href.starts_with("https://") && key.hosts().iter().any(|host| href.ends_with(host)),
+                "{} home is a registry host: {href}",
+                key.as_str(),
+            );
         }
     }
 

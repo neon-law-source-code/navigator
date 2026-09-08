@@ -557,12 +557,13 @@ fn kind_up_steps(root: &Path, cfg: &KindConfig) -> Result<()> {
         .arg("--namespace")
         .arg("ingress-nginx")
         .arg("wait")
-        .arg("--for=condition=ready")
-        .arg("pod")
-        .arg("--selector=app.kubernetes.io/component=controller")
+        .arg("--for=condition=available")
+        .arg("deployment/ingress-nginx-controller")
         // A cold KIND node can need several minutes just to pull the
         // controller image; on a loaded local Docker host its probes can take
-        // longer still. Leave enough room for a healthy cold start.
+        // longer still. Leave enough room for a healthy cold start. Wait on
+        // the Deployment, not a pod selector: a rolling hostPort strip can
+        // leave a terminating replica that makes `wait pod` exit NotFound.
         .arg("--timeout=1200s"))?;
 
     eprintln!("==> installing Restate Operator (chart v{RESTATE_OPERATOR_VERSION})");

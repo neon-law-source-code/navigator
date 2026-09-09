@@ -39,6 +39,17 @@ fn completion_body(envelope_id: &str) -> Vec<u8> {
     .unwrap()
 }
 
+fn terminal_body(envelope_id: &str, event: &str, status: &str) -> Vec<u8> {
+    serde_json::to_vec(&serde_json::json!({
+        "event": event,
+        "data": {
+            "envelopeId": envelope_id,
+            "envelopeSummary": { "status": status },
+        },
+    }))
+    .unwrap()
+}
+
 #[derive(Default, World)]
 #[world(init = Self::default)]
 struct WebhookWorld {
@@ -175,8 +186,7 @@ async fn park_retainer(world: &mut WebhookWorld, envelope_id: String) {
     world.envelope_id = Some(envelope_id);
 }
 
-async fn post_callback(world: &mut WebhookWorld, envelope_id: &str, signature: &str) {
-    let body = completion_body(envelope_id);
+async fn post_callback(world: &mut WebhookWorld, body: Vec<u8>, signature: &str) {
     let resp = world
         .app()
         .oneshot(
@@ -203,8 +213,25 @@ async fn post_valid(world: &mut WebhookWorld, feature_envelope_id: String) {
     // recorded in `signatures` is `world.envelope_id()` — see the field doc.
     let envelope_id = world.envelope_id().to_string();
     assert!(envelope_id.starts_with(&feature_envelope_id));
-    let signature = sign_hmac_sha256_b64(HMAC_KEY.as_bytes(), &completion_body(&envelope_id));
-    post_callback(world, &envelope_id, &signature).await;
+    let body = completion_body(&envelope_id);
+    let signature = sign_hmac_sha256_b64(HMAC_KEY.as_bytes(), &body);
+    post_callback(world, body, &signature).await;
+}
+
+#[when(
+    regex = r#"^the provider posts a validly-signed (decline|expiry) callback for envelope "([^"]+)"$"#
+)]
+async fn post_terminal(world: &mut WebhookWorld, terminal: String, feature_envelope_id: String) {
+    let envelope_id = world.envelope_id().to_string();
+    assert!(envelope_id.starts_with(&feature_envelope_id));
+    let (event, status) = match terminal.as_str() {
+        "decline" => ("envelope-declined", "declined"),
+        "expiry" => ("envelope-expired", "expired"),
+        _ => unreachable!("the feature regex only permits terminal callbacks"),
+    };
+    let body = terminal_body(&envelope_id, event, status);
+    let signature = sign_hmac_sha256_b64(HMAC_KEY.as_bytes(), &body);
+    post_callback(world, body, &signature).await;
 }
 
 #[when(
@@ -214,7 +241,12 @@ async fn post_forged(world: &mut WebhookWorld, feature_envelope_id: String) {
     let envelope_id = world.envelope_id().to_string();
     assert!(envelope_id.starts_with(&feature_envelope_id));
     // A plausible-looking but wrong base64 digest.
-    post_callback(world, &envelope_id, "Zm9yZ2VkLXNpZ25hdHVyZS1ub3QtdmFsaWQ=").await;
+    post_callback(
+        world,
+        completion_body(&envelope_id),
+        "Zm9yZ2VkLXNpZ25hdHVyZS1ub3QtdmFsaWQ=",
+    )
+    .await;
 }
 
 #[then(regex = r"^the response status is (\d+)$")]
@@ -259,6 +291,20 @@ async fn assert_row_state(world: &mut WebhookWorld, state: String) {
         .unwrap()
         .expect("notation row");
     assert_eq!(row.state, state);
+}
+
+#[then(regex = r#"^the signature row state is "([^"]+)"$"#)]
+async fn assert_signature_state(world: &mut WebhookWorld, state: String) {
+    let surreal = features::shared_surreal().await;
+    let signature = store::signatures::by_provider(
+        &surreal,
+        store::signatures::SignatureProvider::DocuSign,
+        world.envelope_id(),
+    )
+    .await
+    .unwrap()
+    .expect("signature row");
+    assert_eq!(signature.state.as_str(), state);
 }
 
 #[tokio::main]

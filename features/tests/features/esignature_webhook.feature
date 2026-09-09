@@ -18,6 +18,28 @@ Feature: E-signature completion webhook closes the retainer loop
     And the retainer workflow has advanced to "END"
     And the notation row state is "END"
 
+  Scenario: A verified decline callback records a declined terminal signature state
+    When the provider posts a validly-signed decline callback for envelope "env-abc"
+    Then the response status is 200
+    And the retainer workflow has advanced to "END"
+    And the notation row state is "END"
+    And the signature row state is "declined"
+
+  Scenario: A verified expiry callback records an expired terminal signature state
+    When the provider posts a validly-signed expiry callback for envelope "env-abc"
+    Then the response status is 200
+    And the retainer workflow has advanced to "END"
+    And the notation row state is "END"
+    And the signature row state is "expired"
+
+  Scenario: A later decline cannot regress a completed signature
+    When the provider posts a validly-signed completion callback for envelope "env-abc"
+    Then the response status is 200
+    And the signature row state is "completed"
+    When the provider posts a validly-signed decline callback for envelope "env-abc"
+    Then the response status is 200
+    And the signature row state is "completed"
+
   Scenario: A forged completion callback is rejected and the retainer stays pending
     When an attacker posts a completion callback with a forged signature for envelope "env-abc"
     Then the response status is 401

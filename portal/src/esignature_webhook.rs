@@ -26,11 +26,11 @@
 //!   closed). `None` in dev/tests skips it. Production sets it via
 //!   `enforce_deployment_invariants`.
 //!
-//! Only a *completed* event advances state. DocuSign also fires `sent`,
-//! `delivered`, `voided`, …; those return 200 without signalling so the
-//! provider stops retrying and no half-states leak. An unknown envelope
-//! id (no notation matches) is likewise a 200 no-op — the callback is
-//! idempotent.
+//! Terminal events advance the wait: completion, decline, void, and expiry.
+//! DocuSign also fires `sent`, `delivered`, …; those return 200 without
+//! signalling so the provider stops retrying and no half-states leak. An
+//! unknown envelope id (no notation matches) is likewise a 200 no-op — the
+//! callback is idempotent.
 
 use axum::body::Bytes;
 use axum::extract::{Path, State};
@@ -122,10 +122,40 @@ impl ConnectPayload {
     fn is_declined(&self) -> bool {
         matches!(
             self.event.as_deref(),
-            Some("envelope-declined" | "recipient-declined" | "envelope-voided")
+            Some("envelope-declined" | "recipient-declined")
         ) || self
             .envelope_summary_status()
-            .is_some_and(|s| s.eq_ignore_ascii_case("declined") || s.eq_ignore_ascii_case("voided"))
+            .is_some_and(|s| s.eq_ignore_ascii_case("declined"))
+    }
+
+    /// True when the provider voided the envelope before completion.
+    fn is_voided(&self) -> bool {
+        self.event.as_deref() == Some("envelope-voided")
+            || self
+                .envelope_summary_status()
+                .is_some_and(|s| s.eq_ignore_ascii_case("voided"))
+    }
+
+    /// True when the provider's envelope expiry event/status is present.
+    fn is_expired(&self) -> bool {
+        self.event.as_deref() == Some("envelope-expired")
+            || self
+                .envelope_summary_status()
+                .is_some_and(|s| s.eq_ignore_ascii_case("expired"))
+    }
+
+    fn terminal_state(&self) -> Option<store::signatures::SignatureState> {
+        if self.is_completed() {
+            Some(store::signatures::SignatureState::Completed)
+        } else if self.is_declined() {
+            Some(store::signatures::SignatureState::Declined)
+        } else if self.is_voided() {
+            Some(store::signatures::SignatureState::Voided)
+        } else if self.is_expired() {
+            Some(store::signatures::SignatureState::Expired)
+        } else {
+            None
+        }
     }
 
     fn envelope_summary_status(&self) -> Option<&str> {
@@ -178,11 +208,7 @@ pub async fn webhook(
     // without an engagement. Everything else (sent / delivered /
     // viewed / …) is acked so the provider stops retrying, but does not
     // advance state.
-    let condition = if payload.is_completed() {
-        SIGNATURE_RECEIVED
-    } else if payload.is_declined() {
-        SIGNATURE_DECLINED
-    } else {
+    let Some(terminal_state) = payload.terminal_state() else {
         tracing::info!(
             envelope_id = %payload.data.envelope_id,
             event = ?payload.event,
@@ -190,8 +216,13 @@ pub async fn webhook(
         );
         return Ok(StatusCode::OK);
     };
+    let condition = if terminal_state == store::signatures::SignatureState::Completed {
+        SIGNATURE_RECEIVED
+    } else {
+        SIGNATURE_DECLINED
+    };
 
-    advance(&state, &payload.data.envelope_id, condition).await?;
+    advance(&state, &payload.data.envelope_id, condition, terminal_state).await?;
     Ok(StatusCode::OK)
 }
 
@@ -203,6 +234,7 @@ async fn advance(
     state: &crate::AppState,
     envelope_id: &str,
     condition: &str,
+    terminal_state: store::signatures::SignatureState,
 ) -> Result<(), WebhookError> {
     let provider = store::signatures::SignatureProvider::DocuSign;
     let Some(signature) = store::signatures::by_provider(&state.surreal, provider, envelope_id)
@@ -212,6 +244,15 @@ async fn advance(
         tracing::warn!(%envelope_id, "esignature webhook: no signature for envelope id");
         return Ok(());
     };
+    if signature.state != store::signatures::SignatureState::Requested {
+        tracing::info!(
+            %envelope_id,
+            existing_state = signature.state.as_str(),
+            incoming_state = terminal_state.as_str(),
+            "esignature webhook: terminal event ignored after state was recorded"
+        );
+        return Ok(());
+    }
     let Some(row) = store::notations::find_by_id(&state.surreal, signature.notation_id)
         .await
         .map_err(|e| WebhookError::Database(e.to_string()))?
@@ -239,35 +280,60 @@ async fn advance(
 
     tracing::info!(%envelope_id, %condition, next_state = %next.as_str(), "esignature webhook: signature event");
 
-    // On completion, archive the executed document set (signed PDF +
-    // Certificate of Completion — the ESIGN record) to object storage.
-    // Best-effort: the signature is already recorded, so an archive
-    // failure must NOT fail the webhook (DocuSign would retry forever);
-    // the GCS source-of-truth can be backfilled. Declines have no
-    // executed document, so they skip this.
-    if condition == SIGNATURE_RECEIVED {
-        // Stamp the completion time on the signature so the executed record
-        // carries when it was signed. Best-effort: the workflow already
-        // advanced, so a stamp failure must not fail the webhook.
-        if let Err(e) = store::signatures::stamp_signed(
-            &state.surreal,
-            provider,
-            envelope_id,
-            &chrono::Utc::now().to_rfc3339(),
-        )
-        .await
-        {
-            tracing::error!(
-                %envelope_id, error = %e,
-                "esignature webhook: stamping signed_at failed (signature still recorded)"
-            );
-        }
+    match terminal_state {
+        store::signatures::SignatureState::Completed => {
+            // Stamp the completion time on the signature so the executed record
+            // carries when it was signed. Best-effort: the workflow already
+            // advanced, so a stamp failure must not fail the webhook.
+            if let Err(e) = store::signatures::stamp_signed(
+                &state.surreal,
+                provider,
+                envelope_id,
+                &chrono::Utc::now().to_rfc3339(),
+            )
+            .await
+            {
+                tracing::error!(
+                    %envelope_id, error = %e,
+                    "esignature webhook: stamping signed_at failed (signature still recorded)"
+                );
+            }
 
-        if let Err(e) = archive_completed_documents(state, envelope_id, notation_id).await {
-            tracing::error!(
-                %envelope_id, error = %e,
-                "esignature webhook: archiving signed documents failed (signature still recorded)"
-            );
+            // On completion, archive the executed document set (signed PDF +
+            // Certificate of Completion — the ESIGN record) to object storage.
+            // Best-effort: the signature is already recorded, so an archive
+            // failure must NOT fail the webhook (DocuSign would retry forever);
+            // the GCS source-of-truth can be backfilled.
+            if let Err(e) = archive_completed_documents(state, envelope_id, notation_id).await {
+                tracing::error!(
+                    %envelope_id, error = %e,
+                    "esignature webhook: archiving signed documents failed (signature still recorded)"
+                );
+            }
+        }
+        store::signatures::SignatureState::Declined => {
+            if let Err(e) =
+                store::signatures::stamp_declined(&state.surreal, provider, envelope_id).await
+            {
+                tracing::error!(%envelope_id, error = %e, "esignature webhook: stamping declined failed");
+            }
+        }
+        store::signatures::SignatureState::Voided => {
+            if let Err(e) =
+                store::signatures::stamp_voided(&state.surreal, provider, envelope_id).await
+            {
+                tracing::error!(%envelope_id, error = %e, "esignature webhook: stamping voided failed");
+            }
+        }
+        store::signatures::SignatureState::Expired => {
+            if let Err(e) =
+                store::signatures::stamp_expired(&state.surreal, provider, envelope_id).await
+            {
+                tracing::error!(%envelope_id, error = %e, "esignature webhook: stamping expired failed");
+            }
+        }
+        store::signatures::SignatureState::Requested => {
+            tracing::warn!(%envelope_id, "esignature webhook: requested state had no terminal stamp");
         }
     }
     Ok(())
@@ -338,8 +404,8 @@ mod tests {
     }
 
     #[test]
-    fn declined_and_voided_events_classify_as_declined() {
-        for ev in ["envelope-declined", "recipient-declined", "envelope-voided"] {
+    fn declined_events_classify_as_declined() {
+        for ev in ["envelope-declined", "recipient-declined"] {
             let p = parse(serde_json::json!({ "event": ev, "data": { "envelopeId": "e1" } }));
             assert!(p.is_declined(), "{ev} should be declined");
             assert!(!p.is_completed(), "{ev} is not completed");
@@ -347,12 +413,42 @@ mod tests {
     }
 
     #[test]
-    fn declined_or_voided_summary_status_classifies_as_declined() {
-        for st in ["declined", "voided", "Declined"] {
+    fn voided_events_and_status_classify_as_voided() {
+        for payload in [
+            serde_json::json!({ "event": "envelope-voided", "data": { "envelopeId": "e1" } }),
+            serde_json::json!({ "data": { "envelopeId": "e1", "envelopeSummary": { "status": "voided" } } }),
+        ] {
+            let p = parse(payload);
+            assert!(p.is_voided());
+            assert_eq!(
+                p.terminal_state(),
+                Some(store::signatures::SignatureState::Voided)
+            );
+        }
+    }
+
+    #[test]
+    fn declined_summary_status_classifies_as_declined() {
+        for st in ["declined", "Declined"] {
             let p = parse(serde_json::json!({
                 "data": { "envelopeId": "e1", "envelopeSummary": { "status": st } }
             }));
             assert!(p.is_declined(), "status {st} should be declined");
+        }
+    }
+
+    #[test]
+    fn expiry_event_and_status_classify_as_expired() {
+        for payload in [
+            serde_json::json!({ "event": "envelope-expired", "data": { "envelopeId": "e1" } }),
+            serde_json::json!({ "data": { "envelopeId": "e1", "envelopeSummary": { "status": "Expired" } } }),
+        ] {
+            let p = parse(payload);
+            assert!(p.is_expired());
+            assert_eq!(
+                p.terminal_state(),
+                Some(store::signatures::SignatureState::Expired)
+            );
         }
     }
 

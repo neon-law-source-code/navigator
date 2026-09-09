@@ -891,6 +891,63 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn hostable_setup_pipeline_covers_every_cloud_substrate_stage() {
+        let client = offline_dry_run_client();
+        let config = super::SetupConfig {
+            public_base_url: Some("https://www.example.test".into()),
+            ..super::SetupConfig::default()
+        };
+        super::run(&client, "my-project", &config).await.unwrap();
+        let calls = client.recorded_calls();
+        let records = |needle: &str| {
+            calls.iter().any(|call| {
+                call.url.contains(needle)
+                    || call
+                        .body
+                        .as_deref()
+                        .is_some_and(|body| body.contains(needle))
+            })
+        };
+
+        for (stage, needle) in [
+            ("required APIs", "services:batchEnable"),
+            ("custom VPC", "/global/networks"),
+            ("regional subnet", "/regions/us-west4/subnetworks"),
+            ("Cloud Router and NAT", "/regions/us-west4/routers"),
+            ("runtime identity", "service-accounts create navigator-web"),
+            ("registry access", "/repositories?repositoryId=navigator"),
+            ("Autopilot cluster", "container clusters create-auto"),
+            ("workload identity", "navigator/navigator-web"),
+            ("Fleet membership", "container clusters update"),
+            ("deployment KMS key", "keyRings?keyRingId=navigator-secrets"),
+        ] {
+            assert!(records(needle), "hostable setup omitted {stage}: {calls:?}");
+        }
+        for suffix in [
+            super::ASSETS_BUCKET_SUFFIX,
+            super::DOCUMENTS_BUCKET_SUFFIX,
+            super::EXPORTS_BUCKET_SUFFIX,
+            super::LOGS_BUCKET_SUFFIX,
+            super::APPLICATIONS_BUCKET_SUFFIX,
+        ] {
+            assert!(
+                records(&format!("my-project{suffix}")),
+                "hostable setup omitted the {suffix} bucket: {calls:?}"
+            );
+        }
+        let nat = calls
+            .iter()
+            .find(|call| call.url.contains("/regions/us-west4/routers"))
+            .expect("hostable setup records the Cloud Router/NAT create");
+        assert_body_contains(nat, "AUTO_ONLY", "hostable setup NAT IP allocation");
+        assert_body_contains(
+            nat,
+            "ALL_SUBNETWORKS_ALL_IP_RANGES",
+            "hostable setup NAT subnet coverage",
+        );
+    }
+
+    #[tokio::test]
     async fn cluster_pool_exists_before_kubernetes_service_account_bindings() {
         let client = offline_dry_run_client();
         let config = super::SetupConfig {
@@ -960,6 +1017,48 @@ mod tests {
         );
     }
 
+    #[test]
+    fn gcp_setup_docs_name_the_adjacent_hosting_owners() {
+        let cloud_operations = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../docs/cloud-operations.md"
+        ))
+        .expect("read cloud-operations.md");
+        let deploy_workshop = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../server/content/workshops/navigator/DEPLOY.md"
+        ))
+        .expect("read DEPLOY.md");
+
+        for (surface, prose) in [
+            ("cloud-operations.md", cloud_operations.as_str()),
+            ("DEPLOY.md", deploy_workshop.as_str()),
+        ] {
+            for expected in [
+                "Cloud Router",
+                "Cloud NAT",
+                "`navigator ops dns setup`",
+                "TLS and Gateway",
+                "`navigator ops ship`",
+                "Restate operator",
+                "`navigator ops secrets apply`",
+            ] {
+                assert!(prose.contains(expected), "{surface} must name {expected}");
+            }
+        }
+    }
+
+    fn assert_workshop_setup_stage_prose(prose: &str) {
+        assert!(
+            prose.contains("Live setup prints sixteen secret-free stages"),
+            "DEPLOY.md must keep the current setup-stage count",
+        );
+        assert!(
+            prose.contains("04/16 Cloud Router"),
+            "DEPLOY.md must include the Cloud Router/NAT setup stage",
+        );
+    }
+
     /// Cross-reference the "Deploy the Neon Law Navigator" workshop prose
     /// (`server/content/workshops/navigator/DEPLOY.md`) against the pipeline
     /// it teaches. If the prose names a service, bucket, or command the
@@ -1002,6 +1101,7 @@ mod tests {
             prose.contains("--dry-run"),
             "DEPLOY.md must teach the --dry-run preview",
         );
+        assert_workshop_setup_stage_prose(&prose);
 
         // 2. The prose's API count matches REQUIRED_SERVICES exactly,
         //    and each short name is named in the prose.

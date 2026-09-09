@@ -486,7 +486,7 @@ fn register_firm_admin_routes(r: Router<AdminState>, prefix: &str) -> Router<Adm
 /// viewer — `/app/projects` mounted the firm handlers and `/app/projects`
 /// the client ones, with four paths dispatching to the same handler from both.
 /// Which lens a caller gets is now decided inside each handler from their tier
-/// and their `person_project_roles` row (`store::access::can_see_project`),
+/// and their `person_project_roles` row (`store::access::matter_lens`),
 /// which is the only place that decision was ever safe to make: a URL prefix is
 /// chosen by the requester.
 ///
@@ -582,7 +582,8 @@ fn register_project_routes(r: Router<AdminState>) -> Router<AdminState> {
         // `GET {prefix}/{id}/documents/{doc_id}` (the provenance page) renders
         // through Dioxus (`dioxus_app::project_document_router`); the
         // signed-URL download stays here. The client lens still never resolves
-        // an `internal` asset — the tier selects that now, not the prefix.
+        // an `internal` asset — matter participation selects that now, not the
+        // prefix.
         .route(
             &format!("{prefix}/{{project_code}}/documents/{{doc_id}}/download"),
             get(crate::project_documents::download),

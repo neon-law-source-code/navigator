@@ -26,14 +26,15 @@ pub enum ProjectLens {
 }
 
 impl ProjectLens {
-    /// Which side of a matter this tier renders from.
+    /// Which side of a matter a role-only surface renders from.
     ///
     /// This is a *render* decision — which fields a page emits, which
     /// `asset.visibility` a download resolves, whether a conversation message
     /// is inbound or outbound. It is never the access decision: that is
     /// [`can_see_project`], which dispatches on the same role and reads the
-    /// participation ledger. A caller that reaches a render site has already
-    /// passed the gate.
+    /// participation ledger. Matter document reads must use [`matter_lens`],
+    /// which preserves a client-side participation row for mixed-role people.
+    /// A caller that reaches a render site has already passed the gate.
     ///
     /// `Clerk` maps to the client lens so an unforeseen render path fails
     /// closed; the Clerk gate denies the matter surface outright.
@@ -156,6 +157,23 @@ pub async fn matter_viewer(
     } else {
         MatterViewer::Lawyer
     }))
+}
+
+/// Resolve the asset-visibility lens for a caller on a matter.
+///
+/// Matter document reads must use this rather than [`ProjectLens::for_role`]
+/// because a client-side participation row wins over the person's system tier.
+/// In particular, a lawyer who is also a client on a matter reads that matter
+/// through the client lens. `None` means the caller may not see the matter.
+pub async fn matter_lens(
+    surreal: &SurrealDb,
+    person_id: Option<Uuid>,
+    role: Role,
+    project_id: Uuid,
+) -> Result<Option<ProjectLens>, String> {
+    Ok(matter_viewer(surreal, person_id, role, project_id)
+        .await?
+        .map(MatterViewer::lens))
 }
 
 /// All projects this person is allowed to see.
@@ -479,8 +497,8 @@ async fn visible_projects_matching(
 mod tests {
     use super::{
         avatar_visible_to, can_see_project, can_see_project_as_clerk, can_see_project_as_client,
-        can_see_project_as_lawyer, visible_projects, visible_projects_as_clerk,
-        visible_projects_as_client, visible_projects_as_lawyer,
+        can_see_project_as_lawyer, matter_lens, visible_projects, visible_projects_as_clerk,
+        visible_projects_as_client, visible_projects_as_lawyer, ProjectLens,
     };
     use crate::persons::{self, NewPerson, Role};
     use crate::surreal::SurrealDb;
@@ -865,6 +883,44 @@ mod tests {
                 .unwrap()
                 .iter()
                 .any(|row| row.person_id == libra && row.is_client_dri)
+        );
+    }
+
+    #[tokio::test]
+    async fn matter_lens_follows_participation_for_a_mixed_role_person() {
+        let surreal = mem_surreal().await;
+        let lawyer = persons::create(
+            &surreal,
+            &NewPerson::with_role("Lawyer", "lawyer@example.com", Role::Lawyer),
+        )
+        .await
+        .unwrap()
+        .id;
+        let client_matter = seed_project(&surreal, "client-matter").await;
+        let firm_matter = seed_project(&surreal, "firm-matter").await;
+        link(&surreal, lawyer, client_matter, "client").await;
+        link(&surreal, lawyer, firm_matter, "lawyer").await;
+
+        assert_eq!(
+            matter_lens(&surreal, Some(lawyer), Role::Lawyer, client_matter)
+                .await
+                .unwrap(),
+            Some(ProjectLens::Client),
+            "a client-side participation must narrow a lawyer-tier caller"
+        );
+        assert_eq!(
+            matter_lens(&surreal, Some(lawyer), Role::Lawyer, firm_matter)
+                .await
+                .unwrap(),
+            Some(ProjectLens::Lawyer),
+            "a firm-side participation keeps the firm lens"
+        );
+        assert_eq!(
+            matter_lens(&surreal, Some(lawyer), Role::Lawyer, Uuid::now_v7())
+                .await
+                .unwrap(),
+            None,
+            "a caller without a participation row has no matter lens"
         );
     }
 

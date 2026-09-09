@@ -1047,21 +1047,22 @@ async fn can_see(state: &ApiState, authed: &AuthedSession, project_id: Uuid) -> 
     .unwrap_or(false)
 }
 
-/// `GET /app/api/projects/{id}/documents` — the matter's filed documents. A
-/// client sees only client-visible documents (internal work product is filtered
-/// out, #782); the firm sees them all.
+/// `GET /app/api/projects/{id}/documents` — the matter's filed documents. The
+/// matter participation lens decides whether internal work product is filtered
+/// out; a firm-tier person with client-side participation is still client-scoped.
 async fn list_documents_door(
     State(state): State<ApiState>,
     authed: AuthedSession,
     Path(id): Path<Uuid>,
 ) -> Result<Response, ApiError> {
-    if !can_see(&state, &authed, id).await {
-        return Err(ApiError::NotFound);
-    }
+    let lens = store::access::matter_lens(&state.surreal, authed.0.person_id, authed.0.role, id)
+        .await
+        .map_err(ApiError::Db)?
+        .ok_or(ApiError::NotFound)?;
     let mut docs = store::assets::for_project(&state.surreal, id)
         .await
         .map_err(|e| ApiError::Db(e.to_string()))?;
-    if matches!(authed.0.role, store::persons::Role::Client) {
+    if matches!(lens, store::access::ProjectLens::Client) {
         docs.retain(|a| a.visibility == store::documents::visibility::CLIENT);
     }
     Ok((StatusCode::OK, Json(docs)).into_response())
@@ -3171,9 +3172,10 @@ async fn list_document_revisions_door(
     Path(id): Path<Uuid>,
     Query(query): Query<RevisionsQuery>,
 ) -> Result<Response, ApiError> {
-    if !can_see(&state, &authed, id).await {
-        return Err(ApiError::NotFound);
-    }
+    let lens = store::access::matter_lens(&state.surreal, authed.0.person_id, authed.0.role, id)
+        .await
+        .map_err(ApiError::Db)?
+        .ok_or(ApiError::NotFound)?;
     let slug = query.slug.trim();
     if slug.is_empty() {
         return Err(ApiError::NotFound);
@@ -3181,7 +3183,7 @@ async fn list_document_revisions_door(
     let mut revisions = store::assets::revisions(&state.surreal, id, slug)
         .await
         .map_err(ApiError::Asset)?;
-    if matches!(authed.0.role, store::persons::Role::Client) {
+    if matches!(lens, store::access::ProjectLens::Client) {
         revisions.retain(|asset| {
             asset.visibility == store::documents::visibility::CLIENT && asset.published_at.is_some()
         });
@@ -4750,19 +4752,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_client_sees_only_the_published_client_visible_revision_renumbered() {
+    async fn a_client_side_mixed_role_sees_only_the_published_client_visible_revision_renumbered() {
         let db = store::surreal::test_support::mem().await;
         let project_id =
             store::test_support::seed_project_surreal(&db, "revisions-lens-client").await;
         let app = crate::test_support::app_state(db.clone()).await;
         seed_three_revisions(&db, project_id, &app.storage).await;
 
-        let client_person = store::test_support::ensure_person(
+        let mixed_role_person = store::test_support::ensure_person(
             &db,
             &store::persons::NewPerson {
                 email: "libra@example.com".to_string(),
-                name: "Libra Client".to_string(),
-                role: store::persons::Role::Client,
+                name: "Libra Mixed Role".to_string(),
+                role: store::persons::Role::Lawyer,
                 ..Default::default()
             },
         )
@@ -4770,7 +4772,7 @@ mod tests {
         store::projects::designate_dri_in_surreal(
             &db,
             project_id,
-            client_person.id,
+            mixed_role_person.id,
             store::projects::DriSide::Client,
         )
         .await
@@ -4790,8 +4792,8 @@ mod tests {
             contract_reviewer: app.contract_reviewer.clone(),
         };
         let session = crate::SessionData {
-            person_id: Some(client_person.id),
-            ..crate::SessionData::fresh("client-sub", store::persons::Role::Client)
+            person_id: Some(mixed_role_person.id),
+            ..crate::SessionData::fresh("mixed-role-sub", store::persons::Role::Lawyer)
         };
 
         let response = list_document_revisions_door(

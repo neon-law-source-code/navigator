@@ -9,13 +9,13 @@
 //!
 //! # Authorization
 //!
-//! One mount serves both sides, so the lens comes from the caller's tier: a
-//! client cannot ask for the firm view by rewriting a path, because they would
-//! have to change what they *are*. The loader runs
-//! `store::access::can_see_project` and then the same cross-project and
-//! visibility guards the handler applied: an asset belonging to another
-//! matter is not found, and under the client lens an `internal` asset is not
-//! found either (#782) — so a client cannot fetch firm work product on their own
+//! One mount serves both sides, so the lens comes from the caller's matter
+//! participation: a client cannot ask for the firm view by rewriting a path,
+//! because they would have to change what they *are* to that matter. The loader
+//! runs `store::access::matter_lens` and then the same cross-project and
+//! visibility guards the handler applies: an asset belonging to another matter
+//! is not found, and under the client lens an `internal` asset is not found
+//! either (#782) — so a client cannot fetch firm work product on their own
 //! matter by guessing a `doc_id`.
 //!
 //! A refusal renders the not-found body at `200`, exactly as the handler
@@ -79,9 +79,9 @@ pub struct DocumentDetailView {
 }
 
 /// Load one filed document, applying the access, cross-project, and visibility
-/// guards. The lens comes from the caller's tier: one path serves both sides,
-/// so a client cannot reach the firm view by rewriting a URL — they would have
-/// to change what they *are*.
+/// guards. The lens comes from the caller's matter participation: one path
+/// serves both sides, so a client cannot reach the firm view by rewriting a URL
+/// or relying on a broader system tier.
 #[cfg(feature = "server")]
 #[allow(clippy::too_many_lines)]
 async fn load() -> Result<DocumentDetailView, ServerFnError> {
@@ -155,21 +155,22 @@ async fn load() -> Result<DocumentDetailView, ServerFnError> {
         Err(_) => return Ok(failed()),
     };
     // A refusal and a failed query are different answers: collapsing them
-    // reports a store outage as a missing document. The gate reads the
-    // participation ledger, so an outage breaks it before the asset lookup.
-    let visible =
-        match store::access::can_see_project(&surreal, person_id, store_role, project_id).await {
-            Ok(visible) => visible,
-            Err(e) => {
-                tracing::error!(error = %e, %project_id, %doc_id, "document access check failed");
-                return Ok(failed());
-            }
-        };
-    let store_lens = store::access::ProjectLens::for_role(store_role);
-    if !visible {
-        tracing::info!(%project_id, %doc_id, "project document detail denied by access policy");
-        return Ok(missing);
-    }
+    // reports a store outage as a missing document. Resolve the matter lens
+    // from the participation ledger so a mixed-role caller cannot widen their
+    // document visibility through their system tier.
+    let store_lens = match store::access::matter_lens(&surreal, person_id, store_role, project_id)
+        .await
+    {
+        Ok(Some(lens)) => lens,
+        Ok(None) => {
+            tracing::info!(%project_id, %doc_id, "project document detail denied by access policy");
+            return Ok(missing);
+        }
+        Err(e) => {
+            tracing::error!(error = %e, %project_id, %doc_id, "document access check failed");
+            return Ok(failed());
+        }
+    };
 
     let doc = match store::assets::find_by_id(&surreal, doc_id).await {
         Ok(row) => row,

@@ -926,6 +926,12 @@ pub fn bootstrap(
         state.auth.clone(),
         state.surreal.clone(),
     );
+    let dioxus_app_profile = dioxus_app::app_profile_router(
+        state.sessions.clone(),
+        state.policy.clone(),
+        state.auth.clone(),
+        state.surreal.clone(),
+    );
     let dioxus_firm_show = dioxus_app::firm_show_router(
         state.sessions.clone(),
         state.policy.clone(),
@@ -1740,6 +1746,7 @@ pub fn bootstrap(
         dioxus_app_brands,
         dioxus_app_brands_edit,
         dioxus_app_owner,
+        dioxus_app_profile,
         dioxus_firm_show,
         dioxus_template_gallery,
         dioxus_template_entry,

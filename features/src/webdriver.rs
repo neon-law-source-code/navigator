@@ -453,6 +453,19 @@ pub async fn login_as_client(c: &Client) {
     login_as_bundled_fixture(c, "client@neonlaw.com", "/app/projects").await;
 }
 
+/// Drive the bundled `owner@neonlaw.com` Rauthy account to the firm team
+/// home, its post-login landing — the one fixture that also reaches
+/// `/app/owner` and `/app/brands`.
+pub async fn login_as_owner(c: &Client) {
+    login_as_bundled_fixture(c, "owner@neonlaw.com", "/app/team").await;
+}
+
+/// Drive the bundled `clerk@neonlaw.com` Rauthy account to the firm team home,
+/// its post-login landing — the supervised non-lawyer tier.
+pub async fn login_as_clerk(c: &Client) {
+    login_as_bundled_fixture(c, "clerk@neonlaw.com", "/app/team").await;
+}
+
 /// True when both chromedriver ([`webdriver_url`]) and the target web
 /// server ([`base_url`]) accept a TCP connection — i.e. the live browser
 /// harness (`navigator dev e2e`: a KIND web server plus a running chromedriver)

@@ -229,6 +229,32 @@ allow if {
     is_authenticated(input.session)
 }
 
+# `/app/profile` is the self-service profile page: every authenticated tier
+# updates their own avatar there and sees (but cannot edit) their email. Same
+# reasoning as `/app/me/avatar` just above — the handler resolves the person
+# from the signed session, never from the URL — so this is a flat
+# authenticated rule rather than a tier-scoped one, and `/app/profile/avatar`
+# (the upload POST) is admitted as the same prefix.
+allow if {
+    input.path[0] == "app"
+    input.path[1] == "profile"
+    is_authenticated(input.session)
+}
+
+# Another person's avatar is participation-scoped, not tier-scoped: every firm
+# tier sees any avatar, while a client sees only their own and a fellow
+# client's when the two share a Project (`docs/access-model.md`). Rego has no
+# participation data to decide that here, so this rule only admits the
+# authenticated tier at the route; `store::access::avatar_visible_to` in the
+# handler carries the narrower, participation-aware rule.
+allow if {
+    input.path[0] == "app"
+    input.path[1] == "people"
+    count(input.path) == 4
+    input.path[3] == "avatar"
+    is_authenticated(input.session)
+}
+
 # /app/brands is the house-of-brands home: every registered brand's typeface.
 # Owner only (ENG-493) — narrowed from every firm tier, a deliberate removal
 # of the brand style reference Lawyer and Clerk could reach before. Owner

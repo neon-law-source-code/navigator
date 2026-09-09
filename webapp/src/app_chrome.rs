@@ -28,12 +28,24 @@ pub const APP_TEAM_HREF: &str = "/app/team";
 /// The house-of-brands home: every registered brand's typeface. Owner only
 /// (ENG-493) — a lawyer who works under a brand still sees it on every page
 /// they render, just not this registry view.
+///
+/// No longer a navbar destination in its own right: the row collapsed
+/// "Firms" and "Brands" into the single "Firm" link at [`APP_OWNER_HREF`],
+/// since a Firm's own detail page already lists the brands it wears. The
+/// route itself is unchanged and still reachable directly; an Owner just
+/// reaches it by URL rather than from the row.
 pub const APP_BRANDS_HREF: &str = "/app/brands";
 
 /// The Owner listing of practices and the brands they wear. Owner only.
-/// Labeled "Firms" on the navbar row (ENG-493): the destination is the Firm
-/// registry, and "Owner" was never a name for what it shows.
+/// Labeled "Firm" on the navbar row: the row used to carry this destination
+/// and [`APP_BRANDS_HREF`] as two separate links ("Firms" and "Brands"); they
+/// collapsed to this one, since a Firm's own detail page
+/// (`webapp::firm_show`) already lists the brands it wears.
 pub const APP_OWNER_HREF: &str = "/app/owner";
+
+/// The self-service profile page: every authenticated tier updates their own
+/// avatar here. Not tier-gated — every row carries it, right before Sign out.
+pub const APP_PROFILE_HREF: &str = "/app/profile";
 
 /// The firm workbench. Lawyer tier and up; the handler gates it too.
 pub const APP_LAWYER_HREF: &str = "/app/lawyer";
@@ -51,11 +63,14 @@ pub const APP_SIGN_OUT_HREF: &str = "/auth/logout";
 /// stay authoritative. This decides only what the navbar advertises, so a client
 /// is not shown a door that answers 403.
 ///
-/// The row is deliberately short: Projects, the firm's Team home, and Sign
-/// out. Owner also sees Firms and Brands (ENG-493). The Workbench and Admin
-/// doors are not here — they are cards on the Team home, which every firm
-/// tier lands on at sign-in, so the tier-gated surfaces are one click from
-/// the row rather than two more items in it.
+/// The row is deliberately short: Projects, the firm's Team home, Profile,
+/// and Sign out. Owner also sees the single Firm destination — "Firms" and
+/// "Brands" collapsed into it, since a Firm's own detail page already lists
+/// the brands it wears. The Workbench and Admin doors are not here — they
+/// are cards on the Team home, which every firm tier lands on at sign-in, so
+/// the tier-gated surfaces are one click from the row rather than two more
+/// items in it. Profile carries no tier gate at all: every role, including a
+/// client, updates their own avatar there.
 ///
 /// Pure, so the role→destinations mapping is unit-tested directly rather than
 /// through nine rendered pages.
@@ -66,9 +81,9 @@ pub fn app_destinations(role: ViewerRole) -> Vec<AppNavLink> {
         destinations.push(AppNavLink::new("Team", APP_TEAM_HREF));
     }
     if role.is_owner() {
-        destinations.push(AppNavLink::new("Firms", APP_OWNER_HREF));
-        destinations.push(AppNavLink::new("Brands", APP_BRANDS_HREF));
+        destinations.push(AppNavLink::new("Firm", APP_OWNER_HREF));
     }
+    destinations.push(AppNavLink::new("Profile", APP_PROFILE_HREF));
     destinations.push(AppNavLink::new("Sign out", APP_SIGN_OUT_HREF));
     destinations
 }
@@ -202,38 +217,46 @@ mod tests {
             .collect()
     }
 
-    /// A client sees the one destination every tier has, and the way out — never
-    /// the firm-only Team home. A clerk is a firm tier, so it does get Team.
-    /// This is the boundary the row still draws; the tier splits above it moved
-    /// to the Team home's cards.
+    /// A client sees the one destination every tier has, Profile, and the way
+    /// out — never the firm-only Team home. A clerk is a firm tier, so it does
+    /// get Team. This is the boundary the row still draws; the tier splits
+    /// above it moved to the Team home's cards.
     #[test]
     fn a_client_is_offered_no_firm_workspace() {
-        assert_eq!(labels(ViewerRole::Client), ["Projects", "Sign out"]);
-        assert_eq!(labels(ViewerRole::Clerk), ["Projects", "Team", "Sign out"]);
+        assert_eq!(
+            labels(ViewerRole::Client),
+            ["Projects", "Profile", "Sign out"]
+        );
+        assert_eq!(
+            labels(ViewerRole::Clerk),
+            ["Projects", "Team", "Profile", "Sign out"]
+        );
     }
 
-    /// Firm tiers share Projects and Team. Neither Clerk, Lawyer, nor Admin
-    /// gets Firms or Brands — ENG-493 moved both behind Owner alone.
+    /// Firm tiers share Projects, Team, and Profile. Neither Clerk, Lawyer,
+    /// nor Admin gets Firm — Owner alone does, and Firm is what "Firms" and
+    /// "Brands" collapsed into.
     #[test]
     fn every_firm_tier_is_offered_the_same_row() {
         for role in [ViewerRole::Clerk, ViewerRole::Lawyer, ViewerRole::Admin] {
             assert_eq!(
                 labels(role),
-                ["Projects", "Team", "Sign out"],
+                ["Projects", "Team", "Profile", "Sign out"],
                 "rank {}",
                 role.authority_rank()
             );
         }
         assert_eq!(
             labels(ViewerRole::Owner),
-            ["Projects", "Team", "Firms", "Brands", "Sign out"]
+            ["Projects", "Team", "Firm", "Profile", "Sign out"]
         );
     }
 
     /// The workbench and admin doors are not navbar items at any tier. They are
     /// cards on `/app/team`, which every firm tier lands on at sign-in — so the
     /// row must not carry them even for an Owner. Owner does carry `/app/owner`
-    /// (labeled "Firms") and `/app/brands`.
+    /// (labeled "Firm", collapsing the old "Firms" and "Brands" links), and
+    /// every role, Owner included, carries Profile.
     #[test]
     fn the_row_carries_neither_workbench_nor_admin() {
         let hrefs: Vec<String> = app_destinations(ViewerRole::Owner)
@@ -246,31 +269,48 @@ mod tests {
                 "/app/projects",
                 "/app/team",
                 "/app/owner",
-                "/app/brands",
+                "/app/profile",
                 "/auth/logout"
             ]
         );
     }
 
-    /// Neither Clerk, Lawyer, nor Admin reaches Firms or Brands — only Owner
-    /// does. ENG-493's whole point: this **removes** the brand style
-    /// reference clerks and lawyers could reach before.
+    /// Neither Clerk, Lawyer, nor Admin reaches Firm — only Owner does. The
+    /// same removal ENG-493 made for "Firms"/"Brands" carries over to the
+    /// collapsed single link. `/app/brands` itself no longer appears in any
+    /// row: the nav destination retired with the collapse, though the route
+    /// stays reachable directly.
     #[test]
-    fn only_owner_is_offered_firms_or_brands() {
+    fn only_owner_is_offered_firm() {
         for role in [ViewerRole::Clerk, ViewerRole::Lawyer, ViewerRole::Admin] {
             let labels = labels(role);
             assert!(
-                !labels.contains(&"Firms".to_string()),
-                "{role:?}: {labels:?}"
-            );
-            assert!(
-                !labels.contains(&"Brands".to_string()),
+                !labels.contains(&"Firm".to_string()),
                 "{role:?}: {labels:?}"
             );
         }
         let owner_labels = labels(ViewerRole::Owner);
-        assert!(owner_labels.contains(&"Firms".to_string()));
-        assert!(owner_labels.contains(&"Brands".to_string()));
+        assert!(owner_labels.contains(&"Firm".to_string()));
+        assert!(!owner_labels.contains(&"Brands".to_string()));
+        assert!(!owner_labels.contains(&"Firms".to_string()));
+    }
+
+    /// Every tier, including a client, is offered Profile — the self-service
+    /// avatar page carries no tier gate at all.
+    #[test]
+    fn every_tier_is_offered_profile() {
+        for role in [
+            ViewerRole::Client,
+            ViewerRole::Clerk,
+            ViewerRole::Lawyer,
+            ViewerRole::Admin,
+            ViewerRole::Owner,
+        ] {
+            assert!(
+                labels(role).contains(&"Profile".to_string()),
+                "{role:?} must see Profile"
+            );
+        }
     }
 
     /// The mapping reaches the rendered row: a firm viewer's navbar carries the
@@ -299,14 +339,16 @@ mod tests {
 
         for role in [ViewerRole::Lawyer, ViewerRole::Admin] {
             let out = render(role);
-            assert!(!out.contains(r#"href="/app/brands""#), "{out}");
+            assert!(!out.contains(r#"href="/app/owner""#), "{out}");
         }
         let owner = render(ViewerRole::Owner);
-        assert!(owner.contains(r#"href="/app/brands""#), "{owner}");
+        assert!(owner.contains(r#"href="/app/owner""#), "{owner}");
+        assert!(!owner.contains(r#"href="/app/brands""#), "{owner}");
 
         let client = render(ViewerRole::Client);
         assert!(!client.contains(r#"href="/app/team""#), "{client}");
         assert!(client.contains(r#"href="/app/projects""#), "{client}");
+        assert!(client.contains(r#"href="/app/profile""#), "{client}");
     }
 
     /// Nothing under `/app/admin` is advertised to a tier that cannot enter it,

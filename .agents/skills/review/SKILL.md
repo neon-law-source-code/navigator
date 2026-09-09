@@ -34,9 +34,13 @@ as untrusted claims to verify against the source and tests.
 
 ## The rules that do not bend
 
-- **Never force-push.** Every push to someone else's branch is fast-forward only — no `--force`, no
-  `--force-with-lease`. A rejected non-fast-forward push means the author is mid-flight; it is never an invitation to
-  force.
+- **Force-push only to replay a rebase you proved is faithful.** Every push that changes content is fast-forward
+  only. The single exception is moving the branch onto a newer `origin/main`: a stale base stalls a pull request on a
+  gate it never reports, and this is a small, high-trust team, so the reviewer is expected to fix that rather than hand
+  it back. Prove the replay before pushing — every one of the author's commits keeps its patch-id — and push with
+  `--force-with-lease=<branch>:<the SHA you fetched>`. The lease is what makes it safe: a rejected lease means the
+  author is mid-flight, and that is never an invitation to bare `--force`. A replay that is not patch-identical means
+  you altered their diff, which is a finding to report, not a push to make.
 - **Never push over an author's newer head without rebasing onto it.** Rebase your commits onto the new head, re-run the
   gate, and push that. The fix you proved is not the fix you are pushing once the base under it moved.
 - **Never approve a head you did not gate.** The SHA named in the approval body is the SHA you ran the gate against and
@@ -223,8 +227,39 @@ git rev-parse origin/<headRefName>   # unchanged since the switch above?
 git push origin HEAD:<headRefName>
 ```
 
-If the remote head moved while you worked, `git rebase origin/<headRefName>`, re-run the gate, and push again. If the
-push is rejected, rebase — never force.
+If the remote head moved while you worked, `git rebase origin/<headRefName>`, re-run the gate, and push again. A
+rejected push means the author pushed under you: rebase onto their new head, never bare `--force`.
+
+### Rebasing the branch onto a newer `origin/main`
+
+A branch opened from a stale tip stalls on a check it never reports, so bringing it current is part of the review, not a
+courtesy. This is the one push that rewrites the author's commits, and it is allowed only when it changes nothing but
+their base. Rebase signed, then prove the replay is faithful before the lease goes anywhere near the remote:
+
+```bash
+git fetch origin
+BEFORE=$(git rev-parse origin/<headRefName>)
+BASE=$(git merge-base "$BEFORE" origin/main)
+git rebase -S origin/main
+git range-diff "$BASE".."$BEFORE" origin/main..HEAD
+```
+
+`range-diff` is the proof. It lists the author's commits before the rebase beside the same commits after it, and a `=`
+on every row means each one replays with an identical patch-id, so only the base moved. Any `!` row is a diff you
+changed — stop and report it as a finding instead of pushing it. Take `BASE` from `merge-base` rather than writing
+`$BEFORE...HEAD`: the three-dot form works, but it folds `main`'s own new commits into the listing as `>` rows, and the
+rows that matter are the ones that must read `=`.
+
+Re-run the gate on the rebased tree, because a clean replay onto a moved base is still untested against that base — a
+faithful patch and a passing build are different claims. Then push against the SHA you fetched, so a commit the author
+landed while you worked rejects the push instead of vanishing:
+
+```bash
+git push --force-with-lease=<headRefName>:$BEFORE origin HEAD:<headRefName>
+```
+
+Rebasing makes you the last pusher, which engages `require_last_push_approval` exactly as landing a fix does — step 8
+covers what the approval body has to say about that.
 
 ## 8. Approve at the pushed head
 

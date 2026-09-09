@@ -57,6 +57,10 @@ configuration key. Staging manifests and operator documentation may describe the
 does not apply IAM or write cloud state. Provider clients receive a resolved credential through an injected trait and
 tests use fakes, so local verification needs no live provider account.
 
+Notion reconciliation uses the explicitly selected `NAVIGATOR_NOTION_DATABASE_ID`. A missing, moved, deleted, duplicate,
+or unshared page is an operator-visible repair outcome; the reconciler never silently creates a second page. It writes
+the canonical Project code and stable Person IDs while preserving manual Notion fields.
+
 Normal staging requires real non-production SendGrid and DocuSign demo configuration. Each cloud deployment uses the
 matching attachment row described in [`provider-environment-parity.md`](provider-environment-parity.md). Only the
 explicit `NAVIGATOR_CI_HARNESS=1` staging test surface may use in-process fakes; production rejects that flag.

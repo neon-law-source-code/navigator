@@ -42,6 +42,7 @@ publish = false
 
 [workspace.dependencies]
 anyhow = "1"
+aes-gcm = "0.10"
 # Dioxus 0.7 fullstack — the client-side framework the UI is migrating onto
 # (issue #641). `dioxus` provides the `App` component and the wasm client
 # entry in the `webapp` crate; `dioxus-server` provides the axum `render_handler`

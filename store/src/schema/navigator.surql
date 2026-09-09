@@ -522,6 +522,30 @@ DEFINE FIELD OVERWRITE inserted_at ON firm TYPE string;
 DEFINE FIELD OVERWRITE updated_at ON firm TYPE string;
 DEFINE INDEX OVERWRITE firm_entity ON firm FIELDS entity_id UNIQUE;
 
+-- `firm_integration_secret`: one encrypted, versioned credential per Firm,
+-- provider, and typed kind. Plaintext is never a column. The runtime KMS key
+-- is independent from deployment-config encryption, and the context binds a
+-- ciphertext to the exact Firm/provider/kind tuple that requested it.
+DEFINE TABLE IF NOT EXISTS firm_integration_secret SCHEMAFULL PERMISSIONS NONE;
+DEFINE FIELD OVERWRITE firm_id ON firm_integration_secret TYPE record<firm>;
+DEFINE FIELD OVERWRITE provider ON firm_integration_secret TYPE string
+    ASSERT $value IN ['xero', 'slack', 'notion', 'github'];
+DEFINE FIELD OVERWRITE kind ON firm_integration_secret TYPE string
+    ASSERT $value IN ['xero_client_id', 'xero_client_secret', 'xero_refresh_token',
+                      'slack_bot_token', 'notion_token', 'github_app_private_key'];
+DEFINE FIELD OVERWRITE version ON firm_integration_secret TYPE int;
+DEFINE FIELD OVERWRITE ciphertext ON firm_integration_secret TYPE string;
+DEFINE FIELD OVERWRITE wrapped_dek ON firm_integration_secret TYPE string;
+DEFINE FIELD OVERWRITE kms_key_version ON firm_integration_secret TYPE string;
+DEFINE FIELD OVERWRITE kms_context ON firm_integration_secret TYPE string;
+DEFINE FIELD OVERWRITE status ON firm_integration_secret TYPE string
+    ASSERT $value IN ['active', 'revoked'];
+DEFINE FIELD OVERWRITE actor_id ON firm_integration_secret TYPE record<person>;
+DEFINE FIELD OVERWRITE created_at ON firm_integration_secret TYPE string;
+DEFINE FIELD OVERWRITE updated_at ON firm_integration_secret TYPE string;
+DEFINE INDEX OVERWRITE firm_integration_secret_version
+    ON firm_integration_secret FIELDS firm_id, provider, kind, version UNIQUE;
+
 DEFINE TABLE IF NOT EXISTS firm_brand SCHEMAFULL PERMISSIONS NONE;
 DEFINE FIELD OVERWRITE firm_id ON firm_brand TYPE record<firm>;
 DEFINE FIELD OVERWRITE brand_key ON firm_brand TYPE string

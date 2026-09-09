@@ -20,6 +20,7 @@ test-support = []
 [dependencies]
 anyhow.workspace = true
 async-trait.workspace = true
+base64.workspace = true
 chrono.workspace = true
 cloud.workspace = true
 # `source_pages` locates a quote in a stored PDF asset and lifts the pages

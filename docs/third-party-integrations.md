@@ -72,6 +72,7 @@ explicit `NAVIGATOR_CI_HARNESS=1` staging test surface may use in-process fakes;
 | DocuSign | E-signature | binding | `DOCUSIGN_*` |
 | Xero | Accounting / billing (`ACCREC` invoices) | binding | `XERO_*` |
 | Notion | Firm-private Project workspaces | Firm-owned | resolved by `firm_id` |
+| Slack | Firm-private Project channels and mechanism notices | Firm-owned | resolved by `firm_id` |
 | Restate Cloud | Durable workflow execution (`workflows-service`) | platform | `RESTATE_*` |
 | Google Cloud | Storage, OIDC, archive | platform | `NAVIGATOR_*`, `GOOGLE_OAUTH_*` |
 | Vertex AI | A2A agent-router LLM (Gemini Flash in prod) | platform | `NAVIGATOR_GCP_*` |

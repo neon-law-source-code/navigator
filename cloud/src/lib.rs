@@ -30,6 +30,7 @@ pub mod notion;
 pub mod notion_reconcile;
 pub mod redirect;
 pub mod s3;
+pub mod slack;
 pub mod speech;
 pub mod workspace;
 
@@ -56,6 +57,10 @@ pub use notion_reconcile::{
     NotionProjectInput, NotionReconcileError, NotionRepairDecision,
 };
 pub use s3::{S3Storage, S3StorageConfig};
+pub use slack::{
+    ensure_private_channel, FakeSlack, SlackChannel as FirmSlackChannel, SlackClient, SlackError,
+    SlackMemberId, SlackService,
+};
 pub use speech::{GoogleSpeechConfig, GoogleSpeechTranscriptProvider, SpeechError};
 pub use workspace::{
     documents_prefix, is_navigator_repository, is_valid_slug, DeploymentWorkspace,

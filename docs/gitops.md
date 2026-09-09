@@ -681,10 +681,13 @@ Apple silicon — so an Intel Mac still builds the immutable release tag locally
 carries that exact command beside the three downloads. Failure at any stage pages `#navigator`.
 
 The same three build jobs also compile and attach `navigator-lsp-<tag>-<platform>` archives to the same Release, one per
-platform, from the same `cargo build` invocation as the CLI. It is a distinct filename prefix (`navigator-lsp-*` versus
-`navigator-*`) on the same tag, so an editor extension — a Zed marketplace listing, first — can resolve a specific
-released version of the language server the way a `gh release`-based extension expects, rather than the "latest" key
-`navigator ops lsp publish` writes to the public assets bucket for the site's own use. See [editor
+platform, from the same `cargo build` invocation as the CLI. It is a distinct filename prefix (`navigator-lsp-<tag>-`
+versus `navigator-<tag>-`) on the same tag, so an editor extension — a Zed marketplace listing, first — can resolve a
+specific released version of the language server the way a `gh release`-based extension expects, rather than the
+"latest" key `navigator ops lsp publish` writes to the public assets bucket for the site's own use. The prefix
+distinguishes the assets for a consumer, not for the upload: a `navigator-*` shell glob also matches
+`navigator-lsp-<tag>-*`, so every archive path in `deploy.yml` names its file tag-exactly and
+[`cli/tests/release_lsp_archive.rs`](../cli/tests/release_lsp_archive.rs) refuses a wildcard there. See [editor
 integration](lsp/README.md).
 
 **Every publishing run builds all three CLI archives, and Project CI depends on them.** `release-windows-cli-build`,

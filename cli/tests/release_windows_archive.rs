@@ -56,7 +56,7 @@ fn releases_build_and_attach_a_windows_cli_archive() {
         "Compress-Archive -Path \"dist/navigator-windows/*\"",
         "release-windows-cli-publish:",
         "gh release create \"${TAG}\"",
-        "gh release upload \"${TAG}\" dist/navigator-*-windows.zip",
+        "gh release upload \"${TAG}\" dist/navigator-${TAG}-windows.zip",
     ] {
         assert!(
             workflow.contains(required),
@@ -245,7 +245,7 @@ fn releases_build_and_attach_a_macos_cli_archive() {
         "install -m 0644 LICENSE dist/navigator-macos/LICENSE",
         "-C dist/navigator-macos navigator LICENSE",
         "name: navigator-macos-cli",
-        "gh release upload \"${TAG}\" dist/navigator-*-macos.tar.gz",
+        "gh release upload \"${TAG}\" dist/navigator-${TAG}-macos.tar.gz",
     ] {
         assert!(
             workflow.contains(required),
@@ -316,7 +316,7 @@ fn releases_build_and_attach_a_linux_cli_archive() {
         "install -m 0644 LICENSE dist/navigator-linux/LICENSE",
         "-C dist/navigator-linux navigator LICENSE",
         "name: navigator-linux-cli",
-        "gh release upload \"${TAG}\" dist/navigator-*-linux.tar.gz",
+        "gh release upload \"${TAG}\" dist/navigator-${TAG}-linux.tar.gz",
     ] {
         assert!(
             workflow.contains(required),

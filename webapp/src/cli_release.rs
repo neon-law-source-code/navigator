@@ -158,9 +158,9 @@ mod tests {
     /// Written as literals rather than composed a second way: a test that
     /// rebuilds the URL with the same `format!` proves only that `format!` is
     /// deterministic. These strings are what a reader's browser asks GitHub for,
-    /// and they have to match `deploy.yml`'s `gh release upload` globs
-    /// (`navigator-*-linux.tar.gz`, `navigator-*-macos.tar.gz`,
-    /// `navigator-*-windows.zip`) exactly.
+    /// and they have to match the tag-exact names `deploy.yml`'s
+    /// `gh release upload` lines attach (`navigator-${TAG}-linux.tar.gz`,
+    /// `navigator-${TAG}-macos.tar.gz`, `navigator-${TAG}-windows.zip`).
     #[test]
     fn the_download_urls_match_the_names_the_release_attaches() {
         let hrefs: Vec<String> = PLATFORMS

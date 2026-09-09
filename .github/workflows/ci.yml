@@ -158,6 +158,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       rust: ${{ steps.scope.outputs.rust }}
+      windows: ${{ steps.scope.outputs.windows }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -169,6 +170,7 @@ jobs:
           if ! changed="$(git diff --name-only HEAD^ HEAD 2>/dev/null)" || [ -z "${changed}" ]; then
               echo "could not read the PR diff — running the Rust suite anyway"
               echo "rust=true" >> "${GITHUB_OUTPUT}"
+              echo "windows=true" >> "${GITHUB_OUTPUT}"
               exit 0
           fi
           echo "changed files:"
@@ -181,6 +183,37 @@ jobs:
               echo "-> out of scope: no Rust sources in this PR"
               echo "rust=false" >> "${GITHUB_OUTPUT}"
           fi
+          if echo "${changed}" | grep -qE \
+              '^(cli/|lsp/|\.github/workflows/ci\.yml$)'; then
+              echo "-> in scope: running the Windows CLI/LSP check"
+              echo "windows=true" >> "${GITHUB_OUTPUT}"
+          else
+              echo "-> out of scope: no Windows CLI/LSP sources in this PR"
+              echo "windows=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+  # This is an advisory platform check until a Windows run has been observed
+  # green. Keep it outside the `ci` aggregator so the existing required gate
+  # does not adopt an unproven runner as a merge requirement.
+  windows-cli-lsp:
+    name: cargo check (cli + lsp, Windows)
+    needs: [changes]
+    if: needs.changes.outputs.windows == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.98.0
+      - name: cache the Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: windows-cli-lsp
+      - name: cargo check (cli + lsp)
+        run: cargo check --locked -p cli -p lsp
 
   # Always run. A locale or Markdown edit still has to pass `navigator
   # validate`; that is the cheap gate that lets the rust job stay skipped.

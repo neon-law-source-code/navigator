@@ -142,8 +142,11 @@
    viewport the way `.site-footer` does — the footer never enters the 72rem
    column — while the words stay on the column the shell already measures.
    `100vw` on the section itself overflows by the reserved scrollbar, so the
-   wash is a positioned layer and the home page clips the leftover. */
-.public-shell {
+   wash is a positioned layer and the home page clips the leftover. Scoped to
+   a shell that holds this band: this sheet is also hoisted by the marketing
+   pages with a downloads band and by the catalog slide, and `theme.css` leaves
+   the shell's overflow to each band on purpose. */
+.public-shell:has(.home-service) {
   overflow-x: clip;
 }
 

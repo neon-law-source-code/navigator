@@ -7,7 +7,7 @@
 //! [`SessionData`] attributed to that Project's own lawyer DRI. The seed
 //! mint additionally scopes the session to `POST /app/api/seed`, because it
 //! writes; the document mint leaves the session unscoped, because
-//! `navigator document verify` (#486) only reads and the resolved actor
+//! `navigator site document verify` (#486) only reads and the resolved actor
 //! already bounds it to that person's own participation.
 
 use axum::extract::State;
@@ -64,7 +64,7 @@ async fn mint_seed_token(
     }
 }
 
-/// `POST /auth/ci/document-token` — the `navigator document verify --ci`
+/// `POST /auth/ci/document-token` — the `navigator site document verify --ci`
 /// counterpart (#486). Verifies the same GitHub Actions OIDC token, binds to
 /// the same live Project, and attributes to the same lawyer DRI actor; the
 /// only difference is the minted session carries no [`SeedScope`] at all.

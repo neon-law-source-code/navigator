@@ -2069,8 +2069,8 @@ pub fn document_with_base(base: &str) -> Value {
           "get": {
             "summary": "A document's revision chain",
             "description":
-              "The revision chain of one slugged document, newest first — what `navigator document \
-               log` and `navigator document get --version` read. The slug travels as `?slug=`, never \
+              "The revision chain of one slugged document, newest first — what `navigator site document \
+               log` and `navigator site document get --version` read. The slug travels as `?slug=`, never \
                a path segment, because a slug may itself contain `/`. Authorization: any authenticated \
                session, applied as the caller's lens — a client sees only published, client-visible \
                revisions, renumbered over that visible subset so a lawyer-only revision between two \

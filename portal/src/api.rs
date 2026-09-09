@@ -3155,8 +3155,8 @@ struct DocumentRevisionsResponse {
 }
 
 /// `GET /app/api/projects/{id}/documents/revisions?slug=` — a document's
-/// revision chain under the caller's own lens, for `navigator document log`
-/// and the version lookup `navigator document get --version` needs.
+/// revision chain under the caller's own lens, for `navigator site document log`
+/// and the version lookup `navigator site document get --version` needs.
 ///
 /// A client lens sees only published, client-visible revisions, filtered
 /// *before* numbering — so version numbers are renumbered over the visible

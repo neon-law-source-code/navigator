@@ -52,7 +52,7 @@ Operationally, one rotation is one deployment at a time, never two in one sittin
 3. `navigator ops secrets apply --deployment <name> --deployments-dir .` — writes the new `versions/latest`.
 4. `navigator ops ship --deployment <name> --deployments-dir . --restart-only` — pods cache `envFrom` at start, so
    nothing re-reads the Secret until they are recreated.
-5. Verify that deployment's `/readyz`, `/version`, and the affected provider flow.
+5. Verify that deployment's `/app/readyz`, `/version`, and the affected provider flow.
 
 Never copy a value between deployments. Shared vendors still receive separate per-deployment credentials, and every
 runtime project uses a deployment-specific Secret.

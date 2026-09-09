@@ -254,6 +254,7 @@ where
         // spelled `NAVIGATOR_ASSET_BASE_URL` would rewrite the name too.
         ("YOUR_ASSET_BASE_URL", "NAVIGATOR_ASSET_BASE_URL"),
         ("YOUR_EXPORTS_BUCKET", "NAVIGATOR_EXPORTS_BUCKET"),
+        ("YOUR_ARCHIVES_BUCKET", "NAVIGATOR_ARCHIVES_BUCKET"),
         ("NAVIGATOR_GATEWAY_IP_NAME", "NAVIGATOR_GATEWAY_IP_NAME"),
         (
             "NAVIGATOR_GCP_SERVICE_ACCOUNT_ID",
@@ -3404,6 +3405,13 @@ mod tests {
         ("NAVIGATOR_ASSETS_BUCKET", "neon-production-assets"),
         ("NAVIGATOR_ASSET_BASE_URL", "https://www.neonlaw.com/assets"),
         ("NAVIGATOR_EXPORTS_BUCKET", "neon-production-exports"),
+        // Prefix-named, not suffix-named: `devx gcp` classifies a bucket by
+        // prefix, and `<deployment>-archives` would be read as an assets
+        // bucket and created without this lane's lifecycle rules.
+        (
+            "NAVIGATOR_ARCHIVES_BUCKET",
+            "neon-law-archives-neon-production",
+        ),
         ("NAVIGATOR_GATEWAY_IP_NAME", "neon-production-gateway-ip"),
         ("NAVIGATOR_GCP_SERVICE_ACCOUNT_ID", "neon-production-web"),
         ("NAVIGATOR_WEB_SECRET_NAME", "neon-production-web-secrets"),
@@ -3442,6 +3450,10 @@ mod tests {
             "https://staging.neonlaw.com/assets",
         ),
         ("NAVIGATOR_EXPORTS_BUCKET", "neon-law-stg-exports"),
+        (
+            "NAVIGATOR_ARCHIVES_BUCKET",
+            "neon-law-archives-neon-law-stg",
+        ),
         ("NAVIGATOR_GATEWAY_IP_NAME", "neon-law-stg-gateway-ip"),
         ("NAVIGATOR_GCP_SERVICE_ACCOUNT_ID", "neon-law-stg-web"),
         ("NAVIGATOR_WEB_SECRET_NAME", "neon-law-stg-web-secrets"),

@@ -59,7 +59,7 @@ async fn aged_session_is_renewed_with_a_fresh_persistent_cookie() {
     let resp = app
         .oneshot(
             Request::builder()
-                .uri("/health")
+                .uri("/app/health")
                 .header("cookie", format!("navigator_session={cookie}"))
                 .body(Body::empty())
                 .unwrap(),
@@ -87,7 +87,7 @@ async fn fresh_session_is_not_re_issued() {
     let resp = app
         .oneshot(
             Request::builder()
-                .uri("/health")
+                .uri("/app/health")
                 .header("cookie", format!("navigator_session={cookie}"))
                 .body(Body::empty())
                 .unwrap(),

@@ -246,9 +246,9 @@ token contains the tenant ID (`tid`) claim."
 ### The tenant allowlist is the domain gate, and it is mandatory
 
 `GOOGLE_OAUTH_REQUIRED_HD` does **not** gate browser login — it is read only by
-[`portal::google_oauth`](../portal/src/google_oauth.rs), the Bearer-token validator in front of `/mcp`. The browser gate
-has always been the pre-seeded `persons` row: an authenticated identity with no row gets 403, whichever provider issued
-it. That is a per-person gate rather than a per-domain one, and it is strictly better for signing in an external
+[`portal::google_oauth`](../portal/src/google_oauth.rs), the Bearer-token validator in front of `/app/mcp`. The browser
+gate has always been the pre-seeded `persons` row: an authenticated identity with no row gets 403, whichever provider
+issued it. That is a per-person gate rather than a per-domain one, and it is strictly better for signing in an external
 client's people.
 
 But it is a gate on the **address**, so the claim that carries the address has to be trustworthy, and for Entra one of

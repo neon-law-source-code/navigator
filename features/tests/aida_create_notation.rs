@@ -383,7 +383,7 @@ async fn call_over_mcp(world: &mut NotationWorld, template_code: String) {
     });
     let mut req = Request::builder()
         .method("POST")
-        .uri("/mcp")
+        .uri("/app/mcp")
         .header(
             "authorization",
             portal::test_support::lawyer_bearer_header(),

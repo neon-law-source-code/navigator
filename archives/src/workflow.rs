@@ -49,7 +49,7 @@ use crate::digest::{render_archives_slack, DiagnosticReport};
 use crate::runner::{cost_phase, open_resources, snapshot_all, SnapshotSummary};
 use crate::snapshot::{APPLICATION_LANE, TELEMETRY_LANE};
 use crate::tables::ALL_TABLES;
-use cloud::StorageService;
+use cloud::{StorageError, StorageService};
 
 /// Request body for `Archives::run`. Empty today — the trigger only
 /// needs to start the workflow — but kept as a struct (rather than
@@ -174,11 +174,21 @@ impl ArchivesService {
             // equality covers it), so renaming it would raise JOURNAL_MISMATCH
             // for any invocation replayed across the deploy that flipped this
             // step from email to Slack. The step now posts Slack, not email.
-            let message = digest_message(&summary, |k| std::env::var(k).ok());
+            let summary_for_digest = summary.clone();
             let notifier = Arc::clone(&self.notifier);
-            ctx.run(
-                move || async move { notifier.notify(message).await.map_err(HandlerError::from) },
-            )
+            ctx.run(move || {
+                let summary = summary_for_digest.clone();
+                let notifier = Arc::clone(&notifier);
+                async move {
+                    // Composed inside the step, not above it: an unresolvable
+                    // bucket is then a step failure Restate retries, rather
+                    // than an error escaping the handler before the journal
+                    // records anything.
+                    let message = digest_message(&summary, |k| std::env::var(k).ok())
+                        .map_err(|error| HandlerError::from(anyhow::Error::from(error)))?;
+                    notifier.notify(message).await.map_err(HandlerError::from)
+                }
+            })
             .name("email")
             .await?;
 
@@ -196,32 +206,41 @@ impl ArchivesService {
 }
 
 /// Compose the Slack digest message a completed run posts: assemble the
-/// [`DiagnosticReport`] from the journaled summary and the export bucket,
+/// [`DiagnosticReport`] from the journaled summary and the archive bucket,
 /// then render it to mrkdwn. Split out of the handler — where it sits inside
 /// a Restate `ctx.run` step — so the whole summary → message pipeline is
 /// unit-tested without a workflow context. Shares `build_report`'s `get` seam,
 /// so the bucket in each per-table link is exercised without touching env.
-fn digest_message<F: Fn(&str) -> Option<String>>(summary: &SnapshotSummary, get: F) -> String {
-    render_archives_slack(&build_report(summary, get))
+fn digest_message<F: Fn(&str) -> Option<String>>(
+    summary: &SnapshotSummary,
+    get: F,
+) -> Result<String, StorageError> {
+    Ok(render_archives_slack(&build_report(summary, get)?))
 }
 
 /// Assemble the [`DiagnosticReport`] from the journaled summary and the
-/// export bucket. Takes a `key -> value` lookup seam so the mapping is
+/// archive bucket. Takes a `key -> value` lookup seam so the mapping is
 /// unit-testable without mutating process env. The bucket is the only env
 /// the digest needs — it is the root of every per-table GCS console link.
+///
+/// Fails rather than rendering a placeholder. The snapshot phase cannot have
+/// produced a summary without resolving this same bucket, so by the time the
+/// digest runs the value exists; an absent one is a bug, and a link built
+/// from a sentinel is a broken link posted to a channel rather than an error
+/// anyone can act on.
 fn build_report<F: Fn(&str) -> Option<String>>(
     summary: &SnapshotSummary,
     get: F,
-) -> DiagnosticReport {
-    let bucket = get("NAVIGATOR_STORAGE_BUCKET")
+) -> Result<DiagnosticReport, StorageError> {
+    let bucket = get("NAVIGATOR_ARCHIVES_BUCKET")
         .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "<unset>".to_string());
-    DiagnosticReport {
+        .ok_or(StorageError::MissingEnv("NAVIGATOR_ARCHIVES_BUCKET"))?;
+    Ok(DiagnosticReport {
         run_date: summary.run_date,
         bucket,
         snapshots: summary.entries.clone(),
         failures: summary.failures.clone(),
-    }
+    })
 }
 
 /// The `otel_*` tables promoted from the telemetry lake's daily Parquet.
@@ -250,7 +269,7 @@ async fn promote_iceberg_metadata<F: Fn(&str) -> Option<String>>(
             )]
         }
     };
-    let bucket = get("NAVIGATOR_STORAGE_BUCKET")
+    let bucket = get("NAVIGATOR_ARCHIVES_BUCKET")
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "exports".to_string());
     // Stamped once inside the journaled step (so a replay reuses the cached
@@ -318,7 +337,9 @@ async fn promote_iceberg_metadata_over(
 
 #[cfg(test)]
 mod tests {
-    use super::{build_report, digest_message, promote_iceberg_metadata_over, SnapshotSummary};
+    use super::{
+        build_report, digest_message, promote_iceberg_metadata_over, SnapshotSummary, StorageError,
+    };
     use crate::digest::SnapshotEntry;
     use crate::drift::DriftDecision;
     use crate::runner::TableFailure;
@@ -356,36 +377,40 @@ mod tests {
     }
 
     #[test]
-    fn build_report_defaults_bucket_when_env_unset() {
-        let report = build_report(&empty_summary(), |_| None);
-        assert_eq!(report.bucket, "<unset>");
+    fn build_report_threads_bucket_through() {
+        let report = build_report(
+            &empty_summary(),
+            lookup(&[("NAVIGATOR_ARCHIVES_BUCKET", "proj-archives")]),
+        )
+        .expect("a named bucket resolves");
+        assert_eq!(report.bucket, "proj-archives");
         assert!(report.snapshots.is_empty());
         assert!(report.failures.is_empty());
     }
 
+    /// The digest fails rather than naming a bucket it could not resolve.
+    /// An empty value is the same misconfiguration as an absent one — a
+    /// deployment that sets the key to nothing has not named a bucket.
     #[test]
-    fn build_report_threads_bucket_through() {
-        let report = build_report(
-            &empty_summary(),
-            lookup(&[("NAVIGATOR_STORAGE_BUCKET", "proj-exports")]),
-        );
-        assert_eq!(report.bucket, "proj-exports");
-    }
-
-    #[test]
-    fn build_report_treats_empty_bucket_as_unset() {
-        let report = build_report(
-            &empty_summary(),
-            lookup(&[("NAVIGATOR_STORAGE_BUCKET", "")]),
-        );
-        assert_eq!(report.bucket, "<unset>");
+    fn build_report_fails_closed_when_archives_bucket_is_absent() {
+        for get in [
+            &(|_: &str| None) as &dyn Fn(&str) -> Option<String>,
+            &|key: &str| (key == "NAVIGATOR_ARCHIVES_BUCKET").then(String::new),
+        ] {
+            let error = build_report(&empty_summary(), get)
+                .expect_err("an unresolved bucket must fail the digest");
+            assert!(
+                matches!(error, StorageError::MissingEnv("NAVIGATOR_ARCHIVES_BUCKET")),
+                "the failure must name the key it needs; got {error:?}"
+            );
+        }
     }
 
     #[test]
     fn build_report_carries_snapshots_and_failures_through() {
-        // The empty-summary tests above prove the bucket default; this proves
-        // the report actually threads the journaled snapshot data — the lines
-        // the digest renders from — rather than silently dropping it.
+        // The empty-summary tests above prove how the bucket resolves; this
+        // proves the report actually threads the journaled snapshot data —
+        // the lines the digest renders from — rather than silently dropping it.
         let report = build_report(
             &summary_with(
                 vec![entry("persons", 312), entry("documents", 1_204)],
@@ -394,8 +419,9 @@ mod tests {
                     error: "connection reset".into(),
                 }],
             ),
-            |_| None,
-        );
+            lookup(&[("NAVIGATOR_ARCHIVES_BUCKET", "proj-archives")]),
+        )
+        .expect("a named bucket resolves");
         assert_eq!(
             report.run_date,
             NaiveDate::from_ymd_opt(2026, 5, 29).unwrap()
@@ -410,7 +436,7 @@ mod tests {
     #[test]
     fn digest_message_renders_tables_links_and_failures_from_a_summary() {
         // End-to-end for the seam the handler calls: a journaled summary plus
-        // the export bucket becomes the exact Slack digest, per-table GCS links
+        // the archive bucket becomes the exact Slack digest, per-table GCS links
         // pointed at the threaded bucket, with any failure surfaced as a ⚠️ line.
         let msg = digest_message(
             &summary_with(
@@ -420,8 +446,9 @@ mod tests {
                     error: "timeout".into(),
                 }],
             ),
-            lookup(&[("NAVIGATOR_STORAGE_BUCKET", "proj-exports")]),
-        );
+            lookup(&[("NAVIGATOR_ARCHIVES_BUCKET", "proj-archives")]),
+        )
+        .expect("a named bucket resolves");
         assert!(msg.starts_with("🧊"), "leads with the iceberg glyph: {msg}");
         assert!(msg.contains("(1 tables)"), "header counts snapshots: {msg}");
         assert!(
@@ -430,27 +457,13 @@ mod tests {
         );
         assert!(
             msg.contains(
-                "<https://console.cloud.google.com/storage/browser/proj-exports/application/persons|view in GCP>"
+                "<https://console.cloud.google.com/storage/browser/proj-archives/application/persons|view in GCP>"
             ),
             "link points into the threaded bucket: {msg}"
         );
         assert!(
             msg.contains("• ⚠️ *documents* — snapshot failed"),
             "failed table surfaces as a warning: {msg}"
-        );
-    }
-
-    #[test]
-    fn digest_message_links_into_unset_bucket_when_env_is_absent() {
-        // With no NAVIGATOR_STORAGE_BUCKET the report falls back to `<unset>`,
-        // so the per-table link is still well-formed rather than dropping the
-        // bucket segment — the gap is visible in the URL, not a broken link.
-        let msg = digest_message(&summary_with(vec![entry("persons", 1)], vec![]), |_| None);
-        assert!(
-            msg.contains(
-                "<https://console.cloud.google.com/storage/browser/<unset>/application/persons|view in GCP>"
-            ),
-            "unset bucket still yields a structured link: {msg}"
         );
     }
 

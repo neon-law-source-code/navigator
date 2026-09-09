@@ -298,8 +298,8 @@ Then roll your cluster onto the new tag — `navigator ops ship --tag <TAG>` ren
 
 ## 6. Verify
 
-`kubectl get pods -n navigator` should show `navigator-web` running. Hit `https://www.your-domain.example/health` (must
-return `OK`) and `https://www.your-domain.example/` (must render the home page). The first inbound request starts
+`kubectl get pods -n navigator` should show `navigator-web` running. Hit `https://www.your-domain.example/app/health`
+(must return `OK`) and `https://www.your-domain.example/` (must render the home page). The first inbound request starts
 embedded Rego, OIDC, and Restate handshakes. Any missing env var crashes the pod with a structured
 `enforce_deployment_invariants` error before serving traffic, which is the loud-failure-by-design behavior.
 

@@ -56,14 +56,28 @@ pub async fn open_resources() -> Result<(SurrealDb, Arc<dyn StorageService>)> {
     let db = store::surreal::connect(&config)
         .await
         .context("open SurrealDB connection")?;
-    // Exports lane: nightly Parquet lands in the dedicated exports bucket
-    // (`NAVIGATOR_STORAGE_BUCKET`), never the documents bucket — even
-    // though the worker pod also carries `NAVIGATOR_DOCUMENTS_BUCKET` for
-    // its document-render lane.
-    let storage = cloud::exports_from_env()
-        .await
-        .context("open object storage")?;
+    let storage = open_storage().await?;
     Ok((db, storage))
+}
+
+/// The archive lane's object-storage handle.
+///
+/// Three buckets reach this pod and the distinction matters in all three
+/// directions. `NAVIGATOR_DOCUMENTS_BUCKET` holds client documents and is
+/// what the `generate_pdf__*` render lane writes. `NAVIGATOR_STORAGE_BUCKET`
+/// is the general exports bucket. This lane writes neither: the nightly
+/// Parquet and the Iceberg metadata over it are the analytical archive, and
+/// they land in the dedicated `NAVIGATOR_ARCHIVES_BUCKET` under its own key
+/// pair, so the documents and exports credentials cannot open it.
+///
+/// [`cloud::archives_from_env`] fails closed on both GCS and S3 — there is
+/// no fallback to `NAVIGATOR_STORAGE_BUCKET`. A deployment that forgets the
+/// key fails the run instead of quietly filling the exports bucket with
+/// archive objects nothing later reads.
+async fn open_storage() -> Result<Arc<dyn StorageService>> {
+    cloud::archives_from_env()
+        .await
+        .context("open object storage")
 }
 
 /// Snapshot every registered table. Returns a [`SnapshotSummary`]
@@ -190,7 +204,7 @@ pub async fn cost_phase<F: Fn(&str) -> Option<String>>(get: F) -> Result<Option<
     // tables are written, so `gcp_cost` is queryable in BigQuery too.
     let key = match batch_from_rows(&rows)? {
         Some(batch) => {
-            let storage = cloud::exports_from_env()
+            let storage = cloud::archives_from_env()
                 .await
                 .context("open object storage for cost snapshot")?;
             let bytes = encode_parquet(&batch)?;
@@ -261,12 +275,14 @@ async fn write_fingerprint(storage: &dyn StorageService, fp: &StoredFingerprint)
 #[cfg(test)]
 mod tests {
     use super::{
-        merge_cost_rows, needs_fingerprint_write, snapshot_all, SnapshotSummary, TableFailure,
+        merge_cost_rows, needs_fingerprint_write, open_storage, snapshot_all, SnapshotSummary,
+        TableFailure,
     };
     use crate::{fetch_batch, fingerprint, DriftDecision, StoredFingerprint};
     use arrow::array::{Array, StringArray};
     use billing::gcp_cost::CostRow;
     use cloud::FsStorage;
+    use std::path::Path;
 
     fn row(service: &str, cost: f64) -> CostRow {
         CostRow {
@@ -414,5 +430,104 @@ mod tests {
         let back: SnapshotSummary = serde_json::from_str(&json).unwrap();
         assert_eq!(back.failures.len(), 1);
         assert_eq!(back.run_date, summary.run_date);
+    }
+
+    /// The archive lane resolves its bucket from `NAVIGATOR_ARCHIVES_BUCKET`
+    /// and fails when it is absent, rather than falling back to the exports
+    /// bucket.
+    ///
+    /// Kept as one serial test because it mutates the process-global
+    /// `NAVIGATOR_STORAGE_*` vars, following `cloud`'s own selection test —
+    /// no other `archives` test reads them, so no lock is needed. `s3` is the
+    /// backend under test because it resolves the lane's bucket before it
+    /// builds anything; `fs` keeps one storage root and never looks at a
+    /// bucket at all, so it cannot tell the lanes apart.
+    ///
+    /// It asserts only the refusal, and deliberately does not also assert
+    /// that a named bucket opens: that path constructs a real S3 client,
+    /// which loads the platform certificate store, and the macOS keychain
+    /// returns an I/O error under the concurrency of a full workspace run.
+    /// The refusal is the whole claim anyway — the lane reaches for its own
+    /// key and will not settle for the exports bucket — and it reaches that
+    /// verdict from the config alone, with no client and no endpoint.
+    #[tokio::test]
+    async fn open_storage_requires_the_archives_bucket_and_ignores_the_exports_one() {
+        for key in [
+            "NAVIGATOR_STORAGE_BACKEND",
+            "NAVIGATOR_STORAGE_ENDPOINT",
+            "NAVIGATOR_STORAGE_ACCESS_KEY",
+            "NAVIGATOR_STORAGE_SECRET_KEY",
+            "NAVIGATOR_STORAGE_BUCKET",
+            "NAVIGATOR_ARCHIVES_BUCKET",
+        ] {
+            std::env::remove_var(key);
+        }
+        std::env::set_var("NAVIGATOR_STORAGE_BACKEND", "s3");
+        std::env::set_var("NAVIGATOR_STORAGE_ENDPOINT", "http://garage:3900");
+        std::env::set_var("NAVIGATOR_STORAGE_ACCESS_KEY", "access");
+        std::env::set_var("NAVIGATOR_STORAGE_SECRET_KEY", "secret");
+        // The exports bucket alone is exactly the misconfiguration this lane
+        // used to accept, writing archive objects where nothing reads them.
+        std::env::set_var("NAVIGATOR_STORAGE_BUCKET", "stg-exports");
+
+        let Err(error) = open_storage().await else {
+            panic!("the lane must fail closed with no archives bucket");
+        };
+        assert!(
+            format!("{error:#}").contains("NAVIGATOR_ARCHIVES_BUCKET"),
+            "the failure must name the key that is missing; got: {error:#}"
+        );
+    }
+
+    /// The snapshot phase writes through the handle it is given and nowhere
+    /// else. Two roots stand in for the two buckets: everything lands under
+    /// the archive root, and the exports root receives nothing.
+    #[tokio::test]
+    async fn snapshot_phase_writes_into_the_archive_root_and_leaves_exports_empty() {
+        let db = store::surreal::test_support::mem().await;
+        db.query(
+            "CREATE person:analyst SET \
+             name = 'Analyst', email = 'analyst@example.com', role = 'client'",
+        )
+        .await
+        .unwrap();
+
+        let archive_dir = tempfile::tempdir().unwrap();
+        let exports_dir = tempfile::tempdir().unwrap();
+        let archive = FsStorage::new(archive_dir.path()).await.unwrap();
+
+        let summary = snapshot_all(&db, &archive).await;
+        assert!(summary.failures.is_empty(), "{:#?}", summary.failures);
+        assert!(
+            !summary.entries.is_empty(),
+            "the seeded table must produce a snapshot"
+        );
+
+        assert!(
+            walk_files(archive_dir.path()) > 0,
+            "the archive root receives the run's Parquet"
+        );
+        assert_eq!(
+            walk_files(exports_dir.path()),
+            0,
+            "the exports root must receive no archive objects"
+        );
+    }
+
+    /// Count regular files anywhere beneath `root`.
+    fn walk_files(root: &Path) -> usize {
+        let mut count = 0;
+        let mut stack = vec![root.to_path_buf()];
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else {
+                    count += 1;
+                }
+            }
+        }
+        count
     }
 }

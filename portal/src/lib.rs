@@ -660,8 +660,6 @@ pub fn gated(state: &AppState, router: Router) -> Router {
 /// `portal/tests/router_contract.rs` until the contract records it.
 fn public_ingress_routes() -> Router<AppState> {
     Router::new()
-        .route("/health", get(health))
-        .route("/readyz", get(readyz))
         .route("/app/health", get(health))
         .route("/app/readyz", get(readyz))
         .route("/version", get(version))
@@ -990,10 +988,7 @@ pub fn bootstrap(
         &state.auth,
     );
     // MCP rides on the same Pod / host as the public site, served at
-    // `POST /mcp` and, since ENG-84, the identical private alias
-    // `POST /app/mcp` — same handler, same layer stack, mounted twice so
-    // infrastructure as code can move the ingress path onto `/app` without a
-    // window where neither answers. The layer stack (outermost first):
+    // `POST /app/mcp`. The layer stack (outermost first):
     //
     //   1. google_oauth::require_google_oauth — prod: validates the
     //      Google OAuth access token Gemini Enterprise sends as
@@ -1007,10 +1002,10 @@ pub fn bootstrap(
     //   3. require_policy — embedded Rego policy decision; same as /app.
     //
     // CSRF is intentionally NOT in the chain — JSON-RPC clients send
-    // a Bearer token, not a session cookie, on either path. Neither carries
-    // a session cookie, so `/app/mcp` is not gated by `session_boundary` —
-    // see `docs/access-model.md` for why that is not the same thing as
-    // being anonymous.
+    // a Bearer token, not a session cookie. Carrying no session cookie is
+    // why `/app/mcp` is not gated by `session_boundary` — see
+    // `docs/access-model.md` for why that is not the same thing as being
+    // anonymous.
     let mut mcp_state =
         mcp::McpState::new(state.surreal.clone(), state.questionnaire_runtime.clone());
     // Object storage is always available to the MCP tools — the
@@ -1044,7 +1039,7 @@ pub fn bootstrap(
             // session: the `navigator` CLI's own bearer, the same layer the
             // A2A rpc route already carries.
             //
-            // Without it `/mcp` has no identity to scope a read by. The CLI's
+            // Without it `/app/mcp` has no identity to scope a read by. The CLI's
             // credential is the HMAC-signed `SessionData` blob `cli_auth`
             // mints — not a JWT and not a Google access token — so
             // `require_auth` found nothing to validate and `inject_principal`
@@ -1065,14 +1060,13 @@ pub fn bootstrap(
                 crate::rate_limit::enforce,
             ))
     };
-    let mcp = mcp_layered(mcp_state.clone());
-    // `mcp::build_router` registers at the literal path `/mcp`; nesting a
-    // second instance under `/app` is what produces `/app/mcp` without
-    // forking the handler or the layer stack above.
+    // `mcp::build_router` registers at the literal path `/mcp`; nesting it
+    // under `/app` is what produces `/app/mcp` without forking the handler
+    // or the layer stack above.
     let app_mcp = Router::new().nest("/app", mcp_layered(mcp_state.clone()));
     // A2A surface — the agent card at `/app/api/aida.json` and JSON-RPC
     // at `/app/api/aida/rpc`, the latter behind the same auth stack as
-    // `/mcp`. Both are private, like every path under `/app/api`: the
+    // `/app/mcp`. Both are private, like every path under `/app/api`: the
     // card composes behind `session_boundary` below, so an anonymous
     // fetch gets the unauthenticated protocol document rather than the
     // transport and security schemes. Self-service A2A registration is
@@ -1642,7 +1636,6 @@ pub fn bootstrap(
         .merge(api)
         .merge(api_docs)
         .merge(admin)
-        .merge(mcp)
         .merge(app_mcp)
         .merge(a2a_card)
         .merge(a2a_rpc)
@@ -2162,8 +2155,6 @@ pub fn host_crawler_and_legal_routes(
 /// host's declared paths before constructing the merged router, preventing a
 /// host from accidentally shadowing an application surface.
 pub const RESERVED_PATH_PREFIXES: &[&str] = &[
-    "/health",
-    "/readyz",
     "/version",
     "/assets",
     "/webhook",
@@ -2172,7 +2163,6 @@ pub const RESERVED_PATH_PREFIXES: &[&str] = &[
     "/dioxus-demo",
     "/app",
     "/auth",
-    "/mcp",
     "/documents",
     "/api",
 ];
@@ -2626,7 +2616,6 @@ User-agent: *
 Disallow: /app
 Disallow: /admin
 Disallow: /auth
-Disallow: /mcp
 Disallow: /documents
 Disallow: /design
 Disallow: /templates
@@ -3162,8 +3151,8 @@ async fn fallback_not_found(req: axum::extract::Request) -> impl IntoResponse {
 
 /// `true` when the request should get a machine-readable error body
 /// rather than the HTML chrome. The non-HTML surfaces this server hosts are
-/// `/app/api/*` (JSON listings + the OpenAPI document) and `/mcp` and its
-/// `/app/mcp` alias (MCP JSON-RPC). Everything else — including the rest of
+/// `/app/api/*` (JSON listings + the OpenAPI document) and `/app/mcp`
+/// (MCP JSON-RPC). Everything else — including the rest of
 /// `/app/*`'s HTML pages and the `/auth/*` flows — gets the styled error
 /// page.
 ///
@@ -3173,11 +3162,7 @@ async fn fallback_not_found(req: axum::extract::Request) -> impl IntoResponse {
 /// than holding a JSON error body.
 #[must_use]
 pub fn wants_json(path: &str) -> bool {
-    path.starts_with("/app/api/")
-        || path.starts_with("/mcp/")
-        || path == "/mcp"
-        || path.starts_with("/app/mcp/")
-        || path == "/app/mcp"
+    path.starts_with("/app/api/") || path.starts_with("/app/mcp/") || path == "/app/mcp"
 }
 
 #[cfg(test)]

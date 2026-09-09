@@ -1,5 +1,5 @@
 # Second K8s Service in front of the same `navigator-web` pods,
-# scoped to the IAP-gated /mcp endpoint only.
+# scoped to the IAP-gated /app/mcp endpoint only.
 #
 # Why a separate Service: BackendConfig is per-Service. Attaching
 # `iap.enabled: true` to the public `navigator-web` Service would
@@ -13,7 +13,7 @@
 # `./backendconfig.yaml`.
 #
 # Path-routing in the Ingress (../ingress/ingress.yaml) sends
-# `/mcp` to this Service and everything else to `navigator-web`.
+# `/app/mcp` to this Service and everything else to `navigator-web`.
 apiVersion: v1
 kind: Service
 metadata:

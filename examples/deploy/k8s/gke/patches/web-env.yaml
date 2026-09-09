@@ -180,7 +180,7 @@ spec:
             # the document tacks `/app/api/*` paths onto this value.
             - name: NAV_BASE_URL
               value: https://NAVIGATOR_PUBLIC_HOST
-            # Google OAuth access-token validator for /mcp.
+            # Google OAuth access-token validator for /app/mcp.
             # `web::google_oauth` posts the bearer token to Google's
             # tokeninfo endpoint and accepts the request when the
             # token's `aud`/`azp` is in this allowlist, `email_verified`

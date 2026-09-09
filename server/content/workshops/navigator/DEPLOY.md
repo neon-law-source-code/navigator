@@ -317,9 +317,10 @@ runtime material there:
 Each executable supplies only its public brand routes to `portal::bootstrap`. The mounted application crate always owns
 these HTTP paths and every descendant:
 
-- operational and public ingress: `/health`, `/readyz`, `/version`, `/assets/*`, `/webhook/*`, `/docusign/*`,
-  `/public/*`, and `/dioxus-demo`;
-- application and control surfaces: `/app/*`, `/app/api/*`, `/auth/*`, `/mcp/*`, and `/documents/*`;
+- operational and public ingress: `/version`, `/assets/*`, `/webhook/*`, `/docusign/*`, `/public/*`, and
+  `/dioxus-demo`;
+- application and control surfaces: `/app/*`, `/app/api/*`, `/app/health`, `/app/readyz`, `/app/mcp/*`, `/auth/*`,
+  and `/documents/*`;
 - API documentation: `/app/api` and `/app/api/openapi.json`.
 
 The brand-owned public routes are:

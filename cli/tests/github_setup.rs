@@ -21,7 +21,6 @@ async fn dry_run_prints_plan_without_writes() {
         .env("GITHUB_TOKEN", "test-token")
         .env_remove("GITHUB_REPOSITORY")
         .env("NAVIGATOR_GITHUB_API_BASE", server.uri())
-        .env_remove("NAVIGATOR_GITHUB_APP_ID")
         .assert()
         .success()
         .stderr(contains("would update ruleset production"))
@@ -30,8 +29,7 @@ async fn dry_run_prints_plan_without_writes() {
         .stderr(contains("would create ruleset release-tags"))
         // Nor the review gate, which is the ruleset that makes a code owner's
         // approval a precondition of merging.
-        .stderr(contains("would create ruleset production-review"))
-        .stderr(contains("would create label triage"));
+        .stderr(contains("would create ruleset production-review"));
     let requests = server.received_requests().await.unwrap();
     assert!(requests
         .iter()
@@ -122,9 +120,6 @@ async fn mount_reads(server: &MockServer) {
         })))
         .mount(server)
         .await;
-    Mock::given(method("GET"))
-        .and(path("/repos/neon-law-source-code/navigator/labels"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([])))
-        .mount(server)
-        .await;
+    // NAVIGATOR_POLICY carries no labels, so `reconcile` never calls
+    // `GET .../labels` at all — no mock is mounted for it.
 }

@@ -147,7 +147,6 @@ const TAP_SLUG: &str = "neon-law-source-code/homebrew-navigator";
 const REPOSITORY_ENV: &str = "GITHUB_REPOSITORY";
 const API_BASE_ENV: &str = "NAVIGATOR_GITHUB_API_BASE";
 const TOKEN_ENV: &str = "GITHUB_TOKEN";
-const APP_ID_ENV: &str = "NAVIGATOR_GITHUB_APP_ID";
 const USER_AGENT: &str = concat!("neon-law-navigator/", env!("CARGO_PKG_VERSION"));
 const API_VERSION: &str = "2022-11-28";
 const BRANCH_RULESET_NAME: &str = "production";
@@ -262,7 +261,6 @@ const COMMON_POLICY: RepositoryPolicy = RepositoryPolicy {
     release_tags: false,
     labels: &[],
     assert_codeowners: true,
-    assert_devx_app: false,
     review_gate: true,
     branch_protections: true,
 };
@@ -286,21 +284,18 @@ const CLIENT_POLICY: RepositoryPolicy = RepositoryPolicy {
     release_tags: false,
     labels: &[],
     assert_codeowners: true,
-    assert_devx_app: false,
     review_gate: true,
     branch_protections: true,
 };
 
-/// Navigator's own policy: the common gate plus the three things only this
-/// repository does — cut release tags, drive `DevX` automation off labels, and
-/// host the App installation that automation authenticates as.
+/// Navigator's own policy: the common gate plus cutting release tags, the one
+/// thing only this repository does.
 const NAVIGATOR_POLICY: RepositoryPolicy = RepositoryPolicy {
     default_visibility: Visibility::Public,
     open_source_governance: true,
     release_tags: true,
-    labels: &DEVX_LABELS,
+    labels: &[],
     assert_codeowners: true,
-    assert_devx_app: true,
     review_gate: true,
     branch_protections: true,
 };
@@ -332,7 +327,6 @@ const TAP_POLICY: RepositoryPolicy = RepositoryPolicy {
     release_tags: false,
     labels: &[],
     assert_codeowners: false,
-    assert_devx_app: false,
     review_gate: false,
     branch_protections: false,
 };
@@ -542,7 +536,6 @@ struct RepositoryPolicy {
     release_tags: bool,
     labels: &'static [DesiredLabel],
     assert_codeowners: bool,
-    assert_devx_app: bool,
     /// Whether merges additionally require a code owner's approval, enforced
     /// by the separate [`REVIEW_RULESET_NAME`] ruleset.
     review_gate: bool,
@@ -560,25 +553,6 @@ struct DesiredLabel {
     name: &'static str,
     description: &'static str,
 }
-
-const DEVX_LABELS: [DesiredLabel; 4] = [
-    DesiredLabel {
-        name: "triage",
-        description: "DevX: notify engineering that this issue is ready for triage",
-    },
-    DesiredLabel {
-        name: "triaged",
-        description: "DevX: issue grounded and planned; ready to implement",
-    },
-    DesiredLabel {
-        name: "devx:paused",
-        description: "DevX: automation stopped; needs a human",
-    },
-    DesiredLabel {
-        name: "devx:failed",
-        description: "DevX: last automated run failed; see the linked comment",
-    },
-];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct RulesetPayload {
@@ -723,11 +697,6 @@ struct Label {
 #[derive(Debug, Deserialize)]
 struct App {
     id: u64,
-}
-
-#[derive(Debug, Deserialize)]
-struct Installation {
-    app_id: u64,
 }
 
 /// A planned remote change. Assertions do not appear here: they either hold
@@ -1948,10 +1917,6 @@ async fn reconcile(
         Vec::new()
     };
 
-    if policy.assert_devx_app {
-        assert_app_installation(client).await?;
-    }
-
     let (ruleset_ids, live_rulesets) =
         read_live_rulesets(client, policy, actions_app_id, &review_bypass_actors).await?;
     let labels = if policy.labels.is_empty() {
@@ -2464,25 +2429,6 @@ async fn actions_integration_id(client: &GitHubClient) -> Result<u64> {
     Ok(app.id)
 }
 
-async fn assert_app_installation(client: &GitHubClient) -> Result<()> {
-    let Some(app_id) = optional_env(APP_ID_ENV) else {
-        eprintln!("warning: {APP_ID_ENV} is unset; skipping DevX App installation assertion");
-        return Ok(());
-    };
-    let expected = app_id
-        .parse::<u64>()
-        .with_context(|| format!("{APP_ID_ENV} must be numeric"))?;
-    let installation: Installation = client.get_json(&client.repo_path("/installation")).await?;
-    if installation.app_id == expected {
-        Ok(())
-    } else {
-        bail!(
-            "repository installation app_id {} does not match {APP_ID_ENV}={expected}",
-            installation.app_id
-        )
-    }
-}
-
 fn required_env(name: &'static str) -> Result<String> {
     optional_env(name).ok_or_else(|| anyhow!("missing env var: {name}"))
 }
@@ -2746,12 +2692,6 @@ mod tests {
             assert!(
                 !TAP_POLICY.assert_codeowners,
                 "the tap has no CODEOWNERS, and no reviewer to name in one"
-            );
-        }
-        const {
-            assert!(
-                !TAP_POLICY.assert_devx_app,
-                "DevX automation runs against Navigator, not the tap"
             );
         }
         const {
@@ -3259,26 +3199,11 @@ mod tests {
 
     #[test]
     fn planner_is_empty_for_identical_state() {
-        let labels = DEVX_LABELS
-            .iter()
-            .map(|label| Label {
-                name: label.name.to_string(),
-                description: Some(label.description.to_string()),
-            })
-            .collect::<Vec<_>>();
         let live = desired_rulesets(NAVIGATOR_POLICY, TEST_ACTIONS_APP_ID, &[])
             .into_iter()
             .map(Some)
             .collect::<Vec<_>>();
-        assert!(plan(
-            NAVIGATOR_POLICY,
-            TEST_ACTIONS_APP_ID,
-            &[],
-            true,
-            &live,
-            &labels
-        )
-        .is_empty());
+        assert!(plan(NAVIGATOR_POLICY, TEST_ACTIONS_APP_ID, &[], true, &live, &[]).is_empty());
     }
 
     #[test]
@@ -3317,26 +3242,39 @@ mod tests {
                 Action::CreateRuleset {
                     name: "production-review".to_string()
                 },
-                Action::CreateLabel {
-                    name: "triage".to_string()
-                },
-                Action::CreateLabel {
-                    name: "triaged".to_string()
-                },
-                Action::CreateLabel {
-                    name: "devx:paused".to_string()
-                },
-                Action::CreateLabel {
-                    name: "devx:failed".to_string()
-                },
             ]
         );
     }
 
+    /// A label set with no production consumer — no policy carries labels
+    /// today — used only to exercise `plan`'s label-diffing logic directly.
+    const TEST_LABELS: [DesiredLabel; 4] = [
+        DesiredLabel {
+            name: "one",
+            description: "first",
+        },
+        DesiredLabel {
+            name: "two",
+            description: "second",
+        },
+        DesiredLabel {
+            name: "three",
+            description: "third",
+        },
+        DesiredLabel {
+            name: "four",
+            description: "fourth",
+        },
+    ];
+
     #[test]
     fn planner_limits_drift_to_ruleset_and_label() {
+        let policy = RepositoryPolicy {
+            labels: &TEST_LABELS,
+            ..NAVIGATOR_POLICY
+        };
         let labels = vec![Label {
-            name: "triaged".to_string(),
+            name: "two".to_string(),
             description: Some("old description".to_string()),
         }];
         let live = vec![
@@ -3345,29 +3283,22 @@ mod tests {
             Some(desired_review_ruleset(Vec::new())),
         ];
         assert_eq!(
-            plan(
-                NAVIGATOR_POLICY,
-                TEST_ACTIONS_APP_ID,
-                &[],
-                true,
-                &live,
-                &labels
-            ),
+            plan(policy, TEST_ACTIONS_APP_ID, &[], true, &live, &labels),
             vec![
                 Action::UpdateRuleset {
                     name: "production".to_string()
                 },
                 Action::CreateLabel {
-                    name: "triage".to_string()
+                    name: "one".to_string()
                 },
                 Action::UpdateLabel {
-                    name: "triaged".to_string()
+                    name: "two".to_string()
                 },
                 Action::CreateLabel {
-                    name: "devx:paused".to_string()
+                    name: "three".to_string()
                 },
                 Action::CreateLabel {
-                    name: "devx:failed".to_string()
+                    name: "four".to_string()
                 },
             ]
         );
@@ -3418,7 +3349,6 @@ mod tests {
         assert_eq!(client.assert_codeowners, public.assert_codeowners);
         assert_eq!(client.release_tags, public.release_tags);
         assert!(client.labels.is_empty());
-        assert!(!client.assert_devx_app);
     }
 
     /// Every repository in the public organization defaults to public, and
@@ -3726,18 +3656,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn reconcile_writes_only_drifted_ruleset_and_label() {
+    async fn reconcile_writes_only_drifted_ruleset() {
         let server = MockServer::start().await;
         let client = test_client(&server);
-        mount_reads(
-            &server,
-            &live_ruleset(),
-            vec![Label {
-                name: "triaged".to_string(),
-                description: Some("old description".to_string()),
-            }],
-        )
-        .await;
+        mount_reads(&server, &live_ruleset(), vec![]).await;
         Mock::given(method("PUT"))
             .and(path("/repos/acme/navigator/rulesets/7"))
             .and(header("authorization", "Bearer token"))
@@ -3758,24 +3680,9 @@ mod tests {
             .expect(1)
             .mount(&server)
             .await;
-        Mock::given(method("PATCH"))
-            .and(path("/repos/acme/navigator/labels/triaged"))
-            .and(body_json(
-                serde_json::json!({"new_name":"triaged","description":DEVX_LABELS[1].description}),
-            ))
-            .respond_with(ResponseTemplate::new(200))
-            .expect(1)
-            .mount(&server)
-            .await;
-        for label in [&DEVX_LABELS[0], &DEVX_LABELS[2], &DEVX_LABELS[3]] {
-            Mock::given(method("POST"))
-                .and(path("/repos/acme/navigator/labels"))
-                .and(body_json(serde_json::json!({"name":label.name,"description":label.description,"color":LABEL_COLOR})))
-                .respond_with(ResponseTemplate::new(201))
-                .expect(1)
-                .mount(&server)
-                .await;
-        }
+        // NAVIGATOR_POLICY carries no labels, so no label endpoint should ever
+        // be written; the server above mounts no PATCH/POST for `/labels*`, and
+        // wiremock 404s an unmocked request.
         reconcile(NAVIGATOR_POLICY, &client, false, "")
             .await
             .unwrap();
@@ -3785,11 +3692,11 @@ mod tests {
     /// is off draws exactly one settings `PATCH`, carrying the enabled payload.
     ///
     /// Every other half of the reconcile is mounted already-converged — the
-    /// branch ruleset as `desired_branch_ruleset` builds it, the labels with the
-    /// descriptions the policy asks for — so this server would 404 any write but
-    /// the one asserted. The two unit tests above would both pass on a version
-    /// where `from_live` and `desired_repository_settings` agreed with each other
-    /// and neither reached GitHub; this is what rules that out.
+    /// branch ruleset as `desired_branch_ruleset` builds it, and `NAVIGATOR_POLICY`
+    /// carries no labels — so this server would 404 any write but the one
+    /// asserted. The two unit tests above would both pass on a version where
+    /// `from_live` and `desired_repository_settings` agreed with each other and
+    /// neither reached GitHub; this is what rules that out.
     #[tokio::test]
     async fn a_public_repository_without_push_protection_is_patched() {
         let server = MockServer::start().await;
@@ -3803,13 +3710,7 @@ mod tests {
                     "integration_id": NAVIGATOR_CODEQL_INTEGRATION_ID
                 })],
             ),
-            DEVX_LABELS
-                .iter()
-                .map(|label| Label {
-                    name: label.name.to_string(),
-                    description: Some(label.description.to_string()),
-                })
-                .collect(),
+            vec![],
             REQUIRED_CHECK_WORKFLOW,
             live_repository_json("disabled"),
         )
@@ -4198,7 +4099,7 @@ mod tests {
             .and(path("/repos/acme/navigator/labels"))
             .and(query_param("page", "2"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
-                {"name": "triaged", "description": DEVX_LABELS[1].description}
+                {"name": "triaged", "description": "any description"}
             ])))
             .mount(&server)
             .await;

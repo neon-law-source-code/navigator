@@ -1,4 +1,4 @@
-name: navigator document verify
+name: navigator site document verify
 description: >-
   Validate every documents/ pointer offline; on push to main with a
   configured host, additionally exchange this GitHub Actions OIDC identity
@@ -121,7 +121,7 @@ runs:
                 ;;
         esac
 
-    - name: navigator document verify
+    - name: navigator site document verify
       shell: bash
       env:
         HOST: ${{ inputs.host }}
@@ -135,7 +135,7 @@ runs:
             exit 0
         fi
         if [ -n "${HOST}" ] && [ "${EVENT_NAME}" = "push" ] && [ "${REF}" = "refs/heads/main" ]; then
-            navigator document verify "${DIR}" --ci --host "${HOST}"
+            navigator site document verify "${DIR}" --ci --host "${HOST}"
         else
-            navigator document verify "${DIR}"
+            navigator site document verify "${DIR}"
         fi

@@ -144,12 +144,12 @@ async fn ensure_named_router_and_nat(
     // create that a fresh deployment requires, matching the rest of setup's
     // create-oriented preview rather than inventing a synthetic drift patch.
     if client.mode() == Mode::DryRun {
-        return create_router(client, project_id, region, &router_name, &body).await;
+        return create_router(client, project_id, region, &router_name, &nat_name, &body).await;
     }
 
     let response = client.get(GcpService::Compute, &path).await?;
     match response.status_u16() {
-        404 => create_router(client, project_id, region, &router_name, &body).await,
+        404 => create_router(client, project_id, region, &router_name, &nat_name, &body).await,
         200..=299 => {
             let existing: serde_json::Value =
                 serde_json::from_str(&response.into_text()).map_err(|source| SetupError::Json {
@@ -174,6 +174,7 @@ async fn create_router(
     project_id: &str,
     region: &str,
     router_name: &str,
+    nat_name: &str,
     body: &serde_json::Value,
 ) -> SetupResult<()> {
     let collection = format!("/compute/v1/projects/{project_id}/regions/{region}/routers");
@@ -181,12 +182,53 @@ async fn create_router(
         .post_json(GcpService::Compute, &collection, body)
         .await?;
     match response.status_u16() {
-        409 => Ok(()),
+        409 => {
+            verify_router_after_conflict(client, project_id, region, router_name, nat_name, body)
+                .await
+        }
         200..=299 => {
             wait_for_router_operation(client, project_id, region, response.into_text()).await
         }
         status => Err(SetupError::BadStatus {
             operation: format!("create Cloud Router {router_name}"),
+            status,
+            body: response.into_text(),
+        }),
+    }
+}
+
+/// A create conflict only proves that another writer won the race. Read the
+/// winning router before setup continues, so a router created without the
+/// required NAT cannot be mistaken for converged private-node egress.
+async fn verify_router_after_conflict(
+    client: &GcpClient,
+    project_id: &str,
+    region: &str,
+    router_name: &str,
+    nat_name: &str,
+    expected: &serde_json::Value,
+) -> SetupResult<()> {
+    let path = router_path(project_id, region, router_name);
+    let response = client.get(GcpService::Compute, &path).await?;
+    match response.status_u16() {
+        200..=299 => {
+            let existing: serde_json::Value =
+                serde_json::from_str(&response.into_text()).map_err(|source| SetupError::Json {
+                    what: "Cloud Router lookup after create conflict",
+                    source,
+                })?;
+            if router_has_expected_nat(&existing, expected, nat_name) {
+                return Ok(());
+            }
+            Err(SetupError::AmbiguousLiveState {
+                operation: format!("verify Cloud Router after create conflict {router_name}"),
+                detail: format!(
+                    "the winning router does not contain the expected NAT {nat_name}; refusing to overwrite its configuration"
+                ),
+            })
+        }
+        status => Err(SetupError::BadStatus {
+            operation: format!("verify Cloud Router after create conflict {router_name}"),
             status,
             body: response.into_text(),
         }),
@@ -378,7 +420,7 @@ mod tests {
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     use super::super::client::{GcpClient, GcpService, StaticToken};
-    use super::super::SetupConfig;
+    use super::super::{SetupConfig, SetupError};
     use super::{
         ensure_named_network_with_retry, ensure_network, ensure_router_and_nat, nat_name,
         router_name, DEFAULT_NETWORK_NAME,
@@ -563,12 +605,15 @@ mod tests {
         let server = MockServer::start().await;
         let config = SetupConfig::default();
         let router = router_name(&config.cluster_name);
+        let nat = nat_name(&config.cluster_name);
+        let router_path = format!(
+            "/compute/v1/projects/p/regions/{}/routers/{router}",
+            config.region
+        );
         Mock::given(method("GET"))
-            .and(path(format!(
-                "/compute/v1/projects/p/regions/{}/routers/{router}",
-                config.region
-            )))
+            .and(path(router_path.clone()))
             .respond_with(ResponseTemplate::new(404))
+            .up_to_n_times(1)
             .expect(1)
             .mount(&server)
             .await;
@@ -581,10 +626,63 @@ mod tests {
             .expect(1)
             .mount(&server)
             .await;
+        Mock::given(method("GET"))
+            .and(path(router_path))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "network": "projects/p/global/networks/navigator-vpc",
+                "nats": [{
+                    "name": nat,
+                    "natIpAllocateOption": "AUTO_ONLY",
+                    "sourceSubnetworkIpRangesToNat": "ALL_SUBNETWORKS_ALL_IP_RANGES",
+                }],
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
 
         ensure_router_and_nat(&client_for(&server), "p", &config)
             .await
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn stops_when_a_router_create_conflict_wins_without_the_expected_nat() {
+        let server = MockServer::start().await;
+        let config = SetupConfig::default();
+        let router = router_name(&config.cluster_name);
+        let router_path = format!(
+            "/compute/v1/projects/p/regions/{}/routers/{router}",
+            config.region
+        );
+        Mock::given(method("GET"))
+            .and(path(router_path.clone()))
+            .respond_with(ResponseTemplate::new(404))
+            .up_to_n_times(1)
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path(format!(
+                "/compute/v1/projects/p/regions/{}/routers",
+                config.region
+            )))
+            .respond_with(ResponseTemplate::new(409).set_body_string("already exists"))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(router_path))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "network": "projects/p/global/networks/navigator-vpc",
+                "nats": [],
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let result = ensure_router_and_nat(&client_for(&server), "p", &config).await;
+
+        assert!(matches!(result, Err(SetupError::AmbiguousLiveState { .. })));
     }
 
     #[tokio::test]

@@ -562,6 +562,7 @@ fn ops_help_lists_operator_members() {
     assert_eq!(
         command_names(&output),
         vec![
+            "application",
             "assets",
             "deployments",
             "dns",
@@ -582,6 +583,62 @@ fn ops_help_lists_operator_members() {
             "help",
         ]
     );
+}
+
+/// `ops application publish` names its bucket on every invocation. A sourced
+/// `.devx/env` sets `NAVIGATOR_APPLICATIONS_BUCKET` to the local `fs` path, so
+/// an environment fallback here would hand an operator a silent wrong target;
+/// clap advertises an env-backed flag as `[env: NAME=]`, and this asserts that
+/// advertisement is absent and the flag is required.
+#[test]
+fn ops_application_publish_requires_an_explicit_bucket_with_no_env_fallback() {
+    assert_eq!(
+        command_names(&help(&["ops", "application", "--help"])),
+        vec!["publish", "help"]
+    );
+
+    let output = help(&["ops", "application", "publish", "--help"]);
+    assert!(output.contains("--bucket <BUCKET>"), "{output}");
+    assert!(
+        !output.contains("[env: NAVIGATOR_APPLICATIONS_BUCKET"),
+        "the bucket must never come from the environment: {output}"
+    );
+    assert!(
+        !output.contains("[env:"),
+        "no flag here reads the environment: {output}"
+    );
+    for flag in ["--project", "--repo", "--ref", "--dry-run", "--keep"] {
+        assert!(output.contains(flag), "{flag} missing from: {output}");
+    }
+
+    Command::cargo_bin("navigator")
+        .unwrap()
+        .args(["ops", "application", "publish", "--dry-run"])
+        .env("NAVIGATOR_APPLICATIONS_BUCKET", "neon-law-stg-applications")
+        .assert()
+        .failure()
+        .stderr(str::contains("--bucket <BUCKET>"));
+}
+
+/// `--repo` without `--project` is refused by the parser, as it is for
+/// `dev sample-project`: one URL cannot serve every matter.
+#[test]
+fn ops_application_publish_repo_requires_project() {
+    Command::cargo_bin("navigator")
+        .unwrap()
+        .args([
+            "ops",
+            "application",
+            "publish",
+            "--bucket",
+            "neon-law-stg-applications",
+            "--repo",
+            "https://forge.example/o/r",
+            "--dry-run",
+        ])
+        .assert()
+        .failure()
+        .stderr(str::contains("--project"));
 }
 
 #[test]

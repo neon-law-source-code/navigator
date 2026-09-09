@@ -1021,6 +1021,15 @@ enum KustomizeCmd {
 #[allow(clippy::large_enum_variant)]
 #[derive(Subcommand)]
 enum OpsCmd {
+    /// Publish a Project application to a deployment's applications bucket.
+    /// The operator lane beside a Project repository's own CI publisher: the
+    /// public sample repositories carry no publish workflow, and a
+    /// production-profile boot never writes a portal bundle, so putting a
+    /// bundle up — or back — from a machine is this command.
+    Application {
+        #[command(subcommand)]
+        action: ApplicationAction,
+    },
     /// Reconcile one named GitHub repository's merge protections and policy.
     /// Reads `GITHUB_TOKEN`; the required repository argument is never inferred
     /// from the environment or a checkout's `origin` remote.
@@ -1230,6 +1239,50 @@ enum OpsCmd {
     Firms {
         #[command(subcommand)]
         action: FirmsAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum ApplicationAction {
+    /// Clone, build, and upload a Project application, entry document last.
+    /// Reuses `dev sample-project`'s clone/build/validate path in a temporary
+    /// directory, then writes every object of the publish plan to `--bucket`
+    /// through the operator's own ADC: hashed assets first, `index.html`
+    /// last, nothing ever deleted. The Project code comes from the bundle's
+    /// own `navigator.yaml`, never the repository name, and a bundle naming
+    /// a different Project is refused before any object is written.
+    Publish {
+        /// Applications bucket to publish into, such as
+        /// `neon-law-stg-applications`. Required, with no environment
+        /// fallback: naming a bucket is naming a deployment, and a sourced
+        /// `.devx/env` carries the local `fs` path under the same variable
+        /// name, so it is spelled out on every invocation.
+        #[arg(long)]
+        bucket: String,
+        /// Publish only this Project. Defaults to every sample matter. Any
+        /// valid Project code is accepted; its repository is `--repo`, else
+        /// the compiled-in repository of a sample matter, else the URL
+        /// recorded on the Project row (which needs this worktree's
+        /// `.devx/env` sourced).
+        #[arg(long)]
+        project: Option<String>,
+        /// Repository to clone. Defaults to the URL recorded on the Project.
+        /// Requires `--project`, since one URL cannot serve every matter.
+        #[arg(long, requires = "project")]
+        repo: Option<String>,
+        /// Branch or tag to build. Defaults to the repository's default
+        /// branch.
+        #[arg(long = "ref")]
+        git_ref: Option<String>,
+        /// Print the resolved bucket and the whole plan — every key in
+        /// upload order, the object count, and the last key — and write
+        /// nothing. The rehearsal before a publish to a real deployment.
+        #[arg(long)]
+        dry_run: bool,
+        /// Keep the temporary checkout and build tree instead of removing
+        /// it, to debug a failed build.
+        #[arg(long)]
+        keep: bool,
     },
 }
 

@@ -22,7 +22,11 @@
 //! than published on another matter's portal. `--keep` retains the temp tree
 //! for debugging a failed build.
 //!
-//! Nothing here runs in production: only the local boot path stages it.
+//! Nothing here writes to a deployment: only the local boot path stages it.
+//! The clone-and-build half is shared, though — [`build_from_repository`] is
+//! also what `navigator ops application publish`
+//! ([`super::application_publish`]) runs before uploading the same `dist/` to
+//! a deployment's applications bucket instead of staging it.
 //!
 //! ## Testing
 //!
@@ -32,7 +36,7 @@
 //! which repository to clone ([`choose_repo`]), the git arguments, the two
 //! preconditions a contributor actually trips ([`require_lockfile`],
 //! [`built_bundle`]), the staged paths, and the tree copy. What is left in
-//! `run` is the order of the shell-outs.
+//! `run` and [`build_from_repository`] is the order of the shell-outs.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -204,7 +208,7 @@ fn choose_repo(
 ///
 /// Reading the Project is what keeps one source of truth. The decision lives in
 /// [`choose_repo`]; this only supplies the store.
-fn resolve_repo(project_code: &str, explicit: Option<&str>) -> Result<String> {
+pub(super) fn resolve_repo(project_code: &str, explicit: Option<&str>) -> Result<String> {
     let fallback = store::seed::sample_matter_repository(project_code);
     choose_repo(project_code, explicit, fallback, || {
         let runtime = tokio::runtime::Builder::new_current_thread()
@@ -355,15 +359,38 @@ pub(super) fn run_for_root(keep: bool, workspace_root: &Path) -> Result<usize> {
     Ok(copied)
 }
 
-/// Clone, build, and stage one matter's application, returning how many files
-/// landed in its staging directory.
-fn stage_one(
-    project_code: &str,
-    repo: &str,
-    git_ref: Option<&str>,
-    keep: bool,
-    workspace_root: &Path,
-) -> Result<usize> {
+/// A Project application cloned and built in a temporary tree.
+///
+/// The checkout lives only as long as this value: dropping it removes the
+/// tree, so a caller copies or uploads `dist` first and then lets it go, or
+/// calls [`keep`](Self::keep) to leave the tree behind for debugging.
+pub(super) struct BuiltApplication {
+    temp: tempfile::TempDir,
+    /// The manifest text, verbatim — staged beside the bundle so boot can
+    /// re-read the declared Project rather than trust the directory name.
+    pub(super) manifest: String,
+    /// The Project code the manifest declares, already proven to be one.
+    pub(super) code: String,
+    /// The built `dist/`, proven to hold an entry document.
+    pub(super) dist: PathBuf,
+}
+
+impl BuiltApplication {
+    /// Leak the temporary tree so it survives for inspection, printing where.
+    pub(super) fn keep(self) {
+        let path = self.temp.keep();
+        println!("navigator: kept the build tree at {}", path.display());
+    }
+}
+
+/// Clone `repo` at `git_ref` into a temporary tree and build its application.
+///
+/// The declared Project is read *before* the install is spent, and the
+/// lockfile and the built `dist/` are each proven before returning, so every
+/// failure this can report names the precondition that tripped it rather
+/// than a downstream symptom. What the caller does with the bundle —
+/// stage it for a local boot, or upload it to a deployment — is its own.
+pub(super) fn build_from_repository(repo: &str, git_ref: Option<&str>) -> Result<BuiltApplication> {
     // The checkout and the build live in a temp tree; only `dist/` survives.
     let temp = tempfile::Builder::new()
         .prefix("navigator-sample-project-")
@@ -393,7 +420,25 @@ fn stage_one(
     println!("navigator: building the bundle (pnpm build)");
     run_in(&checkout, "pnpm", &["build".to_string()])?;
 
-    let built = built_bundle(&checkout)?;
+    let dist = built_bundle(&checkout)?;
+    Ok(BuiltApplication {
+        temp,
+        manifest,
+        code,
+        dist,
+    })
+}
+
+/// Clone, build, and stage one matter's application, returning how many files
+/// landed in its staging directory.
+fn stage_one(
+    project_code: &str,
+    repo: &str,
+    git_ref: Option<&str>,
+    keep: bool,
+    workspace_root: &Path,
+) -> Result<usize> {
+    let built = build_from_repository(repo, git_ref)?;
 
     // Refuse a bundle that declares a different matter, here rather than at
     // boot. The staging directory is named for the matter it belongs to, so
@@ -401,24 +446,25 @@ fn stage_one(
     // mistake that puts a client's application on another client's portal.
     // Boot checks this again against the manifest it re-reads; this is the
     // earlier, clearer failure.
-    if code != project_code {
+    if built.code != project_code {
         bail!(
-            "{repo} declares Project `{code}`, but it is being staged for `{project_code}`. \
-             One matter's application must not mount on another's portal."
+            "{repo} declares Project `{}`, but it is being staged for `{project_code}`.              One matter's application must not mount on another's portal.",
+            built.code
         );
     }
 
     // Stage the manifest beside the bundle: boot re-reads the declared Project
     // rather than trusting the directory it was found in.
     let stage = staged_for(workspace_root, project_code);
-    let copied = copy_tree(&built, &stage.join(store::sample_project::DIST_DIR))?;
-    std::fs::write(stage.join(store::sample_project::MANIFEST_FILE), &manifest)
-        .with_context(|| format!("staging the manifest in {}", stage.display()))?;
+    let copied = copy_tree(&built.dist, &stage.join(store::sample_project::DIST_DIR))?;
+    std::fs::write(
+        stage.join(store::sample_project::MANIFEST_FILE),
+        &built.manifest,
+    )
+    .with_context(|| format!("staging the manifest in {}", stage.display()))?;
 
     if keep {
-        // Leak the TempDir so the tree survives for inspection.
-        let path = temp.keep();
-        println!("navigator: kept the build tree at {}", path.display());
+        built.keep();
     }
 
     Ok(copied)
@@ -436,7 +482,7 @@ fn staging_instructions(copied: usize, matters: usize, stage: &Path) -> String {
 }
 
 /// The repository's last path segment, for a readable progress line.
-fn repo_basename(repo: &str) -> &str {
+pub(super) fn repo_basename(repo: &str) -> &str {
     repo.trim_end_matches('/')
         .rsplit('/')
         .next()

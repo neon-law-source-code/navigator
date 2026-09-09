@@ -37,11 +37,14 @@ Lawyer Shook (`lawyer-shook/`):
 
 | File | Page |
 | --- | --- |
-| `neon/locales/en/lawyer-shook/home.yaml` | `/` |
-| `neon/locales/en/lawyer-shook/services.yaml` | `/services` |
+| `neon/locales/en/lawyer-shook/services.yaml` | `/services` (kept valid; the route is not published on that host) |
 
-Which stems a key ships is [`BrandKey::catalog_pages`](../views/src/brand.rs). A house brand answers only those pages
-plus `/contact` (addresses, not a YAML stem); other firm paths 404 on that host rather than rendering Neon's words.
+Lawyer Shook's `/` is not a catalog page. It is a bare holding notice for Shook Law PLLC, written in Rust
+(`neon::firm_pages::lawyer_shook_holding_content`), because the page carries no marketing copy to edit.
+
+Which stems a key ships is [`BrandKey::catalog_pages`](../views/src/brand.rs). DeleteYourData.com answers only those
+pages plus `/contact` (addresses, not a YAML stem); Lawyer Shook answers `/` alone. Other firm paths 404 on that host
+rather than rendering Neon's words.
 
 `views::locales` is the typed schema. `navigator validate` deserializes each file as the page its stem names, so a
 missing field or an unknown stem fails the gate before a brand crate can load it. The advertising guards in

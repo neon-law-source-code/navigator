@@ -467,7 +467,7 @@ pub fn firm_public_dioxus_routers(state: &AppState) -> Vec<Router> {
         .practices
         .clone();
     let home_copy = branded_map(branding, |resolved| {
-        webapp::home::InjectedHome(locales::home(resolved))
+        webapp::home::InjectedHome(resolve_firm_home_content(resolved))
     });
     routers.push(with_branded(dioxus_app::home_router("/", home), home_copy));
     // The practice pages the home page's cards lead into. Static copy like the
@@ -662,7 +662,98 @@ fn resolve_firm_contact_content(
 pub(crate) fn resolve_firm_home_content(
     branding: &views::brand::Branding,
 ) -> webapp::home::HomeContent {
+    if branding.brand_key == BrandKey::LawyerShook {
+        return lawyer_shook_holding_content(branding);
+    }
     locales::home(branding)
+}
+
+/// Lawyer Shook's home page (`/`): a bare holding notice for Shook Law PLLC,
+/// not a marketing page. The mark holds the LAWYER SHOOK registration; the
+/// screen carries only the firm's name, one statement of what it is, and a
+/// sign-in line for an existing client — no header, footer, hero, CTA, or
+/// practice boxes. [`webapp::home::HomePage`] renders nothing else once
+/// [`webapp::home::HomeContent::bare`] is set, which is why this is a
+/// hardcoded statement rather than a `locales::home` YAML catalog page: there
+/// is no marketing copy here to edit.
+fn lawyer_shook_holding_content(branding: &views::brand::Branding) -> webapp::home::HomeContent {
+    let legal_entity = branding.firm.legal_entity;
+    let paragraph = format!(
+        "{legal_entity} is the legal office of Nicholas Shook. Unless you have an active \
+         retainer with {legal_entity}, they are not your attorney."
+    );
+    webapp::home::HomeContent {
+        head_title: legal_entity.to_string(),
+        meta_description: paragraph.clone(),
+        bare: Some(webapp::home::BareStatement {
+            heading: legal_entity.to_string(),
+            paragraph,
+            sign_in: vec![
+                webapp::home::CopyRun {
+                    text: "Sign in ".to_string(),
+                    emphasis: false,
+                    href: None,
+                },
+                webapp::home::CopyRun {
+                    text: "here".to_string(),
+                    emphasis: false,
+                    // Absolute against the deployment's own origin, not this
+                    // host's: `/auth/login` sets the one-shot pre-auth cookie
+                    // on whichever host serves it, and the OIDC callback lands
+                    // only on `OAUTH_REDIRECT_URI`'s host, so a login started
+                    // on the holding page's own host would arrive at the
+                    // callback without its cookie. Where no `NAV_BASE_URL` is
+                    // configured (dev, tests) this stays the relative path.
+                    href: Some(views::assets::absolute_url("/auth/login")),
+                },
+                webapp::home::CopyRun {
+                    text: " if you are an active client.".to_string(),
+                    emphasis: false,
+                    href: None,
+                },
+            ],
+        }),
+        ..Default::default()
+    }
+}
+
+#[cfg(test)]
+mod lawyer_shook_holding_page_tests {
+    use super::lawyer_shook_holding_content;
+
+    #[test]
+    fn the_home_page_is_a_bare_statement_naming_shook_law_pllc() {
+        let content = lawyer_shook_holding_content(&views::brand::LAWYER_SHOOK_BRANDING);
+        let bare = content
+            .bare
+            .expect("Lawyer Shook's home page is the bare-statement variant");
+        assert_eq!(bare.heading, "Shook Law PLLC");
+        assert_eq!(content.head_title, "Shook Law PLLC");
+        assert!(bare
+            .paragraph
+            .contains("Shook Law PLLC is the legal office of Nicholas Shook"));
+        assert!(bare
+            .paragraph
+            .contains("Unless you have an active retainer with Shook Law PLLC"));
+        assert!(
+            !bare.paragraph.contains("Lawyer Shook"),
+            "{}",
+            bare.paragraph
+        );
+        // No marketing content at all: nothing else is on the screen.
+        assert!(content.hero.is_none());
+        assert!(content.service.is_none());
+        assert!(content.practices.is_empty());
+        assert!(content.provenance.is_none());
+        // The one link on the page: an existing client's way to `/app`.
+        let sign_in_text: String = bare.sign_in.iter().map(|run| run.text.as_str()).collect();
+        assert!(sign_in_text.contains("Sign in"));
+        assert!(sign_in_text.contains("active client"));
+        assert!(bare.sign_in.iter().any(|run| run
+            .href
+            .as_deref()
+            .is_some_and(|href| href.ends_with("/auth/login"))));
+    }
 }
 
 /// Resolve the firm `/litigation` page — the statement, the practice, and how

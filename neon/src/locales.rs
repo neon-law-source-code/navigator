@@ -28,7 +28,6 @@ const NEON_SERVICES_YAML: &str = include_str!("../locales/en/neon/services.yaml"
 const DELETE_YOUR_DATA_HOME_YAML: &str = include_str!("../locales/en/delete-your-data/home.yaml");
 const DELETE_YOUR_DATA_SERVICES_YAML: &str =
     include_str!("../locales/en/delete-your-data/services.yaml");
-const LAWYER_SHOOK_HOME_YAML: &str = include_str!("../locales/en/lawyer-shook/home.yaml");
 const LAWYER_SHOOK_SERVICES_YAML: &str = include_str!("../locales/en/lawyer-shook/services.yaml");
 
 /// The shipped YAML for `key`'s `page` stem, if that brand publishes it.
@@ -43,7 +42,6 @@ pub fn catalog_yaml(key: BrandKey, page: &str) -> Option<&'static str> {
         (BrandKey::Neon, "services") => Some(NEON_SERVICES_YAML),
         (BrandKey::DeleteYourData, "home") => Some(DELETE_YOUR_DATA_HOME_YAML),
         (BrandKey::DeleteYourData, "services") => Some(DELETE_YOUR_DATA_SERVICES_YAML),
-        (BrandKey::LawyerShook, "home") => Some(LAWYER_SHOOK_HOME_YAML),
         (BrandKey::LawyerShook, "services") => Some(LAWYER_SHOOK_SERVICES_YAML),
         _ => None,
     }
@@ -421,6 +419,10 @@ pub fn home(branding: &views::brand::Branding) -> webapp::home::HomeContent {
             )
             .collect(),
         provenance: copy.provenance.map(provenance_to_home),
+        // Every brand that loads a `home.yaml` publishes an ordinary
+        // marketing page; only Lawyer Shook's hardcoded holding statement
+        // (`neon::firm_pages::lawyer_shook_holding_content`) sets `bare`.
+        bare: None,
     }
 }
 
@@ -689,8 +691,12 @@ mod tests {
             home(&views::brand::DEFAULT_BRANDING).provenance.is_none(),
             "Neon keeps no removal record and publishes no section"
         );
+        // Lawyer Shook's `/` no longer loads through this catalog loader at
+        // all (it is a hardcoded bare statement — see
+        // `firm_pages::lawyer_shook_holding_content`), so this checks the
+        // resolved page rather than `home()` directly.
         assert!(
-            home(&views::brand::LAWYER_SHOOK_BRANDING)
+            crate::firm_pages::resolve_firm_home_content(&views::brand::LAWYER_SHOOK_BRANDING)
                 .provenance
                 .is_none(),
             "Lawyer Shook keeps no removal record and publishes no section"
@@ -733,15 +739,15 @@ mod tests {
         }
     }
 
+    /// Lawyer Shook's `/` is no longer a catalog page (see
+    /// [`crate::firm_pages::lawyer_shook_holding_content`]), so this only
+    /// covers `/services` — still a real YAML catalog page even though the
+    /// route itself is gated off by `BrandKey::publishes_firm_path`.
     #[test]
-    fn lawyer_shook_catalogs_are_brand_keyed_and_attributed() {
+    fn lawyer_shook_services_catalog_is_brand_keyed_and_attributed() {
         let branding = &views::brand::LAWYER_SHOOK_BRANDING;
-        let home_content = home(branding);
         let services_content = legal_services(branding);
-        assert!(home_content.head_title.contains(branding.firm.site_name));
-        assert!(home_content.lead.contains("Shook Law PLLC"));
         assert!(services_content.hero_lead.contains("Shook Law PLLC"));
-        assert!(!home_content.lead.contains("DeleteYourData.com"));
         assert!(!services_content.meta_description.contains("flat-fee"));
     }
 

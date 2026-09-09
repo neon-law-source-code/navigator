@@ -500,14 +500,19 @@ pub static DELETE_YOUR_DATA_BRANDING: Branding = Branding {
     brand_key: BrandKey::DeleteYourData,
 };
 
-/// The Lawyer Shook house brand. Its public catalog lives in
-/// `neon/locales/en/lawyer-shook/`, and its web face is selected by the
-/// per-brand asset head and token stylesheet.
+/// The Lawyer Shook house brand: a bare holding page for Shook Law PLLC, not
+/// an active marketing site. `/` renders only the firm's name, one statement
+/// of what it is, and a sign-in line for an existing client — see
+/// `neon::firm_pages::lawyer_shook_holding_content`. Its web face is still
+/// selected by the per-brand asset head and token stylesheet (Tinos), and
+/// `neon/locales/en/lawyer-shook/services.yaml` remains its `/services`
+/// catalog even though that route is gated off, since the page carries no
+/// per-brand marketing prose to hand-write in Rust.
 pub static LAWYER_SHOOK_BRANDING: Branding = Branding {
     firm: SiteBrand {
         site_name: "Lawyer Shook",
         home_href: "/",
-        tagline: "A Shook Law PLLC practice.",
+        tagline: "The Shook Law PLLC holding page.",
         postal_address: "5150 Mae Anne Ave Ste 405-9002, Reno, NV 89523",
         logo_href: "",
         social_image: "",
@@ -529,8 +534,12 @@ pub static LAWYER_SHOOK_BRANDING: Branding = Branding {
     base_url: "",
     primary_domain: "lawyershook.com",
     firm_disclaimer: "Attorney advertisement. Nothing here is legal advice without a signed retainer for an active project. Past results do not guarantee future outcomes.",
-    mission_description: "Lawyer Shook is a practice of Shook Law PLLC. A licensed attorney reviews each matter. Fees are quoted before work begins. This is an attorney advertisement, not a promise about a result.",
-    service_description: "Legal services from Lawyer Shook, a practice of Shook Law PLLC. A licensed attorney reviews the work. Fees are quoted before work begins.",
+    // Unused by the rendered page (`neon::firm_pages::lawyer_shook_holding_content`
+    // is the single source of that statement) and by `llms_txt`, which reuses
+    // that same function rather than reading these two fields. Kept accurate
+    // anyway, since a `Branding` value should not carry a stale claim.
+    mission_description: "Lawyer Shook is the holding page for Shook Law PLLC's LAWYER SHOOK mark, not an active practice. Unless you have an active retainer with Shook Law PLLC, they are not your attorney.",
+    service_description: "Lawyer Shook publishes no services or fee schedule here; it is a holding page for Shook Law PLLC only.",
     portal_only: false,
     brand_key: BrandKey::LawyerShook,
 };
@@ -578,28 +587,34 @@ impl BrandKey {
     ///
     /// Neon publishes every page in [`crate::locales::KNOWN_PAGES`]. A house
     /// brand ships only the stems it actually serves; a missing file is a
-    /// loader-test failure, not a first-request panic.
+    /// loader-test failure, not a first-request panic. Lawyer Shook's `/` is
+    /// a hardcoded bare statement rather than a YAML page (there is no
+    /// marketing copy to edit), so `home` is absent from its list even
+    /// though `/services` still builds from a catalog file — the route is
+    /// gated off by [`Self::publishes_firm_path`], not the file removed.
     #[must_use]
     pub fn catalog_pages(self) -> &'static [&'static str] {
         match self {
             Self::Neon => crate::locales::KNOWN_PAGES,
-            Self::DeleteYourData | Self::LawyerShook => &["home", "services"],
+            Self::DeleteYourData => &["home", "services"],
+            Self::LawyerShook => &["services"],
         }
     }
 
     /// Firm marketing paths this key answers on its own hosts.
     ///
-    /// Neon answers every firm page the crate mounts. A house brand answers
+    /// Neon answers every firm page the crate mounts. DeleteYourData answers
     /// only the pages it has a catalog for (plus `/contact`, which is
-    /// addresses rather than a YAML stem). Other firm paths 404 on that host
-    /// rather than rendering another brand's words.
+    /// addresses rather than a YAML stem). Lawyer Shook is a bare holding
+    /// notice for Shook Law PLLC, not a marketing site: it answers `/` alone.
+    /// Other firm paths 404 on that host rather than rendering another
+    /// brand's words.
     #[must_use]
     pub fn publishes_firm_path(self, path: &str) -> bool {
         match self {
             Self::Neon => true,
-            Self::DeleteYourData | Self::LawyerShook => {
-                matches!(path, "/" | "/services" | "/contact")
-            }
+            Self::DeleteYourData => matches!(path, "/" | "/services" | "/contact"),
+            Self::LawyerShook => path == "/",
         }
     }
 
@@ -1910,14 +1925,14 @@ mod tests {
             BrandKey::DeleteYourData.catalog_pages(),
             &["home", "services"]
         );
-        assert_eq!(BrandKey::LawyerShook.catalog_pages(), &["home", "services"]);
+        assert_eq!(BrandKey::LawyerShook.catalog_pages(), &["services"]);
         assert!(BrandKey::DeleteYourData.publishes_firm_path("/"));
         assert!(BrandKey::DeleteYourData.publishes_firm_path("/services"));
         assert!(BrandKey::DeleteYourData.publishes_firm_path("/contact"));
         assert!(!BrandKey::DeleteYourData.publishes_firm_path("/litigation"));
         assert!(BrandKey::LawyerShook.publishes_firm_path("/"));
-        assert!(BrandKey::LawyerShook.publishes_firm_path("/services"));
-        assert!(BrandKey::LawyerShook.publishes_firm_path("/contact"));
+        assert!(!BrandKey::LawyerShook.publishes_firm_path("/services"));
+        assert!(!BrandKey::LawyerShook.publishes_firm_path("/contact"));
         assert!(!BrandKey::LawyerShook.publishes_firm_path("/litigation"));
         assert!(BrandKey::Neon.publishes_firm_path("/litigation"));
     }

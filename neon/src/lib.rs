@@ -91,10 +91,12 @@ pub const PUBLIC_PATHS: &[&str] = &[
 #[must_use]
 pub fn sitemap_paths(state: &AppState, key: BrandKey) -> std::collections::BTreeSet<String> {
     match key {
-        BrandKey::DeleteYourData | BrandKey::LawyerShook => ["/", "/services", "/contact"]
+        BrandKey::DeleteYourData => ["/", "/services", "/contact"]
             .iter()
             .map(|path| (*path).to_string())
             .collect(),
+        // Lawyer Shook is a bare holding page: `/` is the whole surface.
+        BrandKey::LawyerShook => std::iter::once("/".to_string()).collect(),
         BrandKey::Neon => {
             let mut paths: std::collections::BTreeSet<String> = [
                 "/",
@@ -179,28 +181,24 @@ pub fn llms_txt(state: &AppState, key: BrandKey) -> portal::LlmsTxt {
             }
         }
         BrandKey::LawyerShook => {
-            let branding = &views::brand::LAWYER_SHOOK_BRANDING;
-            let mark = branding.firm.site_name;
+            // Lawyer Shook is a bare holding page: the same statement
+            // `resolve_firm_home_content` puts on the screen is the whole of
+            // what a crawler reads here too, so this reuses it rather than
+            // keeping a second copy of the sentence in step.
+            let content =
+                firm_pages::resolve_firm_home_content(&views::brand::LAWYER_SHOOK_BRANDING);
+            let bare = content
+                .bare
+                .as_ref()
+                .expect("invariant: Lawyer Shook's home content is always bare");
             portal::LlmsTxt {
-                title: mark.to_string(),
-                summary: branding.mission_description.to_string(),
-                pages: vec![
-                    portal::LlmsTxtLink {
-                        title: mark.to_string(),
-                        path: "/".to_string(),
-                        description: branding.mission_description.to_string(),
-                    },
-                    portal::LlmsTxtLink {
-                        title: "Legal services".to_string(),
-                        path: "/services".to_string(),
-                        description: branding.service_description.to_string(),
-                    },
-                    portal::LlmsTxtLink {
-                        title: "Contact".to_string(),
-                        path: "/contact".to_string(),
-                        description: format!("How to reach {mark}, a practice of Shook Law PLLC."),
-                    },
-                ],
+                title: bare.heading.clone(),
+                summary: bare.paragraph.clone(),
+                pages: vec![portal::LlmsTxtLink {
+                    title: bare.heading.clone(),
+                    path: "/".to_string(),
+                    description: bare.paragraph.clone(),
+                }],
                 sections: Vec::new(),
             }
         }

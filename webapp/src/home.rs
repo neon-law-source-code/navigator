@@ -13,7 +13,9 @@
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::components::{PracticeCard, PublicShell, SiteHeader, SiteNavLink, SocialMeta};
+use crate::components::{
+    PracticeCard, PublicShell, SiteHeader, SiteNavLink, SocialMeta, THEME_STYLESHEET_HREF,
+};
 use crate::public_chrome::{PublicChrome, PublicFooter};
 
 pub use crate::components::PracticeMark;
@@ -163,6 +165,23 @@ pub struct HomeContent {
     /// that keeps no such record says nothing about one.
     #[serde(default)]
     pub provenance: Option<ProvenanceSection>,
+    /// When set, the page renders nothing but this statement — no header,
+    /// footer, hero, CTA, or practice boxes. A house brand that is a bare
+    /// holding notice rather than an active marketing site (Lawyer Shook).
+    #[serde(default)]
+    pub bare: Option<BareStatement>,
+}
+
+/// A brand's entire home page, collapsed to a title and one paragraph. Used
+/// when [`HomeContent::bare`] is set: [`HomePage`] then renders none of its
+/// usual header, footer, hero, CTA, or practice boxes.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+pub struct BareStatement {
+    pub heading: String,
+    pub paragraph: String,
+    /// A second sentence with one inline link — the existing client's way
+    /// in. Empty renders no second sentence.
+    pub sign_in: Vec<CopyRun>,
 }
 
 /// The [`HomeContent`] injected into the render context by the portal router.
@@ -206,6 +225,41 @@ pub fn HomePageEntry() -> Element {
 /// a server future.
 #[component]
 pub fn HomePage(chrome: PublicChrome, content: HomeContent) -> Element {
+    if let Some(bare) = content.bare.clone() {
+        return rsx! {
+            document::Title { "{content.head_title}" }
+            document::Meta { name: "description", content: "{content.meta_description}" }
+            SocialMeta {
+                title: content.head_title.clone(),
+                description: content.meta_description.clone(),
+                site_name: chrome.brand_name.clone(),
+                image: chrome.social_image.clone(),
+            }
+            // The base theme (background/text from tokens) and the resolved
+            // brand's palette and typeface. Every other public page picks
+            // these up from `PublicShell` and `PublicFooter`; this page
+            // renders neither, so it hoists both itself.
+            document::Stylesheet { href: THEME_STYLESHEET_HREF }
+            document::Stylesheet { href: crate::brand_style::BRAND_STYLESHEET_HREF }
+            document::Stylesheet { href: HOME_STYLESHEET_HREF }
+            document::Stylesheet { href: "{chrome.tokens_href}" }
+            main { class: "holding-page",
+                h1 { class: "holding-page__heading", "{bare.heading}" }
+                p { class: "holding-page__paragraph", "{bare.paragraph}" }
+                if !bare.sign_in.is_empty() {
+                    p { class: "holding-page__paragraph",
+                        for run in bare.sign_in.iter() {
+                            if let Some(href) = run.href.as_ref() {
+                                a { class: "holding-page__link", href: "{href}", "{run.text}" }
+                            } else {
+                                "{run.text}"
+                            }
+                        }
+                    }
+                }
+            }
+        };
+    }
     let header = rsx! {
         SiteHeader {
             brand_name: chrome.brand_name.clone(),
@@ -564,6 +618,7 @@ mod tests {
                             ],
                         }),
                         provenance: None,
+                        bare: None,
                     },
                 }
             }

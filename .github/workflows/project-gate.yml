@@ -258,7 +258,7 @@ jobs:
           install -d "${RUNNER_TEMP}/navigator-bin"
           install -m 0755 "${tmp}/navigator" "${RUNNER_TEMP}/navigator-bin/navigator"
           echo "${RUNNER_TEMP}/navigator-bin" >> "${GITHUB_PATH}"
-      - name: navigator document verify
+      - name: navigator site document verify
         env:
           HOST: ${{ inputs.host }}
           EVENT_NAME: ${{ github.event_name }}
@@ -270,9 +270,9 @@ jobs:
               exit 0
           fi
           if [ -n "${HOST}" ] && [ "${EVENT_NAME}" = "push" ] && [ "${REF}" = "refs/heads/main" ]; then
-              navigator document verify . --ci --host "${HOST}"
+              navigator site document verify . --ci --host "${HOST}"
           else
-              navigator document verify .
+              navigator site document verify .
           fi
 
   manifest:

@@ -1,4 +1,4 @@
-//! `navigator document log`, `get`, and `diff` — the offline-checkout read
+//! `navigator site document log`, `get`, and `diff` — the offline-checkout read
 //! verbs for a matter document's revision chain (#485).
 //!
 //! All three take a pointer path below `documents/` (the committed `.yml`,
@@ -77,7 +77,7 @@ fn manifest_at(root: &Path) -> Result<(String, Option<String>)> {
     Ok((manifest.project, manifest.host))
 }
 
-/// The check `log`, `get`, and `navigator document verify`'s live mode
+/// The check `log`, `get`, and `navigator site document verify`'s live mode
 /// (#486) all reuse — one implementation called every way this drift can be
 /// asked about:
 ///
@@ -161,7 +161,7 @@ async fn revisions_for(
     Ok((slug, live, local))
 }
 
-/// `navigator document log <pointer>`.
+/// `navigator site document log <pointer>`.
 pub(crate) async fn log(pointer: &Path) -> ExitCode {
     run(async {
         let root = Path::new(".");
@@ -262,7 +262,7 @@ fn refuse_destination_in_documents(root: &Path, out: &Path) -> Result<()> {
     Ok(())
 }
 
-/// `navigator document get <pointer> [--version N] --out <path>`.
+/// `navigator site document get <pointer> [--version N] --out <path>`.
 pub(crate) async fn get(pointer: &Path, version: Option<usize>, out: &Path) -> ExitCode {
     run(async {
         let root = Path::new(".");
@@ -405,7 +405,7 @@ fn line_diff(left: &str, right: &str) -> Result<String> {
     Ok(out)
 }
 
-/// `navigator document diff <pointer> <a> <b>` — a redline between two
+/// `navigator site document diff <pointer> <a> <b>` — a redline between two
 /// revision numbers.
 pub(crate) async fn diff(pointer: &Path, a: usize, b: usize) -> ExitCode {
     run(async {
@@ -456,7 +456,7 @@ fn discover_pointers(root: &Path) -> Result<Vec<PathBuf>> {
     Ok(pointers)
 }
 
-/// `navigator document verify [dir]` — the same drift check `log`/`get` use,
+/// `navigator site document verify [dir]` — the same drift check `log`/`get` use,
 /// called two ways (#486):
 ///
 /// - **Offline** (the default, what a pull request runs): every pointer below
@@ -464,7 +464,7 @@ fn discover_pointers(root: &Path) -> Result<Vec<PathBuf>> {
 ///   No token is minted, so this never needs network access or a login.
 /// - **Live** (`--ci`, what a push to `main` runs): exchanges this GitHub
 ///   Actions run's own OIDC token for a Navigator session
-///   (`navigator document verify`'s counterpart to `navigator site import
+///   (`navigator site document verify`'s counterpart to `navigator site import
 ///   --ci`), then checks every pointer against the live asset record —
 ///   [`check_pointer_drift`], the exact function `log`/`get` already call.
 ///

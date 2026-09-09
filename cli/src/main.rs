@@ -363,16 +363,6 @@ enum Command {
         action: SiteCmd,
     },
 
-    /// Read a matter document's revision chain from a checkout.
-    ///
-    /// The offline workbench for a filed document, the way `navigator
-    /// notations` is for `templates/notations/`. Uploading stays `navigator
-    /// site document upload`; these are read-only.
-    Document {
-        #[command(subcommand)]
-        action: DocumentReadAction,
-    },
-
     // ─────────────── Operator ───────────────
     /// Local, reversible KIND developer loop.
     #[command(subcommand)]
@@ -761,7 +751,9 @@ enum SiteCmd {
         #[command(flatten)]
         host: HostOpt,
     },
-    /// File a document into a matter on a live site.
+    /// File, read, and verify a Project's documents — every document is
+    /// scoped to one Project, and every Project to one brand deployment
+    /// (`--host`, defaulting to the sole stored login).
     Document {
         #[command(subcommand)]
         action: DocumentAction,
@@ -1735,6 +1727,12 @@ struct HostOpt {
     host: Option<String>,
 }
 
+/// A matter document is only ever reached through a Project on a site, so
+/// every verb here is either a write against a named `--project` on a
+/// `--host` brand deployment (`upload`), or a read that resolves both from
+/// the checkout's own `navigator.yaml` — a pointer path below `documents/`
+/// (the committed `.yml`, or the staged binary it names) is enough for a
+/// lawyer to name a file rather than an id or a host.
 #[derive(Subcommand)]
 enum DocumentAction {
     /// File a local document into a matter (`POST /app/api/projects/{id}/documents`).
@@ -1765,42 +1763,6 @@ enum DocumentAction {
         #[arg(long)]
         slug: Option<String>,
     },
-}
-
-#[derive(Subcommand)]
-enum MailAction {
-    /// File one inbound message's attachments into a matter, without the
-    /// bytes ever touching this checkout.
-    #[command(after_long_help = DOCUMENT_UPLOAD_KIND_HELP)]
-    File {
-        #[command(flatten)]
-        host: HostOpt,
-        /// Matter code (human-facing) to file into.
-        #[arg(long)]
-        project: String,
-        /// `email_conversation_message` row id naming the inbound hop.
-        #[arg(long)]
-        message: uuid::Uuid,
-        /// Required asset-lane kind, applied to every attachment.
-        #[arg(long, value_parser = parse_asset_kind)]
-        kind: String,
-        /// `client` makes every filed attachment client-visible; default `internal`.
-        #[arg(long, value_parser = parse_document_visibility, default_value = "internal")]
-        visibility: String,
-        /// List what would be filed, with size and content type; write nothing.
-        #[arg(long)]
-        dry_run: bool,
-    },
-}
-
-/// Read one matter document's revision chain from a checkout.
-///
-/// Each verb takes a pointer path below `documents/` (the committed `.yml`,
-/// or the staged binary it names) and resolves the Project from
-/// `navigator.yaml` at `.` and the document slug from that path, so a lawyer
-/// names a file rather than an id.
-#[derive(Subcommand)]
-enum DocumentReadAction {
     /// The revision chain, newest first, marking the operative row.
     Log {
         /// Path below `documents/`, such as `documents/pleadings/motion.pdf.yml`.
@@ -1837,6 +1799,32 @@ enum DocumentReadAction {
         /// Host to mint a CI session against. Required with `--ci`.
         #[arg(long)]
         host: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum MailAction {
+    /// File one inbound message's attachments into a matter, without the
+    /// bytes ever touching this checkout.
+    #[command(after_long_help = DOCUMENT_UPLOAD_KIND_HELP)]
+    File {
+        #[command(flatten)]
+        host: HostOpt,
+        /// Matter code (human-facing) to file into.
+        #[arg(long)]
+        project: String,
+        /// `email_conversation_message` row id naming the inbound hop.
+        #[arg(long)]
+        message: uuid::Uuid,
+        /// Required asset-lane kind, applied to every attachment.
+        #[arg(long, value_parser = parse_asset_kind)]
+        kind: String,
+        /// `client` makes every filed attachment client-visible; default `internal`.
+        #[arg(long, value_parser = parse_document_visibility, default_value = "internal")]
+        visibility: String,
+        /// List what would be filed, with size and content type; write nothing.
+        #[arg(long)]
+        dry_run: bool,
     },
 }
 
@@ -2082,20 +2070,6 @@ fn main() -> ExitCode {
             },
             SiteCmd::Projects { action } => runtime().block_on(run_projects(action)),
             SiteCmd::Notation { action } => runtime().block_on(run_notation(action)),
-        },
-        Command::Document { action } => match action {
-            DocumentReadAction::Log { pointer } => runtime().block_on(document_read::log(&pointer)),
-            DocumentReadAction::Get {
-                pointer,
-                version,
-                out,
-            } => runtime().block_on(document_read::get(&pointer, version, &out)),
-            DocumentReadAction::Diff { pointer, a, b } => {
-                runtime().block_on(document_read::diff(&pointer, a, b))
-            }
-            DocumentReadAction::Verify { dir, ci, host } => {
-                runtime().block_on(document_read::verify(&dir, ci, host.as_deref()))
-            }
         },
         Command::Notations { action } => match action {
             NotationsCmd::Format { file } => format::run(&file),
@@ -2422,6 +2396,16 @@ async fn run_document(action: DocumentAction) -> ExitCode {
                 slug.as_deref(),
             )
             .await
+        }
+        DocumentAction::Log { pointer } => document_read::log(&pointer).await,
+        DocumentAction::Get {
+            pointer,
+            version,
+            out,
+        } => document_read::get(&pointer, version, &out).await,
+        DocumentAction::Diff { pointer, a, b } => document_read::diff(&pointer, a, b).await,
+        DocumentAction::Verify { dir, ci, host } => {
+            document_read::verify(&dir, ci, host.as_deref()).await
         }
     }
 }

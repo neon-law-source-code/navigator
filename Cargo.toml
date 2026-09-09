@@ -76,7 +76,7 @@ include_dir = "0.7"
 # the Typst `render` path, which only emits fresh PDFs.
 lopdf = "0.44"
 parquet = { version = "59", default-features = false, features = ["arrow", "snap"] }
-# Plain-text extraction from an arbitrary PDF, for `navigator document diff`
+# Plain-text extraction from an arbitrary PDF, for `navigator site document diff`
 # (#485) — distinct from `lopdf` (read-modify-write for AcroForm filling) and
 # from `pdf`'s Typst-based render path (fresh PDFs only); neither reads text
 # out of a PDF someone else produced. MIT licensed.

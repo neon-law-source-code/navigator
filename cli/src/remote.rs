@@ -201,7 +201,7 @@ async fn resolve_ci(host: &str) -> Result<(String, String)> {
 }
 
 /// Exchange the GitHub Actions OIDC ID token for a Navigator session bound to
-/// this repository's live Project, for `navigator document verify --ci`
+/// this repository's live Project, for `navigator site document verify --ci`
 /// (#486). Unlike [`resolve_ci`], this session carries no restricting
 /// `scope` — verification only reads, and the resolved actor is always that
 /// Project's own lawyer DRI, so the session already reaches no more than that
@@ -331,7 +331,7 @@ impl DocumentClient {
     }
 
     /// Build a client from an already-minted `(base, token)` pair — the
-    /// `navigator document verify --ci` path (#486), which authenticates via
+    /// `navigator site document verify --ci` path (#486), which authenticates via
     /// GitHub Actions OIDC rather than a stored `~/.navigator.json` login.
     pub(crate) async fn with_credential(
         base: String,

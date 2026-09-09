@@ -77,7 +77,6 @@ fn top_level_help_keeps_orchestration_nested_under_groups() {
             // layer IS the mental model rather than two dozen flat rows an
             // operator has to scan.
             "dev",
-            "document",
             "erd",
             "forms",
             "github",

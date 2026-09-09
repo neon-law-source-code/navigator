@@ -187,8 +187,8 @@ fn regorus_matches_every_checked_in_policy_decision() {
     // 404 + 5 = 409.
     //
     // + 5 for reading a document's revision chain (GET
-    //   /app/api/projects/{id}/documents/revisions), for `navigator document
-    //   log`/`get` (#485): every authenticated tier admitted (the handler
+    //   /app/api/projects/{id}/documents/revisions), for `navigator site
+    //   document log`/`get` (#485): every authenticated tier admitted (the handler
     //   applies the caller's lens), anonymous denied.
     // 409 + 5 = 414.
     //

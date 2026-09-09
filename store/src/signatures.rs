@@ -13,7 +13,8 @@
 //! (`portal::esignature_webhook`) can resolve a callback back to its
 //! Notation by matching `(provider, provider_id)` — the pair is unique.
 //! `signer_person_id`/`field` name who signs where (null until known);
-//! `signed_at` is stamped when the provider reports completion.
+//! `signed_at` is stamped when the provider reports completion, and `state`
+//! records the closed Navigator terminal-state model.
 //!
 //! `provider` was a SeaORM `DeriveActiveEnum` over `TEXT`; on this engine it
 //! is a plain stored string, and [`SignatureProvider`] is the closed set
@@ -51,6 +52,47 @@ impl SignatureProvider {
     }
 }
 
+/// The closed lifecycle of one signature request.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SignatureState {
+    /// The provider request exists but has not reached a terminal outcome.
+    Requested,
+    /// The provider confirmed that every signer executed the envelope.
+    Completed,
+    /// A signer declined the envelope.
+    Declined,
+    /// The envelope was voided before completion.
+    Voided,
+    /// The envelope expired before completion.
+    Expired,
+}
+
+impl SignatureState {
+    /// String form stored in the `state` column.
+    #[must_use]
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Requested => "requested",
+            Self::Completed => "completed",
+            Self::Declined => "declined",
+            Self::Voided => "voided",
+            Self::Expired => "expired",
+        }
+    }
+
+    fn from_stored(value: &str) -> Option<Self> {
+        Some(match value {
+            "requested" => Self::Requested,
+            "completed" => Self::Completed,
+            "declined" => Self::Declined,
+            "voided" => Self::Voided,
+            "expired" => Self::Expired,
+            _ => return None,
+        })
+    }
+}
+
 /// One signature request/execution.
 ///
 /// The application-facing shape: plain Rust types, no engine handles.
@@ -65,6 +107,7 @@ pub struct Signature {
     /// The provider's stored string form — see [`SignatureProvider::as_str`].
     pub provider: String,
     pub provider_id: String,
+    pub state: SignatureState,
     pub signed_at: Option<String>,
     pub inserted_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -79,6 +122,7 @@ struct SignatureRow {
     field: Option<String>,
     provider: String,
     provider_id: String,
+    state: String,
     signed_at: Option<String>,
     inserted_at: surrealdb::types::Datetime,
     updated_at: surrealdb::types::Datetime,
@@ -95,6 +139,7 @@ impl SignatureRow {
             field: self.field,
             provider: self.provider,
             provider_id: self.provider_id,
+            state: SignatureState::from_stored(&self.state)?,
             signed_at: self.signed_at,
             inserted_at: self.inserted_at.into(),
             updated_at: self.updated_at.into(),
@@ -105,7 +150,7 @@ impl SignatureRow {
 /// The projection every read shares, so one field list describes the row
 /// and a new column cannot reach [`SignatureRow`] from only one query.
 const SELECT: &str = "id, notation_id, signer_person_id, field, provider, provider_id, \
-     signed_at, inserted_at, updated_at";
+     state, signed_at, inserted_at, updated_at";
 
 /// Errors reading or writing a signature.
 #[derive(Debug, thiserror::Error)]
@@ -277,13 +322,92 @@ pub async fn stamp_signed(
     let Some(row) = by_provider(db, provider, provider_id).await? else {
         return Ok(false);
     };
-    writing(|| {
-        db.query("UPDATE $id SET signed_at = $signed_at, updated_at = time::now()")
+    if row.state == SignatureState::Completed {
+        return Ok(true);
+    }
+    if row.state != SignatureState::Requested {
+        return Ok(false);
+    }
+
+    if row.signed_at.is_some() {
+        writing(|| {
+            db.query(
+                "UPDATE $id SET state = 'completed', updated_at = time::now() \
+                 WHERE state = 'requested'",
+            )
+            .bind(("id", record_id(TABLE, row.id)))
+        })
+        .await?;
+    } else {
+        writing(|| {
+            db.query(
+                "UPDATE $id SET state = 'completed', signed_at = $signed_at, updated_at = time::now() \
+                 WHERE state = 'requested' AND signed_at = NONE",
+            )
             .bind(("id", record_id(TABLE, row.id)))
             .bind(("signed_at", signed_at.to_string()))
+        })
+        .await?;
+    }
+    Ok(true)
+}
+
+async fn stamp_terminal(
+    db: &SurrealDb,
+    provider: SignatureProvider,
+    provider_id: &str,
+    state: SignatureState,
+) -> Result<bool, SignatureError> {
+    let Some(row) = by_provider(db, provider, provider_id).await? else {
+        return Ok(false);
+    };
+    if row.state != SignatureState::Requested {
+        return Ok(false);
+    }
+
+    writing(|| {
+        db.query(
+            "UPDATE $id SET state = $state, updated_at = time::now() \
+             WHERE state = 'requested'",
+        )
+        .bind(("id", record_id(TABLE, row.id)))
+        .bind(("state", state.as_str().to_string()))
     })
     .await?;
     Ok(true)
+}
+
+/// Stamp a declined terminal state for a known provider envelope.
+///
+/// A missing envelope or an already-terminal row is a no-op.
+pub async fn stamp_declined(
+    db: &SurrealDb,
+    provider: SignatureProvider,
+    provider_id: &str,
+) -> Result<bool, SignatureError> {
+    stamp_terminal(db, provider, provider_id, SignatureState::Declined).await
+}
+
+/// Stamp a voided terminal state for a known provider envelope.
+///
+/// A missing envelope or an already-terminal row is a no-op.
+pub async fn stamp_voided(
+    db: &SurrealDb,
+    provider: SignatureProvider,
+    provider_id: &str,
+) -> Result<bool, SignatureError> {
+    stamp_terminal(db, provider, provider_id, SignatureState::Voided).await
+}
+
+/// Stamp an expired terminal state for a known provider envelope.
+///
+/// A missing envelope or an already-terminal row is a no-op.
+pub async fn stamp_expired(
+    db: &SurrealDb,
+    provider: SignatureProvider,
+    provider_id: &str,
+) -> Result<bool, SignatureError> {
+    stamp_terminal(db, provider, provider_id, SignatureState::Expired).await
 }
 
 #[cfg(test)]
@@ -374,10 +498,149 @@ mod tests {
         )
         .await
         .unwrap());
+        assert!(stamp_signed(
+            &surreal,
+            SignatureProvider::DocuSign,
+            "env-1",
+            "2026-06-30T00:00:01Z"
+        )
+        .await
+        .unwrap());
         let after = by_provider(&surreal, SignatureProvider::DocuSign, "env-1")
             .await
             .unwrap()
             .unwrap();
+        assert_eq!(after.signed_at.as_deref(), Some("2026-06-30T00:00:00Z"));
+        assert_eq!(after.state, SignatureState::Completed);
+    }
+
+    #[tokio::test]
+    async fn terminal_stamps_are_readable_but_not_completed() {
+        let surreal = mem().await;
+
+        let declined_notation = seed_notation(&surreal).await;
+        record_request(
+            &surreal,
+            declined_notation,
+            SignatureProvider::DocuSign,
+            "declined",
+        )
+        .await
+        .unwrap();
+        assert!(
+            stamp_declined(&surreal, SignatureProvider::DocuSign, "declined")
+                .await
+                .unwrap()
+        );
+        assert_eq!(
+            by_provider(&surreal, SignatureProvider::DocuSign, "declined")
+                .await
+                .unwrap()
+                .unwrap()
+                .state,
+            SignatureState::Declined
+        );
+        assert!(completed_for_notation(&surreal, declined_notation)
+            .await
+            .unwrap()
+            .is_none());
+
+        let voided_notation = seed_notation(&surreal).await;
+        record_request(
+            &surreal,
+            voided_notation,
+            SignatureProvider::DocuSign,
+            "voided",
+        )
+        .await
+        .unwrap();
+        assert!(
+            stamp_voided(&surreal, SignatureProvider::DocuSign, "voided")
+                .await
+                .unwrap()
+        );
+        assert_eq!(
+            by_provider(&surreal, SignatureProvider::DocuSign, "voided")
+                .await
+                .unwrap()
+                .unwrap()
+                .state,
+            SignatureState::Voided
+        );
+        assert!(completed_for_notation(&surreal, voided_notation)
+            .await
+            .unwrap()
+            .is_none());
+
+        let expired_notation = seed_notation(&surreal).await;
+        record_request(
+            &surreal,
+            expired_notation,
+            SignatureProvider::DocuSign,
+            "expired",
+        )
+        .await
+        .unwrap();
+        assert!(
+            stamp_expired(&surreal, SignatureProvider::DocuSign, "expired")
+                .await
+                .unwrap()
+        );
+        assert_eq!(
+            by_provider(&surreal, SignatureProvider::DocuSign, "expired")
+                .await
+                .unwrap()
+                .unwrap()
+                .state,
+            SignatureState::Expired
+        );
+        assert!(completed_for_notation(&surreal, expired_notation)
+            .await
+            .unwrap()
+            .is_none());
+    }
+
+    #[tokio::test]
+    async fn terminal_state_is_monotonic_after_completion() {
+        let surreal = mem().await;
+        let notation_id = seed_notation(&surreal).await;
+        record_request(
+            &surreal,
+            notation_id,
+            SignatureProvider::DocuSign,
+            "completed",
+        )
+        .await
+        .unwrap();
+        assert!(stamp_signed(
+            &surreal,
+            SignatureProvider::DocuSign,
+            "completed",
+            "2026-06-30T00:00:00Z"
+        )
+        .await
+        .unwrap());
+        assert!(
+            !stamp_declined(&surreal, SignatureProvider::DocuSign, "completed")
+                .await
+                .unwrap()
+        );
+        assert!(
+            !stamp_voided(&surreal, SignatureProvider::DocuSign, "completed")
+                .await
+                .unwrap()
+        );
+        assert!(
+            !stamp_expired(&surreal, SignatureProvider::DocuSign, "completed")
+                .await
+                .unwrap()
+        );
+
+        let after = by_provider(&surreal, SignatureProvider::DocuSign, "completed")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(after.state, SignatureState::Completed);
         assert_eq!(after.signed_at.as_deref(), Some("2026-06-30T00:00:00Z"));
     }
 }

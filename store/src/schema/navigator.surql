@@ -1197,8 +1197,16 @@ DEFINE FIELD OVERWRITE field ON signature TYPE option<string>;
 DEFINE FIELD OVERWRITE provider ON signature TYPE string;
 DEFINE FIELD OVERWRITE provider_id ON signature TYPE string;
 DEFINE FIELD OVERWRITE signed_at ON signature TYPE option<string>;
+DEFINE FIELD OVERWRITE state ON signature TYPE string
+    ASSERT $value IN ['requested', 'completed', 'declined', 'voided', 'expired']
+    DEFAULT 'requested';
 DEFINE FIELD OVERWRITE inserted_at ON signature TYPE datetime DEFAULT time::now();
 DEFINE FIELD OVERWRITE updated_at ON signature TYPE datetime DEFAULT time::now();
+-- `DEFAULT` applies when a row is written, not when a field is added to an
+-- existing row. Reconcile historical rows here so a row that already carries
+-- `signed_at` remains completed and every other existing request is explicit.
+UPDATE signature SET state = 'completed' WHERE state = NONE AND signed_at != NONE;
+UPDATE signature SET state = 'requested' WHERE state = NONE;
 -- The inbound completion webhook's only correlation key back to a matter.
 DEFINE INDEX OVERWRITE signature_provider_request ON signature FIELDS provider, provider_id UNIQUE;
 DEFINE INDEX OVERWRITE signature_notation ON signature FIELDS notation_id;

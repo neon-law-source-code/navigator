@@ -25,6 +25,7 @@ pub mod email;
 pub mod github;
 pub mod guardrail;
 pub mod intake;
+pub mod integrations;
 pub mod notation_session;
 pub mod notify;
 pub mod runtime;
@@ -53,6 +54,10 @@ pub use email::{
 pub use guardrail::{lawyer_review_gates_filing, lawyer_review_precedes_submission, GateViolation};
 pub use intake::{
     dispatch_document_intake, is_document_intake, IntakeArtifact, IntakeError, IntakePayload,
+};
+pub use integrations::{
+    post_slack_notice, render_slack_notice, IntegrationJob, IntegrationJobError,
+    IntegrationProviderKind, SlackNoticeEvent,
 };
 pub use notation_session::{
     answer_step, answer_step_with_reference, choice_label, create_notation_from_repo, current_step,

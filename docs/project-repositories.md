@@ -124,6 +124,17 @@ The command creates `documents/.gitignore` without overwriting an existing file.
 and `documents/**/*.yml` only; every other file below `documents/` is rejected. Raw legal-document bytes must never be
 committed to a Project repository.
 
+**`navigator site pull` is the inverse: it materialises bytes into a checkout rather than uploading them out of one.**
+It walks every committed pointer below `documents/` — the same set `document verify` reads offline — and for each one
+downloads its own recorded revision through the existing single-revision read, verified again by `sha256`, writing it to
+the staging path the pointer already names. A local file whose digest already matches is left alone, so hydrating a
+fresh clone and re-running `pull` afterward downloads nothing. It hydrates only; a live document the checkout carries no
+pointer for is `site sync`'s and a browser filing's own lane, not `pull`'s. A pointer the caller's participation does
+not admit to read is reported rather than silently skipped, and the command refuses to write outside the checkout.
+`--dry-run` lists what would change without logging in, by comparing local digests to the committed pointers alone. The
+written bytes stay exactly where `sync` already keeps them out of Git: the repository gate refuses a raw document byte
+whether it was staged before a `sync` or just materialised by a `pull`.
+
 **Visibility and key change through a reviewed diff, and only through one — that is settled, not open.** A lawyer
 Project page renders a document's visibility (a plain-word column) but offers no control that changes it, and nothing
 anywhere offers a control that changes a document's key (`slug`, the chain identity a revision belongs to). Both stay

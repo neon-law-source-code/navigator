@@ -229,7 +229,7 @@ fn select_version(live: &RevisionsResponse, version: Option<usize>) -> Result<&R
 /// A path lexically resolved against `root` without touching the filesystem
 /// (the destination need not exist yet), so `.` and `..` collapse the same
 /// way a canonicalized path would.
-fn lexical(root: &Path, path: &Path) -> PathBuf {
+pub(crate) fn lexical(root: &Path, path: &Path) -> PathBuf {
     let absolute = if path.is_absolute() {
         path.to_path_buf()
     } else {
@@ -433,7 +433,7 @@ pub(crate) async fn diff(pointer: &Path, a: usize, b: usize) -> ExitCode {
 /// relative to `root`, sorted for a stable report order. `root` carrying no
 /// `documents/` at all yields an empty list rather than an error — the
 /// common case for every repository that has not adopted the asset lane.
-fn discover_pointers(root: &Path) -> Result<Vec<PathBuf>> {
+pub(crate) fn discover_pointers(root: &Path) -> Result<Vec<PathBuf>> {
     let documents = root.join("documents");
     if !documents.is_dir() {
         return Ok(Vec::new());

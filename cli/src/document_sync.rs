@@ -106,6 +106,150 @@ async fn sync(root: &Path, dry_run: bool) -> Result<()> {
     Ok(())
 }
 
+/// Synchronize the current Project repository's staged documents in the other
+/// direction: download each committed pointer's own revision into the local
+/// staging path it names. Hydrate-only — a live document the checkout carries
+/// no pointer for is not imported; that remains `site sync`'s and a browser
+/// filing's own lane.
+pub(crate) async fn run_pull(root: &Path, dry_run: bool) -> ExitCode {
+    match pull(root, dry_run).await {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("navigator: {error:#}");
+            ExitCode::from(2)
+        }
+    }
+}
+
+/// The local staging path a pointer's own bytes belong at — its committed
+/// path with the trailing `.yml` stripped. Refuses to resolve outside
+/// `<root>/documents/`, the same lexical guard `document get` uses in the
+/// other direction (`document_read::refuse_destination_in_documents`).
+fn pull_target(root: &Path, pointer_relative: &Path) -> Result<PathBuf> {
+    let stem = pointer_relative
+        .to_str()
+        .and_then(|path| path.strip_suffix(".yml"))
+        .ok_or_else(|| {
+            anyhow!(
+                "{} does not name a `.yml` pointer",
+                pointer_relative.display()
+            )
+        })?;
+    let documents_dir = crate::document_read::lexical(root, Path::new("documents"));
+    let resolved = crate::document_read::lexical(root, Path::new(stem));
+    if !resolved.starts_with(&documents_dir) {
+        return Err(anyhow!(
+            "refusing to write {} outside {}",
+            resolved.display(),
+            documents_dir.display()
+        ));
+    }
+    Ok(resolved)
+}
+
+/// Whether the file at `path` already carries `expected_sha256` — a missing
+/// file never matches, so a fresh clone always pulls.
+fn matches_digest(path: &Path, expected_sha256: &str) -> Result<bool> {
+    match std::fs::read(path) {
+        Ok(bytes) => Ok(store::documents::sha256_hex(&bytes) == expected_sha256),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(error).with_context(|| format!("read {}", path.display())),
+    }
+}
+
+async fn pull(root: &Path, dry_run: bool) -> Result<()> {
+    let manifest = read_manifest(root)?;
+    let pointers = crate::document_read::discover_pointers(root)?;
+    if pointers.is_empty() {
+        println!("no documents/ pointers to pull");
+        return Ok(());
+    }
+
+    if dry_run {
+        let mut planned = 0usize;
+        for relative in &pointers {
+            let pointer_path = root.join(relative);
+            let pointer = read_pointer(&pointer_path)?
+                .ok_or_else(|| anyhow!("{} vanished mid-scan", pointer_path.display()))?;
+            let target = pull_target(root, relative)?;
+            if !matches_digest(&target, &pointer.current_version.sha256)? {
+                println!("would pull {}", display_relative(root, &target));
+                planned += 1;
+            }
+        }
+        println!("{planned} pull(s) planned");
+        return Ok(());
+    }
+
+    let documents = root.join("documents");
+    std::fs::create_dir_all(&documents)
+        .with_context(|| format!("create {}", documents.display()))?;
+    let ignore = documents.join(".gitignore");
+    if !ignore.exists() {
+        std::fs::write(&ignore, GITIGNORE)
+            .with_context(|| format!("write {}", ignore.display()))?;
+    }
+
+    let client = DocumentClient::connect(manifest.host.as_deref(), manifest.project.trim()).await?;
+    let mut pulled = 0usize;
+    let mut failures = Vec::new();
+    for relative in &pointers {
+        let pointer_path = root.join(relative);
+        let Some(pointer) = read_pointer(&pointer_path)? else {
+            failures.push(format!("{} vanished mid-scan", pointer_path.display()));
+            continue;
+        };
+        let target = match pull_target(root, relative) {
+            Ok(target) => target,
+            Err(error) => {
+                failures.push(format!("{}: {error}", pointer_path.display()));
+                continue;
+            }
+        };
+        if matches_digest(&target, &pointer.current_version.sha256)? {
+            continue;
+        }
+        match client
+            .download_revision(pointer.current_version.asset_id)
+            .await
+        {
+            Ok(bytes) => {
+                let actual = store::documents::sha256_hex(&bytes);
+                if actual != pointer.current_version.sha256 {
+                    failures.push(format!(
+                        "{}: sha256 mismatch: pointer says {}, download says {actual}",
+                        pointer_path.display(),
+                        pointer.current_version.sha256
+                    ));
+                    continue;
+                }
+                if let Some(parent) = target.parent() {
+                    std::fs::create_dir_all(parent)
+                        .with_context(|| format!("create {}", parent.display()))?;
+                }
+                std::fs::write(&target, &bytes)
+                    .with_context(|| format!("write {}", target.display()))?;
+                pulled += 1;
+            }
+            Err(error) => {
+                failures.push(format!("{}: {error}", pointer_path.display()));
+            }
+        }
+    }
+    if !failures.is_empty() {
+        for failure in &failures {
+            eprintln!("{failure}");
+        }
+        return Err(anyhow!(
+            "{} of {} pointer(s) failed to pull",
+            failures.len(),
+            pointers.len()
+        ));
+    }
+    println!("{pulled} pulled");
+    Ok(())
+}
+
 fn discover(documents: &Path) -> Result<(Vec<PathBuf>, Vec<PathBuf>)> {
     if !documents.exists() {
         return Ok((Vec::new(), Vec::new()));
@@ -191,5 +335,43 @@ pub(crate) fn read_pointer(
             .map(Some),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(error) => Err(error).with_context(|| format!("read {}", path.display())),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{matches_digest, pull_target};
+    use std::path::Path;
+
+    #[test]
+    fn pull_target_strips_yml_and_stays_below_documents() {
+        let root = Path::new("/repo");
+        assert_eq!(
+            pull_target(root, Path::new("documents/pleadings/motion.pdf.yml")).unwrap(),
+            Path::new("/repo/documents/pleadings/motion.pdf")
+        );
+    }
+
+    #[test]
+    fn pull_target_refuses_a_pointer_that_would_escape_the_checkout() {
+        let root = Path::new("/repo");
+        let error = pull_target(root, Path::new("documents/../../etc/passwd.yml")).unwrap_err();
+        assert!(error.to_string().contains("outside"), "{error}");
+    }
+
+    #[test]
+    fn matches_digest_is_false_for_a_missing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(!matches_digest(&dir.path().join("absent.pdf"), &"a".repeat(64)).unwrap());
+    }
+
+    #[test]
+    fn matches_digest_compares_the_actual_sha256() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("present.pdf");
+        std::fs::write(&path, b"hello").unwrap();
+        let sha256 = store::documents::sha256_hex(b"hello");
+        assert!(matches_digest(&path, &sha256).unwrap());
+        assert!(!matches_digest(&path, &"0".repeat(64)).unwrap());
     }
 }

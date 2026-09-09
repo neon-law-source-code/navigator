@@ -1,14 +1,24 @@
-//! End-to-end coverage for `navigator site sync` against its authorized API.
+//! End-to-end coverage for `navigator site sync` and `navigator site pull`
+//! against their authorized API.
 
 use std::fs;
 use std::path::Path;
 
 use assert_cmd::Command;
+use base64::Engine as _;
 use predicates::prelude::*;
 use tempfile::TempDir;
 use uuid::Uuid;
 use wiremock::matchers::{body_json, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
+
+fn base64_of(bytes: &[u8]) -> String {
+    base64::engine::general_purpose::STANDARD.encode(bytes)
+}
+
+fn sha256(bytes: &[u8]) -> String {
+    store::documents::sha256_hex(bytes)
+}
 
 fn navigator() -> Command {
     let mut command = Command::cargo_bin("navigator").unwrap();
@@ -75,6 +85,14 @@ jobs:
 }
 
 fn pointer(asset_id: Uuid) -> serde_json::Value {
+    pointer_with_sha(
+        asset_id,
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        18,
+    )
+}
+
+fn pointer_with_sha(asset_id: Uuid, sha256: &str, size_bytes: i64) -> serde_json::Value {
     serde_json::json!({
         "kind": "filing",
         "visibility": "internal",
@@ -82,8 +100,8 @@ fn pointer(asset_id: Uuid) -> serde_json::Value {
             "version": 1,
             "asset_id": asset_id,
             "created_at": "2026-09-05T12:00:00Z",
-            "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-            "size_bytes": 18
+            "sha256": sha256,
+            "size_bytes": size_bytes
         }
     })
 }
@@ -361,4 +379,213 @@ async fn an_interrupted_multi_file_sync_resumes_without_refiling_completed_work(
     assert!(root.path().join("documents/pleadings/a.pdf.yml").exists());
     assert!(!root.path().join("documents/pleadings/b.pdf").exists());
     assert!(root.path().join("documents/pleadings/b.pdf.yml").exists());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[allow(clippy::too_many_lines)]
+async fn pull_round_trips_synced_bytes_and_a_second_pull_writes_nothing() {
+    let server = MockServer::start().await;
+    let host = server.uri();
+    let root = TempDir::new().unwrap();
+    let creds = TempDir::new().unwrap();
+    manifest(root.path(), &host);
+    let credential_path = credentials(creds.path(), &host);
+    write(
+        root.path(),
+        "documents/pleadings/a.pdf",
+        b"synthetic filing a",
+    );
+    write(
+        root.path(),
+        "documents/exhibits/b.png",
+        b"synthetic exhibit b",
+    );
+    let project_id = Uuid::now_v7();
+    let asset_a = Uuid::now_v7();
+    let asset_b = Uuid::now_v7();
+
+    Mock::given(method("GET"))
+        .and(path("/app/api/projects"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+            {"id": project_id, "code": "acme"}
+        ])))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path(format!("/app/api/projects/{project_id}/documents")))
+        .and(body_json(serde_json::json!({
+            "filename": "a.pdf",
+            "content_base64": base64_of(b"synthetic filing a"),
+            "content_type": "application/pdf",
+            "kind": "filing",
+            "visibility": "internal",
+            "slug": "pleadings/a.pdf"
+        })))
+        .respond_with(ResponseTemplate::new(201).set_body_json(pointer_with_sha(
+            asset_a,
+            &sha256(b"synthetic filing a"),
+            19,
+        )))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path(format!("/app/api/projects/{project_id}/documents")))
+        .and(body_json(serde_json::json!({
+            "filename": "b.png",
+            "content_base64": base64_of(b"synthetic exhibit b"),
+            "content_type": "image/png",
+            "kind": "exhibit",
+            "visibility": "internal",
+            "slug": "exhibits/b.png"
+        })))
+        .respond_with(ResponseTemplate::new(201).set_body_json(pointer_with_sha(
+            asset_b,
+            &sha256(b"synthetic exhibit b"),
+            19,
+        )))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    navigator()
+        .current_dir(root.path())
+        .env("NAVIGATOR_CREDENTIALS_FILE", &credential_path)
+        .args(["site", "sync"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("2 uploaded"));
+
+    // `sync` removes the staged binary after a successful upload, so the
+    // checkout now holds only the two committed pointers — the same shape a
+    // fresh clone starts from.
+    assert!(!root.path().join("documents/pleadings/a.pdf").exists());
+    assert!(!root.path().join("documents/exhibits/b.png").exists());
+
+    Mock::given(method("GET"))
+        .and(path(format!(
+            "/app/projects/acme/documents/{asset_a}/download"
+        )))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(b"synthetic filing a".to_vec()))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(format!(
+            "/app/projects/acme/documents/{asset_b}/download"
+        )))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(b"synthetic exhibit b".to_vec()))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    navigator()
+        .current_dir(root.path())
+        .env("NAVIGATOR_CREDENTIALS_FILE", &credential_path)
+        .args(["site", "pull"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("2 pulled"));
+
+    assert_eq!(
+        fs::read(root.path().join("documents/pleadings/a.pdf")).unwrap(),
+        b"synthetic filing a"
+    );
+    assert_eq!(
+        fs::read(root.path().join("documents/exhibits/b.png")).unwrap(),
+        b"synthetic exhibit b"
+    );
+
+    // A second pull finds every local digest already matching the pointer and
+    // downloads nothing — the mocks above are `.expect(1)`, so a second
+    // network call would fail the test.
+    navigator()
+        .current_dir(root.path())
+        .env("NAVIGATOR_CREDENTIALS_FILE", &credential_path)
+        .args(["site", "pull"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("0 pulled"));
+
+    // The layout gate scans the filesystem directly and knows nothing about
+    // `.gitignore`, so the bytes `pull` just wrote are exactly as refused as
+    // any other raw document byte would be — `pull` must never widen that gate.
+    write_layout_for_validate(root.path());
+    navigator()
+        .current_dir(root.path())
+        .args(["validate", "."])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "legal documents and raw document bytes must not be committed",
+        ));
+}
+
+#[test]
+fn pull_dry_run_lists_pending_pulls_without_logging_in() {
+    let root = TempDir::new().unwrap();
+    manifest(root.path(), "staging.example.com");
+    let asset_id = Uuid::now_v7();
+    write(
+        root.path(),
+        "documents/pleadings/motion.pdf.yml",
+        serde_yaml::to_string(&pointer_with_sha(asset_id, &"a".repeat(64), 3)).unwrap(),
+    );
+
+    navigator()
+        .current_dir(root.path())
+        .args(["site", "pull", "--dry-run"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "would pull documents/pleadings/motion.pdf",
+        ))
+        .stdout(predicate::str::contains("1 pull(s) planned"));
+
+    assert!(!root.path().join("documents/pleadings/motion.pdf").exists());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_pointer_the_caller_cannot_read_is_reported_and_no_file_is_written() {
+    let server = MockServer::start().await;
+    let host = server.uri();
+    let root = TempDir::new().unwrap();
+    manifest(root.path(), &host);
+    let credential_path = credentials(root.path(), &host);
+    let project_id = Uuid::now_v7();
+    let asset_id = Uuid::now_v7();
+    write(
+        root.path(),
+        "documents/pleadings/privileged.pdf.yml",
+        serde_yaml::to_string(&pointer_with_sha(asset_id, &"a".repeat(64), 3)).unwrap(),
+    );
+
+    Mock::given(method("GET"))
+        .and(path("/app/api/projects"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+            {"id": project_id, "code": "acme"}
+        ])))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(format!(
+            "/app/projects/acme/documents/{asset_id}/download"
+        )))
+        .respond_with(ResponseTemplate::new(403).set_body_string("not on your lens"))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    navigator()
+        .current_dir(root.path())
+        .env("NAVIGATOR_CREDENTIALS_FILE", credential_path)
+        .args(["site", "pull"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("privileged.pdf.yml"));
+
+    assert!(!root
+        .path()
+        .join("documents/pleadings/privileged.pdf")
+        .exists());
 }

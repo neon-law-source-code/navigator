@@ -344,6 +344,36 @@ anything moves. Run the real sync only against a matter the signed-in account ca
 Open the emitted `.yml` and point out what it does not contain. Finish by committing a raw file on purpose and running
 `validate` so the room meets the gate error here, with context, rather than on their first real upload.
 
+### Pull a fresh checkout's documents
+
+`navigator site pull` is the inverse of `sync`: it downloads each committed pointer's own revision into the staging path
+it already names, rather than uploading a staged file out of one. A fresh clone carries pointers but no bytes; `pull` is
+what fills them back in without a manual `document get` per pointer.
+
+```bash
+navigator site pull --dry-run
+navigator site pull
+```
+
+The dry run compares each pointer's recorded `sha256` against the local file — no login, no network call — and lists
+what would change:
+
+```text
+would pull documents/exhibits/exhibit-a.png
+1 pull(s) planned
+```
+
+The real run downloads through the same authenticated API `sync` uses, verifies the bytes against the pointer's own
+`sha256`, and writes them to the staged path. A file whose digest already matches is left alone, so running `pull` again
+after a full checkout prints `0 pulled`. It hydrates only: a live document the checkout carries no pointer for is
+`sync`'s lane, not `pull`'s. A pointer the signed-in account cannot read is reported, not silently skipped.
+
+---
+
+Delete the exhibit `sync` just uploaded, run `pull --dry-run` so the room sees the plan, then the real `pull` and show
+the restored bytes are identical. Run `pull` a second time and point out the `0 pulled` — the digest check, not a
+re-download, is what makes a repeated `pull` cheap.
+
 ### The portal is a separate, later decision
 
 Not every Project needs a client-facing application. When one does, its `portal/` is hand-built in the `vibe-react` lane

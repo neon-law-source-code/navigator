@@ -172,6 +172,18 @@ async fn the_sign_action_renders_only_for_a_live_envelopes_own_signer() {
 
     let co_client_html =
         matter_page_html(&f, &cookie_for(&f.sessions, Role::Client, f.co_client)).await;
+    // Anchor the negative: the co-client's page must actually carry this
+    // notation's row (every row renders an outline link) before the absence
+    // of the sign action means anything. Without this the assertion below
+    // would also pass if the row stopped rendering for them altogether —
+    // a different behavior change wearing the same green test.
+    assert!(
+        co_client_html.contains(&format!(
+            "/app/projects/{}/{notation_id}/outline",
+            f.project_code
+        )),
+        "the co-client must still see the notation's own row on the shared matter page",
+    );
     assert!(
         !co_client_html.contains(&sign_href),
         "another participant on the same matter must never see the action for someone else's envelope",

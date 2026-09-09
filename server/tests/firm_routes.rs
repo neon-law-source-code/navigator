@@ -722,7 +722,7 @@ async fn transactional_states_its_turnaround_in_prose() {
     let app = site_app().await;
     let body = body_string(anon_get(&app, "/fractional-gc").await).await;
     assert!(
-        body.contains("one business day on a redline"),
+        body.contains("comes back in one business day"),
         "the commitment survives as prose: {body}"
     );
     for gone in ["speed-dial", "Measured from a complete intake"] {

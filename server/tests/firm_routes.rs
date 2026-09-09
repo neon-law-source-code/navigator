@@ -1570,13 +1570,17 @@ async fn home_renders_the_statement_and_the_practice_prose() {
         "the lead names the team: {body}"
     );
 
-    // The practice prose: one card of paragraphs under one heading. A card
-    // *per* practice area is the shape this page sheds, so the count is what
-    // the guard is for rather than the text inside it.
+    // The practice prose: one full-width band of paragraphs under one heading.
+    // A card around that prose insets the heading from the statement; a card
+    // *per* practice area is the other shape this page sheds.
     assert_eq!(
-        body.matches(r#"class="neon-card home-service""#).count(),
+        body.matches(r#"class="home-service""#).count(),
         1,
-        "exactly one prose card: {body}"
+        "exactly one prose band: {body}"
+    );
+    assert!(
+        !body.contains(r#"class="neon-card home-service""#),
+        "the engagements section is a band, not a card: {body}"
     );
     assert!(
         body.contains(r#"aria-labelledby="home-service-heading""#),

@@ -63,9 +63,10 @@ pub struct HeroPicture {
 
 /// The firm's engagements, in the firm's own words.
 ///
-/// A heading and the paragraphs under it. Deliberately not a list of cards: the
-/// shape of the section is itself a claim about how many offerings the reader is
-/// choosing between, and the page leads with one.
+/// A heading and the paragraphs under it, drawn as a full-width band so the
+/// heading shares the statement's left edge. Deliberately not a card or a
+/// list of cards: the shape of the section is itself a claim about how many
+/// offerings the reader is choosing between, and the page leads with one.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct ServiceSection {
     pub heading: String,
@@ -353,11 +354,12 @@ pub fn HomePage(chrome: PublicChrome, content: HomeContent) -> Element {
     }
 }
 
-/// The engagements section, in prose: the heading and the paragraphs under it.
+/// The engagements section, in prose: a full-width band, not a card, so the
+/// heading shares the statement's left edge.
 #[component]
 fn ServiceProse(service: ServiceSection) -> Element {
     rsx! {
-        section { class: "neon-card home-service", "aria-labelledby": "home-service-heading",
+        section { class: "home-service", "aria-labelledby": "home-service-heading",
             h2 { id: "home-service-heading", class: "home-service__heading", "{service.heading}" }
             for paragraph in service.body.iter() {
                 p { class: "home-service__paragraph",
@@ -708,18 +710,21 @@ mod tests {
     /// The page renders one offering, in prose, under one `<h2>`.
     ///
     /// The shape is the claim: a grid of cards tells a reader there are several
-    /// things to choose between, and the firm does one thing. This is what keeps
-    /// a practice card from growing back.
+    /// things to choose between, and the firm does one thing. The engagements
+    /// copy sits in a full-width band so its heading shares the statement's
+    /// left edge; a card around that prose is what this guards against.
     #[test]
     fn the_service_is_one_prose_section_and_not_a_grid_of_cards() {
         let out = html();
         assert!(out.contains("What we do"), "the section heading: {out}");
-        // One card for the engagements prose, plus one per practice box. What
-        // must not come back is a card *per offering* in the prose itself.
         assert_eq!(
-            out.matches(r#"class="neon-card home-service""#).count(),
+            out.matches(r#"class="home-service""#).count(),
             1,
-            "exactly one engagements card: {out}"
+            "exactly one engagements band: {out}"
+        );
+        assert!(
+            !out.contains(r#"class="neon-card home-service""#),
+            "the engagements section is a band, not a card: {out}"
         );
         assert_eq!(
             out.matches("<h2").count(),

@@ -211,9 +211,23 @@ fn regorus_matches_every_checked_in_policy_decision() {
     //   boundary there, so a narrowing of the rule must break this assertion
     //   rather than silently make the route unreachable in production.
     // 427 + 1 = 428.
+    //
+    // + 8 for `/app/profile`, the self-service profile page: every
+    //   authenticated tier admitted at the page and at its `/app/profile/avatar`
+    //   upload twin (six page cases: five tiers plus anonymous denied; two
+    //   upload cases: a client admitted, anonymous denied — the person id
+    //   comes from the session, never the URL, so this is a flat authenticated
+    //   rule rather than a per-tier one).
+    // 428 + 8 = 436.
+    //
+    // + 6 for `/app/people/{id}/avatar`: every authenticated tier admitted at
+    //   the route, anonymous denied. Rego has no participation data to narrow
+    //   further; `store::access::avatar_visible_to` in the handler carries the
+    //   actual, participation-scoped rule (docs/access-model.md).
+    // 436 + 6 = 442.
     assert_eq!(
         test_names.len(),
-        428,
+        442,
         "the policy decision inventory changed; review every new or removed rule"
     );
 

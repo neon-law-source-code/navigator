@@ -316,12 +316,11 @@ impl GitHubForge {
     }
 
     /// [`Self::get_repository`], optionally failing closed when the live
-    /// repository is not private. `verify_private` is true only from
-    /// [`Self::create_repository`]'s adopt-on-conflict path: provisioning must
-    /// verify the result rather than assume a `POST` (or a name-taken adopt)
-    /// was honoured, while an ordinary lookup — used by callers with no
-    /// provisioning stake, such as the reconciler's own drift report — must
-    /// not start failing on a repository it is only reading.
+    /// repository is not private. Provisioning uses the checked form both when
+    /// it adopts an existing repository and when it adopts after a create
+    /// conflict; ordinary lookups — used by callers with no provisioning
+    /// stake, such as the reconciler's own drift report — must not start
+    /// failing on a repository they are only reading.
     async fn get_repository_checked(
         &self,
         project_code: &str,
@@ -437,7 +436,7 @@ impl ForgeService for GitHubForge {
     }
 
     async fn ensure_repository(&self, project_code: &str) -> Result<ForgeRepository, ForgeError> {
-        if let Some(existing) = self.get_repository(project_code).await? {
+        if let Some(existing) = self.get_repository_checked(project_code, true).await? {
             tracing::info!(
                 project_code,
                 repository_url = existing.url.as_str(),
@@ -617,6 +616,33 @@ mod tests {
         let repo = forge.ensure_repository("acme").await.unwrap();
         assert_eq!(repo.name, "acme");
         assert_eq!(repo.url, "https://forge.example/an-organization/acme");
+    }
+
+    #[tokio::test]
+    async fn github_forge_fails_closed_when_an_existing_repository_is_not_private() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/repos/an-organization/acme"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "html_url": "https://forge.example/an-organization/acme",
+                "name": "acme",
+                "private": false
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let forge = GitHubForge::from_lookup(lookup(&[
+            (NAVIGATOR_GCP_PROJECT_ID, "neon-law-stg"),
+            (NAVIGATOR_GITHUB_ORG, "an-organization"),
+            (NAVIGATOR_GITHUB_TOKEN_ENV, "test-token"),
+            (GITHUB_API_BASE_ENV, server.uri().as_str()),
+        ]))
+        .expect("configured forge");
+
+        let error = forge.ensure_repository("acme").await.unwrap_err();
+        assert!(error.to_string().contains("acme"), "{error}");
+        assert!(error.to_string().contains("not private"), "{error}");
     }
 
     #[tokio::test]

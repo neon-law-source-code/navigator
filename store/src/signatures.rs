@@ -305,6 +305,32 @@ pub async fn completed_for_notation(
     Ok(one(response)?)
 }
 
+/// The most recently recorded signature row for a Notation, in any state —
+/// `None` when no envelope has ever been requested. Unlike
+/// [`completed_for_notation`], which answers only "has this executed",
+/// this reads the envelope's current state regardless of outcome, so a
+/// caller can tell a live envelope (state
+/// [`SignatureState::Requested`]) apart from one that never started, and
+/// a declined, voided, or expired envelope from one still outstanding.
+///
+/// # Errors
+///
+/// [`SignatureError::Db`] if the lookup fails.
+pub async fn latest_for_notation(
+    db: &SurrealDb,
+    notation_id: Uuid,
+) -> Result<Option<Signature>, SignatureError> {
+    let response = db
+        .query(format!(
+            "SELECT {SELECT} FROM {TABLE} WHERE notation_id = $notation \
+             ORDER BY inserted_at DESC LIMIT 1"
+        ))
+        .bind(("notation", record_id(crate::notations::TABLE, notation_id)))
+        .await
+        .and_then(surrealdb::IndexedResults::check)?;
+    Ok(one(response)?)
+}
+
 /// Stamp `signed_at` on the signature for `(provider, provider_id)` when
 /// the provider reports completion. A no-op (returns `false`) for an
 /// unknown envelope — the callback may arrive for one we never tracked, or
@@ -473,6 +499,38 @@ mod tests {
             .expect("stamped signature is now completed");
         assert_eq!(completed.provider_id, "env-1");
         assert_eq!(completed.signed_at.as_deref(), Some("2026-06-30T00:00:00Z"));
+    }
+
+    #[tokio::test]
+    async fn latest_for_notation_reads_the_live_state_through_every_transition() {
+        let surreal = mem().await;
+        let notation_id = seed_notation(&surreal).await;
+        assert!(latest_for_notation(&surreal, notation_id)
+            .await
+            .unwrap()
+            .is_none());
+
+        record_request(&surreal, notation_id, SignatureProvider::DocuSign, "env-1")
+            .await
+            .unwrap();
+        assert_eq!(
+            latest_for_notation(&surreal, notation_id)
+                .await
+                .unwrap()
+                .map(|s| s.state),
+            Some(SignatureState::Requested)
+        );
+
+        stamp_declined(&surreal, SignatureProvider::DocuSign, "env-1")
+            .await
+            .unwrap();
+        assert_eq!(
+            latest_for_notation(&surreal, notation_id)
+                .await
+                .unwrap()
+                .map(|s| s.state),
+            Some(SignatureState::Declined)
+        );
     }
 
     #[tokio::test]

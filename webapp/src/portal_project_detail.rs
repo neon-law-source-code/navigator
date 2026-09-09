@@ -44,6 +44,7 @@ pub struct InvoiceView {
 /// One of the matter's notations (e.g. the retainer), in plain words, with the
 /// download links keyed off which of its three PDFs exist in storage.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[allow(clippy::struct_excessive_bools)] // One independent readiness flag per document/action.
 pub struct NotationRow {
     pub id: String,
     pub title: String,
@@ -57,6 +58,13 @@ pub struct NotationRow {
     /// [`notation_status_label`].
     pub signed_ready: bool,
     pub certificate_ready: bool,
+    /// True only for a live envelope (signature
+    /// [`store::signatures::SignatureState::Requested`]) whose bound signer
+    /// (`notation.person_id`) is the current session's person — never for a
+    /// declined, voided, expired, or already-completed envelope, and never
+    /// for a notation addressed to a different participant on the same
+    /// matter.
+    pub signable: bool,
 }
 
 /// One attorney-advanced draft the client may read and comment on.
@@ -108,19 +116,47 @@ pub struct ProjectDetailView {
     pub pending_intake: Option<String>,
 }
 
-/// Client-friendly status for a notation, derived from its workflow state and
-/// which PDFs have materialized — never the raw docket state. Mirrors the
-/// `notation_status_label`.
+/// Client-friendly status for a notation, derived from its workflow state,
+/// its signature evidence, and which PDFs have materialized — never the raw
+/// docket state. Mirrors the `notation_status_label`.
 ///
 /// `signed_ready` here is signature evidence
 /// ([`store::signatures::completed_for_notation`]), not object presence — a
 /// declined or voided envelope, or one still outstanding, both leave it
-/// `false`, so neither renders "Signed"; a still-outstanding envelope is
-/// told apart from every other unsigned state by `state` (`sent_for_signature*`).
+/// `false`, so neither renders "Signed". `signature_state` is what tells
+/// those two apart: a live envelope reads
+/// [`store::signatures::SignatureState::Requested`], while a dead one reads
+/// `Declined`, `Voided`, or `Expired` — none of those may read as "Ready for
+/// signature" or "Awaiting your signature", both of which offer a signing
+/// action that no longer exists (ENG-558/ENG-560).
+///
+/// `awaiting_countersignature` is always `false` from every caller today:
+/// the `signature` row is envelope-scoped (one `state` for every recipient
+/// on the sequential two-party envelope), and `DocuSign`'s per-recipient
+/// completion event is presently ignored by `esignature_webhook`, so
+/// nothing distinguishes a client who has not started signing from one who
+/// has already signed and is waiting on the firm's countersignature — both
+/// read as `Requested`. The parameter exists so this function's copy is
+/// correct and covered now; wiring a caller that can pass `true` needs
+/// per-signer completion capture, a later lane.
 #[cfg(feature = "server")]
-fn notation_status_label(state: &str, signed_ready: bool, rendered_ready: bool) -> &'static str {
+fn notation_status_label(
+    state: &str,
+    signature_state: Option<store::signatures::SignatureState>,
+    signed_ready: bool,
+    rendered_ready: bool,
+    awaiting_countersignature: bool,
+) -> &'static str {
+    use store::signatures::SignatureState;
     if signed_ready {
         "Signed"
+    } else if matches!(
+        signature_state,
+        Some(SignatureState::Declined | SignatureState::Voided | SignatureState::Expired)
+    ) {
+        "Signing was declined. Contact the firm to continue."
+    } else if awaiting_countersignature {
+        "You have signed. Awaiting the firm's countersignature."
     } else if state.starts_with("sent_for_signature") {
         "Awaiting your signature"
     } else if rendered_ready {
@@ -226,7 +262,7 @@ pub async fn get_project_detail() -> Result<ProjectDetailView, ServerFnError> {
         tokio::spawn(queue_client_project_view(id));
     }
     // Notations, each with which of its three PDFs exist in storage.
-    let notation_rows = notation_rows(&surreal, storage.as_ref(), id).await?;
+    let notation_rows = notation_rows(&surreal, storage.as_ref(), id, person_id).await?;
 
     // Client-readable drafts (only those an attorney has advanced past `draft`).
     let review_docs = store::review_documents::client_visible_for_project(&surreal, id)
@@ -331,7 +367,10 @@ async fn queue_client_project_view(project_id: uuid::Uuid) {
 
 /// Build the per-notation rows for a matter: title, a client-friendly status,
 /// and which of the three PDFs exist. `exists` is a metadata-only HEAD, so a
-/// handful of probes per matter is cheap. Mirrors the `notation_rows`.
+/// handful of probes per matter is cheap. `person_id` is the current
+/// session's person, used only to decide [`NotationRow::signable`] — never
+/// to filter which notations appear, since every participant's notations
+/// still show on the shared matter page. Mirrors the `notation_rows`.
 ///
 /// `signed_ready` is the one field this loop does not answer from storage:
 /// an object at the signed-document key only proves bytes were written
@@ -345,6 +384,7 @@ async fn notation_rows(
     surreal: &store::surreal::SurrealDb,
     storage: &dyn cloud::StorageService,
     project_id: uuid::Uuid,
+    person_id: Option<uuid::Uuid>,
 ) -> Result<Vec<NotationRow>, ServerFnError> {
     let notations = store::notations::list_by_project(surreal, project_id)
         .await
@@ -365,19 +405,42 @@ async fn notation_rows(
             .ok()
             .flatten()
             .is_some();
+        let signature_state = store::signatures::latest_for_notation(surreal, n.id)
+            .await
+            .ok()
+            .flatten()
+            .map(|s| s.state);
         let certificate_ready = storage
             .exists(&store::notations::certificate_of_completion_storage_key(
                 n.id,
             ))
             .await
             .unwrap_or(false);
+        // Live envelope, addressed to this exact signer — a matter can
+        // carry several client participants, so a live envelope bound to
+        // one of them must never offer the sign action to another (mirrors
+        // the identity gate `esign_view::sign_get` applies before minting a
+        // recipient view).
+        let signable = person_id == Some(n.person_id)
+            && matches!(
+                signature_state,
+                Some(store::signatures::SignatureState::Requested)
+            );
         rows.push(NotationRow {
             id: n.id.to_string(),
             title,
-            status: notation_status_label(&n.state, signed_ready, rendered_ready).to_string(),
+            status: notation_status_label(
+                &n.state,
+                signature_state,
+                signed_ready,
+                rendered_ready,
+                false,
+            )
+            .to_string(),
             rendered_ready,
             signed_ready,
             certificate_ready,
+            signable,
         });
     }
     Ok(rows)
@@ -516,6 +579,14 @@ pub fn ClientProjectDetail() -> Element {
                                     span { class: "status-chip", " {n.status}" }
                                 }
                                 span { class: "portal-agreement__links",
+                                    if n.signable {
+                                        a {
+                                            class: "nav-btn nav-btn--primary",
+                                            href: "/app/notations/{n.id}/sign",
+                                            role: "button",
+                                            "Review and sign"
+                                        }
+                                    }
                                     a {
                                         class: "nav-btn nav-btn--secondary",
                                         href: "{crate::notation_outline::notation_outline_href(&view.code, &n.id)}",
@@ -606,6 +677,7 @@ pub fn ClientProjectDetail() -> Element {
 mod tests {
     use super::{notation_rows, notation_status_label};
     use cloud::StorageService;
+    use store::signatures::SignatureState;
 
     /// Signature evidence, not workflow state, decides the label — with
     /// `state` and `rendered_ready` held fixed, only flipping evidence flips
@@ -613,8 +685,20 @@ mod tests {
     /// gets the signed label, a signed one always does).
     #[test]
     fn signature_evidence_alone_changes_the_label() {
-        let unsigned = notation_status_label("sent_for_signature__pending", false, true);
-        let signed = notation_status_label("sent_for_signature__pending", true, true);
+        let unsigned = notation_status_label(
+            "sent_for_signature__pending",
+            Some(SignatureState::Requested),
+            false,
+            true,
+            false,
+        );
+        let signed = notation_status_label(
+            "sent_for_signature__pending",
+            Some(SignatureState::Completed),
+            true,
+            true,
+            false,
+        );
         assert_ne!(unsigned, signed);
     }
 
@@ -623,25 +707,71 @@ mod tests {
     /// one thing that can assert execution.
     #[test]
     fn signature_evidence_produces_the_same_label_regardless_of_workflow_state() {
-        let via_pending = notation_status_label("sent_for_signature__pending", true, true);
-        let via_end = notation_status_label("END", true, true);
-        let via_no_render = notation_status_label("BEGIN", true, false);
+        let via_pending = notation_status_label(
+            "sent_for_signature__pending",
+            Some(SignatureState::Completed),
+            true,
+            true,
+            false,
+        );
+        let via_end =
+            notation_status_label("END", Some(SignatureState::Completed), true, true, false);
+        let via_no_render =
+            notation_status_label("BEGIN", Some(SignatureState::Completed), true, false, false);
         assert_eq!(via_pending, via_end);
         assert_eq!(via_pending, via_no_render);
     }
 
-    /// A declined or voided envelope (which the esignature webhook leaves
-    /// at the terminal `END` state without ever stamping `signed_at`) reads
-    /// as distinct from one still outstanding at
-    /// `sent_for_signature__pending` — neither is the signed label, and the
-    /// two are told apart from each other (ENG-421, covering test 3).
+    /// A declined, voided, or expired envelope (which the esignature
+    /// webhook leaves at the terminal `END` state without ever stamping
+    /// `signed_at`) reads correctly — not merely distinctly — as told to a
+    /// client: it must say signing was declined and point them to the firm,
+    /// never assert that a signing action still exists (ENG-558; ENG-421
+    /// covering test 3 for the distinctness half).
     #[test]
-    fn a_declined_envelope_is_distinguishable_from_one_still_outstanding() {
-        let outstanding = notation_status_label("sent_for_signature__pending", false, true);
-        let declined = notation_status_label("END", false, true);
-        let signed = notation_status_label("END", true, true);
-        assert_ne!(outstanding, declined);
-        assert_ne!(declined, signed);
+    fn a_dead_envelope_reads_as_declined_with_no_signing_action_implied() {
+        const DECLINED_LABEL: &str = "Signing was declined. Contact the firm to continue.";
+        let outstanding = notation_status_label(
+            "sent_for_signature__pending",
+            Some(SignatureState::Requested),
+            false,
+            true,
+            false,
+        );
+        let signed =
+            notation_status_label("END", Some(SignatureState::Completed), true, true, false);
+        for state in [
+            SignatureState::Declined,
+            SignatureState::Voided,
+            SignatureState::Expired,
+        ] {
+            let declined = notation_status_label("END", Some(state), false, true, false);
+            assert_eq!(
+                declined, DECLINED_LABEL,
+                "{state:?} must read the declined copy verbatim, not merely something distinct"
+            );
+            assert_ne!(outstanding, declined);
+            assert_ne!(declined, signed);
+        }
+    }
+
+    /// The countersignature-window copy is correct and covered directly,
+    /// even though no caller can produce its precondition today — see the
+    /// doc comment on `notation_status_label` for why `awaiting_countersignature`
+    /// is always `false` from `notation_rows`.
+    #[test]
+    fn the_countersignature_window_copy_never_claims_the_client_still_owes_a_signature() {
+        let label = notation_status_label(
+            "sent_for_signature__pending",
+            Some(SignatureState::Requested),
+            false,
+            true,
+            true,
+        );
+        assert_eq!(
+            label,
+            "You have signed. Awaiting the firm's countersignature."
+        );
     }
 
     /// The route-level proof: `notation_rows` must not read `signed_ready`
@@ -675,7 +805,7 @@ mod tests {
             )
             .await
             .expect("write object at the signed key");
-        let rows = notation_rows(&surreal, &storage, notation.project_id)
+        let rows = notation_rows(&surreal, &storage, notation.project_id, None)
             .await
             .expect("build notation rows");
         let row = rows.iter().find(|r| r.id == notation_id.to_string());
@@ -703,7 +833,7 @@ mod tests {
         )
         .await
         .expect("stamp signed_at");
-        let rows = notation_rows(&surreal, &storage, notation.project_id)
+        let rows = notation_rows(&surreal, &storage, notation.project_id, None)
             .await
             .expect("build notation rows");
         let row = rows.iter().find(|r| r.id == notation_id.to_string());
@@ -712,5 +842,224 @@ mod tests {
             Some(true),
             "a completed signature record must make the notation signed_ready"
         );
+    }
+
+    /// A fresh `FsStorage` temp root, mirroring the setup every other
+    /// `notation_rows` test in this module shares.
+    async fn temp_storage(label: &str, notation_id: uuid::Uuid) -> cloud::FsStorage {
+        cloud::FsStorage::new(
+            std::env::temp_dir().join(format!("navigator-webapp-portal-{label}-{notation_id}")),
+        )
+        .await
+        .expect("create FsStorage temp root")
+    }
+
+    /// `signable` is the gate the "Review and sign" action renders behind
+    /// (ENG-558): only a live envelope (`Requested`) whose bound signer is
+    /// the current session may see it. Before any envelope is sent, and
+    /// when a live envelope belongs to a different participant on the same
+    /// matter, it must be `false`.
+    #[tokio::test]
+    async fn signable_is_true_only_for_a_live_envelope_addressed_to_its_signer() {
+        let surreal = store::surreal::test_support::mem().await;
+        let notation_id = store::test_support::seed_notation(&surreal).await;
+        let notation = store::notations::find_by_id(&surreal, notation_id)
+            .await
+            .expect("query notation")
+            .expect("seeded notation exists");
+        let storage = temp_storage("signable-addressed", notation_id).await;
+
+        // No envelope has been sent yet: nothing to sign.
+        let rows = notation_rows(
+            &surreal,
+            &storage,
+            notation.project_id,
+            Some(notation.person_id),
+        )
+        .await
+        .expect("build notation rows");
+        assert_eq!(
+            rows.iter()
+                .find(|r| r.id == notation_id.to_string())
+                .map(|r| r.signable),
+            Some(false),
+            "a notation with no envelope yet must not be signable"
+        );
+
+        store::signatures::record_request(
+            &surreal,
+            notation_id,
+            store::signatures::SignatureProvider::DocuSign,
+            "env-eng-558-live",
+        )
+        .await
+        .expect("record signature request");
+
+        // The bound signer, viewing a live envelope, may sign it.
+        let rows = notation_rows(
+            &surreal,
+            &storage,
+            notation.project_id,
+            Some(notation.person_id),
+        )
+        .await
+        .expect("build notation rows");
+        assert_eq!(
+            rows.iter()
+                .find(|r| r.id == notation_id.to_string())
+                .map(|r| r.signable),
+            Some(true),
+            "a live envelope addressed to the current session's person must be signable"
+        );
+
+        // A different participant on the same matter must never see the
+        // action for someone else's envelope.
+        let other = store::persons::find_or_create(
+            &surreal,
+            &store::persons::NewPerson::new("Aries", "aries@example.com"),
+        )
+        .await
+        .expect("seed a second participant");
+        let rows = notation_rows(&surreal, &storage, notation.project_id, Some(other.id))
+            .await
+            .expect("build notation rows");
+        assert_eq!(
+            rows.iter()
+                .find(|r| r.id == notation_id.to_string())
+                .map(|r| r.signable),
+            Some(false),
+            "a live envelope must never be signable to another participant"
+        );
+
+        // No session identity at all — the client-DRI / logged-out shape.
+        let rows = notation_rows(&surreal, &storage, notation.project_id, None)
+            .await
+            .expect("build notation rows");
+        assert_eq!(
+            rows.iter()
+                .find(|r| r.id == notation_id.to_string())
+                .map(|r| r.signable),
+            Some(false),
+            "no session person means no one is signable"
+        );
+    }
+
+    /// A dead envelope offers no signing action to anyone, even its bound
+    /// signer (ENG-558 acceptance: declined and expired must both be
+    /// `false`; voided follows the same terminal-state rule).
+    #[tokio::test]
+    async fn signable_is_false_for_a_declined_voided_or_expired_envelope() {
+        for (label, provider_id) in [
+            ("declined", "env-eng-558-declined"),
+            ("voided", "env-eng-558-voided"),
+            ("expired", "env-eng-558-expired"),
+        ] {
+            let surreal = store::surreal::test_support::mem().await;
+            let notation_id = store::test_support::seed_notation(&surreal).await;
+            let notation = store::notations::find_by_id(&surreal, notation_id)
+                .await
+                .expect("query notation")
+                .expect("seeded notation exists");
+            let storage = temp_storage(&format!("signable-{label}"), notation_id).await;
+
+            store::signatures::record_request(
+                &surreal,
+                notation_id,
+                store::signatures::SignatureProvider::DocuSign,
+                provider_id,
+            )
+            .await
+            .expect("record signature request");
+            match label {
+                "declined" => {
+                    store::signatures::stamp_declined(
+                        &surreal,
+                        store::signatures::SignatureProvider::DocuSign,
+                        provider_id,
+                    )
+                    .await
+                }
+                "voided" => {
+                    store::signatures::stamp_voided(
+                        &surreal,
+                        store::signatures::SignatureProvider::DocuSign,
+                        provider_id,
+                    )
+                    .await
+                }
+                _ => {
+                    store::signatures::stamp_expired(
+                        &surreal,
+                        store::signatures::SignatureProvider::DocuSign,
+                        provider_id,
+                    )
+                    .await
+                }
+            }
+            .expect("stamp terminal state");
+
+            let rows = notation_rows(
+                &surreal,
+                &storage,
+                notation.project_id,
+                Some(notation.person_id),
+            )
+            .await
+            .expect("build notation rows");
+            assert_eq!(
+                rows.iter()
+                    .find(|r| r.id == notation_id.to_string())
+                    .map(|r| r.signable),
+                Some(false),
+                "a {label} envelope must not be signable"
+            );
+        }
+    }
+
+    /// Once fully executed, the client cannot re-enter the ceremony — a
+    /// completed envelope is not signable even to its own signer (ENG-558
+    /// acceptance: "already signed by this client").
+    #[tokio::test]
+    async fn signable_is_false_once_the_envelope_is_fully_signed() {
+        let surreal = store::surreal::test_support::mem().await;
+        let notation_id = store::test_support::seed_notation(&surreal).await;
+        let notation = store::notations::find_by_id(&surreal, notation_id)
+            .await
+            .expect("query notation")
+            .expect("seeded notation exists");
+        let storage = temp_storage("signable-completed", notation_id).await;
+
+        store::signatures::record_request(
+            &surreal,
+            notation_id,
+            store::signatures::SignatureProvider::DocuSign,
+            "env-eng-558-completed",
+        )
+        .await
+        .expect("record signature request");
+        store::signatures::stamp_signed(
+            &surreal,
+            store::signatures::SignatureProvider::DocuSign,
+            "env-eng-558-completed",
+            "2026-06-30T00:00:00Z",
+        )
+        .await
+        .expect("stamp signed_at");
+
+        let rows = notation_rows(
+            &surreal,
+            &storage,
+            notation.project_id,
+            Some(notation.person_id),
+        )
+        .await
+        .expect("build notation rows");
+        let row = rows.iter().find(|r| r.id == notation_id.to_string());
+        assert_eq!(
+            row.map(|r| r.signable),
+            Some(false),
+            "an already-signed notation must not be signable"
+        );
+        assert_eq!(row.map(|r| r.signed_ready), Some(true));
     }
 }

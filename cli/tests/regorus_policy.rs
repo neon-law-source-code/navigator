@@ -202,9 +202,18 @@ fn regorus_matches_every_checked_in_policy_decision() {
     //   `/app/brands/{key}/edit` and `PATCH /app/api/brands/{key}`; Lawyer
     //   and Clerk are denied on both.
     // 419 + 8 = 427.
+    //
+    // + 1 for the client lens on the signing route,
+    //   `/app/notations/{id}/sign` (ENG-557): the `/app/notations/**` rule
+    //   constrains neither depth nor the third segment, so it already admits
+    //   this path. The case pins that as intentional — the handler's
+    //   participation + signer-identity gate is the entire authorization
+    //   boundary there, so a narrowing of the rule must break this assertion
+    //   rather than silently make the route unreachable in production.
+    // 427 + 1 = 428.
     assert_eq!(
         test_names.len(),
-        427,
+        428,
         "the policy decision inventory changed; review every new or removed rule"
     );
 

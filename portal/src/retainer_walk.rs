@@ -2615,6 +2615,80 @@ pub fn client_user_id(notation_id: Uuid) -> String {
     format!("client-{notation_id}")
 }
 
+/// The `email` / `userName` / `clientUserId` triple DocuSign matches a
+/// client recipient on.
+///
+/// Named rather than a `(String, String, Option<String>)` tuple because two
+/// adjacent `String`s in positional form is exactly the shape a future
+/// caller swaps by accident.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClientRecipient {
+    pub name: String,
+    pub email: String,
+    /// `Some` for a captive (embedded) recipient, `None` when the envelope
+    /// was emailed. A recipient view is only valid for the captive case —
+    /// see [`crate::signature::SignatureProvider::create_recipient_view`].
+    pub client_user_id: Option<String>,
+}
+
+/// Resolve the client recipient's identity for `notation_id` from the
+/// questionnaire answers and the bound Person.
+///
+/// **One resolution, two call sites.** The send path
+/// ([`build_signature_manifest`]) and the view path
+/// ([`crate::esign_view`]) must produce the identical triple: DocuSign
+/// matches a captive recipient on `email` + `userName` + `clientUserId`,
+/// so a name resolved one way at send time and another way at view time
+/// is a permanent failure to open the ceremony, not a cosmetic drift.
+/// They derived it separately until ENG-557; this function is the single
+/// derivation both now call.
+///
+/// Answer-first, Person-row second: the onboarding letter's questionnaire
+/// collects `person__client`, so the answer is the more specific fact when
+/// it exists. Emptiness is *not* rejected here — the send path refuses an
+/// unresolved signer with the role name in the error, and the view path
+/// has no role to name — so each caller applies its own check.
+#[must_use]
+pub fn resolve_client_recipient(
+    notation_id: Uuid,
+    ctx: &BTreeMap<String, String>,
+    client: Option<&store::persons::Person>,
+    captive: bool,
+) -> ClientRecipient {
+    let answered = |key: &str| ctx.get(key).filter(|s| !s.is_empty()).cloned();
+    ClientRecipient {
+        name: answered("person__client.name")
+            .or_else(|| client.map(|c| c.name.clone()))
+            .unwrap_or_default(),
+        email: answered("person__client.email")
+            .or_else(|| client.map(|c| c.email.clone()))
+            .unwrap_or_default(),
+        client_user_id: captive.then(|| client_user_id(notation_id)),
+    }
+}
+
+/// [`resolve_client_recipient`] for a caller that holds only a notation id:
+/// read the answers, the bound Person, and the delivery mode, then resolve.
+///
+/// This is the view path's entry point, and it deliberately performs the
+/// same three reads the send path performs at
+/// [`send_for_signature`]'s call site, so the two cannot drift by reading
+/// different inputs either.
+pub async fn client_recipient_for_notation(
+    surreal: &store::surreal::SurrealDb,
+    notation_row: &store::notations::Notation,
+) -> Result<ClientRecipient, ContextError> {
+    let ctx = render_context_from_answers(surreal, notation_row.id).await?;
+    let client = store::persons::find_by_id(surreal, notation_row.person_id).await?;
+    let captive = notation_row.delivery != store::notations::DELIVERY_EMAILED;
+    Ok(resolve_client_recipient(
+        notation_row.id,
+        &ctx,
+        client.as_ref(),
+        captive,
+    ))
+}
+
 /// Assemble the signature manifest from the placed fields and the
 /// template's declared signer set. Recipients fan out one per declared
 /// role, in declaration order, using the same routing-order mechanism
@@ -2655,15 +2729,12 @@ fn build_signature_manifest(
             continue;
         }
         let (name, email, client_user_id) = match role.as_str() {
-            "client" => (
-                answered("person__client.name")
-                    .or_else(|| client.map(|c| c.name.clone()))
-                    .unwrap_or_default(),
-                answered("person__client.email")
-                    .or_else(|| client.map(|c| c.email.clone()))
-                    .unwrap_or_default(),
-                captive.then(|| client_user_id(notation_id)),
-            ),
+            // Shared with the view path so the triple sent and the triple
+            // replayed cannot drift — see [`resolve_client_recipient`].
+            "client" => {
+                let c = resolve_client_recipient(notation_id, ctx, client, captive);
+                (c.name, c.email, c.client_user_id)
+            }
             "firm" => (
                 env("DOCUSIGN_SIGNER_NAME", "Neon Law"),
                 env("DOCUSIGN_SIGNER_EMAIL", "support@neonlaw.com"),
@@ -3476,6 +3547,65 @@ Sign: {{client.signature}}";
             .expect("client recipient present");
         assert_eq!(recipient.name, "Libra Prime");
         assert_eq!(recipient.email, "libra@example.com");
+    }
+
+    #[test]
+    fn the_triple_replayed_at_view_time_equals_the_one_the_manifest_sent() {
+        // The pin for ENG-557's defect 2. DocuSign matches a captive
+        // recipient on the `email` + `userName` + `clientUserId` triple, so
+        // the view path must reproduce the send path's triple exactly or the
+        // ceremony never opens — a permanent `502`, not a cosmetic drift.
+        //
+        // The fixture is the production shape that made this live rather than
+        // hypothetical: the bound Person is created with `name = <email>`
+        // until the questionnaire fills it, and the onboarding letter *does*
+        // collect `person__client`. So the answer says "Libra Prime" while
+        // the Person row still says "libra@example.com". Before the shared
+        // resolve, the send path read the answer and the view path read only
+        // the Person row, and the two names disagreed here.
+        let notation_id = Uuid::now_v7();
+        let ctx = BTreeMap::from([("person__client.name".to_string(), "Libra Prime".to_string())]);
+        let client = person_named("libra@example.com", "libra@example.com");
+        let fields = [client_signature_field()];
+
+        let manifest =
+            super::build_signature_manifest(notation_id, &fields, &ctx, Some(&client), true, "")
+                .expect("the client recipient resolves");
+        let sent = manifest
+            .recipients
+            .iter()
+            .find(|r| r.role == "client")
+            .expect("client recipient present");
+
+        let replayed = super::resolve_client_recipient(notation_id, &ctx, Some(&client), true);
+
+        assert_eq!(replayed.name, sent.name, "the userName leg must agree");
+        assert_eq!(replayed.email, sent.email, "the email leg must agree");
+        assert_eq!(
+            replayed.client_user_id, sent.client_user_id,
+            "the clientUserId leg must agree"
+        );
+        // Pin the value, not just the agreement: two sides agreeing on the
+        // Person row's email-as-name would satisfy the equality above and
+        // still be the bug.
+        assert_eq!(
+            replayed.name, "Libra Prime",
+            "the answered legal name wins over the Person row's email-as-name"
+        );
+    }
+
+    #[test]
+    fn a_non_captive_recipient_resolves_no_client_user_id() {
+        // `emailed` delivery sends a non-captive recipient, which carries no
+        // `clientUserId` — and a recipient view is only valid for one that
+        // does, which is why `esign_view` answers `409` rather than minting a
+        // URL the provider will refuse.
+        let client = person_named("Libra Prime", "libra@example.com");
+        let replayed =
+            super::resolve_client_recipient(Uuid::now_v7(), &BTreeMap::new(), Some(&client), false);
+        assert_eq!(replayed.name, "Libra Prime");
+        assert_eq!(replayed.email, "libra@example.com");
+        assert_eq!(replayed.client_user_id, None);
     }
 
     fn assignor_signature_field() -> crate::signature::SignatureField {

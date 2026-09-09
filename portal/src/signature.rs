@@ -190,6 +190,7 @@ pub trait SignatureProvider: Send + Sync {
 #[derive(Default)]
 pub struct StubSignatureProvider {
     calls: Mutex<Vec<SignatureCall>>,
+    recipient_views: Mutex<Vec<RecipientView>>,
 }
 
 impl StubSignatureProvider {
@@ -203,6 +204,21 @@ impl StubSignatureProvider {
     #[must_use]
     pub fn calls(&self) -> Vec<SignatureCall> {
         self.calls.lock().expect("stub provider lock").clone()
+    }
+
+    /// Snapshot of every [`RecipientView`] requested so far.
+    ///
+    /// The synthetic signing URL the stub returns is built from the request
+    /// id and the `clientUserId` alone, so without this the `return_url` and
+    /// the `email`/`userName` legs would leave no trace and a test could not
+    /// tell an absolute return URL from a relative one — which is exactly how
+    /// a relative one reached the wire unnoticed (ENG-557).
+    #[must_use]
+    pub fn recipient_views(&self) -> Vec<RecipientView> {
+        self.recipient_views
+            .lock()
+            .expect("stub provider lock")
+            .clone()
     }
 }
 
@@ -229,6 +245,10 @@ impl SignatureProvider for StubSignatureProvider {
         request_id: &SignatureRequestId,
         view: &RecipientView,
     ) -> Result<String, SignatureError> {
+        self.recipient_views
+            .lock()
+            .expect("stub provider lock")
+            .push(view.clone());
         // A deterministic fake signing URL so dev / KIND can exercise the
         // embedded-signing route without a real DocuSign account.
         Ok(format!(

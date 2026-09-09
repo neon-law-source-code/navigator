@@ -1364,7 +1364,7 @@
 <text class="ct" x="300" y="287" text-anchor="end">datetime</text>
 </g>
 <g transform="translate(998,4472)">
-<rect class="t" width="352" height="228"/>
+<rect class="t" width="352" height="250"/>
 <rect class="tt" width="352" height="30"/>
 <text class="tn" x="176" y="20" text-anchor="middle">signature</text>
 <text class="cn" x="12" y="45">id</text>
@@ -1383,8 +1383,10 @@
 <text class="ct" x="340" y="177" text-anchor="end">option_string</text>
 <text class="cn" x="12" y="199">signer_person_id</text>
 <text class="cfk" x="340" y="199" text-anchor="end">option_record_person FK</text>
-<text class="cn" x="12" y="221">updated_at</text>
-<text class="ct" x="340" y="221" text-anchor="end">datetime</text>
+<text class="cn" x="12" y="221">state</text>
+<text class="ct" x="340" y="221" text-anchor="end">string</text>
+<text class="cn" x="12" y="243">updated_at</text>
+<text class="ct" x="340" y="243" text-anchor="end">datetime</text>
 </g>
 <g transform="translate(1454,4472)">
 <rect class="t" width="256" height="250"/>

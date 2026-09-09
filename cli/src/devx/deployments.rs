@@ -87,6 +87,11 @@ const ENCRYPTED_PREFIX: &str = "ENC[";
 /// The metadata block `sops` appends to every file it encrypts.
 const SOPS_METADATA_KEY: &str = "sops";
 
+/// Apply the deployment Secret without creating kubectl's client-side
+/// `last-applied-configuration` annotation, which would duplicate every
+/// plaintext value in object metadata.
+const WEB_SECRET_APPLY_ARGS: &[&str] = &["apply", "--filename", "-", "--server-side"];
+
 #[derive(Debug, Deserialize)]
 struct ConfigFile {
     kms_key: String,
@@ -821,10 +826,8 @@ fn apply_web_secret(config: &ship::ShipConfig, payloads: &BTreeMap<String, Strin
                 config.context.as_str(),
                 "--namespace",
                 config.namespace.as_str(),
-                "apply",
-                "--filename",
-                "-",
             ])
+            .args(WEB_SECRET_APPLY_ARGS)
             .stdin(Stdio::piped())
             .spawn()
             .context("start kubectl apply for deployment web Secret")?;
@@ -1019,6 +1022,12 @@ mod tests {
                 "the Kubernetes Secret value for {key} differs from the decrypted payload"
             );
         }
+    }
+
+    #[test]
+    fn web_secret_apply_uses_server_side_apply_without_a_plaintext_last_applied_annotation() {
+        assert!(WEB_SECRET_APPLY_ARGS.contains(&"--server-side"));
+        assert!(!WEB_SECRET_APPLY_ARGS.contains(&"--save-config"));
     }
 
     /// Every literal `--deployment <name>` argument in `text`, as an operator

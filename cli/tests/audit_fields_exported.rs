@@ -128,6 +128,7 @@ fn field_name(trimmed: &str) -> Option<String> {
     let name = |candidate: &str| {
         let candidate = candidate.trim();
         (!candidate.is_empty()
+            && !candidate.starts_with('.')
             && candidate
                 .bytes()
                 .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_' || b == b'.'))
@@ -137,6 +138,22 @@ fn field_name(trimmed: &str) -> Option<String> {
         return name(left);
     }
     name(trimmed.strip_suffix(',')?)
+}
+
+#[test]
+fn a_multiline_expression_does_not_become_an_exported_field() {
+    let source = r#"
+        emit_audit({
+            target: "audit",
+            .tool_name,
+            authorized,
+        });
+    "#;
+
+    let (fields, sites) = emitted_audit_fields(source);
+
+    assert_eq!(sites, 1);
+    assert_eq!(fields, BTreeSet::from(["authorized".to_string()]));
 }
 
 /// The keys the redaction processor lets through.

@@ -39,12 +39,10 @@ COPY server            server
 COPY neon              neon
 COPY webapp            webapp
 COPY views             views
-COPY github_webhooks    github_webhooks
 COPY telemetry         telemetry
 COPY README.md         README.md
 COPY workflows         workflows
 COPY workflows-service workflows-service
-COPY github-runner     github-runner
 COPY cloud             cloud
 COPY mcp               mcp
 COPY features          features

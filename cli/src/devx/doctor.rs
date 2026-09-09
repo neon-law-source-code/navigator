@@ -16,8 +16,6 @@ use std::process::Command;
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
-use github_webhooks::authority::is_automation_home;
-use github_webhooks::guardrails::GuardrailStatus;
 use serde_json::Value;
 
 /// A trigger `Job` should POST to the ingress and exit in seconds. Anything
@@ -85,38 +83,12 @@ pub struct WorkloadObs {
     pub desired: u64,
 }
 
-/// The GitHub-automation observation available to an operator.
-///
-/// This deliberately contains only deployment identity, counts, and limits.
-/// It never reads issue, pull-request, prompt, or invocation content.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum GitHubAutomationObs {
-    /// This deployment is not `neon-law-stg`, so it has no singleton
-    /// guardrail object to inspect.
-    NotAuthoritative,
-    /// The automation home could not read its durable guardrail object.
-    Unavailable,
-    /// The count-only state returned by `devx-guardrails/global`.
-    Guardrails(GuardrailStatus),
-}
-
 /// Classify cluster observations into findings. Pure — the whole point is that
 /// this is unit-testable without a cluster. `namespace` is only used to render
-/// copy-pasteable remedy commands. `db` is the host-`web`-vs-worker database
-/// comparison, `None` when either side is unreadable (skip the check rather
-/// than guess).
+/// copy-pasteable remedy commands.
 #[must_use]
-pub fn diagnose(
-    namespace: &str,
-    jobs: &[JobObs],
-    workloads: &[WorkloadObs],
-    github_automation: Option<&GitHubAutomationObs>,
-) -> Vec<Finding> {
+pub fn diagnose(namespace: &str, jobs: &[JobObs], workloads: &[WorkloadObs]) -> Vec<Finding> {
     let mut out = Vec::new();
-
-    if let Some(observation) = github_automation {
-        out.push(github_automation_finding(observation));
-    }
 
     for job in jobs {
         let terminal = job
@@ -192,50 +164,6 @@ pub fn diagnose(
     out
 }
 
-/// Classify the count-only state of the singleton GitHub automation boundary.
-fn github_automation_finding(observation: &GitHubAutomationObs) -> Finding {
-    match observation {
-        GitHubAutomationObs::NotAuthoritative => Finding {
-            severity: Severity::Ok,
-            subject: "GitHub automation".into(),
-            detail: "Not authoritative in this deployment; neon-law-stg owns the one GitHub App webhook stream and guardrail state.".into(),
-            remedy: None,
-        },
-        GitHubAutomationObs::Unavailable => Finding {
-            severity: Severity::Warning,
-            subject: "GitHub automation".into(),
-            detail: "The authoritative deployment could not read devx-guardrails/global.".into(),
-            remedy: Some("Check RESTATE_INGRESS_URL, RESTATE_AUTH_TOKEN, and the workflows-service Restate registration.".into()),
-        },
-        GitHubAutomationObs::Guardrails(status) if status.paused => Finding {
-            severity: Severity::Warning,
-            subject: "GitHub automation".into(),
-            detail: format!(
-                "Paused for {} after reserving {}/{} daily tokens; {} active invocation(s) still hold concurrency slots.",
-                status.budget_day,
-                status.daily_tokens_used,
-                status.max_daily_tokens,
-                status.active_invocation_count,
-            ),
-            remedy: Some("Wait for the UTC daily reset, then inspect the token budget before resuming automation.".into()),
-        },
-        GitHubAutomationObs::Guardrails(status) => Finding {
-            severity: Severity::Ok,
-            subject: "GitHub automation".into(),
-            detail: format!(
-                "Guardrails active: {}/{} daily tokens reserved, {} remaining; {} of {} concurrency slots occupied; revision cap {}.",
-                status.daily_tokens_used,
-                status.max_daily_tokens,
-                status.remaining_tokens,
-                status.active_invocation_count,
-                status.max_concurrent,
-                status.max_revise_rounds,
-            ),
-            remedy: None,
-        },
-    }
-}
-
 /// Human duration like `2d19h` / `14m`.
 fn fmt_duration(secs: i64) -> String {
     let s = secs.max(0);
@@ -255,9 +183,8 @@ pub fn run(namespace: &str) -> Result<()> {
     let waiting = pod_waiting_reasons(namespace)?;
     let jobs = observe_jobs(namespace, now, &waiting)?;
     let workloads = observe_workloads(namespace)?;
-    let github_automation = observe_github_automation();
 
-    let findings = diagnose(namespace, &jobs, &workloads, Some(&github_automation));
+    let findings = diagnose(namespace, &jobs, &workloads);
     let crit = findings
         .iter()
         .filter(|f| f.severity == Severity::Critical)
@@ -284,53 +211,6 @@ pub fn run(namespace: &str) -> Result<()> {
         anyhow::bail!("{crit} critical finding(s)");
     }
     Ok(())
-}
-
-/// Read the singleton guardrail object only from the automation authority.
-/// Other deployments intentionally have no service registration and report a
-/// healthy, explicit non-authoritative state instead of probing a missing URL.
-fn observe_github_automation() -> GitHubAutomationObs {
-    if !is_automation_home(std::env::var("NAVIGATOR_GCP_PROJECT_ID").ok().as_deref()) {
-        return GitHubAutomationObs::NotAuthoritative;
-    }
-    let Ok(ingress) = std::env::var("RESTATE_INGRESS_URL") else {
-        return GitHubAutomationObs::Unavailable;
-    };
-    let auth_token = std::env::var("RESTATE_AUTH_TOKEN").ok();
-    let Ok(runtime) = tokio::runtime::Runtime::new() else {
-        return GitHubAutomationObs::Unavailable;
-    };
-    match runtime.block_on(fetch_guardrail_status(&ingress, auth_token.as_deref())) {
-        Ok(status) => GitHubAutomationObs::Guardrails(status),
-        Err(_) => GitHubAutomationObs::Unavailable,
-    }
-}
-
-async fn fetch_guardrail_status(
-    ingress: &str,
-    auth_token: Option<&str>,
-) -> Result<GuardrailStatus> {
-    let url = format!(
-        "{}/devx-guardrails/global/status",
-        ingress.trim_end_matches('/')
-    );
-    let mut request = reqwest::Client::new()
-        .post(&url)
-        .timeout(std::time::Duration::from_secs(10));
-    if let Some(token) = auth_token.filter(|token| !token.is_empty()) {
-        request = request.bearer_auth(token);
-    }
-    let response = request
-        .send()
-        .await
-        .context("read GitHub automation guardrail status")?;
-    if !response.status().is_success() {
-        anyhow::bail!("guardrail status returned {}", response.status());
-    }
-    response
-        .json::<GuardrailStatus>()
-        .await
-        .context("decode GitHub automation guardrail status")
 }
 
 /// `job name -> container waiting reason` for pods in the namespace.
@@ -424,8 +304,7 @@ fn kubectl_json(namespace: &str, kind: &str) -> Result<Value> {
 
 #[cfg(test)]
 mod tests {
-    use super::{diagnose, fmt_duration, GitHubAutomationObs, JobObs, Severity, WorkloadObs};
-    use github_webhooks::guardrails::GuardrailStatus;
+    use super::{diagnose, fmt_duration, JobObs, Severity, WorkloadObs};
 
     fn job(name: &str, active: u64, age: Option<i64>, waiting: Option<&str>) -> JobObs {
         JobObs {
@@ -446,7 +325,7 @@ mod tests {
             Some(241_200),
             Some("ImagePullBackOff"),
         )];
-        let findings = diagnose("navigator", &jobs, &[], None);
+        let findings = diagnose("navigator", &jobs, &[]);
         let crit = &findings[0];
         assert_eq!(crit.severity, Severity::Critical);
         assert!(crit.detail.contains("ImagePullBackOff"));
@@ -462,7 +341,7 @@ mod tests {
     #[test]
     fn a_long_running_active_job_is_critical_even_without_a_waiting_reason() {
         let jobs = [job("stuck-trigger", 1, Some(1_200), None)];
-        let findings = diagnose("navigator", &jobs, &[], None);
+        let findings = diagnose("navigator", &jobs, &[]);
         assert_eq!(findings[0].severity, Severity::Critical);
     }
 
@@ -472,7 +351,7 @@ mod tests {
         // lock — it never recovers on its own, so it's critical regardless of
         // age, not a wait-and-see warning.
         let jobs = [job("new-trigger", 1, Some(30), Some("ErrImagePull"))];
-        let findings = diagnose("navigator", &jobs, &[], None);
+        let findings = diagnose("navigator", &jobs, &[]);
         assert_eq!(findings[0].severity, Severity::Critical);
     }
 
@@ -481,52 +360,8 @@ mod tests {
         // active == 0: no pod holds the schedule, but the image error still
         // wants an operator's eyes.
         let jobs = [job("done-trigger", 0, Some(30), Some("ImagePullBackOff"))];
-        let findings = diagnose("navigator", &jobs, &[], None);
+        let findings = diagnose("navigator", &jobs, &[]);
         assert_eq!(findings[0].severity, Severity::Warning);
-    }
-
-    #[test]
-    fn reports_a_paused_automation_with_counts_but_no_identifiers() {
-        let guardrails = GitHubAutomationObs::Guardrails(GuardrailStatus {
-            budget_day: "2026-07-27".into(),
-            daily_tokens_used: 100,
-            remaining_tokens: 0,
-            active_invocation_count: 2,
-            paused: true,
-            max_concurrent: 2,
-            max_revise_rounds: 8,
-            max_daily_tokens: 100,
-        });
-
-        let findings = diagnose("navigator", &[], &[], Some(&guardrails));
-
-        assert_eq!(findings[0].severity, Severity::Warning);
-        assert_eq!(findings[0].subject, "GitHub automation");
-        assert!(findings[0].detail.contains("100/100"));
-        assert!(findings[0].detail.contains("2 active invocation"));
-        assert!(!findings[0].detail.contains("inv_"));
-    }
-
-    #[test]
-    fn makes_the_singleton_authority_explicit_outside_neon_law_stg() {
-        let observation = GitHubAutomationObs::NotAuthoritative;
-        let findings = diagnose("navigator", &[], &[], Some(&observation));
-
-        assert_eq!(findings[0].severity, Severity::Ok);
-        assert!(findings[0].detail.contains("neon-law-stg"));
-    }
-
-    #[test]
-    fn warns_when_the_authoritative_guardrail_object_cannot_be_read() {
-        let observation = GitHubAutomationObs::Unavailable;
-        let findings = diagnose("navigator", &[], &[], Some(&observation));
-
-        assert_eq!(findings[0].severity, Severity::Warning);
-        assert!(findings[0]
-            .remedy
-            .as_ref()
-            .unwrap()
-            .contains("RESTATE_INGRESS_URL"));
     }
 
     #[test]
@@ -537,7 +372,7 @@ mod tests {
             ready: 1,
             desired: 1,
         }];
-        let findings = diagnose("navigator", &jobs, &workloads, None);
+        let findings = diagnose("navigator", &jobs, &workloads);
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].severity, Severity::Ok);
     }
@@ -549,7 +384,7 @@ mod tests {
             ready: 0,
             desired: 1,
         }];
-        let findings = diagnose("navigator", &[], &workloads, None);
+        let findings = diagnose("navigator", &[], &workloads);
         assert_eq!(findings[0].severity, Severity::Critical);
         assert!(findings[0].detail.contains("0/1"));
     }

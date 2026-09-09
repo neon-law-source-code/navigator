@@ -12,20 +12,14 @@ use archives::workflow::ArchivesService;
 use billing_workflows::canary::BillingCanaryService;
 use billing_workflows::digest::BillingDigestService;
 use billing_workflows::reconcile::ReconcileInvoicesService;
-use github_webhooks::authority::is_automation_home;
-use github_webhooks::guardrails::{GitHubGuardrailsService, GuardrailConfig};
-use github_webhooks::worker::{
-    DevxIssueTriageService, DevxPrService, RepositoryResolver, UnconfiguredRepositoryResolver,
-};
 use restate_sdk::prelude::*;
 use workflows::{EmailService, SlackOpsDelivery};
 use workflows_service::dri_digest::DriDigestService;
-use workflows_service::github_automation_heartbeat::GitHubAutomationHeartbeatService;
 use workflows_service::heartbeat::HeartbeatService;
 use workflows_service::request_identity::{apply_identity_key, install_crypto_provider};
 use workflows_service::{
-    email_from_env, notifier_from_env, project_slack::ProjectSlackService,
-    repository_correlation::ProjectRepositoryResolver, slack_bot_from_env, NotationService,
+    email_from_env, notifier_from_env, project_slack::ProjectSlackService, slack_bot_from_env,
+    NotationService,
 };
 
 macro_rules! bind_common_services {
@@ -54,7 +48,7 @@ macro_rules! bind_common_services {
 }
 
 #[tokio::main]
-#[allow(clippy::too_many_lines)] // Typed Restate endpoint branches must stay beside startup wiring.
+#[allow(clippy::too_many_lines)] // Startup wiring for every bound service stays in one place.
 async fn main() -> anyhow::Result<()> {
     let _ = dotenvy::dotenv();
     // `.devx/env` overlay for local KIND iteration (port-forward URLs,
@@ -109,17 +103,6 @@ async fn main() -> anyhow::Result<()> {
     let surreal = store::surreal::connect_from_env()
         .await
         .context("connect to SurrealDB")?;
-    let repository_resolver: Arc<dyn RepositoryResolver> = match (
-        std::env::var("NAVIGATOR_GITHUB_CANONICAL_REPOSITORY"),
-        std::env::var("NAVIGATOR_GITHUB_ORG"),
-    ) {
-        (Ok(canonical_repository), Ok(project_owner)) => Arc::new(ProjectRepositoryResolver::new(
-            surreal.clone(),
-            canonical_repository,
-            project_owner,
-        )),
-        _ => Arc::new(UnconfiguredRepositoryResolver),
-    };
 
     let email = email_from_env().context("build email service from env")?;
     tracing::info!(
@@ -172,76 +155,20 @@ async fn main() -> anyhow::Result<()> {
     // pod. The exact set of service names bound here is mirrored in
     // `workflows_service::registry`, which the registry tests guard against
     // drift (count + PascalCase naming).
-    let github_automation_home =
-        is_automation_home(std::env::var("NAVIGATOR_GCP_PROJECT_ID").ok().as_deref());
-    tracing::info!(
-        github_automation_home,
-        "configured GitHub automation authority"
-    );
-
-    let server = if github_automation_home {
-        let guardrails =
-            GuardrailConfig::from_env().context("read GitHub automation spending guardrails")?;
-        HttpServer::new(
-            bind_common_services!(
-                endpoint_builder
-                    // GitHub webhook durable notices (folded in from the former
-                    // standalone DevX worker): the receiver submits only in the
-                    // authoritative automation-home deployment.
-                    .bind(DevxIssueTriageService::new(
-                        notifier.clone(),
-                        repository_resolver.clone(),
-                    ))
-                    .bind(DevxPrService::new(notifier.clone(), repository_resolver))
-                    .bind(GitHubGuardrailsService::new(guardrails))
-                    .bind(GitHubAutomationHeartbeatService::new(notifier.clone())),
-                surreal,
-                email,
-                storage,
-                notifier,
-                ops_delivery,
-                slack_bot,
-                simulated_matters
-            )
-            .build(),
+    let server = HttpServer::new(
+        bind_common_services!(
+            endpoint_builder,
+            surreal,
+            email,
+            storage,
+            notifier,
+            ops_delivery,
+            slack_bot,
+            simulated_matters
         )
-        .listen_and_serve(listen)
-    } else {
-        HttpServer::new(
-            bind_common_services!(
-                endpoint_builder,
-                surreal,
-                email,
-                storage,
-                notifier,
-                ops_delivery,
-                slack_bot,
-                simulated_matters
-            )
-            .build(),
-        )
-        .listen_and_serve(listen)
-    };
-
-    // The GitHub webhook receiver runs on its own Axum listener beside the
-    // Restate endpoint: `www.<domain>` remains behind the tailnet perimeter, so the receiver
-    // moves to the public `workflows.<domain>` host, where Envoy routes
-    // `/webhooks/github/*` here and everything else to the Restate leg. Present
-    // only on the automation-home deployment (`receiver_from_env` is `None`
-    // otherwise). Bind eagerly so a port conflict fails the boot rather than
-    // silently dropping webhooks; then serve it beside the Restate endpoint.
-    if let Some(router) = workflows_service::webhook::receiver_from_env() {
-        let addr = workflows_service::webhook::webhook_listen_addr(|key| std::env::var(key).ok())?;
-        let webhook_listener = tokio::net::TcpListener::bind(addr)
-            .await
-            .with_context(|| format!("bind GitHub webhook receiver on {addr}"))?;
-        tracing::info!(%addr, "github webhook receiver listening");
-        tokio::spawn(async move {
-            if let Err(error) = axum::serve(webhook_listener, router).await {
-                tracing::error!(%error, "github webhook receiver stopped");
-            }
-        });
-    }
+        .build(),
+    )
+    .listen_and_serve(listen);
 
     // Unsigned liveness/readiness probe (ENG-551): unlike the Restate
     // endpoint on `listen`, this needs no Restate Cloud signature, so

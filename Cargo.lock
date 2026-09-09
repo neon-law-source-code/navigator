@@ -2100,7 +2100,6 @@ dependencies = [
  "dotenvy",
  "forms",
  "futures",
- "github_webhooks",
  "google-cloud-auth",
  "google-cloud-token",
  "image",
@@ -4816,49 +4815,6 @@ checksum = "ee8cfcc411d9adbbaba82fb72661cc1bcca13e8bba98b364e62b2dba8f960159"
 dependencies = [
  "color_quant",
  "weezl 0.1.12",
-]
-
-[[package]]
-name = "github-runner"
-version = "26.9.9"
-dependencies = [
- "async-trait",
- "k8s-openapi",
- "kube",
- "serde",
- "thiserror 2.0.20",
-]
-
-[[package]]
-name = "github_webhooks"
-version = "26.9.9"
-dependencies = [
- "anyhow",
- "async-trait",
- "axum",
- "base64 0.23.1",
- "chrono",
- "dotenvy",
- "github-runner",
- "hmac 0.13.0",
- "jsonwebtoken 11.0.0",
- "reqwest 0.13.4",
- "restate-sdk",
- "serde",
- "serde_json",
- "serde_yaml",
- "sha2 0.11.0",
- "store",
- "telemetry",
- "tempfile",
- "thiserror 2.0.20",
- "tokio",
- "tower",
- "tracing",
- "uuid",
- "wiremock",
- "workflows",
- "zip",
 ]
 
 [[package]]
@@ -10483,7 +10439,6 @@ dependencies = [
  "features",
  "flate2",
  "forms",
- "github_webhooks",
  "hmac 0.13.0",
  "http-body-util",
  "include_dir",
@@ -14222,7 +14177,6 @@ dependencies = [
  "cloud",
  "dotenvy",
  "ed25519-dalek 3.0.0",
- "github_webhooks",
  "jsonwebtoken 10.4.0",
  "repos",
  "restate-sdk",

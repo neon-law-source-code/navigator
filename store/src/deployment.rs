@@ -118,37 +118,18 @@ pub static WEB_REQUIREMENTS: &[Requirement] = &[
     // integration names its own signer.
     required!(integration "DOCUSIGN_OAUTH_BASE" if "DOCUSIGN_BASE_URL"),
     required!(integration "DOCUSIGN_SIGNER_EMAIL" if "DOCUSIGN_BASE_URL"),
-    // The GitHub App behind the webhook receiver and the DevX services: the
-    // org plus the App creds that authenticate the server-side
-    // JWT→installation-token exchange. All three are needed together;
-    // integration-tier, so the staging CI harness may skip them.
+    // The Project-repo organization: read by Forge's repository governance
+    // (`ops github setup`) and by Project-repository reconciliation, neither of
+    // which is GitHub-App-specific. Integration-tier, so the staging CI
+    // harness may skip it.
+    required!(integration "NAVIGATOR_GITHUB_ORG"),
+    // The Restate ingress endpoint + bearer that every `*-trigger` CronJob
+    // submits a one-way invocation through. Still project-scoped to the
+    // automation home here, matching this row's pre-existing scope; other
+    // deployments are not preflighted for it by this table. Integration-tier:
+    // the staging CI harness runs no trigger.
     Requirement {
-        any_of: &[&[
-            "NAVIGATOR_GITHUB_ORG",
-            "NAVIGATOR_GITHUB_APP_ID",
-            "NAVIGATOR_GITHUB_APP_PRIVATE_KEY",
-        ]],
-        trigger: None,
-        integration: true,
-        project_id: None,
-    },
-    // The GitHub webhook receiver, hosted by `workflows-service` on the public
-    // workflows host (`www` remains behind the tailnet perimeter): the HMAC secret, the
-    // watched product code repo, the App bot login (echo suppression), and the
-    // Restate ingress endpoint + bearer the receiver submits through. Still
-    // project-scoped to the automation home and preflighted here so `ops ship`
-    // refuses an automation-home deployment whose shared secret omits them —
-    // the worker reads them from the same `navigator-web-secrets`.
-    // `NAVIGATOR_GITHUB_ORG` (the Project-repo org watched by owner) is already
-    // required above. Integration-tier: the staging CI harness runs no receiver.
-    Requirement {
-        any_of: &[&[
-            "NAVIGATOR_GITHUB_WEBHOOK_SECRET",
-            "NAVIGATOR_GITHUB_CANONICAL_REPOSITORY",
-            "NAVIGATOR_GITHUB_APP_LOGIN",
-            "RESTATE_INGRESS_URL",
-            "RESTATE_AUTH_TOKEN",
-        ]],
+        any_of: &[&["RESTATE_INGRESS_URL", "RESTATE_AUTH_TOKEN"]],
         trigger: None,
         integration: true,
         project_id: Some(GITHUB_AUTOMATION_HOME_PROJECT),

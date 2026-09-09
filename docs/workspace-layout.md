@@ -8,8 +8,8 @@ The repository is one Cargo workspace. `Cargo.toml` is the authoritative member 
 - Generated PDFs use Typst and transactional email uses server-rendered string templates.
 - `portal` is the mountable Axum application. The `neon` brand crate publishes the public face
   over it; the binary is the site.
-- `workflows-service`, `archives`, `billing-workflows`, and `github_webhooks` each consume `restate-sdk` directly;
-  `workflows` itself carries no `restate-sdk` dependency.
+- `workflows-service`, `archives`, and `billing-workflows` each consume `restate-sdk` directly; `workflows` itself
+  carries no `restate-sdk` dependency.
 - `features` uses its custom Cucumber harness and runs with `cargo test -p features`.
 
 ## The browser surface

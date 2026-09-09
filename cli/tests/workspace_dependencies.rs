@@ -53,8 +53,6 @@ const WORKSPACE_DEPENDENCIES: &[&str] = &[
     "flate2",
     "forms",
     "futures",
-    "github-runner",
-    "github_webhooks",
     "google-cloud-auth",
     "google-cloud-storage",
     "google-cloud-token",
@@ -260,7 +258,7 @@ fn every_member_draws_its_dependencies_from_the_workspace_table() {
     }
 
     assert!(
-        seen_members >= 25,
+        seen_members >= 21,
         "expected the full member list and read {seen_members} — this guard has stopped reading \
          the manifests it is supposed to read",
     );

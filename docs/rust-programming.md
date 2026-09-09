@@ -12,8 +12,8 @@ Use these canonical language references when behavior matters:
 
 - `rust-toolchain.toml` and workspace `Cargo.toml` define the toolchain, edition, lints, and formatting.
 - `unsafe_code = "forbid"`; clippy pedantic warnings run with `-D warnings`.
-- Tokio, Axum, and SurrealDB are the runtime stack. `workflows-service`, `archives`, `billing-workflows`, and
-  `github_webhooks` each consume Restate SDK directly; `workflows` carries no `restate-sdk` dependency itself.
+- Tokio, Axum, and SurrealDB are the runtime stack. `workflows-service`, `archives`, and `billing-workflows` each
+  consume Restate SDK directly; `workflows` carries no `restate-sdk` dependency itself.
 
 ## Error handling
 

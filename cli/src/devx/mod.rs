@@ -2234,10 +2234,10 @@ mod tests {
     /// empty list rather than failing an already-successful registration.
     #[test]
     fn parse_registered_service_names_reads_names_and_tolerates_junk() {
-        let body = r#"{"services":[{"name":"workflows-service"},{"name":"DevxIssueTriage"},{"name":"devx-pr"}]}"#;
+        let body = r#"{"services":[{"name":"workflows-service"},{"name":"Heartbeat"},{"name":"notation"}]}"#;
         assert_eq!(
             parse_registered_service_names(body),
-            vec!["workflows-service", "DevxIssueTriage", "devx-pr"]
+            vec!["workflows-service", "Heartbeat", "notation"]
         );
         assert!(parse_registered_service_names("not json").is_empty());
         assert!(parse_registered_service_names("{}").is_empty());
@@ -2293,79 +2293,6 @@ mod tests {
         assert!(notice.contains("URL record"));
         assert!(notice.contains("auto-renewing Let's Encrypt certificate"));
         assert!(notice.contains("docs/dns.md"));
-    }
-
-    /// The runner carries the browser pair, agent, and coverage tools the CI
-    /// gates execute.
-    /// Its caches are useful only when those tools match the tree that will
-    /// run inside it, so fail at review time rather than quietly creating a
-    /// second version pin.
-    #[test]
-    fn runner_uses_the_workspace_browser_pins() {
-        use std::path::Path;
-
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("repo root is cli/'s parent");
-        let runner = std::fs::read_to_string(root.join("images/Containerfile.runner"))
-            .expect("read runner Containerfile");
-        let rust_toolchain = std::fs::read_to_string(root.join("rust-toolchain.toml"))
-            .expect("read rust toolchain pin");
-
-        let rust_channel = rust_toolchain
-            .split("channel = \"")
-            .nth(1)
-            .and_then(|channel| channel.split('"').next())
-            .expect("Rust channel in rust-toolchain.toml");
-        let rust_image_tag = rust_channel
-            .strip_suffix(".0")
-            .expect("the workspace Rust channel is a patch release");
-        assert!(
-            runner.contains(&format!("FROM rust:{rust_image_tag}-bookworm")),
-            "the runner must use the Rust toolchain pinned in rust-toolchain.toml"
-        );
-        assert!(
-            runner.contains(&format!(
-                "ARG CHROME_FOR_TESTING_VERSION={}",
-                chrome::CHROME_FOR_TESTING_VERSION
-            )),
-            "the runner must use cli::devx::chrome's Chrome/ChromeDriver pin"
-        );
-        assert!(
-            runner.contains("ARG NODE_VERSION=24.18.0"),
-            "the runner must pin its Node LTS release"
-        );
-        assert!(
-            runner.contains("ARG CLAUDE_CODE_VERSION=2.1.220")
-                && runner.contains("@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"),
-            "the runner must install an explicitly pinned Claude Code CLI"
-        );
-        assert!(
-            runner.contains("ARG CARGO_LLVM_COV_VERSION=0.8.7")
-                && runner
-                    .contains("cargo-llvm-cov --version \"${CARGO_LLVM_COV_VERSION}\" --locked"),
-            "the runner must install a reproducibly pinned coverage tool"
-        );
-        assert!(
-            runner.contains("cargo build --locked -p cli")
-                && runner.contains("/usr/local/bin/navigator"),
-            "the runner must bake the Navigator CLI"
-        );
-        assert!(
-            runner.contains("cargo build --locked -p github_webhooks --bin triage-runner")
-                && runner.contains("/usr/local/bin/triage-runner"),
-            "the runner must bake the isolated triage entrypoint"
-        );
-        let copies = |path: &str| {
-            runner.lines().any(|line| {
-                let words: Vec<_> = line.split_whitespace().collect();
-                words == ["COPY", path, path]
-            })
-        };
-        assert!(
-            copies("k8s") && copies("examples"),
-            "the runner must copy the CLI's compile-time embedded deployment assets"
-        );
     }
 
     // The deploy workflow's "stub public assets" step generates

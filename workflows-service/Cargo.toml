@@ -27,7 +27,6 @@ billing-workflows = { workspace = true }
 chrono.workspace = true
 cloud.workspace = true
 dotenvy.workspace = true
-github_webhooks.workspace = true
 restate-sdk.workspace = true
 # `restate-jwt` is `restate-sdk-shared-core`'s own `jsonwebtoken` dependency
 # (feature = "rust_crypto"). Pinning the process-level `CryptoProvider` to it

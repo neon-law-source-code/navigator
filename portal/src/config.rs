@@ -309,14 +309,6 @@ mod tests {
             ("NAVIGATOR_CREDENTIAL_ENVIRONMENT", "production"),
             ("SESSION_SECRET", SECRET32),
             (NAVIGATOR_GITHUB_ORG, AN_ORGANIZATION),
-            ("NAVIGATOR_GITHUB_APP_ID", "123456"),
-            ("NAVIGATOR_GITHUB_APP_PRIVATE_KEY", "test-pem"),
-            ("NAVIGATOR_GITHUB_WEBHOOK_SECRET", "whsec"),
-            (
-                "NAVIGATOR_GITHUB_CANONICAL_REPOSITORY",
-                "neon-law-source-code/navigator",
-            ),
-            ("NAVIGATOR_GITHUB_APP_LOGIN", "navigator-nightwatch[bot]"),
             ("RESTATE_INGRESS_URL", "https://ingress.restate.cloud:8080"),
             ("RESTATE_AUTH_TOKEN", "key_test"),
             ("RESTATE_IDENTITY_KEY", "publickeyv1_test-identity-key"),
@@ -375,14 +367,6 @@ mod tests {
             ("NAVIGATOR_CREDENTIAL_ENVIRONMENT", "production"),
             ("SESSION_SECRET", SECRET32),
             (NAVIGATOR_GITHUB_ORG, AN_ORGANIZATION),
-            ("NAVIGATOR_GITHUB_APP_ID", "123456"),
-            ("NAVIGATOR_GITHUB_APP_PRIVATE_KEY", "test-pem"),
-            ("NAVIGATOR_GITHUB_WEBHOOK_SECRET", "whsec"),
-            (
-                "NAVIGATOR_GITHUB_CANONICAL_REPOSITORY",
-                "neon-law-source-code/navigator",
-            ),
-            ("NAVIGATOR_GITHUB_APP_LOGIN", "navigator-nightwatch[bot]"),
             ("RESTATE_INGRESS_URL", "https://ingress.restate.cloud:8080"),
             ("RESTATE_AUTH_TOKEN", "key_test"),
             ("RESTATE_IDENTITY_KEY", "publickeyv1_test-identity-key"),
@@ -406,31 +390,25 @@ mod tests {
     }
 
     #[test]
-    fn only_the_automation_home_requires_github_receiver_credentials() {
-        let receiver_keys = [
-            "NAVIGATOR_GITHUB_WEBHOOK_SECRET",
-            "NAVIGATOR_GITHUB_CANONICAL_REPOSITORY",
-            "NAVIGATOR_GITHUB_APP_LOGIN",
-            "RESTATE_INGRESS_URL",
-            "RESTATE_AUTH_TOKEN",
-        ];
-        let without_receiver = |project_id: &'static str| {
+    fn only_the_automation_home_requires_restate_ingress_credentials() {
+        let ingress_keys = ["RESTATE_INGRESS_URL", "RESTATE_AUTH_TOKEN"];
+        let without_ingress = |project_id: &'static str| {
             let mut pairs = full_with_jwks();
-            pairs.retain(|(key, _)| !receiver_keys.contains(key));
+            pairs.retain(|(key, _)| !ingress_keys.contains(key));
             pairs.push(("NAVIGATOR_GCP_PROJECT_ID", project_id));
             pairs
         };
 
         assert!(
-            production_invariants(lookup(&without_receiver("neon-law"))).is_ok(),
-            "a tenant deployment must not need the singleton receiver credentials"
+            production_invariants(lookup(&without_ingress("neon-law"))).is_ok(),
+            "a tenant deployment must not need the singleton Restate ingress credentials"
         );
 
-        let err = production_invariants(lookup(&without_receiver("neon-law-stg"))).unwrap_err();
+        let err = production_invariants(lookup(&without_ingress("neon-law-stg"))).unwrap_err();
         assert_eq!(err.violations.len(), 1);
         assert!(
-            err.violations[0].starts_with("NAVIGATOR_GITHUB_WEBHOOK_SECRET"),
-            "the automation home must fail closed without receiver credentials: {err:?}"
+            err.violations[0].starts_with("RESTATE_INGRESS_URL"),
+            "the automation home must fail closed without its Restate ingress credentials: {err:?}"
         );
     }
 
@@ -464,7 +442,7 @@ mod tests {
         assert!(err
             .violations
             .iter()
-            .any(|v| v.starts_with("NAVIGATOR_GITHUB_WEBHOOK_SECRET")));
+            .any(|v| v.starts_with("RESTATE_INGRESS_URL")));
         assert!(err
             .violations
             .iter()
@@ -532,14 +510,6 @@ mod tests {
             ("NAVIGATOR_CREDENTIAL_ENVIRONMENT", "production"),
             ("SESSION_SECRET", SECRET32),
             (NAVIGATOR_GITHUB_ORG, AN_ORGANIZATION),
-            ("NAVIGATOR_GITHUB_APP_ID", "123456"),
-            ("NAVIGATOR_GITHUB_APP_PRIVATE_KEY", "test-pem"),
-            ("NAVIGATOR_GITHUB_WEBHOOK_SECRET", "whsec"),
-            (
-                "NAVIGATOR_GITHUB_CANONICAL_REPOSITORY",
-                "neon-law-source-code/navigator",
-            ),
-            ("NAVIGATOR_GITHUB_APP_LOGIN", "navigator-nightwatch[bot]"),
             ("RESTATE_INGRESS_URL", "https://ingress.restate.cloud:8080"),
             ("RESTATE_AUTH_TOKEN", "key_test"),
             ("RESTATE_IDENTITY_KEY", "publickeyv1_test-identity-key"),
@@ -600,14 +570,6 @@ mod tests {
             ("NAVIGATOR_CREDENTIAL_ENVIRONMENT", "production"),
             ("SESSION_SECRET", SECRET32),
             (NAVIGATOR_GITHUB_ORG, AN_ORGANIZATION),
-            ("NAVIGATOR_GITHUB_APP_ID", "123456"),
-            ("NAVIGATOR_GITHUB_APP_PRIVATE_KEY", "test-pem"),
-            ("NAVIGATOR_GITHUB_WEBHOOK_SECRET", "whsec"),
-            (
-                "NAVIGATOR_GITHUB_CANONICAL_REPOSITORY",
-                "neon-law-source-code/navigator",
-            ),
-            ("NAVIGATOR_GITHUB_APP_LOGIN", "navigator-nightwatch[bot]"),
             ("RESTATE_INGRESS_URL", "https://ingress.restate.cloud:8080"),
             ("RESTATE_AUTH_TOKEN", "key_test"),
             ("RESTATE_IDENTITY_KEY", "publickeyv1_test-identity-key"),
@@ -679,14 +641,6 @@ mod tests {
             ("NAVIGATOR_CREDENTIAL_ENVIRONMENT", "production"),
             ("SESSION_SECRET", SECRET32),
             (NAVIGATOR_GITHUB_ORG, AN_ORGANIZATION),
-            ("NAVIGATOR_GITHUB_APP_ID", "123456"),
-            ("NAVIGATOR_GITHUB_APP_PRIVATE_KEY", "test-pem"),
-            ("NAVIGATOR_GITHUB_WEBHOOK_SECRET", "whsec"),
-            (
-                "NAVIGATOR_GITHUB_CANONICAL_REPOSITORY",
-                "neon-law-source-code/navigator",
-            ),
-            ("NAVIGATOR_GITHUB_APP_LOGIN", "navigator-nightwatch[bot]"),
             ("RESTATE_INGRESS_URL", "https://ingress.restate.cloud:8080"),
             ("RESTATE_AUTH_TOKEN", "key_test"),
             ("RESTATE_IDENTITY_KEY", "publickeyv1_test-identity-key"),
@@ -738,14 +692,6 @@ mod tests {
             ("NAVIGATOR_CREDENTIAL_ENVIRONMENT", "dev"),
             ("SESSION_SECRET", SECRET32),
             (NAVIGATOR_GITHUB_ORG, AN_ORGANIZATION),
-            ("NAVIGATOR_GITHUB_APP_ID", "123456"),
-            ("NAVIGATOR_GITHUB_APP_PRIVATE_KEY", "test-pem"),
-            ("NAVIGATOR_GITHUB_WEBHOOK_SECRET", "whsec"),
-            (
-                "NAVIGATOR_GITHUB_CANONICAL_REPOSITORY",
-                "neon-law-source-code/navigator",
-            ),
-            ("NAVIGATOR_GITHUB_APP_LOGIN", "navigator-nightwatch[bot]"),
             ("RESTATE_INGRESS_URL", "https://ingress.restate.cloud:8080"),
             ("RESTATE_AUTH_TOKEN", "key_test"),
             ("RESTATE_IDENTITY_KEY", "publickeyv1_test-identity-key"),

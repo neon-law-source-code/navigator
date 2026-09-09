@@ -216,6 +216,46 @@ fn validate_now_scans_readme_and_claude_as_prose() {
         .stdout(str::contains("Scanned 3 file(s)"));
 }
 
+#[test]
+fn validate_root_scans_canonical_skills_without_duplicate_hidden_aliases() {
+    let dir = TempDir::new().unwrap();
+    write(
+        dir.path(),
+        ".agents/skills/broken/SKILL.md",
+        &format!("{}\n", "x".repeat(121)),
+    );
+    write(
+        dir.path(),
+        ".claude/skills/alias/SKILL.md",
+        &format!("{}\n", "x".repeat(121)),
+    );
+    write(
+        dir.path(),
+        ".codex/skills/alias/SKILL.md",
+        &format!("{}\n", "x".repeat(121)),
+    );
+    write(
+        dir.path(),
+        ".git/ignored.md",
+        &format!("{}\n", "x".repeat(121)),
+    );
+    write(
+        dir.path(),
+        "target/ignored.md",
+        &format!("{}\n", "x".repeat(121)),
+    );
+
+    navigator()
+        .arg("validate")
+        .arg(dir.path())
+        .assert()
+        .failure()
+        .code(1)
+        .stdout(str::contains(".agents/skills/broken/SKILL.md"))
+        .stdout(str::contains("S101"))
+        .stdout(str::contains("Scanned 1 file(s)"));
+}
+
 /// Validate remains independent of database environment variables.
 #[test]
 fn validate_ignores_an_exported_database_url() {

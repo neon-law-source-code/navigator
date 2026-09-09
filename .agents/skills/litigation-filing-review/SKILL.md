@@ -31,14 +31,14 @@ Do not approve the package until the attorney of record can answer each item fro
 5. **Procedural history.** Disclose and explain adverse procedural history that could affect the requested relief,
    including prior applications and rulings. State the present effect instead of omitting, minimizing, or burying it.
 6. **Relief parity.** Compare the requested relief across the application, memorandum, declaration, stipulation,
-   proposed order, and proof of service. Resolve every mismatch in scope, amount, deadline, party, condition, and service
-   representation. Mark an inapplicable component explicitly and explain why it is absent.
+   proposed order, and proof of service. Resolve every mismatch in scope, amount, deadline, party, condition, and
+   service representation. Mark an inapplicable component explicitly and explain why it is absent.
 7. **Shortest plausible denial.** Draft the shortest plausible order or bench ruling that denies the request. Identify
    the missing element, authority, proof, procedure, notice, or proposed-order term that supports it. Close the gap or
    have the attorney of record expressly accept it before filing.
 
-End with a clear attorney-of-record decision: approved for filing, changes required, or do not file. Preserve the
-review record in the matter workspace. Do not put client names, contact details, matter facts, source PDFs, or legal work
+End with a clear attorney-of-record decision: approved for filing, changes required, or do not file. Preserve the review
+record in the matter workspace. Do not put client names, contact details, matter facts, source PDFs, or legal work
 product in this public repository or an external planning surface.
 
 ## After a ruling

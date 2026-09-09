@@ -10,18 +10,18 @@ description: >
 
 # Start the portal on a random port
 
-A Project repository has `navigator.yaml` at its root declaring `host` and `project`, and a `portal/` beside it
-holding a React and Vite app. This starts that app and hands back a URL a browser can open.
+A Project repository has `navigator.yaml` at its root declaring `host` and `project`, and a `portal/` beside it holding
+a React and Vite app. This starts that app and hands back a URL a browser can open.
 
 ## The port is random, and never the default
 
-**Do not start Vite on 5173, and do not let it pick the next free port by counting up.** Two things break when the
-port is predictable:
+**Do not start Vite on 5173, and do not let it pick the next free port by counting up.** Two things break when the port
+is predictable:
 
 - The fleet is more than twenty Project repositories with byte-identical Vite config. Two portals started in the same
-  afternoon land on 5173 and 5174, and the second tab shows the *first* Project's matter — a privileged surface for
-  the wrong client, in a window that looks entirely correct. Nothing on the page announces which Project it is except
-  a brand line a reader skims past.
+  afternoon land on 5173 and 5174, and the second tab shows the *first* Project's matter — a privileged surface for the
+  wrong client, in a window that looks entirely correct. Nothing on the page announces which Project it is except a
+  brand line a reader skims past.
 - A stale server from an earlier session holds the default, so `pnpm dev` attaches you to yesterday's bundle and every
   edit appears to do nothing.
 
@@ -61,13 +61,13 @@ letting Vite choose.
 ## The URL is the mount, not the bare host
 
 The bundle is built at a base of `/app/projects/<code>/portal/`. `http://localhost:<port>/` is a 404 and reads as a
-broken server, so always hand over the full mounted path, trailing slash included: Vite joins asset URLs directly
-onto it.
+broken server, so always hand over the full mounted path, trailing slash included: Vite joins asset URLs directly onto
+it.
 
 ## Look at it before saying it works
 
-`curl` returns the single-page-application shell for any path under the mount, so a 200 proves routing and nothing
-about rendering. Use the Chrome already on the machine — no driver to install:
+`curl` returns the single-page-application shell for any path under the mount, so a 200 proves routing and nothing about
+rendering. Use the Chrome already on the machine — no driver to install:
 
 ```bash
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
@@ -75,8 +75,8 @@ about rendering. Use the Chrome already on the machine — no driver to install:
   --screenshot=portal.png "http://localhost:$port/app/projects/$code/portal/"
 ```
 
-Then read the PNG. A blank frame is a failure to launch, not a slow paint — `--virtual-time-budget` already waited.
-Note that `timeout` is not present on macOS by default; background the process and poll instead of reaching for it.
+Then read the PNG. A blank frame is a failure to launch, not a slow paint — `--virtual-time-budget` already waited. Note
+that `timeout` is not present on macOS by default; background the process and poll instead of reaching for it.
 
 ## Stopping, and what is already up
 
@@ -84,5 +84,5 @@ Note that `timeout` is not present on macOS by default; background the process a
 lsof -iTCP -sTCP:LISTEN -n -P | grep -i node
 ```
 
-Stop a backgrounded server through the harness's own task-stop rather than `kill`, so the task's state matches what
-the user sees in their task list.
+Stop a backgrounded server through the harness's own task-stop rather than `kill`, so the task's state matches what the
+user sees in their task list.

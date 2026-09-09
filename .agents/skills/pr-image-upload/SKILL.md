@@ -1,11 +1,11 @@
 ---
 name: pr-image-upload
 description: >
-  Embed a local screenshot or GIF into a `github.com` PR (or issue) body so it actually RENDERS, driven from the
-  CLI — no drag-drop, no committing the file, no image-hosting branch, no release/tag. One `curl` uploads the `/tmp`
-  capture to the tenant's `user-attachments` store using nothing but `gh auth token`, and returns a real
-  `https://github.com/user-attachments/assets/…` URL to drop into the body. Trigger as the embed half of
-  [[create-pr]] Step 6 (after [[web-preview]] captures the visual), when a reviewer comment on a PR asks for a "live
+  Embed a local screenshot or GIF into a `github.com` PR (or issue) body so it actually RENDERS, driven from the CLI —
+  no drag-drop, no committing the file, no image-hosting branch, no release/tag. One `curl` uploads the `/tmp` capture
+  to the tenant's `user-attachments` store using nothing but `gh auth token`, and returns a real
+  `https://github.com/user-attachments/assets/…` URL to drop into the body. Trigger as the embed half of [[create-pr]]
+  Step 6 (after [[web-preview]] captures the visual), when a reviewer comment on a PR asks for a "live
   walkthrough"/screenshot during [[review-pr]], or any time you have a `/tmp` image that must appear in a PR/issue body
   or comment. Capture lives in [[web-preview]] — a walkthrough defaults to a GIF of the real interaction (§5), a still
   (§3) only for a genuinely static change; this skill only hosts + embeds it.
@@ -13,9 +13,9 @@ description: >
 
 # Embedding screenshots in a PR body from the CLI
 
-An `<img src="/tmp/…">` in a `gh`-created body renders **broken** (the host resolves it to
-`https://github.com/tmp/…` → 404), and the clean hosting options are all off the table per `CLAUDE.md`: don't
-commit the capture to the tree, don't push an image-hosting branch, don't cut a release/tag just to host a PNG.
+An `<img src="/tmp/…">` in a `gh`-created body renders **broken** (resolves to `https://github.com/tmp/…` → 404), and
+the clean hosting options are all off the table per `CLAUDE.md`: don't commit the capture to the tree, don't push an
+image-hosting branch, don't cut a release/tag just to host a PNG.
 
 The path that satisfies all of that is the tenant's own **user-attachments** store, reached with a single authenticated
 request. It needs an OAuth token with push access to the target repository — exactly what `gh auth token` returns.
@@ -31,7 +31,7 @@ entirely. Symptoms, if someone tries anyway:
 | --- | --- |
 | no flag | `could not parse GitHub owner/repo from remote URL: https://github.com/…` |
 | `--repo <a github.com repo>` | `failed to look up repo ID …` — there is no github.com `gh` auth here |
-| `--repo neon-law-source-code/navigator` | `step 0 (get upload token): repo page returned 404` — not a github.com repo |
+| `--repo neon-law-source-code/navigator` | `step 0 (get upload token): repo page: 404` — not a github.com repo |
 
 ## The recipe
 
@@ -66,8 +66,8 @@ Upload **all** of a PR's images in one pass, then do a single `gh pr edit`, so t
 **Do not verify by curling the asset URL with the token.** An OAuth token is not a web session, so the request follows a
 redirect and hands back ~39 KB of `text/html`. That looks like a broken upload and is not one.
 
-Ask the host's own renderer instead. A working asset resolves to an `<img>` on `objects-origin.github.com` with a
-signed `X-Amz-Signature` and `response-content-type=image/…`:
+Ask the host's own renderer instead. A working asset resolves to an `<img>` on `objects-origin.github.com` with a signed
+`X-Amz-Signature` and `response-content-type=image/…`:
 
 ```bash
 gh api /markdown -X POST -f mode=gfm -f context=neon-law-source-code/navigator \
@@ -82,8 +82,8 @@ gh api /markdown -X POST -f mode=gfm -f context=neon-law-source-code/navigator \
 - **URL-encode `content_type`.** A bare `+` in `image/svg+xml` arrives as a space and is rejected.
 - **The uploads host is `uploads.github.com`** — the tenant subdomain, not `uploads.github.com`. It resolves to
   the same tenant address as the web host.
-- **Assets inherit repository visibility.** `neon-law-source-code/navigator` is `internal`, so the image renders for tenant members
-  and 302s for an anonymous fetch. That 302 is correct behaviour, not a failure.
+- **Assets inherit repository visibility.** `neon-law-source-code/navigator` is `internal`, so the image renders for
+  tenant members and 302s for an anonymous fetch. That 302 is correct behaviour, not a failure.
 - The token needs **push access** to `repository_id`; a `404` from the upload endpoint means the token lacks it (or the
   parameter is missing), not that the URL is wrong.
 - **Never** commit the capture, push an image-hosting branch, or create a release/tag to host it. (See [[web-preview]]

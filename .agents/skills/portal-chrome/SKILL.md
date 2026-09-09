@@ -1,20 +1,20 @@
 ---
 name: portal-chrome
 description: >
-  How a Project portal is allowed to look: it wears `@neon-law-source-code/navigator-ux` as shipped — the Neon Law
-  teal, `NavigatorShell` with `NavigatorNavbar` and `NavigatorFooter`, and a way back to the matter show page — and it
-  never repaints the palette or hand-rolls the frame. Trigger whenever a task touches a portal's styling, colours,
-  header, footer, navigation, or page frame, and before adding any stylesheet to `portal/src/styles/`. Synced verbatim
-  into every Project repository's `.claude/skills/` by `navigator site projects repository sync-skills`; this canonical
-  copy lives in Navigator's own `.agents/skills/`.
+  How a Project portal is allowed to look: it wears `@neon-law-source-code/navigator-ux` as shipped — the Neon Law teal,
+  `NavigatorShell` with `NavigatorNavbar` and `NavigatorFooter`, and a way back to the matter show page — and it never
+  repaints the palette or hand-rolls the frame. Trigger whenever a task touches a portal's styling, colours, header,
+  footer, navigation, or page frame, and before adding any stylesheet to `portal/src/styles/`. Synced verbatim into
+  every Project repository's `.claude/skills/` by `navigator site projects repository sync-skills`; this canonical copy
+  lives in Navigator's own `.agents/skills/`.
 ---
 
 # The portal wears the library, unmodified
 
-A Project portal is served by Navigator, from Navigator's own host, at `/app/projects/<code>/portal/`. A reader
-crosses into it from the matter show page one segment up and does not experience that as leaving the product. So the
-portal has to look like the product, and the way it does that is by rendering `@neon-law-source-code/navigator-ux`
-exactly as the library ships it.
+A Project portal is served by Navigator, from Navigator's own host, at `/app/projects/<code>/portal/`. A reader crosses
+into it from the matter show page one segment up and does not experience that as leaving the product. So the portal has
+to look like the product, and the way it does that is by rendering `@neon-law-source-code/navigator-ux` exactly as the
+library ships it.
 
 That is the whole rule. Everything below is a consequence of it.
 
@@ -25,14 +25,14 @@ The library ships one identity: the Neon Law teal, as `--nav-teal-*` behind the 
 portal is teal too.
 
 **Do not add a brand layer.** Specifically, do not create `portal/src/styles/brand.css`, do not redeclare
-`--nav-color-primary` or any of its siblings, and do not import a stylesheet between the library's and the app's own.
-A `:root:root` block that repaints the ramp is the exact shape of the mistake — it wins on specificity, it applies to
+`--nav-color-primary` or any of its siblings, and do not import a stylesheet between the library's and the app's own. A
+`:root:root` block that repaints the ramp is the exact shape of the mistake — it wins on specificity, it applies to
 every component at once, and the result is a page that looks deliberate and belongs to nobody.
 
-This is written down because it happened. Portals across the fleet carried a `brand.css` that repainted the teal
-orange, and its own header claimed it was byte-identical everywhere and had to change in all portals or none. Neither
-half was true: there were two variants of it and at least one portal carried none. A convention that is only in a
-comment is a convention that drifts, which is why this one is a synced skill and a validate finding instead.
+This is written down because it happened. Portals across the fleet carried a `brand.css` that repainted the teal orange,
+and its own header claimed it was byte-identical everywhere and had to change in all portals or none. Neither half was
+true: there were two variants of it and at least one portal carried none. A convention that is only in a comment is a
+convention that drifts, which is why this one is a synced skill and a validate finding instead.
 
 If a colour genuinely needs to change, it changes in `neon-law-source-code/navigator-ux`, where it is reviewed as a
 visual regression across every consumer. It does not change in one portal.
@@ -41,8 +41,8 @@ visual regression across every consumer. It does not change in one portal.
 
 `portal/src/styles/app.css` is imported last and wins on equal specificity. It is for the rare thing that has to
 disagree with the library — a grid the library has no component for, say. It is **not** for tokens. A token restated
-there is a token that stops tracking the palette, and it will be the one element on the page that looks wrong after
-the next library release.
+there is a token that stops tracking the palette, and it will be the one element on the page that looks wrong after the
+next library release.
 
 Anything added there earns a comment saying what it disagrees with and why the library could not do it.
 
@@ -54,13 +54,12 @@ Use the chrome the library ships:
 - **`NavigatorNavbar`** is the header. Give it `brand`, `destinations` for the portal's own routes, and — this is the
   part most often missed — a `brandHref` that leaves the portal.
 - **`NavigatorFooter`** is the footer: a host `legal` line, then the fixed
-  `Powered by Neon Law Navigator` line (`POWERED_BY_NEON_LAW_NAVIGATOR`), then
-  `links` and `release`. Do not pass the platform wording as `legal`; the library
-  renders it.
+  `Powered by Neon Law Navigator` line (`POWERED_BY_NEON_LAW_NAVIGATOR`), then `links` and `release`. Do not pass the
+  platform wording as `legal`; the library renders it.
 
-Do not build a bar out of primitives, and do not leave the portal with no way out. `PageHeader`, `CaseHead`, and
-`Hero` are page headings and none of them is chrome; a page heading inside the shell is right, a page heading standing
-in for the shell is not.
+Do not build a bar out of primitives, and do not leave the portal with no way out. `PageHeader`, `CaseHead`, and `Hero`
+are page headings and none of them is chrome; a page heading inside the shell is right, a page heading standing in for
+the shell is not.
 
 ## The way back is the matter show page
 
@@ -81,8 +80,8 @@ URLs and never an href written by hand, so a literal path survives the build poi
 that address — which, for a portal, is another Project's matter.
 
 Every other href stays under the mount, with **no trailing slash**: Navigator's `asset_path_is_safe` requires every
-`/`-separated segment to be non-empty, so `notations/` is refused *before* the single-page-application fallback, and
-the refusal is the same non-disclosing 404 a nonparticipant receives. A broken link looks exactly like a permission
+`/`-separated segment to be non-empty, so `notations/` is refused *before* the single-page-application fallback, and the
+refusal is the same non-disclosing 404 a nonparticipant receives. A broken link looks exactly like a permission
 boundary.
 
 ## Two component traps worth knowing before you hit them
@@ -90,14 +89,14 @@ boundary.
 - **`Runs` is inline.** It emits spans and no block of its own, so two adjacent `Runs` render as one run-on line with
   no separator. For two lines of text, use `Prose` with one entry per paragraph.
 - **`FactCard` and `DataTable`'s `empty` slot wrap their children in a paragraph.** A block component nested inside is
-  invalid markup a browser silently reflows. Put a `Runs` in a `FactCard`, and use `Empty` for a list with nothing in
-  it rather than the table's own sentence-sized slot.
+  invalid markup a browser silently reflows. Put a `Runs` in a `FactCard`, and use `Empty` for a list with nothing in it
+  rather than the table's own sentence-sized slot.
 
 ## Themes are the library's too
 
 `ThemeProvider` reports the operating system's colour scheme; the tokens do the rest in a media query. There is no
-toggle, no stored choice, and no pre-paint script to add. An SVG drawn into a portal uses `var(--nav-color-…)` for
-every fill and stroke — a hex value there is the one mark on the page that will not follow the theme.
+toggle, no stored choice, and no pre-paint script to add. An SVG drawn into a portal uses `var(--nav-color-…)` for every
+fill and stroke — a hex value there is the one mark on the page that will not follow the theme.
 
 ## Before you open a pull request
 
@@ -106,6 +105,5 @@ navigator validate .
 cd portal && pnpm check
 ```
 
-`navigator validate` reads `project:` from `navigator.yaml`. Without that key the
-layout half does not run, and a checkout whose directory name is not the Project
-code still validates against the manifest.
+`navigator validate` reads `project:` from `navigator.yaml`. Without that key the layout half does not run, and a
+checkout whose directory name is not the Project code still validates against the manifest.

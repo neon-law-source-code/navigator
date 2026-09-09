@@ -22,10 +22,11 @@ What each piece does:
 
 - `validate` classifies each file by its content and path — prose markdown gets the M-family rules + S101/S102, a
   notation template under `templates/` (or any file declaring `questionnaire:`/`workflow:`) also gets the N-family,
-  events get the E-family, and blog posts get the C-family. A plain README classifies as prose on its
-  own, so it never trips bogus N101/N102/N103. It walks the whole tree — README/`CLAUDE.md` and every directory are in
-  scope (only hidden dirs and `target/` are skipped) — and folds in the typed event pass and a `.yaml`/`.yml` parse over
-  the same walk. The per-kind frontmatter keys are documented for attorneys in `docs/frontmatter.md`.
+  events get the E-family, and blog posts get the C-family. A plain README classifies as prose on its own, so it never
+  trips bogus N101/N102/N103. It walks the whole tree — README/`CLAUDE.md` and every directory are in scope; `.agents/`
+  is the canonical skill catalog; `.git`, `.build`, `.claude`, `.codex`, and `target/` are skipped. It folds in the
+  typed event pass and a `.yaml`/`.yml` parse over the same walk. The per-kind frontmatter keys are documented for
+  attorneys in `docs/frontmatter.md`.
 - `<path>` — either a file or a directory (default `.`). The walker recurses.
 
 ## Lint every workspace README in one pass

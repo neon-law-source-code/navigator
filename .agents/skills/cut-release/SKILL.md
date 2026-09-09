@@ -21,11 +21,11 @@ through a PR; merging `main` drives publication.
   next hotfix is `26.8.23-hotfix.1`, not `26.8.22-hotfix.1`. See
   [`docs/gitops.md`](../../../docs/gitops.md#why-a-hotfix-prerelease-ranks-below-its-date).
 - Run `cargo nextest run -p server --test vendor_assets` before the version bump. This is the required KIND-free
-  accessibility check: it proves the deterministic stylesheet rules that keep normal-size text and links accessible.
-  If this worktree already has a running KIND fixture and host `web`, also source `.devx/env` and run
-  `cargo run -p cli -- dev browser-e2e`; that is the full browser and axe-core audit. If no fixture is running, do not
-  run the browser suite raw — it intentionally self-skips without a harness. Report that browser E2E was skipped; do
-  not describe it as a passing accessibility audit.
+  accessibility check: it proves the deterministic stylesheet rules that keep normal-size text and links accessible. If
+  this worktree already has a running KIND fixture and host `web`, also source `.devx/env` and run `cargo run -p cli --
+  dev browser-e2e`; that is the full browser and axe-core audit. If no fixture is running, do not run the browser suite
+  raw — it intentionally self-skips without a harness. Report that browser E2E was skipped; do not describe it as a
+  passing accessibility audit.
 - Make the smallest version-only commit, run the documented gate, and open the PR against `main`. **No draft PRs**: a
   release PR must open ready for review, not as a draft. Auto-merge only lands a PR that is not a draft, so a release
   cut as a draft sits published-but-unmerged until someone notices and marks it ready — take it out of draft as soon as

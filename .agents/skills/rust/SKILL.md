@@ -4,8 +4,8 @@ description: >
   Workspace Rust guardrails. Trigger on the sharpest moments: a change that adds `unsafe`, `unwrap`, `expect`, or
   `panic!` outside `main()`/tests; introducing a new public API, error type, or module; reaching for a different web
   framework, store client, or async runtime (we standardize on Axum + SurrealDB + Tokio); or wiring a new binary's
-  `main()`. Read
-  [`docs/rust-programming.md`](../../../docs/rust-programming.md) before acting — it is the authoritative reference.
+  `main()`. Read [`docs/rust-programming.md`](../../../docs/rust-programming.md) before acting — it is the authoritative
+  reference.
 ---
 
 # Rust guardrails
@@ -16,9 +16,8 @@ The doc owns the conventions; this skill is the short list of guards that are ea
 - **No `unwrap`/`expect`/`panic!` outside `main()` and tests.** Use `?` with `anyhow` (binaries) or `thiserror`
   (libraries); `expect("invariant: …")` only when the invariant is provable in one line for a future reader.
 - **`unsafe_code = "forbid"`** at the workspace level — never reach for `unsafe`.
-- **Standardize on Axum + SurrealDB + Tokio.** Don't add a second web framework, store client, or async runtime;
-  extend the existing
-  router, entity, and runtime instead.
+- **Standardize on Axum + SurrealDB + Tokio.** Don't add a second web framework, store client, or async runtime; extend
+  the existing router, entity, and runtime instead.
 - **One canonical shutdown-signal helper** for service lifecycle (SIGTERM + SIGINT). No ad-hoc `ctrl_c().await.unwrap()`
   inline in `main`.
 - **Axum body/consuming extractors go LAST** in handler argument order — the body can only be consumed once.

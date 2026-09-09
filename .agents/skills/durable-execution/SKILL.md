@@ -28,8 +28,8 @@ playbook.
 ## How to treat it (the load-bearing rules)
 
 - **Diagnose by evidence, not memory.** When one didn't fire, read what the system is telling you now — commit history,
-  the GitHub Actions run, the logs, and Google Cloud — instead of guessing from a remembered failure.
-  `navigator ops doctor` triages the cluster slice fast; confirm against the evidence.
+  the GitHub Actions run, the logs, and Google Cloud — instead of guessing from a remembered failure. `navigator ops
+  doctor` triages the cluster slice fast; confirm against the evidence.
 - **Fix the root cause, then guard it.** Pin every fix with a test or manifest field, in the same PR, so the same outage
   can't recur — that is how the failure list shrinks instead of repeating.
 - **Adding a workspace crate?** Add it to every workspace-building Containerfile's COPY list or the next trigger build

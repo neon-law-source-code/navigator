@@ -11,4 +11,5 @@ Use this skill when writing or revising prose that should be brief and clear.
 - Remove throat-clearing, repetition, and vague qualifiers.
 - Prefer periods, commas, colons, or parentheses. Do not use em dashes in new or revised prose.
 - Keep the meaning, audience, and authority of the source intact.
-- Preserve quotations, legal text, workshop scripts, and any wording the agent is not authorized to rewrite. Ask before changing protected wording.
+- Preserve quotations, legal text, workshop scripts, and any wording the agent is not authorized to rewrite. Ask before
+  changing protected wording.

@@ -2,9 +2,9 @@
 //!
 //! The engine reads markdown files under a directory, applies every
 //! configured rule to each one, and returns the aggregated violations.
-//! Non-markdown files, hidden directories (anything starting with `.`), and
-//! `target/` are skipped by default; every other `.md` is linted, and
-//! `classify_source` decides which rule set each one earns.
+//! Non-markdown files, hidden directories other than the canonical `.agents/`
+//! skill catalog, and `target/` are skipped by default; every other `.md` is
+//! linted, and `classify_source` decides which rule set each one earns.
 
 use std::fs;
 use std::io;
@@ -91,8 +91,9 @@ pub trait FileFilter: Send + Sync {
     fn include_file(&self, path: &Path) -> bool;
 }
 
-/// The default filter: skip hidden directories (`.git`, `.build`,
-/// `.claude`, …) and `target/`, and lint every other `*.md` file.
+/// The default filter: include the canonical `.agents/` skill catalog, skip
+/// other hidden directories (`.git`, `.build`, `.claude`, `.codex`, …) and
+/// `target/`, and lint every other `*.md` file.
 ///
 /// Classification (`classify_source`) is what now decides a file's rule
 /// set — a file with no notation frontmatter classifies as prose
@@ -111,7 +112,10 @@ impl FileFilter for DefaultFileFilter {
         let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
             return true;
         };
-        if name.starts_with('.') {
+        // `.claude/skills` and `.codex/skills` mirror `.agents/skills` through
+        // symlinks. Walk only the canonical directory so each skill is linted
+        // once, while keeping VCS, build, and other hidden output excluded.
+        if name.starts_with('.') && name != ".agents" {
             return false;
         }
         if name == "target" {
@@ -797,10 +801,12 @@ mod tests {
     }
 
     #[test]
-    fn default_filter_skips_hidden_dirs_and_target() {
+    fn default_filter_includes_canonical_skills_and_skips_other_hidden_dirs() {
         let f = DefaultFileFilter::default();
+        assert!(f.include_dir(Path::new("foo/.agents")));
         assert!(!f.include_dir(Path::new("foo/.git")));
         assert!(!f.include_dir(Path::new("foo/.claude")));
+        assert!(!f.include_dir(Path::new("foo/.codex")));
         assert!(!f.include_dir(Path::new("foo/target")));
         assert!(f.include_dir(Path::new("foo/src")));
     }

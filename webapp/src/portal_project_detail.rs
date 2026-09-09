@@ -64,6 +64,10 @@ pub struct NotationRow {
     /// declined, voided, expired, or already-completed envelope, and never
     /// for a notation addressed to a different participant on the same
     /// matter.
+    ///
+    /// Also false for `emailed` delivery, whose recipient carries no
+    /// `clientUserId`: the sign route has no embedded session to mint for
+    /// one and answers `409`, so the action would lead nowhere.
     pub signable: bool,
 }
 
@@ -416,12 +420,21 @@ async fn notation_rows(
             ))
             .await
             .unwrap_or(false);
-        // Live envelope, addressed to this exact signer — a matter can
-        // carry several client participants, so a live envelope bound to
-        // one of them must never offer the sign action to another (mirrors
-        // the identity gate `esign_view::sign_get` applies before minting a
-        // recipient view).
+        // Live envelope, addressed to this exact signer, that the sign
+        // route can actually open — a matter can carry several client
+        // participants, so a live envelope bound to one of them must never
+        // offer the sign action to another (mirrors the identity gate
+        // `esign_view::sign_get` applies before minting a recipient view).
+        //
+        // `emailed` delivery is excluded for the same reason: a
+        // non-captive recipient carries no `clientUserId`, so there is no
+        // embedded session to mint and that route answers `409` rather
+        // than a redirect (`server/tests/esign_redirect.rs`,
+        // `an_emailed_envelope_has_no_embedded_session_to_open`). Offering
+        // an action whose only outcome is a conflict is the same defect as
+        // offering one for a dead envelope.
         let signable = person_id == Some(n.person_id)
+            && n.delivery != store::notations::DELIVERY_EMAILED
             && matches!(
                 signature_state,
                 Some(store::signatures::SignatureState::Requested)
@@ -1014,6 +1027,81 @@ mod tests {
                 "a {label} envelope must not be signable"
             );
         }
+    }
+
+    /// An `emailed` (non-captive) recipient has no embedded session to
+    /// open: `esign_view::sign_get` resolves the recipient through the send
+    /// path's own function, finds no `clientUserId`, and answers `409` —
+    /// pinned by `server/tests/esign_redirect.rs`,
+    /// `an_emailed_envelope_has_no_embedded_session_to_open`. A live
+    /// envelope addressed to its own signer must therefore still not be
+    /// signable when the notation was delivered by email, or the portal
+    /// offers an action whose only outcome is a conflict.
+    #[tokio::test]
+    async fn signable_is_false_for_an_emailed_delivery_even_with_a_live_envelope() {
+        let surreal = store::surreal::test_support::mem().await;
+        let seeded_id = store::test_support::seed_notation(&surreal).await;
+        let seeded = store::notations::find_by_id(&surreal, seeded_id)
+            .await
+            .expect("query notation")
+            .expect("seeded notation exists");
+        let storage = temp_storage("signable-emailed", seeded_id).await;
+
+        // Same template, signer, and matter as the seeded notation; only the
+        // delivery mode differs, so delivery is the single variable.
+        let emailed_id = store::notations::create(
+            &surreal,
+            &store::notations::NewNotation::new(
+                seeded.template_id,
+                seeded.person_id,
+                seeded.project_id,
+                "sent_for_signature__pending",
+            )
+            .with_delivery(store::notations::DELIVERY_EMAILED),
+        )
+        .await
+        .expect("create an emailed-delivery notation")
+        .id;
+        // Both notations get their own live envelope, so delivery is the
+        // only difference between the two rows compared below.
+        for (notation_id, provider_id) in [
+            (emailed_id, "env-eng-558-emailed"),
+            (seeded_id, "env-eng-558-embedded"),
+        ] {
+            store::signatures::record_request(
+                &surreal,
+                notation_id,
+                store::signatures::SignatureProvider::DocuSign,
+                provider_id,
+            )
+            .await
+            .expect("record signature request");
+        }
+
+        let rows = notation_rows(
+            &surreal,
+            &storage,
+            seeded.project_id,
+            Some(seeded.person_id),
+        )
+        .await
+        .expect("build notation rows");
+        assert_eq!(
+            rows.iter()
+                .find(|r| r.id == emailed_id.to_string())
+                .map(|r| r.signable),
+            Some(false),
+            "an emailed recipient has no embedded session, so the action must not be offered"
+        );
+        // The embedded sibling — same matter, same signer, same live
+        // envelope state — stays signable, so delivery alone decided it.
+        assert_eq!(
+            rows.iter()
+                .find(|r| r.id == seeded_id.to_string())
+                .map(|r| r.signable),
+            Some(true),
+            "embedded delivery with the same live envelope and signer must remain signable"
+        );
     }
 
     /// Once fully executed, the client cannot re-enter the ceremony — a

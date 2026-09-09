@@ -3222,12 +3222,48 @@ async fn seed_person_project_roles(
     Ok(())
 }
 
+/// The fee basis for a zero-fee engagement — "no fee" is a fee basis like
+/// any other, and NRPC 1.5(b) requires it be told to the client in writing.
+/// The generic engagement agreement (`onboarding__letter`) states no amount
+/// or cadence of its own and leaves the basis to arrive as a custom clause
+/// spliced into § I (ENG-146); this is that clause's canonical text (ENG-559).
+pub const NO_CHARGE_FEE_CLAUSE_BODY: &str = "The Firm charges no fee for this engagement.";
+
+/// Seed [`NO_CHARGE_FEE_CLAUSE_BODY`] onto `notation_id`, idempotently: a
+/// clause already carrying this exact body is reused rather than duplicated,
+/// so seeding twice never doubles the fee-basis paragraph the client signs.
+///
+/// The row this writes is an ordinary `notation_clauses` row
+/// ([`crate::notation_clauses`]) — indistinguishable from one a lawyer typed
+/// by hand, so it is edited, reordered, or removed the same way at the
+/// lawyer-review clause editor.
+///
+/// # Errors
+///
+/// Propagates any database error reading or writing the notation's clauses.
+pub async fn seed_no_charge_fee_clause(
+    surreal: &SurrealDb,
+    notation_id: Uuid,
+) -> anyhow::Result<Uuid> {
+    let existing = crate::notation_clauses::for_notation(surreal, notation_id).await?;
+    if let Some(clause) = existing
+        .iter()
+        .find(|c| c.body_markdown == NO_CHARGE_FEE_CLAUSE_BODY)
+    {
+        return Ok(clause.id);
+    }
+    let id = crate::notation_clauses::append(surreal, notation_id, NO_CHARGE_FEE_CLAUSE_BODY, None)
+        .await?;
+    Ok(id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        normalized_body_bytes, reconcile_yaml, seed_canonical, seeded_template_codes,
-        split_template, validate_yaml, ReconcileAction, ReconcileActor, ScopeViolation, SeedModel,
-        TemplateFrontmatter, SEEDED_TEMPLATES,
+        normalized_body_bytes, reconcile_yaml, seed_canonical, seed_no_charge_fee_clause,
+        seeded_template_codes, split_template, validate_yaml, ReconcileAction, ReconcileActor,
+        ScopeViolation, SeedModel, TemplateFrontmatter, NO_CHARGE_FEE_CLAUSE_BODY,
+        SEEDED_TEMPLATES,
     };
     use crate::jurisdictions::{self, NewJurisdiction};
     use crate::persons::{self, NewPerson, Role};
@@ -4775,6 +4811,96 @@ records:
             !flat.contains("decided under Nevada law"),
             "{code} must not hardcode 'decided under Nevada law'; use the fillable clause"
         );
+    }
+
+    /// ENG-559: a no-charge engagement states its fee basis — "no fee" — as
+    /// a custom clause, the same slot every other fee arrangement uses. An
+    /// onboarding letter carrying only this clause must clear the
+    /// `clauses_required` gate `portal::retainer_walk::dispatch_signature`
+    /// enforces (mirrored here as the same boolean: the custom-clause marker
+    /// present with no clauses on the notation) and must render inside § I,
+    /// before § II states the fee's amount and cadence.
+    #[tokio::test]
+    async fn no_charge_clause_clears_the_clauses_required_gate_and_renders_in_section_i() {
+        let surreal = mem_surreal().await;
+        seed_canonical(&surreal, &fs_storage().await).await.unwrap();
+        let storage = fs_storage().await;
+
+        let tmpl = crate::templates::resolve(&surreal, None, "onboarding__letter")
+            .await
+            .unwrap()
+            .unwrap_or_else(|| panic!("onboarding__letter seeded"));
+        let raw_body = crate::templates::body(&surreal, &storage, &tmpl)
+            .await
+            .expect("retainer body");
+
+        let project_id =
+            crate::test_support::seed_project_surreal(&surreal, "No-Charge Onboarding").await;
+        let person_id = crate::test_support::dri_person(&surreal).await;
+        let notation_id = crate::notations::create(
+            &surreal,
+            &crate::notations::NewNotation::new(tmpl.id, person_id, project_id, "BEGIN"),
+        )
+        .await
+        .expect("open notation")
+        .id;
+
+        let clauses = crate::notation_clauses::for_notation(&surreal, notation_id)
+            .await
+            .unwrap();
+        assert!(
+            raw_body.contains(crate::notation_clauses::CUSTOM_CLAUSES_MARKER) && clauses.is_empty(),
+            "the empty slot must fail the gate before the clause is seeded"
+        );
+
+        seed_no_charge_fee_clause(&surreal, notation_id)
+            .await
+            .unwrap();
+
+        let clauses = crate::notation_clauses::for_notation(&surreal, notation_id)
+            .await
+            .unwrap();
+        assert!(
+            !(raw_body.contains(crate::notation_clauses::CUSTOM_CLAUSES_MARKER)
+                && clauses.is_empty()),
+            "the seeded no-charge clause must clear the clauses_required gate"
+        );
+
+        let rendered = crate::notation_clauses::splice(&raw_body, &clauses);
+        let section_i = rendered.find("## I.").expect("§ I heading present");
+        let section_ii = rendered.find("## II.").expect("§ II heading present");
+        let clause_pos = rendered
+            .find(NO_CHARGE_FEE_CLAUSE_BODY)
+            .expect("no-charge clause rendered");
+        assert!(
+            section_i < clause_pos && clause_pos < section_ii,
+            "the no-charge clause must render inside § I, before § II"
+        );
+    }
+
+    /// Re-seeding the same notation — a retried CLI command, a re-run
+    /// fixture — must not double the fee-basis paragraph the client signs.
+    #[tokio::test]
+    async fn seed_no_charge_fee_clause_is_idempotent() {
+        let surreal = mem_surreal().await;
+        let notation_id = crate::test_support::seed_notation(&surreal).await;
+
+        let first = seed_no_charge_fee_clause(&surreal, notation_id)
+            .await
+            .unwrap();
+        let second = seed_no_charge_fee_clause(&surreal, notation_id)
+            .await
+            .unwrap();
+        assert_eq!(
+            first, second,
+            "re-seeding must reuse the existing clause id"
+        );
+
+        let clauses = crate::notation_clauses::for_notation(&surreal, notation_id)
+            .await
+            .unwrap();
+        assert_eq!(clauses.len(), 1, "re-seeding must not duplicate the row");
+        assert_eq!(clauses[0].body_markdown, NO_CHARGE_FEE_CLAUSE_BODY);
     }
 
     #[tokio::test]

@@ -43,8 +43,9 @@ restriction — which would breach the covenant Neon Law IP LLC's permission to 
 only adds permission cannot. So the free zone is operative text; what lies outside it remains BUSL's own undefined term,
 and Neon Law IP LLC's reading of that lives in [`NOTICE`](../NOTICE) and below, where it binds nobody.
 
-The same paragraph opens the grant in `navigator-ux` and in the Homebrew tap. A legal review that has cleared one of the
-three has cleared all three.
+The same paragraph opens the grant in the Homebrew tap, whose grant adds one further sentence permitting the tap to
+obtain, install, and update Navigator. Navigator UX is independently licensed under `Apache-2.0` as of 2026-09-03. The
+sibling repositories are tabulated below, after the parameters.
 
 **The Change Date runs per version.** Each published version carries its own four-year clock, so a version published
 today converts four years from today whatever happens to the ones after it. That is BUSL's own rule, not a choice: its
@@ -62,6 +63,18 @@ the covenant asks. SurrealDB and Restate specify the same Change License under t
 grants. This project's earlier Change License, `AGPL-3.0-only`, satisfied the covenant the same way, through GPL-3.0 §
 13's express permission to combine a GPL-3.0 work with an AGPL-3.0 one; a version already published under that parameter
 keeps it, per the Change Date rule above.
+
+## Sibling repositories
+
+The sibling repositories are independently maintained, so their present licence parameters belong in the record rather
+than being inferred from Navigator's. The last column names the precise drift from this repository's terms; the tap's
+grant opens with Navigator's paragraph and adds one sentence permitting the tap to obtain, install, and update it.
+
+| Repository | Licence | Licensor | Change License | Where it lags |
+| --- | --- | --- | --- | --- |
+| `navigator` | `BUSL-1.1` | Neon Law IP LLC | `Apache-2.0` | — |
+| `navigator-ux` | `Apache-2.0` (since 2026-09-03) | — | — | No BUSL lag; independently licensed |
+| `homebrew-navigator` | `BUSL-1.1` | Shook Law PLLC | `AGPL-3.0-only` | Licensor and Change License differ |
 
 ## Two files, and which one is the instrument
 

@@ -337,6 +337,12 @@ only when no manifest is present. The mount check the same step runs against the
 wrong or malformed declared code from silently publishing: the object prefix must match the Vite base the portal was
 actually built with, wherever the repository is hosted.
 
+**Nothing in a Project repository restates its owner.** The action derives the Project code from the checkout's own
+manifest, and the owner it publishes under is the one the workflow already runs as: `github.repository` is what the
+provenance stamp records, and the Workload Identity provider's `repository_owner` condition is what enforces it. A
+manifest, workflow, or example that spells an organization handle is a second copy of a fact the checkout already
+carries, and `cli/tests/license_of_record.rs` rejects the retired handle wherever it appears in this tree.
+
 That publisher remains limited to the compatibility root `portal/`. The PR gate builds and proves every `apps/<app>/`,
 but publishing or serving a second application requires the application-specific authorization decision and a
 corresponding change to the prefix-conditioned IAM grant. This source-layout change does not widen that grant or guess

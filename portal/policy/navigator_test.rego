@@ -122,6 +122,16 @@ test_anonymous_denied_on_app_notations if {
 	not authz.allow with input as {"path": ["app", "notations", "n1", "documents", "d1"], "method": "GET", "session": null}
 }
 
+# The `/app/notations/**` rule constrains neither the depth nor the third
+# segment, so it admits `sign` as readily as `documents`. That is deliberate,
+# and this case is what makes it deliberate rather than incidental: the
+# handler gate is the entire authorization boundary for the signing route,
+# so a future narrowing of the rule must break here rather than silently
+# make the route unreachable in production.
+test_client_reaches_the_app_notation_signing_route if {
+	authz.allow with input as {"path": ["app", "notations", "n1", "sign"], "method": "GET", "session": client_session}
+}
+
 # ---------- /app/lawyer/* (lawyer tier only) ----------
 
 test_lawyer_reaches_lawyer_notations if {

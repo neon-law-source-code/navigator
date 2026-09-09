@@ -229,6 +229,11 @@ pub fn routes(
         "/app/notations/{id}/documents/{doc_id}",
         get(crate::documents::download),
     );
+    // The client lens on the signing ceremony — the same handler the
+    // `/app/lawyer` prefix registers, which forks on the session's tier
+    // rather than on the prefix. The client is a captive DocuSign recipient
+    // and gets no signing email, so this route is the only door for them.
+    r = r.route("/app/notations/{id}/sign", get(crate::esign_view::sign_get));
     // Blank government forms — any authenticated person (embedded Rego policy's
     // `/app/forms` rule); the bytes are pulled from the public
     // assets bucket and verified against the repo's `.sha256` pins,

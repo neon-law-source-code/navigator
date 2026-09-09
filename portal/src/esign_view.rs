@@ -1,4 +1,5 @@
-//! The door to the signing ceremony: `GET /app/lawyer/notations/:id/sign`.
+//! The door to the signing ceremony: `GET /app/notations/:id/sign` and
+//! `GET /app/lawyer/notations/:id/sign`.
 //!
 //! After the retainer is sent for signature the client is a **captive**
 //! DocuSign recipient (see [`crate::retainer_walk::client_user_id`]) —
@@ -6,6 +7,30 @@
 //! only way in. This route mints one and **redirects the browser to DocuSign**.
 //! The ceremony happens on the provider's own site; Navigator does not frame
 //! it.
+//!
+//! ## Two lenses, two gates
+//!
+//! One handler is registered at both paths, exactly as
+//! [`crate::documents::download`] is. The lens is the session's role, not
+//! the URL prefix, and the gate follows from it:
+//!
+//! **Participation says you may look at the matter; identity says you may
+//! sign as this person.**
+//!
+//! 1. *Participation*, following [`crate::documents`] verbatim:
+//!    [`store::access::can_see_project_as_lawyer`] for a firm-tier session
+//!    (keeping the documented Owner/Admin project-scoping bypass),
+//!    [`store::access::can_see_project_as_client`] otherwise.
+//! 2. *Identity*, for a non-firm caller only: the session's person must be
+//!    the notation's bound signer. A matter can carry several client
+//!    participants, so participation alone would let one of them open the
+//!    other's ceremony. The firm lens is deliberately exempt — a lawyer
+//!    minting the view for the client in the room is the in-office signing
+//!    this route was built for, and there the caller is never the signer.
+//!
+//! Both refusals answer `404`, never `403`, for the reason spelled out at
+//! [`crate::documents`]: a `403` on the identity check would confirm that
+//! this notation exists and that the caller is on the matter.
 //!
 //! ## Completion does not come back through this browser session
 //!
@@ -26,18 +51,25 @@
 //! [recipient view]: https://developers.docusign.com/docs/esign-rest-api/reference/envelopes/envelopeviews/createrecipient/
 
 use axum::extract::{Path as AxumPath, State};
-use axum::http::{header, HeaderValue, StatusCode};
+use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
+use axum::Extension;
 use uuid::Uuid;
 
 use crate::admin::AdminState;
-use crate::retainer_walk::client_user_id;
+use crate::session::SessionData;
 use crate::signature::RecipientView;
 
-/// `GET /app/lawyer/notations/:id/sign` — mint a single-use recipient-view URL for
-/// the notation's captive client and send the browser to DocuSign.
+/// `GET /app/notations/:id/sign` and `GET /app/lawyer/notations/:id/sign` —
+/// mint a single-use recipient-view URL for the notation's captive client
+/// and send the browser to DocuSign.
+///
+/// One handler serves both registrations; see the module docs for the two
+/// gates it applies and why the identity gate is client-lens only.
 pub async fn sign_get(
     State(state): State<AdminState>,
+    Extension(session): Extension<SessionData>,
+    headers: HeaderMap,
     AxumPath(notation_id): AxumPath<Uuid>,
 ) -> Response {
     let Some(notation_row) = store::notations::find_by_id(&state.surreal, notation_id)
@@ -47,6 +79,45 @@ pub async fn sign_get(
     else {
         return (StatusCode::NOT_FOUND, "notation not found").into_response();
     };
+
+    let firm_lens = session.role.is_lawyer_tier();
+
+    // (1) Project ACL follows the caller's tier, not the URL — the same fork
+    // `crate::documents::download` applies, so the two notation surfaces read
+    // one membership table the same way.
+    let decision = if firm_lens {
+        store::access::can_see_project_as_lawyer(
+            &state.surreal,
+            session.person_id,
+            session.role,
+            notation_row.project_id,
+        )
+        .await
+    } else {
+        store::access::can_see_project_as_client(
+            &state.surreal,
+            session.person_id,
+            notation_row.project_id,
+        )
+        .await
+    };
+    match decision {
+        Ok(true) => {}
+        Ok(false) => return (StatusCode::NOT_FOUND, "notation not found").into_response(),
+        Err(e) => {
+            tracing::error!(error = %e, %notation_id, "esign_view: participation check failed");
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
+    }
+
+    // (2) Identity, client lens only: a matter can carry several client
+    // participants, and participation alone would let one open another's
+    // ceremony. Keyed on `person_id` rather than on the resolved name or
+    // email, because the name may come from a questionnaire answer while the
+    // bound signer never moves.
+    if !firm_lens && session.person_id != Some(notation_row.person_id) {
+        return (StatusCode::NOT_FOUND, "notation not found").into_response();
+    }
 
     // The envelope must already exist (the retainer walk records the id in
     // `signatures` when it parks at `sent_for_signature__pending`). No id →
@@ -64,27 +135,37 @@ pub async fn sign_get(
     };
 
     // The captive recipient is resolved on the email/name/clientUserId
-    // triple, so they must match the envelope exactly: the client's
-    // Person row + the notation-derived client_user_id.
-    let Some(client) = store::persons::find_by_id(&state.surreal, notation_row.person_id)
-        .await
-        .ok()
-        .flatten()
-    else {
+    // triple, so it must match the envelope exactly. Resolved through the
+    // *same* function the send path used, so the two cannot drift.
+    let recipient =
+        match crate::retainer_walk::client_recipient_for_notation(&state.surreal, &notation_row)
+            .await
+        {
+            Ok(recipient) => recipient,
+            Err(e) => {
+                tracing::error!(error = %e, %notation_id, "esign_view: recipient resolve failed");
+                return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+            }
+        };
+    if recipient.name.is_empty() || recipient.email.is_empty() {
         return (StatusCode::NOT_FOUND, "client not found").into_response();
+    }
+    // A recipient view is only valid for a recipient sent with a
+    // `clientUserId`. An `emailed` notation has none: DocuSign mailed that
+    // signer their own link and there is no embedded session to mint.
+    let Some(client_user_id) = recipient.client_user_id else {
+        return (
+            StatusCode::CONFLICT,
+            "this matter's envelope was emailed to the signer; there is no session to open here",
+        )
+            .into_response();
     };
 
-    // Where DocuSign sends the browser once the ceremony ends — the matter's
-    // step page, which reflects the post-signature state. A courtesy for the
-    // signer who comes back, not a mechanism: the executed state arrives on
-    // `crate::esignature_webhook` whether this redirect is ever followed or
-    // not.
-    let return_url = format!("/app/lawyer/notations/{notation_id}/step");
     let view = RecipientView {
-        return_url,
-        email: client.email,
-        name: client.name,
-        client_user_id: client_user_id(notation_id),
+        return_url: return_url_for(&state, &headers, &notation_row, firm_lens).await,
+        email: recipient.email,
+        name: recipient.name,
+        client_user_id,
     };
 
     match state
@@ -111,6 +192,41 @@ pub async fn sign_get(
             )
                 .into_response()
         }
+    }
+}
+
+/// Where DocuSign sends the browser once the ceremony ends. A courtesy for the
+/// signer who comes back, not a mechanism: the executed state arrives on
+/// [`crate::esignature_webhook`] whether this redirect is ever followed or not.
+///
+/// **Absolute, and lens-aware.** Absolute because the provider resolves a
+/// relative path against *its own* origin rather than Navigator's, so a
+/// relative `return_url` strands the signer on DocuSign;
+/// [`crate::openapi::base_url_for`] is the tree's one resolver for the public
+/// authority (brand `base_url` → `NAV_BASE_URL` → request `Host`). Lens-aware
+/// because the firm's step page lives under `/app/lawyer`, which the policy
+/// refuses a client — handing a client an absolute URL into a `403` would be a
+/// regression dressed as a fix. A client goes to their matter page instead,
+/// and to the matter list when the Project cannot be read.
+async fn return_url_for(
+    state: &AdminState,
+    headers: &HeaderMap,
+    notation_row: &store::notations::Notation,
+    firm_lens: bool,
+) -> String {
+    let base = crate::openapi::base_url_for(
+        headers
+            .get(header::HOST)
+            .and_then(|value| value.to_str().ok()),
+    );
+    let base = base.trim_end_matches('/');
+    if firm_lens {
+        let notation_id = notation_row.id;
+        return format!("{base}/app/lawyer/notations/{notation_id}/step");
+    }
+    match store::projects::find_by_id(&state.surreal, notation_row.project_id).await {
+        Ok(Some(project)) => format!("{base}/app/projects/{}", project.code),
+        _ => format!("{base}/app/projects"),
     }
 }
 

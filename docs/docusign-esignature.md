@@ -1,16 +1,16 @@
 # DocuSign e-signature — setup, signing flow, and production cutover
 
-How Neon Law Navigator sends a retainer for signature, how a client signs it inside the portal, and how each cloud
-deployment receives an isolated DocuSign attachment. Local sandbox values use a gitignored `.env`; cloud values live in
-that deployment's `deployments/<name>/secrets.enc.yaml` per [`deployment-secrets.md`](deployment-secrets.md). The
-environment-variable convention is in [`third-party-integrations.md`](third-party-integrations.md). This page is the
-DocuSign specifics.
+How Neon Law Navigator sends a retainer for signature, how a client reaches the signing ceremony from the portal — the
+ceremony itself runs on DocuSign's own site, never inside a Navigator page — and how each cloud deployment receives an
+isolated DocuSign attachment. Local sandbox values use a gitignored `.env`; cloud values live in that deployment's
+`deployments/<name>/secrets.enc.yaml` per [`deployment-secrets.md`](deployment-secrets.md). The environment-variable
+convention is in [`third-party-integrations.md`](third-party-integrations.md). This page is the DocuSign specifics.
 
 The signature seam lives under `portal/src/`:
 [`signature.rs`](https://github.com/neon-law-source-code/navigator/blob/main/portal/src/signature.rs) (the
 `SignatureProvider` trait + the DocuSign and stub impls), JWT-grant auth in
 [`docusign_auth.rs`](https://github.com/neon-law-source-code/navigator/blob/main/portal/src/docusign_auth.rs), the
-embedded signing route in
+embedded signing routes in
 [`esign_view.rs`](https://github.com/neon-law-source-code/navigator/blob/main/portal/src/esign_view.rs), and the
 completion [webhook
 source](https://github.com/neon-law-source-code/navigator/blob/main/portal/src/esignature_webhook.rs). An unconfigured
@@ -169,17 +169,44 @@ emailed link — regardless of `delivery`.
 
 - **`embedded`** (the default; the standalone retainer walk) — the client is a **captive** recipient: the manifest sets
   `client_user_id` (derived from the notation), so DocuSign suppresses the signing email. Because no email goes out, a
-  recipient-view URL is the only door. `GET /app/lawyer/notations/:id/sign`
-  ([`portal::esign_view`](https://github.com/neon-law-source-code/navigator/blob/main/portal/src/esign_view.rs)) mints
+  recipient-view URL is the only door. `GET /app/notations/:id/sign` and `GET /app/lawyer/notations/:id/sign`
+  ([`portal::esign_view`](https://github.com/neon-law-source-code/navigator/blob/main/portal/src/esign_view.rs)) mint
   one via `SignatureProvider::create_recipient_view`, which POSTs `envelopes/{id}/views/recipient` and matches the
   recipient on the email, userName, and clientUserId triple. It **redirects the browser to it**. The ceremony runs on
   DocuSign's own site; Navigator does not frame it. The URL expires in minutes, so it is minted fresh per request. The
-  stub returns a deterministic URL in dev/KIND. This fits an in-office signing or a logged-in portal session.
+  stub returns a deterministic URL in dev/KIND. The firm path fits an in-office signing; the client path is the signer's
+  own door.
 
   The signer may never come back — they close the tab, or finish on their phone — so **nothing depends on the return
   trip**. The completion webhook below is the authoritative path; the redirect's `return_url` only decides where a
   signer who does return lands. The column keeps the name `embedded` because it selects the *captive recipient* model,
   which is what DocuSign calls it, not a rendering choice on our side.
+
+  Both paths are one handler, forking on the session's tier rather than the URL prefix, and both apply two gates —
+  **participation says you may look at the matter; identity says you may sign as this person**:
+
+  1. *Participation*, the same fork `portal::documents` applies: `store::access::can_see_project_as_lawyer` for a
+     firm-tier session (keeping the Owner/Admin project-scoping bypass documented in
+     [`access-model.md`](access-model.md)), `can_see_project_as_client` otherwise.
+  2. *Identity*, for a non-firm caller only: the session's person must be the notation's bound signer. A matter can
+     carry several client participants, so participation alone would let one of them open another's ceremony. The firm
+     lens is exempt because there the caller is never the signer — a lawyer minting the view for the client in the room
+     is the in-office case above.
+
+  Both refusals answer `404`, never `403`: a `403` on the identity gate would confirm both that the notation exists and
+  that the caller is on the matter. The Rego rule for `/app/notations/**` constrains neither depth nor the third
+  segment, so **these handler gates are the entire authorization boundary** for the route;
+  `server/tests/esign_redirect.rs` is what holds them.
+
+  The `return_url` handed to the provider is **absolute**, resolved through `portal::openapi::base_url_for` (brand
+  `base_url` → `NAV_BASE_URL` → request `Host`). It has to be: a provider redirecting a browser resolves a relative path
+  against its own origin, not Navigator's. It is also lens-aware — the firm returns to the matter's step page under
+  `/app/lawyer`, a client to their own matter page under `/app/projects`, since the policy refuses a client the
+  `/app/lawyer` prefix.
+
+  A notation whose delivery is `emailed` has a **non-captive** recipient and therefore no `clientUserId`. A recipient
+  view is only valid for a captive one, so these routes answer `409` rather than minting a URL DocuSign would refuse;
+  that signer opens the link from their own inbox instead.
 - **`emailed`** (the matter-open form) — the client is **non-captive**: the manifest omits `client_user_id`, so DocuSign
   emails the client a signing link they open from their own inbox. This is the right experience for a client whose
   matter an admin opens from the "new project" page (`POST /app/projects` with "Send retainer for signature"): that

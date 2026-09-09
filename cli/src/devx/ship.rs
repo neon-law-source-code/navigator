@@ -123,7 +123,7 @@ const GKE_KUSTOMIZE_SUBPATH: &str = "examples/deploy/k8s/gke";
 const EXPORTS_KUSTOMIZE_SUBPATH: &str = "examples/deploy/k8s/exports";
 
 /// Boot-required keys that ship as inline Deployment env / the
-/// `navigator-otel-env` `ConfigMap` rather than the projected Secret, so the
+/// `navigator-otel-env` `ConfigMap` rather than the deployment Secret, so the
 /// `SecretProviderClass` is not expected to declare them and no deployment's
 /// `deployments/<name>/` tree needs to carry them. Everything else in
 /// `store::deployment::WEB_REQUIREMENTS` rides the Secret rail.
@@ -136,14 +136,12 @@ pub(super) const INLINE_ENV_WEB_KEYS: &[&str] = &[
     "RESTATE_IDENTITY_KEY",          // public Restate Cloud request key
 ];
 
-/// The Secret keys a `SecretProviderClass` actually projects. A
-/// `secretObjects[0].data` entry counts only when its `objectName` names a
-/// `path` mounted by `parameters.secrets`: CSI writes each mounted `path` as a
-/// file and projects it under the mapped `key`, so a `data` entry whose
-/// `objectName` has no source `path` produces nothing. Reading both blocks
-/// (not just the `key` list) is what catches drift between them — a `key` left
-/// in `secretObjects` after its source entry is removed or renamed no longer
-/// counts as projected. Pure, so that drift case is unit-testable.
+/// The Secret Manager object keys listed by a `SecretProviderClass`.
+///
+/// `ops secrets apply` writes these values to both Secret Manager and the
+/// Kubernetes Secret consumed by `web`. The class retains the single catalog
+/// for the Secret Manager preflight; the pod contract is validated separately
+/// against the `envFrom` reference in `web-env.yaml`.
 pub(super) fn spc_projected_keys(spc: &str) -> BTreeSet<String> {
     let doc: serde_json::Value = serde_yaml::from_str(spc).expect("parse SecretProviderClass yaml");
     // `parameters.secrets` is a YAML block scalar (a string) listing each
@@ -152,33 +150,19 @@ pub(super) fn spc_projected_keys(spc: &str) -> BTreeSet<String> {
         .pointer("/spec/parameters/secrets")
         .and_then(serde_json::Value::as_str)
         .expect("SecretProviderClass has spec.parameters.secrets");
-    let sourced_paths: BTreeSet<String> = serde_yaml::from_str::<serde_json::Value>(secrets_block)
+    serde_yaml::from_str::<serde_json::Value>(secrets_block)
         .expect("parse parameters.secrets block")
         .as_array()
         .expect("parameters.secrets is a list")
         .iter()
         .filter_map(|entry| entry.get("path").and_then(serde_json::Value::as_str))
         .map(ToString::to_string)
-        .collect();
-    doc.pointer("/spec/secretObjects/0/data")
-        .and_then(serde_json::Value::as_array)
-        .expect("SecretProviderClass has spec.secretObjects[0].data")
-        .iter()
-        .filter_map(|entry| {
-            let object_name = entry
-                .get("objectName")
-                .and_then(serde_json::Value::as_str)?;
-            let key = entry.get("key").and_then(serde_json::Value::as_str)?;
-            sourced_paths.contains(object_name).then(|| key.to_string())
-        })
         .collect()
 }
 
-/// The Secret keys the shipped `SecretProviderClass` projects into the
-/// deployment's `*-web-secrets` Secret — read from the manifest itself, so
-/// neither the ship guard below nor `ops secrets apply` can drift from what a
-/// live Secret Manager CSI sync would actually create. The object names are
-/// deployment-independent; only the project prefix is substituted at render.
+/// The Secret Manager object keys the shipped catalog lists. The object names
+/// are deployment-independent; only the project prefix is substituted at
+/// render.
 pub(super) fn secret_provider_class_keys() -> BTreeSet<String> {
     let spc = GKE_MANIFESTS
         .get_file("secrets/secret-provider-class.yaml")
@@ -617,11 +601,10 @@ const SECRET_PROVIDER_CLASS: &str = "secrets/secret-provider-class.yaml";
 /// Rewrite the rendered `SecretProviderClass` so it references exactly the
 /// objects this deployment writes.
 ///
-/// The object list is one embedded manifest shared by every deployment, and a
-/// CSI mount fails the whole volume on a single object it cannot read. An entry
-/// the shipping deployment will never write is therefore not a harmless extra
-/// reference — it is a pod that never starts, and before that a ship that aborts
-/// at [`ensure_projected_objects_resolve`]. One shared list cannot express an
+/// The object list is one embedded manifest shared by every deployment. An
+/// entry the shipping deployment will never write is therefore not a harmless
+/// extra reference: the Secret Manager preflight aborts at
+/// [`ensure_projected_objects_resolve`]. One shared list cannot express an
 /// object that is required in one deployment and forbidden in another (the
 /// engineering webhook trio) or one belonging to an integration a deployment
 /// declines outright (`DocuSign`), so the list is rendered per deployment from the
@@ -648,8 +631,7 @@ fn omit_unwritten_objects(gke_root: &Path, skipped: &BTreeSet<String>) -> Result
     Ok(())
 }
 
-/// Drop every `parameters.secrets` and `secretObjects[0].data` entry naming an
-/// object in `omitted`.
+/// Drop every `parameters.secrets` entry naming an object in `omitted`.
 ///
 /// A line filter rather than a YAML round-trip, for the reason
 /// the embedded manifest carries: this manifest carries load-bearing comments
@@ -666,7 +648,7 @@ fn without_projected_objects(spc: &str, omitted: &BTreeSet<String>) -> Result<St
         let trimmed = line.trim_start();
         if let Some(object) = entry_object_name(trimmed) {
             dropping = omitted.contains(&object);
-        } else if dropping && !(trimmed.starts_with("path:") || trimmed.starts_with("key:")) {
+        } else if dropping && !trimmed.starts_with("path:") {
             // The entry ended without our having seen its continuation, which
             // means the manifest no longer has the shape this filter removes.
             dropping = false;
@@ -684,12 +666,12 @@ fn without_projected_objects(spc: &str, omitted: &BTreeSet<String>) -> Result<St
     ensure!(
         leaked.is_empty(),
         "the rendered SecretProviderClass still references {leaked:?} after omitting them; \
-         refusing to ship a class whose mount would fail on an object this deployment does not write"
+         refusing to ship a catalog that names an object this deployment does not write"
     );
     Ok(filtered)
 }
 
-/// The object name an entry head line names, for either of the two blocks.
+/// The object name a `parameters.secrets` entry head line names.
 fn entry_object_name(trimmed: &str) -> Option<String> {
     if let Some(rest) = trimmed.strip_prefix("- resourceName:") {
         let reference = rest.trim().trim_matches('"');
@@ -697,14 +679,11 @@ fn entry_object_name(trimmed: &str) -> Option<String> {
         let (object, _) = tail.split_once("/versions/")?;
         return Some(object.to_string());
     }
-    trimmed
-        .strip_prefix("- objectName:")
-        .map(|rest| rest.trim().trim_matches('"').to_string())
+    None
 }
 
-/// Every object name a `SecretProviderClass` document references, from both
-/// blocks — the check side of [`without_projected_objects`], so a leftover
-/// `secretObjects` entry is caught as loudly as a leftover mount.
+/// Every object name a `SecretProviderClass` document references — the check
+/// side of [`without_projected_objects`].
 fn projected_object_names(spc: &str) -> Result<BTreeSet<String>> {
     let doc: serde_json::Value =
         serde_yaml::from_str(spc).context("parse the filtered SecretProviderClass")?;
@@ -712,7 +691,7 @@ fn projected_object_names(spc: &str) -> Result<BTreeSet<String>> {
         .pointer("/spec/parameters/secrets")
         .and_then(serde_json::Value::as_str)
         .context("the filtered SecretProviderClass has spec.parameters.secrets")?;
-    let mut names: BTreeSet<String> = serde_yaml::from_str::<serde_json::Value>(secrets_block)
+    let names: BTreeSet<String> = serde_yaml::from_str::<serde_json::Value>(secrets_block)
         .context("parse the filtered parameters.secrets block")?
         .as_array()
         .context("parameters.secrets is a list")?
@@ -720,16 +699,6 @@ fn projected_object_names(spc: &str) -> Result<BTreeSet<String>> {
         .filter_map(|entry| entry.get("path").and_then(serde_json::Value::as_str))
         .map(ToString::to_string)
         .collect();
-    if let Some(data) = doc
-        .pointer("/spec/secretObjects/0/data")
-        .and_then(serde_json::Value::as_array)
-    {
-        names.extend(
-            data.iter()
-                .filter_map(|entry| entry.get("objectName").and_then(serde_json::Value::as_str))
-                .map(ToString::to_string),
-        );
-    }
     Ok(names)
 }
 
@@ -1700,11 +1669,10 @@ fn roll(
     let rendered = render_manifests_with(&subs)?;
     let target = rendered.path().join(GKE_KUSTOMIZE_SUBPATH);
 
-    // 3b. Render the projected object list for THIS deployment: drop every
-    //     entry it does not write. The list is one shared manifest and a CSI
-    //     mount fails the whole volume on a single unreadable object, so a
-    //     deployment that declines DocuSign cannot mount a class referencing
-    //     DocuSign — and must not be given a placeholder credential to make
+    // 3b. Render the Secret Manager catalog for THIS deployment: drop every
+    //     entry it does not write. A deployment that declines DocuSign cannot
+    //     retain a catalog entry for it — and must not be given a placeholder
+    //     credential to make
     //     the reference resolve, since `portal::signature` reaches its stub
     //     only through genuine absence. Same for an object scoped to another
     //     deployment, which this one is forbidden to hold at all.
@@ -1737,14 +1705,13 @@ fn roll(
     //     `web-image` patch, which overrides the base's registry-less tag.
     ensure_manifest_images_published(cfg, dry_run, &manifests, &tag)?;
 
+    ensure_web_secret_envfrom(&manifests, &cfg.secret_name)?;
     ensure_secret_invariants(cfg, dry_run, &manifests)?;
 
-    // 4b. …and confirm the *source* of that Secret is readable. Once the CSI
-    //     resource is in the overlay the Secret is projected from Secret
-    //     Manager, so a single object the manifest references and the project
-    //     does not hold fails the mount — after the reconcile, as a pod that
-    //     never starts. Names only; no payload is read. Runs in `--dry-run`
-    //     too, which is what makes a dry run a real activation rehearsal.
+    // 4b. …and confirm every catalog entry has an enabled Secret Manager
+    //     version. This is metadata-only and runs in `--dry-run` too, which
+    //     keeps the rendered catalog from drifting from what `ops secrets
+    //     apply` can write.
     ensure_projected_objects_resolve(&manifests)?;
 
     // 5. Reconcile — `kubectl diff -k` (drift review) then `apply -k`, so
@@ -1963,8 +1930,59 @@ fn ensure_secret_invariants(cfg: &ShipConfig, dry_run: bool, manifests: &str) ->
     check_secret_invariants(cfg, manifests, &secret_keys)
 }
 
-/// One Secret Manager object a rendered `SecretProviderClass` references,
-/// spelled the way the CSI driver will request it.
+/// Abort before reconciliation unless the rendered `web` container receives
+/// the deployment Secret through `envFrom`.
+///
+/// `ops secrets apply` is responsible for writing that Secret. Checking the
+/// built stream, rather than the source patch, proves the pod contract that
+/// `kubectl apply -k` will actually receive.
+fn ensure_web_secret_envfrom(manifests: &str, secret_name: &str) -> Result<()> {
+    use serde::Deserialize;
+    for document in serde_yaml::Deserializer::from_str(manifests) {
+        let value = serde_json::Value::deserialize(document)
+            .context("parse a document of the rendered manifest stream")?;
+        let is_web_deployment = value.get("kind").and_then(serde_json::Value::as_str)
+            == Some("Deployment")
+            && value
+                .pointer("/metadata/name")
+                .and_then(serde_json::Value::as_str)
+                == Some(WEB_DEPLOYMENT);
+        if !is_web_deployment {
+            continue;
+        }
+        let receives_secret = value
+            .pointer("/spec/template/spec/containers")
+            .and_then(serde_json::Value::as_array)
+            .is_some_and(|containers| {
+                containers.iter().any(|container| {
+                    container.get("name").and_then(serde_json::Value::as_str) == Some("web")
+                        && container
+                            .get("envFrom")
+                            .and_then(serde_json::Value::as_array)
+                            .is_some_and(|sources| {
+                                sources.iter().any(|source| {
+                                    source
+                                        .pointer("/secretRef/name")
+                                        .and_then(serde_json::Value::as_str)
+                                        == Some(secret_name)
+                                })
+                            })
+                })
+            });
+        ensure!(
+            receives_secret,
+            "the rendered {WEB_DEPLOYMENT} `web` container does not envFrom the `{secret_name}` \
+             Secret; refusing to ship a pod that cannot receive values written by ops secrets apply"
+        );
+        return Ok(());
+    }
+    bail!(
+        "the rendered manifests define no {WEB_DEPLOYMENT} Deployment; refusing to ship a tree \
+         whose Secret contract cannot be checked"
+    )
+}
+
+/// One Secret Manager object a rendered `SecretProviderClass` catalogs.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) struct ProjectedObject {
     project_id: String,
@@ -1975,8 +1993,8 @@ pub(super) struct ProjectedObject {
 impl ProjectedObject {
     /// Parse a `resourceName`. The whole coordinate is read rather than just
     /// the object name: the project is what makes the check ask about the
-    /// deployment actually being shipped, and the version is what the driver
-    /// pins — assuming `latest` would check something the mount never reads.
+    /// deployment actually being shipped, and the version is what the catalog
+    /// pins — assuming `latest` would check something else.
     fn parse(resource_name: &str) -> Result<Self> {
         let parts: Vec<&str> = resource_name.split('/').collect();
         match parts.as_slice() {
@@ -1992,7 +2010,7 @@ impl ProjectedObject {
             _ => bail!(
                 "`{resource_name}` is not a Secret Manager resource name \
                  (projects/<project>/secrets/<object>/versions/<version>). A malformed reference \
-                 would be silently unresolvable, so the ship stops here rather than mounting it."
+                 would be silently unresolvable, so the ship stops here rather than reconciling it."
             ),
         }
     }
@@ -2003,8 +2021,8 @@ impl ProjectedObject {
 ///
 /// Read from the *built* stream rather than the manifest file, so an object is
 /// only checked when the kustomization actually applies the class. Before the
-/// CSI resource is wired in there is nothing to resolve and this is empty;
-/// after it is, this is exactly the set the driver will request at mount time.
+/// catalog is wired in there is nothing to resolve and this is empty; after it
+/// is, this is exactly the set `ops secrets apply` must provide.
 /// Pure, so the parse is unit-tested against a fixture rather than a cluster.
 pub(super) fn referenced_secret_manager_objects(
     manifests: &str,
@@ -2041,12 +2059,10 @@ pub(super) fn referenced_secret_manager_objects(
 /// references does not resolve to an `ENABLED` version in that deployment's
 /// project.
 ///
-/// A CSI mount fails outright on a single missing object, and it fails at
-/// mount time: the pod never starts, `web` reports nothing, and the operator
-/// reads an `ImagePullBackOff`-shaped symptom that has nothing to do with the
-/// image. Resolving the names here turns that into a named abort before the
-/// reconcile has touched anything, which is the difference between "deploy
-/// failed loudly" and "the first request failed".
+/// Resolving the names here turns a catalog mismatch into a named abort before
+/// the reconcile has touched anything. `ops secrets apply` is the only command
+/// that writes the corresponding Kubernetes Secret; `ops ship` stays
+/// metadata-only.
 ///
 /// The check is names-only: it reads each version's state and never accesses a
 /// payload, so it needs `secretmanager.versions.get` and not
@@ -2241,8 +2257,8 @@ fn check_projected_objects_resolve(states: &[(ProjectedObject, Option<String>)])
     bail!(
         "the rendered SecretProviderClass references {} Secret Manager object(s) but only {} \
          resolve to an ENABLED version in {}: {}.\n\
-         A CSI mount fails outright on any object it cannot read, so this would crash-loop the \
-         pod after the reconcile rather than fail here. Write the missing values with \
+         `ops secrets apply` cannot write the deployment Secret from a catalog entry that lacks \
+         an enabled version. Write the missing values with \
          `navigator ops secrets apply --deployment <name>`, or trim the objects this deployment \
          does not carry from examples/deploy/k8s/gke/secrets/secret-provider-class.yaml. \
          Nothing was applied.",
@@ -3822,7 +3838,7 @@ mod tests {
             .iter()
             .find(|(key, _)| *key == "NAVIGATOR_WEB_SECRET_NAME")
             .map(|(_, value)| *value)
-            .expect("the render env names the projected Secret");
+            .expect("the render env names the deployment Secret");
 
         let mut sourced_from_secret = 0;
         for entry in walkdir::WalkDir::new(rendered.path().join(EXPORTS_KUSTOMIZE_SUBPATH)) {
@@ -3846,7 +3862,7 @@ mod tests {
                      literal. Applying that over the live CronJob merges `value` and `valueFrom` \
                      into one env entry and the API server rejects the whole object, taking every \
                      manifest change down with it. Use \
-                     `valueFrom.secretKeyRef` into the projected Secret."
+                     `valueFrom.secretKeyRef` into the deployment Secret."
                 );
                 let secret_ref = declared
                     .pointer("/valueFrom/secretKeyRef")
@@ -3854,7 +3870,7 @@ mod tests {
                 assert_eq!(
                     secret_ref.get("name").and_then(serde_json::Value::as_str),
                     Some(secret_name),
-                    "{file} must read `{name}` from this deployment's own projected Secret"
+                    "{file} must read `{name}` from this deployment's own Secret"
                 );
                 assert_eq!(
                     secret_ref.get("key").and_then(serde_json::Value::as_str),
@@ -3864,7 +3880,7 @@ mod tests {
                 // `optional: true` is load-bearing, not decoration.
                 // `omit_unwritten_objects` drops an object the shipping
                 // deployment does not write from the rendered class, so the
-                // projected Secret of an ordinary row carries no
+                // deployment Secret of an ordinary row carries no
                 // RESTATE_INGRESS_URL at all — the assertion below proves that
                 // from the fixture tree. A required reference would then leave
                 // every trigger pod in CreateContainerConfigError, never
@@ -3875,7 +3891,7 @@ mod tests {
                         .and_then(serde_json::Value::as_bool),
                     Some(true),
                     "{file} must mark its `{name}` reference optional, or a deployment that does \
-                     not project the key gets pods that never start instead of a trigger that \
+                     not write the key gets pods that never start instead of a trigger that \
                      exits naming the missing value"
                 );
                 sourced_from_secret += 1;
@@ -5122,6 +5138,16 @@ spec:
         assert!(!web.contains("NAVIGATOR_BLANK"));
     }
 
+    #[test]
+    fn web_secret_envfrom_guard_rejects_a_web_pod_without_the_deployment_secret() {
+        let error = ensure_web_secret_envfrom(RENDERED_MANIFESTS, "navigator-web-secrets")
+            .expect_err("the fixture web pod does not envFrom the deployment Secret");
+        assert!(
+            error.to_string().contains("navigator-web-secrets"),
+            "{error}"
+        );
+    }
+
     /// The Secret keys prod actually carries for the requirements the
     /// manifest fixture does not supply as env. Enough to satisfy every
     /// `WEB_REQUIREMENTS` entry that isn't manifest-provided.
@@ -5134,14 +5160,10 @@ spec:
     }
 
     #[test]
-    fn the_rendered_secret_provider_class_is_scoped_to_one_deployment() {
-        // The precondition for activating the CSI sync (#594). Six deployments
-        // across four projects share this one embedded manifest, so every
-        // coordinate in it must come out of the render as the *selected*
-        // deployment's own. A literal left behind here would point another
-        // deployment's pods at this project's Secret Manager, or project into
-        // a Secret name its Deployment does not read — a mount that succeeds
-        // and a pod that crash-loops on its boot invariants.
+    fn the_rendered_secret_catalog_and_web_envfrom_are_scoped_to_one_deployment() {
+        // Every deployment shares this one embedded catalog, so each rendered
+        // Secret Manager coordinate and the Secret read by `web` must come
+        // from the selected deployment's own configuration.
         let subs = resolve_substitutions_for_deployment(
             "neon-production",
             "26.7.29",
@@ -5167,27 +5189,23 @@ spec:
             "no unsubstituted project placeholder may survive the render"
         );
 
-        // It projects into the Secret this deployment's workloads `envFrom`.
         assert!(
-            spc.contains("secretName: neon-production-web-secrets"),
-            "the projected Secret must be the deployment's own, not a shared default"
+            !spc.contains("secretObjects"),
+            "the SecretProviderClass is a Secret Manager catalog, not a Kubernetes Secret writer"
         );
-        // …and lands in the deployment's namespace, not the shared default.
+        // The catalog still lands in the deployment's namespace, not the
+        // shared default.
         assert!(spc.contains("namespace: neon-production"));
 
-        // The mount half must agree, or the driver never reconciles the Secret.
-        let mount = fs::read_to_string(
-            rendered
-                .path()
-                .join(GKE_KUSTOMIZE_SUBPATH)
-                .join("secrets/web-secrets-csi-mount.yaml"),
-        )
-        .expect("read the rendered CSI mount patch");
-        assert!(mount.contains("namespace: neon-production"));
-        assert!(
-            mount.contains("secretProviderClass: navigator-web"),
-            "the mount must name the SecretProviderClass this manifest declares"
-        );
+        let manifests = kustomize_build(&rendered.path().join(GKE_KUSTOMIZE_SUBPATH))
+            .expect("rendered GKE manifests build");
+        let secret_name = FULL_ENV
+            .iter()
+            .find(|(key, _)| *key == "NAVIGATOR_WEB_SECRET_NAME")
+            .map(|(_, value)| *value)
+            .expect("full environment names the deployment Secret");
+        ensure_web_secret_envfrom(&manifests, secret_name)
+            .expect("the web container receives its deployment Secret through envFrom");
     }
 
     #[test]
@@ -5209,8 +5227,6 @@ spec:
 
         let neon = render_for(FULL_ENV);
         let staging = render_for(HUB_ENV);
-        assert!(neon.contains("secretName: neon-production-web-secrets"));
-        assert!(staging.contains("secretName: neon-law-stg-web-secrets"));
         assert!(
             !staging.contains("neon-law-420305"),
             "one deployment's render must not carry another's project"
@@ -5222,11 +5238,7 @@ spec:
     }
 
     #[test]
-    fn spc_projected_keys_ignores_a_key_with_no_source_path() {
-        // A `secretObjects` key whose `objectName` has no matching
-        // `parameters.secrets` path cannot be sourced by CSI, so it must not
-        // count as projected — otherwise the guard passes while the pod boots
-        // without that key.
+    fn spc_projected_keys_reads_the_secret_manager_catalog() {
         let drifted = r#"
 apiVersion: secrets-store.csi.x-k8s.io/v1
 kind: SecretProviderClass
@@ -5235,35 +5247,16 @@ spec:
     secrets: |
       - resourceName: "projects/x/secrets/SESSION_SECRET/versions/latest"
         path: "SESSION_SECRET"
-  secretObjects:
-    - secretName: navigator-web-secrets
-      data:
-        - objectName: "SESSION_SECRET"
-          key: "SESSION_SECRET"
-        - objectName: "ORPHANED_OBJECT"
-          key: "ORPHANED_OBJECT"
 "#;
         let projected = spc_projected_keys(drifted);
-        assert!(projected.contains("SESSION_SECRET"));
-        // ORPHANED_OBJECT is declared in secretObjects but has no source
-        // path. The name is deliberately fictional: this fixture is the drift
-        // shape, and naming a real key here would read as a claim that some
-        // deployment projects it.
-        assert!(!projected.contains("ORPHANED_OBJECT"));
+        assert_eq!(projected, BTreeSet::from(["SESSION_SECRET".to_string()]));
     }
 
-    /// Every key the `SecretProviderClass` projects. This is the mount
-    /// contract in full: the CSI driver creates a Secret Manager object per
-    /// entry, mounts it, and `envFrom` hands the whole set to `web` and
-    /// `workflows-service` as environment.
+    /// Every key the `SecretProviderClass` lists for Secret Manager.
     ///
-    /// Stated as a closed set rather than a floor. A key reaches a pod only
-    /// by appearing here, so enumerating the list makes the class's own
-    /// contents reviewable in one place: adding a key is a visible edit to
-    /// this constant, and a key that no longer belongs leaves it. The
-    /// companion floor is [`secret_provider_class_declares_every_boot_required_secret_key`],
-    /// which reads the same keys against `WEB_REQUIREMENTS`.
-    const MOUNT_CONTRACT: &[&str] = &[
+    /// Stated as a closed set rather than a floor, so adding or removing a
+    /// Secret Manager object stays a visible edit.
+    const SECRET_MANAGER_CONTRACT: &[&str] = &[
         "DOCUSIGN_ACCOUNT_ID",
         "DOCUSIGN_BASE_URL",
         "DOCUSIGN_HMAC_KEY",
@@ -5297,36 +5290,35 @@ spec:
         "SLACK_BOT_TOKEN",
     ];
 
-    /// The class projects the mount contract exactly.
+    /// The class lists the Secret Manager contract exactly.
     ///
     /// The store reaches a pod through the six `NAVIGATOR_SURREAL_*` keys
     /// listed here, and a credential for any other engine would have to join
-    /// them to be mounted at all — which this equality reports as a
+    /// them to be cataloged at all — which this equality reports as a
     /// difference rather than letting it ride along unnoticed.
     #[test]
-    fn the_secret_provider_class_projects_exactly_the_mount_contract() {
-        let expected: BTreeSet<String> = MOUNT_CONTRACT.iter().map(ToString::to_string).collect();
+    fn the_secret_provider_class_lists_exactly_the_secret_manager_contract() {
+        let expected: BTreeSet<String> = SECRET_MANAGER_CONTRACT
+            .iter()
+            .map(ToString::to_string)
+            .collect();
         let projected = secret_provider_class_keys();
 
         let unexpected: Vec<&String> = projected.difference(&expected).collect();
         let absent: Vec<&String> = expected.difference(&projected).collect();
         assert!(
             unexpected.is_empty() && absent.is_empty(),
-            "the SecretProviderClass no longer projects the mount contract. Projected but not \
-             listed: {unexpected:?}. Listed but not projected: {absent:?}. Every key here is \
-             created in Secret Manager and handed to `web` as environment, so reconcile \
-             examples/deploy/k8s/gke/secrets/secret-provider-class.yaml and MOUNT_CONTRACT \
+            "the SecretProviderClass no longer lists the Secret Manager contract. Listed but not \
+             contracted: {unexpected:?}. Contracted but not listed: {absent:?}. Every key here is \
+             created in Secret Manager and handed to `web` through its Kubernetes Secret, so reconcile \
+             examples/deploy/k8s/gke/secrets/secret-provider-class.yaml and SECRET_MANAGER_CONTRACT \
              together.",
         );
     }
 
-    /// Every boot-required Secret key `web` enforces at startup must be
-    /// declared in the `SecretProviderClass`. Otherwise activating the
-    /// Secret Manager CSI sync would project a `navigator-web-secrets`
-    /// missing that key and crash-loop the pod — the #591 regression
-    /// (a new `WEB_REQUIREMENTS` key added with no provisioning) this guards.
+    /// Every boot-required Secret key must be written by `ops secrets apply`.
     #[test]
-    fn secret_provider_class_declares_every_boot_required_secret_key() {
+    fn secret_manager_catalog_lists_every_boot_required_secret_key() {
         let satisfied: BTreeSet<String> = secret_provider_class_keys()
             .into_iter()
             .chain(INLINE_ENV_WEB_KEYS.iter().map(ToString::to_string))
@@ -5336,7 +5328,7 @@ spec:
         let missing = unsatisfied_requirements(&effective, &satisfied);
         assert!(
             missing.is_empty(),
-            "SecretProviderClass secretObjects is missing boot-required keys: {}. \
+            "Secret Manager catalog is missing boot-required keys: {}. \
              Declare them in examples/deploy/k8s/gke/secrets/secret-provider-class.yaml.",
             missing
                 .iter()
@@ -5366,11 +5358,6 @@ spec:
         path: "SESSION_SECRET"
       - resourceName: "projects/neon-law-stg/secrets/RESTATE_AUTH_TOKEN/versions/latest"
         path: "RESTATE_AUTH_TOKEN"
-  secretObjects:
-    - secretName: neon-law-stg-web-secrets
-      data:
-        - objectName: "SESSION_SECRET"
-          key: "SESSION_SECRET"
 "#;
 
     fn object(secret_id: &str) -> ProjectedObject {
@@ -5393,7 +5380,7 @@ spec:
 
     #[test]
     fn a_stream_with_no_secret_provider_class_references_nothing() {
-        // Before the CSI resource is wired into the kustomization the class is
+        // Before the catalog is wired into the kustomization the class is
         // never applied, so there is nothing to resolve and the preflight must
         // not invent work — or a pre-activation ship would demand objects the
         // deployment has no reason to hold yet.
@@ -5453,27 +5440,21 @@ spec:
     #[test]
     fn a_disabled_version_aborts_as_firmly_as_a_missing_one() {
         // A disabled version answers the metadata read, so a check that only
-        // looked for existence would pass while the driver still cannot serve
-        // the mount.
+        // looked for existence would pass while the catalog contains a version
+        // `ops secrets apply` cannot use.
         let states = vec![(object("SESSION_SECRET"), Some("DISABLED".to_string()))];
         let error = check_projected_objects_resolve(&states)
-            .expect_err("a disabled version cannot be mounted");
+            .expect_err("a disabled version cannot satisfy the catalog");
         assert!(error.to_string().contains("SESSION_SECRET (DISABLED)"));
     }
 
     #[test]
-    fn the_built_overlay_mounts_the_csi_volume_and_references_only_projected_objects() {
-        // The CSI chain is active, and "active" is a property of the BUILT
-        // stream, not of the two files under `secrets/`. A `resources:` entry
-        // that never resolves or a patch whose target does not match would
-        // leave both manifests correct and the deployment reading a plain
-        // Secret nobody reconciles any more.
-        let subs = resolve_substitutions_for_deployment(
-            "neon-production",
-            "26.7.19.20",
-            env_getter(FULL_ENV),
-        )
-        .expect("full environment resolves");
+    fn the_built_overlay_wires_web_to_its_deployment_secret() {
+        // The Secret Manager catalog and `web`'s Secret source are both
+        // properties of the built stream, not isolated source files.
+        let subs =
+            resolve_substitutions_for_deployment("neon-law-stg", "26.7.19.20", env_getter(HUB_ENV))
+                .expect("full environment resolves");
         let rendered = render_manifests_with(&subs).expect("render succeeds");
         let manifests = kustomize_build(&rendered.path().join(GKE_KUSTOMIZE_SUBPATH))
             .expect("rendered GKE manifests build");
@@ -5485,40 +5466,46 @@ spec:
             "the SecretProviderClass must be in the built overlay"
         );
         for object in &referenced {
-            assert_eq!(object.project_id, "neon-law-420305");
+            assert_eq!(object.project_id, "neon-law-stg");
             assert_eq!(object.version, "latest");
         }
 
-        // Every referenced object is projected and every projected key is
-        // referenced. The two blocks drifting apart is how an object becomes
-        // unmountable (referenced, never written) or a key silently absent
-        // (projected, never sourced).
+        // Every referenced object is in the catalog that `ops secrets apply`
+        // writes to both Secret Manager and the Kubernetes Secret.
         let referenced_ids: BTreeSet<String> = referenced
             .iter()
             .map(|object| object.secret_id.clone())
             .collect();
         assert_eq!(referenced_ids, secret_provider_class_keys());
 
-        // …and `web` actually mounts the volume, which is the only reason the
-        // driver reconciles the projected Secret at all.
         let web = manifest_doc(&manifests, "Deployment", "navigator-web");
-        let volumes = web
+        let containers = web
             .get("spec")
             .and_then(|spec| spec.get("template"))
             .and_then(|template| template.get("spec"))
-            .and_then(|spec| spec.get("volumes"))
+            .and_then(|spec| spec.get("containers"))
             .and_then(serde_yaml::Value::as_sequence)
-            .expect("the web Deployment declares volumes");
+            .expect("the web Deployment declares containers");
         assert!(
-            volumes.iter().any(|volume| {
-                volume
-                    .get("csi")
-                    .and_then(|csi| csi.get("volumeAttributes"))
-                    .and_then(|attributes| attributes.get("secretProviderClass"))
-                    .and_then(serde_yaml::Value::as_str)
-                    == Some("navigator-web")
+            containers.iter().any(|container| {
+                container.get("name").and_then(serde_yaml::Value::as_str) == Some("web")
+                    && container
+                        .get("envFrom")
+                        .and_then(serde_yaml::Value::as_sequence)
+                        .is_some_and(|sources| {
+                            sources.iter().any(|source| {
+                                source
+                                    .get("secretRef")
+                                    .and_then(|secret| secret.get("name"))
+                                    .and_then(serde_yaml::Value::as_str)
+                                    == HUB_ENV
+                                        .iter()
+                                        .find(|(key, _)| *key == "NAVIGATOR_WEB_SECRET_NAME")
+                                        .map(|(_, value)| *value)
+                            })
+                        })
             }),
-            "the web pod must mount the CSI volume: {volumes:?}"
+            "the web pod must receive the deployment Secret through envFrom"
         );
     }
 
@@ -6289,8 +6276,7 @@ spec:
         );
     }
 
-    /// A `SecretProviderClass` with the shape the real manifest uses: two
-    /// entries per object, one in each block, and comments between them.
+    /// A `SecretProviderClass` catalog with comments between entries.
     const TWO_OBJECT_SPC: &str = r#"apiVersion: secrets-store.csi.x-k8s.io/v1
 kind: SecretProviderClass
 metadata:
@@ -6303,20 +6289,10 @@ spec:
       # A load-bearing comment the filter must not disturb.
       - resourceName: "projects/p/secrets/DOCUSIGN_HMAC_KEY/versions/latest"
         path: "DOCUSIGN_HMAC_KEY"
-  secretObjects:
-    - secretName: navigator-web-secrets
-      data:
-        - objectName: "RESTATE_AUTH_TOKEN"
-          key: "RESTATE_AUTH_TOKEN"
-        - objectName: "DOCUSIGN_HMAC_KEY"
-          key: "DOCUSIGN_HMAC_KEY"
 "#;
 
     #[test]
-    fn omitting_an_object_removes_it_from_both_blocks() {
-        // A `secretObjects` entry left behind after its mount is removed is
-        // the drift `spc_projected_keys` was written to catch — the filter must
-        // never create it.
+    fn omitting_an_object_removes_it_from_the_catalog() {
         let declined = BTreeSet::from(["DOCUSIGN_HMAC_KEY".to_string()]);
         let filtered =
             without_projected_objects(TWO_OBJECT_SPC, &declined).expect("the filter succeeds");
@@ -6346,10 +6322,10 @@ spec:
         // The structural backstop. The line filter knows one entry shape; if
         // the manifest ever grows another — here a flow mapping, still valid
         // YAML and still a real reference — the ship must abort rather than
-        // reconcile a class whose mount fails on the reference it left behind.
+        // reconcile a class whose catalog retains the reference it left behind.
         let unremovable = TWO_OBJECT_SPC.replace(
-            "        - objectName: \"DOCUSIGN_HMAC_KEY\"\n          key: \"DOCUSIGN_HMAC_KEY\"\n",
-            "        - {objectName: \"DOCUSIGN_HMAC_KEY\", key: \"DOCUSIGN_HMAC_KEY\"}\n",
+            "      - resourceName: \"projects/p/secrets/DOCUSIGN_HMAC_KEY/versions/latest\"\n        path: \"DOCUSIGN_HMAC_KEY\"\n",
+            "      - {resourceName: \"projects/p/secrets/DOCUSIGN_HMAC_KEY/versions/latest\", path: \"DOCUSIGN_HMAC_KEY\"}\n",
         );
         let declined = BTreeSet::from(["DOCUSIGN_HMAC_KEY".to_string()]);
         let error = without_projected_objects(&unremovable, &declined)
@@ -6362,7 +6338,7 @@ spec:
 
     /// Render the GKE tree for `deployment` and return the object names its
     /// `SecretProviderClass` references after the per-deployment omission —
-    /// the exact list the CSI driver would request at mount time.
+    /// the exact list `ops secrets apply` must provide.
     fn rendered_object_names(deployment: &str, env: &'static [(&str, &str)]) -> BTreeSet<String> {
         let subs = resolve_substitutions_for_deployment(deployment, "26.8.9", env_getter(env))
             .expect("env resolves");
@@ -6403,10 +6379,10 @@ spec:
     #[test]
     fn the_rendered_class_references_exactly_what_the_deployment_writes() {
         // The invariant the whole seam exists for, asserted for every real
-        // deployment: a CSI mount fails the entire volume on one object it
-        // cannot read, so the class may reference an object only if
+        // deployment: the catalog may reference an object only if
         // `ops secrets apply` writes it. Referencing fewer would leave a boot
-        // requirement unprojected; referencing more is a pod that never starts.
+        // requirement absent from the deployment Secret; referencing more is a
+        // value `ops secrets apply` cannot write.
         // Both fixture rows, because they skip different things: the ordinary
         // row omits DocuSign and the receiver trio, the automation home omits
         // nothing. One row could only ever prove one of those.
@@ -6434,7 +6410,7 @@ spec:
     #[test]
     fn a_deployment_that_declines_docusign_renders_no_docusign_reference() {
         // A row that declares no `DOCUSIGN_BASE_URL` runs
-        // `StubSignatureProvider`, holds no DocuSign object, and its mount must
+        // `StubSignatureProvider`, holds no DocuSign object, and its catalog must
         // not ask for one. This is the ship half of the failure: without it the
         // resolve preflight aborts naming all nine, and the only way past would
         // be a placeholder credential — which boots the real provider instead

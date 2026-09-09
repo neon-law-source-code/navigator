@@ -51,8 +51,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use anyhow::{bail, Context, Result};
 use serde::Deserialize;
@@ -514,21 +515,20 @@ fn exemption(object: &str, project_id: &str, supplied: &BTreeSet<String>) -> Opt
     verdict
 }
 
-/// The projected objects this deployment legitimately does not write — the set
-/// the rendered `SecretProviderClass` must not reference.
+/// The Secret Manager catalog objects this deployment legitimately does not
+/// write — the set the rendered `SecretProviderClass` must not reference.
 ///
 /// Read straight off [`plan`], so the rendered object list and the objects
 /// `ops secrets apply` writes cannot drift: what the class references is exactly
-/// what the deployment supplies. That symmetry is the whole property. A CSI
-/// mount fails the entire volume on one object it cannot read, so an entry the
-/// deployment will never write is not a harmless reference — it is a pod that
-/// never starts, and a ship that aborts at the resolve preflight before it.
+/// what the deployment supplies. That symmetry is the whole property. An entry
+/// the deployment will never write is not a harmless reference: it makes the
+/// Secret Manager preflight fail before a metadata-only ship can reconcile.
 ///
 /// # Errors
 ///
 /// Propagates [`plan`]'s failure when an object is supplied by neither file and
 /// no rule exempts it: a real gap in the deployment's tree, not something to
-/// quietly omit from the mount.
+/// quietly omit from the catalog.
 pub fn skipped_projected_objects(deployment: &Deployment) -> Result<BTreeSet<String>> {
     let (_, skipped) = plan(deployment)?;
     Ok(skipped.into_keys().collect())
@@ -741,6 +741,7 @@ pub fn apply(root: &Path, name: &str, dry_run: bool) -> Result<()> {
 
     let (plan, skipped) = plan(&deployment)?;
     let project_id = deployment.project_id().to_owned();
+    let ship_config = ship::ShipConfig::from_deployment(&deployment)?;
 
     eprintln!(
         "secrets apply: deployment={name} project={project_id} object(s)={}",
@@ -787,7 +788,7 @@ pub fn apply(root: &Path, name: &str, dry_run: bool) -> Result<()> {
         .enable_all()
         .build()
         .context("build tokio runtime")?;
-    runtime.block_on(async move {
+    runtime.block_on(async {
         let token = gcp::auth::adc_token_provider().await?;
         // Never a dry-run client: its recorder serializes the request body,
         // which is where the payload rides.
@@ -803,7 +804,71 @@ pub fn apply(root: &Path, name: &str, dry_run: bool) -> Result<()> {
             payloads.len()
         );
         Ok::<(), anyhow::Error>(())
-    })
+    })?;
+    apply_web_secret(&ship_config, &payloads)
+}
+
+/// Write the Secret that the rendered `web` Deployment reads through `envFrom`.
+///
+/// The values are already present in memory after the SOPS decrypt and Secret
+/// Manager version write. They travel only over `kubectl` stdin; no value is
+/// included in an argument, log line, or error context.
+fn apply_web_secret(config: &ship::ShipConfig, payloads: &BTreeMap<String, String>) -> Result<()> {
+    write_web_secret(config, payloads, |manifest| {
+        let mut child = Command::new("kubectl")
+            .args([
+                "--context",
+                config.context.as_str(),
+                "--namespace",
+                config.namespace.as_str(),
+                "apply",
+                "--filename",
+                "-",
+            ])
+            .stdin(Stdio::piped())
+            .spawn()
+            .context("start kubectl apply for deployment web Secret")?;
+        child
+            .stdin
+            .take()
+            .context("kubectl stdin unavailable for deployment web Secret")?
+            .write_all(manifest.as_bytes())
+            .context("write deployment web Secret manifest to kubectl")?;
+        let status = child
+            .wait()
+            .context("wait for deployment web Secret apply")?;
+        if !status.success() {
+            bail!("kubectl apply for deployment web Secret failed ({status})");
+        }
+        Ok(())
+    })?;
+    eprintln!("applied Kubernetes Secret for deployment web");
+    Ok(())
+}
+
+/// Build and hand the deployment's `envFrom` Secret to the caller that writes
+/// it. Splitting the transport from the manifest keeps the value-bearing write
+/// testable without routing a credential through a recorder.
+fn write_web_secret<F>(
+    config: &ship::ShipConfig,
+    payloads: &BTreeMap<String, String>,
+    write: F,
+) -> Result<()>
+where
+    F: FnOnce(&str) -> Result<()>,
+{
+    let manifest = serde_yaml::to_string(&serde_json::json!({
+        "apiVersion": "v1",
+        "kind": "Secret",
+        "metadata": {
+            "name": config.secret_name,
+            "namespace": config.namespace,
+        },
+        "type": "Opaque",
+        "stringData": payloads,
+    }))
+    .context("serialize deployment web Secret manifest")?;
+    write(&manifest)
 }
 
 fn join_names(plan: &BTreeMap<String, Source>, source: Source) -> String {
@@ -851,6 +916,7 @@ fn decrypt(path: &Path) -> Result<BTreeMap<String, String>> {
 mod tests {
     use std::path::PathBuf;
 
+    use sha2::{Digest as _, Sha256};
     use store::deployment::GITHUB_AUTOMATION_HOME_PROJECT;
 
     use super::*;
@@ -904,6 +970,55 @@ mod tests {
             .join("tests")
             .join("fixtures")
             .join("deployment-tree")
+    }
+
+    #[test]
+    fn secrets_apply_writes_the_deployment_web_secret_without_exposing_values() {
+        let deployment = Deployment::load(&fixture_tree(), "example-deployment")
+            .expect("the synthetic deployment loads");
+        let config = ship::ShipConfig::from_deployment(&deployment)
+            .expect("the synthetic deployment resolves ship coordinates");
+        let payloads: BTreeMap<String, String> = projected_objects()
+            .into_iter()
+            .map(|key| (key.clone(), format!("synthetic-{key}")))
+            .collect();
+        let expected_digests: BTreeMap<String, [u8; 32]> = payloads
+            .iter()
+            .map(|(key, value)| (key.clone(), Sha256::digest(value.as_bytes()).into()))
+            .collect();
+        let mut written = None;
+
+        write_web_secret(&config, &payloads, |manifest| {
+            written = Some(manifest.to_owned());
+            Ok(())
+        })
+        .expect("the Kubernetes Secret is written");
+
+        let written: serde_json::Value =
+            serde_yaml::from_str(&written.expect("the secrets-apply writer receives a manifest"))
+                .expect("the written Secret manifest parses");
+        assert_eq!(
+            written
+                .pointer("/metadata/name")
+                .and_then(serde_json::Value::as_str),
+            Some("example-deployment-web-secrets")
+        );
+        assert_eq!(
+            written
+                .pointer("/metadata/namespace")
+                .and_then(serde_json::Value::as_str),
+            Some("example-deployment")
+        );
+        for (key, expected_digest) in expected_digests {
+            let value = written
+                .pointer(&format!("/stringData/{key}"))
+                .and_then(serde_json::Value::as_str)
+                .expect("every planned key reaches the Kubernetes Secret");
+            assert!(
+                Sha256::digest(value.as_bytes()).as_slice() == expected_digest,
+                "the Kubernetes Secret value for {key} differs from the decrypted payload"
+            );
+        }
     }
 
     /// Every literal `--deployment <name>` argument in `text`, as an operator

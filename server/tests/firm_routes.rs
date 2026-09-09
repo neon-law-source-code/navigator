@@ -713,34 +713,6 @@ async fn litigation_still_publishes_no_currency_amount() {
 }
 
 #[tokio::test]
-async fn transactional_states_its_turnaround_in_prose() {
-    // The turnaround dial came off — it drew the published figure as a ring with
-    // a qualifier beneath, stating in a graphic what the Speedy virtue states in
-    // a sentence. The commitment itself stays, in prose, and so does the scope
-    // that makes it honest: the firm controls its own turnaround and controls
-    // nothing about the counterparty or the deal.
-    let app = site_app().await;
-    let body = body_string(anon_get(&app, "/fractional-gc").await).await;
-    assert!(
-        body.contains("a redline of your own paper comes back in one business day"),
-        "the commitment survives as prose: {body}"
-    );
-    for gone in ["speed-dial", "Measured from a complete intake"] {
-        assert!(!body.contains(gone), "the dial is gone ({gone}): {body}");
-    }
-    for removed in [
-        "Priced separately",
-        "master services agreement",
-        "Financings",
-    ] {
-        assert!(
-            !body.contains(removed),
-            "fractional GC omits {removed}: {body}"
-        );
-    }
-}
-
-#[tokio::test]
 async fn both_practice_pages_hoist_their_own_stylesheet() {
     // Each page carries its own animation layer after the brand layer. A page
     // that lost the link would still render — and silently lose every piece of

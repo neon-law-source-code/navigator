@@ -92,11 +92,8 @@ An organization owner must sign up for or create all three organizations in the 
 5. Set `NAVIGATOR_FORGE_BACKEND=github`, run `ops secrets apply --deployment <name>`, create a synthetic Project, and
    verify that its private repository appears in the matching organization and nowhere else.
 
-The three Apps provision private Project repositories. They do **not** turn the canonical engineering receiver into
-three copies. `neon-law-stg` alone receives the public Navigator repository webhook, watches
-`neon-law-source-code/navigator`, and binds the DevX Restate services. Keep `NAVIGATOR_GITHUB_CANONICAL_REPOSITORY`,
-`NAVIGATOR_GITHUB_APP_LOGIN`, `NAVIGATOR_GITHUB_WEBHOOK_SECRET`, and the DevX guardrails scoped to that singleton
-receiver.
+The three Apps provision private Project repositories. They are independent of one another: no organization's App
+credentials belong in another deployment's `config.toml` or `secrets.enc.yaml`.
 
 Set `NAVIGATOR_FORGE_BACKEND=github` in every deployment's `config.toml`. The GKE stacks import that selector and the
 App credentials from their deployment Secret. The disposable local KIND integration surface keeps its in-cluster Forgejo

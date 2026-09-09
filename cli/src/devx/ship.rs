@@ -116,12 +116,6 @@ static EXPORTS_MANIFESTS: Dir<'static> =
 /// the temp dir.
 static K8S_BASE_MANIFESTS: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/../k8s/base");
 
-/// The shared Kustomize components, embedded and extracted next to
-/// [`K8S_BASE_MANIFESTS`] so deployment-selected components resolve. A release
-/// binary has no workspace checkout to read them from later.
-static K8S_COMPONENT_MANIFESTS: Dir<'static> =
-    include_dir!("$CARGO_MANIFEST_DIR/../k8s/components");
-
 /// The kustomize root inside the rendered temp dir — the path `kubectl -k`
 /// targets. Mirrors the manifests' own repo-relative layout so the base's
 /// `../../../../k8s/base` reference resolves.
@@ -195,12 +189,6 @@ pub(super) fn secret_provider_class_keys() -> BTreeSet<String> {
 
 /// Where [`K8S_BASE_MANIFESTS`] is extracted, relative to the temp-dir root.
 const K8S_BASE_SUBPATH: &str = "k8s/base";
-
-/// Where [`K8S_COMPONENT_MANIFESTS`] is extracted, relative to the temp-dir
-/// root — the repo-relative offset selected components assume.
-const K8S_COMPONENTS_SUBPATH: &str = "k8s/components";
-
-const AUTOMATION_HOME_COMPONENT: &str = "../../../../k8s/components/automation-home";
 
 /// One placeholder → real-value substitution the render applies to every
 /// embedded manifest file. `token` is the literal string in the placeholder
@@ -620,56 +608,7 @@ fn render_manifests_with(subs: &[Substitution]) -> Result<TempDir> {
         &tmp.path().join(K8S_BASE_SUBPATH),
         subs,
     )?;
-    let automation_home = subs.iter().any(|substitution| {
-        substitution.env == "NAVIGATOR_GCP_PROJECT_ID"
-            && github_webhooks::authority::is_automation_home(Some(&substitution.value))
-    });
-    if automation_home {
-        render_embedded_dir(
-            &K8S_COMPONENT_MANIFESTS,
-            &tmp.path().join(K8S_COMPONENTS_SUBPATH),
-            subs,
-        )?;
-        let root = tmp
-            .path()
-            .join(GKE_KUSTOMIZE_SUBPATH)
-            .join("kustomization.yaml");
-        let kustomization = fs::read_to_string(&root)
-            .with_context(|| format!("read rendered kustomization {}", root.display()))?;
-        let kustomization = if automation_home {
-            enable_automation_home(&kustomization)?
-        } else {
-            kustomization
-        };
-        fs::write(&root, kustomization)
-            .with_context(|| format!("write rendered kustomization {}", root.display()))?;
-    }
     Ok(tmp)
-}
-
-fn enable_automation_home(kustomization: &str) -> Result<String> {
-    append_component(kustomization, AUTOMATION_HOME_COMPONENT)
-}
-
-fn append_component(kustomization: &str, component: &str) -> Result<String> {
-    if let Some((head, tail)) = kustomization.split_once("\ncomponents:\n") {
-        if tail
-            .lines()
-            .any(|line| line.trim() == format!("- {component}"))
-        {
-            bail!("the GKE kustomization already declares `{component}` in `components:`");
-        }
-        if let Some((before_images, after_images)) = tail.split_once("\n\nimages:") {
-            return Ok(format!(
-                "{head}\ncomponents:{before_images}\n  - {component}\n\nimages:{after_images}"
-            ));
-        }
-        return Ok(format!("{head}\ncomponents:{tail}  - {component}\n"));
-    }
-    Ok(format!(
-        "{}\n\n# Added by `navigator ops ship` for `{component}`.\ncomponents:\n  - {component}\n",
-        kustomization.trim_end()
-    ))
 }
 
 /// The `SecretProviderClass`, relative to the rendered GKE kustomize root.
@@ -2602,9 +2541,8 @@ struct RestateDeployment {
 }
 
 fn reregister_targets(cfg: &ShipConfig) -> [RestateDeployment; 1] {
-    // One worker, every service. The folded-in GitHub webhook notice services
-    // (`DevxIssueTriage`, `devx-pr`) register with `workflows-service`, so there
-    // is no separate worker endpoint to register.
+    // One worker, every service — there is no separate worker endpoint to
+    // register.
     [RestateDeployment {
         name: WORKFLOWS_DEPLOYMENT,
         url: cfg.workflows_url_resolved(),
@@ -2615,20 +2553,19 @@ fn apply_registration_result(deployment: &RestateDeployment, result: Result<()>)
     result.with_context(|| {
         format!(
             "Restate re-register of {} failed; its handler list would be stale — missing any \
-             service added since the last registration, e.g. the folded-in GitHub webhook notice \
-             services (`DevxIssueTriage`, `devx-pr`) — so webhook submissions would silently fail. \
-             Refusing to complete the ship.",
+             service added since the last registration — so invocations to it would silently \
+             fail. Refusing to complete the ship.",
             deployment.name
         )
     })
 }
 
 /// 7d — register the workflows worker with Restate so handlers added since the
-/// last registration are reachable, including the folded-in GitHub webhook
-/// notice services. REQUIRED: a failed re-register leaves Restate on a stale
-/// handler list that would silently drop webhook submissions (the Heartbeat
-/// canary tests only its own handler, not the full service list), so the ship
-/// fails rather than complete with the new services unreachable.
+/// last registration are reachable. REQUIRED: a failed re-register leaves
+/// Restate on a stale handler list that would silently drop invocations to a
+/// new service (the Heartbeat canary tests only its own handler, not the full
+/// service list), so the ship fails rather than complete with the new
+/// services unreachable.
 fn reregister(cfg: &ShipConfig, dry_run: bool) -> Result<()> {
     let deployments = reregister_targets(cfg);
     if dry_run {
@@ -4528,10 +4465,10 @@ mod tests {
 
     #[test]
     fn workflows_worker_registration_is_required() {
-        // The folded-in GitHub webhook notice services (`DevxIssueTriage`,
-        // `devx-pr`) register with `workflows-service`, so a failed re-register
-        // must fail the ship — a stale handler list would silently drop webhook
-        // submissions until a later successful registration.
+        // Every durable workflow registers with `workflows-service`, so a
+        // failed re-register must fail the ship — a stale handler list would
+        // silently drop invocations to a new service until a later successful
+        // registration.
         let targets = reregister_targets(&sample_config());
         assert_eq!(targets.len(), 1);
         assert_eq!(targets[0].name, WORKFLOWS_DEPLOYMENT);
@@ -5048,18 +4985,12 @@ spec:
     }
 
     #[test]
-    fn ship_requires_receiver_credentials_only_for_the_automation_home() {
-        let receiver = req(&[&[
-            "NAVIGATOR_GITHUB_WEBHOOK_SECRET",
-            "NAVIGATOR_GITHUB_CANONICAL_REPOSITORY",
-            "NAVIGATOR_GITHUB_APP_LOGIN",
-            "RESTATE_INGRESS_URL",
-            "RESTATE_AUTH_TOKEN",
-        ]]);
-        assert!(!shared_web_requirements("neon-law").contains(&receiver));
+    fn ship_requires_restate_ingress_credentials_only_for_the_automation_home() {
+        let ingress = req(&[&["RESTATE_INGRESS_URL", "RESTATE_AUTH_TOKEN"]]);
+        assert!(!shared_web_requirements("neon-law").contains(&ingress));
         assert!(
             shared_web_requirements(store::deployment::GITHUB_AUTOMATION_HOME_PROJECT)
-                .contains(&receiver)
+                .contains(&ingress)
         );
     }
 
@@ -5345,13 +5276,7 @@ spec:
         "NAVIGATOR_CREDENTIAL_ENVIRONMENT",
         "NAVIGATOR_ENVIRONMENT",
         "NAVIGATOR_FORGE_BACKEND",
-        "NAVIGATOR_GITHUB_APP_ID",
-        "NAVIGATOR_GITHUB_APP_LOGIN",
-        "NAVIGATOR_GITHUB_APP_PRIVATE_KEY",
-        "NAVIGATOR_GITHUB_CANONICAL_REPOSITORY",
-        "NAVIGATOR_GITHUB_INSTALLATION_ID",
         "NAVIGATOR_GITHUB_ORG",
-        "NAVIGATOR_GITHUB_WEBHOOK_SECRET",
         "NAVIGATOR_SURREAL_ARCHIVES_BUCKET",
         "NAVIGATOR_SURREAL_DATABASE",
         "NAVIGATOR_SURREAL_ENDPOINT",
@@ -5613,24 +5538,14 @@ spec:
     #[test]
     fn check_secret_invariants_aborts_naming_the_missing_keys() {
         // The 26.7.15 failure, reproduced as a unit test: a Secret missing
-        // the GitHub App trio must abort the ship BEFORE the reconcile, and
+        // the Project-repo org must abort the ship BEFORE the reconcile, and
         // say which keys and which deployments.
         let mut keys = satisfying_secret_keys();
-        for absent in [
-            "NAVIGATOR_GITHUB_ORG",
-            "NAVIGATOR_GITHUB_APP_ID",
-            "NAVIGATOR_GITHUB_APP_PRIVATE_KEY",
-        ] {
-            keys.remove(absent);
-        }
+        keys.remove("NAVIGATOR_GITHUB_ORG");
         let err = check_secret_invariants(&sample_config(), RENDERED_MANIFESTS, &keys)
             .expect_err("a Secret missing a boot requirement must abort the ship");
         let message = err.to_string();
         assert!(message.contains("navigator-web"), "{message}");
-        assert!(
-            message.contains("NAVIGATOR_GITHUB_APP_PRIVATE_KEY"),
-            "{message}"
-        );
         // And the remedy is one paste-able patch, not one key.
         assert!(
             message.contains(r#""NAVIGATOR_GITHUB_ORG":"<value>""#),
@@ -5693,23 +5608,6 @@ spec:
             missing.is_empty(),
             "every web-binary deployment needs the ClamAV address: {missing:?}"
         );
-    }
-
-    #[test]
-    fn automation_heartbeat_is_rendered_only_for_the_automation_home() {
-        let render = |env| {
-            let subs = resolve_substitutions_for_deployment("example", "26.9.6", env_getter(env))
-                .expect("full environment resolves");
-            let rendered = render_manifests_with(&subs).expect("render succeeds");
-            kustomize_build(&rendered.path().join(GKE_KUSTOMIZE_SUBPATH))
-                .expect("rendered GKE manifests build")
-        };
-
-        let ordinary = render(FULL_ENV);
-        assert!(!ordinary.contains("github-automation-heartbeat-trigger"));
-
-        let automation_home = render(HUB_ENV);
-        assert!(automation_home.contains("github-automation-heartbeat-trigger"));
     }
 
     #[test]
@@ -5844,8 +5742,8 @@ spec:
 
     #[test]
     fn suggested_patch_keys_cover_every_missing_requirement_once() {
-        // The real prod shape: the web deployment misses three
-        // requirements out of the one shared Secret. The operator must get
+        // A deployment missing three requirements out of the one shared
+        // Secret, one of them a multi-key bundle. The operator must get
         // every key in a single patch — a one-key example sends them round
         // the ship loop once per key.
         let missing = vec![
@@ -5887,9 +5785,8 @@ spec:
 
     #[test]
     fn unsatisfied_secret_error_names_every_missing_key_in_one_patch() {
-        // Reproduces the real prod ship failure: the web deployment misses
-        // three requirements. The operator must be able to copy ONE command
-        // and satisfy all of them.
+        // A deployment missing three requirements. The operator must be
+        // able to copy ONE command and satisfy all of them.
         let missing = vec![
             req(&[&["SENDGRID_FROM_EMAIL"]]),
             req(&[&[
@@ -6549,15 +6446,6 @@ spec:
                 .any(|object| object.starts_with("DOCUSIGN_")),
             "a declined integration must leave no reference behind: {referenced:?}"
         );
-        // The receiver's credentials belong to the automation home alone, and
-        // a non-home row is forbidden to hold them at all.
-        for scoped in [
-            "NAVIGATOR_GITHUB_WEBHOOK_SECRET",
-            "NAVIGATOR_GITHUB_CANONICAL_REPOSITORY",
-            "NAVIGATOR_GITHUB_APP_LOGIN",
-        ] {
-            assert!(!referenced.contains(scoped), "{scoped} is scoped elsewhere");
-        }
         // …while everything it does write is still projected.
         assert!(referenced.contains("NAVIGATOR_SURREAL_ENDPOINT"));
     }

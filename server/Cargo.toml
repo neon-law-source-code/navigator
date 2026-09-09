@@ -26,7 +26,6 @@ dioxus-server.workspace = true
 dotenvy.workspace = true
 flate2.workspace = true
 forms.workspace = true
-github_webhooks.workspace = true
 hmac.workspace = true
 include_dir.workspace = true
 jsonwebtoken.workspace = true

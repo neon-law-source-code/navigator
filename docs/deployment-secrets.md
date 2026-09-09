@@ -232,11 +232,9 @@ the `secretObjects` mappings — so the class each deployment applies references
 (`ship::omit_unwritten_objects`). One shared list cannot state an object that is required in one project and forbidden
 in another, and this is what resolves that:
 
-- **Scoped to another deployment.** The engineering webhook trio — `NAVIGATOR_GITHUB_WEBHOOK_SECRET`,
-  `NAVIGATOR_GITHUB_CANONICAL_REPOSITORY`, `NAVIGATOR_GITHUB_APP_LOGIN` — belongs to
-  `store::deployment::GITHUB_AUTOMATION_HOME_PROJECT`. Every other deployment renders without it.
-  `github_webhooks::ReceiverConfig::from_env` already refuses outside the automation home, so no deployment loses a
-  receiver it was running.
+- **Scoped to another deployment.** The trigger-submitted Restate ingress pair — `RESTATE_INGRESS_URL`,
+  `RESTATE_AUTH_TOKEN` — belongs to `store::deployment::GITHUB_AUTOMATION_HOME_PROJECT`. Every other deployment renders
+  without it.
 - **Integration declined.** A deployment that supplies no `DOCUSIGN_BASE_URL` declares no DocuSign and renders none of
   its nine objects. The production deployment is that case; it runs `StubSignatureProvider`, which `portal::signature`
   reaches only through genuine absence.

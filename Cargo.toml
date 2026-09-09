@@ -1,8 +1,6 @@
 [workspace]
 resolver = "2"
 members = [
-    "github_webhooks",
-    "github-runner",
     "rules",
     "store",
     "repos",
@@ -160,8 +158,6 @@ billing-workflows = { path = "billing-workflows" }
 cloud = { path = "cloud" }
 features = { path = "features" }
 forms = { path = "forms" }
-github_webhooks = { path = "github_webhooks" }
-github-runner = { path = "github-runner" }
 ipnet = "2"
 import = { path = "import" }
 live-inquiry = { path = "live-inquiry" }

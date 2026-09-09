@@ -60,11 +60,9 @@ COPY webapp            webapp
 COPY views             views
 COPY README.md         README.md
 COPY telemetry         telemetry
-COPY github_webhooks    github_webhooks
 COPY forms             forms
 COPY workflows         workflows
 COPY workflows-service workflows-service
-COPY github-runner     github-runner
 COPY cloud             cloud
 COPY mcp               mcp
 COPY features          features

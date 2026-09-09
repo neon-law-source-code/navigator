@@ -1311,13 +1311,14 @@ sops:
     }
 
     #[test]
-    fn the_webhook_five_tuple_is_required_of_the_automation_home_alone() {
+    fn the_restate_ingress_pair_is_required_of_the_automation_home_alone() {
         // The subtlety a "every deployment has every key" test gets wrong.
-        // `store::deployment` scopes the engineering webhook receiver to one
-        // project, so its absence is a gap there and correct everywhere else.
-        let without_webhook: Vec<&str> = complete_keys()
+        // `store::deployment` scopes the trigger-submitted Restate ingress
+        // pair to one project, so its absence is a gap there and correct
+        // everywhere else.
+        let without_ingress: Vec<&str> = complete_keys()
             .into_iter()
-            .filter(|key| !key.starts_with("NAVIGATOR_GITHUB_WEBHOOK"))
+            .filter(|key| *key != "RESTATE_INGRESS_URL" && *key != "RESTATE_AUTH_TOKEN")
             .collect();
 
         let home = deployment(
@@ -1325,17 +1326,17 @@ sops:
                 PROJECT_ID,
                 store::deployment::GITHUB_AUTOMATION_HOME_PROJECT,
             )],
-            &without_webhook,
+            &without_ingress,
         );
         assert!(
             !unsatisfied_requirements(&home).is_empty(),
-            "the automation home must still need its receiver credentials"
+            "the automation home must still need its Restate ingress credentials"
         );
 
-        let elsewhere = deployment(&[(PROJECT_ID, "neon-law")], &without_webhook);
+        let elsewhere = deployment(&[(PROJECT_ID, "neon-law")], &without_ingress);
         assert!(
             unsatisfied_requirements(&elsewhere).is_empty(),
-            "no other deployment may carry that singleton's receiver credentials"
+            "no other deployment is preflighted for that singleton's ingress credentials"
         );
     }
 
@@ -1369,17 +1370,14 @@ sops:
     }
 
     #[test]
-    fn a_production_row_is_not_asked_for_the_automation_home_s_webhook_secret() {
+    fn a_production_row_is_not_asked_for_the_automation_home_s_ingress_credentials() {
         // The `SecretProviderClass` is one manifest rendered for every
-        // deployment, so it references the engineering webhook receiver's
-        // credentials everywhere. Demanding them would push a singleton's HMAC
-        // secret into a row holding real client matters — the opposite of what
+        // deployment, so it references the trigger-submitted Restate ingress
+        // pair everywhere. Demanding them would push a singleton's bearer
+        // token into a row holding real client matters — the opposite of what
         // `store::deployment` scopes it to.
         let objects: Vec<String> = projected_objects().into_iter().collect();
-        let home_only = [
-            "NAVIGATOR_GITHUB_WEBHOOK_SECRET",
-            "NAVIGATOR_GITHUB_APP_LOGIN",
-        ];
+        let home_only = ["RESTATE_INGRESS_URL", "RESTATE_AUTH_TOKEN"];
         let supplied: Vec<&str> = objects
             .iter()
             .map(String::as_str)
@@ -1535,14 +1533,14 @@ sops:
     }
 
     #[test]
-    fn the_automation_home_is_still_asked_for_its_own_webhook_secret() {
+    fn the_automation_home_is_still_asked_for_its_own_ingress_credentials() {
         // The other half: the exemption is scoped to the project that does not
-        // own the receiver, never a blanket allowance.
+        // own the Restate ingress pair, never a blanket allowance.
         let objects: Vec<String> = projected_objects().into_iter().collect();
         let supplied: Vec<&str> = objects
             .iter()
             .map(String::as_str)
-            .filter(|object| *object != "NAVIGATOR_GITHUB_WEBHOOK_SECRET")
+            .filter(|object| *object != "RESTATE_INGRESS_URL")
             .collect();
 
         let error = plan(&deployment(
@@ -1552,10 +1550,8 @@ sops:
             )],
             &supplied,
         ))
-        .expect_err("the automation home owns the receiver");
-        assert!(error
-            .to_string()
-            .contains("NAVIGATOR_GITHUB_WEBHOOK_SECRET"));
+        .expect_err("the automation home owns the ingress pair");
+        assert!(error.to_string().contains("RESTATE_INGRESS_URL"));
     }
 
     #[test]

@@ -1892,13 +1892,6 @@ jobs:
     # at real risk of the 90-minute cap below, turning a cost optimization into
     # a release that fails to publish. Eight cores keeps most of the saving
     # without betting the release on it.
-    #
-    # `navigator-runner` stays on the wide runner: it is not a trigger but a
-    # developer toolchain image, and its `cargo chef cook --tests` layer
-    # compiles the entire dependency graph WITH test targets — the one build
-    # in this matrix whose footprint really does resemble the workspace test
-    # job. It was also the matrix's outlier at 35m against 11-17m for the
-    # triggers (run 143692286).
     runs-on: ${{ matrix.runner }}
     # `contents: read` to check out, `packages: write` to push — the same
     # keyless grant `publish-service` holds.
@@ -1908,7 +1901,6 @@ jobs:
     # 90, up from 45: the five downgraded legs trade wall-clock for cost on
     # half the cores, and this cap is a wedge detector rather than a duration
     # budget (see the `build` job's timeout for the same reasoning).
-    # `navigator-runner` keeps 16 cores and is unaffected either way.
     timeout-minutes: 90
     strategy:
       fail-fast: false
@@ -1952,13 +1944,6 @@ jobs:
             build-args: |
               CRATE=workflows-service
               BIN=general-nag
-          # An amd64 job runner, not a CronJob trigger. It shares this
-          # publish lane because both are single-architecture OCI images and
-          # this job already waits for the full KIND integration proof.
-          - image: navigator-runner
-            dockerfile: images/Containerfile.runner
-            runner: ubuntu-latest
-            build-args: ""
     steps:
       # No reclaim on either runner in this matrix. The retired paid tiers
       # measured 237 GB and ~527 GB free (runs 144671916 / 144149466),
@@ -2915,9 +2900,8 @@ jobs:
 
           *Scheduled-job images*
           • \`navigator-heartbeat-trigger\`, \`navigator-archives-trigger\`, \`navigator-surreal-archive\`, \`navigator-billing-digest-trigger\`, \`navigator-dri-digest-trigger\`, \`navigator-general-nag\`
-          • \`navigator-runner\` — the CI/devx runner image
 
-          All 13 tagged \`${TAG}\` + \`latest\` on \`ghcr.io/${{ github.repository_owner }}\`.
+          All 12 tagged \`${TAG}\` + \`latest\` on \`ghcr.io/${{ github.repository_owner }}\`.
 
           Run: ${RUN_URL}"
           PAYLOAD=$(jq -n --arg text "${TEXT}" '{ text: $text }')

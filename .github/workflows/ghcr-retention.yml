@@ -157,7 +157,6 @@ jobs:
           navigator-billing-digest-trigger
           navigator-dri-digest-trigger
           navigator-general-nag
-          navigator-runner
           "
           count="$(printf '%s\n' ${PACKAGES} | wc -w | tr -d ' ')"
           echo "packages published by ${OWNER}/${REPO_NAME}: ${count}"

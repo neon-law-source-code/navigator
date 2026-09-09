@@ -32,16 +32,14 @@ pub const WORKFLOW_SERVICES: &[&str] = &[
     "ReconcileInvoices",
     "DriDigest",
     "Heartbeat",
-    "GitHubAutomationHeartbeat",
-    "DevxIssueTriage",
 ];
 
 /// Virtual-object services bound by the worker. Lowercase kebab-case by
 /// deliberate exception — a virtual object is addressed by key
-/// (`/notation/<id>/...`, `/devx-pr/<repo>-<pr>/...`), not invoked as a one-shot
-/// workflow, so it follows Restate's object-naming convention rather than the
-/// `PascalCase` template convention.
-pub const VIRTUAL_OBJECTS: &[&str] = &["notation", "devx-pr", "devx-guardrails", "project-slack"];
+/// (`/notation/<id>/...`), not invoked as a one-shot workflow, so it follows
+/// Restate's object-naming convention rather than the `PascalCase` template
+/// convention.
+pub const VIRTUAL_OBJECTS: &[&str] = &["notation", "project-slack"];
 
 #[cfg(test)]
 mod tests {
@@ -109,38 +107,5 @@ mod tests {
             "main.rs binds {bind_calls} services but the registry lists {registered}; \
              update WORKFLOW_SERVICES / VIRTUAL_OBJECTS to match the `.bind(...)` calls"
         );
-    }
-
-    /// The shared image reaches every persistent environment, but only the
-    /// automation home may register services that consume the one
-    /// GitHub App webhook stream. Keep the branch visible in source so this
-    /// inexpensive guard catches an accidental unconditional `DevX` bind.
-    #[test]
-    fn non_authoritative_deployments_do_not_bind_github_automation_services() {
-        let main_rs = include_str!("main.rs");
-        let authority_branch = main_rs
-            .split_once("let server = if github_automation_home {")
-            .expect("main must branch on the GitHub automation authority")
-            .1;
-        let (_, non_authoritative_branch) = authority_branch
-            .split_once("} else {")
-            .expect("main must branch on the GitHub automation authority");
-
-        assert!(main_rs.contains("if github_automation_home"));
-        for service in [
-            "DevxIssueTriageService",
-            "DevxPrService",
-            "GitHubGuardrailsService",
-            "GitHubAutomationHeartbeatService",
-        ] {
-            assert!(
-                main_rs.contains(service),
-                "authoritative branch must bind {service}"
-            );
-            assert!(
-                !non_authoritative_branch.contains(service),
-                "non-authoritative deployments must not bind {service}"
-            );
-        }
     }
 }

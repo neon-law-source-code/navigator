@@ -386,11 +386,10 @@ authorization but does not thereby gain infrastructure access.
 ## `devx`
 
 The **developer-environment orchestration** for this workspace, part of the `navigator` CLI (the `cli` crate),
-implemented in the [`cli/src/devx/`](../cli/src/devx/) module — there is no separate `devx` crate or binary. This is
-distinct from [DevX API](#devx-api), the GitHub webhook system in the `github_webhooks` crate. Brings a complete
-dependency stack up inside a local KIND cluster — SurrealDB, Garage, Rauthy, Restate (operator-managed), embedded Rego,
-plus the `workflows-service` Restate worker — opens host port-forwards and writes `.devx/env`. That file has the
-connection details the host-side `cargo run -p neon` needs.
+implemented in the [`cli/src/devx/`](../cli/src/devx/) module — there is no separate `devx` crate or binary. Brings a
+complete dependency stack up inside a local KIND cluster — SurrealDB, Garage, Rauthy, Restate (operator-managed),
+embedded Rego, plus the `workflows-service` Restate worker — opens host port-forwards and writes `.devx/env`. That file
+has the connection details the host-side `cargo run -p neon` needs.
 
 ```bash
 cargo run --release -p cli -- dev up      # bring it all up
@@ -417,16 +416,6 @@ Subcommands:
   deployments to a named `--tag` and re-registers. `dev logs` — tails navigator-web logs.
 
 The workspace has no Makefile — the `navigator` CLI is the only entry point.
-
-## DevX API
-
-The GitHub-driven issue-to-PR ingress system in the [`github_webhooks`](../github_webhooks/) library crate, shared by
-two binaries. The receiver is the `POST /webhooks/github/{secret}` route on `workflows-service`, the public `workflows`
-host (GitHub cannot reach `www`, which stays behind the tailnet perimeter): it verifies signed GitHub deliveries and
-submits typed, body-free commands to the Restate ingress. The durable Slack-notice services `DevxIssueTriage` and
-`devx-pr` bind into `workflows-service` alongside the other durable workflows and turn those commands into engineering
-notices; they alone read `SLACK_WEBHOOK_URL`. The GitHub App client, Kubernetes orchestration, and fuller durable
-workflows are distinct components.
 
 ## Directly Responsible Individual (DRI)
 

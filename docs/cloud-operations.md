@@ -158,10 +158,7 @@ everything is still local**, and only then `kubectl diff -k`s and applies it —
 merged to `main` reaches the cluster instead of silently rotting behind an image-only push. The render mechanics — the
 placeholder→env table, the by-name bail on a missing var, and `--dry-run` — are owned by
 [`gke-prod.md`](gke-prod.md#manifest-delivery). `navigator-web` and `workflows-service` both land on the same `YY.M.D`
-tag; version skew is an avoidable production risk. The GitHub webhook receiver is the `POST /webhooks/github/{secret}`
-route on `workflows-service` and reads only its GitHub and Restate-ingress keys; the DevX Slack services
-`DevxIssueTriage` and `devx-pr` bind into `workflows-service`, receive the Slack webhook, and are re-registered with
-Restate alongside the other durable workflows.
+tag; version skew is an avoidable production risk.
 
 The tag is a substitution token in the manifests, resolved at render time — the apply itself lands the real image. It is
 deliberately **not** a placeholder that a follow-up `kubectl set image` corrects: `workflows-service` (`maxSurge: 0`)

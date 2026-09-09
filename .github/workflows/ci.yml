@@ -265,8 +265,8 @@ jobs:
       CARGO_PROFILE_TEST_DEBUG: "0"
       # Link with LLVM lld instead of GNU ld. The workspace produces ~40 test
       # binaries, several of which (notably `features`) statically link most of
-      # the tree — portal, webapp, github_webhooks, restate-sdk, wiremock,
-      # fantoccini and their transitive graph in one image. Four of those link
+      # the tree — portal, webapp, restate-sdk, wiremock, fantoccini and their
+      # transitive graph in one image. Four of those link
       # steps run concurrently on a small runner, and GNU ld died
       # partway through with
       #
@@ -748,8 +748,7 @@ jobs:
           # coverage (12797 missed of 138709), measured 2026-08-11 on run
           # 151938416. Headroom to the 90.6 floor is ~236 lines (0.17pt).
           #
-          # Raising the floor means moving five constants together — here,
-          # `github_webhooks/src/runner.rs` (which has a test asserting it),
+          # Raising the floor means moving four constants together — here,
           # `AGENTS.md`, `docs/agent-workflows.md`, and
           # `.agents/skills/create-pr/SKILL.md` — so raise it deliberately, in
           # one change, never as a side effect of another. And never lower it to

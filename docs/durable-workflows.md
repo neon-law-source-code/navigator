@@ -28,15 +28,12 @@ Durable execution is split across two crates so the rest of the workspace never 
 | Tested via | `wiremock` (exact HTTP shape) | `cargo test -p workflows-service` |
 
 One worker pod hosts every service — new workflows bind onto the worker endpoint, never a new pod. Today that worker
-serves three virtual objects — `notation` (questionnaire + workflow timelines on one journal), `devx-pr`
-(per-pull-request notifications), and `devx-guardrails` (the GitHub-automation guardrail state) — and the durable
-workflows `Archives`, `BillingCanary`, `BillingDigest`, `ReconcileInvoices`, `DriDigest`, `Heartbeat`,
-`GitHubAutomationHeartbeat`, and `DevxIssueTriage`. The exact set is the single source of truth in
+serves two virtual objects — `notation` (questionnaire + workflow timelines on one journal) and `project-slack`
+(per-Project private-channel notices) — and the durable workflows `Archives`, `BillingCanary`, `BillingDigest`,
+`ReconcileInvoices`, `DriDigest`, and `Heartbeat`. The exact set is the single source of truth in
 `workflows_service::registry`, whose tests assert every workflow name is PascalCase (template filenames follow the
 separate snake_case convention `N103` enforces) and that the registry never drifts from the worker's actual `.bind(...)`
-calls. The DevX Slack-notice services `DevxIssueTriage` and `devx-pr` are no exception: they bind into this same worker
-— one worker, every service. They own the engineering Slack notifier and alone read `SLACK_WEBHOOK_URL`. In the
-reference deploy the worker runs behind `workflows.your-domain.example`.
+calls — one worker, every service. In the reference deploy the worker runs behind `workflows.your-domain.example`.
 
 The runtime is chosen by `RESTATE_BROKER_URL`: unset means in-process / in-memory, so KIND works with zero config; set
 means the `RestateRuntime` adapter posts to the broker over HTTP. The same selection is used in `portal::main` and the
@@ -168,8 +165,7 @@ is reachable. Two design points:
    or, for non-notation flows, bind a new Restate service in `workflows-service`.
 2. Signal it from `web` (event-driven) or add a trigger (scheduled / manual).
 3. Ship the worker — see [GKE production](gke-prod.md) and [cloud operations](cloud-operations.md). Always ship
-   `navigator-web` and `workflows-service` at one SHA; the DevX Slack services `DevxIssueTriage` and `devx-pr` now bind
-   into `workflows-service` too.
+   `navigator-web` and `workflows-service` at one SHA.
 4. **Re-register the deployment** (above) — otherwise the new service `404`s at the ingress no matter how clean the
    deploy was. `ship` registers `workflows.<domain>`. This step is invisible in `kubectl` and easy to forget.
 

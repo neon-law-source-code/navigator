@@ -1,10 +1,7 @@
 //! `heartbeat-trigger` — the thin `CronJob` entrypoint for a durable
 //! heartbeat workflow.
 //!
-//! Fires one `Heartbeat` invocation against the Restate ingress by default,
-//! then exits. The automation home may select the separately bound
-//! `GitHubAutomationHeartbeat` authority canary through
-//! `HEARTBEAT_WORKFLOW_SERVICE`.
+//! Fires one `Heartbeat` invocation against the Restate ingress, then exits.
 //! Built from the shared `images/Containerfile.trigger`
 //! (`--build-arg CRATE=workflows-service --build-arg BIN=heartbeat-trigger`).
 //!
@@ -23,20 +20,9 @@
 //! shared [`workflows::start_workflow`] helper attaches the header only when
 //! the token is present and non-empty, so the same binary works in both.
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result};
 
-const DEFAULT_WORKFLOW_SERVICE: &str = "Heartbeat";
-const GITHUB_AUTOMATION_WORKFLOW_SERVICE: &str = "GitHubAutomationHeartbeat";
-
-fn heartbeat_workflow_service(value: Option<&str>) -> Result<&'static str> {
-    match value {
-        None | Some(DEFAULT_WORKFLOW_SERVICE) => Ok(DEFAULT_WORKFLOW_SERVICE),
-        Some(GITHUB_AUTOMATION_WORKFLOW_SERVICE) => Ok(GITHUB_AUTOMATION_WORKFLOW_SERVICE),
-        Some(value) => Err(anyhow!(
-            "HEARTBEAT_WORKFLOW_SERVICE must be {DEFAULT_WORKFLOW_SERVICE} or {GITHUB_AUTOMATION_WORKFLOW_SERVICE}, got {value}"
-        )),
-    }
-}
+const WORKFLOW_SERVICE: &str = "Heartbeat";
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -51,8 +37,6 @@ async fn main() -> Result<()> {
         .context("RESTATE_INGRESS_URL must be set (the Restate ingress endpoint)")?;
     // Optional bearer — present only when targeting Restate Cloud.
     let auth_token = std::env::var("RESTATE_AUTH_TOKEN").ok();
-    let workflow_service =
-        heartbeat_workflow_service(std::env::var("HEARTBEAT_WORKFLOW_SERVICE").ok().as_deref())?;
     // Workflow key = UTC date + hour, so each six-hour slot is a distinct
     // invocation while a duplicate fire within the same hour is a no-op.
     let run_id = chrono::Utc::now().format("%Y-%m-%d-%H").to_string();
@@ -60,36 +44,16 @@ async fn main() -> Result<()> {
     let _response = workflows::start_workflow(
         &ingress,
         auth_token.as_deref(),
-        workflow_service,
+        WORKFLOW_SERVICE,
         &run_id,
         "run",
         &serde_json::json!({}),
         true, // one-way: accept the invocation and exit; Restate runs it.
     )
     .await
-    .with_context(|| format!("triggering {workflow_service} workflow"))?;
+    .with_context(|| format!("triggering {WORKFLOW_SERVICE} workflow"))?;
 
-    tracing::info!(%workflow_service, %run_id, "heartbeat workflow triggered");
-    println!("triggered {workflow_service}/{run_id}");
+    tracing::info!(workflow_service = WORKFLOW_SERVICE, %run_id, "heartbeat workflow triggered");
+    println!("triggered {WORKFLOW_SERVICE}/{run_id}");
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{
-        heartbeat_workflow_service, DEFAULT_WORKFLOW_SERVICE, GITHUB_AUTOMATION_WORKFLOW_SERVICE,
-    };
-
-    #[test]
-    fn trigger_accepts_only_the_known_heartbeat_workflows() {
-        assert_eq!(
-            heartbeat_workflow_service(None).unwrap(),
-            DEFAULT_WORKFLOW_SERVICE
-        );
-        assert_eq!(
-            heartbeat_workflow_service(Some(GITHUB_AUTOMATION_WORKFLOW_SERVICE)).unwrap(),
-            GITHUB_AUTOMATION_WORKFLOW_SERVICE
-        );
-        assert!(heartbeat_workflow_service(Some("DevxPr")).is_err());
-    }
 }

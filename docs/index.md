@@ -29,7 +29,6 @@ did.
 - [`environments.md`](environments.md) — the deployment environments and what distinguishes them.
 - [`env-driven-devx.md`](env-driven-devx.md) — one config surface serving local dev, CI, and production.
 - [`cloud-operations.md`](cloud-operations.md) — day-to-day cloud operations against a live deployment.
-- [`devx-api.md`](devx-api.md) — the DevX HTTP API the CLI and tooling call.
 - [`multi-cloud.md`](multi-cloud.md) — running Navigator on AWS, Azure, or self-hosted Kubernetes.
 - [`gke-prod.md`](gke-prod.md) — the GKE production deployment shape.
 - [`dns.md`](dns.md) — pointing an instance at a real domain.

@@ -300,12 +300,12 @@ is you, so your approval satisfies the code-owner count and not the last-push ru
 until the author approves the pushed head. This is observed behavior, not a theory: it is what happens on a real pull
 request every time this flow runs.
 
-That does not undo the flow — the author's remaining action is one click on a branch that is already fixed and already
+That does not undo the flow — the author's remaining action is one click on a branch that is already updated and already
 gated, instead of a round trip through writing the fix themselves. It does mean the approval body must name that action
 rather than leave the author to discover a silently blocked queue. Close the body with it, in these terms:
 
 ```text
-I pushed the fixes above, so `require_last_push_approval` means my approval cannot release the
+I pushed the changes above, so `require_last_push_approval` means my approval cannot release the
 queue. Approve <pushed-sha> and auto-merge will proceed. If you would rather own the change,
 push the equivalent commits yourself and I will approve your head instead.
 ```

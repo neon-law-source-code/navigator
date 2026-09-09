@@ -26,6 +26,7 @@ pub mod fs;
 pub mod gcloud;
 pub mod gcs;
 pub mod kms;
+pub mod notion;
 pub mod redirect;
 pub mod s3;
 pub mod speech;
@@ -45,6 +46,9 @@ pub use gcs::{GcsStorage, GcsStorageConfig};
 pub use kms::{
     open, seal, FakeKms, GoogleKms, GoogleKmsConfig, KmsContext, KmsError, KmsTokenSource,
     RuntimeKms, WrappedDataKey,
+};
+pub use notion::{
+    ensure_private_page, FakeNotion, NotionClient, NotionError, NotionPage, NotionService,
 };
 pub use s3::{S3Storage, S3StorageConfig};
 pub use speech::{GoogleSpeechConfig, GoogleSpeechTranscriptProvider, SpeechError};

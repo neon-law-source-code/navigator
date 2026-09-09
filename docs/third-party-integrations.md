@@ -44,6 +44,19 @@ Both sources use the same application variable names (`DOCUSIGN_*`, `XERO_*`, â€
 `NAVIGATOR_CREDENTIAL_ENVIRONMENT` to `dev` or `production`; startup rejects a mismatch. Each deployment receives its
 own set from its own namespaced Kubernetes Secret; no two deployments share one.
 
+## Firm-owned integration credentials
+
+Notion and other Firm integrations are not deployment-wide credentials. A Firm's Admin DRI writes a typed provider
+secret through the Navigator secret boundary; the value is envelope-encrypted with the dedicated runtime KMS key and is
+never returned in JSON, logs, traces, or durable payloads. The resolver selects the credential from the Project's
+`firm_id`, so a Project cannot fall back to another Firm or to a deployment environment variable. Owner governance may
+inspect metadata and appoint the DRI, but Owner is not a secret writer.
+
+The runtime KMS coordinate is `NAVIGATOR_RUNTIME_KMS_KEY`. It must name a dedicated runtime key, never the deployment
+configuration key. Staging manifests and operator documentation may describe the workload permission; this repository
+does not apply IAM or write cloud state. Provider clients receive a resolved credential through an injected trait and
+tests use fakes, so local verification needs no live provider account.
+
 Normal staging requires real non-production SendGrid and DocuSign demo configuration. Each cloud deployment uses the
 matching attachment row described in [`provider-environment-parity.md`](provider-environment-parity.md). Only the
 explicit `NAVIGATOR_CI_HARNESS=1` staging test surface may use in-process fakes; production rejects that flag.
@@ -54,6 +67,7 @@ explicit `NAVIGATOR_CI_HARNESS=1` staging test surface may use in-process fakes;
 | --- | --- | --- | --- |
 | DocuSign | E-signature | binding | `DOCUSIGN_*` |
 | Xero | Accounting / billing (`ACCREC` invoices) | binding | `XERO_*` |
+| Notion | Firm-private Project workspaces | Firm-owned | resolved by `firm_id` |
 | Restate Cloud | Durable workflow execution (`workflows-service`) | platform | `RESTATE_*` |
 | Google Cloud | Storage, OIDC, archive | platform | `NAVIGATOR_*`, `GOOGLE_OAUTH_*` |
 | Vertex AI | A2A agent-router LLM (Gemini Flash in prod) | platform | `NAVIGATOR_GCP_*` |

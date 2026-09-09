@@ -22,6 +22,52 @@ use uuid::Uuid;
 use crate::people_commands::{PeopleCommandError, UpdateContext};
 use crate::SessionData;
 
+/// Client-safe Project payload. Firm-private integration coordinates never
+/// cross the client API boundary, even when a client may see the Project.
+#[derive(Debug, Serialize)]
+struct ClientProjectView {
+    id: Uuid,
+    code: String,
+    name: String,
+    status: String,
+    brand: String,
+    entity_id: Uuid,
+    description: Option<String>,
+    external_slack_channel_url: Option<String>,
+    shared_notion_page_url: Option<String>,
+    inserted_at: String,
+    updated_at: String,
+}
+
+impl From<store::projects::Project> for ClientProjectView {
+    fn from(project: store::projects::Project) -> Self {
+        Self {
+            id: project.id,
+            code: project.code,
+            name: project.name,
+            status: project.status,
+            brand: project.brand,
+            entity_id: project.entity_id,
+            description: project.description,
+            external_slack_channel_url: project.external_slack_channel_url,
+            shared_notion_page_url: project.shared_notion_page_url,
+            inserted_at: project.inserted_at,
+            updated_at: project.updated_at,
+        }
+    }
+}
+
+fn project_payload(
+    role: store::persons::Role,
+    project: store::projects::Project,
+) -> Result<serde_json::Value, serde_json::Error> {
+    if role == store::persons::Role::Client {
+        serde_json::to_value(ClientProjectView::from(project))
+    } else {
+        serde_json::to_value(project)
+    }
+}
+
 /// State the `/app/api/*` router runs against. Read handlers extract just
 /// `State<SurrealDb>` via the [`FromRef`] below; the People command
 /// handlers (delete/update guard the bootstrap Owner, welcome dispatches
@@ -918,6 +964,11 @@ async fn list_projects_door(
         store::access::visible_projects(&state.surreal, authed.0.person_id, authed.0.role)
             .await
             .map_err(ApiError::Db)?;
+    let projects = projects
+        .into_iter()
+        .map(|project| project_payload(authed.0.role, project))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| ApiError::Db(error.to_string()))?;
     Ok((StatusCode::OK, Json(projects)).into_response())
 }
 
@@ -935,7 +986,9 @@ async fn get_project_door(
         .ok()
         .flatten()
         .ok_or(ApiError::NotFound)?;
-    Ok((StatusCode::OK, Json(project)).into_response())
+    let payload =
+        project_payload(authed.0.role, project).map_err(|error| ApiError::Db(error.to_string()))?;
+    Ok((StatusCode::OK, Json(payload)).into_response())
 }
 
 /// `GET /app/api/projects/{id}/participants` — the matter's participation ledger.

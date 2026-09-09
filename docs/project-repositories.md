@@ -268,6 +268,12 @@ named for the code, and one private source repository named for the code. Each s
 repository that already exists is adopted. A recorded `repository_url` is left alone, so a Project whose source lives on
 another forge is not moved. Missing Drive or forge configuration skips that surface rather than failing the matter open.
 
+**A Project repository is created private, and provisioning verifies rather than assumes it.** `GitHubForge` requests
+`"private": true` explicitly on every create — never the organization default, which member permissions or an enterprise
+policy can loosen without this deployment noticing — and re-reads the repository afterward, on both the freshly created
+path and the adopt-on-name-conflict path, failing closed if it is not private. That failure names a policy regression or
+a deliberate visibility change, either of which needs a human rather than a silent retry.
+
 `POST /app/api/project-surfaces/{id}` is the admin retry for a failed or legacy row. It carries its own noun rather than
 sitting under `/app/api/projects/`, because that prefix's GET rule admits any authenticated caller up to five segments.
 CLI: `navigator site projects surfaces reconcile --project <code>`; Project participation is never copied onto the

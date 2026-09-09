@@ -290,20 +290,19 @@ async fn the_lawyer_shook_sitemap_lists_only_that_brands_pages_under_its_host() 
             path.to_string()
         })
         .collect();
-    for required in [
-        "/",
-        "/services",
-        "/contact",
-        "/privacy",
-        "/terms",
-        "/llms.txt",
-    ] {
+    for required in ["/", "/privacy", "/terms", "/llms.txt"] {
         assert!(
             paths.iter().any(|path| path == required),
             "missing {required}: {paths:?}"
         );
     }
-    assert!(!paths.iter().any(|path| path == "/litigation"));
+    // A bare holding page, not a marketing site: it publishes `/` alone.
+    for absent in ["/services", "/contact", "/litigation"] {
+        assert!(
+            !paths.iter().any(|path| path == absent),
+            "must not advertise {absent}: {paths:?}"
+        );
+    }
     for path in &paths {
         let (status, _) = get_on_host(&app, path, Some(host)).await;
         assert_eq!(status, StatusCode::OK, "{host} sitemap advertises {path}");

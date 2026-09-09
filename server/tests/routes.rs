@@ -9173,7 +9173,7 @@ async fn assert_unregistered_host_redirects(
 ///
 /// |                    | default host    | `delete-your-data` host     | `lawyer-shook` host | unknown host  |
 /// | ------------------ | --------------- | ---------------------------- | ------------------ | ------------- |
-/// | marketing path     | 200, own chrome | 200, own chrome              | 200, own chrome     | 301 → default |
+/// | marketing path     | 200, own chrome | 200, own chrome              | 200, own chrome (`/` — its only marketing path) | 301 → default |
 /// | `/app`             | 303 → login     | 303 → login (no brand leak)  | 303 → login         | 301 → default |
 /// | `/public/*` asset  | 200             | 200                          | 200                | 301 → default |
 /// | `/app/health`      | 200             | 200                          | 200                | 200           |
@@ -9195,14 +9195,16 @@ async fn host_brand_path_matrix_resolves_every_combination() {
 
     // Marketing path: 200 on every registered host with its own
     // `og:site_name`; the unknown host's redirect target renders the
-    // default brand's chrome, not merely a 301.
-    for (host, brand) in [
-        (default_host, "Neon Law"),
-        (delete_your_data_host, "DeleteYourData.com"),
-        (lawyer_shook_host, "Lawyer Shook"),
+    // default brand's chrome, not merely a 301. Lawyer Shook is a bare
+    // holding page rather than a marketing site, so `/` is its own
+    // marketing path here — `/contact` is unpublished and 404s.
+    for (host, path, brand) in [
+        (default_host, "/contact", "Neon Law"),
+        (delete_your_data_host, "/contact", "DeleteYourData.com"),
+        (lawyer_shook_host, "/", "Lawyer Shook"),
     ] {
-        let resp = get_on_host(&app, "/contact", host).await;
-        assert_eq!(resp.status(), StatusCode::OK, "{host} /contact");
+        let resp = get_on_host(&app, path, host).await;
+        assert_eq!(resp.status(), StatusCode::OK, "{host} {path}");
         let body = body_string(resp).await;
         assert!(page_declares_og_site_name(&body, brand), "{host}: {body}");
         for other_brand in ["Neon Law", "DeleteYourData.com", "Lawyer Shook"] {

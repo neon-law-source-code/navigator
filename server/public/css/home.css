@@ -936,3 +936,45 @@
     transform: none;
   }
 }
+
+/* ---- The bare holding page ---------------------------------------------- */
+
+/* A house brand that is a bare legal notice rather than an active marketing
+   site (Lawyer Shook): no hero, no CTA, no practice grid — just a title and
+   a short statement, centred in the same column the rest of this page uses.
+   `PublicShell` is not in the tree here (there is no header or footer to
+   wrap), so this owns its own top padding instead of inheriting the shell's.
+   The heading deliberately does not set its own `font-family`: unlike
+   `--firm-serif` above (a fixed stack), inheriting `body`'s `--nav-font-family`
+   from `theme.css` is what actually picks up the resolved brand's own
+   typeface — Tinos for Lawyer Shook. */
+.holding-page {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: clamp(4rem, 12vw, 8rem) 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.holding-page__heading {
+  margin: 0;
+  font-size: clamp(2rem, 5.5vw, 3.25rem);
+  font-weight: 600;
+  line-height: 1.1;
+  text-wrap: balance;
+}
+
+.holding-page__paragraph {
+  margin: 0;
+  font-size: 1.125rem;
+  line-height: 1.6;
+  color: var(--nav-color-text-muted);
+  text-wrap: pretty;
+}
+
+.holding-page__link {
+  color: var(--firm-brand-strong);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.15em;
+}

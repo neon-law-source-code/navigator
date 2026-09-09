@@ -298,6 +298,15 @@ over a repository carrying no `documents/`, but it is deliberately **not** one o
 live half needs a reachable deployment, and the always-required check must never depend on that. A failing `documents`
 job is visible on the pull request without blocking the merge the other three jobs gate.
 
+A fifth job, `seeds`, reconciles `seeds/` the same way. `navigator validate` already covers the offline shape of every
+`seeds/*.yaml` document (the `notation` job, above), on every event including a pull request from a fork, so `seeds`
+mints nothing there — a token is mintable only from `refs/heads/main`, which is exactly why a PR check stays
+offline-only. On a push to `main` with `vars.NAVIGATOR_HOST` set, it exchanges the runner's own OIDC identity token at
+`POST /auth/ci/seed-token` and runs `navigator site import --ci --host <host> --dir seeds`, **never** `--overwrite`: the
+natural key makes a re-run a no-op, and a CI job that can replace a client's recorded field unattended is not one the
+firm wants. A repository with no `seeds/` exits `0` with a message. Like `documents`, `seeds` is deliberately **not**
+one of the required check's dependencies.
+
 **There is no path filter, and that is deliberate.** A filtered job that skips reports success for work it never did,
 and a required check a skip can satisfy is not a gate. So every job always runs and each half no-ops over a repository
 that does not carry it, rather than being skipped. The required job is spelled `ci`, which is the one context `navigator

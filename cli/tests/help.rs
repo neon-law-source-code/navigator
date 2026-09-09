@@ -79,7 +79,6 @@ fn top_level_help_keeps_orchestration_nested_under_groups() {
             "dev",
             "erd",
             "forms",
-            "github",
             "notations",
             "ops",
             "site",
@@ -119,9 +118,8 @@ fn catalog_seed_help_uses_a_headline() {
 
 /// `notations` is the notation author's local workbench: every member
 /// operates on files under `templates/notations/`, offline. Pinning the
-/// membership keeps a live-site command, or the forms-vendoring and
-/// engineering-intake commands (their own top-level homes), from drifting
-/// into it.
+/// membership keeps a live-site command, or the forms-vendoring command
+/// (its own top-level home), from drifting into it.
 #[test]
 fn notations_help_lists_the_notation_authoring_workbench() {
     let output = help(&["notations", "--help"]);
@@ -150,15 +148,6 @@ fn forms_help_lists_the_vendoring_operations() {
         command_names(&output),
         vec!["fields", "re-author", "sync", "help"]
     );
-}
-
-/// `github` owns rendering and opening engineering-intake notations by
-/// hand. Pinning membership keeps it from drifting beyond that one job.
-#[test]
-fn github_help_lists_the_intake_operations() {
-    let output = help(&["github", "--help"]);
-
-    assert_eq!(command_names(&output), vec!["open-issue", "render", "help"]);
 }
 
 #[test]

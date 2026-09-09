@@ -15,7 +15,6 @@ mod erd;
 mod firms_doctor;
 mod format;
 mod forms_sync;
-mod github;
 #[allow(dead_code)]
 mod import;
 #[allow(dead_code)]
@@ -334,13 +333,6 @@ enum Command {
         #[command(subcommand)]
         action: FormsAction,
     },
-    /// Render or open an engineering intake notation (`templates/github/`) — an issue or
-    /// pull-request body filled from answers.
-    Github {
-        #[command(subcommand)]
-        action: GithubAction,
-    },
-
     // ─────────────── Local store ───────────────
     // Open and write the local store directly — no live site required.
     /// Print an ERD describing every table in the schema. Default format is a Mermaid
@@ -1591,54 +1583,6 @@ enum FontAction {
 }
 
 #[derive(Subcommand)]
-enum GithubAction {
-    /// Fill a `templates/github/` notation's `{{…}}` placeholders from
-    /// `--answer` pairs and print the resulting Markdown.
-    ///
-    /// Local and DB-free: the notation is validated against the same rule
-    /// set as `validate` first, then rendered. Placeholders with no
-    /// `--answer` render verbatim and are reported on stderr, so a draft
-    /// is obvious. This command opens nothing — it produces the body you
-    /// paste into a pull request.
-    Render {
-        /// Which notation to render.
-        #[arg(value_enum)]
-        notation: github::Notation,
-        /// Fill a `{{code}}` placeholder with `value`. Repeatable:
-        /// `--answer custom_text__change_summary="Adds the shelf."`.
-        #[arg(long = "answer", value_parser = parse_answer)]
-        answers: Vec<(String, String)>,
-        /// Write to this file instead of stdout.
-        #[arg(long)]
-        out: Option<PathBuf>,
-    },
-    /// Render `create_issue.md` and open it as a GitHub issue.
-    ///
-    /// Calls the GitHub REST API directly through the same
-    /// `workflows::github::IssueOpener` seam the `github_issue__*`
-    /// workflow step dispatches through — never the `gh` CLI. Needs
-    /// `NAVIGATOR_GITHUB_TOKEN` (or `GITHUB_TOKEN`); without one it opens
-    /// nothing and says so.
-    OpenIssue {
-        /// Fill a `{{code}}` placeholder with `value`. Repeatable.
-        #[arg(long = "answer", value_parser = parse_answer)]
-        answers: Vec<(String, String)>,
-        /// Target `owner/repo`. Defaults to `NAVIGATOR_GITHUB_REPO`.
-        #[arg(long, env = "NAVIGATOR_GITHUB_REPO")]
-        repo: Option<String>,
-        /// Issue title. Defaults to the notation's frontmatter `title`.
-        #[arg(long)]
-        title: Option<String>,
-        /// Label to apply. Repeatable.
-        #[arg(long = "label")]
-        labels: Vec<String>,
-        /// Render and report the target without calling GitHub.
-        #[arg(long)]
-        dry_run: bool,
-    },
-}
-
-#[derive(Subcommand)]
 enum FormsAction {
     /// Vendor + verify the blank government forms in the assets
     /// bucket. For each registry form: a local working copy at
@@ -1982,33 +1926,6 @@ fn main() -> ExitCode {
             FormsAction::ReAuthor { code, bucket } => {
                 forms_sync::run_reauthor(&code, bucket.as_deref())
             }
-        },
-        Command::Github { action } => match github::workspace_root() {
-            Err(e) => {
-                eprintln!("navigator: {e}");
-                ExitCode::from(2)
-            }
-            Ok(root) => match action {
-                GithubAction::Render {
-                    notation,
-                    answers,
-                    out,
-                } => github::run_render(&root, notation, &answers, out.as_deref()),
-                GithubAction::OpenIssue {
-                    answers,
-                    repo,
-                    title,
-                    labels,
-                    dry_run,
-                } => runtime().block_on(github::run_open_issue(
-                    &root,
-                    &answers,
-                    repo.as_deref(),
-                    title.as_deref(),
-                    &labels,
-                    dry_run,
-                )),
-            },
         },
         Command::Site { action } => match action {
             SiteCmd::Sync { dry_run } => {

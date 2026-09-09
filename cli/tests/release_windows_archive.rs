@@ -65,6 +65,27 @@ fn releases_build_and_attach_a_windows_cli_archive() {
     }
 }
 
+#[test]
+fn every_cli_release_upload_uses_a_tag_exact_archive_name() {
+    let workflow = deploy_workflow();
+    let violating_lines: Vec<_> = workflow
+        .lines()
+        .map(str::trim_start)
+        .filter(|line| {
+            !line.starts_with('#')
+                && line.contains("gh release upload")
+                && !line.contains("-lsp-")
+                && !line.contains("navigator-${TAG}-")
+        })
+        .collect();
+
+    assert!(
+        violating_lines.is_empty(),
+        "every non-LSP CLI release upload must use a tag-exact archive name, got: \
+         {violating_lines:?}"
+    );
+}
+
 /// The three CLI archives compile in the SAME stage that publishes the images to
 /// GHCR: each waits on `integration` — the KIND e2e, interop, and
 /// browser/accessibility suite — exactly as `publish-service` and

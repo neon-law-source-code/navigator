@@ -23,27 +23,28 @@
 //! that mints it first claims [`CLAIM_TABLE`], a table whose *record id
 //! is that key*.
 //!
-//! The claim is what the guarantee rests on, and it is **strong but not
-//! absolute**. The UNIQUE `entity_firm_anchor` index reads like the guard
-//! and is not one under concurrency: racers writing distinct entity rows
-//! never collide on an index entry, so eight of them mint two anchors
+//! The claim is the first half of the guarantee. The UNIQUE
+//! `entity_firm_anchor` index reads like the guard and is not one under
+//! concurrency: racers writing distinct entity rows never collide on an
+//! index entry, so eight of them mint two anchors
 //! (`store/tests/firm_anchor_race.rs`). Writing one identical *record*
-//! key is far stronger, and is the claim's whole job.
+//! key is far stronger, but the engine can still report two successful
+//! `CREATE`s while this table is empty.
 //!
-//! It is not total, though, and ENG-312 measured where it gives out: two
-//! concurrent `CREATE`s of the *same* record id can **both** report
-//! success while the `firm_anchor` table is still **empty**. Observed
-//! directly — both racers reading the claim as free, both returning
-//! `CLAIMED`, no retry involved — at roughly one double-commit per
-//! 160,000 eight-way raced creates against an empty claim table. With one
-//! claim row already present, 480,000 raced creates produced no fork on
-//! either the embedded or the server engine.
+//! ENG-312 measured the gap directly: two racers read the claim as free,
+//! both return `CLAIMED`, and neither retries. With one claim row already
+//! present, the same raced creates produced no fork on either the embedded
+//! or the server engine. `take_claim` therefore primes the claim table before
+//! the first real `CREATE`, so the real claim never races on the engine's
+//! empty-table first write. A second creator can still succeed at the raw
+//! engine claim on an empty table; the empty-table reproduction remains in
+//! the race harness, while the protected path always claims a populated
+//! table.
 //!
-//! So the window is the first mint on a fresh database, and it closes as
-//! soon as any claim row exists. `store/tests/firm_anchor_race.rs` builds
-//! a fresh engine per round, which puts it inside that window on every
-//! round — it is not a proxy for the steady state a deployment runs in.
-//! `.github/workflows/firm-anchor-soak.yml` is the lane that watches this.
+//! The window is the first mint on a fresh database. The race test keeps
+//! that empty-table shape deliberately, and
+//! `.github/workflows/firm-anchor-soak.yml` watches it under the
+//! instrumented Linux runner profile.
 //!
 //! Deciding *what counts as* an anchor stays in `entity_commands` with
 //! `is_firm_anchor`, because it reads configuration. This module writes
@@ -169,19 +170,33 @@ pub enum EntityError {
     WriteReturnedNothing,
 }
 
-/// The table whose **record id is the firm-anchor key**. Writing it is
-/// what serializes two racers minting the anchor: they collide on one
-/// identical record key, which the engine enforces far more reliably than
-/// a UNIQUE index entry — which under concurrency it does not enforce at
-/// all. Not absolutely, though: see this module's header for the measured
-/// empty-table window. See also the `firm_anchor` block in
+/// The table whose **record id is the firm-anchor key**. Writing it makes
+/// racers collide on one identical record key, which is much stronger than
+/// a UNIQUE index entry — but the engine has an empty-table first-write gap.
+/// `take_claim` primes this table before every real `CREATE`, so a raw
+/// double-success on the engine's empty-table first write cannot publish two
+/// protected Entity rows. See the `firm_anchor` block in
 /// `store/src/schema/navigator.surql`.
 const CLAIM_TABLE: &str = "firm_anchor";
+
+/// A reserved string record link that keeps the claim table populated. The
+/// engine accepts record links without validating that the target row exists,
+/// and no public holder lookup addresses this link. The sentinel's claim
+/// record uses a native nil UUID key, so it cannot collide with any string
+/// firm-anchor key — including this reserved spelling.
+const CLAIM_SENTINEL_ENTITY_ID: &str = "__navigator_claim_sentinel__";
+
+/// Populate the claim table before a real anchor claim can be its first row.
+/// `UPSERT` is safe here because this is one reserved, inert key; unlike the
+/// real claim, it cannot replace another entity's ownership.
+const PRIME_CLAIM_TABLE: &str = "UPSERT $claim SET entity_id = $entity_id;";
 
 /// Claim the anchor for `$id`, refusing when any row already holds it.
 ///
 /// `CREATE` rather than `UPSERT` on purpose: `UPSERT` would take the claim
-/// from its current holder, which is the fork this exists to refuse.
+/// from its current holder, which is the fork this exists to refuse. The
+/// engine's empty-table gap is handled by priming the table before the real
+/// claim below.
 ///
 /// **It runs as its own statement, never inside a wider transaction.**
 /// That is the whole mechanism, and it is easy to "tidy" away. An
@@ -189,7 +204,8 @@ const CLAIM_TABLE: &str = "firm_anchor";
 /// racers each see the claim free and each `CREATE` succeeds against its
 /// own snapshot — the fork comes straight back, and the wider the
 /// transaction the likelier it is. Committing the claim on its own is
-/// what makes the second racer read the first one's row.
+/// what makes the second racer read the first one's row. The real claim never
+/// reaches this statement until the table has its reserved sentinel row.
 const CLAIM: &str = "CREATE type::record('firm_anchor', $firm_anchor_key) SET entity_id = $id;";
 
 /// Release whatever claim `$id` holds. A no-op when it holds none, so it
@@ -240,6 +256,7 @@ fn claims_the_firm_anchor(error: &surrealdb::Error) -> bool {
 /// is the right answer.
 async fn take_claim(db: &SurrealDb, id: Uuid, key: Option<&str>) -> Result<bool, EntityError> {
     let Some(key) = key else { return Ok(false) };
+    prime_claim_table(db).await?;
     let holder = firm_anchor_holder(db, key).await?;
     if holder == Some(id) {
         anchor_trace(&format!(
@@ -253,14 +270,33 @@ async fn take_claim(db: &SurrealDb, id: Uuid, key: Option<&str>) -> Result<bool,
             .bind(("firm_anchor_key", key.to_string()))
     })
     .await;
-    match &outcome {
-        Ok(_) => anchor_trace(&format!("id={id} holder={holder:?} exit=CLAIMED")),
+    match outcome {
+        Ok(_) => {
+            // Keep the raw engine success visible to the soak trace. The
+            // empty-table raw reproduction remains a direct control even
+            // though the protected path primes the table first.
+            anchor_trace(&format!("id={id} holder={holder:?} exit=CLAIMED"));
+            Ok(true)
+        }
         Err(error) => {
             anchor_trace(&format!("id={id} holder={holder:?} exit=refused {error:?}"));
+            Err(error)
         }
     }
-    outcome?;
-    Ok(true)
+}
+
+/// Ensure a real claim never performs the claim table's first write.
+async fn prime_claim_table(db: &SurrealDb) -> Result<(), EntityError> {
+    writing(|| {
+        db.query(PRIME_CLAIM_TABLE)
+            .bind(("claim", record_id(CLAIM_TABLE, Uuid::nil())))
+            .bind((
+                "entity_id",
+                surrealdb::types::RecordId::new(TABLE, CLAIM_SENTINEL_ENTITY_ID),
+            ))
+    })
+    .await
+    .map(|_| ())
 }
 
 /// ENG-312 diagnostic. Off unless `NAV_ANCHOR_TRACE` is set, so ordinary
@@ -855,12 +891,12 @@ const DEPENDENT_TABLES: [(&str, &str); 4] = [
 
 #[cfg(test)]
 mod tests {
-    use super::classify_write;
     use super::{
         all, create, delete_unless_firm_anchor, dependents, find_by_id, find_by_ids, find_by_name,
-        firm_anchor_exists, set_avatar_url, update, AlreadyExistsError, EntityError, ErrorDetails,
-        NewEntity, CLAIM, CLAIM_TABLE, RELEASE, TABLE, WRITE_FIELDS,
+        firm_anchor_exists, firm_anchor_holder, set_avatar_url, update, AlreadyExistsError,
+        EntityError, ErrorDetails, NewEntity, CLAIM, CLAIM_TABLE, RELEASE, TABLE, WRITE_FIELDS,
     };
+    use super::{classify_write, prime_claim_table};
     use crate::surreal::test_support::mem;
     use crate::surreal::{record_id, retry, SurrealDb};
     use uuid::Uuid;
@@ -1288,5 +1324,40 @@ mod tests {
     fn the_claim_statements_name_the_claim_table() {
         assert!(CLAIM.contains(CLAIM_TABLE), "{CLAIM}");
         assert!(RELEASE.contains(CLAIM_TABLE), "{RELEASE}");
+    }
+
+    #[tokio::test]
+    async fn priming_an_empty_claim_table_leaves_real_keys_free() {
+        let db = mem().await;
+
+        let before: Vec<surrealdb::types::RecordId> = db
+            .query("SELECT VALUE id FROM firm_anchor")
+            .await
+            .and_then(surrealdb::IndexedResults::check)
+            .expect("read the empty claim table")
+            .take(0)
+            .expect("decode the empty claim table");
+        assert!(before.is_empty());
+
+        prime_claim_table(&db).await.expect("prime the claim table");
+
+        let key = "__navigator_claim_sentinel__";
+        assert_eq!(firm_anchor_holder(&db, key).await.unwrap(), None);
+        let id = Uuid::now_v7();
+        db.query(CLAIM)
+            .bind(("id", record_id(TABLE, id)))
+            .bind(("firm_anchor_key", key.to_string()))
+            .await
+            .and_then(surrealdb::IndexedResults::check)
+            .expect("claim a real key next to the sentinel");
+        assert_eq!(firm_anchor_holder(&db, key).await.unwrap(), Some(id));
+        let after: Vec<surrealdb::types::RecordId> = db
+            .query("SELECT VALUE id FROM firm_anchor")
+            .await
+            .and_then(surrealdb::IndexedResults::check)
+            .expect("read the primed claim table")
+            .take(0)
+            .expect("decode the primed claim table");
+        assert_eq!(after.len(), 2);
     }
 }

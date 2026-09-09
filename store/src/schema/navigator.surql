@@ -586,6 +586,12 @@ DEFINE INDEX OVERWRITE brand_key_unique ON brand FIELDS brand_key UNIQUE;
 -- therefore the first mint on a fresh database, not ongoing operation.
 -- Do not read the paragraph above as a guarantee the engine gives.
 --
+-- `store::entities` writes one reserved, inert sentinel row before a real
+-- claim, so the first real claim never races on an empty table. Its race test
+-- deliberately asserts the table is empty before the writers begin; the
+-- sentinel is part of the claim seam, not a prewarmed test fixture. A direct
+-- raw-claim experiment can still observe the empty-table double-commit.
+--
 -- The index stays as the backstop for a fork that is not a race.
 DEFINE TABLE IF NOT EXISTS firm_anchor SCHEMAFULL PERMISSIONS NONE;
 DEFINE FIELD OVERWRITE entity_id ON firm_anchor TYPE record<entity>;

@@ -115,6 +115,7 @@ fn dioxus_app_pages() -> Vec<String> {
         pages::APP_TEAM_PATH,
         pages::APP_BRANDS_PATH,
         pages::APP_OWNER_PATH,
+        pages::APP_PROFILE_PATH,
         pages::FIRM_SHOW_PATH,
     ]
     .iter()
@@ -135,6 +136,8 @@ fn admin_registration_sample() -> Vec<String> {
         "/app/admin/people/x/avatar",
         "/app/admin/people/x/welcome",
         "/app/admin/people/x/delete",
+        "/app/profile/avatar",
+        "/app/people/x/avatar",
         "/app/team/fonts/gorp-serif.zip",
         "/app/notations/x/documents/x",
         "/app/forms/x",

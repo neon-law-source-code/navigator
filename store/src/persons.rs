@@ -224,13 +224,17 @@ pub struct Person {
     /// Xero Contacts via the billing seam (one-way, Neon Law Navigator →
     /// Xero). `None` until first synced.
     pub xero_contact_id: Option<String>,
-    /// This person's avatar, shown only on the admin Person page — never a
-    /// public surface, since `/team` stopped being a per-person roster. Two
+    /// This person's avatar. Never a public surface — `/team` stopped being a
+    /// per-person roster — but visible to more than the admin Person page
+    /// now: the caller's own `/app/profile` always shows it, every firm tier
+    /// may see any avatar, and a client may see a fellow client's avatar when
+    /// the two share a Project (`store::access::avatar_visible_to`). Two
     /// shapes: a bare private documents-bucket key
-    /// (`people/{id}/avatars/…`, written by the admin avatar-upload route),
-    /// or a directly-fetchable URL (an old-style `/assets/…` path from
-    /// before that route moved off the public bucket, or an external photo
-    /// URL a directory-sync seed reconciliation supplied).
+    /// (`people/{id}/avatars/…`, written by the admin or self-service
+    /// avatar-upload route), or a directly-fetchable URL (an old-style
+    /// `/assets/…` path from before that route moved off the public bucket,
+    /// or an external photo URL a directory-sync seed reconciliation
+    /// supplied).
     pub profile_image_url: Option<String>,
     /// Optional `LinkedIn` profile URL, shown on the admin Person page.
     /// `None` until set by an admin edit.

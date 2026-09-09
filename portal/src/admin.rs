@@ -203,6 +203,22 @@ pub fn routes(
                 .layer(DefaultBodyLimit::max(MAX_AVATAR_BYTES)),
         )
         .route("/app/me/avatar", get(current_viewer_avatar))
+        .route(
+            "/app/profile/avatar",
+            // The self-service twin of `/app/admin/people/{id}/avatar` above:
+            // every authenticated tier reaches this, but the target is always
+            // the caller's own row, resolved from the session — never a
+            // person id supplied by the request. Same body-limit reasoning.
+            post(profile_avatar_upload).layer(DefaultBodyLimit::max(MAX_AVATAR_BYTES)),
+        )
+        .route(
+            "/app/people/{id}/avatar",
+            // Another person's avatar, gated by `store::access::
+            // avatar_visible_to` rather than the admin tier: every firm tier
+            // sees any avatar, and a client sees a fellow client's only when
+            // they share a Project.
+            get(person_avatar_view),
+        )
         .route("/app/admin/people/{id}/welcome", post(admin_person_welcome))
         .route("/app/admin/people/{id}/delete", post(admin_person_delete));
     r = register_firm_matter_routes(r, "/app/lawyer");
@@ -1027,6 +1043,114 @@ fn initials_avatar_response(name: &str) -> Response {
         svg,
     )
         .into_response()
+}
+
+/// `POST /app/profile/avatar` — the native multipart form behind the
+/// self-service `/app/profile` page's avatar upload card. Every authenticated
+/// tier reaches this handler (no `admin_gate`): the target is always the
+/// caller's own row, resolved from the signed session exactly like
+/// [`current_viewer_avatar`], never a person id supplied in the request —
+/// so, unlike [`admin_person_avatar_upload`], this cannot become a write to
+/// someone else's row.
+async fn profile_avatar_upload(
+    State(s): State<AdminState>,
+    cookies: tower_cookies::Cookies,
+    session: Option<Extension<SessionData>>,
+    mut multipart: Multipart,
+) -> Response {
+    let Some(Extension(session_data)) = session else {
+        return StatusCode::FORBIDDEN.into_response();
+    };
+    let Some(id) = session_data.person_id else {
+        return StatusCode::FORBIDDEN.into_response();
+    };
+    let (content_type, bytes) =
+        match read_avatar_upload(&cookies, &session_data, &mut multipart).await {
+            Ok(pair) => pair,
+            Err(response) => return response,
+        };
+    let ext = ALLOWED_AVATAR_CONTENT_TYPES
+        .iter()
+        .find(|(allowed, _)| *allowed == content_type)
+        .map_or("bin", |(_, ext)| *ext);
+
+    let key = format!("people/{id}/avatars/{id}.{ext}");
+    if let Err(e) = s.storage.put(&key, &bytes, &content_type).await {
+        tracing::error!(error = %e, person_id = %id, "profile avatar upload: storage write failed");
+        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    }
+
+    match store::persons::edit(
+        &s.surreal,
+        id,
+        &store::persons::PersonEdit {
+            profile_image_url: Some(Some(key)),
+            ..Default::default()
+        },
+    )
+    .await
+    {
+        Ok(Some(_)) => Redirect::to(webapp::profile::PROFILE_PATH).into_response(),
+        Ok(None) => StatusCode::NOT_FOUND.into_response(),
+        Err(e) => {
+            tracing::error!(error = %e, person_id = %id, "profile avatar upload: person edit failed");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+/// `GET /app/people/{id}/avatar` — stream another person's avatar, gated by
+/// [`store::access::avatar_visible_to`]: every firm tier sees any avatar, and
+/// a client sees a fellow client's avatar only when the two share a Project.
+/// embedded Rego policy admits any authenticated caller on this path
+/// (`portal/policy/navigator.rego`) because it has no participation data to
+/// narrow further; this handler carries the actual, participation-aware rule
+/// (`docs/access-model.md`).
+///
+/// A denial and a missing row answer identically — `404`, never `403` — so
+/// neither discloses which one it was, the same non-disclosure
+/// [`webapp::firm_show`] already holds for a Firm outside the caller's own
+/// membership.
+async fn person_avatar_view(
+    State(s): State<AdminState>,
+    Path(id): Path<Uuid>,
+    session: Option<Extension<SessionData>>,
+) -> Response {
+    let Some(Extension(session)) = session else {
+        return StatusCode::FORBIDDEN.into_response();
+    };
+    let Some(viewer_id) = session.person_id else {
+        return StatusCode::FORBIDDEN.into_response();
+    };
+    let target = match store::persons::find_by_id(&s.surreal, id).await {
+        Ok(person) => person,
+        Err(e) => {
+            tracing::error!(error = %e, person_id = %id, "avatar view: person read failed");
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
+    };
+    let Some(target) = target else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let visible = match store::access::avatar_visible_to(
+        &s.surreal,
+        viewer_id,
+        session.role,
+        target.id,
+        target.role,
+    )
+    .await
+    {
+        Ok(visible) => visible,
+        Err(e) => {
+            tracing::error!(error = %e, person_id = %id, "avatar view: visibility check failed");
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
+    };
+    if !visible {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    stream_avatar(&s.storage, target.profile_image_url).await
 }
 
 /// `POST /app/admin/people/{id}/welcome` — the native-form welcome-email send behind

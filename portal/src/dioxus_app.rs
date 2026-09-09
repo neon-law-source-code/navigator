@@ -3446,6 +3446,43 @@ pub fn app_owner_router(
         .route_layer(from_fn_with_state(auth, crate::auth::require_auth))
 }
 
+/// The self-service profile page path.
+pub const APP_PROFILE_PATH: &str = "/app/profile";
+
+/// `/app/profile` — the self-service profile page. No tier gate at all: every
+/// authenticated role, Client included, reaches it and updates their own
+/// avatar there. `inject_person_id` and `inject_csrf_token` carry the two
+/// values the page's `#[server]` loader needs that `webapp` cannot resolve
+/// itself: the caller's own linked person id, and the CSRF token the avatar
+/// upload form embeds.
+pub fn app_profile_router(
+    sessions: crate::session::SessionStore,
+    policy: crate::policy::PolicyClient,
+    auth: crate::auth::AuthConfig,
+    surreal: store::surreal::SurrealDb,
+) -> Router {
+    let cfg = ServeConfig::new().context_providers(std::sync::Arc::new(vec![Box::new(move || {
+        Box::new(surreal.clone()) as Box<dyn std::any::Any>
+    })
+        as Box<dyn Fn() -> Box<dyn std::any::Any> + Send + Sync>]));
+    Router::<FullstackState>::new()
+        .route(
+            APP_PROFILE_PATH,
+            get(render_handler)
+                .layer(from_fn(dioxus_document_head))
+                .layer(from_fn(inject_viewer_role))
+                .layer(from_fn(inject_person_id))
+                .layer(from_fn(inject_csrf_token))
+                .layer(from_fn(inject_app_brand_mark)),
+        )
+        .with_state(FullstackState::new(cfg, webapp::profile::Profile))
+        .route_layer(from_fn_with_state(
+            (sessions, policy),
+            crate::policy::require_policy,
+        ))
+        .route_layer(from_fn_with_state(auth, crate::auth::require_auth))
+}
+
 /// The Firm detail view path with its `{id}` placeholder (ENG-494).
 pub const FIRM_SHOW_PATH: &str = "/app/admin/firms/{id}";
 

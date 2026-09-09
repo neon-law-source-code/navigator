@@ -1969,6 +1969,73 @@ test_anonymous_denied_app_portal if {
 	not authz.allow with input as {"path": ["app", "team"], "method": "GET", "session": null}
 }
 
+# ---------- /app/profile ----------
+# The self-service profile page. Every authenticated tier reaches it — the
+# handler resolves the person from the session, never the URL — and only an
+# anonymous caller is denied.
+
+test_owner_reaches_app_profile if {
+	authz.allow with input as {"path": ["app", "profile"], "method": "GET", "session": owner_session}
+}
+
+test_admin_reaches_app_profile if {
+	authz.allow with input as {"path": ["app", "profile"], "method": "GET", "session": admin_session}
+}
+
+test_lawyer_reaches_app_profile if {
+	authz.allow with input as {"path": ["app", "profile"], "method": "GET", "session": lawyer_session}
+}
+
+test_clerk_reaches_app_profile if {
+	authz.allow with input as {"path": ["app", "profile"], "method": "GET", "session": clerk_session}
+}
+
+test_client_reaches_app_profile if {
+	authz.allow with input as {"path": ["app", "profile"], "method": "GET", "session": client_session}
+}
+
+test_anonymous_denied_app_profile if {
+	not authz.allow with input as {"path": ["app", "profile"], "method": "GET", "session": null}
+}
+
+test_client_reaches_app_profile_avatar_upload if {
+	authz.allow with input as {"path": ["app", "profile", "avatar"], "method": "POST", "session": client_session}
+}
+
+test_anonymous_denied_app_profile_avatar_upload if {
+	not authz.allow with input as {"path": ["app", "profile", "avatar"], "method": "POST", "session": null}
+}
+
+# ---------- /app/people/{id}/avatar ----------
+# Another person's avatar. Rego admits any authenticated tier at the route —
+# it has no participation data to narrow further — and the handler's
+# `store::access::avatar_visible_to` carries the actual, participation-scoped
+# rule (docs/access-model.md). Only an anonymous caller is denied here.
+
+test_owner_reaches_app_people_avatar if {
+	authz.allow with input as {"path": ["app", "people", "p1", "avatar"], "method": "GET", "session": owner_session}
+}
+
+test_admin_reaches_app_people_avatar if {
+	authz.allow with input as {"path": ["app", "people", "p1", "avatar"], "method": "GET", "session": admin_session}
+}
+
+test_lawyer_reaches_app_people_avatar if {
+	authz.allow with input as {"path": ["app", "people", "p1", "avatar"], "method": "GET", "session": lawyer_session}
+}
+
+test_clerk_reaches_app_people_avatar if {
+	authz.allow with input as {"path": ["app", "people", "p1", "avatar"], "method": "GET", "session": clerk_session}
+}
+
+test_client_reaches_app_people_avatar if {
+	authz.allow with input as {"path": ["app", "people", "p1", "avatar"], "method": "GET", "session": client_session}
+}
+
+test_anonymous_denied_app_people_avatar if {
+	not authz.allow with input as {"path": ["app", "people", "p1", "avatar"], "method": "GET", "session": null}
+}
+
 # ---------- /app/brands ----------
 # The house-of-brands home. Owner only (ENG-493), narrowed from every firm
 # tier: the Owner/Admin route bypass does not apply here, so an Admin is

@@ -503,18 +503,32 @@ fn the_notice_puts_this_work_under_the_grant() {
         );
     }
 
-    assert!(
-        !flat.contains("navigator-ux"),
-        "{NOTICE_FILE} must not claim that the Apache-2.0 navigator-ux repository \
-         shares Navigator's BUSL grant"
-    );
+    // The retired claim was written with the display name, not the repository
+    // handle, so both spellings are rejected — and through `unemphasized`, so a
+    // bolded restatement cannot slip past a matcher built for plain prose.
+    let notice_plain = unemphasized(&notice);
+    for stale in ["navigator-ux", "navigator ux"] {
+        assert!(
+            !notice_plain.contains(stale),
+            "{NOTICE_FILE} must not claim that the Apache-2.0 navigator-ux repository \
+             shares Navigator's BUSL grant (found `{stale}`)"
+        );
+    }
 
-    let licensing = flat_lower(&read("docs/licensing.md"));
+    // `docs/licensing.md` carried the same claim in two sentences. Their absence
+    // is asserted, not only the table's presence: a table beside a restored
+    // sentence would otherwise pass.
+    let licensing = unemphasized(&read("docs/licensing.md"));
+    for stale in ["cleared all three", "opens the grant in `navigator-ux`"] {
+        assert!(
+            !licensing.contains(stale),
+            "docs/licensing.md must not carry the retired claim `{stale}`; \
+             navigator-ux is Apache-2.0 and shares nothing with this grant"
+        );
+    }
     for required in [
         "## sibling repositories",
-        "repository",
-        "licensor",
-        "change licence",
+        "change license",
         "where it lags",
         "| `navigator` |",
         "| `navigator-ux` |",
@@ -908,19 +922,28 @@ fn no_workshop_deck_attributes_the_grant_to_a_foundation() {
 
 /// Every workshop deck that teaches a deployment states the grant.
 ///
-/// `gcloud` and `ops gcp setup` are the deployment signals in the workshop
-/// tree. A deck that teaches either one must name the licence, the commercial
-/// boundary, and the reliance test in its own prose rather than deferring to a
-/// linked document.
+/// The provisioning command, `ops gcp setup`, is the deployment signal: a deck
+/// that walks a reader through it is telling them to stand up an instance, and
+/// must name the licence, the commercial boundary, and the reliance test in its
+/// own prose rather than deferring to a linked document. The vendor CLI is
+/// deliberately not a signal — a talk that names `gcloud` in passing is not
+/// teaching a deployment, and a guard keyed on the tool would push licence
+/// prose into every deck that mentions it.
 #[test]
 fn every_workshop_deck_that_teaches_a_deployment_states_the_grant() {
+    const SIGNAL: &str = "ops gcp setup";
+
+    let mut taught = 0;
     let mut offenders = Vec::new();
     for path in workshop_decks() {
         let rel = repository_relative_path(&path);
-        let flat = flat_lower(&fs::read_to_string(&path).unwrap_or_default());
-        if !flat.contains("gcloud") && !flat.contains("ops gcp setup") {
+        // An unreadable deck is a broken guard, not a clean one.
+        let body = fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {rel}: {e}"));
+        let flat = flat_lower(&body);
+        if !flat.contains(SIGNAL) {
             continue;
         }
+        taught += 1;
 
         let missing: Vec<&str> = ["busl-1.1", "commercial licence", "relies"]
             .into_iter()
@@ -931,6 +954,14 @@ fn every_workshop_deck_that_teaches_a_deployment_states_the_grant() {
         }
     }
 
+    // A walk that matches nothing passes forever; the deploy deck is this
+    // guard's whole subject, so finding no deck that teaches the command means
+    // the signal is wrong, not that the tree is clean.
+    assert!(
+        taught > 0,
+        "no workshop deck under `server/content/workshops/` teaches `{SIGNAL}`; \
+         this guard is keyed on the wrong signal and is proving nothing"
+    );
     assert!(
         offenders.is_empty(),
         "a workshop deck that teaches deployment must state BUSL-1.1, the commercial licence boundary, and reliance:\n  {}",

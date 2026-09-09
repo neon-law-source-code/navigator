@@ -24,6 +24,7 @@ holds that Project's notation templates and application workspaces side by side:
 <the Project's repository>
 ├── .github/workflows/ci.yml
 ├── .github/workflows/publish.yml
+├── .gitattributes       # keep checkout text files at LF
 ├── apps/
 │   └── portal/        # React + Vite; discovered by its package.json
 ├── templates/         # *.md notation blueprints
@@ -561,11 +562,12 @@ navigator site projects repository scaffold <project-code> --dir . --host stagin
 navigator validate .
 ```
 
-`scaffold` is idempotent and leaves existing files alone. It writes the repository shell — `navigator.yaml` (requiring
-`--host`), the thin `ci.yml` caller, a `publish.yml` job guarded on `vars.NAVIGATOR_HOST`, `README.md`, `AGENTS.md`, a
-`CLAUDE.md` that delivers `AGENTS.md` (a relative symlink on Unix, a copy on Windows), `tests/`, and one placeholder
-`templates/<code>__engagement.md` whose stem is the Project code with hyphens replaced by underscores. A hand-copied
-`ci.yml` of 268 lines or more is left alone unless `--replace-gate` is passed.
+`scaffold` is idempotent and leaves existing files alone. It writes the repository shell — `.gitattributes` pinning
+checkout text files to LF, `navigator.yaml` (requiring `--host`), the thin `ci.yml` caller, a `publish.yml` job guarded
+on `vars.NAVIGATOR_HOST`, `README.md`, and `AGENTS.md`. It also writes a `CLAUDE.md` that delivers `AGENTS.md` (a
+relative symlink on Unix, a copy on Windows), `tests/`, and one placeholder `templates/<code>__engagement.md` whose stem
+is the Project code with hyphens replaced by underscores. A hand-copied `ci.yml` of 268 lines or more is left alone
+unless `--replace-gate` is passed.
 
 The generated `ci.yml` pins Navigator's reusable project-gate workflow to `--action-version`, which defaults to the
 release the running `navigator` reports as its own version — but only when this binary can actually vouch for that

@@ -109,11 +109,13 @@ pub(crate) const CD_WORKFLOW: &str = ".github/workflows/publish.yml";
 /// manifest and a staged sample bundle's manifest are the same file, read by
 /// different tools, not two schemas that happen to overlap.
 pub(crate) const PROJECT_MANIFEST: &str = "navigator.yaml";
+const GITATTRIBUTES: &str = "* text=auto eol=lf\n";
 /// Seed-shaped YAML documents for `navigator site import`, one file per model.
 const SEED_DIRECTORY: &str = "seeds";
 const ALLOWED_ROOTS: &[&str] = &[
     ".github",
     ".gitignore",
+    ".gitattributes",
     "AGENTS.md",
     "CLAUDE.md",
     // Every one of these repositories is proprietary, and a licence belongs at
@@ -320,6 +322,7 @@ pub fn scaffold(
     let manifest = format!("host: {host}\nproject: {project_code}\n");
     let template_stem = placeholder_template_stem(project_code);
     let files = [
+        (root.join(".gitattributes"), GITATTRIBUTES.to_string()),
         (root.join("README.md"), readme(project_code)),
         (root.join("AGENTS.md"), agents(project_code)),
         (root.join("tests/README.md"), tests_readme()),
@@ -1511,6 +1514,11 @@ mod tests {
         // the root made the layout unsatisfiable for that shape rather than
         // merely opinionated.
         assert!(ALLOWED_ROOTS.contains(&"LICENSE.md"));
+    }
+
+    #[test]
+    fn gitattributes_at_the_root_is_part_of_the_layout() {
+        assert!(ALLOWED_ROOTS.contains(&".gitattributes"));
     }
 
     #[test]

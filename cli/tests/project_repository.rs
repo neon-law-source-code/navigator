@@ -146,6 +146,10 @@ fn the_scaffold_produces_a_repository_that_validates_and_is_idempotent() {
         .join("templates/example_project__engagement.md")
         .is_file());
     assert!(!dir.path().join("templates/project_template.md").exists());
+    assert_eq!(
+        fs::read_to_string(dir.path().join(".gitattributes")).unwrap(),
+        "* text=auto eol=lf\n"
+    );
     let workflow = fs::read_to_string(dir.path().join(".github/workflows/ci.yml")).unwrap();
     assert!(workflow.contains("project-gate.yml@"));
     assert!(!workflow.contains("project_repository: true"));
@@ -167,10 +171,19 @@ fn the_scaffold_produces_a_repository_that_validates_and_is_idempotent() {
     assert!(!dir.path().join("navigator.toml").exists());
     assert!(!dir.path().join("mount.json").exists());
 
-    // Idempotent: a second run leaves every file alone and still validates.
+    // Idempotent: a second run leaves every existing file alone and still validates.
+    fs::write(
+        dir.path().join(".gitattributes"),
+        "# repository preference\n",
+    )
+    .unwrap();
     scaffold(dir.path(), "example-project")
         .success()
         .stdout(str::contains("left alone"));
+    assert_eq!(
+        fs::read_to_string(dir.path().join(".gitattributes")).unwrap(),
+        "# repository preference\n"
+    );
     validate(dir.path()).success();
 }
 

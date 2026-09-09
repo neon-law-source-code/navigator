@@ -816,7 +816,9 @@ Three lanes, cheapest first.
 
 1. **Re-run the failed jobs** from the run's page, or dispatch `deploy.yml` again. The version derives from the same
    UTC day either way, so a re-run republishes that same name over itself. This is the move for a flake: a runner disk,
-   a registry timeout, a wedged port-forward. Nothing was deployed, so there is nothing to un-deploy.
+   a registry timeout, a wedged port-forward. Nothing was deployed, so there is nothing to un-deploy. A re-run replays
+   the run's own commit and cannot pick up a fix merged after the tag; recovery is `gh release create <tag>` plus the
+   run's artifacts, or a deliberate skip.
 2. **`ops ship` the already-published tag.** If the images published green and only a roll failed, rebuild nothing:
 
    ```bash

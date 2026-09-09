@@ -431,6 +431,13 @@ pub(super) fn build_from_repository(repo: &str, git_ref: Option<&str>) -> Result
 
 /// Clone, build, and stage one matter's application, returning how many files
 /// landed in its staging directory.
+fn project_mismatch_message(repo: &str, declared: &str, expected: &str) -> String {
+    format!(
+        "{repo} declares Project `{declared}`, but it is being staged for `{expected}`. \
+         One matter's application must not mount on another's portal."
+    )
+}
+
 fn stage_one(
     project_code: &str,
     repo: &str,
@@ -448,8 +455,8 @@ fn stage_one(
     // earlier, clearer failure.
     if built.code != project_code {
         bail!(
-            "{repo} declares Project `{}`, but it is being staged for `{project_code}`.              One matter's application must not mount on another's portal.",
-            built.code
+            "{}",
+            project_mismatch_message(repo, &built.code, project_code)
         );
     }
 
@@ -578,6 +585,16 @@ mod tests {
         assert!(
             !message.contains("compiled-in"),
             "a cleared URL must not be silently refilled from the default: {message}"
+        );
+    }
+
+    #[test]
+    fn project_mismatch_message_has_no_reflow_gap() {
+        let message = project_mismatch_message("sample-repo", "declared", "expected");
+
+        assert!(
+            !message.contains("  "),
+            "the refusal must not contain a run of spaces: {message}"
         );
     }
 

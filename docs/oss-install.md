@@ -307,8 +307,8 @@ embedded Rego, OIDC, and Restate handshakes. Any missing env var crashes the pod
 
 - For Restate Cloud setup, see [`gke-prod.md`](gke-prod.md). For the Gemini Enterprise (A2A) wiring, see
   [`gemini-enterprise-mcp.md`](gemini-enterprise-mcp.md).
-- For an OSS-friendly weekly deploy via GitHub Actions, a fork inherits the canonical
+- For an OSS-friendly deploy via GitHub Actions, a fork inherits the canonical
   [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml), which builds every image and publishes it to the
-  fork's own private Google Artifact Registry (`YOUR_GCP_REGION-docker.pkg.dev/YOUR_IMAGES_PROJECT_ID/navigator`). Set
-  the project / region values as repository variables and grant the cluster's Workload Identity service account read
-  access to that registry.
+  fork's own GHCR namespace (`ghcr.io/<owner>`) with the run's `GITHUB_TOKEN` — no registry key, no Workload Identity
+  grant. Point `ops ship` at that namespace with `NAVIGATOR_IMAGE_REGISTRY`; see
+  [`gitops.md`](gitops.md#keyless-pushes-to-ghcr).

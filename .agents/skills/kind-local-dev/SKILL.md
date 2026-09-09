@@ -28,15 +28,14 @@ Store specifics are in [`AGENTS.md`](../../../AGENTS.md#the-shared-dependency-ti
   to run in-session). The standard loop is `dev up`, then source `.devx/env`, then `cargo run -p neon` (binds `:3001`).
 - **We standardize on KIND.** Before installing another local-Kubernetes flavor (minikube, k3d, Docker Desktop k8s),
   stop — the manifests, port mappings, and `cli::devx` orchestration all assume KIND.
-- **The in-cluster store is ephemeral by design.** SurrealDB runs memory-backed and fake-gcs-server uses `emptyDir`,
-  so restarting their pod
-  wipes the database and bucket — every developer starts from the same blank state and "works on my machine" drift can't
-  accrue. Persistence in dev is a non-goal; production shape is a hosted SurrealDB, pointed at via
+- **The in-cluster store is ephemeral by design.** SurrealDB runs memory-backed and fake-gcs-server uses `emptyDir`, so
+  restarting their pod wipes the database and bucket — every developer starts from the same blank state and "works on my
+  machine" drift can't accrue. Persistence in dev is a non-goal; production shape is a hosted SurrealDB, pointed at via
   `NAVIGATOR_SURREAL_ENDPOINT`.
-- **`web` reaches the in-cluster store over a host port-forward.** A host-side `cargo run -p neon` can't reach it
-  until `dev up` has written `.devx/env` and you have `set -a; source .devx/env; set +a` — the port-forward
-  (`127.0.0.1:18000`) plus that env block is the bridge. "Ready
-  cluster but `web` can't connect" is almost always the un-sourced env.
+- **`web` reaches the in-cluster store over a host port-forward.** A host-side `cargo run -p neon` can't reach it until
+  `dev up` has written `.devx/env` and you have `set -a; source .devx/env; set +a` — the port-forward
+  (`127.0.0.1:18000`) plus that env block is the bridge. "Ready cluster but `web` can't connect" is almost always the
+  un-sourced env.
 - **Screenshots go to `/tmp`, never the repo** — `/tmp/navigator-screenshots/` (`mkdir -p` first). The working tree
   stays clean.
 

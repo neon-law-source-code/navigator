@@ -42,8 +42,7 @@ Record when only a heuristic is available.
 
 A pull-request search proves whether an issue was linked to merged work; it does not prove the requested capability is
 absent. Search the relevant code, configuration, public API, and tests at `origin/main` before calling it missing. For
-proposed new structure, also follow the source checks in
-[`author-linear-issue`](../author-linear-issue/SKILL.md).
+proposed new structure, also follow the source checks in [`author-linear-issue`](../author-linear-issue/SKILL.md).
 
 Reproduce the current behavior where practical. If an unknown still prevents a grounded scope, run the smallest
 throwaway Rust spike that answers it and record the command, observation, and conclusion. Inspect active worktrees and
@@ -59,28 +58,27 @@ Reach exactly one verdict from the evidence:
 - **Blocked on a decision or dependency:** name the blocker, owner, and smallest next action, then stop without editing.
 
 Do not post a separate triage-plan comment during an implementation request. The grounding is the first phase of this
-same session, and its result directly controls whether implementation begins. Do not infer a missing legal, product,
-or operator decision.
+same session, and its result directly controls whether implementation begins. Do not infer a missing legal, product, or
+operator decision.
 
 ## Implement with TDD
 
-Name the smallest behavior and the test that proves it before editing. Add or adjust the covering test first and
-observe that it fails for the intended missing behavior. Implement only enough to make that test pass, then run the
-focused test and the applicable repository gate.
+Name the smallest behavior and the test that proves it before editing. Add or adjust the covering test first and observe
+that it fails for the intended missing behavior. Implement only enough to make that test pass, then run the focused test
+and the applicable repository gate.
 
-Use the workspace's established seams and specialized skills where applicable. Do not use a test that only exercises
-an incidental helper when the issue changes a route, authorization boundary, workflow, or user-visible behavior.
+Use the workspace's established seams and specialized skills where applicable. Do not use a test that only exercises an
+incidental helper when the issue changes a route, authorization boundary, workflow, or user-visible behavior.
 
 Document the present system only: describe current behavior, contracts, and invariants. Remove superseded code and
-instructions when the change replaces them; do not add retrospective decision history, compatibility narration, or
-"used to" prose.
+instructions when the change replaces them; do not add retrospective decision history, compatibility narration, or "used
+to" prose.
 
 ## Verify and hand off
 
 Run `cargo run -p cli --quiet -- validate .` after the change, plus the focused test and every gate the changed surface
-requires under `docs/agent-workflows.md`. For Rust or runtime changes, run formatting, clippy with warnings denied,
-the workspace tests, and coverage as that document requires. Verify user-facing changes through the documented browser
-loop.
+requires under `docs/agent-workflows.md`. For Rust or runtime changes, run formatting, clippy with warnings denied, the
+workspace tests, and coverage as that document requires. Verify user-facing changes through the documented browser loop.
 
 Before handoff, rebase with `git rebase -S origin/main` again and rerun the affected checks. Keep the issue identifier
 out of public prose except the bare identifier permitted by `docs/agent-workflows.md`; do not push, change Linear, or

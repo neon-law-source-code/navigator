@@ -9,7 +9,7 @@ enforcement. Also trigger before reaching for a role-based authorization library
 OPA is the **decision point**; `web` is the **enforcement point**. The split lets policy change without redeploying the
 binary. Two docs own the detail — read them before acting, and keep them, not this skill, authoritative:
 
-- [`docs/opa-policy.md`](../../../docs/opa-policy.md) — the system: sidecar deployment, the query API, Rego
+- [`docs/rego-policy.md`](../../../docs/rego-policy.md) — the system: sidecar deployment, the query API, Rego
   authoring/testing/hot-reload, decision logs, and the Rust client (`PolicyClient`, `require_policy`).
 - [`docs/access-model.md`](../../../docs/access-model.md#how-opa-decides) — the semantics: the canonical `input`
   document, the allow rules, admin bypass, and project scoping. This is the source of truth for what a rule *decides*.

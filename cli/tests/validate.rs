@@ -83,6 +83,58 @@ fn validate_exits_nonzero_on_violations_and_prints_each_one() {
 }
 
 #[test]
+fn validate_ignores_dependency_and_build_outputs_but_catches_authored_findings() {
+    let dir = TempDir::new().unwrap();
+    let overlong = format!("Intro.\n\n{}\n", "x".repeat(121));
+    write(dir.path(), "authored.md", &overlong);
+    write(dir.path(), "node_modules/pkg/README.md", &overlong);
+    write(dir.path(), "dist/README.md", &overlong);
+    write(
+        dir.path(),
+        "node_modules/pkg/broken.yaml",
+        "key: [unclosed\n",
+    );
+    write(dir.path(), "dist/broken.yaml", "key: [unclosed\n");
+    write(
+        dir.path(),
+        "node_modules/pkg/Containerfile",
+        "FROM node:latest\n",
+    );
+    write(dir.path(), "dist/Containerfile", "FROM node:latest\n");
+
+    let output = navigator()
+        .arg("validate")
+        .arg(dir.path())
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    let combined = format!("{stdout}{stderr}");
+    assert!(
+        combined.contains("authored.md"),
+        "authored finding: {combined}"
+    );
+    assert!(combined.contains("S101"), "authored rule code: {combined}");
+    assert!(
+        !combined.contains("node_modules") && !combined.contains("dist"),
+        "generated trees must not be reported: {combined}"
+    );
+    assert!(
+        stdout.contains("Scanned 1 file(s), found 1 error(s), 0 warning(s)"),
+        "only the authored Markdown file is scanned: {stdout}"
+    );
+    assert!(
+        stdout.contains("Parsed 0 YAML file(s), found 0 error(s)"),
+        "generated YAML is ignored: {stdout}"
+    );
+    assert!(
+        stdout.contains("Checked consumed image/binary tags, found 0 mutable tag(s)"),
+        "generated Containerfiles are ignored: {stdout}"
+    );
+}
+
+#[test]
 fn validate_marks_each_diagnostic_with_its_severity() {
     let dir = TempDir::new().unwrap();
     let warning_source =

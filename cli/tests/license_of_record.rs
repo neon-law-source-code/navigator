@@ -170,6 +170,12 @@ fn retired_org_name() -> String {
     ["Neon", "Law", "Foundation"].join(" ")
 }
 
+/// The retired nonprofit's repository handle, assembled so this test does not
+/// restate the contiguous coordinate it rejects.
+fn retired_org_handle() -> String {
+    ["neon", "law", "foundation"].join("-")
+}
+
 /// The prose surrounding a match — 200 characters either side, snapped out to
 /// the nearest character boundary so a multi-byte dash in the copy cannot panic
 /// the slice.
@@ -350,8 +356,7 @@ fn editor_extension_manifest_declares_the_license_of_record() {
 /// lies beyond it is left to BUSL's own undefined term, and the Firm's reading
 /// of that term lives in `NOTICE`, where it binds nobody.
 ///
-/// The same paragraph opens the grant in `navigator-ux` and in the Homebrew
-/// tap, so a review that has cleared one repository has cleared all three.
+/// The same paragraph opens the grant in the Homebrew tap.
 const ADDITIONAL_USE_GRANT: &str = "\
 Additional Use Grant: You may operate the Licensed Work on infrastructure You
                       control or rent, including hosted and cloud
@@ -495,6 +500,43 @@ fn the_notice_puts_this_work_under_the_grant() {
             "{NOTICE_FILE} must state `{required}` — it is the file that says \
              this program is published under {LICENSE} and that nothing beside \
              the grant adds to or takes from it"
+        );
+    }
+
+    // The retired claim was written with the display name, not the repository
+    // handle, so both spellings are rejected — and through `unemphasized`, so a
+    // bolded restatement cannot slip past a matcher built for plain prose.
+    let notice_plain = unemphasized(&notice);
+    for stale in ["navigator-ux", "navigator ux"] {
+        assert!(
+            !notice_plain.contains(stale),
+            "{NOTICE_FILE} must not claim that the Apache-2.0 navigator-ux repository \
+             shares Navigator's BUSL grant (found `{stale}`)"
+        );
+    }
+
+    // `docs/licensing.md` carried the same claim in two sentences. Their absence
+    // is asserted, not only the table's presence: a table beside a restored
+    // sentence would otherwise pass.
+    let licensing = unemphasized(&read("docs/licensing.md"));
+    for stale in ["cleared all three", "opens the grant in `navigator-ux`"] {
+        assert!(
+            !licensing.contains(stale),
+            "docs/licensing.md must not carry the retired claim `{stale}`; \
+             navigator-ux is Apache-2.0 and shares nothing with this grant"
+        );
+    }
+    for required in [
+        "## sibling repositories",
+        "change license",
+        "where it lags",
+        "| `navigator` |",
+        "| `navigator-ux` |",
+        "| `homebrew-navigator` |",
+    ] {
+        assert!(
+            licensing.contains(required),
+            "docs/licensing.md must record the sibling-repositories table with `{required}`"
         );
     }
 }
@@ -815,10 +857,11 @@ fn no_document_promises_a_contributor_keeps_the_copyright() {
 /// `foundation(s) of` and `foundational`. A named third party is allowed through
 /// [`OTHER_FOUNDATIONS`]; every other mention has to say whose foundation it is.
 ///
-/// **This is the absence half only.** A companion assertion that a deck *states*
-/// the licence position belongs with the copy that states it. That sentence has
-/// not been written yet, and pinning the present silence would fix the wrong
-/// invariant — so the presence half is left out on purpose, not by oversight.
+/// **The presence half is paired below.** Every deck that teaches a deployment
+/// must state the licence at the point where it tells a reader to stand one up:
+/// `BUSL-1.1`, the need for a `commercial licence`, and the reliance boundary.
+/// The companion assertion walks the same tree, so a new deployment deck cannot
+/// inherit the absence that let this defect ship.
 #[test]
 fn no_workshop_deck_attributes_the_grant_to_a_foundation() {
     /// Foundations that belong to somebody else, which a deck may name.
@@ -873,6 +916,55 @@ fn no_workshop_deck_attributes_the_grant_to_a_foundation() {
          deck names the Firm rather than a foundation — and names a third \
          party's foundation in full where the reference is genuinely theirs:\n  \
          {}",
+        offenders.join("\n  ")
+    );
+}
+
+/// Every workshop deck that teaches a deployment states the grant.
+///
+/// The provisioning command, `ops gcp setup`, is the deployment signal: a deck
+/// that walks a reader through it is telling them to stand up an instance, and
+/// must name the licence, the commercial boundary, and the reliance test in its
+/// own prose rather than deferring to a linked document. The vendor CLI is
+/// deliberately not a signal — a talk that names `gcloud` in passing is not
+/// teaching a deployment, and a guard keyed on the tool would push licence
+/// prose into every deck that mentions it.
+#[test]
+fn every_workshop_deck_that_teaches_a_deployment_states_the_grant() {
+    const SIGNAL: &str = "ops gcp setup";
+
+    let mut taught = 0;
+    let mut offenders = Vec::new();
+    for path in workshop_decks() {
+        let rel = repository_relative_path(&path);
+        // An unreadable deck is a broken guard, not a clean one.
+        let body = fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {rel}: {e}"));
+        let flat = flat_lower(&body);
+        if !flat.contains(SIGNAL) {
+            continue;
+        }
+        taught += 1;
+
+        let missing: Vec<&str> = ["busl-1.1", "commercial licence", "relies"]
+            .into_iter()
+            .filter(|required| !flat.contains(required))
+            .collect();
+        if !missing.is_empty() {
+            offenders.push(format!("{rel}: missing {}", missing.join(", ")));
+        }
+    }
+
+    // A walk that matches nothing passes forever; the deploy deck is this
+    // guard's whole subject, so finding no deck that teaches the command means
+    // the signal is wrong, not that the tree is clean.
+    assert!(
+        taught > 0,
+        "no workshop deck under `server/content/workshops/` teaches `{SIGNAL}`; \
+         this guard is keyed on the wrong signal and is proving nothing"
+    );
+    assert!(
+        offenders.is_empty(),
+        "a workshop deck that teaches deployment must state BUSL-1.1, the commercial licence boundary, and reliance:\n  {}",
         offenders.join("\n  ")
     );
 }
@@ -1791,30 +1883,36 @@ fn the_internal_assignment_names_the_firm_that_engaged_the_author() {
     );
 }
 
-/// No tracked file contains the retired nonprofit's display name as a
-/// contiguous phrase — product copy, comments, and tests all assemble it at
-/// runtime if they need to match against a served page.
+/// No tracked file contains the retired nonprofit's display name or repository
+/// handle — product copy, comments, and tests all assemble them at runtime if
+/// they need to match against a served page.
 #[test]
 fn no_file_contains_the_retired_org_display_name() {
-    let needle = retired_org_name().to_lowercase();
+    let needles = [
+        ("display name", retired_org_name().to_lowercase()),
+        ("repository handle", retired_org_handle()),
+    ];
     let mut offenders = Vec::new();
     for path in walk_repo_files(|_| true) {
         let Ok(body) = fs::read_to_string(&path) else {
             continue;
         };
-        if body.to_lowercase().contains(&needle) {
-            let rel = path
-                .strip_prefix(repo_root())
-                .unwrap_or(&path)
-                .to_string_lossy()
-                .replace("../", "");
-            offenders.push(rel);
+        let body = body.to_lowercase();
+        for (label, needle) in &needles {
+            if body.contains(needle) {
+                let rel = path
+                    .strip_prefix(repo_root())
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .replace("../", "");
+                offenders.push(format!("{rel}: retired {label}"));
+            }
         }
     }
     assert!(
         offenders.is_empty(),
-        "the retired nonprofit's display name is gone from the tree; these \
-         files still contain it:\n  {}",
+        "the retired nonprofit's display name and repository handle are gone \
+         from the tree; these files still contain one:\n  {}",
         offenders.join("\n  ")
     );
 }

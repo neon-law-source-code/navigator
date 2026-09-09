@@ -9,6 +9,13 @@ description: Stand up and operate your own Neon Law Navigator instance on Google
 Our firm runs Neon Law Navigator on Google Cloud, and gives the recipe away. This workshop is for **admin** users of the
 application: the people who own billing, secrets, OIDC, runtime configuration, and release verification. It stands up
 your **own** instance — the same Rust stack our attorneys use, on your own Google Cloud project, for your own community.
+
+Navigator is source-available under BUSL-1.1, and the licence itself says what you may run without asking: this stack,
+on infrastructure you control or rent, to evaluate, develop against, test, or demonstrate it, for so long as nobody
+relies on what it does. Running it where someone does rely on it — a clinic's intake, a firm's matters — falls outside
+that grant and needs a commercial licence from Neon Law IP LLC. Write to contact@neonlaw.org before you go live, not
+after.
+
 One command does most of the work: `navigator ops gcp setup`, a provisioner written in Rust that talks to Google's REST
 APIs directly and ships with a dry-run so you can read the whole plan before a single packet leaves your laptop.
 
@@ -493,6 +500,9 @@ Demonstrate the single-deployment control surface with `neon-law-stg`: `--deploy
 release tag selects the version. Emphasize that an operator verifies `/readyz` and `/version` before moving to the next
 row; by hand the command block is a sequence, not a request to roll every cluster concurrently. The release workflow is
 what rolls the two production rows at once, and only because each has already been gated on a green staging roll.
+
+Everything from here on provisions a real deployment. Stand it up to learn and to demonstrate; the moment a person
+relies on it, you need the commercial licence described in the intro.
 
 ## Provision the Infrastructure
 
@@ -2157,8 +2167,8 @@ This workshop is the narrative; these docs are the source of truth and stay curr
 ---
 
 This is the access-to-justice fight made deployable: the cheaper and more repeatable it is to stand up a grounded legal
-harness, the more clinics and small firms can run one. When your instance is live, tell us at
-[support@neonlaw.org](mailto:support@neonlaw.org?subject=Deployed+the+Neon+Law+Navigator) so we can point the next
-deployer at what you learned. Telling us what you learned is itself a contribution: the [Contributing to Neon Law
-Navigator](/workshops/contribute-to-the-navigator) workshop lays out every way to give back, and once your instance is
-live, walk your lawyer through [Using Neon Law Navigator](/workshops/use-the-navigator).
+harness, the more clinics and small firms can run one — under a commercial licence from Neon Law IP LLC. When your
+instance is live, tell us at [support@neonlaw.org](mailto:support@neonlaw.org?subject=Deployed+the+Neon+Law+Navigator)
+so we can point the next deployer at what you learned. Telling us what you learned is itself a contribution: the
+[Contributing to Neon Law Navigator](/workshops/contribute-to-the-navigator) workshop lays out every way to give back,
+and once your instance is live, walk your lawyer through [Using Neon Law Navigator](/workshops/use-the-navigator).

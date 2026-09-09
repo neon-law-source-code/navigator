@@ -307,7 +307,9 @@ What the gate proves:
 
 - The layout is source-only. Client uploads, answers, generated documents, secrets, dependencies, and build output are
   refused by path and by extension.
-- Every direct `templates/<code>.md` passes the notation rules, and each template's `code` equals its filename stem.
+- Every direct `templates/<code>.md` passes the notation rules, each template's `code` equals its filename stem, and no
+  template names `Neon Law` with a corporate suffix other than the firm entity of record (`Y010` in
+  [`docs/validate.md`](validate.md)).
 - Every direct `apps/<app>/package.json` declares a Vite workspace with an `index.html` and a lockfile. A root
   `portal/` has the same contract during the transition. The lockfile flavor is not constrained and there is
   deliberately **no dependency allowlist**: third-party libraries are the point, and Node never enters the Navigator

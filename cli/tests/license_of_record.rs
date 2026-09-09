@@ -1916,3 +1916,63 @@ fn no_file_contains_the_retired_org_display_name() {
         offenders.join("\n  ")
     );
 }
+
+/// The contracting entity is one string, wherever Navigator names it.
+///
+/// A client engages a legal person, not a mark. Three in-tree surfaces name
+/// that person: `views::brand`'s `SiteBrand::legal_entity` on every registered
+/// brand (the footer copyright and the Terms body), `store::seed::FIRM_ENTITY_NAME`
+/// (the firm Entity row the application refuses to delete, and the value the
+/// deployment manifests protect as `NAVIGATOR_BOOTSTRAP_COMPANY`), and the
+/// canonical `Entity.yaml` record the seed re-creates by exact name on every
+/// boot. `views` and `store` do not depend on each other, so each pins its own
+/// literal, and until this test nothing compared them: they agreed by
+/// coincidence of authorship, and a fourth spelling on any one of them would
+/// have passed every gate. This crate depends on both, so it reads the real
+/// constants rather than re-parsing source.
+///
+/// This records a determination made elsewhere rather than making one. The
+/// entity is whatever `FIRM_ENTITY_NAME` says, and that constant's doc comment
+/// carries the reason; this test only refuses divergence. `DOCUSIGN_SIGNER_NAME`
+/// is deliberately not compared — it names the human who signs, not the party.
+/// The pending split of `legal_entity` into a retainer identity and a separate
+/// notice field (ENG-158) will change which field this reads, not whether the
+/// three agree.
+#[test]
+fn the_firm_entity_of_record_is_one_string_across_brand_seed_and_entity_row() {
+    #[derive(serde::Deserialize)]
+    struct Seed {
+        records: Vec<Record>,
+    }
+    #[derive(serde::Deserialize)]
+    struct Record {
+        name: String,
+    }
+    let firm = store::seed::FIRM_ENTITY_NAME;
+    assert!(
+        !firm.trim().is_empty(),
+        "the firm entity of record must be named"
+    );
+
+    for key in views::brand::BrandKey::ALL {
+        let branding = key.resolve_branding(&views::brand::DEFAULT_BRANDING);
+        assert_eq!(
+            branding.firm.legal_entity,
+            firm,
+            "brand `{}` names a legal entity other than `store::seed::FIRM_ENTITY_NAME`; \
+             the footer, the retainer, and the delete-guarded Entity row must name one \
+             legal person",
+            key.as_str()
+        );
+    }
+
+    let seed: Seed = serde_yaml::from_str(store::seed::ENTITY_SEED_YAML)
+        .expect("Entity.yaml parses as lookup_fields plus records");
+    let names: Vec<&str> = seed.records.iter().map(|r| r.name.as_str()).collect();
+    assert!(
+        names.contains(&firm),
+        "store/seeds/Entity.yaml has no record named `{firm}`; the seed looks the firm \
+         row up by this exact name on every boot, so the row the delete guard protects \
+         would never exist. Records: {names:?}"
+    );
+}

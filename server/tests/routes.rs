@@ -9215,6 +9215,23 @@ async fn host_brand_path_matrix_resolves_every_combination() {
                 );
             }
         }
+        if host == lawyer_shook_host {
+            assert!(
+                body.contains(r#"class="holding-page""#)
+                    && body.contains(r#"class="holding-page__heading""#),
+                "the holding host renders its bare notice: {body}"
+            );
+            for shared_marker in [
+                r#"class="site-header""#,
+                r#"class="site-footer""#,
+                "nav-theme public-shell",
+            ] {
+                assert!(
+                    !body.contains(shared_marker),
+                    "the holding host must omit shared chrome marker {shared_marker:?}: {body}"
+                );
+            }
+        }
     }
     let followed =
         assert_unregistered_host_redirects(&app, "/contact", default_host, unknown_host).await;

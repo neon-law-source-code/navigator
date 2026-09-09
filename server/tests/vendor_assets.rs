@@ -493,6 +493,64 @@ fn the_home_band_and_footer_share_the_theme_wash_and_hairline() {
     );
 }
 
+#[test]
+fn the_home_service_band_contract_keeps_its_clip_bleed_and_shared_left_edge() {
+    let home = std::fs::read_to_string(public_dir().join("css/home.css"))
+        .expect("read the firm home stylesheet");
+
+    let shell = home
+        .split_once(".public-shell:has(.home-service) {")
+        .and_then(|(_, rest)| rest.split_once('}'))
+        .map(|(declarations, _)| declarations)
+        .expect("home.css must scope the service-band clip to its shell");
+    assert!(
+        shell.contains("overflow-x: clip;"),
+        "the shell must clip the band's viewport bleed: {shell}"
+    );
+
+    let band = home
+        .split_once(".home-service {")
+        .and_then(|(_, rest)| rest.split_once('}'))
+        .map(|(declarations, _)| declarations)
+        .expect("home.css must carry the engagements band rule");
+    assert!(
+        band.contains("margin: clamp(1.5rem, 4vw, 2.5rem) 0 0;"),
+        "the band must keep the shell's shared horizontal edge: {band}"
+    );
+
+    let bleed = home
+        .split_once(".home-service::before {")
+        .and_then(|(_, rest)| rest.split_once('}'))
+        .map(|(declarations, _)| declarations)
+        .expect("home.css must carry the engagements bleed rule");
+    for declaration in [
+        "position: absolute;",
+        "inset-block: 0;",
+        "inset-inline: calc(50% - 50vw);",
+    ] {
+        assert!(
+            bleed.contains(declaration),
+            "the band bleed must retain {declaration:?}: {bleed}"
+        );
+    }
+
+    let hairline = home
+        .split_once(".home-service::after {")
+        .and_then(|(_, rest)| rest.split_once('}'))
+        .map(|(declarations, _)| declarations)
+        .expect("home.css must carry the engagements hairline rule");
+    for declaration in [
+        "inset: 0 auto auto 50%;",
+        "width: min(72rem, calc(100% + 2rem));",
+        "transform: translateX(-50%);",
+    ] {
+        assert!(
+            hairline.contains(declaration),
+            "the band hairline must retain {declaration:?}: {hairline}"
+        );
+    }
+}
+
 /// Motion may move normal-size text into place, but it may not fade it below
 /// the contrast floor while the page first renders. The browser gate caught
 /// the Fractional GC virtue cards mid-fade in the release KIND image; this

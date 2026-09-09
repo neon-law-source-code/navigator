@@ -8910,6 +8910,16 @@ async fn the_delete_your_data_host_renders_its_own_home_catalog() {
         !delete_your_data_body.contains("Everyone deserves to be seen."),
         "{delete_your_data_body}"
     );
+    for (brand, body) in [
+        ("Neon Law", neon_body.as_str()),
+        ("DeleteYourData.com", delete_your_data_body.as_str()),
+    ] {
+        assert!(
+            body.contains(r#"class="home-service""#)
+                && body.contains(r#"aria-labelledby="home-service-heading""#),
+            "{brand} home must render the engagements band: {body}"
+        );
+    }
 
     let litigation = app
         .oneshot(

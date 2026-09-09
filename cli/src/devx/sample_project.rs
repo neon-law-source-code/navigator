@@ -429,8 +429,12 @@ pub(super) fn build_from_repository(repo: &str, git_ref: Option<&str>) -> Result
     })
 }
 
-/// Clone, build, and stage one matter's application, returning how many files
-/// landed in its staging directory.
+/// The refusal a bundle earns when it declares a different matter than the one
+/// it is being staged for.
+///
+/// One literal with an explicit line continuation, so the operator reads a
+/// single space where the sentence wraps, and named so a test can assert on the
+/// rendered string without running a clone and a build.
 fn project_mismatch_message(repo: &str, declared: &str, expected: &str) -> String {
     format!(
         "{repo} declares Project `{declared}`, but it is being staged for `{expected}`. \
@@ -438,6 +442,8 @@ fn project_mismatch_message(repo: &str, declared: &str, expected: &str) -> Strin
     )
 }
 
+/// Clone, build, and stage one matter's application, returning how many files
+/// landed in its staging directory.
 fn stage_one(
     project_code: &str,
     repo: &str,

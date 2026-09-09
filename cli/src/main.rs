@@ -717,6 +717,13 @@ enum SiteCmd {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Download every committed pointer's own revision into the local staging
+    /// path it names — the inverse of `site sync`, hydrating a fresh checkout.
+    Pull {
+        /// List pending pulls without logging in or writing any file.
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Import a seed-shaped YAML document through the logged-in deployment.
     Import {
         /// Singular glossary term, such as `person`, `entity`,
@@ -1930,6 +1937,9 @@ fn main() -> ExitCode {
         Command::Site { action } => match action {
             SiteCmd::Sync { dry_run } => {
                 runtime().block_on(document_sync::run(std::path::Path::new("."), dry_run))
+            }
+            SiteCmd::Pull { dry_run } => {
+                runtime().block_on(document_sync::run_pull(std::path::Path::new("."), dry_run))
             }
             SiteCmd::Import {
                 model_name,

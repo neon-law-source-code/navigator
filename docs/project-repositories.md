@@ -124,6 +124,17 @@ The command creates `documents/.gitignore` without overwriting an existing file.
 and `documents/**/*.yml` only; every other file below `documents/` is rejected. Raw legal-document bytes must never be
 committed to a Project repository.
 
+**`navigator site pull` is the inverse: it materialises bytes into a checkout rather than uploading them out of one.**
+It walks every committed pointer below `documents/` — the same set `document verify` reads offline — and for each one
+downloads its own recorded revision through the existing single-revision read, verified again by `sha256`, writing it to
+the staging path the pointer already names. A local file whose digest already matches is left alone, so hydrating a
+fresh clone and re-running `pull` afterward downloads nothing. It hydrates only; a live document the checkout carries no
+pointer for is `site sync`'s and a browser filing's own lane, not `pull`'s. A pointer the caller's participation does
+not admit to read is reported rather than silently skipped, and the command refuses to write outside the checkout.
+`--dry-run` lists what would change without logging in, by comparing local digests to the committed pointers alone. The
+written bytes stay exactly where `sync` already keeps them out of Git: the repository gate refuses a raw document byte
+whether it was staged before a `sync` or just materialised by a `pull`.
+
 **Visibility and key change through a reviewed diff, and only through one — that is settled, not open.** A lawyer
 Project page renders a document's visibility (a plain-word column) but offers no control that changes it, and nothing
 anywhere offers a control that changes a document's key (`slug`, the chain identity a revision belongs to). Both stay
@@ -257,6 +268,12 @@ named for the code, and one private source repository named for the code. Each s
 repository that already exists is adopted. A recorded `repository_url` is left alone, so a Project whose source lives on
 another forge is not moved. Missing Drive or forge configuration skips that surface rather than failing the matter open.
 
+**A Project repository is created private, and provisioning verifies rather than assumes it.** `GitHubForge` requests
+`"private": true` explicitly on every create — never the organization default, which member permissions or an enterprise
+policy can loosen without this deployment noticing — and re-reads the repository afterward, on both the freshly created
+path and the adopt-on-name-conflict path, failing closed if it is not private. That failure names a policy regression or
+a deliberate visibility change, either of which needs a human rather than a silent retry.
+
 `POST /app/api/project-surfaces/{id}` is the admin retry for a failed or legacy row. It carries its own noun rather than
 sitting under `/app/api/projects/`, because that prefix's GET rule admits any authenticated caller up to five segments.
 CLI: `navigator site projects surfaces reconcile --project <code>`; Project participation is never copied onto the
@@ -297,6 +314,15 @@ live asset record on a push to `main` with `vars.NAVIGATOR_HOST` set (through th
 over a repository carrying no `documents/`, but it is deliberately **not** one of the required check's dependencies: its
 live half needs a reachable deployment, and the always-required check must never depend on that. A failing `documents`
 job is visible on the pull request without blocking the merge the other three jobs gate.
+
+A fifth job, `seeds`, reconciles `seeds/` the same way. `navigator validate` already covers the offline shape of every
+`seeds/*.yaml` document (the `notation` job, above), on every event including a pull request from a fork, so `seeds`
+mints nothing there — a token is mintable only from `refs/heads/main`, which is exactly why a PR check stays
+offline-only. On a push to `main` with `vars.NAVIGATOR_HOST` set, it exchanges the runner's own OIDC identity token at
+`POST /auth/ci/seed-token` and runs `navigator site import --ci --host <host> --dir seeds`, **never** `--overwrite`: the
+natural key makes a re-run a no-op, and a CI job that can replace a client's recorded field unattended is not one the
+firm wants. A repository with no `seeds/` exits `0` with a message. Like `documents`, `seeds` is deliberately **not**
+one of the required check's dependencies.
 
 **There is no path filter, and that is deliberate.** A filtered job that skips reports success for work it never did,
 and a required check a skip can satisfy is not a gate. So every job always runs and each half no-ops over a repository

@@ -78,9 +78,8 @@ entirely rather than sending it as `null`. That is not a courtesy: push protecti
 GitHub Advanced Security answers 422, so an unconditional field would fail every reconcile in that organization instead
 of leaving those repositories alone.
 
-`neon-law-source-code/navigator` alone adds `NAVIGATOR_POLICY`'s three extras — the release-tag ruleset, the DevX
-labels, and the App-installation assertion — because it is the only repository that cuts a release or runs that
-automation.
+`neon-law-source-code/navigator` alone adds `NAVIGATOR_POLICY`'s one extra — the release-tag ruleset — because it is the
+only repository that cuts a release.
 
 There is one lighter tier and one repository in it. A repository the Firm administers on someone else's behalf still
 receives the same gate; what earns the exception is not ownership but whether a person writes `main` at all.
@@ -90,8 +89,8 @@ ship together or neither means anything.
 
 #### The Homebrew tap carries no gate
 
-`neon-law-source-code/homebrew-navigator` receives `TAP_POLICY`: no `production` ruleset, no review ruleset, and neither
-assertion. It still receives the merge settings, which govern its occasional human pull request.
+`neon-law-source-code/homebrew-navigator` receives `TAP_POLICY`: no `production` ruleset, no review ruleset, and no
+CODEOWNERS assertion. It still receives the merge settings, which govern its occasional human pull request.
 
 A tap is the published output of a release rather than a repository the Firm develops in. Its `main` holds one
 mechanical file and grows by one commit per release, written by the tap's own `bump` workflow *after* that workflow has

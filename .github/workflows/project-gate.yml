@@ -316,6 +316,65 @@ jobs:
           fi
           navigator site projects gate --ci --host "${HOST}"
 
+  # Reconciles `seeds/` against the live deployment. `navigator validate`
+  # already covers the offline shape of every `seeds/*.yaml` document (in
+  # `notation`, above) on every event, including a pull request from a fork —
+  # so this job mints nothing there. A PR branch cannot mint a scoped token in
+  # any case (`POST /auth/ci/seed-token` only honors `refs/heads/main`), which
+  # is exactly the hole a token mintable from a fork would open. Only a push
+  # to `main` exchanges the runner's OIDC token and reconciles. Never
+  # `--overwrite`: the natural key makes a re-run a no-op, and a CI job that
+  # can replace a client's recorded field unattended is not one the firm
+  # wants. Deliberately outside the `ci` job's `needs:` — its live half needs
+  # a reachable deployment, and the always-required check must never depend
+  # on that.
+  seeds:
+    permissions:
+      contents: read
+      id-token: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: download and install the navigator CLI
+        env:
+          VERSION: ${{ inputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          case "${VERSION}" in
+            latest|main|HEAD|"")
+              echo "::error::version must be an exact release tag, not '${VERSION}'."
+              exit 1
+              ;;
+          esac
+          asset="navigator-${VERSION}-linux.tar.gz"
+          tmp="$(mktemp -d)"
+          gh release download "${VERSION}" \
+            --repo neon-law-source-code/navigator \
+            --pattern "${asset}" \
+            --dir "${tmp}" \
+            --clobber
+          tar -xzf "${tmp}/${asset}" -C "${tmp}" navigator
+          install -d "${RUNNER_TEMP}/navigator-bin"
+          install -m 0755 "${tmp}/navigator" "${RUNNER_TEMP}/navigator-bin/navigator"
+          echo "${RUNNER_TEMP}/navigator-bin" >> "${GITHUB_PATH}"
+      - name: navigator site import
+        env:
+          HOST: ${{ inputs.host }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          if [ ! -d seeds ]; then
+              echo "no seeds — nothing to reconcile"
+              exit 0
+          fi
+          if [ -n "${HOST}" ] && [ "${EVENT_NAME}" = "push" ] && [ "${REF}" = "refs/heads/main" ]; then
+              navigator site import --ci --host "${HOST}" --dir seeds
+          else
+              echo "seeds/*.yaml is validated offline by navigator validate; reconciling against a live deployment happens on push to main"
+          fi
+
   enable-automerge:
     name: enable PR auto-merge
     permissions:

@@ -70,6 +70,24 @@ fn the_reusable_gate_asks_the_deployment_and_arms_auto_merge() {
     assert!(source.contains("needs: [lint, verify, notation, documents, manifest]"));
 }
 
+/// The `seeds` job reconciles `seeds/` on a push to `main`, is offline on a
+/// pull request (`navigator validate` already covers the shape), never
+/// overwrites, no-ops cleanly with no `seeds/` directory, and stays outside
+/// the required `ci` job's dependencies — its live half needs a reachable
+/// deployment, and the always-required check must never depend on that.
+#[test]
+fn the_reusable_gate_reconciles_seeds_on_push_to_main_only() {
+    let source = project_gate_source();
+    assert!(source.contains("  seeds:"));
+    assert!(source.contains("no seeds — nothing to reconcile"));
+    assert!(source.contains(
+        r#"if [ -n "${HOST}" ] && [ "${EVENT_NAME}" = "push" ] && [ "${REF}" = "refs/heads/main" ]; then"#
+    ));
+    assert!(source.contains(r#"navigator site import --ci --host "${HOST}" --dir seeds"#));
+    assert!(source.contains("needs: [lint, verify, notation, documents, manifest]"));
+    assert!(!source.contains("needs: [lint, verify, notation, documents, manifest, seeds]"));
+}
+
 fn validate(dir: &Path) -> assert_cmd::assert::Assert {
     navigator().args(["validate"]).arg(dir).assert()
 }

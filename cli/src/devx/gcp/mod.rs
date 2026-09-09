@@ -21,20 +21,22 @@
 //! 1. [`services::enable_services`] — `serviceusage.batchEnable`.
 //!    Must run first; nothing else works without the APIs enabled.
 //! 2. [`network::ensure_network`] — custom-mode VPC.
-//! 3. [`buckets::ensure_bucket`] for assets, documents, exports, logs, and the
+//! 3. [`network::ensure_router_and_nat`] — regional Cloud Router and NAT for
+//!    private-node outbound connectivity.
+//! 4. [`buckets::ensure_bucket`] for assets, documents, exports, logs, and the
 //!    applications bucket, then — when named — the archive and telemetry
 //!    buckets, each followed by [`buckets::ensure_lifecycle`] so the telemetry
 //!    expiry is in place before the first object lands.
-//! 4. [`workload_identity::ensure_runtime_identity`] — per-deployment GSA
+//! 5. [`workload_identity::ensure_runtime_identity`] — per-deployment GSA
 //!    and direct GCP access.
-//! 5. Registry access, then
+//! 6. Registry access, then
 //!    [`gke::ensure_autopilot_cluster_foundation`] — GKE Autopilot cluster
 //!    and Gateway static IP.
-//! 6. [`workload_identity::bind_kubernetes_accounts`] — workload identity
+//! 7. [`workload_identity::bind_kubernetes_accounts`] — workload identity
 //!    bindings after the cluster has created the project pool.
-//! 7. [`gke::ensure_cluster_integrations`] — Fleet membership and optional
+//! 8. [`gke::ensure_cluster_integrations`] — Fleet membership and optional
 //!    Config Sync `RootSync`.
-//! 8. [`kms::ensure`] — the Cloud KMS key this deployment's
+//! 9. [`kms::ensure`] — the Cloud KMS key this deployment's
 //!    `secrets.enc.yaml` is encrypted against, in this deployment's own
 //!    project. Last because it is cheap and depends on nothing above it
 //!    except step 1; it is not a prerequisite of any earlier stage.
@@ -68,7 +70,7 @@ pub use error::{SetupError, SetupResult};
 
 use self::client::GcpClient;
 
-const SETUP_STAGE_COUNT: usize = 15;
+const SETUP_STAGE_COUNT: usize = 16;
 
 fn progress_line(project_id: &str, stage: usize, stage_count: usize, detail: &str) -> String {
     format!("gcp setup [{project_id}] {stage:02}/{stage_count:02} {detail}")
@@ -286,7 +288,7 @@ impl BucketNames {
     }
 }
 
-/// Stages 4-10: the five buckets every deployment gets, then the two it may
+/// Stages 5-11: the five buckets every deployment gets, then the two it may
 /// have declined. Split out of [`run`] as one unit because they are one
 /// concern, and because `run` is otherwise a list of unrelated stages.
 async fn ensure_buckets(
@@ -299,7 +301,7 @@ async fn ensure_buckets(
     let region = &config.region;
     progress(
         project_id,
-        4,
+        5,
         &format!("private assets bucket {}", names.assets),
     );
     buckets::ensure_bucket(client, project_id, &names.assets, region).await?;
@@ -307,28 +309,28 @@ async fn ensure_buckets(
 
     progress(
         project_id,
-        5,
+        6,
         &format!("private documents bucket {}", names.documents),
     );
     buckets::ensure_bucket(client, project_id, &names.documents, region).await?;
 
     progress(
         project_id,
-        6,
+        7,
         &format!("private exports bucket {}", names.exports),
     );
     buckets::ensure_bucket(client, project_id, &names.exports, region).await?;
 
     progress(
         project_id,
-        7,
+        8,
         &format!("private logs bucket {}", names.logs),
     );
     buckets::ensure_bucket(client, project_id, &names.logs, region).await?;
 
     progress(
         project_id,
-        8,
+        9,
         &format!("private applications bucket {}", names.applications),
     );
     buckets::ensure_bucket(client, project_id, &names.applications, region).await?;
@@ -340,7 +342,7 @@ async fn ensure_buckets(
         client,
         project_id,
         region,
-        9,
+        10,
         "Iceberg archive bucket",
         names.archives.as_deref(),
     )
@@ -349,7 +351,7 @@ async fn ensure_buckets(
         client,
         project_id,
         region,
-        10,
+        11,
         &format!(
             "telemetry landing bucket ({}-day expiry)",
             buckets::TELEMETRY_RETENTION_DAYS
@@ -429,11 +431,20 @@ pub async fn run(client: &GcpClient, project_id: &str, config: &SetupConfig) -> 
     )
     .await?;
 
+    let router_name = format!("{}-router", config.cluster_name);
+    let nat_name = format!("{}-nat", config.cluster_name);
+    progress(
+        project_id,
+        4,
+        &format!("Cloud Router {router_name} and NAT {nat_name}"),
+    );
+    network::ensure_router_and_nat(client, project_id, config).await?;
+
     ensure_buckets(client, project_id, config, &names, public_base_url).await?;
 
     progress(
         project_id,
-        11,
+        12,
         &format!(
             "runtime identities and IAM bindings ({})",
             config.google_service_account_id
@@ -478,19 +489,19 @@ pub async fn run(client: &GcpClient, project_id: &str, config: &SetupConfig) -> 
 
     // Registry before the cluster: GKE nodes pull the app images from
     // it, and the reader binding must exist before the first pull.
-    progress(project_id, 12, "container registry access");
+    progress(project_id, 13, "container registry access");
     artifact_registry::ensure(client, project_id, config).await?;
 
     progress(
         project_id,
-        13,
+        14,
         &format!("GKE Autopilot cluster {}", config.cluster_name),
     );
     gke::ensure_autopilot_cluster_foundation(client, project_id, config).await?;
 
     progress(
         project_id,
-        14,
+        15,
         "Kubernetes workload identity and cluster integrations",
     );
     workload_identity::bind_kubernetes_accounts(client, project_id, config).await?;
@@ -503,7 +514,7 @@ pub async fn run(client: &GcpClient, project_id: &str, config: &SetupConfig) -> 
     // Printed in full: this is the exact string that must appear as `kms_key`
     // in this deployment's `config.toml` and in its `.sops.yaml` creation
     // rule, so an operator can compare the three without deriving anything.
-    progress(project_id, 15, &kms::key_name(project_id, &config.region));
+    progress(project_id, 16, &kms::key_name(project_id, &config.region));
     kms::ensure(client, project_id, &config.region).await?;
 
     eprintln!("gcp setup [{project_id}] COMPLETE");
@@ -544,13 +555,13 @@ mod tests {
     fn progress_lines_name_the_project_stage_and_resource_without_secrets() {
         let line = super::progress_line(
             "neon-law-stg",
-            4,
+            5,
             super::SETUP_STAGE_COUNT,
             "private assets bucket example-a-assets",
         );
         assert_eq!(
             line,
-            "gcp setup [neon-law-stg] 04/15 private assets bucket example-a-assets"
+            "gcp setup [neon-law-stg] 05/16 private assets bucket example-a-assets"
         );
         assert!(!line.contains("password"));
     }
@@ -683,9 +694,9 @@ mod tests {
         super::run(&client, "my-project", &config).await.unwrap();
 
         let calls = client.recorded_calls();
-        // REST: 2 services.batchEnable + network + subnet + 5 storage inserts
+        // REST: 2 services.batchEnable + network + subnet + router/NAT + 5 storage inserts
         // (assets, documents, exports, logs, applications) + 1 assets CORS read
-        // + 1 assets CORS patch + 1 applications lifecycle patch = 12.
+        // + 1 assets CORS patch + 1 applications lifecycle patch = 13.
         // Runtime identity: runtime GSA + isolated Drive GSA + 1 project role
         // + 5 bucket roles + self-signing role = 9.
         // Artifact Registry: repo
@@ -695,7 +706,7 @@ mod tests {
         // dry-run). SHELL (gke): gateway IP + create-auto = 2, followed by 2
         // KSA bindings, then fleet-enable + fleet-register + RootSync = 3.
         // KMS: key ring + crypto key = 2.
-        assert_eq!(calls.len(), 41, "expected 41 calls, got {calls:?}");
+        assert_eq!(calls.len(), 42, "expected 42 calls, got {calls:?}");
         let urls: Vec<&str> = calls.iter().map(|c| c.url.as_str()).collect();
         let methods: Vec<&str> = calls.iter().map(|c| c.method).collect();
 
@@ -736,6 +747,17 @@ mod tests {
             "step 2b subnet: {}",
             urls[3]
         );
+        assert!(
+            urls[4].contains("/regions/us-west4/routers"),
+            "step 3 router and NAT: {}",
+            urls[4]
+        );
+        assert_body_contains(&calls[4], "AUTO_ONLY", "step 3 NAT auto-allocated IPs");
+        assert_body_contains(
+            &calls[4],
+            "ALL_SUBNETWORKS_ALL_IP_RANGES",
+            "step 3 NAT all subnet ranges",
+        );
         // No database stage sits between the subnet and the buckets: the
         // provisioner creates no instance, and opens no route to one.
         for (method, url) in methods.iter().zip(urls.iter()) {
@@ -744,126 +766,128 @@ mod tests {
                 "the retired managed-database stage must record nothing: {method} {url}"
             );
         }
-        assert_body_contains(&calls[4], "my-project-assets", "step 3a assets bucket");
-        assert_eq!(methods[5], "GET", "step 3a CORS read: {}", urls[5]);
-        assert_eq!(methods[6], "PATCH", "step 3a CORS: {}", urls[6]);
-        assert_body_contains(&calls[6], "maxAgeSeconds", "step 3a CORS body");
-        assert_body_contains(
-            &calls[6],
-            "https://www.example.test",
-            "step 3a CORS must use the configured public origin",
-        );
+        assert_body_contains(&calls[5], "my-project-assets", "step 4a assets bucket");
+        assert_eq!(methods[6], "GET", "step 4a CORS read: {}", urls[6]);
+        assert_eq!(methods[7], "PATCH", "step 4a CORS: {}", urls[7]);
+        assert_body_contains(&calls[7], "maxAgeSeconds", "step 4a CORS body");
         assert_body_contains(
             &calls[7],
-            "my-project-documents",
-            "step 3b documents bucket",
+            "https://www.example.test",
+            "step 4a CORS must use the configured public origin",
         );
-        assert_body_contains(&calls[8], "my-project-exports", "step 3c exports bucket");
-        assert_body_contains(&calls[9], "my-project-logs", "step 3d logs bucket");
         assert_body_contains(
-            &calls[10],
-            "my-project-applications",
-            "step 3e applications bucket",
+            &calls[8],
+            "my-project-documents",
+            "step 4b documents bucket",
         );
-        assert_eq!(
-            methods[11], "PATCH",
-            "step 3e applications lifecycle: {}",
-            urls[11]
-        );
+        assert_body_contains(&calls[9], "my-project-exports", "step 4c exports bucket");
+        assert_body_contains(&calls[10], "my-project-logs", "step 4d logs bucket");
         assert_body_contains(
             &calls[11],
-            &format!("\"age\":{}", super::buckets::APPLICATIONS_RETENTION_DAYS),
-            "step 3e applications bucket expires orphaned assets at the retention limit",
+            "my-project-applications",
+            "step 4e applications bucket",
         );
-        // Steps 12..=20 are direct runtime and Workspace identity shell-outs.
-        for (i, m) in methods.iter().enumerate().take(21).skip(12) {
+        assert_eq!(
+            methods[12], "PATCH",
+            "step 4e applications lifecycle: {}",
+            urls[12]
+        );
+        assert_body_contains(
+            &calls[12],
+            &format!("\"age\":{}", super::buckets::APPLICATIONS_RETENTION_DAYS),
+            "step 4e applications bucket expires orphaned assets at the retention limit",
+        );
+        // Steps 13..=21 are direct runtime and Workspace identity shell-outs.
+        for (i, m) in methods.iter().enumerate().take(22).skip(13) {
             assert_eq!(*m, "SHELL", "step {i} should be SHELL, got {m}");
         }
-        assert!(urls[12].contains("service-accounts create navigator-web"));
-        assert!(urls[13].contains("service-accounts create navigator-drive"));
-        assert!(urls[14].contains("roles/secretmanager.secretAccessor"));
-        assert!(urls[20].contains("roles/iam.serviceAccountTokenCreator"));
+        assert!(urls[13].contains("service-accounts create navigator-web"));
+        assert!(urls[14].contains("service-accounts create navigator-drive"));
+        assert!(urls[15].contains("roles/secretmanager.secretAccessor"));
+        assert!(urls[21].contains("roles/iam.serviceAccountTokenCreator"));
 
-        // Steps 21..=31 are the Artifact Registry REST calls.
+        // Steps 22..=32 are the Artifact Registry REST calls.
         assert!(
-            urls[21].contains("/repositories?repositoryId=navigator"),
+            urls[22].contains("/repositories?repositoryId=navigator"),
             "step 5a repo create: {}",
-            urls[21]
+            urls[22]
         );
-        assert_eq!(methods[22], "PATCH", "step 5b cleanup policy: {}", urls[22]);
+        assert_eq!(methods[23], "PATCH", "step 5b cleanup policy: {}", urls[23]);
         // Retention is a version COUNT, not an age. Both halves are asserted
         // because the DELETE half matches every version and would empty the
         // repository without its KEEP partner.
-        assert_body_contains(&calls[22], "\"keepCount\":10", "step 5b retained versions");
-        assert_body_contains(&calls[22], "\"action\":\"KEEP\"", "step 5b keep policy");
+        assert_body_contains(&calls[23], "\"keepCount\":10", "step 5b retained versions");
+        assert_body_contains(&calls[23], "\"action\":\"KEEP\"", "step 5b keep policy");
         assert!(
-            urls[23].ends_with("/serviceAccounts"),
+            urls[24].ends_with("/serviceAccounts"),
             "step 5c CI service account: {}",
-            urls[23]
+            urls[24]
         );
         assert!(
-            urls[29].contains("workloadIdentityPools/github/providers"),
+            urls[30].contains("workloadIdentityPools/github/providers"),
             "step 5j WIF provider: {}",
-            urls[29]
+            urls[30]
         );
         assert_body_contains(
-            &calls[29],
+            &calls[30],
             &super::artifact_registry::wif_attribute_condition(super::DEFAULT_GITHUB_REPO),
             "step 5j WIF provider repository condition",
         );
         assert_body_contains(
-            &calls[29],
+            &calls[30],
             super::artifact_registry::GITHUB_OIDC_ISSUER,
             "step 5j WIF provider issuer",
         );
-        // Steps 32..=38 create GKE, bind its pool, then add integrations.
+        // Steps 33..=39 create GKE, bind its pool, then add integrations.
         // Bounded rather than open-ended: these are the shell-out steps, not
-        // "everything after 32" — the KMS stage below is REST and follows them.
-        for (i, m) in methods.iter().enumerate().take(39).skip(32) {
+        // "everything after 33" — the KMS stage below is REST and follows them.
+        for (i, m) in methods.iter().enumerate().take(40).skip(33) {
             assert_eq!(*m, "SHELL", "step {i} should be SHELL, got {m}");
         }
         assert!(
-            urls[32].contains("compute addresses create"),
+            urls[33].contains("compute addresses create"),
             "step 6a static IP: {}",
-            urls[32]
-        );
-        assert!(
-            urls[33].contains("container clusters create-auto"),
-            "step 6b cluster: {}",
             urls[33]
         );
-        assert!(urls[34].contains("navigator/navigator-web"));
-        assert!(urls[35].contains("navigator/workflows-service"));
         assert!(
-            urls[36].contains("fleet config-management enable"),
-            "step 6c fleet enable: {}",
-            urls[36]
+            urls[34].contains("container clusters create-auto"),
+            "step 6b cluster: {}",
+            urls[34]
         );
+        assert!(urls[35].contains("navigator/navigator-web"));
+        assert!(urls[36].contains("navigator/workflows-service"));
         assert!(
-            urls[37].contains("container clusters update navigator-prod")
-                && urls[37].contains("--enable-fleet"),
-            "step 6d fleet reconciliation through the GKE cluster API: {}",
+            urls[37].contains("fleet config-management enable"),
+            "step 6c fleet enable: {}",
             urls[37]
         );
         assert!(
-            urls[38].starts_with("kubectl apply"),
-            "step 6e kubectl apply: {}",
+            urls[38].contains(&format!(
+                "container clusters update {}",
+                config.cluster_name
+            )) && urls[38].contains("--enable-fleet"),
+            "step 6d fleet reconciliation through the GKE cluster API: {}",
             urls[38]
+        );
+        assert!(
+            urls[39].starts_with("kubectl apply"),
+            "step 6e kubectl apply: {}",
+            urls[39]
         );
         // Step 8: the key this deployment's `secrets.enc.yaml` is encrypted
         // against. Ring before key — the key create 404s otherwise.
         assert!(
-            urls[39].contains("keyRings?keyRingId=navigator-secrets"),
+            urls[40].contains("keyRings?keyRingId=navigator-secrets"),
             "step 8a key ring: {}",
-            urls[39]
+            urls[40]
         );
         assert!(
-            urls[40]
+            urls[41]
                 .contains("keyRings/navigator-secrets/cryptoKeys?cryptoKeyId=deployment-config"),
             "step 8b crypto key: {}",
-            urls[40]
+            urls[41]
         );
-        assert_body_contains(&calls[40], "ENCRYPT_DECRYPT", "step 8b key purpose");
+        assert_body_contains(&calls[41], "ENCRYPT_DECRYPT", "step 8b key purpose");
     }
 
     #[tokio::test]

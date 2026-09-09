@@ -26,7 +26,7 @@ use std::time::Duration;
 
 use serde_json::json;
 
-use super::client::{GcpClient, GcpService};
+use super::client::{GcpClient, GcpService, Mode};
 use super::error::{SetupError, SetupResult};
 use super::{lro, services, SetupConfig};
 
@@ -46,6 +46,193 @@ pub async fn ensure_network(
     config: &SetupConfig,
 ) -> SetupResult<()> {
     ensure_named_network(client, project_id, &config.vpc_name).await
+}
+
+/// Ensure the regional Cloud Router and Cloud NAT that give the deployment's
+/// private GKE nodes outbound connectivity.
+///
+/// The cluster name is the deployment name throughout `ops gcp setup`, so the
+/// two resources remain distinct when multiple deployments share a project.
+pub async fn ensure_router_and_nat(
+    client: &GcpClient,
+    project_id: &str,
+    config: &SetupConfig,
+) -> SetupResult<()> {
+    ensure_named_router_and_nat(
+        client,
+        project_id,
+        &config.region,
+        &config.vpc_name,
+        &config.cluster_name,
+    )
+    .await
+}
+
+fn router_name(deployment_name: &str) -> String {
+    format!("{deployment_name}-router")
+}
+
+fn nat_name(deployment_name: &str) -> String {
+    format!("{deployment_name}-nat")
+}
+
+fn router_path(project_id: &str, region: &str, router_name: &str) -> String {
+    format!("/compute/v1/projects/{project_id}/regions/{region}/routers/{router_name}")
+}
+
+fn router_body(
+    project_id: &str,
+    network_name: &str,
+    router_name: &str,
+    nat_name: &str,
+) -> serde_json::Value {
+    json!({
+        "name": router_name,
+        "network": format!("projects/{project_id}/global/networks/{network_name}"),
+        "bgp": { "asn": 64514 },
+        "nats": [{
+            "name": nat_name,
+            "natIpAllocateOption": "AUTO_ONLY",
+            "sourceSubnetworkIpRangesToNat": "ALL_SUBNETWORKS_ALL_IP_RANGES",
+        }],
+    })
+}
+
+fn router_has_expected_nat(
+    router: &serde_json::Value,
+    expected: &serde_json::Value,
+    nat_name: &str,
+) -> bool {
+    router.get("network") == expected.get("network")
+        && router
+            .get("nats")
+            .and_then(serde_json::Value::as_array)
+            .is_some_and(|nats| {
+                nats.iter().any(|nat| {
+                    nat.get("name").and_then(serde_json::Value::as_str) == Some(nat_name)
+                        && nat
+                            .get("natIpAllocateOption")
+                            .and_then(serde_json::Value::as_str)
+                            == Some("AUTO_ONLY")
+                        && nat
+                            .get("sourceSubnetworkIpRangesToNat")
+                            .and_then(serde_json::Value::as_str)
+                            == Some("ALL_SUBNETWORKS_ALL_IP_RANGES")
+                })
+            })
+}
+
+/// Ensure the named Cloud Router and its NAT configuration.
+///
+/// The normal path reads first: a matching router is a no-op and an existing
+/// router with NAT drift receives a patch. An absent router is created and its
+/// Compute LRO is polled. A conflict on that create is another actor having
+/// won the same idempotent race, so it succeeds without a second poll.
+async fn ensure_named_router_and_nat(
+    client: &GcpClient,
+    project_id: &str,
+    region: &str,
+    network_name: &str,
+    deployment_name: &str,
+) -> SetupResult<()> {
+    let router_name = router_name(deployment_name);
+    let nat_name = nat_name(deployment_name);
+    let path = router_path(project_id, region, &router_name);
+    let body = router_body(project_id, network_name, &router_name, &nat_name);
+
+    // A dry run cannot learn whether a router already exists. Record the
+    // create that a fresh deployment requires, matching the rest of setup's
+    // create-oriented preview rather than inventing a synthetic drift patch.
+    if client.mode() == Mode::DryRun {
+        return create_router(client, project_id, region, &router_name, &body).await;
+    }
+
+    let response = client.get(GcpService::Compute, &path).await?;
+    match response.status_u16() {
+        404 => create_router(client, project_id, region, &router_name, &body).await,
+        200..=299 => {
+            let existing: serde_json::Value =
+                serde_json::from_str(&response.into_text()).map_err(|source| SetupError::Json {
+                    what: "Cloud Router lookup response",
+                    source,
+                })?;
+            if router_has_expected_nat(&existing, &body, &nat_name) {
+                return Ok(());
+            }
+            patch_router(client, project_id, region, &path, &router_name, &body).await
+        }
+        status => Err(SetupError::BadStatus {
+            operation: format!("read Cloud Router {router_name}"),
+            status,
+            body: response.into_text(),
+        }),
+    }
+}
+
+async fn create_router(
+    client: &GcpClient,
+    project_id: &str,
+    region: &str,
+    router_name: &str,
+    body: &serde_json::Value,
+) -> SetupResult<()> {
+    let collection = format!("/compute/v1/projects/{project_id}/regions/{region}/routers");
+    let response = client
+        .post_json(GcpService::Compute, &collection, body)
+        .await?;
+    match response.status_u16() {
+        409 => Ok(()),
+        200..=299 => {
+            wait_for_router_operation(client, project_id, region, response.into_text()).await
+        }
+        status => Err(SetupError::BadStatus {
+            operation: format!("create Cloud Router {router_name}"),
+            status,
+            body: response.into_text(),
+        }),
+    }
+}
+
+async fn patch_router(
+    client: &GcpClient,
+    project_id: &str,
+    region: &str,
+    path: &str,
+    router_name: &str,
+    body: &serde_json::Value,
+) -> SetupResult<()> {
+    let response = client.patch_json(GcpService::Compute, path, body).await?;
+    match response.status_u16() {
+        200..=299 => {
+            wait_for_router_operation(client, project_id, region, response.into_text()).await
+        }
+        status => Err(SetupError::BadStatus {
+            operation: format!("patch Cloud Router {router_name}"),
+            status,
+            body: response.into_text(),
+        }),
+    }
+}
+
+async fn wait_for_router_operation(
+    client: &GcpClient,
+    project_id: &str,
+    region: &str,
+    response_body: String,
+) -> SetupResult<()> {
+    let operation: serde_json::Value =
+        serde_json::from_str(&response_body).map_err(|source| SetupError::Json {
+            what: "Cloud Router operation response",
+            source,
+        })?;
+    lro::wait(
+        client,
+        GcpService::Compute,
+        &operation,
+        &format!("/compute/v1/projects/{project_id}/regions/{region}/operations/{{name}}"),
+    )
+    .await
+    .map(|_| ())
 }
 
 /// Ensure a named custom-mode VPC without inheriting the production setup
@@ -192,7 +379,10 @@ mod tests {
 
     use super::super::client::{GcpClient, GcpService, StaticToken};
     use super::super::SetupConfig;
-    use super::{ensure_named_network_with_retry, ensure_network, DEFAULT_NETWORK_NAME};
+    use super::{
+        ensure_named_network_with_retry, ensure_network, ensure_router_and_nat, nat_name,
+        router_name, DEFAULT_NETWORK_NAME,
+    };
 
     fn client_for(server: &MockServer) -> GcpClient {
         GcpClient::new(Arc::new(StaticToken("t".into())))
@@ -266,6 +456,135 @@ mod tests {
         )
         .await
         .unwrap();
+    }
+
+    #[tokio::test]
+    async fn creates_a_router_with_auto_allocated_all_subnet_nat_then_polls() {
+        let server = MockServer::start().await;
+        let config = SetupConfig::default();
+        let router = router_name(&config.cluster_name);
+        let nat = nat_name(&config.cluster_name);
+        let router_path = format!(
+            "/compute/v1/projects/p/regions/{}/routers/{router}",
+            config.region
+        );
+        Mock::given(method("GET"))
+            .and(path(router_path))
+            .respond_with(ResponseTemplate::new(404))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path(format!(
+                "/compute/v1/projects/p/regions/{}/routers",
+                config.region
+            )))
+            .and(body_partial_json(json!({
+                "name": router,
+                "network": "projects/p/global/networks/navigator-vpc",
+                "nats": [{
+                    "name": nat,
+                    "natIpAllocateOption": "AUTO_ONLY",
+                    "sourceSubnetworkIpRangesToNat": "ALL_SUBNETWORKS_ALL_IP_RANGES",
+                }],
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "name": "router-create",
+                "status": "RUNNING"
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(format!(
+                "/compute/v1/projects/p/regions/{}/operations/router-create",
+                config.region
+            )))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "name": "router-create",
+                "status": "DONE"
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        ensure_router_and_nat(&client_for(&server), "p", &config)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn patches_a_router_when_its_nat_settings_drift() {
+        let server = MockServer::start().await;
+        let config = SetupConfig::default();
+        let router = router_name(&config.cluster_name);
+        let nat = nat_name(&config.cluster_name);
+        let router_path = format!(
+            "/compute/v1/projects/p/regions/{}/routers/{router}",
+            config.region
+        );
+        Mock::given(method("GET"))
+            .and(path(&router_path))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "network": "projects/p/global/networks/navigator-vpc",
+                "nats": [{
+                    "name": nat,
+                    "natIpAllocateOption": "MANUAL_ONLY",
+                    "sourceSubnetworkIpRangesToNat": "LIST_OF_SUBNETWORKS",
+                }],
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("PATCH"))
+            .and(path(router_path))
+            .and(body_partial_json(json!({
+                "nats": [{
+                    "name": nat,
+                    "natIpAllocateOption": "AUTO_ONLY",
+                    "sourceSubnetworkIpRangesToNat": "ALL_SUBNETWORKS_ALL_IP_RANGES",
+                }],
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "name": "router-patch",
+                "status": "DONE"
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        ensure_router_and_nat(&client_for(&server), "p", &config)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn treats_a_router_create_conflict_as_success() {
+        let server = MockServer::start().await;
+        let config = SetupConfig::default();
+        let router = router_name(&config.cluster_name);
+        Mock::given(method("GET"))
+            .and(path(format!(
+                "/compute/v1/projects/p/regions/{}/routers/{router}",
+                config.region
+            )))
+            .respond_with(ResponseTemplate::new(404))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path(format!(
+                "/compute/v1/projects/p/regions/{}/routers",
+                config.region
+            )))
+            .respond_with(ResponseTemplate::new(409).set_body_string("already exists"))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        ensure_router_and_nat(&client_for(&server), "p", &config)
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
@@ -373,5 +692,29 @@ mod tests {
             "dry-run should only record the insert, got {calls:?}"
         );
         assert!(calls[0].url.ends_with("/global/networks"));
+    }
+
+    #[tokio::test]
+    async fn dry_run_records_the_router_and_all_subnet_nat_create() {
+        let client = GcpClient::new(Arc::new(StaticToken("t".into())))
+            .with_base_url(GcpService::Compute, "http://127.0.0.1:1")
+            .with_dry_run();
+        let config = SetupConfig::default();
+        let router = router_name(&config.cluster_name);
+        let nat = nat_name(&config.cluster_name);
+        ensure_router_and_nat(&client, "p", &config).await.unwrap();
+
+        let calls = client.recorded_calls();
+        assert_eq!(
+            calls.len(),
+            1,
+            "dry run records the router create: {calls:?}"
+        );
+        assert!(calls[0].url.ends_with("/regions/us-west4/routers"));
+        let body = calls[0].body.as_deref().unwrap_or_default();
+        assert!(body.contains(&router), "{body}");
+        assert!(body.contains(&nat), "{body}");
+        assert!(body.contains("AUTO_ONLY"), "{body}");
+        assert!(body.contains("ALL_SUBNETWORKS_ALL_IP_RANGES"), "{body}");
     }
 }

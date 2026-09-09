@@ -55,6 +55,9 @@ Load-bearing rules from those docs:
   `<initials>/eng-1234-<short-neutral-topic>` yourself. See [Linking a PR to its Linear
   issue](../../../docs/agent-workflows.md#linking-a-pr-to-its-linear-issue), which also carries the one exposure this
   discipline cannot close: Linear's own linkback comment.
+- Use `Closes` only when merging the PR completes the issue's stated scope. Use `Refs` when the PR lands a control,
+  workflow, or capability whose rollout, live apply, caller pin, or external step has not happened; say in the PR body
+  what remains and who owns it, because `Closes` would move unfinished work to Done and hide the remaining work.
 - Capture a live walkthrough of any user-visible change into `/tmp/navigator-screenshots/`, look at it yourself, and
   embed it in the PR body via [[pr-image-upload]] (one `curl` to the tenant's `user-attachments` store, authenticated by
   `gh auth token`). The artifact lives in `/tmp` and the PR body links it; reach for `curl` rather than the `gh-image`

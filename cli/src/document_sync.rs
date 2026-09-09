@@ -17,7 +17,7 @@ pub(crate) struct ProjectManifest {
 }
 
 /// Read and validate `<root>/navigator.yaml` — the one manifest every
-/// document command (`sync`, and the read verbs under `navigator document`)
+/// document command (`sync`, and the read verbs under `navigator site document`)
 /// resolves its Project and login host from.
 pub(crate) fn read_manifest(root: &Path) -> Result<ProjectManifest> {
     let manifest_path = root.join("navigator.yaml");

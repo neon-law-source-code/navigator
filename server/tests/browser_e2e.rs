@@ -34,11 +34,11 @@ use std::env;
 use std::time::Duration;
 
 use fantoccini::key::Key;
-use fantoccini::Locator;
+use fantoccini::{Client, Locator};
 use features::webdriver::{
-    base_url, click_and_reach, login_as_admin, login_as_client, login_as_lawyer,
-    new_client_or_skip, require_harness, scroll_and_js_click, wait_for_path, wait_for_text,
-    wait_for_text_reloading,
+    base_url, click_and_reach, login_as_admin, login_as_clerk, login_as_client, login_as_lawyer,
+    login_as_owner, new_client_or_skip, require_harness, scroll_and_js_click, wait_for_path,
+    wait_for_text, wait_for_text_reloading,
 };
 use uuid::Uuid;
 
@@ -1723,4 +1723,474 @@ async fn public_marketing_pages_have_no_horizontal_overflow_on_mobile() {
     }
 
     c.close().await.unwrap();
+}
+
+/// A minimal valid 1x1 PNG, reused by every avatar test below so the fixture
+/// bytes are typed once rather than per role.
+const SYNTHETIC_PNG: [u8; 67] = [
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+    0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4,
+    0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x62, 0x00, 0x01, 0x00, 0x00,
+    0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae,
+    0x42, 0x60, 0x82,
+];
+
+/// Write [`SYNTHETIC_PNG`] to a uniquely tagged temp path, for the file picker
+/// to select.
+fn write_synthetic_png(tag: &str) -> std::path::PathBuf {
+    let path = std::env::temp_dir().join(format!("navigator-avatar-{tag}-{}.png", Uuid::now_v7()));
+    std::fs::write(&path, SYNTHETIC_PNG).expect("write the synthetic avatar fixture");
+    path
+}
+
+/// Read `url`'s real HTTP status through the authenticated browser session.
+///
+/// A direct `c.goto(url)` can't tell an authorized image response apart from
+/// a denial: both the avatar-visibility routes' `404` and a real image
+/// response "load" as a page with no browser-level navigation error, and
+/// WebDriver's `goto` exposes no status code of its own. Running `fetch`
+/// inside the page carries its cookies and reports the real status back
+/// through the async-script callback.
+async fn fetch_status(c: &Client, url: &str) -> u64 {
+    let value = c
+        .execute_async(
+            "const [url, callback] = arguments; \
+             fetch(url, {credentials: 'same-origin'}) \
+                .then(r => callback(r.status)) \
+                .catch(() => callback(0));",
+            vec![serde_json::Value::String(url.to_string())],
+        )
+        .await
+        .expect("fetch the avatar url from inside the authenticated page");
+    value.as_u64().expect("fetch resolves a numeric status")
+}
+
+/// Upload a real avatar for `person_id` through the admin editor, so a
+/// visibility test's target actually has bytes in storage. Without this, a
+/// denial and "authorized but no avatar set" would both 404 identically —
+/// the deliberate non-disclosure `docs/access-model.md` calls for — and a
+/// status-code assertion couldn't tell the two apart. `admin_browser` must
+/// already be signed in as `admin@neonlaw.com`.
+async fn seed_person_with_avatar(admin_browser: &Client, person_id: Uuid) {
+    let path = write_synthetic_png(&person_id.to_string());
+    admin_browser
+        .goto(&format!("{}/app/admin/people/{}", base_url(), person_id))
+        .await
+        .expect("open the synthetic person's admin page");
+    let picker = admin_browser
+        .wait()
+        .at_most(Duration::from_secs(10))
+        .for_element(Locator::Css("#person-avatar input[type='file']"))
+        .await
+        .expect("the person page renders its avatar picker");
+    picker
+        .send_keys(path.to_str().expect("avatar path is valid UTF-8"))
+        .await
+        .expect("select the synthetic avatar");
+    scroll_and_js_click(admin_browser, "#person-avatar form button[type='submit']").await;
+    wait_for_path(
+        admin_browser,
+        &format!("/app/admin/people/{person_id}"),
+        Duration::from_secs(20),
+    )
+    .await;
+    std::fs::remove_file(path).ok();
+}
+
+/// Upload a synthetic avatar through the self-service `/app/profile` page for
+/// whichever role `c` is already signed in as, and confirm the round trip:
+/// the redirect back to `/app/profile`, the preview `<img>` reading the
+/// caller's own avatar route, and that route actually serving image bytes
+/// afterward.
+async fn upload_own_avatar_via_profile_page(c: &Client, tag: &str) {
+    let path = write_synthetic_png(tag);
+    c.goto(&format!("{}/app/profile", base_url()))
+        .await
+        .expect("open the profile page");
+    let picker = c
+        .wait()
+        .at_most(Duration::from_secs(10))
+        .for_element(Locator::Css("#profile-avatar input[type='file']"))
+        .await
+        .expect("the profile page renders its avatar picker");
+    picker
+        .send_keys(path.to_str().expect("avatar path is valid UTF-8"))
+        .await
+        .expect("select the synthetic avatar");
+    scroll_and_js_click(c, "#profile-avatar form button[type='submit']").await;
+    wait_for_path(c, "/app/profile", Duration::from_secs(20)).await;
+
+    let avatar = c
+        .wait()
+        .at_most(Duration::from_secs(10))
+        .for_element(Locator::Css("#profile-avatar img"))
+        .await
+        .expect("the profile page renders the avatar preview");
+    assert_eq!(
+        avatar.attr("src").await.unwrap().as_deref(),
+        Some("/app/me/avatar"),
+        "the preview must read the caller's own avatar route"
+    );
+
+    let status = fetch_status(c, &format!("{}/app/me/avatar", base_url())).await;
+    assert_eq!(
+        status, 200,
+        "the just-uploaded avatar must round-trip through /app/me/avatar"
+    );
+
+    std::fs::remove_file(path).ok();
+}
+
+// ---------- self-service avatar upload, every tier ----------
+//
+// Reported in staging: uploading an avatar as a client failed, because there
+// was no self-service path — only the admin-only editor at
+// `/app/admin/people/{id}/avatar` could write `profile_image_url`. These five
+// tests drive the real `/app/profile` upload for every role.
+
+#[tokio::test]
+async fn client_uploads_their_own_avatar_through_the_profile_page() {
+    let Some(c) = new_client_or_skip().await else {
+        return;
+    };
+    login_as_client(&c).await;
+    upload_own_avatar_via_profile_page(&c, "client").await;
+    c.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn lawyer_uploads_their_own_avatar_through_the_profile_page() {
+    let Some(c) = new_client_or_skip().await else {
+        return;
+    };
+    login_as_lawyer(&c).await;
+    upload_own_avatar_via_profile_page(&c, "lawyer").await;
+    c.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn admin_uploads_their_own_avatar_through_the_profile_page() {
+    let Some(c) = new_client_or_skip().await else {
+        return;
+    };
+    login_as_admin(&c).await;
+    upload_own_avatar_via_profile_page(&c, "admin").await;
+    c.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn owner_uploads_their_own_avatar_through_the_profile_page() {
+    let Some(c) = new_client_or_skip().await else {
+        return;
+    };
+    login_as_owner(&c).await;
+    upload_own_avatar_via_profile_page(&c, "owner").await;
+    c.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn clerk_uploads_their_own_avatar_through_the_profile_page() {
+    let Some(c) = new_client_or_skip().await else {
+        return;
+    };
+    login_as_clerk(&c).await;
+    upload_own_avatar_via_profile_page(&c, "clerk").await;
+    c.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn profile_page_shows_a_read_only_email_with_a_contact_us_note() {
+    let Some(c) = new_client_or_skip().await else {
+        return;
+    };
+    login_as_client(&c).await;
+    c.goto(&format!("{}/app/profile", base_url()))
+        .await
+        .unwrap();
+    let email_field = c
+        .wait()
+        .at_most(Duration::from_secs(10))
+        .for_element(Locator::Css("#profile-details input[name='email']"))
+        .await
+        .expect("the profile page renders the email field");
+    assert_eq!(
+        email_field.attr("value").await.unwrap().as_deref(),
+        Some("client@neonlaw.com")
+    );
+    assert!(
+        email_field.attr("disabled").await.unwrap().is_some(),
+        "the email field must render disabled — greyed out, per the product ask"
+    );
+    let source = c.source().await.unwrap();
+    assert!(
+        source.contains("Contact us to update your email address."),
+        "{source}"
+    );
+    c.close().await.unwrap();
+}
+
+// ---------- nav collapse: Firm(s)/Brands -> Firm, plus Profile everywhere ----------
+
+#[tokio::test]
+async fn owner_nav_collapses_firm_and_brands_into_one_link() {
+    let Some(c) = new_client_or_skip().await else {
+        return;
+    };
+    login_as_owner(&c).await;
+    let trigger = c
+        .wait()
+        .at_most(Duration::from_secs(10))
+        .for_element(Locator::Css(".lawyer-nav__profile-trigger"))
+        .await
+        .expect("the shared app chrome renders the profile menu trigger");
+    trigger.click().await.expect("open the profile menu");
+    let open_menu = c
+        .find(Locator::Css(".lawyer-nav__profile[open]"))
+        .await
+        .expect("the native disclosure opens");
+
+    let firm_link = open_menu
+        .find(Locator::Css("a[href='/app/owner']"))
+        .await
+        .expect("the collapsed Firm link is inside the opened menu");
+    assert_eq!(firm_link.text().await.unwrap(), "Firm");
+
+    assert!(
+        open_menu
+            .find(Locator::Css("a[href='/app/brands']"))
+            .await
+            .is_err(),
+        "the old separate Brands link must no longer render in the row"
+    );
+    assert!(
+        open_menu
+            .find(Locator::Css("a[href='/app/profile']"))
+            .await
+            .is_ok(),
+        "the row must also carry the new Profile link"
+    );
+
+    c.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn a_client_sees_profile_but_never_the_owner_only_firm_link() {
+    let Some(c) = new_client_or_skip().await else {
+        return;
+    };
+    login_as_client(&c).await;
+    let trigger = c
+        .wait()
+        .at_most(Duration::from_secs(10))
+        .for_element(Locator::Css(".lawyer-nav__profile-trigger"))
+        .await
+        .expect("the shared app chrome renders the profile menu trigger");
+    trigger.click().await.expect("open the profile menu");
+    let open_menu = c
+        .find(Locator::Css(".lawyer-nav__profile[open]"))
+        .await
+        .expect("the native disclosure opens");
+
+    let profile_link = open_menu
+        .find(Locator::Css("a[href='/app/profile']"))
+        .await
+        .expect("a client also sees Profile in the menu");
+    assert_eq!(profile_link.text().await.unwrap(), "Profile");
+    assert!(
+        open_menu
+            .find(Locator::Css("a[href='/app/owner']"))
+            .await
+            .is_err(),
+        "a client must never see the Owner-only Firm link"
+    );
+
+    c.close().await.unwrap();
+}
+
+// ---------- avatar visibility ----------
+//
+// Every firm tier sees any avatar; a client sees their own and a fellow
+// client's only when the two share a Project; a client never sees a
+// firm-side person's avatar (`store::access::avatar_visible_to`).
+
+#[tokio::test]
+async fn clients_sharing_a_project_can_see_each_others_avatar() {
+    let Some(admin_browser) = new_client_or_skip().await else {
+        return;
+    };
+    let surreal = store::surreal::connect_from_env()
+        .await
+        .expect("connect to the port-forwarded SurrealDB");
+    let client = store::persons::find_by_email_ci(&surreal, "client@neonlaw.com")
+        .await
+        .expect("look up the browser-harness client person")
+        .expect("the browser harness requires the seeded client");
+    let unique = Uuid::now_v7();
+    let entity_id = store::test_support::seed_entity(&surreal).await;
+    let project = store::projects::create(
+        &surreal,
+        &store::projects::NewProject {
+            code: format!("shared-avatar-{unique}"),
+            name: format!("Shared Avatar {unique}"),
+            status: "open".into(),
+            entity_id,
+            ..Default::default()
+        },
+    )
+    .await
+    .expect("seed the synthetic shared matter");
+    store::projects::add_participation(&surreal, project.id, client.id, "client")
+        .await
+        .expect("scope the seeded client onto the synthetic matter");
+    let fellow = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "E2E Fellow Client",
+            format!("e2e-fellow-{unique}@example.com"),
+            store::persons::Role::Client,
+        ),
+    )
+    .await
+    .expect("seed the synthetic fellow client");
+    store::projects::add_participation(&surreal, project.id, fellow.id, "client")
+        .await
+        .expect("scope the fellow client onto the same synthetic matter");
+
+    login_as_admin(&admin_browser).await;
+    seed_person_with_avatar(&admin_browser, fellow.id).await;
+    admin_browser.close().await.unwrap();
+
+    let Some(viewer) = new_client_or_skip().await else {
+        return;
+    };
+    login_as_client(&viewer).await;
+    let status = fetch_status(
+        &viewer,
+        &format!("{}/app/people/{}/avatar", base_url(), fellow.id),
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "a fellow client on the same Project must see the avatar"
+    );
+    viewer.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn clients_on_different_projects_cannot_see_each_others_avatar() {
+    let Some(admin_browser) = new_client_or_skip().await else {
+        return;
+    };
+    let surreal = store::surreal::connect_from_env()
+        .await
+        .expect("connect to the port-forwarded SurrealDB");
+    let unique = Uuid::now_v7();
+    let entity_id = store::test_support::seed_entity(&surreal).await;
+    let project = store::projects::create(
+        &surreal,
+        &store::projects::NewProject {
+            code: format!("unshared-avatar-{unique}"),
+            name: format!("Unshared Avatar {unique}"),
+            status: "open".into(),
+            entity_id,
+            ..Default::default()
+        },
+    )
+    .await
+    .expect("seed the synthetic unshared matter");
+    let stranger = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "E2E Stranger Client",
+            format!("e2e-stranger-{unique}@example.com"),
+            store::persons::Role::Client,
+        ),
+    )
+    .await
+    .expect("seed the synthetic stranger client");
+    store::projects::add_participation(&surreal, project.id, stranger.id, "client")
+        .await
+        .expect("scope the stranger client onto a matter client@neonlaw.com is not on");
+
+    login_as_admin(&admin_browser).await;
+    seed_person_with_avatar(&admin_browser, stranger.id).await;
+    admin_browser.close().await.unwrap();
+
+    let Some(viewer) = new_client_or_skip().await else {
+        return;
+    };
+    login_as_client(&viewer).await;
+    let status = fetch_status(
+        &viewer,
+        &format!("{}/app/people/{}/avatar", base_url(), stranger.id),
+    )
+    .await;
+    assert_eq!(
+        status, 404,
+        "a client on no shared Project must not see the avatar"
+    );
+    viewer.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn firm_tier_sees_any_avatar_but_a_client_cannot_see_a_firm_members() {
+    let Some(admin_browser) = new_client_or_skip().await else {
+        return;
+    };
+    let surreal = store::surreal::connect_from_env()
+        .await
+        .expect("connect to the port-forwarded SurrealDB");
+    let unique = Uuid::now_v7();
+    let synthetic_lawyer = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "E2E Firm Avatar Person",
+            format!("e2e-firm-avatar-{unique}@example.com"),
+            store::persons::Role::Lawyer,
+        ),
+    )
+    .await
+    .expect("seed the synthetic lawyer");
+    let synthetic_client = store::persons::create(
+        &surreal,
+        &store::persons::NewPerson::with_role(
+            "E2E Client Avatar Person",
+            format!("e2e-client-avatar-{unique}@example.com"),
+            store::persons::Role::Client,
+        ),
+    )
+    .await
+    .expect("seed the synthetic client");
+
+    login_as_admin(&admin_browser).await;
+    seed_person_with_avatar(&admin_browser, synthetic_lawyer.id).await;
+    seed_person_with_avatar(&admin_browser, synthetic_client.id).await;
+    admin_browser.close().await.unwrap();
+
+    let Some(lawyer_browser) = new_client_or_skip().await else {
+        return;
+    };
+    login_as_lawyer(&lawyer_browser).await;
+    let status = fetch_status(
+        &lawyer_browser,
+        &format!("{}/app/people/{}/avatar", base_url(), synthetic_client.id),
+    )
+    .await;
+    assert_eq!(status, 200, "a firm tier must see any avatar");
+    lawyer_browser.close().await.unwrap();
+
+    let Some(client_browser) = new_client_or_skip().await else {
+        return;
+    };
+    login_as_client(&client_browser).await;
+    let status = fetch_status(
+        &client_browser,
+        &format!("{}/app/people/{}/avatar", base_url(), synthetic_lawyer.id),
+    )
+    .await;
+    assert_eq!(
+        status, 404,
+        "a client must never see a firm-side person's avatar"
+    );
+    client_browser.close().await.unwrap();
 }

@@ -697,7 +697,14 @@ fn lawyer_shook_holding_content(branding: &views::brand::Branding) -> webapp::ho
                 webapp::home::CopyRun {
                     text: "here".to_string(),
                     emphasis: false,
-                    href: Some("/auth/login".to_string()),
+                    // Absolute against the deployment's own origin, not this
+                    // host's: `/auth/login` sets the one-shot pre-auth cookie
+                    // on whichever host serves it, and the OIDC callback lands
+                    // only on `OAUTH_REDIRECT_URI`'s host, so a login started
+                    // on the holding page's own host would arrive at the
+                    // callback without its cookie. Where no `NAV_BASE_URL` is
+                    // configured (dev, tests) this stays the relative path.
+                    href: Some(views::assets::absolute_url("/auth/login")),
                 },
                 webapp::home::CopyRun {
                     text: " if you are an active client.".to_string(),
@@ -742,10 +749,10 @@ mod lawyer_shook_holding_page_tests {
         let sign_in_text: String = bare.sign_in.iter().map(|run| run.text.as_str()).collect();
         assert!(sign_in_text.contains("Sign in"));
         assert!(sign_in_text.contains("active client"));
-        assert!(bare
-            .sign_in
-            .iter()
-            .any(|run| run.href.as_deref() == Some("/auth/login")));
+        assert!(bare.sign_in.iter().any(|run| run
+            .href
+            .as_deref()
+            .is_some_and(|href| href.ends_with("/auth/login"))));
     }
 }
 

@@ -17,12 +17,13 @@ than assuming a repository slug.
 **A review of a colleague's pull request ends by landing the fix and approving it, not by requesting changes and
 waiting.** `ci.yml` arms auto-merge when a pull request opens and again on every push, so the queue moves the moment the
 required gate is green, the threads resolve, and the review gate is satisfied — see [The branch → PR → auto-merge
-flow](../../../docs/gitops.md#the-branch--pr--auto-merge-flow). A review that requests changes takes the pull request
-out of that queue until its author returns to it; a review that commits the same fix and approves puts the identical
-evidence in front of the same gate with nobody waiting. So every finding the reviewer can fix without making a design
-decision becomes a commit on the PR branch, and the review is an approval at the head those commits produced. Requesting
-changes is reserved for a finding that needs the author's own decision, and the review body says which findings those
-are.
+flow](../../../docs/gitops.md#the-branch--pr--auto-merge-flow). A review that requests changes leaves the whole of that
+work with the author: come back, read the finding, write the fix, push it, and wait for the gate again. A review that
+commits the fix and approves at the resulting head leaves the author one action on an already-fixed, already-gated
+branch. Both paths still end at the author — step 8 explains exactly why — but they are not the same wait. So every
+finding the reviewer can fix without making a design decision becomes a commit on the PR branch, and the review is an
+approval at the head those commits produced. Requesting changes is reserved for a finding that needs the author's own
+decision, and the review body says which findings those are.
 
 This is the flow for a colleague's pull request. A read-only pass is still available when the user asks for one; run
 steps 1 through 6 and stop. GitHub refuses an approval of your own pull request, so a review of your own work is
@@ -242,18 +243,45 @@ the finding it answers; the gate that was run and its exact scope; and what rema
 left as a follow-up or as the author's decision. Naming the unfixed findings inside the approval is what keeps this flow
 honest — an approval that quietly drops them is worse than a request for changes.
 
-One mechanical caveat belongs in that body too. The review ruleset sets `require_last_push_approval`
-(`cli/src/devx/github_setup.rs`), so GitHub wants the most recent push approved by somebody other than whoever made it,
-and after step 7 that is you. Your approval satisfies the code-owner requirement, not that one. Say in the body that you
-made the last push, so the author knows the gate may still be waiting on them. Do not reach for a bypass and do not
-touch the PR's state to route around it.
-
 Record for the report: the head SHA before your first commit, each commit SHA you pushed, the pushed head SHA, and the
 review id:
 
 ```bash
 gh api repos/<owner>/<repo>/pulls/<N>/reviews --jq '.[-1] | {id, state, commit_id}'
 ```
+
+### Your approval does not release the queue on its own
+
+`main` carries `require_last_push_approval: true` alongside `required_approving_review_count: 1`,
+`require_code_owner_review: true`, and `dismiss_stale_reviews_on_push: true`. Read the live values rather than trusting
+this paragraph:
+
+```bash
+gh api repos/<owner>/<repo>/rules/branches/main --jq '.[] | select(.type == "pull_request") | .parameters'
+```
+
+GitHub requires the most recent push to be approved by somebody **other than** whoever made it. After step 7 that pusher
+is you, so your approval satisfies the code-owner count and not the last-push rule, and the pull request stays blocked
+until the author approves the pushed head. This is observed behavior, not a theory: it is what happens on a real pull
+request every time this flow runs.
+
+That does not undo the flow — the author's remaining action is one click on a branch that is already fixed and already
+gated, instead of a round trip through writing the fix themselves. It does mean the approval body must name that action
+rather than leave the author to discover a silently blocked queue. Close the body with it, in these terms:
+
+```text
+I pushed the fixes above, so `require_last_push_approval` means my approval cannot release the
+queue. Approve <pushed-sha> and auto-merge will proceed. If you would rather own the change,
+push the equivalent commits yourself and I will approve your head instead.
+```
+
+The second option is the one to offer when the author would rather write the fix in their own hand: they push, the last
+pusher is then the author, and the reviewer's approval does release the queue.
+
+Do not reach for a ruleset bypass, and do not touch the pull request's state to route around this. Whether the ruleset
+should require last-push approval at all is a repository-settings decision for the people who own that policy, and it is
+not a reviewer's call to make inside a review — see [Review gate: two rulesets with a narrow
+bypass](../../../docs/gitops.md#review-gate-two-rulesets-with-a-narrow-bypass).
 
 ### When to request changes instead
 
@@ -270,4 +298,5 @@ Finish with:
 - what you landed: each commit SHA, the finding it answers, and the pushed head SHA;
 - proof: the gate commands run, their exact scope, relevant results, and checks still pending or stale;
 - Linear grounding: the corroborated issue identifier(s), issue fit, and any unresolved mismatch or missing link;
-- PR state: head/base SHAs, draft/mergeability state, unresolved GitHub threads, and the review id.
+- PR state: head/base SHAs, draft/mergeability state, unresolved GitHub threads, and the review id;
+- what the queue is waiting on: whose approval of which SHA, when your own push is the most recent one.

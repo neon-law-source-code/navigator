@@ -13,10 +13,10 @@
 //!
 //! # Authorization
 //!
-//! Row-scoped by the caller's tier and their participation row, never by
-//! the URL: a firm tier archives every asset, a client only the ones marked
-//! client-visible. A non-participant gets `404` — the matter "doesn't
-//! exist" for them — never `403`.
+//! Row-scoped by the caller's matter participation, never by the URL: a
+//! firm-side participant archives every asset, a client-side participant only
+//! the ones marked client-visible. A non-participant gets `404` — the matter
+//! "doesn't exist" for them — never `403`.
 
 use std::collections::HashSet;
 use std::io::Write;
@@ -25,7 +25,6 @@ use axum::body::Body;
 use axum::extract::{Extension, Path, State};
 use axum::http::{header, StatusCode};
 use axum::response::{IntoResponse, Response};
-use store::persons::Role;
 use zip::write::SimpleFileOptions;
 
 use crate::admin::AdminState;
@@ -41,20 +40,27 @@ pub async fn download_all(
     let Some(project_id) = store::projects::id_for_code(&state.surreal, &project_code).await else {
         return not_found();
     };
-    let (person_id, role) = match session.as_deref() {
-        Some(s) => (s.person_id, s.role),
-        None => (None, Role::Client),
+    let Some(session) = session.as_deref() else {
+        return not_found();
     };
-    // Gate on tier + participation; the tier then picks which bytes ship.
-    let lens = ProjectLens::for_role(role);
-    match store::access::can_see_project(&state.surreal, person_id, role, project_id).await {
-        Ok(true) => {}
-        Ok(false) => return not_found(),
+    // Gate on the caller's matter participation and use the same resolved lens
+    // for the bytes that ship. A mixed-role person must not widen this archive
+    // merely because their system tier is firm-side.
+    let lens = match store::access::matter_lens(
+        &state.surreal,
+        session.person_id,
+        session.role,
+        project_id,
+    )
+    .await
+    {
+        Ok(Some(lens)) => lens,
+        Ok(None) => return not_found(),
         Err(e) => {
-            tracing::error!(error = %e, %project_id, "documents.zip: can_see_project failed");
+            tracing::error!(error = %e, %project_id, "documents.zip: matter lens failed");
             return internal_error();
         }
-    }
+    };
     let Ok(Some(proj)) = store::projects::find_by_id(&state.surreal, project_id).await else {
         return not_found();
     };

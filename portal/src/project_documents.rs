@@ -529,9 +529,9 @@ pub async fn download(
             return StatusCode::INTERNAL_SERVER_ERROR.into_response();
         }
     };
-    match can_read_project_document(&state, session.as_deref(), project_id).await {
-        Ok(true) => {}
-        Ok(false) => {
+    let lens = match project_document_lens(&state, session.as_deref(), project_id).await {
+        Ok(Some(lens)) => lens,
+        Ok(None) => {
             tracing::info!(%project_id, %doc_id, "project document download denied by access policy");
             return StatusCode::NOT_FOUND.into_response();
         }
@@ -539,14 +539,10 @@ pub async fn download(
             tracing::error!(error = %e, %project_id, %doc_id, "project document access check failed");
             return StatusCode::INTERNAL_SERVER_ERROR.into_response();
         }
-    }
-    // The client lens still never resolves an `internal` asset (#782); the
-    // tier is what selects it now that one path serves both sides.
-    let lens = store::access::ProjectLens::for_role(
-        session
-            .as_deref()
-            .map_or(store::persons::Role::Client, |s| s.role),
-    );
+    };
+    // Resolve the lens from the caller's participation row, not just their
+    // system tier. A lawyer who is also a client on this matter must remain
+    // within the client visibility boundary.
     let doc = match load_doc_for_project(&state, project_id, doc_id, lens).await {
         Ok(Some(asset)) => asset,
         Ok(None) => return StatusCode::NOT_FOUND.into_response(),
@@ -585,23 +581,22 @@ pub async fn download(
     }
 }
 
-/// `Ok(false)` is a refusal; `Err` is a store failure.
+/// `Ok(None)` is a refusal; `Err` is a store failure.
 ///
 /// These are deliberately different answers. Collapsing a failed access query
 /// into "not a participant" reports a pool or query outage as a missing
 /// document, which is the masking `project_document_*_500s_on_database_error`
 /// exists to prevent — and it matters more now that the gate itself reads the
 /// participation ledger, so an outage breaks the gate before the lookup.
-async fn can_read_project_document(
+async fn project_document_lens(
     state: &AdminState,
     session: Option<&SessionData>,
     project_id: Uuid,
-) -> Result<bool, String> {
+) -> Result<Option<store::access::ProjectLens>, String> {
     let Some(session) = session else {
-        return Ok(false);
+        return Ok(None);
     };
-    store::access::can_see_project(&state.surreal, session.person_id, session.role, project_id)
-        .await
+    store::access::matter_lens(&state.surreal, session.person_id, session.role, project_id).await
 }
 
 /// Look up the document `assets` row by id and reject if it doesn't
@@ -688,7 +683,7 @@ async fn stream_through(
 
 #[cfg(test)]
 mod tests {
-    use super::{file_one, UploadedFile};
+    use super::{file_one, load_doc_for_project, project_document_lens, UploadedFile};
     use crate::admin::AdminState;
     use store::documents::visibility;
     use store::surreal::test_support::mem;
@@ -718,6 +713,119 @@ mod tests {
             secure_cookies: false,
         };
         (state, project_id)
+    }
+
+    #[tokio::test]
+    async fn document_lens_uses_the_matter_participation_side() {
+        let (state, project_id) = fixtures("documents-lens-client").await;
+        let lawyer = store::persons::create(
+            &state.surreal,
+            &store::persons::NewPerson::with_role(
+                "Lawyer",
+                "lawyer@example.com",
+                store::persons::Role::Lawyer,
+            ),
+        )
+        .await
+        .unwrap()
+        .id;
+        store::projects::add_participation(&state.surreal, project_id, lawyer, "client")
+            .await
+            .unwrap();
+
+        let mut session = crate::SessionData::fresh("lawyer-sub", store::persons::Role::Lawyer);
+        session.person_id = Some(lawyer);
+        assert_eq!(
+            project_document_lens(&state, Some(&session), project_id)
+                .await
+                .unwrap(),
+            Some(store::access::ProjectLens::Client),
+            "a client-side matter row narrows a lawyer-tier document read"
+        );
+        assert_eq!(
+            project_document_lens(&state, None, project_id)
+                .await
+                .unwrap(),
+            None,
+            "a missing session has no document lens"
+        );
+    }
+
+    #[tokio::test]
+    async fn document_loader_keeps_internal_and_cross_project_assets_out_of_client_lane() {
+        let (state, project_id) = fixtures("documents-loader-client").await;
+        let other_project_id = seed_project_surreal(&state.surreal, "documents-loader-other").await;
+
+        file_one(
+            &state,
+            project_id,
+            &uploaded("internal.pdf", b"internal work product"),
+            "unclassified",
+            None,
+            visibility::INTERNAL,
+        )
+        .await
+        .expect("the internal fixture files cleanly");
+        file_one(
+            &state,
+            other_project_id,
+            &uploaded("other.pdf", b"another matter's document"),
+            "unclassified",
+            None,
+            visibility::CLIENT,
+        )
+        .await
+        .expect("the cross-project fixture files cleanly");
+
+        let internal = store::assets::for_project(&state.surreal, project_id)
+            .await
+            .unwrap()
+            .into_iter()
+            .next()
+            .expect("the internal asset row");
+        let cross_project = store::assets::for_project(&state.surreal, other_project_id)
+            .await
+            .unwrap()
+            .into_iter()
+            .next()
+            .expect("the cross-project asset row");
+
+        assert_eq!(
+            load_doc_for_project(
+                &state,
+                project_id,
+                internal.id,
+                store::access::ProjectLens::Client,
+            )
+            .await
+            .unwrap(),
+            None,
+            "an internal asset is hidden from the client lens"
+        );
+        assert!(
+            load_doc_for_project(
+                &state,
+                project_id,
+                internal.id,
+                store::access::ProjectLens::Lawyer,
+            )
+            .await
+            .unwrap()
+            .is_some(),
+            "a firm-side participant can read the internal asset"
+        );
+        assert_eq!(
+            load_doc_for_project(
+                &state,
+                project_id,
+                cross_project.id,
+                store::access::ProjectLens::Lawyer,
+            )
+            .await
+            .unwrap(),
+            None,
+            "an asset from another matter is hidden even from the firm lens"
+        );
     }
 
     fn uploaded(name: &str, bytes: &[u8]) -> UploadedFile {

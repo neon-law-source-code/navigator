@@ -66,9 +66,7 @@ webp.workspace = true
 # dependency and already linked into this crate's tests; this promotes it to a
 # runtime dependency of the binary itself.
 toml.workspace = true
-# `navigator github open-issue` opens the issue through the same
-# `workflows::github::IssueOpener` seam the `github_issue__*` workflow step
-# dispatches through, so the CLI and the durable step share one client.
+# `assets` uses `workflows::notify::SlackNotifier` to post upload results.
 workflows.workspace = true
 # `assets fonts upload-desktop` packages the licensed GORP Serif OTF family
 # into a ZIP before uploading it to the public assets bucket.

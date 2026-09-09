@@ -474,7 +474,6 @@ fn the_help_parser_still_reads_the_top_level_commands() {
         "dev",
         "erd",
         "forms",
-        "github",
         "notations",
         "ops",
         "site",

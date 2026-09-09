@@ -162,7 +162,7 @@ built the prototype — it is **which surface the finished screen lives on**.
 | Lives in | `<org>/<code>`, under `apps/<app>/` | The `webapp` crate |
 | Builds for | `/app/projects/<code>/<app>/` | A Navigator route |
 | Prototype is | The implementation | Reference material, never merged |
-| Intake | A Linear issue | A `design-mockup` issue |
+| Intake | A Linear issue | A Linear issue using the Design mockup template |
 | Read | This document | [`design-mockups`](design-mockups.md) |
 
 If the screen belongs to one Project and reads that Project's data through Navigator's APIs, it belongs in that

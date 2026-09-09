@@ -34,6 +34,23 @@ textarea {
 
 /* Base element styling for the Dioxus app shell. */
 .nav-theme {
+  --nav-public-wash:
+    radial-gradient(
+      55rem 24rem at 12% -4rem,
+      color-mix(in oklab, var(--nav-color-primary) 13%, transparent),
+      transparent 72%
+    ),
+    linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--nav-color-surface-raised) 88%, transparent),
+      var(--nav-color-surface)
+    );
+  --nav-public-hairline: linear-gradient(
+    90deg,
+    transparent,
+    var(--nav-color-primary),
+    transparent
+  );
   background: var(--nav-color-bg);
   color: var(--nav-color-text);
   font-family: var(--nav-font-family);
@@ -977,17 +994,7 @@ a.nav-pagination__link:hover {
   overflow: clip;
   border-top: 0;
   margin-top: clamp(3rem, 8vw, 7rem);
-  background:
-    radial-gradient(
-      55rem 24rem at 12% -4rem,
-      color-mix(in oklab, var(--nav-color-primary) 13%, transparent),
-      transparent 72%
-    ),
-    linear-gradient(
-      180deg,
-      color-mix(in oklab, var(--nav-color-surface-raised) 88%, transparent),
-      var(--nav-color-surface)
-    );
+  background: var(--nav-public-wash);
   box-shadow: inset 0 1px var(--nav-color-border);
 }
 
@@ -998,12 +1005,7 @@ a.nav-pagination__link:hover {
   width: min(72rem, calc(100% - 2rem));
   height: 1px;
   transform: translateX(-50%);
-  background: linear-gradient(
-    90deg,
-    transparent,
-    var(--nav-color-primary),
-    transparent
-  );
+  background: var(--nav-public-hairline);
   opacity: 0.7;
 }
 

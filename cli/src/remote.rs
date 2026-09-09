@@ -944,6 +944,71 @@ pub async fn notion_reconcile(
     notion_command(host, "reconcile", project_code, all, json).await
 }
 
+async fn slack_command(
+    host: Option<&str>,
+    action: &str,
+    project_code: &str,
+    event: Option<&str>,
+    json: bool,
+) -> ExitCode {
+    run(async {
+        if let Some(event) = event {
+            if !matches!(
+                event,
+                "project_opened"
+                    | "project_closed"
+                    | "project_reconciled"
+                    | "integration_unavailable"
+            ) {
+                return Err(anyhow!("unsupported Slack event {event}"));
+            }
+        }
+        let (base, token) = resolve(host)?;
+        let url = format!("{base}/app/api/integrations/slack/{action}");
+        let response = reqwest::Client::new()
+            .post(&url)
+            .bearer_auth(token)
+            .json(&serde_json::json!({
+                "project_code": project_code,
+                "event": event,
+            }))
+            .send()
+            .await
+            .with_context(|| format!("POST {url}"))?;
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(anyhow!(
+                "Slack {action} failed: {status}: {}",
+                first_line(&body)
+            ));
+        }
+        if json {
+            println!("{body}");
+        } else {
+            println!("Slack {action} completed for {project_code}");
+            if !body.trim().is_empty() {
+                println!("{}", first_line(&body));
+            }
+        }
+        Ok(())
+    })
+    .await
+}
+
+pub async fn slack_ensure(host: Option<&str>, project_code: &str, json: bool) -> ExitCode {
+    slack_command(host, "ensure", project_code, None, json).await
+}
+
+pub async fn slack_notify(
+    host: Option<&str>,
+    project_code: &str,
+    event: &str,
+    json: bool,
+) -> ExitCode {
+    slack_command(host, "notify", project_code, Some(event), json).await
+}
+
 pub async fn matter_close(
     host: Option<&str>,
     project_code: &str,

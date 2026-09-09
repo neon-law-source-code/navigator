@@ -548,6 +548,43 @@ enum ProjectsCmd {
         #[command(flatten)]
         host: HostOpt,
     },
+    /// Ensure or reconcile Firm-private Notion Project pages.
+    Notion {
+        #[command(subcommand)]
+        action: NotionAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum NotionAction {
+    /// Create or adopt the private page for one Project or every Project.
+    Ensure {
+        /// Project code. Omit only when `--all` is supplied.
+        #[arg(required_unless_present = "all", conflicts_with = "all")]
+        project_code: Option<String>,
+        /// Ensure every Project visible to this login.
+        #[arg(long)]
+        all: bool,
+        /// Emit the server's structured result.
+        #[arg(long)]
+        json: bool,
+        #[command(flatten)]
+        host: HostOpt,
+    },
+    /// Reconcile the environment-selected Notion database for one or every Project.
+    Reconcile {
+        /// Project code. Omit only when `--all` is supplied.
+        #[arg(required_unless_present = "all", conflicts_with = "all")]
+        project_code: Option<String>,
+        /// Reconcile every Project visible to this login.
+        #[arg(long)]
+        all: bool,
+        /// Emit the server's structured result.
+        #[arg(long)]
+        json: bool,
+        #[command(flatten)]
+        host: HostOpt,
+    },
 }
 
 #[derive(Subcommand)]
@@ -2246,6 +2283,26 @@ async fn run_projects(action: ProjectsCmd) -> ExitCode {
             dir,
             host,
         } => remote::archive_repository(host.host.as_deref(), &project_code, &dir).await,
+        ProjectsCmd::Notion { action } => match action {
+            NotionAction::Ensure {
+                project_code,
+                all,
+                json,
+                host,
+            } => {
+                remote::notion_ensure(host.host.as_deref(), project_code.as_deref(), all, json)
+                    .await
+            }
+            NotionAction::Reconcile {
+                project_code,
+                all,
+                json,
+                host,
+            } => {
+                remote::notion_reconcile(host.host.as_deref(), project_code.as_deref(), all, json)
+                    .await
+            }
+        },
     }
 }
 

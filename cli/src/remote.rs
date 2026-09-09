@@ -882,6 +882,68 @@ pub async fn projects_lifecycle(host: Option<&str>, json: bool) -> ExitCode {
 /// derives `closed_at` from those command inputs; without an effective time,
 /// closing an already-`closed` matter reports it unchanged, while an
 /// `archived` matter refuses with a caller-readable error.
+async fn notion_command(
+    host: Option<&str>,
+    action: &str,
+    project_code: Option<&str>,
+    all: bool,
+    json: bool,
+) -> ExitCode {
+    run(async {
+        if project_code.is_none() && !all {
+            return Err(anyhow!("provide a Project code or --all"));
+        }
+        let (base, token) = resolve(host)?;
+        let url = format!("{base}/app/api/integrations/notion/{action}");
+        let response = reqwest::Client::new()
+            .post(&url)
+            .bearer_auth(token)
+            .json(&serde_json::json!({
+                "project_code": project_code,
+                "all": all,
+            }))
+            .send()
+            .await
+            .with_context(|| format!("POST {url}"))?;
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(anyhow!(
+                "Notion {action} failed: {status}: {}",
+                first_line(&body)
+            ));
+        }
+        if json {
+            println!("{body}");
+        } else {
+            println!("Notion {action} completed");
+            if !body.trim().is_empty() {
+                println!("{}", first_line(&body));
+            }
+        }
+        Ok(())
+    })
+    .await
+}
+
+pub async fn notion_ensure(
+    host: Option<&str>,
+    project_code: Option<&str>,
+    all: bool,
+    json: bool,
+) -> ExitCode {
+    notion_command(host, "ensure", project_code, all, json).await
+}
+
+pub async fn notion_reconcile(
+    host: Option<&str>,
+    project_code: Option<&str>,
+    all: bool,
+    json: bool,
+) -> ExitCode {
+    notion_command(host, "reconcile", project_code, all, json).await
+}
+
 pub async fn matter_close(
     host: Option<&str>,
     project_code: &str,

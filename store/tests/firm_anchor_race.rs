@@ -9,8 +9,11 @@
 //! `firm_anchor` claim table exists cannot be refactored away as
 //! redundant.
 //!
-//! The guarded path is then raced the same way and must land exactly one
-//! row. These race outward from a store-level API on purpose: the HTTP
+//! The guarded path is then raced from the same empty-table starting point
+//! and must land exactly one row. Its entity seam primes the table before
+//! the real claim, so this test's empty-table assertion keeps the raw
+//! first-write reproduction in scope instead of prewarming it away. These
+//! race outward from a store-level API on purpose: the HTTP
 //! surface adds a redirect heuristic between the write and the assertion,
 //! which cannot tell a refused create from one that failed for another
 //! reason.
@@ -146,6 +149,16 @@ async fn concurrent_creates_land_exactly_one_anchor() {
     let key = "shook law pllc";
     for round in 0..8 {
         let db = Arc::new(store::test_support::mem_surreal().await);
+        let claim_ids: Vec<surrealdb::types::RecordId> = db
+            .query("SELECT VALUE id FROM firm_anchor")
+            .await
+            .expect("read the fresh claim table")
+            .take(0)
+            .expect("decode the fresh claim table");
+        assert!(
+            claim_ids.is_empty(),
+            "round {round}: keep the empty claim table reproduction intact"
+        );
         let mut tasks = tokio::task::JoinSet::new();
         for _ in 0..RACERS {
             let db = Arc::clone(&db);
